@@ -267,7 +267,9 @@
       tax_number: str(c.tax_number || c.taxNumber),
       company_status: str(c.company_status || c.companyStatus),
       currency: str(c.currency),
-      payment_term: str(c.payment_term || c.paymentTerm || c.payment_terms || c.paymentTerms)
+      payment_term: str(c.payment_term || c.paymentTerm || c.payment_terms || c.paymentTerms),
+      documents_verified: c.documents_verified === true || c.documentsVerified === true || String(c.documents_verified ?? c.documentsVerified ?? '').toLowerCase() === 'true',
+      documents_verification_status: str(c.documents_verification_status || c.documentsVerificationStatus)
     };
   }
   function normalizeContact(raw = {}) {

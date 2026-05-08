@@ -77,7 +77,8 @@ const Agreements = {
     detailCacheById: {},
     detailCacheTtlMs: 90 * 1000,
     openingAgreementIds: new Set(),
-    rowActionInFlight: new Set()
+    rowActionInFlight: new Set(),
+    selectedAgreementCompanyForVerification: null
   },
 
   providerIdentityDefaults: {
@@ -456,6 +457,31 @@ const Agreements = {
     return Boolean(company?.documents_verified || company?.documentsVerified)
       && String(company?.documents_verification_status || company?.documentsVerificationStatus || '').trim().toLowerCase() === 'verified';
   },
+  getCompanyVerificationBadgeLabel(company = {}) {
+    if (!company || typeof company !== 'object' || !Object.keys(company).length) return '';
+    if (this.isCompanyVerified(company)) return 'Verified';
+    const status = String(company.documents_verification_status || company.documentsVerificationStatus || '').trim().toLowerCase();
+    const hasVerificationSignal = Boolean(company.documents_verified || company.documentsVerified || status);
+    if (hasVerificationSignal && status && status !== 'not_verified') return 'Needs re-verification';
+    return 'Not verified';
+  },
+  updateAgreementCompanyVerificationUi(company = null) {
+    const statusEl = document.getElementById('agreementCompanyVerificationStatus');
+    const warningEl = document.getElementById('agreementCompanyVerificationWarning');
+    if (!statusEl && !warningEl) return;
+    const label = company ? this.getCompanyVerificationBadgeLabel(company) : '';
+    const verified = company ? this.isCompanyVerified(company) : false;
+    if (statusEl) {
+      if (!label) {
+        statusEl.innerHTML = '';
+      } else {
+        const color = verified ? '#15803d' : label === 'Needs re-verification' ? '#b45309' : '#b91c1c';
+        const background = verified ? 'rgba(21,128,61,.10)' : label === 'Needs re-verification' ? 'rgba(180,83,9,.12)' : 'rgba(185,28,28,.10)';
+        statusEl.innerHTML = `<span class="badge" style="color:${color};background:${background};border:1px solid ${color};">${U.escapeHtml(label)}</span>`;
+      }
+    }
+    if (warningEl) warningEl.style.display = company && !verified ? '' : 'none';
+  },
   hasCompanyVerificationFields(record = {}) {
     const hasVerifiedFlag = Object.prototype.hasOwnProperty.call(record, 'documents_verified')
       || Object.prototype.hasOwnProperty.call(record, 'documentsVerified');
@@ -500,28 +526,45 @@ const Agreements = {
   async queryCompanyForVerification(column, value) {
     const lookupValue = String(value || '').trim();
     if (!lookupValue) return null;
-    const client = window.SupabaseClient?.getClient?.();
-    if (!client) return null;
-    let query = client.from('companies').select('*').limit(1);
-    if (column === 'legal_name' || column === 'company_name') query = query.ilike(column, lookupValue);
-    else query = query.eq(column, lookupValue);
-    const { data, error } = await query.maybeSingle();
-    if (error) throw error;
-    return data && typeof data === 'object' ? data : null;
+    const client = window.SupabaseClient?.getClient?.() || window.supabaseClient || window.supabase;
+    if (client?.from) {
+      let query = client.from('companies').select('*').limit(1);
+      if (column === 'legal_name' || column === 'company_name') query = query.ilike(column, lookupValue);
+      else query = query.eq(column, lookupValue);
+      const { data, error } = await query.maybeSingle();
+      if (error) throw error;
+      if (data && typeof data === 'object') return data;
+    }
+    if (window.Api?.requestWithSession) {
+      const response = await Api.requestWithSession('companies', 'list', { filters: { [column]: lookupValue }, limit: 1 }, { requireAuth: true });
+      const rows = response?.rows || response?.items || response?.data || [];
+      const row = Array.isArray(rows) ? rows[0] : rows;
+      return row && typeof row === 'object' ? row : null;
+    }
+    return null;
   },
-  async getProposalCompanyForVerification(proposal = {}) {
-    const source = proposal && typeof proposal === 'object' ? proposal : {};
+  async getCompanyForAgreementVerification(companyOrAgreementPayload = {}) {
+    const source = companyOrAgreementPayload && typeof companyOrAgreementPayload === 'object' ? companyOrAgreementPayload : {};
     const embeddedCompany = source.company && typeof source.company === 'object' ? source.company : null;
-    const embeddedCandidate = embeddedCompany || source;
-    if (this.hasCompanyVerificationFields(embeddedCandidate)) return embeddedCandidate;
+    const selectedCompany = this.state.selectedAgreementCompanyForVerification && typeof this.state.selectedAgreementCompanyForVerification === 'object'
+      ? this.state.selectedAgreementCompanyForVerification
+      : null;
+    const selectedCompanyMatches = selectedCompany && (
+      String(selectedCompany.id || '').trim() === String(source.company_uuid || source.companyUuid || source.id || '').trim()
+      || String(selectedCompany.company_id || selectedCompany.companyId || '').trim() === String(source.company_id || source.companyId || source.company?.company_id || source.company?.companyId || '').trim()
+      || String(selectedCompany.company_name || selectedCompany.companyName || '').trim().toLowerCase() === String(source.company_name || source.companyName || '').trim().toLowerCase()
+    );
+    const embeddedCandidate = embeddedCompany || (selectedCompanyMatches ? selectedCompany : null) || source;
+    const embeddedStatus = String(embeddedCandidate?.documents_verification_status || embeddedCandidate?.documentsVerificationStatus || '').trim();
+    if (this.hasCompanyVerificationFields(embeddedCandidate) && embeddedStatus) return embeddedCandidate;
 
-    const companyUuid = String(source.company_uuid || source.companyUuid || source.company?.id || '').trim();
+    const companyUuid = String(source.company_uuid || source.companyUuid || embeddedCandidate?.id || '').trim();
     if (companyUuid) {
       const byUuid = await this.queryCompanyForVerification('id', companyUuid);
       if (byUuid) return byUuid;
     }
 
-    const companyId = String(source.company_id || source.companyId || source.company?.company_id || source.company?.companyId || '').trim();
+    const companyId = String(source.company_id || source.companyId || source.company?.company_id || source.company?.companyId || embeddedCandidate?.company_id || embeddedCandidate?.companyId || '').trim();
     if (companyId) {
       const byCompanyId = await this.queryCompanyForVerification('company_id', companyId);
       if (byCompanyId) return byCompanyId;
@@ -529,14 +572,14 @@ const Agreements = {
 
     const legalName = String(
       source.legal_company_name || source.legalCompanyName || source.legal_name || source.legalName
-      || source.customer_legal_name || source.customerLegalName || source.company?.legal_name || source.company?.legalName || ''
+      || source.customer_legal_name || source.customerLegalName || source.company?.legal_name || source.company?.legalName || embeddedCandidate?.legal_name || embeddedCandidate?.legalName || ''
     ).trim();
     if (legalName) {
       const byLegalName = await this.queryCompanyForVerification('legal_name', legalName);
       if (byLegalName) return byLegalName;
     }
 
-    const companyName = String(source.company_name || source.companyName || source.customer_name || source.customerName || source.company?.company_name || source.company?.companyName || '').trim();
+    const companyName = String(source.company_name || source.companyName || source.customer_name || source.customerName || source.company?.company_name || source.company?.companyName || embeddedCandidate?.company_name || embeddedCandidate?.companyName || '').trim();
     if (companyName) {
       const byCompanyName = await this.queryCompanyForVerification('company_name', companyName);
       if (byCompanyName) return byCompanyName;
@@ -544,27 +587,44 @@ const Agreements = {
 
     return null;
   },
-  async guardProposalConversionAllowed(proposal = {}) {
-    if (!this.isProposalAcceptedForConversion(proposal)) {
-      UI.toast('Proposal must be accepted before converting to agreement.');
+  async getProposalCompanyForVerification(proposal = {}) {
+    return this.getCompanyForAgreementVerification(proposal);
+  },
+  async ensureCompanyVerifiedBeforeAgreement(companyOrAgreementPayload = {}) {
+    const source = companyOrAgreementPayload && typeof companyOrAgreementPayload === 'object' ? companyOrAgreementPayload : {};
+    const hasAnyCompanyReference = Boolean(
+      String(source.company_uuid || source.companyUuid || source.company?.id || '').trim()
+      || String(source.company_id || source.companyId || source.company?.company_id || source.company?.companyId || '').trim()
+      || String(source.legal_company_name || source.legalCompanyName || source.legal_name || source.legalName || source.customer_legal_name || source.customerLegalName || source.company?.legal_name || source.company?.legalName || '').trim()
+      || String(source.company_name || source.companyName || source.customer_name || source.customerName || source.company?.company_name || source.company?.companyName || '').trim()
+    );
+    if (!hasAnyCompanyReference) {
+      this.showBlockingDialog('Company Required', 'Please select a company before creating an agreement.');
       return false;
     }
-    const company = await this.getProposalCompanyForVerification(proposal);
+    const company = await this.getCompanyForAgreementVerification(source);
     if (!company) {
       this.showBlockingDialog(
         'Company Verification Required',
-        'Unable to confirm the company verification status. Please open the company profile, upload the required documents, and make sure an admin verifies them before converting this proposal to an agreement.'
+        'Unable to confirm the company verification status. Please open the company profile, upload the required documents, and make sure an admin verifies them before creating an agreement.'
       );
       return false;
     }
     if (!this.isCompanyVerified(company)) {
       this.showBlockingDialog(
         'Company Not Verified',
-        'The company is still not verified. Please upload the company documents and make sure an admin verifies them before converting this proposal to an agreement.'
+        'The company is still not verified. Please upload the company documents and make sure an admin verifies them before creating an agreement.'
       );
       return false;
     }
     return true;
+  },
+  async guardProposalConversionAllowed(proposal = {}) {
+    if (!this.isProposalAcceptedForConversion(proposal)) {
+      UI.toast('Proposal must be accepted before converting to agreement.');
+      return false;
+    }
+    return this.ensureCompanyVerifiedBeforeAgreement(proposal);
   },
   normalizeItem(raw = {}, sectionFallback = '') {
     const source = raw && typeof raw === 'object' ? raw : {};
@@ -1803,6 +1863,8 @@ const Agreements = {
     if (!E.agreementFormModal || !E.agreementForm) return;
     this.assignFormValues(agreement);
     this.renderItemRows(items);
+    this.state.selectedAgreementCompanyForVerification = this.hasCompanyVerificationFields(agreement) ? agreement : null;
+    this.updateAgreementCompanyVerificationUi(this.state.selectedAgreementCompanyForVerification);
     E.agreementForm.dataset.id = agreement.id || '';
     E.agreementForm.dataset.mode = agreement.id ? 'edit' : 'create';
     E.agreementForm.dataset.source = agreement.id ? '' : String(agreement.proposal_id || '').trim() ? 'proposal' : '';
@@ -1831,6 +1893,8 @@ const Agreements = {
     E.agreementForm.dataset.source = '';
     E.agreementForm.dataset.proposalUuid = '';
     this.state.currentAgreementId = '';
+    this.state.selectedAgreementCompanyForVerification = null;
+    this.updateAgreementCompanyVerificationUi(null);
     this.renderItemRows([]);
   },
   setFormBusy(busy) {
@@ -1949,14 +2013,6 @@ const Agreements = {
     const { agreement, items } = this.collectFormValues();
     if (!this.validateCommercialItems(items)) return;
     const isDirectCreate = !id && source !== 'create_from_proposal' && !String(formProposalUuid || agreement.proposal_id || '').trim();
-    if (isDirectCreate && !String(agreement.company_id || '').trim()) {
-      UI.toast('Please select a company.');
-      return;
-    }
-    if (isDirectCreate && !String(agreement.contact_id || '').trim()) {
-      UI.toast('Please select a contact.');
-      return;
-    }
     const provider = this.getSignedInUserForAgreement();
     agreement.billing_frequency = 'Annual';
     const validPaymentTerms = ['Net 7', 'Net 14', 'Net 21', 'Net 30'];
@@ -1991,6 +2047,17 @@ const Agreements = {
     agreement.customer_address = companyHydratedAgreement.customer_address;
     agreement.customer_legal_name = String(companyHydratedAgreement.customer_legal_name || agreement.customer_legal_name || '').trim();
     agreement.customer_name = agreement.customer_legal_name;
+
+    if (!id && !(await this.ensureCompanyVerifiedBeforeAgreement({
+      ...agreement,
+      company: this.state.selectedAgreementCompanyForVerification || agreement.company
+    }))) {
+      return;
+    }
+    if (isDirectCreate && !String(agreement.contact_id || '').trim()) {
+      UI.toast('Please select a contact.');
+      return;
+    }
 
     if (!id) {
       agreement.proposal_id = String(agreement.proposal_id || formProposalUuid || '').trim();
@@ -2346,6 +2413,18 @@ const Agreements = {
     });
     if (E.agreementForm) {
       E.agreementForm.addEventListener('submit', event => { event.preventDefault(); this.submitForm(); });
+      E.agreementForm.addEventListener('crm-company-selected', event => {
+        const company = event?.detail?.company && typeof event.detail.company === 'object' ? event.detail.company : null;
+        this.state.selectedAgreementCompanyForVerification = company;
+        this.updateAgreementCompanyVerificationUi(company);
+      });
+      const agreementCompanySelect = document.getElementById('agreementFormCompanySelector');
+      if (agreementCompanySelect) agreementCompanySelect.addEventListener('change', event => {
+        if (!String(event.target?.value || '').trim()) {
+          this.state.selectedAgreementCompanyForVerification = null;
+          this.updateAgreementCompanyVerificationUi(null);
+        }
+      });
       E.agreementForm.addEventListener('click', event => {
         const trigger = event.target?.closest?.('button[data-item-remove]');
         if (!trigger) return;
