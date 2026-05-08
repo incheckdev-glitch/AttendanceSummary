@@ -1626,14 +1626,13 @@ const Proposals = {
       .doc-sheet > :not(.draft-watermark) { position: relative; z-index: 1; }
       .draft-watermark { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 0; font-size: 128px; font-weight: 800; letter-spacing: 0.16em; color: #0f172a; opacity: 0.055; transform: rotate(-28deg); text-transform: uppercase; user-select: none; }
       .doc-header { border-bottom: 1px solid #d8e1ec; padding-bottom: 18px; margin-bottom: 18px; }
-      .header-top-row { display: flex; align-items: start; }
       .brand-block { display: flex; align-items: center; gap: 14px; min-height: 54px; }
       .brand-block .incheck360-doc-logo-wrap { float: none; margin: 0; width: 168px; max-width: 168px; }
       .commercial-terms-box { grid-column: 1 / -1; min-height: auto; }
-      .title-block { margin-top: 14px; }
-      .doc-label { margin: 0; font-size: 34px; font-weight: 800; letter-spacing: 0.04em; color: #0b214a; line-height: 1.05; }
+      .title-block { margin: 0; text-align: center; align-self: center; }
+      .doc-label { margin: 0; font-size: 32px; font-weight: 800; letter-spacing: 0.01em; color: #0b214a; line-height: 1.05; }
       .doc-subtitle { margin-top: 8px; font-size: 13px; color: #64748b; }
-      .doc-head { display: grid; grid-template-columns: 1fr 340px; gap: 20px; margin-top: 14px; align-items: start; }
+      .doc-head { display: grid; grid-template-columns: 190px minmax(0, 1fr) 340px; gap: 20px; align-items: start; }
       .meta-box { border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; background: #fbfdff; }
       .meta-row { display: grid; grid-template-columns: 130px 1fr; border-bottom: 1px solid #e3eaf3; }
       .meta-row:last-child { border-bottom: 0; }
@@ -1672,13 +1671,11 @@ const Proposals = {
     <div class="doc-sheet">
       ${showDraftWatermark ? '<div class="draft-watermark" aria-hidden="true">DRAFT</div>' : ''}
       <header class="doc-header">
-        <div class="header-top-row">
-          <div class="brand-block"><div data-incheck360-doc-logo-slot></div></div>
-        </div>
         <section class="doc-head">
+          <div class="brand-block"><div data-incheck360-doc-logo-slot></div></div>
           <div class="title-block">
-            <h2 class="doc-label">COMMERCIAL PROPOSAL</h2>
-            <div class="doc-subtitle">${textValue(this.getProposalCustomerName(proposalData))} · ${textValue(proposalData.proposal_title || proposalData.ref_number || 'Commercial Services Proposal')}</div>
+            <h2 class="doc-label">Proposal</h2>
+            <div class="doc-subtitle">${textValue(this.getProposalCustomerName(proposalData))} · ${textValue(proposalData.proposal_title || proposalData.ref_number || 'Services Proposal')}</div>
           </div>
           <div class="meta-box">
             <div class="meta-row"><div class="meta-key">Proposal ID</div><div>${textValue(proposalData.proposal_id || 'Missing ID')}</div></div>
