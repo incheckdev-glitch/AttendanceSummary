@@ -106,6 +106,22 @@ function sanitizeCell(value: unknown) {
     .replace(/'/g, '&#39;');
 }
 
+
+function getAppBaseUrl() {
+  return normalizeString(Deno.env.get('APP_BASE_URL') || Deno.env.get('VITE_APP_BASE_URL')) || 'https://monitor.app.incheck360.nl';
+}
+
+function buildAbsoluteWorkflowUrl(approvalId: string) {
+  const base = getAppBaseUrl().replace(/\/+$/, '');
+  return `${base}/#workflow?approval_id=${encodeURIComponent(approvalId)}`;
+}
+
+function actionLabelForApproval(eventType: string) {
+  if (eventType === 'approval_requested') return 'Approval Requested';
+  if (eventType === 'approval_approved') return 'Approval Approved';
+  return 'Approval Rejected';
+}
+
 function formatDate(value: unknown) {
   const raw = normalizeString(value);
   if (!raw) return '—';
@@ -115,24 +131,23 @@ function formatDate(value: unknown) {
 }
 
 function buildApprovalEmailTemplate(eventType: string, payload: Record<string, unknown>) {
-  const resource = toReadableResource(payload.resource);
-  const recordId = normalizeString(payload.record_id) || normalizeString(payload.approval_id) || '—';
-  const title =
-    eventType === 'approval_requested'
-      ? `Approval request: ${resource} ${recordId}`
-      : eventType === 'approval_approved'
-        ? `Approval approved: ${resource} ${recordId}`
-        : `Approval rejected: ${resource} ${recordId}`;
+  const resource = toReadableResource(payload.resource) || 'Workflow Approval';
+  const approvalId = normalizeString(payload.approval_id);
+  const recordId = normalizeString(payload.record_id) || approvalId || '—';
+  const actionLabel = actionLabelForApproval(eventType);
+  const title = `${actionLabel} — ${recordId}`;
+  const deepLink = buildAbsoluteWorkflowUrl(approvalId || recordId);
 
   const details: Array<{ label: string; value: string }> = [
     { label: 'Resource', value: resource },
-    { label: 'Record ID', value: recordId }
+    { label: 'Action', value: actionLabel },
+    { label: 'Record', value: recordId }
   ];
 
   if (eventType === 'approval_requested') {
     details.push(
       { label: 'Requested action', value: normalizeString(payload.requested_action) || 'Workflow status transition' },
-      { label: 'Requested by', value: normalizeString(payload.requested_by) || '—' },
+      { label: 'Created/Updated by', value: normalizeString(payload.requested_by) || '—' },
       { label: 'Requested value/discount', value: normalizeString(payload.requested_value) || '—' },
       { label: 'Current status', value: normalizeString(payload.current_status) || '—' },
       { label: 'Requested status', value: normalizeString(payload.requested_status) || '—' },
@@ -140,13 +155,13 @@ function buildApprovalEmailTemplate(eventType: string, payload: Record<string, u
     );
   } else if (eventType === 'approval_approved') {
     details.push(
-      { label: 'Approved by', value: normalizeString(payload.reviewed_by) || '—' },
+      { label: 'Created/Updated by', value: normalizeString(payload.reviewed_by) || '—' },
       { label: 'Approved at', value: formatDate(payload.reviewed_at) },
       { label: 'Applied status/change', value: normalizeString(payload.applied_change) || normalizeString(payload.requested_status) || '—' }
     );
   } else {
     details.push(
-      { label: 'Rejected by', value: normalizeString(payload.reviewed_by) || '—' },
+      { label: 'Created/Updated by', value: normalizeString(payload.reviewed_by) || '—' },
       { label: 'Rejected at', value: formatDate(payload.reviewed_at) },
       { label: 'Rejection reason/comment', value: normalizeString(payload.reviewer_comment) || '—' }
     );
@@ -154,30 +169,35 @@ function buildApprovalEmailTemplate(eventType: string, payload: Record<string, u
 
   const summaryMessage =
     eventType === 'approval_requested'
-      ? 'Please review this approval request in InCheck360 MonitorCore.'
+      ? 'Please review this approval request in InCheck360.'
       : eventType === 'approval_approved'
-        ? 'The approval request has been approved.'
-        : 'The approval request has been rejected. Please review the comments in InCheck360 MonitorCore.';
+        ? 'This approval request has been approved in InCheck360.'
+        : 'This approval request has been rejected. Please review the comments in InCheck360.';
 
   const rowsHtml = details
-    .map(item => `<tr><td style="padding:8px 10px;color:#64748b;vertical-align:top;">${sanitizeCell(item.label)}</td><td style="padding:8px 10px;color:#0f172a;">${sanitizeCell(item.value)}</td></tr>`)
+    .map(item => `<tr><td style="padding:10px 14px;border-bottom:1px solid #e6edf5;color:#64748b;font-size:13px;font-weight:700;width:34%;">${sanitizeCell(item.label)}</td><td style="padding:10px 14px;border-bottom:1px solid #e6edf5;color:#0f172a;font-size:13px;font-weight:600;">${sanitizeCell(item.value)}</td></tr>`)
     .join('');
-  const textDetails = details.map(item => `- ${item.label}: ${item.value}`).join('\n');
+  const textDetails = details.map(item => `${item.label}: ${item.value}`).join('\n');
 
-  const html = `
-    <div style="font-family:Arial,sans-serif;background:#f8fafc;padding:24px;color:#0f172a;">
-      <div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
-        <div style="background:#0f172a;color:#ffffff;padding:16px 20px;font-size:18px;font-weight:600;">InCheck360 MonitorCore</div>
-        <div style="padding:20px;">
-          <h2 style="margin:0 0 12px 0;font-size:20px;color:#0f172a;">${sanitizeCell(title)}</h2>
-          <div style="background:#f1f5f9;border-left:4px solid #2563eb;padding:12px 14px;margin-bottom:14px;">${sanitizeCell(summaryMessage)}</div>
-          <table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;">${rowsHtml}</table>
-          <p style="margin:16px 0 0 0;color:#64748b;font-size:12px;">This email was sent by InCheck360 MonitorCore workflow approvals.</p>
+  const html = `<!doctype html>
+<html lang="en"><body style="margin:0;padding:0;background:#f4f7fb;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f7fb;"><tr><td align="center" style="padding:28px 12px;">
+    <table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:640px;margin:0 auto;">
+      <tr><td style="background:#0b1f3a;border-radius:18px 18px 0 0;padding:24px 28px;color:#ffffff;"><div style="font-size:24px;font-weight:800;">InCheck360</div><div style="font-size:13px;color:#b9d5ff;margin-top:5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;">Notification</div></td></tr>
+      <tr><td style="background:#ffffff;border:1px solid #dbe5f1;border-top:0;border-radius:0 0 18px 18px;box-shadow:0 16px 36px rgba(15,23,42,.08);">
+        <div style="padding:30px 28px 24px 28px;"><div style="display:inline-block;background:#e8f1ff;color:#0b4db3;border:1px solid #cfe1ff;border-radius:999px;padding:7px 12px;font-size:12px;font-weight:800;margin-bottom:18px;">Workflow Approval • ${sanitizeCell(actionLabel)}</div>
+          <h1 style="margin:0 0 12px 0;color:#0f172a;font-size:26px;line-height:1.25;font-weight:800;">${sanitizeCell(title)}</h1>
+          <p style="margin:0 0 22px 0;color:#334155;font-size:15px;line-height:1.65;">${sanitizeCell(summaryMessage)}</p>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #dbe5f1;border-radius:12px;border-collapse:separate;border-spacing:0;background:#fbfdff;margin:0 0 24px 0;overflow:hidden;">${rowsHtml}</table>
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 18px 0;"><tr><td bgcolor="#0b57d0" style="border-radius:10px;"><a href="${sanitizeCell(deepLink)}" style="display:inline-block;padding:14px 22px;background:#0b57d0;border-radius:10px;color:#ffffff;font-size:15px;font-weight:800;text-decoration:none;">Open in InCheck360</a></td></tr></table>
+          <p style="margin:0;color:#64748b;font-size:12px;line-height:1.55;">If the button does not work, copy and paste this link into your browser:<br><a href="${sanitizeCell(deepLink)}" style="color:#0b57d0;text-decoration:underline;word-break:break-all;">${sanitizeCell(deepLink)}</a></p>
         </div>
-      </div>
-    </div>
-  `;
-  const text = `${title}\n\n${summaryMessage}\n\n${textDetails}\n\nInCheck360 MonitorCore`;
+        <div style="padding:18px 28px;background:#f8fafc;border-top:1px solid #e6edf5;"><p style="margin:0;color:#64748b;font-size:12px;line-height:1.6;">This is an automated notification from InCheck360. Please do not reply to this email.</p></div>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+  const text = `${title}\n\n${summaryMessage}\n\n${textDetails}\nOpen in InCheck360: ${deepLink}\n\nThis is an automated notification from InCheck360. Please do not reply to this email.`;
 
   return { subject: title, html, text };
 }
@@ -414,6 +434,7 @@ Deno.serve(async req => {
     const eventPayload = buildEventPayload(approval, body);
     const recipients = await resolveRecipients(eventType, approval);
     if (!recipients.length) {
+      console.info('[workflow-email] log', { channel: 'email', status: 'skipped', error_message: 'No recipient could be resolved.', resource: eventPayload.resource, action: eventType, record_id: eventPayload.record_id, record_number: eventPayload.record_id });
       await writeEmailLog({
         approval_id: approvalId,
         event_type: eventType,
@@ -446,6 +467,7 @@ Deno.serve(async req => {
 
     try {
       const providerResponse = await callSendEmail(sendPayload);
+      console.info('[workflow-email] log', { channel: 'email', status: 'sent', recipient_email: recipients.map(item => item.email).join(','), resource: eventPayload.resource, action: eventType, record_id: eventPayload.record_id, record_number: eventPayload.record_id });
       await writeEmailLog({
         approval_id: approvalId,
         event_type: eventType,
@@ -460,6 +482,7 @@ Deno.serve(async req => {
         headers: CORS_HEADERS
       });
     } catch (error) {
+      console.warn('[workflow-email] log', { channel: 'email', status: 'failed', error_message: normalizeString((error as Error)?.message || error), resource: eventPayload.resource, action: eventType, record_id: eventPayload.record_id, record_number: eventPayload.record_id });
       await writeEmailLog({
         approval_id: approvalId,
         event_type: eventType,

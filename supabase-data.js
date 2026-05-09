@@ -4751,29 +4751,29 @@
   }
 
   function buildNotificationEmailTemplate(payload = {}) {
+    if (window.NotificationEmailTemplate?.buildNotificationEmailHtml) {
+      return window.NotificationEmailTemplate.buildNotificationEmailHtml({
+        appName: 'InCheck360',
+        title: String(payload?.title || 'InCheck360 Notification').trim() || 'InCheck360 Notification',
+        description: String(payload?.body || payload?.message || 'A business event requires your attention.').trim(),
+        resource: String(payload?.email_resource || payload?.resource || '').trim(),
+        action: String(payload?.email_action || payload?.action || payload?.event_type || '').trim(),
+        recordId: String(payload?.record_id || '').trim(),
+        recordNumber: String(payload?.email_record_number || payload?.record_number || payload?.record_id || '').trim(),
+        deepLink: resolveNotificationUrl(payload?.resource, payload?.action || payload?.event_type, payload?.record_id, payload?.url || payload?.deep_link),
+        actorName: String(payload?.actor_name || payload?.actorName || '').trim(),
+        metadata: payload
+      });
+    }
     const title = String(payload?.title || 'InCheck360 Notification').trim() || 'InCheck360 Notification';
     const body = String(payload?.body || payload?.message || 'A business event requires your attention.').trim();
-    const resource = String(payload?.resource || '').trim();
-    const action = String(payload?.action || payload?.event_type || '').trim();
-    const recordNumber = String(payload?.record_number || payload?.record_id || '').trim();
-    const url = resolveNotificationUrl(resource, action, payload?.record_id, payload?.url || payload?.deep_link);
-    const safeTitle = escapeEmailHtml(title);
-    const safeBody = escapeEmailHtml(body).replace(/\n/g, '<br>');
-    const safeResource = escapeEmailHtml(resource);
-    const safeAction = escapeEmailHtml(action);
-    const safeRecordNumber = escapeEmailHtml(recordNumber);
-    const safeUrl = escapeEmailHtml(url);
-    const html = `<div style="font-family:Arial,sans-serif;line-height:1.5;color:#111827;max-width:640px">
-      <h2 style="margin:0 0 12px">${safeTitle}</h2>
-      <p style="margin:0 0 14px">${safeBody}</p>
-      ${(safeResource || safeAction) ? `<p style="margin:0 0 8px"><strong>Resource:</strong> ${safeResource || '-'} &nbsp; <strong>Action:</strong> ${safeAction || '-'}</p>` : ''}
-      ${safeRecordNumber ? `<p style="margin:0 0 14px"><strong>Record:</strong> ${safeRecordNumber}</p>` : ''}
-      ${safeUrl ? `<p style="margin:18px 0"><a href="${safeUrl}" style="display:inline-block;background:#0f172a;color:#fff;text-decoration:none;padding:10px 14px;border-radius:8px">Open in InCheck360</a></p>` : ''}
-      <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0">
-      <p style="color:#6b7280;font-size:12px;margin:0">InCheck360 notification</p>
-    </div>`;
-    const text = [title, body, recordNumber ? `Record: ${recordNumber}` : '', url].filter(Boolean).join('\n');
-    return { subject: title, html, text };
+    const url = resolveNotificationUrl(payload?.resource, payload?.action || payload?.event_type, payload?.record_id, payload?.url || payload?.deep_link);
+    const absoluteUrl = /^https?:\/\//i.test(url) ? url : `https://monitor.app.incheck360.nl${url.startsWith('/') ? url : `/${url}`}`;
+    return {
+      subject: `${title} — ${String(payload?.record_number || payload?.record_id || 'InCheck360').trim()}`,
+      html: `<p>${escapeEmailHtml(title)}</p><p>${escapeEmailHtml(body)}</p><p><a href="${escapeEmailHtml(absoluteUrl)}">Open in InCheck360</a></p>`,
+      text: [title, body, `Open in InCheck360: ${absoluteUrl}`].join('\n')
+    };
   }
 
   async function sendEmailForNotification(payload = {}, recipientEmails = [], context = '') {
@@ -4784,13 +4784,13 @@
     )];
 
     if (!emails.length) {
-      console.info('[notifications:email] skipped', { context, reason: 'no_email_recipients_resolved' });
+      console.info('[notifications:email] log', { channel: 'email', status: 'skipped', error_message: 'no_email_recipients_resolved', context, resource: payload?.resource || null, action: payload?.action || payload?.event_type || null, record_id: payload?.record_id || null, record_number: payload?.record_number || null });
       return { attempted: false, skipped: true, reason: 'no_email_recipients_resolved' };
     }
 
     const token = await getNotificationAccessToken();
     if (!token) {
-      console.warn('[notifications:email] skipped', { context, reason: 'missing-access-token' });
+      console.warn('[notifications:email] log', { channel: 'email', status: 'skipped', error_message: 'missing-access-token', context, resource: payload?.resource || null, action: payload?.action || payload?.event_type || null, record_id: payload?.record_id || null, record_number: payload?.record_number || null });
       return { attempted: false, skipped: true, reason: 'missing-access-token' };
     }
 
@@ -4814,10 +4814,10 @@
       if (!response.ok) {
         throw new Error(String(result?.error || result?.message || 'Unable to send email notification'));
       }
-      console.info('[notifications:email] sent', { context, recipientsCount: emails.length, messageId: result?.messageId || null });
+      console.info('[notifications:email] log', { channel: 'email', status: 'sent', recipient_email: emails.join(','), context, resource: payload?.resource || null, action: payload?.action || payload?.event_type || null, record_id: payload?.record_id || null, record_number: payload?.record_number || null, recipientsCount: emails.length, messageId: result?.messageId || null });
       return { attempted: true, sent: true, response: result };
     } catch (error) {
-      console.warn('[notifications:email] send failed', { context, error: error?.message || String(error) });
+      console.warn('[notifications:email] log', { channel: 'email', status: 'failed', error_message: error?.message || String(error), context, resource: payload?.resource || null, action: payload?.action || payload?.event_type || null, record_id: payload?.record_id || null, record_number: payload?.record_number || null });
       return { attempted: true, sent: false, error: String(error?.message || error) };
     }
   }
@@ -5730,10 +5730,14 @@
         ...input,
         resource: String(input?.resource || '').trim().toLowerCase(),
         action: String(input?.action || '').trim().toLowerCase(),
-        title: 'Test notification',
-        message: `Test for ${String(input?.resource || '')}:${String(input?.action || '')}`,
+        title: 'Test Notification',
+        message: 'This is a test notification from InCheck360.',
         actor_user_id: currentUserId || null,
-        record_id: String(input?.record_id || 'test').trim() || 'test'
+        record_id: String(input?.record_id || 'Test').trim() || 'Test',
+        record_number: 'Test',
+        email_resource: 'notification_settings',
+        email_action: 'test_notification',
+        email_record_number: 'Test'
       }, 'notification_settings:test_notification');
       return { handled: true, data: result };
     }
