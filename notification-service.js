@@ -192,7 +192,10 @@
       eventKey,
       emailEnabled: true,
       recipientsCount: emailRecipients.length,
-      transport: 'api_proxy_notifications_send_email'
+      hasSmtpHost: Boolean(global?.ENV?.SMTP_HOST || global?.process?.env?.SMTP_HOST),
+      hasSmtpUser: Boolean(global?.ENV?.SMTP_USER || global?.process?.env?.SMTP_USER),
+      hasSmtpPass: Boolean(global?.ENV?.SMTP_PASS || global?.process?.env?.SMTP_PASS),
+      hasSmtpFrom: Boolean(global?.ENV?.SMTP_FROM || global?.process?.env?.SMTP_FROM)
     });
     if (!emailRecipients.length) {
       console.info('[notifications] no_email_recipients_resolved', { resource, action, eventKey });
@@ -216,46 +219,9 @@
       body: JSON.stringify({ resource: 'notifications', action: 'send_email', to: emailRecipients, ...template })
     });
     const result = await response.json().catch(() => ({}));
-    if (!response.ok || result?.ok === false) {
-      const error = new Error(String(result?.error || `Unable to send email notification (${response.status})`));
-      error.notificationResult = {
-        ok: false,
-        attempted: true,
-        status: response.status,
-        recipientsCount: emailRecipients.length,
-        ...result
-      };
-      throw error;
-    }
-    console.info('[notifications] email sent', { resource, action, eventKey, recipientsCount: result?.recipientsCount || emailRecipients.length, messageId: result?.messageId || null });
-    return { attempted: true, sent: true, recipientsCount: emailRecipients.length, ...result };
-  }
-
-  function getPushDeliveryStatus(pushResult) {
-    const result = pushResult || { ok: false, attempted: 0, sent: 0, failed: 0, error: 'edge_function_no_response' };
-    const sent = Number(result?.sent || 0);
-    const attempted = Number(result?.attempted || 0);
-    const reason = String(result?.reason || '').toLowerCase();
-    const error = String(result?.error || '').toLowerCase();
-    const noTargetOrSubscription = attempted === 0 && (
-      reason === 'no-target' ||
-      reason.includes('no-target') ||
-      reason.includes('no active subscription') ||
-      error.includes('no active push subscriptions') ||
-      error.includes('no active subscription')
-    );
-    if (sent > 0) return 'sent';
-    if (noTargetOrSubscription) return 'skipped';
-    if (attempted > 0) return 'failed';
-    if (result?.error) return 'failed';
-    return 'skipped';
-  }
-
-  function getEmailDeliveryStatus(emailResult) {
-    if (emailResult?.sent || emailResult?.ok === true) return 'sent';
-    if (emailResult?.skipped) return 'skipped';
-    if (emailResult?.error || emailResult?.ok === false) return 'failed';
-    return 'skipped';
+    if (!response.ok) throw new Error(String(result?.error || 'Unable to send email notification'));
+    console.info('[notifications] email sent', { resource, action, eventKey, recipientsCount: emailRecipients.length, messageId: result?.messageId || null });
+    return result;
   }
 
   function isPlaceholderRecipientToken(value = '') {
@@ -849,7 +815,9 @@
         },
         channels: activeChannels,
         user_ids: userIds,
+        target_user_ids: userIds,
         emails: emailRecipients,
+        target_emails: emailRecipients,
         roles: assignedRoles,
         target_roles: assignedRoles
       };
@@ -890,14 +858,26 @@
       if (decision.channels.push) {
         try {
           pushResult = await global.Api.sendWebPush(payload, { context: `${normalizedResource}:${normalizedAction}:central` });
-          if (!pushResult) pushResult = { ok: false, attempted: 0, sent: 0, failed: 0, error: 'edge_function_no_response' };
-          const status = getPushDeliveryStatus(pushResult);
+          const attemptedCount = Number(pushResult?.attempted || 0);
+          const sentCount = Number(pushResult?.sent || 0);
+          const failedCount = Number(pushResult?.failed || 0);
+          const hasPushError = Boolean(pushResult?.error || pushResult?.details || pushResult?.code || failedCount > 0 || pushResult?.ok === false);
+          const status = sentCount > 0 ? 'sent' : (attemptedCount > 0 || hasPushError ? 'failed' : 'skipped');
           const pwaTargets = userIds.length ? userIds.map(id => ({ id })) : emailRecipients.map(email => ({ email }));
-          const errorMessage = status === 'failed' ? (pushResult?.error || pushResult?.errors?.[0]?.error || 'pwa_send_failed') : '';
           for (const target of (pwaTargets.length ? pwaTargets : [{ id: null, email: null }])) {
-            await writeDeliveryLog({ eventId, channel: 'pwa', status, recipientUserId: target.id || null, recipientEmail: target.email || null, resource: normalizedResource, action: normalizedAction, recordId: normalizedRecordId, errorMessage, response: pushResult });
+            await writeDeliveryLog({
+              eventId,
+              channel: 'pwa',
+              status,
+              recipientUserId: target.id || null,
+              recipientEmail: target.email || null,
+              resource: normalizedResource,
+              action: normalizedAction,
+              recordId: normalizedRecordId,
+              errorMessage: status === 'failed' ? (pushResult?.error || pushResult?.errors?.[0]?.error || pushResult?.details?.message || 'pwa_send_failed') : '',
+              response: pushResult
+            });
           }
-          if (status === 'failed') console.warn('[notifications] push send failed', { resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, error: errorMessage, result: pushResult });
         } catch (error) {
           console.warn('[notifications] push send failed', { resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, error: error?.message || String(error) });
           pushResult = { attempted: true, sent: false, error: String(error?.message || error) };
@@ -909,17 +889,32 @@
       if (decision.channels.email) {
         try {
           emailResult = await sendNotificationEmail({ resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, title: payload.title, body: payload.body, recipients: emailRecipients, recordNumber: payload.record_number, url: payload.url });
-          const status = getEmailDeliveryStatus(emailResult);
-          for (const recipientEmail of (emailRecipients.length ? emailRecipients : [''])) {
-            await writeDeliveryLog({ eventId, channel: 'email', status, recipientEmail: recipientEmail || null, resource: normalizedResource, action: normalizedAction, recordId: normalizedRecordId, providerMessageId: emailResult?.messageId || '', errorMessage: status === 'failed' ? (emailResult?.error || 'email_send_failed') : '', response: emailResult });
+          if (emailResult?.skipped) {
+            const fallbackEmailTargets = userIds.length ? userIds.map(id => ({ id })) : [{ id: null }];
+            for (const target of fallbackEmailTargets) {
+              await writeDeliveryLog({
+                eventId,
+                channel: 'email',
+                status: 'skipped',
+                recipientUserId: target.id || null,
+                resource: normalizedResource,
+                action: normalizedAction,
+                recordId: normalizedRecordId,
+                errorMessage: emailResult?.reason || 'email_skipped',
+                response: emailResult
+              });
+            }
+          } else {
+            for (const recipientEmail of emailRecipients) {
+              await writeDeliveryLog({ eventId, channel: 'email', status: 'sent', recipientEmail, resource: normalizedResource, action: normalizedAction, recordId: normalizedRecordId, providerMessageId: emailResult?.messageId || '', response: emailResult });
+            }
           }
-          if (status === 'failed') console.warn('[notifications] email send failed', { resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, error: emailResult?.error, result: emailResult });
         } catch (error) {
-          emailResult = error?.notificationResult || { attempted: true, sent: false, ok: false, error: String(error?.message || error) };
+          emailResult = { attempted: true, sent: false, error: String(error?.message || error) };
           for (const recipientEmail of (emailRecipients.length ? emailRecipients : [''])) {
-            await writeDeliveryLog({ eventId, channel: 'email', status: 'failed', recipientEmail: recipientEmail || null, resource: normalizedResource, action: normalizedAction, recordId: normalizedRecordId, errorMessage: String(emailResult?.error || error?.message || error), response: emailResult });
+            await writeDeliveryLog({ eventId, channel: 'email', status: 'failed', recipientEmail: recipientEmail || null, resource: normalizedResource, action: normalizedAction, recordId: normalizedRecordId, errorMessage: String(error?.message || error), response: emailResult });
           }
-          console.warn('[notifications] email send failed', { resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, error: emailResult?.error || error?.message || String(error), result: emailResult });
+          console.warn('[notifications] email send failed', { resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, error: error?.message || String(error) });
         }
       }
 

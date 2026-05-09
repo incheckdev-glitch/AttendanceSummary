@@ -316,21 +316,47 @@ const Api = {
  
   async sendWebPush(payload = {}, { context = 'unspecified' } = {}) {
     const client = window.SupabaseClient?.getClient?.();
-    if (!client) return { ok: false, attempted: 0, sent: 0, failed: 0, error: 'supabase_client_missing' };
+    if (!client) {
+      return { ok: false, attempted: 0, sent: 0, failed: 0, error: 'supabase_client_unavailable' };
+    }
+
+    const body = payload && typeof payload === 'object' ? payload : {};
+    let token = '';
     try {
-      const token = await this.getCurrentAccessToken().catch(() => '');
+      token = await this.getCurrentAccessToken();
+    } catch (tokenError) {
+      console.warn('[push] unable to resolve current Supabase access token', tokenError);
+    }
+
+    try {
       const { data, error } = await client.functions.invoke(WEB_PUSH_FUNCTION_NAME, {
-        body: payload && typeof payload === 'object' ? payload : {},
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
+        body,
+        headers: token ? { Authorization: `Bearer ${token}`, 'X-Supabase-Access-Token': token } : {}
       });
       if (error) {
+        const message = String(error?.message || error?.context?.error || error || 'pwa_function_failed');
         console.warn(`[push] ${context} failed`, error);
-        return { ok: false, attempted: 0, sent: 0, failed: 0, error: String(error?.message || error), rawError: error };
+        return {
+          ok: false,
+          attempted: 0,
+          sent: 0,
+          failed: 0,
+          error: message,
+          details: error
+        };
       }
-      return data || { ok: false, attempted: 0, sent: 0, failed: 0, error: 'empty_edge_function_response' };
+      return data || { ok: true, attempted: 0, sent: 0, failed: 0 };
     } catch (error) {
+      const message = String(error?.message || error || 'pwa_function_failed');
       console.warn(`[push] ${context} failed`, error);
-      return { ok: false, attempted: 0, sent: 0, failed: 0, error: String(error?.message || error) };
+      return {
+        ok: false,
+        attempted: 0,
+        sent: 0,
+        failed: 0,
+        error: message,
+        details: error
+      };
     }
   },
   fireAndForgetWebPush(payload = {}, options = {}) {
