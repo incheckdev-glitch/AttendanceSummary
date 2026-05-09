@@ -271,7 +271,16 @@ const NotificationSetup = {
       try {
         const result = await Api.testNotificationSetting(this.collect(tr.dataset.resource, tr.dataset.action));
         const decision = result?.decision || {};
-        UI.toast(`Test dispatched · in-app ${result?.inApp?.created || 0} · pwa ${result?.pwa?.sent ?? 0}/${result?.pwa?.attempted ?? 0} · email ${result?.email?.recipientsCount || (result?.email?.ok ? 'sent' : 'skipped')}`);
+        const inAppStatus = Number(result?.inApp?.created || 0) > 0 ? 'sent' : (decision?.channels?.in_app ? 'failed' : 'skipped');
+        const pwaAttempted = Number(result?.pwa?.attempted || 0);
+        const pwaSent = Number(result?.pwa?.sent || 0);
+        const pwaFailed = Number(result?.pwa?.failed || 0);
+        const pwaStatus = pwaSent > 0 ? 'sent' : ((result?.pwa?.error || pwaAttempted > 0) ? 'failed' : 'skipped');
+        const emailStatus = result?.email?.ok || result?.email?.sent ? 'sent' : (result?.email?.error ? 'failed' : 'skipped');
+        const emailCount = Number(result?.email?.recipientsCount || 0);
+        const pwaError = result?.pwa?.error ? ` error=${result.pwa.error}` : '';
+        const emailError = result?.email?.error ? ` error=${result.email.error}` : '';
+        UI.toast(`Test result · in_app: ${inAppStatus} count=${result?.inApp?.created || 0} · pwa: ${pwaStatus} attempted=${pwaAttempted} sent=${pwaSent} failed=${pwaFailed}${pwaError} · email: ${emailStatus} recipients=${emailCount}${emailError}`);
         console.info('[notification setup] central dispatcher test result', { result, decision });
       } catch (error) { UI.toast(String(error?.message || 'Unable to test rule.')); }
     }));

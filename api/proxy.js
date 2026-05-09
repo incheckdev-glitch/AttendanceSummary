@@ -215,19 +215,34 @@ function isValidEmail(value = '') {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim().toLowerCase());
 }
 
-async function sendEmailNotification({ to, subject, html, text }) {
-  const host = process.env.SMTP_HOST;
-  const port = Number(process.env.SMTP_PORT || 587);
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  const from = process.env.SMTP_FROM;
-
-  if (!host || !port || !user || !pass || !from) {
-    throw new Error('Missing SMTP configuration. Required: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM.');
+function getSmtpConfig() {
+  const required = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM'];
+  const missingEnv = required.filter((key) => !String(process.env[key] || '').trim());
+  const from = String(process.env.SMTP_FROM || '').trim();
+  if (/your-verified-domain\.com/i.test(from)) {
+    missingEnv.push('SMTP_FROM_VERIFIED_SENDER');
   }
+  return {
+    host: String(process.env.SMTP_HOST || '').trim(),
+    port: Number(process.env.SMTP_PORT || 0),
+    user: String(process.env.SMTP_USER || '').trim(),
+    pass: String(process.env.SMTP_PASS || ''),
+    from,
+    missingEnv: [...new Set(missingEnv)]
+  };
+}
 
-  if (/your-verified-domain\.com/i.test(String(from || ''))) {
-    throw new Error('SMTP_FROM is still set to the placeholder your-verified-domain.com. Configure a verified sender address for InCheck360 email notifications.');
+async function sendEmailNotification({ to, subject, html, text }) {
+  const { host, port, user, pass, from, missingEnv } = getSmtpConfig();
+
+  if (missingEnv.length) {
+    const error = new Error(
+      missingEnv.includes('SMTP_FROM_VERIFIED_SENDER')
+        ? 'SMTP_FROM is still set to the placeholder your-verified-domain.com. Configure a verified sender address for InCheck360 email notifications.'
+        : `Missing SMTP configuration: ${missingEnv.join(', ')}.`
+    );
+    error.missingEnv = missingEnv;
+    throw error;
   }
 
   const transporter = nodemailer.createTransport({
@@ -532,12 +547,26 @@ export default async function handler(req, res) {
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
     const { data: verified, error: verifiedError } = await supabaseAdmin.auth.getUser(token);
     if (verifiedError || !verified?.user) return res.status(401).json({ ok: false, error: 'Invalid or expired session.' });
-    const callerRole = getCallerRole(await getCallerProfile(supabaseAdmin, verified.user.id, verified.user.email || ''), verified.user);
+
+    const callerProfile = await getCallerProfile(supabaseAdmin, verified.user.id, verified.user.email || '');
+    const callerRole = getCallerRole(callerProfile, verified.user);
+    if (callerProfile && callerProfile.is_active === false) return res.status(403).json({ ok: false, error: 'Authenticated user is inactive.' });
     if (action === 'test_email' && !isAdminRole(callerRole)) return res.status(403).json({ ok: false, error: 'Admin role required.' });
 
-    const recipients = Array.isArray(payload?.to) ? payload.to : String(payload?.to || '').split(',');
+    const recipients = Array.isArray(payload?.to) ? payload.to : String(payload?.to || '').split(/[\s,;]+/);
     const normalizedTo = [...new Set(recipients.map((item) => String(item || '').trim().toLowerCase()).filter(isValidEmail))];
     if (!normalizedTo.length) return res.status(400).json({ ok: false, error: 'no_email_recipients_resolved' });
+
+    const smtpConfig = getSmtpConfig();
+    if (smtpConfig.missingEnv.length) {
+      return res.status(500).json({
+        ok: false,
+        error: smtpConfig.missingEnv.includes('SMTP_FROM_VERIFIED_SENDER')
+          ? 'SMTP_FROM is still set to the placeholder your-verified-domain.com. Configure a verified sender address for InCheck360 email notifications.'
+          : `Missing SMTP configuration: ${smtpConfig.missingEnv.join(', ')}.`,
+        missingEnv: smtpConfig.missingEnv
+      });
+    }
 
     try {
       const result = await sendEmailNotification({
@@ -548,7 +577,7 @@ export default async function handler(req, res) {
       });
       return res.status(200).json({ ok: true, messageId: result?.messageId || null, recipientsCount: normalizedTo.length });
     } catch (error) {
-      return res.status(500).json({ ok: false, error: String(error?.message || error) });
+      return res.status(500).json({ ok: false, error: String(error?.message || error), missingEnv: error?.missingEnv || [] });
     }
   }
 
