@@ -223,7 +223,11 @@ async function sendEmailNotification({ to, subject, html, text }) {
   const from = process.env.SMTP_FROM;
 
   if (!host || !port || !user || !pass || !from) {
-    throw new Error('Missing SMTP configuration.');
+    throw new Error('Missing SMTP configuration. Required: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM.');
+  }
+
+  if (/your-verified-domain\.com/i.test(String(from || ''))) {
+    throw new Error('SMTP_FROM is still set to the placeholder your-verified-domain.com. Configure a verified sender address for InCheck360 email notifications.');
   }
 
   const transporter = nodemailer.createTransport({

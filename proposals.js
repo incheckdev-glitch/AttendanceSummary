@@ -1546,7 +1546,7 @@ const Proposals = {
     });
     this.refreshCompanyLifecycleStatus(preparedProposal, 'Proposal');
     const recordId = Api.extractBusinessRecordId(response, preparedProposal.proposal_id || preparedProposal.ref_number || '');
-    await Api.safeSendBusinessPwaPush({
+    await Api.dispatchNotification({
       resource: 'proposals',
       action: 'proposal_created',
       recordId,
@@ -1566,7 +1566,7 @@ const Proposals = {
     });
     this.refreshCompanyLifecycleStatus(preparedProposal, 'Proposal');
     const recordId = Api.extractBusinessRecordId(response, preparedProposal.id || preparedProposal.proposal_id || preparedProposal.ref_number || '');
-    await Api.safeSendBusinessPwaPush({
+    await Api.dispatchNotification({
       resource: 'proposals',
       action: preparedProposal.id ? 'proposal_updated' : 'proposal_created',
       recordId,
@@ -1589,7 +1589,7 @@ const Proposals = {
     this.refreshCompanyLifecycleStatus(preparedForSave, 'Proposal');
     const statusKeys = ['status', 'proposal_status'];
     const isStatusUpdate = statusKeys.some(key => Object.prototype.hasOwnProperty.call(preparedForSave || {}, key));
-    await Api.safeSendBusinessPwaPush({
+    await Api.dispatchNotification({
       resource: 'proposals',
       action: isStatusUpdate ? 'proposal_status_changed' : 'proposal_updated',
       recordId: Api.extractBusinessRecordId(response, proposalId),
@@ -1675,7 +1675,7 @@ const Proposals = {
   async createFromDeal(dealId) {
     const response = await Api.requestWithSession('proposals', 'create_from_deal', { id: dealId });
     const recordId = Api.extractBusinessRecordId(response, dealId);
-    await Api.safeSendBusinessPwaPush({
+    await Api.dispatchNotification({
       resource: 'proposals',
       action: 'proposal_created_from_deal',
       recordId,

@@ -5,7 +5,7 @@
     deals: ['deal_created','deal_updated','deal_created_from_lead','deal_important_stage'],
     proposals: ['proposal_created','proposal_updated','proposal_requires_approval','proposal_approved','proposal_rejected','proposal_created_from_deal'],
     agreements: ['agreement_created','agreement_created_from_proposal','agreement_requires_signature','agreement_signed'],
-    invoices: ['invoice_created','invoice_created_from_agreement','invoice_payment_state_changed','invoice_fully_paid'],
+    invoices: ['invoice_created','invoice_created_from_agreement','invoice_payment_updated','invoice_payment_state_changed','invoice_fully_paid'],
     receipts: ['receipt_created','receipt_created_from_invoice','receipt_updated'],
     operations_onboarding: ['onboarding_created','operations_onboarding_created','onboarding_status_changed','onboarding_request_submitted','assigned_csm'],
     technical_admin_requests: ['technical_request_submitted','technical_request_status_changed'],
@@ -530,10 +530,10 @@
     const routeMap = {
       tickets: `/#tickets?ticket_id=${encodedId}`,
       workflow: `/#workflow?approval_id=${encodedId}`,
-      operations_onboarding: `/#operations-onboarding?onboarding_id=${encodedId}`,
-      operations_onboarding_requests: `/#operations-onboarding?onboarding_id=${encodedId}`,
-      technical_admin_requests: `/#technical-admin?id=${encodedId}`,
-      technical_admin: `/#technical-admin?id=${encodedId}`,
+      operations_onboarding: `/#operations_onboarding?id=${encodedId}`,
+      operations_onboarding_requests: `/#operations_onboarding?id=${encodedId}`,
+      technical_admin_requests: `/#technical_admin_requests?id=${encodedId}`,
+      technical_admin: `/#technical_admin_requests?id=${encodedId}`,
       leads: `/#crm?tab=leads&id=${encodedId}`,
       deals: `/#crm?tab=deals&id=${encodedId}`,
       proposals: `/#crm?tab=proposals&id=${encodedId}`,
@@ -547,34 +547,139 @@
     return routeMap[normalizedResource] || `/#${encodeURIComponent(normalizedResource)}?id=${encodedId}`;
   }
 
-  async function createInAppNotifications({ userIds = [], title = '', body = '', resource = '', action = '', recordId = '', url = '', metadata = {} } = {}) {
+
+  async function resolveUserIdsForEmails(emails = []) {
+    const emailSet = new Set(normalizeList(emails).map(item => String(item || '').trim().toLowerCase()).filter(isValidEmail));
+    if (!emailSet.size) return [];
+    const rows = await listActiveUserRows();
+    return [...new Set(rows.filter(row => emailSet.has(getUserRowEmail(row))).map(getUserRowId).filter(Boolean))];
+  }
+
+  function getActorIdentity(metadata = {}) {
+    const user = global.Session?.user?.() || global.Session?.currentUser?.() || {};
+    const profile = global.Session?.state?.profile || {};
+    const id = String(metadata?.actor_user_id || metadata?.actor_id || user?.id || user?.user_id || global.Session?.userId?.() || '').trim();
+    const email = String(metadata?.actor_email || profile?.email || user?.email || '').trim().toLowerCase();
+    return { id, email };
+  }
+
+  function getDedupeWindowSeconds(rule = {}) {
+    const parsed = Number(rule?.dedupe_window_seconds ?? rule?.dedupeWindowSeconds ?? 60);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 60;
+  }
+
+  async function createNotificationEventRow({ resource = '', action = '', eventKey = '', recordId = '', recordNumber = '', title = '', body = '', url = '', metadata = {}, channels = [], recipients = [], rule = null } = {}) {
+    const client = global.SupabaseClient?.getClient?.();
+    if (!client) return null;
+    try {
+      const { data, error } = await client.from('notification_events').insert({
+        resource,
+        action,
+        event_key: eventKey,
+        record_id: String(recordId || ''),
+        record_number: String(recordNumber || ''),
+        title,
+        body,
+        url,
+        metadata: metadata && typeof metadata === 'object' ? metadata : {},
+        channels,
+        recipient_count: recipients.length,
+        rule_id: rule?.id || null,
+        actor_user_id: getActorIdentity(metadata).id || null,
+        actor_email: getActorIdentity(metadata).email || null
+      }).select('id').single();
+      if (error) throw error;
+      return data?.id || null;
+    } catch (error) {
+      console.warn('[notifications] notification_events insert failed', { resource, action, error: error?.message || String(error) });
+      return null;
+    }
+  }
+
+  async function writeDeliveryLog({ eventId = null, channel = '', status = 'skipped', recipientUserId = null, recipientEmail = null, resource = '', action = '', recordId = '', errorMessage = '', providerMessageId = '', response = null } = {}) {
+    const client = global.SupabaseClient?.getClient?.();
+    if (!client || !channel) return null;
+    try {
+      await client.from('notification_delivery_log').insert({
+        notification_event_id: eventId || null,
+        channel,
+        status,
+        recipient_user_id: recipientUserId || null,
+        recipient_email: recipientEmail || null,
+        resource,
+        action,
+        record_id: String(recordId || ''),
+        error_message: errorMessage || null,
+        provider_message_id: providerMessageId || null,
+        response: response && typeof response === 'object' ? response : (response ? { value: response } : {})
+      });
+    } catch (error) {
+      console.warn('[notifications] delivery log insert failed', { channel, status, recipientUserId, recipientEmail, error: error?.message || String(error) });
+    }
+    return null;
+  }
+
+  async function hasRecentInAppNotification({ userId = '', resource = '', action = '', recordId = '', dedupeWindowSeconds = 60 } = {}) {
+    const client = global.SupabaseClient?.getClient?.();
+    if (!client || !userId || !dedupeWindowSeconds) return false;
+    const since = new Date(Date.now() - dedupeWindowSeconds * 1000).toISOString();
+    try {
+      const { data, error } = await client
+        .from('notifications')
+        .select('notification_id,created_at')
+        .eq('recipient_user_id', userId)
+        .eq('resource', resource)
+        .eq('resource_id', String(recordId || ''))
+        .gte('created_at', since)
+        .limit(20);
+      if (error) throw error;
+      return (Array.isArray(data) ? data : []).some(row => true);
+    } catch (error) {
+      console.warn('[notifications] in-app dedupe check failed; continuing safely', { resource, action, userId, error: error?.message || String(error) });
+      return false;
+    }
+  }
+
+  async function createInAppNotifications({ userIds = [], title = '', body = '', resource = '', action = '', recordId = '', url = '', metadata = {}, eventId = null, dedupeWindowSeconds = 60, priority = 'normal' } = {}) {
     const client = global.SupabaseClient?.getClient?.();
     const targets = [...new Set(normalizeList(userIds))].filter(Boolean);
-    if (!client || !targets.length) return { attempted: false, created: 0, skipped: true };
+    if (!client || !targets.length) return { attempted: false, created: 0, skipped: true, results: [] };
     let created = 0;
+    const results = [];
     for (const targetUserId of targets) {
       try {
+        if (await hasRecentInAppNotification({ userId: targetUserId, resource, action, recordId, dedupeWindowSeconds })) {
+          results.push({ userId: targetUserId, status: 'skipped', reason: 'dedupe_window' });
+          await writeDeliveryLog({ eventId, channel: 'in_app', status: 'skipped', recipientUserId: targetUserId, resource, action, recordId, errorMessage: 'dedupe_window' });
+          continue;
+        }
+        const dedupeKey = `${resource}:${action}:${recordId}:${targetUserId}`;
         const { data, error } = await client.rpc('create_notification_event', {
           p_title: title || 'Notification',
           p_message: body || '',
           p_type: 'business',
           p_resource: resource || 'notifications',
           p_resource_id: String(recordId || ''),
-          p_priority: 'normal',
+          p_priority: priority || 'normal',
           p_link_target: url || '',
-          p_meta: metadata && typeof metadata === 'object' ? metadata : {},
+          p_meta: { ...(metadata && typeof metadata === 'object' ? metadata : {}), notification_event_id: eventId, action, url, dedupe_key: dedupeKey },
           p_target_user_id: targetUserId,
           p_target_role: null,
           p_target_roles: null,
-          p_dedupe_key: `${resource}:${action}:${recordId}:${targetUserId}:${Date.now()}`
+          p_dedupe_key: dedupeKey
         });
         if (error) throw error;
-        created += Array.isArray(data) ? data.length : 1;
+        const rowCount = Array.isArray(data) ? data.length : 1;
+        created += rowCount;
+        results.push({ userId: targetUserId, status: rowCount ? 'sent' : 'skipped', notificationIds: Array.isArray(data) ? data.map(row => row?.notification_id).filter(Boolean) : [] });
+        await writeDeliveryLog({ eventId, channel: 'in_app', status: rowCount ? 'sent' : 'skipped', recipientUserId: targetUserId, resource, action, recordId, response: { notification_rows: data || [] } });
       } catch (error) {
+        results.push({ userId: targetUserId, status: 'failed', error: String(error?.message || error) });
+        await writeDeliveryLog({ eventId, channel: 'in_app', status: 'failed', recipientUserId: targetUserId, resource, action, recordId, errorMessage: String(error?.message || error) });
         console.warn('[notifications] in-app notification create failed', { resource, action, targetUserId, error: error?.message || String(error) });
       }
     }
-    return { attempted: true, created };
+    return { attempted: true, created, results };
   }
 
   const NotificationService = {
@@ -591,7 +696,7 @@
       }
       const rule = rules.find(item => ruleMatches(item, { resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey })) || null;
 
-      if (!rule && isKnownNotificationAction(normalizedResource, normalizedAction)) {
+      if (!rule) {
         return skipNotification({ resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, reason: 'notification_rule_missing' });
       }
       if (rule && !isRuleEnabled(rule)) return skipNotification({ resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, reason: 'notification_rule_disabled' });
@@ -606,9 +711,9 @@
         shouldSendAny: false
       };
 
-      const directUsers = normalizeList(targetUsers);
-      const directEmails = normalizeList(targetEmails).map(item => item.toLowerCase()).filter(item => !isPlaceholderRecipientToken(item));
-      const assignedRoles = rule ? getRuleAssignedRoles(rule) : normalizeRoleList(roles);
+      let directUsers = normalizeList(targetUsers);
+      let directEmails = normalizeList(targetEmails).map(item => item.toLowerCase()).filter(item => !isPlaceholderRecipientToken(item));
+      let assignedRoles = rule ? getRuleAssignedRoles(rule) : normalizeRoleList(roles);
       const assignedUsers = rule ? getRuleAssignedUsers(rule) : [];
       const assignedEmails = rule ? getRuleAssignedEmails(rule) : [];
       const dynamicEmails = rule ? resolveDynamicRecipientEmails(rule, metadata) : [];
@@ -617,17 +722,31 @@
       if (rule && normalizedResource === 'communication_centre' && recipientMode) {
         modeRecipients = await resolveCommunicationCentreRecipientsByMode(recipientMode, recordId, metadata?.actor_user_id || metadata?.actor_id || '', metadata);
       }
-      const directTargets = directUsers.length > 0 || directEmails.length > 0;
-      const hasConfiguredRecipients = Boolean(assignedRoles.length || assignedUsers.length || assignedEmails.length || dynamicEmails.length || modeRecipients.userIds.length || directTargets);
+      const explicitRuleRecipients = Boolean(assignedRoles.length || assignedUsers.length || assignedEmails.length || dynamicEmails.length || modeRecipients.userIds.length || modeRecipients.emails.length);
+      const allowFallbackRecipients = !rule || rule.allow_direct_recipients === true || rule.allowDirectRecipients === true || !explicitRuleRecipients;
+      if (!allowFallbackRecipients) {
+        directUsers = [];
+        directEmails = [];
+      }
+      const hasConfiguredRecipients = Boolean(explicitRuleRecipients || directUsers.length || directEmails.length);
 
       if (rule && !hasConfiguredRecipients) {
         return skipNotification({ resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, reason: 'no_recipients_configured' });
       }
 
       const roleRecipients = await resolveUsersForRolesDetailed(assignedRoles);
-      const userIds = [...new Set([...directUsers, ...assignedUsers, ...modeRecipients.userIds, ...roleRecipients.userIds])];
+      let userIds = [...new Set([...assignedUsers, ...modeRecipients.userIds, ...roleRecipients.userIds, ...directUsers])];
       const userIdEmails = await resolveEmailsForUserIds(userIds);
-      const emails = [...new Set([...directEmails, ...assignedEmails, ...dynamicEmails, ...roleRecipients.emails, ...userIdEmails])];
+      let emails = [...new Set([...assignedEmails, ...dynamicEmails, ...modeRecipients.emails, ...roleRecipients.emails, ...userIdEmails, ...directEmails].map(item => String(item || '').trim().toLowerCase()).filter(item => item && !isPlaceholderRecipientToken(item)))];
+      const emailProfileUserIds = await resolveUserIdsForEmails(emails);
+      userIds = [...new Set([...userIds, ...emailProfileUserIds])];
+
+      const actor = getActorIdentity(metadata);
+      if (!rule || rule.exclude_actor !== false) {
+        if (actor.id) userIds = userIds.filter(id => id !== actor.id);
+        if (actor.email) emails = emails.filter(email => email !== actor.email);
+      }
+
       if (!userIds.length && !emails.length && (rule || isKnownNotificationAction(normalizedResource, normalizedAction))) {
         return skipNotification({ resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, reason: 'no_notification_recipients_resolved' });
       }
@@ -636,24 +755,9 @@
       const emailRecipients = [...new Set(emails.filter(isValidEmail))];
       const baseAllowed = Boolean(isRuleEnabled(rule) && recipients.length > 0);
       decision.channels.in_app = Boolean(baseAllowed && isChannelEnabled(rule, 'in_app') && normalizedRequestedChannels.includes('in_app'));
-      decision.channels.push = Boolean(baseAllowed && isChannelEnabled(rule, 'push') && normalizedRequestedChannels.includes('push'));
+      decision.channels.push = Boolean(baseAllowed && isChannelEnabled(rule, 'push') && (normalizedRequestedChannels.includes('push') || normalizedRequestedChannels.includes('pwa')));
       decision.channels.email = Boolean(baseAllowed && isChannelEnabled(rule, 'email') && normalizedRequestedChannels.includes('email'));
       decision.shouldSendAny = Boolean(decision.channels.in_app || decision.channels.push || decision.channels.email);
-      console.info('[notifications] channel decision', {
-        resource: normalizedResource,
-        action: normalizedAction,
-        eventKey: normalizedEventKey,
-        ruleFound: Boolean(rule),
-        isEnabled: rule?.is_enabled,
-        inAppEnabled: rule?.in_app_enabled,
-        pwaEnabled: rule?.pwa_enabled,
-        pushEnabled: rule?.push_enabled ?? rule?.web_push_enabled,
-        emailEnabled: rule?.email_enabled,
-        recipientsCount: recipients.length,
-        sendInApp: decision.channels.in_app,
-        sendPush: decision.channels.push,
-        sendEmail: decision.channels.email
-      });
       if (!decision.shouldSendAny) {
         return skipNotification({ resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, reason: 'notification_channels_disabled' });
       }
@@ -669,7 +773,9 @@
       let finalUrl = String(url || '').trim() || (
         normalizedResource === 'tickets'
           ? `/#tickets?ticket_id=${encodeURIComponent(String(ticketBusinessId || '').trim() || normalizedRecordId)}`
-          : buildNotificationRoute(normalizedResource, normalizedRecordId)
+          : normalizedResource === 'workflow'
+            ? `/#workflow?approval_id=${encodeURIComponent(String(metadata?.approval_id || normalizedRecordId))}`
+            : buildNotificationRoute(normalizedResource, normalizedRecordId)
       );
       if (rule?.deep_link_template && !String(url || '').trim()) {
         const renderedLink = renderNotificationTemplate(rule.deep_link_template, { resource: normalizedResource, action: normalizedAction, recordId: normalizedRecordId, metadata });
@@ -683,18 +789,11 @@
       const renderedBody = rule?.body_template
         ? renderNotificationTemplate(rule.body_template, { resource: normalizedResource, action: normalizedAction, recordId: normalizedRecordId, metadata })
         : body;
-      if (normalizedResource === 'communication_centre') {
-        console.info('[Communication Centre notification]', {
-          action: normalizedAction,
-          conversationId: normalizedRecordId,
-          actorId: metadata?.actor_user_id || metadata?.actor_id || null,
-          ruleFound: Boolean(rule),
-          recipientMode,
-          userIds,
-          emails,
-          channels: decision.channels
-        });
-      }
+      const activeChannels = [
+        ...(decision.channels.in_app ? ['in_app'] : []),
+        ...(decision.channels.push ? ['push'] : []),
+        ...(decision.channels.email ? ['email'] : [])
+      ];
       const payload = {
         title: renderedTitle || title || 'InCheck360 notification',
         body: renderedBody || body || 'A record was updated.',
@@ -704,7 +803,7 @@
         record_id: normalizedRecordId || undefined,
         record_number: String(recordNumber || '').trim() || undefined,
         url: finalUrl,
-        tag: `${normalizedResource}-${normalizedAction}-${normalizedRecordId || 'record'}-${Date.now()}`,
+        tag: `${normalizedResource}-${normalizedAction}-${normalizedRecordId || 'record'}`,
         data: {
           resource: normalizedResource,
           action: normalizedAction,
@@ -714,17 +813,31 @@
           url: finalUrl,
           ...(metadata && typeof metadata === 'object' ? metadata : {})
         },
-        channels: [
-          ...(decision.channels.in_app ? ['in_app'] : []),
-          ...(decision.channels.push ? ['push'] : []),
-          ...(decision.channels.email ? ['email'] : [])
-        ],
+        channels: activeChannels,
         user_ids: userIds,
         emails: emailRecipients,
+        roles: assignedRoles,
         target_roles: assignedRoles
       };
+      const eventId = await createNotificationEventRow({
+        resource: normalizedResource,
+        action: normalizedAction,
+        eventKey: normalizedEventKey,
+        recordId: normalizedRecordId,
+        recordNumber,
+        title: payload.title,
+        body: payload.body,
+        url: payload.url,
+        metadata: payload.data,
+        channels: activeChannels,
+        recipients,
+        rule
+      });
+      payload.data.notification_event_id = eventId;
+
+      let inAppResult = { attempted: false, created: 0 };
       if (decision.channels.in_app) {
-        await createInAppNotifications({
+        inAppResult = await createInAppNotifications({
           userIds,
           title: payload.title,
           body: payload.body,
@@ -732,7 +845,10 @@
           action: normalizedAction,
           recordId: normalizedRecordId,
           url: payload.url,
-          metadata: payload.data
+          metadata: payload.data,
+          eventId,
+          dedupeWindowSeconds: getDedupeWindowSeconds(rule),
+          priority: rule?.priority || 'normal'
         });
       }
 
@@ -740,23 +856,48 @@
       if (decision.channels.push) {
         try {
           pushResult = await global.Api.sendWebPush(payload, { context: `${normalizedResource}:${normalizedAction}:central` });
+          const status = Number(pushResult?.sent || 0) > 0 ? 'sent' : (Number(pushResult?.attempted || 0) > 0 ? 'failed' : 'skipped');
+          const pwaTargets = userIds.length ? userIds.map(id => ({ id })) : emailRecipients.map(email => ({ email }));
+          for (const target of (pwaTargets.length ? pwaTargets : [{ id: null, email: null }])) {
+            await writeDeliveryLog({ eventId, channel: 'pwa', status, recipientUserId: target.id || null, recipientEmail: target.email || null, resource: normalizedResource, action: normalizedAction, recordId: normalizedRecordId, errorMessage: status === 'failed' ? (pushResult?.error || pushResult?.errors?.[0]?.error || 'pwa_send_failed') : '', response: pushResult });
+          }
         } catch (error) {
           console.warn('[notifications] push send failed', { resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, error: error?.message || String(error) });
           pushResult = { attempted: true, sent: false, error: String(error?.message || error) };
+          await writeDeliveryLog({ eventId, channel: 'pwa', status: 'failed', resource: normalizedResource, action: normalizedAction, recordId: normalizedRecordId, errorMessage: String(error?.message || error), response: pushResult });
         }
-      } else {
-        console.info('[notifications] push skipped by channel rule', { resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey });
       }
 
+      let emailResult = { attempted: false, skipped: true, reason: 'email-disabled-by-rule' };
       if (decision.channels.email) {
         try {
-          await sendNotificationEmail({ resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, title: payload.title, body: payload.body, recipients: emailRecipients, recordNumber: payload.record_number, url: payload.url });
+          emailResult = await sendNotificationEmail({ resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, title: payload.title, body: payload.body, recipients: emailRecipients, recordNumber: payload.record_number, url: payload.url });
+          for (const recipientEmail of emailRecipients) {
+            await writeDeliveryLog({ eventId, channel: 'email', status: 'sent', recipientEmail, resource: normalizedResource, action: normalizedAction, recordId: normalizedRecordId, providerMessageId: emailResult?.messageId || '', response: emailResult });
+          }
         } catch (error) {
+          emailResult = { attempted: true, sent: false, error: String(error?.message || error) };
+          for (const recipientEmail of (emailRecipients.length ? emailRecipients : [''])) {
+            await writeDeliveryLog({ eventId, channel: 'email', status: 'failed', recipientEmail: recipientEmail || null, resource: normalizedResource, action: normalizedAction, recordId: normalizedRecordId, errorMessage: String(error?.message || error), response: emailResult });
+          }
           console.warn('[notifications] email send failed', { resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, error: error?.message || String(error) });
         }
       }
 
-      return pushResult;
+      const decisionLog = {
+        resource: normalizedResource,
+        action: normalizedAction,
+        ruleFound: Boolean(rule),
+        ruleEnabled: Boolean(rule && isRuleEnabled(rule)),
+        recipients: { userIds, emails: emailRecipients, roles: assignedRoles },
+        channels: decision.channels,
+        eventId,
+        pwaResult: pushResult,
+        emailResult,
+        inAppCount: inAppResult?.created || 0
+      };
+      console.info('[notifications] dispatch decision', decisionLog);
+      return { ok: true, attempted: true, eventId, inApp: inAppResult, pwa: pushResult, email: emailResult, decision: decisionLog };
     }
   };
 

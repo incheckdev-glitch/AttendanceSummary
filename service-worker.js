@@ -297,6 +297,8 @@ self.addEventListener('notificationclick', (event) => {
   console.log('[SW notificationclick]', targetUrl);
 
   event.waitUntil((async () => {
+    await savePushDiagnostic('lastNotificationClickAt', new Date().toISOString());
+    await savePushDiagnostic('lastNotificationClickUrl', targetUrl);
     const absoluteUrl = new URL(targetUrl, self.location.origin).href;
 
     const allClients = await self.clients.matchAll({

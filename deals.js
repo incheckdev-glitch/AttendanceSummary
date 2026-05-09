@@ -458,7 +458,7 @@ const Deals = {
     };
     const data = await Api.requestWithSession('deals', 'create', payload, { requireAuth: true });
     this.refreshCompanyLifecycleStatus(data || payload, 'Deal');
-    await Api.safeSendBusinessPwaPush({
+    await Api.dispatchNotification({
       resource: 'deals',
       action: 'deal_created',
       recordId: Api.extractBusinessRecordId(data, payload.deal_id || deal?.deal_id || ''),
@@ -482,7 +482,7 @@ const Deals = {
     this.refreshCompanyLifecycleStatus(data || payload, 'Deal');
     const stageKeys = ['stage', 'deal_stage'];
     const isStageUpdate = stageKeys.some(key => Object.prototype.hasOwnProperty.call(payload || {}, key));
-    await Api.safeSendBusinessPwaPush({
+    await Api.dispatchNotification({
       resource: 'deals',
       action: isStageUpdate ? 'deal_stage_changed' : 'deal_updated',
       recordId: Api.extractBusinessRecordId(data, dealId),

@@ -722,15 +722,13 @@
         });
 
         const hasPushTargets = Boolean(targetUserIds.length || targetEmails.length || targetRoles.length);
-        if (hasPushTargets && global.Api?.sendWebPush) {
+        if (hasPushTargets && global.Api?.dispatchNotification) {
           try {
-            await global.Api.sendWebPush({
+            await global.Api.dispatchNotification({
               // Keep every alias because older/newer Edge Function versions have used different names.
-              user_ids: targetUserIds,
-              target_user_ids: targetUserIds,
+              userIds: targetUserIds,
               recipient_user_ids: targetUserIds,
               emails: targetEmails,
-              target_emails: targetEmails,
               recipient_emails: targetEmails,
               roles: targetRoles,
               target_roles: targetRoles,
@@ -739,9 +737,9 @@
               url,
               resource: 'communication_centre',
               action: normalizedAction,
-              event_key: normalizedAction,
-              record_id: normalizedConversationId,
-              record_number: conversationNo || '',
+              eventKey: normalizedAction,
+              recordId: normalizedConversationId,
+              recordNumber: conversationNo || '',
               data: {
                 resource: 'communication_centre',
                 action: normalizedAction,
@@ -777,23 +775,24 @@
       console.warn('[Communication Centre PWA failed]', error);
     }
 
-    // Last-resort compatibility fallback. This should not be the main path anymore.
+    // Last-resort compatibility fallback through the central dispatcher.
     try {
-      if (!global.NotificationService?.dispatchConfiguredNotification) return null;
-      const deepLink = `#communication_centre?conversation_id=${encodeURIComponent(normalizedConversationId)}`;
-      return await global.NotificationService.dispatchConfiguredNotification({
+      if (!global.Api?.dispatchNotification) return null;
+      const deepLink = `/#communication_centre?conversation_id=${encodeURIComponent(normalizedConversationId)}`;
+      return await global.Api.dispatchNotification({
         resource: 'communication_centre',
         action: normalizedAction,
+        eventKey: normalizedAction,
         recordId: normalizedConversationId,
-        actorId,
-        deepLink,
-        context: {
+        url: deepLink,
+        metadata: {
           conversation_id: normalizedConversationId,
           conversation_no: conversationNo || '',
           conversation_title: conversationTitle || '',
-          actor_name: global.Session?.displayName?.() || 'A user',
-          deep_link: deepLink
-        }
+          actor_id: actorId || '',
+          actor_name: global.Session?.displayName?.() || 'A user'
+        },
+        channels: ['in_app', 'push', 'email']
       });
     } catch (fallbackError) {
       console.warn('[Communication Centre notification fallback failed]', fallbackError);
@@ -1009,7 +1008,7 @@
       if (!client?.rpc) throw new Error('Supabase client is not available.');
       const { error } = await client.rpc('add_communication_centre_assignment', {
         p_conversation_id: conversation.id,
-        p_assigned_user_ids: userId ? [userId] : [],
+        p_assigned_userIds: userId ? [userId] : [],
         p_assigned_role: roleKey || null
       });
       if (error) throw error;
@@ -1273,7 +1272,7 @@
         p_description: message,
         p_category: category,
         p_priority: priority,
-        p_assigned_user_ids: assignedUserIds,
+        p_assigned_userIds: assignedUserIds,
         p_assigned_role: assignedRole || null,
         p_related_resource: relatedResource || null,
         p_related_record_id: relatedRecordId || null
