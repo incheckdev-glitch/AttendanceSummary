@@ -316,19 +316,21 @@ const Api = {
  
   async sendWebPush(payload = {}, { context = 'unspecified' } = {}) {
     const client = window.SupabaseClient?.getClient?.();
-    if (!client) return null;
+    if (!client) return { ok: false, attempted: 0, sent: 0, failed: 0, error: 'supabase_client_missing' };
     try {
+      const token = await this.getCurrentAccessToken().catch(() => '');
       const { data, error } = await client.functions.invoke(WEB_PUSH_FUNCTION_NAME, {
-        body: payload && typeof payload === 'object' ? payload : {}
+        body: payload && typeof payload === 'object' ? payload : {},
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
       if (error) {
         console.warn(`[push] ${context} failed`, error);
-        return null;
+        return { ok: false, attempted: 0, sent: 0, failed: 0, error: String(error?.message || error), rawError: error };
       }
-      return data || null;
+      return data || { ok: false, attempted: 0, sent: 0, failed: 0, error: 'empty_edge_function_response' };
     } catch (error) {
       console.warn(`[push] ${context} failed`, error);
-      return null;
+      return { ok: false, attempted: 0, sent: 0, failed: 0, error: String(error?.message || error) };
     }
   },
   fireAndForgetWebPush(payload = {}, options = {}) {

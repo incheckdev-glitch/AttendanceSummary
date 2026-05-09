@@ -36,12 +36,19 @@ function uniqueList(values: unknown): string[] {
   return out;
 }
 
-function hasRole(payload: Record<string, unknown>, role: string) {
-  const roleKey = normalizeString(role).toLowerCase();
-  const appRole = normalizeString(payload.app_metadata?.role).toLowerCase();
-  const profileRole = normalizeString(payload.user_metadata?.role).toLowerCase();
-  const rolesFromMetadata = uniqueList(payload.app_metadata?.roles).map(item => item.toLowerCase());
-  return appRole === roleKey || profileRole === roleKey || rolesFromMetadata.includes(roleKey);
+function getAuthMetadataRole(payload: Record<string, unknown>) {
+  const metadataRoles = [
+    (payload.user_metadata as Record<string, unknown> | undefined)?.role_key,
+    (payload.user_metadata as Record<string, unknown> | undefined)?.role,
+    (payload.app_metadata as Record<string, unknown> | undefined)?.role_key,
+    (payload.app_metadata as Record<string, unknown> | undefined)?.role,
+    ...uniqueList((payload.app_metadata as Record<string, unknown> | undefined)?.roles)
+  ];
+  return normalizeString(metadataRoles.find(value => normalizeString(value))).toLowerCase();
+}
+
+function isPrivilegedRole(role: unknown) {
+  return new Set(['admin', 'dev', 'administrator', 'super_admin']).has(normalizeString(role).toLowerCase());
 }
 
 async function resolveAuthContext(req: Request) {
@@ -77,12 +84,43 @@ async function resolveAuthContext(req: Request) {
   }
   const user = data.user;
   const userId = normalizeString(user.id);
-  const privilegedByRole = hasRole(user as unknown as Record<string, unknown>, 'admin') || hasRole(user as unknown as Record<string, unknown>, 'dev');
+  const userEmail = normalizeString(user.email).toLowerCase();
+  let profileRole = '';
+
+  if (adminClient && (userId || userEmail)) {
+    try {
+      let profileQuery = adminClient
+        .from('profiles')
+        .select('id,email,role_key,role')
+        .limit(1);
+
+      if (userId && userEmail) {
+        profileQuery = profileQuery.or(`id.eq.${userId},email.eq.${userEmail}`);
+      } else if (userId) {
+        profileQuery = profileQuery.eq('id', userId);
+      } else {
+        profileQuery = profileQuery.eq('email', userEmail);
+      }
+
+      const { data: profiles, error: profileError } = await profileQuery;
+      if (!profileError && profiles?.[0]) {
+        profileRole = normalizeString(profiles[0].role_key || profiles[0].role).toLowerCase();
+      } else if (profileError) {
+        console.warn('[send-web-push-v2] profile role lookup failed', { userId, userEmail, error: profileError.message });
+      }
+    } catch (profileError) {
+      console.warn('[send-web-push-v2] profile role lookup failed', { userId, userEmail, error: String((profileError as Error)?.message || profileError) });
+    }
+  }
+
+  const metadataRole = getAuthMetadataRole(user as unknown as Record<string, unknown>);
+  const role = profileRole || metadataRole;
   return {
     isAuthenticated: true,
     userId,
-    isPrivileged: webhookSecretProvided || privilegedByRole,
-    authError: ''
+    isPrivileged: webhookSecretProvided || isPrivilegedRole(role),
+    authError: '',
+    role
   };
 }
 
@@ -127,12 +165,18 @@ function getPayloadResource(input: Record<string, unknown>) {
   return normalizeString(input.resource || data.resource).toLowerCase();
 }
 
+function normalizeSystemResource(resource: string) {
+  const normalized = normalizeString(resource).toLowerCase();
+  if (normalized === 'technical_admin') return 'technical_admin_requests';
+  return normalized;
+}
+
 function isAllowedSystemRolePush(input: Record<string, unknown>) {
-  const resource = getPayloadResource(input);
+  const resource = normalizeSystemResource(getPayloadResource(input));
   const allowedResources = new Set([
     'tickets',
-    'operations_onboarding',
-    'technical_admin_requests',
+    'events',
+    'calendar',
     'leads',
     'deals',
     'proposals',
@@ -140,8 +184,13 @@ function isAllowedSystemRolePush(input: Record<string, unknown>) {
     'invoices',
     'receipts',
     'workflow',
+    'operations_onboarding',
+    'operations_onboarding_requests',
+    'technical_admin_requests',
+    'communication_centre',
     'notifications',
-    'communication_centre'
+    'csm_activities',
+    'clients'
   ]);
   return allowedResources.has(resource);
 }
