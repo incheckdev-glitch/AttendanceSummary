@@ -3585,23 +3585,6 @@
     }
     async function createNotificationAndPush(payload = {}, context = '') {
       const normalizedPayload = payload && typeof payload === 'object' ? payload : {};
-      if (globalThis.Api?.dispatchNotification) {
-        return globalThis.Api.dispatchNotification({
-          resource: String(normalizedPayload?.resource || '').trim().toLowerCase(),
-          action: String(normalizedPayload?.action || normalizedPayload?.event_type || '').trim().toLowerCase(),
-          eventKey: String(normalizedPayload?.event_key || normalizedPayload?.eventKey || '').trim(),
-          recordId: String(normalizedPayload?.record_id || normalizedPayload?.resource_id || normalizedPayload?.id || '').trim(),
-          recordNumber: String(normalizedPayload?.record_number || normalizedPayload?.ticket_number || normalizedPayload?.proposal_number || normalizedPayload?.agreement_number || normalizedPayload?.invoice_number || normalizedPayload?.receipt_number || '').trim(),
-          title: String(normalizedPayload?.title || '').trim(),
-          body: String(normalizedPayload?.message || normalizedPayload?.body || '').trim(),
-          url: String(normalizedPayload?.url || normalizedPayload?.link_target || '').trim(),
-          metadata: normalizedPayload,
-          roles: Array.isArray(normalizedPayload?.target_roles) ? normalizedPayload.target_roles : [normalizedPayload?.target_role].filter(Boolean),
-          userIds: [normalizedPayload?.target_user_id, ...(Array.isArray(normalizedPayload?.recipient_user_ids) ? normalizedPayload.recipient_user_ids : [])].filter(Boolean),
-          emails: Array.isArray(normalizedPayload?.recipient_emails) ? normalizedPayload.recipient_emails : [],
-          channels: ['in_app', 'push', 'email']
-        });
-      }
       const targetUserId = String(normalizedPayload?.target_user_id || '').trim();
       const targetRole = String(normalizedPayload?.target_role || '').trim().toLowerCase();
       const targetRoles = Array.isArray(normalizedPayload?.target_roles)
@@ -4925,23 +4908,6 @@
 
   async function createNotificationAndPush(payload = {}, context = '') {
     const normalizedPayload = payload && typeof payload === 'object' ? payload : {};
-    if (globalThis.Api?.dispatchNotification) {
-      return globalThis.Api.dispatchNotification({
-        resource: String(normalizedPayload?.resource || '').trim().toLowerCase(),
-        action: String(normalizedPayload?.action || normalizedPayload?.event_type || '').trim().toLowerCase(),
-        eventKey: String(normalizedPayload?.event_key || normalizedPayload?.eventKey || '').trim(),
-        recordId: String(normalizedPayload?.record_id || normalizedPayload?.resource_id || normalizedPayload?.id || '').trim(),
-        recordNumber: String(normalizedPayload?.record_number || normalizedPayload?.ticket_number || normalizedPayload?.proposal_number || normalizedPayload?.agreement_number || normalizedPayload?.invoice_number || normalizedPayload?.receipt_number || '').trim(),
-        title: String(normalizedPayload?.title || '').trim(),
-        body: String(normalizedPayload?.message || normalizedPayload?.body || '').trim(),
-        url: String(normalizedPayload?.url || normalizedPayload?.link_target || '').trim(),
-        metadata: normalizedPayload,
-        roles: Array.isArray(normalizedPayload?.target_roles) ? normalizedPayload.target_roles : [normalizedPayload?.target_role].filter(Boolean),
-        userIds: [normalizedPayload?.target_user_id, ...(Array.isArray(normalizedPayload?.recipient_user_ids) ? normalizedPayload.recipient_user_ids : [])].filter(Boolean),
-        emails: Array.isArray(normalizedPayload?.recipient_emails) ? normalizedPayload.recipient_emails : [],
-        channels: ['in_app', 'push', 'email']
-      });
-    }
     const resource = String(normalizedPayload?.resource || '').trim().toLowerCase();
     const action = String(normalizedPayload?.action || normalizedPayload?.event_type || '').trim().toLowerCase();
     const eventKey = String(normalizedPayload?.event_key || normalizedPayload?.eventKey || '').trim().toLowerCase();

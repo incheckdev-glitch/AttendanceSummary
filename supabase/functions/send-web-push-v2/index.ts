@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const FUNCTION_VERSION = "send-web-push-v2-central-dispatcher-20260509";
+const FUNCTION_VERSION = "send-web-push-v2-cc-auth-final-20260506";
 
 type InputPayload = {
   title?: string;
@@ -702,9 +702,8 @@ async function fetchSubscriptions(
 
   const seen = new Set<string>();
   const deduped = rows.filter((row) => {
-    const key = row.endpoint || row.id;
-    if (seen.has(key)) return false;
-    seen.add(key);
+    if (seen.has(row.id)) return false;
+    seen.add(row.id);
     return true;
   });
 
@@ -1024,29 +1023,17 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const resource = getResource(input) || String(extraData.resource || "");
-    const action = getAction(input) || String(extraData.action || "");
-    const recordId = getFirstString(input, ["record_id", "resource_id", "id"]) || String(extraData.record_id || "");
-    const recordNumber = getFirstString(input, ["record_number", "ticket_number", "proposal_number", "agreement_number", "invoice_number", "receipt_number"]) || String(extraData.record_number || "");
     const notificationPayload: Record<string, unknown> = {
       title,
       body,
       url,
-      icon: "/icon-192.png",
-      badge: "/icon-192.png",
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
       tag,
-      resource,
-      action,
-      event_key: getFirstString(input, ["event_key", "eventKey"]) || String(extraData.event_key || ""),
-      record_id: recordId,
-      record_number: recordNumber,
       data: {
         ...extraData,
-        notification_event_id: extraData.notification_event_id || null,
-        resource,
-        action,
-        record_id: recordId,
-        record_number: recordNumber,
+        resource: getResource(input) || extraData.resource,
+        action: getAction(input) || extraData.action,
         conversation_id: getConversationId(input) || extraData.conversation_id,
         url,
       },

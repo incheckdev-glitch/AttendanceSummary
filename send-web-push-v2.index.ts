@@ -131,8 +131,6 @@ function isAllowedSystemRolePush(input: Record<string, unknown>) {
   const resource = getPayloadResource(input);
   const allowedResources = new Set([
     'tickets',
-    'events',
-    'calendar_events',
     'operations_onboarding',
     'technical_admin_requests',
     'leads',
@@ -141,15 +139,8 @@ function isAllowedSystemRolePush(input: Record<string, unknown>) {
     'agreements',
     'invoices',
     'receipts',
-    'clients',
-    'companies',
-    'contacts',
-    'csm',
-    'csm_activities',
-    'proposal_catalog',
     'workflow',
     'notifications',
-    'notification_settings',
     'communication_centre'
   ]);
   return allowedResources.has(resource);

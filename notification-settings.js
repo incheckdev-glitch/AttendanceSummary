@@ -6,13 +6,13 @@ const NotificationSetup = {
     ['deals',['deal_created','deal_updated','deal_created_from_lead','deal_important_stage']],
     ['proposals',['proposal_created','proposal_updated','proposal_requires_approval','proposal_approved','proposal_rejected','proposal_created_from_deal']],
     ['agreements',['agreement_created','agreement_created_from_proposal','agreement_requires_signature','agreement_signed']],
-    ['invoices',['invoice_created','invoice_created_from_agreement','invoice_payment_updated','invoice_fully_paid']],
+    ['invoices',['invoice_created','invoice_created_from_agreement','invoice_payment_state_changed','invoice_fully_paid']],
     ['receipts',['receipt_created','receipt_created_from_invoice','receipt_updated']],
     ['operations_onboarding',['onboarding_created','operations_onboarding_created','onboarding_status_changed','onboarding_request_submitted','assigned_csm']],
     ['technical_admin_requests',['technical_request_submitted','technical_request_status_changed']],
     ['events',['event_created','event_updated','event_status_changed','event_schedule_changed','event_deleted']],
     ['workflow',['workflow_approval_requested','workflow_approved','workflow_rejected']],
-    ['communication_centre',['conversation_created','reply_added','conversation_closed','conversation_reopened','user_mentioned','role_mentioned']]
+    ['communication_centre',['conversation_created','reply_added','conversation_closed','conversation_reopened']]
   ],
 
 
@@ -35,23 +35,10 @@ const NotificationSetup = {
   },
 
   getNotificationDescription(resource, action) {
-    const descriptions = {
-      'tickets:ticket_created': 'A new ticket has been submitted and needs triage.',
-      'tickets:ticket_high_priority': 'A ticket was created or updated with high priority.',
-      'tickets:ticket_status_changed': 'A ticket status changed for interested users.',
-      'tickets:dev_team_status_changed': 'Development-team status changed on a ticket.',
-      'tickets:ticket_under_development': 'A ticket moved into active development.',
-      'tickets:ticket_youtrack_changed': 'A ticket YouTrack reference changed.',
-      'tickets:ticket_issue_related_changed': 'A ticket issue-related flag changed.',
-      'operations_onboarding:assigned_csm': 'Notify the selected CSM when a new client or location is assigned to them in Operations Onboarding.',
-      'workflow:workflow_approval_requested': 'An approval request is waiting for the configured approver roles.',
-      'workflow:workflow_approved': 'A requester is notified that an approval was approved.',
-      'workflow:workflow_rejected': 'A requester is notified that an approval was rejected.',
-      'communication_centre:reply_added': 'Conversation participants except the actor receive a new reply notification.',
-      'communication_centre:user_mentioned': 'A mentioned user receives a conversation notification.',
-      'communication_centre:role_mentioned': 'Users in a mentioned role receive a conversation notification.'
-    };
-    return descriptions[`${resource}:${action}`] || `${this.formatActionLabel(action)} notification for ${this.formatResourceLabel(resource)}.`;
+    if (resource === 'operations_onboarding' && action === 'assigned_csm') {
+      return 'Notify the selected CSM when a new client or location is assigned to them in Operations Onboarding.';
+    }
+    return '';
   },
 
   getEventRegistry() {
@@ -268,21 +255,7 @@ const NotificationSetup = {
     }));
     tbody.querySelectorAll('[data-test]').forEach(btn => btn.addEventListener('click', async e => {
       const tr = e.target.closest('tr');
-      try {
-        const result = await Api.testNotificationSetting(this.collect(tr.dataset.resource, tr.dataset.action));
-        const decision = result?.decision || {};
-        const inAppStatus = Number(result?.inApp?.created || 0) > 0 ? 'sent' : (decision?.channels?.in_app ? 'failed' : 'skipped');
-        const pwaAttempted = Number(result?.pwa?.attempted || 0);
-        const pwaSent = Number(result?.pwa?.sent || 0);
-        const pwaFailed = Number(result?.pwa?.failed || 0);
-        const pwaStatus = pwaSent > 0 ? 'sent' : ((result?.pwa?.error || pwaAttempted > 0) ? 'failed' : 'skipped');
-        const emailStatus = result?.email?.ok || result?.email?.sent ? 'sent' : (result?.email?.error ? 'failed' : 'skipped');
-        const emailCount = Number(result?.email?.recipientsCount || 0);
-        const pwaError = result?.pwa?.error ? ` error=${result.pwa.error}` : '';
-        const emailError = result?.email?.error ? ` error=${result.email.error}` : '';
-        UI.toast(`Test result · in_app: ${inAppStatus} count=${result?.inApp?.created || 0} · pwa: ${pwaStatus} attempted=${pwaAttempted} sent=${pwaSent} failed=${pwaFailed}${pwaError} · email: ${emailStatus} recipients=${emailCount}${emailError}`);
-        console.info('[notification setup] central dispatcher test result', { result, decision });
-      } catch (error) { UI.toast(String(error?.message || 'Unable to test rule.')); }
+      try { await Api.testNotificationSetting(this.collect(tr.dataset.resource, tr.dataset.action)); UI.toast('Test dispatched (or skipped based on rule).'); } catch (error) { UI.toast(String(error?.message || 'Unable to test rule.')); }
     }));
   }
 };
