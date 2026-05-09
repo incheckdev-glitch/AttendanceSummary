@@ -107,84 +107,32 @@
     return `${base}/${input.replace(/^\/+/, '')}`;
   }
 
-  function buildEmailTemplate({ title = '', body = '', resource = '', action = '', recordNumber = '', url = '' } = {}) {
+  function buildEmailTemplate({ title = '', body = '', resource = '', action = '', recordId = '', recordNumber = '', url = '', actorName = '', recipientName = '', metadata = {} } = {}) {
+    if (global.NotificationEmailTemplate?.buildNotificationEmailHtml) {
+      return global.NotificationEmailTemplate.buildNotificationEmailHtml({
+        appName: 'InCheck360',
+        title,
+        description: body,
+        resource,
+        action,
+        recordId,
+        recordNumber,
+        deepLink: url,
+        actorName,
+        recipientName,
+        metadata
+      });
+    }
     const safeTitle = String(title || 'InCheck360 Notification').trim() || 'InCheck360 Notification';
-    const safeBody = String(body || '').trim() || 'A business event requires your attention.';
-    const safeResource = String(resource || '').trim();
-    const safeAction = String(action || '').trim();
-    const safeRecordNumber = String(recordNumber || '').trim();
     const absoluteUrl = toAbsoluteNotificationUrl(url);
-    const formattedResource = formatResourceLabel(safeResource) || 'General';
-    const formattedAction = formatActionLabel(safeAction) || 'Updated';
-    const badgeText = `${formattedResource} • ${formattedAction}`;
-    const timestamp = new Date().toISOString();
-
-    const subject = escapeHtml(safeTitle);
-    const bodyHtml = escapeHtml(safeBody);
-    const resourceHtml = escapeHtml(formattedResource);
-    const actionHtml = escapeHtml(formattedAction);
-    const recordNumberHtml = escapeHtml(safeRecordNumber);
-    const badgeHtml = escapeHtml(badgeText);
-    const timestampHtml = escapeHtml(timestamp);
-    const buttonUrlAttr = escapeAttribute(absoluteUrl);
-    const fallbackUrlHtml = escapeHtml(absoluteUrl);
-
-    const html = `<!doctype html>
-<html>
-<body style="margin:0;padding:0;background-color:#f3f5f8;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
-  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f3f5f8;padding:24px 12px;">
-    <tr>
-      <td align="center">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="640" style="max-width:640px;width:100%;background:#ffffff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden;">
-          <tr>
-            <td style="padding:24px 28px;background:#0f172a;">
-              <div style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:0.2px;">InCheck360 Notifications</div>
-              <div style="margin-top:10px;display:inline-block;padding:6px 10px;background:#1e293b;color:#cbd5e1;border-radius:999px;font-size:12px;font-weight:600;">${badgeHtml}</div>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:28px;">
-              <h1 style="margin:0 0 12px 0;font-size:24px;line-height:1.3;color:#111827;">${subject}</h1>
-              <p style="margin:0 0 20px 0;font-size:15px;line-height:1.6;color:#374151;">${bodyHtml}</p>
-              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 20px 0;background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;">
-                <tr><td style="padding:14px 16px;font-size:14px;color:#4b5563;"><strong style="color:#111827;">Resource:</strong> ${resourceHtml}</td></tr>
-                <tr><td style="padding:0 16px 14px 16px;font-size:14px;color:#4b5563;"><strong style="color:#111827;">Action:</strong> ${actionHtml}</td></tr>
-                ${safeRecordNumber ? `<tr><td style="padding:0 16px 14px 16px;font-size:14px;color:#4b5563;"><strong style="color:#111827;">Record #:</strong> ${recordNumberHtml}</td></tr>` : ''}
-              </table>
-              ${absoluteUrl ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px 0;"><tr><td><a href="${buttonUrlAttr}" style="display:inline-block;padding:12px 20px;background:#0b57d0;border-radius:6px;color:#ffffff;font-size:14px;font-weight:700;text-decoration:none;">Open in InCheck360</a></td></tr></table>
-              <p style="margin:0 0 18px 0;font-size:12px;line-height:1.5;color:#6b7280;">If the button does not work, copy and paste this link into your browser:<br><a href="${buttonUrlAttr}" style="color:#0b57d0;word-break:break-all;text-decoration:underline;">${fallbackUrlHtml}</a></p>` : ''}
-              <p style="margin:0;font-size:12px;color:#6b7280;">Timestamp: ${timestampHtml}</p>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:18px 28px;border-top:1px solid #e5e7eb;background:#fafafa;">
-              <p style="margin:0;font-size:12px;line-height:1.6;color:#6b7280;">You received this notification because you are listed as a recipient in InCheck360.</p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
-
-    const text = [
-      safeTitle,
-      '',
-      safeBody,
-      '',
-      `Resource: ${formattedResource}`,
-      `Action: ${formattedAction}`,
-      `Record #: ${safeRecordNumber || '-'}`,
-      `Open link: ${absoluteUrl || '-'}`,
-      `Timestamp: ${timestamp}`,
-      '',
-      'You received this notification because you are listed as a recipient in InCheck360.'
-    ].join('\n');
-    return { subject: safeTitle, html, text };
+    return {
+      subject: `${safeTitle} — ${String(recordNumber || recordId || 'InCheck360').trim()}`,
+      html: `<p>${escapeHtml(safeTitle)}</p><p>${escapeHtml(body || 'A business event requires your attention.')}</p><p><a href="${escapeAttribute(absoluteUrl)}">Open in InCheck360</a></p>`,
+      text: [safeTitle, body || 'A business event requires your attention.', `Open in InCheck360: ${absoluteUrl}`].join('\n')
+    };
   }
 
-  async function sendNotificationEmail({ resource = '', action = '', eventKey = '', title = '', body = '', recipients = [], recordNumber = '', url = '' } = {}) {
+  async function sendNotificationEmail({ resource = '', action = '', eventKey = '', title = '', body = '', recipients = [], recordId = '', recordNumber = '', url = '', actorName = '', metadata = {} } = {}) {
     const emailRecipients = [...new Set(normalizeList(recipients).map(item => String(item || '').trim().toLowerCase()).filter(isValidEmail))];
     console.info('[notifications] email decision', {
       resource,
@@ -198,11 +146,11 @@
       hasSmtpFrom: Boolean(global?.ENV?.SMTP_FROM || global?.process?.env?.SMTP_FROM)
     });
     if (!emailRecipients.length) {
-      console.info('[notifications] no_email_recipients_resolved', { resource, action, eventKey });
+      console.info('[notifications] email log', { channel: 'email', status: 'skipped', error_message: 'no_email_recipients_resolved', resource, action, record_id: recordId || null, record_number: recordNumber || null });
       return { attempted: false, skipped: true, reason: 'no_email_recipients_resolved' };
     }
     const token = await global.Api.getCurrentAccessToken();
-    const template = buildEmailTemplate({ title, body, resource, action, recordNumber, url });
+    const template = buildEmailTemplate({ title, body, resource, action, recordId, recordNumber, url, actorName, metadata });
     console.info('[notifications] email template built', {
       resource,
       action,
@@ -220,7 +168,7 @@
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(String(result?.error || 'Unable to send email notification'));
-    console.info('[notifications] email sent', { resource, action, eventKey, recipientsCount: emailRecipients.length, messageId: result?.messageId || null });
+    console.info('[notifications] email log', { channel: 'email', status: 'sent', recipient_email: emailRecipients.join(','), resource, action, record_id: recordId || null, record_number: recordNumber || null, eventKey, recipientsCount: emailRecipients.length, messageId: result?.messageId || null });
     return result;
   }
 
@@ -750,10 +698,13 @@
 
       if (decision.channels.email) {
         try {
-          await sendNotificationEmail({ resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, title: payload.title, body: payload.body, recipients: emailRecipients, recordNumber: payload.record_number, url: payload.url });
+          await sendNotificationEmail({ resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, title: payload.title, body: payload.body, recipients: emailRecipients, recordId: normalizedRecordId, recordNumber: payload.record_number, url: payload.url, actorName: metadata?.actor_name || metadata?.actorName || '', metadata });
         } catch (error) {
-          console.warn('[notifications] email send failed', { resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, error: error?.message || String(error) });
+          console.warn('[notifications] email log', { channel: 'email', status: 'failed', error_message: error?.message || String(error), resource: normalizedResource, action: normalizedAction, record_id: normalizedRecordId || null, record_number: payload.record_number || null, eventKey: normalizedEventKey });
         }
+      } else {
+        const reason = !emailRecipients.length ? 'no_email_recipients_resolved' : 'email_channel_disabled';
+        console.info('[notifications] email log', { channel: 'email', status: 'skipped', error_message: reason, resource: normalizedResource, action: normalizedAction, record_id: normalizedRecordId || null, record_number: payload.record_number || null, eventKey: normalizedEventKey });
       }
 
       return pushResult;

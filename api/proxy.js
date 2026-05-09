@@ -533,17 +533,26 @@ export default async function handler(req, res) {
 
     const recipients = Array.isArray(payload?.to) ? payload.to : String(payload?.to || '').split(',');
     const normalizedTo = [...new Set(recipients.map((item) => String(item || '').trim().toLowerCase()).filter(isValidEmail))];
-    if (!normalizedTo.length) return res.status(400).json({ ok: false, error: 'no_email_recipients_resolved' });
+    if (!normalizedTo.length) {
+      console.info('[proxy:email] log', { channel: 'email', status: 'skipped', error_message: 'no_email_recipients_resolved' });
+      return res.status(400).json({ ok: false, error: 'no_email_recipients_resolved' });
+    }
 
     try {
+      const subject = String(payload?.subject || 'InCheck360 Notification').trim() || 'InCheck360 Notification';
+      const html = String(payload?.html || '').trim();
+      const text = String(payload?.text || '').trim();
+      if (!html || !text) throw new Error('Email payload must include both html and text.');
       const result = await sendEmailNotification({
         to: normalizedTo.join(', '),
-        subject: String(payload?.subject || 'InCheck360 Notification').trim() || 'InCheck360 Notification',
-        html: String(payload?.html || '').trim(),
-        text: String(payload?.text || '').trim()
+        subject,
+        html,
+        text
       });
+      console.info('[proxy:email] log', { channel: 'email', status: 'sent', recipient_email: normalizedTo.join(','), messageId: result?.messageId || null });
       return res.status(200).json({ ok: true, messageId: result?.messageId || null, recipientsCount: normalizedTo.length });
     } catch (error) {
+      console.warn('[proxy:email] log', { channel: 'email', status: 'failed', error_message: String(error?.message || error) });
       return res.status(500).json({ ok: false, error: String(error?.message || error) });
     }
   }
