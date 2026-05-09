@@ -485,7 +485,7 @@ const Leads = {
     const data = await Api.requestWithSession('leads', 'create', payload, { requireAuth: true });
     console.log('[leads] saved row', data);
     this.refreshCompanyLifecycleStatus(data || payload, 'Lead');
-    await Api.safeSendBusinessPwaPush({
+    await Api.dispatchNotification({
       resource: 'leads',
       action: 'lead_created',
       recordId: Api.extractBusinessRecordId(data, payload.lead_id || lead?.lead_id || ''),
@@ -529,7 +529,7 @@ const Leads = {
     }, { requireAuth: true });
     console.log('[leads] saved row', data);
     this.refreshCompanyLifecycleStatus(data || payload, 'Lead');
-    await Api.safeSendBusinessPwaPush({
+    await Api.dispatchNotification({
       resource: 'leads',
       action: 'lead_updated',
       recordId: Api.extractBusinessRecordId(data, leadId),
@@ -570,7 +570,7 @@ const Leads = {
   },
   async convertToDeal(leadId) {
     const data = await Api.requestWithSession('leads', 'convert_to_deal', { id: leadId, lead_id: leadId }, { requireAuth: true });
-    await Api.safeSendBusinessPwaPush({
+    await Api.dispatchNotification({
       resource: 'deals',
       action: 'deal_created_from_lead',
       recordId: Api.extractBusinessRecordId(data, leadId),

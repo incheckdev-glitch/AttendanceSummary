@@ -41,6 +41,11 @@ const BACKEND_MANAGED_PWA_ACTIONS = new Set([
   'technical_admin_requests:technical_request_status_changed'
 ]);
 
+function normalizeArrayForApiDispatch(value) {
+  if (!value) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
 const Api = {
   shouldSkipWorkflowForDraftSave({ currentStatus, nextStatus, action, payload } = {}) {
     const current = String(currentStatus ?? payload?.current_status ?? payload?.from_status ?? payload?.record?.status ?? '').trim().toLowerCase();
@@ -340,9 +345,13 @@ const Api = {
     ];
     return String(candidates.find(value => value !== undefined && value !== null && String(value).trim()) || '').trim();
   },
-  async sendBusinessPwaPush({ resource = '', action = '', eventKey = '', recordId = '', title = '', body = '', roles = ['admin'], userIds = [], targetEmails = [], url = '', data = {}, recordNumber = '' } = {}) {
-    if (window.NotificationService?.sendBusinessNotification) {
-      return window.NotificationService.sendBusinessNotification({
+  async dispatchNotification({ resource = '', action = '', eventKey = '', recordId = '', recordNumber = '', title = '', body = '', url = '', metadata = {}, data = {}, roles = [], userIds = [], emails = [], targetEmails = [], channels = ['in_app', 'push', 'email'] } = {}) {
+    try {
+      if (!window.NotificationService?.sendBusinessNotification) {
+        console.info('[notifications] central dispatcher unavailable; notification skipped safely', { resource, action, recordId });
+        return { attempted: false, skipped: true, reason: 'notification_service_unavailable' };
+      }
+      return await window.NotificationService.sendBusinessNotification({
         resource,
         action,
         eventKey,
@@ -350,42 +359,44 @@ const Api = {
         recordNumber,
         title,
         body,
-        targetUsers: userIds,
-        targetEmails,
         url,
-        metadata: data,
+        metadata: { ...(data && typeof data === 'object' ? data : {}), ...(metadata && typeof metadata === 'object' ? metadata : {}) },
         roles,
-        channels: ['in_app', 'push', 'email']
+        targetUsers: userIds,
+        targetEmails: normalizeArrayForApiDispatch(emails).length ? emails : targetEmails,
+        channels
       });
+    } catch (error) {
+      console.warn('[notifications] dispatch failed but business action will continue', { resource, action, recordId, error: error?.message || String(error) });
+      return { attempted: true, sent: false, failed: true, error: String(error?.message || error) };
     }
-    const directFallbackKey = String(resource || '').trim().toLowerCase() + ':' + String(action || '').trim().toLowerCase();
-    const notificationSetupManagedFallbacks = new Set([
-      'tickets:dev_team_status_changed',
-      'tickets:ticket_dev_team_status_changed'
-    ]);
-    if (notificationSetupManagedFallbacks.has(directFallbackKey)) {
-      console.info('[business:pwa] skipped direct fallback for notification-setup managed action', { resource, action, recordId });
-      return { attempted: false, skipped: true, reason: 'notification-service-unavailable-managed-action' };
-    }
-    return this.sendWebPush({ resource, action, record_id: recordId, title, body, url, data, roles, user_ids: userIds, emails: targetEmails }, { context: String(resource || '') + ':' + String(action || '') + ':direct-fallback' });
+  },
+  async sendBusinessPwaPush({ resource = '', action = '', eventKey = '', recordId = '', title = '', body = '', roles = ['admin'], userIds = [], targetEmails = [], emails = [], url = '', data = {}, metadata = {}, recordNumber = '', channels = ['in_app', 'push', 'email'] } = {}) {
+    return this.dispatchNotification({
+      resource,
+      action,
+      eventKey,
+      recordId,
+      recordNumber,
+      title,
+      body,
+      roles,
+      userIds,
+      emails: normalizeArrayForApiDispatch(emails).length ? emails : targetEmails,
+      url,
+      metadata: { ...(data && typeof data === 'object' ? data : {}), ...(metadata && typeof metadata === 'object' ? metadata : {}) },
+      channels
+    });
   },
   shouldSkipDirectBusinessPwaPush(args = {}) {
-    const resource = String(args?.resource || '').trim().toLowerCase();
-    const action = String(args?.action || '').trim().toLowerCase();
-    if (!resource || !action) return false;
-    if (resource === 'events') return false;
-    return BACKEND_MANAGED_PWA_ACTIONS.has(`${resource}:${action}`);
+    return false;
   },
   async safeSendBusinessPwaPush(args = {}) {
-    if (this.shouldSkipDirectBusinessPwaPush(args)) {
-      console.info('[business:pwa] skipped duplicate direct PWA push; backend notification already handles it', {
-        resource: args?.resource,
-        action: args?.action,
-        recordId: args?.recordId
-      });
-      return { attempted: false, skipped: true, reason: 'backend-managed-notification' };
-    }
-    try { return await this.sendBusinessPwaPush(args); }
+    try { return await this.dispatchNotification({
+      ...args,
+      emails: normalizeArrayForApiDispatch(args?.emails).length ? args.emails : args?.targetEmails,
+      metadata: { ...(args?.data && typeof args.data === 'object' ? args.data : {}), ...(args?.metadata && typeof args.metadata === 'object' ? args.metadata : {}) }
+    }); }
     catch (error) {
       console.warn('[business:pwa] direct PWA push failed but save will continue', { args, error });
       return { attempted: true, sent: false, error: String(error?.message || error) };
@@ -604,7 +615,7 @@ const Api = {
   async createAgreement(agreement, items = []) {
     const response = await this.requestWithSession('agreements', 'create', { agreement, items });
     const recordId = this.extractBusinessRecordId(response, agreement?.agreement_id || agreement?.agreement_number || '');
-    await this.safeSendBusinessPwaPush({
+    await this.dispatchNotification({
       resource: 'agreements',
       action: 'agreement_created',
       recordId,
@@ -621,7 +632,7 @@ const Api = {
     const response = await this.requestWithSession('agreements', 'update', payload);
     const status = String(updates?.status || updates?.agreement_status || '').trim().toLowerCase();
     const action = status.includes('signed') ? 'agreement_signed' : 'agreement_updated';
-    await this.safeSendBusinessPwaPush({
+    await this.dispatchNotification({
       resource: 'agreements',
       action,
       recordId: this.extractBusinessRecordId(response, agreementId),
@@ -638,7 +649,7 @@ const Api = {
   async createAgreementFromProposal(proposalId) {
     const response = await this.requestWithSession('agreements', 'create_from_proposal', { proposal_uuid: proposalId });
     const recordId = this.extractBusinessRecordId(response, proposalId);
-    await this.safeSendBusinessPwaPush({
+    await this.dispatchNotification({
       resource: 'agreements',
       action: 'agreement_created_from_proposal',
       recordId,
@@ -670,7 +681,7 @@ const Api = {
     };
     try {
       const response = await this.requestWithSession('agreements', 'request_incheck_lite', payload);
-      await this.safeSendBusinessPwaPush({
+      await this.dispatchNotification({
         resource: 'operations_onboarding',
         action: 'onboarding_request_submitted',
         recordId: agreementId,
@@ -687,7 +698,7 @@ const Api = {
         agreement_id: agreementId
       });
       const response = await this.requestWithSession('agreements', 'request_incheck_lite', payload);
-      await this.safeSendBusinessPwaPush({
+      await this.dispatchNotification({
         resource: 'operations_onboarding',
         action: 'onboarding_request_submitted',
         recordId: agreementId,
@@ -706,7 +717,7 @@ const Api = {
     };
     try {
       const response = await this.requestWithSession('agreements', 'request_incheck_full', payload);
-      await this.safeSendBusinessPwaPush({
+      await this.dispatchNotification({
         resource: 'operations_onboarding',
         action: 'onboarding_request_submitted',
         recordId: agreementId,
@@ -723,7 +734,7 @@ const Api = {
         agreement_id: agreementId
       });
       const response = await this.requestWithSession('agreements', 'request_incheck_full', payload);
-      await this.safeSendBusinessPwaPush({
+      await this.dispatchNotification({
         resource: 'operations_onboarding',
         action: 'onboarding_request_submitted',
         recordId: agreementId,
@@ -953,7 +964,7 @@ const Api = {
       }
     }
 
-    await this.safeSendBusinessPwaPush({
+    await this.dispatchNotification({
       resource: 'technical_admin_requests',
       action: 'technical_request_submitted',
       recordId: normalizedAgreementId,
@@ -1050,7 +1061,7 @@ const Api = {
       table: CONFIG.OPERATIONS_ONBOARDING_TABLE
     });
     const recordId = this.extractBusinessRecordId(response, onboarding?.onboarding_id || onboarding?.agreement_id || '');
-    await this.safeSendBusinessPwaPush({
+    await this.dispatchNotification({
       resource: 'operations_onboarding',
       action: 'onboarding_created',
       recordId,
@@ -1072,7 +1083,7 @@ const Api = {
       table: CONFIG.OPERATIONS_ONBOARDING_TABLE
     });
     const hasStatus = Object.prototype.hasOwnProperty.call(safeUpdates, 'onboarding_status') || Object.prototype.hasOwnProperty.call(safeUpdates, 'status');
-    await this.safeSendBusinessPwaPush({
+    await this.dispatchNotification({
       resource: 'operations_onboarding',
       action: hasStatus ? 'onboarding_status_changed' : 'onboarding_updated',
       recordId: this.extractBusinessRecordId(response, onboardingId),
@@ -1108,7 +1119,7 @@ const Api = {
       request_status: status,
       ...(extra && typeof extra === 'object' ? extra : {})
     });
-    await this.safeSendBusinessPwaPush({
+    await this.dispatchNotification({
       resource: 'technical_admin_requests',
       action: 'technical_request_status_changed',
       recordId: this.extractBusinessRecordId(response, technicalRequestId),
@@ -1139,7 +1150,7 @@ const Api = {
   async createInvoice(invoice, items = []) {
     const response = await this.requestWithSession('invoices', 'create', { invoice, items });
     const recordId = this.extractBusinessRecordId(response, invoice?.invoice_id || invoice?.invoice_number || '');
-    await this.safeSendBusinessPwaPush({
+    await this.dispatchNotification({
       resource: 'invoices',
       action: 'invoice_created',
       recordId,
@@ -1160,7 +1171,7 @@ const Api = {
     const response = await this.requestWithSession('invoices', 'update', payload);
     const paymentKeys = ['amount_paid', 'paid_amount', 'payment_status', 'payment_state', 'pending_amount', 'balance_due'];
     const isPaymentUpdate = paymentKeys.some(key => Object.prototype.hasOwnProperty.call(updates || {}, key));
-    await this.safeSendBusinessPwaPush({
+    await this.dispatchNotification({
       resource: 'invoices',
       action: isPaymentUpdate ? 'invoice_payment_updated' : 'invoice_updated',
       recordId: this.extractBusinessRecordId(response, invoiceId),
@@ -1177,7 +1188,7 @@ const Api = {
   async createInvoiceFromAgreement(agreementId) {
     const response = await this.requestWithSession('invoices', 'create_from_agreement', { id: agreementId, agreement_id: agreementId });
     const recordId = this.extractBusinessRecordId(response, agreementId);
-    await this.safeSendBusinessPwaPush({
+    await this.dispatchNotification({
       resource: 'invoices',
       action: 'invoice_created_from_agreement',
       recordId,
@@ -1225,7 +1236,7 @@ const Api = {
   async createReceipt(receipt, items = []) {
     const response = await this.requestWithSession('receipts', 'create', { receipt, items });
     const recordId = this.extractBusinessRecordId(response, receipt?.receipt_id || receipt?.receipt_number || '');
-    await this.safeSendBusinessPwaPush({
+    await this.dispatchNotification({
       resource: 'receipts',
       action: 'receipt_created',
       recordId,
@@ -1244,7 +1255,7 @@ const Api = {
     };
     if (items !== undefined) payload.items = items;
     const response = await this.requestWithSession('receipts', 'update', payload);
-    await this.safeSendBusinessPwaPush({
+    await this.dispatchNotification({
       resource: 'receipts',
       action: 'receipt_updated',
       recordId: this.extractBusinessRecordId(response, receiptId),
@@ -1270,7 +1281,7 @@ const Api = {
     }
     const response = await this.requestWithSession('receipts', 'create_from_invoice', payload);
     const recordId = this.extractBusinessRecordId(response, invoiceId);
-    await this.safeSendBusinessPwaPush({
+    await this.dispatchNotification({
       resource: 'receipts',
       action: 'receipt_created_from_invoice',
       recordId,
@@ -1408,7 +1419,28 @@ const Api = {
     return this.requestWithSession('notification_settings', 'reset_defaults', {});
   },
   async testNotificationSetting(rule = {}) {
-    return this.requestWithSession('notification_settings', 'test_notification', { rule });
+    const resource = String(rule?.resource || '').trim().toLowerCase();
+    const action = String(rule?.action || '').trim().toLowerCase();
+    return this.dispatchNotification({
+      resource,
+      action,
+      eventKey: `${resource}.${action}`,
+      recordId: String(rule?.record_id || 'test').trim() || 'test',
+      recordNumber: String(rule?.record_number || 'TEST-001').trim() || 'TEST-001',
+      title: 'Test notification',
+      body: `Test for ${resource}:${action}`,
+      metadata: {
+        ...(rule && typeof rule === 'object' ? rule : {}),
+        record_id: String(rule?.record_id || 'test').trim() || 'test',
+        record_number: String(rule?.record_number || 'TEST-001').trim() || 'TEST-001',
+        actor_name: window.Session?.displayName?.() || 'Notification Setup',
+        actor_email: window.Session?.state?.profile?.email || window.Session?.user?.()?.email || ''
+      },
+      roles: Array.isArray(rule?.recipient_roles) ? rule.recipient_roles : [],
+      userIds: Array.isArray(rule?.recipient_user_ids) ? rule.recipient_user_ids : [],
+      emails: Array.isArray(rule?.recipient_emails) ? rule.recipient_emails : [],
+      channels: ['in_app', 'push', 'email']
+    });
   },
   async listRoles(options = {}) {
     const payload = {

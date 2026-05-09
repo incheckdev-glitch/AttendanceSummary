@@ -4189,7 +4189,7 @@ async function sendTicketBusinessNotification({
     }
   };
 
-  const result = await Api.safeSendBusinessPwaPush({
+  const result = await Api.dispatchNotification({
     resource: 'tickets',
     action,
     eventKey: `tickets.${action}`,

@@ -168,14 +168,14 @@
 
   async function safeSendEventPwaPush(args = {}) {
     const api = global.Api;
-    if (!api || typeof api.safeSendBusinessPwaPush !== 'function') {
-      console.warn('[events:pwa] skipped direct PWA push: Api.safeSendBusinessPwaPush is unavailable', args);
+    if (!api || typeof api.dispatchNotification !== 'function') {
+      console.warn('[events:pwa] skipped notification dispatch: Api.dispatchNotification is unavailable', args);
       return null;
     }
     try {
-      console.info('[events:pwa] sending direct PWA push', args);
-      const result = await api.safeSendBusinessPwaPush(args);
-      console.info('[events:pwa] direct PWA push result', {
+      console.info('[events:pwa] dispatching notification', args);
+      const result = await api.dispatchNotification(args);
+      console.info('[events:pwa] notification dispatch result', {
         resource: args?.resource,
         action: args?.action,
         recordId: args?.recordId,
