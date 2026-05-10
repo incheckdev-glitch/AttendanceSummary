@@ -3368,6 +3368,9 @@ Sample:
     <div class="modal-content" style="max-width:1100px;">
       <div class="header"><h2 id="agreementFormTitle" style="margin:0;font-size:20px">Create Agreement</h2><div class="actions"><button class="modal-close" id="agreementFormCloseBtn" aria-label="Close agreement form">✕</button></div></div>
       <form id="agreementForm">
+        <div id="agreementSignedLockMessage" class="card" style="display:none;margin-bottom:12px;border-color:#92400e;background:rgba(146,64,14,.08);color:#78350f;">
+          <strong>Signed agreement is locked.</strong> Only signed document upload and invoice creation are allowed.
+        </div>
         <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
           <div class="filter-row"><label class="muted" for="agreementFormAgreementId">Agreement ID</label><input id="agreementFormAgreementId" class="input" type="text" readonly /></div>
           <div class="filter-row"><label class="muted" for="agreementFormAgreementNumber">Agreement Number</label><input id="agreementFormAgreementNumber" class="input" type="text" /></div>
@@ -3473,6 +3476,15 @@ Sample:
           <input id="agreementFormProviderSignatoryNameSecondary" type="hidden" />
           <input id="agreementFormProviderSignatoryTitleSecondary" type="hidden" />
           <input id="agreementFormProviderSignDate" type="hidden" />
+        </div>
+        <div id="agreementSignedDocumentSection" class="card" style="display:none;margin-top:12px;">
+          <strong style="display:block;margin-bottom:6px;">Signed Agreement Document</strong>
+          <p id="agreementSignedDocumentState" class="muted" style="margin:0 0 8px;">Upload the signed agreement document before creating an invoice.</p>
+          <div class="actions" style="justify-content:flex-start;gap:8px;">
+            <input id="agreementSignedDocumentFile" class="input" type="file" aria-label="Signed agreement document" />
+            <button id="agreementSignedDocumentUploadBtn" class="btn ghost sm" type="button">Upload Signed Agreement</button>
+            <button id="agreementSignedDocumentOpenBtn" class="btn ghost sm" type="button" style="display:none;">View / Download</button>
+          </div>
         </div>
         <div class="actions" style="justify-content:space-between;gap:8px;margin-top:12px;"><div style="display:flex;gap:8px;"><button id="agreementFormDeleteBtn" type="button" class="btn ghost" style="display:none;">Delete</button><button id="agreementFormPreviewBtn" type="button" class="btn ghost">View Agreement</button></div><div style="display:flex;gap:8px;"><button id="agreementFormCancelBtn" type="button" class="btn ghost">Cancel</button><button id="agreementFormSaveBtn" type="submit" class="btn">Save</button></div></div>
       </form>
