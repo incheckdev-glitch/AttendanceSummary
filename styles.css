@@ -2876,3 +2876,231 @@ body.permissions-loading [data-permission-resource][data-permission-action]{disp
     padding-bottom:18px;
   }
 }
+
+/* Communication Centre theme fixes: use the app theme variables (dark is the default root theme; light is :root[data-theme="light"]). */
+.communication-centre-module,
+#communicationCentreView.communication-centre-module{
+  background:var(--bg);
+  color:var(--text);
+}
+.communication-centre-layout,
+.communication-conversation-list,
+.communication-message-list{
+  color:var(--text);
+}
+.communication-centre-sidebar,
+.communication-thread,
+.communication-conversation-card,
+.communication-composer,
+.communication-centre-modal .modal-content,
+.communication-centre-modal .header,
+.communication-centre-modal .actions,
+.communication-action-item-card,
+.cc-sidebar,
+.cc-chat,
+.cc-details,
+.cc-item,
+.cc-composer,
+.cc-details-section{
+  background:var(--card);
+  color:var(--text);
+  border-color:var(--border);
+}
+.cc-sidebar-top,
+.communication-thread-header,
+.cc-chat-header,
+.cc-details .header{
+  background:var(--card);
+  color:var(--text);
+  border-color:var(--border);
+}
+.cc-sidebar-top h2,
+.cc-chat-heading h3,
+.cc-details h3,
+.cc-details-section strong,
+.cc-item-main strong,
+.cc-sender{
+  color:var(--text);
+}
+.cc-sidebar-top .muted,
+.cc-chat-heading .muted,
+.cc-item-main small,
+.cc-item-main p,
+.cc-time,
+.cc-message-meta,
+.cc-message-status,
+.communication-centre-empty-state,
+.communication-centre-module .muted,
+.communication-centre-module .text-muted,
+.communication-centre-modal .muted,
+.cc-assignment-manage-section label{
+  color:var(--muted) !important;
+}
+.cc-list,
+.cc-messages,
+.communication-message-list{
+  background:color-mix(in oklab, var(--bg) 92%, var(--card) 8%);
+}
+.communication-conversation-card:hover,
+.communication-conversation-card.active,
+.cc-item:hover,
+.cc-item.active{
+  background:color-mix(in oklab, var(--card) 78%, var(--accent) 22%);
+  border-color:color-mix(in oklab, var(--border) 62%, var(--accent) 38%);
+}
+.cc-item.unread .cc-item-main strong{
+  color:var(--text);
+}
+.communication-centre-module input,
+.communication-centre-module select,
+.communication-centre-module textarea,
+.communication-composer textarea,
+.communication-composer input,
+.communication-centre-modal input,
+.communication-centre-modal select,
+.communication-centre-modal textarea,
+.communication-related-record-select,
+.cc-assignment-manage-section .select{
+  background:var(--bg);
+  color:var(--text);
+  border-color:var(--border);
+}
+.communication-centre-module input::placeholder,
+.communication-centre-module textarea::placeholder,
+.communication-centre-modal input::placeholder,
+.communication-centre-modal textarea::placeholder{
+  color:var(--muted);
+}
+.communication-centre-module option,
+.communication-centre-modal option{
+  background:var(--card);
+  color:var(--text);
+}
+.communication-related-record-results,
+.communication-related-record-results.card,
+#communicationCentreCreateRelatedRecordResults{
+  background:var(--card);
+  color:var(--text);
+  border-color:var(--border);
+  box-shadow:var(--shadow);
+}
+.cc-related-record-option,
+.communication-related-record-option{
+  display:block;
+  width:100%;
+  text-align:left;
+  padding:8px 10px;
+  border:0;
+  border-radius:8px;
+  background:transparent;
+  color:var(--text);
+  cursor:pointer;
+}
+.cc-related-record-option:hover,
+.communication-related-record-option:hover{
+  background:color-mix(in oklab, var(--card) 78%, var(--accent) 22%);
+}
+.cc-related-record-option strong,
+.communication-related-record-option strong{
+  color:var(--text);
+}
+.communication-message-bubble,
+.cc-bubble{
+  background:var(--card);
+  color:var(--text);
+  border-color:var(--border);
+}
+.communication-message-bubble .cc-message-body,
+.cc-bubble .cc-message-body{
+  color:var(--text);
+}
+.communication-message-bubble.incoming,
+.cc-message-row.incoming .cc-bubble{
+  background:color-mix(in oklab, var(--card) 88%, var(--bg) 12%);
+  color:var(--text);
+  border-color:var(--border);
+}
+.communication-message-bubble.outgoing,
+.cc-message-row.mine .cc-bubble{
+  background:color-mix(in oklab, var(--accent) 38%, var(--card) 62%);
+  color:var(--text);
+  border-color:color-mix(in oklab, var(--accent) 60%, var(--border) 40%);
+}
+.cc-avatar,
+.cc-avatar.mine{
+  background:color-mix(in oklab, var(--accent) 18%, var(--card) 82%);
+  color:var(--text);
+  border-color:color-mix(in oklab, var(--accent) 40%, var(--border) 60%);
+}
+.cc-system-message,
+#communicationCentreClosedMsg,
+.cc-reply-target,
+.cc-details #communicationCentreDrawerMeta,
+.cc-assignment-hint{
+  background:color-mix(in oklab, var(--card) 88%, var(--bg) 12%);
+  color:var(--muted) !important;
+  border-color:var(--border);
+}
+.cc-reply-target strong,
+.cc-reply-target span{
+  color:var(--text);
+}
+.cc-reply-target span{
+  color:var(--muted);
+}
+.communication-centre-modal .modal-content,
+.communication-centre-modal .header,
+.communication-centre-modal form,
+.communication-centre-modal .filter-row{
+  color:var(--text);
+  border-color:var(--border);
+}
+.communication-centre-error{
+  color:var(--danger);
+}
+.communication-centre-module .chip,
+.communication-centre-modal .chip,
+.cc-participant-chip{
+  background:var(--chip);
+  color:var(--text);
+  border-color:var(--border);
+}
+.cc-status-chip{
+  background:color-mix(in oklab, var(--ok) 18%, var(--card) 82%);
+  color:var(--text);
+}
+.cc-priority-chip{
+  background:color-mix(in oklab, var(--warn) 18%, var(--card) 82%);
+  color:var(--text);
+}
+.cc-unread-chip{
+  background:color-mix(in oklab, var(--accent) 18%, var(--card) 82%);
+  color:var(--text);
+}
+.communication-centre-module .btn.primary,
+.communication-centre-module .btn:not(.ghost),
+#communicationCentreNewBtn,
+#communicationCentreReplyBtn{
+  color:#fff;
+}
+.communication-centre-module .btn.ghost,
+#communicationCentreExportPdfBtn,
+.cc-filters .btn{
+  background:var(--chip);
+  color:var(--text);
+  border-color:var(--border);
+}
+.communication-centre-module .btn.ghost:hover,
+#communicationCentreExportPdfBtn:hover,
+.cc-filters .btn:hover,
+.cc-filters .btn.active{
+  background:color-mix(in oklab, var(--chip) 72%, var(--accent) 28%);
+  border-color:color-mix(in oklab, var(--border) 60%, var(--accent) 40%);
+  color:var(--text);
+}
+
+@media (max-width:767px){
+  .communication-centre-module .cc-sidebar-top{
+    background:var(--card);
+  }
+}
