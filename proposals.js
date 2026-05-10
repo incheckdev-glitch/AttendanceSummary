@@ -1,4 +1,5 @@
 const Proposals = {
+  signedDocumentBucket: 'proposal-signed-documents',
   providerContactDefaults: {
     name: 'InCheck 360 Holding BV',
     address: 'Pyrmontstraat 5, 7513 BN, Enschede, The Netherlands',
@@ -59,6 +60,10 @@ const Proposals = {
     'discount_approved_by',
     'last_discount_approval_request_id',
     'approval_required_reason',
+    'signed_document_path',
+    'signed_document_name',
+    'signed_document_uploaded_at',
+    'signed_document_uploaded_by',
     'generated_by',
     'updated_at'
   ],
@@ -89,6 +94,7 @@ const Proposals = {
     saveInFlight: false,
     detailCacheById: {},
     detailCacheTtlMs: 90 * 1000,
+    currentProposal: null,
     openingProposalIds: new Set(),
     rowActionInFlight: new Set()
   },
@@ -1185,6 +1191,10 @@ const Proposals = {
       normalized.approval_required_reason ||
       ''
     ).trim();
+    normalized.signed_document_path = String(source.signed_document_path || source.signedDocumentPath || normalized.signed_document_path || '').trim();
+    normalized.signed_document_name = String(source.signed_document_name || source.signedDocumentName || normalized.signed_document_name || '').trim();
+    normalized.signed_document_uploaded_at = String(source.signed_document_uploaded_at || source.signedDocumentUploadedAt || normalized.signed_document_uploaded_at || '').trim();
+    normalized.signed_document_uploaded_by = String(source.signed_document_uploaded_by || source.signedDocumentUploadedBy || normalized.signed_document_uploaded_by || '').trim();
     normalized.agreement_id = String(source.agreement_id ?? source.agreementId ?? normalized.agreement_id ?? '').trim();
     normalized.generated_by = String(
       normalized.generated_by || source.generatedBy || source.created_by || source.createdBy || ''
@@ -2577,7 +2587,11 @@ const Proposals = {
       discount_approved_at: '',
       discount_approved_by: '',
       last_discount_approval_request_id: '',
-      approval_required_reason: ''
+      approval_required_reason: '',
+      signed_document_path: '',
+      signed_document_name: '',
+      signed_document_uploaded_at: '',
+      signed_document_uploaded_by: ''
     };
   },
   generateAccountNumber() {
@@ -2598,10 +2612,13 @@ const Proposals = {
     if (E.proposalFormProposalId) E.proposalFormProposalId.value = '';
     E.proposalForm.dataset.refNumber = '';
     this.state.currentProposalId = '';
+    this.state.currentProposal = null;
     this.state.currentItems = [];
     if (E.proposalFormDeleteBtn) E.proposalFormDeleteBtn.style.display = 'none';
     if (E.proposalFormSaveBtn) E.proposalFormSaveBtn.disabled = false;
     if (E.proposalFormPreviewBtn) E.proposalFormPreviewBtn.disabled = false;
+    if (E.proposalSignedDocumentFile) E.proposalSignedDocumentFile.value = '';
+    if (E.proposalSignedDocumentSection) E.proposalSignedDocumentSection.style.display = 'none';
   },
   setFormReadOnly(readOnly) {
     this.state.formReadOnly = !!readOnly;
@@ -2620,6 +2637,9 @@ const Proposals = {
     if (E.proposalFormSaveBtn) E.proposalFormSaveBtn.style.display = readOnly ? 'none' : '';
     const lockedIds=['proposalFormCustomerName','proposalFormCustomerAddress','proposalFormCustomerContactName','proposalFormCustomerContactMobile','proposalFormCustomerContactEmail','proposalFormProviderContactName','proposalFormProviderContactMobile','proposalFormProviderContactEmail','proposalFormCustomerSignatoryName','proposalFormCustomerSignatoryTitle','proposalFormProviderSignatoryName','proposalFormProviderSignatoryTitle'];
     lockedIds.forEach(id=>{const el=document.getElementById(id); if(!el) return; el.readOnly=true; el.classList.add('readonly-field','locked-field'); el.setAttribute('aria-readonly','true');});
+    if (E.proposalSignedDocumentFile) E.proposalSignedDocumentFile.disabled = !!readOnly;
+    if (E.proposalSignedDocumentUploadBtn) E.proposalSignedDocumentUploadBtn.style.display = readOnly ? 'none' : '';
+    this.refreshSignedDocumentUi(this.state.currentProposal || {});
     if (E.proposalFormDeleteBtn && readOnly) E.proposalFormDeleteBtn.style.display = 'none';
   },
   assignFormValues(proposal = {}) {
@@ -2657,6 +2677,7 @@ const Proposals = {
     set(E.proposalFormProviderSignatoryTitle, this.getProposalProviderSignatoryTitle(proposal));
     set(E.proposalFormProviderSignDate, this.normalizeDateInputValue(proposal.provider_sign_date || ''));
     set(E.proposalFormTerms, proposal.terms_conditions || '');
+    this.refreshSignedDocumentUi(proposal);
   },
   computeCommercialRow(item) {
     const section = String(item?.section || '').trim().toLowerCase();
@@ -3114,11 +3135,16 @@ const Proposals = {
     this.state.formMode = mode;
     this.state.formReadOnly = !!readOnly;
     this.state.currentProposalId = base.id || '';
+    this.state.currentProposal = base;
     this.state.currentItems = Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : [];
 
     E.proposalForm.dataset.mode = mode;
     E.proposalForm.dataset.id = base.id || '';
     E.proposalForm.dataset.refNumber = base.ref_number || '';
+    E.proposalForm.dataset.signedDocumentPath = base.signed_document_path || '';
+    E.proposalForm.dataset.signedDocumentName = base.signed_document_name || '';
+    E.proposalForm.dataset.signedDocumentUploadedAt = base.signed_document_uploaded_at || '';
+    E.proposalForm.dataset.signedDocumentUploadedBy = base.signed_document_uploaded_by || '';
     E.proposalForm.dataset.companyId = String(base.company_id || '').trim();
     E.proposalForm.dataset.companyName = String(
       base.company_name ||
@@ -3192,6 +3218,151 @@ const Proposals = {
     if (E.proposalFormSaveBtn) E.proposalFormSaveBtn.disabled = busy;
     if (E.proposalFormDeleteBtn) E.proposalFormDeleteBtn.disabled = busy;
     if (E.proposalFormPreviewBtn) E.proposalFormPreviewBtn.disabled = busy;
+    if (busy) {
+      if (E.proposalSignedDocumentUploadBtn) E.proposalSignedDocumentUploadBtn.disabled = true;
+      if (E.proposalSignedDocumentOpenBtn) E.proposalSignedDocumentOpenBtn.disabled = true;
+    } else {
+      this.refreshSignedDocumentUi(this.state.currentProposal || {});
+      if (E.proposalSignedDocumentOpenBtn) E.proposalSignedDocumentOpenBtn.disabled = false;
+    }
+  },
+  getSupabaseClient() {
+    return window.SupabaseClient?.getClient?.() || window.supabaseClient || window.supabase || null;
+  },
+  getSignedDocumentProposalSnapshot(proposal = {}) {
+    const source = proposal && typeof proposal === 'object' ? proposal : {};
+    return {
+      ...source,
+      id: String(source.id || E.proposalForm?.dataset.id || this.state.currentProposalId || '').trim(),
+      proposal_id: String(source.proposal_id || E.proposalFormProposalId?.value || '').trim(),
+      status: this.normalizeProposalStatus(source.status || ''),
+      signed_document_path: String(source.signed_document_path || E.proposalForm?.dataset.signedDocumentPath || '').trim(),
+      signed_document_name: String(source.signed_document_name || E.proposalForm?.dataset.signedDocumentName || '').trim(),
+      signed_document_uploaded_at: String(source.signed_document_uploaded_at || E.proposalForm?.dataset.signedDocumentUploadedAt || '').trim(),
+      signed_document_uploaded_by: String(source.signed_document_uploaded_by || E.proposalForm?.dataset.signedDocumentUploadedBy || '').trim()
+    };
+  },
+  refreshSignedDocumentUi(proposal = {}) {
+    if (!E.proposalSignedDocumentSection) return;
+    const snapshot = this.getSignedDocumentProposalSnapshot(proposal);
+    const isPersisted = Boolean(snapshot.id);
+    const isAccepted = this.isProposalAccepted(snapshot);
+    const hasDocument = Boolean(snapshot.signed_document_path);
+    E.proposalSignedDocumentSection.style.display = isPersisted ? '' : 'none';
+    if (E.proposalSignedDocumentUploadBtn) E.proposalSignedDocumentUploadBtn.disabled = !isPersisted || !isAccepted || this.state.formReadOnly;
+    if (E.proposalSignedDocumentFile) E.proposalSignedDocumentFile.disabled = !isPersisted || !isAccepted || this.state.formReadOnly;
+    if (E.proposalSignedDocumentOpenBtn) E.proposalSignedDocumentOpenBtn.style.display = hasDocument ? '' : 'none';
+    if (E.proposalSignedDocumentState) {
+      if (!isPersisted) {
+        E.proposalSignedDocumentState.textContent = 'Save this proposal before uploading a signed document.';
+      } else if (!isAccepted) {
+        E.proposalSignedDocumentState.textContent = 'Signed documents can be uploaded only after the proposal status is Accepted.';
+      } else if (hasDocument) {
+        const uploaded = snapshot.signed_document_uploaded_at ? ` · Uploaded ${U.fmtTS(snapshot.signed_document_uploaded_at)}` : '';
+        E.proposalSignedDocumentState.textContent = `${snapshot.signed_document_name || 'Signed document'}${uploaded}`;
+      } else {
+        E.proposalSignedDocumentState.textContent = 'Upload the accepted signed proposal document before converting to an agreement.';
+      }
+    }
+  },
+  getSignedDocumentTimestamp(date = new Date()) {
+    return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, '');
+  },
+  getFileExtension(fileName = '') {
+    const cleanName = String(fileName || '').split(/[\\/]/).pop() || '';
+    const match = cleanName.match(/\.([A-Za-z0-9]{1,16})$/);
+    return match ? match[1].toLowerCase() : 'pdf';
+  },
+  buildSignedDocumentPath(proposal = {}, file = {}) {
+    const proposalBusinessId = String(proposal.proposal_id || E.proposalFormProposalId?.value || '').trim();
+    if (!proposalBusinessId) throw new Error('Proposal ID is required to upload the signed document.');
+    const extension = this.getFileExtension(file.name || 'pdf');
+    return `proposals/${proposalBusinessId}/signed-proposal-${this.getSignedDocumentTimestamp()}.${extension}`;
+  },
+  async getCurrentUserIdForSignedDocument(client = null) {
+    const localUser = this.getSignedInUserForProposal();
+    if (localUser?.id) return String(localUser.id).trim();
+    const authClient = client || this.getSupabaseClient();
+    const { data } = await authClient?.auth?.getUser?.() || {};
+    return String(data?.user?.id || '').trim();
+  },
+  async uploadSignedProposalDocument() {
+    const proposal = this.getSignedDocumentProposalSnapshot(this.state.currentProposal || {});
+    if (!proposal.id) { UI.toast('Save this proposal before uploading a signed document.'); return; }
+    if (!this.isProposalAccepted(proposal)) { UI.toast('Upload the signed document only after the proposal status is accepted.'); return; }
+    const file = E.proposalSignedDocumentFile?.files?.[0];
+    if (!file) { UI.toast('Choose a signed proposal document to upload.'); return; }
+    const client = this.getSupabaseClient();
+    if (!client?.storage?.from || !client?.from) { UI.toast('Supabase Storage is not available.'); return; }
+    const currentUserId = await this.getCurrentUserIdForSignedDocument(client);
+    if (!currentUserId) { UI.toast('Unable to identify the current user. Please log in again.'); return; }
+    this.setFormBusy(true);
+    try {
+      const { data: latestProposal, error: latestError } = await client
+        .from('proposals')
+        .select('*')
+        .eq('proposal_id', proposal.proposal_id)
+        .maybeSingle();
+      if (latestError) throw latestError;
+      if (!this.isProposalAccepted(latestProposal || proposal)) {
+        UI.toast('Upload the signed document only after the proposal status is accepted.');
+        return;
+      }
+      const path = this.buildSignedDocumentPath(latestProposal || proposal, file);
+      const { error: uploadError } = await client.storage
+        .from(this.signedDocumentBucket)
+        .upload(path, file, { upsert: true });
+      if (uploadError) throw uploadError;
+      const updates = {
+        signed_document_path: path,
+        signed_document_name: file.name,
+        signed_document_uploaded_at: new Date().toISOString(),
+        signed_document_uploaded_by: currentUserId
+      };
+      const { data, error: updateError } = await client
+        .from('proposals')
+        .update(updates)
+        .eq('proposal_id', proposal.proposal_id)
+        .select('*')
+        .maybeSingle();
+      if (updateError) throw updateError;
+      const updatedProposal = this.normalizeProposal({ ...(this.state.currentProposal || {}), ...(data || {}), ...updates });
+      this.state.currentProposal = updatedProposal;
+      if (E.proposalForm) {
+        E.proposalForm.dataset.signedDocumentPath = updates.signed_document_path;
+        E.proposalForm.dataset.signedDocumentName = updates.signed_document_name;
+        E.proposalForm.dataset.signedDocumentUploadedAt = updates.signed_document_uploaded_at;
+        E.proposalForm.dataset.signedDocumentUploadedBy = updates.signed_document_uploaded_by;
+      }
+      this.upsertLocalRow(updatedProposal);
+      this.setCachedDetail(updatedProposal.id || proposal.id, updatedProposal, this.state.currentItems);
+      if (E.proposalSignedDocumentFile) E.proposalSignedDocumentFile.value = '';
+      this.refreshSignedDocumentUi(updatedProposal);
+      UI.toast('Signed proposal document uploaded.');
+    } catch (error) {
+      UI.toast('Unable to upload signed proposal document: ' + (error?.message || 'Unknown error'));
+    } finally {
+      this.setFormBusy(false);
+    }
+  },
+  async openSignedProposalDocument() {
+    const proposal = this.getSignedDocumentProposalSnapshot(this.state.currentProposal || {});
+    if (!proposal.signed_document_path) { UI.toast('No signed proposal document has been uploaded.'); return; }
+    const client = this.getSupabaseClient();
+    if (!client?.storage?.from) { UI.toast('Supabase Storage is not available.'); return; }
+    this.setFormBusy(true);
+    try {
+      const { data, error } = await client.storage
+        .from(this.signedDocumentBucket)
+        .createSignedUrl(proposal.signed_document_path, 60 * 10);
+      if (error) throw error;
+      if (!data?.signedUrl) throw new Error('Supabase did not return a signed URL.');
+      window.open(data.signedUrl, '_blank', 'noopener');
+    } catch (error) {
+      UI.toast('Unable to open signed proposal document: ' + (error?.message || 'Unknown error'));
+    } finally {
+      this.setFormBusy(false);
+    }
   },
 
   validateCommercialItems(items = []) {
@@ -3680,6 +3851,9 @@ const Proposals = {
       E.proposalFormValidUntil.readOnly = true;
       E.proposalFormValidUntil.setAttribute('aria-readonly', 'true');
     }
+    if (E.proposalFormStatus) {
+      E.proposalFormStatus.addEventListener('change', () => this.refreshSignedDocumentUi(this.state.currentProposal || {}));
+    }
 
     if (E.proposalsRefreshBtn) {
       E.proposalsRefreshBtn.addEventListener('click', () => this.loadAndRefresh({ force: true }));
@@ -3827,6 +4001,12 @@ const Proposals = {
         const id = String(E.proposalForm?.dataset.id || '').trim();
         if (id) this.deleteById(id);
       });
+    }
+    if (E.proposalSignedDocumentUploadBtn) {
+      E.proposalSignedDocumentUploadBtn.addEventListener('click', () => this.uploadSignedProposalDocument());
+    }
+    if (E.proposalSignedDocumentOpenBtn) {
+      E.proposalSignedDocumentOpenBtn.addEventListener('click', () => this.openSignedProposalDocument());
     }
     if (E.proposalFormPreviewBtn) {
       E.proposalFormPreviewBtn.addEventListener('click', () => {
