@@ -466,7 +466,7 @@
     'currency','customer_legal_name','provider_name','provider_legal_name',
     'terms_conditions','customer_signatory_name','customer_signatory_title','customer_signatory_email','customer_signatory_phone','provider_signatory_name','provider_signatory_title',
     'provider_signatory_name_secondary','provider_signatory_title_secondary','customer_sign_date','provider_sign_date',
-    'subtotal_locations','subtotal_one_time','total_discount','grand_total','status','approved_annual_saas_discount_percent','approved_one_time_fee_discount_percent','approved_discount_percent','discount_approval_status','discount_approved_at','discount_approved_by','last_discount_approval_request_id','approval_required_reason','generated_by','created_by','updated_by','created_at','updated_at'
+    'subtotal_locations','subtotal_one_time','total_discount','grand_total','status','approved_annual_saas_discount_percent','approved_one_time_fee_discount_percent','approved_discount_percent','discount_approval_status','discount_approved_at','discount_approved_by','last_discount_approval_request_id','approval_required_reason','signed_document_path','signed_document_name','signed_document_uploaded_at','signed_document_uploaded_by','generated_by','created_by','updated_by','created_at','updated_at'
   ]);
   const PROPOSAL_ITEM_COLUMNS = new Set([
     'item_id','proposal_id','section','line_no','location_name','item_name','unit_price','discount_percent','discounted_unit_price','quantity',
@@ -2874,6 +2874,9 @@
     if (!proposal) throw new Error('Proposal not found.');
     if (String(proposal.status || '').trim().toLowerCase() !== 'accepted') {
       throw new Error('Proposal must be accepted before converting to agreement.');
+    }
+    if (!String(proposal.signed_document_path || '').trim()) {
+      throw new Error('You should upload the signed document before converting it to an agreement.');
     }
     const company = await loadProposalCompanyForAgreementConversion(client, proposal);
     if (!isCompanyVerifiedForAgreementConversion(company)) {

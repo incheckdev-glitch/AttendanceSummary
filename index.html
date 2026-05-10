@@ -3136,6 +3136,17 @@ Sample:
           <div class="filter-row"><label class="muted" for="proposalFormCurrency">Currency</label><input id="proposalFormCurrency" class="input" type="text" placeholder="USD" /></div>
         </div>
 
+        <div id="proposalSignedDocumentSection" class="card" style="margin-top:12px;display:none;">
+          <strong style="display:block;margin-bottom:8px;">Signed Proposal Document</strong>
+          <p id="proposalSignedDocumentState" class="muted" style="margin:0 0 8px;">Upload a signed proposal after the proposal status is Accepted.</p>
+          <div class="actions" style="justify-content:flex-start;gap:8px;flex-wrap:wrap;">
+            <input id="proposalSignedDocumentFile" class="input" type="file" aria-label="Signed proposal document" />
+            <button id="proposalSignedDocumentUploadBtn" class="btn ghost sm" type="button">Upload Signed Document</button>
+            <button id="proposalSignedDocumentOpenBtn" class="btn ghost sm" type="button" style="display:none;">View / Download</button>
+          </div>
+          <small class="muted">Files are stored in a private Supabase bucket and opened with temporary signed URLs.</small>
+        </div>
+
         <div class="divider" style="margin:12px 0;"></div>
         <strong style="display:block;margin-bottom:8px;">Customer / Company Details</strong>
         <div class="filter-row muted" style="grid-column:1 / -1;">Customer and contact details are managed from the Company and Contacts modules.</div>

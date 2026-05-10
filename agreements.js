@@ -762,6 +762,10 @@ const Agreements = {
       UI.toast('Proposal must be accepted before converting to agreement.');
       return false;
     }
+    if (!String(proposal?.signed_document_path || proposal?.signedDocumentPath || '').trim()) {
+      UI.toast('You should upload the signed document before converting it to an agreement.');
+      return false;
+    }
     return this.ensureCompanyVerifiedBeforeAgreement(proposal);
   },
   normalizeItem(raw = {}, sectionFallback = '') {
@@ -2633,6 +2637,7 @@ const Agreements = {
         UI.toast('Proposal UUID is required. Select a proposal that is loaded in the proposals list.');
         return;
       }
+      // Reload the latest proposal before conversion so signed-document requirements are checked against current data.
       const proposalResponse = await window.Proposals?.getProposal?.(proposalUuid);
       const extracted = window.Proposals?.extractProposalAndItems?.(proposalResponse, proposalUuid) || {};
       const proposal = extracted.proposal && typeof extracted.proposal === 'object' ? extracted.proposal : { id: proposalUuid };
