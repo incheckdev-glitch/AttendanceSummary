@@ -71,6 +71,9 @@ const Receipts = {
     'payment_conclusion',
     'amount_received',
     'pending_amount',
+    'balance_due',
+    'payment_status',
+    'remaining_balance',
     'payment_state',
     'amount_in_words',
     'payment_notes',
@@ -176,6 +179,79 @@ const Receipts = {
     if (lower === 'undefined' || lower === 'null' || lower === 'n/a') return '';
     return normalized;
   },
+  normalizeReceiptPaymentState(receipt = {}, linkedInvoice = null) {
+    const rawState = String(
+      receipt?.payment_state ||
+      receipt?.paymentState ||
+      ''
+    ).trim();
+
+    const receivedAmount = Number(
+      receipt?.received_amount ??
+      receipt?.payment_amount ??
+      receipt?.amount_received ??
+      receipt?.amount_paid ??
+      receipt?.paid_now ??
+      receipt?.amount ??
+      0
+    );
+
+    const invoiceSource = linkedInvoice && typeof linkedInvoice === 'object' ? linkedInvoice : {};
+    const hasLinkedInvoice = Boolean(
+      String(receipt?.invoice_id || receipt?.invoice_uuid || receipt?.invoice_number || '').trim() ||
+      String(invoiceSource?.id || invoiceSource?.invoice_id || invoiceSource?.invoice_number || '').trim()
+    );
+    const balanceSource =
+      invoiceSource?.balance_due ??
+      invoiceSource?.pending_amount ??
+      invoiceSource?.remaining_balance ??
+      receipt?.balance_due ??
+      receipt?.pending_amount ??
+      receipt?.remaining_balance;
+    const hasBalanceSource = balanceSource !== undefined && balanceSource !== null && !(typeof balanceSource === 'string' && balanceSource.trim() === '');
+    const invoiceBalance = Number(hasBalanceSource ? balanceSource : 0);
+
+    const invoicePaymentStatus = String(
+      invoiceSource?.payment_status ||
+      invoiceSource?.payment_state ||
+      invoiceSource?.status ||
+      receipt?.payment_status ||
+      ''
+    ).trim().toLowerCase();
+
+    const isInvoicePaid = hasLinkedInvoice && (
+      (hasBalanceSource && invoiceBalance <= 0) ||
+      ['paid', 'fully_paid', 'fully paid', 'settled', 'settlement'].includes(invoicePaymentStatus)
+    );
+
+    if (receivedAmount > 0 && isInvoicePaid) {
+      return 'Settlement';
+    }
+
+    if (receivedAmount > 0 && hasLinkedInvoice && hasBalanceSource && invoiceBalance > 0) {
+      return 'Partial Payment';
+    }
+
+    if (receivedAmount > 0) {
+      return 'Received';
+    }
+
+    if (['not paid', 'unpaid', 'pending'].includes(rawState.toLowerCase())) {
+      return 'Received';
+    }
+
+    return rawState || 'Received';
+  },
+  receiptPaymentStateFromSnapshot(snapshot = {}, linkedInvoice = null) {
+    return this.normalizeReceiptPaymentState({
+      ...snapshot,
+      payment_state: snapshot.payment_state,
+      received_amount: snapshot.received_amount ?? snapshot.paid_now,
+      amount_received: snapshot.amount_received ?? snapshot.received_amount ?? snapshot.paid_now,
+      pending_amount: snapshot.pending_amount,
+      balance_due: snapshot.balance_due ?? snapshot.pending_amount
+    }, linkedInvoice);
+  },
   normalizeInvoiceFinancials(invoice = {}) {
     const pickDefined = (...values) => values.find(value => value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === ''));
     const invoiceTotal = this.toNumberSafe(pickDefined(invoice.invoice_total, invoice.grand_total, invoice.total_amount));
@@ -249,7 +325,12 @@ const Receipts = {
         ? normalized.pending_amount
         : null;
     normalized.pending_amount = pendingAmountValue === null ? snapshot.pending_amount : this.toNumberSafe(pendingAmountValue);
-    normalized.payment_state = String(normalized.payment_state || '').trim() || snapshot.payment_state;
+    normalized.payment_state = this.normalizeReceiptPaymentState({
+      ...normalized,
+      payment_state: String(normalized.payment_state || '').trim() || snapshot.payment_state,
+      pending_amount: normalized.pending_amount,
+      balance_due: normalized.balance_due || normalized.pending_amount
+    }, normalized);
     normalized.payment_conclusion = String(normalized.payment_conclusion || '').trim() || snapshot.payment_conclusion;
     return normalized;
   },
@@ -257,7 +338,7 @@ const Receipts = {
     const status = this.normalizeText(receipt?.status);
     const pendingAmount = this.toNumberSafe(receipt?.pending_amount);
     const paymentState = this.normalizeText(receipt?.payment_state);
-    return status === 'settlement' || receipt?.is_settlement === true || pendingAmount === 0 || paymentState === 'fully paid';
+    return status === 'settlement' || receipt?.is_settlement === true || pendingAmount === 0 || ['settlement', 'fully paid'].includes(paymentState);
   },
   receiptTypeLabel(receipt = {}) {
     return this.isSettlementReceipt(receipt) ? 'Settlement' : 'Receipt';
@@ -504,7 +585,7 @@ const Receipts = {
     const status = this.normalizeText(row?.status);
     if (filter === 'total') return true;
     if (filter === 'issued') return status === 'issued';
-    if (filter === 'paid') return status === 'paid';
+    if (filter === 'paid') return this.isFullyPaidReceipt(row);
     if (filter === 'grand-total') return this.toNumberSafe(row?.invoice_total) > 0;
     return true;
   },
@@ -514,11 +595,19 @@ const Receipts = {
     this.applyFilters();
     this.render();
   },
+  isFullyPaidReceipt(receipt = {}, linkedInvoice = null) {
+    const paymentState = this.normalizeText(this.normalizeReceiptPaymentState(receipt, linkedInvoice || receipt));
+    const invoiceStatus = this.normalizeText((linkedInvoice || receipt)?.payment_status || (linkedInvoice || receipt)?.payment_state);
+    const balanceValue = (linkedInvoice || receipt)?.balance_due ?? (linkedInvoice || receipt)?.pending_amount ?? (linkedInvoice || receipt)?.remaining_balance;
+    const hasBalance = balanceValue !== undefined && balanceValue !== null && !(typeof balanceValue === 'string' && balanceValue.trim() === '');
+    const balanceDue = this.toNumberSafe(balanceValue);
+    return paymentState === 'settlement' || invoiceStatus === 'paid' || invoiceStatus === 'fully paid' || (hasBalance && balanceDue <= 0 && this.getReceiptAmountValue(receipt) > 0);
+  },
   renderSummary() {
     if (!E.receiptSummary) return;
     const total = this.state.rows.length;
     const issued = this.state.rows.filter(r => this.normalizeText(r.status) === 'issued').length;
-    const paid = this.state.rows.filter(r => this.normalizeText(r.status) === 'paid').length;
+    const paid = this.state.rows.filter(r => this.isFullyPaidReceipt(r)).length;
     const totalAmount = this.state.rows.reduce((sum, row) => sum + this.toNumberSafe(row.invoice_total), 0);
     E.receiptSummary.innerHTML = [
       { label: 'Total Receipts', value: total, filter: 'total' },
@@ -564,7 +653,8 @@ const Receipts = {
       .map(row => {
         const rowUuid = U.escapeAttr(row.id || row.receipt_id || '');
         const typeLabel = this.receiptTypeLabel(row);
-        const settlementBadge = this.isSettlementReceipt(row) ? ' <span class="pill">Settlement</span>' : '';
+        const paymentState = this.normalizeReceiptPaymentState(row, row);
+        const settlementBadge = this.isSettlementReceipt({ ...row, payment_state: paymentState }) ? ' <span class="pill">Settlement</span>' : '';
         return `<tr>
           <td><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;"><span>${U.escapeHtml(row.receipt_number || row.receipt_id || '—')}</span><span class="pill">${U.escapeHtml(typeLabel)}</span>${settlementBadge}</div></td>
           <td>${U.escapeHtml(row.invoice_number || row.invoice_id || '—')}</td>
@@ -572,7 +662,7 @@ const Receipts = {
           <td>${U.escapeHtml(U.fmtDisplayDate(row.receipt_date))}</td>
           <td>${U.escapeHtml(row.currency || '—')}</td>
           <td>${this.formatMoney(row.amount_received ?? row.invoice_total)}</td>
-          <td>${U.escapeHtml(row.payment_state || '—')}</td>
+          <td>${U.escapeHtml(paymentState || '—')}</td>
           <td>${U.escapeHtml(row.status || '—')}</td>
           <td>${U.escapeHtml(U.fmtDisplayDate(row.updated_at))}</td>
           <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
@@ -662,7 +752,7 @@ const Receipts = {
     const effectiveReceivedAmount = paymentSnapshot.received_amount;
     const effectiveNewPaidTotal = paymentSnapshot.new_paid_total;
     const effectivePendingAmount = paymentSnapshot.pending_amount;
-    const effectivePaymentState = String(paymentSnapshot.payment_state || receipt.payment_state || invoiceSource.payment_state || '').trim() || 'Not Paid';
+    const effectivePaymentState = this.normalizeReceiptPaymentState({ ...receipt, ...paymentSnapshot }, invoiceSource);
     const effectivePaymentConclusion = String(paymentSnapshot.payment_conclusion || receipt.payment_conclusion || '').trim() || 'Pending Settlement';
     set('receiptFormReceiptId', receipt.receipt_id);
     set('receiptFormReceiptNumber', receipt.receipt_number);
@@ -791,7 +881,12 @@ const Receipts = {
     });
   },
   deriveReceiptPaymentState({ pending_amount = 0, received_amount = 0, invoice_total = 0 } = {}) {
-    return U.calculatePaymentState(invoice_total, Math.max(0, this.toNumberSafe(invoice_total) - this.toNumberSafe(pending_amount)));
+    return this.normalizeReceiptPaymentState({
+      invoice_total,
+      pending_amount,
+      balance_due: pending_amount,
+      received_amount
+    }, { pending_amount });
   },
   derivePaymentConclusion({ pending_amount = 0 } = {}) {
     return this.toNumberSafe(pending_amount) <= 0 ? 'Settled' : 'Pending Settlement';
@@ -968,9 +1063,9 @@ const Receipts = {
         ? invoicePendingAmount
         : Math.max(invoiceTotal - newPaidTotal, 0)
     );
-    let paymentState = 'Not Paid';
-    if (newPaidTotal > 0 && newPaidTotal < invoiceTotal) paymentState = 'Partially Paid';
-    if (newPaidTotal >= invoiceTotal) paymentState = 'Fully Paid';
+    let paymentState = 'Received';
+    if (paidNow > 0 && pendingAmount > 0) paymentState = 'Partial Payment';
+    if (paidNow > 0 && pendingAmount <= 0) paymentState = 'Settlement';
     return {
       invoice_total: invoiceTotal,
       old_paid_total: oldPaidBeforeReceipt,
@@ -1011,7 +1106,7 @@ const Receipts = {
     if (E.receiptFormReceivedAmount) E.receiptFormReceivedAmount.value = snapshot.received_amount;
     if (E.receiptFormNewPaidTotal) E.receiptFormNewPaidTotal.value = snapshot.new_paid_total;
     if (E.receiptFormPendingAmount) E.receiptFormPendingAmount.value = snapshot.pending_amount;
-    if (E.receiptFormPaymentState) E.receiptFormPaymentState.value = snapshot.payment_state;
+    if (E.receiptFormPaymentState) E.receiptFormPaymentState.value = this.receiptPaymentStateFromSnapshot(snapshot);
     if (E.receiptFormPaymentConclusion) E.receiptFormPaymentConclusion.value = snapshot.payment_conclusion;
     if (E.receiptFormAmountInWords) {
       const currency = String(E.receiptFormCurrency?.value || 'USD').trim() || 'USD';
@@ -1026,7 +1121,7 @@ const Receipts = {
     const [{ data: invoiceRow, error: invoiceError }] = await Promise.all([
       client
         .from('invoices')
-        .select('id,invoice_id,invoice_number,subtotal_locations,subtotal_one_time,invoice_total,amount_paid,received_amount,paid_now,pending_amount,payment_state')
+        .select('id,invoice_id,invoice_number,subtotal_locations,subtotal_one_time,invoice_total,grand_total,amount_paid,received_amount,paid_now,pending_amount,balance_due,payment_state,payment_status,status')
         .eq('id', invoiceId)
         .maybeSingle()
     ]);
@@ -1067,7 +1162,7 @@ const Receipts = {
       received_amount: snapshot.received_amount,
       new_paid_total: snapshot.new_paid_total,
       pending_amount: snapshot.pending_amount,
-      payment_state: snapshot.payment_state,
+      payment_state: this.receiptPaymentStateFromSnapshot(snapshot, invoice),
       payment_conclusion: snapshot.payment_conclusion
     });
   },
@@ -1172,7 +1267,7 @@ const Receipts = {
       paid_now: snapshot.paid_now,
       new_paid_total: snapshot.new_paid_total,
       pending_amount: snapshot.pending_amount,
-      payment_state: snapshot.payment_state,
+      payment_state: this.receiptPaymentStateFromSnapshot(snapshot, sourceInvoice),
       payment_conclusion: snapshot.payment_conclusion,
       payment_notes: String(sourceInvoice?.notes || '').trim(),
       amount_received: snapshot.received_amount,
@@ -1353,7 +1448,7 @@ const Receipts = {
     const paymentSnapshot = this.resolveReceiptPaymentSnapshot(mergedReceipt, linkedInvoice || {}, invoiceReceipts);
     const normalizedNewPaidTotal = paymentSnapshot.new_paid_total;
     const normalizedPendingAmount = paymentSnapshot.pending_amount;
-    const normalizedPaymentState = String(paymentSnapshot.payment_state || '').trim() || 'Not Paid';
+    const normalizedPaymentState = this.receiptPaymentStateFromSnapshot(paymentSnapshot, linkedInvoice || {});
     const normalizedPaymentConclusion = String(paymentSnapshot.payment_conclusion || '').trim() || 'Pending Settlement';
     return {
       receipt_id: String(formValues.receipt_id || existing.receipt_id || '').trim() || null,
@@ -1463,7 +1558,7 @@ const Receipts = {
             paid_now: snapshot.paid_now,
             new_paid_total: snapshot.new_paid_total,
             pending_amount: calculatedPendingAmount,
-            payment_state: snapshot.payment_state,
+            payment_state: this.receiptPaymentStateFromSnapshot(snapshot, linkedInvoice),
             payment_conclusion: snapshot.payment_conclusion,
             amount_in_words: this.receiptAmountInWords(updates.amount_in_words, updates.currency, normalizedAmount)
           }, {
@@ -1729,7 +1824,7 @@ const Receipts = {
     const paidNow = resolvedSnapshot.paid_now;
     const newPaidTotal = resolvedSnapshot.new_paid_total;
     const pendingAmount = resolvedSnapshot.pending_amount;
-    const paymentState = String(r.payment_state || '').trim() || resolvedSnapshot.payment_state;
+    const paymentState = this.normalizeReceiptPaymentState({ ...r, ...resolvedSnapshot }, invoice || r);
     const paymentConclusion = String(r.payment_conclusion || '').trim() || resolvedSnapshot.payment_conclusion;
     const receiptPaymentAmount = this.getReceiptPaymentAmount({
       ...r,
