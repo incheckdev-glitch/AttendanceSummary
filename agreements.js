@@ -256,12 +256,22 @@ const Agreements = {
     next.customer_signatory_name = customerName;
     next.customer_signatory_title = customerTitle;
     next.customer_sign_date = next.customer_official_sign_date;
+    const primaryProviderSignDate = explicitDate(
+      next.provider_official_signatory_1_sign_date,
+      next.providerOfficialSignatory1SignDate,
+      next.provider_sign_date,
+      next.providerSignDate
+    );
+    const secondaryProviderSignDate = explicitDate(
+      next.provider_official_signatory_2_sign_date,
+      next.providerOfficialSignatory2SignDate
+    );
     next.provider_official_signatory_1_name = this.providerIdentityDefaults.primarySignatoryName;
     next.provider_official_signatory_1_title = this.providerIdentityDefaults.primarySignatoryTitle;
-    next.provider_official_signatory_1_sign_date = explicitDate(next.provider_official_signatory_1_sign_date, next.providerOfficialSignatory1SignDate, next.provider_sign_date, next.providerSignDate);
+    next.provider_official_signatory_1_sign_date = primaryProviderSignDate;
     next.provider_official_signatory_2_name = this.providerIdentityDefaults.secondarySignatoryName;
     next.provider_official_signatory_2_title = this.providerIdentityDefaults.secondarySignatoryTitle;
-    next.provider_official_signatory_2_sign_date = explicitDate(next.provider_official_signatory_2_sign_date, next.providerOfficialSignatory2SignDate, next.provider_sign_date, next.providerSignDate);
+    next.provider_official_signatory_2_sign_date = secondaryProviderSignDate;
     next.provider_primary_signatory_name = next.provider_official_signatory_1_name;
     next.provider_primary_signatory_title = next.provider_official_signatory_1_title;
     next.provider_secondary_signatory_name = next.provider_official_signatory_2_name;
@@ -272,7 +282,7 @@ const Agreements = {
     next.provider_signatory_title_secondary = next.provider_official_signatory_2_title;
     next.provider_signatory_name = next.provider_official_signatory_1_name;
     next.provider_signatory_title = next.provider_official_signatory_1_title;
-    next.provider_sign_date = next.provider_official_signatory_1_sign_date;
+    next.provider_sign_date = primaryProviderSignDate;
     return next;
   },
   applyOfficialSignatoryDefaultsToForm(company = this.state.selectedAgreementCompanyForVerification || null) {
@@ -994,6 +1004,96 @@ const Agreements = {
     const mobile = String(sessionUser.mobile || sessionUser.phone || sessionState.mobile || sessionState.phone || profile.mobile || profile.phone || rawAuthUser.phone || '').trim();
     const roleRaw = String((typeof sessionApi.role === 'function' ? sessionApi.role() : '') || sessionUser.role || sessionState.role || profile.role || rawAuthUser.role || '').trim();
     return { name, email, mobile, role: roleRaw };
+  },
+  normalizeAgreementRoleKey(value = '') {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+  },
+  getCurrentAgreementRoleKey() {
+    const sessionApi = window.Session || {};
+    const sessionUser = typeof sessionApi.user === 'function' ? sessionApi.user() : {};
+    const sessionState = sessionApi.state || {};
+    const profile = sessionState.profile || sessionUser.profile || {};
+    const roleRaw = String(
+      (typeof sessionApi.role === 'function' ? sessionApi.role() : '') ||
+      sessionState.role ||
+      sessionUser.role ||
+      profile.role_key ||
+      profile.roleKey ||
+      profile.role ||
+      ''
+    ).trim();
+    return this.normalizeAgreementRoleKey(roleRaw);
+  },
+  canEditProviderOfficialSignatory1SignDate() {
+    const role = this.getCurrentAgreementRoleKey();
+    return ['senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc'].includes(role);
+  },
+  canEditProviderOfficialSignatory2SignDate() {
+    const role = this.getCurrentAgreementRoleKey();
+    return ['general_manager', 'gm'].includes(role);
+  },
+  getProviderSignDateLockRules() {
+    return [
+      {
+        inputId: 'agreementFormProviderOfficialSignatory1SignDate',
+        field: 'provider_official_signatory_1_sign_date',
+        label: 'Provider Official Signatory 1 Sign Date',
+        requiredRoleLabel: 'Senior Financial Controller',
+        canEdit: this.canEditProviderOfficialSignatory1SignDate()
+      },
+      {
+        inputId: 'agreementFormProviderOfficialSignatory2SignDate',
+        field: 'provider_official_signatory_2_sign_date',
+        label: 'Provider Official Signatory 2 Sign Date',
+        requiredRoleLabel: 'General Manager',
+        canEdit: this.canEditProviderOfficialSignatory2SignDate()
+      }
+    ];
+  },
+  captureProviderSignDateOriginalValues() {
+    this.getProviderSignDateLockRules().forEach(rule => {
+      const el = document.getElementById(rule.inputId);
+      if (!el) return;
+      el.dataset.originalValue = this.normalizeDateInputValue(el.value || '');
+    });
+  },
+  applyProviderSignDateRoleLocks() {
+    const formReadOnly = String(E.agreementForm?.dataset?.readOnly || '').trim() === 'true';
+    this.getProviderSignDateLockRules().forEach(rule => {
+      const el = document.getElementById(rule.inputId);
+      if (!el) return;
+      const locked = formReadOnly || !rule.canEdit;
+      el.disabled = locked;
+      el.readOnly = locked;
+      el.classList.toggle('locked-field', locked);
+      el.classList.toggle('readonly-field', locked);
+      if (locked) {
+        el.setAttribute('aria-disabled', 'true');
+        el.setAttribute('aria-readonly', 'true');
+        el.title = `${rule.label} can only be filled by the ${rule.requiredRoleLabel} role.`;
+      } else {
+        el.removeAttribute('aria-disabled');
+        el.removeAttribute('aria-readonly');
+        el.title = `Only the ${rule.requiredRoleLabel} role should fill this sign date.`;
+      }
+    });
+  },
+  validateProviderSignDateRoleChanges() {
+    for (const rule of this.getProviderSignDateLockRules()) {
+      const el = document.getElementById(rule.inputId);
+      if (!el) continue;
+      const currentValue = this.normalizeDateInputValue(el.value || '');
+      const originalValue = this.normalizeDateInputValue(el.dataset.originalValue || '');
+      if (currentValue !== originalValue && !rule.canEdit) {
+        UI.toast(`${rule.label} can only be filled or changed by the ${rule.requiredRoleLabel} role.`);
+        return false;
+      }
+    }
+    return true;
   },
   extractRows(response) {
     const candidates = [response, response?.agreements, response?.items, response?.rows, response?.data, response?.result, response?.payload, response?.data?.agreements, response?.result?.agreements, response?.payload?.agreements];
@@ -2099,6 +2199,7 @@ const Agreements = {
     E.agreementForm.dataset.readOnly = readOnly ? 'true' : 'false';
     this.state.currentAgreementId = String(agreement.id || '').trim();
     this.assignFormValues(agreement);
+    this.captureProviderSignDateOriginalValues();
     this.initializeProviderSignDateDefaultTracking(agreement);
     this.renderItemRows(items);
     this.state.selectedAgreementCompanyForVerification = this.hasCompanyVerificationFields(agreement) ? agreement : null;
@@ -2112,9 +2213,14 @@ const Agreements = {
     this.setFormReadOnly(readOnly);
     this.applyIdentityFieldLocks();
     this.applyAgreementEditLocks();
+    this.applyProviderSignDateRoleLocks();
     E.agreementFormModal.classList.add('open');
     E.agreementFormModal.setAttribute('aria-hidden', 'false');
-    window.setTimeout(() => { window.CrmCompanyContactSelectors?.initializeCompanyContactSelectorsForAgreement?.(); this.applyAgreementEditLocks(); }, 0);
+    window.setTimeout(() => {
+      window.CrmCompanyContactSelectors?.initializeCompanyContactSelectorsForAgreement?.();
+      this.applyAgreementEditLocks();
+      this.applyProviderSignDateRoleLocks();
+    }, 0);
     if (window.setAppHashRoute && window.buildRecordHashRoute) setAppHashRoute(buildRecordHashRoute('agreements', agreement || {}));
   },
   closeAgreementForm() {
@@ -2255,6 +2361,7 @@ const Agreements = {
     const source = String(E.agreementForm?.dataset.source || '').trim();
     const formProposalUuid = String(E.agreementForm?.dataset.proposalUuid || '').trim();
     const { agreement, items } = this.collectFormValues();
+    if (!this.validateProviderSignDateRoleChanges()) return;
     if (!id && !this.validateCommercialItems(items)) return;
     const isDirectCreate = !id && source !== 'create_from_proposal' && !String(formProposalUuid || agreement.proposal_id || '').trim();
     const provider = this.getSignedInUserForAgreement();
