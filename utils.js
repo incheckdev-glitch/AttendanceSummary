@@ -208,6 +208,47 @@ const U = {
       maximumFractionDigits: 2
     }).format(num);
   },
+  amountToWords: (value, currency = 'USD') => {
+    const parsed = typeof value === 'number' ? value : Number(String(value ?? '').replace(/,/g, '').trim());
+    const amount = Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+    const totalCents = Math.round(amount * 100);
+    const whole = Math.floor(totalCents / 100);
+    const cents = totalCents % 100;
+    const ones = ['Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+    const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+    const currencyLabels = {
+      USD: 'Dollars',
+      EUR: 'Euros',
+      GBP: 'Pounds',
+      AED: 'Dirhams',
+      SAR: 'Riyals',
+      QAR: 'Riyals',
+      LBP: 'Lebanese Pounds'
+    };
+
+    const underThousand = n => {
+      if (n < 20) return ones[n];
+      if (n < 100) return `${tens[Math.floor(n / 10)]}${n % 10 ? ` ${ones[n % 10]}` : ''}`;
+      return `${ones[Math.floor(n / 100)]} Hundred${n % 100 ? ` ${underThousand(n % 100)}` : ''}`;
+    };
+    const toWords = n => {
+      if (n === 0) return 'Zero';
+      const chunks = [[1_000_000_000, 'Billion'], [1_000_000, 'Million'], [1_000, 'Thousand'], [1, '']];
+      let remaining = n;
+      const words = [];
+      chunks.forEach(([size, label]) => {
+        if (remaining < size) return;
+        const chunk = Math.floor(remaining / size);
+        remaining %= size;
+        words.push(`${underThousand(chunk)}${label ? ` ${label}` : ''}`);
+      });
+      return words.join(' ');
+    };
+
+    const code = String(currency || 'USD').trim().toUpperCase() || 'USD';
+    const currencyLabel = currencyLabels[code] || code;
+    return `${toWords(whole)} ${currencyLabel} and ${String(cents).padStart(2, '0')}/100`;
+  },
   escapeHtml: s =>
     String(s).replace(/[&<>"']/g, m => (
       {
