@@ -25,7 +25,8 @@
       loadingUsers: false,
       loadingRoles: false,
       mobileView: 'list',
-      detailsVisible: true
+      detailsVisible: true,
+      exportingPdf: false
     },
     realtimeChannel: null,
     realtimeReady: false,
@@ -236,6 +237,403 @@
     return escapeHtml(value).replace(/'/g, '&#39;');
   };
   const normalizeText = value => String(value ?? '').trim();
+
+  function firstNonEmpty(...values) {
+    for (const value of values) {
+      const normalized = normalizeText(value);
+      if (normalized) return normalized;
+    }
+    return '';
+  }
+
+  function formatCommunicationExportDate(value) {
+    if (!value) return '-';
+    try {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value);
+      return date.toLocaleString();
+    } catch (_error) {
+      return String(value);
+    }
+  }
+
+  function formatCommunicationExportDateStamp(value = new Date()) {
+    const date = value instanceof Date ? value : new Date(value);
+    const safeDate = Number.isNaN(date.getTime()) ? new Date() : date;
+    const yyyy = safeDate.getFullYear();
+    const mm = String(safeDate.getMonth() + 1).padStart(2, '0');
+    const dd = String(safeDate.getDate()).padStart(2, '0');
+    return `${yyyy}${mm}${dd}`;
+  }
+
+  function sanitizeCommunicationExportText(value) {
+    const withLineBreaks = String(value || '')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p\s*>/gi, '\n')
+      .replace(/<\/div\s*>/gi, '\n')
+      .replace(/<\/li\s*>/gi, '\n')
+      .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, '')
+      .replace(/<[^>]+>/g, ' ');
+    return withLineBreaks
+      .split(/\r?\n/)
+      .map(line => line.replace(/[ \t]+/g, ' ').trim())
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  function preserveMessageLineBreaks(value) {
+    const sanitized = sanitizeCommunicationExportText(value);
+    if (!sanitized) return '<span class="muted">No message content</span>';
+    return sanitized.split('\n').map(line => escapeHtml(line)).join('<br>');
+  }
+
+  function safeCommunicationFilePart(value) {
+    return String(value || 'conversation').trim().replace(/[^a-z0-9_-]+/gi, '_').replace(/^_+|_+$/g, '') || 'conversation';
+  }
+
+  function getCommunicationCurrentUserProfileFallback() {
+    const sessionState = global.Session?.state || {};
+    const authContext = typeof global.Session?.authContext === 'function' ? global.Session.authContext() : {};
+    const candidates = [sessionState.profile, authContext.profile, sessionState.user, authContext.user, global.Session?.user?.(), global.Session?.currentUser?.()].filter(Boolean);
+    const merged = Object.assign({}, ...candidates.reverse());
+    return {
+      id: firstNonEmpty(merged.id, merged.user_id, merged.profile_id, sessionState.user_id),
+      name: firstNonEmpty(merged.full_name, merged.name, merged.display_name, sessionState.name, typeof global.Session?.displayName === 'function' ? global.Session.displayName() : ''),
+      email: firstNonEmpty(merged.email, sessionState.email),
+      role: firstNonEmpty(merged.role_key, merged.role, sessionState.role)
+    };
+  }
+
+  async function loadCommunicationCurrentUserProfile(client) {
+    const fallback = getCommunicationCurrentUserProfileFallback();
+    const currentUserId = fallback.id || global.Session?.userId?.() || global.Session?.user?.()?.id || '';
+    if (!client?.from || !currentUserId) return fallback;
+    try {
+      const { data, error } = await client
+        .from('profiles')
+        .select('id,full_name,name,display_name,email,username,role_key,role')
+        .eq('id', currentUserId)
+        .maybeSingle();
+      if (error || !data) return fallback;
+      return {
+        id: firstNonEmpty(data.id, fallback.id),
+        name: firstNonEmpty(data.full_name, data.name, data.display_name, data.username, fallback.name),
+        email: firstNonEmpty(data.email, fallback.email),
+        role: firstNonEmpty(data.role_key, data.role, fallback.role)
+      };
+    } catch (error) {
+      console.warn('[Communication Centre export] unable to load current user profile', error);
+      return fallback;
+    }
+  }
+
+  function getParticipantDisplayName(row = {}) {
+    return firstNonEmpty(row.user_name, row.name, row.full_name, row.display_name, row.email, row.user_id, row.profile_id, 'User');
+  }
+
+  function getParticipantEmail(row = {}) {
+    return firstNonEmpty(row.user_email, row.email, row.participant_email);
+  }
+
+  function getParticipantRole(row = {}) {
+    return firstNonEmpty(row.participant_role, row.role, row.role_key, row.user_role, row.participant_type);
+  }
+
+  function getParticipantJoinedDate(row = {}) {
+    return firstNonEmpty(row.joined_at, row.created_at, row.added_at);
+  }
+
+  function getActionItemOwner(actionItem = {}, participants = []) {
+    const ownerId = firstNonEmpty(actionItem.assigned_to, actionItem.owner_id, actionItem.assignee_id, actionItem.user_id);
+    if (ownerId) {
+      const owner = participants.find(participant => [participant.user_id, participant.profile_id, participant.id, participant.auth_user_id].some(value => String(value || '') === String(ownerId)));
+      if (owner) return getParticipantDisplayName(owner);
+    }
+    return firstNonEmpty(actionItem.assigned_to_name, actionItem.owner_name, actionItem.assignee_name, ownerId, '-');
+  }
+
+  function getMessageAttachmentRows(message = {}) {
+    const raw = message.attachments || message.files || message.attachment_names || message.attachment_links || [];
+    const rows = Array.isArray(raw) ? raw : (typeof raw === 'string' && raw.trim().startsWith('[') ? (() => { try { return JSON.parse(raw); } catch (_error) { return [raw]; } })() : (raw ? [raw] : []));
+    return rows.map(item => {
+      if (item && typeof item === 'object') {
+        return {
+          name: firstNonEmpty(item.name, item.file_name, item.filename, item.title, item.path, item.url, 'Attachment'),
+          url: firstNonEmpty(item.url, item.signed_url, item.public_url, item.href, item.path)
+        };
+      }
+      return { name: String(item || '').trim(), url: '' };
+    }).filter(item => item.name);
+  }
+
+  function buildCommunicationExportRows(labelValuePairs) {
+    return labelValuePairs.map(([label, value]) => `
+      <tr>
+        <th>${escapeHtml(label)}</th>
+        <td>${escapeHtml(firstNonEmpty(value, '-'))}</td>
+      </tr>
+    `).join('');
+  }
+
+  function getCommunicationMessageBody(message = {}) {
+    if (message.is_deleted) return 'This message was deleted.';
+    return firstNonEmpty(message.message_body, message.body, message.content, message.decrypted_body, message.decrypted_message);
+  }
+
+  function buildCommunicationConversationExportHtml({ conversation, messages, participants, actionItems, exportedBy, exportedAt }) {
+    const exportDate = formatCommunicationExportDate(exportedAt);
+    const relatedLabel = firstNonEmpty(conversation._relatedRecordLabel, conversation.related_record_label, conversation.related_label, conversation.related_record_name, conversation.related_record_id);
+    const conversationNumber = firstNonEmpty(conversation.conversation_no, conversation.conversation_number, conversation.id);
+    const sortedMessages = [...(messages || [])].sort((a, b) => new Date(a.created_at || a.sent_at || 0).getTime() - new Date(b.created_at || b.sent_at || 0).getTime());
+    const participantRows = (participants || []).map(participant => `
+      <tr>
+        <td>${escapeHtml(getParticipantDisplayName(participant))}</td>
+        <td>${escapeHtml(getParticipantEmail(participant) || '-')}</td>
+        <td>${escapeHtml(getParticipantRole(participant) || '-')}</td>
+        <td>${escapeHtml(formatCommunicationExportDate(getParticipantJoinedDate(participant)))}</td>
+      </tr>
+    `).join('') || '<tr><td colspan="4">No participants found.</td></tr>';
+    const messageCards = sortedMessages.map(message => {
+      const sender = firstNonEmpty(message.sender_name, message.created_by_name, message.user_name, message.sender_email, message.created_by_email, 'System');
+      const senderEmail = firstNonEmpty(message.sender_email, message.created_by_email, message.email);
+      const sentAt = formatCommunicationExportDate(firstNonEmpty(message.created_at, message.sent_at, message.updated_at));
+      const attachments = getMessageAttachmentRows(message);
+      const attachmentHtml = attachments.length ? `
+        <div class="attachments"><strong>Attachments:</strong>${attachments.map(attachment => {
+          const safeUrl = global.U?.sanitizeUrl ? global.U.sanitizeUrl(attachment.url) : attachment.url;
+          return safeUrl
+            ? `<div><a href="${escapeAttr(safeUrl)}">${escapeHtml(attachment.name)}</a></div>`
+            : `<div>${escapeHtml(attachment.name)}</div>`;
+        }).join('')}</div>
+      ` : '';
+      const markerParts = [];
+      if (message.edited_at || message.is_edited) markerParts.push(`Edited${message.edited_at ? ` ${formatCommunicationExportDate(message.edited_at)}` : ''}`);
+      if (message.is_deleted || message.deleted_at) markerParts.push(`Deleted${message.deleted_at ? ` ${formatCommunicationExportDate(message.deleted_at)}` : ''}`);
+      return `
+        <article class="message-card ${message.is_deleted ? 'deleted' : ''}">
+          <div class="message-card__meta">
+            <div><strong>${escapeHtml(sender)}</strong>${senderEmail ? `<span>${escapeHtml(senderEmail)}</span>` : ''}</div>
+            <div>${escapeHtml(sentAt)}</div>
+          </div>
+          ${markerParts.length ? `<div class="message-card__markers">${escapeHtml(markerParts.join(' • '))}</div>` : ''}
+          <div class="message-card__body">${preserveMessageLineBreaks(getCommunicationMessageBody(message))}</div>
+          ${attachmentHtml}
+        </article>
+      `;
+    }).join('') || '<p class="muted">No messages found.</p>';
+    const actionItemSection = (actionItems || []).length ? `
+      <section class="section">
+        <h2>Action Items</h2>
+        <table>
+          <thead><tr><th>Title</th><th>Owner</th><th>Due Date</th><th>Status</th><th>Notes</th></tr></thead>
+          <tbody>${actionItems.map(item => `
+            <tr>
+              <td>${escapeHtml(firstNonEmpty(item.title, item.name, '-'))}</td>
+              <td>${escapeHtml(getActionItemOwner(item, participants))}</td>
+              <td>${escapeHtml(formatCommunicationExportDate(firstNonEmpty(item.due_at, item.due_date)))}</td>
+              <td>${escapeHtml(firstNonEmpty(item.status, '-'))}</td>
+              <td>${escapeHtml(sanitizeCommunicationExportText(firstNonEmpty(item.notes, item.description, item.note, '')) || '-')}</td>
+            </tr>
+          `).join('')}</tbody>
+        </table>
+      </section>
+    ` : '';
+    const baseHref = escapeAttr(global.location?.href || '');
+    const html = `<!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>${escapeHtml(`Communication_Conversation_${conversationNumber}_${formatCommunicationExportDateStamp(exportedAt)}`)}</title>
+          <base href="${baseHref}" />
+          <style>
+            @page { size: A4; margin: 16mm 14mm 18mm; }
+            * { box-sizing: border-box; }
+            body { margin: 0; background: #fff; color: #1f2937; font: 12px/1.45 Arial, Helvetica, sans-serif; }
+            .document { max-width: 190mm; margin: 0 auto; }
+            .doc-header { display: grid; grid-template-columns: 40mm 1fr 40mm; gap: 10mm; align-items: start; border-bottom: 2px solid #111827; padding-bottom: 8mm; margin-bottom: 8mm; }
+            .doc-logo { min-height: 20mm; display: flex; align-items: flex-start; }
+            .doc-title { text-align: center; }
+            .doc-title h1 { margin: 0 0 4mm; font-size: 20px; color: #111827; letter-spacing: .01em; }
+            .doc-title p { margin: 1mm 0; color: #4b5563; }
+            .section { break-inside: avoid; margin: 0 0 8mm; }
+            .section h2 { margin: 0 0 3mm; color: #111827; font-size: 15px; border-bottom: 1px solid #d1d5db; padding-bottom: 2mm; }
+            table { width: 100%; border-collapse: collapse; margin: 0; }
+            th, td { border: 1px solid #d1d5db; padding: 7px 8px; vertical-align: top; text-align: left; }
+            th { width: 32%; background: #f3f4f6; color: #374151; font-weight: 700; }
+            thead th { width: auto; }
+            .message-card { break-inside: avoid; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 12px; margin: 0 0 8px; background: #fff; }
+            .message-card.deleted { background: #f9fafb; color: #6b7280; }
+            .message-card__meta { display: flex; justify-content: space-between; gap: 14px; color: #374151; border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; margin-bottom: 8px; }
+            .message-card__meta span { display: block; color: #6b7280; font-size: 11px; font-weight: 400; margin-top: 1px; }
+            .message-card__markers { display: inline-block; margin-bottom: 7px; padding: 2px 7px; border-radius: 999px; background: #f3f4f6; color: #4b5563; font-size: 11px; }
+            .message-card__body { white-space: normal; color: #111827; }
+            .attachments { margin-top: 8px; padding-top: 7px; border-top: 1px dashed #d1d5db; color: #374151; }
+            .attachments a { color: #1d4ed8; text-decoration: none; }
+            .muted { color: #6b7280; }
+            .footer { position: fixed; left: 14mm; right: 14mm; bottom: 6mm; display: flex; justify-content: space-between; border-top: 1px solid #d1d5db; padding-top: 3mm; color: #6b7280; font-size: 10px; }
+            .footer .page::after { content: counter(page); }
+            @media screen { body { background: #f3f4f6; padding: 18px; } .document { background: #fff; padding: 16mm 14mm 18mm; box-shadow: 0 12px 32px rgba(15,23,42,.12); } .footer { position: static; margin-top: 10mm; } }
+            @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } .document { max-width: none; } }
+          </style>
+        </head>
+        <body>
+          <main class="document">
+            <header class="doc-header">
+              <div class="doc-logo"><div data-incheck360-doc-logo-slot></div></div>
+              <div class="doc-title">
+                <h1>Communication Conversation Export</h1>
+                <p><strong>Export date/time:</strong> ${escapeHtml(exportDate)}</p>
+                <p><strong>Exported by:</strong> ${escapeHtml(firstNonEmpty(exportedBy.name, exportedBy.email, 'Current user'))}${exportedBy.email && exportedBy.email !== exportedBy.name ? ` (${escapeHtml(exportedBy.email)})` : ''}</p>
+              </div>
+              <div></div>
+            </header>
+            <section class="section">
+              <h2>Conversation Details</h2>
+              <table><tbody>${buildCommunicationExportRows([
+                ['Conversation title/subject', firstNonEmpty(conversation.title, conversation.subject, 'Untitled')],
+                ['Conversation ID', conversationNumber],
+                ['Status', firstNonEmpty(conversation.status, 'Open')],
+                ['Priority', firstNonEmpty(conversation.priority, '-')],
+                ['Created date', formatCommunicationExportDate(conversation.created_at)],
+                ['Created by', firstNonEmpty(conversation.created_by_name, conversation.created_by_email, conversation.created_by, '-')],
+                ['Related module', firstNonEmpty(getRelatedModuleLabel(conversation.related_module || ''), conversation.related_module, '-')],
+                ['Related record', relatedLabel || '-']
+              ])}</tbody></table>
+            </section>
+            <section class="section">
+              <h2>Participants</h2>
+              <table>
+                <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Joined Date</th></tr></thead>
+                <tbody>${participantRows}</tbody>
+              </table>
+            </section>
+            <section class="section">
+              <h2>Messages</h2>
+              ${messageCards}
+            </section>
+            ${actionItemSection}
+            <footer class="footer"><span>Generated by InCheck 360</span><span>Page <span class="page"></span></span></footer>
+          </main>
+        </body>
+      </html>`;
+    return global.U?.addIncheckDocumentLogo ? global.U.addIncheckDocumentLogo(html) : html;
+  }
+
+  function openCommunicationExportPrintWindow(html, fileName) {
+    const printWindow = global.open('', '_blank', 'noopener,noreferrer,width=1080,height=900');
+    const writeAndPrint = targetWindow => {
+      targetWindow.document.open();
+      targetWindow.document.write(html);
+      targetWindow.document.close();
+      targetWindow.document.title = fileName;
+      const printNow = () => {
+        targetWindow.focus();
+        targetWindow.print();
+        showFriendlySuccess('Use Save as PDF in the print dialog.');
+      };
+      if (targetWindow.document.readyState === 'complete') setTimeout(printNow, 200);
+      else targetWindow.addEventListener('load', () => setTimeout(printNow, 200), { once: true });
+    };
+    if (printWindow) {
+      writeAndPrint(printWindow);
+      return true;
+    }
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    iframe.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(iframe);
+    const frameWindow = iframe.contentWindow;
+    const frameDoc = iframe.contentDocument || frameWindow?.document;
+    if (!frameWindow || !frameDoc) {
+      iframe.remove();
+      return false;
+    }
+    frameDoc.open();
+    frameDoc.write(html);
+    frameDoc.close();
+    frameDoc.title = fileName;
+    const cleanup = () => setTimeout(() => iframe.remove(), 1500);
+    const printFrame = () => {
+      frameWindow.focus();
+      frameWindow.print();
+      showFriendlySuccess('Pop-up blocked. Use Save as PDF in the print dialog.');
+      cleanup();
+    };
+    if (frameDoc.readyState === 'complete') setTimeout(printFrame, 200);
+    else iframe.addEventListener('load', () => setTimeout(printFrame, 200), { once: true });
+    return true;
+  }
+
+  async function exportActiveConversationPdf() {
+    const activeId = getActiveConversationId();
+    const button = $('communicationCentreExportPdfBtn');
+    if (!activeId) return showFriendlyError('Open a conversation before exporting.');
+    if (!canOpenConversation()) return showFriendlyError('You do not have access to export this conversation.');
+    if (M.state.exportingPdf) return;
+
+    const originalText = button?.textContent || 'Export PDF';
+    M.state.exportingPdf = true;
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Preparing PDF...';
+    }
+    try {
+      const client = db();
+      if (!client?.from) throw new Error('Supabase client is not available.');
+      const { data: conversation, error: conversationError } = await client
+        .from('communication_centre_conversations')
+        .select('*')
+        .eq('id', activeId)
+        .maybeSingle();
+      if (conversationError || !conversation) throw conversationError || new Error('Conversation not found or access denied.');
+
+      const [messagesResult, participantsResult, actionItemsResult, exportedBy] = await Promise.all([
+        client.rpc('list_communication_centre_messages_secure', { p_conversation_id: activeId }),
+        client.from('communication_centre_participants').select('*').eq('conversation_id', activeId).order('participant_type', { ascending: true }).order('user_name', { ascending: true }),
+        client.from('communication_centre_action_items').select('*').eq('conversation_id', activeId).order('created_at', { ascending: true }),
+        loadCommunicationCurrentUserProfile(client)
+      ]);
+      if (messagesResult.error) throw messagesResult.error;
+      if (participantsResult.error) throw participantsResult.error;
+      const ignoredActionItemErrorCodes = new Set(['42P01', 'PGRST205', 'PGRST116']);
+      if (actionItemsResult.error && !ignoredActionItemErrorCodes.has(String(actionItemsResult.error.code || ''))) throw actionItemsResult.error;
+
+      const exportConversation = {
+        ...conversation,
+        _relatedRecordLabel: await resolveRelatedRecordLabel(conversation.related_module, conversation.related_record_id)
+      };
+      const exportedAt = new Date();
+      const conversationFileId = safeCommunicationFilePart(firstNonEmpty(exportConversation.conversation_no, exportConversation.id));
+      const fileName = `Communication_Conversation_${conversationFileId}_${formatCommunicationExportDateStamp(exportedAt)}.pdf`;
+      const html = buildCommunicationConversationExportHtml({
+        conversation: exportConversation,
+        messages: messagesResult.data || [],
+        participants: participantsResult.data || [],
+        actionItems: actionItemsResult.error ? [] : (actionItemsResult.data || []),
+        exportedBy,
+        exportedAt
+      });
+      if (!openCommunicationExportPrintWindow(html, fileName)) throw new Error('Unable to open print window.');
+    } catch (error) {
+      console.error('[Communication Centre export] PDF export failed', error);
+      showFriendlyError('Unable to export conversation PDF. Please try again.');
+    } finally {
+      M.state.exportingPdf = false;
+      if (button) {
+        button.disabled = false;
+        button.textContent = originalText;
+      }
+    }
+  }
+
   const normalizeRole = value => normalizeText(value).toLowerCase();
   const MOBILE_BREAKPOINT = 768;
   const TABLET_BREAKPOINT = 1024;
@@ -1309,7 +1707,8 @@
         ? `Related: ${conversation._relatedRecordLabel || conversation.related_record_id}`
         : '';
       const detailsLabel = (isMobileViewport() || isTabletViewport()) ? 'Details' : (M.state.detailsVisible === false ? 'Show details' : 'Hide details');
-      if (header) header.innerHTML = `${mobileBack}<div class="cc-chat-heading"><h3>${escapeHtml((conversation.conversation_no || '') + ' ' + (conversation.title || ''))}</h3><div class="muted">${escapeHtml(conversation.category || 'General')} • ${escapeHtml(conversation.priority || 'Normal')} • ${escapeHtml(conversation.status || 'Open')}${relatedLabel ? ` • ${escapeHtml(relatedLabel)}` : ''}</div></div><button id="communicationCentreOpenDetails" class="btn ghost sm" type="button">${detailsLabel}</button>`;
+      if (header) header.innerHTML = `${mobileBack}<div class="cc-chat-heading"><h3>${escapeHtml((conversation.conversation_no || '') + ' ' + (conversation.title || ''))}</h3><div class="muted">${escapeHtml(conversation.category || 'General')} • ${escapeHtml(conversation.priority || 'Normal')} • ${escapeHtml(conversation.status || 'Open')}${relatedLabel ? ` • ${escapeHtml(relatedLabel)}` : ''}</div></div><div class="cc-chat-header-actions"><button id="communicationCentreExportPdfBtn" class="btn ghost sm" type="button">${M.state.exportingPdf ? 'Preparing PDF...' : 'Export PDF'}</button><button id="communicationCentreOpenDetails" class="btn ghost sm" type="button">${detailsLabel}</button></div>`;
+      $('communicationCentreExportPdfBtn')?.addEventListener('click', exportActiveConversationPdf);
     if (meta) meta.textContent = `${conversation.status || 'Open'} • ${conversation.priority || 'Normal'} • ${conversation.category || 'General'}`;
     if (participants) {
       participants.innerHTML = M.state.participants.map(participant => `
