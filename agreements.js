@@ -222,22 +222,9 @@ const Agreements = {
     return this.normalizeDateInputValue(document.getElementById('agreementFormAgreementDate')?.value || document.getElementById('agreementFormServiceStartDate')?.value) || this.getTodayDateInputValue();
   },
   getDefaultOfficialSignDate(agreement = {}) {
-    // Signature dates must stay blank by default. Only return an explicitly stored/user-entered sign date.
-    return this.normalizeDateInputValue(
-      agreement.customer_official_sign_date ||
-      agreement.customerOfficialSignDate ||
-      agreement.customer_sign_date ||
-      agreement.customerSignDate ||
-      agreement.provider_official_signatory_1_sign_date ||
-      agreement.providerOfficialSignatory1SignDate ||
-      agreement.provider_official_signatory_2_sign_date ||
-      agreement.providerOfficialSignatory2SignDate ||
-      agreement.provider_sign_date ||
-      agreement.providerSignDate ||
-      agreement.signed_date ||
-      agreement.signedDate ||
-      ''
-    );
+    // Signature dates must never default from agreement/proposal dates or today's date.
+    // They stay empty unless the user explicitly enters a signature date.
+    return '';
   },
   getCompanyAuthorizedSignatory(company = {}) {
     return {
@@ -251,6 +238,13 @@ const Agreements = {
   },
   applyOfficialSignatoryDefaults(agreement = {}, company = null) {
     const next = agreement && typeof agreement === 'object' ? { ...agreement } : {};
+    const explicitDate = (...values) => {
+      for (const value of values) {
+        const normalized = this.normalizeDateInputValue(value || '');
+        if (normalized) return normalized;
+      }
+      return '';
+    };
     const companySignatory = company ? this.getCompanyAuthorizedSignatory(company) : { name: '', title: '' };
     const customerName = companySignatory.name
       || String(next.customer_official_signatory_name || next.customerOfficialSignatoryName || next.customer_signatory_name || next.customerSignatoryName || '').trim();
@@ -258,19 +252,16 @@ const Agreements = {
       || String(next.customer_official_signatory_title || next.customerOfficialSignatoryTitle || next.customer_signatory_title || next.customerSignatoryTitle || '').trim();
     next.customer_official_signatory_name = customerName;
     next.customer_official_signatory_title = customerTitle;
-    const customerSignDate = this.normalizeDateInputValue(next.customer_official_sign_date || next.customerOfficialSignDate || next.customer_sign_date || next.customerSignDate || '');
-    const providerSignDate1 = this.normalizeDateInputValue(next.provider_official_signatory_1_sign_date || next.providerOfficialSignatory1SignDate || next.provider_sign_date || next.providerSignDate || '');
-    const providerSignDate2 = this.normalizeDateInputValue(next.provider_official_signatory_2_sign_date || next.providerOfficialSignatory2SignDate || next.provider_sign_date || next.providerSignDate || '');
-    next.customer_official_sign_date = customerSignDate;
+    next.customer_official_sign_date = explicitDate(next.customer_official_sign_date, next.customerOfficialSignDate, next.customer_sign_date, next.customerSignDate);
     next.customer_signatory_name = customerName;
     next.customer_signatory_title = customerTitle;
-    next.customer_sign_date = customerSignDate;
+    next.customer_sign_date = next.customer_official_sign_date;
     next.provider_official_signatory_1_name = this.providerIdentityDefaults.primarySignatoryName;
     next.provider_official_signatory_1_title = this.providerIdentityDefaults.primarySignatoryTitle;
-    next.provider_official_signatory_1_sign_date = providerSignDate1;
+    next.provider_official_signatory_1_sign_date = explicitDate(next.provider_official_signatory_1_sign_date, next.providerOfficialSignatory1SignDate, next.provider_sign_date, next.providerSignDate);
     next.provider_official_signatory_2_name = this.providerIdentityDefaults.secondarySignatoryName;
     next.provider_official_signatory_2_title = this.providerIdentityDefaults.secondarySignatoryTitle;
-    next.provider_official_signatory_2_sign_date = providerSignDate2;
+    next.provider_official_signatory_2_sign_date = explicitDate(next.provider_official_signatory_2_sign_date, next.providerOfficialSignatory2SignDate, next.provider_sign_date, next.providerSignDate);
     next.provider_primary_signatory_name = next.provider_official_signatory_1_name;
     next.provider_primary_signatory_title = next.provider_official_signatory_1_title;
     next.provider_secondary_signatory_name = next.provider_official_signatory_2_name;
@@ -946,17 +937,17 @@ const Agreements = {
       customer_signatory_title: '',
       provider_official_signatory_1_name: this.providerIdentityDefaults.primarySignatoryName,
       provider_official_signatory_1_title: this.providerIdentityDefaults.primarySignatoryTitle,
-      provider_official_signatory_1_sign_date: String(source.provider_sign_date || source.providerSignDate || '').trim(),
+      provider_official_signatory_1_sign_date: '',
       provider_official_signatory_2_name: this.providerIdentityDefaults.secondarySignatoryName,
       provider_official_signatory_2_title: this.providerIdentityDefaults.secondarySignatoryTitle,
-      provider_official_signatory_2_sign_date: String(source.provider_official_signatory_2_sign_date || source.providerOfficialSignatory2SignDate || '').trim(),
+      provider_official_signatory_2_sign_date: '',
       provider_signatory_name_primary: this.providerIdentityDefaults.primarySignatoryName,
       provider_signatory_title_primary: this.providerIdentityDefaults.primarySignatoryTitle,
       provider_signatory_name_secondary: this.providerIdentityDefaults.secondarySignatoryName,
       provider_signatory_title_secondary: this.providerIdentityDefaults.secondarySignatoryTitle,
-      provider_sign_date: String(source.provider_sign_date || source.providerSignDate || '').trim(),
-      customer_official_sign_date: String(source.customer_sign_date || source.customerSignDate || '').trim(),
-      customer_sign_date: String(source.customer_sign_date || source.customerSignDate || '').trim(),
+      provider_sign_date: '',
+      customer_official_sign_date: '',
+      customer_sign_date: '',
       gm_signed: this.toDbBoolean(source.gm_signed ?? source.gmSigned, false),
       financial_controller_signed: this.toDbBoolean(
         source.financial_controller_signed ?? source.financialControllerSigned,
@@ -1987,7 +1978,7 @@ const Agreements = {
         delete field.dataset.autoSignDateDefault;
         return;
       }
-      field.dataset.autoSignDateDefault = 'false';
+      field.dataset.autoSignDateDefault = 'true';
     });
   },
   bindProviderSignDateDefaultTracking() {
@@ -2711,7 +2702,8 @@ const Agreements = {
       const agreementCompanySelect = document.getElementById('agreementFormCompanySelector');
       const agreementDateInput = document.getElementById('agreementFormAgreementDate');
       if (agreementDateInput) agreementDateInput.addEventListener('change', () => {
-        // Agreement date must not auto-populate any signature date fields.
+        // Do not copy agreement date into any signature date field.
+        // Signature dates are manual-only and must remain blank unless explicitly entered.
         this.applyOfficialSignatoryDefaultsToForm(this.state.selectedAgreementCompanyForVerification);
       });
       if (agreementCompanySelect) agreementCompanySelect.addEventListener('change', event => {

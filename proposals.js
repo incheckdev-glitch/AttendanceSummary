@@ -2651,10 +2651,11 @@ const Proposals = {
     set(E.proposalFormPoNumber, proposal.po_number || '');
     set(E.proposalFormCustomerSignatoryName, proposal.customer_signatory_name || '');
     set(E.proposalFormCustomerSignatoryTitle, proposal.customer_signatory_title || '');
-    set(E.proposalFormCustomerSignDate, proposal.customer_sign_date || '');
+    // Signature dates must stay blank unless explicitly entered by the user.
+    set(E.proposalFormCustomerSignDate, this.normalizeDateInputValue(proposal.customer_sign_date || ''));
     set(E.proposalFormProviderSignatoryName, this.getProposalProviderSignatoryName(proposal));
     set(E.proposalFormProviderSignatoryTitle, this.getProposalProviderSignatoryTitle(proposal));
-    set(E.proposalFormProviderSignDate, proposal.provider_sign_date || '');
+    set(E.proposalFormProviderSignDate, this.normalizeDateInputValue(proposal.provider_sign_date || ''));
     set(E.proposalFormTerms, proposal.terms_conditions || '');
   },
   computeCommercialRow(item) {
