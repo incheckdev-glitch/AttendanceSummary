@@ -383,6 +383,17 @@ header{
   box-shadow:none;
 }
 .input::placeholder{color:var(--muted)}
+
+.proposal-lock-message{
+  margin:0 0 12px;
+  padding:10px 12px;
+  border:1px solid rgba(245, 158, 11, .45);
+  border-radius:12px;
+  background:rgba(245, 158, 11, .12);
+  color:#fbbf24;
+  font-weight:700;
+}
+
 .readonly-field.locked-field{
   background:rgba(100,116,139,.14);
   color:var(--text);

@@ -6,7 +6,7 @@ const Proposals = {
     mobile: '+31 97 010280855',
     email: 'Info@incheck360.nl'
   },
-  finalStatusOptions: ['Draft', 'Pending Approval', 'Sent', 'Accepted', 'Rejected', 'Expired'],
+  finalStatusOptions: ['draft', 'pending_approval', 'sent', 'accepted', 'rejected', 'expired'],
   proposalFields: [
     'proposal_id',
     'ref_number',
@@ -733,16 +733,42 @@ const Proposals = {
       || stripEmailSuffix(contact.contact_name || contact.contactName)
       || String(contact.email || '').trim();
   },
-  normalizeProposalStatus(value = '') {
-    const status = String(value || '').trim();
-    if (!status) return '';
-    if (status.toLowerCase() === 'viewed') return 'Sent';
-    if (status.toLowerCase() === 'approved') return 'Accepted';
-    return status;
+  normalizeProposalStatus(value) {
+    const normalized = String(value || '').trim().toLowerCase().replace(/\s+/g, '_');
+    if (normalized === 'viewed') return 'sent';
+    if (normalized === 'approved') return 'accepted';
+    return normalized;
   },
   isProposalAccepted(proposal = {}) {
-    const status = String(proposal?.status || '').trim().toLowerCase();
-    return status === 'accepted';
+    return this.normalizeProposalStatus(proposal?.status) === 'accepted';
+  },
+  getProposalStatusLabel(value = '') {
+    const labels = {
+      draft: 'Draft',
+      pending_approval: 'Pending Approval',
+      sent: 'Sent',
+      accepted: 'Accepted',
+      rejected: 'Rejected',
+      expired: 'Expired'
+    };
+    const normalized = this.normalizeProposalStatus(value);
+    return labels[normalized] || String(value || '').trim() || '—';
+  },
+  getProposalLockMessageElement() {
+    if (!E.proposalForm) return null;
+    let message = E.proposalForm.querySelector('[data-proposal-accepted-lock-message]');
+    if (message) return message;
+    message = document.createElement('div');
+    message.setAttribute('data-proposal-accepted-lock-message', 'true');
+    message.className = 'proposal-lock-message';
+    message.textContent = 'Accepted proposal is locked. Only signed document upload and conversion to agreement are allowed.';
+    E.proposalForm.prepend(message);
+    return message;
+  },
+  syncProposalAcceptedLockMessage(locked) {
+    const message = this.getProposalLockMessageElement();
+    if (!message) return;
+    message.style.display = locked ? '' : 'none';
   },
   canShowConvertToAgreement(proposal = {}) {
     return this.isProposalAccepted(proposal) && Permissions.canCreateAgreementFromProposal();
@@ -1676,7 +1702,7 @@ const Proposals = {
       delete prepared.proposal_valid_until;
       delete prepared.valid_until;
     }
-    if (hasStatus || ensureBusinessProposalId) prepared.status = this.normalizeProposalStatus(base.status) || 'Draft';
+    if (hasStatus || ensureBusinessProposalId) prepared.status = this.normalizeProposalStatus(base.status) || 'draft';
     return prepared;
   },
   async deleteProposal(proposalId) {
@@ -1740,7 +1766,7 @@ const Proposals = {
     });
     const currency = String(proposalData.currency || 'USD').trim().toUpperCase();
     const normalizedStatus = this.normalizeProposalStatus(proposalData.status);
-    const showDraftWatermark = String(normalizedStatus || '').trim().toLowerCase() === 'draft';
+    const showDraftWatermark = normalizedStatus === 'draft';
     const providerCompanyName = this.providerContactDefaults.name;
     const providerAddress = this.providerContactDefaults.address;
     const money = value => this.formatMoneyWithCurrency(this.toNumberSafe(value), currency, false);
@@ -2386,7 +2412,11 @@ const Proposals = {
 
     if (E.proposalsStatusFilter) {
       const options = ['All', ...statusValues];
-      E.proposalsStatusFilter.innerHTML = options.map(v => `<option>${U.escapeHtml(v)}</option>`).join('');
+      E.proposalsStatusFilter.innerHTML = options
+        .map(v => v === 'All'
+          ? '<option value="All">All</option>'
+          : `<option value="${U.escapeAttr(v)}">${U.escapeHtml(this.getProposalStatusLabel(v))}</option>`)
+        .join('');
       E.proposalsStatusFilter.value = options.includes(this.state.status) ? this.state.status : 'All';
     }
     if (E.proposalsSearchInput) E.proposalsSearchInput.value = this.state.search;
@@ -2462,13 +2492,14 @@ const Proposals = {
     E.proposalsTbody.innerHTML = rows
       .map(row => {
         const id = U.escapeAttr(row.id || '');
+        const isAccepted = this.isProposalAccepted(row);
         return `<tr>
           <td>${proposalIdCell(row)}</td>
           <td>${textCell(row.ref_number)}</td>
           <td>${textCell(row.proposal_title)}</td>
           <td>${textCell(row.customer_name)}</td>
           <td>${textCell(row.deal_code || row.deal_id)}</td>
-          <td>${textCell(this.normalizeProposalStatus(row.status))}</td>
+          <td>${textCell(this.getProposalStatusLabel(row.status))}</td>
           <td>${textCell(row.currency)}</td>
           <td>${this.formatMoney(row.saas_total)}</td>
           <td>${this.formatMoney(row.one_time_total)}</td>
@@ -2478,7 +2509,7 @@ const Proposals = {
           <td>${textCell(row.generated_by)}</td>
           <td>
             ${Permissions.canPreviewProposal() ? `<button class="btn ghost sm" type="button" data-proposal-view="${id}" data-permission-resource="proposals" data-permission-action="view">View</button>` : ''}
-            ${Permissions.canUpdateProposal() ? `<button class="btn ghost sm" type="button" data-proposal-edit="${id}" data-permission-resource="proposals" data-permission-action="update">Edit</button>` : ''}
+            ${Permissions.canUpdateProposal() && !isAccepted ? `<button class="btn ghost sm" type="button" data-proposal-edit="${id}" data-permission-resource="proposals" data-permission-action="update">Edit</button>` : ''}
             ${Permissions.canPreviewProposal() ? `<button class="btn ghost sm" type="button" data-proposal-preview="${id}" data-permission-resource="proposals" data-permission-action="view">Preview</button>` : ''}
             ${this.canShowConvertToAgreement(row) && !this.isAgreementAlreadyCreated(row)
               ? `<button class="btn ghost sm" type="button" data-proposal-convert-agreement="${id}" data-permission-resource="agreements" data-permission-action="create_from_proposal">Convert to Agreement</button>`
@@ -2549,7 +2580,7 @@ const Proposals = {
       lead_id: '',
       proposal_date: this.todayDateString(),
       valid_until: this.getAutoValidUntil(this.todayDateString()),
-      status: 'Draft',
+      status: 'draft',
       currency: '',
       customer_name: '',
       customer_legal_name: '',
@@ -2619,12 +2650,13 @@ const Proposals = {
     if (E.proposalFormPreviewBtn) E.proposalFormPreviewBtn.disabled = false;
     if (E.proposalSignedDocumentFile) E.proposalSignedDocumentFile.value = '';
     if (E.proposalSignedDocumentSection) E.proposalSignedDocumentSection.style.display = 'none';
+    this.syncProposalAcceptedLockMessage(false);
   },
   setFormReadOnly(readOnly) {
     this.state.formReadOnly = !!readOnly;
     if (!E.proposalForm) return;
     E.proposalForm.querySelectorAll('input, select, textarea').forEach(el => {
-      if (el.id === 'proposalFormProposalId') return;
+      if (el.id === 'proposalSignedDocumentFile') return;
       el.disabled = !!readOnly;
     });
     [E.proposalAddAnnualRowBtn, E.proposalAddOneTimeRowBtn, E.proposalAddCapabilityRowBtn].forEach(btn => {
@@ -2635,10 +2667,9 @@ const Proposals = {
       btn.style.display = readOnly ? 'none' : '';
     });
     if (E.proposalFormSaveBtn) E.proposalFormSaveBtn.style.display = readOnly ? 'none' : '';
+    this.syncProposalAcceptedLockMessage(readOnly && this.isProposalAccepted(this.state.currentProposal || {}));
     const lockedIds=['proposalFormCustomerName','proposalFormCustomerAddress','proposalFormCustomerContactName','proposalFormCustomerContactMobile','proposalFormCustomerContactEmail','proposalFormProviderContactName','proposalFormProviderContactMobile','proposalFormProviderContactEmail','proposalFormCustomerSignatoryName','proposalFormCustomerSignatoryTitle','proposalFormProviderSignatoryName','proposalFormProviderSignatoryTitle'];
     lockedIds.forEach(id=>{const el=document.getElementById(id); if(!el) return; el.readOnly=true; el.classList.add('readonly-field','locked-field'); el.setAttribute('aria-readonly','true');});
-    if (E.proposalSignedDocumentFile) E.proposalSignedDocumentFile.disabled = !!readOnly;
-    if (E.proposalSignedDocumentUploadBtn) E.proposalSignedDocumentUploadBtn.style.display = readOnly ? 'none' : '';
     this.refreshSignedDocumentUi(this.state.currentProposal || {});
     if (E.proposalFormDeleteBtn && readOnly) E.proposalFormDeleteBtn.style.display = 'none';
   },
@@ -2653,7 +2684,7 @@ const Proposals = {
     const proposalDate = this.getProposalDateOrToday(proposal.proposal_date);
     set(E.proposalFormProposalDate, proposalDate);
     set(E.proposalFormValidUntil, this.getAutoValidUntil(proposalDate));
-    set(E.proposalFormStatus, this.normalizeProposalStatus(proposal.status) || 'Draft');
+    set(E.proposalFormStatus, this.normalizeProposalStatus(proposal.status) || 'draft');
     set(E.proposalFormCurrency, proposal.currency || '');
     set(E.proposalFormCustomerName, proposal.customer_legal_name || proposal.customer_name || proposal.company_name || '');
     set(E.proposalFormCustomerAddress, proposal.customer_address || '');
@@ -3025,7 +3056,7 @@ const Proposals = {
       proposal_date: this.getProposalDateOrToday(E.proposalFormProposalDate?.value),
       proposal_valid_until: this.getAutoValidUntil(E.proposalFormProposalDate?.value),
       valid_until: this.getAutoValidUntil(E.proposalFormProposalDate?.value),
-      status: this.normalizeProposalStatus(E.proposalFormStatus?.value) || 'Draft',
+      status: this.normalizeProposalStatus(E.proposalFormStatus?.value) || 'draft',
       currency: String(E.proposalFormCurrency?.value || '').trim(),
       customer_name: resolvedCustomerName,
       customer_legal_name: resolvedCustomerName,
@@ -3088,23 +3119,24 @@ const Proposals = {
     this.setTriggerBusy(trigger, true);
     console.time('proposal-open');
     const localSummary = this.state.rows.find(row => String(row.id || '').trim() === id);
+    const localProposal = localSummary ? { ...this.emptyProposal(), ...localSummary, id } : { id };
     this.openProposalForm(
-      localSummary ? { ...this.emptyProposal(), ...localSummary, id } : { id },
+      localProposal,
       [],
-      { readOnly }
+      { readOnly: readOnly || this.isProposalAccepted(localProposal) }
     );
     this.setFormDetailLoading(true);
     try {
       const cached = this.getCachedDetail(id);
       if (cached) {
-        this.openProposalForm(cached.proposal, cached.items, { readOnly });
+        this.openProposalForm(cached.proposal, cached.items, { readOnly: readOnly || this.isProposalAccepted(cached.proposal) });
         return;
       }
       const response = await this.getProposal(id);
       const { proposal, items } = this.extractProposalAndItems(response, id);
       this.setCachedDetail(id, proposal, items);
       if (String(E.proposalForm?.dataset.id || '').trim() === id) {
-        this.openProposalForm(proposal, items, { readOnly });
+        this.openProposalForm(proposal, items, { readOnly: readOnly || this.isProposalAccepted(proposal) });
       }
     } catch (error) {
       if (typeof isPermissionError === 'function' && isPermissionError(error)) {
@@ -3131,9 +3163,11 @@ const Proposals = {
     if (!E.proposalFormModal || !E.proposalForm) return;
     const base = proposal ? this.normalizeProposal(proposal) : this.emptyProposal();
     const mode = base.id ? 'edit' : 'create';
+    const acceptedLocked = this.isProposalAccepted(base);
+    const effectiveReadOnly = !!readOnly || acceptedLocked;
     this.resetForm();
     this.state.formMode = mode;
-    this.state.formReadOnly = !!readOnly;
+    this.state.formReadOnly = effectiveReadOnly;
     this.state.currentProposalId = base.id || '';
     this.state.currentProposal = base;
     this.state.currentItems = Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : [];
@@ -3190,17 +3224,18 @@ const Proposals = {
     this.ensureCatalogLoaded();
 
     if (E.proposalFormTitle) {
-      if (readOnly) E.proposalFormTitle.textContent = 'View Proposal';
+      if (effectiveReadOnly) E.proposalFormTitle.textContent = acceptedLocked ? 'View Locked Proposal' : 'View Proposal';
       else E.proposalFormTitle.textContent = mode === 'edit' ? 'Edit Proposal' : 'Create Proposal';
     }
     if (E.proposalFormDeleteBtn)
-      E.proposalFormDeleteBtn.style.display = mode === 'edit' && !readOnly && Permissions.canDeleteProposal() ? '' : 'none';
+      E.proposalFormDeleteBtn.style.display = mode === 'edit' && !effectiveReadOnly && Permissions.canDeleteProposal() ? '' : 'none';
     if (E.proposalFormSaveBtn) {
       const canSave = mode === 'edit' ? Permissions.canUpdateProposal() : Permissions.canCreateProposal();
-      E.proposalFormSaveBtn.style.display = !readOnly && canSave ? '' : 'none';
+      E.proposalFormSaveBtn.style.display = !effectiveReadOnly && canSave ? '' : 'none';
     }
 
-    this.setFormReadOnly(readOnly);
+    this.syncProposalAcceptedLockMessage(acceptedLocked);
+    this.setFormReadOnly(effectiveReadOnly);
 
     E.proposalFormModal.style.display = 'flex';
     E.proposalFormModal.setAttribute('aria-hidden', 'false');
@@ -3249,8 +3284,8 @@ const Proposals = {
     const isAccepted = this.isProposalAccepted(snapshot);
     const hasDocument = Boolean(snapshot.signed_document_path);
     E.proposalSignedDocumentSection.style.display = isPersisted ? '' : 'none';
-    if (E.proposalSignedDocumentUploadBtn) E.proposalSignedDocumentUploadBtn.disabled = !isPersisted || !isAccepted || this.state.formReadOnly;
-    if (E.proposalSignedDocumentFile) E.proposalSignedDocumentFile.disabled = !isPersisted || !isAccepted || this.state.formReadOnly;
+    if (E.proposalSignedDocumentUploadBtn) E.proposalSignedDocumentUploadBtn.disabled = !isPersisted || !isAccepted;
+    if (E.proposalSignedDocumentFile) E.proposalSignedDocumentFile.disabled = !isPersisted || !isAccepted;
     if (E.proposalSignedDocumentOpenBtn) E.proposalSignedDocumentOpenBtn.style.display = hasDocument ? '' : 'none';
     if (E.proposalSignedDocumentState) {
       if (!isPersisted) {
@@ -3427,14 +3462,39 @@ const Proposals = {
     }
     const items = this.collectProposalItems();
     if (!this.validateCommercialItems(items)) return;
-    const cachedDetail = this.getCachedDetail(proposalId);
-    const currentRecord = cachedDetail?.proposal || this.state.rows.find(row => String(row.id || '') === proposalId) || {};
+    let currentRecord = {};
+    let latestItems = this.state.currentItems;
+    if (mode === 'edit' && proposalId) {
+      try {
+        const latestResponse = await this.getProposal(proposalId);
+        const latest = this.extractProposalAndItems(latestResponse, proposalId);
+        currentRecord = latest?.proposal || {};
+        latestItems = Array.isArray(latest?.items) ? latest.items : latestItems;
+        if (latest?.proposal) {
+          this.upsertLocalRow(latest.proposal);
+          this.setCachedDetail(latest.proposal.id || proposalId, latest.proposal, latest.items);
+          this.state.currentProposal = latest.proposal;
+        }
+      } catch (error) {
+        UI.toast('Unable to verify proposal status before saving: ' + (error?.message || 'Unknown error'));
+        return;
+      }
+      if (this.isProposalAccepted(currentRecord)) {
+        UI.toast('Accepted proposals are locked and cannot be edited.');
+        this.openProposalForm(currentRecord, latestItems, { readOnly: true });
+        return;
+      }
+    }
+    if (!currentRecord?.id) {
+      const cachedDetail = this.getCachedDetail(proposalId);
+      currentRecord = cachedDetail?.proposal || this.state.rows.find(row => String(row.id || '') === proposalId) || {};
+    }
     const requestedDiscount = typeof getProposalCurrentDiscountPercent === 'function'
       ? getProposalCurrentDiscountPercent({ ...currentRecord, ...proposal }, items)
       : items.reduce((max, item) => Math.max(max, this.toNumberSafe(item.discount_percent)), 0);
     const currentStatus = this.normalizeProposalStatus(currentRecord?.status);
     const requestedStatus = this.normalizeProposalStatus(proposal.status);
-    if (currentStatus === 'Pending Approval' && requestedStatus === 'Sent') {
+    if (currentStatus === 'pending_approval' && requestedStatus === 'sent') {
       UI.toast('This proposal is already pending approval.');
       return;
     }
@@ -3533,7 +3593,7 @@ const Proposals = {
         }
       }
       UI.toast(mode === 'edit' ? 'Proposal updated.' : 'Proposal created.');
-      if (parsed?.proposal) this.openProposalForm(parsed.proposal, parsed.items, { readOnly: false });
+      if (parsed?.proposal) this.openProposalForm(parsed.proposal, parsed.items, { readOnly: this.isProposalAccepted(parsed.proposal) });
       else this.closeProposalForm();
     } catch (error) {
       if (typeof isPermissionError === 'function' && isPermissionError(error)) {
