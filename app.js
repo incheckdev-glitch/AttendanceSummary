@@ -2909,6 +2909,32 @@ function normalizeViewKey(view) {
   return key;
 }
 
+function normalizeTicketFilterVisibilityKey(activeModule) {
+  return String(activeModule || '')
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/-/g, '_');
+}
+
+function shouldShowTicketFilters(activeModule) {
+  const key = normalizeTicketFilterVisibilityKey(activeModule);
+
+  return [
+    'tickets',
+    'ticket',
+    'issues',
+    'events',
+    'calendar',
+    'calendar_events',
+    'ai_insights',
+    'ai_analytics',
+    'insights'
+  ].includes(key);
+}
+window.shouldShowTicketFilters = shouldShowTicketFilters;
+
 function setActiveView(view) {
  view = normalizeViewKey(view);
  const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
@@ -3024,9 +3050,9 @@ function setActiveView(view) {
   const moduleHash = getAppHashForView(view);
   if (moduleHash) setAppHashRoute(moduleHash);
   if (E.app) E.app.classList.toggle('csm-filters-only', view === 'csm');
-  if (E.mainFiltersPanel)
-    E.mainFiltersPanel.style.display =
-      view === 'leads' || view === 'deals' || view === 'proposals' || view === 'agreements' || view === 'operationsOnboarding' || view === 'technicalAdmin' || view === 'invoices' || view === 'receipts' || view === 'lifecycleAnalytics' || view === 'clients' || view === 'proposalCatalog' || view === 'notifications' || view === 'notificationSetup' || view === 'workflow' ? 'none' : '';
+  if (E.mainFiltersPanel) {
+    E.mainFiltersPanel.style.display = shouldShowTicketFilters(view) ? '' : 'none';
+  }
   if (E.leadsFiltersPanel) E.leadsFiltersPanel.style.display = view === 'leads' ? '' : 'none';
   if (E.dealsFiltersPanel) E.dealsFiltersPanel.style.display = view === 'deals' ? '' : 'none';
   const isForbiddenError = error => {
