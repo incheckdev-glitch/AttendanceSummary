@@ -196,14 +196,17 @@ self.addEventListener('push', (event) => {
       dataPayload?.record_id ||
       null;
 
-    let url = payload?.url || dataPayload?.url || defaultPayload.url;
+    let url = payload?.deep_link || dataPayload?.deep_link || payload?.url || dataPayload?.url || defaultPayload.url;
     if (!url && conversationId) {
-      url = `/#communication_centre?conversation_id=${encodeURIComponent(String(conversationId))}`;
+      url = `#communication-centre?conversation_id=${encodeURIComponent(String(conversationId))}`;
     } else if (
       conversationId &&
-      (String(url).includes('communication_centre') || String(payload?.resource || '').toLowerCase() === 'communication_centre')
+      (String(url).includes('communication_centre') ||
+        String(url).includes('communication-centre') ||
+        String(payload?.resource || '').toLowerCase() === 'communication_centre' ||
+        String(dataPayload?.resource || '').toLowerCase() === 'communication_centre')
     ) {
-      url = `/#communication_centre?conversation_id=${encodeURIComponent(String(conversationId))}`;
+      url = `#communication-centre?conversation_id=${encodeURIComponent(String(conversationId))}`;
     }
 
     const derivedTag = [payload?.resource, payload?.action, payload?.record_id, conversationId]
@@ -215,8 +218,8 @@ self.addEventListener('push', (event) => {
 
     const options = {
       body,
-      icon: payload.icon || '/icon-192.png',
-      badge: payload.badge || '/icon-192.png',
+      icon: payload.icon || '/icons/icon-192.png',
+      badge: payload.badge || '/icons/icon-192.png',
       tag,
       renotify: true,
       requireInteraction: true,
@@ -224,7 +227,9 @@ self.addEventListener('push', (event) => {
       vibrate: [200, 100, 200],
       timestamp: Date.now(),
       data: {
+        ...payload,
         ...(payload.data || {}),
+        deep_link: payload?.deep_link || dataPayload?.deep_link || url,
         url
       }
     };
@@ -293,7 +298,12 @@ self.addEventListener('message', event => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  const targetUrl = event.notification?.data?.url || '/';
+  const data = event.notification?.data || {};
+  const targetUrl =
+    data.deep_link ||
+    data.url ||
+    data.link ||
+    '/#communication-centre';
   console.log('[SW notificationclick]', targetUrl);
 
   event.waitUntil((async () => {
@@ -306,9 +316,11 @@ self.addEventListener('notificationclick', (event) => {
 
     for (const client of allClients) {
       try {
-        await client.focus();
         if ('navigate' in client) {
           await client.navigate(absoluteUrl);
+        }
+        if ('focus' in client) {
+          return client.focus();
         }
         return;
       } catch {

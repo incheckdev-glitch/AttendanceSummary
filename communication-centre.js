@@ -955,6 +955,145 @@
     M.readPollingTimer = null;
   }
 
+  function normalizeCommunicationMessagePreview(value) {
+    const text = String(value || '')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!text) return 'You have a new message.';
+    return text.length > 120 ? `${text.slice(0, 117)}...` : text;
+  }
+
+  async function getCommunicationCentrePushRecipients(conversationId, senderUserId) {
+    const normalizedConversationId = String(conversationId || '').trim();
+    if (!normalizedConversationId) return [];
+
+    const client = db();
+    if (!client?.from) {
+      console.warn('[Communication Centre PWA] Supabase client is unavailable while loading participants');
+      return [];
+    }
+
+    const { data, error } = await client
+      .from('communication_centre_participants')
+      .select('*')
+      .eq('conversation_id', normalizedConversationId);
+
+    if (error) {
+      console.warn('[Communication Centre PWA] Unable to load participants', error);
+      return [];
+    }
+
+    const recipients = (data || [])
+      .filter((row) => {
+        const userId = row.user_id || row.participant_user_id || row.profile_id;
+        if (!userId) return false;
+        if (String(userId) === String(senderUserId)) return false;
+        if (row.is_active === false) return false;
+        if (row.status && ['inactive', 'removed', 'left'].includes(String(row.status).toLowerCase())) return false;
+        if (row.left_at) return false;
+        if (row.muted === true || row.is_muted === true) return false;
+        return true;
+      })
+      .map((row) => row.user_id || row.participant_user_id || row.profile_id)
+      .filter(Boolean)
+      .filter((value, index, arr) => arr.findIndex((x) => String(x) === String(value)) === index);
+
+    console.log('[Communication Centre PWA] recipients resolved', {
+      conversationId: normalizedConversationId,
+      senderUserId,
+      recipients
+    });
+
+    return recipients;
+  }
+
+  async function sendCommunicationCentrePwaPush({
+    conversationId,
+    messageId,
+    senderUserId,
+    senderName,
+    messageBody
+  }) {
+    try {
+      if (!conversationId || !messageId || !senderUserId) return;
+      if (!global.Api?.sendWebPush) {
+        console.warn('[Communication Centre PWA] Api.sendWebPush is unavailable');
+        return;
+      }
+
+      const recipients = await getCommunicationCentrePushRecipients(conversationId, senderUserId);
+
+      if (!recipients.length) {
+        console.info('[Communication Centre PWA] No recipients for conversation', conversationId);
+        return;
+      }
+
+      const deepLink = `#communication-centre?conversation_id=${encodeURIComponent(conversationId)}`;
+      const preview = normalizeCommunicationMessagePreview(messageBody);
+      const safeSenderName = senderName || 'Communication Centre';
+
+      const pushPromises = recipients.map((recipientUserId) => {
+        const payload = {
+          recipient_user_id: recipientUserId,
+          user_id: recipientUserId,
+          user_ids: [recipientUserId],
+          target_user_ids: [recipientUserId],
+          recipient_user_ids: [recipientUserId],
+          title: 'New message in Communication Centre',
+          body: `${safeSenderName}: ${preview}`,
+          icon: '/icons/icon-192.png',
+          badge: '/icons/icon-192.png',
+          tag: `communication-centre-${conversationId}`,
+          resource: 'communication_centre',
+          action: 'message_created',
+          event_key: 'message_created',
+          related_module: 'communication_centre',
+          related_record_id: conversationId,
+          record_id: conversationId,
+          deep_link: deepLink,
+          url: deepLink,
+          data: {
+            module: 'communication_centre',
+            resource: 'communication_centre',
+            action: 'message_created',
+            event_key: 'message_created',
+            conversation_id: conversationId,
+            message_id: messageId,
+            record_id: conversationId,
+            related_record_id: conversationId,
+            deep_link: deepLink,
+            url: deepLink
+          }
+        };
+        console.log('[Communication Centre PWA] calling Api.sendWebPush', {
+          conversationId,
+          messageId,
+          recipientUserId,
+          deepLink
+        });
+        return global.Api.sendWebPush(payload, { context: 'communication_centre:message_created:direct-pwa' });
+      });
+
+      const results = await Promise.allSettled(pushPromises);
+      console.log('[Communication Centre PWA] push results', {
+        conversationId,
+        messageId,
+        sent: results.filter((item) => item.status === 'fulfilled').length,
+        failed: results.filter((item) => item.status === 'rejected').length,
+        results
+      });
+
+      const failed = results.filter((item) => item.status === 'rejected');
+      if (failed.length) {
+        console.warn('[Communication Centre PWA] Some push notifications failed', failed);
+      }
+    } catch (error) {
+      console.warn('[Communication Centre PWA] Push failed but message save remains successful', error);
+    }
+  }
+
   async function dispatchCommunicationCentreNotification({ action, conversationId, actorId, conversationNo, conversationTitle }) {
     const normalizedAction = String(action || '').trim();
     const normalizedConversationId = String(conversationId || '').trim();
@@ -1882,7 +2021,7 @@
           if (replyBtn) { replyBtn.disabled = false; replyBtn.textContent = 'Send'; }
           return;
         }
-        const { error } = await db().rpc('add_communication_centre_reply_secure', {
+        const { data: insertedMessageId, error } = await db().rpc('add_communication_centre_reply_secure', {
           p_conversation_id: conversation.id,
           p_message_body: body,
           p_message_type: msgType || 'message',
@@ -1890,6 +2029,26 @@
         });
         if (error) throw error;
         const insertedBody = body;
+        const messageId = Array.isArray(insertedMessageId)
+          ? (insertedMessageId[0]?.message_id || insertedMessageId[0]?.id || insertedMessageId[0])
+          : (insertedMessageId?.message_id || insertedMessageId?.id || insertedMessageId);
+        const currentUser = global.Session?.user?.() || global.Session?.currentUser?.() || {};
+        const senderUserId = currentUser.id || global.Session?.state?.user?.id || global.Session?.state?.profile?.id || null;
+        const senderName = currentUser.full_name || currentUser.fullName || currentUser.name || currentUser.display_name || currentUser.displayName || global.Session?.displayName?.() || currentUser.email || 'User';
+        console.log('[Communication Centre PWA] message saved', {
+          conversationId: conversation.id,
+          messageId,
+          senderUserId
+        });
+        sendCommunicationCentrePwaPush({
+          conversationId: conversation.id,
+          messageId,
+          senderUserId,
+          senderName,
+          messageBody: insertedBody
+        }).catch((pushError) => {
+          console.warn('[Communication Centre PWA] Push failed but message save remains successful', pushError);
+        });
         const tags = [...insertedBody.matchAll(/@([a-z0-9_]+)/gi)].map(m => m[1].toLowerCase());
         if (tags.length) console.log('[Communication Centre] mentions detected', tags);
         if (input) input.value = '';
