@@ -1,3 +1,31 @@
+function canAssignOperationsCsm(currentUser, permissions) {
+  const role = String(
+    currentUser?.role_key ||
+    currentUser?.role ||
+    currentUser?.profile?.role_key ||
+    ''
+  ).trim().toLowerCase();
+
+  if (['admin', 'hoo', 'head_of_operations', 'operations_manager'].includes(role)) {
+    return true;
+  }
+
+  return Boolean(
+    permissions?.operations_onboarding?.manage ||
+    permissions?.operations_onboarding?.update ||
+    permissions?.operations_onboarding?.assign_csm
+  );
+}
+
+function isOnboardingClosed(record) {
+  const status = String(record?.status || record?.onboarding_status || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_');
+
+  return ['completed', 'cancelled', 'canceled', 'closed'].includes(status);
+}
+
 const OperationsOnboarding = {
   OVERDUE_DAYS: 14,
   state: {
@@ -70,7 +98,10 @@ const OperationsOnboarding = {
       technical_admin_request: String(this.pick(source.technical_admin_request, source.technicalAdminRequest, source.lite_request, source.liteRequest, source.full_request, source.fullRequest)).trim(),
       technical_admin_request_message: String(this.pick(source.technical_admin_request_message, source.technicalAdminRequestMessage, source.request_message, source.requestMessage)).trim(),
       technical_request_status: String(this.pick(source.technical_request_status, source.technicalRequestStatus)).trim(),
-      csm_assigned_to: String(this.pick(source.csm_assigned_to, source.csmAssignedTo)).trim(),
+      csm_assigned_to: String(this.pick(source.csm_assigned_to, source.csmAssignedTo, source.assigned_csm_name, source.assignedCsmName, source.csm_name, source.csmName, source.assigned_cs_name, source.assignedCsName)).trim(),
+      assigned_csm_id: String(this.pick(source.assigned_csm_id, source.assignedCsmId, source.assigned_csm_user_id, source.assignedCsmUserId, source.csm_user_id, source.csmUserId)).trim(),
+      assigned_csm_name: String(this.pick(source.assigned_csm_name, source.assignedCsmName, source.csm_assigned_to, source.csmAssignedTo, source.csm_name, source.csmName, source.assigned_cs_name, source.assignedCsName)).trim(),
+      assigned_csm_email: String(this.pick(source.assigned_csm_email, source.assignedCsmEmail, source.csm_email, source.csmEmail, source.assigned_cs_email, source.assignedCsEmail)).trim(),
       csm_assigned_at: String(this.pick(source.csm_assigned_at, source.csmAssignedAt)).trim(),
       priority: String(this.pick(source.priority)).trim(),
       open_client_request: String(this.pick(source.open_client_request, source.openClientRequest)).trim(),
@@ -157,6 +188,21 @@ const OperationsOnboarding = {
     const role = this.normalizeRole(user.role_key || user.role || user.user_role || '');
     return ['csm', 'customer_success', 'customer_success_manager'].includes(role);
   },
+  currentUser() {
+    return Session?.user?.() || Session?.authContext?.() || window.currentUser || {};
+  },
+  getOperationsOnboardingPermissions() {
+    return {
+      operations_onboarding: {
+        manage: Permissions?.canPerformAction?.('operations_onboarding', 'manage') === true,
+        update: Permissions?.canPerformAction?.('operations_onboarding', 'update') === true,
+        assign_csm: Permissions?.canPerformAction?.('operations_onboarding', 'assign_csm') === true
+      }
+    };
+  },
+  canAssignOperationsCsm(currentUser = this.currentUser(), permissions = this.getOperationsOnboardingPermissions()) {
+    return canAssignOperationsCsm(currentUser, permissions);
+  },
   getUserDisplayName(user = {}) {
     return String(user.display_name || user.full_name || user.name || user.email || '').trim();
   },
@@ -205,6 +251,9 @@ const OperationsOnboarding = {
   },
   canWrite() {
     return !Permissions.isViewer() && Permissions.canManageOperationsOnboarding();
+  },
+  canAssignCsm() {
+    return this.canAssignOperationsCsm(this.currentUser(), this.getOperationsOnboardingPermissions());
   },
   canRequestTechnicalAdmin() {
     return Permissions.canRequestTechnicalAdmin();
@@ -289,6 +338,9 @@ const OperationsOnboarding = {
   },
   isCompletedStatus(status = '') {
     return String(status || '').trim().toLowerCase().includes('complete');
+  },
+  isOnboardingClosed(record) {
+    return isOnboardingClosed(record);
   },
   isActiveStatus(status = '') {
     const normalized = String(status || '').trim().toLowerCase();
@@ -932,14 +984,18 @@ const OperationsOnboarding = {
     }
     const text = value => U.escapeHtml(String(value || '—'));
     const canWrite = this.canWrite();
-    const canAssignCsm = canAnyPermission([['operations_onboarding','assign_csm'], ['operations_onboarding','update'], ['operations_onboarding','manage']]);
+    const canAssignCsm = this.canAssignCsm();
     const canCreateTechnicalRequest = this.canRequestTechnicalAdmin();
     E.operationsOnboardingTbody.innerHTML = rows.map(row => {
       const agreementId = U.escapeAttr(row.agreement_id);
-      const rowDbId = U.escapeAttr(row.id || row.db_id || '');
+      const rowRecordId = row.id || row.db_id || row.onboarding_id || '';
+      const rowDbId = U.escapeAttr(rowRecordId);
       const onboardingLabel = U.escapeHtml(row.onboarding_id || row.id || '—');
       const hasAgreementId = Boolean(String(row.agreement_id || '').trim());
-      const hasRowDbId = Boolean(String(row.id || row.db_id || '').trim());
+      const hasRowDbId = Boolean(String(rowRecordId || '').trim());
+      const assignedCsmName = row.assigned_csm_name || row.csm_assigned_to || '';
+      const showAssignCsmButton = canAssignCsm && !this.isOnboardingClosed(row);
+      const assignCsmButtonLabel = assignedCsmName ? 'Change CSM' : 'Assign CSM';
       const agreement = this.state.agreementMap.get(row.agreement_id) || {};
       const agreementItems = this.state.agreementItemsMap.get(row.agreement_id) || [];
       const locationCount = this.deriveAgreementLocationCount(agreement, agreementItems, row);
@@ -949,13 +1005,13 @@ const OperationsOnboarding = {
       const paymentTerm = row.payment_term || agreement.payment_term;
       return `<tr>
           <td>${onboardingLabel}</td><td>${text(row.agreement_id)}</td><td>${text(row.agreement_number)}</td><td>${text(row.client_name)}</td><td>${text(this.formatDate(row.signed_date))}</td><td>${text(row.onboarding_status)}</td>
-          <td>${text(row.request_type || row.technical_request_type)}</td><td>${text(row.requested_by)}</td><td>${text(this.formatDate(row.requested_at))}</td><td>${text(row.technical_request_status || row.technical_admin_request)}</td><td>${text(row.request_message || row.technical_request_details || row.technical_admin_request_message)}</td><td>${text(row.csm_assigned_to)}</td><td>${text(locationCount)}</td><td>${text(this.formatDate(serviceStart))}</td><td>${text(this.formatDate(serviceEnd))}</td><td>${text(billingFrequency)}</td><td>${text(paymentTerm)}</td><td>${text(this.formatDate(row.updated_at))}</td>
+          <td>${text(row.request_type || row.technical_request_type)}</td><td>${text(row.requested_by)}</td><td>${text(this.formatDate(row.requested_at))}</td><td>${text(row.technical_request_status || row.technical_admin_request)}</td><td>${text(row.request_message || row.technical_request_details || row.technical_admin_request_message)}</td><td><strong>${text(assignedCsmName || 'Unassigned')}</strong>${row.assigned_csm_email ? `<div class="muted">${U.escapeHtml(row.assigned_csm_email)}</div>` : ''}</td><td>${text(locationCount)}</td><td>${text(this.formatDate(serviceStart))}</td><td>${text(this.formatDate(serviceEnd))}</td><td>${text(billingFrequency)}</td><td>${text(paymentTerm)}</td><td>${text(this.formatDate(row.updated_at))}</td>
           <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
             <button class="btn ghost sm" type="button" data-op-open-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Preview Agreement</button>
             <button class="btn ghost sm" type="button" data-op-open-details="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Open Onboarding Details</button>
             ${canCreateTechnicalRequest ? `<button class="btn ghost sm" type="button" data-op-technical-admin="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Technical Admin Request</button>` : ''}
-            ${canWrite ? `<button class="btn ghost sm" type="button" data-permission-resource="operations_onboarding" data-permission-action="assign_csm" data-op-assign-csm="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Assign CSM</button>
-            <button class="btn ghost sm" type="button" data-op-mark-progress="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Mark In Progress</button>
+            ${showAssignCsmButton ? `<button class="btn ghost sm" type="button" data-op-assign-csm="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>${assignCsmButtonLabel}</button>` : ''}
+            ${canWrite ? `<button class="btn ghost sm" type="button" data-op-mark-progress="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Mark In Progress</button>
             <button class="btn ghost sm" type="button" data-op-mark-completed="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Mark Completed</button>` : ''}
           </div></td>
         </tr>`;
@@ -1066,9 +1122,10 @@ const OperationsOnboarding = {
           <div><span class="muted">Go Live Target Date:</span> ${U.escapeHtml(this.formatDate(detail.go_live_target_date))}</div>
           <div><span class="muted">Go Live Date:</span> ${U.escapeHtml(this.formatDateTime(detail.go_live_date || detail.go_live_at))}</div>
           <div><span class="muted">Completed At:</span> ${U.escapeHtml(this.formatDateTime(detail.completed_at))}</div>
-          <div><span class="muted">Assigned CSM:</span> ${U.escapeHtml(detail.csm_assigned_to || '—')}</div>
+          <div><span class="muted">Assigned CSM:</span> <strong>${U.escapeHtml(detail.assigned_csm_name || detail.csm_assigned_to || 'Unassigned')}</strong>${detail.assigned_csm_email ? ` <span class="muted">(${U.escapeHtml(detail.assigned_csm_email)})</span>` : ''}</div>
           <div style="grid-column:1/-1;"><span class="muted">Notes:</span> ${U.escapeHtml(detail.notes || '—')}</div>
-        </div>`;
+        </div>
+        ${this.canAssignCsm() && !this.isOnboardingClosed(detail) ? `<div class="actions" style="justify-content:flex-start;margin-top:12px;"><button class="btn sm" type="button" data-op-details-assign-csm="${U.escapeAttr(detail.id || detail.db_id || detail.onboarding_id || '')}" data-op-agreement-id="${U.escapeAttr(detail.agreement_id || '')}">${(detail.assigned_csm_name || detail.csm_assigned_to) ? 'Change CSM' : 'Assign CSM'}</button></div>` : ''}`;
       E.operationsOnboardingDetailsModal.classList.add('open');
       E.operationsOnboardingDetailsModal.setAttribute('aria-hidden', 'false');
       if (window.setAppHashRoute && window.buildRecordHashRoute) setAppHashRoute(buildRecordHashRoute('operations_onboarding', detail || {}));
@@ -1083,14 +1140,15 @@ const OperationsOnboarding = {
     if (modalEl === E.operationsOnboardingDetailsModal && window.setAppHashRoute) setAppHashRoute('#operations-onboarding');
   },
   openAssignCsmModal(onboardingId, agreementId, onDone) {
-    if (!this.canWrite()) return UI.toast('Insufficient permissions.');
+    if (!this.canAssignCsm()) return UI.toast('Insufficient permissions.');
     this.state.pendingOnboardingId = String(onboardingId || '').trim();
     this.state.pendingAgreementId = String(agreementId || '').trim();
     if (!this.state.pendingOnboardingId) return UI.toast('Unable to assign CSM for this onboarding row because no onboarding row ID is available.');
     this.state.postSubmitHook = typeof onDone === 'function' ? onDone : null;
     if (E.operationsAssignCsmForm) E.operationsAssignCsmForm.reset();
+    const existingRow = this.state.rows.find(row => String(row.id || row.db_id || row.onboarding_id || '') === this.state.pendingOnboardingId || String(row.agreement_id || '') === this.state.pendingAgreementId) || {};
     this.loadCsmUsers({ force: true })
-      .then(() => this.renderCsmSelectOptions())
+      .then(() => this.renderCsmSelectOptions(existingRow.assigned_csm_id || existingRow.csm_user_id || ''))
       .catch(error => {
         console.warn('[operations onboarding] unable to load CSM users', error);
         this.state.csmUsers = [];
@@ -1134,7 +1192,7 @@ const OperationsOnboarding = {
     }
   },
   async submitAssignCsm() {
-    if (!(Permissions.canPerformAction('operations_onboarding', 'assign_csm') || Permissions.canEdit('operations_onboarding'))) {
+    if (!this.canAssignCsm()) {
       UI.toast('You do not have permission to assign CSM.');
       return;
     }
@@ -1174,13 +1232,14 @@ const OperationsOnboarding = {
       console.log('[OperationsOnboarding] Assign CSM Supabase response', response);
       console.info('[operations onboarding] CSM assigned', { onboardingId, csmName, csmEmail });
       this.closeModal(E.operationsAssignCsmModal);
+      this.upsertByAgreement(agreementId, payload);
       await this.refreshCompanyLifecycleForOnboarding({ ...payload, agreement_id: agreementId, onboarding_status: 'In Progress' }, 'Onboarding');
       await this.loadAndRefresh({ force: true });
-      UI.toast('CSM assigned and saved.');
+      UI.toast('CSM assigned successfully.');
       if (this.state.postSubmitHook) await this.state.postSubmitHook();
     } catch (error) {
       console.error('[OperationsOnboarding] Assign CSM failed', error);
-      UI.toast('Unable to assign CSM: ' + (error?.message || 'Unknown error'));
+      UI.toast('Unable to assign CSM. Please try again.');
     }
   },
   async submitUpdateStatus() {
@@ -1322,7 +1381,7 @@ const OperationsOnboarding = {
         if (trigger.hasAttribute('data-op-open-details')) return this.openOnboardingDetails(detailOnboardingId, agreementId);
         if (trigger.hasAttribute('data-op-technical-admin')) { if (!Permissions.canRequestTechnicalAdmin()) return UI.toast('You do not have permission to create technical requests.'); return this.requestTechnicalAdmin(agreementId); }
         if (trigger.hasAttribute('data-op-assign-csm')) {
-          if (!(Permissions.canPerformAction('operations_onboarding', 'assign_csm') || Permissions.canEdit('operations_onboarding'))) return UI.toast('You do not have permission to assign CSM.');
+          if (!this.canAssignCsm()) return UI.toast('You do not have permission to assign CSM.');
           return this.openAssignCsmModal(actionOnboardingId, agreementId);
         }
         if (trigger.hasAttribute('data-op-mark-progress')) return this.markStatusDirect(actionOnboardingId, agreementId, 'In Progress');
@@ -1332,6 +1391,13 @@ const OperationsOnboarding = {
     if (E.operationsOnboardingDetailsCloseBtn) E.operationsOnboardingDetailsCloseBtn.addEventListener('click', () => this.closeModal(E.operationsOnboardingDetailsModal));
     if (E.operationsOnboardingDetailsModal)
       E.operationsOnboardingDetailsModal.addEventListener('click', event => {
+        const trigger = event.target?.closest?.('button[data-op-details-assign-csm]');
+        if (trigger) {
+          if (!this.canAssignCsm()) return UI.toast('You do not have permission to assign CSM.');
+          return this.openAssignCsmModal(trigger.getAttribute('data-op-details-assign-csm') || '', trigger.getAttribute('data-op-agreement-id') || '', () => {
+            this.closeModal(E.operationsOnboardingDetailsModal);
+          });
+        }
         if (event.target === E.operationsOnboardingDetailsModal) this.closeModal(E.operationsOnboardingDetailsModal);
       });
 

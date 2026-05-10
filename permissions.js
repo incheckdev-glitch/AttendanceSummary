@@ -84,10 +84,11 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     update_onboarding_status: ['admin', 'hoo']
   }),
   operations_onboarding: Object.freeze({
-    list: ['admin', 'dev', 'viewer', 'hoo'],
-    get: ['admin', 'dev', 'viewer', 'hoo'],
-    create: ['admin', 'hoo'],
-    update: ['admin', 'hoo'],
+    list: ['admin', 'dev', 'viewer', 'hoo', 'head_of_operations', 'operations_manager'],
+    get: ['admin', 'dev', 'viewer', 'hoo', 'head_of_operations', 'operations_manager'],
+    create: ['admin', 'hoo', 'head_of_operations', 'operations_manager'],
+    update: ['admin', 'hoo', 'head_of_operations', 'operations_manager'],
+    assign_csm: ['admin', 'hoo', 'head_of_operations', 'operations_manager'],
     delete: ['admin']
   }),
   technical_admin_requests: Object.freeze({
