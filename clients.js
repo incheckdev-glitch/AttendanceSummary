@@ -1288,6 +1288,20 @@ const Clients = {
     if (pending > 0) return 'Open';
     return 'Pending';
   },
+  isStatementReceiptRow_(row = {}) {
+    const rowType = String(row.type || row.document_type || row.entry_type || '').trim().toLowerCase();
+    const documentNo = String(row.document_no || row.documentNo || row.document_number || row.receipt_number || '').toLowerCase();
+    return rowType === 'receipt' || Boolean(row.receipt_id) || documentNo.includes('receipt');
+  },
+  getStatementRowStatus(row = {}) {
+    const rawStatus = String(row.status || row.payment_status || row.payment_state || '').trim();
+    if (this.isStatementReceiptRow_(row)) {
+      const normalized = rawStatus.toLowerCase();
+      if (['void', 'voided', 'cancelled', 'canceled', 'reversed'].includes(normalized)) return rawStatus;
+      return 'Received';
+    }
+    return rawStatus || this.getPaymentStatus(row) || 'Not Paid';
+  },
   getRenewalStatus(row = {}) {
     const days = this.getDaysLeft(row.renewal_date || row.renewalDate || row.service_end_date);
     const paymentStatus = this.getPaymentStatus(row);
@@ -1343,7 +1357,7 @@ const Clients = {
       debit: 0,
       credit: this.pickAmount_(item, ['received_amount', 'amount_received', 'amount_paid', 'paid_amount', 'receipt_total', 'amount', 'total_amount']),
       due_date: '',
-      status: item.payment_state || item.status || 'Received',
+      status: this.getStatementRowStatus({ ...item, type: 'Receipt' }),
       notes: item.notes || item.payment_method || '',
       currency: String(item.currency || '').trim() || 'USD'
     }));
@@ -1459,7 +1473,7 @@ const Clients = {
       debit: this.toNumberSafe(this.getField(raw, 'debit', 'amount_debit')),
       credit: this.toNumberSafe(this.getField(raw, 'credit', 'amount_credit', 'amount_paid')),
       due_date: String(this.getField(raw, 'due_date', 'dueDate') || '').trim(),
-      status: String(this.getField(raw, 'status', 'payment_state') || '').trim(),
+      status: this.getStatementRowStatus(raw),
       notes: String(this.getField(raw, 'notes', 'description') || '').trim(),
       currency: String(this.getField(raw, 'currency', 'currency_code', 'currencyCode') || '').trim() || 'USD'
     };
@@ -1606,9 +1620,10 @@ const Clients = {
   getFilteredStatementRows_(rows = []) {
     const { status, dateFrom, dateTo, searchDoc } = this.state.statementFilters;
     return rows.filter(row => {
-      const rowStatus = this.normalizeText(row.status || this.getPaymentStatus(row));
+      const rowStatus = this.normalizeText(this.getStatementRowStatus(row));
       if (status === 'open' && !rowStatus.includes('open') && !rowStatus.includes('partial')) return false;
       if (status === 'overdue' && !rowStatus.includes('overdue')) return false;
+      if (status === 'received' && !rowStatus.includes('received')) return false;
       const rowDate = String(row.date || '').trim();
       const parsedDate = this.parseFlexibleDate_(rowDate);
       if (dateFrom && parsedDate && new Date(parsedDate).getTime() < new Date(dateFrom).getTime()) return false;
@@ -1672,7 +1687,7 @@ const Clients = {
               <td>${U.escapeHtml(this.formatMoneyWithCurrency_(row.credit || 0, row.currency || clientCurrency))}</td>
               <td>${U.escapeHtml(this.formatMoneyWithCurrency_(row.running_balance || 0, row.currency || clientCurrency))}</td>
               <td>${U.escapeHtml(U.fmtDisplayDate(row.due_date) || '—')}</td>
-              <td>${U.escapeHtml(row.status || this.getPaymentStatus(row))}</td>
+              <td>${U.escapeHtml(this.getStatementRowStatus(row))}</td>
               <td>${U.escapeHtml(row.notes || '—')}</td>
             </tr>`)
             .join('')
@@ -1696,7 +1711,7 @@ const Clients = {
             <td style="text-align:right;">${U.escapeHtml(U.fmtNumber(row.credit || 0))}</td>
             <td style="text-align:right;">${U.escapeHtml(U.fmtNumber(row.running_balance || 0))}</td>
             <td>${U.escapeHtml(U.fmtDisplayDate(row.due_date) || '—')}</td>
-            <td>${U.escapeHtml(row.status || this.getPaymentStatus(row))}</td>
+            <td>${U.escapeHtml(this.getStatementRowStatus(row))}</td>
             <td>${U.escapeHtml(row.notes || '—')}</td>
           </tr>`)
           .join('')
