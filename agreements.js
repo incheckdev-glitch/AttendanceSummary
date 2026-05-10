@@ -1,4 +1,22 @@
+function normalizeAgreementStatus(value) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, "_");
+}
+
+function isAgreementSigned(agreement) {
+  return normalizeAgreementStatus(agreement?.status) === "signed";
+}
+
+function agreementHasSignedDocument(agreement) {
+  return Boolean(
+    agreement?.signed_document_path ||
+    agreement?.signed_agreement_document_path ||
+    agreement?.signed_document_url ||
+    agreement?.signed_agreement_document_url
+  );
+}
+
 const Agreements = {
+  signedDocumentBucket: 'agreement-signed-documents',
   agreementFields: [
     'agreement_id',
     'agreement_number',
@@ -55,6 +73,16 @@ const Agreements = {
     'gm_signed',
     'financial_controller_signed',
     'signed_date',
+    'signed_document_path',
+    'signed_document_name',
+    'signed_document_uploaded_at',
+    'signed_document_uploaded_by',
+    'signed_document_url',
+    'signed_agreement_document_path',
+    'signed_agreement_document_name',
+    'signed_agreement_document_uploaded_at',
+    'signed_agreement_document_uploaded_by',
+    'signed_agreement_document_url',
     'total_discount',
     'generated_by',
     'company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_contact_phone','company_email','company_phone','country','city','tax_number','customer_signatory_email','customer_signatory_phone','provider_signatory_name','provider_signatory_title','provider_signatory_email','provider_primary_signatory_name','provider_primary_signatory_title','provider_secondary_signatory_name','provider_secondary_signatory_title',
@@ -105,6 +133,7 @@ const Agreements = {
     kpiFilter: 'total',
     formReadOnly: false,
     currentItems: [],
+    currentAgreement: null,
     currentAgreementId: '',
     saveInFlight: false,
     detailCacheById: {},
@@ -143,6 +172,21 @@ const Agreements = {
   },
   normalizeText(value) {
     return String(value ?? '').trim().toLowerCase();
+  },
+  normalizeAgreementStatus(value) {
+    return normalizeAgreementStatus(value);
+  },
+  isAgreementSigned(agreement = {}) {
+    return isAgreementSigned(agreement);
+  },
+  agreementHasSignedDocument(agreement = {}) {
+    return agreementHasSignedDocument(agreement);
+  },
+  getSupabaseClient() {
+    return window.SupabaseClient?.getClient?.() || window.supabaseClient || window.supabase || null;
+  },
+  getAgreementRowIdentity(agreement = {}) {
+    return String(agreement?.id || agreement?.agreement_id || agreement?.agreement_number || '').trim();
   },
   hasConflictError(error, conflictCode = '') {
     const message = String(error?.message || '').toUpperCase();
@@ -1618,7 +1662,7 @@ const Agreements = {
     }
   },
   isSignedStatus(status) {
-    return this.normalizeText(status).includes('signed');
+    return normalizeAgreementStatus(status) === 'signed';
   },
   hasSignedSignal(agreement = {}) {
     const statusSigned = this.isSignedStatus(agreement.status);
@@ -2107,6 +2151,179 @@ const Agreements = {
       el.readOnly = true; el.setAttribute('aria-readonly','true'); el.classList.add('readonly-field','locked-field');
     });
   },
+  isAgreementSignedDocumentControl(el) {
+    const id = String(el?.id || '').trim();
+    return [
+      'agreementSignedDocumentFile',
+      'agreementSignedDocumentUploadBtn',
+      'agreementSignedDocumentOpenBtn'
+    ].includes(id) || Boolean(el?.closest?.('#agreementSignedDocumentSection'));
+  },
+  getSignedDocumentAgreementSnapshot(agreement = {}) {
+    const source = agreement && typeof agreement === 'object' ? agreement : {};
+    return {
+      ...source,
+      id: String(source.id || E.agreementForm?.dataset.id || this.state.currentAgreementId || '').trim(),
+      agreement_id: String(source.agreement_id || E.agreementFormAgreementId?.value || '').trim(),
+      agreement_number: String(source.agreement_number || E.agreementFormAgreementNumber?.value || '').trim(),
+      status: String(source.status || E.agreementFormStatus?.value || '').trim(),
+      signed_document_path: String(source.signed_document_path || source.signed_agreement_document_path || E.agreementForm?.dataset.signedDocumentPath || '').trim(),
+      signed_document_name: String(source.signed_document_name || source.signed_agreement_document_name || E.agreementForm?.dataset.signedDocumentName || '').trim(),
+      signed_document_uploaded_at: String(source.signed_document_uploaded_at || source.signed_agreement_document_uploaded_at || E.agreementForm?.dataset.signedDocumentUploadedAt || '').trim(),
+      signed_document_uploaded_by: String(source.signed_document_uploaded_by || source.signed_agreement_document_uploaded_by || E.agreementForm?.dataset.signedDocumentUploadedBy || '').trim(),
+      signed_document_url: String(source.signed_document_url || source.signed_agreement_document_url || '').trim()
+    };
+  },
+  refreshSignedAgreementDocumentUi(agreement = {}) {
+    const section = E.agreementSignedDocumentSection || document.getElementById('agreementSignedDocumentSection');
+    if (!section) return;
+    const snapshot = this.getSignedDocumentAgreementSnapshot(agreement);
+    const signed = this.isAgreementSigned(snapshot);
+    const persisted = Boolean(snapshot.id);
+    const hasDocument = this.agreementHasSignedDocument(snapshot);
+    section.style.display = signed ? '' : 'none';
+    if (E.agreementSignedDocumentFile) E.agreementSignedDocumentFile.disabled = !signed || !persisted;
+    if (E.agreementSignedDocumentUploadBtn) E.agreementSignedDocumentUploadBtn.disabled = !signed || !persisted;
+    if (E.agreementSignedDocumentOpenBtn) E.agreementSignedDocumentOpenBtn.style.display = hasDocument ? '' : 'none';
+    if (E.agreementSignedDocumentState) {
+      if (!signed) {
+        E.agreementSignedDocumentState.textContent = 'Signed agreement document upload is available only after status is Signed.';
+      } else if (!persisted) {
+        E.agreementSignedDocumentState.textContent = 'Save this agreement before uploading the signed agreement document.';
+      } else if (hasDocument) {
+        const uploaded = snapshot.signed_document_uploaded_at ? ` · Uploaded ${U.fmtTS(snapshot.signed_document_uploaded_at)}` : '';
+        E.agreementSignedDocumentState.textContent = `${snapshot.signed_document_name || 'Signed agreement document'}${uploaded}`;
+      } else {
+        E.agreementSignedDocumentState.textContent = 'Upload the signed agreement document before creating an invoice.';
+      }
+    }
+  },
+  getSignedDocumentTimestamp(date = new Date()) {
+    return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, '');
+  },
+  getFileExtension(fileName = '') {
+    const cleanName = String(fileName || '').split(/[\\/]/).pop() || '';
+    const match = cleanName.match(/\.([A-Za-z0-9]{1,16})$/);
+    return match ? match[1].toLowerCase() : 'pdf';
+  },
+  buildSignedAgreementDocumentPath(agreement = {}, file = {}) {
+    const agreementBusinessId = String(agreement.agreement_id || agreement.agreement_number || agreement.id || '').trim();
+    if (!agreementBusinessId) throw new Error('Agreement ID is required to upload the signed agreement document.');
+    return `agreements/${agreementBusinessId}/signed-agreement-${this.getSignedDocumentTimestamp()}.${this.getFileExtension(file.name || 'pdf')}`;
+  },
+  async getCurrentUserIdForSignedAgreementDocument(client = null) {
+    const sessionApi = window.Session || {};
+    const sessionUser = typeof sessionApi.user === 'function' ? sessionApi.user() : {};
+    const authContext = typeof sessionApi.authContext === 'function' ? sessionApi.authContext() : {};
+    const profile = sessionApi.state?.profile || sessionUser.profile || authContext.profile || {};
+    const localId = sessionUser.user_id || sessionUser.id || authContext.user?.id || profile.auth_user_id || profile.user_id || profile.id;
+    if (localId) return String(localId).trim();
+    const authClient = client || this.getSupabaseClient();
+    const { data } = await authClient?.auth?.getUser?.() || {};
+    return String(data?.user?.id || '').trim();
+  },
+  async reloadLatestAgreementRow(agreementId) {
+    const id = String(agreementId || '').trim();
+    if (!id) return null;
+    const response = await this.getAgreement(id);
+    const { agreement } = this.extractAgreementAndItems(response, id);
+    return agreement && typeof agreement === 'object' ? agreement : null;
+  },
+  async uploadSignedAgreementDocument() {
+    const agreement = this.getSignedDocumentAgreementSnapshot(this.state.currentAgreement || {});
+    if (!agreement.id) { UI.toast('Save this agreement before uploading the signed agreement document.'); return; }
+    if (!this.isAgreementSigned(agreement)) { UI.toast('Upload the signed agreement document only after the agreement status is signed.'); return; }
+    const file = E.agreementSignedDocumentFile?.files?.[0];
+    if (!file) { UI.toast('Choose a signed agreement document to upload.'); return; }
+    const client = this.getSupabaseClient();
+    if (!client?.storage?.from || !client?.from) { UI.toast('Supabase Storage is not available.'); return; }
+    const currentUserId = await this.getCurrentUserIdForSignedAgreementDocument(client);
+    if (!currentUserId) { UI.toast('Unable to identify the current user. Please log in again.'); return; }
+    this.setFormBusy(true);
+    try {
+      const latestAgreement = await this.reloadLatestAgreementRow(agreement.id) || agreement;
+      if (!this.isAgreementSigned(latestAgreement)) {
+        UI.toast('Upload the signed agreement document only after the agreement status is signed.');
+        return;
+      }
+      const path = this.buildSignedAgreementDocumentPath(latestAgreement, file);
+      const { error: uploadError } = await client.storage
+        .from(this.signedDocumentBucket)
+        .upload(path, file, { upsert: true });
+      if (uploadError) throw uploadError;
+      const updates = {
+        signed_document_path: path,
+        signed_document_name: file.name,
+        signed_document_uploaded_at: new Date().toISOString(),
+        signed_document_uploaded_by: currentUserId
+      };
+      let { data, error: updateError } = await client
+        .from('agreements')
+        .update(updates)
+        .eq('id', agreement.id)
+        .select('*')
+        .maybeSingle();
+      if (updateError && String(updateError.message || '').toLowerCase().includes('signed_document')) {
+        const legacyUpdates = {
+          signed_agreement_document_path: path,
+          signed_agreement_document_name: file.name,
+          signed_agreement_document_uploaded_at: updates.signed_document_uploaded_at,
+          signed_agreement_document_uploaded_by: currentUserId
+        };
+        const legacyResult = await client
+          .from('agreements')
+          .update(legacyUpdates)
+          .eq('id', agreement.id)
+          .select('*')
+          .maybeSingle();
+        data = legacyResult.data;
+        updateError = legacyResult.error;
+        if (!updateError) Object.assign(updates, legacyUpdates);
+      }
+      if (updateError) throw updateError;
+      const updatedAgreement = this.normalizeAgreement({ ...(this.state.currentAgreement || {}), ...(latestAgreement || {}), ...(data || {}), ...updates });
+      this.state.currentAgreement = updatedAgreement;
+      if (E.agreementForm) {
+        E.agreementForm.dataset.signedDocumentPath = updates.signed_document_path;
+        E.agreementForm.dataset.signedDocumentName = updates.signed_document_name;
+        E.agreementForm.dataset.signedDocumentUploadedAt = updates.signed_document_uploaded_at;
+        E.agreementForm.dataset.signedDocumentUploadedBy = updates.signed_document_uploaded_by;
+      }
+      this.upsertLocalRow(updatedAgreement);
+      this.setCachedDetail(updatedAgreement.id || agreement.id, updatedAgreement, this.state.currentItems);
+      if (E.agreementSignedDocumentFile) E.agreementSignedDocumentFile.value = '';
+      this.refreshSignedAgreementDocumentUi(updatedAgreement);
+      UI.toast('Signed agreement document uploaded.');
+    } catch (error) {
+      UI.toast('Unable to upload signed agreement document: ' + (error?.message || 'Unknown error'));
+    } finally {
+      this.setFormBusy(false);
+    }
+  },
+  async openSignedAgreementDocument() {
+    const agreement = this.getSignedDocumentAgreementSnapshot(this.state.currentAgreement || {});
+    const path = agreement.signed_document_path || agreement.signed_agreement_document_path;
+    if (!path && !agreement.signed_document_url && !agreement.signed_agreement_document_url) { UI.toast('No signed agreement document has been uploaded.'); return; }
+    if (agreement.signed_document_url || agreement.signed_agreement_document_url) {
+      window.open(agreement.signed_document_url || agreement.signed_agreement_document_url, '_blank', 'noopener');
+      return;
+    }
+    const client = this.getSupabaseClient();
+    if (!client?.storage?.from) { UI.toast('Supabase Storage is not available.'); return; }
+    this.setFormBusy(true);
+    try {
+      const { data, error } = await client.storage
+        .from(this.signedDocumentBucket)
+        .createSignedUrl(path, 60 * 10);
+      if (error) throw error;
+      if (!data?.signedUrl) throw new Error('Supabase did not return a signed URL.');
+      window.open(data.signedUrl, '_blank', 'noopener');
+    } catch (error) {
+      UI.toast('Unable to open signed agreement document: ' + (error?.message || 'Unknown error'));
+    } finally {
+      this.setFormBusy(false);
+    }
+  },
   setFormReadOnly(readOnly) {
     if (!E.agreementForm) return;
     E.agreementForm.querySelectorAll('input, select, textarea, button').forEach(el => {
@@ -2117,6 +2334,7 @@ const Agreements = {
       if (el.id === 'agreementFormCloseBtn') return;
       if (el.id === 'agreementFormDeleteBtn') return;
       if (el.id === 'agreementFormSaveBtn') return;
+      if (this.isAgreementSignedDocumentControl(el)) return;
       if ('disabled' in el && !/agreementForm(Delete|Save)Btn/.test(el.id)) el.disabled = readOnly;
     });
   },
@@ -2147,7 +2365,7 @@ const Agreements = {
     E.agreementForm.querySelectorAll('input, select, textarea').forEach(el => {
       const allowed = !readOnlyMode && (!isEditMode || this.isAgreementEditableInEditMode(el));
       const isHidden = String(el.type || '').toLowerCase() === 'hidden';
-      if (isHidden) return;
+      if (isHidden || this.isAgreementSignedDocumentControl(el)) return;
       if (!allowed) {
         el.disabled = true;
         el.setAttribute('aria-disabled', 'true');
@@ -2196,34 +2414,46 @@ const Agreements = {
   },
   openAgreementForm(agreement = this.emptyAgreement(), items = [], { readOnly = false } = {}) {
     if (!E.agreementFormModal || !E.agreementForm) return;
+    const signedLocked = this.isAgreementSigned(agreement);
+    const effectiveReadOnly = readOnly || signedLocked;
     E.agreementForm.dataset.id = agreement.id || '';
     E.agreementForm.dataset.mode = agreement.id ? 'edit' : 'create';
     E.agreementForm.dataset.source = agreement.id ? '' : String(agreement.proposal_id || '').trim() ? 'proposal' : '';
     E.agreementForm.dataset.proposalUuid = String(agreement.proposal_id || '').trim();
-    E.agreementForm.dataset.readOnly = readOnly ? 'true' : 'false';
+    E.agreementForm.dataset.readOnly = effectiveReadOnly ? 'true' : 'false';
+    E.agreementForm.dataset.signedLocked = signedLocked ? 'true' : 'false';
+    E.agreementForm.dataset.signedDocumentPath = String(agreement.signed_document_path || agreement.signed_agreement_document_path || '').trim();
+    E.agreementForm.dataset.signedDocumentName = String(agreement.signed_document_name || agreement.signed_agreement_document_name || '').trim();
+    E.agreementForm.dataset.signedDocumentUploadedAt = String(agreement.signed_document_uploaded_at || agreement.signed_agreement_document_uploaded_at || '').trim();
+    E.agreementForm.dataset.signedDocumentUploadedBy = String(agreement.signed_document_uploaded_by || agreement.signed_agreement_document_uploaded_by || '').trim();
     this.state.currentAgreementId = String(agreement.id || '').trim();
+    this.state.currentAgreement = agreement && typeof agreement === 'object' ? { ...agreement } : null;
+    this.state.currentItems = Array.isArray(items) ? [...items] : [];
     this.assignFormValues(agreement);
     this.captureProviderSignDateOriginalValues();
     this.initializeProviderSignDateDefaultTracking(agreement);
     this.renderItemRows(items);
     this.state.selectedAgreementCompanyForVerification = this.hasCompanyVerificationFields(agreement) ? agreement : null;
     this.updateAgreementCompanyVerificationUi(this.state.selectedAgreementCompanyForVerification);
-    if (E.agreementFormTitle) E.agreementFormTitle.textContent = agreement.id ? (readOnly ? 'View Agreement' : 'Edit Agreement') : 'Create Agreement';
-    if (E.agreementFormDeleteBtn) E.agreementFormDeleteBtn.style.display = !readOnly && agreement.id && Permissions.canDeleteAgreement() ? '' : 'none';
+    if (E.agreementFormTitle) E.agreementFormTitle.textContent = agreement.id ? (effectiveReadOnly ? 'View Agreement' : 'Edit Agreement') : 'Create Agreement';
+    if (E.agreementSignedLockMessage) E.agreementSignedLockMessage.style.display = signedLocked ? '' : 'none';
+    if (E.agreementFormDeleteBtn) E.agreementFormDeleteBtn.style.display = !effectiveReadOnly && agreement.id && Permissions.canDeleteAgreement() ? '' : 'none';
     if (E.agreementFormSaveBtn) {
       const canSave = agreement.id ? Permissions.canUpdateAgreement() : Permissions.canCreateAgreement();
-      E.agreementFormSaveBtn.style.display = !readOnly && canSave ? '' : 'none';
+      E.agreementFormSaveBtn.style.display = !effectiveReadOnly && canSave ? '' : 'none';
     }
-    this.setFormReadOnly(readOnly);
+    this.setFormReadOnly(effectiveReadOnly);
     this.applyIdentityFieldLocks();
     this.applyAgreementEditLocks();
     this.applyProviderSignDateRoleLocks();
+    this.refreshSignedAgreementDocumentUi(agreement);
     E.agreementFormModal.classList.add('open');
     E.agreementFormModal.setAttribute('aria-hidden', 'false');
     window.setTimeout(() => {
       window.CrmCompanyContactSelectors?.initializeCompanyContactSelectorsForAgreement?.();
       this.applyAgreementEditLocks();
       this.applyProviderSignDateRoleLocks();
+      this.refreshSignedAgreementDocumentUi(this.state.currentAgreement || agreement);
     }, 0);
     if (window.setAppHashRoute && window.buildRecordHashRoute) setAppHashRoute(buildRecordHashRoute('agreements', agreement || {}));
   },
@@ -2237,16 +2467,32 @@ const Agreements = {
     E.agreementForm.dataset.source = '';
     E.agreementForm.dataset.proposalUuid = '';
     E.agreementForm.dataset.readOnly = '';
+    E.agreementForm.dataset.signedLocked = '';
+    E.agreementForm.dataset.signedDocumentPath = '';
+    E.agreementForm.dataset.signedDocumentName = '';
+    E.agreementForm.dataset.signedDocumentUploadedAt = '';
+    E.agreementForm.dataset.signedDocumentUploadedBy = '';
     E.agreementForm.classList.remove('agreement-edit-locked');
     this.state.currentAgreementId = '';
+    this.state.currentAgreement = null;
+    this.state.currentItems = [];
     this.state.selectedAgreementCompanyForVerification = null;
     this.updateAgreementCompanyVerificationUi(null);
+    if (E.agreementSignedLockMessage) E.agreementSignedLockMessage.style.display = 'none';
+    this.refreshSignedAgreementDocumentUi({});
     this.renderItemRows([]);
   },
   setFormBusy(busy) {
     const inFlight = !!busy;
     if (E.agreementFormSaveBtn) E.agreementFormSaveBtn.disabled = inFlight;
     if (E.agreementFormDeleteBtn) E.agreementFormDeleteBtn.disabled = inFlight;
+    if (inFlight) {
+      if (E.agreementSignedDocumentUploadBtn) E.agreementSignedDocumentUploadBtn.disabled = true;
+      if (E.agreementSignedDocumentOpenBtn) E.agreementSignedDocumentOpenBtn.disabled = true;
+    } else {
+      this.refreshSignedAgreementDocumentUi(this.state.currentAgreement || {});
+      if (E.agreementSignedDocumentOpenBtn) E.agreementSignedDocumentOpenBtn.disabled = false;
+    }
   },
   recalculateAnnualServiceEndDateForEvent(event) {
     const field = event.target?.getAttribute('data-item-field');
@@ -2365,6 +2611,19 @@ const Agreements = {
     const source = String(E.agreementForm?.dataset.source || '').trim();
     const formProposalUuid = String(E.agreementForm?.dataset.proposalUuid || '').trim();
     const { agreement, items } = this.collectFormValues();
+    let latestExistingAgreement = null;
+    if (id) {
+      try {
+        latestExistingAgreement = await this.reloadLatestAgreementRow(id);
+      } catch (error) {
+        UI.toast('Unable to verify agreement lock status: ' + (error?.message || 'Unknown error'));
+        return;
+      }
+      if (this.isAgreementSigned(latestExistingAgreement)) {
+        UI.toast('Signed agreements are locked and cannot be edited.');
+        return;
+      }
+    }
     if (!this.validateProviderSignDateRoleChanges()) return;
     if (!id && !this.validateCommercialItems(items)) return;
     const isDirectCreate = !id && source !== 'create_from_proposal' && !String(formProposalUuid || agreement.proposal_id || '').trim();
@@ -2417,7 +2676,7 @@ const Agreements = {
       agreement.agreement_number = withBusinessIds.agreement_number;
     }
     const preparedItems = id ? null : this.hydrateItemIdsForSave(items, { isCreate: true });
-    const currentRecord = this.state.rows.find(row => String(row.id || '') === id) || {};
+    const currentRecord = latestExistingAgreement || this.state.rows.find(row => String(row.id || '') === id) || {};
     const agreementUpdatePayload = id ? this.buildAgreementEditableUpdate(agreement) : agreement;
     const requestedDiscount = items.reduce((max, item) => Math.max(max, this.toNumberSafe(item.discount_percent)), 0);
     const currentStatus = String(currentRecord?.status || '').trim();
@@ -2518,7 +2777,15 @@ const Agreements = {
           this.markProposalAsConvertedToAgreement(persistedAgreement.proposal_id, String(persistedAgreement.agreement_id || '').trim());
         }
       }
-      this.closeAgreementForm();
+      const savedAgreement = { ...agreement, ...(persistedAgreement || {}) };
+      const savedAgreementId = String(persistedAgreement?.id || id || '').trim();
+      if (this.isAgreementSigned(savedAgreement) && savedAgreementId) {
+        const refreshedAgreement = await this.reloadLatestAgreementRow(savedAgreementId).catch(() => null);
+        const lockedAgreement = refreshedAgreement || savedAgreement;
+        this.openAgreementForm(lockedAgreement, preparedItems || items, { readOnly: true });
+      } else {
+        this.closeAgreementForm();
+      }
       window.dispatchEvent(new CustomEvent('clients:refresh-totals', { detail: { reason: 'agreement-saved' } }));
       UI.toast(id ? 'Agreement updated.' : source === 'proposal' ? 'Agreement created from proposal.' : 'Agreement created.');
     } catch (error) {
@@ -2676,6 +2943,15 @@ const Agreements = {
       return;
     }
     try {
+      const latestAgreement = await this.reloadLatestAgreementRow(id);
+      if (!this.isAgreementSigned(latestAgreement)) {
+        UI.toast('Only signed agreements can be invoiced.');
+        return;
+      }
+      if (!this.agreementHasSignedDocument(latestAgreement)) {
+        UI.toast('You should upload the signed agreement document before creating an invoice.');
+        return;
+      }
       if (typeof setActiveView === 'function') setActiveView('invoices');
       if (window.Invoices?.openCreateFromAgreementTemplate) {
         await window.Invoices.openCreateFromAgreementTemplate(id);
@@ -2845,6 +3121,12 @@ const Agreements = {
       if (!id) return UI.toast('Save the agreement first to preview.');
       this.previewAgreementHtml(id);
     });
+    if (E.agreementSignedDocumentUploadBtn) {
+      E.agreementSignedDocumentUploadBtn.addEventListener('click', () => this.uploadSignedAgreementDocument());
+    }
+    if (E.agreementSignedDocumentOpenBtn) {
+      E.agreementSignedDocumentOpenBtn.addEventListener('click', () => this.openSignedAgreementDocument());
+    }
 
     if (E.agreementAddAnnualRowBtn) E.agreementAddAnnualRowBtn.addEventListener('click', () => this.addRow('annual_saas'));
     if (E.agreementAddOneTimeRowBtn) E.agreementAddOneTimeRowBtn.addEventListener('click', () => this.addRow('one_time_fee'));

@@ -1175,6 +1175,35 @@ const Api = {
     return this.requestWithSession('invoices', 'delete', { id: invoiceId, invoice_id: invoiceId });
   },
   async createInvoiceFromAgreement(agreementId) {
+    const normalizeAgreementStatusForInvoice = value => String(value || '').trim().toLowerCase().replace(/\s+/g, '_');
+    const agreementHasSignedDocumentForInvoice = agreement => Boolean(
+      agreement?.signed_document_path ||
+      agreement?.signed_agreement_document_path ||
+      agreement?.signed_document_url ||
+      agreement?.signed_agreement_document_url
+    );
+    const agreementResponse = await this.getAgreement(agreementId);
+    const candidates = [
+      agreementResponse?.agreement,
+      agreementResponse?.item,
+      agreementResponse?.data?.agreement,
+      agreementResponse?.data?.item,
+      agreementResponse?.data,
+      agreementResponse?.result?.agreement,
+      agreementResponse?.result?.item,
+      agreementResponse?.result,
+      agreementResponse?.payload?.agreement,
+      agreementResponse?.payload?.item,
+      agreementResponse?.payload,
+      agreementResponse
+    ];
+    const latestAgreement = candidates.find(candidate => candidate && typeof candidate === 'object' && !Array.isArray(candidate)) || {};
+    if (normalizeAgreementStatusForInvoice(latestAgreement.status) !== 'signed') {
+      throw new Error('Only signed agreements can be invoiced.');
+    }
+    if (!agreementHasSignedDocumentForInvoice(latestAgreement)) {
+      throw new Error('You should upload the signed agreement document before creating an invoice.');
+    }
     const response = await this.requestWithSession('invoices', 'create_from_agreement', { id: agreementId, agreement_id: agreementId });
     const recordId = this.extractBusinessRecordId(response, agreementId);
     await this.safeSendBusinessPwaPush({
