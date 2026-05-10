@@ -14,6 +14,9 @@
       reactionsByMessage: {},
       readReceipts: [],
       actionItems: [],
+      relatedRecordOptions: [],
+      relatedRecordLabels: {},
+      relatedRecordLoading: false,
       mentionCandidates: [],
       replyToMessage: null,
       editingMessageId: null,
@@ -358,20 +361,305 @@
     if (days < 7) return `${days}d`;
     return new Date(value).toLocaleDateString();
   };
-  const relatedRouteMap = {
-    tickets: '/#tickets/',
-    events: '/#events/',
-    leads: '/#leads/',
-    deals: '/#deals/',
-    proposals: '/#proposals/',
-    agreements: '/#agreements/',
-    invoices: '/#invoices/',
-    receipts: '/#receipts/',
-    clients: '/#clients/',
-    operations_onboarding: '/#operations_onboarding/',
-    technical_admin_requests: '/#technical_admin_requests/',
-    workflow: '/#workflow/'
+  const RELATED_RECORD_CONFIG = {
+    lead: { table: 'leads', idField: 'lead_id', route: 'leads', queryKey: 'lead_id', labelFields: ['lead_id', 'legal_company_name', 'company_name', 'contact_name', 'status'] },
+    deal: { table: 'deals', idField: 'deal_id', route: 'deals', queryKey: 'deal_id', labelFields: ['deal_id', 'legal_company_name', 'company_name', 'deal_title', 'status'] },
+    proposal: { table: 'proposals', idField: 'proposal_id', route: 'proposals', queryKey: 'proposal_id', labelFields: ['proposal_reference', 'proposal_id', 'legal_company_name', 'company_name', 'grand_total', 'status'] },
+    agreement: { table: 'agreements', idField: 'agreement_id', route: 'agreements', queryKey: 'agreement_id', labelFields: ['agreement_reference', 'agreement_id', 'legal_company_name', 'company_name', 'status'] },
+    invoice: { table: 'invoices', idField: 'invoice_id', route: 'invoices', queryKey: 'invoice_id', labelFields: ['invoice_reference', 'invoice_id', 'legal_company_name', 'company_name', 'balance_due', 'payment_status'] },
+    receipt: { table: 'receipts', idField: 'receipt_id', route: 'receipts', queryKey: 'receipt_id', labelFields: ['receipt_reference', 'receipt_id', 'legal_company_name', 'company_name', 'payment_amount'] },
+    ticket: { table: 'tickets', idField: 'ticket_id', route: 'tickets', queryKey: 'ticket_id', labelFields: ['ticket_id', 'title', 'status'] },
+    event: { table: 'calendar_events', idField: 'event_id', route: 'events', queryKey: 'event_id', labelFields: ['title', 'event_date', 'status'] },
+    client: { table: 'clients', idField: 'client_id', route: 'clients', queryKey: 'client_id', labelFields: ['legal_company_name', 'company_name', 'client_id'] },
+    operations_onboarding: { table: 'operations_onboarding', idField: 'onboarding_id', route: 'operations-onboarding', queryKey: 'onboarding_id', labelFields: ['onboarding_id', 'legal_company_name', 'company_name', 'status'] },
+    technical_admin_request: { table: 'technical_admin_requests', idField: 'request_id', route: 'technical-admin-requests', queryKey: 'request_id', labelFields: ['request_id', 'legal_company_name', 'company_name', 'status'] }
   };
+
+  const RELATED_MODULE_LABELS = {
+    lead: 'Lead',
+    deal: 'Deal',
+    proposal: 'Proposal',
+    agreement: 'Agreement',
+    invoice: 'Invoice',
+    receipt: 'Receipt',
+    ticket: 'Ticket',
+    event: 'Event',
+    client: 'Client',
+    operations_onboarding: 'Operations Onboarding',
+    technical_admin_request: 'Technical Admin Request'
+  };
+
+  const RELATED_MODULE_ALIASES = {
+    leads: 'lead',
+    deals: 'deal',
+    proposals: 'proposal',
+    agreements: 'agreement',
+    invoices: 'invoice',
+    receipts: 'receipt',
+    tickets: 'ticket',
+    events: 'event',
+    calendar_events: 'event',
+    clients: 'client',
+    operations_onboarding: 'operations_onboarding',
+    operations_onboardings: 'operations_onboarding',
+    'operations onboarding': 'operations_onboarding',
+    'operations-onboarding': 'operations_onboarding',
+    technical_admin_requests: 'technical_admin_request',
+    'technical admin request': 'technical_admin_request',
+    'technical-admin-requests': 'technical_admin_request'
+  };
+
+  function normalizeRelatedModuleKey(value) {
+    const raw = normalizeText(value).toLowerCase();
+    if (!raw) return '';
+    const key = raw.replace(/[\s-]+/g, '_');
+    return RELATED_RECORD_CONFIG[key] ? key : (RELATED_MODULE_ALIASES[key] || RELATED_MODULE_ALIASES[raw] || '');
+  }
+
+  function getRelatedModuleLabel(moduleKeyOrValue) {
+    const key = normalizeRelatedModuleKey(moduleKeyOrValue) || normalizeText(moduleKeyOrValue).toLowerCase();
+    return RELATED_MODULE_LABELS[key] || normalizeText(moduleKeyOrValue) || 'Related record';
+  }
+
+  function buildRelatedRecordDeepLink(moduleKey, recordId) {
+    const key = normalizeRelatedModuleKey(moduleKey);
+    const config = RELATED_RECORD_CONFIG[key];
+    if (!config || !recordId) return null;
+    return `#${config.route}?${config.queryKey}=${encodeURIComponent(recordId)}`;
+  }
+
+  function canAccessRelatedModule(moduleKey) {
+    const key = normalizeRelatedModuleKey(moduleKey);
+    const config = RELATED_RECORD_CONFIG[key];
+    if (!config) return false;
+    const P = global.Permissions;
+    if (!P || (!P.state?.rows?.length && typeof P.can !== 'function' && typeof P.canPerformAction !== 'function')) return true;
+    const resources = [config.route, config.table, key];
+    return resources.some(resource => permissionHas(resource, 'view') || permissionHas(resource, 'list') || permissionHas(resource, 'manage'));
+  }
+
+  function formatMoneyLike(value) {
+    if (value === null || value === undefined || value === '') return '';
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return normalizeText(value);
+    try {
+      return numeric.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    } catch (_error) {
+      return String(numeric);
+    }
+  }
+
+  function formatRelatedRecordLabel(moduleKey, row = {}) {
+    const key = normalizeRelatedModuleKey(moduleKey);
+    const config = RELATED_RECORD_CONFIG[key];
+    if (!config) return normalizeText(row?.id || row?.related_record_id || '');
+    const idValue = normalizeText(row[config.idField] || row.id);
+    const reference = normalizeText(row.proposal_reference || row.agreement_reference || row.invoice_reference || row.receipt_reference);
+    const primary = reference || idValue;
+    const company = normalizeText(row.legal_company_name || row.company_name || row.client_name || row.customer_name);
+    const contact = normalizeText(row.contact_name || row.primary_contact_name);
+    const title = normalizeText(row.deal_title || row.title || row.event_title || row.subject);
+    const status = normalizeText(row.status || row.payment_status);
+    const eventDate = normalizeText(row.event_date || row.start_date || row.start_at);
+    const amount = formatMoneyLike(row.grand_total ?? row.balance_due ?? row.payment_amount);
+    const prefix = { lead: 'Lead#', deal: 'Deal#', ticket: 'Ticket#' }[key] || '';
+    const first = prefix && primary && !primary.toLowerCase().startsWith(prefix.toLowerCase()) ? `${prefix}${primary}` : primary;
+    const partsByKey = {
+      lead: [first, company, contact || status],
+      deal: [first, company, title || status],
+      proposal: [first, company, amount || status],
+      agreement: [first, company, status],
+      invoice: [first, company, amount || status],
+      receipt: [first, company, amount],
+      ticket: [first, title, status],
+      event: [title || first, eventDate, status],
+      client: [company || first, first && company ? first : ''],
+      operations_onboarding: [first, company, status],
+      technical_admin_request: [first, company, status]
+    };
+    const seen = new Set();
+    const parts = (partsByKey[key] || config.labelFields.map(field => normalizeText(row[field]))).filter(part => {
+      const normalized = normalizeText(part);
+      if (!normalized || seen.has(normalized.toLowerCase())) return false;
+      seen.add(normalized.toLowerCase());
+      return true;
+    });
+    return parts.join(' - ') || idValue || 'Related record unavailable';
+  }
+
+  function relatedRecordCacheKey(moduleKey, recordId) {
+    const key = normalizeRelatedModuleKey(moduleKey);
+    const id = normalizeText(recordId);
+    return key && id ? `${key}:${id}` : '';
+  }
+
+  async function fetchRelatedRecordOptions(moduleKey) {
+    const key = normalizeRelatedModuleKey(moduleKey);
+    const config = RELATED_RECORD_CONFIG[key];
+    if (!config) return [];
+    if (!canAccessRelatedModule(key)) return [];
+    const client = db();
+    if (!client) throw new Error('Supabase client is not available.');
+    const { data, error } = await client
+      .from(config.table)
+      .select('*')
+      .limit(100);
+    if (error) throw error;
+    return (data || []).map(row => {
+      const id = normalizeText(row[config.idField] || row.id);
+      const label = formatRelatedRecordLabel(key, row);
+      const cacheKey = relatedRecordCacheKey(key, id);
+      if (cacheKey) M.state.relatedRecordLabels[cacheKey] = label;
+      return { id, label, row, moduleKey: key, searchText: `${label} ${id}`.toLowerCase() };
+    }).filter(option => option.id);
+  }
+
+  async function resolveRelatedRecordLabel(moduleKey, recordId) {
+    const key = normalizeRelatedModuleKey(moduleKey);
+    const id = normalizeText(recordId);
+    if (!key || !id) return '';
+    const cacheKey = relatedRecordCacheKey(key, id);
+    if (cacheKey && M.state.relatedRecordLabels[cacheKey]) return M.state.relatedRecordLabels[cacheKey];
+    const config = RELATED_RECORD_CONFIG[key];
+    if (!config) return id;
+    if (!canAccessRelatedModule(key)) return 'Related record unavailable';
+    const client = db();
+    if (!client) return id;
+    try {
+      const { data, error } = await client
+        .from(config.table)
+        .select('*')
+        .eq(config.idField, id)
+        .maybeSingle();
+      if (error) {
+        console.warn('[Communication Centre] unable to load related record label', error);
+        return 'Related record unavailable';
+      }
+      if (!data) return 'Related record unavailable';
+      const label = formatRelatedRecordLabel(key, data);
+      if (cacheKey) M.state.relatedRecordLabels[cacheKey] = label;
+      return label || id;
+    } catch (error) {
+      console.warn('[Communication Centre] unable to resolve related record label', error);
+      return 'Related record unavailable';
+    }
+  }
+
+  function renderCreateRelatedRecordOptions(filterText = '') {
+    const list = $('communicationCentreCreateRelatedRecordResults');
+    const hidden = $('communicationCentreCreateRelatedRecordId');
+    const moduleKey = normalizeRelatedModuleKey($('communicationCentreCreateRelatedResource')?.value);
+    if (!list) return;
+    if (!moduleKey) {
+      list.innerHTML = '<div class="muted" style="padding:8px 10px;">Select related module first</div>';
+      return;
+    }
+    if (M.state.relatedRecordLoading) {
+      list.innerHTML = '<div class="muted" style="padding:8px 10px;">Loading related records...</div>';
+      return;
+    }
+    const q = normalizeText(filterText).toLowerCase();
+    const options = (M.state.relatedRecordOptions || []).filter(option => !q || option.searchText.includes(q)).slice(0, 30);
+    if (!options.length) {
+      list.innerHTML = '<div class="muted" style="padding:8px 10px;">No matching related records found.</div>';
+      return;
+    }
+    list.innerHTML = options.map(option => `
+      <button class="cc-related-record-option" type="button" data-related-record-id="${escapeAttr(option.id)}" style="display:block;width:100%;text-align:left;padding:8px 10px;border:0;background:transparent;cursor:pointer;">
+        <strong>${escapeHtml(option.label)}</strong><br><span class="muted">ID: ${escapeHtml(option.id)}</span>
+      </button>
+    `).join('');
+    list.querySelectorAll('[data-related-record-id]').forEach(button => {
+      button.addEventListener('click', () => {
+        const id = button.getAttribute('data-related-record-id') || '';
+        const option = M.state.relatedRecordOptions.find(item => String(item.id) === String(id));
+        if (hidden) hidden.value = id;
+        const search = $('communicationCentreCreateRelatedRecordSearch');
+        if (search) search.value = option?.label || id;
+        list.style.display = 'none';
+      });
+    });
+  }
+
+  async function loadCreateRelatedRecords() {
+    const moduleSelect = $('communicationCentreCreateRelatedResource');
+    const search = $('communicationCentreCreateRelatedRecordSearch');
+    const hidden = $('communicationCentreCreateRelatedRecordId');
+    const list = $('communicationCentreCreateRelatedRecordResults');
+    const moduleKey = normalizeRelatedModuleKey(moduleSelect?.value);
+    M.state.relatedRecordOptions = [];
+    if (hidden) hidden.value = '';
+    if (search) search.value = '';
+    if (!moduleKey) {
+      if (search) {
+        search.disabled = true;
+        search.placeholder = 'Select related module first';
+      }
+      if (list) list.style.display = 'none';
+      renderCreateRelatedRecordOptions();
+      return;
+    }
+    if (!canAccessRelatedModule(moduleKey)) {
+      if (search) {
+        search.disabled = true;
+        search.placeholder = 'No access to this related module';
+      }
+      if (list) {
+        list.style.display = '';
+        list.innerHTML = '<div class="muted" style="padding:8px 10px;">No accessible records for this module.</div>';
+      }
+      return;
+    }
+    M.state.relatedRecordLoading = true;
+    if (search) {
+      search.disabled = true;
+      search.placeholder = 'Loading related records...';
+    }
+    if (list) list.style.display = '';
+    renderCreateRelatedRecordOptions();
+    try {
+      M.state.relatedRecordOptions = await fetchRelatedRecordOptions(moduleKey);
+      if (search) {
+        search.disabled = false;
+        search.placeholder = `Search ${getRelatedModuleLabel(moduleKey).toLowerCase()} records (optional)`;
+      }
+    } catch (error) {
+      console.warn('[Communication Centre] related record options failed', error);
+      if (search) {
+        search.disabled = true;
+        search.placeholder = 'Related records unavailable';
+      }
+      if (list) list.innerHTML = '<div class="muted" style="padding:8px 10px;">Related records unavailable.</div>';
+      return;
+    } finally {
+      M.state.relatedRecordLoading = false;
+    }
+    renderCreateRelatedRecordOptions(search?.value || '');
+  }
+
+  function wireCreateRelatedRecordPicker() {
+    const moduleSelect = $('communicationCentreCreateRelatedResource');
+    const search = $('communicationCentreCreateRelatedRecordSearch');
+    const hidden = $('communicationCentreCreateRelatedRecordId');
+    const list = $('communicationCentreCreateRelatedRecordResults');
+    moduleSelect?.addEventListener('change', loadCreateRelatedRecords);
+    search?.addEventListener('input', () => {
+      if (hidden) hidden.value = '';
+      if (list) list.style.display = '';
+      renderCreateRelatedRecordOptions(search.value);
+    });
+    search?.addEventListener('focus', () => {
+      if (!search.disabled && list) {
+        list.style.display = '';
+        renderCreateRelatedRecordOptions(search.value);
+      }
+    });
+    document.addEventListener('click', event => {
+      if (!list || !search) return;
+      if (event.target === search || list.contains(event.target)) return;
+      list.style.display = 'none';
+    });
+  }
 
   const nameOf = (row = {}) => normalizeText(
     row.full_name || row.name || row.display_name || row.username || row.email || row.user_name || row.id || row.user_id
@@ -450,7 +738,10 @@
         showFriendlyError('Unable to open conversation. Please refresh and try again.');
         return;
       }
-      M.state.active = data;
+      M.state.active = {
+        ...data,
+        _relatedRecordLabel: await resolveRelatedRecordLabel(data.related_module, data.related_record_id)
+      };
       const [messagesResult, participantsResult, reactionsResult, readReceiptsResult, actionItemsResult] = await Promise.all([
         client.rpc('list_communication_centre_messages_secure', { p_conversation_id: id }),
         client.from('communication_centre_participants').select('*').eq('conversation_id', id).order('participant_type', { ascending: true }).order('user_name', { ascending: true }),
@@ -875,7 +1166,9 @@
     const replyWrap = $('communicationCentreReplyWrap');
     const closedMsg = $('communicationCentreClosedMsg');
       const mobileBack = isMobileViewport() ? '<button id="communicationCentreBackToList" class="btn ghost sm" type="button">← Conversations</button>' : '';
-      const relatedLabel = conversation.related_module && conversation.related_record_id ? `${conversation.related_module} #${conversation.related_record_id}` : '';
+      const relatedLabel = conversation.related_module && conversation.related_record_id
+        ? `Related: ${conversation._relatedRecordLabel || conversation.related_record_id}`
+        : '';
       const detailsLabel = (isMobileViewport() || isTabletViewport()) ? 'Details' : (M.state.detailsVisible === false ? 'Show details' : 'Hide details');
       if (header) header.innerHTML = `${mobileBack}<div class="cc-chat-heading"><h3>${escapeHtml((conversation.conversation_no || '') + ' ' + (conversation.title || ''))}</h3><div class="muted">${escapeHtml(conversation.category || 'General')} • ${escapeHtml(conversation.priority || 'Normal')} • ${escapeHtml(conversation.status || 'Open')}${relatedLabel ? ` • ${escapeHtml(relatedLabel)}` : ''}</div></div><button id="communicationCentreOpenDetails" class="btn ghost sm" type="button">${detailsLabel}</button>`;
     if (meta) meta.textContent = `${conversation.status || 'Open'} • ${conversation.priority || 'Normal'} • ${conversation.category || 'General'}`;
@@ -945,20 +1238,25 @@
     const deleteButton = canDeleteConversation()
       ? '<button id="communicationCentreDeleteConversationBtn" class="btn danger sm" type="button">Delete Conversation</button>'
       : '';
-    const relatedRoute = relatedRouteMap[String(conversation.related_module || '').trim().toLowerCase()];
-    const relatedButton = relatedRoute && conversation.related_record_id
+    const relatedLink = buildRelatedRecordDeepLink(conversation.related_module, conversation.related_record_id);
+    const relatedDisplay = conversation.related_record_id
+      ? (conversation._relatedRecordLabel || conversation.related_record_id || 'Related record unavailable')
+      : '—';
+    const relatedButton = relatedLink
       ? '<button id="communicationCentreOpenRelatedBtn" class="btn ghost sm" type="button">Open Related Record</button>' : '';
     actionWrap.innerHTML = `
       <div class="cc-details-section"><strong>Conversation Info</strong><div class="muted">#${escapeHtml(conversation.conversation_no || '—')} • ${escapeHtml(conversation.status || 'Open')} • ${escapeHtml(conversation.priority || 'Normal')} • ${escapeHtml(conversation.category || 'General')}</div><div class="muted">Created by ${escapeHtml(conversation.created_by_name || 'Unknown')} • ${escapeHtml(new Date(conversation.created_at).toLocaleString())}</div><div class="muted">Updated ${escapeHtml(new Date(conversation.updated_at || conversation.last_message_at || conversation.created_at).toLocaleString())}</div></div>
       <div class="cc-details-section"><strong>Assignment</strong><div class="muted">Assigned role: ${escapeHtml(conversation.assigned_role || '—')}</div><div class="muted">Participants: ${escapeHtml(String(M.state.participants.length || 0))}</div></div>
-      <div class="cc-details-section"><strong>Related Record</strong><div class="muted">Module: ${escapeHtml(conversation.related_module || '—')}</div><div class="muted">Record ID: ${escapeHtml(conversation.related_record_id || '—')}</div>${relatedButton}</div>
+      <div class="cc-details-section"><strong>Related Record</strong><div><span class="chip">Related: ${escapeHtml(relatedDisplay)}</span></div><div class="muted">Module: ${escapeHtml(getRelatedModuleLabel(conversation.related_module || '') || '—')}</div><div class="muted">Record ID: ${escapeHtml(conversation.related_record_id || '—')}</div>${relatedButton}</div>
       <div class="cc-details-section cc-assignment-manage-section"><strong>Add Assignment</strong><div class="muted">Add an existing user or snapshot all users currently under a role.</div><label class="muted" for="communicationCentreAssignUserSelect">Add user</label><select id="communicationCentreAssignUserSelect" class="select"><option value="">Select user</option></select><label class="muted" for="communicationCentreAssignRoleSelect">Add role snapshot</label><select id="communicationCentreAssignRoleSelect" class="select"><option value="">Select role</option></select><div class="muted cc-assignment-hint">Role assignment is snapshotted. Only users currently in the selected role will be added.</div><div class="actions"><button id="communicationCentreAddAssignmentBtn" class="btn ghost sm" type="button">Add Assignment</button></div></div>
       <div class="cc-details-section"><strong>Actions</strong><div class="actions">${pinButton}${archiveButton}${closeButton}${reopenButton}${copyLinkButton}${deleteButton}<button id="communicationCentreEscalateBtn" class="btn ghost sm" type="button">${conversation.is_escalated ? 'Clear escalation' : 'Mark as escalated'}</button></div></div>
       <div class="cc-details-section"><strong>Follow-up</strong><input id="communicationCentreFollowUpAt" class="input" type="datetime-local" value="${conversation.follow_up_at ? escapeAttr(new Date(conversation.follow_up_at).toISOString().slice(0,16)) : ''}" /><div class="actions"><button id="communicationCentreFollowUpSaveBtn" class="btn ghost sm" type="button">Save follow-up</button><button id="communicationCentreFollowUpClearBtn" class="btn ghost sm" type="button">Clear</button></div></div>
       <div class="cc-details-section"><strong>Action Items</strong><div class="muted">Open: ${escapeHtml(String((M.state.actionItems||[]).filter(x => (x.status || 'open') === 'open').length))}</div><div class="actions"><input id="communicationCentreActionItemTitle" class="input" placeholder="Action item title" /><button id="communicationCentreActionItemAddBtn" class="btn ghost sm" type="button">Add</button></div></div>`;
     $('communicationCentrePinConversationBtn')?.addEventListener('click', togglePinConversation);
     $('communicationCentreArchiveConversationBtn')?.addEventListener('click', toggleArchiveConversation);
-    $('communicationCentreOpenRelatedBtn')?.addEventListener('click', () => { global.location.hash = `${relatedRoute}${encodeURIComponent(conversation.related_record_id)}`.replace('/#', '#'); });
+    $('communicationCentreOpenRelatedBtn')?.addEventListener('click', () => {
+      if (relatedLink) global.location.hash = relatedLink;
+    });
     $('communicationCentreCloseConversationBtn')?.addEventListener('click', closeActiveConversation);
     $('communicationCentreReopenConversationBtn')?.addEventListener('click', reopenActiveConversation);
     $('communicationCentreDeleteConversationBtn')?.addEventListener('click', deleteActiveConversation);
@@ -1166,12 +1464,16 @@
             <div class="filter-row">
               <label class="muted" for="communicationCentreCreateRelatedResource">Related module</label>
               <select id="communicationCentreCreateRelatedResource" class="select">
-                <option value="">None</option><option>Ticket</option><option>Event</option><option>Client</option><option>Lead</option><option>Deal</option><option>Proposal</option><option>Agreement</option><option>Invoice</option><option>Receipt</option><option>Operations Onboarding</option><option>Technical Admin Request</option><option>Other</option>
+                <option value="">None</option>
+                <option value="ticket">Ticket</option><option value="event">Event</option><option value="client">Client</option><option value="lead">Lead</option><option value="deal">Deal</option><option value="proposal">Proposal</option><option value="agreement">Agreement</option><option value="invoice">Invoice</option><option value="receipt">Receipt</option><option value="operations_onboarding">Operations Onboarding</option><option value="technical_admin_request">Technical Admin Request</option>
               </select>
             </div>
-            <div class="filter-row">
-              <label class="muted" for="communicationCentreCreateRelatedRecordId">Related record ID</label>
-              <input id="communicationCentreCreateRelatedRecordId" class="input" type="text" placeholder="Optional" />
+            <div class="filter-row" style="position:relative;">
+              <label class="muted" for="communicationCentreCreateRelatedRecordSearch">Related record</label>
+              <input id="communicationCentreCreateRelatedRecordSearch" class="input" type="search" placeholder="Select related module first" autocomplete="off" disabled />
+              <input id="communicationCentreCreateRelatedRecordId" type="hidden" />
+              <div id="communicationCentreCreateRelatedRecordResults" class="card" style="display:none;position:absolute;z-index:40;left:0;right:0;top:100%;max-height:260px;overflow:auto;padding:4px;margin-top:4px;"></div>
+              <div class="muted" style="font-size:12px;margin-top:6px;">Optional. Search and select a record to link this conversation.</div>
             </div>
           </div>
           <div class="actions" style="justify-content:flex-end;margin-top:14px;">
@@ -1188,6 +1490,7 @@
       if (event.target === modal) closeCreateModal();
     });
     $('communicationCentreCreateForm')?.addEventListener('submit', submitCreateConversation);
+    wireCreateRelatedRecordPicker();
     return modal;
   }
 
@@ -1221,6 +1524,9 @@
     const modal = ensureCreateModal();
     const form = $('communicationCentreCreateForm');
     if (form) form.reset();
+    M.state.relatedRecordOptions = [];
+    M.state.relatedRecordLoading = false;
+    await loadCreateRelatedRecords();
     modal.classList.add('open');
     modal.setAttribute('aria-hidden', 'false');
     await populateCreateModalOptions();
@@ -1243,7 +1549,7 @@
     const priority = normalizeText($('communicationCentreCreatePriority')?.value) || 'Normal';
     const assignedUserIds = [...($('communicationCentreCreateUsers')?.selectedOptions || [])].map(option => option.value).filter(Boolean);
     const assignedRole = normalizeText($('communicationCentreCreateRole')?.value);
-    const relatedResource = normalizeText($('communicationCentreCreateRelatedResource')?.value);
+    const relatedResource = normalizeRelatedModuleKey($('communicationCentreCreateRelatedResource')?.value);
     const relatedRecordId = normalizeText($('communicationCentreCreateRelatedRecordId')?.value);
 
     if (!title) return showFriendlyError('Title is required.');
