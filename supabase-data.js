@@ -1448,7 +1448,23 @@
     return sanitized;
   }
 
+  function normalizeReceiptPaymentStateForSave(record = {}) {
+    const rawState = String(firstDefined(record, ['payment_state', 'paymentState']) || '').trim();
+    const receivedAmount = numberOrNull(firstDefined(record, ['received_amount', 'receivedAmount', 'amount_received', 'amountReceived', 'amount_paid', 'amountPaid', 'paid_now', 'paidNow', 'amount'])) || 0;
+    const pendingInput = firstDefined(record, ['pending_amount', 'pendingAmount', 'balance_due', 'balanceDue', 'remaining_balance', 'remainingBalance']);
+    const hasPendingInput = pendingInput !== undefined && pendingInput !== null && !(typeof pendingInput === 'string' && pendingInput.trim() === '');
+    const pendingAmount = hasPendingInput ? (numberOrNull(pendingInput) || 0) : null;
+    const invoiceStatus = String(firstDefined(record, ['payment_status', 'paymentStatus', 'invoice_payment_status', 'invoicePaymentStatus']) || '').trim().toLowerCase();
+    const invoicePaid = (hasPendingInput && pendingAmount <= 0) || ['paid', 'fully_paid', 'fully paid', 'settled', 'settlement'].includes(invoiceStatus);
+    if (receivedAmount > 0 && invoicePaid) return 'Settlement';
+    if (receivedAmount > 0 && hasPendingInput && pendingAmount > 0) return 'Partial Payment';
+    if (receivedAmount > 0) return 'Received';
+    if (['not paid', 'unpaid', 'pending'].includes(rawState.toLowerCase())) return 'Received';
+    return rawState || null;
+  }
+
   function sanitizeReceiptsRecord(record = {}, { includeCreatedBy = false, userId = '' } = {}) {
+    const receiptPaymentState = normalizeReceiptPaymentStateForSave(record);
     const sanitized = compactObject({
       receipt_id: trimOrNull(firstDefined(record, ['receipt_id', 'receiptId'])),
       receipt_number: trimOrNull(firstDefined(record, ['receipt_number', 'receiptNumber'])),
@@ -1486,7 +1502,7 @@
       received_amount: numberOrNull(firstDefined(record, ['received_amount', 'receivedAmount', 'amount_received', 'amountReceived'])),
       new_paid_total: numberOrNull(firstDefined(record, ['new_paid_total', 'newPaidTotal'])),
       pending_amount: numberOrNull(firstDefined(record, ['pending_amount', 'pendingAmount'])),
-      payment_state: trimOrNull(firstDefined(record, ['payment_state', 'paymentState'])),
+      payment_state: receiptPaymentState,
       payment_conclusion: trimOrNull(firstDefined(record, ['payment_conclusion', 'paymentConclusion'])),
       payment_notes: trimOrNull(firstDefined(record, ['payment_notes', 'paymentNotes'])),
       created_at: trimOrNull(firstDefined(record, ['created_at', 'createdAt'])),
@@ -5335,6 +5351,33 @@
         .maybeSingle();
       if (createdReceiptError || !createdReceiptRow) {
         throw friendlyError('Receipt header was created but could not be loaded', createdReceiptError || new Error('Missing receipt row'));
+      }
+
+      const { data: refreshedInvoiceRow, error: refreshedInvoiceError } = await client
+        .from('invoices')
+        .select('id,pending_amount,payment_state,status')
+        .eq('id', invoiceUuid)
+        .maybeSingle();
+      if (refreshedInvoiceError) throw friendlyError('Unable to load invoice after receipt creation', refreshedInvoiceError);
+      const receiptPaymentState = normalizeReceiptPaymentStateForSave({
+        ...createdReceiptRow,
+        received_amount: normalizedAmount,
+        pending_amount: refreshedInvoiceRow?.pending_amount ?? createdReceiptRow?.pending_amount,
+        payment_status: refreshedInvoiceRow?.payment_state || refreshedInvoiceRow?.status
+      });
+      if (receiptPaymentState && String(createdReceiptRow.payment_state || '').trim() !== receiptPaymentState) {
+        const { data: patchedReceiptRow, error: patchedReceiptError } = await client
+          .from('receipts')
+          .update({
+            payment_state: receiptPaymentState,
+            payment_conclusion: receiptPaymentState === 'Settlement' ? 'Settled' : (createdReceiptRow.payment_conclusion || 'Pending Settlement'),
+            pending_amount: refreshedInvoiceRow?.pending_amount ?? createdReceiptRow?.pending_amount
+          })
+          .eq('id', createdReceiptUuid)
+          .select('*')
+          .maybeSingle();
+        if (patchedReceiptError) throw friendlyError('Unable to normalize receipt payment state', patchedReceiptError);
+        if (patchedReceiptRow) Object.assign(createdReceiptRow, patchedReceiptRow);
       }
 
       const { data: invoiceItems, error: invoiceItemsError } = await client
