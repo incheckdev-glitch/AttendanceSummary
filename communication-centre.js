@@ -222,7 +222,7 @@
     const container = $('communicationCentreView');
     if (!container) return;
     container.innerHTML = `
-      <div class="card" style="max-width:720px;margin:32px auto;padding:24px;text-align:center;">
+      <div class="card communication-centre-empty-state" style="max-width:720px;margin:32px auto;padding:24px;text-align:center;">
         <h2 style="margin:0 0 8px;">Communication Centre</h2>
         <p class="muted" style="margin:0;">You do not have access to Communication Centre.</p>
       </div>
@@ -963,7 +963,7 @@
       return;
     }
     list.innerHTML = options.map(option => `
-      <button class="cc-related-record-option" type="button" data-related-record-id="${escapeAttr(option.id)}" style="display:block;width:100%;text-align:left;padding:8px 10px;border:0;background:transparent;cursor:pointer;">
+      <button class="cc-related-record-option communication-related-record-option" type="button" data-related-record-id="${escapeAttr(option.id)}">
         <strong>${escapeHtml(option.label)}</strong><br><span class="muted">ID: ${escapeHtml(option.id)}</span>
       </button>
     `).join('');
@@ -1654,7 +1654,7 @@
       if (unreadDiff) return unreadDiff;
       return new Date(b.updated_at || b.last_message_at || 0).getTime() - new Date(a.updated_at || a.last_message_at || 0).getTime();
     });
-    listEl.innerHTML = rows.map(row => `<button class="cc-item ${activeId===row.id?'active':''} ${Number(row.unread_count||0)>0?'unread':''}" data-cc-open="${escapeAttr(row.id)}" type="button"><div class="cc-item-main"><small>${escapeHtml(row.conversation_no||'')}</small><strong>${escapeHtml(row.title||'Untitled')}</strong><p>${escapeHtml(row.last_message_preview||'No messages yet')}</p><div class="cc-item-submeta">${row.is_pinned?'<span class="chip">📌 Pinned</span>':''}${M.state.filters.quick==='archived'&&row.is_archived?'<span class="chip">Archived</span>':''}${row.participant_count?`<span class="chip">${escapeHtml(String(row.participant_count))} participants</span>`:''}</div></div><div class="cc-item-meta"><span class="cc-time">${escapeHtml(relTime(row.updated_at||row.last_message_at))}</span><span class="chip cc-status-chip">${escapeHtml(row.status||'Open')}</span>${row.priority?`<span class="chip cc-priority-chip">${escapeHtml(row.priority)}</span>`:''}${Number(row.unread_count||0)>0?`<span class="chip cc-unread-chip">● ${escapeHtml(String(row.unread_count))}</span>`:''}</div></button>`).join('') || '<div class="muted" style="padding:16px;">No conversations found for this filter.</div>';
+    listEl.innerHTML = rows.map(row => `<button class="cc-item communication-conversation-card ${activeId===row.id?'active':''} ${Number(row.unread_count||0)>0?'unread':''}" data-cc-open="${escapeAttr(row.id)}" type="button"><div class="cc-item-main"><small>${escapeHtml(row.conversation_no||'')}</small><strong>${escapeHtml(row.title||'Untitled')}</strong><p>${escapeHtml(row.last_message_preview||'No messages yet')}</p><div class="cc-item-submeta">${row.is_pinned?'<span class="chip">📌 Pinned</span>':''}${M.state.filters.quick==='archived'&&row.is_archived?'<span class="chip">Archived</span>':''}${row.participant_count?`<span class="chip">${escapeHtml(String(row.participant_count))} participants</span>`:''}</div></div><div class="cc-item-meta"><span class="cc-time">${escapeHtml(relTime(row.updated_at||row.last_message_at))}</span><span class="chip cc-status-chip">${escapeHtml(row.status||'Open')}</span>${row.priority?`<span class="chip cc-priority-chip">${escapeHtml(row.priority)}</span>`:''}${Number(row.unread_count||0)>0?`<span class="chip cc-unread-chip">● ${escapeHtml(String(row.unread_count))}</span>`:''}</div></button>`).join('') || '<div class="muted communication-centre-empty-state" style="padding:16px;">No conversations found for this filter.</div>';
     const pageInfo = $('communicationCentrePageInfo');
     if (pageInfo) pageInfo.textContent = `Page ${M.state.page} • ${M.state.count} total`;
   }
@@ -1729,7 +1729,7 @@
         return `
           <div class="cc-message-row ${isMine ? 'mine' : 'incoming'}" style="${muted}">
             ${isMine ? '' : `<div class="cc-avatar">${initials}</div>`}
-            <div class="cc-bubble">
+            <div class="cc-bubble communication-message-bubble ${isMine ? 'outgoing' : 'incoming'}">
               <div class="cc-message-meta"><span class="cc-sender">${senderName}</span><span class="cc-sep">•</span><span>${message.created_at ? escapeHtml(new Date(message.created_at).toLocaleString()) : ''}</span>${message.edited_at ? '<span class="cc-sep">•</span><span>edited</span>' : ''}</div>
               <div class="cc-message-body">${message.is_deleted ? 'This message was deleted.' : escapeHtml(message.message_body || message.body || '')}</div>
               ${renderMessageDeliveryStatus(message, isMine)}
@@ -1739,7 +1739,7 @@
             ${isMine ? `<div class="cc-avatar mine">${initials}</div>` : ''}
           </div>
         `;
-      }).join('') : '<div class="muted" style="padding:20px;text-align:center;">Select a conversation to view messages.</div>';
+      }).join('') : '<div class="muted communication-centre-empty-state" style="padding:20px;text-align:center;">Select a conversation to view messages.</div>';
       if (!options.skipAutoScroll) scrollCommunicationCentreToBottom(true);
     }
     if (replyWrap) replyWrap.style.display = (conversation.status !== 'Closed' && can('reply')) ? '' : 'none';
@@ -1789,7 +1789,7 @@
       <div class="cc-details-section cc-assignment-manage-section"><strong>Add Assignment</strong><div class="muted">Add an existing user or snapshot all users currently under a role.</div><label class="muted" for="communicationCentreAssignUserSelect">Add user</label><select id="communicationCentreAssignUserSelect" class="select"><option value="">Select user</option></select><label class="muted" for="communicationCentreAssignRoleSelect">Add role snapshot</label><select id="communicationCentreAssignRoleSelect" class="select"><option value="">Select role</option></select><div class="muted cc-assignment-hint">Role assignment is snapshotted. Only users currently in the selected role will be added.</div><div class="actions"><button id="communicationCentreAddAssignmentBtn" class="btn ghost sm" type="button">Add Assignment</button></div></div>
       <div class="cc-details-section"><strong>Actions</strong><div class="actions">${pinButton}${archiveButton}${closeButton}${reopenButton}${copyLinkButton}${deleteButton}<button id="communicationCentreEscalateBtn" class="btn ghost sm" type="button">${conversation.is_escalated ? 'Clear escalation' : 'Mark as escalated'}</button></div></div>
       <div class="cc-details-section"><strong>Follow-up</strong><input id="communicationCentreFollowUpAt" class="input" type="datetime-local" value="${conversation.follow_up_at ? escapeAttr(new Date(conversation.follow_up_at).toISOString().slice(0,16)) : ''}" /><div class="actions"><button id="communicationCentreFollowUpSaveBtn" class="btn ghost sm" type="button">Save follow-up</button><button id="communicationCentreFollowUpClearBtn" class="btn ghost sm" type="button">Clear</button></div></div>
-      <div class="cc-details-section"><strong>Action Items</strong><div class="muted">Open: ${escapeHtml(String((M.state.actionItems||[]).filter(x => (x.status || 'open') === 'open').length))}</div><div class="actions"><input id="communicationCentreActionItemTitle" class="input" placeholder="Action item title" /><button id="communicationCentreActionItemAddBtn" class="btn ghost sm" type="button">Add</button></div></div>`;
+      <div class="cc-details-section communication-action-item-card"><strong>Action Items</strong><div class="muted">Open: ${escapeHtml(String((M.state.actionItems||[]).filter(x => (x.status || 'open') === 'open').length))}</div><div class="actions"><input id="communicationCentreActionItemTitle" class="input" placeholder="Action item title" /><button id="communicationCentreActionItemAddBtn" class="btn ghost sm" type="button">Add</button></div></div>`;
     $('communicationCentrePinConversationBtn')?.addEventListener('click', togglePinConversation);
     $('communicationCentreArchiveConversationBtn')?.addEventListener('click', toggleArchiveConversation);
     $('communicationCentreOpenRelatedBtn')?.addEventListener('click', () => {
@@ -1956,7 +1956,7 @@
     if (modal) return modal;
     modal = document.createElement('div');
     modal.id = 'communicationCentreCreateModal';
-    modal.className = 'modal';
+    modal.className = 'modal communication-centre-modal';
     modal.setAttribute('role', 'dialog');
     modal.setAttribute('aria-modal', 'true');
     modal.setAttribute('aria-hidden', 'true');
@@ -1968,7 +1968,7 @@
           <div class="actions"><button class="modal-close" id="communicationCentreCreateClose" type="button" aria-label="Close">✕</button></div>
         </div>
         <form id="communicationCentreCreateForm">
-          <div id="communicationCentreCreateError" class="card danger" style="display:none;margin-bottom:12px;padding:10px;border-left:4px solid #d73a49;color:#7f1d1d;"></div>
+          <div id="communicationCentreCreateError" class="card danger communication-centre-error" style="display:none;margin-bottom:12px;padding:10px;border-left:4px solid #d73a49;"></div>
           <div class="grid cols-2" style="gap:12px;">
             <div class="filter-row" style="grid-column:1/-1;">
               <label class="muted" for="communicationCentreCreateTitleInput">Title</label>
@@ -2001,16 +2001,16 @@
             </div>
             <div class="filter-row">
               <label class="muted" for="communicationCentreCreateRelatedResource">Related module</label>
-              <select id="communicationCentreCreateRelatedResource" class="select">
+              <select id="communicationCentreCreateRelatedResource" class="select communication-related-record-select">
                 <option value="">None</option>
                 <option value="ticket">Ticket</option><option value="event">Event</option><option value="client">Client</option><option value="lead">Lead</option><option value="deal">Deal</option><option value="proposal">Proposal</option><option value="agreement">Agreement</option><option value="invoice">Invoice</option><option value="receipt">Receipt</option><option value="operations_onboarding">Operations Onboarding</option><option value="technical_admin_request">Technical Admin Request</option>
               </select>
             </div>
             <div class="filter-row" style="position:relative;">
               <label class="muted" for="communicationCentreCreateRelatedRecordSearch">Related record</label>
-              <input id="communicationCentreCreateRelatedRecordSearch" class="input" type="search" placeholder="Select related module first" autocomplete="off" disabled />
+              <input id="communicationCentreCreateRelatedRecordSearch" class="input communication-related-record-select" type="search" placeholder="Select related module first" autocomplete="off" disabled />
               <input id="communicationCentreCreateRelatedRecordId" type="hidden" />
-              <div id="communicationCentreCreateRelatedRecordResults" class="card" style="display:none;position:absolute;z-index:40;left:0;right:0;top:100%;max-height:260px;overflow:auto;padding:4px;margin-top:4px;"></div>
+              <div id="communicationCentreCreateRelatedRecordResults" class="card communication-related-record-results" style="display:none;position:absolute;z-index:40;left:0;right:0;top:100%;max-height:260px;overflow:auto;padding:4px;margin-top:4px;"></div>
               <div class="muted" style="font-size:12px;margin-top:6px;">Optional. Search and select a record to link this conversation.</div>
             </div>
           </div>
@@ -2269,6 +2269,7 @@
       console.warn('[Communication Centre] container not found');
       return;
     }
+    container.classList.add('communication-centre-module');
     const hasAccess = await ensureCommunicationCentreAccess();
     if (!hasAccess) {
       console.warn('[Communication Centre] access denied', { role: currentRoleKey(), permissionsReady: Boolean(global.Permissions?.isReady?.()), rows: global.Permissions?.state?.rows?.length || 0 });
@@ -2499,6 +2500,8 @@
       tab.addEventListener('click', async event => {
         event.preventDefault();
         event.stopPropagation();
+        const centreContainer = $('communicationCentreView');
+        if (centreContainer) centreContainer.classList.add('communication-centre-module');
         const hasAccess = await ensureCommunicationCentreAccess();
         if (!hasAccess) {
           console.warn('[Communication Centre] access denied', { role: currentRoleKey(), permissionsReady: Boolean(global.Permissions?.isReady?.()), rows: global.Permissions?.state?.rows?.length || 0 });
