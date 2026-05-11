@@ -2644,7 +2644,8 @@ const Agreements = {
     }
     if (!this.validateProviderSignDateRoleChanges()) return;
     if (!id && !this.validateCommercialItems(items)) return;
-    const isDirectCreate = !id && source !== 'create_from_proposal' && !String(formProposalUuid || agreement.proposal_id || '').trim();
+    const isSubAgreementCreate = !id && (source === 'sub_agreement' || String(agreement.agreement_relationship_type || '').trim().toLowerCase() === 'sub_agreement');
+    const isDirectCreate = !id && !isSubAgreementCreate && source !== 'create_from_proposal' && !String(formProposalUuid || agreement.proposal_id || '').trim();
     const provider = this.getSignedInUserForAgreement();
     agreement.billing_frequency = 'Annual';
     const validPaymentTerms = ['Net 7', 'Net 14', 'Net 21', 'Net 30'];
@@ -2676,7 +2677,7 @@ const Agreements = {
       return;
     }
 
-    if (!id && !(await this.ensureCompanyVerifiedBeforeAgreement({
+    if (!id && !isSubAgreementCreate && !(await this.ensureCompanyVerifiedBeforeAgreement({
       ...agreement,
       company: this.state.selectedAgreementCompanyForVerification || agreement.company
     }))) {
@@ -2806,7 +2807,7 @@ const Agreements = {
         this.closeAgreementForm();
       }
       window.dispatchEvent(new CustomEvent('clients:refresh-totals', { detail: { reason: 'agreement-saved' } }));
-      UI.toast(id ? 'Agreement updated.' : source === 'proposal' ? 'Agreement created from proposal.' : 'Agreement created.');
+      UI.toast(id ? 'Agreement updated.' : isSubAgreementCreate ? 'Sub-agreement created.' : source === 'proposal' ? 'Agreement created from proposal.' : 'Agreement created.');
     } catch (error) {
       if (typeof isAuthError === 'function' && isAuthError(error)) {
         handleExpiredSession('Session expired. Please log in again.');

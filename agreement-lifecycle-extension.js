@@ -13,6 +13,73 @@
     'relationship_notes'
   ];
 
+  const AMENDMENT_TABLE_FIELDS = new Set([
+    'id','amendment_id','amendment_reference','parent_agreement_id','root_agreement_id','source_agreement_id',
+    'client_id','company_id','company_name','amendment_type','reason','effective_date','status','billing_impact','currency',
+    'subtotal_locations','subtotal_one_time','total_discount','grand_total','signed_document_path','signed_document_name',
+    'signed_document_uploaded_at','signed_document_uploaded_by','signed_at','notes','created_by','updated_by','created_at','updated_at',
+    'agreement_id','agreement_number','proposal_id','deal_id','lead_id','agreement_relationship_type','agreement_version','relationship_notes',
+    'agreement_title','agreement_date','service_start_date','service_end_date','agreement_length','account_number','billing_frequency',
+    'payment_term','payment_terms','po_number','customer_name','customer_legal_name','customer_address','customer_contact_name',
+    'customer_contact_mobile','customer_contact_email','contact_id','contact_name','contact_email','contact_phone','contact_mobile',
+    'customer_contact_phone','company_email','company_phone','country','city','tax_number','provider_name','provider_legal_name',
+    'provider_address','provider_contact_name','provider_contact_mobile','provider_contact_email','provider_signatory_email',
+    'customer_official_signatory_name','customer_official_signatory_title','customer_signatory_name','customer_signatory_title',
+    'customer_signatory_email','customer_signatory_phone','provider_official_signatory_1_name','provider_official_signatory_1_title',
+    'provider_official_signatory_2_name','provider_official_signatory_2_title','provider_signatory_name','provider_signatory_title',
+    'provider_primary_signatory_name','provider_primary_signatory_title','provider_secondary_signatory_name','provider_secondary_signatory_title',
+    'provider_signatory_name_primary','provider_signatory_title_primary','provider_signatory_name_secondary','provider_signatory_title_secondary',
+    'terms_conditions','generated_by','gm_signed','financial_controller_signed','saas_total','one_time_total','tax',
+    'approved_annual_saas_discount_percent','approved_one_time_fee_discount_percent','approved_discount_percent','discount_approval_status',
+    'discount_approved_at','discount_approved_by','last_discount_approval_request_id','approval_required_reason'
+  ]);
+
+  const AMENDMENT_IMMUTABLE_FIELDS = new Set([
+    'id','amendment_id','amendment_reference','parent_agreement_id','root_agreement_id','source_agreement_id','created_by','created_at'
+  ]);
+
+  function filterAmendmentPayload(payload = {}, { includeImmutable = false } = {}) {
+    const out = {};
+    Object.entries(payload || {}).forEach(([key, value]) => {
+      if (!AMENDMENT_TABLE_FIELDS.has(key)) return;
+      if (!includeImmutable && AMENDMENT_IMMUTABLE_FIELDS.has(key)) return;
+      if (value === undefined) return;
+      out[key] = value === '' ? null : value;
+    });
+    return out;
+  }
+
+  function isUuidLike(value = '') {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+  }
+
+  async function updateAmendmentRow(client, amendment = {}, updates = {}) {
+    const safeUpdates = filterAmendmentPayload(updates);
+    const candidates = [
+      ['id', amendment.id],
+      ['amendment_id', amendment.amendment_id],
+      ['amendment_reference', amendment.amendment_reference]
+    ].filter(([, value]) => String(value || '').trim());
+
+    let lastError = null;
+    for (const [column, rawValue] of candidates) {
+      const value = String(rawValue || '').trim();
+      if (column === 'id' && !isUuidLike(value)) continue;
+      const { data, error } = await client
+        .from('agreement_amendments')
+        .update(safeUpdates)
+        .eq(column, value)
+        .select('*')
+        .maybeSingle();
+      if (!error && data) return data;
+      if (error) lastError = error;
+    }
+
+    if (lastError) throw lastError;
+    throw new Error('No amendment row was found to update.');
+  }
+
+
   function escapeHtml(value) {
     if (window.U?.escapeHtml) return window.U.escapeHtml(String(value ?? ''));
     return String(value ?? '')
@@ -52,6 +119,10 @@
 
   function getAgreementPrimaryKey(agreement = {}) {
     return String(agreement.id || agreement.agreement_uuid || agreement.uuid || '').trim();
+  }
+
+  function getAgreementAnyKey(agreement = {}) {
+    return String(agreement.id || agreement.agreement_uuid || agreement.uuid || agreement.agreement_id || agreement.agreement_number || '').trim();
   }
 
   function getAgreementBusinessRef(agreement = {}) {
@@ -276,23 +347,11 @@
     return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' });
   }
 
-  function formatAgreementLifecycleDateTime(value) {
-    if (!value) return '-';
-
-    try {
-      const date = new Date(value);
-      if (Number.isNaN(date.getTime())) return String(value);
-
-      return date.toLocaleString(undefined, {
-        year: 'numeric',
-        month: 'short',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    } catch (error) {
-      return String(value || '-');
-    }
+  function formatDateTime(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value || '');
+    return date.toLocaleString(undefined, { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
   }
 
   function formatMoney(value, currency = '') {
@@ -388,7 +447,7 @@
                   <td>${escapeHtml(formatDate(amendment.effective_date) || '—')}</td>
                   <td>${escapeHtml(humanize(amendment.billing_impact) || '—')}</td>
                   <td>${escapeHtml(formatMoney(amendment.grand_total, amendment.currency) || '—')}</td>
-                  <td>${escapeHtml(formatAgreementLifecycleDateTime(amendment.created_at) || '—')}</td>
+                  <td>${escapeHtml(formatDateTime(amendment.created_at) || '—')}</td>
                   <td>
                     <div class="agreement-amendments-actions">
                       ${isDraft ? `<button class="btn ghost sm" type="button" data-agreement-amendment-action="edit" data-amendment-key="${key}">Edit Draft</button>` : `<button class="btn ghost sm" type="button" data-agreement-amendment-action="open" data-amendment-key="${key}">View Amendment</button>`}
@@ -565,14 +624,14 @@
     payload.customer_legal_name = payload.customer_legal_name || source.customer_legal_name || payload.customer_name || null;
     payload.payment_terms = payload.payment_terms || payload.payment_term || source.payment_terms || source.payment_term || null;
     ['id', 'signed_date', 'customer_sign_date', 'provider_sign_date', 'customer_official_sign_date', 'provider_official_signatory_1_sign_date', 'provider_official_signatory_2_sign_date', 'signed_document_path', 'signed_document_name', 'signed_document_uploaded_at', 'signed_document_uploaded_by', 'signed_document_url', 'signed_agreement_document_path', 'signed_agreement_document_name', 'signed_agreement_document_uploaded_at', 'signed_agreement_document_uploaded_by', 'signed_agreement_document_url'].forEach(field => { delete payload[field]; });
-    return payload;
+    return filterAmendmentPayload(payload, { includeImmutable: true });
   }
 
   async function createAgreementAmendmentDraft() {
     const toast = getUiToast();
     const agreements = window.Agreements;
     const source = agreements?.state?.currentAgreement || {};
-    if (!getAgreementPrimaryKey(source)) return toast('Open an agreement first.');
+    if (!getAgreementAnyKey(source)) return toast('Open an agreement first.');
     if (!isSignedAgreement(source)) return toast('Only signed agreements can be amended.');
 
     const reason = window.prompt('Amendment reason / summary:', 'Commercial scope change');
@@ -600,7 +659,7 @@
     const clonedItems = (Array.isArray(agreements?.state?.currentItems) ? agreements.state.currentItems : []).map((item, index) => cloneAgreementItemForAmendment(item, index));
 
     try {
-      const { data, error } = await client.from('agreement_amendments').insert(payload).select('*').single();
+      const { data, error } = await client.from('agreement_amendments').insert(filterAmendmentPayload(payload, { includeImmutable: true })).select('*').single();
       if (error) throw error;
       const amendment = data || payload;
       if (amendment.id && clonedItems.length) {
@@ -651,7 +710,7 @@
     const toast = getUiToast();
     const agreements = window.Agreements;
     const source = agreements?.state?.currentAgreement || {};
-    if (!getAgreementPrimaryKey(source)) return toast('Open an agreement first.');
+    if (!getAgreementAnyKey(source)) return toast('Open an agreement first.');
     if (!isSignedAgreement(source)) return toast('Only signed agreements can have sub-agreements.');
     if (window.Permissions?.canCreateAgreement?.() === false) return toast('You do not have permission to create agreements.');
 
@@ -682,6 +741,17 @@
 
     ensureHiddenLifecycleInputs();
     agreements.openAgreementForm(draft, clonedItems, { readOnly: false });
+    const form = getAgreementFormElement();
+    if (form) {
+      form.dataset.id = '';
+      form.dataset.mode = 'create';
+      form.dataset.source = 'sub_agreement';
+      form.dataset.proposalUuid = '';
+    }
+    if (agreements.state) {
+      agreements.state.currentAgreementId = '';
+      agreements.state.currentAgreement = { ...draft, id: '' };
+    }
     setHiddenField('parent_agreement_id', parentId);
     setHiddenField('root_agreement_id', draft.root_agreement_id);
     setHiddenField('source_agreement_id', parentId);
@@ -986,7 +1056,7 @@
     const form = getAgreementFormElement();
     if (!form) return;
     form.dataset.lifecycleMode = 'amendment';
-    form.dataset.amendmentId = amendment.id || '';
+    form.dataset.amendmentId = amendment.id || amendment.amendment_id || amendment.amendment_reference || '';
     form.dataset.amendmentReference = getAmendmentReference(amendment);
     form.dataset.parentAgreementId = amendment.parent_agreement_id || getAgreementPrimaryKey(parent) || '';
     form.dataset.rootAgreementId = amendment.root_agreement_id || getRootAgreementId(parent) || '';
@@ -1020,7 +1090,7 @@
       const parent = await fetchParentAgreementForAmendment(amendment);
       let items = await fetchAmendmentItems(amendment);
       if (!items.length && parent && Array.isArray(window.Agreements?.state?.currentItems)) {
-        items = window.Agreements.state.currentItems.map((item, index) => cloneAgreementItemForAmendment(item, index, amendment.id));
+        items = window.Agreements.state.currentItems.map((item, index) => cloneAgreementItemForAmendment(item, index, amendment.id || amendment.amendment_id));
       }
       openAmendmentAgreementEditor(amendment, items, { parent });
     } catch (error) {
@@ -1077,8 +1147,7 @@
         toast(workflowDecision?.message || workflowDecision?.reason || 'This amendment requires discount approval before it can proceed.');
         return;
       }
-      const { data, error } = await client.from('agreement_amendments').update(updates).eq('id', payload.id).select('*').single();
-      if (error) throw error;
+      const data = await updateAmendmentRow(client, { ...current, id: current.id || (isUuidLike(payload.id) ? payload.id : '') }, updates);
       const amendments = (Array.isArray(window.Agreements?.state?.currentAmendments) ? window.Agreements.state.currentAmendments : []).map(amendment => String(amendment.id) === String(payload.id) ? data : amendment);
       cacheAmendments(amendments);
       renderAmendmentsList(amendments);
@@ -1086,7 +1155,7 @@
       toast(statusOverride ? `Amendment marked as ${humanize(statusOverride)}.` : 'Draft amendment saved.');
     } catch (error) {
       console.error('[Agreement Lifecycle] Unable to save amendment', error);
-      toast('Unable to save amendment.');
+      toast(`Unable to save amendment: ${error?.message || 'Unknown error'}`);
     }
   }
 
@@ -1219,7 +1288,7 @@
     updates.customer_name = updates.customer_name || updates.customer_legal_name || updates.company_name || null;
     updates.customer_legal_name = updates.customer_legal_name || updates.customer_name || null;
     ['id', 'signed_date', 'customer_sign_date', 'provider_sign_date', 'customer_official_sign_date', 'provider_official_signatory_1_sign_date', 'provider_official_signatory_2_sign_date', 'signed_document_url', 'signed_agreement_document_path', 'signed_agreement_document_name', 'signed_agreement_document_uploaded_at', 'signed_agreement_document_uploaded_by', 'signed_agreement_document_url'].forEach(field => { delete updates[field]; });
-    return updates;
+    return filterAmendmentPayload(updates);
   }
 
   async function saveAmendmentAgreementDraft() {
@@ -1242,17 +1311,14 @@
     agreements.state.saveInFlight = true;
     agreements.setFormBusy?.(true);
     try {
-      const { data, error } = await client
-        .from('agreement_amendments')
-        .update(updates)
-        .eq('id', amendmentId)
-        .select('*')
-        .single();
-      if (error) throw error;
-      const { error: deleteError } = await client.from('agreement_amendment_items').delete().eq('amendment_id', amendmentId);
+      const data = await updateAmendmentRow(client, { ...current, id: current.id || (isUuidLike(amendmentId) ? amendmentId : '') }, updates);
+      const amendmentRowId = String(data?.id || current?.id || (isUuidLike(amendmentId) ? amendmentId : '')).trim();
+      if (!amendmentRowId) throw new Error('Amendment database id is missing. Reopen the amendment and try again.');
+      const { error: deleteError } = await client.from('agreement_amendment_items').delete().eq('amendment_id', amendmentRowId);
       if (deleteError) throw deleteError;
       if (itemPayloads.length) {
-        const { error: insertError } = await client.from('agreement_amendment_items').insert(itemPayloads);
+        const safeItemPayloads = itemPayloads.map(item => ({ ...item, amendment_id: amendmentRowId }));
+        const { error: insertError } = await client.from('agreement_amendment_items').insert(safeItemPayloads);
         if (insertError) throw insertError;
       }
       const saved = data || { ...current, ...updates, id: amendmentId };
@@ -1266,7 +1332,7 @@
       toast('Draft amendment saved.');
     } catch (error) {
       console.error('[Agreement Lifecycle] Unable to save amendment draft from agreement editor', error);
-      toast('Unable to save amendment.');
+      toast(`Unable to save amendment: ${error?.message || 'Unknown error'}`);
     } finally {
       agreements.state.saveInFlight = false;
       agreements.setFormBusy?.(false);
