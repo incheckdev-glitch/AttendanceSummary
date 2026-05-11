@@ -1728,26 +1728,25 @@ const Proposals = {
     const client = window.SupabaseClient?.getClient?.();
     if (!client) throw new Error('Supabase client is not available.');
 
-    let proposal = null;
-    let proposalError = null;
-    ({ data: proposal, error: proposalError } = await client.from('proposals').select('*').eq('id', id).maybeSingle());
-    if (proposalError) {
-      const fallback = await client.from('proposals').select('*').eq('proposal_id', id).maybeSingle();
-      proposal = fallback.data || null;
-      proposalError = fallback.error || null;
-    }
-    if (proposalError) throw new Error(`Unable to load proposal: ${proposalError.message || 'Unknown error'}`);
+    const proposal = await window.SupabaseData?.get
+      ? await window.SupabaseData.get('proposals', id)
+      : (await Api.requestWithSession('proposals', 'get', { id }));
     if (!proposal) throw new Error('Proposal was not found.');
 
-    const proposalRowId = String(proposal.id || id).trim();
-    const { data: items, error: itemsError } = await client
-      .from('proposal_items')
-      .select('*')
-      .eq('proposal_id', proposalRowId)
-      .order('line_no', { ascending: true, nullsFirst: false })
-      .order('created_at', { ascending: true, nullsFirst: false });
-
-    if (itemsError) throw new Error(`Unable to load proposal items: ${itemsError.message || 'Unknown error'}`);
+    let items = Array.isArray(proposal.items) ? proposal.items : Array.isArray(proposal.proposal_items) ? proposal.proposal_items : [];
+    if (!items.length) {
+      const proposalId = String(proposal.proposal_id || '').trim();
+      const { data: proposalItems, error: proposalItemsError } = await client
+        .from('proposal_items')
+        .select('*')
+        .eq('proposal_id', proposalId)
+        .order('created_at', { ascending: true });
+      if (proposalItemsError) {
+        console.warn('[Proposals] Unable to load proposal items', proposalItemsError);
+        throw new Error('Unable to load proposal items.');
+      }
+      items = proposalItems || [];
+    }
 
     const normalizedItems = Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : [];
     const proposalWithTotals = this.withCalculatedTotalsFallback(proposal, normalizedItems);

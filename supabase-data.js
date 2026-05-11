@@ -15,8 +15,10 @@
     deal_note_logs: { table: 'deal_note_logs', idField: 'id', labelField: 'id' },
     deals: { table: 'deals', idField: 'deal_id', labelField: 'deal_id' },
     proposal_catalog: { table: 'proposal_catalog_items', idField: 'id', labelField: 'item_name' },
-    proposals: { table: 'proposals', idField: 'proposal_id', labelField: 'proposal_reference' },
-    agreements: { table: 'agreements', idField: 'agreement_id', labelField: 'agreement_reference' },
+    proposals: { table: 'proposals', idField: 'proposal_id', labelField: 'proposal_id', lookupFields: ['proposal_number', 'display_id', 'reference_number'] },
+    agreements: { table: 'agreements', idField: 'agreement_id', labelField: 'agreement_id', lookupFields: ['agreement_number', 'agreement_reference', 'display_id', 'reference_number'] },
+    proposal_items: { table: 'proposal_items', idField: 'item_id', labelField: 'description', defaultOrder: { column: 'created_at', ascending: true } },
+    agreement_items: { table: 'agreement_items', idField: 'item_id', labelField: 'description', defaultOrder: { column: 'created_at', ascending: true } },
     agreement_amendment: { table: 'agreement_amendments', idField: 'amendment_id', labelField: 'amendment_reference' },
     agreement_amendments: { table: 'agreement_amendments', idField: 'amendment_id', labelField: 'amendment_reference' },
     agreement_amendment_items: { table: 'agreement_amendment_items', idField: 'item_id', labelField: 'description' },
@@ -46,7 +48,9 @@
     lead: 'leads',
     deal: 'deals',
     proposal: 'proposals',
+    proposal_item: 'proposal_items',
     agreement: 'agreements',
+    agreement_item: 'agreement_items',
     invoice: 'invoices',
     receipt: 'receipts',
     ticket: 'tickets',
@@ -79,6 +83,114 @@
     return { resource: normalized, table: normalized, idField: 'id', labelField: 'id', fallback: true };
   }
 
+  function resolveResourceConfig(resource = '') {
+    return resourceConfigFor(resource);
+  }
+
+  async function getExistingTableColumns(tableName) {
+    const table = String(tableName || '').trim();
+    if (!table) return null;
+    if (global.__supabaseTableColumns?.[table]) {
+      return global.__supabaseTableColumns[table];
+    }
+    return null;
+  }
+
+  function filterExistingLookupFields(config, knownColumns) {
+    const fields = Array.isArray(config?.lookupFields) ? config.lookupFields : [];
+    if (!knownColumns || !Array.isArray(knownColumns)) {
+      return fields.filter(Boolean);
+    }
+    return fields.filter(field => knownColumns.includes(field));
+  }
+
+  function shouldSkipMissingColumnLookup(error = {}) {
+    const code = String(error?.code || '').trim();
+    const message = String(error?.message || error?.details || '').toLowerCase();
+    return code === '42703' || message.includes('does not exist') || message.includes('could not find') || message.includes('schema cache');
+  }
+
+  function friendlySingleRecordLoadError(resourceName, error) {
+    const normalized = normalizeResourceName(resourceName);
+    const message = String(error?.message || error || '').trim();
+    if (/multiple|single json object|cannot coerce|406|pgrst116/i.test(message)) {
+      if (normalized === 'proposals') {
+        return new Error('Unable to load proposal. Multiple records matched this reference. Please use the exact proposal ID.');
+      }
+      if (normalized === 'agreements') {
+        return new Error('Unable to load agreement. Multiple records matched this reference. Please use the exact agreement ID.');
+      }
+    }
+    return friendlyError(`Unable to load ${normalized} record`, error);
+  }
+
+  async function loadSingleSupabaseRecord(resourceName, recordId, providedClient = null) {
+    const config = resolveResourceConfig(resourceName);
+    if (!config) {
+      throw new Error(`Resource "${resourceName}" is not available in SupabaseData.`);
+    }
+
+    const table = config.table;
+    const idField = config.idField;
+    const cleanId = String(recordId || '').trim();
+    const client = providedClient || getClient();
+
+    if (!cleanId) {
+      throw new Error(`Missing ${resourceName} record id`);
+    }
+
+    const exactFields = [idField];
+    if (idField !== 'id' && isUuid(cleanId)) exactFields.push('id');
+
+    for (const field of exactFields.filter(Boolean)) {
+      const exactResult = await client
+        .from(table)
+        .select('*')
+        .eq(field, cleanId)
+        .limit(1);
+
+      if (exactResult.error) {
+        if (field !== idField && shouldSkipMissingColumnLookup(exactResult.error)) continue;
+        throw exactResult.error;
+      }
+
+      if (Array.isArray(exactResult.data) && exactResult.data.length === 1) {
+        return exactResult.data[0];
+      }
+    }
+
+    const knownColumns = await getExistingTableColumns(table);
+    const lookupFields = filterExistingLookupFields(config, knownColumns);
+
+    for (const field of lookupFields) {
+      if (!field || field === idField) continue;
+
+      const fallbackResult = await client
+        .from(table)
+        .select('*')
+        .eq(field, cleanId)
+        .order('created_at', { ascending: false })
+        .limit(2);
+
+      if (fallbackResult.error) {
+        console.warn(`[SupabaseData] Lookup field failed for ${resourceName}.${field}`, fallbackResult.error);
+        continue;
+      }
+
+      const rows = fallbackResult.data || [];
+
+      if (rows.length > 1) {
+        console.warn(`[SupabaseData] Multiple ${resourceName} rows matched ${field}=${cleanId}. Using newest row.`);
+      }
+
+      if (rows.length >= 1) {
+        return rows[0];
+      }
+    }
+
+    throw new Error(`No ${resourceName} record found for ${cleanId}`);
+  }
+
   const MIGRATED_RESOURCES = new Set([
     ...Object.keys(RESOURCE_CONFIG),
     ...Object.keys(RESOURCE_ALIASES)
@@ -108,7 +220,9 @@
     deals: ['id', 'deal_id'],
     proposal_catalog: ['catalog_item_id'],
     proposals: ['id', 'proposal_id'],
+    proposal_items: ['id', 'item_id'],
     agreements: ['id', 'agreement_id'],
+    agreement_items: ['id', 'item_id'],
     agreement_amendment: ['id', 'amendment_id'],
     agreement_amendments: ['id', 'amendment_id'],
     agreement_amendment_items: ['id', 'item_id'],
@@ -535,8 +649,10 @@
     'subtotal_locations','subtotal_one_time','total_discount','grand_total','status','approved_annual_saas_discount_percent','approved_one_time_fee_discount_percent','approved_discount_percent','discount_approval_status','discount_approved_at','discount_approved_by','last_discount_approval_request_id','approval_required_reason','signed_document_path','signed_document_name','signed_document_uploaded_at','signed_document_uploaded_by','generated_by','created_by','updated_by','created_at','updated_at'
   ]);
   const PROPOSAL_ITEM_COLUMNS = new Set([
-    'item_id','proposal_id','section','line_no','location_name','item_name','unit_price','discount_percent','discounted_unit_price','quantity',
-    'line_total','service_start_date','service_end_date','capability_name','capability_value','notes'
+    'item_id','proposal_id','parent_proposal_id','proposal_uuid','line_number','line_no','item_type','category','description',
+    'section','location_name','item_name','unit_price','discount_percent','discount_amount','discounted_unit_price','quantity',
+    'tax_percent','tax_amount','line_total','service_start_date','service_end_date','billing_frequency',
+    'capability_name','capability_value','notes','created_at','updated_at','created_by','updated_by'
   ]);
   const AGREEMENT_COLUMNS = new Set([
     'agreement_id','proposal_id','agreement_number','company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_mobile','customer_contact_email','customer_contact_phone','provider_name','provider_legal_name','provider_address','provider_contact_name','provider_contact_mobile',
@@ -548,8 +664,10 @@
     'agreement_title','parent_agreement_id','root_agreement_id','source_agreement_id','agreement_relationship_type','agreement_version','relationship_notes','approved_annual_saas_discount_percent','approved_one_time_fee_discount_percent','approved_discount_percent','discount_approval_status','discount_approved_at','discount_approved_by','last_discount_approval_request_id','approval_required_reason','notes'
   ]);
   const AGREEMENT_ITEM_COLUMNS = new Set([
-    'item_id','agreement_id','section','line_no','location_name','item_name','unit_price','discount_percent',
-    'discounted_unit_price','quantity','line_total','service_start_date','service_end_date','capability_name','capability_value','notes'
+    'item_id','agreement_id','parent_agreement_id','agreement_uuid','line_number','line_no','item_type','category','description',
+    'section','location_name','item_name','unit_price','discount_percent','discount_amount','discounted_unit_price',
+    'quantity','tax_percent','tax_amount','line_total','service_start_date','service_end_date','billing_frequency',
+    'capability_name','capability_value','notes','created_at','updated_at','created_by','updated_by'
   ]);
   const CLIENT_COLUMNS = new Set([
     'client_id','client_name','company_id','legal_company_name','company_name','account_number','currency','primary_email','primary_phone','billing_frequency','payment_term',
@@ -697,7 +815,7 @@
     clients: ['id','client_id','company_id','legal_company_name','company_name','account_number','currency','status','created_at','updated_at'],
     leads: ['id','lead_id','company_id','company_name','contact_name','status','created_at','updated_at'],
     deals: ['id','deal_id','lead_id','company_id','company_name','stage','status','created_at','updated_at'],
-    proposals: ['id','proposal_id','proposal_reference','ref_number','created_at','updated_at'],
+    proposals: ['id','proposal_id','ref_number','created_at','updated_at'],
     agreements: ['id','agreement_id','agreement_reference','agreement_number','created_at','updated_at'],
     invoices: ['id','invoice_id','invoice_number','invoice_reference','agreement_id','client_id','company_id','legal_company_name','company_name','account_number','status','payment_status','currency','subtotal','discount_amount','tax_amount','total_amount','amount_paid','balance_due','due_date','invoice_date','created_at','updated_at'],
     receipts: ['id','receipt_id','receipt_number','invoice_id','invoice_number','client_id','company_id','legal_company_name','company_name','account_number','status','payment_state','currency','received_amount','payment_amount','amount','payment_date','payment_method','created_at','updated_at'],
@@ -729,9 +847,9 @@
   const UUID_COLUMNS_BY_TABLE = {
     deals: new Set(['lead_id', 'source_lead_uuid', 'created_by', 'updated_by']),
     proposals: new Set(['deal_id', 'provider_signatory_user_id', 'created_by', 'updated_by']),
-    proposal_items: new Set(['proposal_id']),
+    proposal_items: new Set([]),
     agreements: new Set(['proposal_id', 'created_by', 'updated_by']),
-    agreement_items: new Set(['agreement_id']),
+    agreement_items: new Set([]),
     clients: new Set(['source_agreement_id', 'created_by', 'updated_by']),
     invoices: new Set(['client_id', 'agreement_uuid', 'proposal_id', 'created_by', 'updated_by']),
     invoice_items: new Set(['invoice_id']),
@@ -2386,28 +2504,36 @@
     return sanitized;
   }
 
-  function sanitizeProposalItemRecord(record = {}, proposalUuid = '') {
-    const normalizedDiscountPercent = normalizeNumericValue(
-      firstDefined(record, ['discount_percent', 'discountPercent', 'discount']),
-      0
-    );
+  function sanitizeProposalItemRecord(record = {}, proposalId = '', index = -1) {
+    const lineNumber = Number(firstDefined(record, ['line_number', 'lineNumber', 'line_no', 'lineNo', 'line']) || (index >= 0 ? index + 1 : 0));
+    const description = firstDefined(record, ['description', 'item_name', 'itemName', 'name', 'notes']);
     const mapped = compactObject({
       item_id: firstDefined(record, ['item_id', 'itemId']),
-      proposal_id: normalizeNullableUuidValue(proposalUuid || firstDefined(record, ['proposal_id', 'proposalId'])),
-      section: firstDefined(record, ['section']),
-      line_no: firstDefined(record, ['line_no', 'lineNo', 'line']),
+      proposal_id: String(proposalId || firstDefined(record, ['proposal_id', 'proposalId']) || '').trim(),
+      line_number: Number.isFinite(lineNumber) && lineNumber > 0 ? lineNumber : undefined,
+      line_no: Number.isFinite(lineNumber) && lineNumber > 0 ? lineNumber : undefined,
+      item_type: firstDefined(record, ['item_type', 'itemType']),
+      category: firstDefined(record, ['category']),
+      description,
+      section: firstDefined(record, ['section', 'category']),
       location_name: firstDefined(record, ['location_name', 'locationName']),
-      item_name: firstDefined(record, ['item_name', 'itemName', 'name']),
-      unit_price: firstDefined(record, ['unit_price', 'unitPrice']),
-      discount_percent: normalizedDiscountPercent,
-      discounted_unit_price: firstDefined(record, ['discounted_unit_price', 'discountedUnitPrice']),
-      quantity: firstDefined(record, ['quantity']),
-      line_total: firstDefined(record, ['line_total', 'lineTotal']),
+      item_name: firstDefined(record, ['item_name', 'itemName', 'name', 'description']),
+      quantity: normalizeNumericValue(firstDefined(record, ['quantity']), 0),
+      unit_price: normalizeNumericValue(firstDefined(record, ['unit_price', 'unitPrice']), 0),
+      discount_percent: normalizeNumericValue(firstDefined(record, ['discount_percent', 'discountPercent', 'discount']), 0),
+      discount_amount: normalizeNumericValue(firstDefined(record, ['discount_amount', 'discountAmount']), 0),
+      discounted_unit_price: normalizeNumericValue(firstDefined(record, ['discounted_unit_price', 'discountedUnitPrice']), 0),
+      tax_percent: normalizeNumericValue(firstDefined(record, ['tax_percent', 'taxPercent']), 0),
+      tax_amount: normalizeNumericValue(firstDefined(record, ['tax_amount', 'taxAmount']), 0),
+      line_total: normalizeNumericValue(firstDefined(record, ['line_total', 'lineTotal']), 0),
       service_start_date: normalizeNullableDateValue(firstDefined(record, ['service_start_date', 'serviceStartDate'])),
       service_end_date: normalizeNullableDateValue(firstDefined(record, ['service_end_date', 'serviceEndDate'])),
+      billing_frequency: firstDefined(record, ['billing_frequency', 'billingFrequency']),
       capability_name: firstDefined(record, ['capability_name', 'capabilityName']),
       capability_value: firstDefined(record, ['capability_value', 'capabilityValue']),
-      notes: firstDefined(record, ['notes'])
+      notes: firstDefined(record, ['notes']),
+      created_by: firstDefined(record, ['created_by', 'createdBy']),
+      updated_by: firstDefined(record, ['updated_by', 'updatedBy'])
     });
     const sanitized = {};
     Object.entries(mapped).forEach(([key, value]) => {
@@ -2575,29 +2701,41 @@
     return sanitized;
   }
 
-  function sanitizeAgreementItemRecord(record = {}, agreementUuid = '') {
+  function sanitizeAgreementItemRecord(record = {}, agreementId = '', index = -1) {
+    const lineNumber = Number(firstDefined(record, ['line_number', 'lineNumber', 'line_no', 'lineNo', 'line']) || (index >= 0 ? index + 1 : 0));
+    const description = firstDefined(record, ['description', 'item_name', 'itemName', 'name', 'notes']);
     const mapped = compactObject({
       item_id: firstDefined(record, ['item_id', 'itemId']),
-      agreement_id: normalizeNullableUuidValue(agreementUuid || firstDefined(record, ['agreement_id', 'agreementId'])),
-      section: firstDefined(record, ['section']),
-      line_no: normalizeNumericValue(firstDefined(record, ['line_no', 'lineNo', 'line']), 0),
+      agreement_id: String(agreementId || firstDefined(record, ['agreement_id', 'agreementId']) || '').trim(),
+      line_number: Number.isFinite(lineNumber) && lineNumber > 0 ? lineNumber : undefined,
+      line_no: Number.isFinite(lineNumber) && lineNumber > 0 ? lineNumber : undefined,
+      item_type: firstDefined(record, ['item_type', 'itemType']),
+      category: firstDefined(record, ['category']),
+      description,
+      section: firstDefined(record, ['section', 'category']),
       location_name: firstDefined(record, ['location_name', 'locationName']),
-      item_name: firstDefined(record, ['item_name', 'itemName', 'name']),
+      item_name: firstDefined(record, ['item_name', 'itemName', 'name', 'description']),
+      quantity: normalizeNumericValue(firstDefined(record, ['quantity']), 0),
       unit_price: normalizeNumericValue(firstDefined(record, ['unit_price', 'unitPrice']), 0),
       discount_percent: normalizeNumericValue(firstDefined(record, ['discount_percent', 'discountPercent']), 0),
+      discount_amount: normalizeNumericValue(firstDefined(record, ['discount_amount', 'discountAmount']), 0),
       discounted_unit_price: normalizeNumericValue(firstDefined(record, ['discounted_unit_price', 'discountedUnitPrice']), 0),
-      quantity: normalizeNumericValue(firstDefined(record, ['quantity']), 0),
+      tax_percent: normalizeNumericValue(firstDefined(record, ['tax_percent', 'taxPercent']), 0),
+      tax_amount: normalizeNumericValue(firstDefined(record, ['tax_amount', 'taxAmount']), 0),
       line_total: normalizeNumericValue(firstDefined(record, ['line_total', 'lineTotal']), 0),
       service_start_date: normalizeNullableDateValue(firstDefined(record, ['service_start_date', 'serviceStartDate'])),
       service_end_date: normalizeNullableDateValue(firstDefined(record, ['service_end_date', 'serviceEndDate'])),
+      billing_frequency: firstDefined(record, ['billing_frequency', 'billingFrequency']),
       capability_name: firstDefined(record, ['capability_name', 'capabilityName']),
       capability_value: firstDefined(record, ['capability_value', 'capabilityValue']),
-      notes: firstDefined(record, ['notes'])
+      notes: firstDefined(record, ['notes']),
+      created_by: firstDefined(record, ['created_by', 'createdBy']),
+      updated_by: firstDefined(record, ['updated_by', 'updatedBy'])
     });
     const sanitized = {};
     Object.entries(mapped).forEach(([key, value]) => {
       if (!AGREEMENT_ITEM_COLUMNS.has(key)) return;
-      if (value === undefined) return;
+      if (value === undefined || value === null) return;
       sanitized[key] = value;
     });
     return sanitized;
@@ -3266,14 +3404,59 @@
     throw new Error(`Unsupported auth action: ${action}`);
   }
 
+  function getItemParentLookupFields(resource, knownColumns) {
+    const configured = {
+      proposals: ['proposal_id', 'parent_proposal_id', 'proposal_uuid'],
+      agreements: ['agreement_id', 'parent_agreement_id', 'agreement_uuid']
+    }[resource] || [ITEM_FK[resource]].filter(Boolean);
+    if (!knownColumns || !Array.isArray(knownColumns)) return configured.slice(0, 1);
+    return configured.filter(field => knownColumns.includes(field));
+  }
+
+  function getItemParentId(resource, row = {}) {
+    if (resource === 'proposals') return String(row.proposal_id || row.id || '').trim();
+    if (resource === 'agreements') return String(row.agreement_id || row.id || '').trim();
+    const fk = ITEM_FK[resource];
+    return String(row[fk] || row.id || '').trim();
+  }
+
+  async function loadItemsForParent(resource, row, providedClient = null) {
+    const itemTable = ITEM_TABLES[resource];
+    if (!itemTable || !row) return [];
+    const parentId = getItemParentId(resource, row);
+    if (!parentId) return [];
+    const client = providedClient || getClient();
+    const knownColumns = await getExistingTableColumns(itemTable);
+    const lookupFields = getItemParentLookupFields(resource, knownColumns);
+    let lastError = null;
+
+    for (const field of lookupFields) {
+      const result = await client
+        .from(itemTable)
+        .select('*')
+        .eq(field, parentId)
+        .order('created_at', { ascending: true });
+      if (result.error) {
+        lastError = result.error;
+        if (shouldSkipMissingColumnLookup(result.error)) {
+          console.warn(`[SupabaseData] Item lookup field failed for ${itemTable}.${field}`, result.error);
+          continue;
+        }
+        break;
+      }
+      return result.data || [];
+    }
+
+    if (lastError) {
+      const message = resource === 'proposals' ? 'Unable to load proposal items.' : resource === 'agreements' ? 'Unable to load agreement items.' : `Unable to load ${itemTable}`;
+      throw friendlyError(message, lastError);
+    }
+    return [];
+  }
+
   async function withItems(resource, row) {
     if (!ITEM_TABLES[resource] || !row) return sanitizeReadByRole(resource, row);
-    const fk = ITEM_FK[resource];
-    const id = row.id || row[fk];
-    if (!id) return sanitizeReadByRole(resource, row);
-    const client = getClient();
-    const { data, error } = await client.from(ITEM_TABLES[resource]).select('*').eq(fk, id).order('created_at', { ascending: true });
-    if (error) throw friendlyError(`Unable to load ${ITEM_TABLES[resource]}`, error);
+    const data = await loadItemsForParent(resource, row);
     const key = ITEM_TABLES[resource];
     return sanitizeReadByRole(resource, { ...row, [key]: data || [], items: data || [] });
   }
@@ -4073,15 +4256,15 @@
         updatedRecord = data || record;
       }
       if (itemTable && approvedItems.length) {
-        const parentId = String(updatedRecord?.id || record?.id || recordId || '').trim();
+        const parentId = getItemParentId(resource, updatedRecord || record || { [fk]: recordId, id: recordId });
         if (!parentId) throw workflowError(`Unable to apply ${resource} items because parent record id is missing.`);
         await client.from(itemTable).delete().eq(fk, parentId);
         if (approvedItems.length) {
-          const insertRows = approvedItems.map(item =>
+          const insertRows = approvedItems.map((item, index) =>
             resource === 'proposals'
-              ? sanitizeProposalItemRecord(item, parentId)
+              ? sanitizeProposalItemRecord(item, parentId, index)
               : resource === 'agreements'
-                ? sanitizeAgreementItemRecord(item, parentId)
+                ? sanitizeAgreementItemRecord(item, parentId, index)
                 : resource === 'agreement_amendment'
                   ? { ...sanitizeAgreementItemRecord(item, ''), agreement_id: undefined, amendment_id: parentId }
                   : resource === 'invoices'
@@ -5030,24 +5213,14 @@
 
     const template = buildNotificationEmailTemplate(payload);
     try {
-      const response = await fetch('/api/proxy', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-          'X-Supabase-Access-Token': token
-        },
-        body: JSON.stringify({
-          resource: 'notifications',
-          action: 'send_email',
+      const client = getClient();
+      const { data: result, error } = await client.functions.invoke('send-notification-email', {
+        body: {
           to: emails,
           ...template
-        })
+        }
       });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(String(result?.error || result?.message || 'Unable to send email notification'));
-      }
+      if (error) throw error;
       console.info('[notifications:email] log', { channel: 'email', status: 'sent', recipient_email: emails.join(','), context, resource: payload?.resource || null, action: payload?.action || payload?.event_type || null, record_id: payload?.record_id || null, record_number: payload?.record_number || null, recipientsCount: emails.length, messageId: result?.messageId || null });
       return { attempted: true, sent: true, response: result };
     } catch (error) {
@@ -6034,12 +6207,23 @@
       if (!id) throw new Error(`Missing ${key} for ${resource} get`);
       console.log('[CRUD] resource, pk, value', resource, key, id);
       const userGetColumns = 'id, name, email, username, role_key, is_active, created_at, updated_at';
-      const { data, error } = await client
-        .from(resource === 'users' ? 'profiles' : table)
-        .select(resource === 'users' ? userGetColumns : '*')
-        .eq(key, id)
-        .single();
-      if (error) throw friendlyError(`Unable to load ${resource} record`, error);
+      let data;
+      if (resource === 'proposals' || resource === 'agreements') {
+        try {
+          data = await loadSingleSupabaseRecord(resource, id, client);
+        } catch (error) {
+          throw friendlySingleRecordLoadError(resource, error);
+        }
+      } else {
+        const result = await client
+          .from(resource === 'users' ? 'profiles' : table)
+          .select(resource === 'users' ? userGetColumns : '*')
+          .eq(key, id)
+          .limit(1);
+        if (result.error) throw friendlyError(`Unable to load ${resource} record`, result.error);
+        data = Array.isArray(result.data) ? result.data[0] : null;
+        if (!data) throw new Error(`No ${resource} record found for ${id}`);
+      }
       if (resource === 'tickets') {
         if (!isAdminDev()) return { handled: true, data: sanitizeReadByRole(resource, data) };
         const byId = await loadTicketInternalByIds([String(data.id)]);
@@ -6397,26 +6581,19 @@
       const itemTable = ITEM_TABLES[resource];
       const fk = ITEM_FK[resource];
       if (itemTable && items.length && (created[fk] || created.id)) {
-        const parentId = resource === 'proposals'
-          ? String(created.id || '').trim()
-          : created.id || created[fk];
-        if (resource === 'proposals' && !isUuid(parentId)) {
-          throw new Error('Proposal items were not saved because the proposal UUID is missing.');
-        }
-        const insertRows = items.map(item =>
+        const parentId = getItemParentId(resource, created);
+        const insertRows = items.map((item, index) =>
           resource === 'proposals'
-            ? sanitizeProposalItemRecord(item, parentId)
+            ? sanitizeProposalItemRecord(item, parentId, index)
             : resource === 'agreements'
-              ? sanitizeAgreementItemRecord(item, parentId)
+              ? sanitizeAgreementItemRecord(item, parentId, index)
             : resource === 'invoices'
               ? sanitizeInvoiceItemRecord(item, parentId)
             : resource === 'receipts'
               ? sanitizeReceiptItemRecord(item, parentId)
             : ({ ...item, [fk]: parentId })
         );
-        if (resource === 'proposals' && insertRows.some(row => !isUuid(row.proposal_id))) {
-          throw new Error('Proposal items were not saved because the proposal reference is invalid.');
-        }
+        if (!parentId) throw new Error(`${itemTable} were not saved because the parent record id is missing.`);
         const childResp = await insertSelectRowsWithSchemaRetry(client, itemTable, insertRows, `Unable to create ${itemTable}`);
         if (childResp.error) throw friendlyError(`Unable to create ${itemTable}`, childResp.error);
       }
@@ -6444,6 +6621,7 @@
           ? pickProposalCatalogMutationId(payload)
         : pickedId;
       const key = resource === 'operations_onboarding' ? 'id' : getPrimaryKeyForResource(resource);
+      let updateId = id;
       if (!id) throw new Error(`Missing ${key} for ${resource} update`);
       console.log('[CRUD] resource, pk, value', resource, key, id);
       const updates = payload.updates || payload.item || payload.activity || payload;
@@ -6598,13 +6776,14 @@
               ? sanitizeContactRecord(safeUpdates, { mode: 'update' })
             : safeUpdates;
       if (resource === 'proposals') {
-        const { data: existingProposal, error: existingProposalError } = await client
-          .from('proposals')
-          .select('id, proposal_id, ref_number')
-          .eq('id', id)
-          .maybeSingle();
-        if (existingProposalError) throw friendlyError('Unable to load proposal before update', existingProposalError);
+        let existingProposal = null;
+        try {
+          existingProposal = await loadSingleSupabaseRecord('proposals', id, client);
+        } catch (existingProposalError) {
+          throw friendlySingleRecordLoadError('proposals', existingProposalError);
+        }
         if (!existingProposal) throw new Error('Proposal was not found for update.');
+        updateId = String(existingProposal.proposal_id || id).trim();
         const hasIncomingProposalId = Object.prototype.hasOwnProperty.call(publicUpdates, 'proposal_id');
         const hasIncomingRefNumber = Object.prototype.hasOwnProperty.call(publicUpdates, 'ref_number');
         const identifiers = await allocateUniqueProposalIdentifiers(client, {
@@ -6614,6 +6793,14 @@
         });
         publicUpdates.proposal_id = identifiers.proposal_id;
         publicUpdates.ref_number = identifiers.ref_number;
+      }
+      if (resource === 'agreements' && isUuid(id)) {
+        try {
+          const existingAgreement = await loadSingleSupabaseRecord('agreements', id, client);
+          updateId = String(existingAgreement?.agreement_id || id).trim();
+        } catch (existingAgreementError) {
+          throw friendlySingleRecordLoadError('agreements', existingAgreementError);
+        }
       }
       if (resource === 'events') {
         EVENT_LEGACY_FIELDS.forEach(field => { delete publicUpdates[field]; });
@@ -6657,7 +6844,7 @@
           table,
           finalPublicUpdates,
           key,
-          id,
+          updateId,
           `Unable to update ${resource} record`
         );
         if (error) throw friendlyError(`Unable to update ${resource} record`, error);
@@ -6668,14 +6855,14 @@
       } else {
         if (resource === 'leads') {
           console.log('[leads update final payload]', JSON.stringify(finalPublicUpdates, null, 2));
-          console.log('[leads update id]', id);
+          console.log('[leads update id]', updateId);
         }
         const { data: singleRow, error } = await updateSelectSingleWithSchemaRetry(
           client,
           table,
           finalPublicUpdates,
           key,
-          id,
+          updateId,
           `Unable to update ${resource} record`
         );
         if (error) throw friendlyError(`Unable to update ${resource} record`, error);
@@ -6805,28 +6992,21 @@
       const itemTable = ITEM_TABLES[resource];
       const fk = ITEM_FK[resource];
       if (itemTable && Array.isArray(payload.items)) {
-        const parentId = resource === 'proposals'
-          ? String(id || data?.id || '').trim()
-          : id;
-        if (resource === 'proposals' && !isUuid(parentId)) {
-          throw new Error('Proposal items were not saved because the proposal UUID is missing.');
-        }
+        const parentId = getItemParentId(resource, data || { [fk]: updateId, id: updateId });
+        if (!parentId) throw new Error(`${itemTable} were not saved because the parent record id is missing.`);
         await client.from(itemTable).delete().eq(fk, parentId);
         if (payload.items.length) {
-          const insertRows = payload.items.map(item =>
+          const insertRows = payload.items.map((item, index) =>
             resource === 'proposals'
-              ? sanitizeProposalItemRecord(item, parentId)
+              ? sanitizeProposalItemRecord(item, parentId, index)
               : resource === 'agreements'
-                ? sanitizeAgreementItemRecord(item, parentId)
+                ? sanitizeAgreementItemRecord(item, parentId, index)
               : resource === 'invoices'
                 ? sanitizeInvoiceItemRecord(item, parentId)
               : resource === 'receipts'
                 ? sanitizeReceiptItemRecord(item, parentId)
               : ({ ...item, [fk]: parentId })
           );
-          if (resource === 'proposals' && insertRows.some(row => !isUuid(row.proposal_id))) {
-            throw new Error('Proposal items were not saved because the proposal reference is invalid.');
-          }
           const childResp = await insertSelectRowsWithSchemaRetry(client, itemTable, insertRows, `Unable to update ${itemTable}`);
           if (childResp.error) throw friendlyError(`Unable to update ${itemTable}`, childResp.error);
         }
@@ -6982,6 +7162,14 @@
 
   global.SupabaseData = {
     dispatch,
+    get: (resource, id, extra = {}) => dispatch({ ...extra, resource, action: 'get', id }),
+    list: (resource, extra = {}) => dispatch({ ...extra, resource, action: 'list' }),
+    create: (resource, item, extra = {}) => dispatch({ ...extra, resource, action: 'create', item }),
+    update: (resource, id, updates, extra = {}) => dispatch({ ...extra, resource, action: 'update', id, updates }),
+    delete: (resource, id, extra = {}) => dispatch({ ...extra, resource, action: 'delete', id }),
+    loadSingleSupabaseRecord,
+    getExistingTableColumns,
+    filterExistingLookupFields,
     isMigratedResource: resource => {
       const requested = String(resource || '').trim();
       return MIGRATED_RESOURCES.has(requested) || MIGRATED_RESOURCES.has(normalizeResourceName(requested));
