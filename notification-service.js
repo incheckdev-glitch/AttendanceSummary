@@ -158,12 +158,16 @@
       hasUrl: Boolean(url),
       recordNumber: recordNumber || null
     });
-    const client = global.SupabaseClient?.getClient?.();
-    if (!client?.functions?.invoke) throw new Error('Supabase functions are not available for email notification delivery.');
-    const { data: result, error } = await client.functions.invoke('send-notification-email', {
-      body: { to: emailRecipients, ...template }
+    const response = await fetch('/api/proxy', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}`, 'X-Supabase-Access-Token': token } : {})
+      },
+      body: JSON.stringify({ resource: 'notifications', action: 'send_email', to: emailRecipients, ...template })
     });
-    if (error) throw error;
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(String(result?.error || 'Unable to send email notification'));
     console.info('[notifications] email log', { channel: 'email', status: 'sent', recipient_email: emailRecipients.join(','), resource, action, record_id: recordId || null, record_number: recordNumber || null, eventKey, recipientsCount: emailRecipients.length, messageId: result?.messageId || null });
     return result;
   }

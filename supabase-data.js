@@ -1,251 +1,71 @@
 (function initSupabaseData(global) {
-  const RESOURCE_CONFIG = Object.freeze({
-    auth: { table: null, idField: 'id', labelField: 'id' },
-    users: { table: 'profiles', idField: 'id', labelField: 'name' },
-    roles: { table: 'roles', idField: 'role_key', labelField: 'role_key' },
-    role_permissions: { table: 'role_permissions', idField: 'permission_id', labelField: 'resource' },
-    tickets: { table: 'tickets', idField: 'ticket_id', labelField: 'ticket_id' },
-    events: { table: 'calendar_events', idField: 'event_id', labelField: 'title' },
-    calendar_events: { table: 'calendar_events', idField: 'event_id', labelField: 'title' },
-    csm: { table: 'csm_activities', idField: 'id', labelField: 'activity_id' },
-    csm_activities: { table: 'csm_activities', idField: 'id', labelField: 'activity_id' },
-    csm_daily_activity: { table: 'csm_daily_activity', idField: 'activity_id', labelField: 'activity_id' },
-    leads: { table: 'leads', idField: 'lead_id', labelField: 'lead_id' },
-    lead_note_logs: { table: 'lead_note_logs', idField: 'id', labelField: 'id' },
-    deal_note_logs: { table: 'deal_note_logs', idField: 'id', labelField: 'id' },
-    deals: { table: 'deals', idField: 'deal_id', labelField: 'deal_id' },
-    proposal_catalog: { table: 'proposal_catalog_items', idField: 'id', labelField: 'item_name' },
-    proposals: { table: 'proposals', idField: 'proposal_id', labelField: 'proposal_id', lookupFields: ['proposal_number', 'display_id', 'reference_number'] },
-    agreements: { table: 'agreements', idField: 'agreement_id', labelField: 'agreement_id', lookupFields: ['agreement_number', 'agreement_reference', 'display_id', 'reference_number'] },
-    proposal_items: { table: 'proposal_items', idField: 'item_id', labelField: 'description', defaultOrder: { column: 'created_at', ascending: true } },
-    agreement_items: { table: 'agreement_items', idField: 'item_id', labelField: 'description', defaultOrder: { column: 'created_at', ascending: true } },
-    agreement_amendment: { table: 'agreement_amendments', idField: 'amendment_id', labelField: 'amendment_reference' },
-    agreement_amendments: { table: 'agreement_amendments', idField: 'amendment_id', labelField: 'amendment_reference' },
-    agreement_amendment_items: { table: 'agreement_amendment_items', idField: 'item_id', labelField: 'description' },
-    workflow: { table: null, idField: 'id', labelField: 'id' },
-    workflow_rules: { table: 'workflow_rules', idField: 'workflow_rule_id', labelField: 'resource' },
-    workflow_approvals: { table: 'workflow_approvals', idField: 'approval_id', labelField: 'approval_id' },
-    clients: { table: 'clients', idField: 'client_id', labelField: 'legal_company_name' },
-    invoices: { table: 'invoices', idField: 'invoice_id', labelField: 'invoice_number' },
-    receipts: { table: 'receipts', idField: 'receipt_id', labelField: 'receipt_number' },
-    operations_onboarding: { table: 'operations_onboarding', idField: 'onboarding_id', labelField: 'onboarding_id' },
-    technical_admin_requests: { table: 'technical_admin_requests', idField: 'request_id', labelField: 'request_id' },
-    notifications: { table: 'notifications', idField: 'notification_id', labelField: 'title' },
-    notification_rules: { table: 'notification_rules', idField: 'id', labelField: 'description' },
-    notification_settings: { table: 'notification_rules', idField: 'id', labelField: 'description' },
-    communication_centre_conversations: { table: 'communication_centre_conversations', idField: 'conversation_id', labelField: 'title' },
-    communication_centre_messages: { table: 'communication_centre_messages', idField: 'message_id', labelField: 'message_id' },
-    companies: { table: 'companies', idField: 'company_id', labelField: 'legal_company_name' },
-    contacts: { table: 'contacts', idField: 'contact_id', labelField: 'contact_name' },
-    company_type_options: { table: 'company_type_options', idField: 'id', labelField: 'name' },
-    company_industry_options: { table: 'company_industry_options', idField: 'id', labelField: 'name' }
-  });
-
-  const RESOURCE_ALIASES = Object.freeze({
-    company: 'companies',
-    contact: 'contacts',
-    client: 'clients',
-    lead: 'leads',
-    deal: 'deals',
-    proposal: 'proposals',
-    proposal_item: 'proposal_items',
-    agreement: 'agreements',
-    agreement_item: 'agreement_items',
-    invoice: 'invoices',
-    receipt: 'receipts',
-    ticket: 'tickets',
-    event: 'events',
-    calendar: 'calendar_events',
-    onboarding: 'operations_onboarding',
-    operations: 'operations_onboarding',
-    technical_admin: 'technical_admin_requests',
-    technical_admin_request: 'technical_admin_requests',
-    csm_activity: 'csm_daily_activity',
-    workflow_rule: 'workflow_rules',
-    workflow_approval: 'workflow_approvals',
-    notification_setting: 'notification_settings',
-    notification_rule: 'notification_rules',
-    amendment: 'agreement_amendments',
-    agreement_amendment: 'agreement_amendments'
-  });
-
-  function normalizeResourceName(resource = '') {
-    const raw = String(resource || '').trim();
-    return RESOURCE_ALIASES[raw] || raw;
-  }
-
-  function resourceConfigFor(resource = '') {
-    const normalized = normalizeResourceName(resource);
-    const config = RESOURCE_CONFIG[normalized];
-    if (config) return { ...config, resource: normalized };
-    if (!normalized) return null;
-    console.warn('[SupabaseData] Missing resource config; using safe Supabase table fallback', { resource: normalized, table: normalized });
-    return { resource: normalized, table: normalized, idField: 'id', labelField: 'id', fallback: true };
-  }
-
-  function resolveResourceConfig(resource = '') {
-    return resourceConfigFor(resource);
-  }
-
-  async function getExistingTableColumns(tableName) {
-    const table = String(tableName || '').trim();
-    if (!table) return null;
-    if (global.__supabaseTableColumns?.[table]) {
-      return global.__supabaseTableColumns[table];
-    }
-    return null;
-  }
-
-  function filterExistingLookupFields(config, knownColumns) {
-    const fields = Array.isArray(config?.lookupFields) ? config.lookupFields : [];
-    if (!knownColumns || !Array.isArray(knownColumns)) {
-      return fields.filter(Boolean);
-    }
-    return fields.filter(field => knownColumns.includes(field));
-  }
-
-  function shouldSkipMissingColumnLookup(error = {}) {
-    const code = String(error?.code || '').trim();
-    const message = String(error?.message || error?.details || '').toLowerCase();
-    return code === '42703' || message.includes('does not exist') || message.includes('could not find') || message.includes('schema cache');
-  }
-
-  function friendlySingleRecordLoadError(resourceName, error) {
-    const normalized = normalizeResourceName(resourceName);
-    const message = String(error?.message || error || '').trim();
-    if (/multiple|single json object|cannot coerce|406|pgrst116/i.test(message)) {
-      if (normalized === 'proposals') {
-        return new Error('Unable to load proposal. Multiple records matched this reference. Please use the exact proposal ID.');
-      }
-      if (normalized === 'agreements') {
-        return new Error('Unable to load agreement. Multiple records matched this reference. Please use the exact agreement ID.');
-      }
-    }
-    return friendlyError(`Unable to load ${normalized} record`, error);
-  }
-
-  async function loadSingleSupabaseRecord(resourceName, recordId, providedClient = null) {
-    const config = resolveResourceConfig(resourceName);
-    if (!config) {
-      throw new Error(`Resource "${resourceName}" is not available in SupabaseData.`);
-    }
-
-    const table = config.table;
-    const idField = config.idField;
-    const cleanId = String(recordId || '').trim();
-    const client = providedClient || getClient();
-
-    if (!cleanId) {
-      throw new Error(`Missing ${resourceName} record id`);
-    }
-
-    const exactFields = [idField];
-    if (idField !== 'id' && isUuid(cleanId)) exactFields.push('id');
-
-    for (const field of exactFields.filter(Boolean)) {
-      const exactResult = await client
-        .from(table)
-        .select('*')
-        .eq(field, cleanId)
-        .limit(1);
-
-      if (exactResult.error) {
-        if (field !== idField && shouldSkipMissingColumnLookup(exactResult.error)) continue;
-        throw exactResult.error;
-      }
-
-      if (Array.isArray(exactResult.data) && exactResult.data.length === 1) {
-        return exactResult.data[0];
-      }
-    }
-
-    const knownColumns = await getExistingTableColumns(table);
-    const lookupFields = filterExistingLookupFields(config, knownColumns);
-
-    for (const field of lookupFields) {
-      if (!field || field === idField) continue;
-
-      const fallbackResult = await client
-        .from(table)
-        .select('*')
-        .eq(field, cleanId)
-        .order('created_at', { ascending: false })
-        .limit(2);
-
-      if (fallbackResult.error) {
-        console.warn(`[SupabaseData] Lookup field failed for ${resourceName}.${field}`, fallbackResult.error);
-        continue;
-      }
-
-      const rows = fallbackResult.data || [];
-
-      if (rows.length > 1) {
-        console.warn(`[SupabaseData] Multiple ${resourceName} rows matched ${field}=${cleanId}. Using newest row.`);
-      }
-
-      if (rows.length >= 1) {
-        return rows[0];
-      }
-    }
-
-    throw new Error(`No ${resourceName} record found for ${cleanId}`);
-  }
-
   const MIGRATED_RESOURCES = new Set([
-    ...Object.keys(RESOURCE_CONFIG),
-    ...Object.keys(RESOURCE_ALIASES)
+    'auth','users','roles','role_permissions','tickets','events','csm','leads','lead_note_logs','deal_note_logs','deals','proposal_catalog','proposals','agreements','workflow','clients','invoices','receipts','operations_onboarding','technical_admin_requests','notifications','notification_settings','companies','contacts','company_type_options','company_industry_options'
   ]);
 
-  const TABLE_BY_RESOURCE = Object.fromEntries(
-    Object.entries(RESOURCE_CONFIG)
-      .filter(([, config]) => config.table)
-      .map(([resource, config]) => [resource, config.table])
-  );
+  const TABLE_BY_RESOURCE = {
+    users: 'profiles', roles: 'roles', role_permissions: 'role_permissions', tickets: 'tickets',
+    events: 'events', csm: 'csm_activities', leads: 'leads', lead_note_logs: 'lead_note_logs', deal_note_logs: 'deal_note_logs', deals: 'deals',
+    proposal_catalog: 'proposal_catalog_items', proposals: 'proposals', agreements: 'agreements',
+    clients: 'clients', invoices: 'invoices', receipts: 'receipts', operations_onboarding: 'operations_onboarding',
+    technical_admin_requests: 'technical_admin_requests', companies: 'companies', contacts: 'contacts', company_type_options: 'company_type_options', company_industry_options: 'company_industry_options'
+    ,notifications: 'notifications'
+    ,notification_settings: 'notification_rules'
+  };
 
-  const PK_BY_RESOURCE = Object.fromEntries(
-    Object.entries(RESOURCE_CONFIG).map(([resource, config]) => [resource, config.idField || 'id'])
-  );
-
+  const PK_BY_RESOURCE = {
+    users: 'id',
+    roles: 'role_key',
+    role_permissions: 'permission_id',
+    tickets: 'id',
+    events: 'id',
+    csm: 'id',
+    leads: 'id',
+    lead_note_logs: 'id',
+    deal_note_logs: 'id',
+    deals: 'id',
+    proposal_catalog: 'id',
+    proposals: 'id',
+    agreements: 'id',
+    clients: 'id',
+    invoices: 'id',
+    receipts: 'id',
+    operations_onboarding: 'id',
+    technical_admin_requests: 'id',
+    companies: 'id',
+    contacts: 'id',
+    company_type_options: 'id',
+    company_industry_options: 'id'
+    ,notifications: 'notification_id'
+    ,notification_settings: 'id'
+  };
   const LEGACY_IDENTIFIER_KEYS = {
     users: [],
     roles: ['id', 'role_id', 'key'],
     role_permissions: ['id', 'permission'],
-    tickets: ['id', 'ticket_id'],
-    events: ['id', 'event_id'],
-    calendar_events: ['id', 'event_id'],
+    tickets: ['ticket_id'],
+    events: ['event_id'],
     csm: ['activity_id'],
-    csm_activities: ['activity_id'],
-    csm_daily_activity: ['id', 'activity_id'],
-    leads: ['id', 'lead_id'],
-    deals: ['id', 'deal_id'],
+    leads: ['lead_id'],
+    deals: ['deal_id'],
     proposal_catalog: ['catalog_item_id'],
-    proposals: ['id', 'proposal_id'],
-    proposal_items: ['id', 'item_id'],
-    agreements: ['id', 'agreement_id'],
-    agreement_items: ['id', 'item_id'],
-    agreement_amendment: ['id', 'amendment_id'],
-    agreement_amendments: ['id', 'amendment_id'],
-    agreement_amendment_items: ['id', 'item_id'],
-    workflow_rules: ['id', 'workflow_rule_id'],
-    workflow_approvals: ['id', 'approval_id'],
-    clients: ['id', 'client_id'],
-    invoices: ['id', 'invoice_id'],
-    receipts: ['id', 'receipt_id'],
-    operations_onboarding: ['id', 'onboarding_id', 'agreement_id'],
-    technical_admin_requests: ['id', 'request_id', 'technical_request_id'],
-    companies: ['id', 'company_id'],
-    contacts: ['id', 'contact_id'],
-    notification_rules: ['id'],
-    communication_centre_conversations: ['id', 'conversation_id'],
-    communication_centre_messages: ['id', 'message_id'],
+    proposals: ['proposal_id'],
+    agreements: ['agreement_id'],
+    clients: ['client_id'],
+    invoices: ['invoice_id'],
+    receipts: ['receipt_id'],
+    operations_onboarding: ['onboarding_id', 'agreement_id'],
+    technical_admin_requests: ['request_id', 'technical_request_id'],
+    companies: ['company_id'],
+    contacts: ['contact_id'],
     company_type_options: [],
-    company_industry_options: [],
-    notifications: ['id'],
-    notification_settings: []
+    company_industry_options: []
+    ,notifications: ['id']
+    ,notification_settings: []
   };
 
-  const ITEM_TABLES = { proposals: 'proposal_items', agreements: 'agreement_items', agreement_amendment: 'agreement_amendment_items', invoices: 'invoice_items', receipts: 'receipt_items' };
-  const ITEM_FK = { proposals: 'proposal_id', agreements: 'agreement_id', agreement_amendment: 'amendment_id', invoices: 'invoice_id', receipts: 'receipt_id' };
+  const ITEM_TABLES = { proposals: 'proposal_items', agreements: 'agreement_items', invoices: 'invoice_items', receipts: 'receipt_items' };
+  const ITEM_FK = { proposals: 'proposal_id', agreements: 'agreement_id', invoices: 'invoice_id', receipts: 'receipt_id' };
   const IMPORTANT_DEAL_STAGES = new Set(['proposal', 'negotiation', 'won', 'closed won', 'contract sent']);
   const IMPORTANT_PROPOSAL_STATUSES = new Set(['pending approval', 'requires approval', 'sent', 'accepted', 'rejected']);
   const PROPOSAL_PROVIDER_CONTACT_DEFAULTS = Object.freeze({
@@ -649,10 +469,8 @@
     'subtotal_locations','subtotal_one_time','total_discount','grand_total','status','approved_annual_saas_discount_percent','approved_one_time_fee_discount_percent','approved_discount_percent','discount_approval_status','discount_approved_at','discount_approved_by','last_discount_approval_request_id','approval_required_reason','signed_document_path','signed_document_name','signed_document_uploaded_at','signed_document_uploaded_by','generated_by','created_by','updated_by','created_at','updated_at'
   ]);
   const PROPOSAL_ITEM_COLUMNS = new Set([
-    'item_id','proposal_id','parent_proposal_id','proposal_uuid','line_number','line_no','item_type','category','description',
-    'section','location_name','item_name','unit_price','discount_percent','discount_amount','discounted_unit_price','quantity',
-    'tax_percent','tax_amount','line_total','service_start_date','service_end_date','billing_frequency',
-    'capability_name','capability_value','notes','created_at','updated_at','created_by','updated_by'
+    'item_id','proposal_id','section','line_no','location_name','item_name','unit_price','discount_percent','discounted_unit_price','quantity',
+    'line_total','service_start_date','service_end_date','capability_name','capability_value','notes'
   ]);
   const AGREEMENT_COLUMNS = new Set([
     'agreement_id','proposal_id','agreement_number','company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_mobile','customer_contact_email','customer_contact_phone','provider_name','provider_legal_name','provider_address','provider_contact_name','provider_contact_mobile',
@@ -661,26 +479,24 @@
     'customer_sign_date','provider_official_signatory_1_name','provider_official_signatory_1_title','provider_official_signatory_1_sign_date','provider_official_signatory_2_name','provider_official_signatory_2_title','provider_official_signatory_2_sign_date','provider_signatory_name','provider_signatory_title','provider_signatory_email','provider_signatory_secondary','provider_signatory_name_secondary','provider_signatory_title_secondary','provider_primary_signatory_name','provider_primary_signatory_title','provider_secondary_signatory_name','provider_secondary_signatory_title','provider_sign_date','gm_signed',
     'financial_controller_signed','signed_date','status','subtotal_locations','subtotal_one_time','total_discount',
     'grand_total','generated_by','created_by','updated_by','currency','created_at','updated_at','customer_legal_name','provider_legal_name','provider_name',
-    'agreement_title','parent_agreement_id','root_agreement_id','source_agreement_id','agreement_relationship_type','agreement_version','relationship_notes','approved_annual_saas_discount_percent','approved_one_time_fee_discount_percent','approved_discount_percent','discount_approval_status','discount_approved_at','discount_approved_by','last_discount_approval_request_id','approval_required_reason','notes'
+    'agreement_title','notes'
   ]);
   const AGREEMENT_ITEM_COLUMNS = new Set([
-    'item_id','agreement_id','parent_agreement_id','agreement_uuid','line_number','line_no','item_type','category','description',
-    'section','location_name','item_name','unit_price','discount_percent','discount_amount','discounted_unit_price',
-    'quantity','tax_percent','tax_amount','line_total','service_start_date','service_end_date','billing_frequency',
-    'capability_name','capability_value','notes','created_at','updated_at','created_by','updated_by'
+    'item_id','agreement_id','section','line_no','location_name','item_name','unit_price','discount_percent',
+    'discounted_unit_price','quantity','line_total','service_start_date','service_end_date','capability_name','capability_value','notes'
   ]);
   const CLIENT_COLUMNS = new Set([
-    'client_id','client_name','company_id','legal_company_name','company_name','account_number','currency','primary_email','primary_phone','billing_frequency','payment_term',
+    'client_id','client_name','company_name','primary_email','primary_phone','billing_frequency','payment_term',
     'status','source_agreement_id','total_agreements','total_locations','total_value','total_paid','total_due',
-    'related_module','related_record_id','related_record_label','created_by','updated_by','created_at','updated_at'
+    'created_by','updated_by','created_at','updated_at'
   ]);
   const INVOICE_COLUMNS = new Set([
-    'invoice_id','invoice_number','invoice_reference','client_id','agreement_uuid','agreement_id','agreement_number','proposal_id','issue_date','invoice_date','due_date','billing_frequency',
-    'payment_term','company_id','legal_company_name','company_name','account_number','contact_id','contact_name','contact_email','contact_phone','contact_mobile',
+    'invoice_id','invoice_number','client_id','agreement_uuid','agreement_id','agreement_number','proposal_id','issue_date','due_date','billing_frequency',
+    'payment_term','company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile',
     'customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_email',
-    'provider_legal_name','provider_address','support_email','subtotal_locations','subtotal_one_time','invoice_total','subtotal','discount_amount','tax_amount','total_amount',
+    'provider_legal_name','provider_address','support_email','subtotal_locations','subtotal_one_time','invoice_total',
     'old_paid_total','paid_now','amount_paid','received_amount','pending_amount','balance_due','payment_state','payment_status','payment_conclusion','amount_in_words','status','notes','paid_at',
-    'related_module','related_record_id','related_record_label','created_by','updated_by','currency','created_at','updated_at'
+    'created_by','updated_by','currency','created_at','updated_at'
   ]);
   const INVOICE_ITEM_COLUMNS = new Set([
     'item_id','invoice_id','section','line_no','location_name','item_name','unit_price','discount_percent',
@@ -688,11 +504,11 @@
     'service_start_date','service_end_date'
   ]);
   const RECEIPT_COLUMNS = new Set([
-    'receipt_id','receipt_number','invoice_id','invoice_number','agreement_uuid','agreement_id','agreement_number','client_id','company_id','legal_company_name','company_name','account_number','customer_name','customer_legal_name','customer_address','contact_id','contact_name','contact_email','contact_phone','contact_mobile','receipt_status','amount_paid','payment_date','payment_method',
+    'receipt_id','receipt_number','invoice_id','invoice_number','agreement_uuid','agreement_id','agreement_number','client_id','company_id','company_name','customer_name','customer_legal_name','customer_address','contact_id','contact_name','contact_email','contact_phone','contact_mobile','receipt_status','amount_paid','payment_date','payment_method',
     'payment_reference','is_settlement','notes','status',
-    'invoice_number','currency','support_email','company_id','legal_company_name','company_name','account_number','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_name','customer_legal_name','customer_address',
-    'amount_in_words','invoice_total','old_paid_total','paid_now','received_amount','payment_amount','amount','new_paid_total','pending_amount','payment_state','payment_status','payment_conclusion','payment_notes',
-    'related_module','related_record_id','related_record_label','created_by','updated_by','created_at','updated_at'
+    'invoice_number','currency','support_email','company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_name','customer_legal_name','customer_address',
+    'amount_in_words','invoice_total','old_paid_total','paid_now','received_amount','new_paid_total','pending_amount','payment_state','payment_conclusion','payment_notes',
+    'created_by','updated_by','created_at','updated_at'
   ]);
   const RECEIPT_ITEM_COLUMNS = new Set([
     'item_id','receipt_id','invoice_item_id','section','line_no','location_name','location_address','item_name','description',
@@ -809,36 +625,6 @@
       'meta','meta_json','link_target','action_label','action_required','actor_user_id','actor_role'
     ])
   };
-  Object.entries({
-    companies: ['id','company_id','legal_company_name','company_name','legal_name','created_at','updated_at'],
-    contacts: ['id','contact_id','contact_name','full_name','company_id','company_name','created_at','updated_at'],
-    clients: ['id','client_id','company_id','legal_company_name','company_name','account_number','currency','status','created_at','updated_at'],
-    leads: ['id','lead_id','company_id','company_name','contact_name','status','created_at','updated_at'],
-    deals: ['id','deal_id','lead_id','company_id','company_name','stage','status','created_at','updated_at'],
-    proposals: ['id','proposal_id','ref_number','created_at','updated_at'],
-    agreements: ['id','agreement_id','agreement_reference','agreement_number','created_at','updated_at'],
-    invoices: ['id','invoice_id','invoice_number','invoice_reference','agreement_id','client_id','company_id','legal_company_name','company_name','account_number','status','payment_status','currency','subtotal','discount_amount','tax_amount','total_amount','amount_paid','balance_due','due_date','invoice_date','created_at','updated_at'],
-    receipts: ['id','receipt_id','receipt_number','invoice_id','invoice_number','client_id','company_id','legal_company_name','company_name','account_number','status','payment_state','currency','received_amount','payment_amount','amount','payment_date','payment_method','created_at','updated_at'],
-    tickets: ['id','ticket_id','title','status','priority','created_at','updated_at'],
-    events: ['id','event_id','title','created_at','updated_at'],
-    calendar_events: ['id','event_id','title','created_at','updated_at'],
-    operations_onboarding: ['id','onboarding_id','agreement_id','client_id','company_id','legal_company_name','company_name','status','assigned_csm_id','assigned_csm_name','assigned_csm_email','go_live_date','technical_admin_requested','created_at','updated_at'],
-    technical_admin_requests: ['id','request_id','onboarding_id','agreement_id','client_id','company_id','legal_company_name','company_name','status','priority','requested_by','requested_at','assigned_to','assigned_to_name','notes','created_at','updated_at'],
-    csm_activities: ['id','activity_id','created_at','updated_at'],
-    csm_daily_activity: ['id','activity_id','created_at','updated_at'],
-    workflow_rules: ['id','workflow_rule_id','resource','created_at','updated_at'],
-    workflow_approvals: ['id','approval_id','created_at','updated_at'],
-    notification_rules: ['id','description','resource','action','created_at','updated_at'],
-    notification_settings: ['id','description','resource','action','created_at','updated_at'],
-    communication_centre_conversations: ['id','conversation_id','title','created_at','updated_at'],
-    communication_centre_messages: ['id','message_id','conversation_id','created_at','updated_at'],
-    agreement_amendments: ['id','amendment_id','amendment_reference','created_at','updated_at'],
-    agreement_amendment_items: ['id','item_id','description','created_at','updated_at']
-  }).forEach(([resource, columns]) => {
-    if (!LIST_COLUMNS_BY_RESOURCE[resource]) LIST_COLUMNS_BY_RESOURCE[resource] = new Set();
-    columns.forEach(column => LIST_COLUMNS_BY_RESOURCE[resource].add(column));
-  });
-
   const LIST_SEARCH_COLUMNS_BY_RESOURCE = {
     agreements: ['agreement_id', 'agreement_number', 'agreement_title', 'customer_name', 'customer_legal_name', 'customer_contact_name', 'status'],
     operations_onboarding: ['onboarding_id', 'agreement_id', 'agreement_number', 'client_name', 'request_type', 'technical_request_status', 'csm_assigned_to', 'go_live_target_date'],
@@ -847,9 +633,9 @@
   const UUID_COLUMNS_BY_TABLE = {
     deals: new Set(['lead_id', 'source_lead_uuid', 'created_by', 'updated_by']),
     proposals: new Set(['deal_id', 'provider_signatory_user_id', 'created_by', 'updated_by']),
-    proposal_items: new Set([]),
+    proposal_items: new Set(['proposal_id']),
     agreements: new Set(['proposal_id', 'created_by', 'updated_by']),
-    agreement_items: new Set([]),
+    agreement_items: new Set(['agreement_id']),
     clients: new Set(['source_agreement_id', 'created_by', 'updated_by']),
     invoices: new Set(['client_id', 'agreement_uuid', 'proposal_id', 'created_by', 'updated_by']),
     invoice_items: new Set(['invoice_id']),
@@ -1282,14 +1068,13 @@
   };
 
   function getPrimaryKeyForResource(resource) {
-    const name = normalizeResourceName(resource);
-    return PK_BY_RESOURCE[name] || resourceConfigFor(name)?.idField || 'id';
+    const name = String(resource || '').trim();
+    return PK_BY_RESOURCE[name] || 'id';
   }
 
   function getIdentifierKeysForResource(resource) {
     const pk = getPrimaryKeyForResource(resource);
-    const normalized = normalizeResourceName(resource);
-    const extras = LEGACY_IDENTIFIER_KEYS[normalized] || LEGACY_IDENTIFIER_KEYS[resource] || [];
+    const extras = LEGACY_IDENTIFIER_KEYS[resource] || [];
     return [...new Set([pk, ...extras])];
   }
 
@@ -1551,17 +1336,6 @@
     return compacted;
   }
 
-  function copyAllowedPayloadFields(target = {}, source = {}, allowedColumns = new Set()) {
-    if (!source || typeof source !== 'object' || !allowedColumns) return target;
-    Object.entries(source).forEach(([key, value]) => {
-      if (value === undefined) return;
-      if (!allowedColumns.has(key)) return;
-      if (Object.prototype.hasOwnProperty.call(target, key)) return;
-      target[key] = value;
-    });
-    return target;
-  }
-
   function numberOrNull(value) {
     if (value === undefined || value === null || value === '') return null;
     const parsed = Number(value);
@@ -1594,7 +1368,6 @@
       total_paid: numberOrNull(firstDefined(record, ['total_paid', 'totalPaid'])),
       total_due: numberOrNull(firstDefined(record, ['total_due', 'totalDue']))
     });
-    copyAllowedPayloadFields(sanitized, record, CLIENT_COLUMNS);
     Object.keys(sanitized).forEach(key => { if (!CLIENT_COLUMNS.has(key)) delete sanitized[key]; });
     if (includeCreatedBy && userId) sanitized.created_by = userId;
     if (userId) sanitized.updated_by = userId;
@@ -1646,7 +1419,6 @@
       created_at: trimOrNull(firstDefined(record, ['created_at', 'createdAt'])),
       updated_at: trimOrNull(firstDefined(record, ['updated_at', 'updatedAt']))
     });
-    copyAllowedPayloadFields(sanitized, record, INVOICE_COLUMNS);
     Object.keys(sanitized).forEach(key => { if (!INVOICE_COLUMNS.has(key)) delete sanitized[key]; });
     if (includeCreatedBy && userId) sanitized.created_by = userId;
     if (userId) sanitized.updated_by = userId;
@@ -1736,7 +1508,6 @@
       created_at: trimOrNull(firstDefined(record, ['created_at', 'createdAt'])),
       updated_at: trimOrNull(firstDefined(record, ['updated_at', 'updatedAt']))
     });
-    copyAllowedPayloadFields(sanitized, record, RECEIPT_COLUMNS);
     Object.keys(sanitized).forEach(key => { if (!RECEIPT_COLUMNS.has(key)) delete sanitized[key]; });
     if (includeCreatedBy && userId) sanitized.created_by = userId;
     if (userId) sanitized.updated_by = userId;
@@ -2504,36 +2275,28 @@
     return sanitized;
   }
 
-  function sanitizeProposalItemRecord(record = {}, proposalId = '', index = -1) {
-    const lineNumber = Number(firstDefined(record, ['line_number', 'lineNumber', 'line_no', 'lineNo', 'line']) || (index >= 0 ? index + 1 : 0));
-    const description = firstDefined(record, ['description', 'item_name', 'itemName', 'name', 'notes']);
+  function sanitizeProposalItemRecord(record = {}, proposalUuid = '') {
+    const normalizedDiscountPercent = normalizeNumericValue(
+      firstDefined(record, ['discount_percent', 'discountPercent', 'discount']),
+      0
+    );
     const mapped = compactObject({
       item_id: firstDefined(record, ['item_id', 'itemId']),
-      proposal_id: String(proposalId || firstDefined(record, ['proposal_id', 'proposalId']) || '').trim(),
-      line_number: Number.isFinite(lineNumber) && lineNumber > 0 ? lineNumber : undefined,
-      line_no: Number.isFinite(lineNumber) && lineNumber > 0 ? lineNumber : undefined,
-      item_type: firstDefined(record, ['item_type', 'itemType']),
-      category: firstDefined(record, ['category']),
-      description,
-      section: firstDefined(record, ['section', 'category']),
+      proposal_id: normalizeNullableUuidValue(proposalUuid || firstDefined(record, ['proposal_id', 'proposalId'])),
+      section: firstDefined(record, ['section']),
+      line_no: firstDefined(record, ['line_no', 'lineNo', 'line']),
       location_name: firstDefined(record, ['location_name', 'locationName']),
-      item_name: firstDefined(record, ['item_name', 'itemName', 'name', 'description']),
-      quantity: normalizeNumericValue(firstDefined(record, ['quantity']), 0),
-      unit_price: normalizeNumericValue(firstDefined(record, ['unit_price', 'unitPrice']), 0),
-      discount_percent: normalizeNumericValue(firstDefined(record, ['discount_percent', 'discountPercent', 'discount']), 0),
-      discount_amount: normalizeNumericValue(firstDefined(record, ['discount_amount', 'discountAmount']), 0),
-      discounted_unit_price: normalizeNumericValue(firstDefined(record, ['discounted_unit_price', 'discountedUnitPrice']), 0),
-      tax_percent: normalizeNumericValue(firstDefined(record, ['tax_percent', 'taxPercent']), 0),
-      tax_amount: normalizeNumericValue(firstDefined(record, ['tax_amount', 'taxAmount']), 0),
-      line_total: normalizeNumericValue(firstDefined(record, ['line_total', 'lineTotal']), 0),
+      item_name: firstDefined(record, ['item_name', 'itemName', 'name']),
+      unit_price: firstDefined(record, ['unit_price', 'unitPrice']),
+      discount_percent: normalizedDiscountPercent,
+      discounted_unit_price: firstDefined(record, ['discounted_unit_price', 'discountedUnitPrice']),
+      quantity: firstDefined(record, ['quantity']),
+      line_total: firstDefined(record, ['line_total', 'lineTotal']),
       service_start_date: normalizeNullableDateValue(firstDefined(record, ['service_start_date', 'serviceStartDate'])),
       service_end_date: normalizeNullableDateValue(firstDefined(record, ['service_end_date', 'serviceEndDate'])),
-      billing_frequency: firstDefined(record, ['billing_frequency', 'billingFrequency']),
       capability_name: firstDefined(record, ['capability_name', 'capabilityName']),
       capability_value: firstDefined(record, ['capability_value', 'capabilityValue']),
-      notes: firstDefined(record, ['notes']),
-      created_by: firstDefined(record, ['created_by', 'createdBy']),
-      updated_by: firstDefined(record, ['updated_by', 'updatedBy'])
+      notes: firstDefined(record, ['notes'])
     });
     const sanitized = {};
     Object.entries(mapped).forEach(([key, value]) => {
@@ -2650,20 +2413,6 @@
         : undefined,
       updated_by: firstDefined(record, ['updated_by', 'updatedBy']) || userId || undefined,
       currency: firstDefined(record, ['currency']),
-      parent_agreement_id: firstDefined(record, ['parent_agreement_id', 'parentAgreementId']),
-      root_agreement_id: firstDefined(record, ['root_agreement_id', 'rootAgreementId']),
-      source_agreement_id: firstDefined(record, ['source_agreement_id', 'sourceAgreementId']),
-      agreement_relationship_type: firstDefined(record, ['agreement_relationship_type', 'agreementRelationshipType']),
-      agreement_version: normalizeNumericValue(firstDefined(record, ['agreement_version', 'agreementVersion']), 1),
-      relationship_notes: firstDefined(record, ['relationship_notes', 'relationshipNotes']),
-      approved_annual_saas_discount_percent: firstDefined(record, ['approved_annual_saas_discount_percent', 'approvedAnnualSaasDiscountPercent']),
-      approved_one_time_fee_discount_percent: firstDefined(record, ['approved_one_time_fee_discount_percent', 'approvedOneTimeFeeDiscountPercent']),
-      approved_discount_percent: firstDefined(record, ['approved_discount_percent', 'approvedDiscountPercent']),
-      discount_approval_status: firstDefined(record, ['discount_approval_status', 'discountApprovalStatus']),
-      discount_approved_at: firstDefined(record, ['discount_approved_at', 'discountApprovedAt']),
-      discount_approved_by: firstDefined(record, ['discount_approved_by', 'discountApprovedBy']),
-      last_discount_approval_request_id: firstDefined(record, ['last_discount_approval_request_id', 'lastDiscountApprovalRequestId']),
-      approval_required_reason: firstDefined(record, ['approval_required_reason', 'approvalRequiredReason']),
       notes: firstDefined(record, ['notes'])
     };
     const sanitized = {};
@@ -2701,41 +2450,29 @@
     return sanitized;
   }
 
-  function sanitizeAgreementItemRecord(record = {}, agreementId = '', index = -1) {
-    const lineNumber = Number(firstDefined(record, ['line_number', 'lineNumber', 'line_no', 'lineNo', 'line']) || (index >= 0 ? index + 1 : 0));
-    const description = firstDefined(record, ['description', 'item_name', 'itemName', 'name', 'notes']);
+  function sanitizeAgreementItemRecord(record = {}, agreementUuid = '') {
     const mapped = compactObject({
       item_id: firstDefined(record, ['item_id', 'itemId']),
-      agreement_id: String(agreementId || firstDefined(record, ['agreement_id', 'agreementId']) || '').trim(),
-      line_number: Number.isFinite(lineNumber) && lineNumber > 0 ? lineNumber : undefined,
-      line_no: Number.isFinite(lineNumber) && lineNumber > 0 ? lineNumber : undefined,
-      item_type: firstDefined(record, ['item_type', 'itemType']),
-      category: firstDefined(record, ['category']),
-      description,
-      section: firstDefined(record, ['section', 'category']),
+      agreement_id: normalizeNullableUuidValue(agreementUuid || firstDefined(record, ['agreement_id', 'agreementId'])),
+      section: firstDefined(record, ['section']),
+      line_no: normalizeNumericValue(firstDefined(record, ['line_no', 'lineNo', 'line']), 0),
       location_name: firstDefined(record, ['location_name', 'locationName']),
-      item_name: firstDefined(record, ['item_name', 'itemName', 'name', 'description']),
-      quantity: normalizeNumericValue(firstDefined(record, ['quantity']), 0),
+      item_name: firstDefined(record, ['item_name', 'itemName', 'name']),
       unit_price: normalizeNumericValue(firstDefined(record, ['unit_price', 'unitPrice']), 0),
       discount_percent: normalizeNumericValue(firstDefined(record, ['discount_percent', 'discountPercent']), 0),
-      discount_amount: normalizeNumericValue(firstDefined(record, ['discount_amount', 'discountAmount']), 0),
       discounted_unit_price: normalizeNumericValue(firstDefined(record, ['discounted_unit_price', 'discountedUnitPrice']), 0),
-      tax_percent: normalizeNumericValue(firstDefined(record, ['tax_percent', 'taxPercent']), 0),
-      tax_amount: normalizeNumericValue(firstDefined(record, ['tax_amount', 'taxAmount']), 0),
+      quantity: normalizeNumericValue(firstDefined(record, ['quantity']), 0),
       line_total: normalizeNumericValue(firstDefined(record, ['line_total', 'lineTotal']), 0),
       service_start_date: normalizeNullableDateValue(firstDefined(record, ['service_start_date', 'serviceStartDate'])),
       service_end_date: normalizeNullableDateValue(firstDefined(record, ['service_end_date', 'serviceEndDate'])),
-      billing_frequency: firstDefined(record, ['billing_frequency', 'billingFrequency']),
       capability_name: firstDefined(record, ['capability_name', 'capabilityName']),
       capability_value: firstDefined(record, ['capability_value', 'capabilityValue']),
-      notes: firstDefined(record, ['notes']),
-      created_by: firstDefined(record, ['created_by', 'createdBy']),
-      updated_by: firstDefined(record, ['updated_by', 'updatedBy'])
+      notes: firstDefined(record, ['notes'])
     });
     const sanitized = {};
     Object.entries(mapped).forEach(([key, value]) => {
       if (!AGREEMENT_ITEM_COLUMNS.has(key)) return;
-      if (value === undefined || value === null) return;
+      if (value === undefined) return;
       sanitized[key] = value;
     });
     return sanitized;
@@ -3284,49 +3021,14 @@
     const offset = rawOffset === undefined || rawOffset === null || rawOffset === ''
       ? Math.max(0, (page - 1) * limit)
       : Math.max(0, numberOr(rawOffset, 0));
-    const defaultSort = LIST_COLUMNS_BY_RESOURCE[resource]?.has('created_at') ? 'created_at' : (LIST_COLUMNS_BY_RESOURCE[resource]?.has(getPrimaryKeyForResource(resource)) ? getPrimaryKeyForResource(resource) : '');
-    const sortByRaw = String(controls.sort_by ?? controls.sortBy ?? controls.sort ?? defaultSort).trim();
+    const sortByRaw = String(controls.sort_by ?? controls.sortBy ?? controls.sort ?? 'updated_at').trim();
     const sortDirRaw = String(controls.sort_dir ?? controls.sortDir ?? 'desc').trim().toLowerCase();
     const allowedColumns = LIST_COLUMNS_BY_RESOURCE[resource];
-    const sortBy = allowedColumns && sortByRaw && allowedColumns.has(sortByRaw) ? sortByRaw : defaultSort;
+    const sortBy = allowedColumns && allowedColumns.has(sortByRaw) ? sortByRaw : 'updated_at';
     const sortDir = sortDirRaw === 'asc' ? 'asc' : 'desc';
     const from = offset;
     const to = offset + limit - 1;
     return { page, limit, offset, sortBy, sortDir, from, to };
-  }
-
-  function isMissingOrderColumnError(error) {
-    const message = String(error?.message || error?.details || error?.hint || '').toLowerCase();
-    return Boolean(error) && (/column .* does not exist/.test(message) || /could not find .* column/.test(message) || /schema cache/.test(message));
-  }
-
-  async function executePagedListQuery(client, table, payload, resource, listControls) {
-    const orderCandidates = [
-      listControls.sortBy,
-      'created_at',
-      getPrimaryKeyForResource(resource)
-    ].filter(Boolean);
-    const uniqueOrderCandidates = [...new Set(orderCandidates)];
-    let lastMissingOrderError = null;
-    for (const sortBy of uniqueOrderCandidates) {
-      let query = client.from(table).select('*', { count: 'exact' });
-      query = applyFilters(query, payload, { resource });
-      query = query.order(sortBy, { ascending: listControls.sortDir === 'asc' });
-      query = query.range(listControls.from, listControls.to);
-      const result = await query;
-      if (!result.error) return result;
-      if (!isMissingOrderColumnError(result.error)) return result;
-      lastMissingOrderError = result.error;
-      console.warn('[SupabaseData] List order column is unavailable; retrying with fallback order', { resource, table, sortBy, error: result.error.message || result.error });
-    }
-    let query = client.from(table).select('*', { count: 'exact' });
-    query = applyFilters(query, payload, { resource });
-    query = query.range(listControls.from, listControls.to);
-    const result = await query;
-    if (result.error && lastMissingOrderError && isMissingOrderColumnError(result.error)) {
-      console.warn('[SupabaseData] List query failed after no-order fallback', { resource, table, error: result.error.message || result.error });
-    }
-    return result;
   }
 
   function applyFilters(query, payload = {}, { resource = '' } = {}) {
@@ -3404,59 +3106,14 @@
     throw new Error(`Unsupported auth action: ${action}`);
   }
 
-  function getItemParentLookupFields(resource, knownColumns) {
-    const configured = {
-      proposals: ['proposal_id', 'parent_proposal_id', 'proposal_uuid'],
-      agreements: ['agreement_id', 'parent_agreement_id', 'agreement_uuid']
-    }[resource] || [ITEM_FK[resource]].filter(Boolean);
-    if (!knownColumns || !Array.isArray(knownColumns)) return configured.slice(0, 1);
-    return configured.filter(field => knownColumns.includes(field));
-  }
-
-  function getItemParentId(resource, row = {}) {
-    if (resource === 'proposals') return String(row.proposal_id || row.id || '').trim();
-    if (resource === 'agreements') return String(row.agreement_id || row.id || '').trim();
-    const fk = ITEM_FK[resource];
-    return String(row[fk] || row.id || '').trim();
-  }
-
-  async function loadItemsForParent(resource, row, providedClient = null) {
-    const itemTable = ITEM_TABLES[resource];
-    if (!itemTable || !row) return [];
-    const parentId = getItemParentId(resource, row);
-    if (!parentId) return [];
-    const client = providedClient || getClient();
-    const knownColumns = await getExistingTableColumns(itemTable);
-    const lookupFields = getItemParentLookupFields(resource, knownColumns);
-    let lastError = null;
-
-    for (const field of lookupFields) {
-      const result = await client
-        .from(itemTable)
-        .select('*')
-        .eq(field, parentId)
-        .order('created_at', { ascending: true });
-      if (result.error) {
-        lastError = result.error;
-        if (shouldSkipMissingColumnLookup(result.error)) {
-          console.warn(`[SupabaseData] Item lookup field failed for ${itemTable}.${field}`, result.error);
-          continue;
-        }
-        break;
-      }
-      return result.data || [];
-    }
-
-    if (lastError) {
-      const message = resource === 'proposals' ? 'Unable to load proposal items.' : resource === 'agreements' ? 'Unable to load agreement items.' : `Unable to load ${itemTable}`;
-      throw friendlyError(message, lastError);
-    }
-    return [];
-  }
-
   async function withItems(resource, row) {
     if (!ITEM_TABLES[resource] || !row) return sanitizeReadByRole(resource, row);
-    const data = await loadItemsForParent(resource, row);
+    const fk = ITEM_FK[resource];
+    const id = row.id || row[fk];
+    if (!id) return sanitizeReadByRole(resource, row);
+    const client = getClient();
+    const { data, error } = await client.from(ITEM_TABLES[resource]).select('*').eq(fk, id).order('created_at', { ascending: true });
+    if (error) throw friendlyError(`Unable to load ${ITEM_TABLES[resource]}`, error);
     const key = ITEM_TABLES[resource];
     return sanitizeReadByRole(resource, { ...row, [key]: data || [], items: data || [] });
   }
@@ -3687,7 +3344,6 @@
     const WORKFLOW_RESOURCE_ID_HINTS = {
       proposals: ['proposal_uuid', 'proposal_id', 'proposal_number', 'display_id'],
       agreements: ['agreement_uuid', 'agreement_id', 'agreement_number', 'display_id'],
-      agreement_amendment: ['amendment_uuid', 'amendment_id', 'amendment_reference', 'display_id'],
       invoices: ['invoice_uuid', 'invoice_id', 'invoice_number', 'display_id'],
       receipts: ['receipt_uuid', 'receipt_id', 'receipt_number', 'display_id'],
       deals: ['deal_uuid', 'deal_id', 'deal_number', 'display_id'],
@@ -3714,7 +3370,6 @@
       const payloadRow = compactObject({
         resource: String(entry.resource || '').trim(),
         record_id: String(entry.record_id || '').trim(),
-        record_reference: String(entry.record_reference || entry.resource_display_id || '').trim() || null,
         action: String(entry.action || '').trim(),
         old_status: entry.old_status ?? null,
         new_status: entry.new_status ?? null,
@@ -3742,7 +3397,6 @@
       ).trim().toLowerCase();
       if (direct && direct !== 'workflow') return direct;
       if (requestedChanges?.proposal_id || requestedChanges?.proposal_number) return 'proposals';
-      if (requestedChanges?.amendment_id || requestedChanges?.amendment_reference) return 'agreement_amendment';
       if (requestedChanges?.agreement_id || requestedChanges?.agreement_number) return 'agreements';
       if (requestedChanges?.invoice_id || requestedChanges?.invoice_number) return 'invoices';
       if (requestedChanges?.receipt_id || requestedChanges?.receipt_number) return 'receipts';
@@ -4185,45 +3839,6 @@
           sanitizeAgreementRecord,
           Object.keys(nestedResourcePayload).length ? nestedResourcePayload : requestedWithoutHelpers
         );
-        const approvedCategoryDiscounts = getProposalDiscountsByCategory(
-          { ...record, ...nestedResourcePayload, ...requested },
-          approvedItems
-        );
-        publicUpdates = {
-          ...publicUpdates,
-          status: trimOrNull(firstDefined(requested, ['requested_status', 'status'])) || publicUpdates.status,
-          approved_annual_saas_discount_percent: approvedCategoryDiscounts.annualSaasDiscount,
-          approved_one_time_fee_discount_percent: approvedCategoryDiscounts.oneTimeFeeDiscount,
-          approved_discount_percent: Math.max(approvedCategoryDiscounts.annualSaasDiscount, approvedCategoryDiscounts.oneTimeFeeDiscount),
-          discount_approval_status: 'approved',
-          discount_approved_at: new Date().toISOString(),
-          discount_approved_by: reviewerUserId || undefined,
-          last_discount_approval_request_id: reviewerContext.approvalId || requested.last_discount_approval_request_id || undefined,
-          approval_required_reason: ''
-        };
-      } else if (resource === 'agreement_amendment') {
-        publicUpdates = compactObject({
-          ...(Object.keys(nestedResourcePayload).length ? nestedResourcePayload : requestedWithoutHelpers),
-          status: trimOrNull(firstDefined(requested, ['requested_status', 'status'])) || nestedResourcePayload.status,
-          updated_by: reviewerUserId || undefined,
-          updated_at: new Date().toISOString()
-        });
-        ['id', 'amendment_uuid', 'resource_id', 'target_id', 'resource_display_id', 'record_reference', 'current_status', 'requested_status', 'discount_percent', 'annual_saas_discount_percent', 'one_time_fee_discount_percent', 'category_discounts', 'submitted_by_name', 'submitted_by_email', 'submitted_by_role', 'record_snapshot', 'items', 'agreement', 'proposal', 'amendment'].forEach(key => { delete publicUpdates[key]; });
-        const approvedCategoryDiscounts = getProposalDiscountsByCategory(
-          { ...record, ...nestedResourcePayload, ...requested },
-          approvedItems
-        );
-        publicUpdates = {
-          ...publicUpdates,
-          approved_annual_saas_discount_percent: approvedCategoryDiscounts.annualSaasDiscount,
-          approved_one_time_fee_discount_percent: approvedCategoryDiscounts.oneTimeFeeDiscount,
-          approved_discount_percent: Math.max(approvedCategoryDiscounts.annualSaasDiscount, approvedCategoryDiscounts.oneTimeFeeDiscount),
-          discount_approval_status: 'approved',
-          discount_approved_at: new Date().toISOString(),
-          discount_approved_by: reviewerUserId || undefined,
-          last_discount_approval_request_id: reviewerContext.approvalId || requested.last_discount_approval_request_id || undefined,
-          approval_required_reason: ''
-        };
       } else if (resource === 'invoices') {
         publicUpdates = sanitizeWithReviewer(
           sanitizeInvoicesRecord,
@@ -4256,20 +3871,18 @@
         updatedRecord = data || record;
       }
       if (itemTable && approvedItems.length) {
-        const parentId = getItemParentId(resource, updatedRecord || record || { [fk]: recordId, id: recordId });
+        const parentId = String(updatedRecord?.id || record?.id || recordId || '').trim();
         if (!parentId) throw workflowError(`Unable to apply ${resource} items because parent record id is missing.`);
         await client.from(itemTable).delete().eq(fk, parentId);
         if (approvedItems.length) {
-          const insertRows = approvedItems.map((item, index) =>
+          const insertRows = approvedItems.map(item =>
             resource === 'proposals'
-              ? sanitizeProposalItemRecord(item, parentId, index)
+              ? sanitizeProposalItemRecord(item, parentId)
               : resource === 'agreements'
-                ? sanitizeAgreementItemRecord(item, parentId, index)
-                : resource === 'agreement_amendment'
-                  ? { ...sanitizeAgreementItemRecord(item, ''), agreement_id: undefined, amendment_id: parentId }
-                  : resource === 'invoices'
-                    ? sanitizeInvoiceItemRecord(item, parentId)
-                    : sanitizeReceiptItemRecord(item, parentId)
+                ? sanitizeAgreementItemRecord(item, parentId)
+                : resource === 'invoices'
+                  ? sanitizeInvoiceItemRecord(item, parentId)
+                  : sanitizeReceiptItemRecord(item, parentId)
           );
           const { error } = await runMutationWithSchemaRetry({
             table: itemTable,
@@ -4623,7 +4236,7 @@
         p_new_status: String(safePayload.p_new_status ?? safePayload.new_status ?? '').trim(),
         p_requested_changes: requestedChangesPayload
       };
-      if (Number(requestedChangesPayload?.discount_percent ?? safePayload.discount_percent ?? 0) <= 0 && shouldSkipWorkflowForDraftSave({
+      if (shouldSkipWorkflowForDraftSave({
         currentStatus: rpcPayload.p_old_status || requestedChangesPayload?.current_status,
         nextStatus: rpcPayload.p_new_status || requestedChangesPayload?.requested_status || requestedChangesPayload?.next_status || requestedChangesPayload?.status,
         action: safePayload.action || requestedChangesPayload?.action || 'create_workflow_approval',
@@ -4632,17 +4245,17 @@
         return draftWorkflowSkipResult();
       }
       console.debug('[workflow] final approval creation payload', rpcPayload);
-      if (['proposals', 'agreements', 'agreement_amendment'].includes(String(rpcPayload.p_resource || '').trim().toLowerCase())) {
+      if (String(rpcPayload.p_resource || '').trim().toLowerCase() === 'proposals') {
         const duplicateDiscount = Number(toNumber(requestedChangesPayload?.discount_percent).toFixed(2));
         const duplicateStatus = String(rpcPayload.p_new_status || requestedChangesPayload?.requested_status || requestedChangesPayload?.next_status || '').trim().toLowerCase().replace(/\s+/g, '_');
         const { data: pendingRows, error: pendingError } = await client
           .from('workflow_approvals')
           .select('*')
-          .eq('resource', String(rpcPayload.p_resource || '').trim().toLowerCase())
+          .eq('resource', 'proposals')
           .eq('record_id', rpcPayload.p_record_id)
           .eq('status', 'pending')
           .order('created_at', { ascending: false });
-        if (pendingError) throw workflowError('Unable to check pending discount approvals', pendingError);
+        if (pendingError) throw workflowError('Unable to check pending proposal discount approvals', pendingError);
         const duplicate = asArray(pendingRows).find(row => {
           const changes = row?.requested_changes && typeof row.requested_changes === 'object' ? row.requested_changes : {};
           const rowStatus = String(row?.new_status || changes?.requested_status || changes?.next_status || changes?.status || '').trim().toLowerCase().replace(/\s+/g, '_');
@@ -4657,7 +4270,7 @@
             approval_id: String(duplicate.approval_id || duplicate.id || '').trim(),
             approval_role: String(duplicate.approval_role || rpcPayload.p_approval_role || '').trim(),
             status: String(duplicate.status || 'pending').trim(),
-            resource: String(duplicate.resource || rpcPayload.p_resource || '').trim(),
+            resource: 'proposals',
             record_id: String(duplicate.record_id || rpcPayload.p_record_id || '').trim()
           };
         }
@@ -4668,15 +4281,6 @@
         ? data
         : { ok: false, created: false, reused: false, approval_id: '', approval_role: '', status: '', resource: rpcPayload.p_resource, record_id: rpcPayload.p_record_id };
       console.debug('[workflow] approval create RPC result', normalizedApproval);
-      if (normalizedApproval.ok === true && normalizedApproval.approval_id) {
-        const recordReference = String(safePayload.record_reference || safePayload.resource_display_id || requestedChangesPayload?.record_reference || requestedChangesPayload?.resource_display_id || '').trim();
-        if (recordReference) {
-          await client
-            .from('workflow_approvals')
-            .update({ record_reference: recordReference })
-            .eq('approval_id', normalizedApproval.approval_id);
-        }
-      }
       if (normalizedApproval.ok === true && normalizedApproval.created === true && normalizedApproval.approval_id) {
         await notifyWorkflowApprovalCreated(normalizedApproval.approval_id);
       }
@@ -4688,8 +4292,7 @@
         approval_role: String(normalizedApproval.approval_role || '').trim(),
         status: String(normalizedApproval.status || '').trim(),
         resource: String(normalizedApproval.resource || rpcPayload.p_resource || '').trim(),
-        record_id: String(normalizedApproval.record_id || rpcPayload.p_record_id || '').trim(),
-        record_reference: String(safePayload.record_reference || safePayload.resource_display_id || requestedChangesPayload?.record_reference || requestedChangesPayload?.resource_display_id || '').trim()
+        record_id: String(normalizedApproval.record_id || rpcPayload.p_record_id || '').trim()
       };
     }
     if (requestedAction === 'request_approval' || requestedAction === 'approve' || requestedAction === 'reject' || requestedAction === 'list_pending_approvals') {
@@ -4717,7 +4320,6 @@
         'approval_id',
         'resource',
         'record_id',
-        'record_reference',
         'workflow_rule_id',
         'requester_user_id',
         'requester_role',
@@ -4735,11 +4337,11 @@
         return acc;
       }, {});
       if (requestedAction === 'request_approval') {
-        if (['proposals', 'agreements', 'agreement_amendment'].includes(String(sanitizedRow.resource || '').trim().toLowerCase())) {
+        if (String(sanitizedRow.resource || '').trim().toLowerCase() === 'proposals') {
           const requested = sanitizedRow.requested_changes && typeof sanitizedRow.requested_changes === 'object'
             ? sanitizedRow.requested_changes
             : {};
-          const normalizedRecordId = String(sanitizedRow.record_id || requested.resource_id || requested.target_id || requested.proposal_uuid || requested.agreement_uuid || requested.amendment_uuid || '').trim();
+          const normalizedRecordId = String(sanitizedRow.record_id || requested.resource_id || requested.target_id || requested.proposal_uuid || '').trim();
           const normalizedTargetStatus = String(sanitizedRow.new_status || requested.requested_status || requested.next_status || requested.status || '')
             .trim()
             .toLowerCase()
@@ -4749,7 +4351,7 @@
             const { data: pendingRows, error: duplicateError } = await client
               .from('workflow_approvals')
               .select('*')
-              .eq('resource', String(rpcPayload.p_resource || '').trim().toLowerCase())
+              .eq('resource', 'proposals')
               .eq('record_id', normalizedRecordId)
               .eq('status', 'pending')
               .order('created_at', { ascending: false });
@@ -4774,7 +4376,7 @@
                 reused: true,
                 approval_id: normalizedDuplicate?.approval_id || duplicateRow?.approval_id || duplicateRow?.id || '',
                 status: normalizedDuplicate?.status || duplicateRow?.status || 'pending',
-                resource: normalizedDuplicate?.resource || duplicateRow?.resource || String(sanitizedRow.resource || '').trim().toLowerCase(),
+                resource: normalizedDuplicate?.resource || duplicateRow?.resource || 'proposals',
                 record_id: normalizedDuplicate?.record_id || duplicateRow?.record_id || normalizedRecordId
               };
             }
@@ -5213,14 +4815,24 @@
 
     const template = buildNotificationEmailTemplate(payload);
     try {
-      const client = getClient();
-      const { data: result, error } = await client.functions.invoke('send-notification-email', {
-        body: {
+      const response = await fetch('/api/proxy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          'X-Supabase-Access-Token': token
+        },
+        body: JSON.stringify({
+          resource: 'notifications',
+          action: 'send_email',
           to: emails,
           ...template
-        }
+        })
       });
-      if (error) throw error;
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String(result?.error || result?.message || 'Unable to send email notification'));
+      }
       console.info('[notifications:email] log', { channel: 'email', status: 'sent', recipient_email: emails.join(','), context, resource: payload?.resource || null, action: payload?.action || payload?.event_type || null, record_id: payload?.record_id || null, record_number: payload?.record_number || null, recipientsCount: emails.length, messageId: result?.messageId || null });
       return { attempted: true, sent: true, response: result };
     } catch (error) {
@@ -5513,7 +5125,7 @@
         await createNotificationAndPush({
           title: 'Proposal created from deal',
           message: `Proposal ${String(candidate?.proposal_id || candidate?.ref_number || '').trim() || 'record'} was created from a deal.`,
-          resource: String(duplicate.resource || rpcPayload.p_resource || '').trim(),
+          resource: 'proposals',
           action: 'proposal_created_from_deal',
           record_id: recordId || undefined,
           target_roles: ['admin', 'hoo'],
@@ -5842,11 +5454,9 @@
   }
 
   async function dispatch(payload = {}) {
-    const requestedResource = String(payload.resource || '').trim();
-    const resource = normalizeResourceName(requestedResource);
+    const resource = String(payload.resource || '').trim();
     const action = String(payload.action || 'list').trim();
-    if (!MIGRATED_RESOURCES.has(requestedResource) && !MIGRATED_RESOURCES.has(resource)) return { handled: false };
-    if (requestedResource && requestedResource !== resource) payload = { ...payload, resource };
+    if (!MIGRATED_RESOURCES.has(resource)) return { handled: false };
 
     devLog('[supabase] dispatch', resource, action);
     if (resource === 'auth') return { handled: true, data: await handleAuth(action, payload) };
@@ -5855,15 +5465,17 @@
     const rpcResult = await handleRpcResource(resource, action, payload);
     if (rpcResult !== null) return { handled: true, data: rpcResult };
 
-    const resourceConfig = resourceConfigFor(resource);
-    const table = TABLE_BY_RESOURCE[resource] || resourceConfig?.table;
+    const table = TABLE_BY_RESOURCE[resource];
     const client = getClient();
 
     if (resource === 'tickets' && action === 'list') {
       assertAllowed('tickets', 'list');
       const { controls } = splitListPayload(payload);
       const listControls = normalizeListControls(controls, 'tickets');
-      const { data: tickets, error, count } = await executePagedListQuery(client, 'tickets', payload, 'tickets', listControls);
+      let query = applyFilters(client.from('tickets').select('*', { count: 'exact' }), payload, { resource: 'tickets' });
+      query = query.order(listControls.sortBy, { ascending: listControls.sortDir === 'asc' });
+      query = query.range(listControls.from, listControls.to);
+      const { data: tickets, error, count } = await query;
       if (error) throw friendlyError('Unable to load tickets', error);
       const normalized = (tickets || []).map(row => normalizeRow(resource, row));
       if (!isAdminDev()) return { handled: true, data: normalizePagedList(resource, normalized, listControls, count) };
@@ -6180,16 +5792,13 @@
       assertAllowed(resource, 'list');
       const { controls } = splitListPayload(payload);
       const listControls = normalizeListControls(controls, resource);
-      let data, error, count;
-      if (resource === 'users') {
-        let query = client.from('profiles').select('id, name, email, username, role_key, is_active, created_at, updated_at', { count: 'exact' });
-        query = applyFilters(query, payload, { resource });
-        if (listControls.sortBy) query = query.order(listControls.sortBy, { ascending: listControls.sortDir === 'asc' });
-        query = query.range(listControls.from, listControls.to);
-        ({ data, error, count } = await query);
-      } else {
-        ({ data, error, count } = await executePagedListQuery(client, table, payload, resource, listControls));
-      }
+      let query = resource === 'users'
+        ? client.from('profiles').select('id, name, email, username, role_key, is_active, created_at, updated_at', { count: 'exact' })
+        : client.from(table).select('*', { count: 'exact' });
+      query = applyFilters(query, payload, { resource });
+      query = query.order(listControls.sortBy, { ascending: listControls.sortDir === 'asc' });
+      query = query.range(listControls.from, listControls.to);
+      const { data, error, count } = await query;
       if (error) throw friendlyError(`Unable to load ${resource}`, error);
       return { handled: true, data: normalizePagedList(resource, data, listControls, count) };
     }
@@ -6207,23 +5816,12 @@
       if (!id) throw new Error(`Missing ${key} for ${resource} get`);
       console.log('[CRUD] resource, pk, value', resource, key, id);
       const userGetColumns = 'id, name, email, username, role_key, is_active, created_at, updated_at';
-      let data;
-      if (resource === 'proposals' || resource === 'agreements') {
-        try {
-          data = await loadSingleSupabaseRecord(resource, id, client);
-        } catch (error) {
-          throw friendlySingleRecordLoadError(resource, error);
-        }
-      } else {
-        const result = await client
-          .from(resource === 'users' ? 'profiles' : table)
-          .select(resource === 'users' ? userGetColumns : '*')
-          .eq(key, id)
-          .limit(1);
-        if (result.error) throw friendlyError(`Unable to load ${resource} record`, result.error);
-        data = Array.isArray(result.data) ? result.data[0] : null;
-        if (!data) throw new Error(`No ${resource} record found for ${id}`);
-      }
+      const { data, error } = await client
+        .from(resource === 'users' ? 'profiles' : table)
+        .select(resource === 'users' ? userGetColumns : '*')
+        .eq(key, id)
+        .single();
+      if (error) throw friendlyError(`Unable to load ${resource} record`, error);
       if (resource === 'tickets') {
         if (!isAdminDev()) return { handled: true, data: sanitizeReadByRole(resource, data) };
         const byId = await loadTicketInternalByIds([String(data.id)]);
@@ -6490,7 +6088,7 @@
         await createNotificationAndPush({
           title: 'Proposal requires review',
           message: `Proposal ${String(created.proposal_id || created.ref_number || created.id || '').trim()} requires approval.`,
-          resource: String(duplicate.resource || rpcPayload.p_resource || '').trim(),
+          resource: 'proposals',
           action: 'proposal_requires_approval',
           record_id: String(created.proposal_id || created.id || '').trim(),
           target_roles: ['admin', 'hoo'],
@@ -6581,19 +6179,26 @@
       const itemTable = ITEM_TABLES[resource];
       const fk = ITEM_FK[resource];
       if (itemTable && items.length && (created[fk] || created.id)) {
-        const parentId = getItemParentId(resource, created);
-        const insertRows = items.map((item, index) =>
+        const parentId = resource === 'proposals'
+          ? String(created.id || '').trim()
+          : created.id || created[fk];
+        if (resource === 'proposals' && !isUuid(parentId)) {
+          throw new Error('Proposal items were not saved because the proposal UUID is missing.');
+        }
+        const insertRows = items.map(item =>
           resource === 'proposals'
-            ? sanitizeProposalItemRecord(item, parentId, index)
+            ? sanitizeProposalItemRecord(item, parentId)
             : resource === 'agreements'
-              ? sanitizeAgreementItemRecord(item, parentId, index)
+              ? sanitizeAgreementItemRecord(item, parentId)
             : resource === 'invoices'
               ? sanitizeInvoiceItemRecord(item, parentId)
             : resource === 'receipts'
               ? sanitizeReceiptItemRecord(item, parentId)
             : ({ ...item, [fk]: parentId })
         );
-        if (!parentId) throw new Error(`${itemTable} were not saved because the parent record id is missing.`);
+        if (resource === 'proposals' && insertRows.some(row => !isUuid(row.proposal_id))) {
+          throw new Error('Proposal items were not saved because the proposal reference is invalid.');
+        }
         const childResp = await insertSelectRowsWithSchemaRetry(client, itemTable, insertRows, `Unable to create ${itemTable}`);
         if (childResp.error) throw friendlyError(`Unable to create ${itemTable}`, childResp.error);
       }
@@ -6621,7 +6226,6 @@
           ? pickProposalCatalogMutationId(payload)
         : pickedId;
       const key = resource === 'operations_onboarding' ? 'id' : getPrimaryKeyForResource(resource);
-      let updateId = id;
       if (!id) throw new Error(`Missing ${key} for ${resource} update`);
       console.log('[CRUD] resource, pk, value', resource, key, id);
       const updates = payload.updates || payload.item || payload.activity || payload;
@@ -6776,14 +6380,13 @@
               ? sanitizeContactRecord(safeUpdates, { mode: 'update' })
             : safeUpdates;
       if (resource === 'proposals') {
-        let existingProposal = null;
-        try {
-          existingProposal = await loadSingleSupabaseRecord('proposals', id, client);
-        } catch (existingProposalError) {
-          throw friendlySingleRecordLoadError('proposals', existingProposalError);
-        }
+        const { data: existingProposal, error: existingProposalError } = await client
+          .from('proposals')
+          .select('id, proposal_id, ref_number')
+          .eq('id', id)
+          .maybeSingle();
+        if (existingProposalError) throw friendlyError('Unable to load proposal before update', existingProposalError);
         if (!existingProposal) throw new Error('Proposal was not found for update.');
-        updateId = String(existingProposal.proposal_id || id).trim();
         const hasIncomingProposalId = Object.prototype.hasOwnProperty.call(publicUpdates, 'proposal_id');
         const hasIncomingRefNumber = Object.prototype.hasOwnProperty.call(publicUpdates, 'ref_number');
         const identifiers = await allocateUniqueProposalIdentifiers(client, {
@@ -6793,14 +6396,6 @@
         });
         publicUpdates.proposal_id = identifiers.proposal_id;
         publicUpdates.ref_number = identifiers.ref_number;
-      }
-      if (resource === 'agreements' && isUuid(id)) {
-        try {
-          const existingAgreement = await loadSingleSupabaseRecord('agreements', id, client);
-          updateId = String(existingAgreement?.agreement_id || id).trim();
-        } catch (existingAgreementError) {
-          throw friendlySingleRecordLoadError('agreements', existingAgreementError);
-        }
       }
       if (resource === 'events') {
         EVENT_LEGACY_FIELDS.forEach(field => { delete publicUpdates[field]; });
@@ -6844,7 +6439,7 @@
           table,
           finalPublicUpdates,
           key,
-          updateId,
+          id,
           `Unable to update ${resource} record`
         );
         if (error) throw friendlyError(`Unable to update ${resource} record`, error);
@@ -6855,14 +6450,14 @@
       } else {
         if (resource === 'leads') {
           console.log('[leads update final payload]', JSON.stringify(finalPublicUpdates, null, 2));
-          console.log('[leads update id]', updateId);
+          console.log('[leads update id]', id);
         }
         const { data: singleRow, error } = await updateSelectSingleWithSchemaRetry(
           client,
           table,
           finalPublicUpdates,
           key,
-          updateId,
+          id,
           `Unable to update ${resource} record`
         );
         if (error) throw friendlyError(`Unable to update ${resource} record`, error);
@@ -6938,7 +6533,7 @@
           await createNotificationAndPush({
             title: 'Proposal updated',
             message: `Proposal ${String(data?.proposal_id || data?.ref_number || data?.id || id || '').trim()} is ${nextStatus}.`,
-            resource: String(duplicate.resource || rpcPayload.p_resource || '').trim(),
+            resource: 'proposals',
             action: `proposal_${nextStatus.replace(/\s+/g, '_')}`,
             record_id: String(data?.proposal_id || data?.id || id || '').trim(),
             target_roles: ['admin', 'hoo'],
@@ -6992,21 +6587,28 @@
       const itemTable = ITEM_TABLES[resource];
       const fk = ITEM_FK[resource];
       if (itemTable && Array.isArray(payload.items)) {
-        const parentId = getItemParentId(resource, data || { [fk]: updateId, id: updateId });
-        if (!parentId) throw new Error(`${itemTable} were not saved because the parent record id is missing.`);
+        const parentId = resource === 'proposals'
+          ? String(id || data?.id || '').trim()
+          : id;
+        if (resource === 'proposals' && !isUuid(parentId)) {
+          throw new Error('Proposal items were not saved because the proposal UUID is missing.');
+        }
         await client.from(itemTable).delete().eq(fk, parentId);
         if (payload.items.length) {
-          const insertRows = payload.items.map((item, index) =>
+          const insertRows = payload.items.map(item =>
             resource === 'proposals'
-              ? sanitizeProposalItemRecord(item, parentId, index)
+              ? sanitizeProposalItemRecord(item, parentId)
               : resource === 'agreements'
-                ? sanitizeAgreementItemRecord(item, parentId, index)
+                ? sanitizeAgreementItemRecord(item, parentId)
               : resource === 'invoices'
                 ? sanitizeInvoiceItemRecord(item, parentId)
               : resource === 'receipts'
                 ? sanitizeReceiptItemRecord(item, parentId)
               : ({ ...item, [fk]: parentId })
           );
+          if (resource === 'proposals' && insertRows.some(row => !isUuid(row.proposal_id))) {
+            throw new Error('Proposal items were not saved because the proposal reference is invalid.');
+          }
           const childResp = await insertSelectRowsWithSchemaRetry(client, itemTable, insertRows, `Unable to update ${itemTable}`);
           if (childResp.error) throw friendlyError(`Unable to update ${itemTable}`, childResp.error);
         }
@@ -7160,23 +6762,7 @@
     throw new Error(`Unsupported action ${action} for resource ${resource}.`);
   }
 
-  global.SupabaseData = {
-    dispatch,
-    get: (resource, id, extra = {}) => dispatch({ ...extra, resource, action: 'get', id }),
-    list: (resource, extra = {}) => dispatch({ ...extra, resource, action: 'list' }),
-    create: (resource, item, extra = {}) => dispatch({ ...extra, resource, action: 'create', item }),
-    update: (resource, id, updates, extra = {}) => dispatch({ ...extra, resource, action: 'update', id, updates }),
-    delete: (resource, id, extra = {}) => dispatch({ ...extra, resource, action: 'delete', id }),
-    loadSingleSupabaseRecord,
-    getExistingTableColumns,
-    filterExistingLookupFields,
-    isMigratedResource: resource => {
-      const requested = String(resource || '').trim();
-      return MIGRATED_RESOURCES.has(requested) || MIGRATED_RESOURCES.has(normalizeResourceName(requested));
-    },
-    normalizeResourceName,
-    getResourceConfig: resource => resourceConfigFor(resource)
-  };
+  global.SupabaseData = { dispatch, isMigratedResource: resource => MIGRATED_RESOURCES.has(String(resource || '').trim()) };
   global.testNonWorkflowPwaPush = async function testNonWorkflowPwaPush() {
     return createNotificationAndPush({
       title: 'Ticket PWA Test',

@@ -311,16 +311,6 @@ const WorkflowEngine = {
   isProposalWorkflowResource(resource = '') {
     return ['proposals', 'proposal'].includes(String(resource || '').trim().toLowerCase());
   },
-  isDiscountWorkflowResource(resource = '') {
-    return ['proposals', 'proposal', 'agreements', 'agreement', 'agreement_amendment', 'agreement_amendments'].includes(String(resource || '').trim().toLowerCase());
-  },
-  normalizeDiscountWorkflowResource(resource = '') {
-    const normalized = String(resource || '').trim().toLowerCase();
-    if (normalized === 'proposal') return 'proposals';
-    if (normalized === 'agreement') return 'agreements';
-    if (normalized === 'agreement_amendments') return 'agreement_amendment';
-    return normalized;
-  },
   getProposalWorkflowRule(currentStatus = '', targetStatus = '') {
     const rules = Array.isArray(window.Workflow?.state?.rules) ? window.Workflow.state.rules : [];
     const current = normalizeWorkflowStatus(currentStatus);
@@ -334,31 +324,6 @@ const WorkflowEngine = {
       if (ruleNext && target && ruleNext !== target) return false;
       return true;
     }) || {};
-  },
-  getDiscountWorkflowRule(resource = '', currentStatus = '', targetStatus = '') {
-    const normalizedResource = this.normalizeDiscountWorkflowResource(resource);
-    if (this.isProposalWorkflowResource(normalizedResource)) return this.getProposalWorkflowRule(currentStatus, targetStatus);
-    const rules = Array.isArray(window.Workflow?.state?.rules) ? window.Workflow.state.rules : [];
-    const current = normalizeWorkflowStatus(currentStatus);
-    const target = normalizeWorkflowStatus(targetStatus);
-    const matchingRule = rules.find(rule => {
-      if (rule?.is_active === false) return false;
-      if (String(rule?.resource || '').trim().toLowerCase() !== normalizedResource) return false;
-      const ruleCurrent = normalizeWorkflowStatus(rule?.current_status);
-      const ruleNext = normalizeWorkflowStatus(rule?.next_status);
-      if (ruleCurrent && current && ruleCurrent !== current) return false;
-      if (ruleNext && target && ruleNext !== target) return false;
-      return true;
-    }) || {};
-    const noApproval = matchingRule?.annual_saas_no_approval_until_percent ?? matchingRule?.max_discount_percent ?? 10;
-    const hardStop = matchingRule?.annual_saas_hard_stop_discount_percent ?? matchingRule?.hard_stop_discount_percent ?? 20;
-    return {
-      ...matchingRule,
-      annual_saas_no_approval_until_percent: noApproval,
-      annual_saas_hard_stop_discount_percent: hardStop,
-      one_time_fee_no_approval_until_percent: matchingRule?.one_time_fee_no_approval_until_percent ?? noApproval,
-      one_time_fee_hard_stop_discount_percent: matchingRule?.one_time_fee_hard_stop_discount_percent ?? hardStop
-    };
   },
   buildProposalDiscountDecision(record = {}, requestedChanges = {}) {
     const nested = requestedChanges?.requested_changes && typeof requestedChanges.requested_changes === 'object'
@@ -413,122 +378,6 @@ const WorkflowEngine = {
     const decision = evaluateProposalDiscountApprovalRequirement(proposalForDecision, items, targetStatus, workflowRule);
     return { decision, proposal: proposalForDecision, items, currentStatus, targetStatus, nestedRequestedChanges: nested, workflowRule };
   },
-  buildDiscountWorkflowDecision(resource = '', record = {}, requestedChanges = {}) {
-    const normalizedResource = this.normalizeDiscountWorkflowResource(resource);
-    if (this.isProposalWorkflowResource(normalizedResource)) return this.buildProposalDiscountDecision(record, requestedChanges);
-
-    const nested = requestedChanges?.requested_changes && typeof requestedChanges.requested_changes === 'object'
-      ? requestedChanges.requested_changes
-      : {};
-    const resourceKey = normalizedResource === 'agreement_amendment' ? 'amendment' : 'agreement';
-    const resourcePayload = nested?.[resourceKey] && typeof nested[resourceKey] === 'object' ? nested[resourceKey] : {};
-    const recordItems = Array.isArray(record?.items)
-      ? record.items
-      : Array.isArray(record?.agreement_items)
-        ? record.agreement_items
-        : Array.isArray(record?.amendment_items)
-          ? record.amendment_items
-          : [];
-    const payloadItems = Array.isArray(resourcePayload?.items)
-      ? resourcePayload.items
-      : Array.isArray(resourcePayload?.agreement_items)
-        ? resourcePayload.agreement_items
-        : Array.isArray(resourcePayload?.amendment_items)
-          ? resourcePayload.amendment_items
-          : [];
-    const items = Array.isArray(nested?.items)
-      ? nested.items
-      : Array.isArray(requestedChanges?.items)
-        ? requestedChanges.items
-        : payloadItems.length
-          ? payloadItems
-          : recordItems;
-    const currentStatus = normalizeWorkflowStatus(requestedChanges?.current_status || record?.status || resourcePayload?.current_status || resourcePayload?.status);
-    const targetStatus = normalizeWorkflowStatus(requestedChanges?.requested_status || requestedChanges?.next_status || resourcePayload?.status || record?.status);
-    const recordForDecision = {
-      ...(record && typeof record === 'object' ? record : {}),
-      ...resourcePayload,
-      current_status: currentStatus,
-      status: currentStatus,
-      next_status: targetStatus,
-      discount_percent: requestedChanges?.discount_percent ?? resourcePayload?.discount_percent ?? record?.discount_percent,
-      approved_annual_saas_discount_percent: hasValue(resourcePayload?.approved_annual_saas_discount_percent)
-        ? resourcePayload.approved_annual_saas_discount_percent
-        : hasValue(record?.approved_annual_saas_discount_percent)
-          ? record.approved_annual_saas_discount_percent
-          : hasValue(record?.approved_discount_percent)
-            ? record.approved_discount_percent
-            : undefined,
-      approved_one_time_fee_discount_percent: hasValue(resourcePayload?.approved_one_time_fee_discount_percent)
-        ? resourcePayload.approved_one_time_fee_discount_percent
-        : hasValue(record?.approved_one_time_fee_discount_percent)
-          ? record.approved_one_time_fee_discount_percent
-          : hasValue(record?.approved_discount_percent)
-            ? record.approved_discount_percent
-            : undefined,
-      approved_discount_percent: hasValue(resourcePayload?.approved_discount_percent)
-        ? resourcePayload.approved_discount_percent
-        : record?.approved_discount_percent
-    };
-    const workflowRule = normalizedResource === 'agreement_amendment'
-      ? {
-          ...this.getDiscountWorkflowRule(normalizedResource, currentStatus, targetStatus),
-          annual_saas_no_approval_until_percent: 10,
-          annual_saas_hard_stop_discount_percent: 20,
-          one_time_fee_no_approval_until_percent: 10,
-          one_time_fee_hard_stop_discount_percent: 20
-        }
-      : this.getDiscountWorkflowRule(normalizedResource, currentStatus, targetStatus);
-    const decision = evaluateProposalDiscountApprovalRequirement(recordForDecision, items, targetStatus, workflowRule);
-    return { decision, proposal: recordForDecision, record: recordForDecision, items, currentStatus, targetStatus, nestedRequestedChanges: nested, workflowRule, normalizedResource, resourceKey };
-  },
-  async findPendingDiscountApproval(resource = '', recordId = '', targetStatus = '', discount = 0, discounts = {}) {
-    const normalizedResource = this.normalizeDiscountWorkflowResource(resource);
-    const normalizedRecordId = String(recordId || '').trim();
-    if (!normalizedResource || !normalizedRecordId) return null;
-    try {
-      const response = await Api.listPendingWorkflowApprovals?.({ resource: normalizedResource, record_id: normalizedRecordId });
-      const rows = response?.rows || response?.items || response?.data || [];
-      const normalizedTarget = normalizeWorkflowStatus(targetStatus);
-      const normalizedDiscount = Number(toNumber(discount).toFixed(2));
-      const normalizedAnnual = Number(toNumber(discounts?.annualSaasDiscount).toFixed(2));
-      const normalizedOneTime = Number(toNumber(discounts?.oneTimeFeeDiscount).toFixed(2));
-      return (Array.isArray(rows) ? rows : []).find(row => {
-        const requested = row?.requested_changes && typeof row.requested_changes === 'object' ? row.requested_changes : {};
-        const requestedDiscounts = requested?.category_discounts && typeof requested.category_discounts === 'object' ? requested.category_discounts : {};
-        const rowRecordId = String(row?.record_id || requested?.resource_id || requested?.target_id || requested?.proposal_uuid || requested?.agreement_uuid || requested?.amendment_uuid || '').trim();
-        const rowStatus = normalizeWorkflowStatus(row?.new_status || requested?.requested_status || requested?.next_status || requested?.status);
-        const rowDiscount = Number(toNumber(requested?.discount_percent).toFixed(2));
-        const rowAnnual = Number(toNumber(requestedDiscounts?.annualSaasDiscount ?? requested?.annual_saas_discount_percent).toFixed(2));
-        const rowOneTime = Number(toNumber(requestedDiscounts?.oneTimeFeeDiscount ?? requested?.one_time_fee_discount_percent).toFixed(2));
-        return String(row?.resource || '').trim().toLowerCase() === normalizedResource &&
-          rowRecordId === normalizedRecordId &&
-          rowStatus === normalizedTarget &&
-          rowDiscount === normalizedDiscount &&
-          rowAnnual === normalizedAnnual &&
-          rowOneTime === normalizedOneTime;
-      }) || null;
-    } catch (error) {
-      console.warn('[Discount workflow] Unable to check duplicate approval requests', error);
-      return null;
-    }
-  },
-  async updateDiscountApprovalSnapshot(resource = '', recordId = '', updates = {}) {
-    const normalizedResource = this.normalizeDiscountWorkflowResource(resource);
-    const id = String(recordId || '').trim();
-    if (!id || !updates || typeof updates !== 'object' || !Object.keys(updates).length) return null;
-    try {
-      if (normalizedResource === 'agreement_amendment') {
-        const client = window.SupabaseClient?.getClient?.() || window.supabaseClient || window.supabase || null;
-        if (!client) return null;
-        return await client.from('agreement_amendments').update(updates).eq('id', id).select('*').maybeSingle();
-      }
-      return await Api.requestWithSession(normalizedResource, 'update', { id, updates });
-    } catch (error) {
-      console.warn('[Discount workflow] Unable to update approval snapshot', error);
-      return null;
-    }
-  },
   async findPendingProposalDiscountApproval(recordId = '', targetStatus = '', discount = 0, discounts = {}) {
     const normalizedRecordId = String(recordId || '').trim();
     if (!normalizedRecordId) return null;
@@ -570,7 +419,7 @@ const WorkflowEngine = {
     }
   },
   async createWorkflowApprovalFromDecision(resource, record = {}, requestedChanges = {}, validationResult = {}, discountPercent = 0) {
-    const normalizedResource = this.normalizeDiscountWorkflowResource(resource);
+    const normalizedResource = String(resource || '').trim().toLowerCase();
     const submittedByName =
       window.Session?.authContext?.()?.profile?.name ||
       window.Session?.authContext?.()?.profile?.full_name ||
@@ -582,63 +431,25 @@ const WorkflowEngine = {
         ? requestedChanges.requested_changes
         : {};
     const proposalPayload = nestedRequestedChanges?.proposal && typeof nestedRequestedChanges.proposal === 'object' ? nestedRequestedChanges.proposal : {};
-    const agreementPayload = nestedRequestedChanges?.agreement && typeof nestedRequestedChanges.agreement === 'object' ? nestedRequestedChanges.agreement : {};
-    const amendmentPayload = nestedRequestedChanges?.amendment && typeof nestedRequestedChanges.amendment === 'object' ? nestedRequestedChanges.amendment : {};
-    const resourcePayload = normalizedResource === 'agreement_amendment'
-      ? amendmentPayload
-      : normalizedResource === 'agreements'
-        ? agreementPayload
-        : proposalPayload;
     const approvalItems = Array.isArray(nestedRequestedChanges?.items)
       ? nestedRequestedChanges.items
       : Array.isArray(requestedChanges?.items)
         ? requestedChanges.items
-        : Array.isArray(resourcePayload?.items)
-          ? resourcePayload.items
-          : Array.isArray(resourcePayload?.proposal_items)
-            ? resourcePayload.proposal_items
-            : Array.isArray(resourcePayload?.agreement_items)
-              ? resourcePayload.agreement_items
-              : Array.isArray(resourcePayload?.amendment_items)
-                ? resourcePayload.amendment_items
-                : Array.isArray(record?.items)
-                  ? record.items
-                  : Array.isArray(record?.proposal_items)
-                    ? record.proposal_items
-                    : Array.isArray(record?.agreement_items)
-                      ? record.agreement_items
-                      : Array.isArray(record?.amendment_items)
-                        ? record.amendment_items
-                        : [];
+        : Array.isArray(proposalPayload?.items)
+          ? proposalPayload.items
+          : Array.isArray(proposalPayload?.proposal_items)
+            ? proposalPayload.proposal_items
+            : Array.isArray(record?.items)
+              ? record.items
+              : Array.isArray(record?.proposal_items)
+                ? record.proposal_items
+                : [];
     const categoryDiscounts = validationResult?.discounts && typeof validationResult.discounts === 'object'
       ? validationResult.discounts
-      : getProposalDiscountsByCategory({ ...record, ...resourcePayload, ...nestedRequestedChanges }, approvalItems);
-    const recordId = String(
-      requestedChanges?.id ||
-      requestedChanges?.proposal_uuid ||
-      requestedChanges?.agreement_uuid ||
-      requestedChanges?.amendment_uuid ||
-      resourcePayload?.id ||
-      amendmentPayload?.amendment_id ||
-      amendmentPayload?.amendment_reference ||
-      agreementPayload?.agreement_id ||
-      agreementPayload?.agreement_number ||
-      proposalPayload?.proposal_id ||
-      proposalPayload?.proposal_number ||
-      record?.id ||
-      ''
-    ).trim();
-    const recordReference = String(
-      requestedChanges?.record_reference ||
+      : getProposalDiscountsByCategory({ ...record, ...proposalPayload, ...nestedRequestedChanges }, approvalItems);
+    const recordId = String(requestedChanges?.id || requestedChanges?.proposal_uuid || proposalPayload?.id || record?.id || '').trim();
+    const resourceDisplayId = String(
       requestedChanges?.resource_display_id ||
-      amendmentPayload?.amendment_reference ||
-      amendmentPayload?.amendment_id ||
-      record?.amendment_reference ||
-      record?.amendment_id ||
-      agreementPayload?.agreement_number ||
-      agreementPayload?.agreement_id ||
-      record?.agreement_number ||
-      record?.agreement_id ||
       proposalPayload?.proposal_id ||
       proposalPayload?.proposal_number ||
       record?.proposal_id ||
@@ -649,18 +460,11 @@ const WorkflowEngine = {
     ).trim();
     const normalizedRequestedChanges = {
       ...nestedRequestedChanges,
-      proposal_uuid: normalizedResource === 'proposals' ? recordId : (nestedRequestedChanges.proposal_uuid || ''),
+      proposal_uuid: recordId,
       proposal_id: proposalPayload?.proposal_id || record?.proposal_id || '',
       proposal_number: proposalPayload?.proposal_id || proposalPayload?.proposal_number || record?.proposal_number || record?.proposal_reference || '',
-      agreement_uuid: normalizedResource === 'agreements' ? recordId : (nestedRequestedChanges.agreement_uuid || ''),
-      agreement_id: agreementPayload?.agreement_id || record?.agreement_id || '',
-      agreement_number: agreementPayload?.agreement_number || record?.agreement_number || '',
-      amendment_uuid: normalizedResource === 'agreement_amendment' ? recordId : (nestedRequestedChanges.amendment_uuid || ''),
-      amendment_id: amendmentPayload?.amendment_id || record?.amendment_id || '',
-      amendment_reference: amendmentPayload?.amendment_reference || record?.amendment_reference || '',
-      record_reference: recordReference,
       current_status: requestedChanges?.current_status || record?.status || '',
-      requested_status: requestedChanges?.requested_status || requestedChanges?.next_status || resourcePayload?.status || record?.status || '',
+      requested_status: requestedChanges?.requested_status || requestedChanges?.next_status || proposalPayload?.status || record?.status || '',
       discount_percent: toNumber(discountPercent),
       annual_saas_discount_percent: categoryDiscounts.annualSaasDiscount,
       one_time_fee_discount_percent: categoryDiscounts.oneTimeFeeDiscount,
@@ -672,26 +476,23 @@ const WorkflowEngine = {
       target_workflow_resource: normalizedResource,
       record_snapshot: record || {},
       proposal: proposalPayload,
-      agreement: agreementPayload,
-      amendment: amendmentPayload,
       items: approvalItems,
       resource_id: recordId,
       target_id: recordId,
-      resource_display_id: recordReference
+      resource_display_id: resourceDisplayId
     };
     const approvalPayload = {
       resource: normalizedResource,
       record_id: recordId,
       target_id: recordId,
       resource_id: recordId,
-      resource_display_id: recordReference,
-      record_reference: recordReference,
+      resource_display_id: resourceDisplayId,
       workflow_rule_id: validationResult?.workflow_rule_id || null,
       requester_user_id: window.Session?.authContext?.()?.user?.id || null,
       requester_role: submittedByRole,
       approval_role: String(validationResult?.approval_role || 'admin').trim(),
       old_status: String(requestedChanges?.current_status || record?.status || '').trim(),
-      new_status: String(requestedChanges?.requested_status || requestedChanges?.next_status || resourcePayload?.status || record?.status || '').trim(),
+      new_status: String(requestedChanges?.requested_status || requestedChanges?.next_status || proposalPayload?.status || record?.status || '').trim(),
       requested_changes: normalizedRequestedChanges
     };
     try {
@@ -852,8 +653,7 @@ const WorkflowEngine = {
     const nestedRequestedChanges = safeRequestedChanges.requested_changes && typeof safeRequestedChanges.requested_changes === 'object'
       ? safeRequestedChanges.requested_changes
       : {};
-    const normalizedTopResource = this.normalizeDiscountWorkflowResource(resource);
-    if (this.isProposalWorkflowResource(normalizedTopResource) && this.shouldSkipWorkflowForDraftSave({
+    if (this.shouldSkipWorkflowForDraftSave({
       currentStatus: safeRequestedChanges.current_status || safeRequestedChanges.from_status || safeRecord.current_status || safeRecord.status || '',
       nextStatus:
         safeRequestedChanges.next_status ||
@@ -872,12 +672,11 @@ const WorkflowEngine = {
     }
     this.beginRequestProcessing('Checking workflow approval request…');
     try {
-      if (this.isDiscountWorkflowResource(resource)) {
-        const proposalWorkflow = this.buildDiscountWorkflowDecision(resource, record, requestedChanges);
-        const { decision, proposal, currentStatus, targetStatus, workflowRule, normalizedResource } = proposalWorkflow;
-        const isProposalResource = this.isProposalWorkflowResource(normalizedResource);
+      if (this.isProposalWorkflowResource(resource)) {
+        const proposalWorkflow = this.buildProposalDiscountDecision(record, requestedChanges);
+        const { decision, proposal, currentStatus, targetStatus, workflowRule } = proposalWorkflow;
         const isDraftToSent = currentStatus === 'draft' && ['sent', 'send', 'submitted'].includes(targetStatus);
-        if (isProposalResource && isDraftToSent && !this.canRequestProposalDiscountWorkflow(Session?.role?.() || '')) {
+        if (isDraftToSent && !this.canRequestProposalDiscountWorkflow(Session?.role?.() || '')) {
           return {
             allowed: false,
             pendingApproval: false,
@@ -895,12 +694,12 @@ const WorkflowEngine = {
             reason: decision.reason || 'Proposal discount is not allowed.'
           };
         }
-        const transitionRequiresApproval = isProposalResource && isDraftToSent && this.toBool(workflowRule?.requires_approval);
+        const transitionRequiresApproval = isDraftToSent && this.toBool(workflowRule?.requires_approval);
         if (decision.allowed === true && decision.requiresApproval !== true && transitionRequiresApproval) {
-          const recordId = String(requestedChanges?.id || requestedChanges?.proposal_uuid || requestedChanges?.agreement_uuid || requestedChanges?.amendment_uuid || requestedChanges?.agreement_id || requestedChanges?.agreement_number || record?.id || proposal?.id || proposal?.agreement_id || proposal?.agreement_number || proposal?.amendment_id || proposal?.amendment_reference || '').trim();
-          const duplicate = await this.findPendingDiscountApproval(normalizedResource, recordId, targetStatus, decision.discount, decision.discounts);
+          const recordId = String(requestedChanges?.id || requestedChanges?.proposal_uuid || record?.id || proposal?.id || '').trim();
+          const duplicate = await this.findPendingProposalDiscountApproval(recordId, targetStatus, decision.discount, decision.discounts);
           if (duplicate) {
-            await this.updateDiscountApprovalSnapshot(normalizedResource, recordId, {
+            await this.updateProposalDiscountApprovalSnapshot(recordId, {
               status: 'Pending Approval',
               discount_approval_status: 'pending',
               approval_required_reason: 'Approval is already pending for this transition.',
@@ -925,9 +724,9 @@ const WorkflowEngine = {
             approval_roles: approvalRoles.length ? approvalRoles : [workflowRule?.approval_role || 'admin'],
             reason: workflowRule?.reason || 'Approval is required before sending this proposal.'
           };
-          const approvalResult = await this.createWorkflowApprovalFromDecision(normalizedResource, record, requestedChanges, validationResult, decision.discount);
+          const approvalResult = await this.createWorkflowApprovalFromDecision(resource, record, requestedChanges, validationResult, decision.discount);
           if (approvalResult?.approvalCreated === true) {
-            await this.updateDiscountApprovalSnapshot(normalizedResource, recordId, {
+            await this.updateProposalDiscountApprovalSnapshot(recordId, {
               status: 'Pending Approval',
               discount_approval_status: 'pending',
               approval_required_reason: validationResult.reason,
@@ -936,7 +735,7 @@ const WorkflowEngine = {
           }
           return approvalResult;
         }
-        if (decision.allowed === true && decision.requiresApproval !== true && (!isDraftToSent || !isProposalResource)) {
+        if (decision.allowed === true && decision.requiresApproval !== true && !isDraftToSent) {
           return {
             allowed: true,
             pendingApproval: false,
@@ -967,10 +766,10 @@ const WorkflowEngine = {
             requiresApproval: decision.requiresApproval,
             reason: decision.reason
           });
-          const recordId = String(requestedChanges?.id || requestedChanges?.proposal_uuid || requestedChanges?.agreement_uuid || requestedChanges?.amendment_uuid || requestedChanges?.agreement_id || requestedChanges?.agreement_number || record?.id || proposal?.id || proposal?.agreement_id || proposal?.agreement_number || proposal?.amendment_id || proposal?.amendment_reference || '').trim();
-          const duplicate = await this.findPendingDiscountApproval(normalizedResource, recordId, targetStatus, decision.discount, decision.discounts);
+          const recordId = String(requestedChanges?.id || requestedChanges?.proposal_uuid || record?.id || proposal?.id || '').trim();
+          const duplicate = await this.findPendingProposalDiscountApproval(recordId, targetStatus, decision.discount, decision.discounts);
           if (duplicate) {
-            await this.updateDiscountApprovalSnapshot(normalizedResource, recordId, {
+            await this.updateProposalDiscountApprovalSnapshot(recordId, {
               status: 'Pending Approval',
               discount_approval_status: 'pending',
               approval_required_reason: 'Approval is already pending for this discount.',
@@ -996,9 +795,9 @@ const WorkflowEngine = {
             annualNeedsApproval: decision.annualNeedsApproval,
             oneTimeNeedsApproval: decision.oneTimeNeedsApproval
           };
-          const approvalResult = await this.createWorkflowApprovalFromDecision(normalizedResource, record, requestedChanges, validationResult, decision.discount);
+          const approvalResult = await this.createWorkflowApprovalFromDecision(resource, record, requestedChanges, validationResult, decision.discount);
           if (approvalResult?.approvalCreated === true) {
-            await this.updateDiscountApprovalSnapshot(normalizedResource, recordId, {
+            await this.updateProposalDiscountApprovalSnapshot(recordId, {
               status: 'Pending Approval',
               discount_approval_status: 'pending',
               approval_required_reason: decision.reason,

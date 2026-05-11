@@ -1910,7 +1910,7 @@ const Api = {
   },
   async validateWorkflowTransition(payload = {}) {
     const body = this.buildWorkflowTransitionPayload(payload);
-    if (Number(requested.discount_percent ?? source.discount_percent ?? 0) <= 0 && this.shouldSkipWorkflowForDraftSave({
+    if (this.shouldSkipWorkflowForDraftSave({
       currentStatus: body.current_status,
       nextStatus: body.requested_status || body.next_status,
       action: body.action,
@@ -1930,14 +1930,13 @@ const Api = {
       approval_role: String(source.approval_role || '').trim(),
       status: String(source.status || '').trim(),
       resource: String(source.resource || '').trim(),
-      record_id: String(source.record_id || '').trim(),
-      record_reference: String(source.record_reference || source.resource_display_id || '').trim()
+      record_id: String(source.record_id || '').trim()
     };
   },
   async createWorkflowApproval(payload = {}) {
     const source = payload && typeof payload === 'object' ? payload : {};
     const requested = source.requested_changes && typeof source.requested_changes === 'object' ? source.requested_changes : {};
-    if (Number(requested.discount_percent ?? source.discount_percent ?? 0) <= 0 && this.shouldSkipWorkflowForDraftSave({
+    if (this.shouldSkipWorkflowForDraftSave({
       currentStatus: source.old_status ?? source.p_old_status ?? requested.current_status,
       nextStatus: source.new_status ?? source.p_new_status ?? requested.requested_status ?? requested.next_status ?? requested.status,
       action: source.action || requested.action || 'create_workflow_approval',
@@ -1953,8 +1952,7 @@ const Api = {
       record_id: source.record_id ?? source.p_record_id ?? source.resource_id ?? source.target_id ?? '',
       resource_id: source.resource_id ?? source.record_id ?? source.p_record_id ?? source.target_id ?? '',
       target_id: source.target_id ?? source.record_id ?? source.p_record_id ?? source.resource_id ?? '',
-      resource_display_id: source.resource_display_id ?? source.display_id ?? source.record_reference ?? '',
-      record_reference: source.record_reference ?? source.resource_display_id ?? source.display_id ?? '',
+      resource_display_id: source.resource_display_id ?? source.display_id ?? '',
       workflow_rule_id: source.workflow_rule_id ?? source.p_workflow_rule_id ?? null,
       requester_user_id: source.requester_user_id ?? source.p_requester_user_id ?? null,
       requester_role: source.requester_role ?? source.p_requester_role ?? '',
@@ -2011,8 +2009,38 @@ async function apiPost(payload = {}) {
   const authToken = String(requestBody?.authToken || '').trim();
   const isUsersUpdate = resource === 'users' && action === 'update';
 
-  if (isUsersUpdate && !authToken) {
-    throw new Error('Your session expired. Please log in again.');
+  if (isUsersUpdate) {
+    if (!authToken) {
+      throw new Error('Your session expired. Please log in again.');
+    }
+    console.info('[edit user auth debug]', {
+      hasAuthToken: Boolean(authToken),
+      tokenLength: authToken ? authToken.length : 0,
+      resource,
+      action
+    });
+    const proxyPayload = { ...requestBody };
+    proxyPayload.session_access_token = authToken;
+    delete proxyPayload.authToken;
+    const response = await fetch('/api/proxy', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authToken}`,
+        'X-Supabase-Access-Token': authToken
+      },
+      body: JSON.stringify(proxyPayload)
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const message = String(data?.error || data?.message || 'Unable to update user.').trim();
+      if (response.status === 401) throw new Error(message || 'Your session expired. Please log in again.');
+      if (response.status === 403) throw new Error('You do not have permission to edit users.');
+      if (message.toLowerCase().includes('supabase_service_role_key')) throw new Error('Server is missing SUPABASE_SERVICE_ROLE_KEY.');
+      if (message.toLowerCase().includes('auth_user_id')) throw new Error('Cannot update auth user because auth_user_id is missing.');
+      throw new Error(message);
+    }
+    return data;
   }
 
   if (window.SupabaseData?.isMigratedResource?.(resource)) {
