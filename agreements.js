@@ -88,11 +88,24 @@ const Agreements = {
     'company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_contact_phone','company_email','company_phone','country','city','tax_number','customer_signatory_email','customer_signatory_phone','provider_signatory_name','provider_signatory_title','provider_signatory_email','provider_primary_signatory_name','provider_primary_signatory_title','provider_secondary_signatory_name','provider_secondary_signatory_title',
     'notes'
   ],
-  shouldSkipAgreementWorkflow({ currentStatus, nextStatus, action, payload } = {}) {
+  shouldSkipAgreementWorkflow({ currentStatus, nextStatus, action, payload, currentRecord } = {}) {
     const current = String(currentStatus || '').trim().toLowerCase();
     const next = String(nextStatus || payload?.status || '').trim().toLowerCase();
     const normalizedAction = String(action || payload?.action || '').trim().toLowerCase();
     const isSaveAction = ['create', 'save', 'update'].includes(normalizedAction);
+    const requestedDiscount = this.toNumberSafe(payload?.discount_percent ?? payload?.requested_discount_percent ?? 0);
+    const approvedAnnual = currentRecord?.approved_annual_saas_discount_percent ?? currentRecord?.approved_discount_percent;
+    const approvedOneTime = currentRecord?.approved_one_time_fee_discount_percent ?? currentRecord?.approved_discount_percent;
+    const hasApprovedAnnual = approvedAnnual !== null && approvedAnnual !== undefined && String(approvedAnnual).trim() !== '';
+    const hasApprovedOneTime = approvedOneTime !== null && approvedOneTime !== undefined && String(approvedOneTime).trim() !== '';
+    const approvedBaseline = Math.max(
+      hasApprovedAnnual ? this.toNumberSafe(approvedAnnual) : 0,
+      hasApprovedOneTime ? this.toNumberSafe(approvedOneTime) : 0
+    );
+    const discountNeedsFirstApproval = requestedDiscount > 10 && (!hasApprovedAnnual || !hasApprovedOneTime);
+    const discountIncreased = requestedDiscount > 10 && requestedDiscount > approvedBaseline;
+
+    if (discountNeedsFirstApproval || discountIncreased || requestedDiscount > 20) return false;
 
     if (next === 'draft' && (current === '' || current === 'draft') && isSaveAction) {
       return true;
@@ -2692,7 +2705,8 @@ const Agreements = {
       currentStatus,
       nextStatus: agreement.status,
       action: workflowAction,
-      payload: agreementUpdatePayload
+      payload: { ...agreementUpdatePayload, discount_percent: requestedDiscount },
+      currentRecord
     })) {
       workflowDecision = {
         allowed: true,
@@ -2709,7 +2723,7 @@ const Agreements = {
           current_status: currentStatus,
           requested_status: agreement.status || '',
           discount_percent: requestedDiscount,
-          requested_changes: { agreement: agreementUpdatePayload, items: preparedItems || [] }
+          requested_changes: { agreement: { ...agreementUpdatePayload, ...(!id ? agreement : {}) }, items: preparedItems || items || [] }
         });
       } catch (error) {
         console.warn('[Agreement] Workflow validation unavailable; continuing agreement save fallback.', error);

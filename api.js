@@ -1910,7 +1910,7 @@ const Api = {
   },
   async validateWorkflowTransition(payload = {}) {
     const body = this.buildWorkflowTransitionPayload(payload);
-    if (this.shouldSkipWorkflowForDraftSave({
+    if (Number(requested.discount_percent ?? source.discount_percent ?? 0) <= 0 && this.shouldSkipWorkflowForDraftSave({
       currentStatus: body.current_status,
       nextStatus: body.requested_status || body.next_status,
       action: body.action,
@@ -1930,13 +1930,14 @@ const Api = {
       approval_role: String(source.approval_role || '').trim(),
       status: String(source.status || '').trim(),
       resource: String(source.resource || '').trim(),
-      record_id: String(source.record_id || '').trim()
+      record_id: String(source.record_id || '').trim(),
+      record_reference: String(source.record_reference || source.resource_display_id || '').trim()
     };
   },
   async createWorkflowApproval(payload = {}) {
     const source = payload && typeof payload === 'object' ? payload : {};
     const requested = source.requested_changes && typeof source.requested_changes === 'object' ? source.requested_changes : {};
-    if (this.shouldSkipWorkflowForDraftSave({
+    if (Number(requested.discount_percent ?? source.discount_percent ?? 0) <= 0 && this.shouldSkipWorkflowForDraftSave({
       currentStatus: source.old_status ?? source.p_old_status ?? requested.current_status,
       nextStatus: source.new_status ?? source.p_new_status ?? requested.requested_status ?? requested.next_status ?? requested.status,
       action: source.action || requested.action || 'create_workflow_approval',
@@ -1952,7 +1953,8 @@ const Api = {
       record_id: source.record_id ?? source.p_record_id ?? source.resource_id ?? source.target_id ?? '',
       resource_id: source.resource_id ?? source.record_id ?? source.p_record_id ?? source.target_id ?? '',
       target_id: source.target_id ?? source.record_id ?? source.p_record_id ?? source.resource_id ?? '',
-      resource_display_id: source.resource_display_id ?? source.display_id ?? '',
+      resource_display_id: source.resource_display_id ?? source.display_id ?? source.record_reference ?? '',
+      record_reference: source.record_reference ?? source.resource_display_id ?? source.display_id ?? '',
       workflow_rule_id: source.workflow_rule_id ?? source.p_workflow_rule_id ?? null,
       requester_user_id: source.requester_user_id ?? source.p_requester_user_id ?? null,
       requester_role: source.requester_role ?? source.p_requester_role ?? '',

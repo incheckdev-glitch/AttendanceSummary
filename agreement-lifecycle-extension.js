@@ -216,6 +216,9 @@
       .agreement-amendment-signature-line { border-top:1px solid #111827; padding-top:8px; min-height:42px; }
       .agreement-amendment-context { border:1px solid var(--border); border-radius:10px; padding:10px; margin:10px 0; background:rgba(59,130,246,.08); display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
       .agreement-amendment-context strong { color:var(--text); }
+      .agreement-amendment-approval-status { border:1px solid var(--border); border-radius:10px; padding:10px; margin-top:12px; background:rgba(245,158,11,.08); color:var(--text); font-size:13px; }
+      .agreement-amendment-approval-status[data-state=approved], .agreement-amendment-approval-status[data-state=not_required] { background:rgba(34,197,94,.08); }
+      .agreement-amendment-approval-status[data-state=hidden] { display:none; }
     `;
     document.head.appendChild(style);
   }
@@ -708,6 +711,7 @@
               <label>Grand Total<input id="agreementAmendmentGrandTotal" type="number" step="0.01"></label>
               <label style="grid-column:1 / -1;">Notes<textarea id="agreementAmendmentNotes" rows="3"></textarea></label>
             </div>
+            <div id="agreementAmendmentApprovalStatus" class="agreement-amendment-approval-status" data-state="hidden" style="display:none;"></div>
             <div class="card" style="margin-top:12px;">
               <strong>Items</strong>
               <div id="agreementAmendmentItemsList" style="margin-top:8px;"><p class="muted">No amendment items found.</p></div>
@@ -811,6 +815,61 @@
     };
   }
 
+  function getMaxItemDiscount(items = []) {
+    return (Array.isArray(items) ? items : []).reduce((max, item) => Math.max(max, toNumber(item?.discount_percent ?? item?.discount)), 0);
+  }
+
+  function updateAmendmentApprovalStatusUi(amendment = {}, items = []) {
+    const node = document.getElementById('agreementAmendmentApprovalStatus');
+    if (!node) return;
+    const discount = getMaxItemDiscount(items);
+    const status = normalizeStatus(amendment.discount_approval_status || '');
+    const reason = String(amendment.approval_required_reason || '').trim();
+    const approved = toNumber(amendment.approved_discount_percent);
+    const needsApproval = discount > 10 && (status === 'pending' || status === 'rejected' || approved < discount);
+    if (!needsApproval && status !== 'approved' && status !== 'pending') {
+      node.dataset.state = 'hidden';
+      node.style.display = 'none';
+      node.textContent = '';
+      return;
+    }
+    node.dataset.state = status || (needsApproval ? 'pending' : 'approved');
+    node.style.display = '';
+    node.textContent = status === 'approved' && approved >= discount
+      ? `Discount approval granted up to ${approved}%. Current discount: ${discount}%.`
+      : `This amendment requires discount approval before it can proceed.${reason ? ` ${reason}` : ''}`;
+  }
+
+  async function enforceAmendmentDiscountWorkflow(current = {}, updates = {}, items = [], nextStatus = '') {
+    const engine = window.WorkflowEngine;
+    if (!engine?.enforceBeforeSave) return { allowed: true, ok: true, unavailable: true };
+    const amendmentId = String(current.id || updates.id || '').trim();
+    const targetStatus = nextStatus || updates.status || current.status || 'Draft';
+    const discountPercent = getMaxItemDiscount(items);
+    const amendmentReference = getAmendmentReference({ ...current, ...updates });
+    const decision = await engine.enforceBeforeSave('agreement_amendment', current, {
+      id: amendmentId,
+      amendment_uuid: amendmentId,
+      action: amendmentId ? 'update' : 'create',
+      current_status: current.status || '',
+      requested_status: targetStatus,
+      discount_percent: discountPercent,
+      record_reference: amendmentReference,
+      requested_changes: {
+        amendment: { ...updates, id: amendmentId, amendment_reference: amendmentReference, status: targetStatus },
+        items
+      }
+    });
+    if (decision?.requiresApproval || decision?.pendingApproval) {
+      updateAmendmentApprovalStatusUi({ ...current, ...updates, status: targetStatus, discount_approval_status: 'pending', approval_required_reason: decision.reason }, items);
+      return {
+        ...decision,
+        message: 'This amendment requires discount approval before it can proceed.'
+      };
+    }
+    return decision;
+  }
+
   function populateAmendmentForm(amendment = {}, items = [], { forceEdit = false } = {}) {
     ensureAmendmentModals();
     const isDraft = normalizeStatus(amendment.status) === 'draft';
@@ -849,6 +908,7 @@
       modal.dataset.amendmentKey = getAmendmentKey(amendment);
       modal.dataset.amendmentItems = JSON.stringify(items || []);
     }
+    updateAmendmentApprovalStatusUi(amendment, items);
   }
 
   async function resolveAmendment(key = '') {
@@ -995,7 +1055,16 @@
       updates.status = statusOverride;
       if (normalizeStatus(statusOverride) === 'signed') updates.signed_at = new Date().toISOString();
     }
+    const modalItems = (() => {
+      try { return JSON.parse(document.getElementById('agreementAmendmentDetailModal')?.dataset?.amendmentItems || '[]'); }
+      catch { return []; }
+    })();
     try {
+      const workflowDecision = await enforceAmendmentDiscountWorkflow(current, updates, modalItems, updates.status || current.status || 'Draft');
+      if (workflowDecision?.allowed === false || workflowDecision?.pendingApproval || workflowDecision?.requiresApproval || workflowDecision?.ok === false) {
+        toast(workflowDecision?.message || workflowDecision?.reason || 'This amendment requires discount approval before it can proceed.');
+        return;
+      }
       const { data, error } = await client.from('agreement_amendments').update(updates).eq('id', payload.id).select('*').single();
       if (error) throw error;
       const amendments = (Array.isArray(window.Agreements?.state?.currentAmendments) ? window.Agreements.state.currentAmendments : []).map(amendment => String(amendment.id) === String(payload.id) ? data : amendment);
@@ -1153,6 +1222,11 @@
     const { agreement, items } = agreements.collectFormValues();
     const updates = buildAmendmentUpdateFromAgreementForm(agreement, current);
     const itemPayloads = (Array.isArray(items) ? items : []).map((item, index) => cloneAgreementItemForAmendment(item, index, amendmentId));
+    const workflowDecision = await enforceAmendmentDiscountWorkflow(current, updates, itemPayloads, updates.status || current.status || 'Draft');
+    if (workflowDecision?.allowed === false || workflowDecision?.pendingApproval || workflowDecision?.requiresApproval || workflowDecision?.ok === false) {
+      toast(workflowDecision?.message || workflowDecision?.reason || 'This amendment requires discount approval before it can proceed.');
+      return;
+    }
     agreements.state.saveInFlight = true;
     agreements.setFormBusy?.(true);
     try {
