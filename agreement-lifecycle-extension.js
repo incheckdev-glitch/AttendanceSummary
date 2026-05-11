@@ -857,9 +857,9 @@
 
   async function fetchAmendmentItems(amendment = {}) {
     const client = getSupabaseClient();
-    const amendmentId = String(amendment.id || '').trim();
-    if (!client || !amendmentId) return [];
     const isAgreementRow = String(amendment.agreement_relationship_type || '').trim().toLowerCase() === 'amendment' || String(amendment.agreement_id || amendment.agreement_number || '').trim();
+    const amendmentId = String(isAgreementRow ? (amendment.agreement_id || amendment.id || '') : (amendment.id || amendment.amendment_id || '')).trim();
+    if (!client || !amendmentId) return [];
     try {
       const { data, error } = await client
         .from(isAgreementRow ? 'agreement_items' : 'agreement_amendment_items')

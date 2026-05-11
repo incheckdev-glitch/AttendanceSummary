@@ -1337,19 +1337,25 @@ const Agreements = {
     const client = window.SupabaseClient?.getClient?.();
     if (!client) throw new Error('Supabase client is not available.');
 
-    const [{ data: agreement, error: agreementError }, { data: items, error: itemsError }] = await Promise.all([
-      client.from('agreements').select('*').eq('id', id).maybeSingle(),
-      client
+    const agreement = await window.SupabaseData?.get
+      ? await window.SupabaseData.get('agreements', id)
+      : (await Api.requestWithSession('agreements', 'get', { id }));
+    if (!agreement) throw new Error('Agreement was not found.');
+
+    let items = Array.isArray(agreement.items) ? agreement.items : Array.isArray(agreement.agreement_items) ? agreement.agreement_items : [];
+    if (!items.length) {
+      const agreementId = String(agreement.agreement_id || '').trim();
+      const { data: agreementItems, error: agreementItemsError } = await client
         .from('agreement_items')
         .select('*')
-        .eq('agreement_id', id)
-        .order('line_no', { ascending: true, nullsFirst: false })
-        .order('created_at', { ascending: true, nullsFirst: false })
-    ]);
-
-    if (agreementError) throw new Error(`Unable to load agreement: ${agreementError.message || 'Unknown error'}`);
-    if (!agreement) throw new Error('Agreement was not found.');
-    if (itemsError) throw new Error(`Unable to load agreement items: ${itemsError.message || 'Unknown error'}`);
+        .eq('agreement_id', agreementId)
+        .order('created_at', { ascending: true });
+      if (agreementItemsError) {
+        console.warn('[Agreements] Unable to load agreement items', agreementItemsError);
+        throw new Error('Unable to load agreement items.');
+      }
+      items = agreementItems || [];
+    }
 
     return {
       agreement: this.normalizeAgreement(agreement),
