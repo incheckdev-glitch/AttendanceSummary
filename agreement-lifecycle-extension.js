@@ -375,11 +375,11 @@
   }
 
   function getAmendmentKey(amendment = {}) {
-    return String(amendment.id || amendment.amendment_id || amendment.amendment_reference || '').trim();
+    return String(amendment.id || amendment.agreement_id || amendment.agreement_number || amendment.amendment_id || amendment.amendment_reference || '').trim();
   }
 
   function getAmendmentReference(amendment = {}) {
-    return String(amendment.amendment_reference || amendment.amendment_id || amendment.id || '').trim();
+    return String(amendment.amendment_reference || amendment.agreement_number || amendment.agreement_id || amendment.amendment_id || amendment.id || '').trim();
   }
 
   function cacheAmendments(amendments = []) {
@@ -391,7 +391,7 @@
   function findCachedAmendment(key = '') {
     const normalizedKey = String(key || '').trim();
     const amendments = Array.isArray(window.Agreements?.state?.currentAmendments) ? window.Agreements.state.currentAmendments : [];
-    return amendments.find(amendment => [amendment.id, amendment.amendment_id, amendment.amendment_reference].some(value => String(value || '').trim() === normalizedKey)) || null;
+    return amendments.find(amendment => [amendment.id, amendment.agreement_id, amendment.agreement_number, amendment.amendment_id, amendment.amendment_reference].some(value => String(value || '').trim() === normalizedKey)) || null;
   }
 
   function getAgreementLookupValues(agreement = {}) {
@@ -445,7 +445,7 @@
                   <td><strong>${escapeHtml(getAmendmentReference(amendment))}</strong></td>
                   <td><span class="agreement-amendment-status">${escapeHtml(humanize(amendment.status || 'Draft'))}</span></td>
                   <td>${escapeHtml(formatDate(amendment.effective_date) || '—')}</td>
-                  <td>${escapeHtml(humanize(amendment.billing_impact) || '—')}</td>
+                  <td>${escapeHtml(humanize(amendment.billing_impact || amendment.relationship_notes) || '—')}</td>
                   <td>${escapeHtml(formatMoney(amendment.grand_total, amendment.currency) || '—')}</td>
                   <td>${escapeHtml(formatDateTime(amendment.created_at) || '—')}</td>
                   <td>
@@ -474,7 +474,11 @@
     container.innerHTML = '<p class="agreement-amendments-loading">Loading amendments…</p>';
     try {
       const filter = buildAmendmentOrFilter(agreement);
-      let query = client.from('agreement_amendments').select('*').order('created_at', { ascending: false });
+      let query = client
+        .from('agreements')
+        .select('*')
+        .eq('agreement_relationship_type', 'amendment')
+        .order('created_at', { ascending: false });
       if (filter) query = query.or(filter);
       const { data, error } = await query;
       if (error) throw error;
@@ -503,11 +507,13 @@
     if (!hasAgreement) return;
 
     const relationshipType = String(agreement.agreement_relationship_type || '').trim() || 'original';
-    const relationshipLabel = relationshipType === 'sub_agreement'
-      ? 'Sub-Agreement'
-      : relationshipType === 'renewal'
-        ? 'Renewal Agreement'
-        : 'Original Agreement';
+    const relationshipLabel = relationshipType === 'amendment'
+      ? 'Amendment'
+      : relationshipType === 'sub_agreement'
+        ? 'Sub-Agreement'
+        : relationshipType === 'renewal'
+          ? 'Renewal Agreement'
+          : 'Original Agreement';
     const badge = document.getElementById('agreementLifecycleRelationshipBadge');
     if (badge) badge.textContent = relationshipLabel;
 
@@ -541,9 +547,10 @@
     if (!client || !parentId) return 1;
     try {
       const { data, error } = await client
-        .from('agreement_amendments')
-        .select('amendment_id')
-        .eq('parent_agreement_id', parentId);
+        .from('agreements')
+        .select('agreement_id,agreement_number')
+        .eq('parent_agreement_id', parentId)
+        .eq('agreement_relationship_type', 'amendment');
       if (error) throw error;
       return (Array.isArray(data) ? data.length : 0) + 1;
     } catch (error) {
@@ -586,9 +593,13 @@
     const agreementFields = Array.isArray(window.Agreements?.agreementFields) ? window.Agreements.agreementFields : [];
     const payload = {
       amendment_reference: reference,
+      agreement_id: reference,
+      agreement_number: reference,
       parent_agreement_id: parentId,
       root_agreement_id: getRootAgreementId(source) || parentId,
       source_agreement_id: parentId,
+      agreement_relationship_type: 'amendment',
+      agreement_version: sequence,
       amendment_type: 'amendment',
       reason,
       effective_date: toDateOnly(source.effective_date || source.service_start_date || source.agreement_date),
@@ -606,6 +617,7 @@
       one_time_total: toNumber(source.one_time_total || source.subtotal_one_time),
       tax: toNumber(source.tax || source.total_discount),
       notes: source.notes || source.terms_conditions || `Draft amendment created from agreement ${getAgreementBusinessRef(source)}.`,
+      relationship_notes: reason || `Draft amendment created from agreement ${getAgreementBusinessRef(source)}.`,
       created_by: getCurrentUserId() || null,
       updated_by: getCurrentUserId() || null,
       created_at: now,
@@ -623,7 +635,7 @@
     payload.customer_name = payload.customer_name || source.customer_name || source.customer_legal_name || source.company_name || null;
     payload.customer_legal_name = payload.customer_legal_name || source.customer_legal_name || payload.customer_name || null;
     payload.payment_terms = payload.payment_terms || payload.payment_term || source.payment_terms || source.payment_term || null;
-    ['id', 'signed_date', 'customer_sign_date', 'provider_sign_date', 'customer_official_sign_date', 'provider_official_signatory_1_sign_date', 'provider_official_signatory_2_sign_date', 'signed_document_path', 'signed_document_name', 'signed_document_uploaded_at', 'signed_document_uploaded_by', 'signed_document_url', 'signed_agreement_document_path', 'signed_agreement_document_name', 'signed_agreement_document_uploaded_at', 'signed_agreement_document_uploaded_by', 'signed_agreement_document_url'].forEach(field => { delete payload[field]; });
+    ['id', 'signed_date', 'customer_sign_date', 'provider_sign_date', 'customer_official_sign_date', 'provider_official_signatory_1_sign_date', 'provider_official_signatory_2_sign_date', 'invoice_id', 'invoice_number', 'invoice_reference', 'invoiced_at', 'invoiced_by', 'signed_document_path', 'signed_document_name', 'signed_document_uploaded_at', 'signed_document_uploaded_by', 'signed_document_url', 'signed_agreement_document_path', 'signed_agreement_document_name', 'signed_agreement_document_uploaded_at', 'signed_agreement_document_uploaded_by', 'signed_agreement_document_url'].forEach(field => { delete payload[field]; });
     return filterAmendmentPayload(payload, { includeImmutable: true });
   }
 
@@ -656,27 +668,29 @@
     const sequence = await getNextAmendmentNumber(source);
     const reference = buildAmendmentReference(source, sequence);
     const payload = buildAmendmentInsertPayload(source, { reference, reason: trimmedReason, billingImpact, sequence });
-    const clonedItems = (Array.isArray(agreements?.state?.currentItems) ? agreements.state.currentItems : []).map((item, index) => cloneAgreementItemForAmendment(item, index));
+    const clonedItems = (Array.isArray(agreements?.state?.currentItems) ? agreements.state.currentItems : []).map((item, index) => ({
+      ...mapAmendmentItemToAgreementItem(cloneAgreementItemForAmendment(item, index)),
+      id: '',
+      agreement_id: '',
+      item_id: agreements?.generateAgreementItemId?.() || `am-item-${Date.now()}-${index}`
+    }));
 
     try {
-      const { data, error } = await client.from('agreement_amendments').insert(filterAmendmentPayload(payload, { includeImmutable: true })).select('*').single();
-      if (error) throw error;
-      const amendment = data || payload;
-      if (amendment.id && clonedItems.length) {
-        const itemPayloads = clonedItems.map(item => ({ ...item, amendment_id: amendment.id }));
-        const { error: itemError } = await client.from('agreement_amendment_items').insert(itemPayloads);
-        if (itemError) throw itemError;
-      }
-      const items = amendment.id ? await fetchAmendmentItems(amendment) : clonedItems;
+      const response = await agreements.createAgreement(payload, clonedItems);
+      const extracted = agreements.extractAgreementAndItems?.(response, reference) || {};
+      const amendment = extracted.agreement || payload;
+      const items = Array.isArray(extracted.items) && extracted.items.length ? extracted.items : clonedItems;
       const existing = Array.isArray(agreements?.state?.currentAmendments) ? agreements.state.currentAmendments : [];
       cacheAmendments([amendment, ...existing]);
       renderAmendmentsList(window.Agreements?.state?.currentAmendments || []);
-      refreshCurrentAgreementAmendments();
+      agreements.upsertLocalRow?.(amendment);
+      agreements.setCachedDetail?.(String(amendment.id || '').trim(), amendment, items);
       openAmendmentAgreementEditor(amendment, items, { parent: source });
+      refreshCurrentAgreementAmendments();
       toast('Draft amendment created. You can now edit it.');
     } catch (error) {
       console.error('[Agreement Lifecycle] Unable to create amendment', error);
-      toast('Unable to create amendment. Run the agreement lifecycle SQL migration first, then try again.');
+      toast('Unable to create amendment draft: ' + (error?.message || 'Unknown error'));
     }
   }
 
@@ -845,11 +859,12 @@
     const client = getSupabaseClient();
     const amendmentId = String(amendment.id || '').trim();
     if (!client || !amendmentId) return [];
+    const isAgreementRow = String(amendment.agreement_relationship_type || '').trim().toLowerCase() === 'amendment' || String(amendment.agreement_id || amendment.agreement_number || '').trim();
     try {
       const { data, error } = await client
-        .from('agreement_amendment_items')
+        .from(isAgreementRow ? 'agreement_items' : 'agreement_amendment_items')
         .select('*')
-        .eq('amendment_id', amendmentId)
+        .eq(isAgreementRow ? 'agreement_id' : 'amendment_id', amendmentId)
         .order('line_no', { ascending: true });
       if (error) throw error;
       return Array.isArray(data) ? data : [];
@@ -997,6 +1012,18 @@
     let amendment = findCachedAmendment(key);
     const client = getSupabaseClient();
     if (!amendment && client && key) {
+      const safeKey = String(key || '').trim().replace(/,/g, '');
+      const agreementFilter = `id.eq.${safeKey},agreement_id.eq.${safeKey},agreement_number.eq.${safeKey}`;
+      const { data, error } = await client
+        .from('agreements')
+        .select('*')
+        .eq('agreement_relationship_type', 'amendment')
+        .or(agreementFilter)
+        .maybeSingle();
+      if (error) throw error;
+      amendment = data;
+    }
+    if (!amendment && client && key) {
       const { data, error } = await client
         .from('agreement_amendments')
         .select('*')
@@ -1068,11 +1095,12 @@
   function openAmendmentAgreementEditor(amendment = {}, items = [], { parent = {} } = {}) {
     const agreements = window.Agreements;
     if (!agreements?.openAgreementForm) return openAmendmentDetail(getAmendmentKey(amendment), { edit: normalizeStatus(amendment.status) === 'draft' });
-    const snapshot = buildAmendmentAgreementSnapshot(amendment, parent);
-    const agreementItems = (Array.isArray(items) && items.length ? items : []).map(mapAmendmentItemToAgreementItem);
+    const isAgreementRow = String(amendment.agreement_relationship_type || '').trim().toLowerCase() === 'amendment' && String(amendment.id || '').trim();
+    const snapshot = isAgreementRow ? amendment : buildAmendmentAgreementSnapshot(amendment, parent);
+    const agreementItems = (Array.isArray(items) && items.length ? items : []).map(item => isAgreementRow ? item : mapAmendmentItemToAgreementItem(item));
     const isDraft = normalizeStatus(amendment.status || 'draft') === 'draft';
     agreements.openAgreementForm(snapshot, agreementItems, { readOnly: !isDraft });
-    markAgreementFormAsAmendment(amendment, parent);
+    if (!isAgreementRow) markAgreementFormAsAmendment(amendment, parent);
     ensureAmendmentContextBanner(amendment, parent);
     const title = document.getElementById('agreementFormTitle');
     if (title) title.textContent = isDraft ? 'Amendment Draft' : 'View Amendment';
@@ -1087,6 +1115,9 @@
     try {
       const amendment = await resolveAmendment(key);
       if (!amendment) return toast('Unable to find amendment.');
+      if (String(amendment.agreement_relationship_type || '').trim().toLowerCase() === 'amendment' && amendment.id && window.Agreements?.openAgreementFormById) {
+        return window.Agreements.openAgreementFormById(amendment.id, { readOnly: normalizeStatus(amendment.status) !== 'draft' });
+      }
       const parent = await fetchParentAgreementForAmendment(amendment);
       let items = await fetchAmendmentItems(amendment);
       if (!items.length && parent && Array.isArray(window.Agreements?.state?.currentItems)) {
@@ -1203,7 +1234,7 @@
           <tr><th>Status</th><td>${escapeHtml(humanize(amendment.status || 'Draft'))}</td></tr>
           <tr><th>Reason</th><td>${escapeHtml(amendment.reason || '—')}</td></tr>
           <tr><th>Effective Date</th><td>${escapeHtml(formatDate(amendment.effective_date) || '—')}</td></tr>
-          <tr><th>Billing Impact</th><td>${escapeHtml(humanize(amendment.billing_impact) || '—')}</td></tr>
+          <tr><th>Billing Impact</th><td>${escapeHtml(humanize(amendment.billing_impact || amendment.relationship_notes) || '—')}</td></tr>
         </tbody></table>
         <h2>Commercial Summary</h2>
         <table><tbody>
@@ -1232,6 +1263,9 @@
     try {
       const amendment = key ? await resolveAmendment(key) : { ...findCachedAmendment(document.getElementById('agreementAmendmentDetailModal')?.dataset?.amendmentKey), ...readAmendmentForm() };
       if (!amendment) return toast('Unable to preview amendment.');
+      if (key && String(amendment.agreement_relationship_type || '').trim().toLowerCase() === 'amendment' && amendment.id && window.Agreements?.previewAgreementHtml) {
+        return window.Agreements.previewAgreementHtml(amendment.id);
+      }
       const modal = document.getElementById('agreementAmendmentDetailModal');
       let items = [];
       try { items = JSON.parse(modal?.dataset?.amendmentItems || '[]'); } catch (_) { items = []; }
@@ -1410,10 +1444,23 @@
 
     const originalOpen = agreements.openAgreementForm?.bind(agreements);
     agreements.openAgreementForm = function patchedOpenAgreementForm(agreement, items, options) {
+      ensureAgreementFieldsPatched();
+      ensureHiddenLifecycleInputs();
       const result = originalOpen ? originalOpen(agreement, items, options) : undefined;
       ensureAgreementFieldsPatched();
       ensureHiddenLifecycleInputs();
-      renderLifecyclePanel(this.state?.currentAgreement || agreement || {});
+      const currentAgreement = this.state?.currentAgreement || agreement || {};
+      renderLifecyclePanel(currentAgreement);
+      if (String(currentAgreement.agreement_relationship_type || '').trim().toLowerCase() === 'amendment') {
+        const title = document.getElementById('agreementFormTitle');
+        if (title && normalizeStatus(currentAgreement.status) === 'draft') title.textContent = 'Amendment Draft';
+        ensureAmendmentContextBanner(currentAgreement, {});
+        fetchParentAgreementForAmendment(currentAgreement).then(parent => {
+          ensureAmendmentContextBanner(currentAgreement, parent || {});
+        }).catch(() => {});
+      } else {
+        hideAmendmentContextBanner();
+      }
       return result;
     };
 

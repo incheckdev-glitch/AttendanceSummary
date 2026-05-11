@@ -86,7 +86,13 @@ const Agreements = {
     'total_discount',
     'generated_by',
     'company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_contact_phone','company_email','company_phone','country','city','tax_number','customer_signatory_email','customer_signatory_phone','provider_signatory_name','provider_signatory_title','provider_signatory_email','provider_primary_signatory_name','provider_primary_signatory_title','provider_secondary_signatory_name','provider_secondary_signatory_title',
-    'notes'
+    'notes',
+    'parent_agreement_id',
+    'root_agreement_id',
+    'source_agreement_id',
+    'agreement_relationship_type',
+    'agreement_version',
+    'relationship_notes'
   ],
   shouldSkipAgreementWorkflow({ currentStatus, nextStatus, action, payload, currentRecord } = {}) {
     const current = String(currentStatus || '').trim().toLowerCase();
@@ -2356,7 +2362,17 @@ const Agreements = {
       if ('disabled' in el && !/agreementForm(Delete|Save)Btn/.test(el.id)) el.disabled = readOnly;
     });
   },
+  isDraftAmendmentAgreement(agreement = this.state.currentAgreement || {}) {
+    const record = agreement && typeof agreement === 'object' ? agreement : {};
+    const relationship = String(record.agreement_relationship_type || E.agreementForm?.dataset?.agreementRelationshipType || '').trim().toLowerCase();
+    const status = String(record.status || '').trim().toLowerCase().replace(/\s+/g, '_');
+    return relationship === 'amendment' && status === 'draft';
+  },
+  isDraftAmendmentFormContext() {
+    return this.isDraftAmendmentAgreement(this.state.currentAgreement || {});
+  },
   isAgreementEditMode() {
+    if (this.isDraftAmendmentFormContext()) return false;
     return String(E.agreementForm?.dataset?.mode || '').trim() === 'edit'
       || !!String(E.agreementForm?.dataset?.id || this.state.currentAgreementId || '').trim();
   },
@@ -2440,6 +2456,7 @@ const Agreements = {
     E.agreementForm.dataset.proposalUuid = String(agreement.proposal_id || '').trim();
     E.agreementForm.dataset.readOnly = effectiveReadOnly ? 'true' : 'false';
     E.agreementForm.dataset.signedLocked = signedLocked ? 'true' : 'false';
+    E.agreementForm.dataset.agreementRelationshipType = String(agreement.agreement_relationship_type || '').trim();
     E.agreementForm.dataset.signedDocumentPath = String(agreement.signed_document_path || agreement.signed_agreement_document_path || '').trim();
     E.agreementForm.dataset.signedDocumentName = String(agreement.signed_document_name || agreement.signed_agreement_document_name || '').trim();
     E.agreementForm.dataset.signedDocumentUploadedAt = String(agreement.signed_document_uploaded_at || agreement.signed_agreement_document_uploaded_at || '').trim();
@@ -2453,7 +2470,12 @@ const Agreements = {
     this.renderItemRows(items);
     this.state.selectedAgreementCompanyForVerification = this.hasCompanyVerificationFields(agreement) ? agreement : null;
     this.updateAgreementCompanyVerificationUi(this.state.selectedAgreementCompanyForVerification);
-    if (E.agreementFormTitle) E.agreementFormTitle.textContent = agreement.id ? (effectiveReadOnly ? 'View Agreement' : 'Edit Agreement') : 'Create Agreement';
+    if (E.agreementFormTitle) {
+      const isDraftAmendment = this.isDraftAmendmentAgreement(agreement);
+      E.agreementFormTitle.textContent = isDraftAmendment
+        ? 'Amendment Draft'
+        : agreement.id ? (effectiveReadOnly ? 'View Agreement' : 'Edit Agreement') : 'Create Agreement';
+    }
     if (E.agreementSignedLockMessage) E.agreementSignedLockMessage.style.display = signedLocked ? '' : 'none';
     if (E.agreementFormDeleteBtn) E.agreementFormDeleteBtn.style.display = !effectiveReadOnly && agreement.id && Permissions.canDeleteAgreement() ? '' : 'none';
     if (E.agreementFormSaveBtn) {
@@ -2486,6 +2508,7 @@ const Agreements = {
     E.agreementForm.dataset.proposalUuid = '';
     E.agreementForm.dataset.readOnly = '';
     E.agreementForm.dataset.signedLocked = '';
+    E.agreementForm.dataset.agreementRelationshipType = '';
     E.agreementForm.dataset.signedDocumentPath = '';
     E.agreementForm.dataset.signedDocumentName = '';
     E.agreementForm.dataset.signedDocumentUploadedAt = '';
@@ -2643,7 +2666,8 @@ const Agreements = {
       }
     }
     if (!this.validateProviderSignDateRoleChanges()) return;
-    if (!id && !this.validateCommercialItems(items)) return;
+    const isDraftAmendmentUpdate = Boolean(id && this.isDraftAmendmentAgreement(latestExistingAgreement || this.state.currentAgreement || agreement));
+    if ((!id || isDraftAmendmentUpdate) && !this.validateCommercialItems(items)) return;
     const isSubAgreementCreate = !id && (source === 'sub_agreement' || String(agreement.agreement_relationship_type || '').trim().toLowerCase() === 'sub_agreement');
     const isDirectCreate = !id && !isSubAgreementCreate && source !== 'create_from_proposal' && !String(formProposalUuid || agreement.proposal_id || '').trim();
     const provider = this.getSignedInUserForAgreement();
@@ -2696,7 +2720,7 @@ const Agreements = {
     }
     const preparedItems = id ? null : this.hydrateItemIdsForSave(items, { isCreate: true });
     const currentRecord = latestExistingAgreement || this.state.rows.find(row => String(row.id || '') === id) || {};
-    const agreementUpdatePayload = id ? this.buildAgreementEditableUpdate(agreement) : agreement;
+    const agreementUpdatePayload = id ? (isDraftAmendmentUpdate ? agreement : this.buildAgreementEditableUpdate(agreement)) : agreement;
     const requestedDiscount = items.reduce((max, item) => Math.max(max, this.toNumberSafe(item.discount_percent)), 0);
     const currentStatus = String(currentRecord?.status || '').trim();
     agreement.status = String(agreement.status || '').trim() || currentStatus || 'Draft';
@@ -2771,7 +2795,7 @@ const Agreements = {
     console.time('entity-save');
     try {
       const saveResponse = id
-        ? await this.updateAgreement(id, agreementUpdatePayload, null)
+        ? await this.updateAgreement(id, agreementUpdatePayload, isDraftAmendmentUpdate ? items : null)
         : await this.createAgreement(agreement, preparedItems);
       const persistedAgreement = this.extractAgreementAndItems(saveResponse, id).agreement;
       const persistedAgreementUuid = String(persistedAgreement?.id || id || '').trim();
@@ -2803,11 +2827,14 @@ const Agreements = {
         const refreshedAgreement = await this.reloadLatestAgreementRow(savedAgreementId).catch(() => null);
         const lockedAgreement = refreshedAgreement || savedAgreement;
         this.openAgreementForm(lockedAgreement, preparedItems || items, { readOnly: true });
+      } else if (isDraftAmendmentUpdate && savedAgreementId) {
+        const refreshed = await this.reloadLatestAgreementRow(savedAgreementId).catch(() => null);
+        this.openAgreementForm(refreshed || savedAgreement, items, { readOnly: false });
       } else {
         this.closeAgreementForm();
       }
       window.dispatchEvent(new CustomEvent('clients:refresh-totals', { detail: { reason: 'agreement-saved' } }));
-      UI.toast(id ? 'Agreement updated.' : isSubAgreementCreate ? 'Sub-agreement created.' : source === 'proposal' ? 'Agreement created from proposal.' : 'Agreement created.');
+      UI.toast(isDraftAmendmentUpdate ? 'Draft amendment saved.' : id ? 'Agreement updated.' : isSubAgreementCreate ? 'Sub-agreement created.' : source === 'proposal' ? 'Agreement created from proposal.' : 'Agreement created.');
     } catch (error) {
       if (typeof isAuthError === 'function' && isAuthError(error)) {
         handleExpiredSession('Session expired. Please log in again.');
