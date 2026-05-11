@@ -41,6 +41,10 @@ const LifecycleAnalytics = {
     const raw = this.text(value);
     return raw ? U.fmtDisplayDate(raw) : '—';
   },
+  formatDateTime(value) {
+    const raw = this.text(value);
+    return raw ? U.formatDateTimeMMDDYYYYHHMM(raw) : '—';
+  },
   fmtMoney(value, currency = 'USD') {
     const code = this.text(currency).toUpperCase() || 'USD';
     return `${code} ${U.fmtNumber(this.num(value))}`;
