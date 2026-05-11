@@ -479,7 +479,7 @@
     'customer_sign_date','provider_official_signatory_1_name','provider_official_signatory_1_title','provider_official_signatory_1_sign_date','provider_official_signatory_2_name','provider_official_signatory_2_title','provider_official_signatory_2_sign_date','provider_signatory_name','provider_signatory_title','provider_signatory_email','provider_signatory_secondary','provider_signatory_name_secondary','provider_signatory_title_secondary','provider_primary_signatory_name','provider_primary_signatory_title','provider_secondary_signatory_name','provider_secondary_signatory_title','provider_sign_date','gm_signed',
     'financial_controller_signed','signed_date','status','subtotal_locations','subtotal_one_time','total_discount',
     'grand_total','generated_by','created_by','updated_by','currency','created_at','updated_at','customer_legal_name','provider_legal_name','provider_name',
-    'agreement_title','notes'
+    'agreement_title','parent_agreement_id','root_agreement_id','source_agreement_id','agreement_relationship_type','agreement_version','relationship_notes','notes'
   ]);
   const AGREEMENT_ITEM_COLUMNS = new Set([
     'item_id','agreement_id','section','line_no','location_name','item_name','unit_price','discount_percent',
@@ -2413,6 +2413,12 @@
         : undefined,
       updated_by: firstDefined(record, ['updated_by', 'updatedBy']) || userId || undefined,
       currency: firstDefined(record, ['currency']),
+      parent_agreement_id: firstDefined(record, ['parent_agreement_id', 'parentAgreementId']),
+      root_agreement_id: firstDefined(record, ['root_agreement_id', 'rootAgreementId']),
+      source_agreement_id: firstDefined(record, ['source_agreement_id', 'sourceAgreementId']),
+      agreement_relationship_type: firstDefined(record, ['agreement_relationship_type', 'agreementRelationshipType']),
+      agreement_version: normalizeNumericValue(firstDefined(record, ['agreement_version', 'agreementVersion']), 1),
+      relationship_notes: firstDefined(record, ['relationship_notes', 'relationshipNotes']),
       notes: firstDefined(record, ['notes'])
     };
     const sanitized = {};
