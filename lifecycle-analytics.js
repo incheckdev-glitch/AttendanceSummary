@@ -256,6 +256,26 @@ const LifecycleAnalytics = {
     }
     return null;
   },
+  getFirstLifecycleEventAt(record = {}, candidates = []) {
+    for (const key of candidates) {
+      const value = this.text(record?.[key]);
+      if (!value) continue;
+      if (this.getLifecycleEventTime({ eventAt: value })) return value;
+    }
+    return '';
+  },
+  getLifecycleEventTime(event = {}) {
+    const value =
+      event.eventAt ||
+      event.date ||
+      event.created_at ||
+      event.updated_at;
+
+    if (!value) return 0;
+
+    const time = new Date(value).getTime();
+    return Number.isFinite(time) ? time : 0;
+  },
   getLifecycleStageOrder(type) {
     const order = {
       lead_created: 10,
@@ -269,12 +289,10 @@ const LifecycleAnalytics = {
     return order[type] || 999;
   },
   buildLifecycleTimeline(account = {}) {
-    const events = [];
+    const timelineItems = [];
     const pushEvent = (item = {}, config = {}) => {
-      const sortTimestamp = this.getBestLifecycleTimestamp(item, config.candidates || []);
-      if (!sortTimestamp) return;
-      const displayDate = this.text(config.displayField ? item[config.displayField] : '')
-        || this.text(item.created_at || item.createdAt || item.updated_at || item.updatedAt || '');
+      const eventAt = this.getFirstLifecycleEventAt(item, config.candidates || []);
+      if (!eventAt) return;
 
       const metadata = [
         config.codeLabel && item[config.codeField] ? `${config.codeLabel}: ${this.text(item[config.codeField])}` : '',
@@ -283,8 +301,32 @@ const LifecycleAnalytics = {
         config.noteBuilder ? this.text(config.noteBuilder(item)) : ''
       ].filter(Boolean);
 
-      events.push({ type: config.type, title: config.title, sortTimestamp, displayDate, metadata });
+      timelineItems.push({ type: config.type, title: config.title, eventAt, metadata });
     };
+
+    const earliestByEventAt = (items = [], candidates = []) => items
+      .map(item => ({ item, eventAt: this.getFirstLifecycleEventAt(item, candidates) }))
+      .filter(entry => entry.eventAt)
+      .sort((a, b) => this.getLifecycleEventTime(a) - this.getLifecycleEventTime(b))[0]?.item || null;
+
+    const leadCandidates = ['created_at', 'createdAt', 'date'];
+    const dealCandidates = ['created_at', 'createdAt', 'date'];
+    const proposalCreatedCandidates = ['created_at', 'createdAt', 'proposal_date', 'proposalDate'];
+    const agreementSignedCandidates = [
+      'signed_at',
+      'signedAt',
+      'customer_sign_date',
+      'customerSignDate',
+      'provider_signatory_1_sign_date',
+      'providerSignatory1SignDate',
+      'provider_signatory_2_sign_date',
+      'providerSignatory2SignDate',
+      'updated_at',
+      'updatedAt'
+    ];
+    const invoiceCandidates = ['created_at', 'createdAt', 'invoice_date', 'invoiceDate'];
+    const receiptCandidates = ['created_at', 'createdAt', 'receipt_date', 'receiptDate', 'payment_date', 'paymentDate'];
+    const onboardingCandidates = ['created_at', 'createdAt', 'updated_at', 'updatedAt', 'go_live_date', 'goLiveDate'];
 
     const leads = (account.leads || []).slice();
     const deals = (account.deals || []).slice();
@@ -292,16 +334,33 @@ const LifecycleAnalytics = {
     const agreements = (account.agreements || []).slice();
     const invoices = (account.invoices || []).slice();
     const receipts = (account.receipts || []).slice();
+    const onboarding = (account.onboarding || []).slice();
 
-    if (leads[0]) pushEvent(leads[0], { type:'lead_created', title:'Lead created', codeLabel:'Lead', codeField:'lead_id', userLabel:'Assigned to', userField:'assigned_to', candidates:['created_at','createdAt','lead_created_at','created_date','date','updated_at'], displayField:'created_at' });
-    if (deals[0]) pushEvent(deals[0], { type:'deal_created', title:'Deal created', codeLabel:'Deal', codeField:'deal_id', userLabel:'Assigned to', userField:'assigned_to', candidates:['created_at','createdAt','converted_at','deal_created_at','created_date','updated_at'], displayField:'created_at', noteBuilder:item=>item.stage?`Stage: ${item.stage}`:'' });
-    if (proposals[0]) pushEvent(proposals[0], { type:'proposal_created', title:'Proposal created', codeLabel:'Proposal', codeField:'proposal_id', candidates:['created_at','createdAt','proposal_created_at','created_date','proposal_date'], displayField:'created_at', noteBuilder:item=>item.ref_number?`Ref: ${item.ref_number}`:'' });
-    if (agreements[0]) pushEvent(agreements[0], { type:'agreement_signed', title:'Agreement signed', codeLabel:'Agreement', codeField:'agreement_id', candidates:['signed_at','signedAt','agreement_signed_at','updated_at','created_at','agreement_date'], displayField:'signed_at', noteBuilder:item=>item.agreement_number?`Agreement No: ${item.agreement_number}`:'' });
-    if (invoices[0]) pushEvent(invoices[0], { type:'invoice_created', title:'Invoice created', codeLabel:'Invoice', codeField:'invoice_id', candidates:['created_at','createdAt','invoice_created_at','issued_at','invoice_date'], displayField:'created_at', noteBuilder:item=>item.invoice_number?`Invoice No: ${item.invoice_number}`:'' });
+    const firstLead = earliestByEventAt(leads, leadCandidates);
+    const firstDeal = earliestByEventAt(deals, dealCandidates);
+    const firstProposal = earliestByEventAt(proposals, proposalCreatedCandidates);
+    const firstAgreement = earliestByEventAt(agreements, agreementSignedCandidates);
+    const firstInvoice = earliestByEventAt(invoices, invoiceCandidates);
 
-    receipts.forEach((receipt, idx) => pushEvent(receipt, { type: idx===0?'receipt_created':'additional_receipt_created', title: idx===0?'Receipt created':'Additional receipt created', codeLabel:'Receipt', codeField:'receipt_id', candidates:['created_at','createdAt','receipt_created_at','issued_at','payment_date','receipt_date'], displayField:'created_at', noteBuilder:item=>item.receipt_number?`Receipt No: ${item.receipt_number}`:'' }));
+    if (firstLead) pushEvent(firstLead, { type:'lead_created', title:'Lead created', codeLabel:'Lead', codeField:'lead_id', userLabel:'Assigned to', userField:'assigned_to', candidates:leadCandidates });
+    if (firstDeal) pushEvent(firstDeal, { type:'deal_created', title:'Deal created', codeLabel:'Deal', codeField:'deal_id', userLabel:'Assigned to', userField:'assigned_to', candidates:dealCandidates, noteBuilder:item=>item.stage?`Stage: ${item.stage}`:'' });
+    if (firstProposal) pushEvent(firstProposal, { type:'proposal_created', title:'Proposal created', codeLabel:'Proposal', codeField:'proposal_id', candidates:proposalCreatedCandidates, noteBuilder:item=>item.ref_number?`Ref: ${item.ref_number}`:'' });
+    if (firstAgreement) pushEvent(firstAgreement, { type:'agreement_signed', title:'Agreement signed', codeLabel:'Agreement', codeField:'agreement_id', candidates:agreementSignedCandidates, noteBuilder:item=>item.agreement_number?`Agreement No: ${item.agreement_number}`:'' });
+    if (firstInvoice) pushEvent(firstInvoice, { type:'invoice_created', title:'Invoice created', codeLabel:'Invoice', codeField:'invoice_id', candidates:invoiceCandidates, noteBuilder:item=>item.invoice_number?`Invoice No: ${item.invoice_number}`:'' });
 
-    return events.sort((a,b)=>{ const ta=Number(a.sortTimestamp||0); const tb=Number(b.sortTimestamp||0); if(ta!==tb) return ta-tb; return this.getLifecycleStageOrder(a.type)-this.getLifecycleStageOrder(b.type); });
+    receipts
+      .map(receipt => ({ receipt, eventAt: this.getFirstLifecycleEventAt(receipt, receiptCandidates) }))
+      .filter(entry => entry.eventAt)
+      .sort((a, b) => this.getLifecycleEventTime(a) - this.getLifecycleEventTime(b))
+      .forEach(({ receipt }, idx) => pushEvent(receipt, { type: idx===0?'receipt_created':'additional_receipt_created', title: idx===0?'Receipt created':'Additional receipt created', codeLabel:'Receipt', codeField:'receipt_id', candidates:receiptCandidates, noteBuilder:item=>item.receipt_number?`Receipt No: ${item.receipt_number}`:'' }));
+    onboarding.forEach(record => pushEvent(record, { type:'client_onboarding', title:'Client onboarding', codeLabel:'Onboarding', codeField:'id', candidates:onboardingCandidates, noteBuilder:item=>item.onboarding_status?`Status: ${item.onboarding_status}`:'' }));
+
+    return timelineItems.sort((a, b) => {
+      const aTime = this.getLifecycleEventTime(a);
+      const bTime = this.getLifecycleEventTime(b);
+      if (aTime !== bTime) return aTime - bTime;
+      return this.getLifecycleStageOrder(a.type) - this.getLifecycleStageOrder(b.type);
+    });
   },
   renderLifecycleTimeline(selected = {}) {
     const timeline = this.buildLifecycleTimeline(selected);
@@ -324,7 +383,7 @@ const LifecycleAnalytics = {
                 <div class="lifecycle-timeline-content">
                   <div class="lifecycle-timeline-title-row">
                     <strong>${this.escape(item.title)}</strong>
-                    <span class="muted">${this.escape(this.formatTimelineDate(item.displayDate))}</span>
+                    <span class="muted">${this.escape(this.formatTimelineDate(item.eventAt))}</span>
                   </div>
                   ${item.metadata.map(line => `<div class="muted">${this.escape(line)}</div>`).join('')}
                 </div>
