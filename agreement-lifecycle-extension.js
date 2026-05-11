@@ -66,6 +66,92 @@
     return normalizeStatus(agreement.status || agreement.agreement_status) === 'signed';
   }
 
+  function toNumber(value) {
+    if (value === null || value === undefined || value === '') return 0;
+    const parsed = Number(String(value).replace(/,/g, '').trim());
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function toDateOnly(value) {
+    if (!value) return null;
+    const text = String(value || '').trim();
+    if (!text) return null;
+    return text.includes('T') ? text.slice(0, 10) : text;
+  }
+
+  function getAgreementFormElement() {
+    return document.getElementById('agreementForm');
+  }
+
+  function buildAmendmentAgreementSnapshot(amendment = {}, parent = {}) {
+    const reference = getAmendmentReference(amendment);
+    const parentReference = getAgreementBusinessRef(parent) || amendment.parent_agreement_id || '';
+    const snapshot = { ...(parent || {}), ...(amendment || {}) };
+    snapshot.id = '';
+    snapshot.agreement_id = reference;
+    snapshot.agreement_number = reference;
+    snapshot.agreement_title = amendment.agreement_title || `Amendment - ${parent.agreement_title || parentReference}`;
+    snapshot.status = amendment.status || 'draft';
+    snapshot.agreement_relationship_type = 'amendment';
+    snapshot.parent_agreement_id = amendment.parent_agreement_id || getAgreementPrimaryKey(parent);
+    snapshot.root_agreement_id = amendment.root_agreement_id || getRootAgreementId(parent);
+    snapshot.source_agreement_id = amendment.source_agreement_id || getAgreementPrimaryKey(parent);
+    snapshot.company_name = amendment.company_name || parent.company_name || parent.customer_name || '';
+    snapshot.customer_name = amendment.customer_name || amendment.customer_legal_name || parent.customer_name || parent.customer_legal_name || snapshot.company_name;
+    snapshot.customer_legal_name = amendment.customer_legal_name || parent.customer_legal_name || snapshot.customer_name;
+    snapshot.effective_date = toDateOnly(amendment.effective_date || parent.effective_date || parent.service_start_date || parent.agreement_date);
+    snapshot.service_start_date = toDateOnly(amendment.service_start_date || parent.service_start_date);
+    snapshot.service_end_date = toDateOnly(amendment.service_end_date || parent.service_end_date);
+    snapshot.agreement_date = toDateOnly(amendment.agreement_date || parent.agreement_date);
+    snapshot.saas_total = toNumber(amendment.saas_total ?? amendment.subtotal_locations ?? parent.saas_total);
+    snapshot.one_time_total = toNumber(amendment.one_time_total ?? amendment.subtotal_one_time ?? parent.one_time_total);
+    snapshot.grand_total = toNumber(amendment.grand_total ?? parent.grand_total);
+    snapshot.total_discount = toNumber(amendment.total_discount ?? amendment.tax ?? parent.total_discount);
+    snapshot.terms_conditions = amendment.terms_conditions || amendment.notes || parent.terms_conditions || '';
+    snapshot.notes = amendment.notes || parent.notes || '';
+    return resetAgreementSigningFields(snapshot);
+  }
+
+  function cloneAgreementItemForAmendment(item = {}, index = 0, amendmentId = '') {
+    const agreements = window.Agreements;
+    const unitPrice = toNumber(item.unit_price);
+    const quantity = toNumber(item.quantity);
+    const discountPercent = toNumber(item.discount_percent);
+    const discountedUnitPrice = toNumber(item.discounted_unit_price) || unitPrice * (1 - discountPercent / 100);
+    const lineTotal = toNumber(item.line_total) || discountedUnitPrice * quantity;
+    return {
+      amendment_id: amendmentId || undefined,
+      item_id: item.item_id || agreements?.generateAgreementItemId?.() || `am-item-${Date.now()}-${index}`,
+      section: item.section || 'annual_saas',
+      line_no: index + 1,
+      location_name: item.location_name || '',
+      location_address: item.location_address || '',
+      item_name: item.item_name || item.capability_name || '',
+      unit_price: unitPrice,
+      discount_percent: discountPercent,
+      discounted_unit_price: discountedUnitPrice,
+      quantity,
+      line_total: lineTotal,
+      service_start_date: toDateOnly(item.service_start_date),
+      service_end_date: toDateOnly(item.service_end_date),
+      billing_effect: item.billing_effect || 'replace',
+      notes: item.notes || ''
+    };
+  }
+
+  function mapAmendmentItemToAgreementItem(item = {}, index = 0) {
+    return {
+      ...item,
+      id: '',
+      item_id: item.item_id || `am-item-${Date.now()}-${index}`,
+      agreement_id: '',
+      section: item.section || 'annual_saas',
+      line_no: item.line_no || index + 1,
+      service_start_date: toDateOnly(item.service_start_date),
+      service_end_date: toDateOnly(item.service_end_date)
+    };
+  }
+
   function ensureAgreementFieldsPatched() {
     const agreements = window.Agreements;
     if (!agreements || !Array.isArray(agreements.agreementFields)) return;
@@ -128,6 +214,8 @@
       .agreement-amendment-doc th { background:#f9fafb; }
       .agreement-amendment-signatures { display:grid; grid-template-columns:1fr 1fr; gap:28px; margin-top:36px; }
       .agreement-amendment-signature-line { border-top:1px solid #111827; padding-top:8px; min-height:42px; }
+      .agreement-amendment-context { border:1px solid var(--border); border-radius:10px; padding:10px; margin:10px 0; background:rgba(59,130,246,.08); display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+      .agreement-amendment-context strong { color:var(--text); }
     `;
     document.head.appendChild(style);
   }
@@ -288,8 +376,7 @@
                   <td>${escapeHtml(formatDateTime(amendment.created_at) || '—')}</td>
                   <td>
                     <div class="agreement-amendments-actions">
-                      <button class="btn ghost sm" type="button" data-agreement-amendment-action="open" data-amendment-key="${key}">Open</button>
-                      ${isDraft ? `<button class="btn ghost sm" type="button" data-agreement-amendment-action="edit" data-amendment-key="${key}">Edit Draft</button>` : ''}
+                      ${isDraft ? `<button class="btn ghost sm" type="button" data-agreement-amendment-action="edit" data-amendment-key="${key}">Edit Draft</button>` : `<button class="btn ghost sm" type="button" data-agreement-amendment-action="open" data-amendment-key="${key}">View Amendment</button>`}
                       <button class="btn ghost sm" type="button" data-agreement-amendment-action="preview" data-amendment-key="${key}">Preview</button>
                     </div>
                   </td>
@@ -419,6 +506,53 @@
     return `${base}-SUB-${formatSequence(sequence)}`;
   }
 
+  function buildAmendmentInsertPayload(source = {}, { reference = '', reason = '', billingImpact = 'invoice_difference_only', sequence = 1 } = {}) {
+    const now = new Date().toISOString();
+    const parentId = getAgreementPrimaryKey(source) || source.agreement_id;
+    const agreementFields = Array.isArray(window.Agreements?.agreementFields) ? window.Agreements.agreementFields : [];
+    const payload = {
+      amendment_reference: reference,
+      parent_agreement_id: parentId,
+      root_agreement_id: getRootAgreementId(source) || parentId,
+      source_agreement_id: parentId,
+      amendment_type: 'amendment',
+      reason,
+      effective_date: toDateOnly(source.effective_date || source.service_start_date || source.agreement_date),
+      status: 'draft',
+      billing_impact: billingImpact,
+      client_id: source.client_id || null,
+      company_id: source.company_id || null,
+      company_name: source.company_name || source.customer_name || source.customer_legal_name || null,
+      currency: source.currency || null,
+      subtotal_locations: toNumber(source.saas_total || source.subtotal_locations),
+      subtotal_one_time: toNumber(source.one_time_total || source.subtotal_one_time),
+      total_discount: toNumber(source.total_discount || source.tax),
+      grand_total: toNumber(source.grand_total),
+      saas_total: toNumber(source.saas_total || source.subtotal_locations),
+      one_time_total: toNumber(source.one_time_total || source.subtotal_one_time),
+      tax: toNumber(source.tax || source.total_discount),
+      notes: source.notes || source.terms_conditions || `Draft amendment created from agreement ${getAgreementBusinessRef(source)}.`,
+      created_by: getCurrentUserId() || null,
+      updated_by: getCurrentUserId() || null,
+      created_at: now,
+      updated_at: now
+    };
+    agreementFields.forEach(field => {
+      if (['id', 'status', 'created_at', 'updated_at'].includes(field)) return;
+      if (field in payload) return;
+      const value = source[field];
+      if (value !== undefined) payload[field] = value === '' ? null : value;
+    });
+    payload.agreement_id = reference;
+    payload.agreement_number = reference;
+    payload.agreement_title = `Amendment ${formatSequence(sequence)} - ${source.agreement_title || getAgreementBusinessRef(source)}`;
+    payload.customer_name = payload.customer_name || source.customer_name || source.customer_legal_name || source.company_name || null;
+    payload.customer_legal_name = payload.customer_legal_name || source.customer_legal_name || payload.customer_name || null;
+    payload.payment_terms = payload.payment_terms || payload.payment_term || source.payment_terms || source.payment_term || null;
+    ['id', 'signed_date', 'customer_sign_date', 'provider_sign_date', 'customer_official_sign_date', 'provider_official_signatory_1_sign_date', 'provider_official_signatory_2_sign_date', 'signed_document_path', 'signed_document_name', 'signed_document_uploaded_at', 'signed_document_uploaded_by', 'signed_document_url', 'signed_agreement_document_path', 'signed_agreement_document_name', 'signed_agreement_document_uploaded_at', 'signed_agreement_document_uploaded_by', 'signed_agreement_document_url'].forEach(field => { delete payload[field]; });
+    return payload;
+  }
+
   async function createAgreementAmendmentDraft() {
     const toast = getUiToast();
     const agreements = window.Agreements;
@@ -447,39 +581,25 @@
 
     const sequence = await getNextAmendmentNumber(source);
     const reference = buildAmendmentReference(source, sequence);
-    const now = new Date().toISOString();
-    const parentId = getAgreementPrimaryKey(source) || source.agreement_id;
-    const payload = {
-      amendment_reference: reference,
-      parent_agreement_id: parentId,
-      root_agreement_id: getRootAgreementId(source),
-      client_id: source.client_id || null,
-      company_id: source.company_id || null,
-      company_name: source.company_name || source.customer_name || source.customer_legal_name || null,
-      amendment_type: 'commercial_amendment',
-      reason: trimmedReason,
-      effective_date: source.service_start_date || source.effective_date || source.agreement_date || null,
-      status: 'Draft',
-      billing_impact: billingImpact,
-      currency: source.currency || null,
-      subtotal_locations: Number(source.saas_total || source.subtotal_locations || 0) || 0,
-      subtotal_one_time: Number(source.one_time_total || source.subtotal_one_time || 0) || 0,
-      grand_total: Number(source.grand_total || 0) || 0,
-      notes: `Draft amendment created from agreement ${getAgreementBusinessRef(source)}.`,
-      created_by: getCurrentUserId() || null,
-      updated_by: getCurrentUserId() || null,
-      created_at: now,
-      updated_at: now
-    };
+    const payload = buildAmendmentInsertPayload(source, { reference, reason: trimmedReason, billingImpact, sequence });
+    const clonedItems = (Array.isArray(agreements?.state?.currentItems) ? agreements.state.currentItems : []).map((item, index) => cloneAgreementItemForAmendment(item, index));
 
     try {
       const { data, error } = await client.from('agreement_amendments').insert(payload).select('*').single();
       if (error) throw error;
+      const amendment = data || payload;
+      if (amendment.id && clonedItems.length) {
+        const itemPayloads = clonedItems.map(item => ({ ...item, amendment_id: amendment.id }));
+        const { error: itemError } = await client.from('agreement_amendment_items').insert(itemPayloads);
+        if (itemError) throw itemError;
+      }
+      const items = amendment.id ? await fetchAmendmentItems(amendment) : clonedItems;
       const existing = Array.isArray(agreements?.state?.currentAmendments) ? agreements.state.currentAmendments : [];
-      cacheAmendments([data || payload, ...existing]);
+      cacheAmendments([amendment, ...existing]);
       renderAmendmentsList(window.Agreements?.state?.currentAmendments || []);
       refreshCurrentAgreementAmendments();
-      toast(`Draft amendment created: ${getAmendmentReference(data || payload) || reference}`);
+      openAmendmentAgreementEditor(amendment, items, { parent: source });
+      toast('Draft amendment created. You can now edit it.');
     } catch (error) {
       console.error('[Agreement Lifecycle] Unable to create amendment', error);
       toast('Unable to create amendment. Run the agreement lifecycle SQL migration first, then try again.');
@@ -746,6 +866,97 @@
     return amendment;
   }
 
+  async function fetchParentAgreementForAmendment(amendment = {}) {
+    const current = window.Agreements?.state?.currentAgreement || {};
+    const currentIds = getAgreementLookupValues(current);
+    if (currentIds.includes(String(amendment.parent_agreement_id || '').trim()) || currentIds.includes(String(amendment.source_agreement_id || '').trim())) return current;
+    const client = getSupabaseClient();
+    const parentId = String(amendment.parent_agreement_id || amendment.source_agreement_id || '').trim();
+    if (!client || !parentId) return current || {};
+    try {
+      const { data, error } = await client
+        .from('agreements')
+        .select('*')
+        .or(`id.eq.${parentId},agreement_id.eq.${parentId},agreement_number.eq.${parentId}`)
+        .maybeSingle();
+      if (error) throw error;
+      return data || current || {};
+    } catch (error) {
+      console.warn('[Agreement Lifecycle] Unable to load parent agreement for amendment fallback', error);
+      return current || {};
+    }
+  }
+
+  function ensureAmendmentContextBanner(amendment = {}, parent = {}) {
+    const form = getAgreementFormElement();
+    if (!form) return;
+    let banner = document.getElementById('agreementAmendmentEditorContext');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'agreementAmendmentEditorContext';
+      banner.className = 'agreement-amendment-context';
+      form.insertBefore(banner, form.firstChild);
+    }
+    banner.innerHTML = `
+      <span class="agreement-lifecycle-badge">Amendment</span>
+      <span><strong>Parent Agreement:</strong> ${escapeHtml(getAgreementBusinessRef(parent) || amendment.parent_agreement_id || '—')}</span>
+      <span><strong>Amendment Reference:</strong> ${escapeHtml(getAmendmentReference(amendment))}</span>
+    `;
+    banner.style.display = '';
+  }
+
+  function hideAmendmentContextBanner() {
+    const banner = document.getElementById('agreementAmendmentEditorContext');
+    if (banner) banner.style.display = 'none';
+  }
+
+  function markAgreementFormAsAmendment(amendment = {}, parent = {}) {
+    const form = getAgreementFormElement();
+    if (!form) return;
+    form.dataset.lifecycleMode = 'amendment';
+    form.dataset.amendmentId = amendment.id || '';
+    form.dataset.amendmentReference = getAmendmentReference(amendment);
+    form.dataset.parentAgreementId = amendment.parent_agreement_id || getAgreementPrimaryKey(parent) || '';
+    form.dataset.rootAgreementId = amendment.root_agreement_id || getRootAgreementId(parent) || '';
+    form.dataset.sourceAgreementId = amendment.source_agreement_id || getAgreementPrimaryKey(parent) || '';
+    form.dataset.amendmentCreatedBy = amendment.created_by || '';
+    form.dataset.amendmentCreatedAt = amendment.created_at || '';
+  }
+
+  function openAmendmentAgreementEditor(amendment = {}, items = [], { parent = {} } = {}) {
+    const agreements = window.Agreements;
+    if (!agreements?.openAgreementForm) return openAmendmentDetail(getAmendmentKey(amendment), { edit: normalizeStatus(amendment.status) === 'draft' });
+    const snapshot = buildAmendmentAgreementSnapshot(amendment, parent);
+    const agreementItems = (Array.isArray(items) && items.length ? items : []).map(mapAmendmentItemToAgreementItem);
+    const isDraft = normalizeStatus(amendment.status || 'draft') === 'draft';
+    agreements.openAgreementForm(snapshot, agreementItems, { readOnly: !isDraft });
+    markAgreementFormAsAmendment(amendment, parent);
+    ensureAmendmentContextBanner(amendment, parent);
+    const title = document.getElementById('agreementFormTitle');
+    if (title) title.textContent = isDraft ? 'Amendment Draft' : 'View Amendment';
+    const saveBtn = document.getElementById('agreementFormSaveBtn');
+    if (saveBtn) saveBtn.textContent = isDraft ? 'Save Draft' : saveBtn.textContent;
+    const lockMessage = document.getElementById('agreementSignedLockMessage');
+    if (lockMessage && !isDraft) lockMessage.textContent = 'Signed amendments are locked.';
+  }
+
+  async function openAmendmentFromLifecycle(key = '', { edit = false } = {}) {
+    const toast = getUiToast();
+    try {
+      const amendment = await resolveAmendment(key);
+      if (!amendment) return toast('Unable to find amendment.');
+      const parent = await fetchParentAgreementForAmendment(amendment);
+      let items = await fetchAmendmentItems(amendment);
+      if (!items.length && parent && Array.isArray(window.Agreements?.state?.currentItems)) {
+        items = window.Agreements.state.currentItems.map((item, index) => cloneAgreementItemForAmendment(item, index, amendment.id));
+      }
+      openAmendmentAgreementEditor(amendment, items, { parent });
+    } catch (error) {
+      console.error('[Agreement Lifecycle] Unable to open amendment editor', error);
+      toast('Unable to open amendment.');
+    }
+  }
+
   async function openAmendmentDetail(key = '', { edit = false } = {}) {
     const toast = getUiToast();
     try {
@@ -798,12 +1009,31 @@
     }
   }
 
+  function amountToWords(value = 0, currency = '') {
+    const ones = ['Zero','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
+    const tens = ['', '', 'Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
+    const convert = number => {
+      const n = Math.floor(Math.abs(number));
+      if (n < 20) return ones[n];
+      if (n < 100) return `${tens[Math.floor(n / 10)]}${n % 10 ? ` ${ones[n % 10]}` : ''}`;
+      if (n < 1000) return `${ones[Math.floor(n / 100)]} Hundred${n % 100 ? ` ${convert(n % 100)}` : ''}`;
+      if (n < 1000000) return `${convert(Math.floor(n / 1000))} Thousand${n % 1000 ? ` ${convert(n % 1000)}` : ''}`;
+      return `${convert(Math.floor(n / 1000000))} Million${n % 1000000 ? ` ${convert(n % 1000000)}` : ''}`;
+    };
+    const amount = toNumber(value);
+    const cents = Math.round((Math.abs(amount) % 1) * 100);
+    return `${amount < 0 ? 'Minus ' : ''}${convert(amount)}${currency ? ` ${currency}` : ''}${cents ? ` and ${cents}/100` : ''}`;
+  }
+
   function buildAmendmentPreviewHtml(amendment = {}, items = []) {
-    const parent = window.Agreements?.state?.currentAgreement || {};
+    const parent = amendment.__parentAgreement || window.Agreements?.state?.currentAgreement || {};
     const currency = amendment.currency || parent.currency || '';
     return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(getAmendmentReference(amendment))}</title><style>
         body{margin:0;background:#fff;color:#111827;font-family:Arial,sans-serif;}
         .agreement-amendment-doc{line-height:1.45;padding:32px;}
+        .doc-header{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #111827;padding-bottom:14px;margin-bottom:20px;}
+        .doc-logo{max-height:54px;max-width:180px;object-fit:contain;}
+        .badge{display:inline-block;border:1px solid #1d4ed8;color:#1d4ed8;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:700;}
         h1{margin:0 0 4px;font-size:26px;}
         h2{margin:24px 0 8px;font-size:16px;border-bottom:1px solid #e5e7eb;padding-bottom:6px;}
         table{width:100%;border-collapse:collapse;margin-top:8px;}
@@ -813,6 +1043,7 @@
         .agreement-amendment-signature-line{border-top:1px solid #111827;padding-top:8px;min-height:42px;}
       </style></head><body>
       <article class="agreement-amendment-doc">
+        <div class="doc-header"><img class="doc-logo" src="assets/incheck360-document-logo.png" alt="InCheck 360"><span class="badge">Amendment</span></div>
         <h1>Agreement Amendment</h1>
         <p><strong>Parent Agreement:</strong> ${escapeHtml(getAgreementBusinessRef(parent) || amendment.parent_agreement_id || '—')}</p>
         <p><strong>Amendment Reference:</strong> ${escapeHtml(getAmendmentReference(amendment))}</p>
@@ -831,6 +1062,7 @@
           <tr><th>One-time Subtotal</th><td>${escapeHtml(formatMoney(amendment.subtotal_one_time, currency) || '—')}</td></tr>
           <tr><th>Tax / Discount</th><td>${escapeHtml(formatMoney(amendment.total_discount, currency) || '—')}</td></tr>
           <tr><th>Grand Total</th><td><strong>${escapeHtml(formatMoney(amendment.grand_total, currency) || '—')}</strong></td></tr>
+          <tr><th>Grand Total in Words</th><td>${escapeHtml(amountToWords(amendment.grand_total, currency))}</td></tr>
         </tbody></table>
         <h2>Items</h2>
         ${renderAmendmentItems(items, currency).replace('agreement-amendments-table-wrap', '').replaceAll('agreement-amendments-table', '')}
@@ -854,6 +1086,7 @@
       let items = [];
       try { items = JSON.parse(modal?.dataset?.amendmentItems || '[]'); } catch (_) { items = []; }
       if (key || !items.length) items = await fetchAmendmentItems(amendment);
+      amendment.__parentAgreement = await fetchParentAgreementForAmendment(amendment);
       ensureAmendmentModals();
       const title = document.getElementById('agreementAmendmentPreviewTitle');
       if (title) title.textContent = `Amendment Preview · ${getAmendmentReference(amendment)}`;
@@ -863,6 +1096,94 @@
     } catch (error) {
       console.error('[Agreement Lifecycle] Unable to preview amendment', error);
       toast('Unable to preview amendment.');
+    }
+  }
+
+  function buildAmendmentUpdateFromAgreementForm(agreement = {}, current = {}) {
+    const fields = Array.isArray(window.Agreements?.agreementFields) ? window.Agreements.agreementFields : [];
+    const blocked = new Set([
+      'id', 'amendment_id', 'amendment_reference', 'parent_agreement_id', 'root_agreement_id', 'source_agreement_id',
+      'created_by', 'created_at', 'signed_date', 'customer_official_sign_date', 'customer_sign_date',
+      'provider_official_signatory_1_sign_date', 'provider_official_signatory_2_sign_date', 'provider_sign_date',
+      'signed_document_path', 'signed_document_name', 'signed_document_uploaded_at', 'signed_document_uploaded_by',
+      'signed_document_url', 'signed_agreement_document_path', 'signed_agreement_document_name',
+      'signed_agreement_document_uploaded_at', 'signed_agreement_document_uploaded_by', 'signed_agreement_document_url'
+    ]);
+    const updates = {
+      status: 'draft',
+      reason: String(current.reason || agreement.relationship_notes || agreement.notes || 'Amendment update').trim() || 'Amendment update',
+      effective_date: toDateOnly(agreement.effective_date || agreement.service_start_date),
+      billing_impact: current.billing_impact || 'invoice_difference_only',
+      currency: agreement.currency || current.currency || null,
+      subtotal_locations: toNumber(agreement.saas_total || agreement.subtotal_locations),
+      subtotal_one_time: toNumber(agreement.one_time_total || agreement.subtotal_one_time),
+      total_discount: toNumber(agreement.total_discount || agreement.tax),
+      grand_total: toNumber(agreement.grand_total),
+      saas_total: toNumber(agreement.saas_total || agreement.subtotal_locations),
+      one_time_total: toNumber(agreement.one_time_total || agreement.subtotal_one_time),
+      tax: toNumber(agreement.tax || agreement.total_discount),
+      notes: agreement.notes || agreement.terms_conditions || current.notes || '',
+      company_id: agreement.company_id || current.company_id || null,
+      company_name: agreement.company_name || agreement.customer_name || current.company_name || null,
+      updated_by: getCurrentUserId() || null,
+      updated_at: new Date().toISOString()
+    };
+    fields.forEach(field => {
+      if (blocked.has(field)) return;
+      if (field in agreement) updates[field] = agreement[field] === '' ? null : agreement[field];
+    });
+    updates.agreement_id = getAmendmentReference(current);
+    updates.agreement_number = getAmendmentReference(current);
+    updates.payment_terms = updates.payment_terms || updates.payment_term || null;
+    updates.customer_name = updates.customer_name || updates.customer_legal_name || updates.company_name || null;
+    updates.customer_legal_name = updates.customer_legal_name || updates.customer_name || null;
+    ['id', 'signed_date', 'customer_sign_date', 'provider_sign_date', 'customer_official_sign_date', 'provider_official_signatory_1_sign_date', 'provider_official_signatory_2_sign_date', 'signed_document_url', 'signed_agreement_document_path', 'signed_agreement_document_name', 'signed_agreement_document_uploaded_at', 'signed_agreement_document_uploaded_by', 'signed_agreement_document_url'].forEach(field => { delete updates[field]; });
+    return updates;
+  }
+
+  async function saveAmendmentAgreementDraft() {
+    const toast = getUiToast();
+    const agreements = window.Agreements;
+    const client = getSupabaseClient();
+    const form = getAgreementFormElement();
+    const amendmentId = String(form?.dataset?.amendmentId || '').trim();
+    if (!client || !agreements?.collectFormValues || !amendmentId) return toast('Unable to save amendment.');
+    const current = findCachedAmendment(amendmentId) || await resolveAmendment(amendmentId) || {};
+    if (normalizeStatus(current.status) === 'signed') return toast('Signed amendments are locked.');
+    const { agreement, items } = agreements.collectFormValues();
+    const updates = buildAmendmentUpdateFromAgreementForm(agreement, current);
+    const itemPayloads = (Array.isArray(items) ? items : []).map((item, index) => cloneAgreementItemForAmendment(item, index, amendmentId));
+    agreements.state.saveInFlight = true;
+    agreements.setFormBusy?.(true);
+    try {
+      const { data, error } = await client
+        .from('agreement_amendments')
+        .update(updates)
+        .eq('id', amendmentId)
+        .select('*')
+        .single();
+      if (error) throw error;
+      const { error: deleteError } = await client.from('agreement_amendment_items').delete().eq('amendment_id', amendmentId);
+      if (deleteError) throw deleteError;
+      if (itemPayloads.length) {
+        const { error: insertError } = await client.from('agreement_amendment_items').insert(itemPayloads);
+        if (insertError) throw insertError;
+      }
+      const saved = data || { ...current, ...updates, id: amendmentId };
+      const amendments = (Array.isArray(window.Agreements?.state?.currentAmendments) ? window.Agreements.state.currentAmendments : []);
+      const next = amendments.some(am => String(am.id) === amendmentId)
+        ? amendments.map(am => String(am.id) === amendmentId ? saved : am)
+        : [saved, ...amendments];
+      cacheAmendments(next);
+      renderAmendmentsList(next);
+      markAgreementFormAsAmendment(saved, await fetchParentAgreementForAmendment(saved));
+      toast('Draft amendment saved.');
+    } catch (error) {
+      console.error('[Agreement Lifecycle] Unable to save amendment draft from agreement editor', error);
+      toast('Unable to save amendment.');
+    } finally {
+      agreements.state.saveInFlight = false;
+      agreements.setFormBusy?.(false);
     }
   }
 
@@ -888,7 +1209,7 @@
         const key = amendmentAction.getAttribute('data-amendment-key') || '';
         const action = amendmentAction.getAttribute('data-agreement-amendment-action') || '';
         if (action === 'preview') previewAmendment(key);
-        else openAmendmentDetail(key, { edit: action === 'edit' });
+        else openAmendmentFromLifecycle(key, { edit: action === 'edit' });
         return;
       }
 
@@ -948,7 +1269,26 @@
     agreements.closeAgreementForm = function patchedCloseAgreementForm() {
       const panel = document.getElementById('agreementLifecyclePanel');
       if (panel) panel.style.display = 'none';
+      hideAmendmentContextBanner();
+      const form = getAgreementFormElement();
+      if (form) {
+        delete form.dataset.lifecycleMode;
+        delete form.dataset.amendmentId;
+        delete form.dataset.amendmentReference;
+        delete form.dataset.parentAgreementId;
+        delete form.dataset.rootAgreementId;
+        delete form.dataset.sourceAgreementId;
+        delete form.dataset.amendmentCreatedBy;
+        delete form.dataset.amendmentCreatedAt;
+      }
       return originalClose ? originalClose() : undefined;
+    };
+
+    const originalSubmit = agreements.submitForm?.bind(agreements);
+    agreements.submitForm = function patchedSubmitForm() {
+      const form = getAgreementFormElement();
+      if (form?.dataset?.lifecycleMode === 'amendment') return saveAmendmentAgreementDraft();
+      return originalSubmit ? originalSubmit() : undefined;
     };
 
     const originalWire = agreements.wire?.bind(agreements);
