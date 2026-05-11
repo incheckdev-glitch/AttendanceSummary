@@ -109,6 +109,25 @@
       .agreement-lifecycle-panel__actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-start; margin-top:10px; }
       .agreement-lifecycle-badge { display:inline-flex; align-items:center; border:1px solid var(--border); border-radius:999px; padding:3px 8px; font-size:12px; color:var(--muted); }
       .agreement-lifecycle-panel .btn[disabled] { opacity:.55; cursor:not-allowed; }
+      .agreement-amendments-section { margin-top:14px; border-top:1px solid var(--border); padding-top:12px; }
+      .agreement-amendments-section__title { margin:0 0 8px; font-size:14px; font-weight:700; color:var(--text); }
+      .agreement-amendments-empty, .agreement-amendments-loading, .agreement-amendments-error { color:var(--muted); font-size:12px; margin:0; }
+      .agreement-amendments-error { color:var(--danger, #ef4444); }
+      .agreement-amendments-table-wrap { overflow-x:auto; border:1px solid var(--border); border-radius:10px; }
+      .agreement-amendments-table { width:100%; border-collapse:collapse; font-size:12px; min-width:760px; }
+      .agreement-amendments-table th, .agreement-amendments-table td { padding:8px; border-bottom:1px solid var(--border); text-align:left; vertical-align:top; }
+      .agreement-amendments-table th { color:var(--muted); font-weight:700; background:rgba(148,163,184,.08); }
+      .agreement-amendments-table tr:last-child td { border-bottom:0; }
+      .agreement-amendments-actions { display:flex; gap:6px; flex-wrap:wrap; }
+      .agreement-amendment-status { display:inline-flex; border:1px solid var(--border); border-radius:999px; padding:2px 7px; font-weight:700; }
+      .agreement-amendment-doc { color:#111827; font-family:Arial,sans-serif; line-height:1.45; padding:32px; }
+      .agreement-amendment-doc h1 { margin:0 0 4px; font-size:26px; }
+      .agreement-amendment-doc h2 { margin:24px 0 8px; font-size:16px; border-bottom:1px solid #e5e7eb; padding-bottom:6px; }
+      .agreement-amendment-doc table { width:100%; border-collapse:collapse; margin-top:8px; }
+      .agreement-amendment-doc th, .agreement-amendment-doc td { border:1px solid #e5e7eb; padding:8px; text-align:left; vertical-align:top; }
+      .agreement-amendment-doc th { background:#f9fafb; }
+      .agreement-amendment-signatures { display:grid; grid-template-columns:1fr 1fr; gap:28px; margin-top:36px; }
+      .agreement-amendment-signature-line { border-top:1px solid #111827; padding-top:8px; min-height:42px; }
     `;
     document.head.appendChild(style);
   }
@@ -138,6 +157,10 @@
         <button id="agreementCreateAmendmentBtn" class="btn ghost sm" type="button">Create Amendment</button>
         <button id="agreementCreateSubAgreementBtn" class="btn ghost sm" type="button">Create Sub-Agreement</button>
       </div>
+      <section class="agreement-amendments-section" aria-label="Amendments">
+        <h4 class="agreement-amendments-section__title">Amendments</h4>
+        <div id="agreementAmendmentsList"><p class="agreement-amendments-loading">Loading amendments…</p></div>
+      </section>
     `;
     const signedDocSection = document.getElementById('agreementSignedDocumentSection');
     if (signedDocSection?.parentElement) {
@@ -153,6 +176,162 @@
   function setHiddenField(field, value) {
     const el = document.getElementById(fieldToFormId(field));
     if (el) el.value = value ?? '';
+  }
+
+  function formatDate(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value || '');
+    return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' });
+  }
+
+  function formatDateTime(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value || '');
+    return date.toLocaleString(undefined, { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  }
+
+  function formatMoney(value, currency = '') {
+    if (value === null || value === undefined || value === '') return '';
+    const amount = Number(value);
+    if (!Number.isFinite(amount)) return String(value || '');
+    const code = String(currency || '').trim();
+    try {
+      return new Intl.NumberFormat(undefined, code ? { style: 'currency', currency: code } : { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
+    } catch (_) {
+      return `${code ? `${code} ` : ''}${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+  }
+
+  function humanize(value) {
+    return String(value || '')
+      .replace(/_/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/\b\w/g, ch => ch.toUpperCase());
+  }
+
+  function getAmendmentKey(amendment = {}) {
+    return String(amendment.id || amendment.amendment_id || amendment.amendment_reference || '').trim();
+  }
+
+  function getAmendmentReference(amendment = {}) {
+    return String(amendment.amendment_reference || amendment.amendment_id || amendment.id || '').trim();
+  }
+
+  function cacheAmendments(amendments = []) {
+    const agreements = window.Agreements;
+    if (!agreements?.state) return;
+    agreements.state.currentAmendments = Array.isArray(amendments) ? amendments : [];
+  }
+
+  function findCachedAmendment(key = '') {
+    const normalizedKey = String(key || '').trim();
+    const amendments = Array.isArray(window.Agreements?.state?.currentAmendments) ? window.Agreements.state.currentAmendments : [];
+    return amendments.find(amendment => [amendment.id, amendment.amendment_id, amendment.amendment_reference].some(value => String(value || '').trim() === normalizedKey)) || null;
+  }
+
+  function getAgreementLookupValues(agreement = {}) {
+    const values = [
+      agreement.id,
+      agreement.agreement_uuid,
+      agreement.uuid,
+      agreement.agreement_id,
+      agreement.agreement_number,
+      agreement.root_agreement_id || agreement.id || agreement.agreement_id
+    ].map(value => String(value || '').trim()).filter(Boolean);
+    return [...new Set(values)];
+  }
+
+  function buildAmendmentOrFilter(agreement = {}) {
+    const parentValues = getAgreementLookupValues(agreement);
+    const rootValues = getAgreementLookupValues({ id: agreement.root_agreement_id || agreement.id, agreement_id: agreement.root_agreement_id || agreement.agreement_id, agreement_number: agreement.root_agreement_id || agreement.agreement_number });
+    const filters = [];
+    parentValues.forEach(value => filters.push(`parent_agreement_id.eq.${value}`));
+    rootValues.forEach(value => filters.push(`root_agreement_id.eq.${value}`));
+    return filters.join(',');
+  }
+
+  function renderAmendmentsList(amendments = []) {
+    const container = document.getElementById('agreementAmendmentsList');
+    if (!container) return;
+    if (!Array.isArray(amendments) || amendments.length === 0) {
+      container.innerHTML = '<p class="agreement-amendments-empty">No amendments created yet.</p>';
+      return;
+    }
+    container.innerHTML = `
+      <div class="agreement-amendments-table-wrap">
+        <table class="agreement-amendments-table">
+          <thead>
+            <tr>
+              <th>Amendment Reference</th>
+              <th>Status</th>
+              <th>Effective Date</th>
+              <th>Billing Impact</th>
+              <th>Grand Total</th>
+              <th>Created At</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${amendments.map(amendment => {
+              const key = escapeHtml(getAmendmentKey(amendment));
+              const isDraft = normalizeStatus(amendment.status) === 'draft';
+              return `
+                <tr>
+                  <td><strong>${escapeHtml(getAmendmentReference(amendment))}</strong></td>
+                  <td><span class="agreement-amendment-status">${escapeHtml(humanize(amendment.status || 'Draft'))}</span></td>
+                  <td>${escapeHtml(formatDate(amendment.effective_date) || '—')}</td>
+                  <td>${escapeHtml(humanize(amendment.billing_impact) || '—')}</td>
+                  <td>${escapeHtml(formatMoney(amendment.grand_total, amendment.currency) || '—')}</td>
+                  <td>${escapeHtml(formatDateTime(amendment.created_at) || '—')}</td>
+                  <td>
+                    <div class="agreement-amendments-actions">
+                      <button class="btn ghost sm" type="button" data-agreement-amendment-action="open" data-amendment-key="${key}">Open</button>
+                      ${isDraft ? `<button class="btn ghost sm" type="button" data-agreement-amendment-action="edit" data-amendment-key="${key}">Edit Draft</button>` : ''}
+                      <button class="btn ghost sm" type="button" data-agreement-amendment-action="preview" data-amendment-key="${key}">Preview</button>
+                    </div>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  async function loadAgreementAmendments(agreement = {}) {
+    const container = document.getElementById('agreementAmendmentsList');
+    const client = getSupabaseClient();
+    if (!container || !getAgreementPrimaryKey(agreement)) return [];
+    if (!client) {
+      container.innerHTML = '<p class="agreement-amendments-error">Unable to load amendments: Supabase client is not available.</p>';
+      return [];
+    }
+    container.innerHTML = '<p class="agreement-amendments-loading">Loading amendments…</p>';
+    try {
+      const filter = buildAmendmentOrFilter(agreement);
+      let query = client.from('agreement_amendments').select('*').order('created_at', { ascending: false });
+      if (filter) query = query.or(filter);
+      const { data, error } = await query;
+      if (error) throw error;
+      const amendments = Array.isArray(data) ? data : [];
+      cacheAmendments(amendments);
+      renderAmendmentsList(amendments);
+      return amendments;
+    } catch (error) {
+      console.error('[Agreement Lifecycle] Unable to load amendments', error);
+      container.innerHTML = '<p class="agreement-amendments-error">Unable to load amendments.</p>';
+      return [];
+    }
+  }
+
+  function refreshCurrentAgreementAmendments() {
+    const agreement = window.Agreements?.state?.currentAgreement || {};
+    if (!getAgreementPrimaryKey(agreement)) return Promise.resolve([]);
+    return loadAgreementAmendments(agreement);
   }
 
   function renderLifecyclePanel(agreement = {}) {
@@ -191,6 +370,8 @@
       subBtn.disabled = !signed || !canCreate;
       subBtn.title = signed ? 'Create a new draft sub-agreement under this agreement.' : 'Available only after the agreement is signed.';
     }
+
+    refreshCurrentAgreementAmendments();
   }
 
   async function getNextAmendmentNumber(parentAgreement) {
@@ -292,9 +473,13 @@
     };
 
     try {
-      const { error } = await client.from('agreement_amendments').insert(payload).select('*').single();
+      const { data, error } = await client.from('agreement_amendments').insert(payload).select('*').single();
       if (error) throw error;
-      toast(`Draft amendment created: ${reference}`);
+      const existing = Array.isArray(agreements?.state?.currentAmendments) ? agreements.state.currentAmendments : [];
+      cacheAmendments([data || payload, ...existing]);
+      renderAmendmentsList(window.Agreements?.state?.currentAmendments || []);
+      refreshCurrentAgreementAmendments();
+      toast(`Draft amendment created: ${getAmendmentReference(data || payload) || reference}`);
     } catch (error) {
       console.error('[Agreement Lifecycle] Unable to create amendment', error);
       toast('Unable to create amendment. Run the agreement lifecycle SQL migration first, then try again.');
@@ -371,6 +556,316 @@
     toast('Sub-agreement draft prepared. Review, adjust scope/items if needed, then save.');
   }
 
+  function ensureAmendmentModals() {
+    ensureLifecycleStyles();
+    let detail = document.getElementById('agreementAmendmentDetailModal');
+    if (!detail) {
+      detail = document.createElement('div');
+      detail.id = 'agreementAmendmentDetailModal';
+      detail.className = 'modal';
+      detail.setAttribute('role', 'dialog');
+      detail.setAttribute('aria-modal', 'true');
+      detail.setAttribute('aria-labelledby', 'agreementAmendmentDetailTitle');
+      detail.setAttribute('aria-hidden', 'true');
+      detail.innerHTML = `
+        <div class="modal-content" style="max-width:980px;">
+          <div class="header">
+            <h2 id="agreementAmendmentDetailTitle" style="margin:0;font-size:20px">Amendment Detail</h2>
+            <button class="modal-close" type="button" data-agreement-amendment-close aria-label="Close amendment detail">✕</button>
+          </div>
+          <form id="agreementAmendmentDetailForm">
+            <input type="hidden" id="agreementAmendmentDetailId">
+            <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+              <label>Amendment Reference<input id="agreementAmendmentReference" readonly></label>
+              <label>Status<input id="agreementAmendmentStatus" readonly></label>
+              <label>Reason<textarea id="agreementAmendmentReason" rows="3"></textarea></label>
+              <label>Effective Date<input id="agreementAmendmentEffectiveDate" type="date"></label>
+              <label>Billing Impact<select id="agreementAmendmentBillingImpact"><option value="no_billing_impact">No Billing Impact</option><option value="invoice_difference_only">Invoice Difference Only</option><option value="replace_value_going_forward">Replace Value Going Forward</option></select></label>
+              <label>Currency<input id="agreementAmendmentCurrency"></label>
+              <label>Subtotal<input id="agreementAmendmentSubtotalLocations" type="number" step="0.01"></label>
+              <label>One-time Subtotal<input id="agreementAmendmentSubtotalOneTime" type="number" step="0.01"></label>
+              <label>Tax / Discount<input id="agreementAmendmentTax" type="number" step="0.01"></label>
+              <label>Grand Total<input id="agreementAmendmentGrandTotal" type="number" step="0.01"></label>
+              <label style="grid-column:1 / -1;">Notes<textarea id="agreementAmendmentNotes" rows="3"></textarea></label>
+            </div>
+            <div class="card" style="margin-top:12px;">
+              <strong>Items</strong>
+              <div id="agreementAmendmentItemsList" style="margin-top:8px;"><p class="muted">No amendment items found.</p></div>
+            </div>
+            <div class="actions" style="justify-content:space-between;gap:8px;margin-top:12px;">
+              <div style="display:flex;gap:8px;flex-wrap:wrap;"><button id="agreementAmendmentPreviewBtn" type="button" class="btn ghost">Preview</button></div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+                <button type="button" class="btn ghost" data-agreement-amendment-close>Cancel</button>
+                <button id="agreementAmendmentSaveDraftBtn" type="submit" class="btn ghost">Save Draft</button>
+                <button id="agreementAmendmentMarkSentBtn" type="button" class="btn ghost">Mark as Sent</button>
+                <button id="agreementAmendmentMarkSignedBtn" type="button" class="btn">Mark as Signed</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      `;
+      document.body.appendChild(detail);
+    }
+
+    let preview = document.getElementById('agreementAmendmentPreviewModal');
+    if (!preview) {
+      preview = document.createElement('div');
+      preview.id = 'agreementAmendmentPreviewModal';
+      preview.className = 'modal';
+      preview.setAttribute('role', 'dialog');
+      preview.setAttribute('aria-modal', 'true');
+      preview.setAttribute('aria-labelledby', 'agreementAmendmentPreviewTitle');
+      preview.setAttribute('aria-hidden', 'true');
+      preview.innerHTML = `
+        <div class="modal-content" style="max-width:1100px;">
+          <div class="header">
+            <h2 id="agreementAmendmentPreviewTitle" style="margin:0;font-size:20px">Amendment Preview</h2>
+            <button class="modal-close" type="button" data-agreement-amendment-preview-close aria-label="Close amendment preview">✕</button>
+          </div>
+          <iframe id="agreementAmendmentPreviewFrame" title="Amendment preview content" style="width:100%;min-height:70vh;border:1px solid var(--border);border-radius:10px;background:#fff;"></iframe>
+        </div>
+      `;
+      document.body.appendChild(preview);
+    }
+  }
+
+  function setModalOpen(modal, open) {
+    if (!modal) return;
+    modal.classList.toggle('open', Boolean(open));
+    modal.setAttribute('aria-hidden', open ? 'false' : 'true');
+  }
+
+  async function fetchAmendmentItems(amendment = {}) {
+    const client = getSupabaseClient();
+    const amendmentId = String(amendment.id || '').trim();
+    if (!client || !amendmentId) return [];
+    try {
+      const { data, error } = await client
+        .from('agreement_amendment_items')
+        .select('*')
+        .eq('amendment_id', amendmentId)
+        .order('line_no', { ascending: true });
+      if (error) throw error;
+      return Array.isArray(data) ? data : [];
+    } catch (error) {
+      console.warn('[Agreement Lifecycle] Unable to load amendment items', error);
+      return [];
+    }
+  }
+
+  function renderAmendmentItems(items = [], currency = '') {
+    if (!Array.isArray(items) || !items.length) return '<p class="muted">No amendment items found.</p>';
+    return `
+      <div class="agreement-amendments-table-wrap">
+        <table class="agreement-amendments-table">
+          <thead><tr><th>#</th><th>Item</th><th>Location</th><th>Qty</th><th>Unit Price</th><th>Billing Effect</th><th>Total</th></tr></thead>
+          <tbody>${items.map((item, index) => `
+            <tr>
+              <td>${escapeHtml(item.line_no || index + 1)}</td>
+              <td>${escapeHtml(item.item_name || item.section || '—')}</td>
+              <td>${escapeHtml(item.location_name || item.location_address || '—')}</td>
+              <td>${escapeHtml(item.quantity ?? '—')}</td>
+              <td>${escapeHtml(formatMoney(item.unit_price, currency) || '—')}</td>
+              <td>${escapeHtml(humanize(item.billing_effect) || '—')}</td>
+              <td>${escapeHtml(formatMoney(item.line_total, currency) || '—')}</td>
+            </tr>
+          `).join('')}</tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function readAmendmentForm() {
+    const id = document.getElementById('agreementAmendmentDetailId')?.value || '';
+    return {
+      id,
+      reason: document.getElementById('agreementAmendmentReason')?.value || '',
+      effective_date: document.getElementById('agreementAmendmentEffectiveDate')?.value || null,
+      billing_impact: document.getElementById('agreementAmendmentBillingImpact')?.value || 'invoice_difference_only',
+      currency: document.getElementById('agreementAmendmentCurrency')?.value || null,
+      subtotal_locations: Number(document.getElementById('agreementAmendmentSubtotalLocations')?.value || 0),
+      subtotal_one_time: Number(document.getElementById('agreementAmendmentSubtotalOneTime')?.value || 0),
+      total_discount: Number(document.getElementById('agreementAmendmentTax')?.value || 0),
+      grand_total: Number(document.getElementById('agreementAmendmentGrandTotal')?.value || 0),
+      notes: document.getElementById('agreementAmendmentNotes')?.value || ''
+    };
+  }
+
+  function populateAmendmentForm(amendment = {}, items = [], { forceEdit = false } = {}) {
+    ensureAmendmentModals();
+    const isDraft = normalizeStatus(amendment.status) === 'draft';
+    const canEdit = isDraft && (forceEdit || true);
+    const setValue = (id, value) => { const el = document.getElementById(id); if (el) el.value = value ?? ''; };
+    setValue('agreementAmendmentDetailId', amendment.id || '');
+    setValue('agreementAmendmentReference', getAmendmentReference(amendment));
+    setValue('agreementAmendmentStatus', humanize(amendment.status || 'Draft'));
+    setValue('agreementAmendmentReason', amendment.reason || '');
+    setValue('agreementAmendmentEffectiveDate', amendment.effective_date || '');
+    setValue('agreementAmendmentBillingImpact', amendment.billing_impact || 'invoice_difference_only');
+    setValue('agreementAmendmentCurrency', amendment.currency || '');
+    setValue('agreementAmendmentSubtotalLocations', amendment.subtotal_locations ?? 0);
+    setValue('agreementAmendmentSubtotalOneTime', amendment.subtotal_one_time ?? 0);
+    setValue('agreementAmendmentTax', amendment.total_discount ?? amendment.tax ?? 0);
+    setValue('agreementAmendmentGrandTotal', amendment.grand_total ?? 0);
+    setValue('agreementAmendmentNotes', amendment.notes || '');
+
+    const editableIds = ['agreementAmendmentReason', 'agreementAmendmentEffectiveDate', 'agreementAmendmentBillingImpact', 'agreementAmendmentCurrency', 'agreementAmendmentSubtotalLocations', 'agreementAmendmentSubtotalOneTime', 'agreementAmendmentTax', 'agreementAmendmentGrandTotal', 'agreementAmendmentNotes'];
+    editableIds.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.disabled = !canEdit;
+    });
+    const itemsList = document.getElementById('agreementAmendmentItemsList');
+    if (itemsList) itemsList.innerHTML = renderAmendmentItems(items, amendment.currency);
+    const saveBtn = document.getElementById('agreementAmendmentSaveDraftBtn');
+    if (saveBtn) saveBtn.style.display = isDraft ? '' : 'none';
+    const sentBtn = document.getElementById('agreementAmendmentMarkSentBtn');
+    if (sentBtn) sentBtn.style.display = normalizeStatus(amendment.status) === 'signed' ? 'none' : '';
+    const signedBtn = document.getElementById('agreementAmendmentMarkSignedBtn');
+    if (signedBtn) signedBtn.style.display = normalizeStatus(amendment.status) === 'signed' ? 'none' : '';
+    const title = document.getElementById('agreementAmendmentDetailTitle');
+    if (title) title.textContent = `Amendment Detail · ${getAmendmentReference(amendment)}`;
+    const modal = document.getElementById('agreementAmendmentDetailModal');
+    if (modal) {
+      modal.dataset.amendmentKey = getAmendmentKey(amendment);
+      modal.dataset.amendmentItems = JSON.stringify(items || []);
+    }
+  }
+
+  async function resolveAmendment(key = '') {
+    let amendment = findCachedAmendment(key);
+    const client = getSupabaseClient();
+    if (!amendment && client && key) {
+      const { data, error } = await client
+        .from('agreement_amendments')
+        .select('*')
+        .or(`id.eq.${key},amendment_id.eq.${key},amendment_reference.eq.${key}`)
+        .maybeSingle();
+      if (error) throw error;
+      amendment = data;
+    }
+    return amendment;
+  }
+
+  async function openAmendmentDetail(key = '', { edit = false } = {}) {
+    const toast = getUiToast();
+    try {
+      const amendment = await resolveAmendment(key);
+      if (!amendment) return toast('Unable to find amendment.');
+      const items = await fetchAmendmentItems(amendment);
+      populateAmendmentForm(amendment, items, { forceEdit: edit });
+      setModalOpen(document.getElementById('agreementAmendmentDetailModal'), true);
+    } catch (error) {
+      console.error('[Agreement Lifecycle] Unable to open amendment', error);
+      toast('Unable to open amendment.');
+    }
+  }
+
+  async function saveAmendmentDraft(statusOverride = '') {
+    const toast = getUiToast();
+    const client = getSupabaseClient();
+    const payload = readAmendmentForm();
+    if (!client || !payload.id) return toast('Unable to save amendment.');
+    const current = findCachedAmendment(payload.id) || {};
+    if (normalizeStatus(current.status) === 'signed') return toast('Signed amendments are locked.');
+    const updates = {
+      reason: payload.reason,
+      effective_date: payload.effective_date,
+      billing_impact: payload.billing_impact,
+      currency: payload.currency,
+      subtotal_locations: payload.subtotal_locations,
+      subtotal_one_time: payload.subtotal_one_time,
+      total_discount: payload.total_discount,
+      grand_total: payload.grand_total,
+      notes: payload.notes,
+      updated_by: getCurrentUserId() || null,
+      updated_at: new Date().toISOString()
+    };
+    if (statusOverride) {
+      updates.status = statusOverride;
+      if (normalizeStatus(statusOverride) === 'signed') updates.signed_at = new Date().toISOString();
+    }
+    try {
+      const { data, error } = await client.from('agreement_amendments').update(updates).eq('id', payload.id).select('*').single();
+      if (error) throw error;
+      const amendments = (Array.isArray(window.Agreements?.state?.currentAmendments) ? window.Agreements.state.currentAmendments : []).map(amendment => String(amendment.id) === String(payload.id) ? data : amendment);
+      cacheAmendments(amendments);
+      renderAmendmentsList(amendments);
+      populateAmendmentForm(data, await fetchAmendmentItems(data));
+      toast(statusOverride ? `Amendment marked as ${humanize(statusOverride)}.` : 'Draft amendment saved.');
+    } catch (error) {
+      console.error('[Agreement Lifecycle] Unable to save amendment', error);
+      toast('Unable to save amendment.');
+    }
+  }
+
+  function buildAmendmentPreviewHtml(amendment = {}, items = []) {
+    const parent = window.Agreements?.state?.currentAgreement || {};
+    const currency = amendment.currency || parent.currency || '';
+    return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(getAmendmentReference(amendment))}</title><style>
+        body{margin:0;background:#fff;color:#111827;font-family:Arial,sans-serif;}
+        .agreement-amendment-doc{line-height:1.45;padding:32px;}
+        h1{margin:0 0 4px;font-size:26px;}
+        h2{margin:24px 0 8px;font-size:16px;border-bottom:1px solid #e5e7eb;padding-bottom:6px;}
+        table{width:100%;border-collapse:collapse;margin-top:8px;}
+        th,td{border:1px solid #e5e7eb;padding:8px;text-align:left;vertical-align:top;}
+        th{background:#f9fafb;}
+        .agreement-amendment-signatures{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:36px;}
+        .agreement-amendment-signature-line{border-top:1px solid #111827;padding-top:8px;min-height:42px;}
+      </style></head><body>
+      <article class="agreement-amendment-doc">
+        <h1>Agreement Amendment</h1>
+        <p><strong>Parent Agreement:</strong> ${escapeHtml(getAgreementBusinessRef(parent) || amendment.parent_agreement_id || '—')}</p>
+        <p><strong>Amendment Reference:</strong> ${escapeHtml(getAmendmentReference(amendment))}</p>
+        <h2>Parties and Summary</h2>
+        <table><tbody>
+          <tr><th>Client / Company</th><td>${escapeHtml(amendment.company_name || parent.company_name || parent.customer_name || '—')}</td></tr>
+          <tr><th>Status</th><td>${escapeHtml(humanize(amendment.status || 'Draft'))}</td></tr>
+          <tr><th>Reason</th><td>${escapeHtml(amendment.reason || '—')}</td></tr>
+          <tr><th>Effective Date</th><td>${escapeHtml(formatDate(amendment.effective_date) || '—')}</td></tr>
+          <tr><th>Billing Impact</th><td>${escapeHtml(humanize(amendment.billing_impact) || '—')}</td></tr>
+        </tbody></table>
+        <h2>Commercial Summary</h2>
+        <table><tbody>
+          <tr><th>Currency</th><td>${escapeHtml(currency || '—')}</td></tr>
+          <tr><th>Subtotal</th><td>${escapeHtml(formatMoney(amendment.subtotal_locations, currency) || '—')}</td></tr>
+          <tr><th>One-time Subtotal</th><td>${escapeHtml(formatMoney(amendment.subtotal_one_time, currency) || '—')}</td></tr>
+          <tr><th>Tax / Discount</th><td>${escapeHtml(formatMoney(amendment.total_discount, currency) || '—')}</td></tr>
+          <tr><th>Grand Total</th><td><strong>${escapeHtml(formatMoney(amendment.grand_total, currency) || '—')}</strong></td></tr>
+        </tbody></table>
+        <h2>Items</h2>
+        ${renderAmendmentItems(items, currency).replace('agreement-amendments-table-wrap', '').replaceAll('agreement-amendments-table', '')}
+        <h2>Notes</h2>
+        <p>${escapeHtml(amendment.notes || 'No additional notes.')}</p>
+        <h2>Signatures</h2>
+        <div class="agreement-amendment-signatures">
+          <div><div class="agreement-amendment-signature-line">Client Authorized Signatory</div></div>
+          <div><div class="agreement-amendment-signature-line">Provider Authorized Signatory</div></div>
+        </div>
+      </article>
+    </body></html>`;
+  }
+
+  async function previewAmendment(key = '') {
+    const toast = getUiToast();
+    try {
+      const amendment = key ? await resolveAmendment(key) : { ...findCachedAmendment(document.getElementById('agreementAmendmentDetailModal')?.dataset?.amendmentKey), ...readAmendmentForm() };
+      if (!amendment) return toast('Unable to preview amendment.');
+      const modal = document.getElementById('agreementAmendmentDetailModal');
+      let items = [];
+      try { items = JSON.parse(modal?.dataset?.amendmentItems || '[]'); } catch (_) { items = []; }
+      if (key || !items.length) items = await fetchAmendmentItems(amendment);
+      ensureAmendmentModals();
+      const title = document.getElementById('agreementAmendmentPreviewTitle');
+      if (title) title.textContent = `Amendment Preview · ${getAmendmentReference(amendment)}`;
+      const frame = document.getElementById('agreementAmendmentPreviewFrame');
+      if (frame) frame.srcdoc = buildAmendmentPreviewHtml(amendment, items);
+      setModalOpen(document.getElementById('agreementAmendmentPreviewModal'), true);
+    } catch (error) {
+      console.error('[Agreement Lifecycle] Unable to preview amendment', error);
+      toast('Unable to preview amendment.');
+    }
+  }
+
   function bindLifecycleActions() {
     if (document.body?.dataset?.agreementLifecycleBound === 'true') return;
     document.body?.addEventListener('click', event => {
@@ -384,6 +879,52 @@
       if (subBtn) {
         event.preventDefault();
         createSubAgreementDraft();
+        return;
+      }
+
+      const amendmentAction = event.target?.closest?.('[data-agreement-amendment-action]');
+      if (amendmentAction) {
+        event.preventDefault();
+        const key = amendmentAction.getAttribute('data-amendment-key') || '';
+        const action = amendmentAction.getAttribute('data-agreement-amendment-action') || '';
+        if (action === 'preview') previewAmendment(key);
+        else openAmendmentDetail(key, { edit: action === 'edit' });
+        return;
+      }
+
+      if (event.target?.closest?.('[data-agreement-amendment-close]')) {
+        event.preventDefault();
+        setModalOpen(document.getElementById('agreementAmendmentDetailModal'), false);
+        return;
+      }
+
+      if (event.target?.closest?.('[data-agreement-amendment-preview-close]')) {
+        event.preventDefault();
+        setModalOpen(document.getElementById('agreementAmendmentPreviewModal'), false);
+        return;
+      }
+
+      if (event.target?.closest?.('#agreementAmendmentPreviewBtn')) {
+        event.preventDefault();
+        previewAmendment();
+        return;
+      }
+
+      if (event.target?.closest?.('#agreementAmendmentMarkSentBtn')) {
+        event.preventDefault();
+        saveAmendmentDraft('Sent');
+        return;
+      }
+
+      if (event.target?.closest?.('#agreementAmendmentMarkSignedBtn')) {
+        event.preventDefault();
+        saveAmendmentDraft('Signed');
+      }
+    });
+    document.body?.addEventListener('submit', event => {
+      if (event.target?.id === 'agreementAmendmentDetailForm') {
+        event.preventDefault();
+        saveAmendmentDraft();
       }
     });
     if (document.body) document.body.dataset.agreementLifecycleBound = 'true';
