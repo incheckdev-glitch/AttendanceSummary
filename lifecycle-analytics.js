@@ -1,3 +1,22 @@
+function formatAgreementLifecycleDateTime(value) {
+  if (!value) return "-";
+
+  try {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+
+    return date.toLocaleString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+  } catch (error) {
+    return String(value || "-");
+  }
+}
+
 const LifecycleAnalytics = {
   state: {
     initialized: false,
@@ -46,9 +65,7 @@ const LifecycleAnalytics = {
     return `${code} ${U.fmtNumber(this.num(value))}`;
   },
   formatTimelineDate(value) {
-    const raw = this.text(value);
-    if (!raw) return '—';
-    return U.fmtTS(raw);
+    return formatAgreementLifecycleDateTime(value);
   },
   getLifecycleCompanyId(chain = {}) {
     return String(
@@ -1413,7 +1430,7 @@ const LifecycleAnalytics = {
         <div class="card"><div class="label">Onboarding Status</div><div class="value">${this.escape(selected.onboardingStatus)}</div></div>
         <div class="card"><div class="label">Technical Admin Status</div><div class="value">${this.escape(selected.technicalStatus)}</div></div>
         <div class="card"><div class="label">Assigned CSM</div><div class="value">${this.escape(selected.assignedCsm || '—')}</div></div>
-        <div class="card"><div class="label">Go Live Date</div><div class="value">${this.escape((selected.goLiveDate ? this.formatDateTime(selected.goLiveDate) : '—'))}</div></div>
+        <div class="card"><div class="label">Go Live Date</div><div class="value">${this.escape(formatAgreementLifecycleDateTime(selected.goLiveDate))}</div></div>
         <div class="card"><div class="label">Open Client Request</div><div class="value">${this.escape(selected.openClientRequest ? 'Yes' : 'No')}</div></div>
         <div class="card"><div class="label">Open Technical Request</div><div class="value">${this.escape(selected.openTechnicalRequest ? 'Yes' : 'No')}</div></div>
         <div class="card"><div class="label">Operational Readiness</div><div class="value">${this.escape(selected.operationalReadiness)}</div></div>
