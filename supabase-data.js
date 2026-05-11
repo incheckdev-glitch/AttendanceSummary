@@ -1,12 +1,12 @@
 (function initSupabaseData(global) {
   const MIGRATED_RESOURCES = new Set([
-    'auth','users','roles','role_permissions','tickets','events','csm','leads','lead_note_logs','deal_note_logs','deals','proposal_catalog','proposals','agreements','workflow','clients','invoices','receipts','operations_onboarding','technical_admin_requests','notifications','notification_settings','companies','contacts','company_type_options','company_industry_options'
+    'auth','users','roles','role_permissions','tickets','events','csm','leads','lead_note_logs','deal_note_logs','deals','proposal_catalog','proposals','agreements','agreement_amendment','workflow','clients','invoices','receipts','operations_onboarding','technical_admin_requests','notifications','notification_settings','companies','contacts','company_type_options','company_industry_options'
   ]);
 
   const TABLE_BY_RESOURCE = {
     users: 'profiles', roles: 'roles', role_permissions: 'role_permissions', tickets: 'tickets',
     events: 'events', csm: 'csm_activities', leads: 'leads', lead_note_logs: 'lead_note_logs', deal_note_logs: 'deal_note_logs', deals: 'deals',
-    proposal_catalog: 'proposal_catalog_items', proposals: 'proposals', agreements: 'agreements',
+    proposal_catalog: 'proposal_catalog_items', proposals: 'proposals', agreements: 'agreements', agreement_amendment: 'agreement_amendments',
     clients: 'clients', invoices: 'invoices', receipts: 'receipts', operations_onboarding: 'operations_onboarding',
     technical_admin_requests: 'technical_admin_requests', companies: 'companies', contacts: 'contacts', company_type_options: 'company_type_options', company_industry_options: 'company_industry_options'
     ,notifications: 'notifications'
@@ -27,6 +27,7 @@
     proposal_catalog: 'id',
     proposals: 'id',
     agreements: 'id',
+    agreement_amendment: 'id',
     clients: 'id',
     invoices: 'id',
     receipts: 'id',
@@ -64,8 +65,8 @@
     ,notification_settings: []
   };
 
-  const ITEM_TABLES = { proposals: 'proposal_items', agreements: 'agreement_items', invoices: 'invoice_items', receipts: 'receipt_items' };
-  const ITEM_FK = { proposals: 'proposal_id', agreements: 'agreement_id', invoices: 'invoice_id', receipts: 'receipt_id' };
+  const ITEM_TABLES = { proposals: 'proposal_items', agreements: 'agreement_items', agreement_amendment: 'agreement_amendment_items', invoices: 'invoice_items', receipts: 'receipt_items' };
+  const ITEM_FK = { proposals: 'proposal_id', agreements: 'agreement_id', agreement_amendment: 'amendment_id', invoices: 'invoice_id', receipts: 'receipt_id' };
   const IMPORTANT_DEAL_STAGES = new Set(['proposal', 'negotiation', 'won', 'closed won', 'contract sent']);
   const IMPORTANT_PROPOSAL_STATUSES = new Set(['pending approval', 'requires approval', 'sent', 'accepted', 'rejected']);
   const PROPOSAL_PROVIDER_CONTACT_DEFAULTS = Object.freeze({
@@ -479,7 +480,7 @@
     'customer_sign_date','provider_official_signatory_1_name','provider_official_signatory_1_title','provider_official_signatory_1_sign_date','provider_official_signatory_2_name','provider_official_signatory_2_title','provider_official_signatory_2_sign_date','provider_signatory_name','provider_signatory_title','provider_signatory_email','provider_signatory_secondary','provider_signatory_name_secondary','provider_signatory_title_secondary','provider_primary_signatory_name','provider_primary_signatory_title','provider_secondary_signatory_name','provider_secondary_signatory_title','provider_sign_date','gm_signed',
     'financial_controller_signed','signed_date','status','subtotal_locations','subtotal_one_time','total_discount',
     'grand_total','generated_by','created_by','updated_by','currency','created_at','updated_at','customer_legal_name','provider_legal_name','provider_name',
-    'agreement_title','parent_agreement_id','root_agreement_id','source_agreement_id','agreement_relationship_type','agreement_version','relationship_notes','notes'
+    'agreement_title','parent_agreement_id','root_agreement_id','source_agreement_id','agreement_relationship_type','agreement_version','relationship_notes','approved_annual_saas_discount_percent','approved_one_time_fee_discount_percent','approved_discount_percent','discount_approval_status','discount_approved_at','discount_approved_by','last_discount_approval_request_id','approval_required_reason','notes'
   ]);
   const AGREEMENT_ITEM_COLUMNS = new Set([
     'item_id','agreement_id','section','line_no','location_name','item_name','unit_price','discount_percent',
@@ -2419,6 +2420,14 @@
       agreement_relationship_type: firstDefined(record, ['agreement_relationship_type', 'agreementRelationshipType']),
       agreement_version: normalizeNumericValue(firstDefined(record, ['agreement_version', 'agreementVersion']), 1),
       relationship_notes: firstDefined(record, ['relationship_notes', 'relationshipNotes']),
+      approved_annual_saas_discount_percent: firstDefined(record, ['approved_annual_saas_discount_percent', 'approvedAnnualSaasDiscountPercent']),
+      approved_one_time_fee_discount_percent: firstDefined(record, ['approved_one_time_fee_discount_percent', 'approvedOneTimeFeeDiscountPercent']),
+      approved_discount_percent: firstDefined(record, ['approved_discount_percent', 'approvedDiscountPercent']),
+      discount_approval_status: firstDefined(record, ['discount_approval_status', 'discountApprovalStatus']),
+      discount_approved_at: firstDefined(record, ['discount_approved_at', 'discountApprovedAt']),
+      discount_approved_by: firstDefined(record, ['discount_approved_by', 'discountApprovedBy']),
+      last_discount_approval_request_id: firstDefined(record, ['last_discount_approval_request_id', 'lastDiscountApprovalRequestId']),
+      approval_required_reason: firstDefined(record, ['approval_required_reason', 'approvalRequiredReason']),
       notes: firstDefined(record, ['notes'])
     };
     const sanitized = {};
@@ -3350,6 +3359,7 @@
     const WORKFLOW_RESOURCE_ID_HINTS = {
       proposals: ['proposal_uuid', 'proposal_id', 'proposal_number', 'display_id'],
       agreements: ['agreement_uuid', 'agreement_id', 'agreement_number', 'display_id'],
+      agreement_amendment: ['amendment_uuid', 'amendment_id', 'amendment_reference', 'display_id'],
       invoices: ['invoice_uuid', 'invoice_id', 'invoice_number', 'display_id'],
       receipts: ['receipt_uuid', 'receipt_id', 'receipt_number', 'display_id'],
       deals: ['deal_uuid', 'deal_id', 'deal_number', 'display_id'],
@@ -3376,6 +3386,7 @@
       const payloadRow = compactObject({
         resource: String(entry.resource || '').trim(),
         record_id: String(entry.record_id || '').trim(),
+        record_reference: String(entry.record_reference || entry.resource_display_id || '').trim() || null,
         action: String(entry.action || '').trim(),
         old_status: entry.old_status ?? null,
         new_status: entry.new_status ?? null,
@@ -3403,6 +3414,7 @@
       ).trim().toLowerCase();
       if (direct && direct !== 'workflow') return direct;
       if (requestedChanges?.proposal_id || requestedChanges?.proposal_number) return 'proposals';
+      if (requestedChanges?.amendment_id || requestedChanges?.amendment_reference) return 'agreement_amendment';
       if (requestedChanges?.agreement_id || requestedChanges?.agreement_number) return 'agreements';
       if (requestedChanges?.invoice_id || requestedChanges?.invoice_number) return 'invoices';
       if (requestedChanges?.receipt_id || requestedChanges?.receipt_number) return 'receipts';
@@ -3845,6 +3857,45 @@
           sanitizeAgreementRecord,
           Object.keys(nestedResourcePayload).length ? nestedResourcePayload : requestedWithoutHelpers
         );
+        const approvedCategoryDiscounts = getProposalDiscountsByCategory(
+          { ...record, ...nestedResourcePayload, ...requested },
+          approvedItems
+        );
+        publicUpdates = {
+          ...publicUpdates,
+          status: trimOrNull(firstDefined(requested, ['requested_status', 'status'])) || publicUpdates.status,
+          approved_annual_saas_discount_percent: approvedCategoryDiscounts.annualSaasDiscount,
+          approved_one_time_fee_discount_percent: approvedCategoryDiscounts.oneTimeFeeDiscount,
+          approved_discount_percent: Math.max(approvedCategoryDiscounts.annualSaasDiscount, approvedCategoryDiscounts.oneTimeFeeDiscount),
+          discount_approval_status: 'approved',
+          discount_approved_at: new Date().toISOString(),
+          discount_approved_by: reviewerUserId || undefined,
+          last_discount_approval_request_id: reviewerContext.approvalId || requested.last_discount_approval_request_id || undefined,
+          approval_required_reason: ''
+        };
+      } else if (resource === 'agreement_amendment') {
+        publicUpdates = compactObject({
+          ...(Object.keys(nestedResourcePayload).length ? nestedResourcePayload : requestedWithoutHelpers),
+          status: trimOrNull(firstDefined(requested, ['requested_status', 'status'])) || nestedResourcePayload.status,
+          updated_by: reviewerUserId || undefined,
+          updated_at: new Date().toISOString()
+        });
+        ['id', 'amendment_uuid', 'resource_id', 'target_id', 'resource_display_id', 'record_reference', 'current_status', 'requested_status', 'discount_percent', 'annual_saas_discount_percent', 'one_time_fee_discount_percent', 'category_discounts', 'submitted_by_name', 'submitted_by_email', 'submitted_by_role', 'record_snapshot', 'items', 'agreement', 'proposal', 'amendment'].forEach(key => { delete publicUpdates[key]; });
+        const approvedCategoryDiscounts = getProposalDiscountsByCategory(
+          { ...record, ...nestedResourcePayload, ...requested },
+          approvedItems
+        );
+        publicUpdates = {
+          ...publicUpdates,
+          approved_annual_saas_discount_percent: approvedCategoryDiscounts.annualSaasDiscount,
+          approved_one_time_fee_discount_percent: approvedCategoryDiscounts.oneTimeFeeDiscount,
+          approved_discount_percent: Math.max(approvedCategoryDiscounts.annualSaasDiscount, approvedCategoryDiscounts.oneTimeFeeDiscount),
+          discount_approval_status: 'approved',
+          discount_approved_at: new Date().toISOString(),
+          discount_approved_by: reviewerUserId || undefined,
+          last_discount_approval_request_id: reviewerContext.approvalId || requested.last_discount_approval_request_id || undefined,
+          approval_required_reason: ''
+        };
       } else if (resource === 'invoices') {
         publicUpdates = sanitizeWithReviewer(
           sanitizeInvoicesRecord,
@@ -3886,9 +3937,11 @@
               ? sanitizeProposalItemRecord(item, parentId)
               : resource === 'agreements'
                 ? sanitizeAgreementItemRecord(item, parentId)
-                : resource === 'invoices'
-                  ? sanitizeInvoiceItemRecord(item, parentId)
-                  : sanitizeReceiptItemRecord(item, parentId)
+                : resource === 'agreement_amendment'
+                  ? { ...sanitizeAgreementItemRecord(item, ''), agreement_id: undefined, amendment_id: parentId }
+                  : resource === 'invoices'
+                    ? sanitizeInvoiceItemRecord(item, parentId)
+                    : sanitizeReceiptItemRecord(item, parentId)
           );
           const { error } = await runMutationWithSchemaRetry({
             table: itemTable,
@@ -4242,7 +4295,7 @@
         p_new_status: String(safePayload.p_new_status ?? safePayload.new_status ?? '').trim(),
         p_requested_changes: requestedChangesPayload
       };
-      if (shouldSkipWorkflowForDraftSave({
+      if (Number(requestedChangesPayload?.discount_percent ?? safePayload.discount_percent ?? 0) <= 0 && shouldSkipWorkflowForDraftSave({
         currentStatus: rpcPayload.p_old_status || requestedChangesPayload?.current_status,
         nextStatus: rpcPayload.p_new_status || requestedChangesPayload?.requested_status || requestedChangesPayload?.next_status || requestedChangesPayload?.status,
         action: safePayload.action || requestedChangesPayload?.action || 'create_workflow_approval',
@@ -4251,17 +4304,17 @@
         return draftWorkflowSkipResult();
       }
       console.debug('[workflow] final approval creation payload', rpcPayload);
-      if (String(rpcPayload.p_resource || '').trim().toLowerCase() === 'proposals') {
+      if (['proposals', 'agreements', 'agreement_amendment'].includes(String(rpcPayload.p_resource || '').trim().toLowerCase())) {
         const duplicateDiscount = Number(toNumber(requestedChangesPayload?.discount_percent).toFixed(2));
         const duplicateStatus = String(rpcPayload.p_new_status || requestedChangesPayload?.requested_status || requestedChangesPayload?.next_status || '').trim().toLowerCase().replace(/\s+/g, '_');
         const { data: pendingRows, error: pendingError } = await client
           .from('workflow_approvals')
           .select('*')
-          .eq('resource', 'proposals')
+          .eq('resource', String(rpcPayload.p_resource || '').trim().toLowerCase())
           .eq('record_id', rpcPayload.p_record_id)
           .eq('status', 'pending')
           .order('created_at', { ascending: false });
-        if (pendingError) throw workflowError('Unable to check pending proposal discount approvals', pendingError);
+        if (pendingError) throw workflowError('Unable to check pending discount approvals', pendingError);
         const duplicate = asArray(pendingRows).find(row => {
           const changes = row?.requested_changes && typeof row.requested_changes === 'object' ? row.requested_changes : {};
           const rowStatus = String(row?.new_status || changes?.requested_status || changes?.next_status || changes?.status || '').trim().toLowerCase().replace(/\s+/g, '_');
@@ -4276,7 +4329,7 @@
             approval_id: String(duplicate.approval_id || duplicate.id || '').trim(),
             approval_role: String(duplicate.approval_role || rpcPayload.p_approval_role || '').trim(),
             status: String(duplicate.status || 'pending').trim(),
-            resource: 'proposals',
+            resource: String(duplicate.resource || rpcPayload.p_resource || '').trim(),
             record_id: String(duplicate.record_id || rpcPayload.p_record_id || '').trim()
           };
         }
@@ -4287,6 +4340,15 @@
         ? data
         : { ok: false, created: false, reused: false, approval_id: '', approval_role: '', status: '', resource: rpcPayload.p_resource, record_id: rpcPayload.p_record_id };
       console.debug('[workflow] approval create RPC result', normalizedApproval);
+      if (normalizedApproval.ok === true && normalizedApproval.approval_id) {
+        const recordReference = String(safePayload.record_reference || safePayload.resource_display_id || requestedChangesPayload?.record_reference || requestedChangesPayload?.resource_display_id || '').trim();
+        if (recordReference) {
+          await client
+            .from('workflow_approvals')
+            .update({ record_reference: recordReference })
+            .eq('approval_id', normalizedApproval.approval_id);
+        }
+      }
       if (normalizedApproval.ok === true && normalizedApproval.created === true && normalizedApproval.approval_id) {
         await notifyWorkflowApprovalCreated(normalizedApproval.approval_id);
       }
@@ -4298,7 +4360,8 @@
         approval_role: String(normalizedApproval.approval_role || '').trim(),
         status: String(normalizedApproval.status || '').trim(),
         resource: String(normalizedApproval.resource || rpcPayload.p_resource || '').trim(),
-        record_id: String(normalizedApproval.record_id || rpcPayload.p_record_id || '').trim()
+        record_id: String(normalizedApproval.record_id || rpcPayload.p_record_id || '').trim(),
+        record_reference: String(safePayload.record_reference || safePayload.resource_display_id || requestedChangesPayload?.record_reference || requestedChangesPayload?.resource_display_id || '').trim()
       };
     }
     if (requestedAction === 'request_approval' || requestedAction === 'approve' || requestedAction === 'reject' || requestedAction === 'list_pending_approvals') {
@@ -4326,6 +4389,7 @@
         'approval_id',
         'resource',
         'record_id',
+        'record_reference',
         'workflow_rule_id',
         'requester_user_id',
         'requester_role',
@@ -4343,11 +4407,11 @@
         return acc;
       }, {});
       if (requestedAction === 'request_approval') {
-        if (String(sanitizedRow.resource || '').trim().toLowerCase() === 'proposals') {
+        if (['proposals', 'agreements', 'agreement_amendment'].includes(String(sanitizedRow.resource || '').trim().toLowerCase())) {
           const requested = sanitizedRow.requested_changes && typeof sanitizedRow.requested_changes === 'object'
             ? sanitizedRow.requested_changes
             : {};
-          const normalizedRecordId = String(sanitizedRow.record_id || requested.resource_id || requested.target_id || requested.proposal_uuid || '').trim();
+          const normalizedRecordId = String(sanitizedRow.record_id || requested.resource_id || requested.target_id || requested.proposal_uuid || requested.agreement_uuid || requested.amendment_uuid || '').trim();
           const normalizedTargetStatus = String(sanitizedRow.new_status || requested.requested_status || requested.next_status || requested.status || '')
             .trim()
             .toLowerCase()
@@ -4357,7 +4421,7 @@
             const { data: pendingRows, error: duplicateError } = await client
               .from('workflow_approvals')
               .select('*')
-              .eq('resource', 'proposals')
+              .eq('resource', String(rpcPayload.p_resource || '').trim().toLowerCase())
               .eq('record_id', normalizedRecordId)
               .eq('status', 'pending')
               .order('created_at', { ascending: false });
@@ -4382,7 +4446,7 @@
                 reused: true,
                 approval_id: normalizedDuplicate?.approval_id || duplicateRow?.approval_id || duplicateRow?.id || '',
                 status: normalizedDuplicate?.status || duplicateRow?.status || 'pending',
-                resource: normalizedDuplicate?.resource || duplicateRow?.resource || 'proposals',
+                resource: normalizedDuplicate?.resource || duplicateRow?.resource || String(sanitizedRow.resource || '').trim().toLowerCase(),
                 record_id: normalizedDuplicate?.record_id || duplicateRow?.record_id || normalizedRecordId
               };
             }
@@ -4552,7 +4616,7 @@
     { resource: 'deals', action: 'deal_updated', recipient_roles: ['admin'], users_from_record: ['owner_email', 'created_by_email'] },
     { resource: 'deals', action: 'deal_created_from_lead', recipient_roles: ['admin'], users_from_record: ['owner_email', 'created_by_email'] },
     { resource: 'deals', action: 'deal_important_stage', recipient_roles: ['admin'], users_from_record: ['owner_email'] },
-    { resource: 'proposals', action: 'proposal_requires_approval', recipient_roles: ['financial_controller', 'gm'] },
+    { resource: String(duplicate.resource || rpcPayload.p_resource || '').trim(), action: 'proposal_requires_approval', recipient_roles: ['financial_controller', 'gm'] },
     { resource: 'agreements', action: 'agreement_signed', recipient_roles: ['admin', 'accounting', 'hoo'] },
     { resource: 'technical_admin_requests', action: 'technical_request_submitted', recipient_roles: ['admin', 'dev', 'hoo'] },
     { resource: 'workflow', action: 'workflow_approval_requested', recipient_roles: ['financial_controller', 'gm'] },
@@ -5131,7 +5195,7 @@
         await createNotificationAndPush({
           title: 'Proposal created from deal',
           message: `Proposal ${String(candidate?.proposal_id || candidate?.ref_number || '').trim() || 'record'} was created from a deal.`,
-          resource: 'proposals',
+          resource: String(duplicate.resource || rpcPayload.p_resource || '').trim(),
           action: 'proposal_created_from_deal',
           record_id: recordId || undefined,
           target_roles: ['admin', 'hoo'],
@@ -6094,7 +6158,7 @@
         await createNotificationAndPush({
           title: 'Proposal requires review',
           message: `Proposal ${String(created.proposal_id || created.ref_number || created.id || '').trim()} requires approval.`,
-          resource: 'proposals',
+          resource: String(duplicate.resource || rpcPayload.p_resource || '').trim(),
           action: 'proposal_requires_approval',
           record_id: String(created.proposal_id || created.id || '').trim(),
           target_roles: ['admin', 'hoo'],
@@ -6539,7 +6603,7 @@
           await createNotificationAndPush({
             title: 'Proposal updated',
             message: `Proposal ${String(data?.proposal_id || data?.ref_number || data?.id || id || '').trim()} is ${nextStatus}.`,
-            resource: 'proposals',
+            resource: String(duplicate.resource || rpcPayload.p_resource || '').trim(),
             action: `proposal_${nextStatus.replace(/\s+/g, '_')}`,
             record_id: String(data?.proposal_id || data?.id || id || '').trim(),
             target_roles: ['admin', 'hoo'],
