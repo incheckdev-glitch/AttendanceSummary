@@ -1,68 +1,133 @@
 (function initSupabaseData(global) {
+  const RESOURCE_CONFIG = Object.freeze({
+    auth: { table: null, idField: 'id', labelField: 'id' },
+    users: { table: 'profiles', idField: 'id', labelField: 'name' },
+    roles: { table: 'roles', idField: 'role_key', labelField: 'role_key' },
+    role_permissions: { table: 'role_permissions', idField: 'permission_id', labelField: 'resource' },
+    tickets: { table: 'tickets', idField: 'ticket_id', labelField: 'ticket_id' },
+    events: { table: 'calendar_events', idField: 'event_id', labelField: 'title' },
+    calendar_events: { table: 'calendar_events', idField: 'event_id', labelField: 'title' },
+    csm: { table: 'csm_activities', idField: 'id', labelField: 'activity_id' },
+    csm_activities: { table: 'csm_activities', idField: 'id', labelField: 'activity_id' },
+    csm_daily_activity: { table: 'csm_daily_activity', idField: 'activity_id', labelField: 'activity_id' },
+    leads: { table: 'leads', idField: 'lead_id', labelField: 'lead_id' },
+    lead_note_logs: { table: 'lead_note_logs', idField: 'id', labelField: 'id' },
+    deal_note_logs: { table: 'deal_note_logs', idField: 'id', labelField: 'id' },
+    deals: { table: 'deals', idField: 'deal_id', labelField: 'deal_id' },
+    proposal_catalog: { table: 'proposal_catalog_items', idField: 'id', labelField: 'item_name' },
+    proposals: { table: 'proposals', idField: 'proposal_id', labelField: 'proposal_reference' },
+    agreements: { table: 'agreements', idField: 'agreement_id', labelField: 'agreement_reference' },
+    agreement_amendment: { table: 'agreement_amendments', idField: 'amendment_id', labelField: 'amendment_reference' },
+    agreement_amendments: { table: 'agreement_amendments', idField: 'amendment_id', labelField: 'amendment_reference' },
+    agreement_amendment_items: { table: 'agreement_amendment_items', idField: 'item_id', labelField: 'description' },
+    workflow: { table: null, idField: 'id', labelField: 'id' },
+    workflow_rules: { table: 'workflow_rules', idField: 'workflow_rule_id', labelField: 'resource' },
+    workflow_approvals: { table: 'workflow_approvals', idField: 'approval_id', labelField: 'approval_id' },
+    clients: { table: 'clients', idField: 'client_id', labelField: 'legal_company_name' },
+    invoices: { table: 'invoices', idField: 'invoice_id', labelField: 'invoice_number' },
+    receipts: { table: 'receipts', idField: 'receipt_id', labelField: 'receipt_number' },
+    operations_onboarding: { table: 'operations_onboarding', idField: 'onboarding_id', labelField: 'onboarding_id' },
+    technical_admin_requests: { table: 'technical_admin_requests', idField: 'request_id', labelField: 'request_id' },
+    notifications: { table: 'notifications', idField: 'notification_id', labelField: 'title' },
+    notification_rules: { table: 'notification_rules', idField: 'id', labelField: 'description' },
+    notification_settings: { table: 'notification_rules', idField: 'id', labelField: 'description' },
+    communication_centre_conversations: { table: 'communication_centre_conversations', idField: 'conversation_id', labelField: 'title' },
+    communication_centre_messages: { table: 'communication_centre_messages', idField: 'message_id', labelField: 'message_id' },
+    companies: { table: 'companies', idField: 'company_id', labelField: 'legal_company_name' },
+    contacts: { table: 'contacts', idField: 'contact_id', labelField: 'contact_name' },
+    company_type_options: { table: 'company_type_options', idField: 'id', labelField: 'name' },
+    company_industry_options: { table: 'company_industry_options', idField: 'id', labelField: 'name' }
+  });
+
+  const RESOURCE_ALIASES = Object.freeze({
+    company: 'companies',
+    contact: 'contacts',
+    client: 'clients',
+    lead: 'leads',
+    deal: 'deals',
+    proposal: 'proposals',
+    agreement: 'agreements',
+    invoice: 'invoices',
+    receipt: 'receipts',
+    ticket: 'tickets',
+    event: 'events',
+    calendar: 'calendar_events',
+    onboarding: 'operations_onboarding',
+    operations: 'operations_onboarding',
+    technical_admin: 'technical_admin_requests',
+    technical_admin_request: 'technical_admin_requests',
+    csm_activity: 'csm_daily_activity',
+    workflow_rule: 'workflow_rules',
+    workflow_approval: 'workflow_approvals',
+    notification_setting: 'notification_settings',
+    notification_rule: 'notification_rules',
+    amendment: 'agreement_amendments',
+    agreement_amendment: 'agreement_amendments'
+  });
+
+  function normalizeResourceName(resource = '') {
+    const raw = String(resource || '').trim();
+    return RESOURCE_ALIASES[raw] || raw;
+  }
+
+  function resourceConfigFor(resource = '') {
+    const normalized = normalizeResourceName(resource);
+    const config = RESOURCE_CONFIG[normalized];
+    if (config) return { ...config, resource: normalized };
+    if (!normalized) return null;
+    console.warn('[SupabaseData] Missing resource config; using safe Supabase table fallback', { resource: normalized, table: normalized });
+    return { resource: normalized, table: normalized, idField: 'id', labelField: 'id', fallback: true };
+  }
+
   const MIGRATED_RESOURCES = new Set([
-    'auth','users','roles','role_permissions','tickets','events','csm','leads','lead_note_logs','deal_note_logs','deals','proposal_catalog','proposals','agreements','agreement_amendment','workflow','clients','invoices','receipts','operations_onboarding','technical_admin_requests','notifications','notification_settings','companies','contacts','company_type_options','company_industry_options'
+    ...Object.keys(RESOURCE_CONFIG),
+    ...Object.keys(RESOURCE_ALIASES)
   ]);
 
-  const TABLE_BY_RESOURCE = {
-    users: 'profiles', roles: 'roles', role_permissions: 'role_permissions', tickets: 'tickets',
-    events: 'events', csm: 'csm_activities', leads: 'leads', lead_note_logs: 'lead_note_logs', deal_note_logs: 'deal_note_logs', deals: 'deals',
-    proposal_catalog: 'proposal_catalog_items', proposals: 'proposals', agreements: 'agreements', agreement_amendment: 'agreement_amendments',
-    clients: 'clients', invoices: 'invoices', receipts: 'receipts', operations_onboarding: 'operations_onboarding',
-    technical_admin_requests: 'technical_admin_requests', companies: 'companies', contacts: 'contacts', company_type_options: 'company_type_options', company_industry_options: 'company_industry_options'
-    ,notifications: 'notifications'
-    ,notification_settings: 'notification_rules'
-  };
+  const TABLE_BY_RESOURCE = Object.fromEntries(
+    Object.entries(RESOURCE_CONFIG)
+      .filter(([, config]) => config.table)
+      .map(([resource, config]) => [resource, config.table])
+  );
 
-  const PK_BY_RESOURCE = {
-    users: 'id',
-    roles: 'role_key',
-    role_permissions: 'permission_id',
-    tickets: 'id',
-    events: 'id',
-    csm: 'id',
-    leads: 'id',
-    lead_note_logs: 'id',
-    deal_note_logs: 'id',
-    deals: 'id',
-    proposal_catalog: 'id',
-    proposals: 'id',
-    agreements: 'id',
-    agreement_amendment: 'id',
-    clients: 'id',
-    invoices: 'id',
-    receipts: 'id',
-    operations_onboarding: 'id',
-    technical_admin_requests: 'id',
-    companies: 'id',
-    contacts: 'id',
-    company_type_options: 'id',
-    company_industry_options: 'id'
-    ,notifications: 'notification_id'
-    ,notification_settings: 'id'
-  };
+  const PK_BY_RESOURCE = Object.fromEntries(
+    Object.entries(RESOURCE_CONFIG).map(([resource, config]) => [resource, config.idField || 'id'])
+  );
+
   const LEGACY_IDENTIFIER_KEYS = {
     users: [],
     roles: ['id', 'role_id', 'key'],
     role_permissions: ['id', 'permission'],
-    tickets: ['ticket_id'],
-    events: ['event_id'],
+    tickets: ['id', 'ticket_id'],
+    events: ['id', 'event_id'],
+    calendar_events: ['id', 'event_id'],
     csm: ['activity_id'],
-    leads: ['lead_id'],
-    deals: ['deal_id'],
+    csm_activities: ['activity_id'],
+    csm_daily_activity: ['id', 'activity_id'],
+    leads: ['id', 'lead_id'],
+    deals: ['id', 'deal_id'],
     proposal_catalog: ['catalog_item_id'],
-    proposals: ['proposal_id'],
-    agreements: ['agreement_id'],
-    clients: ['client_id'],
-    invoices: ['invoice_id'],
-    receipts: ['receipt_id'],
-    operations_onboarding: ['onboarding_id', 'agreement_id'],
-    technical_admin_requests: ['request_id', 'technical_request_id'],
-    companies: ['company_id'],
-    contacts: ['contact_id'],
+    proposals: ['id', 'proposal_id'],
+    agreements: ['id', 'agreement_id'],
+    agreement_amendment: ['id', 'amendment_id'],
+    agreement_amendments: ['id', 'amendment_id'],
+    agreement_amendment_items: ['id', 'item_id'],
+    workflow_rules: ['id', 'workflow_rule_id'],
+    workflow_approvals: ['id', 'approval_id'],
+    clients: ['id', 'client_id'],
+    invoices: ['id', 'invoice_id'],
+    receipts: ['id', 'receipt_id'],
+    operations_onboarding: ['id', 'onboarding_id', 'agreement_id'],
+    technical_admin_requests: ['id', 'request_id', 'technical_request_id'],
+    companies: ['id', 'company_id'],
+    contacts: ['id', 'contact_id'],
+    notification_rules: ['id'],
+    communication_centre_conversations: ['id', 'conversation_id'],
+    communication_centre_messages: ['id', 'message_id'],
     company_type_options: [],
-    company_industry_options: []
-    ,notifications: ['id']
-    ,notification_settings: []
+    company_industry_options: [],
+    notifications: ['id'],
+    notification_settings: []
   };
 
   const ITEM_TABLES = { proposals: 'proposal_items', agreements: 'agreement_items', agreement_amendment: 'agreement_amendment_items', invoices: 'invoice_items', receipts: 'receipt_items' };
@@ -487,17 +552,17 @@
     'discounted_unit_price','quantity','line_total','service_start_date','service_end_date','capability_name','capability_value','notes'
   ]);
   const CLIENT_COLUMNS = new Set([
-    'client_id','client_name','company_name','primary_email','primary_phone','billing_frequency','payment_term',
+    'client_id','client_name','company_id','legal_company_name','company_name','account_number','currency','primary_email','primary_phone','billing_frequency','payment_term',
     'status','source_agreement_id','total_agreements','total_locations','total_value','total_paid','total_due',
-    'created_by','updated_by','created_at','updated_at'
+    'related_module','related_record_id','related_record_label','created_by','updated_by','created_at','updated_at'
   ]);
   const INVOICE_COLUMNS = new Set([
-    'invoice_id','invoice_number','client_id','agreement_uuid','agreement_id','agreement_number','proposal_id','issue_date','due_date','billing_frequency',
-    'payment_term','company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile',
+    'invoice_id','invoice_number','invoice_reference','client_id','agreement_uuid','agreement_id','agreement_number','proposal_id','issue_date','invoice_date','due_date','billing_frequency',
+    'payment_term','company_id','legal_company_name','company_name','account_number','contact_id','contact_name','contact_email','contact_phone','contact_mobile',
     'customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_email',
-    'provider_legal_name','provider_address','support_email','subtotal_locations','subtotal_one_time','invoice_total',
+    'provider_legal_name','provider_address','support_email','subtotal_locations','subtotal_one_time','invoice_total','subtotal','discount_amount','tax_amount','total_amount',
     'old_paid_total','paid_now','amount_paid','received_amount','pending_amount','balance_due','payment_state','payment_status','payment_conclusion','amount_in_words','status','notes','paid_at',
-    'created_by','updated_by','currency','created_at','updated_at'
+    'related_module','related_record_id','related_record_label','created_by','updated_by','currency','created_at','updated_at'
   ]);
   const INVOICE_ITEM_COLUMNS = new Set([
     'item_id','invoice_id','section','line_no','location_name','item_name','unit_price','discount_percent',
@@ -505,11 +570,11 @@
     'service_start_date','service_end_date'
   ]);
   const RECEIPT_COLUMNS = new Set([
-    'receipt_id','receipt_number','invoice_id','invoice_number','agreement_uuid','agreement_id','agreement_number','client_id','company_id','company_name','customer_name','customer_legal_name','customer_address','contact_id','contact_name','contact_email','contact_phone','contact_mobile','receipt_status','amount_paid','payment_date','payment_method',
+    'receipt_id','receipt_number','invoice_id','invoice_number','agreement_uuid','agreement_id','agreement_number','client_id','company_id','legal_company_name','company_name','account_number','customer_name','customer_legal_name','customer_address','contact_id','contact_name','contact_email','contact_phone','contact_mobile','receipt_status','amount_paid','payment_date','payment_method',
     'payment_reference','is_settlement','notes','status',
-    'invoice_number','currency','support_email','company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_name','customer_legal_name','customer_address',
-    'amount_in_words','invoice_total','old_paid_total','paid_now','received_amount','new_paid_total','pending_amount','payment_state','payment_conclusion','payment_notes',
-    'created_by','updated_by','created_at','updated_at'
+    'invoice_number','currency','support_email','company_id','legal_company_name','company_name','account_number','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_name','customer_legal_name','customer_address',
+    'amount_in_words','invoice_total','old_paid_total','paid_now','received_amount','payment_amount','amount','new_paid_total','pending_amount','payment_state','payment_status','payment_conclusion','payment_notes',
+    'related_module','related_record_id','related_record_label','created_by','updated_by','created_at','updated_at'
   ]);
   const RECEIPT_ITEM_COLUMNS = new Set([
     'item_id','receipt_id','invoice_item_id','section','line_no','location_name','location_address','item_name','description',
@@ -626,6 +691,36 @@
       'meta','meta_json','link_target','action_label','action_required','actor_user_id','actor_role'
     ])
   };
+  Object.entries({
+    companies: ['id','company_id','legal_company_name','company_name','legal_name','created_at','updated_at'],
+    contacts: ['id','contact_id','contact_name','full_name','company_id','company_name','created_at','updated_at'],
+    clients: ['id','client_id','company_id','legal_company_name','company_name','account_number','currency','status','created_at','updated_at'],
+    leads: ['id','lead_id','company_id','company_name','contact_name','status','created_at','updated_at'],
+    deals: ['id','deal_id','lead_id','company_id','company_name','stage','status','created_at','updated_at'],
+    proposals: ['id','proposal_id','proposal_reference','ref_number','created_at','updated_at'],
+    agreements: ['id','agreement_id','agreement_reference','agreement_number','created_at','updated_at'],
+    invoices: ['id','invoice_id','invoice_number','invoice_reference','agreement_id','client_id','company_id','legal_company_name','company_name','account_number','status','payment_status','currency','subtotal','discount_amount','tax_amount','total_amount','amount_paid','balance_due','due_date','invoice_date','created_at','updated_at'],
+    receipts: ['id','receipt_id','receipt_number','invoice_id','invoice_number','client_id','company_id','legal_company_name','company_name','account_number','status','payment_state','currency','received_amount','payment_amount','amount','payment_date','payment_method','created_at','updated_at'],
+    tickets: ['id','ticket_id','title','status','priority','created_at','updated_at'],
+    events: ['id','event_id','title','created_at','updated_at'],
+    calendar_events: ['id','event_id','title','created_at','updated_at'],
+    operations_onboarding: ['id','onboarding_id','agreement_id','client_id','company_id','legal_company_name','company_name','status','assigned_csm_id','assigned_csm_name','assigned_csm_email','go_live_date','technical_admin_requested','created_at','updated_at'],
+    technical_admin_requests: ['id','request_id','onboarding_id','agreement_id','client_id','company_id','legal_company_name','company_name','status','priority','requested_by','requested_at','assigned_to','assigned_to_name','notes','created_at','updated_at'],
+    csm_activities: ['id','activity_id','created_at','updated_at'],
+    csm_daily_activity: ['id','activity_id','created_at','updated_at'],
+    workflow_rules: ['id','workflow_rule_id','resource','created_at','updated_at'],
+    workflow_approvals: ['id','approval_id','created_at','updated_at'],
+    notification_rules: ['id','description','resource','action','created_at','updated_at'],
+    notification_settings: ['id','description','resource','action','created_at','updated_at'],
+    communication_centre_conversations: ['id','conversation_id','title','created_at','updated_at'],
+    communication_centre_messages: ['id','message_id','conversation_id','created_at','updated_at'],
+    agreement_amendments: ['id','amendment_id','amendment_reference','created_at','updated_at'],
+    agreement_amendment_items: ['id','item_id','description','created_at','updated_at']
+  }).forEach(([resource, columns]) => {
+    if (!LIST_COLUMNS_BY_RESOURCE[resource]) LIST_COLUMNS_BY_RESOURCE[resource] = new Set();
+    columns.forEach(column => LIST_COLUMNS_BY_RESOURCE[resource].add(column));
+  });
+
   const LIST_SEARCH_COLUMNS_BY_RESOURCE = {
     agreements: ['agreement_id', 'agreement_number', 'agreement_title', 'customer_name', 'customer_legal_name', 'customer_contact_name', 'status'],
     operations_onboarding: ['onboarding_id', 'agreement_id', 'agreement_number', 'client_name', 'request_type', 'technical_request_status', 'csm_assigned_to', 'go_live_target_date'],
@@ -1069,13 +1164,14 @@
   };
 
   function getPrimaryKeyForResource(resource) {
-    const name = String(resource || '').trim();
-    return PK_BY_RESOURCE[name] || 'id';
+    const name = normalizeResourceName(resource);
+    return PK_BY_RESOURCE[name] || resourceConfigFor(name)?.idField || 'id';
   }
 
   function getIdentifierKeysForResource(resource) {
     const pk = getPrimaryKeyForResource(resource);
-    const extras = LEGACY_IDENTIFIER_KEYS[resource] || [];
+    const normalized = normalizeResourceName(resource);
+    const extras = LEGACY_IDENTIFIER_KEYS[normalized] || LEGACY_IDENTIFIER_KEYS[resource] || [];
     return [...new Set([pk, ...extras])];
   }
 
@@ -1337,6 +1433,17 @@
     return compacted;
   }
 
+  function copyAllowedPayloadFields(target = {}, source = {}, allowedColumns = new Set()) {
+    if (!source || typeof source !== 'object' || !allowedColumns) return target;
+    Object.entries(source).forEach(([key, value]) => {
+      if (value === undefined) return;
+      if (!allowedColumns.has(key)) return;
+      if (Object.prototype.hasOwnProperty.call(target, key)) return;
+      target[key] = value;
+    });
+    return target;
+  }
+
   function numberOrNull(value) {
     if (value === undefined || value === null || value === '') return null;
     const parsed = Number(value);
@@ -1369,6 +1476,7 @@
       total_paid: numberOrNull(firstDefined(record, ['total_paid', 'totalPaid'])),
       total_due: numberOrNull(firstDefined(record, ['total_due', 'totalDue']))
     });
+    copyAllowedPayloadFields(sanitized, record, CLIENT_COLUMNS);
     Object.keys(sanitized).forEach(key => { if (!CLIENT_COLUMNS.has(key)) delete sanitized[key]; });
     if (includeCreatedBy && userId) sanitized.created_by = userId;
     if (userId) sanitized.updated_by = userId;
@@ -1420,6 +1528,7 @@
       created_at: trimOrNull(firstDefined(record, ['created_at', 'createdAt'])),
       updated_at: trimOrNull(firstDefined(record, ['updated_at', 'updatedAt']))
     });
+    copyAllowedPayloadFields(sanitized, record, INVOICE_COLUMNS);
     Object.keys(sanitized).forEach(key => { if (!INVOICE_COLUMNS.has(key)) delete sanitized[key]; });
     if (includeCreatedBy && userId) sanitized.created_by = userId;
     if (userId) sanitized.updated_by = userId;
@@ -1509,6 +1618,7 @@
       created_at: trimOrNull(firstDefined(record, ['created_at', 'createdAt'])),
       updated_at: trimOrNull(firstDefined(record, ['updated_at', 'updatedAt']))
     });
+    copyAllowedPayloadFields(sanitized, record, RECEIPT_COLUMNS);
     Object.keys(sanitized).forEach(key => { if (!RECEIPT_COLUMNS.has(key)) delete sanitized[key]; });
     if (includeCreatedBy && userId) sanitized.created_by = userId;
     if (userId) sanitized.updated_by = userId;
@@ -3036,14 +3146,49 @@
     const offset = rawOffset === undefined || rawOffset === null || rawOffset === ''
       ? Math.max(0, (page - 1) * limit)
       : Math.max(0, numberOr(rawOffset, 0));
-    const sortByRaw = String(controls.sort_by ?? controls.sortBy ?? controls.sort ?? 'updated_at').trim();
+    const defaultSort = LIST_COLUMNS_BY_RESOURCE[resource]?.has('created_at') ? 'created_at' : (LIST_COLUMNS_BY_RESOURCE[resource]?.has(getPrimaryKeyForResource(resource)) ? getPrimaryKeyForResource(resource) : '');
+    const sortByRaw = String(controls.sort_by ?? controls.sortBy ?? controls.sort ?? defaultSort).trim();
     const sortDirRaw = String(controls.sort_dir ?? controls.sortDir ?? 'desc').trim().toLowerCase();
     const allowedColumns = LIST_COLUMNS_BY_RESOURCE[resource];
-    const sortBy = allowedColumns && allowedColumns.has(sortByRaw) ? sortByRaw : 'updated_at';
+    const sortBy = allowedColumns && sortByRaw && allowedColumns.has(sortByRaw) ? sortByRaw : defaultSort;
     const sortDir = sortDirRaw === 'asc' ? 'asc' : 'desc';
     const from = offset;
     const to = offset + limit - 1;
     return { page, limit, offset, sortBy, sortDir, from, to };
+  }
+
+  function isMissingOrderColumnError(error) {
+    const message = String(error?.message || error?.details || error?.hint || '').toLowerCase();
+    return Boolean(error) && (/column .* does not exist/.test(message) || /could not find .* column/.test(message) || /schema cache/.test(message));
+  }
+
+  async function executePagedListQuery(client, table, payload, resource, listControls) {
+    const orderCandidates = [
+      listControls.sortBy,
+      'created_at',
+      getPrimaryKeyForResource(resource)
+    ].filter(Boolean);
+    const uniqueOrderCandidates = [...new Set(orderCandidates)];
+    let lastMissingOrderError = null;
+    for (const sortBy of uniqueOrderCandidates) {
+      let query = client.from(table).select('*', { count: 'exact' });
+      query = applyFilters(query, payload, { resource });
+      query = query.order(sortBy, { ascending: listControls.sortDir === 'asc' });
+      query = query.range(listControls.from, listControls.to);
+      const result = await query;
+      if (!result.error) return result;
+      if (!isMissingOrderColumnError(result.error)) return result;
+      lastMissingOrderError = result.error;
+      console.warn('[SupabaseData] List order column is unavailable; retrying with fallback order', { resource, table, sortBy, error: result.error.message || result.error });
+    }
+    let query = client.from(table).select('*', { count: 'exact' });
+    query = applyFilters(query, payload, { resource });
+    query = query.range(listControls.from, listControls.to);
+    const result = await query;
+    if (result.error && lastMissingOrderError && isMissingOrderColumnError(result.error)) {
+      console.warn('[SupabaseData] List query failed after no-order fallback', { resource, table, error: result.error.message || result.error });
+    }
+    return result;
   }
 
   function applyFilters(query, payload = {}, { resource = '' } = {}) {
@@ -4616,7 +4761,7 @@
     { resource: 'deals', action: 'deal_updated', recipient_roles: ['admin'], users_from_record: ['owner_email', 'created_by_email'] },
     { resource: 'deals', action: 'deal_created_from_lead', recipient_roles: ['admin'], users_from_record: ['owner_email', 'created_by_email'] },
     { resource: 'deals', action: 'deal_important_stage', recipient_roles: ['admin'], users_from_record: ['owner_email'] },
-    { resource: String(duplicate.resource || rpcPayload.p_resource || '').trim(), action: 'proposal_requires_approval', recipient_roles: ['financial_controller', 'gm'] },
+    { resource: 'proposals', action: 'proposal_requires_approval', recipient_roles: ['financial_controller', 'gm'] },
     { resource: 'agreements', action: 'agreement_signed', recipient_roles: ['admin', 'accounting', 'hoo'] },
     { resource: 'technical_admin_requests', action: 'technical_request_submitted', recipient_roles: ['admin', 'dev', 'hoo'] },
     { resource: 'workflow', action: 'workflow_approval_requested', recipient_roles: ['financial_controller', 'gm'] },
@@ -5524,9 +5669,11 @@
   }
 
   async function dispatch(payload = {}) {
-    const resource = String(payload.resource || '').trim();
+    const requestedResource = String(payload.resource || '').trim();
+    const resource = normalizeResourceName(requestedResource);
     const action = String(payload.action || 'list').trim();
-    if (!MIGRATED_RESOURCES.has(resource)) return { handled: false };
+    if (!MIGRATED_RESOURCES.has(requestedResource) && !MIGRATED_RESOURCES.has(resource)) return { handled: false };
+    if (requestedResource && requestedResource !== resource) payload = { ...payload, resource };
 
     devLog('[supabase] dispatch', resource, action);
     if (resource === 'auth') return { handled: true, data: await handleAuth(action, payload) };
@@ -5535,17 +5682,15 @@
     const rpcResult = await handleRpcResource(resource, action, payload);
     if (rpcResult !== null) return { handled: true, data: rpcResult };
 
-    const table = TABLE_BY_RESOURCE[resource];
+    const resourceConfig = resourceConfigFor(resource);
+    const table = TABLE_BY_RESOURCE[resource] || resourceConfig?.table;
     const client = getClient();
 
     if (resource === 'tickets' && action === 'list') {
       assertAllowed('tickets', 'list');
       const { controls } = splitListPayload(payload);
       const listControls = normalizeListControls(controls, 'tickets');
-      let query = applyFilters(client.from('tickets').select('*', { count: 'exact' }), payload, { resource: 'tickets' });
-      query = query.order(listControls.sortBy, { ascending: listControls.sortDir === 'asc' });
-      query = query.range(listControls.from, listControls.to);
-      const { data: tickets, error, count } = await query;
+      const { data: tickets, error, count } = await executePagedListQuery(client, 'tickets', payload, 'tickets', listControls);
       if (error) throw friendlyError('Unable to load tickets', error);
       const normalized = (tickets || []).map(row => normalizeRow(resource, row));
       if (!isAdminDev()) return { handled: true, data: normalizePagedList(resource, normalized, listControls, count) };
@@ -5862,13 +6007,16 @@
       assertAllowed(resource, 'list');
       const { controls } = splitListPayload(payload);
       const listControls = normalizeListControls(controls, resource);
-      let query = resource === 'users'
-        ? client.from('profiles').select('id, name, email, username, role_key, is_active, created_at, updated_at', { count: 'exact' })
-        : client.from(table).select('*', { count: 'exact' });
-      query = applyFilters(query, payload, { resource });
-      query = query.order(listControls.sortBy, { ascending: listControls.sortDir === 'asc' });
-      query = query.range(listControls.from, listControls.to);
-      const { data, error, count } = await query;
+      let data, error, count;
+      if (resource === 'users') {
+        let query = client.from('profiles').select('id, name, email, username, role_key, is_active, created_at, updated_at', { count: 'exact' });
+        query = applyFilters(query, payload, { resource });
+        if (listControls.sortBy) query = query.order(listControls.sortBy, { ascending: listControls.sortDir === 'asc' });
+        query = query.range(listControls.from, listControls.to);
+        ({ data, error, count } = await query);
+      } else {
+        ({ data, error, count } = await executePagedListQuery(client, table, payload, resource, listControls));
+      }
       if (error) throw friendlyError(`Unable to load ${resource}`, error);
       return { handled: true, data: normalizePagedList(resource, data, listControls, count) };
     }
@@ -6832,7 +6980,15 @@
     throw new Error(`Unsupported action ${action} for resource ${resource}.`);
   }
 
-  global.SupabaseData = { dispatch, isMigratedResource: resource => MIGRATED_RESOURCES.has(String(resource || '').trim()) };
+  global.SupabaseData = {
+    dispatch,
+    isMigratedResource: resource => {
+      const requested = String(resource || '').trim();
+      return MIGRATED_RESOURCES.has(requested) || MIGRATED_RESOURCES.has(normalizeResourceName(requested));
+    },
+    normalizeResourceName,
+    getResourceConfig: resource => resourceConfigFor(resource)
+  };
   global.testNonWorkflowPwaPush = async function testNonWorkflowPwaPush() {
     return createNotificationAndPush({
       title: 'Ticket PWA Test',
