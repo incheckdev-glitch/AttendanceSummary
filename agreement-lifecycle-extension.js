@@ -276,11 +276,23 @@
     return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' });
   }
 
-  function formatDateTime(value) {
-    if (!value) return '';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return String(value || '');
-    return date.toLocaleString(undefined, { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  function formatAgreementLifecycleDateTime(value) {
+    if (!value) return '-';
+
+    try {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value);
+
+      return date.toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (error) {
+      return String(value || '-');
+    }
   }
 
   function formatMoney(value, currency = '') {
@@ -376,7 +388,7 @@
                   <td>${escapeHtml(formatDate(amendment.effective_date) || '—')}</td>
                   <td>${escapeHtml(humanize(amendment.billing_impact) || '—')}</td>
                   <td>${escapeHtml(formatMoney(amendment.grand_total, amendment.currency) || '—')}</td>
-                  <td>${escapeHtml(formatDateTime(amendment.created_at) || '—')}</td>
+                  <td>${escapeHtml(formatAgreementLifecycleDateTime(amendment.created_at) || '—')}</td>
                   <td>
                     <div class="agreement-amendments-actions">
                       ${isDraft ? `<button class="btn ghost sm" type="button" data-agreement-amendment-action="edit" data-amendment-key="${key}">Edit Draft</button>` : `<button class="btn ghost sm" type="button" data-agreement-amendment-action="open" data-amendment-key="${key}">View Amendment</button>`}
