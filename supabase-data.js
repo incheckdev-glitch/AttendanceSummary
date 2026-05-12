@@ -419,7 +419,7 @@
     'company_id','company_name','legal_name','authorized_signatory_full_name','authorized_signatory_title','registration_number','company_type','industry','website','main_email','main_phone','country','city','address','tax_number','company_status','source','owner_name','owner_email','notes','created_by','created_by_email','created_at','updated_at','documents_verified','documents_verification_status','documents_verified_at','documents_verified_by','documents_verification_notes','documents_verified_snapshot','documents_verification_invalidated_at','documents_verification_invalidated_reason'
   ]);
   const CONTACT_COLUMNS = new Set([
-    'contact_id','company_id','company_name','first_name','last_name','full_name','job_title','department','email','phone','mobile','decision_role','is_primary_contact','contact_status','notes','created_by','created_by_email','created_at','updated_at'
+    'contact_id','company_id','company_name','company_ids','company_names','first_name','last_name','full_name','job_title','department','email','phone','mobile','decision_role','is_primary_contact','contact_status','notes','created_by','created_by_email','created_at','updated_at'
   ]);
   const DEAL_COLUMNS = new Set([
     'deal_id',
@@ -1893,8 +1893,12 @@
       output[key] = value;
     };
 
-    assign('company_id', source.company_id ?? source.companyId);
+    const normalizedCompanyIds = normalizeContactCompanyIdsForWrite(source.company_ids ?? source.companyIds, source.company_id ?? source.companyId);
+    if (normalizedCompanyIds.length) output.company_ids = normalizedCompanyIds;
+    if (!source.company_id && !source.companyId && normalizedCompanyIds.length) output.company_id = normalizedCompanyIds[0];
+    else assign('company_id', source.company_id ?? source.companyId);
     assign('company_name', source.company_name ?? source.companyName);
+    if (source.company_names !== undefined || source.companyNames !== undefined) assign('company_names', source.company_names ?? source.companyNames);
     assign('legal_name', source.legal_name ?? source.legalName);
     assign('authorized_signatory_full_name', source.authorized_signatory_full_name ?? source.authorizedSignatoryFullName);
     assign('authorized_signatory_title', source.authorized_signatory_title ?? source.authorizedSignatoryTitle);
@@ -1931,6 +1935,17 @@
     return output;
   }
 
+  function normalizeContactCompanyIdsForWrite(value, fallback = '') {
+    const raw = value === undefined || value === null || value === '' ? fallback : value;
+    if (Array.isArray(raw)) return raw.map(v => String(v || '').trim()).filter(Boolean);
+    const text = String(raw || '').trim();
+    if (!text) return [];
+    if (text.startsWith('{') && text.endsWith('}')) {
+      return text.slice(1, -1).split(',').map(v => v.replace(/^"|"$/g, '').trim()).filter(Boolean);
+    }
+    return text.split(',').map(v => v.trim()).filter(Boolean);
+  }
+
   function sanitizeContactRecord(input = {}, options = {}) {
     const source = input && typeof input === 'object' ? input : {};
     const output = {};
@@ -1947,8 +1962,12 @@
     };
 
     assign('contact_id', source.contact_id ?? source.contactId);
-    assign('company_id', source.company_id ?? source.companyId);
+    const normalizedCompanyIds = normalizeContactCompanyIdsForWrite(source.company_ids ?? source.companyIds, source.company_id ?? source.companyId);
+    if (normalizedCompanyIds.length) output.company_ids = normalizedCompanyIds;
+    if (!source.company_id && !source.companyId && normalizedCompanyIds.length) output.company_id = normalizedCompanyIds[0];
+    else assign('company_id', source.company_id ?? source.companyId);
     assign('company_name', source.company_name ?? source.companyName);
+    if (source.company_names !== undefined || source.companyNames !== undefined) assign('company_names', source.company_names ?? source.companyNames);
     assign('first_name', source.first_name ?? source.firstName);
     assign('last_name', source.last_name ?? source.lastName);
     assign('full_name', source.full_name ?? source.fullName);
@@ -1977,6 +1996,7 @@
     if (options.mode === 'create' && !output.contact_id) delete output.contact_id;
     delete output.created_at;
     delete output.updated_at;
+    if (!output.company_id && Array.isArray(output.company_ids) && output.company_ids.length) output.company_id = output.company_ids[0];
     if (!output.company_id) throw new Error('Company is required.');
     if (!output.first_name && !output.last_name && !output.full_name) throw new Error('First Name or Last Name is required.');
     return output;
@@ -3095,7 +3115,10 @@
 
   function applyContactsListFilters(query, filters = {}, search = '') {
     const f = filters || {};
-    if (f.company_id) query = query.eq('company_id', f.company_id);
+    if (f.company_id) {
+      const companyId = String(f.company_id).trim().replace(/[,{}]/g, '');
+      query = query.or(`company_id.eq.${companyId},company_ids.cs.{${companyId}}`);
+    }
     if (f.contact_status) query = query.eq('contact_status', f.contact_status);
     if (f.decision_role) query = query.eq('decision_role', f.decision_role);
     if (f.department) query = query.ilike('department', `%${String(f.department).trim()}%`);
@@ -3105,7 +3128,7 @@
     if (p === 'primary' || p === 'true') query = query.eq('is_primary_contact', true);
     if (p === 'non_primary' || p === 'false') query = query.eq('is_primary_contact', false);
     const term = String(search || '').trim().replace(/[%]/g, '').replace(/[,]/g, ' ');
-    if (term) query = query.or(`contact_id.ilike.%${term}%,full_name.ilike.%${term}%,first_name.ilike.%${term}%,last_name.ilike.%${term}%,email.ilike.%${term}%,phone.ilike.%${term}%,mobile.ilike.%${term}%,company_name.ilike.%${term}%,job_title.ilike.%${term}%,department.ilike.%${term}%,notes.ilike.%${term}%`);
+    if (term) query = query.or(`contact_id.ilike.%${term}%,full_name.ilike.%${term}%,first_name.ilike.%${term}%,last_name.ilike.%${term}%,email.ilike.%${term}%,phone.ilike.%${term}%,mobile.ilike.%${term}%,company_name.ilike.%${term}%,company_names.ilike.%${term}%,job_title.ilike.%${term}%,department.ilike.%${term}%,notes.ilike.%${term}%`);
     return query;
   }
 

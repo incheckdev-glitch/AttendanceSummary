@@ -2731,7 +2731,7 @@ Sample:
       <form id="contactForm" class="stack" style="margin-top:12px;">
         <input id="contactRecordId" type="hidden" />
         <div class="grid cols-2">
-          <div class="filter-row"><label class="muted" for="contactCompanyInput">Company *</label><select id="contactCompanyInput" class="select" required><option value="">Select company</option></select></div>
+          <div class="filter-row"><label class="muted" for="contactCompanyInput">Companies *</label><select id="contactCompanyInput" class="select" multiple size="5" required><option value="">Select company</option></select><small class="muted">Hold Ctrl/Cmd to assign the contact to multiple companies. The first selected company is kept as the primary company for existing flows.</small></div>
           
           <div class="filter-row"><label class="muted" for="contactFirstNameInput">First Name</label><input id="contactFirstNameInput" class="input" type="text" /></div>
           <div class="filter-row"><label class="muted" for="contactLastNameInput">Last Name</label><input id="contactLastNameInput" class="input" type="text" /></div>
@@ -3769,7 +3769,7 @@ Sample:
   <script src="legacy-compat.js?v=20260427-allpwa1"></script>
   <script src="supabase-client.js?v=20260427-allpwa1"></script>
   <script src="notification-email-template.js?v=20260509-html-email1"></script>
-  <script src="supabase-data.js?v=20260508-proposal-final2"></script>
+  <script src="supabase-data.js?v=v18-contact-multi-company"></script>
   <script src="clients-service.js?v=20260427-allpwa1"></script>
   <script src="api.js?v=20260430-email-final2"></script>
   <script src="notification-service.js?v=20260430-email-final2"></script>
@@ -3780,11 +3780,11 @@ Sample:
   <script src="insights.js?v=20260427-allpwa1"></script>
   <script src="calendar.js?v=20260427-allpwa1"></script>
   <script src="planner.js?v=20260427-allpwa1"></script>
-  <script src="crm-form-selectors.js?v=20260504-company-contact-selectors1"></script>
+  <script src="crm-form-selectors.js?v=v18-contact-multi-company"></script>
   <script src="ui.js?v=20260427-allpwa1"></script>
   <script src="leads.js?v=20260427-allpwa1"></script>
   <script src="companies.js?v=20260429-crm"></script>
-  <script src="contacts.js?v=20260429-crm"></script>
+  <script src="contacts.js?v=v18-contact-multi-company"></script>
   <script src="deals.js?v=20260427-allpwa1"></script>
   <script src="proposals.js?v=v17-agreement-today-helper"></script>
   <script src="agreements.js?v=v17-agreement-today-helper"></script>

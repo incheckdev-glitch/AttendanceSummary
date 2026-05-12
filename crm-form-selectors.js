@@ -407,7 +407,8 @@
       try {
         const client = global.supabaseClient || global.supabase;
         if (client?.from) {
-          const { data, error } = await client.from('contacts').select('*').eq('company_id', key).order('first_name', { ascending: true }).limit(200);
+          const safeKey = String(key || '').replace(/[,{}]/g, '');
+          const { data, error } = await client.from('contacts').select('*').or(`company_id.eq.${safeKey},company_ids.cs.{${safeKey}}`).order('first_name', { ascending: true }).limit(200);
           if (error) throw error;
           contacts = (data || []).map(normalizeContact).filter(c => c.contact_id);
         }
@@ -421,22 +422,30 @@
 
   function contactMatchesCompany(contact, company) {
     const contactCompanyId = normalizeCompare(contact.company_id);
+    const contactCompanyIds = Array.isArray(contact.company_ids)
+      ? contact.company_ids.map(normalizeCompare).filter(Boolean)
+      : String(contact.company_ids || '').split(',').map(normalizeCompare).filter(Boolean);
     const contactCompanyUuid = normalizeCompare(contact.company_uuid);
     const selectedCompanyId = normalizeCompare(company.company_id || company.id);
     const selectedEntityId = normalizeCompare(company.id);
     if ((contactCompanyId && selectedCompanyId && contactCompanyId === selectedCompanyId) ||
       (contactCompanyId && selectedEntityId && contactCompanyId === selectedEntityId) ||
+      (selectedCompanyId && contactCompanyIds.includes(selectedCompanyId)) ||
+      (selectedEntityId && contactCompanyIds.includes(selectedEntityId)) ||
       (contactCompanyUuid && selectedEntityId && contactCompanyUuid === selectedEntityId)) {
       return true;
     }
     const contactLegalCompanyName = normalizeCompare(contact.legal_company_name);
     const contactCompanyName = normalizeCompare(contact.company_name);
+    const contactCompanyNames = String(contact.company_names || contact.companyNames || '').split(',').map(normalizeCompare).filter(Boolean);
     const selectedLegalName = normalizeCompare(company.legal_name);
     const selectedCompanyName = normalizeCompare(company.company_name);
     const selectedName = normalizeCompare(company.name);
     return (contactLegalCompanyName && selectedLegalName && contactLegalCompanyName === selectedLegalName) ||
       (contactCompanyName && selectedCompanyName && contactCompanyName === selectedCompanyName) ||
-      (contactCompanyName && selectedName && contactCompanyName === selectedName);
+      (contactCompanyName && selectedName && contactCompanyName === selectedName) ||
+      (selectedCompanyName && contactCompanyNames.includes(selectedCompanyName)) ||
+      (selectedName && contactCompanyNames.includes(selectedName));
   }
 
   async function resolveContactsForCompany(selectedCompany) {
