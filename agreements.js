@@ -1024,8 +1024,8 @@ const Agreements = {
       poc_license_months: this.toNullableNumber(source.poc_license_months ?? source.pocLicenseMonths),
       poc_service_start_date: this.normalizeDateInputValue(source.poc_service_start_date ?? source.pocServiceStartDate),
       poc_service_end_date: this.normalizeDateInputValue(source.poc_service_end_date ?? source.pocServiceEndDate),
-      poc_success_kpis: String(source.poc_success_kpis ?? source.pocSuccessKpis ?? '').trim(),
-      poc_conversion_commitment: String(source.poc_conversion_commitment ?? source.pocConversionCommitment ?? '').trim(),
+      poc_success_kpis: String(source.poc_success_kpis ?? source.pocSuccessKpis ?? this.getDefaultPocSuccessKpis()).trim(),
+      poc_conversion_commitment: String(source.poc_conversion_commitment ?? source.pocConversionCommitment ?? this.getDefaultPocConversionCommitment()).trim(),
       currency: String(source.currency || '').trim(),
       company_id: String(source.company_id || source.companyId || '').trim(),
       company_name: String(source.company_name || source.companyName || '').trim(),
@@ -1491,7 +1491,7 @@ const Agreements = {
             <div><strong>License / Month:</strong> ${textValue(agreementData.poc_license_months)}</div>
             <div><strong>Service Start Date:</strong> ${dateValue(agreementData.poc_service_start_date)}</div>
             <div><strong>Service End Date:</strong> ${dateValue(agreementData.poc_service_end_date)}</div>
-            <div style="grid-column:1 / -1;"><strong>POC Success KPIs:</strong><br>${textValue(agreementData.poc_success_kpis)}</div>
+            <div style="grid-column:1 / -1;"><strong>POC Success KPIs:</strong><br>${textValue(agreementData.poc_success_kpis || this.getDefaultPocSuccessKpis())}</div>
             <div style="grid-column:1 / -1;"><strong>Commercial Commitment:</strong><br>${textValue(agreementData.poc_conversion_commitment || this.getDefaultPocConversionCommitment())}</div>
           </div>
         </div>
@@ -2169,6 +2169,12 @@ const Agreements = {
       };
     }).filter(Boolean);
   },
+  getDefaultPocSuccessKpis() {
+    return 'POC success is confirmed when the agreed POC scope is completed for the selected locations, the customer validates the delivered monitoring/reporting output, users confirm operational acceptance, and no critical blocker remains open by the POC end date.';
+  },
+  getDefaultPocConversionCommitment() {
+    return 'If the POC success KPIs are achieved, the customer agrees to proceed with the full commercial subscription/agreement.';
+  },
   syncAgreementPocVisibility() {
     const toggle = document.getElementById('agreementFormIsPocToggle');
     const details = document.getElementById('agreementPocDetails');
@@ -2177,7 +2183,9 @@ const Agreements = {
     if (hidden) hidden.value = enabled ? 'true' : 'false';
     if (details) details.style.display = enabled ? 'grid' : 'none';
     if (enabled) {
+      const success = document.getElementById('agreementFormPocSuccessKpis');
       const commitment = document.getElementById('agreementFormPocConversionCommitment');
+      if (success && !String(success.value || '').trim()) success.value = this.getDefaultPocSuccessKpis();
       if (commitment && !String(commitment.value || '').trim()) commitment.value = this.getDefaultPocConversionCommitment();
     }
     ['agreementFormPocLocationCount', 'agreementFormPocLicenseMonths', 'agreementFormPocServiceStartDate', 'agreementFormPocServiceEndDate', 'agreementFormPocSuccessKpis', 'agreementFormPocConversionCommitment'].forEach(id => {

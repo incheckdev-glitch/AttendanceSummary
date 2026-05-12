@@ -76,6 +76,12 @@ const Invoices = {
     rowActionInFlight: new Set()
   },
   statusOptions: ['Draft', 'Issued', 'Sent', 'Not Paid', 'Partially Paid', 'Fully Paid', 'Overdue', 'Cancelled'],
+  getDefaultPocSuccessKpis() {
+    return 'POC success is confirmed when the agreed POC scope is completed for the selected locations, the customer validates the delivered monitoring/reporting output, users confirm operational acceptance, and no critical blocker remains open by the POC end date.';
+  },
+  getDefaultPocConversionCommitment() {
+    return 'If the POC success KPIs are achieved, the customer agrees to proceed with the full commercial subscription/agreement.';
+  },
   toNumberSafe(value) {
     return U.toMoneyNumber(value);
   },
@@ -895,7 +901,7 @@ const Invoices = {
             <div><strong>License / Month:</strong> ${textValue(invoiceData.poc_license_months)}</div>
             <div><strong>Service Start Date:</strong> ${dateValue(invoiceData.poc_service_start_date)}</div>
             <div><strong>Service End Date:</strong> ${dateValue(invoiceData.poc_service_end_date)}</div>
-            <div style="grid-column:1 / -1;"><strong>POC Success KPIs:</strong><br>${textValue(invoiceData.poc_success_kpis)}</div>
+            <div style="grid-column:1 / -1;"><strong>POC Success KPIs:</strong><br>${textValue(invoiceData.poc_success_kpis || this.getDefaultPocSuccessKpis())}</div>
             <div style="grid-column:1 / -1;"><strong>Commercial Commitment:</strong><br>${textValue(invoiceData.poc_conversion_commitment || this.getDefaultPocConversionCommitment())}</div>
           </div>
         </div>
@@ -2186,7 +2192,7 @@ const Invoices = {
     invoice.contact_mobile = String(selectedContact.mobile || selectedAgreement.contact_mobile || selectedAgreement.customer_contact_mobile || '').trim();
     invoice.is_poc = this.normalizeTruthy(invoice.is_poc || selectedAgreement.is_poc || existingInvoice.is_poc);
     if (invoice.is_poc) {
-      invoice.poc_success_kpis = String(invoice.poc_success_kpis || selectedAgreement.poc_success_kpis || selectedAgreement.pocSuccessKpis || existingInvoice.poc_success_kpis || '').trim();
+      invoice.poc_success_kpis = String(invoice.poc_success_kpis || selectedAgreement.poc_success_kpis || selectedAgreement.pocSuccessKpis || existingInvoice.poc_success_kpis || this.getDefaultPocSuccessKpis()).trim();
       invoice.poc_conversion_commitment = String(invoice.poc_conversion_commitment || selectedAgreement.poc_conversion_commitment || selectedAgreement.pocConversionCommitment || existingInvoice.poc_conversion_commitment || this.getDefaultPocConversionCommitment()).trim();
     }
     if (!invoice.is_poc) {
@@ -2527,7 +2533,7 @@ const Invoices = {
         poc_license_months: this.toNullableNumber(agreement.poc_license_months ?? agreement.pocLicenseMonths),
         poc_service_start_date: this.normalizeDateInputValue(agreement.poc_service_start_date ?? agreement.pocServiceStartDate),
         poc_service_end_date: this.normalizeDateInputValue(agreement.poc_service_end_date ?? agreement.pocServiceEndDate),
-        poc_success_kpis: String(agreement.poc_success_kpis ?? agreement.pocSuccessKpis ?? '').trim(),
+        poc_success_kpis: String(agreement.poc_success_kpis ?? agreement.pocSuccessKpis ?? this.getDefaultPocSuccessKpis()).trim(),
         poc_conversion_commitment: String(agreement.poc_conversion_commitment ?? agreement.pocConversionCommitment ?? '').trim(),
         amount_in_words: pickAgreementValue(agreement.amount_in_words, agreement.amountInWords),
         notes: agreement.notes

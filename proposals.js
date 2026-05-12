@@ -2004,7 +2004,7 @@ const Proposals = {
             <div><strong>License / Month:</strong> ${textValue(proposalData.poc_license_months)}</div>
             <div><strong>Service Start Date:</strong> ${dateValue(proposalData.poc_service_start_date)}</div>
             <div><strong>Service End Date:</strong> ${dateValue(proposalData.poc_service_end_date)}</div>
-            <div style="grid-column:1 / -1;"><strong>POC Success KPIs:</strong><br>${textValue(proposalData.poc_success_kpis)}</div>
+            <div style="grid-column:1 / -1;"><strong>POC Success KPIs:</strong><br>${textValue(proposalData.poc_success_kpis || this.getDefaultPocSuccessKpis())}</div>
             <div style="grid-column:1 / -1;"><strong>Commercial Commitment:</strong><br>${textValue(proposalData.poc_conversion_commitment || this.getDefaultPocConversionCommitment())}</div>
           </div>
         </div>
@@ -2813,12 +2813,23 @@ const Proposals = {
     const trimmed = String(value || '').trim();
     return trimmed || this.generateAccountNumber();
   },
+  getDefaultPocSuccessKpis() {
+    return 'POC success is confirmed when the agreed POC scope is completed for the selected locations, the customer validates the delivered monitoring/reporting output, users confirm operational acceptance, and no critical blocker remains open by the POC end date.';
+  },
   getDefaultPocConversionCommitment() {
     return 'If the POC success KPIs are achieved, the customer agrees to proceed with the full commercial subscription/agreement.';
   },
   syncPocDetailsVisibility() {
     const enabled = !!E.proposalFormIsPoc?.checked;
     if (E.proposalPocDetails) E.proposalPocDetails.style.display = enabled ? 'grid' : 'none';
+    if (enabled) {
+      if (E.proposalFormPocSuccessKpis && !String(E.proposalFormPocSuccessKpis.value || '').trim()) {
+        E.proposalFormPocSuccessKpis.value = this.getDefaultPocSuccessKpis();
+      }
+      if (E.proposalFormPocConversionCommitment && !String(E.proposalFormPocConversionCommitment.value || '').trim()) {
+        E.proposalFormPocConversionCommitment.value = this.getDefaultPocConversionCommitment();
+      }
+    }
     [
       E.proposalFormPocLocationCount,
       E.proposalFormPocLicenseMonths,
@@ -2861,7 +2872,7 @@ const Proposals = {
       poc_license_months: this.toNullableNumber(E.proposalFormPocLicenseMonths?.value),
       poc_service_start_date: this.normalizeDateInputValue(E.proposalFormPocServiceStartDate?.value || ''),
       poc_service_end_date: this.normalizeDateInputValue(E.proposalFormPocServiceEndDate?.value || ''),
-      poc_success_kpis: String(E.proposalFormPocSuccessKpis?.value || '').trim(),
+      poc_success_kpis: String(E.proposalFormPocSuccessKpis?.value || this.getDefaultPocSuccessKpis()).trim(),
       poc_conversion_commitment: String(E.proposalFormPocConversionCommitment?.value || this.getDefaultPocConversionCommitment()).trim()
     };
   },
@@ -2954,8 +2965,8 @@ const Proposals = {
     set(E.proposalFormPocLicenseMonths, proposal.poc_license_months ?? '');
     set(E.proposalFormPocServiceStartDate, this.normalizeDateInputValue(proposal.poc_service_start_date || ''));
     set(E.proposalFormPocServiceEndDate, this.normalizeDateInputValue(proposal.poc_service_end_date || ''));
-    set(E.proposalFormPocSuccessKpis, proposal.poc_success_kpis || '');
-    set(E.proposalFormPocConversionCommitment, proposal.poc_conversion_commitment || '');
+    set(E.proposalFormPocSuccessKpis, proposal.poc_success_kpis || (isPoc ? this.getDefaultPocSuccessKpis() : ''));
+    set(E.proposalFormPocConversionCommitment, proposal.poc_conversion_commitment || (isPoc ? this.getDefaultPocConversionCommitment() : ''));
     this.syncPocDetailsVisibility();
     set(E.proposalFormCustomerSignatoryName, proposal.customer_signatory_name || '');
     set(E.proposalFormCustomerSignatoryTitle, proposal.customer_signatory_title || '');
