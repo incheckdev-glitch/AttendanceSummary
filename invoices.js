@@ -24,6 +24,12 @@ const Invoices = {
     'provider_address',
     'support_email',
     'payment_term',
+    'is_poc',
+    'poc_location_count',
+    'poc_license_count',
+    'poc_license_months',
+    'poc_service_start_date',
+    'poc_service_end_date',
     'currency',
     'status',
     'subtotal_locations',
@@ -126,6 +132,18 @@ const Invoices = {
   },
   normalizeText(value) {
     return String(value ?? '').trim().toLowerCase();
+  },
+  normalizeTruthy(value) {
+    if (typeof value === 'boolean') return value;
+    const raw = String(value ?? '').trim().toLowerCase();
+    return ['1', 'true', 'yes', 'y', 'on'].includes(raw);
+  },
+  toNullableNumber(value) {
+    if (value === null || value === undefined) return null;
+    const raw = String(value).replace(/,/g, '').trim();
+    if (!raw) return null;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : null;
   },
   looksLikeUuid(value) {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
@@ -487,6 +505,12 @@ const Invoices = {
       provider_address: String(source.provider_address || '').trim() || null,
       support_email: String(source.support_email || '').trim() || null,
       payment_term: String(source.payment_term || '').trim() || null,
+      is_poc: this.normalizeTruthy(source.is_poc),
+      poc_location_count: this.normalizeTruthy(source.is_poc) ? this.toNullableNumber(source.poc_location_count) : null,
+      poc_license_count: this.normalizeTruthy(source.is_poc) ? this.toNullableNumber(source.poc_license_count) : null,
+      poc_license_months: this.normalizeTruthy(source.is_poc) ? this.toNullableNumber(source.poc_license_months) : null,
+      poc_service_start_date: this.normalizeTruthy(source.is_poc) ? (this.normalizeDateInputValue(source.poc_service_start_date) || null) : null,
+      poc_service_end_date: this.normalizeTruthy(source.is_poc) ? (this.normalizeDateInputValue(source.poc_service_end_date) || null) : null,
       currency: String(source.currency || 'USD').trim(),
       status: String(source.status || 'Draft').trim(),
       subtotal_locations: this.toNumberSafe(pickDefined(source.subtotal_locations, source.subtotal_subscription)),
@@ -658,6 +682,12 @@ const Invoices = {
     normalized.currency = String(normalized.currency || '').trim() || 'USD';
     normalized.issue_date = this.normalizeDateInputValue(normalized.issue_date || source.issue_date || source.issueDate || source.invoice_date || source.invoiceDate);
     normalized.due_date = this.normalizeDateInputValue(normalized.due_date || source.due_date || source.dueDate);
+    normalized.is_poc = this.normalizeTruthy(source.is_poc ?? source.isPoc ?? normalized.is_poc);
+    normalized.poc_location_count = this.toNullableNumber(source.poc_location_count ?? source.pocLocationCount ?? normalized.poc_location_count);
+    normalized.poc_license_count = this.toNullableNumber(source.poc_license_count ?? source.pocLicenseCount ?? normalized.poc_license_count);
+    normalized.poc_license_months = this.toNullableNumber(source.poc_license_months ?? source.pocLicenseMonths ?? normalized.poc_license_months);
+    normalized.poc_service_start_date = this.normalizeDateInputValue(source.poc_service_start_date ?? source.pocServiceStartDate ?? normalized.poc_service_start_date);
+    normalized.poc_service_end_date = this.normalizeDateInputValue(source.poc_service_end_date ?? source.pocServiceEndDate ?? normalized.poc_service_end_date);
     const subtotalLocations = pickDefined(
       normalized.subtotal_locations,
       source.subtotal_locations,
@@ -848,6 +878,21 @@ const Invoices = {
     const paymentState = String(invoiceData.payment_state || '').trim() || U.calculatePaymentState(invoiceTotal, paidAmount);
     const amountInWords = String(invoiceData.amount_in_words || '').trim() || this.amountToWords(invoiceTotal, currency);
     const paymentConclusion = String(invoiceData.payment_conclusion || '').trim() || this.derivePaymentConclusion({ pending_amount: pendingAmount });
+    const isPoc = this.normalizeTruthy(invoiceData.is_poc ?? invoiceData.isPoc);
+    const pocDetailsHtml = isPoc ? `
+      <section class="info-grid" style="margin-top:14px;grid-template-columns:1fr;">
+        <div class="info-box" style="min-height:auto;">
+          <div class="info-head">POC DETAILS</div>
+          <div class="info-body" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 18px;">
+            <div><strong>POC:</strong> Yes</div>
+            <div><strong>Number of Locations:</strong> ${textValue(invoiceData.poc_location_count)}</div>
+            <div><strong>Number of Licenses:</strong> ${textValue(invoiceData.poc_license_count)}</div>
+            <div><strong>License / Month:</strong> ${textValue(invoiceData.poc_license_months)}</div>
+            <div><strong>Service Start Date:</strong> ${dateValue(invoiceData.poc_service_start_date)}</div>
+            <div><strong>Service End Date:</strong> ${dateValue(invoiceData.poc_service_end_date)}</div>
+          </div>
+        </div>
+      </section>` : '';
 
     const subscriptionItems = normalizedItems.filter(item => this.isSubscriptionSection(item.section));
     const oneTimeItems = normalizedItems.filter(item => this.isOneTimeSection(item.section));
@@ -1030,8 +1075,10 @@ const Invoices = {
         </div>
       </section>
 
+      ${pocDetailsHtml}
+
       <section class="section">
-        <h2>Annual SaaS Items</h2>
+        <h2>${isPoc ? 'POC Annual SaaS Items' : 'Annual SaaS Items'}</h2>
         <div class="subhead">SaaS / Subscription Rows</div>
         <table>
           <thead>
@@ -2128,6 +2175,14 @@ const Invoices = {
     invoice.customer_contact_email = invoice.contact_email;
     invoice.contact_phone = contactPhone;
     invoice.contact_mobile = String(selectedContact.mobile || selectedAgreement.contact_mobile || selectedAgreement.customer_contact_mobile || '').trim();
+    invoice.is_poc = this.normalizeTruthy(invoice.is_poc || selectedAgreement.is_poc || existingInvoice.is_poc);
+    if (!invoice.is_poc) {
+      invoice.poc_location_count = null;
+      invoice.poc_license_count = null;
+      invoice.poc_license_months = null;
+      invoice.poc_service_start_date = null;
+      invoice.poc_service_end_date = null;
+    }
     return { invoice, items };
   },
   validateInvoice(invoice = {}) {
@@ -2451,6 +2506,12 @@ const Invoices = {
         pending_amount: pickAgreementValue(agreement.pending_amount, agreement.pendingAmount),
         payment_state: pickAgreementValue(agreement.payment_state, agreement.paymentState),
         payment_conclusion: pickAgreementValue(agreement.payment_conclusion, agreement.paymentConclusion),
+        is_poc: this.normalizeTruthy(agreement.is_poc ?? agreement.isPoc),
+        poc_location_count: this.toNullableNumber(agreement.poc_location_count ?? agreement.pocLocationCount),
+        poc_license_count: this.toNullableNumber(agreement.poc_license_count ?? agreement.pocLicenseCount),
+        poc_license_months: this.toNullableNumber(agreement.poc_license_months ?? agreement.pocLicenseMonths),
+        poc_service_start_date: this.normalizeDateInputValue(agreement.poc_service_start_date ?? agreement.pocServiceStartDate),
+        poc_service_end_date: this.normalizeDateInputValue(agreement.poc_service_end_date ?? agreement.pocServiceEndDate),
         amount_in_words: pickAgreementValue(agreement.amount_in_words, agreement.amountInWords),
         notes: agreement.notes
       });

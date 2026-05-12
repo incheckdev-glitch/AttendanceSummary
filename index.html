@@ -3189,6 +3189,22 @@ Sample:
           </div>
           <div class="filter-row"><label class="muted" for="proposalFormPoNumber">PO Number</label><input id="proposalFormPoNumber" class="input" type="text" /></div>
         </div>
+
+        <div class="divider" style="margin:12px 0;"></div>
+        <div class="card" style="padding:12px;margin:0;">
+          <label style="display:flex;align-items:center;gap:8px;font-weight:700;">
+            <input id="proposalFormIsPoc" type="checkbox" />
+            POC
+          </label>
+          <div class="muted" style="margin-top:4px;font-size:12px;">Enable this when the proposal is for a proof of concept. The details will appear in the preview and carry to agreement and invoice.</div>
+          <div id="proposalPocDetails" class="grid" style="display:none;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px;">
+            <div class="filter-row"><label class="muted" for="proposalFormPocLocationCount">Number of Locations</label><input id="proposalFormPocLocationCount" class="input" type="number" min="0" step="1" /></div>
+            <div class="filter-row"><label class="muted" for="proposalFormPocLicenseCount">Number of Licenses</label><input id="proposalFormPocLicenseCount" class="input" type="number" min="0" step="1" /></div>
+            <div class="filter-row"><label class="muted" for="proposalFormPocLicenseMonths">License / Month</label><input id="proposalFormPocLicenseMonths" class="input" type="number" min="0" step="0.01" /></div>
+            <div class="filter-row"><label class="muted" for="proposalFormPocServiceStartDate">POC Service Start Date</label><input id="proposalFormPocServiceStartDate" class="input" type="date" /></div>
+            <div class="filter-row"><label class="muted" for="proposalFormPocServiceEndDate">POC Service End Date</label><input id="proposalFormPocServiceEndDate" class="input" type="date" /></div>
+          </div>
+        </div>
         <datalist id="proposalBillingCycleOptions">
           <option value="One-time"></option>
           <option value="Monthly"></option>
@@ -3392,6 +3408,12 @@ Sample:
           <div class="filter-row"><label class="muted" for="agreementFormDealId">Deal ID</label><input id="agreementFormDealId" class="input" type="text" /></div>
           <div class="filter-row"><label class="muted" for="agreementFormLeadId">Lead ID</label><input id="agreementFormLeadId" class="input" type="text" /></div>
           <div class="filter-row"><label class="muted" for="agreementFormCurrency">Currency</label><input id="agreementFormCurrency" class="input" type="text" /></div>
+          <input id="agreementFormIsPoc" type="hidden" />
+          <input id="agreementFormPocLocationCount" type="hidden" />
+          <input id="agreementFormPocLicenseCount" type="hidden" />
+          <input id="agreementFormPocLicenseMonths" type="hidden" />
+          <input id="agreementFormPocServiceStartDate" type="hidden" />
+          <input id="agreementFormPocServiceEndDate" type="hidden" />
         </div>
         <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">Company / Contact Selection</strong>
         <div class="grid crm-party-selector-grid" data-party-selector="agreement" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px;">
@@ -3550,6 +3572,12 @@ Sample:
           <div class="filter-row"><label class="muted" for="invoiceFormAgreementId">Agreement #</label><input id="invoiceFormAgreementId" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
           <input id="invoiceFormAgreementUuid" type="hidden" name="agreement_uuid" />
           <input id="invoiceFormAgreementNumber" type="hidden" name="agreement_number" />
+          <input id="invoiceFormIsPoc" type="hidden" />
+          <input id="invoiceFormPocLocationCount" type="hidden" />
+          <input id="invoiceFormPocLicenseCount" type="hidden" />
+          <input id="invoiceFormPocLicenseMonths" type="hidden" />
+          <input id="invoiceFormPocServiceStartDate" type="hidden" />
+          <input id="invoiceFormPocServiceEndDate" type="hidden" />
           <div class="filter-row"><label class="muted" for="invoiceFormStatus">Status</label><select id="invoiceFormStatus" class="select"><option>Draft</option><option>Issued</option><option>Sent</option><option>Unpaid</option><option>Partially Paid</option><option>Paid</option><option>Overdue</option><option>Cancelled</option></select></div>
           <div class="filter-row"><label class="muted" for="invoiceFormInvoiceDate">Invoice Date</label><input id="invoiceFormInvoiceDate" class="input" type="date" /></div>
           <div class="filter-row"><label class="muted" for="invoiceFormDueDate">Due Date</label><input id="invoiceFormDueDate" class="input" type="date" /></div>

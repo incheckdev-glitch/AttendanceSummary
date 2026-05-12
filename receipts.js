@@ -1121,7 +1121,7 @@ const Receipts = {
     const [{ data: invoiceRow, error: invoiceError }] = await Promise.all([
       client
         .from('invoices')
-        .select('id,invoice_id,invoice_number,subtotal_locations,subtotal_one_time,invoice_total,grand_total,amount_paid,received_amount,paid_now,pending_amount,balance_due,payment_state,payment_status,status')
+        .select('id,invoice_id,invoice_number,subtotal_locations,subtotal_one_time,invoice_total,amount_paid,received_amount,paid_now,pending_amount,balance_due,payment_state,payment_status,status')
         .eq('id', invoiceId)
         .maybeSingle()
     ]);

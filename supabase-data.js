@@ -464,6 +464,7 @@
     'customer_contact_email','customer_contact_phone','provider_contact_name','provider_contact_mobile','provider_contact_email','provider_signatory_user_id','proposal_title','proposal_date',
     'proposal_valid_until','valid_until','agreement_date','effective_date','service_start_date','service_end_date','contract_term','account_number','billing_frequency','payment_term','payment_terms','po_number',
     'currency','customer_legal_name','provider_name','provider_legal_name',
+    'is_poc','poc_location_count','poc_license_count','poc_license_months','poc_service_start_date','poc_service_end_date',
     'terms_conditions','customer_signatory_name','customer_signatory_title','customer_signatory_email','customer_signatory_phone','provider_signatory_name','provider_signatory_title',
     'provider_signatory_name_secondary','provider_signatory_title_secondary','customer_sign_date','provider_sign_date',
     'subtotal_locations','subtotal_one_time','total_discount','grand_total','status','approved_annual_saas_discount_percent','approved_one_time_fee_discount_percent','approved_discount_percent','discount_approval_status','discount_approved_at','discount_approved_by','last_discount_approval_request_id','approval_required_reason','signed_document_path','signed_document_name','signed_document_uploaded_at','signed_document_uploaded_by','generated_by','created_by','updated_by','created_at','updated_at'
@@ -478,7 +479,7 @@
     'payment_term','payment_terms','po_number','terms_conditions','customer_official_signatory_name','customer_official_signatory_title','customer_official_sign_date','customer_signatory_name','customer_signatory_title','customer_signatory_email','customer_signatory_phone',
     'customer_sign_date','provider_official_signatory_1_name','provider_official_signatory_1_title','provider_official_signatory_1_sign_date','provider_official_signatory_2_name','provider_official_signatory_2_title','provider_official_signatory_2_sign_date','provider_signatory_name','provider_signatory_title','provider_signatory_email','provider_signatory_secondary','provider_signatory_name_secondary','provider_signatory_title_secondary','provider_primary_signatory_name','provider_primary_signatory_title','provider_secondary_signatory_name','provider_secondary_signatory_title','provider_sign_date','gm_signed',
     'financial_controller_signed','signed_date','status','subtotal_locations','subtotal_one_time','total_discount',
-    'grand_total','generated_by','created_by','updated_by','currency','created_at','updated_at','customer_legal_name','provider_legal_name','provider_name',
+    'grand_total','is_poc','poc_location_count','poc_license_count','poc_license_months','poc_service_start_date','poc_service_end_date','generated_by','created_by','updated_by','currency','created_at','updated_at','customer_legal_name','provider_legal_name','provider_name',
     'agreement_title','notes'
   ]);
   const AGREEMENT_ITEM_COLUMNS = new Set([
@@ -495,6 +496,7 @@
     'payment_term','company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile',
     'customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_email',
     'provider_legal_name','provider_address','support_email','subtotal_locations','subtotal_one_time','invoice_total',
+    'is_poc','poc_location_count','poc_license_count','poc_license_months','poc_service_start_date','poc_service_end_date',
     'old_paid_total','paid_now','amount_paid','received_amount','pending_amount','balance_due','payment_state','payment_status','payment_conclusion','amount_in_words','status','notes','paid_at',
     'created_by','updated_by','currency','created_at','updated_at'
   ]);
@@ -588,6 +590,7 @@
       'provider_official_signatory_2_name', 'provider_official_signatory_2_title', 'provider_official_signatory_2_sign_date', 'provider_signatory_name', 'provider_signatory_title',
       'provider_signatory_name_secondary', 'provider_signatory_title_secondary', 'provider_sign_date',
       'subtotal_locations', 'subtotal_one_time', 'total_discount', 'grand_total', 'status',
+      'is_poc','poc_location_count','poc_license_count','poc_license_months','poc_service_start_date','poc_service_end_date',
       'generated_by', 'created_by', 'updated_by', 'created_at', 'updated_at'
     ]),
     clients: new Set([
@@ -599,6 +602,7 @@
       'id','invoice_id','invoice_number','client_id','agreement_uuid','agreement_id','agreement_number','proposal_id','issue_date','due_date','billing_frequency',
       'payment_term','customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_email',
       'provider_legal_name','provider_address','support_email','subtotal_locations','subtotal_one_time','invoice_total',
+      'is_poc','poc_location_count','poc_license_count','poc_license_months','poc_service_start_date','poc_service_end_date',
       'old_paid_total','paid_now','amount_paid','received_amount','pending_amount','payment_state','payment_conclusion','amount_in_words',
       'status','notes','currency','created_by','updated_by','created_at','updated_at'
     ]),
@@ -1401,6 +1405,12 @@
       provider_legal_name: trimOrNull(firstDefined(record, ['provider_legal_name', 'providerLegalName'])),
       provider_address: trimOrNull(firstDefined(record, ['provider_address', 'providerAddress'])),
       support_email: trimOrNull(firstDefined(record, ['support_email', 'supportEmail'])),
+      is_poc: toDbBoolean(firstDefined(record, ['is_poc', 'isPoc']), false),
+      poc_location_count: numberOrNull(firstDefined(record, ['poc_location_count', 'pocLocationCount'])),
+      poc_license_count: numberOrNull(firstDefined(record, ['poc_license_count', 'pocLicenseCount'])),
+      poc_license_months: numberOrNull(firstDefined(record, ['poc_license_months', 'pocLicenseMonths'])),
+      poc_service_start_date: normalizeNullableDateValue(firstDefined(record, ['poc_service_start_date', 'pocServiceStartDate'])),
+      poc_service_end_date: normalizeNullableDateValue(firstDefined(record, ['poc_service_end_date', 'pocServiceEndDate'])),
       subtotal_locations: numberOrNull(firstDefined(record, ['subtotal_locations', 'subtotalLocations', 'subtotal_subscription'])),
       subtotal_one_time: numberOrNull(firstDefined(record, ['subtotal_one_time', 'subtotalOneTime'])),
       invoice_total: numberOrNull(firstDefined(record, ['invoice_total', 'invoiceTotal', 'grand_total'])),
@@ -2204,6 +2214,12 @@
       billing_frequency: firstDefined(record, ['billing_frequency', 'billingFrequency']),
       payment_term: firstDefined(record, ['payment_term', 'payment_terms', 'paymentTerm', 'paymentTerms']),
       po_number: firstDefined(record, ['po_number', 'poNumber']),
+      is_poc: toDbBoolean(firstDefined(record, ['is_poc', 'isPoc']), false),
+      poc_location_count: numberOrNull(firstDefined(record, ['poc_location_count', 'pocLocationCount'])),
+      poc_license_count: numberOrNull(firstDefined(record, ['poc_license_count', 'pocLicenseCount'])),
+      poc_license_months: numberOrNull(firstDefined(record, ['poc_license_months', 'pocLicenseMonths'])),
+      poc_service_start_date: normalizeNullableDateValue(firstDefined(record, ['poc_service_start_date', 'pocServiceStartDate'])),
+      poc_service_end_date: normalizeNullableDateValue(firstDefined(record, ['poc_service_end_date', 'pocServiceEndDate'])),
       currency: firstDefined(record, ['currency']),
       customer_legal_name: firstDefined(record, ['customer_legal_name', 'customerLegalName']),
       provider_name: PROPOSAL_PROVIDER_CONTACT_DEFAULTS.name,
@@ -2366,6 +2382,12 @@
       billing_frequency: firstDefined(record, ['billing_frequency', 'billingFrequency']),
       payment_term: firstDefined(record, ['payment_term', 'payment_terms', 'paymentTerm', 'paymentTerms']),
       po_number: firstDefined(record, ['po_number', 'poNumber']),
+      is_poc: toDbBoolean(firstDefined(record, ['is_poc', 'isPoc']), false),
+      poc_location_count: numberOrNull(firstDefined(record, ['poc_location_count', 'pocLocationCount'])),
+      poc_license_count: numberOrNull(firstDefined(record, ['poc_license_count', 'pocLicenseCount'])),
+      poc_license_months: numberOrNull(firstDefined(record, ['poc_license_months', 'pocLicenseMonths'])),
+      poc_service_start_date: normalizeNullableDateValue(firstDefined(record, ['poc_service_start_date', 'pocServiceStartDate'])),
+      poc_service_end_date: normalizeNullableDateValue(firstDefined(record, ['poc_service_end_date', 'pocServiceEndDate'])),
       terms_conditions: firstDefined(record, ['terms_conditions', 'termsConditions']),
       customer_official_signatory_name: firstDefined(record, ['customer_official_signatory_name', 'customerOfficialSignatoryName', 'customer_signatory_name', 'customerSignatoryName']),
       customer_official_signatory_title: firstDefined(record, ['customer_official_signatory_title', 'customerOfficialSignatoryTitle', 'customer_signatory_title', 'customerSignatoryTitle']),

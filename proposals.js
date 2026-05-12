@@ -39,6 +39,12 @@ const Proposals = {
     'billing_frequency',
     'payment_term',
     'po_number',
+    'is_poc',
+    'poc_location_count',
+    'poc_license_count',
+    'poc_license_months',
+    'poc_service_start_date',
+    'poc_service_end_date',
     'currency',
     'saas_total',
     'one_time_total',
@@ -103,6 +109,13 @@ const Proposals = {
     if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
     const parsed = Number(String(value).replace(/,/g, '').trim());
     return Number.isFinite(parsed) ? parsed : 0;
+  },
+  toNullableNumber(value) {
+    if (value === null || value === undefined) return null;
+    const raw = String(value).replace(/,/g, '').trim();
+    if (!raw) return null;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : null;
   },
   normalizeDiscountPercentValue(...values) {
     for (const value of values) {
@@ -1152,6 +1165,12 @@ const Proposals = {
     normalized.provider_signatory_name = this.getProposalProviderSignatoryName({ ...source, ...normalized }) || '';
     normalized.provider_signatory_title = this.getProposalProviderSignatoryTitle({ ...source, ...normalized }) || '';
     normalized.currency = String(normalized.currency || source.currency || '').trim();
+    normalized.is_poc = this.normalizeTruthy(source.is_poc ?? source.isPoc ?? normalized.is_poc);
+    normalized.poc_location_count = this.toNullableNumber(source.poc_location_count ?? source.pocLocationCount ?? normalized.poc_location_count);
+    normalized.poc_license_count = this.toNullableNumber(source.poc_license_count ?? source.pocLicenseCount ?? normalized.poc_license_count);
+    normalized.poc_license_months = this.toNullableNumber(source.poc_license_months ?? source.pocLicenseMonths ?? normalized.poc_license_months);
+    normalized.poc_service_start_date = this.normalizeDateInputValue(source.poc_service_start_date ?? source.pocServiceStartDate ?? normalized.poc_service_start_date);
+    normalized.poc_service_end_date = this.normalizeDateInputValue(source.poc_service_end_date ?? source.pocServiceEndDate ?? normalized.poc_service_end_date);
     normalized.deal_id = String(normalized.deal_id || '').trim();
     normalized.deal_code = String(source.deal_code || source.dealCode || '').trim();
     if (!normalized.deal_code && normalized.deal_id) {
@@ -1657,12 +1676,22 @@ const Proposals = {
       'valid_until',
       'service_start_date',
       'customer_sign_date',
-      'provider_sign_date'
+      'provider_sign_date',
+      'poc_service_start_date',
+      'poc_service_end_date'
     ].forEach(field => {
       if (Object.prototype.hasOwnProperty.call(sanitized, field)) {
         sanitized[field] = this.normalizeDateForSave(sanitized[field]);
       }
     });
+    sanitized.is_poc = this.normalizeTruthy(sanitized.is_poc);
+    if (!sanitized.is_poc) {
+      sanitized.poc_location_count = null;
+      sanitized.poc_license_count = null;
+      sanitized.poc_license_months = null;
+      sanitized.poc_service_start_date = null;
+      sanitized.poc_service_end_date = null;
+    }
     return sanitized;
   },
   buildProposalForPersist(proposal = {}, items = [], { ensureBusinessProposalId = false } = {}) {
@@ -1848,6 +1877,21 @@ const Proposals = {
     const grandTotalInWords = U.amountToWords(grandTotal, currency);
     const providerSignatoryName = this.getProposalProviderSignatoryName(proposalData);
     const providerSignatoryTitle = this.getProposalProviderSignatoryTitle(proposalData);
+    const isPoc = this.normalizeTruthy(proposalData.is_poc || proposalData.isPoc);
+    const pocDetailsHtml = isPoc ? `
+      <section class="info-grid" style="margin-top:14px;grid-template-columns:1fr;">
+        <div class="info-box" style="min-height:auto;">
+          <div class="info-head">POC DETAILS</div>
+          <div class="info-body" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 18px;">
+            <div><strong>POC:</strong> Yes</div>
+            <div><strong>Number of Locations:</strong> ${textValue(proposalData.poc_location_count)}</div>
+            <div><strong>Number of Licenses:</strong> ${textValue(proposalData.poc_license_count)}</div>
+            <div><strong>License / Month:</strong> ${textValue(proposalData.poc_license_months)}</div>
+            <div><strong>Service Start Date:</strong> ${dateValue(proposalData.poc_service_start_date)}</div>
+            <div><strong>Service End Date:</strong> ${dateValue(proposalData.poc_service_end_date)}</div>
+          </div>
+        </div>
+      </section>` : '';
 
     return `<!doctype html>
 <html>
@@ -2090,8 +2134,10 @@ const Proposals = {
         </div>
       </section>
 
+      ${pocDetailsHtml}
+
       <section class="section">
-        <h2>Subscription Details</h2>
+        <h2>${isPoc ? 'POC Subscription Details' : 'Subscription Details'}</h2>
         <div class="subhead">SaaS / Subscription Rows</div>
         <table>
           <thead>
@@ -2609,6 +2655,12 @@ const Proposals = {
       billing_frequency: 'Annual',
       payment_term: 'Net 30',
       po_number: '',
+      is_poc: false,
+      poc_location_count: null,
+      poc_license_count: null,
+      poc_license_months: null,
+      poc_service_start_date: '',
+      poc_service_end_date: '',
       customer_signatory_name: '',
       customer_signatory_title: '',
       customer_sign_date: '',
@@ -2642,6 +2694,59 @@ const Proposals = {
     const trimmed = String(value || '').trim();
     return trimmed || this.generateAccountNumber();
   },
+  syncPocDetailsVisibility() {
+    const enabled = !!E.proposalFormIsPoc?.checked;
+    if (E.proposalPocDetails) E.proposalPocDetails.style.display = enabled ? 'grid' : 'none';
+    [
+      E.proposalFormPocLocationCount,
+      E.proposalFormPocLicenseCount,
+      E.proposalFormPocLicenseMonths,
+      E.proposalFormPocServiceStartDate,
+      E.proposalFormPocServiceEndDate
+    ].forEach(el => {
+      if (!el) return;
+      el.disabled = this.state.formReadOnly || !enabled;
+    });
+  },
+  syncPocServiceEndDate() {
+    if (!E.proposalFormIsPoc?.checked) return;
+    const start = this.normalizeDateInputValue(E.proposalFormPocServiceStartDate?.value || '');
+    const months = E.proposalFormPocLicenseMonths?.value || '';
+    const calculated = this.calculateServiceEndDate(start, months);
+    if (E.proposalFormPocServiceEndDate && calculated) {
+      E.proposalFormPocServiceEndDate.value = calculated;
+    }
+  },
+  getProposalPocPayload() {
+    const isPoc = !!E.proposalFormIsPoc?.checked;
+    if (!isPoc) {
+      return {
+        is_poc: false,
+        poc_location_count: null,
+        poc_license_count: null,
+        poc_license_months: null,
+        poc_service_start_date: null,
+        poc_service_end_date: null
+      };
+    }
+    return {
+      is_poc: true,
+      poc_location_count: this.toNullableNumber(E.proposalFormPocLocationCount?.value),
+      poc_license_count: this.toNullableNumber(E.proposalFormPocLicenseCount?.value),
+      poc_license_months: this.toNullableNumber(E.proposalFormPocLicenseMonths?.value),
+      poc_service_start_date: this.normalizeDateInputValue(E.proposalFormPocServiceStartDate?.value || ''),
+      poc_service_end_date: this.normalizeDateInputValue(E.proposalFormPocServiceEndDate?.value || '')
+    };
+  },
+  validatePocDetails(proposal = {}) {
+    if (!this.normalizeTruthy(proposal.is_poc)) return true;
+    if (!(this.toNumberSafe(proposal.poc_location_count) > 0)) { UI.toast('Please enter the POC number of locations.'); E.proposalFormPocLocationCount?.focus?.(); return false; }
+    if (!(this.toNumberSafe(proposal.poc_license_count) > 0)) { UI.toast('Please enter the POC number of licenses.'); E.proposalFormPocLicenseCount?.focus?.(); return false; }
+    if (!(this.toNumberSafe(proposal.poc_license_months) > 0)) { UI.toast('Please enter the POC license / month value.'); E.proposalFormPocLicenseMonths?.focus?.(); return false; }
+    if (!this.normalizeDateInputValue(proposal.poc_service_start_date)) { UI.toast('Please select the POC service start date.'); E.proposalFormPocServiceStartDate?.focus?.(); return false; }
+    if (!this.normalizeDateInputValue(proposal.poc_service_end_date)) { UI.toast('Please select the POC service end date.'); E.proposalFormPocServiceEndDate?.focus?.(); return false; }
+    return true;
+  },
   resetForm() {
     if (!E.proposalForm) return;
     E.proposalForm.reset();
@@ -2655,6 +2760,13 @@ const Proposals = {
     if (E.proposalFormPreviewBtn) E.proposalFormPreviewBtn.disabled = false;
     if (E.proposalSignedDocumentFile) E.proposalSignedDocumentFile.value = '';
     if (E.proposalSignedDocumentSection) E.proposalSignedDocumentSection.style.display = 'none';
+    if (E.proposalFormIsPoc) E.proposalFormIsPoc.checked = false;
+    if (E.proposalFormPocLocationCount) E.proposalFormPocLocationCount.value = '';
+    if (E.proposalFormPocLicenseCount) E.proposalFormPocLicenseCount.value = '';
+    if (E.proposalFormPocLicenseMonths) E.proposalFormPocLicenseMonths.value = '';
+    if (E.proposalFormPocServiceStartDate) E.proposalFormPocServiceStartDate.value = '';
+    if (E.proposalFormPocServiceEndDate) E.proposalFormPocServiceEndDate.value = '';
+    this.syncPocDetailsVisibility();
     this.syncProposalAcceptedLockMessage(false);
   },
   setFormReadOnly(readOnly) {
@@ -2676,6 +2788,7 @@ const Proposals = {
     const lockedIds=['proposalFormCustomerName','proposalFormCustomerAddress','proposalFormCustomerContactName','proposalFormCustomerContactMobile','proposalFormCustomerContactEmail','proposalFormProviderContactName','proposalFormProviderContactMobile','proposalFormProviderContactEmail','proposalFormCustomerSignatoryName','proposalFormCustomerSignatoryTitle','proposalFormProviderSignatoryName','proposalFormProviderSignatoryTitle'];
     lockedIds.forEach(id=>{const el=document.getElementById(id); if(!el) return; el.readOnly=true; el.classList.add('readonly-field','locked-field'); el.setAttribute('aria-readonly','true');});
     this.refreshSignedDocumentUi(this.state.currentProposal || {});
+    this.syncPocDetailsVisibility();
     if (E.proposalFormDeleteBtn && readOnly) E.proposalFormDeleteBtn.style.display = 'none';
   },
   assignFormValues(proposal = {}) {
@@ -2705,6 +2818,13 @@ const Proposals = {
     set(E.proposalFormBillingFrequency, 'Annual');
     set(E.proposalFormPaymentTerm, ['Net 7', 'Net 14', 'Net 21', 'Net 30'].includes(proposal.payment_term) ? proposal.payment_term : 'Net 30');
     set(E.proposalFormPoNumber, proposal.po_number || '');
+    if (E.proposalFormIsPoc) E.proposalFormIsPoc.checked = this.normalizeTruthy(proposal.is_poc);
+    set(E.proposalFormPocLocationCount, proposal.poc_location_count ?? '');
+    set(E.proposalFormPocLicenseCount, proposal.poc_license_count ?? '');
+    set(E.proposalFormPocLicenseMonths, proposal.poc_license_months ?? '');
+    set(E.proposalFormPocServiceStartDate, this.normalizeDateInputValue(proposal.poc_service_start_date || ''));
+    set(E.proposalFormPocServiceEndDate, this.normalizeDateInputValue(proposal.poc_service_end_date || ''));
+    this.syncPocDetailsVisibility();
     set(E.proposalFormCustomerSignatoryName, proposal.customer_signatory_name || '');
     set(E.proposalFormCustomerSignatoryTitle, proposal.customer_signatory_title || '');
     // Signature dates must stay blank unless explicitly entered by the user.
@@ -3049,6 +3169,7 @@ const Proposals = {
     const providerRole = provider.role || '';
     const providerUserName = provider.name || provider.email?.split('@')?.[0] || '';
     const contactPersonName = this.buildContactDisplayName(selectedContact);
+    const pocPayload = this.getProposalPocPayload();
     const resolvedCustomerName =
       U.getCustomerLegalName(selectedCompany, mapped) ||
       String(E.proposalFormCustomerName?.value || '').trim() ||
@@ -3079,6 +3200,7 @@ const Proposals = {
       billing_frequency: 'Annual',
       payment_term: (() => { const term = String(E.proposalFormPaymentTerm?.value || '').trim(); return ['Net 7', 'Net 14', 'Net 21', 'Net 30'].includes(term) ? term : 'Net 30'; })(),
       po_number: String(E.proposalFormPoNumber?.value || '').trim(),
+      ...pocPayload,
       customer_signatory_name: mapped.customer_signatory_name || '',
       customer_signatory_title: mapped.customer_signatory_title || '',
       customer_sign_date: String(E.proposalFormCustomerSignDate?.value || '').trim(),
@@ -3465,6 +3587,7 @@ const Proposals = {
       }
       if (E.proposalFormProposalId) E.proposalFormProposalId.value = proposal.proposal_id;
     }
+    if (!this.validatePocDetails(proposal)) return;
     const items = this.collectProposalItems();
     if (!this.validateCommercialItems(items)) return;
     let currentRecord = {};
@@ -3919,6 +4042,17 @@ const Proposals = {
     if (E.proposalFormStatus) {
       E.proposalFormStatus.addEventListener('change', () => this.refreshSignedDocumentUi(this.state.currentProposal || {}));
     }
+    if (E.proposalFormIsPoc) {
+      E.proposalFormIsPoc.addEventListener('change', () => {
+        this.syncPocDetailsVisibility();
+        this.syncPocServiceEndDate();
+      });
+    }
+    [E.proposalFormPocServiceStartDate, E.proposalFormPocLicenseMonths].forEach(el => {
+      if (!el) return;
+      el.addEventListener('input', () => this.syncPocServiceEndDate());
+      el.addEventListener('change', () => this.syncPocServiceEndDate());
+    });
 
     if (E.proposalsRefreshBtn) {
       E.proposalsRefreshBtn.addEventListener('click', () => this.loadAndRefresh({ force: true }));

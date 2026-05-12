@@ -35,6 +35,12 @@ const Agreements = {
     'billing_frequency',
     'payment_term',
     'po_number',
+    'is_poc',
+    'poc_location_count',
+    'poc_license_count',
+    'poc_license_months',
+    'poc_service_start_date',
+    'poc_service_end_date',
     'currency',
     'customer_name',
     'customer_legal_name',
@@ -166,9 +172,16 @@ const Agreements = {
     if (value === undefined || value === null || value === '') return fallback;
     if (typeof value === 'boolean') return value;
     const raw = String(value).trim().toLowerCase();
-    if (['true', '1', 'yes', 'y', 'signed'].includes(raw)) return true;
-    if (['false', '0', 'no', 'n', 'unsigned'].includes(raw)) return false;
+    if (['true', '1', 'yes', 'y', 'signed', 'on'].includes(raw)) return true;
+    if (['false', '0', 'no', 'n', 'unsigned', 'off'].includes(raw)) return false;
     return fallback;
+  },
+  toNullableNumber(value) {
+    if (value === null || value === undefined) return null;
+    const raw = String(value).replace(/,/g, '').trim();
+    if (!raw) return null;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : null;
   },
   normalizeText(value) {
     return String(value ?? '').trim().toLowerCase();
@@ -535,6 +548,12 @@ const Agreements = {
     normalized.status = String(normalized.status || '').trim() || 'Draft';
     normalized.currency = String(normalized.currency || '').trim();
     normalized.billing_frequency = 'Annual';
+    normalized.is_poc = this.toDbBoolean(source.is_poc ?? source.isPoc ?? normalized.is_poc, false);
+    normalized.poc_location_count = this.toNullableNumber(source.poc_location_count ?? source.pocLocationCount ?? normalized.poc_location_count);
+    normalized.poc_license_count = this.toNullableNumber(source.poc_license_count ?? source.pocLicenseCount ?? normalized.poc_license_count);
+    normalized.poc_license_months = this.toNullableNumber(source.poc_license_months ?? source.pocLicenseMonths ?? normalized.poc_license_months);
+    normalized.poc_service_start_date = this.normalizeDateInputValue(source.poc_service_start_date ?? source.pocServiceStartDate ?? normalized.poc_service_start_date);
+    normalized.poc_service_end_date = this.normalizeDateInputValue(source.poc_service_end_date ?? source.pocServiceEndDate ?? normalized.poc_service_end_date);
     const validPaymentTerms = ['Net 7', 'Net 14', 'Net 21', 'Net 30'];
     normalized.payment_term = validPaymentTerms.includes(String(normalized.payment_term || '').trim())
       ? String(normalized.payment_term || '').trim()
@@ -968,6 +987,12 @@ const Agreements = {
       billing_frequency: String(source.billing_frequency || source.billingFrequency || '').trim(),
       payment_term: String(source.payment_term || source.paymentTerm || '').trim(),
       po_number: String(source.po_number || source.poNumber || '').trim(),
+      is_poc: this.toDbBoolean(source.is_poc ?? source.isPoc, false),
+      poc_location_count: this.toNullableNumber(source.poc_location_count ?? source.pocLocationCount),
+      poc_license_count: this.toNullableNumber(source.poc_license_count ?? source.pocLicenseCount),
+      poc_license_months: this.toNullableNumber(source.poc_license_months ?? source.pocLicenseMonths),
+      poc_service_start_date: this.normalizeDateInputValue(source.poc_service_start_date ?? source.pocServiceStartDate),
+      poc_service_end_date: this.normalizeDateInputValue(source.poc_service_end_date ?? source.pocServiceEndDate),
       currency: String(source.currency || '').trim(),
       company_id: String(source.company_id || source.companyId || '').trim(),
       company_name: String(source.company_name || source.companyName || '').trim(),
@@ -1422,6 +1447,21 @@ const Agreements = {
     const subtotalOneTime = calculatedTotals.grand_total > 0 ? calculatedTotals.one_time_total : this.toNumberSafe(agreementData.subtotal_one_time || agreementData.one_time_total);
     const grandTotal = calculatedTotals.grand_total > 0 ? calculatedTotals.grand_total : this.toNumberSafe(agreementData.grand_total || subtotalLocations + subtotalOneTime);
     const grandTotalInWords = U.amountToWords(grandTotal, currency);
+    const isPoc = this.toDbBoolean(agreementData.is_poc ?? agreementData.isPoc, false);
+    const pocDetailsHtml = isPoc ? `
+      <section class="info-grid" style="margin-top:14px;grid-template-columns:1fr;">
+        <div class="info-box" style="min-height:auto;">
+          <div class="info-head">POC DETAILS</div>
+          <div class="info-body" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 18px;">
+            <div><strong>POC:</strong> Yes</div>
+            <div><strong>Number of Locations:</strong> ${textValue(agreementData.poc_location_count)}</div>
+            <div><strong>Number of Licenses:</strong> ${textValue(agreementData.poc_license_count)}</div>
+            <div><strong>License / Month:</strong> ${textValue(agreementData.poc_license_months)}</div>
+            <div><strong>Service Start Date:</strong> ${dateValue(agreementData.poc_service_start_date)}</div>
+            <div><strong>Service End Date:</strong> ${dateValue(agreementData.poc_service_end_date)}</div>
+          </div>
+        </div>
+      </section>` : '';
 
     return `<!doctype html>
 <html>
@@ -1537,8 +1577,10 @@ const Agreements = {
         </div>
       </section>
 
+      ${pocDetailsHtml}
+
       <section class="section">
-        <h2>Subscription Details</h2>
+        <h2>${isPoc ? 'POC Subscription Details' : 'Subscription Details'}</h2>
         <div class="subhead">SaaS / Subscription Rows</div>
         <table>
           <thead>
@@ -2006,7 +2048,7 @@ const Agreements = {
       const inputId = this.agreementFieldToFormInputId(field);
       agreement[field] = v(inputId);
     });
-    const agreementDateFields = ['agreement_date', 'effective_date', 'service_start_date', 'service_end_date', 'customer_official_sign_date', 'provider_official_signatory_1_sign_date', 'provider_official_signatory_2_sign_date', 'provider_sign_date', 'customer_sign_date', 'signed_date'];
+    const agreementDateFields = ['agreement_date', 'effective_date', 'service_start_date', 'service_end_date', 'poc_service_start_date', 'poc_service_end_date', 'customer_official_sign_date', 'provider_official_signatory_1_sign_date', 'provider_official_signatory_2_sign_date', 'provider_sign_date', 'customer_sign_date', 'signed_date'];
     const normalizedAgreement = this.normalizeDateFieldsForSave(agreement, agreementDateFields);
     normalizedAgreement.account_number = String(normalizedAgreement.account_number || '').trim();
     const items = this.collectItems();
@@ -2017,6 +2059,14 @@ const Agreements = {
     normalizedAgreement.contract_term = String(normalizedAgreement.agreement_length || '').trim();
     normalizedAgreement.subtotal_locations = this.toNumberSafe(normalizedAgreement.saas_total);
     normalizedAgreement.subtotal_one_time = this.toNumberSafe(normalizedAgreement.one_time_total);
+    normalizedAgreement.is_poc = this.toDbBoolean(normalizedAgreement.is_poc || this.state.currentAgreement?.is_poc, false);
+    if (!normalizedAgreement.is_poc) {
+      normalizedAgreement.poc_location_count = null;
+      normalizedAgreement.poc_license_count = null;
+      normalizedAgreement.poc_license_months = null;
+      normalizedAgreement.poc_service_start_date = null;
+      normalizedAgreement.poc_service_end_date = null;
+    }
     return { agreement: normalizedAgreement, items };
   },
   calculateTotals(items = []) {
