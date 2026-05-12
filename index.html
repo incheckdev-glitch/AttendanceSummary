@@ -3480,7 +3480,7 @@ Sample:
         </div>
         <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">Subscription Details / Items</strong>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><strong>Annual SaaS Rows</strong><button id="agreementAddAnnualRowBtn" class="btn ghost sm" type="button">Add Row</button></div>
-        <div class="table-wrap"><table><thead><tr><th>Location</th><th>License</th><th>License Price / Year</th><th>License / Month</th><th>Service Start Date</th><th>Service End Date</th><th>Discount %</th><th>Total</th><th>Actions</th></tr></thead><tbody id="agreementAnnualItemsTbody"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>Location</th><th>License</th><th>License Price / Year</th><th>License / Month</th><th>Service Start Date</th><th>Service End Date</th><th>Discount %</th><th>Total</th><th>Invoice Status</th><th>Actions</th></tr></thead><tbody id="agreementAnnualItemsTbody"></tbody></table></div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px;"><strong>One-time Fee Rows</strong><button id="agreementAddOneTimeRowBtn" class="btn ghost sm" type="button">Add Row</button></div>
         <div class="table-wrap"><table><thead><tr><th>Location</th><th>Item / Service</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead><tbody id="agreementOneTimeItemsTbody"></tbody></table></div>
         <div class="card" style="margin-top:12px;"><strong>Totals Preview</strong><div class="grid" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:8px;"><div><div class="muted">SaaS Total</div><div id="agreementSaasTotal">0</div></div><div><div class="muted">One Time Total</div><div id="agreementOneTimeTotal">0</div></div><div><div class="muted">Grand Total</div><div id="agreementGrandTotal">0</div></div></div></div>
@@ -3614,6 +3614,10 @@ Sample:
           <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="invoiceFormCustomerAddress">Customer Address</label><input id="invoiceFormCustomerAddress" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
         </div>
         <div class="divider" style="margin:12px 0;"></div>
+        <div id="invoiceAgreementLocationSelectionSection" class="card" style="display:none;margin:12px 0;">
+          <strong style="display:block;margin-bottom:8px;">Select Locations to Invoice</strong>
+          <div class="table-wrap"><table><thead><tr><th>Select</th><th>Location / Item</th><th>License / Month</th><th>Service Start Date</th><th>Service End Date</th><th>Amount</th><th>Invoice Status</th></tr></thead><tbody id="invoiceAgreementLocationSelectionBody"></tbody></table></div>
+        </div>
         <strong style="display:block;margin-bottom:8px;">Invoice Items</strong>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
           <strong>Annual SaaS Rows</strong>
