@@ -3120,7 +3120,7 @@ function setActiveView(view) {
   if (view === 'leads' && window.Leads?.loadAndRefresh) runViewLoader('leads', () => Leads.loadAndRefresh());
   if (view === 'deals' && window.Deals?.loadAndRefresh) runViewLoader('deals', () => Deals.loadAndRefresh());
   if (view === 'proposals' && window.Proposals?.loadAndRefresh) runViewLoader('proposals', () => Proposals.loadAndRefresh());
-  if (view === 'agreements' && window.Agreements?.loadAndRefresh) runViewLoader('agreements', () => Agreements.loadAndRefresh());
+  if (view === 'agreements' && window.Agreements?.loadAndRefresh) runViewLoader('agreements', () => window.Agreements.loadAndRefresh());
   if (view === 'operationsOnboarding' && window.OperationsOnboarding?.loadAndRefresh) runViewLoader('operations onboarding', () => OperationsOnboarding.loadAndRefresh());
   if (view === 'technicalAdmin' && window.TechnicalAdmin?.loadAndRefresh) runViewLoader('technical admin', () => TechnicalAdmin.loadAndRefresh());
   if (view === 'invoices' && window.Invoices?.refresh) runViewLoader('invoices', () => Invoices.refresh());
@@ -5446,7 +5446,7 @@ function wireCore() {
       if (E.proposalsView?.classList.contains('active') && window.Proposals?.loadAndRefresh)
         Proposals.loadAndRefresh({ force: true });
       if (E.agreementsView?.classList.contains('active') && window.Agreements?.loadAndRefresh)
-        Agreements.loadAndRefresh({ force: true });
+        window.Agreements.loadAndRefresh({ force: true });
       if (E.invoicesView?.classList.contains('active') && window.Invoices?.refresh)
         Invoices.refresh(true);
       if (E.receiptsView?.classList.contains('active') && window.Receipts?.refresh)
@@ -5479,7 +5479,7 @@ function wireCore() {
       if (activeView === 'leads' && window.Leads?.openForm) return Leads.openForm();
       if (activeView === 'deals' && window.Deals?.openForm) return Deals.openForm();
       if (activeView === 'proposals' && window.Proposals?.openProposalForm) return Proposals.openProposalForm();
-      if (activeView === 'agreements' && window.Agreements?.openAgreementForm) return Agreements.openAgreementForm();
+      if (activeView === 'agreements' && window.Agreements?.openAgreementForm) return window.Agreements.openAgreementForm();
       if (activeView === 'invoices' && window.Invoices?.openInvoice) return Invoices.openInvoice(Invoices.emptyInvoice(), [], { readOnly: false });
       if (activeView === 'csm' && window.CSMActivity?.openForm) return CSMActivity.openForm();
       if (activeView === 'calendar' && window.UI?.Modals?.openEvent) return UI.Modals.openEvent({ start: new Date(), end: new Date(Date.now()+3600000), allDay:false, env:'Prod', status:'Planned' });
@@ -8023,7 +8023,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (window.Leads?.wire) Leads.wire();
   if (window.Deals?.wire) Deals.wire();
   if (window.Proposals?.wire) Proposals.wire();
-  if (window.Agreements?.wire) Agreements.wire();
+  if (window.Agreements?.wire) window.Agreements.wire();
   if (window.OperationsOnboarding?.wire) OperationsOnboarding.wire();
   if (window.TechnicalAdmin?.wire) TechnicalAdmin.wire();
   if (window.Invoices?.init) Invoices.init();

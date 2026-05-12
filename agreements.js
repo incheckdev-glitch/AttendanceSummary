@@ -2071,7 +2071,7 @@ const Agreements = {
         <td>${textCell(this.getPaymentTermDisplay(row.payment_term))}</td><td>${textCell(row.currency)}</td><td>${textCell(this.formatMoney(row.grand_total))}</td>
         <td>${textCell(this.resolveAgreementStatus(row))}</td><td>${U.escapeHtml(U.fmtDisplayDate(row.updated_at))}</td>
         <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
-        ${Permissions.canView('agreements') ? `<button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-agreement-view="${id}" data-permission-resource="agreements" data-permission-action="preview">View</button>` : ''}
+        ${Permissions.canView('agreements') ? `<button class="btn ghost sm" type="button" data-agreement-view="${id}">View</button>` : ''}
         ${Permissions.canUpdateAgreement() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="agreements" data-permission-action="update" data-agreement-edit=\"${id}\" data-permission-resource=\"agreements\" data-permission-action=\"update\">Edit</button>` : ''}
         ${Permissions.canRequestTechnicalAdmin() ? `<button class=\"btn ghost sm\" type=\"button\" data-agreement-request-technical=\"${id}\" data-permission-resource=\"technical_admin_requests\" data-permission-action=\"create\">Request Technical</button>` : ''}
         ${Permissions.canGenerateAgreementHtml() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="agreements" data-permission-action="view" data-agreement-preview=\"${id}\">View Agreement</button>` : ''}
@@ -3179,19 +3179,30 @@ const Agreements = {
       UI.toast('Unable to create invoice from agreement: ' + (error?.message || 'Unknown error'));
     }
   },
-  async loadAndRefresh({ force = false } = {}) {
-    if (this.state.loading && !force) return;
-    const hasWarmCache = this.state.loaded && Date.now() - this.state.lastLoadedAt <= this.state.cacheTtlMs;
-    if (hasWarmCache && !force) {
-      this.applyFilters();
-      this.renderFilters();
-      this.render();
-      return;
-    }
-    this.state.loading = true;
-    this.state.loadError = '';
-    this.render();
+  safeRender(context = 'agreements') {
     try {
+      this.render();
+    } catch (error) {
+      console.error(`[Agreements] render failed during ${context}`, error);
+      try {
+        if (E?.agreementsState) E.agreementsState.textContent = 'Unable to render agreements. Please refresh.';
+      } catch {}
+    }
+  },
+  async loadAndRefresh({ force = false } = {}) {
+    try {
+      if (this.state.loading && !force) return;
+      const hasWarmCache = this.state.loaded && Date.now() - this.state.lastLoadedAt <= this.state.cacheTtlMs;
+      if (hasWarmCache && !force) {
+        this.applyFilters();
+        this.renderFilters();
+        this.safeRender('warm-cache');
+        return;
+      }
+      this.state.loading = true;
+      this.state.loadError = '';
+      this.safeRender('loading');
+
       const response = await this.listAgreements({
         limit: this.state.limit,
         page: this.state.page,
@@ -3216,13 +3227,14 @@ const Agreements = {
         handleExpiredSession('Session expired. Please log in again.');
         return;
       }
+      console.error('[Agreements] load failed', error);
       this.state.rows = [];
       this.state.loadError = String(error?.message || '').trim() || 'Unable to load agreements.';
     } finally {
       this.state.loading = false;
-      this.applyFilters();
-      this.renderFilters();
-      this.render();
+      try { this.applyFilters(); } catch (error) { console.error('[Agreements] filter failed', error); }
+      try { this.renderFilters(); } catch (error) { console.error('[Agreements] filter render failed', error); }
+      this.safeRender('final');
     }
   },
   wire() {
