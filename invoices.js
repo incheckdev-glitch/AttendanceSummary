@@ -73,7 +73,9 @@ const Invoices = {
     paymentScheduleByInvoiceId: {},
     openingInvoiceIds: new Set(),
     loadingInvoiceReceiptIds: new Set(),
-    rowActionInFlight: new Set()
+    rowActionInFlight: new Set(),
+    selectedAgreementItemIds: new Set(),
+    agreementInvoiceSelection: null
   },
   statusOptions: ['Draft', 'Issued', 'Sent', 'Not Paid', 'Partially Paid', 'Fully Paid', 'Overdue', 'Cancelled'],
   getDefaultPocSuccessKpis() {
@@ -492,7 +494,9 @@ const Invoices = {
     return {
       invoice_id: String(source.invoice_id || '').trim() || null,
       invoice_number: String(source.invoice_number || '').trim() || null,
+      agreement_uuid: String(source.agreement_uuid || '').trim() || null,
       agreement_id: String(source.agreement_id || '').trim() || null,
+      agreement_number: String(source.agreement_number || '').trim() || null,
       client_id: String(source.client_id || '').trim() || null,
       issue_date: this.normalizeDateInputValue(source.issue_date) || null,
       due_date: this.normalizeDateInputValue(source.due_date) || null,
@@ -1226,6 +1230,8 @@ const Invoices = {
       pick(source.section, source.item_section, source.itemSection, source.type, source.item_type, source.itemType)
     );
     return {
+      id: String(pick(source.id)).trim(),
+      item_id: String(pick(source.item_id, source.itemId)).trim(),
       catalog_item_id: String(pick(source.catalog_item_id, source.catalogItemId)).trim(),
       section,
       line_no: this.toNumberSafe(pick(source.line_no, source.lineNo, source.line)) || 0,
@@ -1243,7 +1249,12 @@ const Invoices = {
       line_total: this.toNumberSafe(pick(source.line_total, source.lineTotal, source.amount, source.total)),
       capability_name: String(pick(source.capability_name, source.capabilityName)).trim(),
       capability_value: String(pick(source.capability_value, source.capabilityValue)).trim(),
-      notes: String(pick(source.notes)).trim()
+      notes: String(pick(source.notes)).trim(),
+      source_agreement_item_id: String(pick(source.source_agreement_item_id, source.sourceAgreementItemId)).trim(),
+      source_agreement_id: String(pick(source.source_agreement_id, source.sourceAgreementId)).trim(),
+      invoice_status: String(pick(source.invoice_status, source.invoiceStatus)).trim(),
+      invoiced_invoice_id: String(pick(source.invoiced_invoice_id, source.invoicedInvoiceId)).trim(),
+      invoiced_at: String(pick(source.invoiced_at, source.invoicedAt)).trim()
     };
   },
   normalizeCatalogItem(raw = {}) {
@@ -1424,7 +1435,9 @@ const Invoices = {
       capability_value: pickProvided(['capability_value', 'capabilityValue'], merged.capability_value),
       notes: pickProvided(['notes'], merged.notes),
       service_start_date: pickProvided(['service_start_date', 'serviceStartDate'], merged.service_start_date, { normalizeDate: true }),
-      service_end_date: pickProvided(['service_end_date', 'serviceEndDate'], merged.service_end_date, { normalizeDate: true })
+      service_end_date: pickProvided(['service_end_date', 'serviceEndDate'], merged.service_end_date, { normalizeDate: true }),
+      source_agreement_item_id: pickProvided(['source_agreement_item_id', 'sourceAgreementItemId'], merged.source_agreement_item_id),
+      source_agreement_id: pickProvided(['source_agreement_id', 'sourceAgreementId'], merged.source_agreement_id)
     });
   },
   isSubscriptionSection(section = '') {
@@ -2019,7 +2032,7 @@ const Invoices = {
         const computed = this.computeCommercialRow({ ...rowDefaults, section });
         if (section === 'annual_saas') {
           return `<tr data-item-row="${section}">
-            <td><input class="input" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}" /><input type="hidden" data-item-field="location_address" value="${U.escapeAttr(computed.location_address || '')}" /><input type="hidden" data-item-field="notes" value="${U.escapeAttr(computed.notes || '')}" /></td>
+            <td><input class="input" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}" /><input type="hidden" data-item-field="location_address" value="${U.escapeAttr(computed.location_address || '')}" /><input type="hidden" data-item-field="notes" value="${U.escapeAttr(computed.notes || '')}" /><input type="hidden" data-item-field="source_agreement_item_id" value="${U.escapeAttr(computed.source_agreement_item_id || '')}" /><input type="hidden" data-item-field="source_agreement_id" value="${U.escapeAttr(computed.source_agreement_id || '')}" /></td>
             <td><input type="hidden" data-item-field="catalog_item_id" value="${U.escapeAttr(computed.catalog_item_id || '')}" /><input class="input" data-item-field="item_name" list="invoiceCatalogOptions-${section}" value="${U.escapeAttr(computed.item_name || '')}" /></td>
             <td><input class="input" type="number" step="0.01" data-item-field="unit_price" value="${U.escapeAttr(computed.unit_price ?? '')}" /></td>
             <td><input class="input" type="number" step="0.01" min="0.01" max="12" data-item-field="quantity" value="${U.escapeAttr(computed.quantity ?? '')}" /></td>
@@ -2030,7 +2043,7 @@ const Invoices = {
           </tr>`;
         }
         return `<tr data-item-row="${section}">
-          <td><input class="input" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}" /><input type="hidden" data-item-field="location_address" value="${U.escapeAttr(computed.location_address || '')}" /><input type="hidden" data-item-field="service_start_date" value="${U.escapeAttr(computed.service_start_date || '')}" /><input type="hidden" data-item-field="service_end_date" value="${U.escapeAttr(computed.service_end_date || '')}" /><input type="hidden" data-item-field="notes" value="${U.escapeAttr(computed.notes || '')}" /></td>
+          <td><input class="input" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}" /><input type="hidden" data-item-field="location_address" value="${U.escapeAttr(computed.location_address || '')}" /><input type="hidden" data-item-field="service_start_date" value="${U.escapeAttr(computed.service_start_date || '')}" /><input type="hidden" data-item-field="service_end_date" value="${U.escapeAttr(computed.service_end_date || '')}" /><input type="hidden" data-item-field="notes" value="${U.escapeAttr(computed.notes || '')}" /><input type="hidden" data-item-field="source_agreement_item_id" value="${U.escapeAttr(computed.source_agreement_item_id || '')}" /><input type="hidden" data-item-field="source_agreement_id" value="${U.escapeAttr(computed.source_agreement_id || '')}" /></td>
           <td><input type="hidden" data-item-field="catalog_item_id" value="${U.escapeAttr(computed.catalog_item_id || '')}" /><input class="input" data-item-field="item_name" list="invoiceCatalogOptions-${section}" value="${U.escapeAttr(computed.item_name || '')}" /></td>
           <td><input class="input" type="number" step="0.01" data-item-field="unit_price" value="${U.escapeAttr(computed.unit_price ?? '')}" /></td>
           <td><input class="input" type="number" step="0.01" min="0" max="100" data-item-field="discount_percent" value="${U.escapeAttr(computed.discount_percent ?? '')}" /></td>
@@ -2099,7 +2112,9 @@ const Invoices = {
           quantity,
           discounted_unit_price: computed.discounted_unit_price,
           line_total: computed.line_total,
-          notes: String(get('notes')).trim()
+          notes: String(get('notes')).trim(),
+          source_agreement_item_id: String(get('source_agreement_item_id')).trim(),
+          source_agreement_id: String(get('source_agreement_id')).trim()
         });
       })
       .filter(Boolean);
@@ -2208,28 +2223,6 @@ const Invoices = {
   },
   validateInvoice(invoice = {}) {
     const draft = invoice || {};
-    const selectedAgreement = this.state.selectedAgreement || {};
-    const hasAgreementLink = String(
-      this.state.form?.agreementUuid ||
-      selectedAgreement?.id ||
-      draft.agreement_uuid ||
-      this.state.form?.agreementId ||
-      this.state.form?.agreementNumber ||
-      draft.agreement_id ||
-      draft.agreement_number ||
-      ''
-    ).trim();
-    const agreementId = String(
-      selectedAgreement?.agreement_id ||
-      selectedAgreement?.uuid ||
-      selectedAgreement?.agreement_id ||
-      selectedAgreement?.agreementId ||
-      E.invoiceAgreementId?.value ||
-      E.invoiceFormAgreementId?.value ||
-      draft.agreement_id ||
-      draft.agreementId ||
-      ''
-    ).trim();
     const requiredFields = [
       ['invoice_number', 'Invoice Number'],
       ['issue_date', 'Invoice Date'],
@@ -2237,11 +2230,6 @@ const Invoices = {
       ['currency', 'Currency']
     ];
     const missing = requiredFields.filter(([field]) => !String(draft?.[field] || '').trim());
-    if (!hasAgreementLink) {
-      UI.toast('Invoice must be linked to an Agreement. Please create the invoice from an Agreement.');
-      return false;
-    }
-
     if (missing.length) {
       const firstFieldId = `invoiceForm${missing[0][0].replace(/(^|_)([a-z])/g, (_, __, ch) => ch.toUpperCase())}`;
       const firstFieldEl = document.getElementById(firstFieldId);
@@ -2273,6 +2261,9 @@ const Invoices = {
   },
   openInvoice(invoice = this.emptyInvoice(), items = [], { readOnly = false } = {}) {
     if (!E.invoiceFormModal || !E.invoiceForm) return;
+    this.state.selectedAgreementItemIds = new Set();
+    this.state.agreementInvoiceSelection = null;
+    this.renderAgreementLocationSelection();
     this.state.selectedInvoice = this.normalizeInvoice(invoice);
     const isExistingInvoice = !!String(this.state.selectedInvoice?.id || '').trim();
     const normalizedFormPayment = this.normalizeInvoicePaymentForForm(this.state.selectedInvoice, {
@@ -2362,6 +2353,9 @@ const Invoices = {
     E.invoiceForm.dataset.id = '';
     this.state.selectedInvoice = null;
     this.state.items = [];
+    this.state.selectedAgreementItemIds = new Set();
+    this.state.agreementInvoiceSelection = null;
+    this.renderAgreementLocationSelection();
     this.renderItems([]);
     this.renderInvoiceReceipts({ invoice_id: '' });
     this.renderInvoicePaymentSchedule([]);
@@ -2436,6 +2430,115 @@ const Invoices = {
       agreement: agreement || { agreement_id: fallbackId },
       items: isSignedAgreement && Array.isArray(items) ? items : []
     };
+  },
+  getAgreementItemRecordId(item = {}) {
+    return String(item?.id || item?.source_agreement_item_id || '').trim();
+  },
+  isAgreementItemInvoiced(item = {}) {
+    return this.normalizeText(item?.invoice_status || item?.invoiceStatus) === 'invoiced';
+  },
+  isAgreementItemInvoiceable(item = {}) {
+    const status = this.normalizeText(item?.invoice_status || item?.invoiceStatus || 'not_invoiced');
+    return !status || status === 'not_invoiced';
+  },
+  renderAgreementLocationSelection() {
+    const section = E.invoiceAgreementLocationSelectionSection;
+    const body = E.invoiceAgreementLocationSelectionBody;
+    const selection = this.state.agreementInvoiceSelection;
+    if (!section || !body) return;
+    if (!selection?.active) {
+      section.style.display = 'none';
+      body.innerHTML = '';
+      return;
+    }
+    section.style.display = '';
+    const annualRows = Array.isArray(selection.annualItems) ? selection.annualItems : [];
+    if (!annualRows.length) {
+      body.innerHTML = '<tr><td colspan="7" class="muted">All agreement locations have already been invoiced.</td></tr>';
+      if (E.invoiceFormSaveBtn) E.invoiceFormSaveBtn.disabled = true;
+      return;
+    }
+    const allInvoicedMessage = !(selection.invoiceableItems || []).length
+      ? '<tr><td colspan="7" class="muted">All agreement locations have already been invoiced.</td></tr>'
+      : '';
+    body.innerHTML = allInvoicedMessage + annualRows.map(item => {
+      const itemId = this.getAgreementItemRecordId(item);
+      const invoiceable = this.isAgreementItemInvoiceable(item);
+      const checked = invoiceable && this.state.selectedAgreementItemIds.has(itemId);
+      const computed = this.computeCommercialRow(item);
+      const status = invoiceable ? 'Not Invoiced' : 'Invoiced';
+      const invoiceRef = String(item?.invoiced_invoice_id || item?.invoicedInvoiceId || '').trim();
+      const label = [item.location_name, item.item_name].map(value => String(value || '').trim()).filter(Boolean).join(' — ') || 'Agreement location';
+      return `<tr>
+        <td><input type="checkbox" data-agreement-item-id="${U.escapeAttr(itemId)}" ${checked ? 'checked' : ''} ${invoiceable ? '' : 'disabled'} /></td>
+        <td>${U.escapeHtml(label)}</td>
+        <td>${U.escapeHtml(String(item.quantity || ''))}</td>
+        <td>${U.escapeHtml(this.normalizeDateInputValue(item.service_start_date) || '—')}</td>
+        <td>${U.escapeHtml(this.normalizeDateInputValue(item.service_end_date) || '—')}</td>
+        <td>${U.escapeHtml(this.formatMoney(computed.line_total))}</td>
+        <td><span class="badge">${U.escapeHtml(status)}</span>${invoiceRef ? `<div class="muted">${U.escapeHtml(invoiceRef)}</div>` : ''}</td>
+      </tr>`;
+    }).join('');
+    body.querySelectorAll('input[data-agreement-item-id]').forEach(input => {
+      input.addEventListener('change', () => {
+        const itemId = String(input.getAttribute('data-agreement-item-id') || '').trim();
+        if (!itemId) return;
+        if (input.checked) this.state.selectedAgreementItemIds.add(itemId);
+        else this.state.selectedAgreementItemIds.delete(itemId);
+        this.rebuildAgreementInvoiceItemsFromSelection();
+      });
+    });
+    if (E.invoiceFormSaveBtn) E.invoiceFormSaveBtn.disabled = this.state.selectedAgreementItemIds.size === 0;
+  },
+  buildAgreementInvoiceItemsFromSelection() {
+    const selection = this.state.agreementInvoiceSelection || {};
+    const selectedIds = this.state.selectedAgreementItemIds || new Set();
+    const agreementUuid = String(selection.agreementUuid || '').trim();
+    const selectedAnnual = (selection.invoiceableItems || []).filter(item => selectedIds.has(this.getAgreementItemRecordId(item)));
+    const selectedLocationKeys = new Set(selectedAnnual.map(item => this.normalizeText(item.location_name)).filter(Boolean));
+    const linkedOneTime = (selection.oneTimeItems || []).filter(item => {
+      const key = this.normalizeText(item.location_name);
+      return key && selectedLocationKeys.has(key);
+    });
+    const oneTimeSource = linkedOneTime.length ? linkedOneTime : (selection.oneTimeItems || []);
+    const oneTimeItems = oneTimeSource.map(item => ({
+      ...item,
+      quantity: linkedOneTime.length ? item.quantity : Math.max(1, selectedAnnual.length),
+      source_agreement_item_id: linkedOneTime.length ? this.getAgreementItemRecordId(item) : '',
+      source_agreement_id: agreementUuid
+    }));
+    return [
+      ...selectedAnnual.map(item => ({
+        ...item,
+        source_agreement_item_id: this.getAgreementItemRecordId(item),
+        source_agreement_id: agreementUuid
+      })),
+      ...oneTimeItems
+    ].map((item, index) => this.normalizeItem({ ...item, line_no: index + 1 }));
+  },
+  rebuildAgreementInvoiceItemsFromSelection() {
+    const invoice = this.collectFormValues().invoice;
+    const items = this.buildAgreementInvoiceItemsFromSelection();
+    this.state.items = items;
+    this.renderItems(items);
+    const summary = this.deriveCalculatedSummary(invoice, items);
+    this.state.selectedInvoice = this.normalizeInvoice({ ...(this.state.selectedInvoice || {}), ...invoice, ...summary });
+    this.applyTotalsToForm(summary);
+    this.syncPaymentFieldsInForm();
+    this.syncPaymentConclusion(summary);
+    this.renderAgreementLocationSelection();
+  },
+  async markSelectedAgreementItemsInvoiced(invoiceId, itemIds = []) {
+    const ids = [...new Set((Array.isArray(itemIds) ? itemIds : []).map(id => String(id || '').trim()).filter(Boolean))];
+    const id = String(invoiceId || '').trim();
+    if (!id || !ids.length) return;
+    const client = this.requireSupabaseClient();
+    const { error } = await client
+      .from('agreement_items')
+      .update({ invoice_status: 'invoiced', invoiced_invoice_id: id, invoiced_at: new Date().toISOString() })
+      .in('id', ids)
+      .or('invoice_status.is.null,invoice_status.eq.not_invoiced');
+    if (error) throw new Error(`Invoice saved, but agreement item invoice status update failed: ${error.message || 'Unknown error'}`);
   },
   async hydrateFromAgreement(agreementId) {
     const id = String(agreementId || '').trim();
@@ -2558,9 +2661,25 @@ const Invoices = {
       this.hydrateInvoiceCustomerSection({ agreement, company: fullCompany || {}, contact: fullContact || {} });
       const catalogLookup = await this.getProposalCatalogLookup();
       const normalizedItems = this.filterInvoiceCommercialItems(items).map(item => this.copyInvoiceItemFields(item, this.mergeCatalogItem(item, catalogLookup)));
-      this.state.items = normalizedItems;
-      this.renderItems(normalizedItems);
-      const summary = this.deriveCalculatedSummary(mappedInvoice, normalizedItems);
+      const annualItems = normalizedItems.filter(item => this.isSubscriptionSection(item.section));
+      const oneTimeItems = normalizedItems.filter(item => this.isOneTimeSection(item.section));
+      const invoiceableItems = annualItems.filter(item => this.isAgreementItemInvoiceable(item) && this.getAgreementItemRecordId(item));
+      const alreadyInvoicedItems = annualItems.filter(item => this.isAgreementItemInvoiced(item));
+      this.state.selectedAgreementItemIds = new Set(invoiceableItems.map(item => this.getAgreementItemRecordId(item)).filter(Boolean));
+      this.state.agreementInvoiceSelection = {
+        active: true,
+        agreementUuid,
+        annualItems,
+        oneTimeItems,
+        invoiceableItems,
+        alreadyInvoicedItems
+      };
+      const selectedItems = this.buildAgreementInvoiceItemsFromSelection();
+      this.state.items = selectedItems;
+      this.renderItems(selectedItems);
+      this.renderAgreementLocationSelection();
+      if (!invoiceableItems.length) UI.toast('All agreement locations have already been invoiced.');
+      const summary = this.deriveCalculatedSummary(mappedInvoice, selectedItems);
       this.state.selectedInvoice = this.normalizeInvoice({ ...mappedInvoice, ...summary });
       this.applyTotalsToForm(summary);
       this.syncPaymentFieldsInForm();
@@ -2729,6 +2848,15 @@ const Invoices = {
       UI.toast('Please select a contact.');
       return;
     }
+    const agreementSelectionActive = !!this.state.agreementInvoiceSelection?.active;
+    const selectedAgreementItemIds = agreementSelectionActive
+      ? [...(this.state.selectedAgreementItemIds || new Set()).values()].map(value => String(value || '').trim()).filter(Boolean)
+      : [];
+    if (agreementSelectionActive && !selectedAgreementItemIds.length) {
+      const hasInvoiceable = (this.state.agreementInvoiceSelection?.invoiceableItems || []).length > 0;
+      UI.toast(hasInvoiceable ? 'Please select at least one agreement location to invoice.' : 'All agreement locations have already been invoiced.');
+      return;
+    }
     if (!this.validateInvoice(invoice)) return;
     const summary = this.deriveCalculatedSummary(invoice, items);
     const normalizedInvoice = this.normalizeInvoice({
@@ -2789,6 +2917,9 @@ const Invoices = {
         await Api.createInvoicePaymentSchedule(normalized.id, false).catch(error => {
           console.warn('[invoices] payment schedule creation failed', error);
         });
+        if (agreementSelectionActive) {
+          await this.markSelectedAgreementItemsInvoiced(normalized.id, selectedAgreementItemIds);
+        }
       }
       this.setCachedDetail(normalized?.id || id, persisted, persistedItems);
       if (normalized?.id && this.state.selectedInvoice?.id === normalized.id) {
@@ -2959,35 +3090,6 @@ const Invoices = {
   async openCreateFromAgreementTemplate(agreementId) {
     const id = String(agreementId || '').trim();
     if (!id) return;
-    try {
-      const response = await Api.createInvoiceFromAgreement(id);
-      const { invoice, items } = this.extractInvoiceAndItems(response);
-      const hasTemplateData = Boolean(invoice.invoice_id || invoice.customer_name || invoice.customer_legal_name || items.length);
-      if (hasTemplateData) {
-        const invoiceTemplate = this.normalizeInvoice({
-          ...this.emptyInvoice(),
-          ...invoice,
-          agreement_uuid: String(invoice?.agreement_uuid || id || '').trim(),
-          agreement_id: String(invoice?.agreement_id || invoice?.agreementId || invoice?.agreement_number || '').trim(),
-          agreement_number: String(invoice?.agreement_number || invoice?.agreementNumber || invoice?.agreement_id || '').trim()
-        });
-        const catalogLookup = await this.getProposalCatalogLookup();
-        const normalizedItems = this.filterInvoiceCommercialItems(items).map(item =>
-          this.copyInvoiceItemFields(item, this.mergeCatalogItem(item, catalogLookup))
-        );
-        const summary = this.deriveCalculatedSummary(invoiceTemplate, normalizedItems);
-        const hydratedTemplate = this.normalizeInvoice({ ...invoiceTemplate, ...summary });
-        hydratedTemplate.invoice_number = this.ensureInvoiceNumber(hydratedTemplate.invoice_number || invoiceTemplate.invoice_number);
-        if (hydratedTemplate.id) {
-          this.openInvoice(hydratedTemplate, normalizedItems, { readOnly: false });
-          return;
-        }
-        this.openInvoice(hydratedTemplate, normalizedItems, { readOnly: false });
-        return;
-      }
-    } catch (_error) {
-      // Fall back to local template hydration from the agreement record.
-    }
     this.openInvoice(this.normalizeInvoice({ ...this.emptyInvoice(), agreement_uuid: id, agreement_id: '', agreement_number: '' }), [], { readOnly: false });
     await this.hydrateFromAgreement(id);
   },

@@ -886,6 +886,8 @@ function cacheEls() {
     'invoiceFormPendingAmount',
     'invoiceFormPaymentState',
     'invoicePaymentConclusion',
+    'invoiceAgreementLocationSelectionSection',
+    'invoiceAgreementLocationSelectionBody',
     'invoicePaymentScheduleState',
     'invoicePaymentScheduleTbody',
     'invoiceReceiptsState',

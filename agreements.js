@@ -889,7 +889,10 @@ const Agreements = {
       capability_name: String(pick(source.capability_name, source.capabilityName)).trim(),
       capability_value: String(pick(source.capability_value, source.capabilityValue)).trim(),
       notes: String(pick(source.notes)).trim(),
-      updated_at: String(pick(source.updated_at, source.updatedAt)).trim()
+      updated_at: String(pick(source.updated_at, source.updatedAt)).trim(),
+      invoice_status: String(pick(source.invoice_status, source.invoiceStatus) || 'not_invoiced').trim(),
+      invoiced_invoice_id: String(pick(source.invoiced_invoice_id, source.invoicedInvoiceId)).trim(),
+      invoiced_at: String(pick(source.invoiced_at, source.invoicedAt)).trim()
     };
     if (section === 'annual_saas') {
       if (!normalized.quantity) normalized.quantity = 12;
@@ -2297,12 +2300,16 @@ const Agreements = {
       const commercialCells = section === 'annual_saas'
         ? `${quantityCell}${serviceDateCells}${discountCell}`
         : `${discountCell}${quantityCell}`;
+      const invoiceStatusKey = String(computed.invoice_status || item.invoice_status || 'not_invoiced').trim().toLowerCase();
+      const invoiceStatusLabel = invoiceStatusKey === 'invoiced' ? 'Invoiced' : 'Not Invoiced';
+      const invoiceStatusCell = section === 'annual_saas' ? `<td><span class="badge">${U.escapeHtml(invoiceStatusLabel)}</span></td>` : '';
       return `<tr data-item-row="${section}" data-item-payload="${payload}">
       <td><input class="input" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}"${lockAttr} /><input type="hidden" data-item-field="location_address" value="${U.escapeAttr(computed.location_address || '')}" /></td>
       <td><input class="input" data-item-field="item_name" value="${U.escapeAttr(computed.item_name || '')}"${lockAttr} /></td>
       <td><input class="input" data-item-field="unit_price" type="number" step="0.01" value="${U.escapeAttr(computed.unit_price ?? '')}"${lockAttr} /></td>
       ${commercialCells}
       <td><input class="input" data-item-field="line_total" type="number" step="0.01" value="${U.escapeAttr(computed.line_total ?? '')}" readonly${lockAttr} /></td>
+      ${invoiceStatusCell}
       ${removeCell(section, index)}
       </tr>`;
     };

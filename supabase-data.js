@@ -484,7 +484,8 @@
   ]);
   const AGREEMENT_ITEM_COLUMNS = new Set([
     'item_id','agreement_id','section','line_no','location_name','item_name','unit_price','discount_percent',
-    'discounted_unit_price','quantity','line_total','service_start_date','service_end_date','capability_name','capability_value','notes'
+    'discounted_unit_price','quantity','line_total','service_start_date','service_end_date','capability_name','capability_value','notes',
+    'invoice_status','invoiced_invoice_id','invoiced_at'
   ]);
   const CLIENT_COLUMNS = new Set([
     'client_id','client_name','company_name','primary_email','primary_phone','billing_frequency','payment_term',
@@ -503,7 +504,7 @@
   const INVOICE_ITEM_COLUMNS = new Set([
     'item_id','invoice_id','section','line_no','location_name','item_name','unit_price','discount_percent',
     'discounted_unit_price','quantity','line_total','capability_name','capability_value','notes',
-    'service_start_date','service_end_date'
+    'service_start_date','service_end_date','source_agreement_item_id','source_agreement_id'
   ]);
   const RECEIPT_COLUMNS = new Set([
     'receipt_id','receipt_number','invoice_id','invoice_number','agreement_uuid','agreement_id','agreement_number','client_id','company_id','company_name','customer_name','customer_legal_name','customer_address','contact_id','contact_name','contact_email','contact_phone','contact_mobile','receipt_status','amount_paid','payment_date','payment_method',
@@ -1454,7 +1455,9 @@
       capability_value: trimOrNull(firstDefined(record, ['capability_value', 'capabilityValue'])),
       notes: trimOrNull(firstDefined(record, ['notes'])),
       service_start_date: trimOrNull(firstDefined(record, ['service_start_date', 'serviceStartDate'])),
-      service_end_date: trimOrNull(firstDefined(record, ['service_end_date', 'serviceEndDate']))
+      service_end_date: trimOrNull(firstDefined(record, ['service_end_date', 'serviceEndDate'])),
+      source_agreement_item_id: trimOrNull(firstDefined(record, ['source_agreement_item_id', 'sourceAgreementItemId'])),
+      source_agreement_id: trimOrNull(firstDefined(record, ['source_agreement_id', 'sourceAgreementId']))
     });
     Object.keys(sanitized).forEach(key => { if (!INVOICE_ITEM_COLUMNS.has(key)) delete sanitized[key]; });
     return sanitized;
@@ -2515,7 +2518,10 @@
       service_end_date: normalizeNullableDateValue(firstDefined(record, ['service_end_date', 'serviceEndDate'])),
       capability_name: firstDefined(record, ['capability_name', 'capabilityName']),
       capability_value: firstDefined(record, ['capability_value', 'capabilityValue']),
-      notes: firstDefined(record, ['notes'])
+      notes: firstDefined(record, ['notes']),
+      invoice_status: firstDefined(record, ['invoice_status', 'invoiceStatus']),
+      invoiced_invoice_id: normalizeNullableUuidValue(firstDefined(record, ['invoiced_invoice_id', 'invoicedInvoiceId'])),
+      invoiced_at: firstDefined(record, ['invoiced_at', 'invoicedAt'])
     });
     const sanitized = {};
     Object.entries(mapped).forEach(([key, value]) => {
