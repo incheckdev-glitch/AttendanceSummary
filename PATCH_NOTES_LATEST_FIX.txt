@@ -1,0 +1,14 @@
+InCheck360 latest-code patch notes
+
+Patched directly on the uploaded ZIP:
+- Proposal View/Edit/Preview row actions now resolve records using id, uuid, proposal_id, proposalId, and ref_number fallbacks.
+- Agreement View/Edit row actions now resolve records using id, uuid, agreement_id, agreementId, and agreement_number fallbacks.
+- Invoice Open/Edit/Preview row actions now resolve records using id, uuid, invoice_id, invoiceId, and invoice_number fallbacks.
+- API getAgreement/getInvoice now sends business IDs as fallback keys.
+- POC Success KPIs and POC Commercial Commitment fields remain visible under the POC details section when POC is checked.
+- One Time Fee quantity is hard-synced to the current number of Annual SaaS rows and visually updates the Qty input.
+- One Time Fee line totals recompute after the linked quantity updates.
+- Annual SaaS discount unlocks when License / Month is 12 or higher and locks to 0 only below 12.
+- Previous POC KPI SQL file is included.
+
+Run POC_KPI_FIELDS_FIX.sql if those columns are not already in Supabase.

@@ -1642,6 +1642,35 @@ const Proposals = {
       cachedAt: Date.now()
     };
   },
+
+  getProposalRowKey(row = {}) {
+    return String(
+      row?.id ||
+      row?.uuid ||
+      row?.proposal_uuid ||
+      row?.proposal_id ||
+      row?.proposalId ||
+      row?.ref_number ||
+      row?.refNumber ||
+      ''
+    ).trim();
+  },
+  findLocalProposalByAnyId(value = '') {
+    const target = String(value || '').trim();
+    if (!target) return null;
+    return (Array.isArray(this.state.rows) ? this.state.rows : []).find(row => {
+      const candidates = [
+        row?.id,
+        row?.uuid,
+        row?.proposal_uuid,
+        row?.proposal_id,
+        row?.proposalId,
+        row?.ref_number,
+        row?.refNumber
+      ].map(v => String(v || '').trim()).filter(Boolean);
+      return candidates.includes(target);
+    }) || null;
+  },
   setTriggerBusy(trigger, busy) {
     if (!trigger || !('disabled' in trigger)) return;
     trigger.disabled = !!busy;
@@ -1685,13 +1714,15 @@ const Proposals = {
   },
   upsertLocalRow(row) {
     const normalized = this.normalizeProposal(row);
-    const idx = this.state.rows.findIndex(item => String(item.id || '') === String(normalized.id || ''));
+    const normalizedKey = this.getProposalRowKey(normalized);
+    const idx = this.state.rows.findIndex(item => this.getProposalRowKey(item) === normalizedKey && normalizedKey);
     if (idx === -1) this.state.rows.unshift(normalized);
     else this.state.rows[idx] = { ...this.state.rows[idx], ...normalized };
     this.rerenderVisibleTable();
   },
   removeLocalRow(id) {
-    this.state.rows = this.state.rows.filter(item => String(item.id || '') !== String(id || ''));
+    const target = String(id || '').trim();
+    this.state.rows = this.state.rows.filter(item => this.getProposalRowKey(item) !== target);
     this.rerenderVisibleTable();
   },
   rerenderVisibleTable() {
@@ -1700,7 +1731,13 @@ const Proposals = {
     this.render();
   },
   async getProposal(proposalId) {
-    return Api.requestWithSession('proposals', 'get', { id: proposalId });
+    const key = String(proposalId || '').trim();
+    return Api.requestWithSession('proposals', 'get', {
+      id: key,
+      proposal_id: key,
+      proposalId: key,
+      ref_number: key
+    });
   },
   async createProposal(proposal, items) {
     const preparedProposal = this.buildProposalForPersist(proposal, items, { ensureBusinessProposalId: true });
@@ -2661,7 +2698,7 @@ const Proposals = {
 
     E.proposalsTbody.innerHTML = rows
       .map(row => {
-        const id = U.escapeAttr(row.id || row.proposal_id || row.proposalId || '');
+        const id = U.escapeAttr(this.getProposalRowKey(row));
         const isAccepted = this.isProposalAccepted(row);
         return `<tr>
           <td>${proposalIdCell(row)}</td>
@@ -3185,9 +3222,10 @@ const Proposals = {
 
     tbody.innerHTML = safeRows
       .map((row, index) => {
+        const linkedOneTimeQuantity = Math.max(1, this.getAnnualSaasRowCountFromDom() || 1);
         const rowDefaults = section === 'annual_saas'
           ? { ...row, quantity: row.quantity || 12, service_start_date: row.service_start_date || this.getDefaultAnnualServiceStartDate() }
-          : { ...row, quantity: row.quantity || 1 };
+          : { ...row, quantity: linkedOneTimeQuantity };
         if (section === 'annual_saas' && !rowDefaults.service_end_date) {
           rowDefaults.service_end_date = this.addMonthsMinusOneDay(rowDefaults.service_start_date, rowDefaults.quantity);
         }
@@ -3243,7 +3281,12 @@ const Proposals = {
     const linkedQuantity = Math.max(1, this.getAnnualSaasRowCountFromDom() || 1);
     Array.from(E.proposalOneTimeItemsTbody?.querySelectorAll?.('tr[data-item-row="one_time_fee"]') || []).forEach(tr => {
       const quantityInput = tr.querySelector('[data-item-field="quantity"]');
-      if (quantityInput) quantityInput.value = String(linkedQuantity);
+      if (quantityInput) {
+        quantityInput.value = String(linkedQuantity);
+        quantityInput.setAttribute('readonly', 'true');
+        quantityInput.setAttribute('aria-readonly', 'true');
+        quantityInput.dataset.linkedQuantity = String(linkedQuantity);
+      }
       const get = key => tr.querySelector(`[data-item-field="${key}"]`)?.value ?? '';
       const computed = this.computeCommercialRow({
         section: 'one_time_fee',
@@ -3448,8 +3491,10 @@ const Proposals = {
     this.state.openingProposalIds.add(id);
     this.setTriggerBusy(trigger, true);
     console.time('proposal-open');
-    const localSummary = this.state.rows.find(row => String(row.id || '').trim() === id);
-    const localProposal = localSummary ? { ...this.emptyProposal(), ...localSummary, id } : { id };
+    const localSummary = this.findLocalProposalByAnyId(id);
+    const localProposal = localSummary
+      ? { ...this.emptyProposal(), ...localSummary, id: String(localSummary.id || localSummary.uuid || id).trim(), proposal_id: String(localSummary.proposal_id || localSummary.proposalId || id).trim() }
+      : { id };
     this.openProposalForm(
       localProposal,
       [],
@@ -3465,7 +3510,16 @@ const Proposals = {
       const response = await this.getProposal(id);
       const { proposal, items } = this.extractProposalAndItems(response, id);
       this.setCachedDetail(id, proposal, items);
-      if (String(E.proposalForm?.dataset.id || '').trim() === id) {
+      const activeFormId = String(E.proposalForm?.dataset.id || E.proposalForm?.dataset.proposalId || '').trim();
+      const resolvedKeys = [
+        id,
+        proposal?.id,
+        proposal?.uuid,
+        proposal?.proposal_id,
+        proposal?.proposalId,
+        proposal?.ref_number
+      ].map(v => String(v || '').trim()).filter(Boolean);
+      if (!activeFormId || resolvedKeys.includes(activeFormId)) {
         this.openProposalForm(proposal, items, { readOnly: readOnly || this.isProposalAccepted(proposal) || this.isProposalExpired(proposal) });
       }
     } catch (error) {
@@ -3499,12 +3553,13 @@ const Proposals = {
     this.resetForm();
     this.state.formMode = mode;
     this.state.formReadOnly = effectiveReadOnly;
-    this.state.currentProposalId = base.id || '';
+    this.state.currentProposalId = base.id || base.uuid || base.proposal_id || base.proposalId || '';
     this.state.currentProposal = base;
     this.state.currentItems = Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : [];
 
     E.proposalForm.dataset.mode = mode;
-    E.proposalForm.dataset.id = base.id || '';
+    E.proposalForm.dataset.id = base.id || base.uuid || base.proposal_id || base.proposalId || '';
+    E.proposalForm.dataset.proposalId = base.proposal_id || base.proposalId || base.id || '';
     E.proposalForm.dataset.refNumber = base.ref_number || '';
     E.proposalForm.dataset.signedDocumentPath = base.signed_document_path || '';
     E.proposalForm.dataset.signedDocumentName = base.signed_document_name || '';
@@ -4432,6 +4487,7 @@ const Proposals = {
                 this.syncAnnualDiscountLockForRow(tr);
                 this.refreshOneTimeFeeQuantityInputs();
               }
+              if (section === 'one_time_fee') this.refreshOneTimeFeeQuantityInputs();
               const computed = this.computeCommercialRow({
                 section,
                 unit_price: get('unit_price'),
@@ -4461,6 +4517,7 @@ const Proposals = {
           this.syncAnnualDiscountLockForRow(tr);
           this.refreshOneTimeFeeQuantityInputs();
         }
+        if (section === 'one_time_fee') this.refreshOneTimeFeeQuantityInputs();
         const computed = this.computeCommercialRow({
           section,
           unit_price: get('unit_price'),

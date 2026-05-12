@@ -1331,6 +1331,35 @@ const Invoices = {
       cachedAt: Date.now()
     };
   },
+
+  getInvoiceRowKey(row = {}) {
+    return String(
+      row?.id ||
+      row?.uuid ||
+      row?.invoice_uuid ||
+      row?.invoice_id ||
+      row?.invoiceId ||
+      row?.invoice_number ||
+      row?.invoiceNumber ||
+      ''
+    ).trim();
+  },
+  findLocalInvoiceByAnyId(value = '') {
+    const target = String(value || '').trim();
+    if (!target) return null;
+    return (Array.isArray(this.state.rows) ? this.state.rows : []).find(row => {
+      const candidates = [
+        row?.id,
+        row?.uuid,
+        row?.invoice_uuid,
+        row?.invoice_id,
+        row?.invoiceId,
+        row?.invoice_number,
+        row?.invoiceNumber
+      ].map(v => String(v || '').trim()).filter(Boolean);
+      return candidates.includes(target);
+    }) || null;
+  },
   setTriggerBusy(trigger, busy) {
     if (!trigger || !('disabled' in trigger)) return;
     trigger.disabled = !!busy;
@@ -1892,7 +1921,7 @@ const Invoices = {
     const textCell = value => U.escapeHtml(String(value ?? '').trim() || '—');
     E.invoicesTbody.innerHTML = rows
       .map(row => {
-        const id = U.escapeAttr(row.id || row.invoice_id || row.invoice_number || row.invoiceId || '');
+        const id = U.escapeAttr(this.getInvoiceRowKey(row));
         return `<tr>
           <td>${textCell(row.invoice_number || row.invoice_id)}</td>
           <td>${textCell(row.customer_name)}</td>
@@ -2306,7 +2335,8 @@ const Invoices = {
       this.refreshInvoiceReceipts(this.state.selectedInvoice.id, { force: true });
       this.loadInvoicePaymentSchedule(this.state.selectedInvoice.id, { forceCreate: true });
     }
-    E.invoiceForm.dataset.id = this.state.selectedInvoice.id || '';
+    E.invoiceForm.dataset.id = this.state.selectedInvoice.id || this.state.selectedInvoice.uuid || this.state.selectedInvoice.invoice_id || this.state.selectedInvoice.invoiceId || '';
+    E.invoiceForm.dataset.invoiceId = this.state.selectedInvoice.invoice_id || this.state.selectedInvoice.invoiceId || this.state.selectedInvoice.id || '';
     if (E.invoiceFormTitle) {
       E.invoiceFormTitle.textContent = this.state.selectedInvoice.id
         ? readOnly
@@ -2576,9 +2606,11 @@ const Invoices = {
     this.state.openingInvoiceIds.add(id);
     this.setTriggerBusy(trigger, true);
     console.time('invoice-open');
-    const localSummary = this.state.rows.find(row => this.invoiceDbId(row.id) === id);
+    const localSummary = this.findLocalInvoiceByAnyId(id);
     this.openInvoice(
-      localSummary ? { ...this.emptyInvoice(), ...localSummary, id } : { id },
+      localSummary
+        ? { ...this.emptyInvoice(), ...localSummary, id: String(localSummary.id || localSummary.uuid || id).trim(), invoice_id: String(localSummary.invoice_id || localSummary.invoiceId || id).trim() }
+        : { id },
       [],
       { readOnly }
     );
@@ -2589,7 +2621,7 @@ const Invoices = {
         this.openInvoice(cached.invoice, cached.items, { readOnly });
         return;
       }
-      const response = await Api.getInvoice(id);
+      const response = await Api.getInvoice(id, { invoice_id: id, invoiceId: id, invoice_number: id });
       const { invoice, items } = this.extractInvoiceAndItems(response, id);
       const normalizedInvoice = this.normalizeInvoice(invoice || {});
       if (!String(normalizedInvoice.agreement_number || '').trim() && String(normalizedInvoice.agreement_uuid || '').trim()) {
@@ -2597,7 +2629,16 @@ const Invoices = {
         if (agreementDisplay) normalizedInvoice.agreement_number = agreementDisplay;
       }
       this.setCachedDetail(id, normalizedInvoice, items);
-      if (String(E.invoiceForm?.dataset.id || '').trim() === id) {
+      const activeFormId = String(E.invoiceForm?.dataset.id || E.invoiceForm?.dataset.invoiceId || '').trim();
+      const resolvedKeys = [
+        id,
+        normalizedInvoice?.id,
+        normalizedInvoice?.uuid,
+        normalizedInvoice?.invoice_id,
+        normalizedInvoice?.invoiceId,
+        normalizedInvoice?.invoice_number
+      ].map(v => String(v || '').trim()).filter(Boolean);
+      if (!activeFormId || resolvedKeys.includes(activeFormId)) {
         this.openInvoice(normalizedInvoice, items, { readOnly });
       }
     } catch (error) {
@@ -2898,7 +2939,7 @@ const Invoices = {
     const summary = this.state.rows.find(row => this.invoiceDbId(row.id) === id);
     if (summary) {
       try {
-        const response = await Api.getInvoice(id);
+        const response = await Api.getInvoice(id, { invoice_id: id, invoiceId: id, invoice_number: id });
         const parsed = this.extractInvoiceAndItems(response, id);
         if (parsed?.invoice) this.upsertLocalRow(parsed.invoice);
       } catch (_error) {
