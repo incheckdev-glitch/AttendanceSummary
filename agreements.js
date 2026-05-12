@@ -1283,35 +1283,6 @@ const Agreements = {
       cachedAt: Date.now()
     };
   },
-
-  getAgreementRowKey(row = {}) {
-    return String(
-      row?.id ||
-      row?.uuid ||
-      row?.agreement_uuid ||
-      row?.agreement_id ||
-      row?.agreementId ||
-      row?.agreement_number ||
-      row?.agreementNumber ||
-      ''
-    ).trim();
-  },
-  findLocalAgreementByAnyId(value = '') {
-    const target = String(value || '').trim();
-    if (!target) return null;
-    return (Array.isArray(this.state.rows) ? this.state.rows : []).find(row => {
-      const candidates = [
-        row?.id,
-        row?.uuid,
-        row?.agreement_uuid,
-        row?.agreement_id,
-        row?.agreementId,
-        row?.agreement_number,
-        row?.agreementNumber
-      ].map(v => String(v || '').trim()).filter(Boolean);
-      return candidates.includes(target);
-    }) || null;
-  },
   setTriggerBusy(trigger, busy) {
     if (!trigger || !('disabled' in trigger)) return;
     trigger.disabled = !!busy;
@@ -2066,7 +2037,7 @@ const Agreements = {
     }
     const textCell = value => U.escapeHtml(String(value ?? '').trim() || '—');
     E.agreementsTbody.innerHTML = rows.map(row => {
-      const id = U.escapeAttr(this.getAgreementRowKey(row));
+      const id = U.escapeAttr(row.id || row.agreement_id || row.agreement_number || row.agreementId || '');
       return `<tr>
         <td>${textCell(row.agreement_id)}</td><td>${textCell(row.agreement_number)}</td><td>${textCell(row.agreement_title)}</td>
         <td>${textCell(row.customer_name)}</td><td>${textCell(row.proposal_id)}</td><td>${textCell(row.deal_id)}</td>
@@ -2747,11 +2718,9 @@ const Agreements = {
     this.state.openingAgreementIds.add(id);
     this.setTriggerBusy(trigger, true);
     console.time('agreement-open');
-    const localSummary = this.findLocalAgreementByAnyId(id);
+    const localSummary = this.state.rows.find(row => String(row.id || '').trim() === id);
     this.openAgreementForm(
-      localSummary
-        ? { ...this.emptyAgreement(), ...localSummary, id: String(localSummary.id || localSummary.uuid || id).trim(), agreement_id: String(localSummary.agreement_id || localSummary.agreementId || id).trim() }
-        : { id },
+      localSummary ? { ...this.emptyAgreement(), ...localSummary, id } : { id },
       [],
       { readOnly }
     );
@@ -2766,16 +2735,7 @@ const Agreements = {
       const { agreement: rawAgreement, items } = this.extractAgreementAndItems(response, id);
       const agreement = await this.applyCompanyIdentityToAgreement(rawAgreement, { allowFallbackToAgreement: true });
       this.setCachedDetail(id, agreement, items);
-      const activeFormId = String(E.agreementForm?.dataset.id || E.agreementForm?.dataset.agreementId || '').trim();
-      const resolvedKeys = [
-        id,
-        agreement?.id,
-        agreement?.uuid,
-        agreement?.agreement_id,
-        agreement?.agreementId,
-        agreement?.agreement_number
-      ].map(v => String(v || '').trim()).filter(Boolean);
-      if (!activeFormId || resolvedKeys.includes(activeFormId)) {
+      if (String(E.agreementForm?.dataset.id || '').trim() === id) {
         this.openAgreementForm(agreement, items, { readOnly });
       }
     } catch (error) {

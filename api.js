@@ -599,13 +599,7 @@ const Api = {
     return this.normalizeListResponse(response);
   },
   async getAgreement(agreementId) {
-    const key = String(agreementId || '').trim();
-    return this.requestWithSession('agreements', 'get', {
-      id: key,
-      agreement_id: key,
-      agreementId: key,
-      agreement_number: key
-    });
+    return this.requestWithSession('agreements', 'get', { id: agreementId });
   },
   async createAgreement(agreement, items = []) {
     const response = await this.requestWithSession('agreements', 'create', { agreement, items });
@@ -1140,13 +1134,7 @@ const Api = {
     return this.normalizeListResponse(response);
   },
   async getInvoice(invoiceId) {
-    const key = String(invoiceId || '').trim();
-    return this.requestWithSession('invoices', 'get', {
-      id: key,
-      invoice_id: key,
-      invoiceId: key,
-      invoice_number: key
-    });
+    return this.requestWithSession('invoices', 'get', { id: invoiceId, invoice_id: invoiceId });
   },
   async createInvoice(invoice, items = []) {
     const response = await this.requestWithSession('invoices', 'create', { invoice, items });
