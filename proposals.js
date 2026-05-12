@@ -195,6 +195,16 @@ const Proposals = {
     if (Number.isNaN(parsed.getTime())) return raw;
     return parsed.toISOString().slice(0, 10);
   },
+  getPaymentTermDisplay(value = '') {
+    const raw = String(value || '').trim();
+    const map = {
+      'net 7': 'Monthly',
+      'net 14': 'Quarterly',
+      'net 21': 'Semi-Annually',
+      'net 30': 'Annually'
+    };
+    return map[raw.toLowerCase()] || raw;
+  },
   calculateServiceEndDate(startDateValue, monthsValue) {
     const startValue = this.normalizeDateInputValue(startDateValue);
     if (!startValue) return '';
@@ -2110,13 +2120,15 @@ const Proposals = {
       .cell-right { text-align: right; vertical-align: middle; white-space: nowrap; }
       .total-row td { font-weight: 700; background: #f7faff; }
       .totals-wrap { display: flex; justify-content: flex-end; margin-top: 16px; }
-      .totals-box { width: 72mm; max-width: 100%; border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; }
+      .totals-box { width: 96mm; max-width: 100%; border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; }
       .totals-row { display: flex; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid #e3eaf3; font-size: 13px; }
       .totals-row:last-child { border-bottom: 0; }
+      .totals-row span { min-width: 0; }
+      .totals-row strong { text-align: right; overflow-wrap: anywhere; }
       .totals-row.grand { font-size: 15px; font-weight: 700; background: #edf4ff; color: #0b214a; }
       .totals-row.grand-total-words-row { align-items: flex-start; gap: 12px; background: #f8fbff; color: #334155; font-size: 12px; font-weight: 500; }
       .totals-row.grand-total-words-row span { flex: 0 0 auto; font-weight: 600; white-space: nowrap; }
-      .totals-row.grand-total-words-row strong { font-weight: 500; line-height: 1.4; text-align: right; }
+      .totals-row.grand-total-words-row strong { flex: 1 1 auto; min-width: 0; font-weight: 500; line-height: 1.4; text-align: right; overflow-wrap: anywhere; }
       .terms { margin-top: 16px; font-size: 12.5px; line-height: 1.6; border: 1px solid #d7e1ed; border-radius: 6px; padding: 12px; }
       .signature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 12px; }
       .signature-box { border: 1px solid #d7e1ed; min-height: 124px; border-radius: 6px; overflow: hidden; }
@@ -2191,7 +2203,7 @@ const Proposals = {
           <div class="info-head">COMMERCIAL TERMS</div>
           <div class="info-body">
             <div><strong>Billing Frequency:</strong> ${textValue(proposalData.billing_frequency)}</div>
-            <div><strong>Payment Term:</strong> ${textValue(proposalData.payment_term)}</div>
+            <div><strong>Payment Term:</strong> ${textValue(this.getPaymentTermDisplay(proposalData.payment_term))}</div>
             <div><strong>PO Number:</strong> ${textValue(proposalData.po_number)}</div>
             <div><strong>Account Number:</strong> ${textValue(proposalData.account_number)}</div>
             <div><strong>Service Start Date:</strong> ${dateValue(proposalData.service_start_date)}</div>
@@ -2903,15 +2915,18 @@ const Proposals = {
   computeCommercialRow(item) {
     const section = String(item?.section || '').trim().toLowerCase();
     const unit = this.toNumberSafe(item.unit_price);
-    const discountRatio = this.normalizeDiscount(item.discount_percent);
     let qty = this.toNumberSafe(item.quantity);
     if (!qty && section === 'annual_saas') qty = 12;
     if (!qty && section === 'one_time_fee') qty = 1;
+    const rawDiscountRatio = this.normalizeDiscount(item.discount_percent);
+    const discountRatio = section === 'annual_saas' && qty < 12 ? 0 : rawDiscountRatio;
     const baseAmount = section === 'annual_saas' ? unit * (qty / 12) : unit * qty;
     const discounted = section === 'annual_saas' ? baseAmount * (1 - discountRatio) : unit * (1 - discountRatio);
     const lineTotal = Math.max(0, baseAmount * (1 - discountRatio));
     return {
       ...item,
+      quantity: qty,
+      discount_percent: section === 'annual_saas' && qty < 12 ? 0 : item.discount_percent,
       discounted_unit_price: discounted,
       line_total: lineTotal
     };
@@ -3115,8 +3130,12 @@ const Proposals = {
           ? `<td><input class="input" type="date" data-item-field="service_start_date" value="${U.escapeAttr(computed.service_start_date || '')}" /></td>
           <td><input class="input" type="date" data-item-field="service_end_date" value="${U.escapeAttr(computed.service_end_date || '')}" /></td>`
           : '';
-        const discountCell = `<td><input class="input" type="number" step="0.01" min="0" max="100" data-item-field="discount_percent" value="${U.escapeAttr(computed.discount_percent ?? '')}" /></td>`;
-        const quantityCell = `<td><input class="input" type="number" step="0.01" min="0.01" ${section === 'annual_saas' ? 'max="12"' : ''} data-item-field="quantity" value="${U.escapeAttr(computed.quantity ?? '')}" /></td>`;
+        const annualDiscountLocked = section === 'annual_saas' && this.toNumberSafe(computed.quantity) < 12;
+        const oneTimeQuantityLocked = section === 'one_time_fee';
+        const discountLockAttr = annualDiscountLocked ? ' readonly aria-readonly="true" title="Discount is only available when License / Month is 12."' : '';
+        const quantityLockAttr = oneTimeQuantityLocked ? ' readonly aria-readonly="true" title="Quantity is linked to the number of SaaS subscription rows."' : '';
+        const discountCell = `<td><input class="input" type="number" step="0.01" min="0" max="100" data-item-field="discount_percent" value="${U.escapeAttr(annualDiscountLocked ? 0 : (computed.discount_percent ?? ''))}"${discountLockAttr} /></td>`;
+        const quantityCell = `<td><input class="input" type="number" step="0.01" min="0.01" ${section === 'annual_saas' ? 'max="12"' : ''} data-item-field="quantity" value="${U.escapeAttr(oneTimeQuantityLocked ? Math.max(1, this.getAnnualSaasRowCountFromDom() || computed.quantity || 1) : (computed.quantity ?? ''))}"${quantityLockAttr} /></td>`;
         const commercialCells = section === 'annual_saas'
           ? `${quantityCell}${serviceDateCells}${discountCell}`
           : `${discountCell}${quantityCell}`;
@@ -3134,9 +3153,26 @@ const Proposals = {
       .join('');
     [...tbody.querySelectorAll('tr[data-item-row]')].forEach(tr => this.applyCatalogSelectionToRow(tr, section));
   },
+  getAnnualSaasRowCountFromItems(items = []) {
+    return (Array.isArray(items) ? items : []).filter(item => String(item?.section || '').trim().toLowerCase() === 'annual_saas').length;
+  },
+  getAnnualSaasRowCountFromDom() {
+    return Array.from(E.proposalAnnualItemsTbody?.querySelectorAll?.('tr[data-item-row="annual_saas"]') || []).length;
+  },
+  syncOneTimeFeeRowsWithAnnualCount(groups = {}) {
+    const annualRows = Array.isArray(groups.annual_saas) ? groups.annual_saas : [];
+    const annualCount = annualRows.length;
+    const linkedQuantity = Math.max(1, annualCount || 1);
+    let oneTimeRows = Array.isArray(groups.one_time_fee) ? groups.one_time_fee : [];
+    oneTimeRows = oneTimeRows.map(row => ({ ...row, section: 'one_time_fee', quantity: linkedQuantity }));
+    if (annualCount > 0 && !oneTimeRows.length) {
+      oneTimeRows = [{ section: 'one_time_fee', quantity: linkedQuantity, discount_percent: 0, unit_price: 0, line_total: 0 }];
+    }
+    return { ...groups, annual_saas: annualRows, one_time_fee: oneTimeRows };
+  },
   renderProposalItems(items = []) {
     this.renderCatalogOptionLists();
-    const groups = this.groupedItems(items);
+    const groups = this.syncOneTimeFeeRowsWithAnnualCount(this.groupedItems(items));
     this.renderSectionRows('annual_saas', groups.annual_saas);
     this.renderSectionRows('one_time_fee', groups.one_time_fee);
     if (E.proposalCapabilityItemsTbody) E.proposalCapabilityItemsTbody.innerHTML = '';
@@ -3152,6 +3188,7 @@ const Proposals = {
         : E.proposalCapabilityItemsTbody;
     if (!tbody) return [];
     const rows = [...tbody.querySelectorAll('tr[data-item-row]')];
+    const linkedOneTimeQuantity = Math.max(1, this.getAnnualSaasRowCountFromDom() || 1);
     return rows
       .map((tr, idx) => {
         const get = field => tr.querySelector(`[data-item-field="${field}"]`)?.value ?? '';
@@ -3167,22 +3204,26 @@ const Proposals = {
           };
         }
         const unitPrice = this.toNumberSafe(get('unit_price'));
-        const discountPercent = this.normalizeDiscountPercentValue(get('discount_percent'));
-        const quantity = Math.max(0, this.toNumberSafe(get('quantity')) || (section === 'annual_saas' ? 12 : 1));
+        let quantity = Math.max(0, this.toNumberSafe(get('quantity')) || (section === 'annual_saas' ? 12 : 1));
+        if (section === 'one_time_fee') quantity = linkedOneTimeQuantity;
+        let discountPercent = this.normalizeDiscountPercentValue(get('discount_percent'));
+        if (section === 'annual_saas' && quantity < 12) discountPercent = 0;
         const serviceStartDate = this.normalizeDateInputValue(get('service_start_date'));
         let serviceEndDate = this.normalizeDateInputValue(get('service_end_date'));
         if (section === 'annual_saas' && !serviceEndDate) {
           serviceEndDate = this.calculateServiceEndDate(serviceStartDate, quantity);
         }
+        const itemName = String(get('item_name')).trim();
+        const locationName = String(get('location_name')).trim();
+        if (!itemName && !locationName && !unitPrice) return null;
         const computed = this.computeCommercialRow({ section, unit_price: unitPrice, discount_percent: discountPercent, quantity });
-        if (!get('item_name') && !get('location_name') && !unitPrice && !quantity) return null;
         return {
           section,
           line_no: idx + 1,
           catalog_item_id: String(get('catalog_item_id')).trim(),
-          location_name: String(get('location_name')).trim(),
+          location_name: locationName,
           location_address: String(get('location_address')).trim(),
-          item_name: String(get('item_name')).trim(),
+          item_name: itemName,
           unit_price: unitPrice,
           discount_percent: discountPercent,
           quantity,
@@ -3609,10 +3650,10 @@ const Proposals = {
       const discount = this.toNumberSafe(item.discount_percent);
       const start = this.normalizeDateInputValue(item.service_start_date);
       const end = this.normalizeDateInputValue(item.service_end_date);
-      return unit < 0 || qty <= 0 || qty > 12 || discount < 0 || discount > 100 || !start || !end || end <= start;
+      return unit < 0 || qty <= 0 || qty > 12 || discount < 0 || discount > 100 || (qty < 12 && discount > 0) || !start || !end || end <= start;
     });
     if (hasInvalidAnnual) {
-      UI.toast('Please complete the annual SaaS service dates and license months.');
+      UI.toast('Please complete the annual SaaS service dates and license months. Discount must be 0% when License / Month is below 12.');
       return false;
     }
     const hasInvalidOneTime = safeItems.some(item => {
@@ -4105,7 +4146,7 @@ const Proposals = {
       item_name: '',
       unit_price: 0,
       discount_percent: 0,
-      quantity: section === 'annual_saas' ? 12 : 1,
+      quantity: section === 'annual_saas' ? 12 : Math.max(1, this.getAnnualSaasRowCountFromDom() || 1),
       service_start_date: section === 'annual_saas' ? this.getDefaultAnnualServiceStartDate() : '',
       service_end_date: section === 'annual_saas' ? this.calculateServiceEndDate(this.getDefaultAnnualServiceStartDate(), 12) : '',
       discounted_unit_price: 0,
@@ -4266,6 +4307,10 @@ const Proposals = {
                 const endInput = tr.querySelector('[data-item-field="service_end_date"]');
                 if (endInput) endInput.value = this.calculateServiceEndDate(get('service_start_date'), get('quantity'));
               }
+              if (section === 'annual_saas' && this.toNumberSafe(get('quantity')) < 12) {
+                const discountInput = tr.querySelector('[data-item-field="discount_percent"]');
+                if (discountInput) discountInput.value = '0';
+              }
               const computed = this.computeCommercialRow({
                 section,
                 unit_price: get('unit_price'),
@@ -4290,6 +4335,10 @@ const Proposals = {
         if (section === 'annual_saas' && (field === 'quantity' || field === 'service_start_date')) {
           const endInput = tr.querySelector('[data-item-field="service_end_date"]');
           if (endInput) endInput.value = this.calculateServiceEndDate(get('service_start_date'), get('quantity'));
+        }
+        if (section === 'annual_saas' && this.toNumberSafe(get('quantity')) < 12) {
+          const discountInput = tr.querySelector('[data-item-field="discount_percent"]');
+          if (discountInput) discountInput.value = '0';
         }
         const computed = this.computeCommercialRow({
           section,

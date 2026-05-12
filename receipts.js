@@ -1892,12 +1892,12 @@ const Receipts = {
       .total-row td { font-weight: 700; background: #f7faff; }
       .receipt-narrative { margin: 16px 0 0; font-size: 12.5px; line-height: 1.6; border: 1px solid #d7e1ed; border-radius: 6px; padding: 12px; background: #fbfdff; }
       .totals-wrap { display: flex; justify-content: flex-end; margin-top: 16px; }
-      .totals-box { width: 82mm; max-width: 100%; border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; }
+      .totals-box { width: 96mm; max-width: 100%; border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; }
       .totals-row { display: flex; justify-content: space-between; gap: 10px; padding: 10px 12px; border-bottom: 1px solid #e3eaf3; font-size: 13px; }
       .totals-row:last-child { border-bottom: 0; }
       .totals-row.grand { font-size: 15px; font-weight: 700; background: #edf4ff; color: #0b214a; }
       .totals-row span { min-width: 0; }
-      .totals-row strong { text-align: right; overflow-wrap: anywhere; }
+      .totals-row strong { flex: 1 1 auto; min-width: 0; text-align: right; overflow-wrap: anywhere; }
       .footer-note { margin-top: 16px; font-size: 11px; color: #64748b; border-top: 1px solid #e3eaf3; padding-top: 10px; text-align: center; }
       @page { size: A4; margin: 0; }
       @media print {

@@ -3185,7 +3185,7 @@ Sample:
           </div>
           <div class="filter-row">
             <label class="muted" for="proposalFormPaymentTerm">Payment Term</label>
-            <select id="proposalFormPaymentTerm" class="select"><option value="Net 7">Net 7</option><option value="Net 14">Net 14</option><option value="Net 21">Net 21</option><option value="Net 30" selected>Net 30</option></select>
+            <select id="proposalFormPaymentTerm" class="select"><option value="Net 7">Monthly</option><option value="Net 14">Quarterly</option><option value="Net 21">Semi-Annually</option><option value="Net 30" selected>Annually</option></select>
           </div>
           <div class="filter-row"><label class="muted" for="proposalFormPoNumber">PO Number</label><input id="proposalFormPoNumber" class="input" type="text" /></div>
         </div>
@@ -3219,9 +3219,9 @@ Sample:
         </datalist>
         <datalist id="proposalPaymentTermOptions">
           <option value="Due on Receipt"></option>
-          <option value="Net 7"></option>
+          <option value="Net 7">Monthly</option>
           <option value="Net 15"></option>
-          <option value="Net 30"></option>
+          <option value="Net 30">Annually</option>
           <option value="Net 45"></option>
           <option value="Net 60"></option>
           <option value="50% Upfront / 50% Delivery"></option>
@@ -3409,11 +3409,7 @@ Sample:
           <div class="filter-row"><label class="muted" for="agreementFormLeadId">Lead ID</label><input id="agreementFormLeadId" class="input" type="text" /></div>
           <div class="filter-row"><label class="muted" for="agreementFormCurrency">Currency</label><input id="agreementFormCurrency" class="input" type="text" /></div>
           <input id="agreementFormIsPoc" type="hidden" />
-          <input id="agreementFormPocLocationCount" type="hidden" />
           <input id="agreementFormPocLicenseCount" type="hidden" />
-          <input id="agreementFormPocLicenseMonths" type="hidden" />
-          <input id="agreementFormPocServiceStartDate" type="hidden" />
-          <input id="agreementFormPocServiceEndDate" type="hidden" />
         </div>
         <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">Company / Contact Selection</strong>
         <div class="grid crm-party-selector-grid" data-party-selector="agreement" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px;">
@@ -3432,7 +3428,18 @@ Sample:
           <div class="filter-row"><label class="muted" for="agreementFormServiceStartDate">Service Start Date</label><input id="agreementFormServiceStartDate" class="input" type="date" /></div><div class="filter-row"><label class="muted" for="agreementFormServiceEndDate">Service End Date</label><input id="agreementFormServiceEndDate" class="input" type="date" /></div>
           <div class="filter-row"><label class="muted" for="agreementFormAgreementLength">Agreement Length</label><input id="agreementFormAgreementLength" class="input" type="text" list="agreementLengthOptions" /></div><div class="filter-row"><label class="muted" for="agreementFormAccountNumber">Account Number</label><input id="agreementFormAccountNumber" class="input" type="text" /></div>
           <div class="filter-row"><label class="muted" for="agreementFormPoNumber">PO Number</label><input id="agreementFormPoNumber" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="agreementFormBillingFrequency">Billing Frequency</label><input id="agreementFormBillingFrequency" class="input readonly-field" type="text" value="Annual" readonly aria-readonly="true" /></div><div class="filter-row"><label class="muted" for="agreementFormPaymentTerm">Payment Terms</label><select id="agreementFormPaymentTerm" class="select"><option value="Net 7">Net 7</option><option value="Net 14">Net 14</option><option value="Net 21">Net 21</option><option value="Net 30" selected>Net 30</option></select></div>
+          <div class="filter-row"><label class="muted" for="agreementFormBillingFrequency">Billing Frequency</label><input id="agreementFormBillingFrequency" class="input readonly-field" type="text" value="Annual" readonly aria-readonly="true" /></div><div class="filter-row"><label class="muted" for="agreementFormPaymentTerm">Payment Terms</label><select id="agreementFormPaymentTerm" class="select"><option value="Net 7">Monthly</option><option value="Net 14">Quarterly</option><option value="Net 21">Semi-Annually</option><option value="Net 30" selected>Annually</option></select></div>
+        </div>
+        <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">POC Details</strong>
+        <div class="muted" style="margin:-4px 0 8px;">If this agreement comes from a POC proposal, keep the POC details available here as well.</div>
+        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start;">
+          <div class="filter-row" style="grid-column:1 / -1;"><label style="display:flex;align-items:center;gap:8px;font-weight:600;"><input id="agreementFormIsPocToggle" type="checkbox" /> POC</label></div>
+        </div>
+        <div id="agreementPocDetails" class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:8px;display:none;">
+          <div class="filter-row"><label class="muted" for="agreementFormPocLocationCount">Number of Locations</label><input id="agreementFormPocLocationCount" class="input" type="number" min="0" step="1" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormPocLicenseMonths">License / Month</label><input id="agreementFormPocLicenseMonths" class="input" type="number" min="0" step="0.01" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormPocServiceStartDate">POC Service Start Date</label><input id="agreementFormPocServiceStartDate" class="input" type="date" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormPocServiceEndDate">POC Service End Date</label><input id="agreementFormPocServiceEndDate" class="input" type="date" /></div>
         </div>
         <datalist id="agreementBillingCycleOptions">
           <option value="One-time"></option>
@@ -3447,14 +3454,10 @@ Sample:
           <option value="3 years"></option>
         </datalist>
         <datalist id="agreementPaymentTermOptions">
-          <option value="Due on Receipt"></option>
-          <option value="Net 7"></option>
-          <option value="Net 15"></option>
-          <option value="Net 30"></option>
-          <option value="Net 45"></option>
-          <option value="Net 60"></option>
-          <option value="50% Upfront / 50% Delivery"></option>
-          <option value="Milestone Based"></option>
+          <option value="Net 7" label="Monthly"></option>
+          <option value="Net 14" label="Quarterly"></option>
+          <option value="Net 21" label="Semi-Annually"></option>
+          <option value="Net 30" label="Annually"></option>
         </datalist>
         <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">Provider Details — Read-only</strong>
         <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
@@ -3582,7 +3585,7 @@ Sample:
           <div class="filter-row"><label class="muted" for="invoiceFormInvoiceDate">Invoice Date</label><input id="invoiceFormInvoiceDate" class="input" type="date" /></div>
           <div class="filter-row"><label class="muted" for="invoiceFormDueDate">Due Date</label><input id="invoiceFormDueDate" class="input" type="date" /></div>
           <div class="filter-row"><label class="muted" for="invoiceFormCurrency">Currency</label><input id="invoiceFormCurrency" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="invoiceFormPaymentTerm">Payment Term</label><input id="invoiceFormPaymentTerm" class="input" type="text" list="agreementPaymentTermOptions" /></div>
+          <div class="filter-row"><label class="muted" for="invoiceFormPaymentTerm">Payment Term</label><select id="invoiceFormPaymentTerm" class="select"><option value="Net 7">Monthly</option><option value="Net 14">Quarterly</option><option value="Net 21">Semi-Annually</option><option value="Net 30" selected>Annually</option></select></div>
         </div>
         <div class="divider" style="margin:12px 0;"></div>
         <strong style="display:block;margin-bottom:8px;">Customer</strong>

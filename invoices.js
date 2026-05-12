@@ -1017,9 +1017,11 @@ const Invoices = {
       .cell-right { text-align: right; vertical-align: middle; white-space: nowrap; }
       .total-row td { font-weight: 700; background: #f7faff; }
       .totals-wrap { display: flex; justify-content: flex-end; margin-top: 16px; }
-      .totals-box { width: 72mm; max-width: 100%; border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; }
+      .totals-box { width: 96mm; max-width: 100%; border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; }
       .totals-row { display: flex; justify-content: space-between; gap: 10px; padding: 10px 12px; border-bottom: 1px solid #e3eaf3; font-size: 13px; }
       .totals-row:last-child { border-bottom: 0; }
+      .totals-row span { min-width: 0; }
+      .totals-row strong { text-align: right; overflow-wrap: anywhere; }
       .totals-row.grand { font-size: 15px; font-weight: 700; background: #edf4ff; color: #0b214a; }
       .terms { margin-top: 16px; font-size: 12.5px; line-height: 1.6; border: 1px solid #d7e1ed; border-radius: 6px; padding: 12px; background: #fbfdff; }
       .terms .strong { font-weight: 700; color: #0f172a; }

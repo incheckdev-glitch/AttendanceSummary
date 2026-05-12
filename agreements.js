@@ -223,6 +223,16 @@ const Agreements = {
     const num = this.toNumberSafe(value);
     return num.toLocaleString(undefined, { maximumFractionDigits: 2 });
   },
+  getPaymentTermDisplay(value = '') {
+    const raw = String(value || '').trim();
+    const map = {
+      'net 7': 'Monthly',
+      'net 14': 'Quarterly',
+      'net 21': 'Semi-Annually',
+      'net 30': 'Annually'
+    };
+    return map[raw.toLowerCase()] || raw;
+  },
   formatMoneyWithCurrency(value, currency = '', includeZeroDecimals = false) {
     const amount = this.toNumberSafe(value);
     const normalizedCurrency = String(currency || '').trim().toUpperCase();
@@ -370,10 +380,11 @@ const Agreements = {
     let qty = this.toNumberSafe(item.quantity);
     if (!qty && section === 'annual_saas') qty = 12;
     if (!qty && section === 'one_time_fee') qty = 1;
-    const discountRatio = this.normalizeDiscount(item.discount_percent);
+    const rawDiscountRatio = this.normalizeDiscount(item.discount_percent);
+    const discountRatio = section === 'annual_saas' && qty < 12 ? 0 : rawDiscountRatio;
     const baseAmount = section === 'annual_saas' ? unit * (qty / 12) : unit * qty;
     const discountedUnitPrice = section === 'annual_saas' ? baseAmount * (1 - discountRatio) : unit * (1 - discountRatio);
-    return { ...item, discounted_unit_price: discountedUnitPrice, line_total: Math.max(0, baseAmount * (1 - discountRatio)) };
+    return { ...item, quantity: qty, discount_percent: section === 'annual_saas' && qty < 12 ? 0 : item.discount_percent, discounted_unit_price: discountedUnitPrice, line_total: Math.max(0, baseAmount * (1 - discountRatio)) };
   },
   canExportAgreements() {
     return Permissions.canExport('agreements');
@@ -483,7 +494,7 @@ const Agreements = {
         serviceEndDate: this.formatDateMMDDYYYY(pick(row, ['service_end_date', 'serviceEndDate'])),
         contractLength: pick(row, ['contract_length', 'contractLength', 'agreement_length', 'agreementLength']),
         billingCycle: pick(row, ['billing_cycle', 'billingCycle', 'billing_frequency', 'billingFrequency']),
-        paymentTerms: pick(row, ['payment_terms', 'paymentTerms', 'payment_term', 'paymentTerm']),
+        paymentTerms: this.getPaymentTermDisplay(pick(row, ['payment_terms', 'paymentTerms', 'payment_term', 'paymentTerm'])),
         subtotalLocations: numericOrBlank(pick(row, ['subtotal_locations', 'subtotalLocations', 'saas_total', 'saasTotal'])),
         subtotalOneTime: numericOrBlank(pick(row, ['subtotal_one_time', 'subtotalOneTime', 'one_time_total', 'oneTimeTotal'])),
         discountPercent: numericOrBlank(pick(row, ['discount_percent', 'discountPercent', 'total_discount_percent', 'totalDiscountPercent'])),
@@ -1517,13 +1528,15 @@ const Agreements = {
       .cell-right { text-align: right; vertical-align: middle; white-space: nowrap; }
       .total-row td { font-weight: 700; background: #f9fafb; }
       .totals-wrap { display: flex; justify-content: flex-end; margin-top: 16px; }
-      .totals-box { width: 380px; border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; }
+      .totals-box { width: 460px; max-width: 100%; border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; }
       .totals-row { display: flex; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid #e3eaf3; font-size: 13px; }
       .totals-row:last-child { border-bottom: 0; }
+      .totals-row span { min-width: 0; }
+      .totals-row strong { text-align: right; overflow-wrap: anywhere; }
       .totals-row.grand { font-size: 15px; font-weight: 700; background: #edf4ff; color: #0b214a; }
       .totals-row.grand-total-words-row { align-items: flex-start; gap: 12px; background: #f8fbff; color: #334155; font-size: 12px; font-weight: 500; }
       .totals-row.grand-total-words-row span { flex: 0 0 auto; font-weight: 600; white-space: nowrap; }
-      .totals-row.grand-total-words-row strong { font-weight: 500; line-height: 1.4; text-align: right; }
+      .totals-row.grand-total-words-row strong { flex: 1 1 auto; min-width: 0; font-weight: 500; line-height: 1.4; text-align: right; overflow-wrap: anywhere; }
       .terms { margin-top: 16px; font-size: 12.5px; line-height: 1.6; border: 1px solid #d7e1ed; border-radius: 6px; padding: 12px; }
       .signature-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "customer provider1" "customer provider2"; gap: 14px; margin-top: 12px; align-items: start; }
       .signature-box { border: 1px solid #d7e1ed; min-height: 140px; border-radius: 6px; overflow: hidden; }
@@ -1585,7 +1598,7 @@ const Agreements = {
             <div><strong>Service End Date:</strong> ${dateValue(agreementData.service_end_date)}</div>
             <div><strong>Contract Term:</strong> ${textValue(agreementData.contract_term || agreementData.agreement_length)}</div>
             <div><strong>Billing Frequency:</strong> ${textValue(agreementData.billing_frequency)}</div>
-            <div><strong>Payment Term:</strong> ${textValue(agreementData.payment_term)}</div>
+            <div><strong>Payment Term:</strong> ${textValue(this.getPaymentTermDisplay(agreementData.payment_term))}</div>
             <div><strong>PO Number:</strong> ${textValue(agreementData.po_number)}</div>
             <div><strong>Currency:</strong> ${textValue(currency)}</div>
           </div>
@@ -2021,7 +2034,7 @@ const Agreements = {
         <td>${textCell(row.agreement_id)}</td><td>${textCell(row.agreement_number)}</td><td>${textCell(row.agreement_title)}</td>
         <td>${textCell(row.customer_name)}</td><td>${textCell(row.proposal_id)}</td><td>${textCell(row.deal_id)}</td>
         <td>${U.escapeHtml(U.fmtDisplayDate(row.service_start_date))}</td><td>${textCell(row.agreement_length)}</td><td>${textCell(row.billing_frequency)}</td>
-        <td>${textCell(row.payment_term)}</td><td>${textCell(row.currency)}</td><td>${textCell(this.formatMoney(row.grand_total))}</td>
+        <td>${textCell(this.getPaymentTermDisplay(row.payment_term))}</td><td>${textCell(row.currency)}</td><td>${textCell(this.formatMoney(row.grand_total))}</td>
         <td>${textCell(row.status)}</td><td>${U.escapeHtml(U.fmtDisplayDate(row.updated_at))}</td>
         <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
         ${Permissions.canView('agreements') ? `<button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-agreement-view="${id}" data-permission-resource="agreements" data-permission-action="preview">View</button>` : ''}
@@ -2057,6 +2070,9 @@ const Agreements = {
     });
   },
   collectFormValues() {
+    const pocToggle = document.getElementById('agreementFormIsPocToggle');
+    const pocHidden = document.getElementById('agreementFormIsPoc');
+    if (pocHidden) pocHidden.value = pocToggle?.checked ? 'true' : 'false';
     const v = id => String(document.getElementById(id)?.value || '').trim();
     const agreement = {};
     this.agreementFields.forEach(field => {
@@ -2074,13 +2090,20 @@ const Agreements = {
     normalizedAgreement.contract_term = String(normalizedAgreement.agreement_length || '').trim();
     normalizedAgreement.subtotal_locations = this.toNumberSafe(normalizedAgreement.saas_total);
     normalizedAgreement.subtotal_one_time = this.toNumberSafe(normalizedAgreement.one_time_total);
-    normalizedAgreement.is_poc = this.toDbBoolean(normalizedAgreement.is_poc || this.state.currentAgreement?.is_poc, false);
+    if (pocToggle) {
+      normalizedAgreement.is_poc = !!pocToggle.checked;
+      if (pocHidden) pocHidden.value = normalizedAgreement.is_poc ? 'true' : 'false';
+    } else {
+      normalizedAgreement.is_poc = this.toDbBoolean(normalizedAgreement.is_poc || this.state.currentAgreement?.is_poc, false);
+    }
     if (!normalizedAgreement.is_poc) {
       normalizedAgreement.poc_location_count = null;
       normalizedAgreement.poc_license_count = null;
       normalizedAgreement.poc_license_months = null;
       normalizedAgreement.poc_service_start_date = null;
       normalizedAgreement.poc_service_end_date = null;
+    } else {
+      normalizedAgreement.poc_license_count = null;
     }
     return { agreement: normalizedAgreement, items };
   },
@@ -2096,6 +2119,7 @@ const Agreements = {
   },
   collectItems() {
     const rows = Array.from(E.agreementForm?.querySelectorAll('tr[data-item-row]') || []);
+    const linkedOneTimeQuantity = Math.max(1, this.getAnnualSaasRowCountFromDom() || 1);
     return rows.map((tr, index) => {
       const section = String(tr.getAttribute('data-item-row') || '').trim();
       const get = key => String(tr.querySelector(`[data-item-field="${key}"]`)?.value || '').trim();
@@ -2105,36 +2129,77 @@ const Agreements = {
       } catch (_error) {
         baseItem = {};
       }
-      const mergedItem = {
+      let quantity = this.toNumberSafe(get('quantity'));
+      if (!quantity && section === 'annual_saas') quantity = 12;
+      if (section === 'one_time_fee') quantity = linkedOneTimeQuantity;
+      let discountPercent = this.toNumberSafe(get('discount_percent'));
+      if (section === 'annual_saas' && quantity < 12) discountPercent = 0;
+      const unitPrice = this.toNumberSafe(get('unit_price'));
+      const itemName = get('item_name');
+      const locationName = get('location_name');
+      if (section !== 'capability' && !itemName && !locationName && !unitPrice) return null;
+      const computed = this.computeCommercialRow({ ...baseItem, section, unit_price: unitPrice, discount_percent: discountPercent, quantity });
+      return {
         ...baseItem,
         section,
         line_no: index + 1,
-        location_name: get('location_name'),
+        location_name: locationName,
         location_address: get('location_address'),
         service_start_date: get('service_start_date'),
-        service_end_date: get('service_end_date'),
-        item_name: get('item_name'),
-        unit_price: this.toNumberSafe(get('unit_price')),
-        discount_percent: this.toNumberSafe(get('discount_percent')),
-        discounted_unit_price: this.toNumberSafe(get('discounted_unit_price')),
-        quantity: this.toNumberSafe(get('quantity')),
-        line_total: this.toNumberSafe(get('line_total')),
+        service_end_date: section === 'annual_saas' && !get('service_end_date') ? this.calculateServiceEndDate(get('service_start_date'), quantity) : get('service_end_date'),
+        item_name: itemName,
+        unit_price: unitPrice,
+        discount_percent: discountPercent,
+        discounted_unit_price: this.toNumberSafe(get('discounted_unit_price')) || this.toNumberSafe(computed.discounted_unit_price),
+        quantity,
+        line_total: this.toNumberSafe(get('line_total')) || this.toNumberSafe(computed.line_total),
         capability_name: get('capability_name'),
         capability_value: get('capability_value'),
         notes: get('notes')
       };
-      const item = { ...baseItem, ...this.normalizeItem(mergedItem, section) };
-      const normalizedDateItem = this.normalizeDateFieldsForSave(item, ['service_start_date', 'service_end_date']);
-      if (section === 'annual_saas' || section === 'one_time_fee') {
-        const computed = this.computeCommercialRow(normalizedDateItem);
-        normalizedDateItem.discounted_unit_price = computed.discounted_unit_price;
-        normalizedDateItem.line_total = computed.line_total;
-      }
-      return normalizedDateItem;
+    }).filter(Boolean);
+  },
+  syncAgreementPocVisibility() {
+    const toggle = document.getElementById('agreementFormIsPocToggle');
+    const details = document.getElementById('agreementPocDetails');
+    const hidden = document.getElementById('agreementFormIsPoc');
+    const enabled = !!toggle?.checked;
+    if (hidden) hidden.value = enabled ? 'true' : 'false';
+    if (details) details.style.display = enabled ? 'grid' : 'none';
+    ['agreementFormPocLocationCount', 'agreementFormPocLicenseMonths', 'agreementFormPocServiceStartDate', 'agreementFormPocServiceEndDate'].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.disabled = !enabled || String(E.agreementForm?.dataset?.readOnly || '').trim() === 'true';
     });
   },
+  syncAgreementPocServiceEndDate() {
+    const toggle = document.getElementById('agreementFormIsPocToggle');
+    if (toggle && !toggle.checked) return;
+    const start = this.normalizeDateInputValue(document.getElementById('agreementFormPocServiceStartDate')?.value || '');
+    const months = document.getElementById('agreementFormPocLicenseMonths')?.value || '';
+    const endInput = document.getElementById('agreementFormPocServiceEndDate');
+    const calculated = this.calculateServiceEndDate(start, months);
+    if (endInput && calculated) endInput.value = calculated;
+  },
+  getAnnualSaasRowCountFromItems(items = []) {
+    return (Array.isArray(items) ? items : []).filter(item => String(item?.section || '').trim().toLowerCase() === 'annual_saas').length;
+  },
+  getAnnualSaasRowCountFromDom() {
+    return Array.from(E.agreementAnnualItemsTbody?.querySelectorAll?.('tr[data-item-row="annual_saas"]') || []).length;
+  },
+  syncOneTimeFeeRowsWithAnnualCount(groups = {}) {
+    const annualRows = Array.isArray(groups.annual_saas) ? groups.annual_saas : [];
+    const annualCount = annualRows.length;
+    const linkedQuantity = Math.max(1, annualCount || 1);
+    let oneTimeRows = Array.isArray(groups.one_time_fee) ? groups.one_time_fee : [];
+    oneTimeRows = oneTimeRows.map(row => ({ ...row, section: 'one_time_fee', quantity: linkedQuantity }));
+    if (annualCount > 0 && !oneTimeRows.length) {
+      oneTimeRows = [{ section: 'one_time_fee', quantity: linkedQuantity, discount_percent: 0, unit_price: 0, line_total: 0 }];
+    }
+    return { ...groups, annual_saas: annualRows, one_time_fee: oneTimeRows };
+  },
   renderItemRows(items = []) {
-    const grouped = this.groupedItems(items);
+    const grouped = this.syncOneTimeFeeRowsWithAnnualCount(this.groupedItems(items));
     const editLocked = this.isAgreementEditMode();
     const lockAttr = editLocked ? ' disabled aria-disabled="true"' : '';
     const removeCell = (section, index) => editLocked
@@ -2154,8 +2219,12 @@ const Agreements = {
         ? `<td><input class="input" type="date" data-item-field="service_start_date" value="${U.escapeAttr(computed.service_start_date || '')}"${lockAttr} /></td>
       <td><input class="input" type="date" data-item-field="service_end_date" value="${U.escapeAttr(computed.service_end_date || '')}"${lockAttr} /></td>`
         : '';
-      const discountCell = `<td><input class="input" data-item-field="discount_percent" type="number" min="0" max="100" step="0.01" value="${U.escapeAttr(computed.discount_percent ?? '')}"${lockAttr} /></td>`;
-      const quantityCell = `<td><input class="input" data-item-field="quantity" type="number" min="0.01" ${section === 'annual_saas' ? 'max="12"' : ''} step="0.01" value="${U.escapeAttr(computed.quantity ?? '')}"${lockAttr} /></td>`;
+      const annualDiscountLocked = section === 'annual_saas' && this.toNumberSafe(computed.quantity) < 12;
+      const oneTimeQuantityLocked = section === 'one_time_fee';
+      const discountLockAttr = annualDiscountLocked ? ' readonly aria-readonly="true" title="Discount is only available when License / Month is 12."' : '';
+      const quantityLockAttr = oneTimeQuantityLocked ? ' readonly aria-readonly="true" title="Quantity is linked to the number of SaaS subscription rows."' : '';
+      const discountCell = `<td><input class="input" data-item-field="discount_percent" type="number" min="0" max="100" step="0.01" value="${U.escapeAttr(annualDiscountLocked ? 0 : (computed.discount_percent ?? ''))}"${discountLockAttr}${lockAttr} /></td>`;
+      const quantityCell = `<td><input class="input" data-item-field="quantity" type="number" min="0.01" ${section === 'annual_saas' ? 'max="12"' : ''} step="0.01" value="${U.escapeAttr(oneTimeQuantityLocked ? Math.max(1, this.getAnnualSaasRowCountFromDom() || computed.quantity || 1) : (computed.quantity ?? ''))}"${quantityLockAttr}${lockAttr} /></td>`;
       const commercialCells = section === 'annual_saas'
         ? `${quantityCell}${serviceDateCells}${discountCell}`
         : `${discountCell}${quantityCell}`;
@@ -2186,6 +2255,11 @@ const Agreements = {
       const id = this.agreementFieldToFormInputId(field);
       set(id, normalizedAgreement[field] ?? '');
     });
+    const pocToggle = document.getElementById('agreementFormIsPocToggle');
+    if (pocToggle) pocToggle.checked = this.toDbBoolean(normalizedAgreement.is_poc ?? normalizedAgreement.isPoc, false);
+    const pocHidden = document.getElementById('agreementFormIsPoc');
+    if (pocHidden) pocHidden.value = this.toDbBoolean(normalizedAgreement.is_poc ?? normalizedAgreement.isPoc, false) ? 'true' : 'false';
+    this.syncAgreementPocVisibility();
   },
   initializeProviderSignDateDefaultTracking(agreement = {}) {
     const isCreateMode = !String(agreement?.id || E.agreementForm?.dataset.id || '').trim();
@@ -2582,7 +2656,7 @@ const Agreements = {
     }
     const items = this.collectItems();
     if (section === 'capability') return;
-    items.push({ section, location_name: '', location_address: '', service_start_date: section === 'annual_saas' ? this.getDefaultAnnualServiceStartDate() : '', service_end_date: section === 'annual_saas' ? this.calculateServiceEndDate(this.getDefaultAnnualServiceStartDate(), 12) : '', item_name: '', unit_price: 0, discount_percent: 0, quantity: section === 'annual_saas' ? 12 : 1, discounted_unit_price: 0, line_total: 0 });
+    items.push({ section, location_name: '', location_address: '', service_start_date: section === 'annual_saas' ? this.getDefaultAnnualServiceStartDate() : '', service_end_date: section === 'annual_saas' ? this.calculateServiceEndDate(this.getDefaultAnnualServiceStartDate(), 12) : '', item_name: '', unit_price: 0, discount_percent: 0, quantity: section === 'annual_saas' ? 12 : Math.max(1, this.getAnnualSaasRowCountFromDom() || 1), discounted_unit_price: 0, line_total: 0 });
     this.renderItemRows(items);
   },
   removeRow(section, index) {
@@ -3159,6 +3233,22 @@ const Agreements = {
       });
       const agreementCompanySelect = document.getElementById('agreementFormCompanySelector');
       const agreementDateInput = document.getElementById('agreementFormAgreementDate');
+      const agreementPocToggle = document.getElementById('agreementFormIsPocToggle');
+      const agreementPocStartDate = document.getElementById('agreementFormPocServiceStartDate');
+      const agreementPocMonths = document.getElementById('agreementFormPocLicenseMonths');
+      if (agreementPocToggle && !agreementPocToggle.dataset.bound) {
+        agreementPocToggle.addEventListener('change', () => this.syncAgreementPocVisibility());
+        agreementPocToggle.dataset.bound = 'true';
+      }
+      if (agreementPocStartDate && !agreementPocStartDate.dataset.bound) {
+        agreementPocStartDate.addEventListener('change', () => this.syncAgreementPocServiceEndDate());
+        agreementPocStartDate.dataset.bound = 'true';
+      }
+      if (agreementPocMonths && !agreementPocMonths.dataset.bound) {
+        agreementPocMonths.addEventListener('input', () => this.syncAgreementPocServiceEndDate());
+        agreementPocMonths.addEventListener('change', () => this.syncAgreementPocServiceEndDate());
+        agreementPocMonths.dataset.bound = 'true';
+      }
       if (agreementDateInput) agreementDateInput.addEventListener('change', () => {
         // Do not copy agreement date into any signature date field.
         // Signature dates are manual-only and must remain blank unless explicitly entered.
