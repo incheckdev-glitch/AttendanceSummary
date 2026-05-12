@@ -778,6 +778,35 @@ const Proposals = {
   isProposalAccepted(proposal = {}) {
     return this.normalizeProposalStatus(proposal?.status) === 'accepted';
   },
+  getProposalValidUntilValue(proposal = {}) {
+    const source = proposal && typeof proposal === 'object' ? proposal : {};
+    return this.normalizeDateInputValue(source.valid_until || source.proposal_valid_until || source.validUntil || source.proposalValidUntil || '');
+  },
+  isProposalExpired(proposal = {}) {
+    const status = this.normalizeProposalStatus(proposal?.status);
+    if (status === 'accepted') return false;
+    const validUntil = this.getProposalValidUntilValue(proposal);
+    if (!validUntil) return false;
+    return validUntil < this.todayDateString();
+  },
+  getEffectiveProposalStatus(proposal = {}) {
+    return this.isProposalExpired(proposal) ? 'expired' : this.normalizeProposalStatus(proposal?.status);
+  },
+  areProposalSignDatesComplete(proposal = {}) {
+    return Boolean(
+      this.normalizeDateInputValue(proposal?.customer_sign_date || proposal?.customerSignDate || '') &&
+      this.normalizeDateInputValue(proposal?.provider_sign_date || proposal?.providerSignDate || '')
+    );
+  },
+  syncProposalStatusFromSignDates() {
+    if (!E.proposalFormStatus) return;
+    const customerSignDate = this.normalizeDateInputValue(E.proposalFormCustomerSignDate?.value || '');
+    const providerSignDate = this.normalizeDateInputValue(E.proposalFormProviderSignDate?.value || '');
+    if (customerSignDate && providerSignDate) {
+      E.proposalFormStatus.value = 'accepted';
+      this.refreshSignedDocumentUi({ ...(this.state.currentProposal || {}), status: 'accepted' });
+    }
+  },
   getProposalStatusLabel(value = '') {
     const labels = {
       draft: 'Draft',
@@ -1257,6 +1286,7 @@ const Proposals = {
       normalized.proposal_valid_until || normalized.valid_until || source.proposalValidUntil || source.validUntil
     );
     normalized.valid_until = normalized.proposal_valid_until;
+    if (this.isProposalExpired(normalized)) normalized.status = 'expired';
     normalized.saas_total = this.toNumberSafe(
       source.subtotal_locations ?? source.subtotalLocations ?? normalized.saas_total
     );
@@ -1810,6 +1840,8 @@ const Proposals = {
       delete prepared.valid_until;
     }
     if (hasStatus || ensureBusinessProposalId) prepared.status = this.normalizeProposalStatus(base.status) || 'draft';
+    if (this.areProposalSignDatesComplete(prepared)) prepared.status = 'accepted';
+    if (this.isProposalExpired(prepared)) prepared.status = 'expired';
     return prepared;
   },
   async deleteProposal(proposalId) {
@@ -2319,7 +2351,7 @@ const Proposals = {
       .filter(Boolean);
 
     this.state.filteredRows = this.state.rows.filter(row => {
-      const status = this.normalizeProposalStatus(row?.status);
+      const status = this.getEffectiveProposalStatus(row);
       if (this.state.status !== 'All' && status !== this.state.status) return false;
       if (!this.matchesKpiFilter(row)) return false;
 
@@ -2349,7 +2381,7 @@ const Proposals = {
   },
   matchesKpiFilter(row = {}) {
     const filter = this.state.kpiFilter || 'total';
-    const statusLabel = this.normalizeStatusLabel(row?.status);
+    const statusLabel = this.normalizeStatusLabel(this.getEffectiveProposalStatus(row));
     const grandTotal = this.toNumberSafe(row?.grand_total);
     const saasTotal = this.toNumberSafe(row?.saas_total);
     const oneTimeTotal = this.toNumberSafe(row?.one_time_total);
@@ -2426,7 +2458,7 @@ const Proposals = {
     let rowsWithGrandTotal = 0;
 
     rows.forEach(row => {
-      const statusLabel = this.normalizeStatusLabel(row?.status);
+      const statusLabel = this.normalizeStatusLabel(this.getEffectiveProposalStatus(row));
       if (statusLabel === 'Draft') draftCount += 1;
       if (statusLabel === 'Sent') sentCount += 1;
       if (statusLabel === 'Accepted') approvedCount += 1;
@@ -2629,7 +2661,7 @@ const Proposals = {
           <td>${textCell(row.proposal_title)}</td>
           <td>${textCell(row.customer_name)}</td>
           <td>${textCell(row.deal_code || row.deal_id)}</td>
-          <td>${textCell(this.getProposalStatusLabel(row.status))}</td>
+          <td>${textCell(this.getProposalStatusLabel(this.getEffectiveProposalStatus(row)))}</td>
           <td>${textCell(row.currency)}</td>
           <td>${this.formatMoney(row.saas_total)}</td>
           <td>${this.formatMoney(row.one_time_total)}</td>
@@ -2880,7 +2912,7 @@ const Proposals = {
     set(E.proposalFormValidUntil, validUntil);
     this.syncProposalValidityLimits();
     if (E.proposalFormValidUntil) E.proposalFormValidUntil.dataset.autoValidUntil = this.getAutoValidUntil(proposalDate);
-    set(E.proposalFormStatus, this.normalizeProposalStatus(proposal.status) || 'draft');
+    set(E.proposalFormStatus, this.getEffectiveProposalStatus(proposal) || 'draft');
     set(E.proposalFormCurrency, proposal.currency || '');
     set(E.proposalFormCustomerName, proposal.customer_legal_name || proposal.customer_name || proposal.company_name || '');
     set(E.proposalFormCustomerAddress, proposal.customer_address || '');
@@ -3132,7 +3164,7 @@ const Proposals = {
           : '';
         const annualDiscountLocked = section === 'annual_saas' && this.toNumberSafe(computed.quantity) < 12;
         const oneTimeQuantityLocked = section === 'one_time_fee';
-        const discountLockAttr = annualDiscountLocked ? ' readonly aria-readonly="true" title="Discount is only available when License / Month is 12."' : '';
+        const discountLockAttr = annualDiscountLocked ? ' readonly aria-readonly="true" title="Discount is only available when License / Month is 12 or higher."' : '';
         const quantityLockAttr = oneTimeQuantityLocked ? ' readonly aria-readonly="true" title="Quantity is linked to the number of SaaS subscription rows."' : '';
         const discountCell = `<td><input class="input" type="number" step="0.01" min="0" max="100" data-item-field="discount_percent" value="${U.escapeAttr(annualDiscountLocked ? 0 : (computed.discount_percent ?? ''))}"${discountLockAttr} /></td>`;
         const quantityCell = `<td><input class="input" type="number" step="0.01" min="0.01" ${section === 'annual_saas' ? 'max="12"' : ''} data-item-field="quantity" value="${U.escapeAttr(oneTimeQuantityLocked ? Math.max(1, this.getAnnualSaasRowCountFromDom() || computed.quantity || 1) : (computed.quantity ?? ''))}"${quantityLockAttr} /></td>`;
@@ -3151,7 +3183,10 @@ const Proposals = {
         </tr>`;
       })
       .join('');
-    [...tbody.querySelectorAll('tr[data-item-row]')].forEach(tr => this.applyCatalogSelectionToRow(tr, section));
+    [...tbody.querySelectorAll('tr[data-item-row]')].forEach(tr => {
+      this.applyCatalogSelectionToRow(tr, section);
+      this.syncAnnualDiscountLockForRow(tr);
+    });
   },
   getAnnualSaasRowCountFromItems(items = []) {
     return (Array.isArray(items) ? items : []).filter(item => String(item?.section || '').trim().toLowerCase() === 'annual_saas').length;
@@ -3276,6 +3311,9 @@ const Proposals = {
     const providerUserName = provider.name || provider.email?.split('@')?.[0] || '';
     const contactPersonName = this.buildContactDisplayName(selectedContact);
     const pocPayload = this.getProposalPocPayload();
+    const customerSignDate = String(E.proposalFormCustomerSignDate?.value || '').trim();
+    const providerSignDate = String(E.proposalFormProviderSignDate?.value || '').trim();
+    const autoAcceptedStatus = this.normalizeDateInputValue(customerSignDate) && this.normalizeDateInputValue(providerSignDate);
     const resolvedCustomerName =
       U.getCustomerLegalName(selectedCompany, mapped) ||
       String(E.proposalFormCustomerName?.value || '').trim() ||
@@ -3296,7 +3334,7 @@ const Proposals = {
         E.proposalFormValidUntil?.value,
         { showToast: false }
       ),
-      status: this.normalizeProposalStatus(E.proposalFormStatus?.value) || 'draft',
+      status: autoAcceptedStatus ? 'accepted' : (this.normalizeProposalStatus(E.proposalFormStatus?.value) || 'draft'),
       currency: String(E.proposalFormCurrency?.value || '').trim(),
       customer_name: resolvedCustomerName,
       customer_legal_name: resolvedCustomerName,
@@ -3317,13 +3355,13 @@ const Proposals = {
       ...pocPayload,
       customer_signatory_name: mapped.customer_signatory_name || '',
       customer_signatory_title: mapped.customer_signatory_title || '',
-      customer_sign_date: String(E.proposalFormCustomerSignDate?.value || '').trim(),
+      customer_sign_date: customerSignDate,
       provider_signatory_name: this.getCleanProviderSignatoryValue(
         E.proposalFormProviderSignatoryName?.value || mapped.provider_signatory_name || mapped.providerSignatoryName || providerUserName,
         mapped
       ) || providerUserName,
       provider_signatory_title: String(E.proposalFormProviderSignatoryTitle?.value || mapped.provider_signatory_title || mapped.providerSignatoryTitle || providerRole).trim(),
-      provider_sign_date: String(E.proposalFormProviderSignDate?.value || '').trim(),
+      provider_sign_date: providerSignDate,
       terms_conditions: String(E.proposalFormTerms?.value || '').trim(),
       company_id: selectedCompany.company_id || '',
       company_name: selectedCompany.company_name || resolvedCustomerName || '',
@@ -3364,20 +3402,20 @@ const Proposals = {
     this.openProposalForm(
       localProposal,
       [],
-      { readOnly: readOnly || this.isProposalAccepted(localProposal) }
+      { readOnly: readOnly || this.isProposalAccepted(localProposal) || this.isProposalExpired(localProposal) }
     );
     this.setFormDetailLoading(true);
     try {
       const cached = this.getCachedDetail(id);
       if (cached) {
-        this.openProposalForm(cached.proposal, cached.items, { readOnly: readOnly || this.isProposalAccepted(cached.proposal) });
+        this.openProposalForm(cached.proposal, cached.items, { readOnly: readOnly || this.isProposalAccepted(cached.proposal) || this.isProposalExpired(cached.proposal) });
         return;
       }
       const response = await this.getProposal(id);
       const { proposal, items } = this.extractProposalAndItems(response, id);
       this.setCachedDetail(id, proposal, items);
       if (String(E.proposalForm?.dataset.id || '').trim() === id) {
-        this.openProposalForm(proposal, items, { readOnly: readOnly || this.isProposalAccepted(proposal) });
+        this.openProposalForm(proposal, items, { readOnly: readOnly || this.isProposalAccepted(proposal) || this.isProposalExpired(proposal) });
       }
     } catch (error) {
       if (typeof isPermissionError === 'function' && isPermissionError(error)) {
@@ -3405,7 +3443,8 @@ const Proposals = {
     const base = proposal ? this.normalizeProposal(proposal) : this.emptyProposal();
     const mode = base.id ? 'edit' : 'create';
     const acceptedLocked = this.isProposalAccepted(base);
-    const effectiveReadOnly = !!readOnly || acceptedLocked;
+    const expiredLocked = this.isProposalExpired(base);
+    const effectiveReadOnly = !!readOnly || acceptedLocked || expiredLocked;
     this.resetForm();
     this.state.formMode = mode;
     this.state.formReadOnly = effectiveReadOnly;
@@ -3465,7 +3504,7 @@ const Proposals = {
     this.ensureCatalogLoaded();
 
     if (E.proposalFormTitle) {
-      if (effectiveReadOnly) E.proposalFormTitle.textContent = acceptedLocked ? 'View Locked Proposal' : 'View Proposal';
+      if (effectiveReadOnly) E.proposalFormTitle.textContent = acceptedLocked ? 'View Locked Proposal' : expiredLocked ? 'View Expired Proposal' : 'View Proposal';
       else E.proposalFormTitle.textContent = mode === 'edit' ? 'Edit Proposal' : 'Create Proposal';
     }
     if (E.proposalFormDeleteBtn)
@@ -3641,6 +3680,25 @@ const Proposals = {
     }
   },
 
+  syncAnnualDiscountLockForRow(tr) {
+    if (!tr || String(tr.getAttribute('data-item-row') || '').trim() !== 'annual_saas') return;
+    const qty = this.toNumberSafe(tr.querySelector('[data-item-field="quantity"]')?.value || 0);
+    const discountInput = tr.querySelector('[data-item-field="discount_percent"]');
+    if (!discountInput) return;
+    if (qty < 12) {
+      discountInput.value = '0';
+      discountInput.readOnly = true;
+      discountInput.setAttribute('aria-readonly', 'true');
+      discountInput.title = 'Discount is only available when License / Month is 12 or higher.';
+      discountInput.classList.add('readonly-field');
+    } else {
+      discountInput.readOnly = false;
+      discountInput.removeAttribute('readonly');
+      discountInput.removeAttribute('aria-readonly');
+      discountInput.removeAttribute('title');
+      discountInput.classList.remove('readonly-field');
+    }
+  },
   validateCommercialItems(items = []) {
     const safeItems = Array.isArray(items) ? items : [];
     const hasInvalidAnnual = safeItems.some(item => {
@@ -3683,6 +3741,10 @@ const Proposals = {
     const proposalId = String(E.proposalForm?.dataset.id || '').trim();
     this.syncValidUntilManualEdit();
     const proposal = this.collectProposalFormData();
+    if (mode === 'edit' && this.isProposalExpired({ ...(this.state.currentProposal || {}), ...proposal })) {
+      UI.toast('This proposal has expired and cannot be edited.');
+      return;
+    }
     const sourceDealId = String(E.proposalFormDealId?.value || '').trim();
     const isDirectCreate = mode !== 'edit' && !sourceDealId;
     if (isDirectCreate && !String(proposal.company_id || '').trim()) {
@@ -4198,6 +4260,11 @@ const Proposals = {
     if (E.proposalFormStatus) {
       E.proposalFormStatus.addEventListener('change', () => this.refreshSignedDocumentUi(this.state.currentProposal || {}));
     }
+    [E.proposalFormCustomerSignDate, E.proposalFormProviderSignDate].forEach(el => {
+      if (!el) return;
+      el.addEventListener('input', () => this.syncProposalStatusFromSignDates());
+      el.addEventListener('change', () => this.syncProposalStatusFromSignDates());
+    });
     if (E.proposalFormIsPoc) {
       E.proposalFormIsPoc.addEventListener('change', () => {
         this.syncPocDetailsVisibility();
@@ -4307,10 +4374,7 @@ const Proposals = {
                 const endInput = tr.querySelector('[data-item-field="service_end_date"]');
                 if (endInput) endInput.value = this.calculateServiceEndDate(get('service_start_date'), get('quantity'));
               }
-              if (section === 'annual_saas' && this.toNumberSafe(get('quantity')) < 12) {
-                const discountInput = tr.querySelector('[data-item-field="discount_percent"]');
-                if (discountInput) discountInput.value = '0';
-              }
+              if (section === 'annual_saas') this.syncAnnualDiscountLockForRow(tr);
               const computed = this.computeCommercialRow({
                 section,
                 unit_price: get('unit_price'),
@@ -4336,10 +4400,7 @@ const Proposals = {
           const endInput = tr.querySelector('[data-item-field="service_end_date"]');
           if (endInput) endInput.value = this.calculateServiceEndDate(get('service_start_date'), get('quantity'));
         }
-        if (section === 'annual_saas' && this.toNumberSafe(get('quantity')) < 12) {
-          const discountInput = tr.querySelector('[data-item-field="discount_percent"]');
-          if (discountInput) discountInput.value = '0';
-        }
+        if (section === 'annual_saas') this.syncAnnualDiscountLockForRow(tr);
         const computed = this.computeCommercialRow({
           section,
           unit_price: get('unit_price'),
