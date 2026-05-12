@@ -148,10 +148,9 @@ const Proposals = {
     const defaultQuantity = section === 'annual_saas' ? 12 : 1;
     const quantity = Math.max(0, this.toNumberSafe(safe.quantity ?? safe.qty) || (safe.quantity === 0 ? 0 : defaultQuantity));
     const serviceStartDate = this.normalizeDateInputValue(safe.service_start_date ?? safe.serviceStartDate);
-    const savedServiceEndDate = this.normalizeDateInputValue(safe.service_end_date ?? safe.serviceEndDate);
-    const serviceEndDate = savedServiceEndDate || (section === 'annual_saas'
+    const serviceEndDate = section === 'annual_saas'
       ? this.calculateServiceEndDate(serviceStartDate, quantity)
-      : '');
+      : this.normalizeDateInputValue(safe.service_end_date ?? safe.serviceEndDate);
     const discountPercent = this.getNormalizedItemDiscountPercent(safe);
     const computed = this.computeCommercialRow({
       section,
@@ -247,15 +246,18 @@ const Proposals = {
   },
   syncEmptyAnnualServiceStartDates() {
     const defaultStartDate = this.getDefaultAnnualServiceStartDate();
-    if (!defaultStartDate || !E.proposalAnnualItemsTbody) return;
+    if (!E.proposalAnnualItemsTbody) return;
     E.proposalAnnualItemsTbody.querySelectorAll('tr[data-item-row="annual_saas"]').forEach(tr => {
       const startInput = tr.querySelector('[data-item-field="service_start_date"]');
-      if (!startInput || startInput.value) return;
-      startInput.value = defaultStartDate;
       const endInput = tr.querySelector('[data-item-field="service_end_date"]');
       const monthsInput = tr.querySelector('[data-item-field="quantity"]');
-      if (endInput && !endInput.value) {
-        endInput.value = this.calculateServiceEndDate(defaultStartDate, monthsInput?.value);
+      if (startInput && !startInput.value && defaultStartDate) startInput.value = defaultStartDate;
+      if (endInput) {
+        endInput.readOnly = true;
+        endInput.classList.add('readonly-field', 'locked-field');
+        endInput.setAttribute('aria-readonly', 'true');
+        endInput.title = 'Auto-calculated from Service Start Date and License / Month.';
+        endInput.value = this.calculateServiceEndDate(startInput?.value, monthsInput?.value);
       }
     });
   },
@@ -899,56 +901,30 @@ const Proposals = {
     return this.addDaysToDateString(date, 30);
   },
   getValidatedProposalValidUntil(proposalDateValue = '', validUntilValue = '', { showToast = false } = {}) {
-    const proposalDate = this.getProposalDateOrToday(proposalDateValue);
-    const defaultValidUntil = this.getAutoValidUntil(proposalDate);
-    const maxValidUntil = this.getMaxValidUntil(proposalDate);
-    let validUntil = this.normalizeDateInputValue(validUntilValue) || defaultValidUntil;
-
-    if (validUntil < proposalDate) {
-      validUntil = defaultValidUntil;
-      if (showToast) UI.toast('Proposal valid until date cannot be before the proposal date.');
-    }
-    if (validUntil > maxValidUntil) {
-      validUntil = maxValidUntil;
-      if (showToast) UI.toast('Proposal validity cannot exceed 30 days from the proposal date.');
-    }
-    return validUntil;
+    return this.getAutoValidUntil(proposalDateValue);
   },
   syncProposalValidityLimits() {
     if (!E.proposalFormProposalDate || !E.proposalFormValidUntil) return;
     const proposalDate = this.getProposalDateOrToday(E.proposalFormProposalDate.value);
     E.proposalFormProposalDate.value = proposalDate;
     E.proposalFormValidUntil.min = proposalDate;
-    E.proposalFormValidUntil.max = this.getMaxValidUntil(proposalDate);
+    E.proposalFormValidUntil.max = this.getAutoValidUntil(proposalDate);
   },
   syncValidUntilFromProposalDate({ forceDefault = false } = {}) {
     if (!E.proposalFormProposalDate || !E.proposalFormValidUntil) return;
     const proposalDate = this.getProposalDateOrToday(E.proposalFormProposalDate.value);
-    const previousAuto = E.proposalFormValidUntil.dataset.autoValidUntil || '';
-    const currentValidUntil = this.normalizeDateInputValue(E.proposalFormValidUntil.value || '');
     const nextAuto = this.getAutoValidUntil(proposalDate);
     E.proposalFormProposalDate.value = proposalDate;
     this.syncProposalValidityLimits();
-
-    const shouldUseDefault =
-      forceDefault ||
-      !currentValidUntil ||
-      (previousAuto && currentValidUntil === previousAuto);
-
-    E.proposalFormValidUntil.value = shouldUseDefault
-      ? nextAuto
-      : this.getValidatedProposalValidUntil(proposalDate, currentValidUntil, { showToast: true });
+    E.proposalFormValidUntil.value = nextAuto;
     E.proposalFormValidUntil.dataset.autoValidUntil = nextAuto;
+    E.proposalFormValidUntil.readOnly = true;
+    E.proposalFormValidUntil.classList.add('readonly-field', 'locked-field');
+    E.proposalFormValidUntil.setAttribute('aria-readonly', 'true');
+    E.proposalFormValidUntil.title = 'Auto-calculated as 14 days after the proposal date.';
   },
   syncValidUntilManualEdit() {
-    if (!E.proposalFormProposalDate || !E.proposalFormValidUntil) return;
-    this.syncProposalValidityLimits();
-    const proposalDate = this.getProposalDateOrToday(E.proposalFormProposalDate.value);
-    E.proposalFormValidUntil.value = this.getValidatedProposalValidUntil(
-      proposalDate,
-      E.proposalFormValidUntil.value,
-      { showToast: true }
-    );
+    this.syncValidUntilFromProposalDate({ forceDefault: true });
   },
   getContactPosition(contact = {}) {
     return String(contact.job_title || contact.jobTitle || contact.position || contact.title || '').trim();
@@ -1320,10 +1296,7 @@ const Proposals = {
       normalized.deal_code = String(linkedDeal?.deal_id || '').trim();
     }
     normalized.proposal_date = this.getProposalDateOrToday(normalized.proposal_date || source.proposalDate || source.proposal_date);
-    normalized.proposal_valid_until = this.getValidatedProposalValidUntil(
-      normalized.proposal_date,
-      normalized.proposal_valid_until || normalized.valid_until || source.proposalValidUntil || source.validUntil
-    );
+    normalized.proposal_valid_until = this.getAutoValidUntil(normalized.proposal_date);
     normalized.valid_until = normalized.proposal_valid_until;
     if (this.isProposalExpired(normalized)) normalized.status = 'expired';
     normalized.saas_total = this.toNumberSafe(
@@ -1847,9 +1820,7 @@ const Proposals = {
     const hasProposalDate = Object.prototype.hasOwnProperty.call(base, 'proposal_date') || Object.prototype.hasOwnProperty.call(base, 'proposalDate');
     const hasValidUntil = Object.prototype.hasOwnProperty.call(base, 'proposal_valid_until') || Object.prototype.hasOwnProperty.call(base, 'valid_until');
     const proposalDate = hasProposalDate || ensureBusinessProposalId ? this.getProposalDateOrToday(base.proposal_date || base.proposalDate) : '';
-    const proposalValidUntil = proposalDate
-      ? this.getValidatedProposalValidUntil(proposalDate, base.proposal_valid_until || base.valid_until || base.proposalValidUntil || base.validUntil)
-      : '';
+    const proposalValidUntil = proposalDate ? this.getAutoValidUntil(proposalDate) : '';
     const hasStatus = Object.prototype.hasOwnProperty.call(base, 'status');
     const generatedByFallback = String(
       base.generated_by || Session?.state?.name || Session?.state?.email || Session?.state?.username || ''
@@ -2979,7 +2950,7 @@ const Proposals = {
     set(E.proposalFormTitleField, proposal.proposal_title || '');
     set(E.proposalFormDealId, proposal.deal_id || '');
     const proposalDate = this.getProposalDateOrToday(proposal.proposal_date);
-    const validUntil = this.getValidatedProposalValidUntil(proposalDate, proposal.proposal_valid_until || proposal.valid_until);
+    const validUntil = this.getAutoValidUntil(proposalDate);
     set(E.proposalFormProposalDate, proposalDate);
     set(E.proposalFormValidUntil, validUntil);
     this.syncProposalValidityLimits();
@@ -3229,13 +3200,13 @@ const Proposals = {
         const rowDefaults = section === 'annual_saas'
           ? { ...row, quantity: row.quantity || 12, service_start_date: row.service_start_date || this.getDefaultAnnualServiceStartDate() }
           : { ...row, quantity: row.quantity || 1 };
-        if (section === 'annual_saas' && !rowDefaults.service_end_date) {
+        if (section === 'annual_saas') {
           rowDefaults.service_end_date = this.addMonthsMinusOneDay(rowDefaults.service_start_date, rowDefaults.quantity);
         }
         const computed = this.computeCommercialRow({ ...rowDefaults, section });
         const serviceDateCells = section === 'annual_saas'
           ? `<td><input class="input" type="date" data-item-field="service_start_date" value="${U.escapeAttr(computed.service_start_date || '')}" /></td>
-          <td><input class="input" type="date" data-item-field="service_end_date" value="${U.escapeAttr(computed.service_end_date || '')}" /></td>`
+          <td><input class="input readonly-field locked-field" type="date" data-item-field="service_end_date" value="${U.escapeAttr(computed.service_end_date || '')}" readonly aria-readonly="true" title="Auto-calculated from Service Start Date and License / Month." /></td>`
           : '';
         const annualDiscountLocked = section === 'annual_saas' && this.toNumberSafe(computed.quantity) < 12;
         const oneTimeQuantityLocked = section === 'one_time_fee';
@@ -3336,10 +3307,9 @@ const Proposals = {
         let discountPercent = this.normalizeDiscountPercentValue(get('discount_percent'));
         if (section === 'annual_saas' && quantity < 12) discountPercent = 0;
         const serviceStartDate = this.normalizeDateInputValue(get('service_start_date'));
-        let serviceEndDate = this.normalizeDateInputValue(get('service_end_date'));
-        if (section === 'annual_saas' && !serviceEndDate) {
-          serviceEndDate = this.calculateServiceEndDate(serviceStartDate, quantity);
-        }
+        const serviceEndDate = section === 'annual_saas'
+          ? this.calculateServiceEndDate(serviceStartDate, quantity)
+          : this.normalizeDateInputValue(get('service_end_date'));
         const itemName = String(get('item_name')).trim();
         const locationName = String(get('location_name')).trim();
         if (!itemName && !locationName && !unitPrice) return null;
@@ -3407,11 +3377,7 @@ const Proposals = {
     const providerSignDate = String(E.proposalFormProviderSignDate?.value || '').trim();
     const currentStatus = this.normalizeProposalStatus(E.proposalFormStatus?.value) || 'draft';
     const autoAcceptedStatus = this.normalizeDateInputValue(customerSignDate) && this.normalizeDateInputValue(providerSignDate);
-    const proposalValidUntilValue = this.getValidatedProposalValidUntil(
-      E.proposalFormProposalDate?.value,
-      E.proposalFormValidUntil?.value,
-      { showToast: false }
-    );
+    const proposalValidUntilValue = this.getAutoValidUntil(E.proposalFormProposalDate?.value);
     const acceptedBeforeExpiry = this.wasProposalAcceptedBeforeExpiry({
       ...(this.state.currentProposal || {}),
       status: autoAcceptedStatus ? 'accepted' : currentStatus,
@@ -3431,11 +3397,7 @@ const Proposals = {
       proposal_title: String(E.proposalFormTitleField?.value || '').trim(),
       deal_id: this.resolveDealUuid(E.proposalFormDealId?.value || ''),
       proposal_date: this.getProposalDateOrToday(E.proposalFormProposalDate?.value),
-      proposal_valid_until: this.getValidatedProposalValidUntil(
-        E.proposalFormProposalDate?.value,
-        E.proposalFormValidUntil?.value,
-        { showToast: true }
-      ),
+      proposal_valid_until: proposalValidUntilValue,
       valid_until: proposalValidUntilValue,
       status: acceptedBeforeExpiry ? 'accepted' : (isExpiredByValidity ? 'expired' : currentStatus),
       currency: String(E.proposalFormCurrency?.value || '').trim(),
@@ -3842,7 +3804,7 @@ const Proposals = {
       return;
     }
     const proposalId = String(E.proposalForm?.dataset.id || '').trim();
-    this.syncValidUntilManualEdit();
+    this.syncValidUntilFromProposalDate({ forceDefault: true });
     const proposal = this.collectProposalFormData();
     if (mode === 'edit' && this.isProposalExpired({ ...(this.state.currentProposal || {}), ...proposal })) {
       UI.toast('This proposal has expired and cannot be edited.');
@@ -4354,11 +4316,10 @@ const Proposals = {
       E.proposalFormProposalDate.addEventListener('input', syncProposalDateDependents);
     }
     if (E.proposalFormValidUntil) {
-      E.proposalFormValidUntil.readOnly = false;
-      E.proposalFormValidUntil.removeAttribute('readonly');
-      E.proposalFormValidUntil.removeAttribute('aria-readonly');
-      E.proposalFormValidUntil.addEventListener('change', () => this.syncValidUntilManualEdit());
-      E.proposalFormValidUntil.addEventListener('input', () => this.syncProposalValidityLimits());
+      E.proposalFormValidUntil.readOnly = true;
+      E.proposalFormValidUntil.classList.add('readonly-field', 'locked-field');
+      E.proposalFormValidUntil.setAttribute('aria-readonly', 'true');
+      E.proposalFormValidUntil.title = 'Auto-calculated as 14 days after the proposal date.';
     }
     if (E.proposalFormStatus) {
       E.proposalFormStatus.addEventListener('change', () => this.refreshSignedDocumentUi(this.state.currentProposal || {}));
