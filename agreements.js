@@ -1747,6 +1747,10 @@ const Agreements = {
   isSignedStatus(status) {
     return normalizeAgreementStatus(status) === 'signed';
   },
+  todayDateString() {
+    const date = new Date();
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  },
   getAgreementEndDateValue(agreement = {}) {
     const source = agreement && typeof agreement === 'object' ? agreement : {};
     return this.normalizeDateInputValue(
