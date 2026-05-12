@@ -1482,7 +1482,7 @@ const Agreements = {
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Agreement Preview · ${U.escapeHtml(String(agreementData.agreement_id || agreementData.agreement_number || agreementData.id || ''))}</title>
+    <title>Commercial Agreement · ${U.escapeHtml(String(agreementData.agreement_id || agreementData.agreement_number || agreementData.id || ''))}</title>
     <style>
       :root { color-scheme: light; }
       * { box-sizing: border-box; }
@@ -1542,7 +1542,7 @@ const Agreements = {
       <header class="doc-header">
         <section class="agreement-document-header">
           <div class="agreement-document-logo"><div data-incheck360-doc-logo-slot></div></div>
-          <div class="agreement-document-title-wrap"><h2 class="doc-label">Agreement</h2></div>
+          <div class="agreement-document-title-wrap"><h2 class="doc-label">Commercial Agreement</h2></div>
           <div class="agreement-document-summary">
             <div class="meta-box">
               <div class="meta-row"><div class="meta-key">Agreement ID</div><div>${textValue(agreementData.agreement_id)}</div></div>

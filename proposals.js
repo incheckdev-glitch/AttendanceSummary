@@ -688,7 +688,7 @@ const Proposals = {
           this.getProposalValue(proposal, 'phone', 'customer_contact_mobile', 'customerContactMobile'),
           this.normalizeProposalStatus(this.getProposalValue(proposal, 'status')),
           this.formatDateMMDDYYYY(this.getProposalValue(proposal, 'proposal_date', 'proposalDate')),
-          this.formatDateMMDDYYYY(this.getAutoValidUntil(this.getProposalValue(proposal, 'proposal_date', 'proposalDate'))),
+          this.formatDateMMDDYYYY(this.getProposalValue(proposal, 'valid_until', 'proposal_valid_until', 'validUntil', 'proposalValidUntil') || this.getAutoValidUntil(this.getProposalValue(proposal, 'proposal_date', 'proposalDate'))),
           subtotalLocations,
           subtotalOneTime,
           discountPercent,
@@ -818,11 +818,61 @@ const Proposals = {
     const date = this.getProposalDateOrToday(proposalDate);
     return this.addDaysToDateString(date, 14);
   },
-  syncValidUntilFromProposalDate() {
+  getMaxValidUntil(proposalDate = '') {
+    const date = this.getProposalDateOrToday(proposalDate);
+    return this.addDaysToDateString(date, 30);
+  },
+  getValidatedProposalValidUntil(proposalDateValue = '', validUntilValue = '', { showToast = false } = {}) {
+    const proposalDate = this.getProposalDateOrToday(proposalDateValue);
+    const defaultValidUntil = this.getAutoValidUntil(proposalDate);
+    const maxValidUntil = this.getMaxValidUntil(proposalDate);
+    let validUntil = this.normalizeDateInputValue(validUntilValue) || defaultValidUntil;
+
+    if (validUntil < proposalDate) {
+      validUntil = defaultValidUntil;
+      if (showToast) UI.toast('Proposal valid until date cannot be before the proposal date.');
+    }
+    if (validUntil > maxValidUntil) {
+      validUntil = maxValidUntil;
+      if (showToast) UI.toast('Proposal validity cannot exceed 30 days from the proposal date.');
+    }
+    return validUntil;
+  },
+  syncProposalValidityLimits() {
     if (!E.proposalFormProposalDate || !E.proposalFormValidUntil) return;
     const proposalDate = this.getProposalDateOrToday(E.proposalFormProposalDate.value);
     E.proposalFormProposalDate.value = proposalDate;
-    E.proposalFormValidUntil.value = this.getAutoValidUntil(proposalDate);
+    E.proposalFormValidUntil.min = proposalDate;
+    E.proposalFormValidUntil.max = this.getMaxValidUntil(proposalDate);
+  },
+  syncValidUntilFromProposalDate({ forceDefault = false } = {}) {
+    if (!E.proposalFormProposalDate || !E.proposalFormValidUntil) return;
+    const proposalDate = this.getProposalDateOrToday(E.proposalFormProposalDate.value);
+    const previousAuto = E.proposalFormValidUntil.dataset.autoValidUntil || '';
+    const currentValidUntil = this.normalizeDateInputValue(E.proposalFormValidUntil.value || '');
+    const nextAuto = this.getAutoValidUntil(proposalDate);
+    E.proposalFormProposalDate.value = proposalDate;
+    this.syncProposalValidityLimits();
+
+    const shouldUseDefault =
+      forceDefault ||
+      !currentValidUntil ||
+      (previousAuto && currentValidUntil === previousAuto);
+
+    E.proposalFormValidUntil.value = shouldUseDefault
+      ? nextAuto
+      : this.getValidatedProposalValidUntil(proposalDate, currentValidUntil, { showToast: true });
+    E.proposalFormValidUntil.dataset.autoValidUntil = nextAuto;
+  },
+  syncValidUntilManualEdit() {
+    if (!E.proposalFormProposalDate || !E.proposalFormValidUntil) return;
+    this.syncProposalValidityLimits();
+    const proposalDate = this.getProposalDateOrToday(E.proposalFormProposalDate.value);
+    E.proposalFormValidUntil.value = this.getValidatedProposalValidUntil(
+      proposalDate,
+      E.proposalFormValidUntil.value,
+      { showToast: true }
+    );
   },
   getContactPosition(contact = {}) {
     return String(contact.job_title || contact.jobTitle || contact.position || contact.title || '').trim();
@@ -1192,7 +1242,10 @@ const Proposals = {
       normalized.deal_code = String(linkedDeal?.deal_id || '').trim();
     }
     normalized.proposal_date = this.getProposalDateOrToday(normalized.proposal_date || source.proposalDate || source.proposal_date);
-    normalized.proposal_valid_until = this.getAutoValidUntil(normalized.proposal_date);
+    normalized.proposal_valid_until = this.getValidatedProposalValidUntil(
+      normalized.proposal_date,
+      normalized.proposal_valid_until || normalized.valid_until || source.proposalValidUntil || source.validUntil
+    );
     normalized.valid_until = normalized.proposal_valid_until;
     normalized.saas_total = this.toNumberSafe(
       source.subtotal_locations ?? source.subtotalLocations ?? normalized.saas_total
@@ -1713,7 +1766,9 @@ const Proposals = {
     const hasProposalDate = Object.prototype.hasOwnProperty.call(base, 'proposal_date') || Object.prototype.hasOwnProperty.call(base, 'proposalDate');
     const hasValidUntil = Object.prototype.hasOwnProperty.call(base, 'proposal_valid_until') || Object.prototype.hasOwnProperty.call(base, 'valid_until');
     const proposalDate = hasProposalDate || ensureBusinessProposalId ? this.getProposalDateOrToday(base.proposal_date || base.proposalDate) : '';
-    const proposalValidUntil = proposalDate ? this.getAutoValidUntil(proposalDate) : '';
+    const proposalValidUntil = proposalDate
+      ? this.getValidatedProposalValidUntil(proposalDate, base.proposal_valid_until || base.valid_until || base.proposalValidUntil || base.validUntil)
+      : '';
     const hasStatus = Object.prototype.hasOwnProperty.call(base, 'status');
     const generatedByFallback = String(
       base.generated_by || Session?.state?.name || Session?.state?.email || Session?.state?.username || ''
@@ -1909,7 +1964,7 @@ const Proposals = {
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Proposal · ${U.escapeHtml(String(proposalData.proposal_id || proposalData.id || ''))}</title>
+    <title>Commercial Proposal · ${U.escapeHtml(String(proposalData.proposal_id || proposalData.id || ''))}</title>
     <style>
       :root { color-scheme: light; }
       * { box-sizing: border-box; }
@@ -2096,7 +2151,7 @@ const Proposals = {
         <section class="proposal-preview-header proposal-document-header">
           <div class="proposal-preview-header__logo proposal-document-header__logo proposal-preview-logo proposal-document-logo"><div data-incheck360-doc-logo-slot></div></div>
           <div class="proposal-preview-header__title-wrap proposal-document-header__title-wrap proposal-preview-title-block">
-            <h1 class="proposal-preview-header__title proposal-document-header__title proposal-preview-title proposal-document-title">Proposal</h1>
+            <h1 class="proposal-preview-header__title proposal-document-header__title proposal-preview-title proposal-document-title">Commercial Proposal</h1>
           </div>
           <div class="proposal-preview-header__summary proposal-document-header__summary proposal-preview-summary proposal-document-summary">
             <div class="meta-box">
@@ -2568,7 +2623,7 @@ const Proposals = {
           <td>${this.formatMoney(row.one_time_total)}</td>
           <td>${this.formatMoney(row.grand_total)}</td>
           <td>${U.escapeHtml(U.fmtDisplayDate(row.proposal_date))}</td>
-          <td>${U.escapeHtml(U.fmtDisplayDate(this.getAutoValidUntil(row.proposal_date)))}</td>
+          <td>${U.escapeHtml(U.fmtDisplayDate(row.valid_until || row.proposal_valid_until || this.getAutoValidUntil(row.proposal_date)))}</td>
           <td>${textCell(row.generated_by)}</td>
           <td>
             ${Permissions.canPreviewProposal() ? `<button class="btn ghost sm" type="button" data-proposal-view="${id}" data-permission-resource="proposals" data-permission-action="view">View</button>` : ''}
@@ -2808,8 +2863,11 @@ const Proposals = {
     set(E.proposalFormTitleField, proposal.proposal_title || '');
     set(E.proposalFormDealId, proposal.deal_id || '');
     const proposalDate = this.getProposalDateOrToday(proposal.proposal_date);
+    const validUntil = this.getValidatedProposalValidUntil(proposalDate, proposal.proposal_valid_until || proposal.valid_until);
     set(E.proposalFormProposalDate, proposalDate);
-    set(E.proposalFormValidUntil, this.getAutoValidUntil(proposalDate));
+    set(E.proposalFormValidUntil, validUntil);
+    this.syncProposalValidityLimits();
+    if (E.proposalFormValidUntil) E.proposalFormValidUntil.dataset.autoValidUntil = this.getAutoValidUntil(proposalDate);
     set(E.proposalFormStatus, this.normalizeProposalStatus(proposal.status) || 'draft');
     set(E.proposalFormCurrency, proposal.currency || '');
     set(E.proposalFormCustomerName, proposal.customer_legal_name || proposal.customer_name || proposal.company_name || '');
@@ -3187,8 +3245,16 @@ const Proposals = {
       proposal_title: String(E.proposalFormTitleField?.value || '').trim(),
       deal_id: this.resolveDealUuid(E.proposalFormDealId?.value || ''),
       proposal_date: this.getProposalDateOrToday(E.proposalFormProposalDate?.value),
-      proposal_valid_until: this.getAutoValidUntil(E.proposalFormProposalDate?.value),
-      valid_until: this.getAutoValidUntil(E.proposalFormProposalDate?.value),
+      proposal_valid_until: this.getValidatedProposalValidUntil(
+        E.proposalFormProposalDate?.value,
+        E.proposalFormValidUntil?.value,
+        { showToast: true }
+      ),
+      valid_until: this.getValidatedProposalValidUntil(
+        E.proposalFormProposalDate?.value,
+        E.proposalFormValidUntil?.value,
+        { showToast: false }
+      ),
       status: this.normalizeProposalStatus(E.proposalFormStatus?.value) || 'draft',
       currency: String(E.proposalFormCurrency?.value || '').trim(),
       customer_name: resolvedCustomerName,
@@ -3574,7 +3640,7 @@ const Proposals = {
       return;
     }
     const proposalId = String(E.proposalForm?.dataset.id || '').trim();
-    this.syncValidUntilFromProposalDate();
+    this.syncValidUntilManualEdit();
     const proposal = this.collectProposalFormData();
     const sourceDealId = String(E.proposalFormDealId?.value || '').trim();
     const isDirectCreate = mode !== 'edit' && !sourceDealId;
@@ -3648,13 +3714,32 @@ const Proposals = {
       requestedStatus
     });
     if (shouldValidateWorkflow) {
-      const workflowCheck = await window.WorkflowEngine?.enforceBeforeSave?.('proposals', currentRecord, {
-        id: proposalId,
-        current_status: currentStatus,
-        requested_status: requestedStatus,
-        discount_percent: requestedDiscount,
-        requested_changes: { proposal, items }
-      });
+      let workflowCheck = null;
+      try {
+        const workflowEngine = window.WorkflowEngine;
+        if (!workflowEngine || typeof workflowEngine.enforceBeforeSave !== 'function') {
+          workflowCheck = { allowed: true, unavailable: true, fallback: true, reason: 'Workflow helper is unavailable; continuing proposal save fallback.' };
+        } else {
+          workflowCheck = await workflowEngine.enforceBeforeSave('proposals', currentRecord, {
+            id: proposalId,
+            current_status: currentStatus,
+            requested_status: requestedStatus,
+            discount_percent: requestedDiscount,
+            requested_changes: { proposal, items }
+          });
+        }
+      } catch (error) {
+        if (this.isWorkflowValidationUnavailable(error, true)) {
+          console.warn('[Proposal] Workflow validation unavailable; continuing proposal save fallback.', error);
+          workflowCheck = { allowed: true, unavailable: true, fallback: true, reason: 'Workflow validation unavailable; continuing proposal save fallback.' };
+        } else {
+          throw error;
+        }
+      }
+      if (this.isWorkflowValidationUnavailable(workflowCheck)) {
+        console.warn('[Proposal] Workflow validation unavailable; continuing proposal save fallback.', workflowCheck);
+        workflowCheck = { ...(workflowCheck || {}), allowed: true, unavailable: true, fallback: true };
+      }
       try { console.info('[workflow] final decision', workflowCheck); } catch {}
       if (workflowCheck?.allowed === true) {
         if (workflowCheck.discountApprovalUpdates && typeof workflowCheck.discountApprovalUpdates === 'object') {
@@ -3679,7 +3764,7 @@ const Proposals = {
         UI.toast('Approval is required, but the approval request could not be created yet. Please retry.');
         return;
       } else {
-        UI.toast(window.WorkflowEngine.composeDeniedMessage(workflowCheck, 'Proposal save blocked.'));
+        UI.toast(window.WorkflowEngine?.composeDeniedMessage?.(workflowCheck, 'Proposal save blocked.') || workflowCheck?.reason || 'Proposal save blocked by workflow.');
         return;
       }
     }
@@ -3982,6 +4067,26 @@ const Proposals = {
       UI.toast('Unable to open proposal draft from deal: ' + (error?.message || 'Unknown error'));
     }
   },
+  isWorkflowValidationUnavailable(value, includeTechnicalErrors = false) {
+    const text = String(value?.message || value?.reason || value || '').toLowerCase();
+    const unavailableResult = Boolean(
+      value?.unavailable === true ||
+      value?.fallback === true ||
+      text.includes('workflow validation is unavailable') ||
+      text.includes('save blocked until workflow is reachable') ||
+      text.includes('workflow service unavailable')
+    );
+    if (unavailableResult || !includeTechnicalErrors) return unavailableResult;
+    return Boolean(
+      text.includes('failed to fetch') ||
+      text.includes('network error') ||
+      text.includes('rpc') ||
+      text.includes('service unavailable') ||
+      text.includes('is not a function') ||
+      text.includes('cannot read') ||
+      text.includes('undefined is not')
+    );
+  },
   shouldValidateWorkflowBeforeSave({ proposalId = '', currentStatus = '', requestedStatus = '' } = {}) {
     const fromStatus = String(currentStatus || '').trim().toLowerCase();
     const toStatus = String(requestedStatus || '').trim().toLowerCase();
@@ -4043,8 +4148,11 @@ const Proposals = {
       E.proposalFormProposalDate.addEventListener('input', syncProposalDateDependents);
     }
     if (E.proposalFormValidUntil) {
-      E.proposalFormValidUntil.readOnly = true;
-      E.proposalFormValidUntil.setAttribute('aria-readonly', 'true');
+      E.proposalFormValidUntil.readOnly = false;
+      E.proposalFormValidUntil.removeAttribute('readonly');
+      E.proposalFormValidUntil.removeAttribute('aria-readonly');
+      E.proposalFormValidUntil.addEventListener('change', () => this.syncValidUntilManualEdit());
+      E.proposalFormValidUntil.addEventListener('input', () => this.syncProposalValidityLimits());
     }
     if (E.proposalFormStatus) {
       E.proposalFormStatus.addEventListener('change', () => this.refreshSignedDocumentUi(this.state.currentProposal || {}));
