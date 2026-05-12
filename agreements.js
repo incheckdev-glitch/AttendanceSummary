@@ -1747,6 +1747,32 @@ const Agreements = {
   isSignedStatus(status) {
     return normalizeAgreementStatus(status) === 'signed';
   },
+  getAgreementEndDateValue(agreement = {}) {
+    const source = agreement && typeof agreement === 'object' ? agreement : {};
+    return this.normalizeDateInputValue(
+      source.service_end_date ||
+      source.serviceEndDate ||
+      source.contract_end_date ||
+      source.contractEndDate ||
+      source.agreement_end_date ||
+      source.agreementEndDate ||
+      ''
+    );
+  },
+  isAgreementExpired(agreement = {}) {
+    const status = normalizeAgreementStatus(agreement?.status);
+    if (status === 'expired') return true;
+    const endDate = this.getAgreementEndDateValue(agreement);
+    if (!endDate) return false;
+    return endDate < this.todayDateString();
+  },
+  resolveAgreementStatus(agreement = {}) {
+    if (this.isAgreementExpired(agreement)) return 'Expired';
+    const raw = String(agreement?.status || '').trim();
+    const normalized = normalizeAgreementStatus(raw);
+    if (normalized === 'accepted') return 'Signed';
+    return raw || 'Draft';
+  },
   hasSignedSignal(agreement = {}) {
     const statusSigned = this.isSignedStatus(agreement.status);
     const signedDate = String(agreement.signed_date || '').trim();
@@ -1937,7 +1963,7 @@ const Agreements = {
     const terms = String(this.state.search || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
     const relationTerms = String(this.state.proposalOrDeal || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
     this.state.filteredRows = this.state.rows.filter(row => {
-      if (this.state.status !== 'All' && String(row.status || '').trim() !== this.state.status) return false;
+      if (this.state.status !== 'All' && this.resolveAgreementStatus(row) !== this.state.status) return false;
       if (!this.matchesKpiFilter(row)) return false;
       const hay = [row.agreement_id, row.agreement_number, row.customer_name, row.customer_contact_email, row.agreement_title, row.proposal_id, row.deal_id, row.status]
         .filter(Boolean).join(' ').toLowerCase();
@@ -1973,13 +1999,13 @@ const Agreements = {
     if (!E.agreementsSummary) return;
     const rows = this.state.filteredRows;
     const countBy = fn => rows.filter(fn).length;
-    const statusMatch = (row, tokens) => tokens.some(t => this.normalizeText(row.status).includes(t));
+    const statusMatch = (row, tokens) => tokens.some(t => this.normalizeText(this.resolveAgreementStatus(row)).includes(t));
     const sentReviewAwaiting = countBy(row => statusMatch(row, ['sent', 'under review', 'awaiting signature']));
     const signedActive = countBy(row => statusMatch(row, ['signed', 'active']));
     const expiredCancelled = countBy(row => statusMatch(row, ['expired', 'cancelled', 'canceled']));
     const totalValue = rows.reduce((sum, row) => sum + this.toNumberSafe(row.grand_total), 0);
     const proposalLinked = countBy(row => String(row.proposal_id || '').trim());
-    const draftCount = countBy(row => this.normalizeText(row.status) === 'draft');
+    const draftCount = countBy(row => this.normalizeText(this.resolveAgreementStatus(row)) === 'draft');
     const cards = [
       ['Total Agreements', rows.length, 'total'],
       ['Draft Agreements', draftCount, 'draft'],
@@ -2043,7 +2069,7 @@ const Agreements = {
         <td>${textCell(row.customer_name)}</td><td>${textCell(row.proposal_id)}</td><td>${textCell(row.deal_id)}</td>
         <td>${U.escapeHtml(U.fmtDisplayDate(row.service_start_date))}</td><td>${textCell(row.agreement_length)}</td><td>${textCell(row.billing_frequency)}</td>
         <td>${textCell(this.getPaymentTermDisplay(row.payment_term))}</td><td>${textCell(row.currency)}</td><td>${textCell(this.formatMoney(row.grand_total))}</td>
-        <td>${textCell(row.status)}</td><td>${U.escapeHtml(U.fmtDisplayDate(row.updated_at))}</td>
+        <td>${textCell(this.resolveAgreementStatus(row))}</td><td>${U.escapeHtml(U.fmtDisplayDate(row.updated_at))}</td>
         <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
         ${Permissions.canView('agreements') ? `<button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-agreement-view="${id}" data-permission-resource="agreements" data-permission-action="preview">View</button>` : ''}
         ${Permissions.canUpdateAgreement() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="agreements" data-permission-action="update" data-agreement-edit=\"${id}\" data-permission-resource=\"agreements\" data-permission-action=\"update\">Edit</button>` : ''}
@@ -2089,6 +2115,7 @@ const Agreements = {
     });
     const agreementDateFields = ['agreement_date', 'effective_date', 'service_start_date', 'service_end_date', 'poc_service_start_date', 'poc_service_end_date', 'customer_official_sign_date', 'provider_official_signatory_1_sign_date', 'provider_official_signatory_2_sign_date', 'provider_sign_date', 'customer_sign_date', 'signed_date'];
     const normalizedAgreement = this.normalizeDateFieldsForSave(agreement, agreementDateFields);
+    normalizedAgreement.status = this.resolveAgreementStatus(normalizedAgreement);
     normalizedAgreement.account_number = String(normalizedAgreement.account_number || '').trim();
     const items = this.collectItems();
     const totals = this.calculateTotals(items);
@@ -2285,7 +2312,10 @@ const Agreements = {
     if (E.agreementGrandTotal) E.agreementGrandTotal.textContent = this.formatMoney(totals.grand_total);
   },
   assignFormValues(agreement = {}) {
-    const normalizedAgreement = this.applyOfficialSignatoryDefaults(agreement, this.state.selectedAgreementCompanyForVerification);
+    const normalizedAgreement = this.normalizeAgreement(
+      this.applyOfficialSignatoryDefaults(agreement, this.state.selectedAgreementCompanyForVerification)
+    );
+    normalizedAgreement.status = this.resolveAgreementStatus(normalizedAgreement);
     const set = (id, value) => {
       const el = document.getElementById(id);
       if (el) el.value = value ?? '';
@@ -2862,8 +2892,9 @@ const Agreements = {
     const currentRecord = latestExistingAgreement || this.state.rows.find(row => String(row.id || '') === id) || {};
     const agreementUpdatePayload = id ? this.buildAgreementEditableUpdate(agreement) : agreement;
     const requestedDiscount = items.reduce((max, item) => Math.max(max, this.toNumberSafe(item.discount_percent)), 0);
-    const currentStatus = String(currentRecord?.status || '').trim();
-    agreement.status = String(agreement.status || '').trim() || currentStatus || 'Draft';
+    const currentStatus = this.resolveAgreementStatus(currentRecord || {});
+    agreement.status = this.resolveAgreementStatus({ ...agreement, status: agreement.status || currentStatus || 'Draft' });
+    if (agreementUpdatePayload && typeof agreementUpdatePayload === 'object') agreementUpdatePayload.status = agreement.status;
     const workflowAction = id ? 'update' : 'create';
     let workflowDecision = null;
     if (this.shouldSkipAgreementWorkflow({

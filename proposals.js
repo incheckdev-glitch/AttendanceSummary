@@ -778,21 +778,20 @@ const Proposals = {
     return normalized;
   },
   isProposalAccepted(proposal = {}) {
-    return this.normalizeProposalStatus(proposal?.status) === 'accepted';
+    const status = this.normalizeProposalStatus(proposal?.status);
+    return status === 'accepted' || this.wasProposalAcceptedBeforeExpiry(proposal);
   },
   getProposalValidUntilValue(proposal = {}) {
     const source = proposal && typeof proposal === 'object' ? proposal : {};
     return this.normalizeDateInputValue(source.valid_until || source.proposal_valid_until || source.validUntil || source.proposalValidUntil || '');
   },
-  isProposalExpired(proposal = {}) {
-    const status = this.normalizeProposalStatus(proposal?.status);
-    if (status === 'accepted') return false;
-    const validUntil = this.getProposalValidUntilValue(proposal);
-    if (!validUntil) return false;
-    return validUntil < this.todayDateString();
-  },
-  getEffectiveProposalStatus(proposal = {}) {
-    return this.isProposalExpired(proposal) ? 'expired' : this.normalizeProposalStatus(proposal?.status);
+  getProposalAcceptanceDateValue(proposal = {}) {
+    const source = proposal && typeof proposal === 'object' ? proposal : {};
+    const customerSignDate = this.normalizeDateInputValue(source.customer_sign_date || source.customerSignDate || '');
+    const providerSignDate = this.normalizeDateInputValue(source.provider_sign_date || source.providerSignDate || '');
+    const acceptedAt = this.normalizeDateInputValue(source.accepted_at || source.acceptedAt || source.approved_at || source.approvedAt || '');
+    const dates = [customerSignDate, providerSignDate, acceptedAt].filter(Boolean).sort();
+    return dates.length ? dates[dates.length - 1] : '';
   },
   areProposalSignDatesComplete(proposal = {}) {
     return Boolean(
@@ -800,13 +799,49 @@ const Proposals = {
       this.normalizeDateInputValue(proposal?.provider_sign_date || proposal?.providerSignDate || '')
     );
   },
+  wasProposalAcceptedBeforeExpiry(proposal = {}) {
+    const status = this.normalizeProposalStatus(proposal?.status);
+    const validUntil = this.getProposalValidUntilValue(proposal);
+    const acceptanceDate = this.getProposalAcceptanceDateValue(proposal);
+    if (acceptanceDate && validUntil) return acceptanceDate <= validUntil;
+    if (acceptanceDate && !validUntil) return true;
+    return status === 'accepted';
+  },
+  isProposalExpired(proposal = {}) {
+    const status = this.normalizeProposalStatus(proposal?.status);
+    if (this.wasProposalAcceptedBeforeExpiry(proposal)) return false;
+    if (status === 'rejected' || status === 'declined' || status === 'lost') return false;
+    if (status === 'expired') return true;
+    const validUntil = this.getProposalValidUntilValue(proposal);
+    if (!validUntil) return false;
+    return validUntil < this.todayDateString();
+  },
+  getEffectiveProposalStatus(proposal = {}) {
+    if (this.wasProposalAcceptedBeforeExpiry(proposal)) return 'accepted';
+    return this.isProposalExpired(proposal) ? 'expired' : this.normalizeProposalStatus(proposal?.status);
+  },
   syncProposalStatusFromSignDates() {
     if (!E.proposalFormStatus) return;
     const customerSignDate = this.normalizeDateInputValue(E.proposalFormCustomerSignDate?.value || '');
     const providerSignDate = this.normalizeDateInputValue(E.proposalFormProviderSignDate?.value || '');
+    const formSnapshot = {
+      ...(this.state.currentProposal || {}),
+      status: E.proposalFormStatus.value,
+      valid_until: E.proposalFormValidUntil?.value || '',
+      proposal_valid_until: E.proposalFormValidUntil?.value || ''
+    };
     if (customerSignDate && providerSignDate) {
-      E.proposalFormStatus.value = 'accepted';
-      this.refreshSignedDocumentUi({ ...(this.state.currentProposal || {}), status: 'accepted' });
+      const acceptedSnapshot = { ...formSnapshot, customer_sign_date: customerSignDate, provider_sign_date: providerSignDate, status: 'accepted' };
+      if (this.wasProposalAcceptedBeforeExpiry(acceptedSnapshot)) {
+        E.proposalFormStatus.value = 'accepted';
+        this.refreshSignedDocumentUi(acceptedSnapshot);
+        return;
+      }
+    }
+    if (this.isProposalExpired(formSnapshot)) {
+      E.proposalFormStatus.value = 'expired';
+      this.refreshSignedDocumentUi({ ...formSnapshot, status: 'expired' });
+      return;
     }
   },
   getProposalStatusLabel(value = '') {
@@ -828,7 +863,7 @@ const Proposals = {
     message = document.createElement('div');
     message.setAttribute('data-proposal-accepted-lock-message', 'true');
     message.className = 'proposal-lock-message';
-    message.textContent = 'Accepted proposal is locked. Only signed document upload and conversion to agreement are allowed.';
+    message.textContent = 'This proposal is locked because it is accepted or expired. Expired proposals cannot be edited or converted.';
     E.proposalForm.prepend(message);
     return message;
   },
@@ -838,7 +873,7 @@ const Proposals = {
     message.style.display = locked ? '' : 'none';
   },
   canShowConvertToAgreement(proposal = {}) {
-    return this.isProposalAccepted(proposal) && Permissions.canCreateAgreementFromProposal();
+    return this.isProposalAccepted(proposal) && !this.isProposalExpired(proposal) && Permissions.canCreateAgreementFromProposal();
   },
   todayDateString() {
     const date = new Date();
@@ -1846,7 +1881,10 @@ const Proposals = {
       delete prepared.valid_until;
     }
     if (hasStatus || ensureBusinessProposalId) prepared.status = this.normalizeProposalStatus(base.status) || 'draft';
-    if (this.areProposalSignDatesComplete(prepared)) prepared.status = 'accepted';
+    if (this.wasProposalAcceptedBeforeExpiry(prepared) || this.areProposalSignDatesComplete(prepared)) {
+      const acceptedSnapshot = { ...prepared, status: 'accepted' };
+      prepared.status = this.wasProposalAcceptedBeforeExpiry(acceptedSnapshot) ? 'accepted' : prepared.status;
+    }
     if (this.isProposalExpired(prepared)) prepared.status = 'expired';
     return prepared;
   },
@@ -2663,6 +2701,8 @@ const Proposals = {
       .map(row => {
         const id = U.escapeAttr(row.id || row.proposal_id || row.proposalId || '');
         const isAccepted = this.isProposalAccepted(row);
+        const isExpired = this.isProposalExpired(row);
+        const isLocked = isAccepted || isExpired;
         return `<tr>
           <td>${proposalIdCell(row)}</td>
           <td>${textCell(row.ref_number)}</td>
@@ -2679,7 +2719,7 @@ const Proposals = {
           <td>${textCell(row.generated_by)}</td>
           <td>
             ${Permissions.canPreviewProposal() ? `<button class="btn ghost sm" type="button" data-proposal-view="${id}" data-permission-resource="proposals" data-permission-action="view">View</button>` : ''}
-            ${Permissions.canUpdateProposal() && !isAccepted ? `<button class="btn ghost sm" type="button" data-proposal-edit="${id}" data-permission-resource="proposals" data-permission-action="update">Edit</button>` : ''}
+            ${Permissions.canUpdateProposal() && !isLocked ? `<button class="btn ghost sm" type="button" data-proposal-edit="${id}" data-permission-resource="proposals" data-permission-action="update">Edit</button>` : ''}
             ${Permissions.canPreviewProposal() ? `<button class="btn ghost sm" type="button" data-proposal-preview="${id}" data-permission-resource="proposals" data-permission-action="view">Preview</button>` : ''}
             ${this.canShowConvertToAgreement(row) && !this.isAgreementAlreadyCreated(row)
               ? `<button class="btn ghost sm" type="button" data-proposal-convert-agreement="${id}" data-permission-resource="agreements" data-permission-action="create_from_proposal">Convert to Agreement</button>`
@@ -2923,7 +2963,7 @@ const Proposals = {
       btn.style.display = readOnly ? 'none' : '';
     });
     if (E.proposalFormSaveBtn) E.proposalFormSaveBtn.style.display = readOnly ? 'none' : '';
-    this.syncProposalAcceptedLockMessage(readOnly && this.isProposalAccepted(this.state.currentProposal || {}));
+    this.syncProposalAcceptedLockMessage(readOnly && (this.isProposalAccepted(this.state.currentProposal || {}) || this.isProposalExpired(this.state.currentProposal || {})));
     const lockedIds=['proposalFormCustomerName','proposalFormCustomerAddress','proposalFormCustomerContactName','proposalFormCustomerContactMobile','proposalFormCustomerContactEmail','proposalFormProviderContactName','proposalFormProviderContactMobile','proposalFormProviderContactEmail','proposalFormCustomerSignatoryName','proposalFormCustomerSignatoryTitle','proposalFormProviderSignatoryName','proposalFormProviderSignatoryTitle'];
     lockedIds.forEach(id=>{const el=document.getElementById(id); if(!el) return; el.readOnly=true; el.classList.add('readonly-field','locked-field'); el.setAttribute('aria-readonly','true');});
     this.refreshSignedDocumentUi(this.state.currentProposal || {});
@@ -3365,7 +3405,22 @@ const Proposals = {
     const pocPayload = this.getProposalPocPayload();
     const customerSignDate = String(E.proposalFormCustomerSignDate?.value || '').trim();
     const providerSignDate = String(E.proposalFormProviderSignDate?.value || '').trim();
+    const currentStatus = this.normalizeProposalStatus(E.proposalFormStatus?.value) || 'draft';
     const autoAcceptedStatus = this.normalizeDateInputValue(customerSignDate) && this.normalizeDateInputValue(providerSignDate);
+    const proposalValidUntilValue = this.getValidatedProposalValidUntil(
+      E.proposalFormProposalDate?.value,
+      E.proposalFormValidUntil?.value,
+      { showToast: false }
+    );
+    const acceptedBeforeExpiry = this.wasProposalAcceptedBeforeExpiry({
+      ...(this.state.currentProposal || {}),
+      status: autoAcceptedStatus ? 'accepted' : currentStatus,
+      customer_sign_date: customerSignDate,
+      provider_sign_date: providerSignDate,
+      valid_until: proposalValidUntilValue,
+      proposal_valid_until: proposalValidUntilValue
+    });
+    const isExpiredByValidity = proposalValidUntilValue && proposalValidUntilValue < this.todayDateString() && !acceptedBeforeExpiry;
     const resolvedCustomerName =
       U.getCustomerLegalName(selectedCompany, mapped) ||
       String(E.proposalFormCustomerName?.value || '').trim() ||
@@ -3381,12 +3436,8 @@ const Proposals = {
         E.proposalFormValidUntil?.value,
         { showToast: true }
       ),
-      valid_until: this.getValidatedProposalValidUntil(
-        E.proposalFormProposalDate?.value,
-        E.proposalFormValidUntil?.value,
-        { showToast: false }
-      ),
-      status: autoAcceptedStatus ? 'accepted' : (this.normalizeProposalStatus(E.proposalFormStatus?.value) || 'draft'),
+      valid_until: proposalValidUntilValue,
+      status: acceptedBeforeExpiry ? 'accepted' : (isExpiredByValidity ? 'expired' : currentStatus),
       currency: String(E.proposalFormCurrency?.value || '').trim(),
       customer_name: resolvedCustomerName,
       customer_legal_name: resolvedCustomerName,
@@ -3613,7 +3664,7 @@ const Proposals = {
     if (!E.proposalSignedDocumentSection) return;
     const snapshot = this.getSignedDocumentProposalSnapshot(proposal);
     const isPersisted = Boolean(snapshot.id);
-    const isAccepted = this.isProposalAccepted(snapshot);
+    const isAccepted = this.isProposalAccepted(snapshot) && !this.isProposalExpired(snapshot);
     const hasDocument = Boolean(snapshot.signed_document_path);
     E.proposalSignedDocumentSection.style.display = isPersisted ? '' : 'none';
     if (E.proposalSignedDocumentUploadBtn) E.proposalSignedDocumentUploadBtn.disabled = !isPersisted || !isAccepted;
@@ -3656,7 +3707,7 @@ const Proposals = {
   async uploadSignedProposalDocument() {
     const proposal = this.getSignedDocumentProposalSnapshot(this.state.currentProposal || {});
     if (!proposal.id) { UI.toast('Save this proposal before uploading a signed document.'); return; }
-    if (!this.isProposalAccepted(proposal)) { UI.toast('Upload the signed document only after the proposal status is accepted.'); return; }
+    if (!this.isProposalAccepted(proposal) || this.isProposalExpired(proposal)) { UI.toast('Upload the signed document only after the proposal status is accepted and before it expires.'); return; }
     const file = E.proposalSignedDocumentFile?.files?.[0];
     if (!file) { UI.toast('Choose a signed proposal document to upload.'); return; }
     const client = this.getSupabaseClient();
@@ -3671,8 +3722,8 @@ const Proposals = {
         .eq('proposal_id', proposal.proposal_id)
         .maybeSingle();
       if (latestError) throw latestError;
-      if (!this.isProposalAccepted(latestProposal || proposal)) {
-        UI.toast('Upload the signed document only after the proposal status is accepted.');
+      if (!this.isProposalAccepted(latestProposal || proposal) || this.isProposalExpired(latestProposal || proposal)) {
+        UI.toast('Upload the signed document only after the proposal status is accepted and before it expires.');
         return;
       }
       const path = this.buildSignedDocumentPath(latestProposal || proposal, file);
@@ -3968,7 +4019,7 @@ const Proposals = {
         }
       }
       UI.toast(mode === 'edit' ? 'Proposal updated.' : 'Proposal created.');
-      if (parsed?.proposal) this.openProposalForm(parsed.proposal, parsed.items, { readOnly: this.isProposalAccepted(parsed.proposal) });
+      if (parsed?.proposal) this.openProposalForm(parsed.proposal, parsed.items, { readOnly: this.isProposalAccepted(parsed.proposal) || this.isProposalExpired(parsed.proposal) });
       else this.closeProposalForm();
     } catch (error) {
       if (typeof isPermissionError === 'function' && isPermissionError(error)) {
