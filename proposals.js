@@ -1910,28 +1910,9 @@ const Proposals = {
     const client = window.SupabaseClient?.getClient?.();
     if (!client) throw new Error('Supabase client is not available.');
 
-    let proposal = null;
-    let proposalError = null;
-    ({ data: proposal, error: proposalError } = await client.from('proposals').select('*').eq('id', id).maybeSingle());
-    if (proposalError) {
-      const fallback = await client.from('proposals').select('*').eq('proposal_id', id).maybeSingle();
-      proposal = fallback.data || null;
-      proposalError = fallback.error || null;
-    }
-    if (proposalError) throw new Error(`Unable to load proposal: ${proposalError.message || 'Unknown error'}`);
-    if (!proposal) throw new Error('Proposal was not found.');
-
-    const proposalRowId = String(proposal.id || id).trim();
-    const { data: items, error: itemsError } = await client
-      .from('proposal_items')
-      .select('*')
-      .eq('proposal_id', proposalRowId)
-      .order('line_no', { ascending: true, nullsFirst: false })
-      .order('created_at', { ascending: true, nullsFirst: false });
-
-    if (itemsError) throw new Error(`Unable to load proposal items: ${itemsError.message || 'Unknown error'}`);
-
-    const normalizedItems = Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : [];
+    const detail = await this.loadProposalDetailDirect(id);
+    const proposal = detail.proposal;
+    const normalizedItems = detail.items;
     const proposalWithTotals = this.withCalculatedTotalsFallback(proposal, normalizedItems);
     const creatorProfile = await this.resolveProposalCreatorProfile(client, proposalWithTotals);
     return {
@@ -2698,9 +2679,10 @@ const Proposals = {
 
     E.proposalsTbody.innerHTML = rows
       .map(row => {
-        const id = U.escapeAttr(this.getProposalRowKey(row));
+        const rawId = this.getProposalRowKey(row);
+        const id = U.escapeAttr(rawId);
         const isAccepted = this.isProposalAccepted(row);
-        return `<tr>
+        return `<tr data-proposal-row="${id}" data-record-key="${id}">
           <td>${proposalIdCell(row)}</td>
           <td>${textCell(row.ref_number)}</td>
           <td>${textCell(row.proposal_title)}</td>
@@ -2715,13 +2697,13 @@ const Proposals = {
           <td>${U.escapeHtml(U.fmtDisplayDate(row.valid_until || row.proposal_valid_until || this.getAutoValidUntil(row.proposal_date)))}</td>
           <td>${textCell(row.generated_by)}</td>
           <td>
-            ${Permissions.canPreviewProposal() ? `<button class="btn ghost sm" type="button" data-proposal-view="${id}" data-permission-resource="proposals" data-permission-action="view">View</button>` : ''}
-            ${Permissions.canUpdateProposal() && !isAccepted ? `<button class="btn ghost sm" type="button" data-proposal-edit="${id}" data-permission-resource="proposals" data-permission-action="update">Edit</button>` : ''}
-            ${Permissions.canPreviewProposal() ? `<button class="btn ghost sm" type="button" data-proposal-preview="${id}" data-permission-resource="proposals" data-permission-action="view">Preview</button>` : ''}
+            ${Permissions.canPreviewProposal() ? `<button class="btn ghost sm" type="button" data-row-action="proposal-view" data-record-key="${id}" data-proposal-view="${id}">View</button>` : ''}
+            ${Permissions.canUpdateProposal() && !isAccepted ? `<button class="btn ghost sm" type="button" data-row-action="proposal-edit" data-record-key="${id}" data-proposal-edit="${id}">Edit</button>` : ''}
+            ${Permissions.canPreviewProposal() ? `<button class="btn ghost sm" type="button" data-row-action="proposal-preview" data-record-key="${id}" data-proposal-preview="${id}">Preview</button>` : ''}
             ${this.canShowConvertToAgreement(row) && !this.isAgreementAlreadyCreated(row)
-              ? `<button class="btn ghost sm" type="button" data-proposal-convert-agreement="${id}" data-permission-resource="agreements" data-permission-action="create_from_proposal">Convert to Agreement</button>`
+              ? `<button class="btn ghost sm" type="button" data-row-action="proposal-convert-agreement" data-record-key="${id}" data-proposal-convert-agreement="${id}">Convert to Agreement</button>`
               : ''}
-            ${Permissions.canDeleteProposal() ? `<button class="btn ghost sm" type="button" data-proposal-delete="${id}" data-permission-resource="proposals" data-permission-action="delete" data-permission-resource="proposals" data-permission-action="delete">Delete</button>` : ''}
+            ${Permissions.canDeleteProposal() ? `<button class="btn ghost sm" type="button" data-row-action="proposal-delete" data-record-key="${id}" data-proposal-delete="${id}">Delete</button>` : ''}
           </td>
         </tr>`;
       })
@@ -3480,6 +3462,115 @@ const Proposals = {
     if (E.proposalOneTimeTotal) E.proposalOneTimeTotal.textContent = this.formatMoney(oneTimeTotal);
     if (E.proposalGrandTotal) E.proposalGrandTotal.textContent = this.formatMoney(grandTotal);
   },
+  getProposalActionIdFromElement(actionEl, actionAttr = '') {
+    if (!actionEl) return '';
+    const direct = actionAttr ? String(actionEl.getAttribute(actionAttr) || '').trim() : '';
+    if (direct) return direct;
+    const dataKey = String(actionEl.getAttribute('data-record-key') || actionEl.dataset?.recordKey || '').trim();
+    if (dataKey) return dataKey;
+    const row = actionEl.closest?.('tr[data-proposal-row], tr[data-record-key], tr');
+    const rowKey = String(row?.getAttribute?.('data-proposal-row') || row?.getAttribute?.('data-record-key') || row?.dataset?.proposalRow || row?.dataset?.recordKey || '').trim();
+    if (rowKey) return rowKey;
+    const firstCellText = String(row?.querySelector?.('td')?.textContent || '').trim();
+    return firstCellText;
+  },
+  async loadProposalDetailDirect(proposalId) {
+    const key = String(proposalId || '').trim();
+    if (!key) throw new Error('Missing proposal id.');
+    const client = this.getSupabaseClient();
+    if (!client?.from) throw new Error('Supabase client is not available.');
+
+    const lookupFields = ['id', 'proposal_id', 'proposal_number', 'ref_number'];
+    let proposal = null;
+    let lastError = null;
+
+    for (const field of lookupFields) {
+      const { data, error } = await client.from('proposals').select('*').eq(field, key).maybeSingle();
+      if (error) {
+        lastError = error;
+        continue;
+      }
+      if (data) {
+        proposal = data;
+        break;
+      }
+    }
+
+    if (!proposal && lastError) throw new Error(lastError.message || 'Unable to load proposal.');
+    if (!proposal) throw new Error('Proposal was not found.');
+
+    const itemKeys = [proposal.id, proposal.proposal_id, proposal.proposal_number, proposal.ref_number, key]
+      .map(value => String(value || '').trim())
+      .filter(Boolean);
+    const itemMap = new Map();
+    for (const itemKey of itemKeys) {
+      const { data, error } = await client
+        .from('proposal_items')
+        .select('*')
+        .eq('proposal_id', itemKey)
+        .order('line_no', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: true, nullsFirst: false });
+      if (error) continue;
+      (Array.isArray(data) ? data : []).forEach(item => {
+        const itemId = String(item.id || `${item.section || ''}-${item.line_no || ''}-${item.item_name || ''}-${item.created_at || ''}`);
+        if (!itemMap.has(itemId)) itemMap.set(itemId, item);
+      });
+      if (itemMap.size) break;
+    }
+
+    const items = [...itemMap.values()].map(item => this.normalizeItem(item));
+    return {
+      proposal: this.withCalculatedTotalsFallback(proposal, items),
+      items
+    };
+  },
+  handleProposalRowActionClick(event) {
+    const target = event?.target;
+    const actionEl = target?.closest?.('[data-proposal-view], [data-proposal-edit], [data-proposal-preview], [data-proposal-convert-agreement], [data-proposal-delete], [data-row-action^="proposal-"]');
+    if (!actionEl) return false;
+    if (E.proposalsTbody && !E.proposalsTbody.contains(actionEl) && !actionEl.closest?.('#proposalsTable')) return false;
+
+    const trigger = actionEl.closest?.('button') || actionEl;
+    const actionName = String(actionEl.getAttribute('data-row-action') || '').trim();
+    const resolveId = attr => this.getProposalActionIdFromElement(actionEl, attr);
+    let handled = false;
+
+    const run = (key, fn) => {
+      handled = true;
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+      this.runRowAction(key, trigger, fn);
+    };
+
+    if (actionEl.hasAttribute('data-proposal-view') || actionName === 'proposal-view') {
+      const id = resolveId('data-proposal-view');
+      if (id) run(`view:${id}`, () => this.openProposalFormById(id, { readOnly: true, trigger }));
+    } else if (actionEl.hasAttribute('data-proposal-edit') || actionName === 'proposal-edit') {
+      const id = resolveId('data-proposal-edit');
+      if (!Permissions.canUpdateProposal()) {
+        handled = true;
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
+        UI.toast('You do not have permission to edit proposals.');
+      } else if (id) {
+        run(`edit:${id}`, () => this.openProposalFormById(id, { readOnly: false, trigger }));
+      }
+    } else if (actionEl.hasAttribute('data-proposal-preview') || actionName === 'proposal-preview') {
+      const id = resolveId('data-proposal-preview');
+      if (id) run(`preview:${id}`, () => this.previewProposalHtml(id));
+    } else if (actionEl.hasAttribute('data-proposal-convert-agreement') || actionName === 'proposal-convert-agreement') {
+      const id = resolveId('data-proposal-convert-agreement');
+      if (id) run(`convert-agreement:${id}`, async () => {
+        if (window.Agreements?.createFromProposalFlow) await window.Agreements.createFromProposalFlow(id);
+        else UI.toast('Agreements module is unavailable.');
+      });
+    } else if (actionEl.hasAttribute('data-proposal-delete') || actionName === 'proposal-delete') {
+      const id = resolveId('data-proposal-delete');
+      if (id) run(`delete:${id}`, () => this.deleteById(id));
+    }
+
+    return handled;
+  },
   async openProposalFormById(proposalId, { readOnly = false, trigger = null } = {}) {
     const id = String(proposalId || '').trim();
     if (!Permissions.canPreviewProposal()) {
@@ -3507,8 +3598,17 @@ const Proposals = {
         this.openProposalForm(cached.proposal, cached.items, { readOnly: readOnly || this.isProposalAccepted(cached.proposal) || this.isProposalExpired(cached.proposal) });
         return;
       }
-      const response = await this.getProposal(id);
-      const { proposal, items } = this.extractProposalAndItems(response, id);
+      let proposal;
+      let items;
+      try {
+        const response = await this.getProposal(id);
+        ({ proposal, items } = this.extractProposalAndItems(response, id));
+        const onlyPlaceholder = !proposal || (!proposal.proposal_id && !proposal.proposal_title && !proposal.ref_number && String(proposal.id || '').trim() === id);
+        if (onlyPlaceholder) throw new Error('Proposal API returned no detailed record.');
+      } catch (apiError) {
+        console.warn('[proposals] API detail load failed; trying direct Supabase fallback.', apiError);
+        ({ proposal, items } = await this.loadProposalDetailDirect(id));
+      }
       this.setCachedDetail(id, proposal, items);
       const activeFormId = String(E.proposalForm?.dataset.id || E.proposalForm?.dataset.proposalId || '').trim();
       const resolvedKeys = [
@@ -4397,47 +4497,9 @@ const Proposals = {
     }
 
     if (E.proposalsTbody) {
-      E.proposalsTbody.addEventListener('click', event => {
-        const getActionValue = action => {
-          const actionEl = event.target?.closest?.(`[${action}]`);
-          return String(actionEl?.getAttribute(action) || '').trim();
-        };
-        const trigger = event.target?.closest?.('button');
-        const viewId = getActionValue('data-proposal-view');
-        if (viewId) {
-          this.runRowAction(`view:${viewId}`, trigger, () =>
-            this.openProposalFormById(viewId, { readOnly: true, trigger })
-          );
-          return;
-        }
-        const editId = getActionValue('data-proposal-edit');
-        if (editId) {
-          if (!Permissions.canUpdateProposal()) return UI.toast('You do not have permission to edit proposals.');
-          this.runRowAction(`edit:${editId}`, trigger, () =>
-            this.openProposalFormById(editId, { readOnly: false, trigger })
-          );
-          return;
-        }
-        const previewId = getActionValue('data-proposal-preview');
-        if (previewId) {
-          this.runRowAction(`preview:${previewId}`, trigger, () => this.previewProposalHtml(previewId));
-          return;
-        }
-        const convertAgreementId = getActionValue('data-proposal-convert-agreement');
-        if (convertAgreementId) {
-          this.runRowAction(`convert-agreement:${convertAgreementId}`, trigger, async () => {
-            if (window.Agreements?.createFromProposalFlow) {
-              await window.Agreements.createFromProposalFlow(convertAgreementId);
-            } else {
-              UI.toast('Agreements module is unavailable.');
-            }
-          });
-          return;
-        }
-        const deleteId = getActionValue('data-proposal-delete');
-        if (deleteId) this.runRowAction(`delete:${deleteId}`, trigger, () => this.deleteById(deleteId));
-      });
+      E.proposalsTbody.addEventListener('click', event => this.handleProposalRowActionClick(event));
     }
+    document.addEventListener('click', event => this.handleProposalRowActionClick(event));
     const proposalsAnalyticsGrid = document.getElementById('proposalsAnalyticsGrid');
     if (proposalsAnalyticsGrid) {
       const activate = card => {
