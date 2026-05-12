@@ -45,6 +45,8 @@ const Proposals = {
     'poc_license_months',
     'poc_service_start_date',
     'poc_service_end_date',
+    'poc_success_kpis',
+    'poc_conversion_commitment',
     'currency',
     'saas_total',
     'one_time_total',
@@ -1273,6 +1275,8 @@ const Proposals = {
     normalized.poc_license_months = this.toNullableNumber(source.poc_license_months ?? source.pocLicenseMonths ?? normalized.poc_license_months);
     normalized.poc_service_start_date = this.normalizeDateInputValue(source.poc_service_start_date ?? source.pocServiceStartDate ?? normalized.poc_service_start_date);
     normalized.poc_service_end_date = this.normalizeDateInputValue(source.poc_service_end_date ?? source.pocServiceEndDate ?? normalized.poc_service_end_date);
+    normalized.poc_success_kpis = String(source.poc_success_kpis ?? source.pocSuccessKpis ?? normalized.poc_success_kpis ?? '').trim();
+    normalized.poc_conversion_commitment = String(source.poc_conversion_commitment ?? source.pocConversionCommitment ?? normalized.poc_conversion_commitment ?? '').trim();
     normalized.deal_id = String(normalized.deal_id || '').trim();
     normalized.deal_code = String(source.deal_code || source.dealCode || '').trim();
     if (!normalized.deal_code && normalized.deal_id) {
@@ -1797,6 +1801,8 @@ const Proposals = {
       sanitized.poc_license_months = null;
       sanitized.poc_service_start_date = null;
       sanitized.poc_service_end_date = null;
+      sanitized.poc_success_kpis = null;
+      sanitized.poc_conversion_commitment = null;
     }
     return sanitized;
   },
@@ -1998,6 +2004,8 @@ const Proposals = {
             <div><strong>License / Month:</strong> ${textValue(proposalData.poc_license_months)}</div>
             <div><strong>Service Start Date:</strong> ${dateValue(proposalData.poc_service_start_date)}</div>
             <div><strong>Service End Date:</strong> ${dateValue(proposalData.poc_service_end_date)}</div>
+            <div style="grid-column:1 / -1;"><strong>POC Success KPIs:</strong><br>${textValue(proposalData.poc_success_kpis)}</div>
+            <div style="grid-column:1 / -1;"><strong>Commercial Commitment:</strong><br>${textValue(proposalData.poc_conversion_commitment || this.getDefaultPocConversionCommitment())}</div>
           </div>
         </div>
       </section>` : '';
@@ -2805,6 +2813,9 @@ const Proposals = {
     const trimmed = String(value || '').trim();
     return trimmed || this.generateAccountNumber();
   },
+  getDefaultPocConversionCommitment() {
+    return 'If the POC success KPIs are achieved, the customer agrees to proceed with the full commercial subscription/agreement.';
+  },
   syncPocDetailsVisibility() {
     const enabled = !!E.proposalFormIsPoc?.checked;
     if (E.proposalPocDetails) E.proposalPocDetails.style.display = enabled ? 'grid' : 'none';
@@ -2812,7 +2823,9 @@ const Proposals = {
       E.proposalFormPocLocationCount,
       E.proposalFormPocLicenseMonths,
       E.proposalFormPocServiceStartDate,
-      E.proposalFormPocServiceEndDate
+      E.proposalFormPocServiceEndDate,
+      E.proposalFormPocSuccessKpis,
+      E.proposalFormPocConversionCommitment
     ].forEach(el => {
       if (!el) return;
       el.disabled = this.state.formReadOnly || !enabled;
@@ -2836,7 +2849,9 @@ const Proposals = {
         poc_license_count: null,
         poc_license_months: null,
         poc_service_start_date: null,
-        poc_service_end_date: null
+        poc_service_end_date: null,
+        poc_success_kpis: null,
+        poc_conversion_commitment: null
       };
     }
     return {
@@ -2845,7 +2860,9 @@ const Proposals = {
       poc_license_count: null,
       poc_license_months: this.toNullableNumber(E.proposalFormPocLicenseMonths?.value),
       poc_service_start_date: this.normalizeDateInputValue(E.proposalFormPocServiceStartDate?.value || ''),
-      poc_service_end_date: this.normalizeDateInputValue(E.proposalFormPocServiceEndDate?.value || '')
+      poc_service_end_date: this.normalizeDateInputValue(E.proposalFormPocServiceEndDate?.value || ''),
+      poc_success_kpis: String(E.proposalFormPocSuccessKpis?.value || '').trim(),
+      poc_conversion_commitment: String(E.proposalFormPocConversionCommitment?.value || this.getDefaultPocConversionCommitment()).trim()
     };
   },
   validatePocDetails(proposal = {}) {
@@ -2853,6 +2870,8 @@ const Proposals = {
     if (!(this.toNumberSafe(proposal.poc_location_count) > 0)) { UI.toast('Please enter the POC number of locations.'); E.proposalFormPocLocationCount?.focus?.(); return false; }    if (!(this.toNumberSafe(proposal.poc_license_months) > 0)) { UI.toast('Please enter the POC license / month value.'); E.proposalFormPocLicenseMonths?.focus?.(); return false; }
     if (!this.normalizeDateInputValue(proposal.poc_service_start_date)) { UI.toast('Please select the POC service start date.'); E.proposalFormPocServiceStartDate?.focus?.(); return false; }
     if (!this.normalizeDateInputValue(proposal.poc_service_end_date)) { UI.toast('Please select the POC service end date.'); E.proposalFormPocServiceEndDate?.focus?.(); return false; }
+    if (!String(proposal.poc_success_kpis || '').trim()) { UI.toast('Please enter the POC success KPIs.'); E.proposalFormPocSuccessKpis?.focus?.(); return false; }
+    if (!String(proposal.poc_conversion_commitment || '').trim()) { UI.toast('Please enter the POC commercial commitment.'); E.proposalFormPocConversionCommitment?.focus?.(); return false; }
     return true;
   },
   resetForm() {
@@ -2873,6 +2892,8 @@ const Proposals = {
     if (E.proposalFormPocLicenseMonths) E.proposalFormPocLicenseMonths.value = '';
     if (E.proposalFormPocServiceStartDate) E.proposalFormPocServiceStartDate.value = '';
     if (E.proposalFormPocServiceEndDate) E.proposalFormPocServiceEndDate.value = '';
+    if (E.proposalFormPocSuccessKpis) E.proposalFormPocSuccessKpis.value = '';
+    if (E.proposalFormPocConversionCommitment) E.proposalFormPocConversionCommitment.value = '';
     this.syncPocDetailsVisibility();
     this.syncProposalAcceptedLockMessage(false);
   },
@@ -2933,6 +2954,8 @@ const Proposals = {
     set(E.proposalFormPocLicenseMonths, proposal.poc_license_months ?? '');
     set(E.proposalFormPocServiceStartDate, this.normalizeDateInputValue(proposal.poc_service_start_date || ''));
     set(E.proposalFormPocServiceEndDate, this.normalizeDateInputValue(proposal.poc_service_end_date || ''));
+    set(E.proposalFormPocSuccessKpis, proposal.poc_success_kpis || '');
+    set(E.proposalFormPocConversionCommitment, proposal.poc_conversion_commitment || '');
     this.syncPocDetailsVisibility();
     set(E.proposalFormCustomerSignatoryName, proposal.customer_signatory_name || '');
     set(E.proposalFormCustomerSignatoryTitle, proposal.customer_signatory_title || '');
@@ -3167,7 +3190,7 @@ const Proposals = {
         const discountLockAttr = annualDiscountLocked ? ' readonly aria-readonly="true" title="Discount is only available when License / Month is 12 or higher."' : '';
         const quantityLockAttr = oneTimeQuantityLocked ? ' readonly aria-readonly="true" title="Quantity is linked to the number of SaaS subscription rows."' : '';
         const discountCell = `<td><input class="input" type="number" step="0.01" min="0" max="100" data-item-field="discount_percent" value="${U.escapeAttr(annualDiscountLocked ? 0 : (computed.discount_percent ?? ''))}"${discountLockAttr} /></td>`;
-        const quantityCell = `<td><input class="input" type="number" step="0.01" min="0.01" ${section === 'annual_saas' ? 'max="12"' : ''} data-item-field="quantity" value="${U.escapeAttr(oneTimeQuantityLocked ? Math.max(1, this.getAnnualSaasRowCountFromDom() || computed.quantity || 1) : (computed.quantity ?? ''))}"${quantityLockAttr} /></td>`;
+        const quantityCell = `<td><input class="input" type="number" step="0.01" min="0.01" ${section === 'annual_saas' ? 'max="12"' : ''} data-item-field="quantity" value="${U.escapeAttr(oneTimeQuantityLocked ? (computed.quantity || 1) : (computed.quantity ?? ''))}"${quantityLockAttr} /></td>`;
         const commercialCells = section === 'annual_saas'
           ? `${quantityCell}${serviceDateCells}${discountCell}`
           : `${discountCell}${quantityCell}`;
@@ -3205,11 +3228,28 @@ const Proposals = {
     }
     return { ...groups, annual_saas: annualRows, one_time_fee: oneTimeRows };
   },
+  refreshOneTimeFeeQuantityInputs() {
+    const linkedQuantity = Math.max(1, this.getAnnualSaasRowCountFromDom() || 1);
+    Array.from(E.proposalOneTimeItemsTbody?.querySelectorAll?.('tr[data-item-row="one_time_fee"]') || []).forEach(tr => {
+      const quantityInput = tr.querySelector('[data-item-field="quantity"]');
+      if (quantityInput) quantityInput.value = String(linkedQuantity);
+      const get = key => tr.querySelector(`[data-item-field="${key}"]`)?.value ?? '';
+      const computed = this.computeCommercialRow({
+        section: 'one_time_fee',
+        unit_price: get('unit_price'),
+        discount_percent: get('discount_percent'),
+        quantity: linkedQuantity
+      });
+      const lineTotalEl = tr.querySelector('[data-item-display="line_total"]');
+      if (lineTotalEl) lineTotalEl.textContent = this.formatMoney(computed.line_total);
+    });
+  },
   renderProposalItems(items = []) {
     this.renderCatalogOptionLists();
     const groups = this.syncOneTimeFeeRowsWithAnnualCount(this.groupedItems(items));
     this.renderSectionRows('annual_saas', groups.annual_saas);
     this.renderSectionRows('one_time_fee', groups.one_time_fee);
+    this.refreshOneTimeFeeQuantityInputs();
     if (E.proposalCapabilityItemsTbody) E.proposalCapabilityItemsTbody.innerHTML = '';
     this.renderTotalsPreview();
     this.setFormReadOnly(this.state.formReadOnly);
@@ -4374,12 +4414,15 @@ const Proposals = {
                 const endInput = tr.querySelector('[data-item-field="service_end_date"]');
                 if (endInput) endInput.value = this.calculateServiceEndDate(get('service_start_date'), get('quantity'));
               }
-              if (section === 'annual_saas') this.syncAnnualDiscountLockForRow(tr);
+              if (section === 'annual_saas') {
+                this.syncAnnualDiscountLockForRow(tr);
+                this.refreshOneTimeFeeQuantityInputs();
+              }
               const computed = this.computeCommercialRow({
                 section,
                 unit_price: get('unit_price'),
                 discount_percent: get('discount_percent'),
-                quantity: get('quantity')
+                quantity: section === 'one_time_fee' ? Math.max(1, this.getAnnualSaasRowCountFromDom() || 1) : get('quantity')
               });
               const lineTotalEl = tr.querySelector('[data-item-display="line_total"]');
               if (lineTotalEl) lineTotalEl.textContent = this.formatMoney(computed.line_total);
@@ -4400,12 +4443,15 @@ const Proposals = {
           const endInput = tr.querySelector('[data-item-field="service_end_date"]');
           if (endInput) endInput.value = this.calculateServiceEndDate(get('service_start_date'), get('quantity'));
         }
-        if (section === 'annual_saas') this.syncAnnualDiscountLockForRow(tr);
+        if (section === 'annual_saas') {
+          this.syncAnnualDiscountLockForRow(tr);
+          this.refreshOneTimeFeeQuantityInputs();
+        }
         const computed = this.computeCommercialRow({
           section,
           unit_price: get('unit_price'),
           discount_percent: get('discount_percent'),
-          quantity: get('quantity')
+          quantity: section === 'one_time_fee' ? Math.max(1, this.getAnnualSaasRowCountFromDom() || 1) : get('quantity')
         });
         const lineTotalEl = tr.querySelector('[data-item-display="line_total"]');
         if (lineTotalEl) lineTotalEl.textContent = this.formatMoney(computed.line_total);

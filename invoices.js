@@ -30,6 +30,8 @@ const Invoices = {
     'poc_license_months',
     'poc_service_start_date',
     'poc_service_end_date',
+    'poc_success_kpis',
+    'poc_conversion_commitment',
     'currency',
     'status',
     'subtotal_locations',
@@ -511,6 +513,8 @@ const Invoices = {
       poc_license_months: this.normalizeTruthy(source.is_poc) ? this.toNullableNumber(source.poc_license_months) : null,
       poc_service_start_date: this.normalizeTruthy(source.is_poc) ? (this.normalizeDateInputValue(source.poc_service_start_date) || null) : null,
       poc_service_end_date: this.normalizeTruthy(source.is_poc) ? (this.normalizeDateInputValue(source.poc_service_end_date) || null) : null,
+      poc_success_kpis: this.normalizeTruthy(source.is_poc) ? String(source.poc_success_kpis || '').trim() : null,
+      poc_conversion_commitment: this.normalizeTruthy(source.is_poc) ? String(source.poc_conversion_commitment || '').trim() : null,
       currency: String(source.currency || 'USD').trim(),
       status: String(source.status || 'Draft').trim(),
       subtotal_locations: this.toNumberSafe(pickDefined(source.subtotal_locations, source.subtotal_subscription)),
@@ -688,6 +692,8 @@ const Invoices = {
     normalized.poc_license_months = this.toNullableNumber(source.poc_license_months ?? source.pocLicenseMonths ?? normalized.poc_license_months);
     normalized.poc_service_start_date = this.normalizeDateInputValue(source.poc_service_start_date ?? source.pocServiceStartDate ?? normalized.poc_service_start_date);
     normalized.poc_service_end_date = this.normalizeDateInputValue(source.poc_service_end_date ?? source.pocServiceEndDate ?? normalized.poc_service_end_date);
+    normalized.poc_success_kpis = String(source.poc_success_kpis ?? source.pocSuccessKpis ?? normalized.poc_success_kpis ?? '').trim();
+    normalized.poc_conversion_commitment = String(source.poc_conversion_commitment ?? source.pocConversionCommitment ?? normalized.poc_conversion_commitment ?? '').trim();
     const subtotalLocations = pickDefined(
       normalized.subtotal_locations,
       source.subtotal_locations,
@@ -889,6 +895,8 @@ const Invoices = {
             <div><strong>License / Month:</strong> ${textValue(invoiceData.poc_license_months)}</div>
             <div><strong>Service Start Date:</strong> ${dateValue(invoiceData.poc_service_start_date)}</div>
             <div><strong>Service End Date:</strong> ${dateValue(invoiceData.poc_service_end_date)}</div>
+            <div style="grid-column:1 / -1;"><strong>POC Success KPIs:</strong><br>${textValue(invoiceData.poc_success_kpis)}</div>
+            <div style="grid-column:1 / -1;"><strong>Commercial Commitment:</strong><br>${textValue(invoiceData.poc_conversion_commitment || this.getDefaultPocConversionCommitment())}</div>
           </div>
         </div>
       </section>` : '';
@@ -2177,12 +2185,18 @@ const Invoices = {
     invoice.contact_phone = contactPhone;
     invoice.contact_mobile = String(selectedContact.mobile || selectedAgreement.contact_mobile || selectedAgreement.customer_contact_mobile || '').trim();
     invoice.is_poc = this.normalizeTruthy(invoice.is_poc || selectedAgreement.is_poc || existingInvoice.is_poc);
+    if (invoice.is_poc) {
+      invoice.poc_success_kpis = String(invoice.poc_success_kpis || selectedAgreement.poc_success_kpis || selectedAgreement.pocSuccessKpis || existingInvoice.poc_success_kpis || '').trim();
+      invoice.poc_conversion_commitment = String(invoice.poc_conversion_commitment || selectedAgreement.poc_conversion_commitment || selectedAgreement.pocConversionCommitment || existingInvoice.poc_conversion_commitment || this.getDefaultPocConversionCommitment()).trim();
+    }
     if (!invoice.is_poc) {
       invoice.poc_location_count = null;
       invoice.poc_license_count = null;
       invoice.poc_license_months = null;
       invoice.poc_service_start_date = null;
       invoice.poc_service_end_date = null;
+      invoice.poc_success_kpis = null;
+      invoice.poc_conversion_commitment = null;
     }
     return { invoice, items };
   },
@@ -2513,6 +2527,8 @@ const Invoices = {
         poc_license_months: this.toNullableNumber(agreement.poc_license_months ?? agreement.pocLicenseMonths),
         poc_service_start_date: this.normalizeDateInputValue(agreement.poc_service_start_date ?? agreement.pocServiceStartDate),
         poc_service_end_date: this.normalizeDateInputValue(agreement.poc_service_end_date ?? agreement.pocServiceEndDate),
+        poc_success_kpis: String(agreement.poc_success_kpis ?? agreement.pocSuccessKpis ?? '').trim(),
+        poc_conversion_commitment: String(agreement.poc_conversion_commitment ?? agreement.pocConversionCommitment ?? '').trim(),
         amount_in_words: pickAgreementValue(agreement.amount_in_words, agreement.amountInWords),
         notes: agreement.notes
       });

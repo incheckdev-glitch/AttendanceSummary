@@ -41,6 +41,8 @@ const Agreements = {
     'poc_license_months',
     'poc_service_start_date',
     'poc_service_end_date',
+    'poc_success_kpis',
+    'poc_conversion_commitment',
     'currency',
     'customer_name',
     'customer_legal_name',
@@ -581,6 +583,8 @@ const Agreements = {
     normalized.poc_license_months = this.toNullableNumber(source.poc_license_months ?? source.pocLicenseMonths ?? normalized.poc_license_months);
     normalized.poc_service_start_date = this.normalizeDateInputValue(source.poc_service_start_date ?? source.pocServiceStartDate ?? normalized.poc_service_start_date);
     normalized.poc_service_end_date = this.normalizeDateInputValue(source.poc_service_end_date ?? source.pocServiceEndDate ?? normalized.poc_service_end_date);
+    normalized.poc_success_kpis = String(source.poc_success_kpis ?? source.pocSuccessKpis ?? normalized.poc_success_kpis ?? '').trim();
+    normalized.poc_conversion_commitment = String(source.poc_conversion_commitment ?? source.pocConversionCommitment ?? normalized.poc_conversion_commitment ?? '').trim();
     const validPaymentTerms = ['Net 7', 'Net 14', 'Net 21', 'Net 30'];
     normalized.payment_term = validPaymentTerms.includes(String(normalized.payment_term || '').trim())
       ? String(normalized.payment_term || '').trim()
@@ -1020,6 +1024,8 @@ const Agreements = {
       poc_license_months: this.toNullableNumber(source.poc_license_months ?? source.pocLicenseMonths),
       poc_service_start_date: this.normalizeDateInputValue(source.poc_service_start_date ?? source.pocServiceStartDate),
       poc_service_end_date: this.normalizeDateInputValue(source.poc_service_end_date ?? source.pocServiceEndDate),
+      poc_success_kpis: String(source.poc_success_kpis ?? source.pocSuccessKpis ?? '').trim(),
+      poc_conversion_commitment: String(source.poc_conversion_commitment ?? source.pocConversionCommitment ?? '').trim(),
       currency: String(source.currency || '').trim(),
       company_id: String(source.company_id || source.companyId || '').trim(),
       company_name: String(source.company_name || source.companyName || '').trim(),
@@ -1485,6 +1491,8 @@ const Agreements = {
             <div><strong>License / Month:</strong> ${textValue(agreementData.poc_license_months)}</div>
             <div><strong>Service Start Date:</strong> ${dateValue(agreementData.poc_service_start_date)}</div>
             <div><strong>Service End Date:</strong> ${dateValue(agreementData.poc_service_end_date)}</div>
+            <div style="grid-column:1 / -1;"><strong>POC Success KPIs:</strong><br>${textValue(agreementData.poc_success_kpis)}</div>
+            <div style="grid-column:1 / -1;"><strong>Commercial Commitment:</strong><br>${textValue(agreementData.poc_conversion_commitment || this.getDefaultPocConversionCommitment())}</div>
           </div>
         </div>
       </section>` : '';
@@ -2102,6 +2110,8 @@ const Agreements = {
       normalizedAgreement.poc_license_months = null;
       normalizedAgreement.poc_service_start_date = null;
       normalizedAgreement.poc_service_end_date = null;
+      normalizedAgreement.poc_success_kpis = null;
+      normalizedAgreement.poc_conversion_commitment = null;
     } else {
       normalizedAgreement.poc_license_count = null;
     }
@@ -2166,7 +2176,11 @@ const Agreements = {
     const enabled = !!toggle?.checked;
     if (hidden) hidden.value = enabled ? 'true' : 'false';
     if (details) details.style.display = enabled ? 'grid' : 'none';
-    ['agreementFormPocLocationCount', 'agreementFormPocLicenseMonths', 'agreementFormPocServiceStartDate', 'agreementFormPocServiceEndDate'].forEach(id => {
+    if (enabled) {
+      const commitment = document.getElementById('agreementFormPocConversionCommitment');
+      if (commitment && !String(commitment.value || '').trim()) commitment.value = this.getDefaultPocConversionCommitment();
+    }
+    ['agreementFormPocLocationCount', 'agreementFormPocLicenseMonths', 'agreementFormPocServiceStartDate', 'agreementFormPocServiceEndDate', 'agreementFormPocSuccessKpis', 'agreementFormPocConversionCommitment'].forEach(id => {
       const el = document.getElementById(id);
       if (!el) return;
       el.disabled = !enabled || String(E.agreementForm?.dataset?.readOnly || '').trim() === 'true';
@@ -2198,6 +2212,22 @@ const Agreements = {
     }
     return { ...groups, annual_saas: annualRows, one_time_fee: oneTimeRows };
   },
+  refreshOneTimeFeeQuantityInputs() {
+    const linkedQuantity = Math.max(1, this.getAnnualSaasRowCountFromDom() || 1);
+    Array.from(E.agreementOneTimeItemsTbody?.querySelectorAll?.('tr[data-item-row="one_time_fee"]') || []).forEach(tr => {
+      const quantityInput = tr.querySelector('[data-item-field="quantity"]');
+      if (quantityInput) quantityInput.value = String(linkedQuantity);
+      const get = key => tr.querySelector(`[data-item-field="${key}"]`)?.value ?? '';
+      const computed = this.computeCommercialRow({
+        section: 'one_time_fee',
+        unit_price: get('unit_price'),
+        discount_percent: get('discount_percent'),
+        quantity: linkedQuantity
+      });
+      const lineTotalEl = tr.querySelector('[data-item-field="line_total"]');
+      if (lineTotalEl) lineTotalEl.value = computed.line_total;
+    });
+  },
   renderItemRows(items = []) {
     const grouped = this.syncOneTimeFeeRowsWithAnnualCount(this.groupedItems(items));
     const editLocked = this.isAgreementEditMode();
@@ -2224,7 +2254,7 @@ const Agreements = {
       const discountLockAttr = annualDiscountLocked ? ' readonly aria-readonly="true" title="Discount is only available when License / Month is 12."' : '';
       const quantityLockAttr = oneTimeQuantityLocked ? ' readonly aria-readonly="true" title="Quantity is linked to the number of SaaS subscription rows."' : '';
       const discountCell = `<td><input class="input" data-item-field="discount_percent" type="number" min="0" max="100" step="0.01" value="${U.escapeAttr(annualDiscountLocked ? 0 : (computed.discount_percent ?? ''))}"${discountLockAttr}${lockAttr} /></td>`;
-      const quantityCell = `<td><input class="input" data-item-field="quantity" type="number" min="0.01" ${section === 'annual_saas' ? 'max="12"' : ''} step="0.01" value="${U.escapeAttr(oneTimeQuantityLocked ? Math.max(1, this.getAnnualSaasRowCountFromDom() || computed.quantity || 1) : (computed.quantity ?? ''))}"${quantityLockAttr}${lockAttr} /></td>`;
+      const quantityCell = `<td><input class="input" data-item-field="quantity" type="number" min="0.01" ${section === 'annual_saas' ? 'max="12"' : ''} step="0.01" value="${U.escapeAttr(oneTimeQuantityLocked ? (computed.quantity || 1) : (computed.quantity ?? ''))}"${quantityLockAttr}${lockAttr} /></td>`;
       const commercialCells = section === 'annual_saas'
         ? `${quantityCell}${serviceDateCells}${discountCell}`
         : `${discountCell}${quantityCell}`;
@@ -2239,6 +2269,7 @@ const Agreements = {
     };
     if (E.agreementAnnualItemsTbody) E.agreementAnnualItemsTbody.innerHTML = grouped.annual_saas.map((item, idx) => rowHtml('annual_saas', item, idx)).join('');
     if (E.agreementOneTimeItemsTbody) E.agreementOneTimeItemsTbody.innerHTML = grouped.one_time_fee.map((item, idx) => rowHtml('one_time_fee', item, idx)).join('');
+    this.refreshOneTimeFeeQuantityInputs();
     if (E.agreementCapabilityItemsTbody) E.agreementCapabilityItemsTbody.innerHTML = '';
     const totals = this.calculateTotals(items);
     if (E.agreementSaasTotal) E.agreementSaasTotal.textContent = this.formatMoney(totals.saas_total);
