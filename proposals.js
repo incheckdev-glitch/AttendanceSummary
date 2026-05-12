@@ -2661,7 +2661,7 @@ const Proposals = {
 
     E.proposalsTbody.innerHTML = rows
       .map(row => {
-        const id = U.escapeAttr(row.id || '');
+        const id = U.escapeAttr(row.id || row.proposal_id || row.proposalId || '');
         const isAccepted = this.isProposalAccepted(row);
         return `<tr>
           <td>${proposalIdCell(row)}</td>
@@ -4343,7 +4343,10 @@ const Proposals = {
 
     if (E.proposalsTbody) {
       E.proposalsTbody.addEventListener('click', event => {
-        const getActionValue = action => event.target?.closest?.(`[${action}]`)?.getAttribute(action) || '';
+        const getActionValue = action => {
+          const actionEl = event.target?.closest?.(`[${action}]`);
+          return String(actionEl?.getAttribute(action) || '').trim();
+        };
         const trigger = event.target?.closest?.('button');
         const viewId = getActionValue('data-proposal-view');
         if (viewId) {

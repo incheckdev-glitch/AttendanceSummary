@@ -2037,7 +2037,7 @@ const Agreements = {
     }
     const textCell = value => U.escapeHtml(String(value ?? '').trim() || '—');
     E.agreementsTbody.innerHTML = rows.map(row => {
-      const id = U.escapeAttr(row.id || '');
+      const id = U.escapeAttr(row.id || row.agreement_id || row.agreement_number || row.agreementId || '');
       return `<tr>
         <td>${textCell(row.agreement_id)}</td><td>${textCell(row.agreement_number)}</td><td>${textCell(row.agreement_title)}</td>
         <td>${textCell(row.customer_name)}</td><td>${textCell(row.proposal_id)}</td><td>${textCell(row.deal_id)}</td>

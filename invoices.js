@@ -1892,7 +1892,7 @@ const Invoices = {
     const textCell = value => U.escapeHtml(String(value ?? '').trim() || '—');
     E.invoicesTbody.innerHTML = rows
       .map(row => {
-        const id = U.escapeAttr(row.id || '');
+        const id = U.escapeAttr(row.id || row.invoice_id || row.invoice_number || row.invoiceId || '');
         return `<tr>
           <td>${textCell(row.invoice_number || row.invoice_id)}</td>
           <td>${textCell(row.customer_name)}</td>
