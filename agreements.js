@@ -266,11 +266,27 @@ const Agreements = {
     const start = new Date(`${startValue}T00:00:00`);
     if (Number.isNaN(start.getTime())) return '';
 
-    const end = new Date(start);
-    end.setMonth(end.getMonth() + months);
-    end.setDate(end.getDate() - 1);
+    const wholeMonths = Math.trunc(months);
+    const fractionalMonths = months - wholeMonths;
 
-    return `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+    const endExclusive = new Date(start);
+    if (wholeMonths > 0) {
+      endExclusive.setMonth(endExclusive.getMonth() + wholeMonths);
+    }
+
+    if (fractionalMonths > 0) {
+      const anchorMonth = new Date(endExclusive.getFullYear(), endExclusive.getMonth(), 1);
+      const daysInAnchorMonth = new Date(anchorMonth.getFullYear(), anchorMonth.getMonth() + 1, 0).getDate();
+      const extraDays = Math.max(1, Math.round(daysInAnchorMonth * fractionalMonths));
+      endExclusive.setDate(endExclusive.getDate() + extraDays);
+    }
+
+    endExclusive.setDate(endExclusive.getDate() - 1);
+
+    const endYear = endExclusive.getFullYear();
+    const endMonth = String(endExclusive.getMonth() + 1).padStart(2, '0');
+    const endDay = String(endExclusive.getDate()).padStart(2, '0');
+    return `${endYear}-${endMonth}-${endDay}`;
   },
   addMonthsMinusOneDay(startValue, monthsValue) {
     return this.calculateServiceEndDate(startValue, monthsValue);
@@ -1455,7 +1471,6 @@ const Agreements = {
           <div class="info-body" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 18px;">
             <div><strong>POC:</strong> Yes</div>
             <div><strong>Number of Locations:</strong> ${textValue(agreementData.poc_location_count)}</div>
-            <div><strong>Number of Licenses:</strong> ${textValue(agreementData.poc_license_count)}</div>
             <div><strong>License / Month:</strong> ${textValue(agreementData.poc_license_months)}</div>
             <div><strong>Service Start Date:</strong> ${dateValue(agreementData.poc_service_start_date)}</div>
             <div><strong>Service End Date:</strong> ${dateValue(agreementData.poc_service_end_date)}</div>
@@ -1577,10 +1592,8 @@ const Agreements = {
         </div>
       </section>
 
-      ${pocDetailsHtml}
-
       <section class="section">
-        <h2>${isPoc ? 'POC Subscription Details' : 'Subscription Details'}</h2>
+        <h2>SaaS Subscription Details</h2>
         <div class="subhead">SaaS / Subscription Rows</div>
         <table>
           <thead>
@@ -1637,6 +1650,8 @@ const Agreements = {
           <div class="totals-row grand-total-words-row"><span>Grand Total in Words</span><strong>${U.escapeHtml(grandTotalInWords)}</strong></div>
         </div>
       </section>
+
+      ${pocDetailsHtml}
 
       <section class="terms">
         <div><strong>Terms & Conditions:</strong></div>

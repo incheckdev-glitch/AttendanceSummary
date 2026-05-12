@@ -205,13 +205,26 @@ const Proposals = {
     const start = new Date(`${startValue}T00:00:00`);
     if (Number.isNaN(start.getTime())) return '';
 
-    const end = new Date(start);
-    end.setMonth(end.getMonth() + months);
-    end.setDate(end.getDate() - 1);
+    const wholeMonths = Math.trunc(months);
+    const fractionalMonths = months - wholeMonths;
 
-    const endYear = end.getFullYear();
-    const endMonth = String(end.getMonth() + 1).padStart(2, '0');
-    const endDay = String(end.getDate()).padStart(2, '0');
+    const endExclusive = new Date(start);
+    if (wholeMonths > 0) {
+      endExclusive.setMonth(endExclusive.getMonth() + wholeMonths);
+    }
+
+    if (fractionalMonths > 0) {
+      const anchorMonth = new Date(endExclusive.getFullYear(), endExclusive.getMonth(), 1);
+      const daysInAnchorMonth = new Date(anchorMonth.getFullYear(), anchorMonth.getMonth() + 1, 0).getDate();
+      const extraDays = Math.max(1, Math.round(daysInAnchorMonth * fractionalMonths));
+      endExclusive.setDate(endExclusive.getDate() + extraDays);
+    }
+
+    endExclusive.setDate(endExclusive.getDate() - 1);
+
+    const endYear = endExclusive.getFullYear();
+    const endMonth = String(endExclusive.getMonth() + 1).padStart(2, '0');
+    const endDay = String(endExclusive.getDate()).padStart(2, '0');
     return `${endYear}-${endMonth}-${endDay}`;
   },
   addMonthsMinusOneDay(startValue, monthsValue) {
@@ -1885,7 +1898,6 @@ const Proposals = {
           <div class="info-body" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 18px;">
             <div><strong>POC:</strong> Yes</div>
             <div><strong>Number of Locations:</strong> ${textValue(proposalData.poc_location_count)}</div>
-            <div><strong>Number of Licenses:</strong> ${textValue(proposalData.poc_license_count)}</div>
             <div><strong>License / Month:</strong> ${textValue(proposalData.poc_license_months)}</div>
             <div><strong>Service Start Date:</strong> ${dateValue(proposalData.poc_service_start_date)}</div>
             <div><strong>Service End Date:</strong> ${dateValue(proposalData.poc_service_end_date)}</div>
@@ -2134,10 +2146,8 @@ const Proposals = {
         </div>
       </section>
 
-      ${pocDetailsHtml}
-
       <section class="section">
-        <h2>${isPoc ? 'POC Subscription Details' : 'Subscription Details'}</h2>
+        <h2>SaaS Subscription Details</h2>
         <div class="subhead">SaaS / Subscription Rows</div>
         <table>
           <thead>
@@ -2194,6 +2204,8 @@ const Proposals = {
           <div class="totals-row grand-total-words-row"><span>Grand Total in Words</span><strong>${U.escapeHtml(grandTotalInWords)}</strong></div>
         </div>
       </section>
+
+      ${pocDetailsHtml}
 
       <section class="terms">
         <div><strong>Terms & Conditions:</strong></div>
@@ -2699,7 +2711,6 @@ const Proposals = {
     if (E.proposalPocDetails) E.proposalPocDetails.style.display = enabled ? 'grid' : 'none';
     [
       E.proposalFormPocLocationCount,
-      E.proposalFormPocLicenseCount,
       E.proposalFormPocLicenseMonths,
       E.proposalFormPocServiceStartDate,
       E.proposalFormPocServiceEndDate
@@ -2732,7 +2743,7 @@ const Proposals = {
     return {
       is_poc: true,
       poc_location_count: this.toNullableNumber(E.proposalFormPocLocationCount?.value),
-      poc_license_count: this.toNullableNumber(E.proposalFormPocLicenseCount?.value),
+      poc_license_count: null,
       poc_license_months: this.toNullableNumber(E.proposalFormPocLicenseMonths?.value),
       poc_service_start_date: this.normalizeDateInputValue(E.proposalFormPocServiceStartDate?.value || ''),
       poc_service_end_date: this.normalizeDateInputValue(E.proposalFormPocServiceEndDate?.value || '')
@@ -2740,9 +2751,7 @@ const Proposals = {
   },
   validatePocDetails(proposal = {}) {
     if (!this.normalizeTruthy(proposal.is_poc)) return true;
-    if (!(this.toNumberSafe(proposal.poc_location_count) > 0)) { UI.toast('Please enter the POC number of locations.'); E.proposalFormPocLocationCount?.focus?.(); return false; }
-    if (!(this.toNumberSafe(proposal.poc_license_count) > 0)) { UI.toast('Please enter the POC number of licenses.'); E.proposalFormPocLicenseCount?.focus?.(); return false; }
-    if (!(this.toNumberSafe(proposal.poc_license_months) > 0)) { UI.toast('Please enter the POC license / month value.'); E.proposalFormPocLicenseMonths?.focus?.(); return false; }
+    if (!(this.toNumberSafe(proposal.poc_location_count) > 0)) { UI.toast('Please enter the POC number of locations.'); E.proposalFormPocLocationCount?.focus?.(); return false; }    if (!(this.toNumberSafe(proposal.poc_license_months) > 0)) { UI.toast('Please enter the POC license / month value.'); E.proposalFormPocLicenseMonths?.focus?.(); return false; }
     if (!this.normalizeDateInputValue(proposal.poc_service_start_date)) { UI.toast('Please select the POC service start date.'); E.proposalFormPocServiceStartDate?.focus?.(); return false; }
     if (!this.normalizeDateInputValue(proposal.poc_service_end_date)) { UI.toast('Please select the POC service end date.'); E.proposalFormPocServiceEndDate?.focus?.(); return false; }
     return true;
@@ -2762,7 +2771,6 @@ const Proposals = {
     if (E.proposalSignedDocumentSection) E.proposalSignedDocumentSection.style.display = 'none';
     if (E.proposalFormIsPoc) E.proposalFormIsPoc.checked = false;
     if (E.proposalFormPocLocationCount) E.proposalFormPocLocationCount.value = '';
-    if (E.proposalFormPocLicenseCount) E.proposalFormPocLicenseCount.value = '';
     if (E.proposalFormPocLicenseMonths) E.proposalFormPocLicenseMonths.value = '';
     if (E.proposalFormPocServiceStartDate) E.proposalFormPocServiceStartDate.value = '';
     if (E.proposalFormPocServiceEndDate) E.proposalFormPocServiceEndDate.value = '';
@@ -2820,7 +2828,6 @@ const Proposals = {
     set(E.proposalFormPoNumber, proposal.po_number || '');
     if (E.proposalFormIsPoc) E.proposalFormIsPoc.checked = this.normalizeTruthy(proposal.is_poc);
     set(E.proposalFormPocLocationCount, proposal.poc_location_count ?? '');
-    set(E.proposalFormPocLicenseCount, proposal.poc_license_count ?? '');
     set(E.proposalFormPocLicenseMonths, proposal.poc_license_months ?? '');
     set(E.proposalFormPocServiceStartDate, this.normalizeDateInputValue(proposal.poc_service_start_date || ''));
     set(E.proposalFormPocServiceEndDate, this.normalizeDateInputValue(proposal.poc_service_end_date || ''));

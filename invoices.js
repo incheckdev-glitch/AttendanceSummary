@@ -886,7 +886,6 @@ const Invoices = {
           <div class="info-body" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 18px;">
             <div><strong>POC:</strong> Yes</div>
             <div><strong>Number of Locations:</strong> ${textValue(invoiceData.poc_location_count)}</div>
-            <div><strong>Number of Licenses:</strong> ${textValue(invoiceData.poc_license_count)}</div>
             <div><strong>License / Month:</strong> ${textValue(invoiceData.poc_license_months)}</div>
             <div><strong>Service Start Date:</strong> ${dateValue(invoiceData.poc_service_start_date)}</div>
             <div><strong>Service End Date:</strong> ${dateValue(invoiceData.poc_service_end_date)}</div>
@@ -1078,7 +1077,7 @@ const Invoices = {
       ${pocDetailsHtml}
 
       <section class="section">
-        <h2>${isPoc ? 'POC Annual SaaS Items' : 'Annual SaaS Items'}</h2>
+        <h2>SaaS Subscription Details</h2>
         <div class="subhead">SaaS / Subscription Rows</div>
         <table>
           <thead>
