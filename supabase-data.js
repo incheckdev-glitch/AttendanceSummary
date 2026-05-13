@@ -5408,6 +5408,68 @@
       };
       const normalizedAmount = normalizeAmount(payload.amount ?? payload.numeric);
       if (normalizedAmount === null || normalizedAmount <= 0) throw new Error('Receipt amount must be greater than 0.');
+
+      const receiptAmountFromRow = row => normalizeAmount(
+        row?.amount_received ?? row?.received_amount ?? row?.paid_now ?? row?.amount_paid ?? row?.invoice_total ?? 0
+      ) ?? 0;
+
+      const receiptHasItems = async receiptUuid => {
+        const uuid = String(receiptUuid || '').trim();
+        if (!isUuid(uuid)) return false;
+        const { count, error: countError } = await client
+          .from('receipt_items')
+          .select('id', { count: 'exact', head: true })
+          .eq('receipt_id', uuid);
+        if (countError) {
+          devLog(logPrefix, 'Unable to count receipt_items during duplicate cleanup', { receiptUuid: uuid, error: countError });
+          return true;
+        }
+        return Number(count || 0) > 0;
+      };
+
+      const deleteIncompleteReceiptHeader = async (receiptUuid, reason = 'incomplete receipt cleanup') => {
+        const uuid = String(receiptUuid || '').trim();
+        if (!isUuid(uuid)) return false;
+        const { error: itemDeleteError } = await client.from('receipt_items').delete().eq('receipt_id', uuid);
+        if (itemDeleteError) {
+          devLog(logPrefix, 'Unable to delete incomplete receipt items during cleanup', { receiptUuid: uuid, reason, error: itemDeleteError });
+        }
+        const { error: deleteError } = await client.from('receipts').delete().eq('id', uuid);
+        if (deleteError) {
+          devLog(logPrefix, 'Unable to delete incomplete receipt header', { receiptUuid: uuid, reason, error: deleteError });
+          return false;
+        }
+        devLog(logPrefix, 'Deleted incomplete receipt header', { receiptUuid: uuid, reason });
+        return true;
+      };
+
+      const cleanupIncompleteReceiptHeaders = async () => {
+        const { data: candidates, error: candidatesError } = await client
+          .from('receipts')
+          .select('id,receipt_id,receipt_number,invoice_id,invoice_number,customer_name,amount_received,received_amount,paid_now,amount_paid,invoice_total,status,payment_state,created_at')
+          .eq('invoice_id', invoiceUuid)
+          .order('created_at', { ascending: false })
+          .limit(25);
+        if (candidatesError) {
+          devLog(logPrefix, 'Unable to load existing receipt headers for duplicate cleanup', { invoiceUuid, error: candidatesError });
+          return;
+        }
+        for (const candidate of Array.isArray(candidates) ? candidates : []) {
+          const candidateUuid = String(candidate?.id || '').trim();
+          if (!isUuid(candidateUuid)) continue;
+          const amount = receiptAmountFromRow(candidate);
+          const missingInvoiceNumber = !normalizeOptionalText(candidate?.invoice_number);
+          const missingCustomerName = !normalizeOptionalText(candidate?.customer_name);
+          const zeroOrEmptyAmount = amount <= 0;
+          const looksIncomplete = zeroOrEmptyAmount || missingInvoiceNumber || missingCustomerName;
+          if (!looksIncomplete) continue;
+          if (await receiptHasItems(candidateUuid)) continue;
+          await deleteIncompleteReceiptHeader(candidateUuid, 'pre-create duplicate/incomplete receipt cleanup');
+        }
+      };
+
+      await cleanupIncompleteReceiptHeaders();
+
       const { data, error } = await client.rpc('create_receipt_from_invoice', {
         p_invoice_uuid: invoiceUuid,
         p_amount: normalizedAmount,
@@ -5564,10 +5626,11 @@
       } else {
         const { error: receiptItemsInsertError } = await client.from('receipt_items').insert(receiptItemRows);
         if (receiptItemsInsertError) {
+          await deleteIncompleteReceiptHeader(createdReceiptUuid, 'receipt_items insert failed after receipt header creation');
           throw friendlyError(`Unable to create receipt_items from invoice_items (count=${receiptItemRows.length})`, receiptItemsInsertError);
         }
       }
-      const receiptWithItems = withItems(resource, createdReceiptRow);
+      const receiptWithItems = await withItems(resource, createdReceiptRow);
       await createNotificationAndPush({
         title: 'Receipt created from invoice',
         message: `Invoice ${invoiceUuid} generated a new receipt.`,
