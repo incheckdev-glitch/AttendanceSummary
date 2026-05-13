@@ -1832,6 +1832,75 @@ const Agreements = {
     const date = new Date();
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   },
+  hasValue(value) {
+    return value !== undefined && value !== null && String(value).trim() !== '';
+  },
+  getAgreementOfficialSignDateValues(agreement = {}) {
+    const source = agreement && typeof agreement === 'object' ? agreement : {};
+    const firstNonBlank = (...values) => {
+      for (const value of values) {
+        const normalized = this.normalizeDateInputValue(value);
+        if (normalized) return normalized;
+        if (this.hasValue(value)) return String(value || '').trim();
+      }
+      return '';
+    };
+    return {
+      customer: firstNonBlank(source.customer_official_sign_date, source.customerOfficialSignDate, source.customer_sign_date, source.customerSignDate),
+      provider1: firstNonBlank(source.provider_official_signatory_1_sign_date, source.providerOfficialSignatory1SignDate, source.provider_sign_date, source.providerSignDate),
+      provider2: firstNonBlank(source.provider_official_signatory_2_sign_date, source.providerOfficialSignatory2SignDate)
+    };
+  },
+  hasAllAgreementSignatoryDates(agreement = {}) {
+    const dates = this.getAgreementOfficialSignDateValues(agreement);
+    return Boolean(dates.customer && dates.provider1 && dates.provider2);
+  },
+  getLatestAgreementSignDate(agreement = {}) {
+    const dates = Object.values(this.getAgreementOfficialSignDateValues(agreement)).filter(Boolean).sort();
+    return dates.length ? dates[dates.length - 1] : '';
+  },
+  normalizeAgreementSignatoryDateAliases(agreement = {}) {
+    const next = agreement && typeof agreement === 'object' ? agreement : {};
+    const dates = this.getAgreementOfficialSignDateValues(next);
+    if (dates.customer) {
+      next.customer_official_sign_date = dates.customer;
+      next.customer_sign_date = dates.customer;
+    }
+    if (dates.provider1) {
+      next.provider_official_signatory_1_sign_date = dates.provider1;
+      next.provider_sign_date = dates.provider1;
+    }
+    if (dates.provider2) next.provider_official_signatory_2_sign_date = dates.provider2;
+    if (this.hasAllAgreementSignatoryDates(next)) {
+      next.status = 'Signed';
+      next.signed_date = next.signed_date || this.getLatestAgreementSignDate(next);
+      next.gm_signed = true;
+      next.financial_controller_signed = true;
+    }
+    return next;
+  },
+  syncAgreementStatusFromSignatoryDates() {
+    if (!E.agreementForm) return;
+    const read = id => document.getElementById(id)?.value || '';
+    const snapshot = {
+      status: document.getElementById('agreementFormStatus')?.value || '',
+      customer_official_sign_date: read('agreementFormCustomerOfficialSignDate'),
+      customer_sign_date: read('agreementFormCustomerSignDate'),
+      provider_official_signatory_1_sign_date: read('agreementFormProviderOfficialSignatory1SignDate'),
+      provider_sign_date: read('agreementFormProviderSignDate'),
+      provider_official_signatory_2_sign_date: read('agreementFormProviderOfficialSignatory2SignDate'),
+      signed_date: read('agreementFormSignedDate')
+    };
+    this.normalizeAgreementSignatoryDateAliases(snapshot);
+    const customerHidden = document.getElementById('agreementFormCustomerSignDate');
+    const providerHidden = document.getElementById('agreementFormProviderSignDate');
+    const signedDateInput = document.getElementById('agreementFormSignedDate');
+    if (customerHidden) customerHidden.value = snapshot.customer_sign_date || '';
+    if (providerHidden) providerHidden.value = snapshot.provider_sign_date || '';
+    if (signedDateInput && snapshot.signed_date) signedDateInput.value = snapshot.signed_date;
+    const statusInput = document.getElementById('agreementFormStatus');
+    if (statusInput && this.hasAllAgreementSignatoryDates(snapshot)) statusInput.value = 'Signed';
+  },
   getAgreementEndDateValue(agreement = {}) {
     const source = agreement && typeof agreement === 'object' ? agreement : {};
     return this.normalizeDateInputValue(
@@ -1852,17 +1921,17 @@ const Agreements = {
     return endDate < this.todayDateString();
   },
   resolveAgreementStatus(agreement = {}) {
-    if (this.isAgreementExpired(agreement)) return 'Expired';
     const raw = String(agreement?.status || '').trim();
     const normalized = normalizeAgreementStatus(raw);
-    if (normalized === 'accepted') return 'Signed';
+    if (normalized === 'expired') return 'Expired';
+    if (normalized === 'accepted' || normalized === 'signed' || this.hasAllAgreementSignatoryDates(agreement)) return 'Signed';
+    if (this.isAgreementExpired(agreement)) return 'Expired';
     return raw || 'Draft';
   },
   hasSignedSignal(agreement = {}) {
     const statusSigned = this.isSignedStatus(agreement.status);
     const signedDate = String(agreement.signed_date || '').trim();
-    const customerSignDate = String(agreement.customer_sign_date || '').trim();
-    return statusSigned || Boolean(signedDate) || Boolean(customerSignDate);
+    return statusSigned || Boolean(signedDate) || this.hasAllAgreementSignatoryDates(agreement);
   },
   buildOperationsOnboardingFromAgreement(agreement = {}, agreementId = '') {
     const agreementUuid = String(agreementId || agreement.id || '').trim();
@@ -2200,7 +2269,9 @@ const Agreements = {
     });
     const agreementDateFields = ['agreement_date', 'effective_date', 'service_start_date', 'service_end_date', 'poc_service_start_date', 'poc_service_end_date', 'customer_official_sign_date', 'provider_official_signatory_1_sign_date', 'provider_official_signatory_2_sign_date', 'provider_sign_date', 'customer_sign_date', 'signed_date'];
     const normalizedAgreement = this.normalizeDateFieldsForSave(agreement, agreementDateFields);
+    this.normalizeAgreementSignatoryDateAliases(normalizedAgreement);
     Object.assign(normalizedAgreement, this.applyAgreementDerivedDates(normalizedAgreement));
+    this.normalizeAgreementSignatoryDateAliases(normalizedAgreement);
     normalizedAgreement.status = this.resolveAgreementStatus(normalizedAgreement);
     normalizedAgreement.account_number = String(normalizedAgreement.account_number || '').trim();
     const items = this.collectItems();
@@ -2306,7 +2377,14 @@ const Agreements = {
     ['agreementFormPocLocationCount', 'agreementFormPocLicenseMonths', 'agreementFormPocServiceStartDate', 'agreementFormPocServiceEndDate', 'agreementFormPocSuccessKpis', 'agreementFormPocConversionCommitment'].forEach(id => {
       const el = document.getElementById(id);
       if (!el) return;
-      el.disabled = !enabled || String(E.agreementForm?.dataset?.readOnly || '').trim() === 'true';
+      const proposalLocked = this.isProposalLockedAgreementContext();
+      el.disabled = !enabled || proposalLocked || String(E.agreementForm?.dataset?.readOnly || '').trim() === 'true';
+      if (proposalLocked) {
+        if ('readOnly' in el) el.readOnly = true;
+        el.setAttribute('aria-readonly', 'true');
+        el.setAttribute('aria-disabled', 'true');
+        el.classList.add('readonly-field', 'locked-field', 'proposal-locked-field');
+      }
     });
   },
   syncAgreementPocServiceEndDate() {
@@ -2353,15 +2431,15 @@ const Agreements = {
   },
   renderItemRows(items = []) {
     const grouped = this.syncOneTimeFeeRowsWithAnnualCount(this.groupedItems(items));
-    const editLocked = this.isAgreementEditMode() || this.isProposalLockedAgreementContext();
-    const lockAttr = editLocked ? ' disabled aria-disabled="true"' : '';
+    const editLocked = this.isAgreementItemsLocked();
+    const lockAttr = editLocked ? ' readonly disabled aria-readonly="true" aria-disabled="true"' : '';
     const removeCell = (section, index) => editLocked
       ? '<td class="muted cell-center">Locked</td>'
       : `<td><button type="button" class="btn ghost sm" data-item-remove="${section}" data-item-index="${index}">Remove</button></td>`;
     const rowHtml = (section, item, index) => {
       const payload = U.escapeAttr(JSON.stringify(item || {}));
       if (section === 'capability') {
-        return `<tr data-item-row="capability" data-item-payload="${payload}"><td><input class="input" data-item-field="capability_name" value="${U.escapeAttr(item.capability_name || '')}"${lockAttr} /></td><td><input class="input" data-item-field="capability_value" value="${U.escapeAttr(item.capability_value || '')}" /></td><td><input class="input" data-item-field="notes" value="${U.escapeAttr(item.notes || '')}" /></td><td><button type="button" class="btn ghost sm" data-item-remove="capability" data-item-index="${index}">Remove</button></td></tr>`;
+        return `<tr data-item-row="capability" data-item-payload="${payload}"><td><input class="input" data-item-field="capability_name" value="${U.escapeAttr(item.capability_name || '')}"${lockAttr} /></td><td><input class="input" data-item-field="capability_value" value="${U.escapeAttr(item.capability_value || '')}"${lockAttr} /></td><td><input class="input" data-item-field="notes" value="${U.escapeAttr(item.notes || '')}"${lockAttr} /></td>${removeCell('capability', index)}</tr>`;
       }
       const rowDefaults = section === 'annual_saas'
         ? { ...item, quantity: item.quantity || 12, service_start_date: item.service_start_date || this.getDefaultAnnualServiceStartDate() }
@@ -2402,6 +2480,7 @@ const Agreements = {
     if (E.agreementSaasTotal) E.agreementSaasTotal.textContent = this.formatMoney(totals.saas_total);
     if (E.agreementOneTimeTotal) E.agreementOneTimeTotal.textContent = this.formatMoney(totals.one_time_total);
     if (E.agreementGrandTotal) E.agreementGrandTotal.textContent = this.formatMoney(totals.grand_total);
+    this.applyAgreementItemLocks();
   },
   assignFormValues(agreement = {}) {
     const normalizedAgreement = this.applyAgreementDerivedDates(this.normalizeAgreement(
@@ -2647,6 +2726,40 @@ const Agreements = {
     return String(E.agreementForm?.dataset?.mode || '').trim() === 'edit'
       || !!String(E.agreementForm?.dataset?.id || this.state.currentAgreementId || '').trim();
   },
+  isAgreementItemsLocked(agreement = this.state.currentAgreement || {}) {
+    const readOnlyMode = String(E.agreementForm?.dataset?.readOnly || '').trim() === 'true';
+    return readOnlyMode || this.isAgreementEditMode() || this.isProposalLockedAgreementContext(agreement);
+  },
+  applyAgreementItemLocks() {
+    if (!E.agreementForm) return;
+    const lockItems = this.isAgreementItemsLocked();
+    E.agreementForm.classList.toggle('agreement-items-locked', lockItems);
+    [E.agreementAddAnnualRowBtn, E.agreementAddOneTimeRowBtn].forEach(btn => {
+      if (!btn) return;
+      btn.style.display = lockItems ? 'none' : '';
+      btn.disabled = lockItems;
+      btn.setAttribute('aria-disabled', lockItems ? 'true' : 'false');
+    });
+    const containers = [E.agreementAnnualItemsTbody, E.agreementOneTimeItemsTbody, E.agreementCapabilityItemsTbody].filter(Boolean);
+    containers.forEach(container => {
+      container.querySelectorAll('input, select, textarea, button').forEach(el => {
+        if (String(el.type || '').toLowerCase() === 'hidden') return;
+        if (lockItems) {
+          if ('readOnly' in el) el.readOnly = true;
+          if ('disabled' in el) el.disabled = true;
+          el.setAttribute('aria-readonly', 'true');
+          el.setAttribute('aria-disabled', 'true');
+          el.classList.add('readonly-field', 'locked-field', 'agreement-item-locked-field');
+        } else if (el.classList.contains('agreement-item-locked-field')) {
+          if ('disabled' in el) el.disabled = false;
+          if ('readOnly' in el && !el.classList.contains('readonly-field')) el.readOnly = false;
+          el.removeAttribute('aria-readonly');
+          el.removeAttribute('aria-disabled');
+          el.classList.remove('locked-field', 'agreement-item-locked-field');
+        }
+      });
+    });
+  },
   isAgreementEditableInEditMode(el) {
     if (!el) return false;
     if (el.id === 'agreementFormStatus') return true;
@@ -2686,6 +2799,7 @@ const Agreements = {
         el.setAttribute('aria-readonly', 'true');
       }
     });
+    this.applyAgreementItemLocks();
   },
   applyAgreementProposalLocks() {
     if (!E.agreementForm) return;
@@ -2727,6 +2841,7 @@ const Agreements = {
       if (proposalLocked) lockElement(el);
       else unlockElement(el);
     });
+    this.applyAgreementItemLocks();
   },
   buildAgreementEditableUpdate(agreement = {}) {
     const allowedFields = [
@@ -2777,6 +2892,7 @@ const Agreements = {
     this.state.currentAgreement = agreement && typeof agreement === 'object' ? { ...agreement } : null;
     this.state.currentItems = Array.isArray(items) ? [...items] : [];
     this.assignFormValues(agreement);
+    this.syncAgreementStatusFromSignatoryDates();
     this.captureProviderSignDateOriginalValues();
     this.initializeProviderSignDateDefaultTracking(agreement);
     this.renderItemRows(items);
@@ -2857,7 +2973,7 @@ const Agreements = {
     return true;
   },
   addRow(section) {
-    if (this.isAgreementEditMode() || this.isProposalLockedAgreementContext()) {
+    if (this.isAgreementItemsLocked()) {
       UI.toast('Agreement items are locked.');
       return;
     }
@@ -2867,7 +2983,7 @@ const Agreements = {
     this.renderItemRows(items);
   },
   removeRow(section, index) {
-    if (this.isAgreementEditMode() || this.isProposalLockedAgreementContext()) {
+    if (this.isAgreementItemsLocked()) {
       UI.toast('Agreement items are locked.');
       return;
     }
@@ -3000,6 +3116,8 @@ const Agreements = {
     agreement.customer_legal_name = String(companyHydratedAgreement.customer_legal_name || agreement.customer_legal_name || '').trim();
     agreement.customer_name = agreement.customer_legal_name;
     Object.assign(agreement, this.applyOfficialSignatoryDefaults(companyHydratedAgreement, this.state.selectedAgreementCompanyForVerification || companyHydratedAgreement.company || null));
+    this.normalizeAgreementSignatoryDateAliases(agreement);
+    agreement.status = this.resolveAgreementStatus(agreement);
     agreement.provider_signatory_email = String(provider.email || '').trim();
     if (!String(agreement.customer_official_signatory_name || '').trim() || !String(agreement.customer_official_signatory_title || '').trim()) {
       this.showBlockingDialog(
@@ -3031,8 +3149,15 @@ const Agreements = {
     const agreementUpdatePayload = id ? this.buildAgreementEditableUpdate(agreement) : agreement;
     const requestedDiscount = items.reduce((max, item) => Math.max(max, this.toNumberSafe(item.discount_percent)), 0);
     const currentStatus = this.resolveAgreementStatus(currentRecord || {});
+    this.normalizeAgreementSignatoryDateAliases(agreement);
     agreement.status = this.resolveAgreementStatus({ ...agreement, status: agreement.status || currentStatus || 'Draft' });
-    if (agreementUpdatePayload && typeof agreementUpdatePayload === 'object') agreementUpdatePayload.status = agreement.status;
+    if (agreementUpdatePayload && typeof agreementUpdatePayload === 'object') {
+      this.normalizeAgreementSignatoryDateAliases(agreementUpdatePayload);
+      agreementUpdatePayload.status = agreement.status;
+      if (agreement.signed_date) agreementUpdatePayload.signed_date = agreement.signed_date;
+      if (agreement.gm_signed !== undefined) agreementUpdatePayload.gm_signed = agreement.gm_signed;
+      if (agreement.financial_controller_signed !== undefined) agreementUpdatePayload.financial_controller_signed = agreement.financial_controller_signed;
+    }
     const workflowAction = id ? 'update' : 'create';
     let workflowDecision = null;
     if (this.shouldSkipAgreementWorkflow({
@@ -3471,6 +3596,13 @@ const Agreements = {
         agreementPocMonths.addEventListener('change', () => this.syncAgreementPocServiceEndDate());
         agreementPocMonths.dataset.bound = 'true';
       }
+      ['agreementFormCustomerOfficialSignDate', 'agreementFormProviderOfficialSignatory1SignDate', 'agreementFormProviderOfficialSignatory2SignDate'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el || el.dataset.signStatusBound === 'true') return;
+        el.addEventListener('input', () => this.syncAgreementStatusFromSignatoryDates());
+        el.addEventListener('change', () => this.syncAgreementStatusFromSignatoryDates());
+        el.dataset.signStatusBound = 'true';
+      });
       [agreementServiceStartDate, agreementLengthInput].forEach(el => {
         if (!el || el.dataset.serviceEndBound === 'true') return;
         el.addEventListener('input', () => this.syncAgreementServiceEndDate());
@@ -3497,6 +3629,12 @@ const Agreements = {
       });
       const handleAgreementItemChange = event => {
         if (!event.target?.getAttribute('data-item-field')) return;
+        if (this.isAgreementItemsLocked()) {
+          event.preventDefault();
+          event.stopPropagation();
+          this.applyAgreementItemLocks();
+          return;
+        }
         this.recalculateAnnualServiceEndDateForEvent(event);
         this.renderItemRows(this.collectItems());
       };
