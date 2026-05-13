@@ -2222,6 +2222,7 @@ const Agreements = {
     E.agreementsTbody.innerHTML = rows.map(row => {
       const id = U.escapeAttr(row.id || row.agreement_id || row.agreement_number || row.agreementId || '');
       const rowTotals = this.calculateTotalsFromAgreementRecord(row);
+      const signedRow = this.isSignedStatus(this.resolveAgreementStatus(row));
       return `<tr>
         <td>${textCell(row.agreement_id)}</td><td>${textCell(row.agreement_number)}</td><td>${textCell(row.agreement_title)}</td>
         <td>${textCell(row.customer_name)}</td><td>${textCell(row.proposal_id)}</td><td>${textCell(row.deal_id)}</td>
@@ -2230,7 +2231,8 @@ const Agreements = {
         <td>${textCell(this.resolveAgreementStatus(row))}</td><td>${U.escapeHtml(U.fmtDisplayDate(row.updated_at))}</td>
         <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
         ${Permissions.canView('agreements') ? `<button class="btn ghost sm" type="button" data-agreement-view="${id}">View</button>` : ''}
-        ${Permissions.canUpdateAgreement() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="agreements" data-permission-action="update" data-agreement-edit=\"${id}\" data-permission-resource=\"agreements\" data-permission-action=\"update\">Edit</button>` : ''}
+        ${signedRow && Permissions.canUpdateAgreement() ? `<button class=\"btn ghost sm\" type=\"button\" data-agreement-upload-signed=\"${id}\" data-permission-resource=\"agreements\" data-permission-action=\"update\">Upload Signed Doc</button>` : ''}
+        ${!signedRow && Permissions.canUpdateAgreement() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="agreements" data-permission-action="update" data-agreement-edit=\"${id}\" data-permission-resource=\"agreements\" data-permission-action=\"update\">Edit</button>` : ''}
         ${Permissions.canRequestTechnicalAdmin() ? `<button class=\"btn ghost sm\" type=\"button\" data-agreement-request-technical=\"${id}\" data-permission-resource=\"technical_admin_requests\" data-permission-action=\"create\">Request Technical</button>` : ''}
         ${Permissions.canGenerateAgreementHtml() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="agreements" data-permission-action="view" data-agreement-preview=\"${id}\">View Agreement</button>` : ''}
         ${this.isSignedStatus(row.status) && Permissions.canCreateInvoiceFromAgreement() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="invoices" data-permission-action="create_from_agreement" data-agreement-create-invoice=\"${id}\" data-permission-resource=\"invoices\" data-permission-action=\"create\">Create Invoice</button>` : ''}
@@ -2610,9 +2612,23 @@ const Agreements = {
         const uploaded = snapshot.signed_document_uploaded_at ? ` · Uploaded ${U.fmtTS(snapshot.signed_document_uploaded_at)}` : '';
         E.agreementSignedDocumentState.textContent = `${snapshot.signed_document_name || 'Signed agreement document'}${uploaded}`;
       } else {
-        E.agreementSignedDocumentState.textContent = 'Upload the signed agreement document before creating an invoice.';
+        E.agreementSignedDocumentState.textContent = 'Signed agreements are locked for normal editing. Upload the signed agreement document here before creating an invoice.';
       }
     }
+  },
+  focusSignedAgreementDocumentSection() {
+    const section = E.agreementSignedDocumentSection || document.getElementById('agreementSignedDocumentSection');
+    if (!section || section.style.display === 'none') return;
+    try {
+      section.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } catch (_error) {
+      section.scrollIntoView?.();
+    }
+    window.setTimeout(() => {
+      if (E.agreementSignedDocumentFile && !E.agreementSignedDocumentFile.disabled) {
+        try { E.agreementSignedDocumentFile.focus({ preventScroll: true }); } catch (_error) { E.agreementSignedDocumentFile.focus?.(); }
+      }
+    }, 150);
   },
   getSignedDocumentTimestamp(date = new Date()) {
     return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, '');
@@ -2930,7 +2946,7 @@ const Agreements = {
     this.renderItemRows(items);
     this.state.selectedAgreementCompanyForVerification = this.hasCompanyVerificationFields(agreement) ? agreement : null;
     this.updateAgreementCompanyVerificationUi(this.state.selectedAgreementCompanyForVerification);
-    if (E.agreementFormTitle) E.agreementFormTitle.textContent = agreement.id ? (effectiveReadOnly ? 'View Agreement' : 'Edit Agreement') : 'Create Agreement';
+    if (E.agreementFormTitle) E.agreementFormTitle.textContent = agreement.id ? (signedLocked ? 'Signed Agreement · Upload Document' : (effectiveReadOnly ? 'View Agreement' : 'Edit Agreement')) : 'Create Agreement';
     if (E.agreementSignedLockMessage) E.agreementSignedLockMessage.style.display = signedLocked ? '' : 'none';
     if (E.agreementFormDeleteBtn) E.agreementFormDeleteBtn.style.display = !effectiveReadOnly && agreement.id && Permissions.canDeleteAgreement() ? '' : 'none';
     if (E.agreementFormSaveBtn) {
@@ -3023,7 +3039,7 @@ const Agreements = {
     grouped[section] = grouped[section].filter((_, idx) => idx !== index);
     this.renderItemRows([...grouped.annual_saas, ...grouped.one_time_fee]);
   },
-  async openAgreementFormById(agreementId, { readOnly = false, trigger = null } = {}) {
+  async openAgreementFormById(agreementId, { readOnly = false, trigger = null, focusSignedDocument = false } = {}) {
     const id = String(agreementId || '').trim();
     if (!Permissions.canPreviewAgreement()) {
       UI.toast('You do not have permission to view agreements.');
@@ -3045,6 +3061,7 @@ const Agreements = {
       const cached = this.getCachedDetail(id);
       if (cached) {
         this.openAgreementForm(cached.agreement, cached.items, { readOnly });
+        if (focusSignedDocument) window.setTimeout(() => this.focusSignedAgreementDocumentSection(), 150);
         return;
       }
       const response = await this.getAgreement(id);
@@ -3053,6 +3070,7 @@ const Agreements = {
       this.setCachedDetail(id, agreement, items);
       if (String(E.agreementForm?.dataset.id || '').trim() === id) {
         this.openAgreementForm(agreement, items, { readOnly });
+        if (focusSignedDocument) window.setTimeout(() => this.focusSignedAgreementDocumentSection(), 150);
       }
     } catch (error) {
       if (typeof isAuthError === 'function' && isAuthError(error)) {
@@ -3573,14 +3591,24 @@ const Agreements = {
       this.openAgreementForm();
     });
     if (E.agreementsTbody) E.agreementsTbody.addEventListener('click', event => {
-      const trigger = event.target?.closest?.('button[data-agreement-view], button[data-agreement-edit], button[data-agreement-request-technical], button[data-agreement-preview], button[data-agreement-create-invoice], button[data-agreement-delete]');
+      const trigger = event.target?.closest?.('button[data-agreement-view], button[data-agreement-edit], button[data-agreement-upload-signed], button[data-agreement-request-technical], button[data-agreement-preview], button[data-agreement-create-invoice], button[data-agreement-delete]');
       if (!trigger) return;
       const viewId = trigger.getAttribute('data-agreement-view');
       if (viewId) return this.runRowAction(`view:${viewId}`, trigger, () => this.openAgreementFormById(viewId, { readOnly: true, trigger }));
       const editId = trigger.getAttribute('data-agreement-edit');
       if (editId) {
         if (!Permissions.canUpdateAgreement()) return UI.toast('You do not have permission to edit agreements.');
+        const row = this.state.rows.find(entry => String(entry?.id || entry?.agreement_id || entry?.agreement_number || '').trim() === String(editId || '').trim());
+        if (row && this.isSignedStatus(this.resolveAgreementStatus(row))) {
+          UI.toast('Signed agreements are locked. You can only upload the signed agreement document.');
+          return this.runRowAction(`upload-signed:${editId}`, trigger, () => this.openAgreementFormById(editId, { readOnly: true, trigger, focusSignedDocument: true }));
+        }
         return this.runRowAction(`edit:${editId}`, trigger, () => this.openAgreementFormById(editId, { readOnly: false, trigger }));
+      }
+      const uploadSignedId = trigger.getAttribute('data-agreement-upload-signed');
+      if (uploadSignedId) {
+        if (!Permissions.canUpdateAgreement()) return UI.toast('You do not have permission to upload signed agreement documents.');
+        return this.runRowAction(`upload-signed:${uploadSignedId}`, trigger, () => this.openAgreementFormById(uploadSignedId, { readOnly: true, trigger, focusSignedDocument: true }));
       }
       const requestTechnicalId = trigger.getAttribute('data-agreement-request-technical');
       if (requestTechnicalId) {
