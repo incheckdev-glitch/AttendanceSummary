@@ -2521,12 +2521,13 @@
       notes: firstDefined(record, ['notes']),
       invoice_status: firstDefined(record, ['invoice_status', 'invoiceStatus']),
       invoiced_invoice_id: normalizeNullableUuidValue(firstDefined(record, ['invoiced_invoice_id', 'invoicedInvoiceId'])),
-      invoiced_at: firstDefined(record, ['invoiced_at', 'invoicedAt'])
+      invoiced_at: normalizeNullableDateValue(firstDefined(record, ['invoiced_at', 'invoicedAt']))
     });
     const sanitized = {};
     Object.entries(mapped).forEach(([key, value]) => {
       if (!AGREEMENT_ITEM_COLUMNS.has(key)) return;
-      if (value === undefined) return;
+      if (value === undefined || value === null) return;
+      if (typeof value === 'string' && !value.trim() && ['service_start_date', 'service_end_date', 'invoiced_at'].includes(key)) return;
       sanitized[key] = value;
     });
     return sanitized;
