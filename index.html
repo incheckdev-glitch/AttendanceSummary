@@ -3202,7 +3202,7 @@ Sample:
             
             <div class="filter-row"><label class="muted" for="proposalFormPocLicenseMonths">License / Month</label><input id="proposalFormPocLicenseMonths" class="input" type="number" min="0" step="0.01" /></div>
             <div class="filter-row"><label class="muted" for="proposalFormPocServiceStartDate">POC Service Start Date</label><input id="proposalFormPocServiceStartDate" class="input" type="date" /></div>
-            <div class="filter-row"><label class="muted" for="proposalFormPocServiceEndDate">POC Service End Date</label><input id="proposalFormPocServiceEndDate" class="input" type="date" /></div>
+            <div class="filter-row"><label class="muted" for="proposalFormPocServiceEndDate">POC Service End Date</label><input id="proposalFormPocServiceEndDate" class="input readonly-field locked-field" type="date" readonly aria-readonly="true" title="Auto-calculated from POC Service Start Date and License / Month." /></div>
             <div style="grid-column:1 / -1;margin-top:4px;padding-top:10px;border-top:1px solid #e5e7eb;">
               <strong style="display:block;margin-bottom:4px;">POC Success & Conversion Commitment</strong>
               <div class="muted" style="font-size:12px;line-height:1.45;">Define the success KPIs and the customer commitment to proceed with the full commercial agreement once the KPIs are achieved.</div>
@@ -3787,8 +3787,8 @@ Sample:
   <script src="crm-form-selectors.js?v=v18-contact-multi-company"></script>
   <script src="ui.js?v=20260427-allpwa1"></script>
   <script src="leads.js?v=20260427-allpwa1"></script>
-  <script src="companies.js?v=20260513-add-contact-panel-fix"></script>
-  <script src="contacts.js?v=20260513-add-contact-panel-fix"></script>
+  <script src="companies.js?v=20260429-crm"></script>
+  <script src="contacts.js?v=v18-contact-multi-company"></script>
   <script src="deals.js?v=20260427-allpwa1"></script>
   <script src="proposals.js?v=v17-agreement-today-helper"></script>
   <script src="agreements.js?v=v17-agreement-today-helper"></script>
@@ -3809,6 +3809,6 @@ Sample:
   <script src="events-service.js?v=20260427-events-pwa1"></script>
   <script src="csm-service.js?v=20260427-allpwa1"></script>
   <script src="ai-insights-service.js?v=20260427-allpwa1"></script>
-  <script src="app.js?v=20260513-add-contact-panel-fix"></script>
+  <script src="app.js?v=v17-agreement-today-helper"></script>
 </body>
 </html>

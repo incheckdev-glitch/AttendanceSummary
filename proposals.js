@@ -792,6 +792,11 @@ const Proposals = {
     const customerSignDate = this.normalizeDateInputValue(source.customer_sign_date || source.customerSignDate || '');
     const providerSignDate = this.normalizeDateInputValue(source.provider_sign_date || source.providerSignDate || '');
     const acceptedAt = this.normalizeDateInputValue(source.accepted_at || source.acceptedAt || source.approved_at || source.approvedAt || '');
+
+    // A proposal is accepted only when BOTH customer and provider sign dates are filled.
+    // One sign date alone must never move the proposal to accepted or lock it as accepted.
+    if (!customerSignDate || !providerSignDate) return '';
+
     const dates = [customerSignDate, providerSignDate, acceptedAt].filter(Boolean).sort();
     return dates.length ? dates[dates.length - 1] : '';
   },
@@ -802,12 +807,11 @@ const Proposals = {
     );
   },
   wasProposalAcceptedBeforeExpiry(proposal = {}) {
-    const status = this.normalizeProposalStatus(proposal?.status);
     const validUntil = this.getProposalValidUntilValue(proposal);
     const acceptanceDate = this.getProposalAcceptanceDateValue(proposal);
-    if (acceptanceDate && validUntil) return acceptanceDate <= validUntil;
-    if (acceptanceDate && !validUntil) return true;
-    return status === 'accepted';
+    if (!acceptanceDate) return false;
+    if (validUntil) return acceptanceDate <= validUntil;
+    return true;
   },
   isProposalExpired(proposal = {}) {
     const status = this.normalizeProposalStatus(proposal?.status);
@@ -839,6 +843,10 @@ const Proposals = {
         this.refreshSignedDocumentUi(acceptedSnapshot);
         return;
       }
+    } else if (this.normalizeProposalStatus(E.proposalFormStatus.value) === 'accepted') {
+      E.proposalFormStatus.value = 'sent';
+      this.refreshSignedDocumentUi({ ...formSnapshot, status: 'sent', customer_sign_date: customerSignDate, provider_sign_date: providerSignDate });
+      return;
     }
     if (this.isProposalExpired(formSnapshot)) {
       E.proposalFormStatus.value = 'expired';
@@ -1515,8 +1523,8 @@ const Proposals = {
       if (!normalized.quantity) normalized.quantity = 12;
       if (!normalized.service_start_date) normalized.service_start_date = this.getDefaultAnnualServiceStartDate();
       if (!normalized.service_end_date) normalized.service_end_date = this.addMonthsMinusOneDay(normalized.service_start_date, normalized.quantity);
-    } else if (section === 'one_time_fee' && !normalized.quantity) {
-      normalized.quantity = 1;
+    } else if (section === 'one_time_fee') {
+      normalized.quantity = Math.max(1, this.getAnnualSaasRowCountFromDom?.() || normalized.quantity || 1);
     }
 
     if (section === 'annual_saas' || section === 'one_time_fee') {
@@ -1852,7 +1860,11 @@ const Proposals = {
       delete prepared.valid_until;
     }
     if (hasStatus || ensureBusinessProposalId) prepared.status = this.normalizeProposalStatus(base.status) || 'draft';
-    if (this.wasProposalAcceptedBeforeExpiry(prepared) || this.areProposalSignDatesComplete(prepared)) {
+    const signDatesComplete = this.areProposalSignDatesComplete(prepared);
+    if (!signDatesComplete && this.normalizeProposalStatus(prepared.status) === 'accepted') {
+      prepared.status = 'sent';
+    }
+    if (signDatesComplete) {
       const acceptedSnapshot = { ...prepared, status: 'accepted' };
       prepared.status = this.wasProposalAcceptedBeforeExpiry(acceptedSnapshot) ? 'accepted' : prepared.status;
     }
@@ -2852,14 +2864,23 @@ const Proposals = {
       if (!el) return;
       el.disabled = this.state.formReadOnly || !enabled;
     });
+    this.lockPocServiceEndDateInput();
+  },
+  lockPocServiceEndDateInput() {
+    if (!E.proposalFormPocServiceEndDate) return;
+    E.proposalFormPocServiceEndDate.readOnly = true;
+    E.proposalFormPocServiceEndDate.setAttribute('aria-readonly', 'true');
+    E.proposalFormPocServiceEndDate.title = 'Auto-calculated from POC Service Start Date and License / Month.';
+    E.proposalFormPocServiceEndDate.classList.add('readonly-field', 'locked-field');
   },
   syncPocServiceEndDate() {
     if (!E.proposalFormIsPoc?.checked) return;
+    this.lockPocServiceEndDateInput();
     const start = this.normalizeDateInputValue(E.proposalFormPocServiceStartDate?.value || '');
     const months = E.proposalFormPocLicenseMonths?.value || '';
     const calculated = this.calculateServiceEndDate(start, months);
-    if (E.proposalFormPocServiceEndDate && calculated) {
-      E.proposalFormPocServiceEndDate.value = calculated;
+    if (E.proposalFormPocServiceEndDate) {
+      E.proposalFormPocServiceEndDate.value = calculated || '';
     }
   },
   getProposalPocPayload() {
@@ -2876,13 +2897,17 @@ const Proposals = {
         poc_conversion_commitment: null
       };
     }
+    const pocServiceStartDate = this.normalizeDateInputValue(E.proposalFormPocServiceStartDate?.value || '');
+    const pocLicenseMonths = this.toNullableNumber(E.proposalFormPocLicenseMonths?.value);
+    const pocServiceEndDate = this.calculateServiceEndDate(pocServiceStartDate, pocLicenseMonths);
+    if (E.proposalFormPocServiceEndDate) E.proposalFormPocServiceEndDate.value = pocServiceEndDate || '';
     return {
       is_poc: true,
       poc_location_count: this.toNullableNumber(E.proposalFormPocLocationCount?.value),
       poc_license_count: null,
-      poc_license_months: this.toNullableNumber(E.proposalFormPocLicenseMonths?.value),
-      poc_service_start_date: this.normalizeDateInputValue(E.proposalFormPocServiceStartDate?.value || ''),
-      poc_service_end_date: this.normalizeDateInputValue(E.proposalFormPocServiceEndDate?.value || ''),
+      poc_license_months: pocLicenseMonths,
+      poc_service_start_date: pocServiceStartDate,
+      poc_service_end_date: pocServiceEndDate || null,
       poc_success_kpis: String(E.proposalFormPocSuccessKpis?.value || this.getDefaultPocSuccessKpis()).trim(),
       poc_conversion_commitment: String(E.proposalFormPocConversionCommitment?.value || this.getDefaultPocConversionCommitment()).trim()
     };
@@ -2980,6 +3005,7 @@ const Proposals = {
     set(E.proposalFormPocSuccessKpis, proposal.poc_success_kpis || (isPoc ? this.getDefaultPocSuccessKpis() : ''));
     set(E.proposalFormPocConversionCommitment, proposal.poc_conversion_commitment || (isPoc ? this.getDefaultPocConversionCommitment() : ''));
     this.syncPocDetailsVisibility();
+    this.syncPocServiceEndDate();
     set(E.proposalFormCustomerSignatoryName, proposal.customer_signatory_name || '');
     set(E.proposalFormCustomerSignatoryTitle, proposal.customer_signatory_title || '');
     // Signature dates must stay blank unless explicitly entered by the user.
@@ -3114,9 +3140,17 @@ const Proposals = {
     if (discountPercentInput && hasCatalogDiscount && (fromUserInput || !hasExistingDiscount)) {
       discountPercentInput.value = String(selectedDiscountPercent);
     }
-    if (quantityInput && selected.quantity !== null && selected.quantity !== undefined) {
-      const selectedQuantity = this.toNumberSafe(selected.quantity) || (section === 'annual_saas' ? 12 : 1);
-      quantityInput.value = String(selectedQuantity);
+    if (quantityInput) {
+      if (section === 'one_time_fee') {
+        quantityInput.value = String(Math.max(1, this.getAnnualSaasRowCountFromDom?.() || 1));
+        quantityInput.readOnly = true;
+        quantityInput.setAttribute('aria-readonly', 'true');
+        quantityInput.title = 'Quantity is linked to the number of SaaS subscription rows.';
+        quantityInput.classList.add('readonly-field', 'locked-field');
+      } else if (selected.quantity !== null && selected.quantity !== undefined) {
+        const selectedQuantity = this.toNumberSafe(selected.quantity) || 12;
+        quantityInput.value = String(selectedQuantity);
+      }
     }
     unitPriceInput.readOnly = true;
     unitPriceInput.title = 'Unit price is set from the proposal catalog.';
@@ -3197,9 +3231,10 @@ const Proposals = {
 
     tbody.innerHTML = safeRows
       .map((row, index) => {
+        const linkedOneTimeQuantity = Math.max(1, this.getAnnualSaasRowCountFromDom?.() || this.getAnnualSaasRowCountFromItems?.(this.collectSectionItems?.('annual_saas') || []) || 1);
         const rowDefaults = section === 'annual_saas'
           ? { ...row, quantity: row.quantity || 12, service_start_date: row.service_start_date || this.getDefaultAnnualServiceStartDate() }
-          : { ...row, quantity: row.quantity || 1 };
+          : { ...row, quantity: linkedOneTimeQuantity };
         if (section === 'annual_saas') {
           rowDefaults.service_end_date = this.addMonthsMinusOneDay(rowDefaults.service_start_date, rowDefaults.quantity);
         }
@@ -3255,7 +3290,13 @@ const Proposals = {
     const linkedQuantity = Math.max(1, this.getAnnualSaasRowCountFromDom() || 1);
     Array.from(E.proposalOneTimeItemsTbody?.querySelectorAll?.('tr[data-item-row="one_time_fee"]') || []).forEach(tr => {
       const quantityInput = tr.querySelector('[data-item-field="quantity"]');
-      if (quantityInput) quantityInput.value = String(linkedQuantity);
+      if (quantityInput) {
+        quantityInput.value = String(linkedQuantity);
+        quantityInput.readOnly = true;
+        quantityInput.setAttribute('aria-readonly', 'true');
+        quantityInput.title = 'Quantity is linked to the number of SaaS subscription rows.';
+        quantityInput.classList.add('readonly-field', 'locked-field');
+      }
       const get = key => tr.querySelector(`[data-item-field="${key}"]`)?.value ?? '';
       const computed = this.computeCommercialRow({
         section: 'one_time_fee',
@@ -3376,13 +3417,16 @@ const Proposals = {
     const customerSignDate = String(E.proposalFormCustomerSignDate?.value || '').trim();
     const providerSignDate = String(E.proposalFormProviderSignDate?.value || '').trim();
     const currentStatus = this.normalizeProposalStatus(E.proposalFormStatus?.value) || 'draft';
-    const autoAcceptedStatus = this.normalizeDateInputValue(customerSignDate) && this.normalizeDateInputValue(providerSignDate);
+    const customerSignDateValue = this.normalizeDateInputValue(customerSignDate);
+    const providerSignDateValue = this.normalizeDateInputValue(providerSignDate);
+    const autoAcceptedStatus = Boolean(customerSignDateValue && providerSignDateValue);
+    const requestedStatus = autoAcceptedStatus ? 'accepted' : (currentStatus === 'accepted' ? 'sent' : currentStatus);
     const proposalValidUntilValue = this.getAutoValidUntil(E.proposalFormProposalDate?.value);
     const acceptedBeforeExpiry = this.wasProposalAcceptedBeforeExpiry({
       ...(this.state.currentProposal || {}),
-      status: autoAcceptedStatus ? 'accepted' : currentStatus,
-      customer_sign_date: customerSignDate,
-      provider_sign_date: providerSignDate,
+      status: requestedStatus,
+      customer_sign_date: customerSignDateValue,
+      provider_sign_date: providerSignDateValue,
       valid_until: proposalValidUntilValue,
       proposal_valid_until: proposalValidUntilValue
     });
@@ -3399,7 +3443,7 @@ const Proposals = {
       proposal_date: this.getProposalDateOrToday(E.proposalFormProposalDate?.value),
       proposal_valid_until: proposalValidUntilValue,
       valid_until: proposalValidUntilValue,
-      status: acceptedBeforeExpiry ? 'accepted' : (isExpiredByValidity ? 'expired' : currentStatus),
+      status: acceptedBeforeExpiry ? 'accepted' : (isExpiredByValidity ? 'expired' : requestedStatus),
       currency: String(E.proposalFormCurrency?.value || '').trim(),
       customer_name: resolvedCustomerName,
       customer_legal_name: resolvedCustomerName,
@@ -3420,13 +3464,13 @@ const Proposals = {
       ...pocPayload,
       customer_signatory_name: mapped.customer_signatory_name || '',
       customer_signatory_title: mapped.customer_signatory_title || '',
-      customer_sign_date: customerSignDate,
+      customer_sign_date: customerSignDateValue,
       provider_signatory_name: this.getCleanProviderSignatoryValue(
         E.proposalFormProviderSignatoryName?.value || mapped.provider_signatory_name || mapped.providerSignatoryName || providerUserName,
         mapped
       ) || providerUserName,
       provider_signatory_title: String(E.proposalFormProviderSignatoryTitle?.value || mapped.provider_signatory_title || mapped.providerSignatoryTitle || providerRole).trim(),
-      provider_sign_date: providerSignDate,
+      provider_sign_date: providerSignDateValue,
       terms_conditions: String(E.proposalFormTerms?.value || '').trim(),
       company_id: selectedCompany.company_id || '',
       company_name: selectedCompany.company_name || resolvedCustomerName || '',
@@ -4329,6 +4373,7 @@ const Proposals = {
       el.addEventListener('input', () => this.syncProposalStatusFromSignDates());
       el.addEventListener('change', () => this.syncProposalStatusFromSignDates());
     });
+    this.lockPocServiceEndDateInput();
     if (E.proposalFormIsPoc) {
       E.proposalFormIsPoc.addEventListener('change', () => {
         this.syncPocDetailsVisibility();
@@ -4444,6 +4489,8 @@ const Proposals = {
               if (section === 'annual_saas') {
                 this.syncAnnualDiscountLockForRow(tr);
                 this.refreshOneTimeFeeQuantityInputs();
+              } else if (section === 'one_time_fee') {
+                this.refreshOneTimeFeeQuantityInputs();
               }
               const computed = this.computeCommercialRow({
                 section,
@@ -4472,6 +4519,8 @@ const Proposals = {
         }
         if (section === 'annual_saas') {
           this.syncAnnualDiscountLockForRow(tr);
+          this.refreshOneTimeFeeQuantityInputs();
+        } else if (section === 'one_time_fee') {
           this.refreshOneTimeFeeQuantityInputs();
         }
         const computed = this.computeCommercialRow({
