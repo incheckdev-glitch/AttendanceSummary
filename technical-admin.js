@@ -41,6 +41,36 @@ const TechnicalAdmin = {
     }
     return null;
   },
+  safeTextFromObject(source = {}, keys = []) {
+    const safe = source && typeof source === 'object' ? source : {};
+    return (Array.isArray(keys) ? keys : [])
+      .map(key => safe[key])
+      .filter(value => value !== undefined && value !== null && String(value).trim() !== '')
+      .map(value => String(value).trim())
+      .join(' ');
+  },
+  firstNonUuidText(...values) {
+    for (const value of values) {
+      const text = String(value || '').trim();
+      if (!text) continue;
+      if (this.isUuid(text)) continue;
+      return text;
+    }
+    return '';
+  },
+  isOneTimeFeeItem(item = {}) {
+    const safe = item && typeof item === 'object' ? item : {};
+    const text = this.safeTextFromObject(safe, [
+      'item_name','itemName','product_name','productName','service_name','serviceName','description',
+      'category','section','section_name','section_label','type','item_type','itemType','line_type','lineType',
+      'module','module_name','moduleName','billing_frequency','billingFrequency','billing_cycle','billingCycle','frequency',
+      'license','license_name','licenseName'
+    ]).toLowerCase().replace(/[_-]+/g, ' ');
+
+    if (/one\s*time|one time fee|setup|implementation|onboarding|activation|installation/.test(text)) return true;
+    if (/annual\s*saas|saas\s*annual|subscription|license/.test(text)) return false;
+    return false;
+  },
   isUuid(value = '') {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
   },
@@ -120,16 +150,8 @@ const TechnicalAdmin = {
   },
   deriveAgreementLocationCount(agreementItems = []) {
     const safeItems = Array.isArray(agreementItems) ? agreementItems : [];
-    const locationItems = safeItems.filter(item => this.isAnnualSaasLocationItem(item));
-    if (locationItems.length) return locationItems.length;
-
-    const uniqueLocations = new Set();
-    safeItems.forEach(item => {
-      if (!item || typeof item !== 'object' || this.isOneTimeFeeItem(item)) return;
-      const location = String(this.pick(item.location, item.location_name, item.locationName, item.site_name, item.siteName, item.store_name, item.storeName)).trim().toLowerCase();
-      if (location) uniqueLocations.add(location);
-    });
-    return uniqueLocations.size || null;
+    const annualSaasRows = safeItems.filter(item => this.isAnnualSaasLocationItem(item));
+    return annualSaasRows.length || null;
   },
   profileDisplay(profile = null, fallback = '') {
     if (!profile || typeof profile !== 'object') return String(fallback || '').trim();
@@ -260,7 +282,7 @@ const TechnicalAdmin = {
       agreement.numberOfLocations
     );
     const derivedLocationCount = agreementItems.length ? this.deriveAgreementLocationCount(agreementItems) : null;
-    const resolvedLocationCount = requestLocationCount ?? agreementLocationCount ?? derivedLocationCount ?? (agreementItems.length || null);
+    const resolvedLocationCount = derivedLocationCount ?? requestLocationCount ?? agreementLocationCount ?? null;
     const sourceId = String(source.id || '').trim();
     const onboardingId = String(this.pick(source.onboarding_id, source.onboardingId)).trim();
     const technicalRequestType = String(this.pick(source.technical_request_type, source.request_type, source.requestType, 'Technical Admin')).trim();
@@ -394,7 +416,7 @@ const TechnicalAdmin = {
       }
       const linkedItems = this.getLinkedAgreementItems({ request: row, agreement, agreementItems: uniqueAgreementItems });
       const annualSaasLocationCount = linkedItems.filter(item => this.isAnnualSaasLocationItem(item)).length;
-      const itemLocationCount = annualSaasLocationCount || linkedItems.length || null;
+      const itemLocationCount = annualSaasLocationCount || null;
       const earliestItemStart = linkedItems
         .map(item => String(item?.service_start_date || '').trim())
         .filter(Boolean)
@@ -415,15 +437,15 @@ const TechnicalAdmin = {
       )).trim();
 
       const locationCount = this.parseOptionalNumber(
+        itemLocationCount,
         row.number_of_locations,
         row.location_count,
         raw.number_of_locations,
         raw.location_count,
         raw.locations_count,
-          agreement.number_of_locations,
+        agreement.number_of_locations,
         agreement.locations_count,
-        agreement.location_count,
-        itemLocationCount
+        agreement.location_count
       );
       return {
         ...row,
