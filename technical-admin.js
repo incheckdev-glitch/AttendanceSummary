@@ -56,12 +56,6 @@ const TechnicalAdmin = {
     if (!raw) return '—';
     return U.formatDateTimeMMDDYYYYHHMM(raw);
   },
-  profileDisplay(profile = null, fallback = '') {
-    if (!profile || typeof profile !== 'object') return String(fallback || '').trim();
-    const name = String(profile.name || profile.full_name || profile.username || '').trim();
-    const email = String(profile.email || '').trim();
-    return name || email || String(fallback || '').trim();
-  },
   parseAgreementPayload(value) {
     if (typeof value !== 'string') return value;
     const trimmed = value.trim();
@@ -110,40 +104,105 @@ const TechnicalAdmin = {
   },
   isAnnualSaasLocationItem(item = {}) {
     const safe = item && typeof item === 'object' ? item : {};
-    const text = [
-      safe.item_name,
-      safe.itemName,
-      safe.product_name,
-      safe.productName,
-      safe.service_name,
-      safe.serviceName,
-      safe.description,
-      safe.category,
-      safe.section,
-      safe.section_name,
-      safe.section_label,
-      safe.type,
-      safe.module,
-      safe.module_name,
-      safe.moduleName,
-      safe.billing_frequency,
-      safe.billingFrequency,
-      safe.billing_cycle,
-      safe.billingCycle,
-      safe.frequency
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase();
-    if (!text) return false;
-    if (['one_time_fee', 'one_time', 'one time', 'one-time', 'setup', 'implementation', 'onboarding'].some(token => text.includes(token))) {
-      return false;
-    }
-    return text.includes('saas') && text.includes('annual');
+    if (this.isOneTimeFeeItem(safe)) return false;
+    const text = this.safeTextFromObject(safe, [
+      'item_name','itemName','product_name','productName','service_name','serviceName','description',
+      'category','section','section_name','section_label','type','item_type','itemType','line_type','lineType',
+      'module','module_name','moduleName','billing_frequency','billingFrequency','billing_cycle','billingCycle','frequency',
+      'license','license_name','licenseName','location','location_name','locationName'
+    ]).toLowerCase().replace(/[_-]+/g, ' ');
+
+    if (/annual\s*saas|saas\s*annual|subscription|license/.test(text)) return true;
+    if (safe.license_price_year !== undefined || safe.license_price_per_year !== undefined || safe.license_price_yearly !== undefined) return true;
+    if (safe.license_month !== undefined || safe.license_months !== undefined || safe.license_per_month !== undefined) return true;
+    if ((safe.service_start_date || safe.serviceStartDate) && (safe.service_end_date || safe.serviceEndDate) && (safe.location || safe.location_name || safe.locationName)) return true;
+    return false;
   },
   deriveAgreementLocationCount(agreementItems = []) {
     const safeItems = Array.isArray(agreementItems) ? agreementItems : [];
-    return safeItems.filter(item => this.isAnnualSaasLocationItem(item)).length;
+    const locationItems = safeItems.filter(item => this.isAnnualSaasLocationItem(item));
+    if (locationItems.length) return locationItems.length;
+
+    const uniqueLocations = new Set();
+    safeItems.forEach(item => {
+      if (!item || typeof item !== 'object' || this.isOneTimeFeeItem(item)) return;
+      const location = String(this.pick(item.location, item.location_name, item.locationName, item.site_name, item.siteName, item.store_name, item.storeName)).trim().toLowerCase();
+      if (location) uniqueLocations.add(location);
+    });
+    return uniqueLocations.size || null;
+  },
+  profileDisplay(profile = null, fallback = '') {
+    if (!profile || typeof profile !== 'object') return String(fallback || '').trim();
+    const firstLast = [profile.first_name, profile.last_name].filter(Boolean).join(' ').trim();
+    const name = String(profile.name || profile.full_name || profile.display_name || profile.username || firstLast || '').trim();
+    const email = String(profile.email || profile.user_email || '').trim();
+    return name || email || String(fallback || '').trim();
+  },
+  resolvePersonDisplay(value = '', profileMap = new Map(), fallback = '') {
+    const raw = String(value || '').trim();
+    const fallbackText = String(fallback || '').trim();
+    if (!raw) return fallbackText;
+    if (!this.isUuid(raw)) return raw;
+    return this.profileDisplay(profileMap.get(raw), fallbackText || raw);
+  },
+  async fetchPeopleByIds(client, ids = []) {
+    const uniqueIds = [...new Set((Array.isArray(ids) ? ids : []).map(id => String(id || '').trim()).filter(id => this.isUuid(id)))];
+    const peopleById = new Map();
+    if (!client || !uniqueIds.length) return peopleById;
+
+    const addPerson = row => {
+      if (!row || typeof row !== 'object') return;
+      const keys = [row.id, row.auth_user_id, row.user_id].map(value => String(value || '').trim()).filter(Boolean);
+      keys.forEach(key => {
+        if (this.isUuid(key) && !peopleById.has(key)) peopleById.set(key, row);
+      });
+    };
+
+    const currentSession = window.Session?.user?.() || {};
+    const currentProfile = currentSession.profile || {};
+    const currentAuthUser = currentSession.user || {};
+    addPerson({
+      ...currentProfile,
+      id: currentProfile.id || currentSession.user_id || currentAuthUser.id,
+      auth_user_id: currentProfile.auth_user_id || currentAuthUser.id || currentSession.user_id,
+      user_id: currentProfile.user_id || currentAuthUser.id || currentSession.user_id,
+      name: currentProfile.name || currentSession.name,
+      full_name: currentProfile.full_name || currentSession.name,
+      display_name: currentProfile.display_name || currentSession.name,
+      email: currentProfile.email || currentSession.email || currentAuthUser.email
+    });
+
+    const profileFields = ['id', 'auth_user_id', 'user_id'];
+    for (const field of profileFields) {
+      const unresolved = uniqueIds.filter(id => !peopleById.has(id));
+      if (!unresolved.length) break;
+      try {
+        const { data, error } = await client.from('profiles').select('*').in(field, unresolved);
+        if (error) {
+          console.warn(`[technical admin] profiles.${field} people enrichment failed`, error);
+          continue;
+        }
+        (data || []).forEach(addPerson);
+      } catch (error) {
+        console.warn(`[technical admin] profiles.${field} people enrichment failed`, error);
+      }
+    }
+
+    for (const tableName of ['users']) {
+      const unresolved = uniqueIds.filter(id => !peopleById.has(id));
+      if (!unresolved.length) break;
+      try {
+        const { data, error } = await client.from(tableName).select('*').in('id', unresolved);
+        if (error) {
+          console.warn(`[technical admin] ${tableName} people enrichment failed`, error);
+          continue;
+        }
+        (data || []).forEach(addPerson);
+      } catch (error) {
+        console.warn(`[technical admin] ${tableName} people enrichment failed`, error);
+      }
+    }
+    return peopleById;
   },
   extractAgreementTokens(agreement = {}) {
     return {
@@ -164,8 +223,14 @@ const TechnicalAdmin = {
     const requestAgreementNumber = String(this.pick(request.agreement_number, request.agreementNumber)).trim();
     const agreementTokens = this.extractAgreementTokens(agreement);
     return (Array.isArray(agreementItems) ? agreementItems : []).filter(item => {
-      const itemAgreementId = String(this.pick(item.agreement_id, item.agreementId, item.parent_id, item.parentId)).trim();
-      const itemAgreementNumber = String(this.pick(item.agreement_number, item.agreementNumber, item.parent_number, item.parentNumber)).trim();
+      const itemAgreementId = String(this.pick(
+        item.agreement_id, item.agreementId, item.agreement_uuid, item.agreementUuid,
+        item.source_agreement_id, item.sourceAgreementId, item.parent_id, item.parentId
+      )).trim();
+      const itemAgreementNumber = String(this.pick(
+        item.agreement_number, item.agreementNumber, item.agreement_ref, item.agreementRef,
+        item.parent_number, item.parentNumber, item.parent_ref, item.parentRef
+      )).trim();
       return (
         this.same(itemAgreementId, agreementTokens.id) ||
         this.same(itemAgreementId, requestAgreementId) ||
@@ -187,7 +252,6 @@ const TechnicalAdmin = {
       source.locationsCount
     );
     const agreementLocationCount = this.parseOptionalNumber(
-      agreement.subtotal_locations,
       agreement.location_count,
       agreement.locations_count,
       agreement.number_of_locations,
@@ -250,7 +314,11 @@ const TechnicalAdmin = {
     const profileIds = [
       ...new Set(
         rawRows
-          .flatMap(row => [row?.requested_by, row?.requestedBy, row?.technical_admin_assigned_to, row?.assigned_to, row?.assignedTo])
+          .flatMap(row => [
+            row?.requested_by, row?.requestedBy, row?.requested_by_id, row?.requestedById, row?.created_by, row?.createdBy,
+            row?.technical_admin_assigned_to, row?.technicalAdminAssignedTo, row?.assigned_to, row?.assignedTo,
+            row?.assigned_user, row?.assignedUser, row?.csm_assigned_to, row?.csmAssignedTo, row?.updated_by, row?.updatedBy
+          ])
           .map(value => String(value || '').trim())
           .filter(value => this.isUuid(value))
       )
@@ -272,18 +340,16 @@ const TechnicalAdmin = {
     const itemsByParentNumberPromise = agreementNumbers.length
       ? client.from('agreement_items').select('*').in('parent_number', agreementNumbers)
       : Promise.resolve({ data: [], error: null });
-    const profilesPromise = profileIds.length
-      ? client.from('profiles').select('id, name, full_name, username, email').in('id', profileIds)
-      : Promise.resolve({ data: [], error: null });
+    const peoplePromise = this.fetchPeopleByIds(client, profileIds);
 
-    const [agreementsByIdRes, agreementsByNumberRes, itemsByAgreementIdRes, itemsByParentIdRes, itemsByAgreementNumberRes, itemsByParentNumberRes, profilesRes] = await Promise.all([
+    const [agreementsByIdRes, agreementsByNumberRes, itemsByAgreementIdRes, itemsByParentIdRes, itemsByAgreementNumberRes, itemsByParentNumberRes, peopleById] = await Promise.all([
       agreementsByIdPromise,
       agreementsByNumberPromise,
       itemsByAgreementIdPromise,
       itemsByParentIdPromise,
       itemsByAgreementNumberPromise,
       itemsByParentNumberPromise,
-      profilesPromise
+      peoplePromise
     ]);
     if (agreementsByIdRes?.error) console.warn('[technical admin] agreements enrichment failed', agreementsByIdRes.error);
     if (agreementsByNumberRes?.error) console.warn('[technical admin] agreements by number enrichment failed', agreementsByNumberRes.error);
@@ -291,7 +357,6 @@ const TechnicalAdmin = {
     if (itemsByParentIdRes?.error) console.warn('[technical admin] agreement_items parent enrichment failed', itemsByParentIdRes.error);
     if (itemsByAgreementNumberRes?.error) console.warn('[technical admin] agreement_items by number enrichment failed', itemsByAgreementNumberRes.error);
     if (itemsByParentNumberRes?.error) console.warn('[technical admin] agreement_items parent number enrichment failed', itemsByParentNumberRes.error);
-    if (profilesRes?.error) console.warn('[technical admin] profiles enrichment failed', profilesRes.error);
 
     const agreements = [...(agreementsByIdRes?.data || []), ...(agreementsByNumberRes?.data || [])];
     const agreementMap = new Map();
@@ -314,7 +379,7 @@ const TechnicalAdmin = {
       itemMap.set(itemKey, item);
     });
     const uniqueAgreementItems = [...itemMap.values()];
-    const profileById = new Map((profilesRes?.data || []).map(row => [String(row?.id || '').trim(), row]));
+    const profileById = peopleById instanceof Map ? peopleById : new Map();
 
     const enrichedRows = rawRows.map(raw => {
       const row = this.normalizeRow(raw);
@@ -339,14 +404,23 @@ const TechnicalAdmin = {
         .filter(Boolean)
         .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] || '';
       const firstItem = linkedItems[0] || {};
-      const requestedByProfile = this.isUuid(row.requested_by) ? profileById.get(row.requested_by) : null;
-      const assignedToValue = String(this.pick(raw.technical_admin_assigned_to, raw.assigned_to, raw.assignedTo, row.assigned_to)).trim();
-      const assignedToProfile = this.isUuid(assignedToValue) ? profileById.get(assignedToValue) : null;
+      const requestedByValue = String(this.pick(
+        raw.requested_by, raw.requestedBy, raw.requested_by_id, raw.requestedById,
+        row.requested_by, raw.created_by, raw.createdBy
+      )).trim();
+      const assignedToValue = String(this.pick(
+        raw.technical_admin_assigned_to, raw.technicalAdminAssignedTo, raw.assigned_to, raw.assignedTo,
+        raw.assigned_user, raw.assignedUser, raw.csm_assigned_to, raw.csmAssignedTo,
+        row.assigned_to, row.csm_assigned_to, agreement.technical_admin_assigned_to, agreement.assigned_to, agreement.owner, agreement.created_by
+      )).trim();
 
       const locationCount = this.parseOptionalNumber(
         row.number_of_locations,
         row.location_count,
-        agreement.number_of_locations,
+        raw.number_of_locations,
+        raw.location_count,
+        raw.locations_count,
+          agreement.number_of_locations,
         agreement.locations_count,
         agreement.location_count,
         itemLocationCount
@@ -372,15 +446,17 @@ const TechnicalAdmin = {
           )
         ).trim(),
         payment_term: String(this.pick(row.payment_term, agreement.payment_term, agreement.payment_terms, raw.payment_terms, raw.payment_term)).trim(),
-        requested_by_display: this.profileDisplay(requestedByProfile, row.requested_by),
-        assigned_to: String(this.pick(assignedToValue, row.assigned_to, row.assigned_user, agreement.assigned_to, agreement.owner, agreement.created_by)).trim(),
-        assigned_to_display: this.profileDisplay(assignedToProfile, this.pick(assignedToValue, agreement.assigned_to, agreement.owner, agreement.created_by))
+        requested_by: requestedByValue || row.requested_by,
+        requested_by_display: this.firstNonUuidText(raw.requested_by_display, raw.requestedByDisplay, row.requested_by_display) || this.resolvePersonDisplay(requestedByValue || row.requested_by, profileById, row.requested_by),
+        assigned_to: assignedToValue || row.assigned_to,
+        assigned_to_display: this.firstNonUuidText(raw.assigned_to_display, raw.assignedToDisplay, row.assigned_to_display) || this.resolvePersonDisplay(assignedToValue || row.assigned_to, profileById, row.assigned_to)
       };
     });
     console.log('[TechnicalAdmin] enrichment counts', {
       requests: rawRows.length,
       agreements: agreementRows.length,
       agreementItems: uniqueAgreementItems.length,
+      people: profileById.size,
       enriched: enrichedRows.length
     });
     return enrichedRows;
@@ -466,7 +542,9 @@ const TechnicalAdmin = {
         row.request_title,
         row.request_message,
         row.request_status,
+        row.requested_by_display,
         row.requested_by,
+        row.assigned_to_display,
         row.assigned_to
       ]
         .filter(Boolean)
@@ -682,6 +760,11 @@ const TechnicalAdmin = {
           <div><span class="muted">Client Name:</span> ${U.escapeHtml(row.client_name || '—')}</div>
           <div><span class="muted">Request Type:</span> ${U.escapeHtml(row.request_type || '—')}</div>
           <div><span class="muted">Status:</span> ${this.statusBadge(row.request_status)}</div>
+          <div><span class="muted">Number of Locations:</span> ${U.escapeHtml(String(row.number_of_locations || row.location_count || '—'))}</div>
+          <div><span class="muted">Service Start Date:</span> ${U.escapeHtml(this.toDisplayDate(row.service_start_date))}</div>
+          <div><span class="muted">Service End Date:</span> ${U.escapeHtml(this.toDisplayDate(row.service_end_date))}</div>
+          <div><span class="muted">Billing Frequency:</span> ${U.escapeHtml(row.billing_frequency || '—')}</div>
+          <div><span class="muted">Payment Term:</span> ${U.escapeHtml(row.payment_term || row.payment_terms || '—')}</div>
           <div><span class="muted">Requested By:</span> ${U.escapeHtml(row.requested_by_display || row.requested_by || '—')}</div>
           <div><span class="muted">Requested At:</span> ${U.escapeHtml(this.toDisplayDateTime(row.requested_at))}</div>
           <div><span class="muted">Assigned To:</span> ${U.escapeHtml(row.assigned_to_display || row.assigned_to || '—')}</div>
