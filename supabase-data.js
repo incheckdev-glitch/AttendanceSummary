@@ -2533,6 +2533,79 @@
     return sanitized;
   }
 
+  function getAgreementItemCommercialSection(item = {}) {
+    const raw = String(item?.section || item?.type || item?.category || item?.billing_type || item?.billing_cycle || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+    if (raw.includes('annual') || raw.includes('saas') || raw.includes('subscription') || raw.includes('recurring')) return 'annual_saas';
+    if (raw.includes('one_time') || raw.includes('setup') || raw.includes('implementation') || raw.includes('installation') || raw.includes('fee')) return 'one_time_fee';
+    return raw;
+  }
+
+  function calculateAgreementTotalsFromItems(items = []) {
+    const totals = { subtotal_locations: 0, subtotal_one_time: 0, grand_total: 0 };
+    (Array.isArray(items) ? items : []).forEach(item => {
+      const section = getAgreementItemCommercialSection(item);
+      if (section !== 'annual_saas' && section !== 'one_time_fee') return;
+      const unit = normalizeNumericValue(firstDefined(item, ['unit_price', 'unitPrice']), 0);
+      let quantity = normalizeNumericValue(firstDefined(item, ['quantity', 'qty']), 0);
+      if (!quantity && section === 'annual_saas') quantity = 12;
+      if (!quantity && section === 'one_time_fee') quantity = 1;
+      const discountPercentRaw = normalizeNumericValue(firstDefined(item, ['discount_percent', 'discountPercent']), 0);
+      const discountRatio = Math.max(0, Math.min(100, discountPercentRaw)) / 100;
+      const storedLineTotal = normalizeNumericValue(firstDefined(item, ['line_total', 'lineTotal']), 0);
+      const baseAmount = section === 'annual_saas' ? unit * (quantity / 12) : unit * quantity;
+      const calculatedLineTotal = Math.max(0, baseAmount * (1 - discountRatio));
+      const lineTotal = storedLineTotal > 0 ? storedLineTotal : calculatedLineTotal;
+      if (section === 'annual_saas') totals.subtotal_locations += lineTotal;
+      if (section === 'one_time_fee') totals.subtotal_one_time += lineTotal;
+    });
+    totals.grand_total = totals.subtotal_locations + totals.subtotal_one_time;
+    return totals;
+  }
+
+  async function hydrateAgreementRowsWithItemTotals(client, rows = []) {
+    const safeRows = Array.isArray(rows) ? rows : [];
+    const ids = safeRows.map(row => String(row?.id || '').trim()).filter(Boolean);
+    if (!ids.length) return safeRows;
+    try {
+      const { data, error } = await client
+        .from('agreement_items')
+        .select('*')
+        .in('agreement_id', ids);
+      if (error) {
+        console.warn('[agreements:list] Unable to hydrate item totals', error);
+        return safeRows;
+      }
+      const grouped = new Map();
+      (Array.isArray(data) ? data : []).forEach(item => {
+        const agreementId = String(item?.agreement_id || '').trim();
+        if (!agreementId) return;
+        if (!grouped.has(agreementId)) grouped.set(agreementId, []);
+        grouped.get(agreementId).push(item);
+      });
+      return safeRows.map(row => {
+        const rowItems = grouped.get(String(row?.id || '').trim()) || [];
+        if (!rowItems.length) return row;
+        const totals = calculateAgreementTotalsFromItems(rowItems);
+        if (totals.grand_total <= 0) return row;
+        const currentGrand = normalizeNumericValue(firstDefined(row, ['grand_total', 'grandTotal']), 0);
+        if (currentGrand > 0) return row;
+        return {
+          ...row,
+          agreement_items: rowItems,
+          items: rowItems,
+          subtotal_locations: totals.subtotal_locations,
+          saas_total: totals.subtotal_locations,
+          subtotal_one_time: totals.subtotal_one_time,
+          one_time_total: totals.subtotal_one_time,
+          grand_total: totals.grand_total
+        };
+      });
+    } catch (error) {
+      console.warn('[agreements:list] Item-total hydration failed', error);
+      return safeRows;
+    }
+  }
+
 
   async function getCurrentUserId(client) {
     try {
@@ -5856,8 +5929,9 @@
       query = applyFilters(query, payload, { resource });
       query = query.order(listControls.sortBy, { ascending: listControls.sortDir === 'asc' });
       query = query.range(listControls.from, listControls.to);
-      const { data, error, count } = await query;
+      let { data, error, count } = await query;
       if (error) throw friendlyError(`Unable to load ${resource}`, error);
+      if (resource === 'agreements') data = await hydrateAgreementRowsWithItemTotals(client, data);
       return { handled: true, data: normalizePagedList(resource, data, listControls, count) };
     }
 
@@ -6007,6 +6081,16 @@
         });
         createRecord.proposal_id = identifiers.proposal_id;
         createRecord.ref_number = identifiers.ref_number;
+      }
+      if (resource === 'agreements' && Array.isArray(payload.items) && payload.items.length) {
+        const totals = calculateAgreementTotalsFromItems(payload.items);
+        if (totals.grand_total > 0) {
+          createRecord.subtotal_locations = totals.subtotal_locations;
+          createRecord.saas_total = totals.subtotal_locations;
+          createRecord.subtotal_one_time = totals.subtotal_one_time;
+          createRecord.one_time_total = totals.subtotal_one_time;
+          createRecord.grand_total = totals.grand_total;
+        }
       }
       if (resource === 'events') {
         EVENT_LEGACY_FIELDS.forEach(field => { delete createRecord[field]; });
@@ -6454,6 +6538,16 @@
         });
         publicUpdates.proposal_id = identifiers.proposal_id;
         publicUpdates.ref_number = identifiers.ref_number;
+      }
+      if (resource === 'agreements' && Array.isArray(payload.items) && payload.items.length) {
+        const totals = calculateAgreementTotalsFromItems(payload.items);
+        if (totals.grand_total > 0) {
+          publicUpdates.subtotal_locations = totals.subtotal_locations;
+          publicUpdates.saas_total = totals.subtotal_locations;
+          publicUpdates.subtotal_one_time = totals.subtotal_one_time;
+          publicUpdates.one_time_total = totals.subtotal_one_time;
+          publicUpdates.grand_total = totals.grand_total;
+        }
       }
       if (resource === 'events') {
         EVENT_LEGACY_FIELDS.forEach(field => { delete publicUpdates[field]; });

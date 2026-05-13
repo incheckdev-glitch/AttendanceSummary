@@ -553,7 +553,7 @@ const Agreements = {
         subtotalOneTime: numericOrBlank(pick(row, ['subtotal_one_time', 'subtotalOneTime', 'one_time_total', 'oneTimeTotal'])),
         discountPercent: numericOrBlank(pick(row, ['discount_percent', 'discountPercent', 'total_discount_percent', 'totalDiscountPercent'])),
         discountAmount: numericOrBlank(pick(row, ['discount_amount', 'discountAmount', 'total_discount', 'totalDiscount'])),
-        agreementTotal: numericOrBlank(pick(row, ['agreement_total', 'agreementTotal', 'grand_total', 'total'])),
+        agreementTotal: numericOrBlank(this.calculateTotalsFromAgreementRecord(row).grand_total),
         currency: pick(row, ['currency']),
         gmSigned: yesNo(pick(row, ['gm_signed', 'gmSigned'])),
         financialControllerSigned: yesNo(pick(row, ['financial_controller_signed', 'financialControllerSigned'])),
@@ -614,10 +614,13 @@ const Agreements = {
     normalized.provider_signatory_title_primary = String(
       normalized.provider_signatory_title_primary || source.provider_signatory_title || ''
     ).trim();
-    normalized.saas_total = this.toNumberSafe(source.subtotal_locations ?? normalized.saas_total);
-    normalized.one_time_total = this.toNumberSafe(source.subtotal_one_time ?? normalized.one_time_total);
+    const normalizedTotals = this.calculateTotalsFromAgreementRecord({ ...source, ...normalized });
+    normalized.saas_total = normalizedTotals.saas_total;
+    normalized.one_time_total = normalizedTotals.one_time_total;
+    normalized.subtotal_locations = normalizedTotals.saas_total;
+    normalized.subtotal_one_time = normalizedTotals.one_time_total;
     normalized.total_discount = this.toNumberSafe(source.total_discount ?? normalized.total_discount);
-    normalized.grand_total = this.toNumberSafe(source.grand_total ?? normalized.grand_total);
+    normalized.grand_total = normalizedTotals.grand_total;
     normalized.gm_signed = this.toDbBoolean(source.gm_signed ?? source.gmSigned ?? normalized.gm_signed, false);
     normalized.financial_controller_signed = this.toDbBoolean(
       source.financial_controller_signed ?? source.financialControllerSigned ?? normalized.financial_controller_signed,
@@ -2157,7 +2160,7 @@ const Agreements = {
     const sentReviewAwaiting = countBy(row => statusMatch(row, ['sent', 'under review', 'awaiting signature']));
     const signedActive = countBy(row => statusMatch(row, ['signed', 'active']));
     const expiredCancelled = countBy(row => statusMatch(row, ['expired', 'cancelled', 'canceled']));
-    const totalValue = rows.reduce((sum, row) => sum + this.toNumberSafe(row.grand_total), 0);
+    const totalValue = rows.reduce((sum, row) => sum + this.toNumberSafe(this.calculateTotalsFromAgreementRecord(row).grand_total), 0);
     const proposalLinked = countBy(row => String(row.proposal_id || '').trim());
     const draftCount = countBy(row => this.normalizeText(this.resolveAgreementStatus(row)) === 'draft');
     const cards = [
@@ -2218,11 +2221,12 @@ const Agreements = {
     const textCell = value => U.escapeHtml(String(value ?? '').trim() || '—');
     E.agreementsTbody.innerHTML = rows.map(row => {
       const id = U.escapeAttr(row.id || row.agreement_id || row.agreement_number || row.agreementId || '');
+      const rowTotals = this.calculateTotalsFromAgreementRecord(row);
       return `<tr>
         <td>${textCell(row.agreement_id)}</td><td>${textCell(row.agreement_number)}</td><td>${textCell(row.agreement_title)}</td>
         <td>${textCell(row.customer_name)}</td><td>${textCell(row.proposal_id)}</td><td>${textCell(row.deal_id)}</td>
         <td>${U.escapeHtml(U.fmtDisplayDate(row.service_start_date))}</td><td>${textCell(row.agreement_length)}</td><td>${textCell(row.billing_frequency)}</td>
-        <td>${textCell(this.getPaymentTermDisplay(row.payment_term))}</td><td>${textCell(row.currency)}</td><td>${textCell(this.formatMoney(row.grand_total))}</td>
+        <td>${textCell(this.getPaymentTermDisplay(row.payment_term))}</td><td>${textCell(row.currency)}</td><td>${textCell(this.formatMoney(rowTotals.grand_total))}</td>
         <td>${textCell(this.resolveAgreementStatus(row))}</td><td>${U.escapeHtml(U.fmtDisplayDate(row.updated_at))}</td>
         <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
         ${Permissions.canView('agreements') ? `<button class="btn ghost sm" type="button" data-agreement-view="${id}">View</button>` : ''}
@@ -2312,6 +2316,34 @@ const Agreements = {
       .filter(i => i.section === 'one_time_fee')
       .reduce((sum, i) => sum + this.toNumberSafe(this.computeCommercialRow({ ...i, section: 'one_time_fee' }).line_total), 0);
     return { saas_total, one_time_total, grand_total: saas_total + one_time_total };
+  },
+  calculateTotalsFromAgreementRecord(record = {}) {
+    const source = record && typeof record === 'object' ? record : {};
+    const directSaas = this.toNumberSafe(source.saas_total ?? source.saasTotal ?? source.subtotal_locations ?? source.subtotalLocations);
+    const directOneTime = this.toNumberSafe(source.one_time_total ?? source.oneTimeTotal ?? source.subtotal_one_time ?? source.subtotalOneTime);
+    const directGrand = this.toNumberSafe(source.grand_total ?? source.grandTotal ?? source.agreement_total ?? source.agreementTotal ?? source.total);
+    const rawItems = Array.isArray(source.items)
+      ? source.items
+      : Array.isArray(source.agreement_items)
+        ? source.agreement_items
+        : [];
+    if (rawItems.length) {
+      const normalizedItems = rawItems.map(item => this.normalizeItem(item, item?.section || item?.type || ''));
+      const itemTotals = this.calculateTotals(normalizedItems);
+      if (itemTotals.grand_total > 0 && directGrand <= 0) return itemTotals;
+      if (itemTotals.grand_total > 0 && (!directSaas || !directOneTime)) {
+        return {
+          saas_total: directSaas || itemTotals.saas_total,
+          one_time_total: directOneTime || itemTotals.one_time_total,
+          grand_total: directGrand || itemTotals.grand_total
+        };
+      }
+    }
+    return {
+      saas_total: directSaas,
+      one_time_total: directOneTime,
+      grand_total: directGrand || directSaas + directOneTime
+    };
   },
   collectItems() {
     const rows = Array.from(E.agreementForm?.querySelectorAll('tr[data-item-row]') || []);
