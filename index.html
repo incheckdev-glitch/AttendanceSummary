@@ -3431,7 +3431,7 @@ Sample:
         <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">Agreement Details</strong>
         <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
           <div class="filter-row"><label class="muted" for="agreementFormAgreementDate">Agreement Date</label><input id="agreementFormAgreementDate" class="input" type="date" /></div><div class="filter-row"><label class="muted" for="agreementFormEffectiveDate">Effective Date</label><input id="agreementFormEffectiveDate" class="input" type="date" /></div>
-          <div class="filter-row"><label class="muted" for="agreementFormServiceStartDate">Service Start Date</label><input id="agreementFormServiceStartDate" class="input" type="date" /></div><div class="filter-row"><label class="muted" for="agreementFormServiceEndDate">Service End Date</label><input id="agreementFormServiceEndDate" class="input readonly-field locked-field" type="date" readonly aria-readonly="true" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormServiceStartDate">Service Start Date</label><input id="agreementFormServiceStartDate" class="input" type="date" /></div><div class="filter-row"><label class="muted" for="agreementFormServiceEndDate">Service End Date</label><input id="agreementFormServiceEndDate" class="input" type="date" /></div>
           <div class="filter-row"><label class="muted" for="agreementFormAgreementLength">Agreement Length</label><input id="agreementFormAgreementLength" class="input" type="text" list="agreementLengthOptions" /></div><div class="filter-row"><label class="muted" for="agreementFormAccountNumber">Account Number</label><input id="agreementFormAccountNumber" class="input" type="text" /></div>
           <div class="filter-row"><label class="muted" for="agreementFormPoNumber">PO Number</label><input id="agreementFormPoNumber" class="input" type="text" /></div>
           <div class="filter-row"><label class="muted" for="agreementFormBillingFrequency">Billing Frequency</label><input id="agreementFormBillingFrequency" class="input readonly-field" type="text" value="Annual" readonly aria-readonly="true" /></div><div class="filter-row"><label class="muted" for="agreementFormPaymentTerm">Payment Terms</label><select id="agreementFormPaymentTerm" class="select"><option value="Net 7">Monthly</option><option value="Net 14">Quarterly</option><option value="Net 21">Semi-Annually</option><option value="Net 30" selected>Annually</option></select></div>
@@ -3518,7 +3518,7 @@ Sample:
           <strong style="display:block;margin-bottom:6px;">Signed Agreement Document</strong>
           <p id="agreementSignedDocumentState" class="muted" style="margin:0 0 8px;">Upload the signed agreement document before creating an invoice.</p>
           <div class="actions" style="justify-content:flex-start;gap:8px;">
-            <input id="agreementSignedDocumentFile" class="input" type="file" aria-label="Signed agreement document" />
+            <input id="agreementSignedDocumentFile" class="input" type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" aria-label="Signed agreement document" />
             <button id="agreementSignedDocumentUploadBtn" class="btn ghost sm" type="button">Upload Signed Agreement</button>
             <button id="agreementSignedDocumentOpenBtn" class="btn ghost sm" type="button" style="display:none;">View / Download</button>
           </div>
