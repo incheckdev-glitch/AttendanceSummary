@@ -27,15 +27,18 @@ const Contacts = {
     this.loadAndRefresh();
   },
 
-  openCreateForCompany(company = {}) {
-    if (!Permissions.canCreate('contacts')) return;
+  async openCreateForCompany(company = {}) {
+    if (!Permissions.canCreate('contacts')) {
+      UI?.toast?.('You do not have permission for this action.');
+      return;
+    }
     const companyId = company.company_id || '';
     const companyName = company.company_name || '';
-    this.openForm({
+    return this.openForm({
       company_id: companyId,
       company_name: companyName,
       company_ids: companyId ? [companyId] : [],
-      company_names: companyName || ''
+      company_names: company.company_names || companyName || companyId || ''
     }, false);
   },
 

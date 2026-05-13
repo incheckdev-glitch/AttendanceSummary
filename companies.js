@@ -95,7 +95,85 @@ const Companies = {
     body.innerHTML = this.state.rows.map(r => `<tr><td>${U.escapeHtml(r.company_id)}</td><td>${this.renderCompanyVerificationBadge(r)}</td><td>${U.escapeHtml(r.company_name)}</td><td>${U.escapeHtml(this.formatCompanyType(r.company_type))}</td><td>${U.escapeHtml(this.formatCompanyIndustry(r.industry))}</td><td>${this.renderLifecycleStatusBadge(r.company_status)}</td><td>${U.escapeHtml(r.main_email)}</td><td>${U.escapeHtml(r.main_phone)}</td><td>${U.escapeHtml(r.country)}</td><td>${U.escapeHtml(r.city)}</td><td>${U.escapeHtml(U.fmtTS(r.created_at))}</td><td>${canCreateLead ? `<button class='chip-btn' data-a='lead' data-permission-resource='leads' data-permission-action='create' data-id='${r.id}'>Create Lead</button>` : ''}${canEdit ? `<button class='chip-btn' data-a='edit' data-permission-resource='companies' data-permission-action='update' data-id='${r.id}'>Edit</button>` : ''}${canDelete ? `<button class='chip-btn' data-a='del' data-permission-resource='companies' data-permission-action='delete' data-id='${r.id}'>Delete</button>` : ''}${Permissions.canCreate('contacts') ? `<button class='chip-btn' data-a='contacts' data-permission-resource='contacts' data-permission-action='create' data-id='${r.id}'>Add Contact</button>` : ''}</td></tr>`).join('');
     body.querySelectorAll('button').forEach(b => b.onclick = () => this.onAction(b.dataset.a, b.dataset.id)); const start = this.state.total ? ((this.state.page - 1) * this.state.limit) + 1 : 0; const end = Math.min(this.state.page * this.state.limit, this.state.total); applyPermissionVisibility(body || b); const pi = document.getElementById('companyPageInfo'); if (pi) pi.textContent = `Showing ${start}-${end} of ${this.state.total} records`; const canCreateCompany = Permissions.can('companies','create') || Permissions.can('companies','manage'); const canExportCompany = Permissions.can('companies','export') || Permissions.can('companies','manage'); const createBtn = document.getElementById('companyCreateBtn'); if (createBtn) { createBtn.style.display = canCreateCompany ? '' : 'none'; createBtn.onclick = () => this.openForm(); } const exportBtn = document.getElementById('companyExportBtn'); if (exportBtn) { exportBtn.style.display = canExportCompany ? '' : 'none'; exportBtn.disabled = !canExportCompany; }
   },
-  async onAction(a, id) { const row = this.state.rows.find(x => x.id === id); if (!row) return; if (a === 'edit') this.openForm(row); if (a === 'del') { if (!Permissions.canDelete('companies')) { UI?.toast?.('You do not have permission for this action.'); return; } if (!confirm('Delete company?')) return; try { await Api.requestWithSession('companies', 'delete', { id }, { requireAuth: true }); await this.loadAndRefresh(); } catch (e) { UI?.toast?.('Unable to delete company', 'error'); console.error(e); } } if (a === 'contacts') { if (!Permissions.canCreate('contacts')) { UI?.toast?.('You do not have permission for this action.'); return; } window.Contacts?.setCompanyFilter?.(row.company_id, row.company_name); window.App?.showView?.('contacts'); } if (a === 'lead') { if (!Permissions.can('leads', 'create')) { UI.toast?.('You do not have permission to create leads.'); return; } if (!Permissions.canCreate('leads')) { UI?.toast?.('You do not have permission for this action.'); return; } const company = { ...row }; try { const contactRes = await Api.requestWithSession('contacts', 'list', { page: 1, limit: 1, filters: { company_id: row.company_id, is_primary_contact: 'primary' }, sortBy: 'created_at', sortDir: 'desc' }, { requireAuth: true }); const primary = Array.isArray(contactRes?.rows) ? contactRes.rows[0] : null; window.Leads?.openLeadCreateFormWithPrefill?.({ company, contact: primary || null }); } catch (_) { window.Leads?.openLeadCreateFormWithPrefill?.({ company, contact: null }); } } },
+  async onAction(a, id) {
+    const row = this.state.rows.find(x => String(x.id || '') === String(id || ''));
+    if (!row) return;
+
+    if (a === 'edit') {
+      this.openForm(row);
+      return;
+    }
+
+    if (a === 'del') {
+      if (!Permissions.canDelete('companies')) {
+        UI?.toast?.('You do not have permission for this action.');
+        return;
+      }
+      if (!confirm('Delete company?')) return;
+      try {
+        await Api.requestWithSession('companies', 'delete', { id: row.id }, { requireAuth: true });
+        await this.loadAndRefresh();
+      } catch (e) {
+        UI?.toast?.('Unable to delete company', 'error');
+        console.error(e);
+      }
+      return;
+    }
+
+    if (a === 'contacts') {
+      if (!Permissions.canCreate('contacts')) {
+        UI?.toast?.('You do not have permission for this action.');
+        return;
+      }
+
+      const contactCompany = {
+        company_id: row.company_id || '',
+        company_name: row.company_name || '',
+        company_ids: row.company_id ? [row.company_id] : [],
+        company_names: row.company_name || row.company_id || ''
+      };
+
+      try {
+        window.Contacts?.setCompanyFilter?.(contactCompany.company_id, contactCompany.company_name);
+        if (typeof window.setActiveView === 'function') {
+          window.setActiveView('contacts');
+        } else {
+          document.getElementById('contactsTab')?.click?.();
+        }
+        if (typeof window.Contacts?.openCreateForCompany === 'function') {
+          await window.Contacts.openCreateForCompany(contactCompany);
+        } else if (typeof window.Contacts?.openForm === 'function') {
+          await window.Contacts.openForm(contactCompany, false);
+        } else {
+          UI?.toast?.('Contacts module is not ready. Please open Contacts and try again.', 'error');
+        }
+      } catch (e) {
+        UI?.toast?.('Unable to open contact form', 'error');
+        console.error(e);
+      }
+      return;
+    }
+
+    if (a === 'lead') {
+      if (!Permissions.can('leads', 'create')) {
+        UI.toast?.('You do not have permission to create leads.');
+        return;
+      }
+      if (!Permissions.canCreate('leads')) {
+        UI?.toast?.('You do not have permission for this action.');
+        return;
+      }
+      const company = { ...row };
+      try {
+        const contactRes = await Api.requestWithSession('contacts', 'list', { page: 1, limit: 1, filters: { company_id: row.company_id, is_primary_contact: 'primary' }, sortBy: 'created_at', sortDir: 'desc' }, { requireAuth: true });
+        const primary = Array.isArray(contactRes?.rows) ? contactRes.rows[0] : null;
+        window.Leads?.openLeadCreateFormWithPrefill?.({ company, contact: primary || null });
+      } catch (_) {
+        window.Leads?.openLeadCreateFormWithPrefill?.({ company, contact: null });
+      }
+      return;
+    }
+  },
 
 
   normalizeLifecycleStatus(status = '') {

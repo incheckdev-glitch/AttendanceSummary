@@ -8114,7 +8114,10 @@ document.addEventListener('click', event => {
   if (!node) return;
   const resource = node.getAttribute('data-permission-resource');
   const action = node.getAttribute('data-permission-action');
-  if (!Permissions.can(resource, action)) {
+  const allowed = typeof canShowAction === 'function'
+    ? canShowAction(resource, action)
+    : (Permissions.can(resource, action) || (String(action || '').trim().toLowerCase() !== 'manage' && Permissions.can(resource, 'manage')));
+  if (!allowed) {
     event.preventDefault();
     event.stopPropagation();
     UI.toast?.('You do not have permission for this action.');
