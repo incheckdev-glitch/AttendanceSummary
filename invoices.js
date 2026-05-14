@@ -90,6 +90,52 @@ const Invoices = {
   formatMoney(value) {
     return this.toNumberSafe(value).toLocaleString(undefined, { maximumFractionDigits: 2 });
   },
+  getValidPaymentTerms() {
+    return ['Net 7', 'Net 14', 'Net 21', 'Net 30'];
+  },
+  normalizePaymentTerm(value = '') {
+    const raw = String(value || '').trim();
+    const lookup = {
+      'net7': 'Net 7',
+      'net 7': 'Net 7',
+      'monthly': 'Net 7',
+      'net14': 'Net 14',
+      'net 14': 'Net 14',
+      'quarterly': 'Net 14',
+      'quartely': 'Net 14',
+      'net21': 'Net 21',
+      'net 21': 'Net 21',
+      'semi-annually': 'Net 21',
+      'semi annually': 'Net 21',
+      'semiannual': 'Net 21',
+      'semi-annual': 'Net 21',
+      'net30': 'Net 30',
+      'net 30': 'Net 30',
+      'annually': 'Net 30',
+      'annual': 'Net 30'
+    };
+    return lookup[raw.toLowerCase().replace(/\s+/g, ' ')] || (this.getValidPaymentTerms().includes(raw) ? raw : 'Net 30');
+  },
+  getPaymentTermDisplay(value = '') {
+    const term = this.normalizePaymentTerm(value);
+    const map = {
+      'Net 7': 'Monthly',
+      'Net 14': 'Quarterly',
+      'Net 21': 'Semi-Annually',
+      'Net 30': 'Annually'
+    };
+    return map[term] || term;
+  },
+  lockInvoicePaymentTermField() {
+    const el = E.invoiceFormPaymentTerm || document.getElementById('invoiceFormPaymentTerm');
+    if (!el) return;
+    el.value = this.normalizePaymentTerm(el.value || this.state.selectedInvoice?.payment_term || 'Net 30');
+    el.disabled = true;
+    if ('readOnly' in el) el.readOnly = true;
+    el.classList.add('readonly-field', 'locked-field');
+    el.setAttribute('aria-readonly', 'true');
+    el.title = 'Payment Term is copied from the approved proposal/agreement and is locked on the invoice.';
+  },
   isReceiptWorkflowValidationUnavailable(value, includeTechnicalErrors = false) {
     const text = String(value?.message || value?.reason || value || '').toLowerCase();
     const unavailableResult = Boolean(
@@ -516,7 +562,7 @@ const Invoices = {
       provider_legal_name: String(source.provider_legal_name || '').trim() || null,
       provider_address: String(source.provider_address || '').trim() || null,
       support_email: String(source.support_email || '').trim() || null,
-      payment_term: String(source.payment_term || '').trim() || null,
+      payment_term: this.normalizePaymentTerm(source.payment_term || 'Net 30'),
       is_poc: this.normalizeTruthy(source.is_poc),
       poc_location_count: this.normalizeTruthy(source.is_poc) ? this.toNullableNumber(source.poc_location_count) : null,
       poc_license_count: this.normalizeTruthy(source.is_poc) ? this.toNullableNumber(source.poc_license_count) : null,
@@ -694,6 +740,9 @@ const Invoices = {
     normalized.invoice_number = String(normalized.invoice_number || '').trim();
     normalized.status = String(normalized.status || '').trim() || 'Draft';
     normalized.currency = String(normalized.currency || '').trim() || 'USD';
+    normalized.payment_term = this.normalizePaymentTerm(
+      normalized.payment_term || source.payment_term || source.payment_terms || source.paymentTerm || source.paymentTerms || 'Net 30'
+    );
     normalized.issue_date = this.normalizeDateInputValue(normalized.issue_date || source.issue_date || source.issueDate || source.invoice_date || source.invoiceDate);
     normalized.due_date = this.normalizeDateInputValue(normalized.due_date || source.due_date || source.dueDate);
     normalized.is_poc = this.normalizeTruthy(source.is_poc ?? source.isPoc ?? normalized.is_poc);
@@ -1071,6 +1120,7 @@ const Invoices = {
               <div class="meta-row"><div class="meta-key">Invoice #</div><div>${textValue(invoiceData.invoice_number || invoiceData.invoice_id)}</div></div>
               <div class="meta-row"><div class="meta-key">Invoice Date</div><div>${dateValue(invoiceData.issue_date || invoiceData.invoice_date)}</div></div>
               <div class="meta-row"><div class="meta-key">Due Date</div><div>${dateValue(invoiceData.due_date)}</div></div>
+              <div class="meta-row"><div class="meta-key">Payment Term</div><div>${textValue(this.getPaymentTermDisplay(invoiceData.payment_term))}</div></div>
             </div>
           </div>
         </section>
@@ -1773,7 +1823,7 @@ const Invoices = {
       provider_legal_name: '',
       provider_address: '',
       support_email: '',
-      payment_term: '',
+      payment_term: 'Net 30',
       currency: 'USD',
       status: 'Draft',
       subtotal_locations: '',
@@ -2080,9 +2130,14 @@ const Invoices = {
     };
     this.invoiceFields.forEach(field => {
       const id = `invoiceForm${field.replace(/(^|_)([a-z])/g, (_, __, ch) => ch.toUpperCase())}`;
-      set(id, invoice[field] || '');
+      if (field === 'payment_term') {
+        set(id, this.normalizePaymentTerm(invoice[field] || invoice.payment_terms || invoice.paymentTerm || invoice.paymentTerms || 'Net 30'));
+      } else {
+        set(id, invoice[field] || '');
+      }
     });
     set('invoiceFormInvoiceDate', invoice.issue_date || invoice.invoice_date || '');
+    this.lockInvoicePaymentTermField();
   },
   collectSectionItems(section) {
     const tbody =
@@ -2145,6 +2200,14 @@ const Invoices = {
     });
     invoice.issue_date = this.normalizeDateInputValue(get('invoiceFormInvoiceDate') || invoice.issue_date || invoice.invoice_date);
     invoice.invoice_date = invoice.issue_date;
+    invoice.payment_term = this.normalizePaymentTerm(
+      get('invoiceFormPaymentTerm') ||
+      existingInvoice.payment_term ||
+      existingInvoice.payment_terms ||
+      this.state.selectedAgreement?.payment_term ||
+      this.state.selectedAgreement?.payment_terms ||
+      'Net 30'
+    );
     const items = this.collectItems();
     invoice.old_paid_total = this.toNumberSafe(E.invoiceFormOldPaidTotal?.value);
     invoice.paid_now = this.toNumberSafe(E.invoiceFormPaidNow?.value);
@@ -2332,6 +2395,7 @@ const Invoices = {
     if (E.invoiceFormAmountPaid) E.invoiceFormAmountPaid.readOnly = true;
     if (E.invoiceFormPendingAmount) E.invoiceFormPendingAmount.readOnly = true;
     if (E.invoiceFormPaymentState) E.invoiceFormPaymentState.readOnly = true;
+    this.lockInvoicePaymentTermField();
     if (E.invoiceAddAnnualRowBtn) E.invoiceAddAnnualRowBtn.style.display = 'none';
     if (E.invoiceAddOneTimeRowBtn) E.invoiceAddOneTimeRowBtn.style.display = 'none';
     if (E.invoiceAddCapabilityRowBtn) E.invoiceAddCapabilityRowBtn.style.display = 'none';
@@ -2661,12 +2725,12 @@ const Invoices = {
           agreement.providerContactEmail
         ),
         billing_frequency: pickAgreementValue(agreement.billing_frequency, agreement.billingFrequency),
-        payment_term: pickAgreementValue(
+        payment_term: this.normalizePaymentTerm(pickAgreementValue(
           agreement.payment_term,
           agreement.payment_terms,
           agreement.paymentTerm,
           agreement.paymentTerms
-        ),
+        ) || 'Net 30'),
         currency: pickAgreementValue(agreement.currency, agreement.customer?.currency),
         subtotal_subscription: pickAgreementValue(
           agreement.saas_total,
