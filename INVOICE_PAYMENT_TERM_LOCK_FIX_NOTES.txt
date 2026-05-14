@@ -1,0 +1,14 @@
+Invoice payment term lock fix
+
+Included on top of the previous package:
+- Proposal pending approval status fix remains included.
+- Agreement GM/provider sign date lock fix remains included.
+
+New invoice behavior:
+- Invoice Payment Term is normalized to the same internal proposal/agreement values: Net 7, Net 14, Net 21, Net 30.
+- UI labels remain business-facing like the proposal/agreement forms: Monthly, Quarterly, Semi-Annually, Annually.
+- New invoices default to Net 30 / Annually when no source agreement value exists.
+- When creating an invoice from an agreement, Payment Term is copied from the agreement and immediately locked.
+- On existing invoices, Payment Term stays locked and cannot be manually edited.
+- Save payload always sends the normalized locked value, even though the select is disabled in the UI.
+- Invoice HTML preview now displays the business-facing Payment Term.

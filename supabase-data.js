@@ -6667,16 +6667,34 @@
           console.log('[leads update final payload]', JSON.stringify(finalPublicUpdates, null, 2));
           console.log('[leads update id]', id);
         }
-        const { data: singleRow, error } = await updateSelectSingleWithSchemaRetry(
-          client,
-          table,
-          finalPublicUpdates,
-          key,
-          id,
-          `Unable to update ${resource} record`
-        );
-        if (error) throw friendlyError(`Unable to update ${resource} record`, error);
-        data = singleRow;
+        if (resource === 'clients') {
+          const { data: rows, error } = await updateSelectRowsWithSchemaRetry(
+            client,
+            table,
+            finalPublicUpdates,
+            key,
+            id,
+            `Unable to update ${resource} record`
+          );
+          if (error) throw friendlyError(`Unable to update ${resource} record`, error);
+          const updatedRows = Array.isArray(rows) ? rows : [];
+          if (!updatedRows.length) {
+            throw new Error('You do not have permission to update this client, or the client no longer exists.');
+          }
+          if (updatedRows.length > 1) throw new Error('Unable to update clients record: matched multiple rows.');
+          data = updatedRows[0];
+        } else {
+          const { data: singleRow, error } = await updateSelectSingleWithSchemaRetry(
+            client,
+            table,
+            finalPublicUpdates,
+            key,
+            id,
+            `Unable to update ${resource} record`
+          );
+          if (error) throw friendlyError(`Unable to update ${resource} record`, error);
+          data = singleRow;
+        }
       }
       if (resource === 'tickets' && isAdminDev()) {
         const internalUpdates = toTicketInternalRecord(safeUpdates);

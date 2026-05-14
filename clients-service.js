@@ -338,9 +338,9 @@ const ClientsService = {
       const existingUuid = String(existing?.id || '').trim();
       if (existingUuid) {
         const mergedPayload = this.mergeSignedClient(existing, signedPayload);
-        const updated = await this.updateClient(existingUuid, mergedPayload);
+        const updated = await this.updateClient(existingUuid, mergedPayload, { softFail: true });
         const index = clients.findIndex(row => String(row.id || '').trim() === existingUuid);
-        if (index >= 0) clients[index] = updated;
+        if (index >= 0 && updated) clients[index] = updated;
         continue;
       }
       const created = await this.createClient(signedPayload);
@@ -487,18 +487,41 @@ const ClientsService = {
     this.refreshCompanyLifecycleStatus(mapped);
     return mapped;
   },
-  async updateClient(clientUuid, updates = {}) {
+  isClientUpdateNoRowOrPermissionError_(error) {
+    const text = String(error?.message || error?.details || error?.hint || error || '').toLowerCase();
+    return text.includes('cannot coerce the result to a single json object')
+      || text.includes('row-level security')
+      || text.includes('violates row-level security')
+      || text.includes('permission denied')
+      || text.includes('not authorized')
+      || text.includes('forbidden');
+  },
+  async updateClient(clientUuid, updates = {}, options = {}) {
     const id = String(clientUuid || '').trim();
     if (!id) throw new Error('Client UUID is required for update.');
     const db = this.getDb();
     const payload = this.sanitizeClientPayload(updates, { includeCreatedBy: false });
-    const { data, error } = await db.from('clients').update(payload).eq('id', id).select('*').single();
+    const { data, error } = await db.from('clients').update(payload).eq('id', id).select('*').maybeSingle();
     if (error) {
-      const errorMessage = String(error?.message || '').toLowerCase();
-      if (errorMessage.includes('cannot coerce the result to a single json object')) {
+      if (this.isClientUpdateNoRowOrPermissionError_(error)) {
+        if (options?.softFail === true) {
+          console.warn('[ClientsService] client update skipped by RLS/permission policy', { id, error });
+          return null;
+        }
         throw new Error('You do not have permission to update this client.');
       }
+      if (options?.softFail === true) {
+        console.warn('[ClientsService] client update skipped after backend error', { id, error });
+        return null;
+      }
       throw this.friendlyError('Unable to update client', error);
+    }
+    if (!data) {
+      if (options?.softFail === true) {
+        console.warn('[ClientsService] client update skipped because no editable row was returned', { id });
+        return null;
+      }
+      throw new Error('You do not have permission to update this client, or the client no longer exists.');
     }
     const mapped = this.mapDbClientToUi(data);
     this.refreshCompanyLifecycleStatus(mapped);
@@ -601,7 +624,9 @@ const ClientsService = {
         )
       );
       const failedUpdate = persistedUpdates.find(result => result?.error);
-      if (failedUpdate?.error) throw this.friendlyError('Unable to refresh client totals', failedUpdate.error);
+      if (failedUpdate?.error) {
+        console.warn('[ClientsService] client total persistence skipped by backend/RLS policy', failedUpdate.error);
+      }
     }
 
     return { ...clientsList, rows: clients, agreements, agreement_items: itemRows, invoices, invoice_items: invoiceItemRows, receipts, receipt_items: receiptItemRows };

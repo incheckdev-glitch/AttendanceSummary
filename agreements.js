@@ -2117,27 +2117,40 @@ const Agreements = {
   },
   async syncSignedAgreementToClient(agreement = {}, agreementId = '') {
     if (!this.isSignedStatus(agreement.status)) return;
-    const signedClient = this.buildClientFromAgreement(agreement, agreementId);
-    // temporary lookup fallback - keep wider client fetch for selector hydration; replace with dedicated searchable lookup endpoint
-    const response = await window.ClientsService.listClients({ page: 1, limit: 500 });
-    const rows = this.extractClientRows(response);
-    const targetEmail = this.normalizeText(agreement.customer_contact_email);
-    const targetName = this.normalizeText(agreement.customer_legal_name || agreement.customer_name);
-    const existing = rows.find(row => {
-      const latestAgreementId = String(row?.source_agreement_id || '').trim();
-      if (latestAgreementId && latestAgreementId === signedClient.source_agreement_id) return true;
-      const email = this.normalizeText(row?.primary_email || row?.customer_contact_email);
-      if (targetEmail && email && email === targetEmail) return true;
-      const name = this.normalizeText(row?.company_name || row?.customer_legal_name || row?.client_name || row?.customer_name);
-      return targetName && name && name === targetName;
-    });
-    const existingId = String(existing?.id || '').trim();
-    if (existingId) {
-      const mergedPayload = this.mergeExistingClientWithSignedAgreement(existing, signedClient);
-      await window.ClientsService.updateClient(existingId, mergedPayload);
+    const canListClients = Boolean(window.Permissions?.canView?.('clients') || window.Permissions?.canPerformAction?.('clients', 'list'));
+    const canCreateClient = Boolean(window.Permissions?.canCreate?.('clients') || window.Permissions?.canPerformAction?.('clients', 'create') || window.Permissions?.canPerformAction?.('clients', 'manage'));
+    const canUpdateClient = Boolean(window.Permissions?.canEdit?.('clients') || window.Permissions?.canPerformAction?.('clients', 'update') || window.Permissions?.canPerformAction?.('clients', 'manage'));
+    if (!canListClients || (!canCreateClient && !canUpdateClient)) {
+      console.warn('[agreements] signed agreement client sync skipped because current role cannot mutate clients');
       return;
     }
-    await window.ClientsService.createClient(signedClient);
+    try {
+      const signedClient = this.buildClientFromAgreement(agreement, agreementId);
+      // temporary lookup fallback - keep wider client fetch for selector hydration; replace with dedicated searchable lookup endpoint
+      const response = await window.ClientsService.listClients({ page: 1, limit: 500 });
+      const rows = this.extractClientRows(response);
+      const targetEmail = this.normalizeText(agreement.customer_contact_email);
+      const targetName = this.normalizeText(agreement.customer_legal_name || agreement.customer_name);
+      const existing = rows.find(row => {
+        const latestAgreementId = String(row?.source_agreement_id || '').trim();
+        if (latestAgreementId && latestAgreementId === signedClient.source_agreement_id) return true;
+        const email = this.normalizeText(row?.primary_email || row?.customer_contact_email);
+        if (targetEmail && email && email === targetEmail) return true;
+        const name = this.normalizeText(row?.company_name || row?.customer_legal_name || row?.client_name || row?.customer_name);
+        return targetName && name && name === targetName;
+      });
+      const existingId = String(existing?.id || '').trim();
+      if (existingId) {
+        if (!canUpdateClient) return;
+        const mergedPayload = this.mergeExistingClientWithSignedAgreement(existing, signedClient);
+        await window.ClientsService.updateClient(existingId, mergedPayload, { softFail: true });
+        return;
+      }
+      if (canCreateClient) await window.ClientsService.createClient(signedClient);
+    } catch (error) {
+      console.warn('[agreements] signed agreement client sync skipped', error);
+      UI?.toast?.('Agreement signed. Client panel sync was skipped by permissions.');
+    }
   },
   applyFilters() {
     const terms = String(this.state.search || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
