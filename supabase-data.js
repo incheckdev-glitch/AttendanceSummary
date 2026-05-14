@@ -5348,8 +5348,36 @@
       const proposalUuid = await resolveResourceUuid('proposals', { ...payload, id: payload.proposal_uuid || payload.id, proposal_id: payload.proposal_id }, client);
       if (!isUuid(proposalUuid)) throw new Error('Proposal UUID is required to create agreement from proposal.');
       await assertProposalAgreementConversionCompanyVerified(client, proposalUuid);
-      const { data, error } = await client.rpc('create_agreement_from_proposal', { p_proposal_uuid: proposalUuid });
+      const { data: sourceProposal, error: sourceProposalError } = await client
+        .from('proposals')
+        .select('id,payment_term,payment_terms,billing_frequency')
+        .eq('id', proposalUuid)
+        .maybeSingle();
+      if (sourceProposalError) throw friendlyError('Unable to load proposal payment term before agreement conversion', sourceProposalError);
+      const proposalPaymentTerm = String(sourceProposal?.payment_term || sourceProposal?.payment_terms || '').trim();
+      const validPaymentTerms = ['Net 7', 'Net 14', 'Net 21', 'Net 30'];
+      const lockedPaymentTerm = validPaymentTerms.includes(proposalPaymentTerm) ? proposalPaymentTerm : 'Net 30';
+      let { data, error } = await client.rpc('create_agreement_from_proposal', { p_proposal_uuid: proposalUuid });
       if (error) throw friendlyError('Agreement creation from proposal failed', error);
+      const createdAgreementUuid = String(data?.id || data?.agreement_uuid || data?.created_agreement_uuid || '').trim();
+      const createdAgreementNumber = String(data?.agreement_id || data?.agreement_number || '').trim();
+      if (lockedPaymentTerm && (createdAgreementUuid || createdAgreementNumber)) {
+        const updatePayload = {
+          payment_term: lockedPaymentTerm,
+          payment_terms: lockedPaymentTerm,
+          billing_frequency: 'Annual',
+          updated_at: new Date().toISOString()
+        };
+        const agreementUpdateQuery = client.from('agreements').update(updatePayload).select('*');
+        const { data: updatedAgreement, error: paymentTermSyncError } = createdAgreementUuid
+          ? await agreementUpdateQuery.eq('id', createdAgreementUuid).maybeSingle()
+          : await agreementUpdateQuery.eq('agreement_id', createdAgreementNumber).maybeSingle();
+        if (paymentTermSyncError) {
+          console.warn('[agreements:create_from_proposal] payment term sync failed after RPC conversion', paymentTermSyncError);
+        } else if (updatedAgreement) {
+          data = { ...(data || {}), ...updatedAgreement };
+        }
+      }
       const recordId = String(data?.agreement_id || data?.id || data?.agreement_uuid || data?.created_agreement_uuid || '').trim();
       await createNotificationAndPush({
         title: 'Agreement created from proposal',
@@ -5364,6 +5392,39 @@
       });
       return data;
     }
+    if (resource === 'invoices' && action === 'create_operations_onboarding') {
+      // This action is used only immediately after invoice creation.
+      // It allows invoice creators to create the invoice-batch Operations row even when the
+      // UI permission matrix does not grant them direct operations_onboarding:create.
+      assertAllowed('invoices', 'create');
+      const raw = payload.operations_onboarding || payload.onboarding || payload.item || {};
+      const record = raw && typeof raw === 'object' ? { ...raw } : {};
+      delete record.table;
+      delete record.resource;
+      delete record.action;
+      if (!Object.keys(record).length) throw new Error('operations_onboarding create payload is empty.');
+      const { data, error } = await insertSelectSingleWithSchemaRetry(
+        client,
+        'operations_onboarding',
+        record,
+        'Unable to create operations_onboarding record from invoice batch'
+      );
+      if (error) throw friendlyError('Unable to create operations_onboarding record from invoice batch', error);
+      const created = normalizeRow('operations_onboarding', data);
+      await createNotificationAndPush({
+        title: 'Operations onboarding created',
+        message: `${String(created.onboarding_id || created.id || '').trim() || 'Onboarding'} was created from an invoice batch.`,
+        resource: 'operations_onboarding',
+        action: 'operations_onboarding_created',
+        record_id: String(created.onboarding_id || created.id || '').trim(),
+        target_roles: ['hoo', 'admin'],
+        dedupe_key: `operations_onboarding-created-${String(created.onboarding_id || created.id || '').trim()}`
+      }, 'operations_onboarding:create:invoice-batch').catch(pushError => {
+        console.warn('[notifications:pwa] operations_onboarding:create invoice-batch failed', pushError);
+      });
+      return { handled: true, data: created };
+    }
+
     if (resource === 'invoices' && action === 'list_payment_schedule') {
       assertAllowed('invoices', 'get');
       const invoiceUuid = await resolveResourceUuid('invoices', payload, client);
@@ -5405,6 +5466,27 @@
         });
       }
       if (isUuid(createdInvoiceUuid)) {
+        const { data: invoiceAgreement, error: invoiceAgreementError } = await client
+          .from('agreements')
+          .select('payment_term,payment_terms,billing_frequency')
+          .eq('id', agreementUuid)
+          .maybeSingle();
+        if (invoiceAgreementError) {
+          console.warn('[invoices:create_from_agreement] unable to load agreement payment term for invoice sync', invoiceAgreementError);
+        } else {
+          const agreementPaymentTerm = String(invoiceAgreement?.payment_term || invoiceAgreement?.payment_terms || '').trim();
+          if (['Net 7', 'Net 14', 'Net 21', 'Net 30'].includes(agreementPaymentTerm)) {
+            const { error: invoicePaymentTermUpdateError } = await client
+              .from('invoices')
+              .update({
+                payment_term: agreementPaymentTerm,
+                billing_frequency: String(invoiceAgreement?.billing_frequency || 'Annual').trim() || 'Annual',
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', createdInvoiceUuid);
+            if (invoicePaymentTermUpdateError) console.warn('[invoices:create_from_agreement] payment term sync failed', invoicePaymentTermUpdateError);
+          }
+        }
         await createInvoicePaymentScheduleRows(client, createdInvoiceUuid, false).catch(scheduleError => {
           console.warn('[invoice_payment_schedule] create_from_agreement schedule creation failed', scheduleError);
         });

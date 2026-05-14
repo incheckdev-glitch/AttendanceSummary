@@ -2801,6 +2801,19 @@ const Invoices = {
       service_end_date: this.getOperationServiceDate(locationItems, 'service_end_date', 'desc') || null,
       billing_frequency: String(sourceInvoice.billing_frequency || selectedAgreement.billing_frequency || '').trim() || null,
       payment_term: this.normalizePaymentTerm(sourceInvoice.payment_term || selectedAgreement.payment_term || selectedAgreement.payment_terms || 'Net 30'),
+      signed_date: this.normalizeDateInputValue(
+        selectedAgreement.signed_date ||
+        selectedAgreement.signedDate ||
+        selectedAgreement.customer_sign_date ||
+        selectedAgreement.customerSignDate ||
+        selectedAgreement.customer_official_sign_date ||
+        selectedAgreement.customerOfficialSignDate ||
+        selectedAgreement.provider_official_signatory_2_sign_date ||
+        selectedAgreement.providerOfficialSignatory2SignDate ||
+        selectedAgreement.provider_sign_date ||
+        selectedAgreement.providerSignDate ||
+        ''
+      ) || null,
       source_invoice_id: invoiceUuid || null,
       invoice_id: invoiceUuid || null,
       source_invoice_number: invoiceDisplay || null,
@@ -2809,7 +2822,7 @@ const Invoices = {
       invoiced_agreement_item_ids: sourceAgreementItemIds.join(', '),
       // Keep a draft/default message on the Operations row only.
       // The Technical Admin request itself must be created manually from Operations.
-      request_type: null,
+      request_type: 'Invoice Onboarding',
       technical_request_type: null,
       request_message: message,
       request_details: message,
@@ -3267,18 +3280,46 @@ const Invoices = {
         id: parsed?.invoice?.id || id || normalizedInvoice.id
       });
       const normalized = this.upsertLocalRow(persisted);
-      if (!id && normalized?.id) {
-        await Api.createInvoicePaymentSchedule(normalized.id, false).catch(error => {
-          console.warn('[invoices] payment schedule creation failed', error);
+      if (!id) {
+        const createdInvoiceId = this.invoiceDbId(
+          normalized?.id ||
+          persisted?.id ||
+          parsed?.invoice?.id ||
+          normalizedInvoice?.id ||
+          ''
+        );
+        const invoiceForFollowUp = this.normalizeInvoice({
+          ...normalizedInvoice,
+          ...persisted,
+          ...normalized,
+          id: createdInvoiceId || normalized?.id || persisted?.id || normalizedInvoice?.id || '',
+          invoice_id: normalized?.invoice_id || persisted?.invoice_id || normalizedInvoice?.invoice_id || '',
+          invoice_number: normalized?.invoice_number || persisted?.invoice_number || normalizedInvoice?.invoice_number || ''
         });
+
+        if (createdInvoiceId) {
+          await Api.createInvoicePaymentSchedule(createdInvoiceId, false).catch(error => {
+            console.warn('[invoices] payment schedule creation failed', error);
+          });
+        }
+
         if (agreementSelectionActive) {
-          await this.markSelectedAgreementItemsInvoiced(normalized.id, selectedAgreementItemIds);
+          // Create the Operations row from the selected invoice batch first.
+          // This must happen even if the agreement_items status update is blocked by RLS,
+          // because Operations/Technical visibility must follow the invoice batch that was just created.
           await this.createOperationsAndTechnicalForInvoicedLocations(
             normalizedInvoice,
-            normalized,
+            invoiceForFollowUp,
             items,
             selectedAgreementItemIds
           );
+
+          if (createdInvoiceId) {
+            await this.markSelectedAgreementItemsInvoiced(createdInvoiceId, selectedAgreementItemIds).catch(error => {
+              console.warn('[Invoice] Agreement item invoice-status update failed after Operations row creation.', error);
+              UI.toast('Invoice and Operations onboarding were created, but the agreement location invoice flag could not be updated. Please run the included SQL/RLS fix if this repeats.');
+            });
+          }
         }
       }
       this.setCachedDetail(normalized?.id || id, persisted, persistedItems);
