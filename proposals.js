@@ -1932,7 +1932,8 @@ const Proposals = {
     });
     const currency = String(proposalData.currency || 'USD').trim().toUpperCase();
     const normalizedStatus = this.normalizeProposalStatus(proposalData.status);
-    const showDraftWatermark = normalizedStatus === 'draft';
+    const proposalStatusLabel = this.getProposalStatusLabel(normalizedStatus || proposalData.status || 'draft');
+    const showDraftWatermark = normalizedStatus === 'draft' || normalizedStatus === 'pending_approval';
     const providerCompanyName = this.providerContactDefaults.name;
     const providerAddress = this.providerContactDefaults.address;
     const money = value => this.formatMoneyWithCurrency(this.toNumberSafe(value), currency, false);
@@ -2232,6 +2233,7 @@ const Proposals = {
               <div class="meta-row"><div class="meta-key">Reference #</div><div>${textValue(proposalData.ref_number)}</div></div>
               <div class="meta-row"><div class="meta-key">Proposal Date</div><div>${dateValue(proposalData.proposal_date)}</div></div>
               <div class="meta-row"><div class="meta-key">Valid Until</div><div>${dateValue(proposalData.valid_until || proposalData.proposal_valid_until || this.getAutoValidUntil(proposalData.proposal_date))}</div></div>
+              <div class="meta-row"><div class="meta-key">Status</div><div>${textValue(proposalStatusLabel)}</div></div>
             </div>
           </div>
         </section>
@@ -3907,8 +3909,9 @@ const Proposals = {
       : items.reduce((max, item) => Math.max(max, this.toNumberSafe(item.discount_percent)), 0);
     const currentStatus = this.normalizeProposalStatus(currentRecord?.status);
     const requestedStatus = this.normalizeProposalStatus(proposal.status);
-    if (currentStatus === 'pending_approval' && requestedStatus === 'sent') {
-      UI.toast('This proposal is already pending approval.');
+    if (currentStatus === 'pending_approval' && requestedStatus && requestedStatus !== 'pending_approval') {
+      UI.toast('This proposal is already pending approval. Approval must be approved or rejected before changing to another status.');
+      if (E.proposalFormStatus) E.proposalFormStatus.value = 'pending_approval';
       return;
     }
     console.log('[Proposal workflow current baseline]', {
@@ -3961,14 +3964,23 @@ const Proposals = {
         }
       } else if (workflowCheck?.pendingApproval === true && workflowCheck?.approvalCreated === true) {
         const pendingUpdates = {
-          status: 'Pending Approval',
+          status: 'pending_approval',
           discount_approval_status: 'pending',
           approval_required_reason: workflowCheck?.reason || 'Proposal sent for approval.',
           last_discount_approval_request_id: workflowCheck?.approvalId || undefined
         };
         const pendingResponse = await Api.requestWithSession('proposals', 'update', { id: proposalId, updates: pendingUpdates });
         const parsedPending = this.extractProposalAndItems(pendingResponse, proposalId);
-        if (parsedPending?.proposal) this.upsertLocalRow(parsedPending.proposal);
+        const pendingProposal = parsedPending?.proposal && typeof parsedPending.proposal === 'object'
+          ? parsedPending.proposal
+          : { ...currentRecord, ...pendingUpdates };
+        if (pendingProposal) {
+          this.upsertLocalRow(pendingProposal);
+          this.state.currentProposal = pendingProposal;
+          this.setCachedDetail(pendingProposal.id || proposalId, pendingProposal, parsedPending?.items || latestItems || items);
+        }
+        if (E.proposalFormStatus) E.proposalFormStatus.value = 'pending_approval';
+        this.refreshSignedDocumentUi?.(pendingProposal);
         UI.toast(String(workflowCheck?.reason || '').toLowerCase().includes('already pending') ? 'This proposal is already pending approval.' : 'Proposal sent for approval.');
         await this.loadAndRefresh({ force: true });
         return;

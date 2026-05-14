@@ -2,6 +2,18 @@ function normalizeAgreementStatus(value) {
   return String(value || "").trim().toLowerCase().replace(/\s+/g, "_");
 }
 
+function hasAgreementValue(value) {
+  return value !== undefined && value !== null && String(value).trim() !== '';
+}
+
+function hasAllRequiredAgreementSignDates(source = {}) {
+  return (
+    (hasAgreementValue(source?.customer_official_sign_date) || hasAgreementValue(source?.customerOfficialSignDate) || hasAgreementValue(source?.customer_sign_date) || hasAgreementValue(source?.customerSignDate)) &&
+    (hasAgreementValue(source?.provider_official_signatory_1_sign_date) || hasAgreementValue(source?.providerOfficialSignatory1SignDate) || hasAgreementValue(source?.provider_sign_date) || hasAgreementValue(source?.providerSignDate)) &&
+    (hasAgreementValue(source?.provider_official_signatory_2_sign_date) || hasAgreementValue(source?.providerOfficialSignatory2SignDate))
+  );
+}
+
 function isAgreementSigned(agreement) {
   const source = agreement && typeof agreement === "object" ? agreement : { status: agreement };
   const normalized = normalizeAgreementStatus(source?.status);
@@ -10,23 +22,11 @@ function isAgreementSigned(agreement) {
     "signed_active",
     "signed-active",
     "signedactive",
-    "active",
-    "accepted"
+    "active"
   ]);
   if (signedLikeStatuses.has(normalized)) return true;
-  if (normalized.includes("signed") || normalized.includes("active")) return true;
-  return Boolean(
-    source?.signed_date ||
-    source?.customer_sign_date ||
-    source?.customer_official_sign_date ||
-    source?.provider_sign_date ||
-    source?.provider_official_signatory_1_sign_date ||
-    source?.provider_official_signatory_2_sign_date
-  ) && (
-    Boolean(source?.customer_official_sign_date || source?.customer_sign_date) &&
-    Boolean(source?.provider_official_signatory_1_sign_date || source?.provider_sign_date) &&
-    Boolean(source?.provider_official_signatory_2_sign_date || source?.provider_sign_date)
-  );
+  if ((normalized.includes("signed") || normalized.includes("active")) && !normalized.includes("unsigned")) return true;
+  return hasAllRequiredAgreementSignDates(source);
 }
 
 function agreementHasSignedDocument(agreement) {
@@ -1859,7 +1859,7 @@ const Agreements = {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   },
   hasValue(value) {
-    return value !== undefined && value !== null && String(value).trim() !== '';
+    return hasAgreementValue(value);
   },
   getAgreementOfficialSignDateValues(agreement = {}) {
     const source = agreement && typeof agreement === 'object' ? agreement : {};
@@ -1878,8 +1878,7 @@ const Agreements = {
     };
   },
   hasAllAgreementSignatoryDates(agreement = {}) {
-    const dates = this.getAgreementOfficialSignDateValues(agreement);
-    return Boolean(dates.customer && dates.provider1 && dates.provider2);
+    return hasAllRequiredAgreementSignDates(agreement);
   },
   getLatestAgreementSignDate(agreement = {}) {
     const dates = Object.values(this.getAgreementOfficialSignDateValues(agreement)).filter(Boolean).sort();
@@ -1950,14 +1949,15 @@ const Agreements = {
     const raw = String(agreement?.status || '').trim();
     const normalized = normalizeAgreementStatus(raw);
     if (normalized === 'expired') return 'Expired';
-    if (this.isAgreementSigned({ status: agreement.status }) || normalized === 'accepted' || normalized === 'signed' || this.hasAllAgreementSignatoryDates(agreement)) return 'Signed';
+    if (this.hasAllAgreementSignatoryDates(agreement)) return 'Signed';
     if (this.isAgreementExpired(agreement)) return 'Expired';
     return raw || 'Draft';
   },
+  isAgreementLockedAsSigned(agreement = {}) {
+    return this.isAgreementSigned(agreement);
+  },
   hasSignedSignal(agreement = {}) {
-    const statusSigned = this.isSignedStatus(agreement.status);
-    const signedDate = String(agreement.signed_date || '').trim();
-    return statusSigned || Boolean(signedDate) || this.hasAllAgreementSignatoryDates(agreement);
+    return this.isAgreementLockedAsSigned(agreement);
   },
   buildOperationsOnboardingFromAgreement(agreement = {}, agreementId = '') {
     const agreementUuid = String(agreementId || agreement.id || '').trim();
@@ -2245,7 +2245,7 @@ const Agreements = {
     E.agreementsTbody.innerHTML = rows.map(row => {
       const id = U.escapeAttr(row.id || row.agreement_id || row.agreement_number || row.agreementId || '');
       const rowTotals = this.calculateTotalsFromAgreementRecord(row);
-      const signedRow = this.isSignedStatus(this.resolveAgreementStatus(row));
+      const signedRow = this.isAgreementLockedAsSigned(row);
       return `<tr>
         <td>${textCell(row.agreement_id)}</td><td>${textCell(row.agreement_number)}</td><td>${textCell(row.agreement_title)}</td>
         <td>${textCell(row.customer_name)}</td><td>${textCell(row.proposal_id)}</td><td>${textCell(row.deal_id)}</td>
@@ -3004,7 +3004,7 @@ const Agreements = {
   },
   openAgreementForm(agreement = this.emptyAgreement(), items = [], { readOnly = false } = {}) {
     if (!E.agreementFormModal || !E.agreementForm) return;
-    const signedLocked = this.isAgreementSigned(agreement);
+    const signedLocked = this.isAgreementLockedAsSigned(agreement);
     const effectiveReadOnly = readOnly || signedLocked;
     E.agreementForm.dataset.id = agreement.id || '';
     E.agreementForm.dataset.mode = agreement.id ? 'edit' : 'create';
@@ -3218,7 +3218,7 @@ const Agreements = {
         UI.toast('Unable to verify agreement lock status: ' + (error?.message || 'Unknown error'));
         return;
       }
-      if (this.isAgreementSigned(latestExistingAgreement)) {
+      if (this.isAgreementLockedAsSigned(latestExistingAgreement)) {
         UI.toast('Signed agreements are locked and cannot be edited.');
         return;
       }
@@ -3388,7 +3388,7 @@ const Agreements = {
       }
       const savedAgreement = { ...agreement, ...(persistedAgreement || {}) };
       const savedAgreementId = String(persistedAgreement?.id || id || '').trim();
-      if (this.isAgreementSigned(savedAgreement) && savedAgreementId) {
+      if (this.isAgreementLockedAsSigned(savedAgreement) && savedAgreementId) {
         const refreshedAgreement = await this.reloadLatestAgreementRow(savedAgreementId).catch(() => null);
         const lockedAgreement = refreshedAgreement || savedAgreement;
         this.openAgreementForm(lockedAgreement, preparedItems || items, { readOnly: true });
@@ -3681,7 +3681,7 @@ const Agreements = {
       if (editId) {
         if (!Permissions.canUpdateAgreement()) return UI.toast('You do not have permission to edit agreements.');
         const row = this.state.rows.find(entry => String(entry?.id || entry?.agreement_id || entry?.agreement_number || '').trim() === String(editId || '').trim());
-        if (row && this.isSignedStatus(this.resolveAgreementStatus(row))) {
+        if (row && this.isAgreementLockedAsSigned(row)) {
           UI.toast('Signed agreements are locked. You can only upload the signed agreement document.');
           return this.runRowAction(`upload-signed:${editId}`, trigger, () => this.openAgreementFormById(editId, { readOnly: true, trigger, focusSignedDocument: true }));
         }

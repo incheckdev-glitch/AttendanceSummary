@@ -696,15 +696,42 @@ const WorkflowEngine = {
             reason: decision.reason || 'Proposal discount is not allowed.'
           };
         }
-        const transitionRequiresApproval = isDraftToSent && this.toBool(workflowRule?.requires_approval);
-        if (decision.allowed === true && decision.requiresApproval !== true && transitionRequiresApproval) {
+        const statusChanged = Boolean(currentStatus && targetStatus && currentStatus !== targetStatus);
+        if (currentStatus === 'pending_approval' && targetStatus && targetStatus !== 'pending_approval') {
+          return {
+            allowed: false,
+            pendingApproval: true,
+            approvalCreated: false,
+            requestedDiscount: decision.discount,
+            categoryDiscounts: decision.discounts,
+            reason: 'This proposal is already pending approval. Approval must be approved or rejected before changing to another status.'
+          };
+        }
+        const transitionRequiresApproval = statusChanged && this.toBool(workflowRule?.requires_approval);
+        if (transitionRequiresApproval || decision.requiresApproval === true) {
+          console.log('[Proposal workflow approval final decision]', {
+            proposalId: proposal?.id,
+            proposalNumber: proposal?.proposal_id || proposal?.proposal_number,
+            currentStatus: proposal?.status,
+            requestedStatus: targetStatus,
+            transitionRequiresApproval,
+            annualSaasDiscount: decision?.discounts?.annualSaasDiscount,
+            approvedAnnual: proposal?.approved_annual_saas_discount_percent || proposal?.approved_discount_percent,
+            oneTimeFeeDiscount: decision?.discounts?.oneTimeFeeDiscount,
+            approvedOneTime: proposal?.approved_one_time_fee_discount_percent || proposal?.approved_discount_percent,
+            allowed: decision.allowed,
+            requiresApproval: decision.requiresApproval,
+            reason: decision.reason
+          });
           const recordId = String(requestedChanges?.id || requestedChanges?.proposal_uuid || record?.id || proposal?.id || '').trim();
           const duplicate = await this.findPendingProposalDiscountApproval(recordId, targetStatus, decision.discount, decision.discounts);
           if (duplicate) {
             await this.updateProposalDiscountApprovalSnapshot(recordId, {
-              status: 'Pending Approval',
+              status: 'pending_approval',
               discount_approval_status: 'pending',
-              approval_required_reason: 'Approval is already pending for this transition.',
+              approval_required_reason: transitionRequiresApproval
+                ? 'Approval is already pending for this transition.'
+                : 'Approval is already pending for this discount.',
               last_discount_approval_request_id: duplicate?.approval_id || duplicate?.id || duplicate?.workflow_approval_id || null
             });
             return {
@@ -724,12 +751,17 @@ const WorkflowEngine = {
             workflow_rule_id: workflowRule?.workflow_rule_id || workflowRule?.id || null,
             approval_role: approvalRoles[0] || workflowRule?.approval_role || 'admin',
             approval_roles: approvalRoles.length ? approvalRoles : [workflowRule?.approval_role || 'admin'],
-            reason: workflowRule?.reason || 'Approval is required before sending this proposal.'
+            reason: transitionRequiresApproval
+              ? (workflowRule?.reason || `Approval is required before changing this proposal from ${currentStatus} to ${targetStatus}.`)
+              : decision.reason,
+            discounts: decision.discounts,
+            annualNeedsApproval: decision.annualNeedsApproval,
+            oneTimeNeedsApproval: decision.oneTimeNeedsApproval
           };
           const approvalResult = await this.createWorkflowApprovalFromDecision(resource, record, requestedChanges, validationResult, decision.discount);
           if (approvalResult?.approvalCreated === true) {
             await this.updateProposalDiscountApprovalSnapshot(recordId, {
-              status: 'Pending Approval',
+              status: 'pending_approval',
               discount_approval_status: 'pending',
               approval_required_reason: validationResult.reason,
               last_discount_approval_request_id: approvalResult.approvalId || null
@@ -737,7 +769,7 @@ const WorkflowEngine = {
           }
           return approvalResult;
         }
-        if (decision.allowed === true && decision.requiresApproval !== true && !isDraftToSent) {
+        if (decision.allowed === true && decision.requiresApproval !== true) {
           return {
             allowed: true,
             pendingApproval: false,
@@ -753,60 +785,6 @@ const WorkflowEngine = {
             categoryDiscounts: decision.discounts,
             reason: decision.reason || 'Allowed'
           };
-        }
-        if (decision.requiresApproval === true) {
-          console.log('[Proposal workflow approval final decision]', {
-            proposalId: proposal?.id,
-            proposalNumber: proposal?.proposal_id || proposal?.proposal_number,
-            currentStatus: proposal?.status,
-            requestedStatus: targetStatus,
-            annualSaasDiscount: decision?.discounts?.annualSaasDiscount,
-            approvedAnnual: proposal?.approved_annual_saas_discount_percent || proposal?.approved_discount_percent,
-            oneTimeFeeDiscount: decision?.discounts?.oneTimeFeeDiscount,
-            approvedOneTime: proposal?.approved_one_time_fee_discount_percent || proposal?.approved_discount_percent,
-            allowed: decision.allowed,
-            requiresApproval: decision.requiresApproval,
-            reason: decision.reason
-          });
-          const recordId = String(requestedChanges?.id || requestedChanges?.proposal_uuid || record?.id || proposal?.id || '').trim();
-          const duplicate = await this.findPendingProposalDiscountApproval(recordId, targetStatus, decision.discount, decision.discounts);
-          if (duplicate) {
-            await this.updateProposalDiscountApprovalSnapshot(recordId, {
-              status: 'Pending Approval',
-              discount_approval_status: 'pending',
-              approval_required_reason: 'Approval is already pending for this discount.',
-              last_discount_approval_request_id: duplicate?.approval_id || duplicate?.id || duplicate?.workflow_approval_id || null
-            });
-            return {
-              allowed: false,
-              pendingApproval: true,
-              approvalCreated: true,
-              approvalId: duplicate?.approval_id || duplicate?.id || duplicate?.workflow_approval_id,
-              requestedDiscount: decision.discount,
-              categoryDiscounts: decision.discounts,
-              reason: 'This proposal is already pending approval.'
-            };
-          }
-          const validationResult = {
-            allowed: false,
-            pendingApproval: true,
-            approval_role: 'admin',
-            approval_roles: ['admin'],
-            reason: decision.reason,
-            discounts: decision.discounts,
-            annualNeedsApproval: decision.annualNeedsApproval,
-            oneTimeNeedsApproval: decision.oneTimeNeedsApproval
-          };
-          const approvalResult = await this.createWorkflowApprovalFromDecision(resource, record, requestedChanges, validationResult, decision.discount);
-          if (approvalResult?.approvalCreated === true) {
-            await this.updateProposalDiscountApprovalSnapshot(recordId, {
-              status: 'Pending Approval',
-              discount_approval_status: 'pending',
-              approval_required_reason: decision.reason,
-              last_discount_approval_request_id: approvalResult.approvalId || null
-            });
-          }
-          return approvalResult;
         }
       }
       const validationResult = await this.validateWorkflowTransition(resource, record, requestedChanges);
