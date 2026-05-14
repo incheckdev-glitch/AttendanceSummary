@@ -2703,16 +2703,82 @@ const Invoices = {
       `Location ${index + 1}`
     ).trim();
   },
+  getAgreementItemSourceId(item = {}) {
+    return String(
+      item?.source_agreement_item_id ||
+      item?.sourceAgreementItemId ||
+      item?.agreement_item_id ||
+      item?.agreementItemId ||
+      item?.id ||
+      item?.item_id ||
+      item?.itemId ||
+      ''
+    ).trim();
+  },
+  isInvoiceBatchAnnualLocationItem(item = {}) {
+    const normalized = item && typeof item === 'object' ? item : {};
+    const section = this.normalizeSection(normalized.section || normalized.item_section || normalized.itemSection || normalized.type || normalized.item_type || normalized.itemType);
+    const itemText = [
+      section,
+      normalized.category,
+      normalized.item_category,
+      normalized.itemCategory,
+      normalized.item_name,
+      normalized.itemName,
+      normalized.description,
+      normalized.name
+    ].map(value => String(value || '').trim().toLowerCase()).filter(Boolean).join(' ');
+    const isOneTime = this.isOneTimeSection(section) || /one[\s_-]*time|setup|implementation|installation|activation/.test(itemText);
+    if (isOneTime) return false;
+    if (this.isSubscriptionSection(section)) return true;
+    return Boolean(
+      String(normalized.location_name || normalized.locationName || normalized.default_location_name || normalized.defaultLocationName || '').trim() ||
+      String(normalized.service_start_date || normalized.serviceStartDate || normalized.service_end_date || normalized.serviceEndDate || '').trim() ||
+      this.getAgreementItemSourceId(normalized)
+    );
+  },
   getInvoicedAgreementLocationItems(items = [], selectedAgreementItemIds = []) {
     const selectedIds = new Set((Array.isArray(selectedAgreementItemIds) ? selectedAgreementItemIds : [])
       .map(value => String(value || '').trim())
       .filter(Boolean));
-    const normalizedItems = Array.isArray(items) ? items : [];
-    return normalizedItems.filter(item => {
-      if (!this.isSubscriptionSection(item?.section)) return false;
-      const sourceId = String(item?.source_agreement_item_id || item?.sourceAgreementItemId || item?.id || '').trim();
-      return !selectedIds.size || (sourceId && selectedIds.has(sourceId));
+    const selection = this.state.agreementInvoiceSelection || {};
+    const agreementUuid = String(selection.agreementUuid || this.state.selectedAgreement?.id || this.state.selectedAgreement?.uuid || '').trim();
+    const normalizeForOperation = item => {
+      const normalized = this.normalizeItem(item || {});
+      const sourceId = this.getAgreementItemSourceId({ ...(item || {}), ...normalized });
+      return {
+        ...(item || {}),
+        ...normalized,
+        source_agreement_item_id: normalized.source_agreement_item_id || sourceId,
+        source_agreement_id: normalized.source_agreement_id || agreementUuid
+      };
+    };
+    const matchesSelected = item => {
+      if (!selectedIds.size) return true;
+      const sourceId = this.getAgreementItemSourceId(item);
+      return Boolean(sourceId && selectedIds.has(sourceId));
+    };
+    const selectedAgreementRows = [
+      ...(Array.isArray(selection.annualItems) ? selection.annualItems : []),
+      ...(Array.isArray(selection.invoiceableItems) ? selection.invoiceableItems : [])
+    ]
+      .filter(item => matchesSelected(item))
+      .map(normalizeForOperation)
+      .filter(item => this.isInvoiceBatchAnnualLocationItem(item));
+    const selectedInvoiceRows = (Array.isArray(items) ? items : [])
+      .map(normalizeForOperation)
+      .filter(item => matchesSelected(item) && this.isInvoiceBatchAnnualLocationItem(item));
+    const out = [];
+    const seen = new Set();
+    [...selectedAgreementRows, ...selectedInvoiceRows].forEach((item, index) => {
+      const sourceId = this.getAgreementItemSourceId(item);
+      const locationKey = String(item.location_name || item.locationName || this.getInvoiceOperationLocationLabel(item, index)).trim().toLowerCase();
+      const key = sourceId || locationKey;
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      out.push(item);
     });
+    return out;
   },
   getOperationServiceDate(items = [], field = 'service_start_date', direction = 'asc') {
     const dates = (Array.isArray(items) ? items : [])

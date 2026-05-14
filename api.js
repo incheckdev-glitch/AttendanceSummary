@@ -1127,17 +1127,34 @@ const Api = {
     });
   },
   async saveOperationsOnboarding(onboarding = {}) {
+    const isInvoiceScoped = Boolean(String(
+      onboarding?.source_invoice_id ||
+      onboarding?.invoice_id ||
+      onboarding?.source_invoice_number ||
+      onboarding?.invoice_number ||
+      ''
+    ).trim());
     let response;
     try {
-      response = await this.requestWithSession('operations_onboarding', 'save', {
-        operations_onboarding: onboarding,
-        onboarding,
-        table: CONFIG.OPERATIONS_ONBOARDING_TABLE
-      });
+      if (isInvoiceScoped) {
+        // Invoice-batch onboarding must go through the invoice action so invoice creators can create
+        // the Operations row and signed agreements cannot create rows directly.
+        response = await this.requestWithSession('invoices', 'create_operations_onboarding', {
+          operations_onboarding: onboarding,
+          onboarding,
+          table: CONFIG.OPERATIONS_ONBOARDING_TABLE
+        });
+      } else {
+        response = await this.requestWithSession('operations_onboarding', 'save', {
+          operations_onboarding: onboarding,
+          onboarding,
+          table: CONFIG.OPERATIONS_ONBOARDING_TABLE
+        });
+      }
     } catch (error) {
       const message = String(error?.message || error || '').toLowerCase();
       const isPermissionBlock = message.includes('forbidden') && message.includes('operations_onboarding') && message.includes('create');
-      if (!isPermissionBlock) throw error;
+      if (!isPermissionBlock || isInvoiceScoped) throw error;
       console.warn('[Api.saveOperationsOnboarding] operations_onboarding:create blocked; retrying through invoice-created onboarding action.', error);
       response = await this.requestWithSession('invoices', 'create_operations_onboarding', {
         operations_onboarding: onboarding,
