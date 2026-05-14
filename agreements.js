@@ -2555,7 +2555,9 @@ const Agreements = {
       if (String(item?.section || '').trim().toLowerCase() !== 'annual_saas') return item;
       const itemId = this.getAgreementItemRecordId(item);
       const invoiceId = itemId ? actualMap.get(itemId) : '';
-      return invoiceId ? { ...item, invoice_status: 'invoiced', invoiced_invoice_id: invoiceId === true ? item.invoiced_invoice_id : invoiceId } : item;
+      return invoiceId
+        ? { ...item, invoice_status: 'invoiced', invoiced_invoice_id: invoiceId === true ? item.invoiced_invoice_id : invoiceId }
+        : { ...item, invoice_status: 'not_invoiced', invoiced_invoice_id: '' };
     });
     this.renderItemRows(this.state.items || []);
   },
@@ -3216,6 +3218,7 @@ const Agreements = {
       const cached = this.getCachedDetail(id);
       if (cached) {
         this.openAgreementForm(cached.agreement, cached.items, { readOnly });
+        this.applyActualInvoiceStatusToFormItems().catch(error => console.warn('[Agreement] Invoice status verification failed.', error));
         if (focusSignedDocument) window.setTimeout(() => this.focusSignedAgreementDocumentSection(), 150);
         return;
       }
@@ -3225,6 +3228,7 @@ const Agreements = {
       this.setCachedDetail(id, agreement, items);
       if (String(E.agreementForm?.dataset.id || '').trim() === id) {
         this.openAgreementForm(agreement, items, { readOnly });
+        this.applyActualInvoiceStatusToFormItems().catch(error => console.warn('[Agreement] Invoice status verification failed.', error));
         if (focusSignedDocument) window.setTimeout(() => this.focusSignedAgreementDocumentSection(), 150);
       }
     } catch (error) {

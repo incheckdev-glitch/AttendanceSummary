@@ -79,6 +79,13 @@ const OperationsOnboarding = {
   normalizeRow(raw = {}) {
     const source = raw && typeof raw === 'object' ? raw : {};
     const nestedAgreement = source.agreement && typeof source.agreement === 'object' ? source.agreement : {};
+    const locationTextValue = String(this.pick(
+      source.invoiced_location_names, source.invoicedLocationNames,
+      source.invoiced_locations, source.invoicedLocations,
+      source.location_names, source.locationNames
+    )).trim();
+    const locationNamesCount = this.countStoredLocations(locationTextValue);
+    const numericInvoicedCount = Number(this.pick(source.invoiced_location_count, source.invoicedLocationCount, source.onboarding?.invoiced_location_count)) || 0;
     const locationCountValue = this.pick(
       source.invoiced_location_count,
       source.invoicedLocationCount,
@@ -93,6 +100,10 @@ const OperationsOnboarding = {
       source.onboarding?.invoiced_location_count,
       source.onboarding?.location_count
     );
+    const invoiceScopedRow = this.hasInvoiceScope(source) || Boolean(locationTextValue);
+    const normalizedLocationCount = invoiceScopedRow
+      ? (locationNamesCount || numericInvoicedCount || 0)
+      : (Number(locationCountValue) || 0);
     return {
       id: String(this.pick(source.id, source.db_id, source.record_id)).trim(),
       db_id: String(this.pick(source.id, source.db_id, source.record_id)).trim(),
@@ -150,11 +161,11 @@ const OperationsOnboarding = {
       completed_at: String(this.pick(source.completed_at, source.completedAt)).trim(),
       created_at: String(this.pick(source.created_at, source.createdAt)).trim(),
       notes: String(this.pick(source.notes)).trim(),
-      location_count: Number(locationCountValue) || 0,
-      locations_count: Number(this.pick(source.locations_count, source.locationsCount, locationCountValue)) || 0,
-      number_of_locations: Number(this.pick(source.number_of_locations, source.numberOfLocations, source.invoiced_location_count, source.invoicedLocationCount, locationCountValue)) || 0,
-      invoiced_location_count: Number(this.pick(source.invoiced_location_count, source.invoicedLocationCount, locationCountValue)) || 0,
-      total_locations: Number(this.pick(source.total_locations, source.totalLocations, locationCountValue)) || 0
+      location_count: normalizedLocationCount,
+      locations_count: normalizedLocationCount,
+      number_of_locations: normalizedLocationCount,
+      invoiced_location_count: invoiceScopedRow ? normalizedLocationCount : numericInvoicedCount,
+      total_locations: invoiceScopedRow ? normalizedLocationCount : (Number(this.pick(source.total_locations, source.totalLocations, locationCountValue)) || 0)
     };
   },
   normalizeClientName(name = '') {
@@ -448,17 +459,26 @@ const OperationsOnboarding = {
     });
   },
   getRowLocationCount(row = {}, agreement = {}, agreementItems = []) {
-    const explicit = Number(this.pick(row.number_of_locations, row.location_count, row.locations_count));
-    if (Number.isFinite(explicit) && explicit > 0) return explicit;
     const locationNamesCount = this.countStoredLocations(this.pick(row.invoiced_location_names, row.invoicedLocationNames, row.invoiced_locations, row.invoicedLocations, row.location_names, row.locationNames));
+    const invoiceScoped = this.hasInvoiceScope(row);
+
+    // Invoice-created Operations rows must always be scoped by the invoice batch.
+    // If the stored row has old/wrong number_of_locations from the full agreement, the
+    // invoiced location names are the source of truth for display and Technical Admin.
+    if (invoiceScoped && locationNamesCount > 0) return locationNamesCount;
+
+    const invoicedExplicit = Number(this.pick(row.invoiced_location_count, row.invoicedLocationCount));
+    if (invoiceScoped && Number.isFinite(invoicedExplicit) && invoicedExplicit > 0) return invoicedExplicit;
+
+    const explicit = Number(this.pick(row.number_of_locations, row.location_count, row.locations_count));
+    if (!invoiceScoped && Number.isFinite(explicit) && explicit > 0) return explicit;
     if (locationNamesCount > 0) return locationNamesCount;
     const scopedItems = this.filterAgreementItemsForOnboardingRow(row, agreementItems);
     const scopedCount = this.deriveAgreementLocationMetrics(scopedItems).total_locations;
     if (scopedCount > 0) return scopedCount;
 
     // Invoice-scoped onboarding rows must never fall back to the full agreement location count.
-    // Otherwise a 2-location invoice from a 4-location agreement can display 4.
-    if (this.hasInvoiceScope(row)) return 0;
+    if (invoiceScoped) return 0;
     return Number(this.pick(agreement.number_of_locations, agreement.locations_count, agreement.location_count)) || 0;
   },
   getRowServiceStart(row = {}, agreement = {}, agreementItems = []) {
@@ -1470,8 +1490,9 @@ const OperationsOnboarding = {
   buildDefaultTechnicalAdminMessage(summary = {}, agreementLabel = '') {
     const safeSummary = summary && typeof summary === 'object' ? summary : {};
     const label = String(agreementLabel || safeSummary.agreement_number || safeSummary.agreement_id || '').trim() || 'the agreement';
-    const locationText = String(safeSummary.invoiced_location_names || safeSummary.location_names || '').trim();
-    const locationCount = Number(safeSummary.number_of_locations || safeSummary.location_count || 0);
+    const locationText = String(safeSummary.invoiced_location_names || safeSummary.invoiced_locations || safeSummary.location_names || '').trim();
+    const textLocationCount = this.countStoredLocations(locationText);
+    const locationCount = textLocationCount || Number(safeSummary.invoiced_location_count || safeSummary.number_of_locations || safeSummary.location_count || 0);
     if (locationText) {
       return `Please proceed with the invoiced location${locationCount > 1 ? 's' : ''}: ${locationText}. Agreement ${label}.`;
     }
