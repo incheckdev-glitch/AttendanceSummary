@@ -536,6 +536,23 @@ const TechnicalAdmin = {
       this.setTriggerBusy(trigger, false, loadingLabel);
     }
   },
+  async openAgreementRecord(agreementId, trigger = null) {
+    const id = String(agreementId || '').trim();
+    if (!id) {
+      UI.toast('Linked agreement not available');
+      return;
+    }
+    if (!window.Agreements?.openAgreementFormById) {
+      UI.toast('Unable to open linked agreement');
+      return;
+    }
+    if (typeof setActiveView === 'function') setActiveView('agreements');
+    try {
+      await window.Agreements.openAgreementFormById(id, { readOnly: true, trigger });
+    } catch (_error) {
+      UI.toast('Unable to open linked agreement');
+    }
+  },
   async previewAgreement(agreementId) {
     const id = String(agreementId || '').trim();
     if (!id) {
@@ -634,7 +651,7 @@ const TechnicalAdmin = {
         const onboardingId = U.escapeAttr(row.onboarding_id || '');
         const agreementId = String(row.agreement_id || '').trim();
         const agreementAction = agreementId
-          ? `<button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-technical-preview="${U.escapeAttr(agreementId)}" data-technical-request-preview="${requestId}">Preview Agreement</button>`
+          ? `<button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-technical-open-agreement="${U.escapeAttr(agreementId)}" data-technical-request-preview="${requestId}">Open Agreement</button><button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-technical-preview="${U.escapeAttr(agreementId)}" data-technical-request-preview="${requestId}">Preview Agreement</button>`
           : '';
         return `<tr data-technical-request-id="${requestDbId}" data-technical-onboarding-id="${onboardingId}" data-technical-request-key="${requestId}">
           <td>${text(row.technical_request_id)}</td>
@@ -799,6 +816,7 @@ const TechnicalAdmin = {
         </div>
         <div class="actions" style="justify-content:flex-end;gap:8px;margin-top:14px;">
           <div style="margin-right:auto;display:flex;flex-direction:column;gap:4px;align-items:flex-start;">
+            <button class="btn ghost" type="button" data-permission-resource="agreements" data-permission-action="view" data-technical-open-agreement-detail="${U.escapeAttr(agreementId)}" ${previewDisabledAttr}>Open Agreement</button>
             <button class="btn ghost" type="button" data-permission-resource="agreements" data-permission-action="view" data-technical-preview-detail="${U.escapeAttr(agreementId)}" ${previewDisabledAttr}>Preview Agreement</button>
             ${previewHint}
           </div>
@@ -901,10 +919,15 @@ const TechnicalAdmin = {
     if (E.technicalAdminRefreshBtn) E.technicalAdminRefreshBtn.addEventListener('click', () => this.loadAndRefresh({ force: true }));
     if (E.technicalAdminTbody)
       E.technicalAdminTbody.addEventListener('click', event => {
-        const trigger = event.target?.closest?.('button[data-technical-open], button[data-technical-preview]');
+        const trigger = event.target?.closest?.('button[data-technical-open], button[data-technical-open-agreement], button[data-technical-preview]');
         if (!trigger) return;
         const id = trigger.getAttribute('data-technical-open') || '';
         if (id) return this.openDetails(id);
+        const openAgreementId = trigger.getAttribute('data-technical-open-agreement') || '';
+        if (openAgreementId) {
+          const requestId = trigger.getAttribute('data-technical-request-preview') || openAgreementId;
+          return this.runRowAction(`open-agreement:${requestId}`, trigger, () => this.openAgreementRecord(openAgreementId, trigger), 'Opening…');
+        }
         const previewId = trigger.getAttribute('data-technical-preview') || '';
         if (!previewId) return;
         const requestId = trigger.getAttribute('data-technical-request-preview') || previewId;
@@ -920,6 +943,12 @@ const TechnicalAdmin = {
         }
         const assignBtn = event.target?.closest?.('button[data-technical-assign]');
         if (assignBtn) return this.assignToFlow();
+        const openAgreementBtn = event.target?.closest?.('button[data-technical-open-agreement-detail]');
+        if (openAgreementBtn) {
+          const openId = String(openAgreementBtn.getAttribute('data-technical-open-agreement-detail') || '').trim();
+          if (!openId) return UI.toast('Linked agreement not available');
+          return this.openAgreementRecord(openId, openAgreementBtn);
+        }
         const previewBtn = event.target?.closest?.('button[data-technical-preview-detail]');
         if (previewBtn) {
           const previewId = String(previewBtn.getAttribute('data-technical-preview-detail') || '').trim();

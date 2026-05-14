@@ -736,8 +736,9 @@ const Api = {
       return response;
     }
   },
-  async requestAgreementTechnicalAdmin(agreementId, message = '') {
+  async requestAgreementTechnicalAdmin(agreementId, message = '', options = {}) {
     const normalizedAgreementId = String(agreementId || '').trim();
+    const targetOnboardingId = String(options?.onboardingId || options?.operationsOnboardingId || options?.onboarding_id || '').trim();
     if (!normalizedAgreementId) throw new Error('Agreement ID is required.');
     console.log('[operations onboarding] technical admin agreement', normalizedAgreementId);
     const norm = value => String(value || '').trim().toLowerCase();
@@ -878,7 +879,10 @@ const Api = {
       payment_term: paymentTerm || null,
       assigned_to: assignedTo || null,
       technical_request_type: 'Technical Admin',
+      request_type: 'Technical Admin',
       technical_request_details: technicalRequestDetails,
+      request_message: technicalRequestDetails,
+      request_details: technicalRequestDetails,
       technical_request_status: 'Requested',
       request_status: 'Requested',
       requested_by: requestedBy || null,
@@ -887,17 +891,38 @@ const Api = {
 
     const onboardingListResponse = await this.listOperationsOnboarding({ agreement_id: normalizedAgreementId });
     const onboardingRows = this.normalizeListResponse(onboardingListResponse).rows || [];
-    const matchingRows = onboardingRows.filter(row => String(row?.agreement_id || '').trim() === normalizedAgreementId);
-    const sortableRows = matchingRows.length ? matchingRows : onboardingRows;
-    const sortedRows = sortableRows.slice().sort((a, b) => {
-      const aTime = new Date(a?.updated_at || a?.created_at || 0).getTime();
-      const bTime = new Date(b?.updated_at || b?.created_at || 0).getTime();
-      return bTime - aTime;
-    });
-    if (sortedRows.length > 1) {
-      console.warn('[operations onboarding] duplicate rows found for agreement_id', normalizedAgreementId, sortedRows);
+    const matchesOnboardingId = row => {
+      if (!targetOnboardingId) return false;
+      return [row?.id, row?.db_id, row?.onboarding_id, row?.operations_onboarding_id]
+        .map(value => String(value || '').trim())
+        .filter(Boolean)
+        .includes(targetOnboardingId);
+    };
+    let existingOnboarding = targetOnboardingId
+      ? (onboardingRows.find(matchesOnboardingId) || null)
+      : null;
+    if (targetOnboardingId && !existingOnboarding) {
+      try {
+        const specificResponse = await this.getOperationsOnboarding({ id: targetOnboardingId });
+        const specificPayload = this.unwrapApiPayload(specificResponse) || specificResponse || {};
+        existingOnboarding = specificPayload?.onboarding || specificPayload?.item || specificPayload?.data || specificPayload || null;
+      } catch (error) {
+        console.warn('[operations onboarding] unable to resolve requested onboarding row for technical request', { targetOnboardingId, error });
+      }
     }
-    const existingOnboarding = sortedRows[0] || null;
+    if (!existingOnboarding) {
+      const matchingRows = onboardingRows.filter(row => String(row?.agreement_id || '').trim() === normalizedAgreementId);
+      const sortableRows = matchingRows.length ? matchingRows : onboardingRows;
+      const sortedRows = sortableRows.slice().sort((a, b) => {
+        const aTime = new Date(a?.updated_at || a?.created_at || 0).getTime();
+        const bTime = new Date(b?.updated_at || b?.created_at || 0).getTime();
+        return bTime - aTime;
+      });
+      if (sortedRows.length > 1) {
+        console.warn('[operations onboarding] duplicate rows found for agreement_id', normalizedAgreementId, sortedRows);
+      }
+      existingOnboarding = sortedRows[0] || null;
+    }
     console.log('[operations onboarding] resolved existing onboarding', existingOnboarding);
 
     let onboardingRecord;
@@ -914,8 +939,17 @@ const Api = {
       try {
         const technicalListResponse = await this.listTechnicalAdminRequests({ agreement_id: normalizedAgreementId });
         const technicalRows = this.normalizeListResponse(technicalListResponse).rows || [];
-        const existingRequest = technicalRows.find(row => String(row?.agreement_id || '').trim() === normalizedAgreementId) || technicalRows[0] || null;
         const onboardingPayload = this.unwrapApiPayload(onboardingRecord) || onboardingRecord || {};
+        const onboardingIdTokens = [targetOnboardingId, onboardingPayload?.id, onboardingPayload?.db_id, onboardingPayload?.onboarding_id]
+          .map(value => String(value || '').trim())
+          .filter(Boolean);
+        let existingRequest = null;
+        if (onboardingIdTokens.length) {
+          existingRequest = technicalRows.find(row => onboardingIdTokens.includes(String(row?.onboarding_id || row?.operations_onboarding_id || '').trim())) || null;
+        }
+        if (!targetOnboardingId && !existingRequest) {
+          existingRequest = technicalRows.find(row => String(row?.agreement_id || '').trim() === normalizedAgreementId) || technicalRows[0] || null;
+        }
         const technicalPayload = {
           agreement_id: normalizedAgreementId,
           agreement_number: agreementNumber || null,
@@ -927,9 +961,12 @@ const Api = {
           billing_frequency: billingFrequency || null,
           payment_term: paymentTerm || null,
           assigned_to: assignedTo || null,
-          onboarding_id: onboardingPayload?.onboarding_id || onboardingPayload?.id || null,
+          onboarding_id: onboardingIdTokens[0] || null,
           technical_request_type: 'Technical Admin',
+          request_type: 'Technical Admin',
           technical_request_details: technicalRequestDetails,
+          request_message: technicalRequestDetails,
+          request_details: technicalRequestDetails,
           technical_request_status: 'Requested',
           request_status: 'Requested',
           requested_by: requestedBy || null,

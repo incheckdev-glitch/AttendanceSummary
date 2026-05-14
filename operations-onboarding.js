@@ -1007,7 +1007,8 @@ const OperationsOnboarding = {
           <td>${onboardingLabel}</td><td>${text(row.agreement_id)}</td><td>${text(row.agreement_number)}</td><td>${text(row.client_name)}</td><td>${text(this.formatDate(row.signed_date))}</td><td>${text(row.onboarding_status)}</td>
           <td>${text(row.request_type || row.technical_request_type)}</td><td>${text(row.requested_by)}</td><td>${text(this.formatDate(row.requested_at))}</td><td>${text(row.technical_request_status || row.technical_admin_request)}</td><td>${text(row.request_message || row.technical_request_details || row.technical_admin_request_message)}</td><td><strong>${text(assignedCsmName || 'Unassigned')}</strong>${row.assigned_csm_email ? `<div class="muted">${U.escapeHtml(row.assigned_csm_email)}</div>` : ''}</td><td>${text(locationCount)}</td><td>${text(this.formatDate(serviceStart))}</td><td>${text(this.formatDate(serviceEnd))}</td><td>${text(billingFrequency)}</td><td>${text(paymentTerm)}</td><td>${text(this.formatDate(row.updated_at))}</td>
           <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
-            <button class="btn ghost sm" type="button" data-op-open-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Preview Agreement</button>
+            <button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-open-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Open Agreement</button>
+            <button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-preview-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Preview Agreement</button>
             <button class="btn ghost sm" type="button" data-op-open-details="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Open Onboarding Details</button>
             ${canCreateTechnicalRequest ? `<button class="btn ghost sm" type="button" data-op-technical-admin="${agreementId}" data-op-technical-onboarding="${rowDbId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Technical Admin Request</button>` : ''}
             ${showAssignCsmButton ? `<button class="btn ghost sm" type="button" data-op-assign-csm="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>${assignCsmButtonLabel}</button>` : ''}
@@ -1125,7 +1126,10 @@ const OperationsOnboarding = {
           <div><span class="muted">Assigned CSM:</span> <strong>${U.escapeHtml(detail.assigned_csm_name || detail.csm_assigned_to || 'Unassigned')}</strong>${detail.assigned_csm_email ? ` <span class="muted">(${U.escapeHtml(detail.assigned_csm_email)})</span>` : ''}</div>
           <div style="grid-column:1/-1;"><span class="muted">Notes:</span> ${U.escapeHtml(detail.notes || '—')}</div>
         </div>
-        ${this.canAssignCsm() && !this.isOnboardingClosed(detail) ? `<div class="actions" style="justify-content:flex-start;margin-top:12px;"><button class="btn sm" type="button" data-op-details-assign-csm="${U.escapeAttr(detail.id || detail.db_id || detail.onboarding_id || '')}" data-op-agreement-id="${U.escapeAttr(detail.agreement_id || '')}">${(detail.assigned_csm_name || detail.csm_assigned_to) ? 'Change CSM' : 'Assign CSM'}</button></div>` : ''}`;
+        <div class="actions" style="justify-content:flex-start;gap:8px;margin-top:12px;">
+          ${String(detail.agreement_id || '').trim() ? `<button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-details-open-agreement="${U.escapeAttr(detail.agreement_id || '')}">Open Agreement</button><button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-details-preview-agreement="${U.escapeAttr(detail.agreement_id || '')}">Preview Agreement</button>` : ''}
+          ${this.canAssignCsm() && !this.isOnboardingClosed(detail) ? `<button class="btn sm" type="button" data-op-details-assign-csm="${U.escapeAttr(detail.id || detail.db_id || detail.onboarding_id || '')}" data-op-agreement-id="${U.escapeAttr(detail.agreement_id || '')}">${(detail.assigned_csm_name || detail.csm_assigned_to) ? 'Change CSM' : 'Assign CSM'}</button>` : ''}
+        </div>`;
       E.operationsOnboardingDetailsModal.classList.add('open');
       E.operationsOnboardingDetailsModal.setAttribute('aria-hidden', 'false');
       if (window.setAppHashRoute && window.buildRecordHashRoute) setAppHashRoute(buildRecordHashRoute('operations_onboarding', detail || {}));
@@ -1303,6 +1307,49 @@ const OperationsOnboarding = {
       UI.toast(`Unable to mark onboarding ${normalizedStatus}: ` + (error?.message || 'Unknown error'));
     }
   },
+  buildDefaultTechnicalAdminMessage(summary = {}, agreementLabel = '') {
+    const safeSummary = summary && typeof summary === 'object' ? summary : {};
+    const label = String(agreementLabel || safeSummary.agreement_number || safeSummary.agreement_id || '').trim() || 'the agreement';
+    const locationText = String(safeSummary.invoiced_location_names || safeSummary.location_names || '').trim();
+    const locationCount = Number(safeSummary.number_of_locations || safeSummary.location_count || 0);
+    if (locationText) {
+      return `Please proceed with the invoiced location${locationCount > 1 ? 's' : ''}: ${locationText}. Agreement ${label}.`;
+    }
+    return `Please proceed with the invoiced location${locationCount > 1 ? 's' : ''}${locationCount ? ` (${locationCount})` : ''} for agreement ${label}.`;
+  },
+  promptTechnicalAdminRequestMessage(defaultMessage = '') {
+    const fallback = String(defaultMessage || 'Please proceed with the invoiced location(s).').trim();
+    if (typeof window === 'undefined' || typeof window.prompt !== 'function') return fallback;
+    const value = window.prompt('Customize the message that will be sent to Technical Admin:', fallback);
+    if (value === null) return null;
+    return String(value || '').trim() || fallback;
+  },
+  async openAgreementRecord(agreementId, { readOnly = true, trigger = null } = {}) {
+    const id = String(agreementId || '').trim();
+    if (!id) return UI.toast('Agreement ID is required.');
+    if (!window.Agreements?.openAgreementFormById) return UI.toast('Agreement module is not available.');
+    if (typeof setActiveView === 'function') setActiveView('agreements');
+    return window.Agreements.openAgreementFormById(id, { readOnly, trigger });
+  },
+  async previewAgreement(agreementId, trigger = null) {
+    const id = String(agreementId || '').trim();
+    if (!id) return UI.toast('Agreement ID is required.');
+    if (!window.Agreements?.previewAgreementHtml) return UI.toast('Agreement preview is not available.');
+    if (trigger) {
+      trigger.dataset.originalLabel = trigger.dataset.originalLabel || trigger.textContent || '';
+      trigger.textContent = 'Loading…';
+      trigger.disabled = true;
+    }
+    try {
+      await window.Agreements.previewAgreementHtml(id);
+    } finally {
+      if (trigger) {
+        trigger.disabled = false;
+        if (trigger.dataset.originalLabel) trigger.textContent = trigger.dataset.originalLabel;
+        delete trigger.dataset.originalLabel;
+      }
+    }
+  },
   async requestTechnicalAdmin(agreementId, onboardingRowId = '') {
     const id = String(agreementId || '').trim();
     if (!id) return UI.toast('Agreement ID is required.');
@@ -1314,16 +1361,17 @@ const OperationsOnboarding = {
     }) || {};
     const agreementLabel = summary.agreement_number || id;
     const existingMessage = String(summary.request_message || summary.technical_request_details || summary.technical_admin_request_message || summary.request_details || '').trim();
-    const locationText = String(summary.invoiced_location_names || summary.location_names || '').trim();
-    const locationCount = Number(summary.number_of_locations || summary.location_count || 0);
-    const message = existingMessage || (locationText
-      ? `Please proceed with the invoiced location${locationCount > 1 ? 's' : ''}: ${locationText}. Agreement ${agreementLabel}.`
-      : `Please proceed with the invoiced location${locationCount > 1 ? 's' : ''}${locationCount ? ` (${locationCount})` : ''} for agreement ${agreementLabel}.`);
+    const defaultMessage = existingMessage || this.buildDefaultTechnicalAdminMessage(summary, agreementLabel);
+    const message = this.promptTechnicalAdminRequestMessage(defaultMessage);
+    if (message === null) return UI.toast('Technical Admin request cancelled.');
     try {
-      await Api.requestAgreementTechnicalAdmin(id, message);
+      await Api.requestAgreementTechnicalAdmin(id, message, { onboardingId: normalizedOnboardingRowId });
       Api.clearApiCache('operations_onboarding:list');
       this.upsertByAgreement(id, {
         request_type: 'Technical Admin',
+        request_message: message,
+        request_details: message,
+        technical_request_details: message,
         technical_admin_request: 'Requested',
         technical_admin_request_message: message
       });
@@ -1380,13 +1428,13 @@ const OperationsOnboarding = {
       E.operationsOnboardingTbody.addEventListener('click', event => {
         const trigger = event.target?.closest?.('button');
         if (!trigger) return;
-        const agreementId = trigger.getAttribute('data-op-agreement-id') || trigger.getAttribute('data-op-open-agreement') || trigger.getAttribute('data-op-technical-admin') || '';
+        const agreementId = trigger.getAttribute('data-op-agreement-id') || trigger.getAttribute('data-op-open-agreement') || trigger.getAttribute('data-op-preview-agreement') || trigger.getAttribute('data-op-technical-admin') || '';
         const actionOnboardingId = trigger.getAttribute('data-op-assign-csm') || trigger.getAttribute('data-op-mark-progress') || trigger.getAttribute('data-op-mark-completed') || '';
         const detailOnboardingId = trigger.getAttribute('data-op-open-details') || '';
         if (trigger.hasAttribute('data-op-open-agreement')) {
-          if (typeof setActiveView === 'function') setActiveView('agreements');
-          return window.Agreements?.openAgreementFormById?.(agreementId, { readOnly: !this.canWrite() });
+          return this.openAgreementRecord(agreementId, { readOnly: !this.canWrite(), trigger });
         }
+        if (trigger.hasAttribute('data-op-preview-agreement')) return this.previewAgreement(agreementId, trigger);
         if (trigger.hasAttribute('data-op-open-details')) return this.openOnboardingDetails(detailOnboardingId, agreementId);
         if (trigger.hasAttribute('data-op-technical-admin')) {
           if (!Permissions.canRequestTechnicalAdmin()) return UI.toast('You do not have permission to create technical requests.');
@@ -1403,6 +1451,10 @@ const OperationsOnboarding = {
     if (E.operationsOnboardingDetailsCloseBtn) E.operationsOnboardingDetailsCloseBtn.addEventListener('click', () => this.closeModal(E.operationsOnboardingDetailsModal));
     if (E.operationsOnboardingDetailsModal)
       E.operationsOnboardingDetailsModal.addEventListener('click', event => {
+        const openAgreementTrigger = event.target?.closest?.('button[data-op-details-open-agreement]');
+        if (openAgreementTrigger) return this.openAgreementRecord(openAgreementTrigger.getAttribute('data-op-details-open-agreement') || '', { readOnly: !this.canWrite(), trigger: openAgreementTrigger });
+        const previewAgreementTrigger = event.target?.closest?.('button[data-op-details-preview-agreement]');
+        if (previewAgreementTrigger) return this.previewAgreement(previewAgreementTrigger.getAttribute('data-op-details-preview-agreement') || '', previewAgreementTrigger);
         const trigger = event.target?.closest?.('button[data-op-details-assign-csm]');
         if (trigger) {
           if (!this.canAssignCsm()) return UI.toast('You do not have permission to assign CSM.');

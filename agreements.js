@@ -1839,8 +1839,14 @@ const Agreements = {
   async requestTechnicalAdminFlow(agreementId) {
     const id = String(agreementId || '').trim();
     if (!id) return UI.toast('Agreement ID is required.');
+    const defaultMessage = `Please proceed with the invoiced location(s) for agreement ${id}.`;
+    const promptedMessage = typeof window !== 'undefined' && typeof window.prompt === 'function'
+      ? window.prompt('Customize the message that will be sent to Technical Admin:', defaultMessage)
+      : defaultMessage;
+    if (promptedMessage === null) return UI.toast('Technical Admin request cancelled.');
+    const message = String(promptedMessage || '').trim() || defaultMessage;
     try {
-      const response = await Api.requestAgreementTechnicalAdmin(id);
+      const response = await Api.requestAgreementTechnicalAdmin(id, message);
       const technicalRequest = this.extractTechnicalRequest(response);
       if (technicalRequest && window.TechnicalAdmin?.upsertLocalRow) {
         TechnicalAdmin.upsertLocalRow(technicalRequest);

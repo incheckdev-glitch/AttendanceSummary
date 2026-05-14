@@ -40,7 +40,7 @@ BEGIN
       AND t.relname = 'operations_onboarding'
       AND c.contype = 'u'
       AND (
-        SELECT array_agg(a.attname ORDER BY u.ord)
+        SELECT array_agg(a.attname::text ORDER BY u.ord)
         FROM unnest(c.conkey) WITH ORDINALITY AS u(attnum, ord)
         JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = u.attnum
       ) = ARRAY['agreement_id']::text[]
@@ -62,7 +62,7 @@ BEGIN
       AND t.relname = 'technical_admin_requests'
       AND c.contype = 'u'
       AND (
-        SELECT array_agg(a.attname ORDER BY u.ord)
+        SELECT array_agg(a.attname::text ORDER BY u.ord)
         FROM unnest(c.conkey) WITH ORDINALITY AS u(attnum, ord)
         JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = u.attnum
       ) = ARRAY['agreement_id']::text[]
