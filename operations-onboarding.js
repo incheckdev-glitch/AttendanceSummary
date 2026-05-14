@@ -1090,7 +1090,7 @@ const OperationsOnboarding = {
             <button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-open-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Open Agreement</button>
             <button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-preview-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Preview Agreement</button>
             <button class="btn ghost sm" type="button" data-op-open-details="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Open Onboarding Details</button>
-            ${canCreateTechnicalRequest ? `<button class="btn ghost sm" type="button" data-op-technical-admin="${agreementId}" data-op-technical-onboarding="${rowDbId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Technical Admin Request</button>` : ''}
+            ${canCreateTechnicalRequest && this.hasInvoiceScope(row) ? `<button class="btn ghost sm" type="button" data-op-technical-admin="${agreementId}" data-op-technical-onboarding="${rowDbId}" ${hasAgreementId && hasRowDbId ? '' : 'disabled title="Agreement or onboarding row ID not available"'}>Technical Admin Request</button>` : ''}
             ${showAssignCsmButton ? `<button class="btn ghost sm" type="button" data-op-assign-csm="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>${assignCsmButtonLabel}</button>` : ''}
             ${canWrite ? `<button class="btn ghost sm" type="button" data-op-mark-progress="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Mark In Progress</button>
             <button class="btn ghost sm" type="button" data-op-mark-completed="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Mark Completed</button>` : ''}
@@ -1139,7 +1139,9 @@ const OperationsOnboarding = {
         sort_dir: 'desc'
       });
       const normalizedResponse = Api.normalizeListResponse(response);
-      this.state.rows = this.extractRows(normalizedResponse).map(row => this.normalizeRow(row));
+      this.state.rows = this.extractRows(normalizedResponse)
+        .map(row => this.normalizeRow(row))
+        .filter(row => this.hasInvoiceScope(row));
       this.state.page = Number(normalizedResponse.page || this.state.page || 1);
       this.state.limit = U.normalizePageSize(normalizedResponse.limit ?? this.state.limit, 50, 200);
       this.state.offset = Number(normalizedResponse.offset ?? Math.max(0, (this.state.page - 1) * this.state.limit));
@@ -1437,10 +1439,16 @@ const OperationsOnboarding = {
     if (!id) return UI.toast('Agreement ID is required.');
     if (!this.canRequestTechnicalAdmin()) return UI.toast('Insufficient permissions.');
     const normalizedOnboardingRowId = String(onboardingRowId || '').trim();
+    if (!normalizedOnboardingRowId) {
+      return UI.toast('Technical Admin request must be created from a specific invoice-scoped Operations Onboarding row.');
+    }
     const summary = this.state.rows.find(row => {
       const rowId = String(row.id || row.db_id || row.onboarding_id || '').trim();
-      return (normalizedOnboardingRowId && rowId === normalizedOnboardingRowId) || (!normalizedOnboardingRowId && String(row.agreement_id || '') === id);
+      return rowId === normalizedOnboardingRowId && String(row.agreement_id || '') === id;
     }) || {};
+    if (!this.hasInvoiceScope(summary)) {
+      return UI.toast('Technical Admin request can only be created for invoiced locations. Create the invoice first.');
+    }
     const agreementLabel = summary.agreement_number || id;
     const existingMessage = String(summary.request_message || summary.technical_request_details || summary.technical_admin_request_message || summary.request_details || '').trim();
     const defaultMessage = existingMessage || this.buildDefaultTechnicalAdminMessage(summary, agreementLabel);

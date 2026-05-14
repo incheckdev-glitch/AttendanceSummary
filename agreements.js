@@ -1839,6 +1839,12 @@ const Agreements = {
   async requestTechnicalAdminFlow(agreementId) {
     const id = String(agreementId || '').trim();
     if (!id) return UI.toast('Agreement ID is required.');
+    UI.toast('Technical Admin requests must be created from the Operations Onboarding invoice row, not directly from a signed agreement. Create the invoice first, then request Technical Admin from the related Operations row.');
+    return;
+  },
+  async requestTechnicalAdminFlowLegacyDisabled(agreementId) {
+    const id = String(agreementId || '').trim();
+    if (!id) return UI.toast('Agreement ID is required.');
     const defaultMessage = `Please proceed with the invoiced location(s) for agreement ${id}.`;
     const promptedMessage = typeof window !== 'undefined' && typeof window.prompt === 'function'
       ? window.prompt('Customize the message that will be sent to Technical Admin:', defaultMessage)
@@ -1866,6 +1872,22 @@ const Agreements = {
   },
   hasValue(value) {
     return hasAgreementValue(value);
+  },
+  hasInvoiceScopedOperationsRow(row = {}) {
+    return Boolean(
+      row?.source_invoice_id ||
+      row?.sourceInvoiceId ||
+      row?.invoice_id ||
+      row?.invoiceId ||
+      row?.source_invoice_number ||
+      row?.sourceInvoiceNumber ||
+      row?.invoice_number ||
+      row?.invoiceNumber ||
+      row?.invoiced_location_names ||
+      row?.invoicedLocationNames ||
+      row?.invoiced_agreement_item_ids ||
+      row?.invoicedAgreementItemIds
+    );
   },
   getAgreementOfficialSignDateValues(agreement = {}) {
     const source = agreement && typeof agreement === 'object' ? agreement : {};

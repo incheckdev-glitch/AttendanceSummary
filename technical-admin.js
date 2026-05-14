@@ -783,7 +783,8 @@ const TechnicalAdmin = {
         sort_dir: 'desc'
       }, { forceRefresh: !!options.force });
       const rows = Api.normalizeListResponse(response)?.rows || [];
-      this.state.rows = (await this.enrichRows(rows)).filter(row => row.id || row.technical_request_id);
+      this.state.rows = (await this.enrichRows(rows))
+        .filter(row => (row.id || row.technical_request_id) && this.hasInvoiceScope(row));
       const normalized = Api.normalizeListResponse(response);
       this.state.page = Number(normalized.page || this.state.page || 1);
       this.state.limit = U.normalizePageSize(normalized.limit ?? this.state.limit, 50, 200);

@@ -655,9 +655,10 @@ const Api = {
     });
   },
   async sendAgreementToOperations(agreementId) {
-    return this.requestWithSession('agreements', 'send_to_operations', {
-      agreement_id: agreementId
-    });
+    // Business rule: signed agreements must never create Operations Onboarding directly.
+    // Operations rows are invoice-batch scoped and are created only from invoice creation.
+    console.info('[Agreement] sendAgreementToOperations blocked; create an invoice for Annual SaaS locations first.', { agreement_id: agreementId });
+    throw new Error('Operations Onboarding is created only when invoiced Annual SaaS locations are saved. Signing an agreement does not send it to Operations.');
   },
   async getAgreementOnboarding(agreementId) {
     return this.requestWithSession('agreements', 'get_onboarding', {
@@ -665,76 +666,12 @@ const Api = {
     });
   },
   async requestAgreementIncheckLite(agreementId) {
-    const payload = {
-      agreement_id: agreementId
-    };
-    try {
-      const response = await this.requestWithSession('agreements', 'request_incheck_lite', payload);
-      await this.safeSendBusinessPwaPush({
-        resource: 'operations_onboarding',
-        action: 'onboarding_request_submitted',
-        recordId: agreementId,
-        title: 'InCheck360 Operations Request',
-        body: 'Operations onboarding request submitted for agreement ' + agreementId + '.',
-        roles: ['admin', 'hoo'],
-        url: agreementId ? '/#operations_onboarding?id=' + encodeURIComponent(agreementId) : '/#operations_onboarding',
-        data: { agreement_id: agreementId, type: 'incheck_lite' }
-      });
-      return response;
-    } catch (error) {
-      if (!isOperationsOnboardingRowMissingError(error)) throw error;
-      await this.saveOperationsOnboarding({
-        agreement_id: agreementId
-      });
-      const response = await this.requestWithSession('agreements', 'request_incheck_lite', payload);
-      await this.safeSendBusinessPwaPush({
-        resource: 'operations_onboarding',
-        action: 'onboarding_request_submitted',
-        recordId: agreementId,
-        title: 'InCheck360 Operations Request',
-        body: 'Operations onboarding request submitted for agreement ' + agreementId + '.',
-        roles: ['admin', 'hoo'],
-        url: agreementId ? '/#operations_onboarding?id=' + encodeURIComponent(agreementId) : '/#operations_onboarding',
-        data: { agreement_id: agreementId, type: 'incheck_lite' }
-      });
-      return response;
-    }
+    console.info('[Agreement] requestAgreementIncheckLite blocked; Operations is invoice-batch scoped.', { agreement_id: agreementId });
+    throw new Error('Operations requests must be created from an invoice-scoped Operations Onboarding row. Create the invoice first.');
   },
   async requestAgreementIncheckFull(agreementId) {
-    const payload = {
-      agreement_id: agreementId
-    };
-    try {
-      const response = await this.requestWithSession('agreements', 'request_incheck_full', payload);
-      await this.safeSendBusinessPwaPush({
-        resource: 'operations_onboarding',
-        action: 'onboarding_request_submitted',
-        recordId: agreementId,
-        title: 'InCheck360 Operations Request',
-        body: 'Operations onboarding request submitted for agreement ' + agreementId + '.',
-        roles: ['admin', 'hoo'],
-        url: agreementId ? '/#operations_onboarding?id=' + encodeURIComponent(agreementId) : '/#operations_onboarding',
-        data: { agreement_id: agreementId, type: 'incheck_full' }
-      });
-      return response;
-    } catch (error) {
-      if (!isOperationsOnboardingRowMissingError(error)) throw error;
-      await this.saveOperationsOnboarding({
-        agreement_id: agreementId
-      });
-      const response = await this.requestWithSession('agreements', 'request_incheck_full', payload);
-      await this.safeSendBusinessPwaPush({
-        resource: 'operations_onboarding',
-        action: 'onboarding_request_submitted',
-        recordId: agreementId,
-        title: 'InCheck360 Operations Request',
-        body: 'Operations onboarding request submitted for agreement ' + agreementId + '.',
-        roles: ['admin', 'hoo'],
-        url: agreementId ? '/#operations_onboarding?id=' + encodeURIComponent(agreementId) : '/#operations_onboarding',
-        data: { agreement_id: agreementId, type: 'incheck_full' }
-      });
-      return response;
-    }
+    console.info('[Agreement] requestAgreementIncheckFull blocked; Operations is invoice-batch scoped.', { agreement_id: agreementId });
+    throw new Error('Operations requests must be created from an invoice-scoped Operations Onboarding row. Create the invoice first.');
   },
   async requestAgreementTechnicalAdmin(agreementId, message = '', options = {}) {
     const normalizedAgreementId = String(agreementId || '').trim();
@@ -759,6 +696,13 @@ const Api = {
       }
       return null;
     };
+    const hasInvoiceScope = row => Boolean(pickFirst(
+      row?.source_invoice_id, row?.sourceInvoiceId, row?.invoice_id, row?.invoiceId,
+      row?.source_invoice_number, row?.sourceInvoiceNumber, row?.invoice_number, row?.invoiceNumber,
+      row?.invoiced_location_names, row?.invoicedLocationNames,
+      row?.invoiced_agreement_item_ids, row?.invoicedAgreementItemIds
+    ));
+
     const isSaasAnnualItem = item => {
       const text = [
         item?.item_name,
@@ -775,7 +719,7 @@ const Api = {
       return text.includes('saas') && text.includes('annual');
     };
 
-    const technicalRequestDetails = String(message || '').trim() || `Please proceed with the following agreement ${normalizedAgreementId}.`;
+    const technicalRequestDetails = String(message || '').trim() || 'Please proceed with the invoiced location(s) for this Operations Onboarding row.';
     const currentUser = (window.Session?.currentUser && typeof window.Session.currentUser === 'object')
       ? window.Session.currentUser
       : {};
@@ -910,20 +854,16 @@ const Api = {
         console.warn('[operations onboarding] unable to resolve requested onboarding row for technical request', { targetOnboardingId, error });
       }
     }
-    if (!existingOnboarding) {
-      const matchingRows = onboardingRows.filter(row => String(row?.agreement_id || '').trim() === normalizedAgreementId);
-      const sortableRows = matchingRows.length ? matchingRows : onboardingRows;
-      const sortedRows = sortableRows.slice().sort((a, b) => {
-        const aTime = new Date(a?.updated_at || a?.created_at || 0).getTime();
-        const bTime = new Date(b?.updated_at || b?.created_at || 0).getTime();
-        return bTime - aTime;
-      });
-      if (sortedRows.length > 1) {
-        console.warn('[operations onboarding] duplicate rows found for agreement_id', normalizedAgreementId, sortedRows);
-      }
-      existingOnboarding = sortedRows[0] || null;
+    if (!targetOnboardingId) {
+      throw new Error('Technical Admin request must be started from the invoice-scoped Operations Onboarding row. Create the invoice first, then click Technical Admin Request from that Operations row.');
     }
-    console.log('[operations onboarding] resolved existing onboarding', existingOnboarding);
+    if (!existingOnboarding) {
+      throw new Error('Unable to find the selected invoice-scoped Operations Onboarding row. Refresh Operations Onboarding and try again.');
+    }
+    if (!hasInvoiceScope(existingOnboarding)) {
+      throw new Error('This Operations Onboarding row is not linked to an invoice batch. Technical Admin can only be requested for invoiced locations.');
+    }
+    console.log('[operations onboarding] resolved invoice-scoped onboarding', existingOnboarding);
 
     const scopedOnboardingCount = existingOnboarding ? parseCount(
       existingOnboarding.number_of_locations,
@@ -973,14 +913,9 @@ const Api = {
       requestFields.technical_request_details = technicalRequestDetails;
     }
 
-    let onboardingRecord;
-    if (existingOnboarding) {
-      const rowId = String(existingOnboarding.id || existingOnboarding.db_id || '').trim();
-      if (!rowId) throw new Error(`Operations onboarding row is missing id for agreement ${normalizedAgreementId}.`);
-      onboardingRecord = await this.updateOperationsOnboarding(rowId, requestFields);
-    } else {
-      onboardingRecord = await this.saveOperationsOnboarding(requestFields);
-    }
+    const rowId = String(existingOnboarding.id || existingOnboarding.db_id || '').trim();
+    if (!rowId) throw new Error(`Operations onboarding row is missing id for agreement ${normalizedAgreementId}.`);
+    const onboardingRecord = await this.updateOperationsOnboarding(rowId, requestFields);
 
     let technicalRequest = null;
     if (this.isMigratedResource('technical_admin_requests')) {
@@ -995,9 +930,7 @@ const Api = {
         if (onboardingIdTokens.length) {
           existingRequest = technicalRows.find(row => onboardingIdTokens.includes(String(row?.onboarding_id || row?.operations_onboarding_id || '').trim())) || null;
         }
-        if (!targetOnboardingId && !existingRequest) {
-          existingRequest = technicalRows.find(row => String(row?.agreement_id || '').trim() === normalizedAgreementId) || technicalRows[0] || null;
-        }
+        // Do not reuse a generic agreement-level technical request. Requests are tied to the invoice-scoped onboarding row.
         const technicalPayload = {
           agreement_id: normalizedAgreementId,
           agreement_number: agreementNumber || null,
