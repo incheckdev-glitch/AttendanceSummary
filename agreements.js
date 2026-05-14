@@ -2525,7 +2525,24 @@ const Agreements = {
     return String(item?.id || item?.agreement_item_id || item?.agreementItemId || item?.source_agreement_item_id || item?.sourceAgreementItemId || item?.item_id || item?.itemId || '').trim();
   },
   getSupabaseClient() {
-    return window.supabaseClient || window.supabase || window.Supabase?.client || null;
+    // Use the configured Supabase browser client first.
+    // window.supabase is usually the SDK namespace when loaded from CDN, not the active client.
+    // Returning the SDK namespace makes agreement signed-document upload/open show
+    // "Supabase Storage is not available" even while other modules work.
+    try {
+      const configuredClient = window.SupabaseClient?.getClient?.();
+      if (configuredClient?.storage?.from && configuredClient?.from) return configuredClient;
+    } catch (_error) {}
+
+    const candidates = [
+      window.supabaseClient,
+      window.Supabase?.client,
+      window.supabase
+    ];
+    for (const candidate of candidates) {
+      if (candidate?.storage?.from && candidate?.from) return candidate;
+    }
+    return null;
   },
   async getActualInvoicedAgreementItemMap(itemIds = []) {
     const ids = [...new Set((Array.isArray(itemIds) ? itemIds : [])
@@ -2833,7 +2850,7 @@ const Agreements = {
     const file = elements.file?.files?.[0];
     if (!file) { UI.toast('Choose a signed agreement document to upload.'); return; }
     const client = this.getSupabaseClient();
-    if (!client?.storage?.from || !client?.from) { UI.toast('Supabase Storage is not available.'); return; }
+    if (!client?.storage?.from || !client?.from) { UI.toast('Supabase Storage is not available for Agreement signed documents. Check Supabase client config and bucket agreement-signed-documents.'); return; }
     const currentUserId = await this.getCurrentUserIdForSignedAgreementDocument(client);
     if (!currentUserId) { UI.toast('Unable to identify the current user. Please log in again.'); return; }
     this.setFormBusy(true);
@@ -2906,7 +2923,7 @@ const Agreements = {
       return;
     }
     const client = this.getSupabaseClient();
-    if (!client?.storage?.from) { UI.toast('Supabase Storage is not available.'); return; }
+    if (!client?.storage?.from) { UI.toast('Supabase Storage is not available for Agreement signed documents. Check Supabase client config and bucket agreement-signed-documents.'); return; }
     this.setFormBusy(true);
     try {
       const { data, error } = await client.storage
