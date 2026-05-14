@@ -74,13 +74,42 @@
     email: 'Info@incheck360.nl'
   });
 
+  function isProposalDiscountApprovalPayload(payload = {}) {
+    const safe = payload && typeof payload === 'object' ? payload : {};
+    const requested = safe.requested_changes && typeof safe.requested_changes === 'object' ? safe.requested_changes : {};
+    const resource = String(
+      safe.resource ||
+      safe.target_workflow_resource ||
+      safe.target_resource ||
+      safe.workflow_resource ||
+      requested.resource ||
+      requested.target_workflow_resource ||
+      ''
+    ).trim().toLowerCase();
+    return ['proposals', 'proposal'].includes(resource) ||
+      Boolean(safe.proposal && typeof safe.proposal === 'object') ||
+      Boolean(requested.proposal && typeof requested.proposal === 'object') ||
+      Array.isArray(safe.items) ||
+      Array.isArray(requested.items) ||
+      hasValue(safe.discount_percent) ||
+      hasValue(safe.requested_discount_percent) ||
+      hasValue(requested.discount_percent) ||
+      hasValue(requested.annual_saas_discount_percent) ||
+      hasValue(requested.one_time_fee_discount_percent);
+  }
+
   function shouldSkipWorkflowForDraftSave({ currentStatus, nextStatus, action, payload } = {}) {
     const current = String(currentStatus ?? payload?.current_status ?? payload?.from_status ?? payload?.record?.status ?? '').trim().toLowerCase();
     const next = String(nextStatus ?? payload?.next_status ?? payload?.requested_status ?? payload?.to_status ?? payload?.status ?? payload?.record?.next_status ?? '').trim().toLowerCase();
     const normalizedAction = String(action || payload?.action || '').trim().toLowerCase();
     const isCreateOrSave = !normalizedAction || ['create', 'save', 'update', 'validate_transition', 'create_workflow_approval', 'create_approval', 'request_approval'].includes(normalizedAction);
     if (next === 'draft' && (current === '' || current === 'draft') && isCreateOrSave) return true;
-    if (current === next) return true;
+    if (current === next) {
+      // Same-status proposal saves still need discount workflow checking.
+      // Example: approved at 15%, edited again in Sent stage to 16% => request a new approval.
+      if (isProposalDiscountApprovalPayload(payload) && current !== 'draft') return false;
+      return true;
+    }
     return false;
   }
 
@@ -4314,7 +4343,7 @@
         currentStatus: rpcPayload.p_current_status,
         nextStatus: rpcPayload.p_next_status,
         action: safePayload.action || 'validate_transition',
-        payload: { ...safePayload, record: rpcPayload.p_record }
+        payload: { ...safePayload, resource: rpcPayload.p_resource, target_workflow_resource: rpcPayload.p_resource, record: rpcPayload.p_record }
       })) {
         return draftWorkflowSkipResult();
       }
@@ -4377,7 +4406,7 @@
         currentStatus: rpcPayload.p_old_status || requestedChangesPayload?.current_status,
         nextStatus: rpcPayload.p_new_status || requestedChangesPayload?.requested_status || requestedChangesPayload?.next_status || requestedChangesPayload?.status,
         action: safePayload.action || requestedChangesPayload?.action || 'create_workflow_approval',
-        payload: { ...requestedChangesPayload, ...safePayload }
+        payload: { ...requestedChangesPayload, ...safePayload, resource: rpcPayload.p_resource, target_workflow_resource: rpcPayload.p_resource }
       })) {
         return draftWorkflowSkipResult();
       }

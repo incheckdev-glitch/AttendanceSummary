@@ -235,6 +235,30 @@ function evaluateProposalDiscountApprovalRequirement(proposal, items, nextStatus
 }
 
 
+function isProposalDiscountApprovalPayload(payload = {}) {
+  const safe = payload && typeof payload === 'object' ? payload : {};
+  const requested = safe.requested_changes && typeof safe.requested_changes === 'object' ? safe.requested_changes : {};
+  const resource = String(
+    safe.resource ||
+    safe.target_workflow_resource ||
+    safe.target_resource ||
+    safe.workflow_resource ||
+    requested.resource ||
+    requested.target_workflow_resource ||
+    ''
+  ).trim().toLowerCase();
+  return ['proposals', 'proposal'].includes(resource) ||
+    Boolean(safe.proposal && typeof safe.proposal === 'object') ||
+    Boolean(requested.proposal && typeof requested.proposal === 'object') ||
+    Array.isArray(safe.items) ||
+    Array.isArray(requested.items) ||
+    hasValue(safe.discount_percent) ||
+    hasValue(safe.requested_discount_percent) ||
+    hasValue(requested.discount_percent) ||
+    hasValue(requested.annual_saas_discount_percent) ||
+    hasValue(requested.one_time_fee_discount_percent);
+}
+
 function shouldSkipWorkflowForDraftSave({ currentStatus, nextStatus, action, payload } = {}) {
   const current = String(currentStatus ?? payload?.current_status ?? payload?.from_status ?? payload?.record?.status ?? '').trim().toLowerCase();
   const next = String(nextStatus ?? payload?.next_status ?? payload?.requested_status ?? payload?.to_status ?? payload?.status ?? payload?.record?.next_status ?? '').trim().toLowerCase();
@@ -246,6 +270,12 @@ function shouldSkipWorkflowForDraftSave({ currentStatus, nextStatus, action, pay
   }
 
   if (current === next) {
+    // Same-status proposal saves still need discount workflow checking.
+    // Example: approved at 15%, edited again in Sent stage to 16% => request a new approval.
+    // Same/lower than the approved baseline will be allowed by evaluateProposalDiscountApproval().
+    if (isProposalDiscountApprovalPayload(payload) && current !== 'draft') {
+      return false;
+    }
     return true;
   }
 
@@ -265,6 +295,7 @@ function draftWorkflowSkipResult() {
 
 const WorkflowEngine = {
   processingRequests: 0,
+  isProposalDiscountApprovalPayload,
   shouldSkipWorkflowForDraftSave,
   draftWorkflowSkipResult,
   beginRequestProcessing(message = 'Processing request…') {
@@ -623,7 +654,7 @@ const WorkflowEngine = {
       currentStatus,
       nextStatus,
       action: safeRequestedChanges.action || 'validate_transition',
-      payload: { ...safeRequestedChanges, record: safeRecord }
+      payload: { ...safeRequestedChanges, resource, target_workflow_resource: resource, record: safeRecord }
     })) {
       return this.draftWorkflowSkipResult();
     }
@@ -668,7 +699,7 @@ const WorkflowEngine = {
         safeRecord.next_status ||
         '',
       action: safeRequestedChanges.action || (safeRequestedChanges.id || safeRecord.id ? 'update' : 'save'),
-      payload: { ...safeRequestedChanges, record: safeRecord }
+      payload: { ...safeRequestedChanges, resource, target_workflow_resource: resource, record: safeRecord }
     })) {
       return this.draftWorkflowSkipResult();
     }

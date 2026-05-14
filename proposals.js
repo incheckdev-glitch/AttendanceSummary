@@ -3926,7 +3926,10 @@ const Proposals = {
     const shouldValidateWorkflow = this.shouldValidateWorkflowBeforeSave({
       proposalId,
       currentStatus,
-      requestedStatus
+      requestedStatus,
+      currentRecord,
+      proposal,
+      items
     });
     if (shouldValidateWorkflow) {
       let workflowCheck = null;
@@ -4311,12 +4314,17 @@ const Proposals = {
       text.includes('undefined is not')
     );
   },
-  shouldValidateWorkflowBeforeSave({ proposalId = '', currentStatus = '', requestedStatus = '' } = {}) {
+  shouldValidateWorkflowBeforeSave({ proposalId = '', currentStatus = '', requestedStatus = '', currentRecord = {}, proposal = {}, items = [] } = {}) {
     const fromStatus = String(currentStatus || '').trim().toLowerCase();
     const toStatus = String(requestedStatus || '').trim().toLowerCase();
     if (!toStatus) return false;
     if (toStatus === 'draft' && (!fromStatus || fromStatus === 'draft')) return false;
-    if (fromStatus === toStatus) return false;
+    if (fromStatus === toStatus) {
+      // Same-stage proposal edits must still pass discount workflow validation.
+      // If approved baseline is 15%, saving 14% is allowed, but saving >15% creates a new approval.
+      if (toStatus && toStatus !== 'draft') return true;
+      return false;
+    }
     return true;
   },
   addRow(section) {
