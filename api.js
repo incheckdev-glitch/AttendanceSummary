@@ -1227,21 +1227,49 @@ const Api = {
       technical_request_id: technicalRequestId
     });
   },
+  async updateTechnicalAdminRequest(technicalRequestId, updates = {}) {
+    const normalizedId = String(technicalRequestId || '').trim();
+    if (!normalizedId) throw new Error('Technical request id is required.');
+    const safeUpdates = updates && typeof updates === 'object' ? { ...updates } : {};
+    delete safeUpdates.id;
+    delete safeUpdates.db_id;
+    delete safeUpdates.record_id;
+    const response = await this.requestWithSession('technical_admin_requests', 'update', {
+      id: normalizedId,
+      technical_request_id: normalizedId,
+      request_id: normalizedId,
+      updates: safeUpdates
+    });
+    const hasStatus = Object.prototype.hasOwnProperty.call(safeUpdates, 'request_status') || Object.prototype.hasOwnProperty.call(safeUpdates, 'technical_request_status');
+    await this.safeSendBusinessPwaPush({
+      resource: 'technical_admin_requests',
+      action: hasStatus ? 'technical_request_status_changed' : 'technical_request_updated',
+      recordId: this.extractBusinessRecordId(response, normalizedId),
+      title: hasStatus ? 'Technical request status changed' : 'Technical request updated',
+      body: 'Technical request ' + normalizedId + ' was updated.',
+      roles: ['admin', 'dev', 'hoo'],
+      url: normalizedId ? '/#technical_admin_requests?id=' + encodeURIComponent(normalizedId) : '/#technical_admin_requests'
+    });
+    return response;
+  },
   async updateTechnicalAdminRequestStatus(technicalRequestId, status, extra = {}) {
+    const normalizedId = String(technicalRequestId || '').trim();
+    if (!normalizedId) throw new Error('Technical request id is required.');
     const response = await this.requestWithSession('technical_admin_requests', 'update_status', {
-      id: technicalRequestId,
-      technical_request_id: technicalRequestId,
+      id: normalizedId,
+      technical_request_id: normalizedId,
+      request_id: normalizedId,
       request_status: status,
       ...(extra && typeof extra === 'object' ? extra : {})
     });
     await this.safeSendBusinessPwaPush({
       resource: 'technical_admin_requests',
       action: 'technical_request_status_changed',
-      recordId: this.extractBusinessRecordId(response, technicalRequestId),
+      recordId: this.extractBusinessRecordId(response, normalizedId),
       title: 'Technical request status changed',
-      body: 'Technical request ' + (technicalRequestId || '') + ' status changed to ' + (status || 'updated') + '.',
+      body: 'Technical request ' + normalizedId + ' status changed to ' + (status || 'updated') + '.',
       roles: ['admin', 'dev', 'hoo'],
-      url: technicalRequestId ? '/#technical_admin_requests?id=' + encodeURIComponent(technicalRequestId) : '/#technical_admin_requests'
+      url: normalizedId ? '/#technical_admin_requests?id=' + encodeURIComponent(normalizedId) : '/#technical_admin_requests'
     });
     return response;
   },

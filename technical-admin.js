@@ -839,10 +839,10 @@ const TechnicalAdmin = {
     let row = this.getRowById(id);
     this.state.activeRequestId = String(row?.id || id).trim();
     try {
-      const response = await Api.getOperationsOnboarding({ id: this.state.activeRequestId });
+      const response = await Api.getTechnicalAdminRequest(this.state.activeRequestId);
       const detail = Api.unwrapApiPayload(response);
-      const detailRow = this.normalizeRow(detail?.onboarding || detail || response || {});
-      if (detailRow.technical_request_id) {
+      const detailRow = this.normalizeRow(detail?.technical_request || detail?.request || detail || response || {});
+      if (detailRow.id || detailRow.technical_request_id) {
         this.upsertLocalRow(detailRow);
         row = detailRow;
         this.state.activeRequestId = String(detailRow.id || this.state.activeRequestId).trim();
@@ -919,24 +919,42 @@ const TechnicalAdmin = {
     const row = this.getRowById(activeId);
     const rowId = String(row?.id || activeId).trim();
     if (!rowId) return;
+    const onboardingId = String(row?.onboarding_id || row?.operations_onboarding_id || '').trim();
+    const agreementId = String(row?.agreement_id || '').trim();
     const nowIso = new Date().toISOString();
     const nextStatus = String(status || '').trim() || 'Requested';
+    const statusPayload = {
+      updated_at: nowIso,
+      completed_at: nextStatus === 'Completed' ? nowIso : null,
+      ...(extra && typeof extra === 'object' ? extra : {})
+    };
     try {
-      const response = await Api.updateOperationsOnboardingAction({
-        onboardingId: rowId,
-        agreementId: String(row?.agreement_id || '').trim(),
-        updates: {
-          technical_request_status: nextStatus,
-          updated_at: nowIso,
-          completed_at: nextStatus === 'Completed' ? nowIso : null,
-          ...(extra && typeof extra === 'object' ? extra : {})
-        }
-      });
+      const response = await Api.updateTechnicalAdminRequestStatus(rowId, nextStatus, statusPayload);
       const payload = Api.unwrapApiPayload(response);
-      const returned = payload?.operations_onboarding || payload?.onboarding || payload;
-      const existing = this.getRowById(rowId) || { id: rowId, technical_request_id: rowId };
-      this.upsertLocalRow({ ...existing, ...(returned && typeof returned === 'object' ? returned : {}), technical_request_status: nextStatus });
-      const labelId = String(this.getRowById(rowId)?.technical_request_id || rowId).trim();
+      const returned = payload?.technical_request || payload?.request || payload;
+      const existing = this.getRowById(rowId) || row || { id: rowId, technical_request_id: rowId };
+      this.upsertLocalRow({
+        ...existing,
+        ...(returned && typeof returned === 'object' ? returned : {}),
+        request_status: nextStatus,
+        technical_request_status: nextStatus,
+        updated_at: nowIso,
+        completed_at: nextStatus === 'Completed' ? nowIso : null
+      });
+      if (onboardingId) {
+        Api.updateOperationsOnboardingAction({
+          onboardingId,
+          agreementId,
+          updates: {
+            technical_request_status: nextStatus,
+            updated_at: nowIso,
+            completed_at: nextStatus === 'Completed' ? nowIso : null
+          }
+        }).catch(syncError => {
+          console.warn('[TechnicalAdmin] unable to sync operations_onboarding technical status', syncError);
+        });
+      }
+      const labelId = String(this.getRowById(rowId)?.technical_request_id || row?.technical_request_id || rowId).trim();
       UI.toast(`Technical request ${labelId} updated to ${nextStatus}.`);
       await this.loadAndRefresh({ force: true });
       if (window.OperationsOnboarding?.loadAndRefresh) {
@@ -959,19 +977,33 @@ const TechnicalAdmin = {
     const row = this.getRowById(activeId);
     const rowId = String(row?.id || activeId).trim();
     if (!rowId) return;
+    const onboardingId = String(row?.onboarding_id || row?.operations_onboarding_id || '').trim();
+    const agreementId = String(row?.agreement_id || '').trim();
     const nowIso = new Date().toISOString();
+    const assigneeText = String(assignee || '').trim();
     try {
-      await Api.updateOperationsOnboardingAction({
-        onboardingId: rowId,
-        agreementId: String(row?.agreement_id || '').trim(),
-        updates: {
-          technical_admin_assigned_to: String(assignee || '').trim(),
-          updated_at: nowIso
-        }
-      });
-      this.upsertLocalRow({ ...(row || { id: rowId }), technical_admin_assigned_to: String(assignee || '').trim(), updated_at: nowIso });
+      const updates = {
+        assigned_to: assigneeText,
+        technical_admin_assigned_to: assigneeText,
+        updated_at: nowIso
+      };
+      await Api.updateTechnicalAdminRequest(rowId, updates);
+      if (onboardingId) {
+        Api.updateOperationsOnboardingAction({
+          onboardingId,
+          agreementId,
+          updates: {
+            technical_admin_assigned_to: assigneeText,
+            updated_at: nowIso
+          }
+        }).catch(syncError => {
+          console.warn('[TechnicalAdmin] unable to sync operations_onboarding assignee', syncError);
+        });
+      }
+      this.upsertLocalRow({ ...(row || { id: rowId }), ...updates, assigned_to_display: assigneeText });
       UI.toast('Technical admin assignee updated.');
       await this.loadAndRefresh({ force: true });
+      if (window.OperationsOnboarding?.loadAndRefresh) await window.OperationsOnboarding.loadAndRefresh({ force: true });
       await this.openDetails(rowId);
     } catch (error) {
       UI.toast('Unable to assign technical admin: ' + (error?.message || 'Unknown error'));
