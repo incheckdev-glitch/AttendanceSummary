@@ -925,6 +925,54 @@ const Api = {
     }
     console.log('[operations onboarding] resolved existing onboarding', existingOnboarding);
 
+    const scopedOnboardingCount = existingOnboarding ? parseCount(
+      existingOnboarding.number_of_locations,
+      existingOnboarding.location_count,
+      existingOnboarding.locations_count
+    ) : null;
+    const scopedInvoicedLocationNames = existingOnboarding ? String(pickFirst(
+      existingOnboarding.invoiced_location_names,
+      existingOnboarding.invoicedLocationNames,
+      existingOnboarding.location_names,
+      existingOnboarding.locationNames
+    ) || '').trim() : '';
+    const scopedInvoicedAgreementItemIds = existingOnboarding ? String(pickFirst(
+      existingOnboarding.invoiced_agreement_item_ids,
+      existingOnboarding.invoicedAgreementItemIds
+    ) || '').trim() : '';
+    const scopedInvoiceId = existingOnboarding ? String(pickFirst(
+      existingOnboarding.source_invoice_id,
+      existingOnboarding.sourceInvoiceId,
+      existingOnboarding.invoice_id,
+      existingOnboarding.invoiceId
+    ) || '').trim() : '';
+    const scopedInvoiceNumber = existingOnboarding ? String(pickFirst(
+      existingOnboarding.source_invoice_number,
+      existingOnboarding.sourceInvoiceNumber,
+      existingOnboarding.invoice_number,
+      existingOnboarding.invoiceNumber
+    ) || '').trim() : '';
+    const scopedServiceStartDate = existingOnboarding ? String(pickFirst(existingOnboarding.service_start_date, existingOnboarding.serviceStartDate) || '').trim() : '';
+    const scopedServiceEndDate = existingOnboarding ? String(pickFirst(existingOnboarding.service_end_date, existingOnboarding.serviceEndDate) || '').trim() : '';
+    if (existingOnboarding) {
+      if (scopedOnboardingCount) {
+        requestFields.number_of_locations = scopedOnboardingCount;
+        requestFields.location_count = scopedOnboardingCount;
+      }
+      if (scopedInvoicedLocationNames) requestFields.invoiced_location_names = scopedInvoicedLocationNames;
+      if (scopedInvoicedAgreementItemIds) requestFields.invoiced_agreement_item_ids = scopedInvoicedAgreementItemIds;
+      if (scopedInvoiceId) requestFields.source_invoice_id = scopedInvoiceId;
+      if (scopedInvoiceNumber) {
+        requestFields.source_invoice_number = scopedInvoiceNumber;
+        requestFields.invoice_number = scopedInvoiceNumber;
+      }
+      if (scopedServiceStartDate) requestFields.service_start_date = scopedServiceStartDate;
+      if (scopedServiceEndDate) requestFields.service_end_date = scopedServiceEndDate;
+      requestFields.request_message = technicalRequestDetails;
+      requestFields.request_details = technicalRequestDetails;
+      requestFields.technical_request_details = technicalRequestDetails;
+    }
+
     let onboardingRecord;
     if (existingOnboarding) {
       const rowId = String(existingOnboarding.id || existingOnboarding.db_id || '').trim();
@@ -955,9 +1003,15 @@ const Api = {
           agreement_number: agreementNumber || null,
           client_id: clientId || null,
           client_name: clientName || null,
-          number_of_locations: locationCount,
-          service_start_date: serviceStartDate || null,
-          service_end_date: serviceEndDate || null,
+          number_of_locations: requestFields.number_of_locations || locationCount,
+          location_count: requestFields.location_count || requestFields.number_of_locations || locationCount,
+          service_start_date: requestFields.service_start_date || serviceStartDate || null,
+          service_end_date: requestFields.service_end_date || serviceEndDate || null,
+          source_invoice_id: requestFields.source_invoice_id || null,
+          source_invoice_number: requestFields.source_invoice_number || null,
+          invoice_number: requestFields.invoice_number || requestFields.source_invoice_number || null,
+          invoiced_location_names: requestFields.invoiced_location_names || null,
+          invoiced_agreement_item_ids: requestFields.invoiced_agreement_item_ids || null,
           billing_frequency: billingFrequency || null,
           payment_term: paymentTerm || null,
           assigned_to: assignedTo || null,

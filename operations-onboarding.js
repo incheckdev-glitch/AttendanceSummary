@@ -98,6 +98,11 @@ const OperationsOnboarding = {
       technical_admin_request: String(this.pick(source.technical_admin_request, source.technicalAdminRequest, source.lite_request, source.liteRequest, source.full_request, source.fullRequest)).trim(),
       technical_admin_request_message: String(this.pick(source.technical_admin_request_message, source.technicalAdminRequestMessage, source.request_message, source.requestMessage)).trim(),
       technical_request_status: String(this.pick(source.technical_request_status, source.technicalRequestStatus)).trim(),
+      invoiced_location_names: String(this.pick(source.invoiced_location_names, source.invoicedLocationNames)).trim(),
+      invoiced_agreement_item_ids: String(this.pick(source.invoiced_agreement_item_ids, source.invoicedAgreementItemIds)).trim(),
+      source_invoice_id: String(this.pick(source.source_invoice_id, source.sourceInvoiceId, source.invoice_id, source.invoiceId)).trim(),
+      source_invoice_number: String(this.pick(source.source_invoice_number, source.sourceInvoiceNumber, source.invoice_number, source.invoiceNumber)).trim(),
+      invoice_number: String(this.pick(source.invoice_number, source.invoiceNumber, source.source_invoice_number, source.sourceInvoiceNumber)).trim(),
       csm_assigned_to: String(this.pick(source.csm_assigned_to, source.csmAssignedTo, source.assigned_csm_name, source.assignedCsmName, source.csm_name, source.csmName, source.assigned_cs_name, source.assignedCsName)).trim(),
       assigned_csm_id: String(this.pick(source.assigned_csm_id, source.assignedCsmId, source.assigned_csm_user_id, source.assignedCsmUserId, source.csm_user_id, source.csmUserId)).trim(),
       assigned_csm_name: String(this.pick(source.assigned_csm_name, source.assignedCsmName, source.csm_assigned_to, source.csmAssignedTo, source.csm_name, source.csmName, source.assigned_cs_name, source.assignedCsName)).trim(),
@@ -393,6 +398,55 @@ const OperationsOnboarding = {
     end.setHours(0, 0, 0, 0);
     return today.getTime() <= end.getTime();
   },
+  splitStoredIds(value = '') {
+    if (Array.isArray(value)) return value.map(item => String(item || '').trim()).filter(Boolean);
+    return String(value || '')
+      .split(/[;,|\n]+/)
+      .map(item => item.trim())
+      .filter(Boolean);
+  },
+  getRowAgreementItemIdSet(row = {}) {
+    const ids = this.splitStoredIds(this.pick(
+      row.invoiced_agreement_item_ids,
+      row.invoicedAgreementItemIds,
+      row.source_agreement_item_ids,
+      row.sourceAgreementItemIds
+    ));
+    return new Set(ids);
+  },
+  filterAgreementItemsForOnboardingRow(row = {}, agreementItems = []) {
+    const scopedIds = this.getRowAgreementItemIdSet(row);
+    const items = Array.isArray(agreementItems) ? agreementItems : [];
+    if (!scopedIds.size) return items;
+    return items.filter(item => {
+      const itemId = String(this.pick(item.id, item.agreement_item_id, item.source_agreement_item_id, item.sourceAgreementItemId)).trim();
+      return itemId && scopedIds.has(itemId);
+    });
+  },
+  getRowLocationCount(row = {}, agreement = {}, agreementItems = []) {
+    const explicit = Number(this.pick(row.number_of_locations, row.location_count, row.locations_count));
+    if (Number.isFinite(explicit) && explicit > 0) return explicit;
+    const scopedItems = this.filterAgreementItemsForOnboardingRow(row, agreementItems);
+    const scopedCount = this.deriveAgreementLocationMetrics(scopedItems).total_locations;
+    if (scopedCount > 0) return scopedCount;
+    return Number(this.pick(agreement.number_of_locations, agreement.locations_count, agreement.location_count)) || 0;
+  },
+  getRowServiceStart(row = {}, agreement = {}, agreementItems = []) {
+    if (row.service_start_date) return row.service_start_date;
+    const scopedItems = this.filterAgreementItemsForOnboardingRow(row, agreementItems);
+    return scopedItems
+      .map(item => String(item.service_start_date || item.serviceStartDate || '').trim())
+      .filter(Boolean)
+      .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0] || agreement.service_start_date || '';
+  },
+  getRowServiceEnd(row = {}, agreement = {}, agreementItems = []) {
+    if (row.service_end_date) return row.service_end_date;
+    const scopedItems = this.filterAgreementItemsForOnboardingRow(row, agreementItems);
+    return scopedItems
+      .map(item => String(item.service_end_date || item.serviceEndDate || '').trim())
+      .filter(Boolean)
+      .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] || agreement.service_end_date || '';
+  },
   deriveAgreementLocationMetrics(agreementItems = []) {
     const safeItems = Array.isArray(agreementItems) ? agreementItems : [];
     const annualItems = safeItems.filter(item => this.isAnnualSaasLocationItem(item));
@@ -429,15 +483,18 @@ const OperationsOnboarding = {
       if (!agreementId) return;
       const agreement = agreementMap.get(agreementId) || {};
       const items = agreementItemsMap.get(agreementId) || [];
-      const locationMetrics = this.deriveAgreementLocationMetrics(items);
+      const scopedItems = this.filterAgreementItemsForOnboardingRow(row, items);
+      const locationMetrics = this.deriveAgreementLocationMetrics(scopedItems);
+      const rowLocationCount = this.getRowLocationCount(row, agreement, items);
+      const rowServiceEnd = this.getRowServiceEnd(row, agreement, items);
       rollup.push({
         agreement_id: agreementId,
         agreement_number: row.agreement_number || agreement.agreement_number || agreementId,
         client_name: row.client_name || agreement.customer_name || 'Unknown Client',
         normalized_client: this.normalizeClientName(row.client_name || agreement.customer_name || 'Unknown Client').key,
-        locations: locationMetrics.total_locations,
-        active_locations: locationMetrics.active_locations,
-        next_renewal_date: locationMetrics.next_renewal_date,
+        locations: rowLocationCount || locationMetrics.total_locations,
+        active_locations: Math.min(rowLocationCount || locationMetrics.active_locations || 0, rowLocationCount || locationMetrics.total_locations || 0),
+        next_renewal_date: rowServiceEnd || locationMetrics.next_renewal_date,
         overdue_renewal_date: locationMetrics.overdue_renewal_date,
         onboarding_status: row.onboarding_status || 'Unknown',
         request_type: this.requestTypeBucket(row.request_type),
@@ -998,9 +1055,9 @@ const OperationsOnboarding = {
       const assignCsmButtonLabel = assignedCsmName ? 'Change CSM' : 'Assign CSM';
       const agreement = this.state.agreementMap.get(row.agreement_id) || {};
       const agreementItems = this.state.agreementItemsMap.get(row.agreement_id) || [];
-      const locationCount = this.deriveAgreementLocationCount(agreement, agreementItems, row);
-      const serviceStart = row.service_start_date || agreement.service_start_date;
-      const serviceEnd = row.service_end_date || agreement.service_end_date;
+      const locationCount = this.getRowLocationCount(row, agreement, agreementItems);
+      const serviceStart = this.getRowServiceStart(row, agreement, agreementItems);
+      const serviceEnd = this.getRowServiceEnd(row, agreement, agreementItems);
       const billingFrequency = row.billing_frequency || agreement.billing_frequency;
       const paymentTerm = row.payment_term || agreement.payment_term;
       return `<tr>
@@ -1094,9 +1151,9 @@ const OperationsOnboarding = {
       const detail = this.normalizeRow(response?.onboarding || response?.item || response?.data || response);
       const agreement = this.state.agreementMap.get(detail.agreement_id) || {};
       const agreementItems = this.state.agreementItemsMap.get(detail.agreement_id) || [];
-      const locations = this.deriveAgreementLocationCount(agreement, agreementItems, detail);
-      const serviceStart = detail.service_start_date || agreement.service_start_date;
-      const serviceEnd = detail.service_end_date || agreement.service_end_date;
+      const locations = this.getRowLocationCount(detail, agreement, agreementItems);
+      const serviceStart = this.getRowServiceStart(detail, agreement, agreementItems);
+      const serviceEnd = this.getRowServiceEnd(detail, agreement, agreementItems);
       const billingFrequency = detail.billing_frequency || agreement.billing_frequency;
       const paymentTerm = detail.payment_term || agreement.payment_term;
       if (!E.operationsOnboardingDetailsContent || !E.operationsOnboardingDetailsModal) return;
@@ -1114,6 +1171,8 @@ const OperationsOnboarding = {
           <div><span class="muted">Billing Frequency:</span> ${U.escapeHtml(billingFrequency || '—')}</div>
           <div><span class="muted">Payment Term:</span> ${U.escapeHtml(paymentTerm || '—')}</div>
           <div><span class="muted">Number of Locations:</span> ${U.escapeHtml(String(locations))}</div>
+          <div><span class="muted">Invoice Number:</span> ${U.escapeHtml(detail.invoice_number || detail.source_invoice_number || '—')}</div>
+          <div style="grid-column:1/-1;"><span class="muted">Invoiced Locations:</span> ${U.escapeHtml(detail.invoiced_location_names || '—')}</div>
           <div><span class="muted">Module Summary:</span> ${U.escapeHtml(detail.module_summary || '—')}</div>
           <div><span class="muted">Requested By:</span> ${U.escapeHtml(detail.requested_by || '—')}</div>
           <div><span class="muted">Requested At:</span> ${U.escapeHtml(this.formatDate(detail.requested_at))}</div>
