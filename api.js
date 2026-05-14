@@ -1061,6 +1061,29 @@ const Api = {
     });
     return response;
   },
+  async saveTechnicalAdminRequest(technicalAdminRequest = {}) {
+    const response = await this.requestWithSession('technical_admin_requests', 'save', {
+      technical_admin_request: technicalAdminRequest
+    });
+    const recordId = this.extractBusinessRecordId(
+      response,
+      technicalAdminRequest?.technical_request_id ||
+        technicalAdminRequest?.request_id ||
+        technicalAdminRequest?.onboarding_id ||
+        technicalAdminRequest?.agreement_id ||
+        ''
+    );
+    await this.safeSendBusinessPwaPush({
+      resource: 'technical_admin_requests',
+      action: 'technical_request_submitted',
+      recordId,
+      title: 'Technical admin request submitted',
+      body: String(technicalAdminRequest?.request_message || technicalAdminRequest?.request_details || technicalAdminRequest?.technical_request_details || 'Technical admin request submitted.').trim(),
+      roles: ['admin', 'dev', 'hoo'],
+      url: recordId ? '/#technical_admin_requests?id=' + encodeURIComponent(recordId) : '/#technical_admin_requests'
+    });
+    return response;
+  },
   async updateOperationsOnboarding(onboardingId, updates = {}) {
     const safeUpdates = updates && typeof updates === 'object' ? { ...updates } : {};
     delete safeUpdates.id;

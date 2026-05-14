@@ -1009,7 +1009,7 @@ const OperationsOnboarding = {
           <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
             <button class="btn ghost sm" type="button" data-op-open-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Preview Agreement</button>
             <button class="btn ghost sm" type="button" data-op-open-details="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Open Onboarding Details</button>
-            ${canCreateTechnicalRequest ? `<button class="btn ghost sm" type="button" data-op-technical-admin="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Technical Admin Request</button>` : ''}
+            ${canCreateTechnicalRequest ? `<button class="btn ghost sm" type="button" data-op-technical-admin="${agreementId}" data-op-technical-onboarding="${rowDbId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Technical Admin Request</button>` : ''}
             ${showAssignCsmButton ? `<button class="btn ghost sm" type="button" data-op-assign-csm="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>${assignCsmButtonLabel}</button>` : ''}
             ${canWrite ? `<button class="btn ghost sm" type="button" data-op-mark-progress="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Mark In Progress</button>
             <button class="btn ghost sm" type="button" data-op-mark-completed="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Mark Completed</button>` : ''}
@@ -1303,13 +1303,22 @@ const OperationsOnboarding = {
       UI.toast(`Unable to mark onboarding ${normalizedStatus}: ` + (error?.message || 'Unknown error'));
     }
   },
-  async requestTechnicalAdmin(agreementId) {
+  async requestTechnicalAdmin(agreementId, onboardingRowId = '') {
     const id = String(agreementId || '').trim();
     if (!id) return UI.toast('Agreement ID is required.');
     if (!this.canRequestTechnicalAdmin()) return UI.toast('Insufficient permissions.');
-    const summary = this.state.rows.find(row => String(row.agreement_id || '') === id) || {};
+    const normalizedOnboardingRowId = String(onboardingRowId || '').trim();
+    const summary = this.state.rows.find(row => {
+      const rowId = String(row.id || row.db_id || row.onboarding_id || '').trim();
+      return (normalizedOnboardingRowId && rowId === normalizedOnboardingRowId) || (!normalizedOnboardingRowId && String(row.agreement_id || '') === id);
+    }) || {};
     const agreementLabel = summary.agreement_number || id;
-    const message = `Please proceed with the following agreement ${agreementLabel}.`;
+    const existingMessage = String(summary.request_message || summary.technical_request_details || summary.technical_admin_request_message || summary.request_details || '').trim();
+    const locationText = String(summary.invoiced_location_names || summary.location_names || '').trim();
+    const locationCount = Number(summary.number_of_locations || summary.location_count || 0);
+    const message = existingMessage || (locationText
+      ? `Please proceed with the invoiced location${locationCount > 1 ? 's' : ''}: ${locationText}. Agreement ${agreementLabel}.`
+      : `Please proceed with the invoiced location${locationCount > 1 ? 's' : ''}${locationCount ? ` (${locationCount})` : ''} for agreement ${agreementLabel}.`);
     try {
       await Api.requestAgreementTechnicalAdmin(id, message);
       Api.clearApiCache('operations_onboarding:list');
@@ -1379,7 +1388,10 @@ const OperationsOnboarding = {
           return window.Agreements?.openAgreementFormById?.(agreementId, { readOnly: !this.canWrite() });
         }
         if (trigger.hasAttribute('data-op-open-details')) return this.openOnboardingDetails(detailOnboardingId, agreementId);
-        if (trigger.hasAttribute('data-op-technical-admin')) { if (!Permissions.canRequestTechnicalAdmin()) return UI.toast('You do not have permission to create technical requests.'); return this.requestTechnicalAdmin(agreementId); }
+        if (trigger.hasAttribute('data-op-technical-admin')) {
+          if (!Permissions.canRequestTechnicalAdmin()) return UI.toast('You do not have permission to create technical requests.');
+          return this.requestTechnicalAdmin(agreementId, trigger.getAttribute('data-op-technical-onboarding') || '');
+        }
         if (trigger.hasAttribute('data-op-assign-csm')) {
           if (!this.canAssignCsm()) return UI.toast('You do not have permission to assign CSM.');
           return this.openAssignCsmModal(actionOnboardingId, agreementId);

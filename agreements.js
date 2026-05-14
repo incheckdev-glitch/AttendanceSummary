@@ -2011,6 +2011,12 @@ const Agreements = {
     const agreementUuid = String(agreementId || agreement.id || '').trim();
     if (!agreementUuid || !this.hasSignedSignal(agreement)) return;
 
+    // Operations onboarding is now invoice-location based.
+    // A signed agreement alone must not create/update Operations rows, because Operations
+    // should only receive the locations that were actually invoiced.
+    console.info('[Agreement] Signed agreement detected; Operations onboarding sync is handled after invoicing invoiced locations only.', { agreement_id: agreementUuid });
+    return;
+
     const onboardingPayload = this.buildOperationsOnboardingFromAgreement(agreement, agreementUuid);
     try {
       const detailResponse = await Api.getOperationsOnboarding({ agreement_id: agreementUuid });

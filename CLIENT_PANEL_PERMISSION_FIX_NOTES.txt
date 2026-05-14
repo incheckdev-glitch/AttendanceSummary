@@ -1,0 +1,19 @@
+CLIENT PANEL PERMISSION FIX
+
+What was fixed:
+- Client panel no longer breaks because of automatic background client sync/total-refresh writes.
+- Background client sync now soft-fails when the current role/RLS cannot update clients.
+- The client panel still renders computed totals in the UI even if totals cannot be persisted by the current role.
+- Signed agreement save is no longer blocked if the agreement can be signed but client sync is blocked by client permissions.
+- Client update calls now use maybeSingle/row-safe handling instead of surfacing the confusing Supabase "Cannot coerce the result to a single JSON object" error.
+- Supabase CRUD update for clients now returns a clear client permission/not-found message instead of the JSON object coercion error.
+
+Included previous fixes:
+- Proposal status requiring approval stays Pending Approval until approved.
+- Proposal HTML preview shows Pending Approval and keeps Draft watermark.
+- Agreement GM/provider signatory 2 can still fill his sign date before the agreement locks.
+- Agreement status stays Sent until all required sign dates are completed, then becomes Signed.
+- Invoice payment term is copied automatically and locked like proposal/agreement terms.
+
+Optional SQL:
+- Run CLIENT_PANEL_PERMISSION_FIX.sql only if Supabase RLS still blocks roles that already have clients:update/manage in Role Permissions.

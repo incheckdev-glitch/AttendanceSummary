@@ -2651,6 +2651,215 @@ const Invoices = {
     this.syncPaymentConclusion(summary);
     this.renderAgreementLocationSelection();
   },
+  pickFirstOperationValue(...values) {
+    for (const value of values) {
+      if (value === undefined || value === null) continue;
+      if (typeof value === 'number' && Number.isFinite(value)) return value;
+      if (String(value).trim() !== '') return value;
+    }
+    return '';
+  },
+  generateOperationsBatchId(prefix = 'OP') {
+    const now = new Date();
+    const stamp = now.toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
+    const random = Math.random().toString(36).slice(2, 7).toUpperCase();
+    return `${prefix}-${stamp}-${random}`;
+  },
+  getCurrentUserRequestLabel() {
+    const currentUser = (window.Session?.currentUser && typeof window.Session.currentUser === 'object')
+      ? window.Session.currentUser
+      : {};
+    return String(
+      currentUser.name ||
+      currentUser.full_name ||
+      currentUser.email ||
+      currentUser.user_id ||
+      currentUser.id ||
+      (typeof window.Session?.userId === 'function' ? window.Session.userId() : '') ||
+      ''
+    ).trim();
+  },
+  getUniqueTextList(values = []) {
+    const out = [];
+    const seen = new Set();
+    (Array.isArray(values) ? values : []).forEach(value => {
+      const text = String(value || '').trim();
+      if (!text) return;
+      const key = text.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push(text);
+    });
+    return out;
+  },
+  getInvoiceOperationLocationLabel(item = {}, index = 0) {
+    return String(
+      item.location_name ||
+      item.locationName ||
+      item.default_location_name ||
+      item.defaultLocationName ||
+      item.item_name ||
+      item.itemName ||
+      `Location ${index + 1}`
+    ).trim();
+  },
+  getInvoicedAgreementLocationItems(items = [], selectedAgreementItemIds = []) {
+    const selectedIds = new Set((Array.isArray(selectedAgreementItemIds) ? selectedAgreementItemIds : [])
+      .map(value => String(value || '').trim())
+      .filter(Boolean));
+    const normalizedItems = Array.isArray(items) ? items : [];
+    return normalizedItems.filter(item => {
+      if (!this.isSubscriptionSection(item?.section)) return false;
+      const sourceId = String(item?.source_agreement_item_id || item?.sourceAgreementItemId || item?.id || '').trim();
+      return !selectedIds.size || (sourceId && selectedIds.has(sourceId));
+    });
+  },
+  getOperationServiceDate(items = [], field = 'service_start_date', direction = 'asc') {
+    const dates = (Array.isArray(items) ? items : [])
+      .map(item => this.normalizeDateInputValue(item?.[field] || ''))
+      .filter(Boolean)
+      .sort((a, b) => {
+        const aTime = new Date(a).getTime();
+        const bTime = new Date(b).getTime();
+        return direction === 'desc' ? bTime - aTime : aTime - bTime;
+      });
+    return dates[0] || '';
+  },
+  buildInvoiceOperationsTechnicalSeed(invoice = {}, persistedInvoice = {}, items = [], selectedAgreementItemIds = []) {
+    const sourceInvoice = { ...(invoice || {}), ...(persistedInvoice || {}) };
+    const selectedAgreement = this.state.selectedAgreement || {};
+    const selectedCompany = this.state.selectedCompany || {};
+    const locationItems = this.getInvoicedAgreementLocationItems(items, selectedAgreementItemIds);
+    const locationNames = this.getUniqueTextList(locationItems.map((item, index) => this.getInvoiceOperationLocationLabel(item, index)));
+    if (!locationNames.length) return null;
+
+    const agreementUuid = String(
+      sourceInvoice.agreement_uuid ||
+      selectedAgreement.id ||
+      selectedAgreement.uuid ||
+      selectedAgreement.agreement_uuid ||
+      selectedAgreement.agreementUuid ||
+      this.state.form?.agreementUuid ||
+      ''
+    ).trim();
+    const agreementNumber = String(this.pickFirstOperationValue(
+      sourceInvoice.agreement_number,
+      sourceInvoice.agreement_id,
+      selectedAgreement.agreement_number,
+      selectedAgreement.agreementNumber,
+      selectedAgreement.agreement_id,
+      selectedAgreement.agreementId
+    )).trim();
+    const invoiceUuid = String(sourceInvoice.id || sourceInvoice.invoice_uuid || '').trim();
+    const invoiceDisplay = String(this.pickFirstOperationValue(
+      sourceInvoice.invoice_number,
+      sourceInvoice.invoice_id,
+      invoiceUuid
+    )).trim();
+    const clientName = String(this.pickFirstOperationValue(
+      sourceInvoice.customer_legal_name,
+      sourceInvoice.customer_name,
+      sourceInvoice.company_name,
+      selectedCompany.legal_name,
+      selectedCompany.company_name,
+      selectedAgreement.customer_legal_name,
+      selectedAgreement.customer_name
+    )).trim();
+    const requestedAt = new Date().toISOString();
+    const requestedBy = this.getCurrentUserRequestLabel();
+    const locationText = locationNames.join(', ');
+    const message = `Please proceed with the invoiced location${locationNames.length > 1 ? 's' : ''}: ${locationText}. Invoice ${invoiceDisplay || 'created'}${agreementNumber ? ` under Agreement ${agreementNumber}` : ''}.`;
+    const sourceAgreementItemIds = this.getUniqueTextList(locationItems.map(item => String(item?.source_agreement_item_id || item?.sourceAgreementItemId || item?.id || '').trim()));
+    const onboardingId = this.generateOperationsBatchId('OP');
+
+    const shared = {
+      agreement_id: agreementUuid || null,
+      agreement_number: agreementNumber || null,
+      client_id: String(sourceInvoice.client_id || selectedCompany.id || selectedCompany.company_id || selectedAgreement.client_id || '').trim() || null,
+      client_name: clientName || null,
+      location_count: locationNames.length,
+      number_of_locations: locationNames.length,
+      service_start_date: this.getOperationServiceDate(locationItems, 'service_start_date', 'asc') || null,
+      service_end_date: this.getOperationServiceDate(locationItems, 'service_end_date', 'desc') || null,
+      billing_frequency: String(sourceInvoice.billing_frequency || selectedAgreement.billing_frequency || '').trim() || null,
+      payment_term: this.normalizePaymentTerm(sourceInvoice.payment_term || selectedAgreement.payment_term || selectedAgreement.payment_terms || 'Net 30'),
+      source_invoice_id: invoiceUuid || null,
+      invoice_id: invoiceUuid || null,
+      source_invoice_number: invoiceDisplay || null,
+      invoice_number: invoiceDisplay || null,
+      invoiced_location_names: locationText,
+      invoiced_agreement_item_ids: sourceAgreementItemIds.join(', '),
+      request_type: 'Technical Admin',
+      technical_request_type: 'Technical Admin',
+      request_message: message,
+      request_details: message,
+      technical_request_details: message,
+      request_status: 'Requested',
+      technical_request_status: 'Requested',
+      requested_by: requestedBy || null,
+      requested_at: requestedAt,
+      notes: message
+    };
+
+    return {
+      onboarding_id: onboardingId,
+      message,
+      locations: locationNames,
+      operationPayload: {
+        ...shared,
+        onboarding_id: onboardingId,
+        onboarding_status: 'Pending',
+        agreement_status: String(selectedAgreement.status || sourceInvoice.agreement_status || 'Signed').trim() || 'Signed'
+      },
+      technicalPayload: {
+        ...shared,
+        onboarding_id: null,
+        technical_request_id: this.generateOperationsBatchId('TA'),
+        request_title: `Technical Admin - ${invoiceDisplay || agreementNumber || locationText}`,
+        priority: 'High',
+        module_summary: `Invoiced locations: ${locationText}`
+      }
+    };
+  },
+  async createOperationsAndTechnicalForInvoicedLocations(invoice = {}, persistedInvoice = {}, items = [], selectedAgreementItemIds = []) {
+    const seed = this.buildInvoiceOperationsTechnicalSeed(invoice, persistedInvoice, items, selectedAgreementItemIds);
+    if (!seed) {
+      console.info('[Invoice] No invoiced Annual SaaS locations found; Operations/Technical request was not created.');
+      return null;
+    }
+    let onboardingRecord = null;
+    try {
+      const onboardingResponse = await Api.saveOperationsOnboarding(seed.operationPayload);
+      onboardingRecord = Api.unwrapApiPayload?.(onboardingResponse) || onboardingResponse || null;
+      const onboardingId = String(onboardingRecord?.id || onboardingRecord?.onboarding_id || seed.onboarding_id || '').trim();
+      seed.technicalPayload.onboarding_id = onboardingId || seed.onboarding_id;
+    } catch (error) {
+      console.warn('[Invoice] Unable to create Operations onboarding row for invoiced locations.', error);
+      UI.toast('Invoice created, but Operations onboarding row was not created: ' + (error?.message || 'Unknown error'));
+      return null;
+    }
+
+    try {
+      if (typeof Api.saveTechnicalAdminRequest === 'function') {
+        await Api.saveTechnicalAdminRequest(seed.technicalPayload);
+      } else {
+        await Api.requestWithSession('technical_admin_requests', 'save', { technical_admin_request: seed.technicalPayload });
+      }
+    } catch (error) {
+      console.warn('[Invoice] Unable to create Technical Admin request for invoiced locations.', error);
+      UI.toast('Operations row created, but Technical Admin request was not created: ' + (error?.message || 'Unknown error'));
+    }
+
+    if (window.OperationsOnboarding?.loadAndRefresh) {
+      Api.clearApiCache?.('operations_onboarding:list');
+      window.OperationsOnboarding.loadAndRefresh({ force: true }).catch(error => console.warn('[Invoice] Operations refresh failed after invoiced-location request.', error));
+    }
+    if (window.TechnicalAdmin?.loadAndRefresh) {
+      Api.clearApiCache?.('technical_admin_requests:list');
+      window.TechnicalAdmin.loadAndRefresh({ force: true }).catch(error => console.warn('[Invoice] Technical Admin refresh failed after invoiced-location request.', error));
+    }
+    return seed;
+  },
   async markSelectedAgreementItemsInvoiced(invoiceId, itemIds = []) {
     const ids = [...new Set((Array.isArray(itemIds) ? itemIds : []).map(id => String(id || '').trim()).filter(Boolean))];
     const id = String(invoiceId || '').trim();
@@ -3056,6 +3265,12 @@ const Invoices = {
         });
         if (agreementSelectionActive) {
           await this.markSelectedAgreementItemsInvoiced(normalized.id, selectedAgreementItemIds);
+          await this.createOperationsAndTechnicalForInvoicedLocations(
+            normalizedInvoice,
+            normalized,
+            items,
+            selectedAgreementItemIds
+          );
         }
       }
       this.setCachedDetail(normalized?.id || id, persisted, persistedItems);

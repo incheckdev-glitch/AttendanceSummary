@@ -1,0 +1,19 @@
+Fix included:
+
+1. Signed agreements no longer create/update Operations Onboarding rows by themselves.
+2. Operations Onboarding is now created only after invoice creation from an agreement with selected Annual SaaS locations.
+3. Each invoice batch creates a new Operations row for the selected invoiced location(s).
+4. Each invoice batch creates/feeds a Technical Admin request message that says:
+   "Please proceed with the invoiced location(s): ..."
+5. If the same agreement has more locations invoiced later, another Operations row and Technical Admin request are created for the new locations.
+6. Existing previous fixes are still included:
+   - Proposal pending approval status + Draft watermark.
+   - Agreement GM sign-date locking fix.
+   - Invoice payment term automatic + locked.
+   - Client panel permission/background sync fix.
+
+Optional SQL:
+Run INVOICED_LOCATION_OPERATIONS_TECHNICAL_FIX.sql if:
+- The second invoiced batch for the same agreement is blocked by a duplicate agreement_id constraint.
+- The invoice creator role cannot create Operations/Technical rows.
+- You want source invoice/location tracking columns stored in Supabase.
