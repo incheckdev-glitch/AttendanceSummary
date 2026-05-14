@@ -809,6 +809,45 @@ const OperationsOnboarding = {
       })
     );
   },
+  applyAgreementFallbacks(row = {}, agreement = {}) {
+    const safeRow = row && typeof row === 'object' ? row : {};
+    const safeAgreement = agreement && typeof agreement === 'object' ? agreement : {};
+    return {
+      ...safeRow,
+      agreement_number: String(this.pick(
+        safeRow.agreement_number, safeRow.agreementNumber,
+        safeAgreement.agreement_number, safeAgreement.agreementNumber, safeAgreement.number, safeAgreement.agreement_code
+      )).trim(),
+      client_id: String(this.pick(
+        safeRow.client_id, safeRow.clientId,
+        safeAgreement.client_id, safeAgreement.clientId, safeAgreement.customer_id, safeAgreement.customerId, safeAgreement.company_id, safeAgreement.companyId
+      )).trim(),
+      client_name: String(this.pick(
+        safeRow.client_name, safeRow.clientName, safeRow.customer_name, safeRow.customerName,
+        safeAgreement.client_name, safeAgreement.clientName, safeAgreement.customer_legal_name, safeAgreement.customerLegalName,
+        safeAgreement.customer_name, safeAgreement.customerName, safeAgreement.company_name, safeAgreement.companyName
+      )).trim(),
+      agreement_status: String(this.pick(
+        safeRow.agreement_status, safeRow.agreementStatus, safeAgreement.status, safeAgreement.agreement_status, safeAgreement.agreementStatus
+      )).trim(),
+      signed_date: String(this.pick(
+        safeRow.signed_date, safeRow.signedDate,
+        safeAgreement.signed_date, safeAgreement.signedDate, safeAgreement.customer_sign_date, safeAgreement.customerSignDate,
+        safeAgreement.customer_official_sign_date, safeAgreement.customerOfficialSignDate
+      )).trim(),
+      billing_frequency: String(this.pick(safeRow.billing_frequency, safeRow.billingFrequency, safeAgreement.billing_frequency, safeAgreement.billingFrequency)).trim(),
+      payment_term: String(this.pick(safeRow.payment_term, safeRow.paymentTerm, safeAgreement.payment_term, safeAgreement.paymentTerm, safeAgreement.payment_terms, safeAgreement.paymentTerms)).trim(),
+      service_start_date: String(this.pick(safeRow.service_start_date, safeRow.serviceStartDate, safeAgreement.service_start_date, safeAgreement.serviceStartDate)).trim(),
+      service_end_date: String(this.pick(safeRow.service_end_date, safeRow.serviceEndDate, safeAgreement.service_end_date, safeAgreement.serviceEndDate)).trim()
+    };
+  },
+  applyAgreementFallbacksToRows(rows = []) {
+    return (Array.isArray(rows) ? rows : []).map(row => {
+      const agreementId = String(row?.agreement_id || '').trim();
+      const agreement = agreementId ? (this.state.agreementMap.get(agreementId) || {}) : {};
+      return this.applyAgreementFallbacks(row, agreement);
+    });
+  },
   renderFilters() {
     const buildOptions = values => ['All', ...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b));
     const fill = (el, options, selected) => {
@@ -1077,15 +1116,16 @@ const OperationsOnboarding = {
       const showAssignCsmButton = canAssignCsm && !this.isOnboardingClosed(row);
       const assignCsmButtonLabel = assignedCsmName ? 'Change CSM' : 'Assign CSM';
       const agreement = this.state.agreementMap.get(row.agreement_id) || {};
+      const displayRow = this.applyAgreementFallbacks(row, agreement);
       const agreementItems = this.state.agreementItemsMap.get(row.agreement_id) || [];
-      const locationCount = this.getRowLocationCount(row, agreement, agreementItems);
-      const serviceStart = this.getRowServiceStart(row, agreement, agreementItems);
-      const serviceEnd = this.getRowServiceEnd(row, agreement, agreementItems);
-      const billingFrequency = row.billing_frequency || agreement.billing_frequency;
-      const paymentTerm = row.payment_term || agreement.payment_term;
+      const locationCount = this.getRowLocationCount(displayRow, agreement, agreementItems);
+      const serviceStart = this.getRowServiceStart(displayRow, agreement, agreementItems);
+      const serviceEnd = this.getRowServiceEnd(displayRow, agreement, agreementItems);
+      const billingFrequency = displayRow.billing_frequency || agreement.billing_frequency;
+      const paymentTerm = displayRow.payment_term || agreement.payment_term;
       return `<tr>
-          <td>${onboardingLabel}</td><td>${text(row.agreement_id)}</td><td>${text(row.agreement_number)}</td><td>${text(row.client_name)}</td><td>${text(this.formatDate(row.signed_date))}</td><td>${text(row.onboarding_status)}</td>
-          <td>${text(row.request_type || row.technical_request_type)}</td><td>${text(row.requested_by)}</td><td>${text(this.formatDate(row.requested_at))}</td><td>${text(row.technical_request_status || row.technical_admin_request)}</td><td>${text(row.request_message || row.technical_request_details || row.technical_admin_request_message)}</td><td><strong>${text(assignedCsmName || 'Unassigned')}</strong>${row.assigned_csm_email ? `<div class="muted">${U.escapeHtml(row.assigned_csm_email)}</div>` : ''}</td><td>${text(locationCount)}</td><td>${text(this.formatDate(serviceStart))}</td><td>${text(this.formatDate(serviceEnd))}</td><td>${text(billingFrequency)}</td><td>${text(paymentTerm)}</td><td>${text(this.formatDate(row.updated_at))}</td>
+          <td>${onboardingLabel}</td><td>${text(displayRow.agreement_id)}</td><td>${text(displayRow.agreement_number)}</td><td>${text(displayRow.client_name)}</td><td>${text(this.formatDate(displayRow.signed_date))}</td><td>${text(displayRow.onboarding_status)}</td>
+          <td>${text(displayRow.request_type || displayRow.technical_request_type)}</td><td>${text(displayRow.requested_by)}</td><td>${text(this.formatDate(displayRow.requested_at))}</td><td>${text(displayRow.technical_request_status || displayRow.technical_admin_request)}</td><td>${text(displayRow.request_message || displayRow.technical_request_details || displayRow.technical_admin_request_message)}</td><td><strong>${text(assignedCsmName || 'Unassigned')}</strong>${displayRow.assigned_csm_email ? `<div class="muted">${U.escapeHtml(displayRow.assigned_csm_email)}</div>` : ''}</td><td>${text(locationCount)}</td><td>${text(this.formatDate(serviceStart))}</td><td>${text(this.formatDate(serviceEnd))}</td><td>${text(billingFrequency)}</td><td>${text(paymentTerm)}</td><td>${text(this.formatDate(displayRow.updated_at))}</td>
           <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
             <button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-open-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Open Agreement</button>
             <button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-preview-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Preview Agreement</button>
@@ -1146,6 +1186,7 @@ const OperationsOnboarding = {
       this.state.returned = Number(normalizedResponse.returned ?? this.state.rows.length);
       this.state.hasMore = Boolean(normalizedResponse.hasMore);
       await this.hydrateAgreementData(this.state.rows);
+      this.state.rows = this.applyAgreementFallbacksToRows(this.state.rows);
       this.state.loaded = true;
     } catch (error) {
       this.state.rows = [];
@@ -1189,8 +1230,12 @@ const OperationsOnboarding = {
       const rowDbId = String(onboardingId || '').trim();
       console.log('[operations onboarding] open details id', rowDbId);
       const response = await Api.getOperationsOnboarding(rowDbId ? { id: rowDbId } : { agreement_id: agreementId });
-      const detail = this.normalizeRow(response?.onboarding || response?.item || response?.data || response);
+      let detail = this.normalizeRow(response?.onboarding || response?.item || response?.data || response);
+      if (detail.agreement_id && !this.state.agreementMap.has(detail.agreement_id)) {
+        await this.hydrateAgreementData([detail]);
+      }
       const agreement = this.state.agreementMap.get(detail.agreement_id) || {};
+      detail = this.applyAgreementFallbacks(detail, agreement);
       const agreementItems = this.state.agreementItemsMap.get(detail.agreement_id) || [];
       const locations = this.getRowLocationCount(detail, agreement, agreementItems);
       const serviceStart = this.getRowServiceStart(detail, agreement, agreementItems);

@@ -571,7 +571,10 @@
     ]),
     operations_onboarding: new Set([
       'id', 'onboarding_id', 'agreement_id', 'agreement_number', 'client_id', 'client_name',
-      'onboarding_status', 'request_type', 'technical_request_type', 'technical_request_status',
+      'onboarding_status', 'request_type', 'request_status', 'request_message', 'request_details',
+      'technical_request_type', 'technical_request_status', 'technical_request_details',
+      'source_invoice_id', 'invoice_id', 'source_invoice_number', 'invoice_number',
+      'invoiced_location_names', 'invoiced_agreement_item_ids', 'location_count', 'number_of_locations',
       'requested_by', 'requested_at', 'csm_assigned_to', 'go_live_target_date', 'go_live_date', 'go_live_at', 'completed_at', 'updated_at', 'created_at'
     ]),
     proposal_catalog: new Set([
@@ -619,7 +622,10 @@
       'agreement_id','agreement_number','onboarding_id','client_id','client_name',
       'request_type','request_title','request_message','request_details','request_status',
       'technical_request_type','technical_request_details','technical_request_status',
-      'priority','location_count','service_start_date','service_end_date','billing_frequency','payment_term',
+      'priority','location_count','number_of_locations','locations_count',
+      'source_invoice_id','invoice_id','source_invoice_number','invoice_number',
+      'invoiced_location_names','invoiced_agreement_item_ids',
+      'service_start_date','service_end_date','billing_frequency','payment_term',
       'module_summary','agreement_status','requested_by','requested_at',
       'technical_admin_assigned_to','started_at','completed_at','updated_by','updated_at','notes',
       'created_at'
@@ -632,7 +638,7 @@
   };
   const LIST_SEARCH_COLUMNS_BY_RESOURCE = {
     agreements: ['agreement_id', 'agreement_number', 'agreement_title', 'customer_name', 'customer_legal_name', 'customer_contact_name', 'status'],
-    operations_onboarding: ['onboarding_id', 'agreement_id', 'agreement_number', 'client_name', 'request_type', 'technical_request_status', 'csm_assigned_to', 'go_live_target_date'],
+    operations_onboarding: ['onboarding_id', 'agreement_id', 'agreement_number', 'client_name', 'request_type', 'request_status', 'technical_request_status', 'invoice_number', 'source_invoice_number', 'invoiced_location_names', 'csm_assigned_to', 'go_live_target_date'],
     technical_admin_requests: ['request_id', 'technical_request_id', 'agreement_id', 'agreement_number', 'client_name', 'request_status', 'request_message', 'request_details']
   };
   const UUID_COLUMNS_BY_TABLE = {
@@ -5788,48 +5794,107 @@
       ).trim();
       const agreementId = String(dbFilters.agreement_id ?? controls.agreement_id ?? '').trim();
 
+      const applyTechnicalFilters = queryBase => {
+        let query = queryBase;
+        if (agreementId) query = query.eq('agreement_id', agreementId);
+        if (statusValue) {
+          const normalizedStatus = statusValue.toLowerCase().replace(/[\s-]+/g, '_');
+          const statusMap = {
+            requested: ['Requested', 'requested', 'Pending', 'pending'],
+            pending: ['Pending', 'pending', 'Requested', 'requested'],
+            in_progress: ['In Progress', 'in_progress', 'In progress', 'in progress'],
+            completed: ['Completed', 'completed'],
+            cancelled: ['Cancelled', 'cancelled', 'Canceled', 'canceled']
+          };
+          const allowedStatuses = statusMap[normalizedStatus];
+          // Saved technical_admin_requests rows always populate request_status.
+          // Avoid PostgREST .or(...in.(In Progress)) parsing issues by filtering the canonical column.
+          if (allowedStatuses) query = query.in('request_status', allowedStatuses);
+          else query = query.eq('request_status', statusValue);
+        }
+        const searchTerm = String(controls.search ?? controls.q ?? '').trim();
+        if (searchTerm) {
+          const safeSearch = searchTerm.replace(/[%]/g, '').replace(/[,]/g, ' ');
+          query = query.or([
+            `request_id.ilike.%${safeSearch}%`,
+            `technical_request_id.ilike.%${safeSearch}%`,
+            `agreement_id.ilike.%${safeSearch}%`,
+            `agreement_number.ilike.%${safeSearch}%`,
+            `client_name.ilike.%${safeSearch}%`,
+            `request_type.ilike.%${safeSearch}%`,
+            `technical_request_type.ilike.%${safeSearch}%`,
+            `request_status.ilike.%${safeSearch}%`,
+            `technical_request_status.ilike.%${safeSearch}%`,
+            `request_message.ilike.%${safeSearch}%`,
+            `request_details.ilike.%${safeSearch}%`,
+            `technical_request_details.ilike.%${safeSearch}%`
+          ].join(','));
+        }
+        return query;
+      };
+
       let query = client
-        .from('operations_onboarding')
-        .select('*', { count: 'exact' })
-        .or('technical_request_type.not.is.null,technical_request_status.not.is.null');
-
-      if (agreementId) query = query.eq('agreement_id', agreementId);
-      if (statusValue) {
-        const normalizedStatus = statusValue.toLowerCase().replace(/[\s-]+/g, '_');
-        const statusMap = {
-          requested: ['Requested', 'requested', 'Pending', 'pending'],
-          pending: ['Pending', 'pending', 'Requested', 'requested'],
-          in_progress: ['In Progress', 'in_progress', 'In progress', 'in progress'],
-          completed: ['Completed', 'completed'],
-          cancelled: ['Cancelled', 'cancelled', 'Canceled', 'canceled']
-        };
-        const allowedStatuses = statusMap[normalizedStatus];
-        if (allowedStatuses) query = query.in('technical_request_status', allowedStatuses);
-        else query = query.eq('technical_request_status', statusValue);
-      }
-
-      const searchTerm = String(controls.search ?? controls.q ?? '').trim();
-      if (searchTerm) {
-        const safeSearch = searchTerm.replace(/[%]/g, '').replace(/[,]/g, ' ');
-        query = query.or([
-          `onboarding_id.ilike.%${safeSearch}%`,
-          `agreement_id.ilike.%${safeSearch}%`,
-          `agreement_number.ilike.%${safeSearch}%`,
-          `client_name.ilike.%${safeSearch}%`,
-          `technical_request_type.ilike.%${safeSearch}%`,
-          `technical_request_status.ilike.%${safeSearch}%`,
-          `technical_request_details.ilike.%${safeSearch}%`
-        ].join(','));
-      }
-
-      query = query
+        .from('technical_admin_requests')
+        .select('*', { count: 'exact' });
+      query = applyTechnicalFilters(query)
         .order('requested_at', { ascending: false, nullsFirst: false })
         .order('updated_at', { ascending: false, nullsFirst: false })
         .range(listControls.from, listControls.to);
-      const { data, error, count } = await query;
-      if (error) throw friendlyError('Unable to load technical_admin_requests', error);
+
+      let { data, error, count } = await query;
+      if (error) {
+        console.warn('[technical_admin_requests:list] direct table list failed; falling back to operations_onboarding embedded rows', error);
+        let fallbackQuery = client
+          .from('operations_onboarding')
+          .select('*', { count: 'exact' })
+          .or('technical_request_type.not.is.null,technical_request_status.not.is.null,request_message.not.is.null,technical_request_details.not.is.null');
+        if (agreementId) fallbackQuery = fallbackQuery.eq('agreement_id', agreementId);
+        if (statusValue) {
+          const normalizedStatus = statusValue.toLowerCase().replace(/[\s-]+/g, '_');
+          const statusMap = {
+            requested: ['Requested', 'requested', 'Pending', 'pending'],
+            pending: ['Pending', 'pending', 'Requested', 'requested'],
+            in_progress: ['In Progress', 'in_progress', 'In progress', 'in progress'],
+            completed: ['Completed', 'completed'],
+            cancelled: ['Cancelled', 'cancelled', 'Canceled', 'canceled']
+          };
+          const allowedStatuses = statusMap[normalizedStatus];
+          if (allowedStatuses) fallbackQuery = fallbackQuery.in('technical_request_status', allowedStatuses);
+          else fallbackQuery = fallbackQuery.eq('technical_request_status', statusValue);
+        }
+        const searchTerm = String(controls.search ?? controls.q ?? '').trim();
+        if (searchTerm) {
+          const safeSearch = searchTerm.replace(/[%]/g, '').replace(/[,]/g, ' ');
+          fallbackQuery = fallbackQuery.or([
+            `onboarding_id.ilike.%${safeSearch}%`,
+            `agreement_id.ilike.%${safeSearch}%`,
+            `agreement_number.ilike.%${safeSearch}%`,
+            `client_name.ilike.%${safeSearch}%`,
+            `technical_request_type.ilike.%${safeSearch}%`,
+            `technical_request_status.ilike.%${safeSearch}%`,
+            `technical_request_details.ilike.%${safeSearch}%`,
+            `request_message.ilike.%${safeSearch}%`
+          ].join(','));
+        }
+        fallbackQuery = fallbackQuery
+          .order('requested_at', { ascending: false, nullsFirst: false })
+          .order('updated_at', { ascending: false, nullsFirst: false })
+          .range(listControls.from, listControls.to);
+        const fallback = await fallbackQuery;
+        if (fallback.error) throw friendlyError('Unable to load technical_admin_requests', fallback.error);
+        data = (fallback.data || []).map(row => ({
+          ...row,
+          request_id: row.request_id || row.technical_request_id || row.onboarding_id || row.id,
+          technical_request_id: row.technical_request_id || row.request_id || row.onboarding_id || row.id,
+          request_status: row.request_status || row.technical_request_status || 'Requested',
+          request_type: row.request_type || row.technical_request_type || 'Technical Admin',
+          request_message: row.request_message || row.request_details || row.technical_request_details || ''
+        }));
+        count = fallback.count;
+      }
       return { handled: true, data: normalizePagedList('technical_admin_requests', data, listControls, count) };
     }
+
     if (resource === 'notifications' && action === 'get_unread_count') {
       assertAllowed('notifications', 'get_unread_count');
       const currentUserId = await getCurrentUserId(client);
@@ -6027,8 +6092,17 @@
 
     if (['create','save'].includes(action)) {
       assertAllowed(resource, 'create');
-      const raw = payload[resource.slice(0, -1)] || payload.item || payload.activity || payload[resource] || payload;
+      const raw = resource === 'operations_onboarding'
+        ? (payload.operations_onboarding || payload.onboarding || payload.item || payload.activity || payload[resource] || payload)
+        : resource === 'technical_admin_requests'
+          ? (payload.technical_admin_request || payload.technical_admin_requests || payload.request || payload.item || payload[resource] || payload)
+          : (payload[resource.slice(0, -1)] || payload.item || payload.activity || payload[resource] || payload);
       const record = raw && typeof raw === 'object' ? { ...raw } : {};
+      if (['operations_onboarding', 'technical_admin_requests'].includes(resource)) {
+        delete record.table;
+        delete record.resource;
+        delete record.action;
+      }
 
       if (resource === 'notifications') {
       out.notification_id = out.notification_id ?? out.id ?? '';
@@ -6170,7 +6244,7 @@
       if (['leads', 'deals'].includes(resource) && !Object.keys(createRecord).length) {
         throw new Error(`${resource} create payload is empty after normalization.`);
       }
-      if (['proposal_catalog', 'proposals', 'agreements', 'clients', 'invoices', 'receipts'].includes(resource) && !Object.keys(createRecord).length) {
+      if (['proposal_catalog', 'proposals', 'agreements', 'clients', 'invoices', 'receipts', 'operations_onboarding', 'technical_admin_requests'].includes(resource) && !Object.keys(createRecord).length) {
         throw new Error(`${resource} create payload is empty after normalization.`);
       }
       if (resource === 'role_permissions') {

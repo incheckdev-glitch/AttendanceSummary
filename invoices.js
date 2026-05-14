@@ -2733,20 +2733,38 @@ const Invoices = {
     const locationNames = this.getUniqueTextList(locationItems.map((item, index) => this.getInvoiceOperationLocationLabel(item, index)));
     if (!locationNames.length) return null;
 
-    const agreementUuid = String(
-      sourceInvoice.agreement_uuid ||
-      selectedAgreement.id ||
-      selectedAgreement.uuid ||
-      selectedAgreement.agreement_uuid ||
-      selectedAgreement.agreementUuid ||
-      this.state.form?.agreementUuid ||
-      ''
-    ).trim();
+    const firstLocationItem = locationItems.find(item => item && typeof item === 'object') || {};
+    const agreementUuid = String(this.pickFirstOperationValue(
+      sourceInvoice.agreement_uuid,
+      sourceInvoice.agreementUuid,
+      sourceInvoice.source_agreement_id,
+      sourceInvoice.sourceAgreementId,
+      selectedAgreement.id,
+      selectedAgreement.uuid,
+      selectedAgreement.agreement_uuid,
+      selectedAgreement.agreementUuid,
+      firstLocationItem.source_agreement_id,
+      firstLocationItem.sourceAgreementId,
+      firstLocationItem.agreement_uuid,
+      firstLocationItem.agreementUuid,
+      firstLocationItem.agreement_id,
+      firstLocationItem.agreementId,
+      firstLocationItem.parent_id,
+      firstLocationItem.parentId,
+      this.state.form?.agreementUuid
+    )).trim();
     const agreementNumber = String(this.pickFirstOperationValue(
       sourceInvoice.agreement_number,
-      sourceInvoice.agreement_id,
+      sourceInvoice.agreementNumber,
       selectedAgreement.agreement_number,
       selectedAgreement.agreementNumber,
+      firstLocationItem.agreement_number,
+      firstLocationItem.agreementNumber,
+      firstLocationItem.source_agreement_number,
+      firstLocationItem.sourceAgreementNumber,
+      firstLocationItem.parent_number,
+      firstLocationItem.parentNumber,
+      sourceInvoice.agreement_id,
       selectedAgreement.agreement_id,
       selectedAgreement.agreementId
     )).trim();
@@ -2827,7 +2845,14 @@ const Invoices = {
       const onboardingResponse = await Api.saveOperationsOnboarding(seed.operationPayload);
       onboardingRecord = Api.unwrapApiPayload?.(onboardingResponse) || onboardingResponse || null;
       if (window.OperationsOnboarding?.upsertLocalRow) {
-        window.OperationsOnboarding.upsertLocalRow({ ...seed.operationPayload, ...(onboardingRecord || {}) });
+        const returnedRecord = onboardingRecord && typeof onboardingRecord === 'object' ? onboardingRecord : {};
+        window.OperationsOnboarding.upsertLocalRow({
+          ...returnedRecord,
+          ...seed.operationPayload,
+          id: returnedRecord.id || returnedRecord.db_id || seed.operationPayload.id || '',
+          db_id: returnedRecord.db_id || returnedRecord.id || seed.operationPayload.db_id || '',
+          onboarding_id: returnedRecord.onboarding_id || seed.operationPayload.onboarding_id
+        });
       }
     } catch (error) {
       console.warn('[Invoice] Unable to create Operations onboarding row for invoiced locations.', error);
