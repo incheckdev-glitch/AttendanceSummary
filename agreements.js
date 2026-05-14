@@ -950,7 +950,12 @@ const Agreements = {
     };
     const section = String(pick(source.section, source.type, sectionFallback)).trim().toLowerCase();
     const normalized = {
-      item_id: String(pick(source.item_id, source.itemId, source.id)).trim(),
+      // Keep the real Supabase row id separate from the business item_id.
+      // The agreement view uses this id to verify invoice status from invoice_items.
+      // Without it, rows with a business item_id could be matched incorrectly and appear Invoiced.
+      id: String(pick(source.id, source.uuid, source.agreement_item_id, source.agreementItemId)).trim(),
+      item_id: String(pick(source.item_id, source.itemId)).trim(),
+      agreement_item_id: String(pick(source.agreement_item_id, source.agreementItemId, source.id)).trim(),
       agreement_id: String(pick(source.agreement_id, source.agreementId)).trim(),
       section,
       line_no: this.toNumberSafe(pick(source.line_no, source.lineNo, source.line)),
@@ -2515,7 +2520,9 @@ const Agreements = {
     });
   },
   getAgreementItemRecordId(item = {}) {
-    return String(item?.id || item?.item_id || item?.agreement_item_id || item?.source_agreement_item_id || '').trim();
+    // Prefer the real agreement_items row id. item_id can be a generated/business line id,
+    // so using it first can make the agreement view fail to verify the real invoiced row.
+    return String(item?.id || item?.agreement_item_id || item?.agreementItemId || item?.source_agreement_item_id || item?.sourceAgreementItemId || item?.item_id || item?.itemId || '').trim();
   },
   getSupabaseClient() {
     return window.supabaseClient || window.supabase || window.Supabase?.client || null;
@@ -2527,7 +2534,7 @@ const Agreements = {
     const result = new Map();
     if (!ids.length) return result;
     const client = this.getSupabaseClient();
-    if (!client) return result;
+    if (!client) return null;
     try {
       const { data, error } = await client
         .from('invoice_items')
@@ -2539,10 +2546,11 @@ const Agreements = {
         const invoiceId = String(row?.invoice_id || '').trim();
         if (sourceId) result.set(sourceId, invoiceId || true);
       });
+      return result;
     } catch (error) {
       console.warn('[Agreement] Unable to verify invoice status from invoice_items.', error);
+      return null;
     }
-    return result;
   },
   async applyActualInvoiceStatusToFormItems() {
     const grouped = this.groupedItems(this.state.items || []);
@@ -2550,7 +2558,9 @@ const Agreements = {
     const itemIds = annualItems.map(item => this.getAgreementItemRecordId(item)).filter(Boolean);
     if (!itemIds.length) return;
     const actualMap = await this.getActualInvoicedAgreementItemMap(itemIds);
-    if (!actualMap.size) return;
+    // null means the verification query failed, so keep the current loaded status.
+    // A Map, even an empty one, means the database was checked and should be the source of truth.
+    if (!(actualMap instanceof Map)) return;
     this.state.items = (this.state.items || []).map(item => {
       if (String(item?.section || '').trim().toLowerCase() !== 'annual_saas') return item;
       const itemId = this.getAgreementItemRecordId(item);
