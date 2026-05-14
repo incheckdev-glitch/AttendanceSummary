@@ -2015,34 +2015,15 @@ const Agreements = {
   },
   async syncSignedAgreementToOperationsOnboarding(agreement = {}, agreementId = '') {
     const agreementUuid = String(agreementId || agreement.id || '').trim();
-    if (!agreementUuid || !this.hasSignedSignal(agreement)) return;
+    if (!agreementUuid || !this.hasSignedSignal(agreement)) return null;
 
-    // Operations onboarding is now invoice-location based.
-    // A signed agreement alone must not create/update Operations rows, because Operations
-    // should only receive the locations that were actually invoiced.
-    console.info('[Agreement] Signed agreement detected; Operations onboarding sync is handled after invoicing invoiced locations only.', { agreement_id: agreementUuid });
-    return;
-
-    const onboardingPayload = this.buildOperationsOnboardingFromAgreement(agreement, agreementUuid);
-    try {
-      const detailResponse = await Api.getOperationsOnboarding({ agreement_id: agreementUuid });
-      const existing = this.unwrapOperationsOnboardingRow(detailResponse);
-      const onboardingId = String(existing?.onboarding_id || existing?.id || '').trim();
-      if (onboardingId) {
-        await Api.updateOperationsOnboarding(onboardingId, onboardingPayload);
-      } else {
-        await Api.saveOperationsOnboarding(onboardingPayload);
-      }
-    } catch (error) {
-      const message = String(error?.message || '').toLowerCase();
-      const notFound = message.includes('not found') || message.includes('row not found');
-      if (!notFound) throw error;
-      await Api.saveOperationsOnboarding(onboardingPayload);
-    }
-
-    if (window.OperationsOnboarding?.state?.loaded) {
-      await window.OperationsOnboarding.loadAndRefresh({ force: true });
-    }
+    // IMPORTANT BUSINESS RULE:
+    // A signed agreement must NOT create/update Operations Onboarding.
+    // Operations and Technical Admin are invoice-batch scoped and are created only from invoice creation
+    // for the selected Annual SaaS locations. This prevents a 4-location agreement from sending
+    // all 4 locations when only 2 were invoiced.
+    console.info('[Agreement] Operations onboarding skipped on signed agreement; handled by invoice-batch scoped creation only.', { agreement_id: agreementUuid });
+    return null;
   },
   extractClientRows(response) {
     const candidates = [
@@ -3396,14 +3377,8 @@ const Agreements = {
       } catch (clientSyncError) {
         UI.toast(`Agreement saved, but client sync failed: ${clientSyncError?.message || 'Unknown error'}`);
       }
-      try {
-        await this.syncSignedAgreementToOperationsOnboarding(
-          { ...agreement, ...persistedAgreement },
-          String(persistedAgreement?.id || '').trim()
-        );
-        if (this.hasSignedSignal({ ...agreement, ...persistedAgreement })) this.refreshCompanyLifecycleStatus({ ...agreement, ...persistedAgreement }, 'Onboarding');
-      } catch (operationsSyncError) {
-        UI.toast(`Agreement saved, but operations onboarding sync failed: ${operationsSyncError?.message || 'Unknown error'}`);
+      if (this.hasSignedSignal({ ...agreement, ...persistedAgreement })) {
+        console.info('[Agreement] Signed agreement saved. Operations onboarding is intentionally NOT created here; it is created only when Annual SaaS locations are invoiced.');
       }
       if (persistedAgreement) {
         this.upsertLocalRow(persistedAgreement);

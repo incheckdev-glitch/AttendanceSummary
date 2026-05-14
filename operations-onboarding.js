@@ -62,6 +62,20 @@ const OperationsOnboarding = {
     }
     return '';
   },
+  hasInvoiceScope(row = {}) {
+    return Boolean(this.pick(
+      row.source_invoice_id, row.sourceInvoiceId, row.invoice_id, row.invoiceId,
+      row.source_invoice_number, row.sourceInvoiceNumber, row.invoice_number, row.invoiceNumber,
+      row.invoiced_location_names, row.invoicedLocationNames,
+      row.invoiced_agreement_item_ids, row.invoicedAgreementItemIds
+    ));
+  },
+  countStoredLocations(value = '') {
+    return String(value || '')
+      .split(/[;,|\n]+/)
+      .map(item => item.trim())
+      .filter(Boolean).length;
+  },
   normalizeRow(raw = {}) {
     const source = raw && typeof raw === 'object' ? raw : {};
     const nestedAgreement = source.agreement && typeof source.agreement === 'object' ? source.agreement : {};
@@ -74,8 +88,7 @@ const OperationsOnboarding = {
       source.locationsCount,
       source.numberOfLocations,
       source.totalLocations,
-      source.onboarding?.location_count,
-      source.agreement?.location_count
+      source.onboarding?.location_count
     );
     return {
       id: String(this.pick(source.id, source.db_id, source.record_id)).trim(),
@@ -426,26 +439,36 @@ const OperationsOnboarding = {
   getRowLocationCount(row = {}, agreement = {}, agreementItems = []) {
     const explicit = Number(this.pick(row.number_of_locations, row.location_count, row.locations_count));
     if (Number.isFinite(explicit) && explicit > 0) return explicit;
+    const locationNamesCount = this.countStoredLocations(this.pick(row.invoiced_location_names, row.invoicedLocationNames));
+    if (locationNamesCount > 0) return locationNamesCount;
     const scopedItems = this.filterAgreementItemsForOnboardingRow(row, agreementItems);
     const scopedCount = this.deriveAgreementLocationMetrics(scopedItems).total_locations;
     if (scopedCount > 0) return scopedCount;
+
+    // Invoice-scoped onboarding rows must never fall back to the full agreement location count.
+    // Otherwise a 2-location invoice from a 4-location agreement can display 4.
+    if (this.hasInvoiceScope(row)) return 0;
     return Number(this.pick(agreement.number_of_locations, agreement.locations_count, agreement.location_count)) || 0;
   },
   getRowServiceStart(row = {}, agreement = {}, agreementItems = []) {
     if (row.service_start_date) return row.service_start_date;
     const scopedItems = this.filterAgreementItemsForOnboardingRow(row, agreementItems);
-    return scopedItems
+    const scopedDate = scopedItems
       .map(item => String(item.service_start_date || item.serviceStartDate || '').trim())
       .filter(Boolean)
-      .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0] || agreement.service_start_date || '';
+      .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0] || '';
+    if (scopedDate || this.hasInvoiceScope(row)) return scopedDate;
+    return agreement.service_start_date || '';
   },
   getRowServiceEnd(row = {}, agreement = {}, agreementItems = []) {
     if (row.service_end_date) return row.service_end_date;
     const scopedItems = this.filterAgreementItemsForOnboardingRow(row, agreementItems);
-    return scopedItems
+    const scopedDate = scopedItems
       .map(item => String(item.service_end_date || item.serviceEndDate || '').trim())
       .filter(Boolean)
-      .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] || agreement.service_end_date || '';
+      .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] || '';
+    if (scopedDate || this.hasInvoiceScope(row)) return scopedDate;
+    return agreement.service_end_date || '';
   },
   deriveAgreementLocationMetrics(agreementItems = []) {
     const safeItems = Array.isArray(agreementItems) ? agreementItems : [];
