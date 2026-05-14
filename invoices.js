@@ -2789,13 +2789,15 @@ const Invoices = {
       invoice_number: invoiceDisplay || null,
       invoiced_location_names: locationText,
       invoiced_agreement_item_ids: sourceAgreementItemIds.join(', '),
-      request_type: 'Technical Admin',
-      technical_request_type: 'Technical Admin',
+      // Keep a draft/default message on the Operations row only.
+      // The Technical Admin request itself must be created manually from Operations.
+      request_type: null,
+      technical_request_type: null,
       request_message: message,
       request_details: message,
-      technical_request_details: message,
-      request_status: 'Requested',
-      technical_request_status: 'Requested',
+      technical_request_details: null,
+      request_status: 'Not Requested',
+      technical_request_status: 'Not Requested',
       requested_by: requestedBy || null,
       requested_at: requestedAt,
       notes: message
@@ -2811,14 +2813,7 @@ const Invoices = {
         onboarding_status: 'Pending',
         agreement_status: String(selectedAgreement.status || sourceInvoice.agreement_status || 'Signed').trim() || 'Signed'
       },
-      technicalPayload: {
-        ...shared,
-        onboarding_id: null,
-        technical_request_id: this.generateOperationsBatchId('TA'),
-        request_title: `Technical Admin - ${invoiceDisplay || agreementNumber || locationText}`,
-        priority: 'High',
-        module_summary: `Invoiced locations: ${locationText}`
-      }
+      technicalPayload: null
     };
   },
   async createOperationsAndTechnicalForInvoicedLocations(invoice = {}, persistedInvoice = {}, items = [], selectedAgreementItemIds = []) {
@@ -2831,34 +2826,22 @@ const Invoices = {
     try {
       const onboardingResponse = await Api.saveOperationsOnboarding(seed.operationPayload);
       onboardingRecord = Api.unwrapApiPayload?.(onboardingResponse) || onboardingResponse || null;
-      const onboardingId = String(onboardingRecord?.id || onboardingRecord?.onboarding_id || seed.onboarding_id || '').trim();
-      seed.technicalPayload.onboarding_id = onboardingId || seed.onboarding_id;
+      if (window.OperationsOnboarding?.upsertLocalRow) {
+        window.OperationsOnboarding.upsertLocalRow({ ...seed.operationPayload, ...(onboardingRecord || {}) });
+      }
     } catch (error) {
       console.warn('[Invoice] Unable to create Operations onboarding row for invoiced locations.', error);
       UI.toast('Invoice created, but Operations onboarding row was not created: ' + (error?.message || 'Unknown error'));
       return null;
     }
 
-    try {
-      if (typeof Api.saveTechnicalAdminRequest === 'function') {
-        await Api.saveTechnicalAdminRequest(seed.technicalPayload);
-      } else {
-        await Api.requestWithSession('technical_admin_requests', 'save', { technical_admin_request: seed.technicalPayload });
-      }
-    } catch (error) {
-      console.warn('[Invoice] Unable to create Technical Admin request for invoiced locations.', error);
-      UI.toast('Operations row created, but Technical Admin request was not created: ' + (error?.message || 'Unknown error'));
-    }
-
+    // Important: do NOT create a Technical Admin request automatically here.
+    // The Operations user must click "Technical Admin Request" manually on the invoice-batch row.
     if (window.OperationsOnboarding?.loadAndRefresh) {
       Api.clearApiCache?.('operations_onboarding:list');
       window.OperationsOnboarding.loadAndRefresh({ force: true }).catch(error => console.warn('[Invoice] Operations refresh failed after invoiced-location request.', error));
     }
-    if (window.TechnicalAdmin?.loadAndRefresh) {
-      Api.clearApiCache?.('technical_admin_requests:list');
-      window.TechnicalAdmin.loadAndRefresh({ force: true }).catch(error => console.warn('[Invoice] Technical Admin refresh failed after invoiced-location request.', error));
-    }
-    return seed;
+    return { ...seed, onboardingRecord, technicalPayload: null };
   },
   async markSelectedAgreementItemsInvoiced(invoiceId, itemIds = []) {
     const ids = [...new Set((Array.isArray(itemIds) ? itemIds : []).map(id => String(id || '').trim()).filter(Boolean))];

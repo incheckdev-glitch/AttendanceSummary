@@ -1090,7 +1090,7 @@ const OperationsOnboarding = {
             <button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-open-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Open Agreement</button>
             <button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-preview-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Preview Agreement</button>
             <button class="btn ghost sm" type="button" data-op-open-details="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Open Onboarding Details</button>
-            ${canCreateTechnicalRequest && this.hasInvoiceScope(row) ? `<button class="btn ghost sm" type="button" data-op-technical-admin="${agreementId}" data-op-technical-onboarding="${rowDbId}" ${hasAgreementId && hasRowDbId ? '' : 'disabled title="Agreement or onboarding row ID not available"'}>Technical Admin Request</button>` : ''}
+            ${canCreateTechnicalRequest ? `<button class="btn ghost sm" type="button" data-op-technical-admin="${agreementId}" data-op-technical-onboarding="${rowDbId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Technical Admin Request</button>` : ''}
             ${showAssignCsmButton ? `<button class="btn ghost sm" type="button" data-op-assign-csm="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>${assignCsmButtonLabel}</button>` : ''}
             ${canWrite ? `<button class="btn ghost sm" type="button" data-op-mark-progress="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Mark In Progress</button>
             <button class="btn ghost sm" type="button" data-op-mark-completed="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Mark Completed</button>` : ''}
@@ -1139,9 +1139,7 @@ const OperationsOnboarding = {
         sort_dir: 'desc'
       });
       const normalizedResponse = Api.normalizeListResponse(response);
-      this.state.rows = this.extractRows(normalizedResponse)
-        .map(row => this.normalizeRow(row))
-        .filter(row => this.hasInvoiceScope(row));
+      this.state.rows = this.extractRows(normalizedResponse).map(row => this.normalizeRow(row));
       this.state.page = Number(normalizedResponse.page || this.state.page || 1);
       this.state.limit = U.normalizePageSize(normalizedResponse.limit ?? this.state.limit, 50, 200);
       this.state.offset = Number(normalizedResponse.offset ?? Math.max(0, (this.state.page - 1) * this.state.limit));
@@ -1158,6 +1156,24 @@ const OperationsOnboarding = {
       this.renderFilters();
       this.render();
     }
+  },
+  upsertLocalRow(row = {}) {
+    const normalized = this.normalizeRow(row);
+    const rowKey = String(normalized.id || normalized.db_id || normalized.onboarding_id || '').trim();
+    const agreementKey = String(normalized.agreement_id || '').trim();
+    const invoiceKey = String(normalized.source_invoice_id || normalized.invoice_id || normalized.source_invoice_number || normalized.invoice_number || '').trim();
+    const idx = this.state.rows.findIndex(existing => {
+      const existingKey = String(existing.id || existing.db_id || existing.onboarding_id || '').trim();
+      if (rowKey && existingKey && existingKey === rowKey) return true;
+      const existingAgreement = String(existing.agreement_id || '').trim();
+      const existingInvoice = String(existing.source_invoice_id || existing.invoice_id || existing.source_invoice_number || existing.invoice_number || '').trim();
+      return Boolean(agreementKey && invoiceKey && existingAgreement === agreementKey && existingInvoice === invoiceKey);
+    });
+    if (idx === -1) this.state.rows.unshift(normalized);
+    else this.state.rows[idx] = { ...this.state.rows[idx], ...normalized };
+    this.applyFilters();
+    this.renderFilters();
+    this.render();
   },
   upsertByAgreement(agreementId, patch = {}) {
     const id = String(agreementId || '').trim();
@@ -1212,6 +1228,7 @@ const OperationsOnboarding = {
         </div>
         <div class="actions" style="justify-content:flex-start;gap:8px;margin-top:12px;">
           ${String(detail.agreement_id || '').trim() ? `<button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-details-open-agreement="${U.escapeAttr(detail.agreement_id || '')}">Open Agreement</button><button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-details-preview-agreement="${U.escapeAttr(detail.agreement_id || '')}">Preview Agreement</button>` : ''}
+          ${this.canRequestTechnicalAdmin() && String(detail.agreement_id || '').trim() ? `<button class="btn ghost sm" type="button" data-op-technical-admin="${U.escapeAttr(detail.agreement_id || '')}" data-op-technical-onboarding="${U.escapeAttr(detail.id || detail.db_id || detail.onboarding_id || '')}">Technical Admin Request</button>` : ''}
           ${this.canAssignCsm() && !this.isOnboardingClosed(detail) ? `<button class="btn sm" type="button" data-op-details-assign-csm="${U.escapeAttr(detail.id || detail.db_id || detail.onboarding_id || '')}" data-op-agreement-id="${U.escapeAttr(detail.agreement_id || '')}">${(detail.assigned_csm_name || detail.csm_assigned_to) ? 'Change CSM' : 'Assign CSM'}</button>` : ''}
         </div>`;
       E.operationsOnboardingDetailsModal.classList.add('open');
@@ -1439,30 +1456,32 @@ const OperationsOnboarding = {
     if (!id) return UI.toast('Agreement ID is required.');
     if (!this.canRequestTechnicalAdmin()) return UI.toast('Insufficient permissions.');
     const normalizedOnboardingRowId = String(onboardingRowId || '').trim();
-    if (!normalizedOnboardingRowId) {
-      return UI.toast('Technical Admin request must be created from a specific invoice-scoped Operations Onboarding row.');
-    }
     const summary = this.state.rows.find(row => {
       const rowId = String(row.id || row.db_id || row.onboarding_id || '').trim();
-      return rowId === normalizedOnboardingRowId && String(row.agreement_id || '') === id;
+      return (normalizedOnboardingRowId && rowId === normalizedOnboardingRowId) || (!normalizedOnboardingRowId && String(row.agreement_id || '') === id);
     }) || {};
-    if (!this.hasInvoiceScope(summary)) {
-      return UI.toast('Technical Admin request can only be created for invoiced locations. Create the invoice first.');
-    }
     const agreementLabel = summary.agreement_number || id;
     const existingMessage = String(summary.request_message || summary.technical_request_details || summary.technical_admin_request_message || summary.request_details || '').trim();
     const defaultMessage = existingMessage || this.buildDefaultTechnicalAdminMessage(summary, agreementLabel);
     const message = this.promptTechnicalAdminRequestMessage(defaultMessage);
     if (message === null) return UI.toast('Technical Admin request cancelled.');
     try {
-      await Api.requestAgreementTechnicalAdmin(id, message, { onboardingId: normalizedOnboardingRowId });
+      const response = await Api.requestAgreementTechnicalAdmin(id, message, { onboardingId: normalizedOnboardingRowId });
       Api.clearApiCache('operations_onboarding:list');
-      this.upsertByAgreement(id, {
+      const onboardingRecord = Api.unwrapApiPayload?.(response?.operations_onboarding || response) || response?.operations_onboarding || null;
+      this.upsertLocalRow({
+        ...summary,
+        ...(onboardingRecord && typeof onboardingRecord === 'object' ? onboardingRecord : {}),
+        id: normalizedOnboardingRowId || summary.id || summary.db_id || summary.onboarding_id,
+        agreement_id: id,
         request_type: 'Technical Admin',
+        technical_request_type: 'Technical Admin',
         request_message: message,
         request_details: message,
         technical_request_details: message,
         technical_admin_request: 'Requested',
+        technical_request_status: 'Requested',
+        request_status: 'Requested',
         technical_admin_request_message: message
       });
       await this.loadAndRefresh({ force: true });
@@ -1545,6 +1564,14 @@ const OperationsOnboarding = {
         if (openAgreementTrigger) return this.openAgreementRecord(openAgreementTrigger.getAttribute('data-op-details-open-agreement') || '', { readOnly: !this.canWrite(), trigger: openAgreementTrigger });
         const previewAgreementTrigger = event.target?.closest?.('button[data-op-details-preview-agreement]');
         if (previewAgreementTrigger) return this.previewAgreement(previewAgreementTrigger.getAttribute('data-op-details-preview-agreement') || '', previewAgreementTrigger);
+        const technicalRequestTrigger = event.target?.closest?.('button[data-op-technical-admin]');
+        if (technicalRequestTrigger) {
+          if (!Permissions.canRequestTechnicalAdmin()) return UI.toast('You do not have permission to create technical requests.');
+          return this.requestTechnicalAdmin(
+            technicalRequestTrigger.getAttribute('data-op-technical-admin') || '',
+            technicalRequestTrigger.getAttribute('data-op-technical-onboarding') || ''
+          );
+        }
         const trigger = event.target?.closest?.('button[data-op-details-assign-csm]');
         if (trigger) {
           if (!this.canAssignCsm()) return UI.toast('You do not have permission to assign CSM.');
