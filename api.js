@@ -1127,42 +1127,31 @@ const Api = {
     });
   },
   async saveOperationsOnboarding(onboarding = {}) {
-    const isInvoiceScoped = Boolean(String(
-      onboarding?.source_invoice_id ||
-      onboarding?.invoice_id ||
-      onboarding?.source_invoice_number ||
-      onboarding?.invoice_number ||
+    const safeOnboarding = { ...(onboarding && typeof onboarding === 'object' ? onboarding : {}) };
+    const hasInvoiceScope = Boolean(String(
+      safeOnboarding.source_invoice_id ||
+      safeOnboarding.invoice_id ||
+      safeOnboarding.source_invoice_number ||
+      safeOnboarding.invoice_number ||
       ''
     ).trim());
-    let response;
-    try {
-      if (isInvoiceScoped) {
-        // Invoice-batch onboarding must go through the invoice action so invoice creators can create
-        // the Operations row and signed agreements cannot create rows directly.
-        response = await this.requestWithSession('invoices', 'create_operations_onboarding', {
-          operations_onboarding: onboarding,
-          onboarding,
-          table: CONFIG.OPERATIONS_ONBOARDING_TABLE
-        });
-      } else {
-        response = await this.requestWithSession('operations_onboarding', 'save', {
-          operations_onboarding: onboarding,
-          onboarding,
-          table: CONFIG.OPERATIONS_ONBOARDING_TABLE
-        });
-      }
-    } catch (error) {
-      const message = String(error?.message || error || '').toLowerCase();
-      const isPermissionBlock = message.includes('forbidden') && message.includes('operations_onboarding') && message.includes('create');
-      if (!isPermissionBlock || isInvoiceScoped) throw error;
-      console.warn('[Api.saveOperationsOnboarding] operations_onboarding:create blocked; retrying through invoice-created onboarding action.', error);
-      response = await this.requestWithSession('invoices', 'create_operations_onboarding', {
-        operations_onboarding: onboarding,
-        onboarding,
-        table: CONFIG.OPERATIONS_ONBOARDING_TABLE
-      });
+
+    // Invoice-batch onboarding must not be sent through the generic Operations save path.
+    // That path can require operations_onboarding:create and can also save client_id values
+    // that belong to companies/invoices, violating operations_onboarding_client_id_fkey.
+    delete safeOnboarding.client_id;
+    delete safeOnboarding.clientId;
+
+    if (!hasInvoiceScope) {
+      throw new Error('Operations onboarding must be created from an invoice batch. Agreement signed alone must not create onboarding.');
     }
-    const recordId = this.extractBusinessRecordId(response, onboarding?.onboarding_id || onboarding?.agreement_id || '');
+
+    const response = await this.requestWithSession('invoices', 'create_operations_onboarding', {
+      operations_onboarding: safeOnboarding,
+      onboarding: safeOnboarding,
+      table: CONFIG.OPERATIONS_ONBOARDING_TABLE
+    });
+    const recordId = this.extractBusinessRecordId(response, safeOnboarding?.onboarding_id || safeOnboarding?.agreement_id || '');
     await this.safeSendBusinessPwaPush({
       resource: 'operations_onboarding',
       action: 'onboarding_created',

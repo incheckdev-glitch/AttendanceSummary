@@ -681,8 +681,8 @@
     invoice_items: new Set(['invoice_id']),
     receipts: new Set(['invoice_id', 'agreement_uuid', 'client_id', 'created_by', 'updated_by']),
     receipt_items: new Set(['receipt_id', 'invoice_item_id']),
-    operations_onboarding: new Set(['agreement_id', 'client_id', 'source_invoice_id', 'invoice_id', 'created_by', 'updated_by']),
-    technical_admin_requests: new Set(['agreement_id', 'onboarding_id', 'client_id', 'source_invoice_id', 'invoice_id', 'requested_by', 'updated_by']),
+    operations_onboarding: new Set(['agreement_id', 'client_id', 'created_by', 'updated_by']),
+    technical_admin_requests: new Set(['agreement_id', 'onboarding_id', 'client_id', 'requested_by', 'updated_by']),
     notifications: new Set(['recipient_user_id', 'actor_user_id']),
     leads: new Set([
       'id',
@@ -731,36 +731,57 @@
     return cleaned;
   }
 
+
   function normalizeDateOnlyForMutation(value) {
     const raw = String(value ?? '').trim();
-    if (!raw) return null;
+    if (!raw) return '';
     const match = raw.match(/^(\d{4}-\d{2}-\d{2})/);
     if (match) return match[1];
     const parsed = new Date(raw);
-    if (Number.isNaN(parsed.getTime())) return null;
-    return parsed.toISOString().slice(0, 10);
+    return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString().slice(0, 10);
   }
 
-  function normalizeOperationsInvoiceBatchRecord(record = {}) {
+  function sanitizeOperationsInvoiceBatchRecord(record = {}) {
     const out = record && typeof record === 'object' ? { ...record } : {};
+
+    // operations_onboarding.client_id points to public.clients. Invoice/company rows may carry
+    // a company UUID or a legacy customer reference under client_id, which violates the FK and
+    // prevents the onboarding row from being created. Keep client_name and invoice/agreement links.
+    delete out.client_id;
+    delete out.clientId;
+    delete out.company_id;
+    delete out.companyId;
+
     ['signed_date', 'service_start_date', 'service_end_date'].forEach(column => {
       if (!(column in out)) return;
       const normalized = normalizeDateOnlyForMutation(out[column]);
       if (normalized) out[column] = normalized;
       else delete out[column];
     });
+
     if (!String(out.onboarding_id || '').trim()) {
       const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
       out.onboarding_id = `OP-${stamp}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
     }
+
     out.onboarding_status = String(out.onboarding_status || out.status || 'Pending').trim() || 'Pending';
     out.request_type = String(out.request_type || 'Invoice Onboarding').trim() || 'Invoice Onboarding';
     out.request_status = String(out.request_status || 'Not Requested').trim() || 'Not Requested';
     out.technical_request_status = String(out.technical_request_status || 'Not Requested').trim() || 'Not Requested';
-    out.location_count = Number(out.location_count || out.number_of_locations || out.locations_count || 0) || 0;
-    out.number_of_locations = Number(out.number_of_locations || out.location_count || out.locations_count || 0) || 0;
+    out.location_count = Number(out.location_count || out.number_of_locations || out.locations_count || out.invoiced_location_count || 0) || 0;
+    out.number_of_locations = Number(out.number_of_locations || out.location_count || out.locations_count || out.invoiced_location_count || 0) || 0;
+    out.invoiced_location_count = Number(out.invoiced_location_count || out.location_count || out.number_of_locations || 0) || undefined;
+    if (out.invoiced_location_count === undefined) delete out.invoiced_location_count;
+
+    if (!String(out.invoiced_locations || '').trim() && String(out.invoiced_location_names || '').trim()) {
+      out.invoiced_locations = String(out.invoiced_location_names).trim();
+    }
+    if (!String(out.location_names || '').trim()) {
+      out.location_names = String(out.invoiced_locations || out.invoiced_location_names || '').trim() || undefined;
+      if (out.location_names === undefined) delete out.location_names;
+    }
     if (!String(out.request_message || '').trim()) {
-      const locations = String(out.invoiced_location_names || out.location_names || '').trim();
+      const locations = String(out.invoiced_locations || out.invoiced_location_names || out.location_names || '').trim();
       const invoice = String(out.invoice_number || out.source_invoice_number || out.invoice_id || out.source_invoice_id || 'created').trim();
       out.request_message = locations
         ? `Please proceed with the invoiced location${out.location_count === 1 ? '' : 's'}: ${locations}. Invoice ${invoice}.`
@@ -768,6 +789,7 @@
     }
     out.request_details = String(out.request_details || out.request_message || '').trim() || null;
     out.notes = String(out.notes || out.request_message || '').trim() || null;
+
     return out;
   }
 
@@ -5438,7 +5460,7 @@
       // UI permission matrix does not grant them direct operations_onboarding:create.
       assertAllowed('invoices', 'create');
       const raw = payload.operations_onboarding || payload.onboarding || payload.item || {};
-      const record = normalizeOperationsInvoiceBatchRecord(raw && typeof raw === 'object' ? { ...raw } : {});
+      const record = sanitizeOperationsInvoiceBatchRecord(raw && typeof raw === 'object' ? { ...raw } : {});
       delete record.table;
       delete record.resource;
       delete record.action;
@@ -6257,9 +6279,14 @@
         delete record.action;
       }
       if (resource === 'operations_onboarding') {
-        Object.assign(record, normalizeOperationsInvoiceBatchRecord(record));
+        Object.assign(record, sanitizeOperationsInvoiceBatchRecord(record));
         const hasInvoiceScope = Boolean(String(record.source_invoice_id || record.invoice_id || record.source_invoice_number || record.invoice_number || '').trim());
         if (!hasInvoiceScope) throw new Error('Operations onboarding must be created from an invoice batch. Agreement signed alone must not create onboarding.');
+      }
+      if (resource === 'technical_admin_requests') {
+        // Avoid the same client FK problem when the manual Technical request copies the Operations row.
+        delete record.client_id;
+        delete record.clientId;
       }
 
       if (resource === 'notifications') {
