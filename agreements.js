@@ -2514,6 +2514,51 @@ const Agreements = {
       if (lineTotalEl) lineTotalEl.value = computed.line_total;
     });
   },
+  getAgreementItemRecordId(item = {}) {
+    return String(item?.id || item?.item_id || item?.agreement_item_id || item?.source_agreement_item_id || '').trim();
+  },
+  getSupabaseClient() {
+    return window.supabaseClient || window.supabase || window.Supabase?.client || null;
+  },
+  async getActualInvoicedAgreementItemMap(itemIds = []) {
+    const ids = [...new Set((Array.isArray(itemIds) ? itemIds : [])
+      .map(id => String(id || '').trim())
+      .filter(Boolean))];
+    const result = new Map();
+    if (!ids.length) return result;
+    const client = this.getSupabaseClient();
+    if (!client) return result;
+    try {
+      const { data, error } = await client
+        .from('invoice_items')
+        .select('source_agreement_item_id,invoice_id')
+        .in('source_agreement_item_id', ids);
+      if (error) throw error;
+      (Array.isArray(data) ? data : []).forEach(row => {
+        const sourceId = String(row?.source_agreement_item_id || '').trim();
+        const invoiceId = String(row?.invoice_id || '').trim();
+        if (sourceId) result.set(sourceId, invoiceId || true);
+      });
+    } catch (error) {
+      console.warn('[Agreement] Unable to verify invoice status from invoice_items.', error);
+    }
+    return result;
+  },
+  async applyActualInvoiceStatusToFormItems() {
+    const grouped = this.groupedItems(this.state.items || []);
+    const annualItems = grouped.annual_saas || [];
+    const itemIds = annualItems.map(item => this.getAgreementItemRecordId(item)).filter(Boolean);
+    if (!itemIds.length) return;
+    const actualMap = await this.getActualInvoicedAgreementItemMap(itemIds);
+    if (!actualMap.size) return;
+    this.state.items = (this.state.items || []).map(item => {
+      if (String(item?.section || '').trim().toLowerCase() !== 'annual_saas') return item;
+      const itemId = this.getAgreementItemRecordId(item);
+      const invoiceId = itemId ? actualMap.get(itemId) : '';
+      return invoiceId ? { ...item, invoice_status: 'invoiced', invoiced_invoice_id: invoiceId === true ? item.invoiced_invoice_id : invoiceId } : item;
+    });
+    this.renderItemRows(this.state.items || []);
+  },
   renderItemRows(items = []) {
     const grouped = this.syncOneTimeFeeRowsWithAnnualCount(this.groupedItems(items));
     const editLocked = this.isAgreementItemsLocked();

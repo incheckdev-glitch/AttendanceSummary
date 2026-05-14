@@ -2799,7 +2799,9 @@ const Invoices = {
       // Client visibility is carried by client_name for this invoice-batch workflow.
       client_name: clientName || null,
       location_count: locationNames.length,
+      locations_count: locationNames.length,
       number_of_locations: locationNames.length,
+      invoiced_location_count: locationNames.length,
       service_start_date: this.getOperationServiceDate(locationItems, 'service_start_date', 'asc') || null,
       service_end_date: this.getOperationServiceDate(locationItems, 'service_end_date', 'desc') || null,
       billing_frequency: String(sourceInvoice.billing_frequency || selectedAgreement.billing_frequency || '').trim() || null,
@@ -2822,6 +2824,8 @@ const Invoices = {
       source_invoice_number: invoiceDisplay || null,
       invoice_number: invoiceDisplay || null,
       invoiced_location_names: locationText,
+      invoiced_locations: locationText,
+      location_names: locationText,
       invoiced_agreement_item_ids: sourceAgreementItemIds.join(', '),
       // Keep a draft/default message on the Operations row only.
       // The Technical Admin request itself must be created manually from Operations.

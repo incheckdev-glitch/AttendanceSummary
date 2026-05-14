@@ -80,6 +80,8 @@ const OperationsOnboarding = {
     const source = raw && typeof raw === 'object' ? raw : {};
     const nestedAgreement = source.agreement && typeof source.agreement === 'object' ? source.agreement : {};
     const locationCountValue = this.pick(
+      source.invoiced_location_count,
+      source.invoicedLocationCount,
       source.location_count,
       source.locations_count,
       source.number_of_locations,
@@ -88,6 +90,7 @@ const OperationsOnboarding = {
       source.locationsCount,
       source.numberOfLocations,
       source.totalLocations,
+      source.onboarding?.invoiced_location_count,
       source.onboarding?.location_count
     );
     return {
@@ -111,9 +114,16 @@ const OperationsOnboarding = {
       technical_admin_request: String(this.pick(source.technical_admin_request, source.technicalAdminRequest, source.lite_request, source.liteRequest, source.full_request, source.fullRequest)).trim(),
       technical_admin_request_message: String(this.pick(source.technical_admin_request_message, source.technicalAdminRequestMessage, source.request_message, source.requestMessage)).trim(),
       technical_request_status: String(this.pick(source.technical_request_status, source.technicalRequestStatus)).trim(),
-      invoiced_location_names: String(this.pick(source.invoiced_location_names, source.invoicedLocationNames)).trim(),
-      invoiced_agreement_item_ids: String(this.pick(source.invoiced_agreement_item_ids, source.invoicedAgreementItemIds)).trim(),
+      invoiced_location_names: String(this.pick(
+        source.invoiced_location_names, source.invoicedLocationNames,
+        source.invoiced_locations, source.invoicedLocations,
+        source.location_names, source.locationNames
+      )).trim(),
+      invoiced_locations: String(this.pick(source.invoiced_locations, source.invoicedLocations, source.invoiced_location_names, source.invoicedLocationNames, source.location_names, source.locationNames)).trim(),
+      location_names: String(this.pick(source.location_names, source.locationNames, source.invoiced_locations, source.invoicedLocations, source.invoiced_location_names, source.invoicedLocationNames)).trim(),
+      invoiced_agreement_item_ids: String(this.pick(source.invoiced_agreement_item_ids, source.invoicedAgreementItemIds, source.source_agreement_item_ids, source.sourceAgreementItemIds)).trim(),
       source_invoice_id: String(this.pick(source.source_invoice_id, source.sourceInvoiceId, source.invoice_id, source.invoiceId)).trim(),
+      invoice_id: String(this.pick(source.invoice_id, source.invoiceId, source.source_invoice_id, source.sourceInvoiceId)).trim(),
       source_invoice_number: String(this.pick(source.source_invoice_number, source.sourceInvoiceNumber, source.invoice_number, source.invoiceNumber)).trim(),
       invoice_number: String(this.pick(source.invoice_number, source.invoiceNumber, source.source_invoice_number, source.sourceInvoiceNumber)).trim(),
       csm_assigned_to: String(this.pick(source.csm_assigned_to, source.csmAssignedTo, source.assigned_csm_name, source.assignedCsmName, source.csm_name, source.csmName, source.assigned_cs_name, source.assignedCsName)).trim(),
@@ -142,7 +152,8 @@ const OperationsOnboarding = {
       notes: String(this.pick(source.notes)).trim(),
       location_count: Number(locationCountValue) || 0,
       locations_count: Number(this.pick(source.locations_count, source.locationsCount, locationCountValue)) || 0,
-      number_of_locations: Number(this.pick(source.number_of_locations, source.numberOfLocations, locationCountValue)) || 0,
+      number_of_locations: Number(this.pick(source.number_of_locations, source.numberOfLocations, source.invoiced_location_count, source.invoicedLocationCount, locationCountValue)) || 0,
+      invoiced_location_count: Number(this.pick(source.invoiced_location_count, source.invoicedLocationCount, locationCountValue)) || 0,
       total_locations: Number(this.pick(source.total_locations, source.totalLocations, locationCountValue)) || 0
     };
   },
@@ -439,7 +450,7 @@ const OperationsOnboarding = {
   getRowLocationCount(row = {}, agreement = {}, agreementItems = []) {
     const explicit = Number(this.pick(row.number_of_locations, row.location_count, row.locations_count));
     if (Number.isFinite(explicit) && explicit > 0) return explicit;
-    const locationNamesCount = this.countStoredLocations(this.pick(row.invoiced_location_names, row.invoicedLocationNames));
+    const locationNamesCount = this.countStoredLocations(this.pick(row.invoiced_location_names, row.invoicedLocationNames, row.invoiced_locations, row.invoicedLocations, row.location_names, row.locationNames));
     if (locationNamesCount > 0) return locationNamesCount;
     const scopedItems = this.filterAgreementItemsForOnboardingRow(row, agreementItems);
     const scopedCount = this.deriveAgreementLocationMetrics(scopedItems).total_locations;
@@ -838,7 +849,10 @@ const OperationsOnboarding = {
       billing_frequency: String(this.pick(safeRow.billing_frequency, safeRow.billingFrequency, safeAgreement.billing_frequency, safeAgreement.billingFrequency)).trim(),
       payment_term: String(this.pick(safeRow.payment_term, safeRow.paymentTerm, safeAgreement.payment_term, safeAgreement.paymentTerm, safeAgreement.payment_terms, safeAgreement.paymentTerms)).trim(),
       service_start_date: String(this.pick(safeRow.service_start_date, safeRow.serviceStartDate, safeAgreement.service_start_date, safeAgreement.serviceStartDate)).trim(),
-      service_end_date: String(this.pick(safeRow.service_end_date, safeRow.serviceEndDate, safeAgreement.service_end_date, safeAgreement.serviceEndDate)).trim()
+      service_end_date: String(this.pick(safeRow.service_end_date, safeRow.serviceEndDate, safeAgreement.service_end_date, safeAgreement.serviceEndDate)).trim(),
+      invoiced_location_names: String(this.pick(safeRow.invoiced_location_names, safeRow.invoicedLocationNames, safeRow.invoiced_locations, safeRow.invoicedLocations, safeRow.location_names, safeRow.locationNames)).trim(),
+      invoiced_locations: String(this.pick(safeRow.invoiced_locations, safeRow.invoicedLocations, safeRow.invoiced_location_names, safeRow.invoicedLocationNames, safeRow.location_names, safeRow.locationNames)).trim(),
+      location_names: String(this.pick(safeRow.location_names, safeRow.locationNames, safeRow.invoiced_locations, safeRow.invoicedLocations, safeRow.invoiced_location_names, safeRow.invoicedLocationNames)).trim()
     };
   },
   applyAgreementFallbacksToRows(rows = []) {
@@ -1258,7 +1272,7 @@ const OperationsOnboarding = {
           <div><span class="muted">Payment Term:</span> ${U.escapeHtml(paymentTerm || '—')}</div>
           <div><span class="muted">Number of Locations:</span> ${U.escapeHtml(String(locations))}</div>
           <div><span class="muted">Invoice Number:</span> ${U.escapeHtml(detail.invoice_number || detail.source_invoice_number || '—')}</div>
-          <div style="grid-column:1/-1;"><span class="muted">Invoiced Locations:</span> ${U.escapeHtml(detail.invoiced_location_names || '—')}</div>
+          <div style="grid-column:1/-1;"><span class="muted">Invoiced Locations:</span> ${U.escapeHtml(detail.invoiced_location_names || detail.invoiced_locations || detail.location_names || '—')}</div>
           <div><span class="muted">Module Summary:</span> ${U.escapeHtml(detail.module_summary || '—')}</div>
           <div><span class="muted">Requested By:</span> ${U.escapeHtml(detail.requested_by || '—')}</div>
           <div><span class="muted">Requested At:</span> ${U.escapeHtml(this.formatDate(detail.requested_at))}</div>

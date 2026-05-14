@@ -603,7 +603,8 @@
       'onboarding_status', 'request_type', 'request_status', 'request_message', 'request_details',
       'technical_request_type', 'technical_request_status', 'technical_request_details',
       'source_invoice_id', 'invoice_id', 'source_invoice_number', 'invoice_number',
-      'invoiced_location_names', 'invoiced_agreement_item_ids', 'location_count', 'number_of_locations',
+      'invoiced_location_names', 'invoiced_locations', 'location_names', 'invoiced_agreement_item_ids',
+      'invoiced_location_count', 'location_count', 'locations_count', 'number_of_locations',
       'requested_by', 'requested_at', 'csm_assigned_to', 'go_live_target_date', 'go_live_date', 'go_live_at', 'completed_at', 'updated_at', 'created_at'
     ]),
     proposal_catalog: new Set([
@@ -653,7 +654,8 @@
       'technical_request_type','technical_request_details','technical_request_status',
       'priority','location_count','number_of_locations','locations_count',
       'source_invoice_id','invoice_id','source_invoice_number','invoice_number',
-      'invoiced_location_names','invoiced_agreement_item_ids',
+      'invoiced_location_names','invoiced_locations','location_names','invoiced_agreement_item_ids',
+      'invoiced_location_count',
       'service_start_date','service_end_date','billing_frequency','payment_term',
       'module_summary','agreement_status','requested_by','requested_at',
       'technical_admin_assigned_to','started_at','completed_at','updated_by','updated_at','notes',
@@ -769,16 +771,16 @@
     out.request_status = String(out.request_status || 'Not Requested').trim() || 'Not Requested';
     out.technical_request_status = String(out.technical_request_status || 'Not Requested').trim() || 'Not Requested';
     out.location_count = Number(out.location_count || out.number_of_locations || out.locations_count || out.invoiced_location_count || 0) || 0;
+    out.locations_count = Number(out.locations_count || out.location_count || out.number_of_locations || out.invoiced_location_count || 0) || 0;
     out.number_of_locations = Number(out.number_of_locations || out.location_count || out.locations_count || out.invoiced_location_count || 0) || 0;
     out.invoiced_location_count = Number(out.invoiced_location_count || out.location_count || out.number_of_locations || 0) || undefined;
     if (out.invoiced_location_count === undefined) delete out.invoiced_location_count;
 
-    if (!String(out.invoiced_locations || '').trim() && String(out.invoiced_location_names || '').trim()) {
-      out.invoiced_locations = String(out.invoiced_location_names).trim();
-    }
-    if (!String(out.location_names || '').trim()) {
-      out.location_names = String(out.invoiced_locations || out.invoiced_location_names || '').trim() || undefined;
-      if (out.location_names === undefined) delete out.location_names;
+    const locationText = String(out.invoiced_location_names || out.invoiced_locations || out.location_names || '').trim();
+    if (locationText) {
+      out.invoiced_location_names = String(out.invoiced_location_names || locationText).trim();
+      out.invoiced_locations = String(out.invoiced_locations || locationText).trim();
+      out.location_names = String(out.location_names || locationText).trim();
     }
     if (!String(out.request_message || '').trim()) {
       const locations = String(out.invoiced_locations || out.invoiced_location_names || out.location_names || '').trim();

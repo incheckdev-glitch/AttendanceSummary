@@ -299,6 +299,8 @@ const TechnicalAdmin = {
     const agreement = this.extractLinkedAgreement(source);
     const agreementItems = this.extractAgreementItems(source, agreement);
     const requestLocationCount = this.parseOptionalNumber(
+      source.invoiced_location_count,
+      source.invoicedLocationCount,
       source.location_count,
       source.number_of_locations,
       source.locations_count,
@@ -320,7 +322,7 @@ const TechnicalAdmin = {
       ? agreementItems.filter(item => scopedItemIds.has(String(this.pick(item.id, item.agreement_item_id, item.source_agreement_item_id, item.sourceAgreementItemId)).trim()))
       : (invoiceScoped ? [] : agreementItems);
     const derivedLocationCount = scopedAgreementItems.length ? this.deriveAgreementLocationCount(scopedAgreementItems) : null;
-    const namedLocationCount = this.countStoredLocations(this.pick(source.invoiced_location_names, source.invoicedLocationNames));
+    const namedLocationCount = this.countStoredLocations(this.pick(source.invoiced_location_names, source.invoicedLocationNames, source.invoiced_locations, source.invoicedLocations, source.location_names, source.locationNames));
     const resolvedLocationCount = invoiceScoped
       ? (requestLocationCount ?? derivedLocationCount ?? namedLocationCount ?? null)
       : (requestLocationCount ?? derivedLocationCount ?? agreementLocationCount ?? null);
@@ -349,8 +351,10 @@ const TechnicalAdmin = {
       priority: String(this.pick(source.priority)).trim(),
       location_count: Number.isFinite(Number(resolvedLocationCount)) ? Number(resolvedLocationCount) : null,
       number_of_locations: Number.isFinite(Number(resolvedLocationCount)) ? Number(resolvedLocationCount) : null,
-      invoiced_location_names: String(this.pick(source.invoiced_location_names, source.invoicedLocationNames)).trim(),
-      invoiced_agreement_item_ids: String(this.pick(source.invoiced_agreement_item_ids, source.invoicedAgreementItemIds)).trim(),
+      invoiced_location_names: String(this.pick(source.invoiced_location_names, source.invoicedLocationNames, source.invoiced_locations, source.invoicedLocations, source.location_names, source.locationNames)).trim(),
+      invoiced_locations: String(this.pick(source.invoiced_locations, source.invoicedLocations, source.invoiced_location_names, source.invoicedLocationNames, source.location_names, source.locationNames)).trim(),
+      location_names: String(this.pick(source.location_names, source.locationNames, source.invoiced_locations, source.invoicedLocations, source.invoiced_location_names, source.invoicedLocationNames)).trim(),
+      invoiced_agreement_item_ids: String(this.pick(source.invoiced_agreement_item_ids, source.invoicedAgreementItemIds, source.source_agreement_item_ids, source.sourceAgreementItemIds)).trim(),
       source_invoice_id: String(this.pick(source.source_invoice_id, source.sourceInvoiceId, source.invoice_id, source.invoiceId)).trim(),
       source_invoice_number: String(this.pick(source.source_invoice_number, source.sourceInvoiceNumber, source.invoice_number, source.invoiceNumber)).trim(),
       invoice_number: String(this.pick(source.invoice_number, source.invoiceNumber, source.source_invoice_number, source.sourceInvoiceNumber)).trim(),
@@ -464,7 +468,7 @@ const TechnicalAdmin = {
       const linkedItems = this.getLinkedAgreementItems({ request: row, agreement, agreementItems: uniqueAgreementItems });
       const annualSaasLocationCount = linkedItems.filter(item => this.isAnnualSaasLocationItem(item)).length;
       const itemLocationCount = annualSaasLocationCount || null;
-      const namedLocationCount = this.countStoredLocations(this.pick(row.invoiced_location_names, raw.invoiced_location_names, row.invoicedLocationNames, raw.invoicedLocationNames));
+      const namedLocationCount = this.countStoredLocations(this.pick(row.invoiced_location_names, raw.invoiced_location_names, row.invoicedLocationNames, raw.invoicedLocationNames, row.invoiced_locations, raw.invoiced_locations, row.location_names, raw.location_names));
       const earliestItemStart = linkedItems
         .map(item => String(item?.service_start_date || '').trim())
         .filter(Boolean)
@@ -486,6 +490,8 @@ const TechnicalAdmin = {
 
       const locationCount = invoiceScoped
         ? this.parseOptionalNumber(
+          row.invoiced_location_count,
+          raw.invoiced_location_count,
           row.number_of_locations,
           row.location_count,
           raw.number_of_locations,
@@ -495,6 +501,8 @@ const TechnicalAdmin = {
           namedLocationCount
         )
         : this.parseOptionalNumber(
+          row.invoiced_location_count,
+          raw.invoiced_location_count,
           row.number_of_locations,
           row.location_count,
           raw.number_of_locations,
@@ -511,6 +519,7 @@ const TechnicalAdmin = {
         client_name: String(this.pick(row.client_name, agreement.client_name, agreement.company_name, agreement.customer_name)).trim(),
         location_count: Number.isFinite(Number(locationCount)) ? Number(locationCount) : null,
         number_of_locations: Number.isFinite(Number(locationCount)) ? Number(locationCount) : null,
+        invoiced_location_names: String(this.pick(row.invoiced_location_names, raw.invoiced_location_names, row.invoiced_locations, raw.invoiced_locations, row.location_names, raw.location_names)).trim(),
         service_start_date: String(invoiceScoped
           ? this.pick(row.service_start_date, raw.service_start_date, earliestItemStart)
           : this.pick(row.service_start_date, raw.service_start_date, earliestItemStart, agreement.service_start_date, agreement.contract_start_date, agreement.start_date, agreement.agreement_start_date)
@@ -865,7 +874,7 @@ const TechnicalAdmin = {
           <div><span class="muted">Status:</span> ${this.statusBadge(row.request_status)}</div>
           <div><span class="muted">Number of Locations:</span> ${U.escapeHtml(String(row.number_of_locations || row.location_count || '—'))}</div>
           <div><span class="muted">Invoice Number:</span> ${U.escapeHtml(row.invoice_number || row.source_invoice_number || '—')}</div>
-          <div style="grid-column:1/-1;"><span class="muted">Invoiced Locations:</span> ${U.escapeHtml(row.invoiced_location_names || '—')}</div>
+          <div style="grid-column:1/-1;"><span class="muted">Invoiced Locations:</span> ${U.escapeHtml(row.invoiced_location_names || row.invoiced_locations || row.location_names || '—')}</div>
           <div><span class="muted">Service Start Date:</span> ${U.escapeHtml(this.toDisplayDate(row.service_start_date))}</div>
           <div><span class="muted">Service End Date:</span> ${U.escapeHtml(this.toDisplayDate(row.service_end_date))}</div>
           <div><span class="muted">Billing Frequency:</span> ${U.escapeHtml(row.billing_frequency || '—')}</div>
