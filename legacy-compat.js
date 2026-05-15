@@ -1,12 +1,15 @@
 (function initLegacyCompat(global) {
   const TICKET_STATUS_MAP = Object.freeze({
     new: 'New',
-    'under development': 'Under Development',
-    'not started yet': 'Not Started Yet',
+    'under review': 'Under Review',
+    'under development': 'In Progress',
+    'in progress': 'In Progress',
+    'not started yet': 'New',
     'on hold': 'On Hold',
-    'on stage': 'On Stage',
-    sent: 'Sent',
+    'on stage': 'In Progress',
+    sent: 'In Progress',
     resolved: 'Resolved',
+    closed: 'Closed',
     rejected: 'Rejected'
   });
 
@@ -52,7 +55,7 @@
     const raw = value == null ? '' : String(value);
     const trimmed = raw.trim();
     if (!trimmed) return 'New';
-    const mapped = TICKET_STATUS_MAP[trimmed.toLowerCase()];
+    const mapped = TICKET_STATUS_MAP[trimmed.toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ')];
     return mapped || trimmed;
   }
 

@@ -1,3 +1,108 @@
+/** Ticket filter/display helpers */
+const TICKET_STATUS_OPTIONS = [
+  'New',
+  'Under Review',
+  'In Progress',
+  'On Hold',
+  'Resolved',
+  'Closed',
+  'Rejected'
+];
+
+const TICKET_RELATED_OPTIONS = [
+  'Backend',
+  'Frontend',
+  'Mobile',
+  'Hosting & Infrastructure'
+];
+
+const DEV_TEAM_STATUS_OPTIONS = [
+  'Local',
+  'On Stage',
+  'Tested on Stage',
+  'Production',
+  'Tested on Production',
+  'Disregard'
+];
+
+function normalizeTicketFilterValue(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+function getTicketRelated(ticket) {
+  return ticket?.ticket_related
+    || ticket?.ticketRelated
+    || ticket?.issue_related
+    || ticket?.issueRelated
+    || ticket?.related_to
+    || ticket?.relatedTo
+    || '';
+}
+
+function getDevTeamStatus(ticket) {
+  return ticket?.dev_team_status
+    || ticket?.devTeamStatus
+    || ticket?.developer_status
+    || ticket?.developerStatus
+    || '';
+}
+
+function canonicalTicketStatusValue(value) {
+  const normalized = normalizeTicketFilterValue(value);
+  const direct = TICKET_STATUS_OPTIONS.find(option => normalizeTicketFilterValue(option) === normalized);
+  return direct || String(value || '').trim();
+}
+
+function canonicalTicketRelatedValue(value) {
+  const normalized = normalizeTicketFilterValue(value);
+  const legacyMap = {
+    'ui / ux': 'Frontend',
+    analytics: 'Backend',
+    permissions: 'Backend',
+    other: 'Backend',
+    'mobile app': 'Mobile',
+    'hosting infrastructure': 'Hosting & Infrastructure',
+    'hosting & infrastructure': 'Hosting & Infrastructure'
+  };
+  const direct = TICKET_RELATED_OPTIONS.find(option => normalizeTicketFilterValue(option) === normalized);
+  return direct || legacyMap[normalized] || String(value || '').trim();
+}
+
+function displayTicketRelatedValue(value) {
+  const rawValues = String(value || '')
+    .split(',')
+    .map(v => v.trim())
+    .filter(Boolean);
+  if (!rawValues.length) return '';
+  return rawValues
+    .map(v => canonicalTicketRelatedValue(v) || 'Other')
+    .map(v => TICKET_RELATED_OPTIONS.some(option => normalizeTicketFilterValue(option) === normalizeTicketFilterValue(v)) ? v : 'Other')
+    .join(', ');
+}
+
+function canonicalDevTeamStatusValue(value) {
+  const normalized = normalizeTicketFilterValue(value);
+  const direct = DEV_TEAM_STATUS_OPTIONS.find(option => normalizeTicketFilterValue(option) === normalized);
+  return direct || String(value || '').trim();
+}
+
+if (typeof window !== 'undefined') {
+  window.TICKET_STATUS_OPTIONS = TICKET_STATUS_OPTIONS;
+  window.TICKET_RELATED_OPTIONS = TICKET_RELATED_OPTIONS;
+  window.DEV_TEAM_STATUS_OPTIONS = DEV_TEAM_STATUS_OPTIONS;
+  window.normalizeTicketFilterValue = normalizeTicketFilterValue;
+  window.getTicketRelated = getTicketRelated;
+  window.getDevTeamStatus = getDevTeamStatus;
+  window.canonicalTicketStatusValue = canonicalTicketStatusValue;
+  window.canonicalTicketRelatedValue = canonicalTicketRelatedValue;
+  window.displayTicketRelatedValue = displayTicketRelatedValue;
+  window.canonicalDevTeamStatusValue = canonicalDevTeamStatusValue;
+}
+
 /** DataStore */
 const DataStore = {
   rows: [],
@@ -13,25 +118,22 @@ const DataStore = {
   etag: null,
 
   normalizeStatusKey(status) {
-    const raw = status == null ? '' : String(status);
-    const normalized = raw
-      .trim()
-      .toLowerCase()
-      .replace(/[\s_-]+/g, ' ')
-      .trim();
-    return normalized || 'new';
+    return normalizeTicketFilterValue(status) || 'new';
   },
   normalizeStatus(s) {
     const key = DataStore.normalizeStatusKey(s);
     if (typeof window.normalizeTicketStatus === 'function') return window.normalizeTicketStatus(key);
     const map = {
       new: 'New',
-      'under development': 'Under Development',
-      'not started yet': 'Not Started Yet',
+      'under review': 'Under Review',
+      'in progress': 'In Progress',
+      'under development': 'In Progress',
+      'not started yet': 'New',
       'on hold': 'On Hold',
-      'on stage': 'On Stage',
-      sent: 'Sent',
+      'on stage': 'In Progress',
+      sent: 'In Progress',
       resolved: 'Resolved',
+      closed: 'Closed',
       rejected: 'Rejected'
     };
     return map[key] || String(s || '').trim() || 'New';
@@ -96,10 +198,12 @@ const DataStore = {
       // Keep positional fallbacks aligned with export order:
       // R (index 17) = Dev Team Status, S (index 18) = Issue Related.
       devTeamStatus:
-        pick('dev team status', 'development team status', 'dev status', 'dev_team_status') ||
+        pick('dev team status', 'development team status', 'dev status', 'dev_team_status', 'devTeamStatus', 'developer_status', 'developerStatus') ||
+        getDevTeamStatus(raw) ||
         String(raw.__col_17 ?? '').trim(),
       issueRelated:
-        pick('issue related', 'related issue', 'related issues', 'issue relation', 'issue_related') ||
+        pick('ticket related', 'issue related', 'related issue', 'related issues', 'issue relation', 'issue_related', 'ticket_related', 'ticketRelated', 'issueRelated', 'related_to', 'relatedTo') ||
+        getTicketRelated(raw) ||
         String(raw.__col_18 ?? '').trim(),
       notes: pick('notes'),
        // Always prefer exported column L (index 11) for priority when duplicate

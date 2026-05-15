@@ -129,8 +129,8 @@ const TICKET_SORT_COLUMNS = {
   type: { type: 'text', getValue: row => row.type },
   status: { type: 'text', getValue: row => row.status },
   youtrackReference: { type: 'text', getValue: row => row.youtrackReference },
-  devTeamStatus: { type: 'text', getValue: row => row.devTeamStatus },
-  issueRelated: { type: 'text', getValue: row => row.issueRelated },
+  devTeamStatus: { type: 'text', getValue: row => getDevTeamStatus(row) },
+  issueRelated: { type: 'text', getValue: row => getTicketRelated(row) },
   notes: { type: 'text', getValue: row => row.notes },
   log: { type: 'text', getValue: row => row.log },
   createdAt: { type: 'date', getValue: row => row.createdAt },
@@ -751,31 +751,23 @@ UI.Issues = {
         .map(v => `<option>${v}</option>`)
         .join('');
     if (E.statusFilter)
-      E.statusFilter.innerHTML = ['All', ...uniq(DataStore.rows.map(r => r.status))]
-        .map(v => `<option>${v}</option>`)
+      E.statusFilter.innerHTML = ['All', ...TICKET_STATUS_OPTIONS]
+        .map(v => `<option value="${U.escapeAttr(v)}">${U.escapeHtml(v)}</option>`)
         .join('');
     const allowInternalFilters = Permissions.canUseInternalIssueFilters();
     if (E.devTeamStatusFilter && allowInternalFilters)
-      E.devTeamStatusFilter.innerHTML = ['All', ...uniq(DataStore.rows.map(r => r.devTeamStatus))]
-        .map(v => `<option>${v}</option>`)
+      E.devTeamStatusFilter.innerHTML = ['All', ...DEV_TEAM_STATUS_OPTIONS]
+        .map(v => `<option value="${U.escapeAttr(v)}">${U.escapeHtml(v)}</option>`)
         .join('');
     if (E.issueRelatedFilter && allowInternalFilters) {
-      const issueRelatedOptions = uniq(
-        DataStore.rows.flatMap(r =>
-          String(r.issueRelated || '')
-            .split(',')
-            .map(v => v.trim())
-            .filter(Boolean)
-        )
-      );
-      E.issueRelatedFilter.innerHTML = ['All', ...issueRelatedOptions]
-        .map(v => `<option>${v}</option>`)
+      E.issueRelatedFilter.innerHTML = ['All', ...TICKET_RELATED_OPTIONS]
+        .map(v => `<option value="${U.escapeAttr(v)}">${U.escapeHtml(v)}</option>`)
         .join('');
     }
      setIfOptionExists(E.moduleFilter, Filters.state.module);
     setIfOptionExists(E.categoryFilter, Filters.state.category);
     setIfOptionExists(E.priorityFilter, Filters.state.priority);
-    setIfOptionExists(E.statusFilter, Filters.state.status);
+    setIfOptionExists(E.statusFilter, canonicalTicketStatusValue(Filters.state.status));
     if (allowInternalFilters) {
       setIfOptionExists(E.devTeamStatusFilter, Filters.state.devTeamStatus);
       setIfOptionExists(E.issueRelatedFilter, Filters.state.issueRelated);
@@ -784,17 +776,27 @@ UI.Issues = {
   applyFilters() {
     const s = Filters.state;
     const allowInternalFilters = Permissions.canUseInternalIssueFilters();
-    const qstr = (s.search || '').toLowerCase().trim();
+    const qstr = normalizeTicketFilterValue(s.search || '');
     const terms = qstr ? qstr.split(/\s+/).filter(Boolean) : [];
     const start = s.start ? new Date(s.start) : null;
     const end = s.end ? U.dateAddDays(s.end, 1) : null;
 
      const matchesCategory = r => {
-      if (!s.category || s.category === 'All') return true;
-      if (r.type && r.type === s.category) return true;
+      const selectedCategory = normalizeTicketFilterValue(s.category);
+      if (!selectedCategory || selectedCategory === 'all') return true;
+      if (normalizeTicketFilterValue(r.type) === selectedCategory) return true;
       const cats = DataStore.computed.get(r.id)?.suggestions?.categories || [];
-      return cats.some(c => c.label === s.category);
+      return cats.some(c => normalizeTicketFilterValue(c.label) === selectedCategory);
     };
+
+    const selectedModule = normalizeTicketFilterValue(s.module);
+    const selectedPriority = normalizeTicketFilterValue(s.priority);
+    const selectedStatus = normalizeTicketFilterValue(s.status);
+    const selectedDevTeamStatus = normalizeTicketFilterValue(s.devTeamStatus);
+    const selectedIssueRelated = normalizeTicketFilterValue(canonicalTicketRelatedValue(s.issueRelated));
+    const selectedDepartment = normalizeTicketFilterValue(s.department);
+    const selectedAssignedTo = normalizeTicketFilterValue(s.assigned_to || s.assignedTo);
+    const selectedRequester = normalizeTicketFilterValue(s.requester);
 
     return DataStore.rows.filter(r => {
       const hay = [
@@ -809,7 +811,7 @@ UI.Issues = {
         r.emailAddressee,
       ]
         .concat(
-          allowInternalFilters ? [r.youtrackReference, r.devTeamStatus, r.issueRelated, r.notes] : []
+          allowInternalFilters ? [r.youtrackReference, getDevTeamStatus(r), displayTicketRelatedValue(getTicketRelated(r)), r.notes] : []
         )
         .filter(Boolean)
         .join(' ')
@@ -827,24 +829,29 @@ UI.Issues = {
         keepDate = false;
       }
 
+      const rowIssueRelatedValues = String(getTicketRelated(r) || '')
+        .split(',')
+        .map(v => normalizeTicketFilterValue(canonicalTicketRelatedValue(v)))
+        .filter(Boolean);
+      const rowDevTeamStatus = normalizeTicketFilterValue(canonicalDevTeamStatusValue(getDevTeamStatus(r)));
+      const rowRequester = normalizeTicketFilterValue(r.requester || r.name || r.emailAddressee || r.email || '');
+
       return (
-        (!s.module || s.module === 'All' || r.module === s.module) &&
-         matchesCategory(r) &&
-        (!s.priority || s.priority === 'All' || r.priority === s.priority) &&
-        (!s.status ||
-          s.status === 'All' ||
-          DataStore.normalizeStatusKey(r.status) === DataStore.normalizeStatusKey(s.status)) &&
+        (!selectedModule || selectedModule === 'all' || normalizeTicketFilterValue(r.module) === selectedModule) &&
+          matchesCategory(r) &&
+        (!selectedPriority || selectedPriority === 'all' || normalizeTicketFilterValue(r.priority) === selectedPriority) &&
+        (!selectedStatus || selectedStatus === 'all' || normalizeTicketFilterValue(r.status) === selectedStatus) &&
+        (!selectedDepartment || selectedDepartment === 'all' || normalizeTicketFilterValue(r.department) === selectedDepartment) &&
+        (!selectedAssignedTo || selectedAssignedTo === 'all' || normalizeTicketFilterValue(r.assigned_to || r.assignedTo) === selectedAssignedTo) &&
+        (!selectedRequester || selectedRequester === 'all' || rowRequester === selectedRequester) &&
         (!allowInternalFilters ||
-          (!s.devTeamStatus ||
-            s.devTeamStatus === 'All' ||
-            (r.devTeamStatus || '') === s.devTeamStatus)) &&
+          (!selectedDevTeamStatus ||
+            selectedDevTeamStatus === 'all' ||
+            rowDevTeamStatus === selectedDevTeamStatus)) &&
         (!allowInternalFilters ||
-          (!s.issueRelated ||
-            s.issueRelated === 'All' ||
-            String(r.issueRelated || '')
-              .split(',')
-              .map(v => v.trim())
-              .includes(s.issueRelated))) &&
+          (!selectedIssueRelated ||
+            selectedIssueRelated === 'all' ||
+            rowIssueRelatedValues.includes(selectedIssueRelated))) &&
         keepDate
       );
     });
@@ -859,26 +866,8 @@ UI.Issues = {
     const hasSummaryCounts = Object.keys(TicketSummaryState.statusCounts || {}).length > 0;
     const counts = hasSummaryCounts ? TicketSummaryState.statusCounts : fallbackCounts;
     const total = Number(TicketSummaryState.total || 0) || list.length;
-    const statusKeyToLabel = {
-      new: 'New',
-      'not started yet': 'Not Started Yet',
-      'under development': 'Under Development',
-      'on stage': 'On Stage',
-      'on hold': 'On Hold',
-      sent: 'Sent',
-      resolved: 'Resolved',
-      rejected: 'Rejected'
-    };
-    const preferredOrder = [
-      'new',
-      'not started yet',
-      'under development',
-      'on stage',
-      'on hold',
-      'sent',
-      'resolved',
-      'rejected'
-    ];
+    const statusKeyToLabel = Object.fromEntries(TICKET_STATUS_OPTIONS.map(label => [normalizeTicketFilterValue(label), label]));
+    const preferredOrder = TICKET_STATUS_OPTIONS.map(label => normalizeTicketFilterValue(label));
     E.kpis.innerHTML = '';
     const add = (label, val) => {
       const pct = total ? Math.round((val * 100) / total) : 0;
@@ -913,7 +902,7 @@ UI.Issues = {
             matchCount: matches.length,
             matches: matches.slice(0, 20)
           });
-          Filters.state.status = statusKey;
+          Filters.state.status = statusKeyToLabel[statusKey] || label;
           Filters.state.search = '';
         }
         Filters.save();
@@ -933,10 +922,8 @@ UI.Issues = {
     const seen = new Set();
     preferredOrder.forEach(statusKey => {
       const value = Number(counts[statusKey] || 0);
-      if (value > 0) {
-        add(statusKeyToLabel[statusKey] || DataStore.normalizeStatus(statusKey), value);
-        seen.add(statusKey);
-      }
+      add(statusKeyToLabel[statusKey] || DataStore.normalizeStatus(statusKey), value);
+      seen.add(statusKey);
     });
     Object.entries(counts)
       .filter(([statusKey, value]) => !seen.has(statusKey) && Number(value || 0) > 0)
@@ -1000,8 +987,8 @@ UI.Issues = {
       if (col.key === 'id') return U.escapeHtml(issueDisplayId(row) || '-');
       if (col.key === 'priority') return badgePrio(row.priority || '-');
       if (col.key === 'status') return badgeStatus(row.status || '-');
-      if (col.key === 'devTeamStatus') return badgeDevTeamStatus(row.devTeamStatus || '-');
-      if (col.key === 'issueRelated') return badgeIssueRelatedGroup(row.issueRelated || '');
+      if (col.key === 'devTeamStatus') return badgeDevTeamStatus(canonicalDevTeamStatusValue(getDevTeamStatus(row)) || '-');
+      if (col.key === 'issueRelated') return badgeIssueRelatedGroup(displayTicketRelatedValue(getTicketRelated(row)) || '');
       if (
         col.key === 'date' ||
         col.key === 'createdAt' ||
@@ -1701,12 +1688,14 @@ UI.Modals = {
     const category = U.escapeHtml(r.type || '-');
     const logValue = U.escapeHtml(r.log || '—');
     const youtrackReference = U.escapeHtml(r.youtrackReference || '—');
-    const devTeamStatus = U.escapeHtml(r.devTeamStatus || '—');
-    const issueRelated = U.escapeHtml(r.issueRelated || '—');
+    const devTeamStatusValue = canonicalDevTeamStatusValue(getDevTeamStatus(r));
+    const issueRelatedValue = displayTicketRelatedValue(getTicketRelated(r));
+    const devTeamStatus = U.escapeHtml(devTeamStatusValue || '—');
+    const issueRelated = U.escapeHtml(issueRelatedValue || '—');
     const devTeamStatusBadge = `<span class="pill dev-team-${U.toTagClass(
-      r.devTeamStatus || ''
+      devTeamStatusValue || ''
     )}">${devTeamStatus}</span>`;
-    const issueRelatedBadges = String(r.issueRelated || '')
+    const issueRelatedBadges = String(issueRelatedValue || '')
       .split(',')
       .map(v => v.trim())
       .filter(Boolean)
@@ -1989,28 +1978,8 @@ const IssueEditor = {
   isOpening: false,
   isSaving: false,
   selectedAttachments: [],
-  DEV_TEAM_STATUS_OPTIONS: [
-    'Pending',
-    'Under Review',
-    'Under Development',
-    'In QA',
-    'Ready for Production',
-    'Production',
-    'Blocked',
-    'Done',
-    'Rejected'
-  ],
-  ISSUE_RELATED_OPTIONS: [
-    'Backend',
-    'Frontend',
-    'Database',
-    'PWA / Notifications',
-    'Workflow',
-    'Permissions',
-    'Analytics',
-    'UI / UX',
-    'Other'
-  ],
+  DEV_TEAM_STATUS_OPTIONS,
+  ISSUE_RELATED_OPTIONS: TICKET_RELATED_OPTIONS,
   syncSelectOptions(selectEl, values = [], selected = '', placeholder = 'Select option') {
     if (!selectEl) return;
     const uniqueValues = [...new Set(values.map(v => String(v || '').trim()).filter(Boolean))];
@@ -2049,20 +2018,17 @@ const IssueEditor = {
       .filter(Boolean);
   },
   syncIssueDropdowns(selectedDevTeamStatus = '', selectedIssueRelated = '') {
-    const rows = Array.isArray(DataStore.rows) ? DataStore.rows : [];
-    const devTeamStatusValues = this.DEV_TEAM_STATUS_OPTIONS.concat(
-      rows.map(r => r.devTeamStatus)
-    );
+    const canonicalDevStatus = canonicalDevTeamStatusValue(selectedDevTeamStatus);
     this.syncSelectOptions(
       E.editIssueDevTeamStatus,
-      devTeamStatusValues,
-      selectedDevTeamStatus,
+      this.DEV_TEAM_STATUS_OPTIONS,
+      this.DEV_TEAM_STATUS_OPTIONS.includes(canonicalDevStatus) ? canonicalDevStatus : '',
       'Select dev team status'
     );
     this.syncMultiSelectOptions(
       E.editIssueRelated,
       this.ISSUE_RELATED_OPTIONS,
-      this.parseIssueRelatedSelections(selectedIssueRelated)
+      this.parseIssueRelatedSelections(selectedIssueRelated).map(canonicalTicketRelatedValue)
     );
   },
   syncCategoryOptions(selected = '') {
@@ -2097,7 +2063,7 @@ const IssueEditor = {
     setVal(E.editIssueName, issue.name || identity.name || '');
     setVal(E.editIssueEmail, issue.emailAddressee || identity.email || '');
     setVal(E.editIssueYoutrackReference, issue.youtrackReference || '');
-    this.syncIssueDropdowns(issue.devTeamStatus || '', issue.issueRelated || '');
+    this.syncIssueDropdowns(getDevTeamStatus(issue), getTicketRelated(issue));
     this.selectedAttachments = [];
     if (E.editTicketAttachments) E.editTicketAttachments.value = '';
     if (E.editTicketAttachmentError) E.editTicketAttachmentError.textContent = '';
@@ -2180,14 +2146,14 @@ const IssueEditor = {
       desc: (E.editIssueDesc?.value || '').trim(),
       module: (E.editIssueModule?.value || '').trim() || 'Unspecified',
       priority: E.editIssuePriority?.value || '',
-      status: E.editIssueStatus?.value || '',
+      status: canonicalTicketStatusValue(E.editIssueStatus?.value || ''),
       type: (E.editIssueType?.value || '').trim(),
       department: (E.editIssueDepartment?.value || '').trim(),
       name: (E.editIssueName?.value || '').trim(),
       emailAddressee: (E.editIssueEmail?.value || '').trim(),
       youtrackReference: (E.editIssueYoutrackReference?.value || '').trim(),
-      devTeamStatus: (E.editIssueDevTeamStatus?.value || '').trim(),
-      issueRelated: this.getSelectedMultiValues(E.editIssueRelated).join(', '),
+      devTeamStatus: canonicalDevTeamStatusValue(E.editIssueDevTeamStatus?.value || ''),
+      issueRelated: this.getSelectedMultiValues(E.editIssueRelated).map(canonicalTicketRelatedValue).join(', '),
       notes: this.issue.notes || '',
       log: this.issue.log || '',
       file: this.issue.file || '',
@@ -2319,7 +2285,7 @@ const TicketCreator = {
       email: (E.createTicketEmail?.value || '').trim() || identity.email,
       file: (E.createTicketFile?.value || '').trim(),
       link: (E.createTicketFile?.value || '').trim(),
-      status: 'new',
+      status: 'New',
       date: now
     };
   },
@@ -2619,7 +2585,7 @@ const BulkEditor = {
     }
     IssueEditor.syncSelectOptions(
       E.bulkDevTeamStatus,
-      IssueEditor.DEV_TEAM_STATUS_OPTIONS.concat((DataStore.rows || []).map(r => r.devTeamStatus)),
+      IssueEditor.DEV_TEAM_STATUS_OPTIONS,
       '',
       'Keep current'
     );
@@ -2709,14 +2675,14 @@ async function onEditIssueSubmit(event) {
   const description = (E.editIssueDesc?.value || '').trim();
   const module = (E.editIssueModule?.value || '').trim();
   const priority = E.editIssuePriority?.value || '';
-  const status = E.editIssueStatus?.value || '';
+  const status = canonicalTicketStatusValue(E.editIssueStatus?.value || '');
   const type = (E.editIssueType?.value || '').trim();
   const department = (E.editIssueDepartment?.value || '').trim();
   const name = (E.editIssueName?.value || '').trim();
   const emailAddressee = (E.editIssueEmail?.value || '').trim();
   const youtrackReference = (E.editIssueYoutrackReference?.value || '').trim();
-  const devTeamStatus = (E.editIssueDevTeamStatus?.value || '').trim();
-  const issueRelated = IssueEditor.getSelectedMultiValues(E.editIssueRelated).join(', ');
+  const devTeamStatus = canonicalDevTeamStatusValue(E.editIssueDevTeamStatus?.value || '');
+  const issueRelated = IssueEditor.getSelectedMultiValues(E.editIssueRelated).map(canonicalTicketRelatedValue).join(', ');
   const notes = IssueEditor.issue?.notes || '';
   const log = IssueEditor.issue?.log || '';
   const date = E.editIssueDate?.value || '';
@@ -2802,8 +2768,8 @@ async function onBulkEditSubmit(event) {
   const ticketIds = BulkEditor.parseIds(E.bulkIssueIds?.value || '');
   const patch = {
     priority: E.bulkPriority?.value || '',
-    status: E.bulkStatus?.value || '',
-    devTeamStatus: (E.bulkDevTeamStatus?.value || '').trim(),
+    status: canonicalTicketStatusValue(E.bulkStatus?.value || ''),
+    devTeamStatus: canonicalDevTeamStatusValue(E.bulkDevTeamStatus?.value || ''),
     notes: (E.bulkNotes?.value || '').trim()
   };
   const changedKeys = Object.keys(patch).filter(key => patch[key]);
@@ -3751,7 +3717,7 @@ async function loadIssues(force = false) {
       setIfOptionExists(E.moduleFilter, Filters.state.module);
       setIfOptionExists(E.categoryFilter, Filters.state.category);
       setIfOptionExists(E.priorityFilter, Filters.state.priority);
-      setIfOptionExists(E.statusFilter, Filters.state.status);
+      setIfOptionExists(E.statusFilter, canonicalTicketStatusValue(Filters.state.status));
       setIfOptionExists(E.devTeamStatusFilter, Filters.state.devTeamStatus);
       setIfOptionExists(E.issueRelatedFilter, Filters.state.issueRelated);
       UI.skeleton(false);
@@ -3848,7 +3814,7 @@ async function loadIssues(force = false) {
     setIfOptionExists(E.moduleFilter, Filters.state.module);
     setIfOptionExists(E.categoryFilter, Filters.state.category);
     setIfOptionExists(E.priorityFilter, Filters.state.priority);
-    setIfOptionExists(E.statusFilter, Filters.state.status);
+    setIfOptionExists(E.statusFilter, canonicalTicketStatusValue(Filters.state.status));
     setIfOptionExists(E.devTeamStatusFilter, Filters.state.devTeamStatus);
     setIfOptionExists(E.issueRelatedFilter, Filters.state.issueRelated);
     UI.refreshAll();
@@ -4104,7 +4070,7 @@ function buildTicketListFiltersPayload() {
   if (state.module && state.module !== 'All') payload.module = state.module;
   if (state.category && state.category !== 'All') payload.category = state.category;
   if (state.priority && state.priority !== 'All') payload.priority = state.priority;
-  if (state.status && state.status !== 'All') payload.status = state.status;
+  if (state.status && state.status !== 'All') payload.status = canonicalTicketStatusValue(state.status);
   if (state.start) payload.start = state.start;
   if (state.end) payload.end = state.end;
   if (Permissions.canUseInternalIssueFilters()) {
@@ -4140,8 +4106,12 @@ function normalizeIssueForStore(issue, options = {}) {
   };
   if (includeRestricted) {
     normalized.youtrackReference = issue.youtrackReference || '';
-    normalized.devTeamStatus = issue.devTeamStatus || '';
-    normalized.issueRelated = issue.issueRelated || '';
+    normalized.devTeamStatus = canonicalDevTeamStatusValue(getDevTeamStatus(issue) || issue.devTeamStatus || '');
+    normalized.issueRelated = String(getTicketRelated(issue) || issue.issueRelated || '')
+      .split(',')
+      .map(v => canonicalTicketRelatedValue(v))
+      .filter(Boolean)
+      .join(', ');
     normalized.notes = issue.notes || '';
   }
   return normalized;
@@ -4472,8 +4442,8 @@ function buildIssueExportRow(issue) {
   };
   if (Permissions.isAdminLike()) {
     row['YouTrack Reference'] = issue.youtrackReference;
-    row['Dev Team Status'] = issue.devTeamStatus;
-    row['Ticket Related'] = issue.issueRelated;
+    row['Dev Team Status'] = canonicalDevTeamStatusValue(getDevTeamStatus(issue));
+    row['Ticket Related'] = displayTicketRelatedValue(getTicketRelated(issue));
     row.Notes = issue.notes;
   }
   return row;
@@ -4600,8 +4570,8 @@ function buildIssueDetailExportRows(issue, risk = {}, meta = {}) {
       14,
       0,
       ['YouTrack Reference', issue.youtrackReference || '—'],
-      ['Dev Team Status', issue.devTeamStatus || '—'],
-      ['Ticket Related', issue.issueRelated || '—'],
+      ['Dev Team Status', canonicalDevTeamStatusValue(getDevTeamStatus(issue)) || '—'],
+      ['Ticket Related', displayTicketRelatedValue(getTicketRelated(issue)) || '—'],
       ['Notes', issue.notes || '—']
     );
   }
@@ -5290,7 +5260,7 @@ function syncFilterInputs() {
   if (E.moduleFilter) setIfOptionExists(E.moduleFilter, Filters.state.module);
   if (E.categoryFilter) setIfOptionExists(E.categoryFilter, Filters.state.category);
   if (E.priorityFilter) setIfOptionExists(E.priorityFilter, Filters.state.priority);
-  if (E.statusFilter) setIfOptionExists(E.statusFilter, Filters.state.status);
+  if (E.statusFilter) setIfOptionExists(E.statusFilter, canonicalTicketStatusValue(Filters.state.status));
   if (E.devTeamStatusFilter)
     setIfOptionExists(E.devTeamStatusFilter, Filters.state.devTeamStatus);
   if (E.issueRelatedFilter) setIfOptionExists(E.issueRelatedFilter, Filters.state.issueRelated);
@@ -5627,11 +5597,11 @@ function wireFilters() {
   }
   if (E.statusFilter) {
     E.statusFilter.addEventListener('change', () => {
-      Filters.state.status = E.statusFilter.value;
+      Filters.state.status = canonicalTicketStatusValue(E.statusFilter.value);
       Filters.save();
       reloadWithPageReset();
     });
-    setIfOptionExists(E.statusFilter, Filters.state.status);
+    setIfOptionExists(E.statusFilter, canonicalTicketStatusValue(Filters.state.status));
   }
   if (E.devTeamStatusFilter) {
     E.devTeamStatusFilter.addEventListener('change', () => {

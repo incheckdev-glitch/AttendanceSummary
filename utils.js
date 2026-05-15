@@ -583,7 +583,7 @@ const ColumnManager = {
     { key: 'status', label: 'Status' },
     { key: 'youtrackReference', label: 'YouTrack Reference' },
     { key: 'devTeamStatus', label: 'Dev Team Status' },
-    { key: 'issueRelated', label: 'Issue Related' },
+    { key: 'issueRelated', label: 'Ticket Related' },
     { key: 'notes', label: 'Notes' },
     { key: 'log', label: 'Log' },
   ],
