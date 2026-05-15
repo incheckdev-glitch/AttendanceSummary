@@ -47,6 +47,17 @@ const Invoices = {
     'amount_in_words',
     'notes',
     'account_setup_billing_mode',
+    'is_renewal',
+    'invoice_type',
+    'source_type',
+    'renewal_status',
+    'renewal_due_date',
+    'renewed_from_agreement_id',
+    'renewed_from_invoice_id',
+    'renewed_from_invoice_item_id',
+    'renewed_from_location_name',
+    'renewal_batch_id',
+    'renewal_notes',
     'updated_at'
   ],
   state: {
@@ -80,6 +91,14 @@ const Invoices = {
     agreementInvoiceSelection: null
   },
   statusOptions: ['Draft', 'Issued', 'Sent', 'Not Paid', 'Partially Paid', 'Fully Paid', 'Overdue', 'Cancelled'],
+  isRenewalInvoice(invoiceOrContext) {
+    return Boolean(
+      invoiceOrContext?.is_renewal
+      || invoiceOrContext?.invoice_type === 'renewal'
+      || invoiceOrContext?.source_type === 'renewal'
+      || invoiceOrContext?.renewal_batch_id
+    );
+  },
   getDefaultPocSuccessKpis() {
     return 'POC success is confirmed when the agreed POC scope is completed for the selected locations, the customer validates the delivered monitoring/reporting output, users confirm operational acceptance, and no critical blocker remains open by the POC end date.';
   },
@@ -3137,6 +3156,10 @@ const Invoices = {
   },
   async ensureOperationsOnboardingForIssuedInvoice(invoice = {}, items = []) {
     const normalizedInvoice = this.normalizeInvoice(invoice || {});
+    if (this.isRenewalInvoice({ ...invoice, ...normalizedInvoice })) {
+      console.info('[Renewal] Skipping Operations Onboarding for renewal invoice.');
+      return null;
+    }
     if (!this.isIssuedInvoice(normalizedInvoice)) return null;
 
     const invoiceId = this.invoiceDbId(normalizedInvoice.id) || String(normalizedInvoice.id || normalizedInvoice.invoice_id || '').trim();

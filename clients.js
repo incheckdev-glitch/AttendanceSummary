@@ -70,7 +70,10 @@ const Clients = {
     detailLoading: false,
     activeDetailTab: 'overview',
     statementFilters: { status: 'all', dateFrom: '', dateTo: '', searchDoc: '' },
-    renewalsFilters: { dateFrom: '', dateTo: '' }
+    renewalsFilters: { dateFrom: '', dateTo: '' },
+    selectedRenewalRowIds: new Set(),
+    activeRenewalRows: [],
+    renewalRowsById: new Map()
   },
   getField(raw = {}, ...keys) {
     const found = keys.find(key => raw[key] !== undefined && raw[key] !== null);
@@ -1312,6 +1315,367 @@ const Clients = {
     if (days <= 60) return 'Renewal Due in 60 days';
     return paymentStatus === 'Overdue' ? 'Payment Overdue' : 'Scheduled';
   },
+  isAgreementStillActive(agreement) {
+    const status = String(agreement?.status || '').trim().toLowerCase();
+    const activeStatuses = ['active', 'signed', 'accepted', 'renewed'];
+    const endRaw = agreement?.service_end_date
+      || agreement?.end_service_date
+      || agreement?.expiry_date
+      || agreement?.expiration_date
+      || agreement?.valid_until
+      || '';
+    const endDate = endRaw ? new Date(endRaw) : null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (!activeStatuses.includes(status)) return false;
+    if (endDate && !Number.isNaN(endDate.getTime())) {
+      endDate.setHours(0, 0, 0, 0);
+      if (today > endDate) return false;
+    }
+    return true;
+  },
+  isRenewalInvoice(invoiceOrContext) {
+    return Boolean(
+      invoiceOrContext?.is_renewal
+      || invoiceOrContext?.invoice_type === 'renewal'
+      || invoiceOrContext?.source_type === 'renewal'
+      || invoiceOrContext?.renewal_batch_id
+    );
+  },
+  getRenewalRowId_(row = {}) {
+    return [row.client_id, row.agreement_id, row.invoice_id, row.invoice_item_id, row.source_agreement_item_id, row.location_name, row.service_end_date]
+      .map(value => String(value || '').trim().replace(/\s+/g, '_'))
+      .filter(Boolean)
+      .join('__');
+  },
+  addMonthsMinusOneDay_(dateValue, months = 12) {
+    const date = new Date(dateValue);
+    if (Number.isNaN(date.getTime())) return '';
+    const end = new Date(date);
+    end.setMonth(end.getMonth() + Math.max(1, Number(months) || 12));
+    end.setDate(end.getDate() - 1);
+    return end.toISOString().slice(0, 10);
+  },
+  nextDay_(dateValue) {
+    const date = new Date(dateValue);
+    if (Number.isNaN(date.getTime())) return new Date().toISOString().slice(0, 10);
+    date.setDate(date.getDate() + 1);
+    return date.toISOString().slice(0, 10);
+  },
+  getRenewalLicenseMonths_(row = {}) {
+    const term = String(row.contract_term || row.billing_frequency || row.payment_term || '').toLowerCase();
+    const match = term.match(/(\d+)\s*(month|months|mo|mos)/);
+    if (match) return Number(match[1]) || 12;
+    if (term.includes('quarter')) return 3;
+    if (term.includes('semi')) return 6;
+    if (term.includes('month')) return 1;
+    return 12;
+  },
+  getRenewalPrice_(row = {}) {
+    return this.toNumberSafe(row.renewal_price ?? row.line_total ?? row.invoice_item_total ?? row.amount ?? row.unit_price ?? row.amount_due);
+  },
+  formatCurrency_(amount = 0, currency = 'USD') {
+    const code = this.normalizeCurrencyCode_(currency || 'USD');
+    try {
+      return new Intl.NumberFormat(undefined, { style: 'currency', currency: code, maximumFractionDigits: 2 }).format(this.toNumberSafe(amount));
+    } catch (error) {
+      return `${code} ${this.toNumberSafe(amount).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+    }
+  },
+  isRenewalRowRenewable_(row = {}) {
+    const status = String(row.renewal_status || row.status || '').trim().toLowerCase();
+    if (['renewed', 'renewal invoice created', 'renewal proposal created', 'renewal agreement created', 'cancelled', 'canceled', 'not renewed'].includes(status)) return false;
+    const locationStatus = String(row.location_status || row.invoice_status || row.payment_status || '').trim().toLowerCase();
+    const alreadyInvoiced = Boolean(row.invoice_id || row.invoice_number || ['active', 'invoiced', 'fully paid', 'paid', 'partially paid', 'not paid', 'overdue', 'open'].some(token => locationStatus.includes(token)));
+    if (!alreadyInvoiced) return false;
+    const days = this.getDaysLeft(row.renewal_date || row.service_end_date);
+    return days === null || days <= 60;
+  },
+  getRenewalActionLabel_(row = {}) {
+    const renewalStatus = String(row.renewal_status || '').trim().toLowerCase();
+    if (renewalStatus === 'renewed') return '<span class="badge ok">Renewed</span>';
+    if (renewalStatus.includes('proposal')) return '<span class="badge info">View Renewal Proposal</span>';
+    if (renewalStatus.includes('agreement')) return '<span class="badge info">View Renewal Agreement</span>';
+    if (!this.isRenewalRowRenewable_(row)) return '<span class="muted">—</span>';
+    return `<button class="btn ghost sm" type="button" data-renew-row="${U.escapeHtml(row.row_id || '')}">Renew</button>`;
+  },
+  validateRenewalSelection_(rows = [], { allowDifferentDates = false } = {}) {
+    if (!rows.length) return { ok: false, message: 'Select at least one renewable location.' };
+    const clientIds = [...new Set(rows.map(row => String(row.client_id || '').trim()).filter(Boolean))];
+    if (clientIds.length > 1) return { ok: false, message: 'Only locations from the same client can be renewed together.' };
+    const agreementIds = [...new Set(rows.map(row => String(row.agreement_id || row.agreement_number || '').trim()).filter(Boolean))];
+    if (agreementIds.length > 1) return { ok: false, message: 'Selected locations belong to different agreements. Please renew them separately.' };
+    const dueDates = [...new Set(rows.map(row => String(row.service_end_date || row.renewal_date || '').trim()).filter(Boolean))];
+    if (dueDates.length > 1 && !allowDifferentDates) {
+      return { ok: false, confirmDifferentDates: true, message: 'Selected locations have different renewal dates. Do you want to continue with one renewal batch?' };
+    }
+    return { ok: true };
+  },
+  findAgreementForRenewalRow_(row = {}) {
+    const keys = [row.agreement_id, row.agreement_number].map(value => String(value || '').trim()).filter(Boolean);
+    return (this.state.agreements || []).find(agreement => keys.some(key => [agreement.id, agreement.agreement_id, agreement.agreement_number].some(value => this.valuesMatch(key, value)))) || {};
+  },
+  buildRenewalDraft_(rows = []) {
+    const batchId = `REN-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+    const enrichedRows = rows.map(row => {
+      const oldEnd = row.service_end_date || row.renewal_date || '';
+      const newStart = this.nextDay_(oldEnd);
+      const months = this.getRenewalLicenseMonths_(row);
+      return { ...row, new_service_start_date: newStart, new_service_end_date: this.addMonthsMinusOneDay_(newStart, months), license_months: months, renewal_price: this.getRenewalPrice_(row) };
+    });
+    return { renewal_batch_id: batchId, rows: enrichedRows, notes: '' };
+  },
+  openRenewalFlow_(rows = [], options = {}) {
+    const validation = this.validateRenewalSelection_(rows, options);
+    if (!validation.ok) {
+      if (validation.confirmDifferentDates && window.confirm(validation.message)) return this.openRenewalFlow_(rows, { allowDifferentDates: true });
+      return UI.toast(validation.message);
+    }
+    const agreement = this.findAgreementForRenewalRow_(rows[0] || {});
+    const draft = this.buildRenewalDraft_(rows);
+    this.state.activeRenewalRows = draft.rows;
+    if (this.isAgreementStillActive(agreement)) this.showDirectRenewalModal_(draft, agreement);
+    else this.showAgreementRenewalChoiceModal_(draft, agreement);
+  },
+  showDirectRenewalModal_(draft = {}, agreement = {}) {
+    const modal = this.ensureRenewalModal_();
+    const rowsHtml = draft.rows.map(row => `<tr><td>${U.escapeHtml(row.location_name || '—')}</td><td>${U.escapeHtml(U.fmtDisplayDate(row.service_end_date) || '—')}</td><td><input class="input" type="date" data-renew-new-start="${U.escapeHtml(row.row_id)}" value="${U.escapeHtml(row.new_service_start_date)}"></td><td><input class="input" type="date" data-renew-new-end="${U.escapeHtml(row.row_id)}" value="${U.escapeHtml(row.new_service_end_date)}"></td><td>${U.escapeHtml(String(row.license_months || 12))}</td><td>${U.escapeHtml(this.formatCurrency_(row.renewal_price || 0, row.currency || 'USD'))}</td></tr>`).join('');
+    modal.innerHTML = `<div class="modal-content wide"><button class="modal-close" type="button" data-renew-modal-close>&times;</button><h2>Renew Selected Location(s)</h2><p class="muted">This will renew the selected existing location(s). It will not create a new Technical Admin request or open a new location.</p><div class="grid cols-2"><div><strong>Client legal name</strong><br>${U.escapeHtml(draft.rows[0]?.client_name || '—')}</div><div><strong>Agreement reference</strong><br>${U.escapeHtml(agreement.agreement_number || draft.rows[0]?.agreement_number || '—')}</div></div><div class="table-wrap" style="margin-top:12px;"><table><thead><tr><th>Selected location(s)</th><th>Current service end date</th><th>New service start date</th><th>New service end date</th><th>License months</th><th>Renewal price</th></tr></thead><tbody>${rowsHtml}</tbody></table></div><label class="field" style="margin-top:12px;"><span>Notes</span><textarea class="input" data-renew-notes rows="3" placeholder="Renewal notes"></textarea></label><div class="modal-actions"><button class="btn ghost" type="button" data-renew-modal-close>Cancel</button><button class="btn primary" type="button" data-confirm-direct-renewal="${U.escapeHtml(draft.renewal_batch_id)}">Create Renewal Invoice Draft</button></div></div>`;
+    modal.classList.add('open');
+  },
+  showAgreementRenewalChoiceModal_(draft = {}, agreement = {}) {
+    const modal = this.ensureRenewalModal_();
+    modal.innerHTML = `<div class="modal-content"><button class="modal-close" type="button" data-renew-modal-close>&times;</button><h2>Agreement Renewal Required</h2><p class="muted">The related agreement is expired or no longer active. Choose how you want to continue the renewal.</p><div class="card"><strong>${U.escapeHtml(draft.rows[0]?.client_name || '—')}</strong><br><span class="muted">${U.escapeHtml(agreement.agreement_number || draft.rows[0]?.agreement_number || 'Agreement not linked')} · ${draft.rows.length} selected location(s)</span></div><div class="modal-actions stacked"><button class="btn primary" type="button" data-renew-path="proposal" data-renew-batch="${U.escapeHtml(draft.renewal_batch_id)}">Create Renewal Proposal &amp; Agreement</button><button class="btn ghost" type="button" data-renew-path="agreement" data-renew-batch="${U.escapeHtml(draft.renewal_batch_id)}">Renew Agreement Directly</button></div></div>`;
+    modal.classList.add('open');
+  },
+  ensureRenewalModal_() {
+    let modal = document.getElementById('clientRenewalModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'clientRenewalModal';
+      modal.className = 'modal';
+      document.body.appendChild(modal);
+      modal.addEventListener('click', event => {
+        if (event.target === modal || event.target.closest?.('[data-renew-modal-close]')) this.closeRenewalModal_();
+        const direct = event.target.closest?.('[data-confirm-direct-renewal]');
+        if (direct) this.createDirectRenewalInvoice_(String(direct.getAttribute('data-confirm-direct-renewal') || '').trim());
+        const pathBtn = event.target.closest?.('[data-renew-path]');
+        if (pathBtn) this.createCommercialRenewalPath_(pathBtn.getAttribute('data-renew-path'), String(pathBtn.getAttribute('data-renew-batch') || '').trim());
+      });
+      modal.addEventListener('change', event => {
+        const start = event.target.closest?.('[data-renew-new-start]');
+        const end = event.target.closest?.('[data-renew-new-end]');
+        if (!start && !end) return;
+        const id = String((start || end).getAttribute(start ? 'data-renew-new-start' : 'data-renew-new-end') || '').trim();
+        const row = this.state.activeRenewalRows.find(item => item.row_id === id);
+        if (!row) return;
+        if (start) {
+          row.new_service_start_date = start.value;
+          row.new_service_end_date = this.addMonthsMinusOneDay_(start.value, row.license_months || 12);
+          const endInput = modal.querySelector(`[data-renew-new-end="${CSS.escape(id)}"]`);
+          if (endInput) endInput.value = row.new_service_end_date;
+        }
+        if (end) row.new_service_end_date = end.value;
+      });
+    }
+    return modal;
+  },
+  closeRenewalModal_() {
+    const modal = document.getElementById('clientRenewalModal');
+    if (modal) modal.classList.remove('open');
+  },
+  buildRenewalInvoicePayload_(batchId = '') {
+    const rows = this.state.activeRenewalRows || [];
+    const total = rows.reduce((sum, row) => sum + this.getRenewalPrice_(row), 0);
+    const first = rows[0] || {};
+    const today = new Date().toISOString().slice(0, 10);
+    const notes = String(document.querySelector('#clientRenewalModal [data-renew-notes]')?.value || '').trim();
+    return {
+      invoice: {
+        invoice_number: `REN-INV-${Date.now()}`,
+        invoice_id: `REN-INV-${Date.now()}`,
+        client_id: first.client_id || '',
+        agreement_id: first.agreement_id || '',
+        agreement_number: first.agreement_number || '',
+        issue_date: today,
+        due_date: today,
+        billing_frequency: first.billing_frequency || 'Annual',
+        payment_term: first.payment_term || 'Net 30',
+        customer_name: first.client_name || '',
+        customer_legal_name: first.client_name || '',
+        subtotal_locations: total,
+        subtotal_one_time: 0,
+        invoice_total: total,
+        pending_amount: total,
+        amount_paid: 0,
+        payment_state: 'Not Paid',
+        status: 'Draft',
+        currency: first.currency || 'USD',
+        notes: [notes, `Renewal invoice for existing invoiced location(s). Batch ${batchId}. No onboarding/technical-admin request.`].filter(Boolean).join('\n'),
+        is_renewal: true,
+        invoice_type: 'renewal',
+        source_type: 'renewal',
+        renewal_batch_id: batchId
+      },
+      items: rows.map((row, index) => ({
+        item_id: `REN-ITEM-${Date.now()}-${index + 1}`,
+        section: 'Annual SaaS / Subscription Renewal',
+        line_no: index + 1,
+        location_name: row.location_name || '',
+        item_name: `${row.module_name || 'Annual SaaS'} renewal`,
+        unit_price: this.getRenewalPrice_(row),
+        discount_percent: 0,
+        discounted_unit_price: this.getRenewalPrice_(row),
+        quantity: 1,
+        line_total: this.getRenewalPrice_(row),
+        service_start_date: row.new_service_start_date || '',
+        service_end_date: row.new_service_end_date || '',
+        source_agreement_item_id: row.source_agreement_item_id || '',
+        source_agreement_id: row.agreement_id || '',
+        renewal_batch_id: batchId,
+        renewed_from_invoice_id: row.invoice_id || '',
+        renewed_from_invoice_item_id: row.invoice_item_id || '',
+        renewed_from_location_name: row.location_name || ''
+      }))
+    };
+  },
+  async createDirectRenewalInvoice_(batchId = '') {
+    try {
+      const payload = this.buildRenewalInvoicePayload_(batchId || `REN-${Date.now()}`);
+      const response = await Api.requestWithSession('invoices', 'create', { invoice: payload.invoice, items: payload.items }, { requireAuth: true });
+      await this.persistRenewalHistory_(payload.invoice.renewal_batch_id, 'direct_location_renewal', 'Renewal Invoice Created', response).catch(error => console.warn('[Renewal] Optional renewal history save failed.', error));
+      UI.toast('Renewal invoice draft created. Operations onboarding and Technical Admin were not created.');
+      this.closeRenewalModal_();
+      await this.loadClientDetailData_(this.state.selectedClientId, { force: true }).catch(() => {});
+      this.render();
+    } catch (error) {
+      console.warn('[Renewal] Unable to create renewal invoice draft.', error);
+      UI.toast('Unable to create renewal invoice draft: ' + (error?.message || 'Unknown error'));
+    }
+  },
+  buildCommercialRenewalPayload_(batchId = '', path = 'proposal') {
+    const rows = this.state.activeRenewalRows || [];
+    const first = rows[0] || {};
+    const agreement = this.findAgreementForRenewalRow_(first);
+    const total = rows.reduce((sum, row) => sum + this.getRenewalPrice_(row), 0);
+    const startDates = rows.map(row => row.new_service_start_date).filter(Boolean).sort();
+    const endDates = rows.map(row => row.new_service_end_date).filter(Boolean).sort();
+    const today = new Date().toISOString().slice(0, 10);
+    const common = {
+      company_id: agreement.company_id || first.client_id || '',
+      company_name: agreement.company_name || first.client_name || '',
+      contact_id: agreement.contact_id || '',
+      contact_name: agreement.contact_name || agreement.customer_contact_name || '',
+      contact_email: agreement.contact_email || agreement.customer_contact_email || '',
+      customer_name: agreement.customer_name || first.client_name || '',
+      customer_legal_name: agreement.customer_legal_name || first.client_name || '',
+      customer_address: agreement.customer_address || '',
+      customer_contact_name: agreement.customer_contact_name || agreement.contact_name || '',
+      customer_contact_email: agreement.customer_contact_email || agreement.contact_email || '',
+      provider_name: agreement.provider_name || '',
+      provider_legal_name: agreement.provider_legal_name || '',
+      provider_address: agreement.provider_address || '',
+      service_start_date: startDates[0] || today,
+      service_end_date: endDates[endDates.length - 1] || '',
+      contract_term: first.contract_term || '12 months',
+      billing_frequency: first.billing_frequency || agreement.billing_frequency || 'Annual',
+      payment_term: first.payment_term || agreement.payment_term || agreement.payment_terms || 'Net 30',
+      currency: first.currency || agreement.currency || 'USD',
+      subtotal_locations: total,
+      subtotal_one_time: 0,
+      grand_total: total,
+      notes: `Renewal commercial path ${batchId}. Selected existing locations only. Do not create Operations Onboarding, Technical Admin request, or new locations.`,
+      source_type: 'renewal',
+      renewal_batch_id: batchId,
+      renewed_from_agreement_id: first.agreement_id || agreement.id || ''
+    };
+    const items = rows.map((row, index) => ({
+      item_id: `REN-COM-${Date.now()}-${index + 1}`,
+      section: 'Annual SaaS / Subscription Renewal',
+      line_no: index + 1,
+      location_name: row.location_name || '',
+      item_name: `${row.module_name || 'Annual SaaS'} renewal`,
+      unit_price: this.getRenewalPrice_(row),
+      discount_percent: 0,
+      discounted_unit_price: this.getRenewalPrice_(row),
+      quantity: 1,
+      line_total: this.getRenewalPrice_(row),
+      service_start_date: row.new_service_start_date || '',
+      service_end_date: row.new_service_end_date || '',
+      notes: 'Renewal for existing invoiced location; no setup fee.'
+    }));
+    if (path === 'proposal') {
+      return {
+        proposal: {
+          ...common,
+          proposal_title: `Renewal Proposal - ${first.client_name || common.customer_name || 'Client'}`,
+          proposal_date: today,
+          proposal_valid_until: common.service_start_date,
+          status: 'Draft'
+        },
+        items
+      };
+    }
+    return {
+      agreement: {
+        ...common,
+        agreement_number: `REN-AGR-${Date.now()}`,
+        agreement_date: today,
+        effective_date: common.service_start_date,
+        status: 'Draft'
+      },
+      items
+    };
+  },
+  async createCommercialRenewalPath_(path = '', batchId = '') {
+    const selectedBatchId = batchId || `REN-${Date.now()}`;
+    const renewalPath = path === 'proposal' ? 'renewal_proposal_agreement' : 'direct_agreement_renewal';
+    const status = path === 'proposal' ? 'Renewal Proposal Created' : 'Renewal Agreement Created';
+    try {
+      const payload = this.buildCommercialRenewalPayload_(selectedBatchId, path === 'proposal' ? 'proposal' : 'agreement');
+      const response = path === 'proposal'
+        ? await Api.requestWithSession('proposals', 'create', payload, { requireAuth: true })
+        : await Api.requestWithSession('agreements', 'create', payload, { requireAuth: true });
+      await this.persistRenewalHistory_(selectedBatchId, renewalPath, status, response).catch(error => console.warn('[Renewal] Optional renewal history save failed.', error));
+      UI.toast(path === 'proposal' ? 'Renewal proposal created for selected locations only.' : 'Renewal agreement draft created for selected locations only.');
+      this.closeRenewalModal_();
+      await this.loadClientDetailData_(this.state.selectedClientId, { force: true }).catch(() => {});
+      this.render();
+    } catch (error) {
+      console.warn('[Renewal] Unable to create commercial renewal path.', error);
+      UI.toast('Unable to create renewal path: ' + (error?.message || 'Unknown error'));
+    }
+  },
+  async persistRenewalHistory_(batchId = '', renewalPath = '', renewalStatus = '', response = null) {
+    const client = window.SupabaseClient?.getClient?.() || window.supabaseClient || null;
+    const rows = this.state.activeRenewalRows || [];
+    if (!client?.from || !rows.length) return null;
+    const now = new Date().toISOString();
+    const invoice = response?.data || response?.invoice || response || {};
+    const records = rows.map(row => ({
+      renewal_batch_id: batchId,
+      client_id: row.client_id || null,
+      client_name: row.client_name || null,
+      agreement_id: row.agreement_id || null,
+      agreement_number: row.agreement_number || null,
+      invoice_id: invoice.id || invoice.invoice_id || row.invoice_id || null,
+      invoice_number: invoice.invoice_number || row.invoice_number || null,
+      invoice_item_id: row.invoice_item_id || null,
+      location_name: row.location_name || null,
+      old_service_start_date: row.service_start_date || null,
+      old_service_end_date: row.service_end_date || null,
+      new_service_start_date: row.new_service_start_date || null,
+      new_service_end_date: row.new_service_end_date || null,
+      renewal_status: renewalStatus,
+      renewal_path: renewalPath,
+      created_at: now,
+      updated_at: now,
+      notes: 'Commercial renewal only; no onboarding or Technical Admin request.'
+    }));
+    const { error } = await client.from('renewals').insert(records);
+    if (error) console.info('[Renewal] renewals table unavailable or schema mismatch; continuing without blocking.', error);
+    return !error;
+  },
   computeRunningBalance(rows = []) {
     let running = 0;
     return rows
@@ -1428,10 +1792,17 @@ const Clients = {
         ...item,
         source: 'agreement_item',
         type: 'Location Renewal',
+        client_id: clientId,
         agreement_id: agreement.agreement_id || agreement.id || item.agreement_id,
         agreement_number: agreement.agreement_number || item.agreement_number,
+        agreement_status: agreement.status || '',
+        agreement_service_start_date: agreement.service_start_date || agreement.effective_date || '',
+        agreement_service_end_date: agreement.service_end_date || agreement.end_service_date || '',
+        agreement_expiry_date: agreement.expiry_date || agreement.expiration_date || agreement.valid_until || '',
         invoice_id: relatedInvoice?.invoice_id || relatedInvoice?.id || '',
         invoice_number: relatedInvoice?.invoice_number || '',
+        invoice_item_id: item.invoice_item_id || item.invoiceItemId || '',
+        source_agreement_item_id: item.id || item.item_id || item.agreement_item_id || item.agreementItemId || '',
         client_name: agreement.customer_name || agreement.customer_legal_name || client.customer_name || client.client_name || client.company_name || '—',
         location_name: this.getField(item, 'location_name', 'locationName', 'location', 'site', 'site_name', 'branch', 'branch_name', 'store_name') || this.getField(item, 'description', 'item_name', 'itemName') || 'Location',
         module_name: this.getField(item, 'module_name', 'moduleName', 'module', 'service_name', 'serviceName', 'product_name', 'productName', 'item_name', 'itemName') || 'SaaS Annual',
@@ -1450,6 +1821,8 @@ const Clients = {
         currency: this.getField(item, 'currency', 'currency_code') || agreement.currency || this.getClientCurrency_(clientId)
       }));
     });
+
+    rows.forEach(row => { row.row_id = row.row_id || this.getRenewalRowId_(row); });
 
     if (this.isDebugMode_()) {
       console.log('[ClientRenewals] renewal source counts', { client: client.client_name || client.company_name || client.name || client.customer_name, relatedAgreements: agreements.length, agreementItemsLoaded: this.state.agreementItems.length, linkedAgreementItems: locationItems.length, saasAnnualItems: locationItems.length, renewalRows: rows.length });
@@ -1482,6 +1855,10 @@ const Clients = {
     const renewalDate = String(this.getField(raw, 'renewal_date', 'renewalDate', 'next_renewal_date', 'nextRenewalDate', 'service_end_date', 'serviceEndDate') || '').trim();
     const paymentStatus = String(this.getField(raw, 'payment_status', 'paymentStatus') || '').trim();
     return {
+      row_id: String(this.getField(raw, 'row_id', 'rowId') || '').trim(),
+      client_id: String(this.getField(raw, 'client_id', 'clientId') || '').trim(),
+      source_agreement_item_id: String(this.getField(raw, 'source_agreement_item_id', 'sourceAgreementItemId') || '').trim(),
+      invoice_item_id: String(this.getField(raw, 'invoice_item_id', 'invoiceItemId') || '').trim(),
       agreement_id: String(this.getField(raw, 'agreement_id', 'agreementId') || '').trim(),
       agreement_number: String(this.getField(raw, 'agreement_number', 'agreementNo', 'agreementNumber') || '').trim(),
       invoice_id: String(this.getField(raw, 'invoice_id', 'invoiceId') || '').trim(),
@@ -1500,6 +1877,14 @@ const Clients = {
       amount_due: this.toNumberSafe(this.getField(raw, 'amount_due', 'pending_amount', 'pendingAmount')),
       status: String(this.getField(raw, 'status') || '').trim(),
       payment_status: paymentStatus || this.getPaymentStatus(raw),
+      agreement_status: String(this.getField(raw, 'agreement_status', 'agreementStatus') || '').trim(),
+      agreement_service_start_date: String(this.getField(raw, 'agreement_service_start_date', 'agreementServiceStartDate') || '').trim(),
+      agreement_service_end_date: String(this.getField(raw, 'agreement_service_end_date', 'agreementServiceEndDate') || '').trim(),
+      agreement_expiry_date: String(this.getField(raw, 'agreement_expiry_date', 'agreementExpiryDate', 'expiry_date', 'expiration_date') || '').trim(),
+      renewal_status: String(this.getField(raw, 'renewal_status', 'renewalStatus') || '').trim(),
+      renewal_due_date: String(this.getField(raw, 'renewal_due_date', 'renewalDueDate') || '').trim(),
+      renewal_batch_id: String(this.getField(raw, 'renewal_batch_id', 'renewalBatchId') || '').trim(),
+      renewal_notes: String(this.getField(raw, 'renewal_notes', 'renewalNotes') || '').trim(),
       currency: this.normalizeCurrencyCode_(this.getField(raw, 'currency', 'currency_code', 'currencyCode') || 'USD')
     };
   },
@@ -1835,19 +2220,34 @@ const Clients = {
         .join('');
     }
     if (E.clientRenewalsTbody) {
+      this.state.renewalRowsById = new Map();
+      rows.forEach(row => {
+        row.row_id = row.row_id || this.getRenewalRowId_(row);
+        this.state.renewalRowsById.set(row.row_id, row);
+      });
+      const selectedCount = rows.filter(row => this.state.selectedRenewalRowIds.has(row.row_id)).length;
+      const bulkHtml = `<tr><td colspan="11"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><button class="btn primary sm" type="button" data-renew-selected ${selectedCount ? '' : 'disabled'}>Renew Selected</button><span class="muted">${selectedCount} selected</span></div></td></tr>`;
       E.clientRenewalsTbody.innerHTML = rows.length
-        ? rows
-            .map(row => `<tr>
-              <td>${U.escapeHtml(row.location_name || '—')}</td>
-              <td>${U.escapeHtml(row.module_name || '—')}</td>
-              <td>${U.escapeHtml(U.fmtDisplayDate(row.service_start_date) || '—')}</td>
-              <td>${U.escapeHtml(U.fmtDisplayDate(row.service_end_date) || '—')}</td>
-              <td>${U.escapeHtml(U.fmtDisplayDate(row.renewal_date) || (this.dateValueForSort_(row) ? '—' : 'Date not set'))}</td>
-              <td>${U.escapeHtml(row.billing_frequency || '—')}</td>
-              <td>${U.escapeHtml(row.payment_status || this.getPaymentStatus(row) || '—')}</td>
-            </tr>`)
+        ? bulkHtml + rows
+            .map(row => {
+              const renewable = this.isRenewalRowRenewable_(row);
+              const selected = this.state.selectedRenewalRowIds.has(row.row_id);
+              return `<tr>
+                <td>${renewable ? `<input type="checkbox" data-renew-select="${U.escapeHtml(row.row_id)}" ${selected ? 'checked' : ''} aria-label="Select renewal ${U.escapeHtml(row.location_name || '')}">` : ''}</td>
+                <td>${U.escapeHtml(row.location_name || '—')}</td>
+                <td>${U.escapeHtml(row.agreement_number || row.agreement_id || '—')}</td>
+                <td>${U.escapeHtml(row.invoice_number || row.invoice_id || '—')}</td>
+                <td>${U.escapeHtml(U.fmtDisplayDate(row.service_start_date) || '—')}</td>
+                <td>${U.escapeHtml(U.fmtDisplayDate(row.service_end_date) || '—')}</td>
+                <td>${U.escapeHtml(U.fmtDisplayDate(row.renewal_due_date || row.renewal_date) || (this.dateValueForSort_(row) ? '—' : 'Date not set'))}</td>
+                <td>${U.escapeHtml(row.payment_status || this.getPaymentStatus(row) || '—')}</td>
+                <td>${U.escapeHtml(row.renewal_status || this.getRenewalStatus(row) || '—')}</td>
+                <td>${U.escapeHtml(this.formatCurrency_(this.getRenewalPrice_(row), row.currency || 'USD'))}</td>
+                <td>${this.getRenewalActionLabel_(row)}</td>
+              </tr>`;
+            })
             .join('')
-        : `<tr><td colspan="7" class="muted" style="text-align:center;">${U.escapeHtml(detailData.statementError ? 'Unable to load statement data.' : detailData.noLinkedRows ? 'No linked rows found. Check client ID/name mapping.' : 'No renewals or payments timeline rows.')}</td></tr>`;
+        : `<tr><td colspan="11" class="muted" style="text-align:center;">${U.escapeHtml(detailData.statementError ? 'Unable to load statement data.' : detailData.noLinkedRows ? 'No linked rows found. Check client ID/name mapping.' : 'No renewals or payments timeline rows.')}</td></tr>`;
     }
     if (E.clientRenewalEvents) {
       const milestones = this.getMilestoneValues_({ ...detailData, renewalRows: baseRenewalRows }, fallbackClient);
@@ -2323,6 +2723,42 @@ const Clients = {
         if (E.clientRenewalsDateTo) E.clientRenewalsDateTo.value = '';
         if (this.state.selectedClientId) await this.loadClientDetailData_(this.state.selectedClientId, { force: true });
         this.render();
+      });
+    }
+    if (E.clientRenewalsTbody) {
+      E.clientRenewalsTbody.addEventListener('change', event => {
+        const checkbox = event.target?.closest?.('[data-renew-select]');
+        if (!checkbox) return;
+        const rowId = String(checkbox.getAttribute('data-renew-select') || '').trim();
+        const row = this.state.renewalRowsById?.get(rowId);
+        if (!row || !this.isRenewalRowRenewable_(row)) {
+          checkbox.checked = false;
+          return UI.toast('This renewal line is not eligible for renewal.');
+        }
+        const currentlySelected = [...this.state.selectedRenewalRowIds].map(id => this.state.renewalRowsById.get(id)).filter(Boolean);
+        const candidateRows = checkbox.checked ? [...currentlySelected, row] : currentlySelected.filter(item => item.row_id !== rowId);
+        const validation = this.validateRenewalSelection_(candidateRows, { allowDifferentDates: true });
+        if (!validation.ok) {
+          checkbox.checked = false;
+          return UI.toast(validation.message);
+        }
+        if (checkbox.checked) this.state.selectedRenewalRowIds.add(rowId);
+        else this.state.selectedRenewalRowIds.delete(rowId);
+        this.render();
+      });
+      E.clientRenewalsTbody.addEventListener('click', event => {
+        const renewBtn = event.target?.closest?.('[data-renew-row]');
+        if (renewBtn) {
+          const rowId = String(renewBtn.getAttribute('data-renew-row') || '').trim();
+          const row = this.state.renewalRowsById?.get(rowId);
+          if (!row) return UI.toast('Renewal row was not found.');
+          return this.openRenewalFlow_([row]);
+        }
+        const bulkBtn = event.target?.closest?.('[data-renew-selected]');
+        if (bulkBtn) {
+          const rows = [...this.state.selectedRenewalRowIds].map(id => this.state.renewalRowsById.get(id)).filter(Boolean);
+          return this.openRenewalFlow_(rows);
+        }
       });
     }
     if (E.clientsCreateBtn) {
