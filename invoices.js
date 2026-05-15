@@ -2854,6 +2854,90 @@ const Invoices = {
       technicalPayload: null
     };
   },
+  async ensureOperationsOnboardingForIssuedInvoice(invoice = {}, items = []) {
+    const normalizedInvoice = this.normalizeInvoice(invoice || {});
+    if (!this.isIssuedInvoice(normalizedInvoice)) return null;
+
+    const invoiceId = this.invoiceDbId(normalizedInvoice.id) || String(normalizedInvoice.id || normalizedInvoice.invoice_id || '').trim();
+    const invoiceNumber = String(normalizedInvoice.invoice_number || normalizedInvoice.invoice_id || '').trim();
+
+    if (!invoiceId && !invoiceNumber) {
+      console.warn('[Invoice] Cannot create Operations onboarding for issued invoice because invoice id/number is missing.');
+      return null;
+    }
+
+    const client = this.getSupabaseClient?.();
+    if (client) {
+      try {
+        let existingQuery = client
+          .from('operations_onboarding')
+          .select('id,onboarding_id,invoice_id,source_invoice_id,invoice_number,source_invoice_number')
+          .limit(1);
+
+        if (invoiceId && invoiceNumber) {
+          existingQuery = existingQuery.or(`invoice_id.eq.${invoiceId},source_invoice_id.eq.${invoiceId},invoice_number.eq.${invoiceNumber},source_invoice_number.eq.${invoiceNumber}`);
+        } else if (invoiceId) {
+          existingQuery = existingQuery.or(`invoice_id.eq.${invoiceId},source_invoice_id.eq.${invoiceId}`);
+        } else if (invoiceNumber) {
+          existingQuery = existingQuery.or(`invoice_number.eq.${invoiceNumber},source_invoice_number.eq.${invoiceNumber}`);
+        }
+
+        const { data: existingRows, error: existingError } = await existingQuery;
+        if (!existingError && Array.isArray(existingRows) && existingRows.length) {
+          console.info('[Invoice] Operations onboarding already exists for issued invoice.', existingRows[0]);
+          return existingRows[0];
+        }
+        if (existingError) {
+          console.warn('[Invoice] Unable to check existing Operations onboarding row before create.', existingError);
+        }
+      } catch (checkError) {
+        console.warn('[Invoice] Existing Operations onboarding check failed.', checkError);
+      }
+    }
+
+    let invoiceItems = Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : [];
+
+    if (!invoiceItems.length && invoiceId && client) {
+      try {
+        const { data, error } = await client
+          .from('invoice_items')
+          .select('*')
+          .eq('invoice_id', invoiceId)
+          .order('created_at', { ascending: true });
+
+        if (error) throw error;
+        invoiceItems = Array.isArray(data) ? data.map(item => this.normalizeItem(item)) : [];
+      } catch (loadError) {
+        console.warn('[Invoice] Unable to load invoice_items for issued invoice Operations onboarding.', loadError);
+      }
+    }
+
+    const annualItems = invoiceItems.filter(item => this.isSubscriptionSection(item?.section));
+    if (!annualItems.length) {
+      console.info('[Invoice] Issued invoice has no Annual SaaS/subscription invoice items. Operations onboarding was not created.');
+      return null;
+    }
+
+    const selectedAgreementItemIds = annualItems
+      .map(item => String(item.source_agreement_item_id || item.sourceAgreementItemId || '').trim())
+      .filter(Boolean);
+
+    const created = await this.createOperationsAndTechnicalForInvoicedLocations(
+      normalizedInvoice,
+      normalizedInvoice,
+      invoiceItems,
+      selectedAgreementItemIds
+    );
+
+    if (invoiceId && selectedAgreementItemIds.length) {
+      await this.markSelectedAgreementItemsInvoiced(invoiceId, selectedAgreementItemIds).catch(error => {
+        console.warn('[Invoice] Agreement item invoice-status update failed after issued invoice Operations row creation.', error);
+        UI.toast('Operations onboarding was created, but the agreement location invoice flag could not be updated.');
+      });
+    }
+
+    return created;
+  },
   async createOperationsAndTechnicalForInvoicedLocations(invoice = {}, persistedInvoice = {}, items = [], selectedAgreementItemIds = []) {
     const seed = this.buildInvoiceOperationsTechnicalSeed(invoice, persistedInvoice, items, selectedAgreementItemIds);
     if (!seed) {
@@ -3165,6 +3249,7 @@ const Invoices = {
     if (!Permissions.canUpdateInvoice()) return UI.toast('You do not have permission to update invoices.');
     const payloadInvoice = this.buildInvoiceMetadataUpdatePayload();
     const currentRecord = this.state.rows.find(row => this.invoiceDbId(row.id) === id) || this.state.selectedInvoice || {};
+    const wasIssuedBeforeSave = this.isIssuedInvoice(currentRecord);
     const workflowCheck = await this.enforceInvoiceWorkflowBeforeSave(currentRecord, {
       invoice_id: id,
       current_status: currentRecord?.status || '',
@@ -3192,11 +3277,15 @@ const Invoices = {
         id: parsed?.invoice?.id || id
       });
       const persistedItems = this.state.items || [];
+      const isIssuedAfterSave = this.isIssuedInvoice(persisted);
+      const operationsResult = !wasIssuedBeforeSave && isIssuedAfterSave
+        ? await this.ensureOperationsOnboardingForIssuedInvoice(persisted, persistedItems)
+        : null;
       const normalized = this.upsertLocalRow(persisted);
       this.setCachedDetail(normalized?.id || id, persisted, persistedItems);
       this.state.selectedInvoice = normalized || persisted;
       this.state.items = persistedItems;
-      UI.toast('Invoice updated.');
+      UI.toast(operationsResult?.onboardingRecord ? 'Invoice issued and Operations onboarding created.' : 'Invoice updated.');
       this.closeForm();
       window.dispatchEvent(new CustomEvent('clients:refresh-totals', { detail: { reason: 'invoice-saved' } }));
     } catch (error) {
@@ -3271,11 +3360,9 @@ const Invoices = {
       if (id) {
         if (!Permissions.canUpdateInvoice()) return UI.toast('You do not have permission to update invoices.');
         response = await Api.updateInvoice(id, payloadInvoice, items);
-        UI.toast('Invoice updated.');
       } else {
         if (!Permissions.canCreateInvoice()) return UI.toast('You do not have permission to create invoices.');
         response = await Api.createInvoice(payloadInvoice, items);
-        UI.toast('Invoice created.');
       }
       const parsed = this.extractInvoiceAndItems(response, id);
       const persistedItems = Array.isArray(parsed?.items) && parsed.items.length
@@ -3310,23 +3397,14 @@ const Invoices = {
           });
         }
 
-        if (agreementSelectionActive) {
-          // Create the Operations row from the selected invoice batch first.
-          // This must happen even if the agreement_items status update is blocked by RLS,
-          // because Operations/Technical visibility must follow the invoice batch that was just created.
-          await this.createOperationsAndTechnicalForInvoicedLocations(
-            normalizedInvoice,
-            invoiceForFollowUp,
-            items,
-            selectedAgreementItemIds
-          );
-
-          if (createdInvoiceId) {
-            await this.markSelectedAgreementItemsInvoiced(createdInvoiceId, selectedAgreementItemIds).catch(error => {
-              console.warn('[Invoice] Agreement item invoice-status update failed after Operations row creation.', error);
-              UI.toast('Invoice and Operations onboarding were created, but the agreement location invoice flag could not be updated. Please run the included SQL/RLS fix if this repeats.');
-            });
-          }
+        // Create the Operations row from the selected issued invoice batch first.
+        // This must happen even if the agreement_items status update is blocked by RLS,
+        // because Operations visibility must follow the invoice batch that was just created.
+        const operationsResult = await this.ensureOperationsOnboardingForIssuedInvoice(invoiceForFollowUp, persistedItems);
+        if (operationsResult?.onboardingRecord) {
+          UI.toast('Invoice issued and Operations onboarding created.');
+        } else {
+          UI.toast('Invoice created.');
         }
       }
       this.setCachedDetail(normalized?.id || id, persisted, persistedItems);
