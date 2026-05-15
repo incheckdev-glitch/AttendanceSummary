@@ -291,6 +291,32 @@
     return updates;
   }
 
+  function normalizeTicketFilterValue(value) {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[_-]+/g, ' ')
+      .replace(/\s+/g, ' ');
+  }
+
+  function getTicketRelated(ticket = {}) {
+    return ticket.ticket_related
+      || ticket.ticketRelated
+      || ticket.issue_related
+      || ticket.issueRelated
+      || ticket.related_to
+      || ticket.relatedTo
+      || '';
+  }
+
+  function getDevTeamStatus(ticket = {}) {
+    return ticket.dev_team_status
+      || ticket.devTeamStatus
+      || ticket.developer_status
+      || ticket.developerStatus
+      || '';
+  }
+
   const normalizeTicketStatus = typeof global.normalizeTicketStatus === 'function'
     ? global.normalizeTicketStatus
     : value => {
@@ -298,15 +324,18 @@
       if (!raw) return 'New';
       const map = {
         new: 'New',
-        'under development': 'Under Development',
-        'not started yet': 'Not Started Yet',
+        'under review': 'Under Review',
+        'under development': 'In Progress',
+        'in progress': 'In Progress',
+        'not started yet': 'New',
         'on hold': 'On Hold',
-        'on stage': 'On Stage',
-        sent: 'Sent',
+        'on stage': 'In Progress',
+        sent: 'In Progress',
         resolved: 'Resolved',
+        closed: 'Closed',
         rejected: 'Rejected'
       };
-      return map[raw.toLowerCase()] || raw;
+      return map[normalizeTicketFilterValue(raw)] || raw;
     };
   const LEGACY_COMPAT = global.LegacyCompat || {};
   const LEGACY_REQUEST_META_FIELDS = new Set(
@@ -1205,10 +1234,16 @@
       out.businessPriority = out.businessPriority ?? out.business_priority ?? '';
       out.youtrackReference = out.youtrackReference ?? out.youtrack_reference ?? '';
       out.youtrack_reference = out.youtrack_reference ?? out.youtrackReference ?? '';
-      out.devTeamStatus = out.devTeamStatus ?? out.dev_team_status ?? '';
+      out.devTeamStatus = out.devTeamStatus ?? getDevTeamStatus(out) ?? '';
       out.dev_team_status = out.dev_team_status ?? out.devTeamStatus ?? '';
-      out.issueRelated = out.issueRelated ?? out.issue_related ?? '';
+      out.developer_status = out.developer_status ?? out.devTeamStatus ?? '';
+      out.developerStatus = out.developerStatus ?? out.devTeamStatus ?? '';
+      out.issueRelated = out.issueRelated ?? getTicketRelated(out) ?? '';
       out.issue_related = out.issue_related ?? out.issueRelated ?? '';
+      out.ticket_related = out.ticket_related ?? out.issueRelated ?? '';
+      out.ticketRelated = out.ticketRelated ?? out.issueRelated ?? '';
+      out.related_to = out.related_to ?? out.issueRelated ?? '';
+      out.relatedTo = out.relatedTo ?? out.issueRelated ?? '';
       out.status = normalizeTicketStatus(out.status);
     }
     if (resource === 'events') {
@@ -2897,8 +2932,8 @@
     const record = {
       ticket_id: ticketRowId(row),
       youtrack_reference: row.youtrack_reference ?? row.youtrackReference ?? '',
-      dev_team_status: row.dev_team_status ?? row.devTeamStatus ?? '',
-      issue_related: row.issue_related ?? row.issueRelated ?? '',
+      dev_team_status: getDevTeamStatus(row),
+      issue_related: getTicketRelated(row),
       notes: row.notes ?? ''
     };
     return record;
@@ -2906,8 +2941,8 @@
 
   function mergeTicketInternal(ticket = {}, internal = {}) {
     if (!internal || typeof internal !== 'object') return normalizeRow('tickets', ticket);
-    const ticketDevStatus = ticket.dev_team_status ?? ticket.devTeamStatus ?? '';
-    const ticketIssueRelated = ticket.issue_related ?? ticket.issueRelated ?? '';
+    const ticketDevStatus = getDevTeamStatus(ticket);
+    const ticketIssueRelated = getTicketRelated(ticket);
     const merged = {
       ...ticket,
       youtrack_reference: internal.youtrack_reference ?? internal.youtrackReference ?? '',
@@ -3259,10 +3294,41 @@
     return { page, limit, offset, sortBy, sortDir, from, to };
   }
 
+  function escapePostgrestFilterValue(value = '') {
+    return String(value || '').replace(/[%]/g, '').replace(/[,]/g, ' ');
+  }
+
+  function ticketFilterVariants(value = '') {
+    const raw = String(value || '').trim();
+    const normalized = normalizeTicketFilterValue(raw);
+    const title = normalized.replace(/\b\w/g, ch => ch.toUpperCase());
+    return [...new Set([raw, normalized, normalized.replace(/ /g, '_'), normalized.replace(/ /g, '-'), title].filter(Boolean))];
+  }
+
+  function applyTicketListFilters(query, filters = {}, search = '') {
+    const f = filters || {};
+    const addNormalizedTextFilter = (column, value) => {
+      const variants = ticketFilterVariants(value).map(escapePostgrestFilterValue);
+      if (!variants.length) return;
+      query = query.or(variants.map(v => `${column}.ilike.${v}`).join(','));
+    };
+    if (f.module) addNormalizedTextFilter('module', f.module);
+    if (f.category) addNormalizedTextFilter('category', f.category);
+    if (f.priority) addNormalizedTextFilter('priority', f.priority);
+    if (f.status) addNormalizedTextFilter('status', f.status);
+    if (f.department) addNormalizedTextFilter('department', f.department);
+    if (f.start) query = query.gte('date_submitted', String(f.start).trim());
+    if (f.end) query = query.lt('date_submitted', `${String(f.end).trim()}T23:59:59.999Z`);
+    const term = String(search || '').trim().replace(/[%]/g, '').replace(/[,]/g, ' ');
+    if (term) query = query.or(`ticket_id.ilike.%${term}%,title.ilike.%${term}%,description.ilike.%${term}%,module.ilike.%${term}%,category.ilike.%${term}%,name.ilike.%${term}%,department.ilike.%${term}%,email_addressee.ilike.%${term}%`);
+    return query;
+  }
+
   function applyFilters(query, payload = {}, { resource = '' } = {}) {
     const { controls, dbFilters } = splitListPayload(payload);
     if (resource === 'companies') return applyCompanyListFilters(query, dbFilters, String(controls.search ?? controls.q ?? ''));
     if (resource === 'contacts') return applyContactsListFilters(query, dbFilters, String(controls.search ?? controls.q ?? ''));
+    if (resource === 'tickets') return applyTicketListFilters(query, dbFilters, String(controls.search ?? controls.q ?? ''));
     const allowedColumns = LIST_COLUMNS_BY_RESOURCE[resource];
     Object.entries(dbFilters || {}).forEach(([key, value]) => {
       if (value === undefined || value === null || value === '') return;
@@ -5871,12 +5937,11 @@
       //   case
       //     when status is null or trim(status) = '' then 'New'
       //     when lower(trim(status)) = 'new' then 'New'
-      //     when lower(trim(status)) = 'under development' then 'Under Development'
-      //     when lower(trim(status)) = 'not started yet' then 'Not Started Yet'
-      //     when lower(trim(status)) = 'on hold' then 'On Hold'
-      //     when lower(trim(status)) = 'on stage' then 'On Stage'
-      //     when lower(trim(status)) = 'sent' then 'Sent'
+      //     when lower(trim(status)) in ('under review','under_review') then 'Under Review'
+      //     when lower(trim(status)) in ('in progress','in_progress','under development','under_development') then 'In Progress'
+      //     when lower(trim(status)) in ('on hold','on_hold') then 'On Hold'
       //     when lower(trim(status)) = 'resolved' then 'Resolved'
+      //     when lower(trim(status)) = 'closed' then 'Closed'
       //     when lower(trim(status)) = 'rejected' then 'Rejected'
       //     else trim(status)
       //   end as normalized_status,
