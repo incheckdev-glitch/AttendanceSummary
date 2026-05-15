@@ -324,15 +324,16 @@
       if (!raw) return 'New';
       const map = {
         new: 'New',
-        'under review': 'Under Review',
+        'under review': 'Not Started Yet',
         'under development': 'In Progress',
         'in progress': 'In Progress',
-        'not started yet': 'New',
+        'not started yet': 'Not Started Yet',
+        'not started': 'Not Started Yet',
         'on hold': 'On Hold',
         'on stage': 'In Progress',
         sent: 'In Progress',
         resolved: 'Resolved',
-        closed: 'Closed',
+        closed: 'Resolved',
         rejected: 'Rejected'
       };
       return map[normalizeTicketFilterValue(raw)] || raw;
@@ -3302,7 +3303,10 @@
     const raw = String(value || '').trim();
     const normalized = normalizeTicketFilterValue(raw);
     const title = normalized.replace(/\b\w/g, ch => ch.toUpperCase());
-    return [...new Set([raw, normalized, normalized.replace(/ /g, '_'), normalized.replace(/ /g, '-'), title].filter(Boolean))];
+    const variants = [raw, normalized, normalized.replace(/ /g, '_'), normalized.replace(/ /g, '-'), title];
+    if (normalized === 'not started yet') variants.push('under review', 'under_review', 'Under Review', 'not started', 'not_started');
+    if (normalized === 'resolved') variants.push('closed', 'Closed');
+    return [...new Set(variants.filter(Boolean))];
   }
 
   function applyTicketListFilters(query, filters = {}, search = '') {
@@ -5937,11 +5941,11 @@
       //   case
       //     when status is null or trim(status) = '' then 'New'
       //     when lower(trim(status)) = 'new' then 'New'
-      //     when lower(trim(status)) in ('under review','under_review') then 'Under Review'
+      //     when lower(trim(status)) in ('under review','under_review','not started','not_started','not started yet','not_started_yet') then 'Not Started Yet'
       //     when lower(trim(status)) in ('in progress','in_progress','under development','under_development') then 'In Progress'
       //     when lower(trim(status)) in ('on hold','on_hold') then 'On Hold'
       //     when lower(trim(status)) = 'resolved' then 'Resolved'
-      //     when lower(trim(status)) = 'closed' then 'Closed'
+      //     when lower(trim(status)) = 'closed' then 'Resolved'
       //     when lower(trim(status)) = 'rejected' then 'Rejected'
       //     else trim(status)
       //   end as normalized_status,

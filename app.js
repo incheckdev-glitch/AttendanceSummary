@@ -752,7 +752,7 @@ UI.Issues = {
         .join('');
     if (E.statusFilter)
       E.statusFilter.innerHTML = ['All', ...TICKET_STATUS_OPTIONS]
-        .map(v => `<option value="${U.escapeAttr(v)}">${U.escapeHtml(v)}</option>`)
+        .map(v => `<option value="${U.escapeAttr(v)}">${U.escapeHtml(v === 'All' ? 'All Statuses' : v)}</option>`)
         .join('');
     const allowInternalFilters = Permissions.canUseInternalIssueFilters();
     if (E.devTeamStatusFilter && allowInternalFilters)
@@ -791,7 +791,7 @@ UI.Issues = {
 
     const selectedModule = normalizeTicketFilterValue(s.module);
     const selectedPriority = normalizeTicketFilterValue(s.priority);
-    const selectedStatus = normalizeTicketFilterValue(s.status);
+    const selectedStatus = normalizeTicketStatus(s.status);
     const selectedDevTeamStatus = normalizeTicketFilterValue(s.devTeamStatus);
     const selectedIssueRelated = normalizeTicketFilterValue(canonicalTicketRelatedValue(s.issueRelated));
     const selectedDepartment = normalizeTicketFilterValue(s.department);
@@ -834,13 +834,14 @@ UI.Issues = {
         .map(v => normalizeTicketFilterValue(canonicalTicketRelatedValue(v)))
         .filter(Boolean);
       const rowDevTeamStatus = normalizeTicketFilterValue(canonicalDevTeamStatusValue(getDevTeamStatus(r)));
+      const rowStatus = normalizeTicketStatus(getDisplayTicketStatus(r.status));
       const rowRequester = normalizeTicketFilterValue(r.requester || r.name || r.emailAddressee || r.email || '');
 
       return (
         (!selectedModule || selectedModule === 'all' || normalizeTicketFilterValue(r.module) === selectedModule) &&
           matchesCategory(r) &&
         (!selectedPriority || selectedPriority === 'all' || normalizeTicketFilterValue(r.priority) === selectedPriority) &&
-        (!selectedStatus || selectedStatus === 'all' || normalizeTicketFilterValue(r.status) === selectedStatus) &&
+        (!selectedStatus || selectedStatus === 'all' || rowStatus === selectedStatus) &&
         (!selectedDepartment || selectedDepartment === 'all' || normalizeTicketFilterValue(r.department) === selectedDepartment) &&
         (!selectedAssignedTo || selectedAssignedTo === 'all' || normalizeTicketFilterValue(r.assigned_to || r.assignedTo) === selectedAssignedTo) &&
         (!selectedRequester || selectedRequester === 'all' || rowRequester === selectedRequester) &&
@@ -860,7 +861,7 @@ UI.Issues = {
     if (!E.kpis) return;
     const fallbackCounts = {};
     list.forEach(r => {
-      const statusKey = DataStore.normalizeStatusKey(r.status);
+      const statusKey = normalizeTicketStatus(getDisplayTicketStatus(r.status));
       fallbackCounts[statusKey] = (fallbackCounts[statusKey] || 0) + 1;
     });
     const hasSummaryCounts = Object.keys(TicketSummaryState.statusCounts || {}).length > 0;
@@ -891,9 +892,9 @@ UI.Issues = {
             end: ''
           };
         } else {
-          const statusKey = DataStore.normalizeStatusKey(label);
+          const statusKey = normalizeTicketStatus(label);
           const matches = (DataStore.rows || [])
-            .filter(t => DataStore.normalizeStatusKey(t.status) === statusKey)
+            .filter(t => normalizeTicketStatus(getDisplayTicketStatus(t.status)) === statusKey)
             .map(t => ({ ticket_id: t.ticket_id || t.id, status: t.status }));
           console.log('[Tickets Status Filter]', {
             clickedLabel: label,
@@ -986,7 +987,7 @@ UI.Issues = {
     const renderCell = (row, col) => {
       if (col.key === 'id') return U.escapeHtml(issueDisplayId(row) || '-');
       if (col.key === 'priority') return badgePrio(row.priority || '-');
-      if (col.key === 'status') return badgeStatus(row.status || '-');
+      if (col.key === 'status') return badgeStatus(getDisplayTicketStatus(row.status) || '-');
       if (col.key === 'devTeamStatus') return badgeDevTeamStatus(canonicalDevTeamStatusValue(getDevTeamStatus(row)) || '-');
       if (col.key === 'issueRelated') return badgeIssueRelatedGroup(displayTicketRelatedValue(getTicketRelated(row)) || '');
       if (
@@ -1679,7 +1680,7 @@ UI.Modals = {
     const personInitial = U.escapeHtml((r.name || '?').trim().charAt(0).toUpperCase() || '?');
     const title = U.escapeHtml(r.title || 'Untitled ticket');
     const description = U.escapeHtml(r.desc || '-');
-    const status = U.escapeHtml(r.status || '-');
+    const status = U.escapeHtml(getDisplayTicketStatus(r.status) || '-');
     const priority = U.escapeHtml(r.priority || '-');
     const moduleName = U.escapeHtml(r.module || '-');
     const department = U.escapeHtml(r.department || '-');
@@ -1983,10 +1984,8 @@ const IssueEditor = {
   syncSelectOptions(selectEl, values = [], selected = '', placeholder = 'Select option') {
     if (!selectEl) return;
     const uniqueValues = [...new Set(values.map(v => String(v || '').trim()).filter(Boolean))];
-    const hasSelected = selected && uniqueValues.includes(selected);
-    const finalValues = hasSelected ? uniqueValues : uniqueValues.concat(selected ? [selected] : []);
     selectEl.innerHTML = [`<option value="">${U.escapeHtml(placeholder)}</option>`]
-      .concat(finalValues.map(v => `<option value="${U.escapeAttr(v)}">${U.escapeHtml(v)}</option>`))
+      .concat(uniqueValues.map(v => `<option value="${U.escapeAttr(v)}">${U.escapeHtml(v)}</option>`))
       .join('');
     selectEl.value = selected || '';
   },
@@ -2057,7 +2056,7 @@ const IssueEditor = {
     setVal(E.editIssueDesc, issue.desc || '');
     setVal(E.editIssueModule, issue.module || '');
     setVal(E.editIssuePriority, issue.priority || '');
-    setVal(E.editIssueStatus, issue.status || '');
+    setVal(E.editIssueStatus, canonicalTicketStatusValue(issue.status || ''));
     this.syncCategoryOptions(issue.type || '');
     setVal(E.editIssueDepartment, issue.department || identity.department || '');
     setVal(E.editIssueName, issue.name || identity.name || '');
@@ -4070,7 +4069,7 @@ function buildTicketListFiltersPayload() {
   if (state.module && state.module !== 'All') payload.module = state.module;
   if (state.category && state.category !== 'All') payload.category = state.category;
   if (state.priority && state.priority !== 'All') payload.priority = state.priority;
-  if (state.status && state.status !== 'All') payload.status = canonicalTicketStatusValue(state.status);
+  if (state.status && state.status !== 'All') payload.status = getDisplayTicketStatus(state.status);
   if (state.start) payload.start = state.start;
   if (state.end) payload.end = state.end;
   if (Permissions.canUseInternalIssueFilters()) {
