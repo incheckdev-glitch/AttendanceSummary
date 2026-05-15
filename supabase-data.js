@@ -326,10 +326,7 @@
         new: 'New',
         'under review': 'Not Started Yet',
         'under development': 'Under Development',
-        'under_development': 'Under Development',
-        development: 'Under Development',
         'in progress': 'Under Development',
-        'in_progress': 'Under Development',
         'not started yet': 'Not Started Yet',
         'not started': 'Not Started Yet',
         'on hold': 'On Hold',
@@ -2984,36 +2981,6 @@
     return new Map((internalRows || []).map(r => [String(r.ticket_id || r.id), r]));
   }
 
-
-  function hasTicketInternalFilters(filters = {}) {
-    const devFilter = String(filters.devTeamStatus ?? filters.dev_team_status ?? filters.developer_status ?? '').trim();
-    const relatedFilter = String(filters.issueRelated ?? filters.issue_related ?? filters.ticketRelated ?? filters.ticket_related ?? filters.related_to ?? '').trim();
-    return Boolean(
-      (devFilter && normalizeTicketFilterValue(devFilter) !== 'all') ||
-      (relatedFilter && normalizeTicketFilterValue(relatedFilter) !== 'all')
-    );
-  }
-
-  function ticketMatchesInternalFilters(row = {}, filters = {}) {
-    const selectedDevStatus = normalizeTicketFilterValue(filters.devTeamStatus ?? filters.dev_team_status ?? filters.developer_status ?? '');
-    const selectedRelated = normalizeTicketFilterValue(filters.issueRelated ?? filters.issue_related ?? filters.ticketRelated ?? filters.ticket_related ?? filters.related_to ?? '');
-
-    if (selectedDevStatus && selectedDevStatus !== 'all') {
-      const rowDevStatus = normalizeTicketFilterValue(getDevTeamStatus(row));
-      if (rowDevStatus !== selectedDevStatus) return false;
-    }
-
-    if (selectedRelated && selectedRelated !== 'all') {
-      const rowRelatedValues = String(getTicketRelated(row) || '')
-        .split(',')
-        .map(value => normalizeTicketFilterValue(value))
-        .filter(Boolean);
-      if (!rowRelatedValues.includes(selectedRelated)) return false;
-    }
-
-    return true;
-  }
-
   function normalizeList(resource, rows) {
     const normalizedRows = Array.isArray(rows) ? rows.map(r => sanitizeReadByRole(resource, r)) : [];
     return { rows: normalizedRows, total: normalizedRows.length, returned: normalizedRows.length, hasMore: false, page: 1, limit: normalizedRows.length || 50, offset: 0 };
@@ -3338,7 +3305,7 @@
     const title = normalized.replace(/\b\w/g, ch => ch.toUpperCase());
     const variants = [raw, normalized, normalized.replace(/ /g, '_'), normalized.replace(/ /g, '-'), title];
     if (normalized === 'not started yet') variants.push('under review', 'under_review', 'Under Review', 'not started', 'not_started');
-    if (normalized === 'under development') variants.push('in progress', 'in_progress', 'In Progress', 'under_development', 'development', 'Development', 'on stage', 'On Stage', 'sent', 'Sent');
+    if (normalized === 'under development') variants.push('in progress', 'in_progress', 'In Progress', 'development', 'under_development');
     if (normalized === 'resolved') variants.push('closed', 'Closed');
     return [...new Set(variants.filter(Boolean))];
   }
@@ -5952,38 +5919,8 @@
 
     if (resource === 'tickets' && action === 'list') {
       assertAllowed('tickets', 'list');
-      const { controls, dbFilters } = splitListPayload(payload);
+      const { controls } = splitListPayload(payload);
       const listControls = normalizeListControls(controls, 'tickets');
-      const useInternalFilters = isAdminDev() && hasTicketInternalFilters(dbFilters);
-
-      if (useInternalFilters) {
-        const pageSize = 1000;
-        const maxPages = 100;
-        let from = 0;
-        let allRows = [];
-        for (let page = 0; page < maxPages; page++) {
-          const to = from + pageSize - 1;
-          let pageQuery = applyFilters(client.from('tickets').select('*'), payload, { resource: 'tickets' });
-          pageQuery = pageQuery.order(listControls.sortBy, { ascending: listControls.sortDir === 'asc' });
-          pageQuery = pageQuery.range(from, to);
-          const { data: pageRows, error: pageError } = await pageQuery;
-          if (pageError) throw friendlyError('Unable to load tickets', pageError);
-          const chunk = Array.isArray(pageRows) ? pageRows : [];
-          allRows = allRows.concat(chunk);
-          if (chunk.length < pageSize) break;
-          from += pageSize;
-        }
-        const normalized = allRows.map(row => normalizeRow(resource, row));
-        const ids = normalized.map(row => String(ticketRowId(row) || '')).filter(Boolean);
-        const internalById = await loadTicketInternalByIds(ids);
-        const withInternal = normalized.map(row =>
-          mergeTicketInternal(row, internalById.get(String(ticketRowId(row) || '')))
-        );
-        const filtered = withInternal.filter(row => ticketMatchesInternalFilters(row, dbFilters));
-        const pageRows = filtered.slice(listControls.offset, listControls.offset + listControls.limit);
-        return { handled: true, data: normalizePagedList(resource, pageRows, listControls, filtered.length) };
-      }
-
       let query = applyFilters(client.from('tickets').select('*', { count: 'exact' }), payload, { resource: 'tickets' });
       query = query.order(listControls.sortBy, { ascending: listControls.sortDir === 'asc' });
       query = query.range(listControls.from, listControls.to);
@@ -6017,15 +5954,11 @@
       // from public.tickets
       // group by normalized_status
       // order by count desc, normalized_status asc;
-      const { dbFilters } = splitListPayload(payload);
-      const useInternalFilters = isAdminDev() && hasTicketInternalFilters(dbFilters);
       const base = () => applyFilters(client.from('tickets'), payload, { resource: 'tickets' });
       const { count: totalCount, error: totalError } = await base().select('id', { count: 'exact', head: true });
       if (totalError) throw friendlyError('Unable to load ticket summary', totalError);
-      const publicTotal = Number(totalCount || 0);
-      let internalFilteredTotal = 0;
+      const total = Number(totalCount || 0);
       const statusCounts = {};
-      const moduleCounts = {};
       let open = 0;
       let highRisk = 0;
       const pageSize = 1000;
@@ -6035,7 +5968,7 @@
       for (let page = 0; page < maxPages; page++) {
         const to = from + pageSize - 1;
         const { data: chunk, error: chunkError } = await base()
-          .select('id,status,priority,module')
+          .select('id,status,priority')
           .order('id', { ascending: true })
           .range(from, to);
         if (chunkError) throw friendlyError('Unable to load ticket summary', chunkError);
@@ -6045,25 +5978,13 @@
         const pageBoundary = `${firstId}:${lastId}:${rows.length}`;
         if (rows.length && lastPageBoundary && pageBoundary === lastPageBoundary) break;
         lastPageBoundary = pageBoundary;
-        let rowsForSummary = rows;
-        if (useInternalFilters && rows.length) {
-          const normalizedRows = rows.map(row => normalizeRow('tickets', row));
-          const ids = normalizedRows.map(row => String(ticketRowId(row) || '')).filter(Boolean);
-          const internalById = await loadTicketInternalByIds(ids);
-          rowsForSummary = normalizedRows
-            .map(row => mergeTicketInternal(row, internalById.get(String(ticketRowId(row) || ''))))
-            .filter(row => ticketMatchesInternalFilters(row, dbFilters));
-          internalFilteredTotal += rowsForSummary.length;
-        }
-        rowsForSummary.forEach(row => {
+        rows.forEach(row => {
           const normalizedStatus = normalizeTicketStatus(row?.status);
           statusCounts[normalizedStatus] = (statusCounts[normalizedStatus] || 0) + 1;
           const statusLc = normalizedStatus.toLowerCase();
           const isOpen = !(statusLc.startsWith('resolved') || statusLc.startsWith('rejected'));
           if (isOpen) open += 1;
           const priority = String(row?.priority || '').trim().toLowerCase();
-          const moduleName = String(row?.module || '').trim();
-          if (moduleName) moduleCounts[moduleName] = (moduleCounts[moduleName] || 0) + 1;
           const priorityWeight = priority.startsWith('h') ? 3 : priority.startsWith('m') ? 2 : priority.startsWith('l') ? 1 : 1;
           let riskScore = priorityWeight;
           if (statusLc.startsWith('on stage')) riskScore += 2;
@@ -6073,34 +5994,35 @@
         if (rows.length < pageSize) break;
         from += pageSize;
       }
-      const allModuleNames = new Set(Object.keys(moduleCounts));
+      const moduleValues = [];
+      const moduleSet = new Set();
       let moduleFrom = 0;
       for (let page = 0; page < maxPages; page++) {
         const moduleTo = moduleFrom + pageSize - 1;
         const { data: moduleChunk, error: moduleError } = await client
           .from('tickets')
           .select('module')
-          .order('module', { ascending: true })
+          .order('module', { ascending: true, nullsFirst: false })
           .range(moduleFrom, moduleTo);
         if (moduleError) break;
-        const moduleRows = Array.isArray(moduleChunk) ? moduleChunk : [];
-        moduleRows.forEach(row => {
+        const rows = Array.isArray(moduleChunk) ? moduleChunk : [];
+        rows.forEach(row => {
           const moduleName = String(row?.module || '').trim();
-          if (moduleName) allModuleNames.add(moduleName);
+          if (moduleName) moduleSet.add(moduleName);
         });
-        if (moduleRows.length < pageSize) break;
+        if (rows.length < pageSize) break;
         moduleFrom += pageSize;
       }
-      const moduleOptions = Array.from(allModuleNames).sort((a, b) => a.localeCompare(b));
+      moduleValues.push(...Array.from(moduleSet).sort((a, b) => a.localeCompare(b)));
+
       return {
         handled: true,
         data: {
-          total: useInternalFilters ? internalFilteredTotal : publicTotal,
+          total,
           open,
           highRisk,
           statusCounts,
-          moduleCounts,
-          moduleOptions
+          moduleValues
         }
       };
     }
