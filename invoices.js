@@ -191,6 +191,9 @@ const Invoices = {
   normalizeText(value) {
     return String(value ?? '').trim().toLowerCase();
   },
+  normalizeLocationKey(value) {
+    return String(value || '').trim().toLowerCase();
+  },
   normalizeTruthy(value) {
     if (typeof value === 'boolean') return value;
     const raw = String(value ?? '').trim().toLowerCase();
@@ -1509,15 +1512,71 @@ const Invoices = {
     const normalized = this.normalizeSection(section);
     return ['one_time_fee', 'one_time', 'setup', 'non_recurring', 'non-recurring'].includes(normalized);
   },
+  isGenericSetupLocation(value) {
+    const key = this.normalizeLocationKey(value);
+    return !key || key === 'all locations' || key === 'all location' || key === 'selected locations';
+  },
   isOneTimeFeeItem(item = {}) {
     const source = item && typeof item === 'object' ? item : {};
-    const sectionText = this.normalizeText([source.section, source.item_section, source.itemSection, source.type, source.item_type, source.itemType, source.category, source.item_category, source.itemCategory].join(' '));
-    const nameText = this.normalizeText([source.item_name, source.itemName, source.name, source.description, source.notes].join(' '));
-    const combined = `${sectionText} ${nameText}`.replace(/[\s_-]+/g, ' ').trim();
-    const recurringPattern = /\b(annual|saas|subscription|recurring|license monthly|monthly license|license month|per month|monthly|yearly|per year)\b/;
-    if (recurringPattern.test(combined) && !/\b(account setup|setup fee|one time|one time fee|implementation|activation|non recurring)\b/.test(combined)) return false;
-    if (this.isOneTimeSection(sectionText)) return true;
-    return /\b(one time|one time fee|account setup|setup fee|implementation|activation|non recurring)\b/.test(combined);
+    const text = [
+      source.section,
+      source.item_section,
+      source.itemSection,
+      source.type,
+      source.item_type,
+      source.itemType,
+      source.category,
+      source.item_category,
+      source.itemCategory,
+      source.item_name,
+      source.itemName,
+      source.name,
+      source.description,
+      source.notes
+    ].map(value => String(value || '').toLowerCase()).join(' ');
+
+    if (
+      text.includes('annual') ||
+      text.includes('subscription') ||
+      text.includes('saas') ||
+      text.includes('recurring') ||
+      text.includes('license / month') ||
+      text.includes('license/month')
+    ) {
+      if (!(
+        text.includes('one_time') ||
+        text.includes('one-time') ||
+        text.includes('one time') ||
+        text.includes('setup') ||
+        text.includes('account setup') ||
+        text.includes('implementation') ||
+        text.includes('activation')
+      )) return false;
+    }
+
+    return (
+      text.includes('one_time') ||
+      text.includes('one-time') ||
+      text.includes('one time') ||
+      text.includes('setup') ||
+      text.includes('account setup') ||
+      text.includes('implementation') ||
+      text.includes('activation') ||
+      text.includes('non recurring') ||
+      text.includes('non_recurring') ||
+      text.includes('non-recurring')
+    );
+  },
+  getSelectedSetupLocationLabel(selectedAnnualItems = []) {
+    const names = [...new Set(
+      (Array.isArray(selectedAnnualItems) ? selectedAnnualItems : [])
+        .map(item => String(item?.location_name || item?.locationName || item?.location || '').trim())
+        .filter(Boolean)
+    )];
+
+    if (names.length === 1) return names[0];
+    if (names.length > 1) return 'Selected Locations';
+    return 'Selected Locations';
   },
   normalizeSetupBillingMode(value = '') {
     return String(value || '').trim() === 'full_first_batch' ? 'full_first_batch' : 'per_selected_locations';
@@ -1554,23 +1613,64 @@ const Invoices = {
       .filter(Boolean));
     const normalizedAgreementItems = Array.isArray(agreementItems) ? agreementItems : [];
     const selectedSubscriptions = normalizedAgreementItems.filter(item => selectedIds.has(this.getAgreementItemRecordId(item)));
+    const selectedLocationKeys = new Set(selectedSubscriptions
+      .map(item => this.normalizeLocationKey(item?.location_name || item?.locationName || item?.location))
+      .filter(Boolean));
     const alreadyInvoiced = new Set((Array.isArray(alreadyInvoicedSetupItemIds) ? alreadyInvoicedSetupItemIds : [])
       .map(value => String(value || '').trim())
       .filter(Boolean));
     const setupItems = normalizedAgreementItems.filter(item => this.isOneTimeFeeItem(item));
     const subscriptionItems = normalizedAgreementItems.filter(item => this.isSubscriptionSection(this.normalizeItem(item).section));
-    let candidates = mode === 'full_first_batch'
-      ? setupItems
-      : setupItems.filter(item => this.setupItemMatchesSelectedSubscriptions(item, selectedSubscriptions));
-    if (mode === 'per_selected_locations' && !candidates.length && setupItems.length === subscriptionItems.length && selectedSubscriptions.length) {
-      const selectedIndexSet = new Set(selectedSubscriptions.map(item => subscriptionItems.findIndex(subscriptionItem => this.getAgreementItemRecordId(subscriptionItem) === this.getAgreementItemRecordId(item))).filter(index => index >= 0));
-      candidates = setupItems.filter((_item, index) => selectedIndexSet.has(index));
+    let candidates = [];
+
+    if (mode === 'full_first_batch') {
+      candidates = setupItems;
+    } else if (selectedSubscriptions.length) {
+      candidates = setupItems.filter(item => {
+        const locationKey = this.normalizeLocationKey(item?.location_name || item?.locationName || item?.location);
+        return locationKey && selectedLocationKeys.has(locationKey) && !this.isGenericSetupLocation(locationKey);
+      });
+
+      if (!candidates.length) {
+        candidates = setupItems.filter(item => this.setupItemMatchesSelectedSubscriptions(item, selectedSubscriptions));
+      }
+
+      if (!candidates.length && setupItems.length === subscriptionItems.length) {
+        const selectedIndexSet = new Set(selectedSubscriptions
+          .map(item => subscriptionItems.findIndex(subscriptionItem => this.getAgreementItemRecordId(subscriptionItem) === this.getAgreementItemRecordId(item)))
+          .filter(index => index >= 0));
+        candidates = setupItems.filter((_item, index) => selectedIndexSet.has(index));
+      }
+
+      if (!candidates.length) {
+        const genericSetupItem = setupItems.find(item => {
+          const itemId = this.getAgreementItemRecordId(item);
+          if (itemId && alreadyInvoiced.has(itemId)) return false;
+          return this.isGenericSetupLocation(item?.location_name || item?.locationName || item?.location);
+        });
+
+        if (genericSetupItem) {
+          const computed = this.computeCommercialRow({
+            ...genericSetupItem,
+            section: 'one_time_fee',
+            location_name: this.getSelectedSetupLocationLabel(selectedSubscriptions),
+            quantity: selectedSubscriptions.length,
+            source_agreement_item_id: ''
+          });
+          candidates = [{
+            ...computed,
+            source_agreement_item_id: '',
+            __clearSourceAgreementItemId: true
+          }];
+        }
+      }
     }
+
     const included = [];
     const skippedAlreadyInvoiced = [];
     candidates.forEach(item => {
       const itemId = this.getAgreementItemRecordId(item);
-      if (itemId && alreadyInvoiced.has(itemId)) {
+      if (!item.__clearSourceAgreementItemId && itemId && alreadyInvoiced.has(itemId)) {
         skippedAlreadyInvoiced.push(item);
         return;
       }
@@ -2789,12 +2889,17 @@ const Invoices = {
       setupBillingMode,
       alreadyInvoicedSetupItemIds: [...(selection.alreadyInvoicedSetupItemIds || new Set())]
     });
-    const oneTimeItems = setupResult.included.map(item => ({
-      ...item,
-      quantity: item.quantity || 1,
-      source_agreement_item_id: this.getAgreementItemRecordId(item),
-      source_agreement_id: agreementUuid
-    }));
+    const oneTimeItems = setupResult.included.map(item => {
+      const clearSetupSource = Boolean(item?.__clearSourceAgreementItemId);
+      const quantity = item.quantity || 1;
+      return this.computeCommercialRow({
+        ...item,
+        quantity,
+        section: this.normalizeSection(item.section) || 'one_time_fee',
+        source_agreement_item_id: clearSetupSource ? '' : this.getAgreementItemRecordId(item),
+        source_agreement_id: agreementUuid
+      });
+    });
     this.state.accountSetupBillingMode = setupBillingMode;
     this.state.agreementInvoiceSelection = {
       ...selection,
