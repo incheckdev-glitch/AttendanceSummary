@@ -2,7 +2,7 @@
 const TICKET_STATUS_OPTIONS = [
   'New',
   'Not Started Yet',
-  'In Progress',
+  'Under Development',
   'On Hold',
   'Resolved',
   'Rejected'
@@ -39,15 +39,21 @@ function normalizeTicketFilterValue(value) {
 function getDisplayTicketStatus(value) {
   const normalized = normalizeTicketStatus(value);
 
-  if (normalized === 'under review') return 'Not Started Yet';
-  if (normalized === 'closed') return 'Resolved';
   if (normalized === 'new') return 'New';
+  if (normalized === 'under review') return 'Not Started Yet';
   if (normalized === 'not started yet' || normalized === 'not started') return 'Not Started Yet';
-  if (normalized === 'under development') return 'In Progress';
-  if (normalized === 'on stage') return 'In Progress';
-  if (normalized === 'sent') return 'In Progress';
-  if (normalized === 'in progress') return 'In Progress';
+  if (
+    normalized === 'under development' ||
+    normalized === 'development' ||
+    normalized === 'in progress' ||
+    normalized === 'inprogress' ||
+    normalized === 'on stage' ||
+    normalized === 'sent'
+  ) {
+    return 'Under Development';
+  }
   if (normalized === 'on hold') return 'On Hold';
+  if (normalized === 'closed') return 'Resolved';
   if (normalized === 'resolved') return 'Resolved';
   if (normalized === 'rejected') return 'Rejected';
 
@@ -69,6 +75,18 @@ function getDevTeamStatus(ticket) {
     || ticket?.devTeamStatus
     || ticket?.developer_status
     || ticket?.developerStatus
+    || '';
+}
+
+function getTicketModule(ticket) {
+  return ticket?.module
+    || ticket?.Module
+    || ticket?.ticket_module
+    || ticket?.ticketModule
+    || ticket?.issue_module
+    || ticket?.issueModule
+    || ticket?.impacted_module
+    || ticket?.impactedModule
     || '';
 }
 
@@ -121,6 +139,7 @@ if (typeof window !== 'undefined') {
   window.getDisplayTicketStatus = getDisplayTicketStatus;
   window.getTicketRelated = getTicketRelated;
   window.getDevTeamStatus = getDevTeamStatus;
+  window.getTicketModule = getTicketModule;
   window.canonicalTicketStatusValue = canonicalTicketStatusValue;
   window.canonicalTicketRelatedValue = canonicalTicketRelatedValue;
   window.displayTicketRelatedValue = displayTicketRelatedValue;
@@ -198,7 +217,7 @@ const DataStore = {
       ticket_id: pick('ticket id', 'ticket_id', 'ticket code'),
       name: pick('name', 'requester', 'requester name'),
       department: pick('department', 'dept'),
-      module: pick('impacted module', 'module', 'issue location') || 'Unspecified',
+      module: pick('impacted module', 'module', 'ticket module', 'issue module', 'issue location') || getTicketModule(raw) || 'Unspecified',
       title: pick('title'),
       desc: pick('description'),
       file: pick('file upload', 'link', 'url'),
@@ -264,8 +283,9 @@ const DataStore = {
       this.byId.set(r.id, r);
       if (!this.byModule.has(r.module)) this.byModule.set(r.module, []);
       this.byModule.get(r.module).push(r);
-      if (!this.byStatus.has(r.status)) this.byStatus.set(r.status, []);
-      this.byStatus.get(r.status).push(r);
+      const displayStatus = getDisplayTicketStatus(r.status);
+      if (!this.byStatus.has(displayStatus)) this.byStatus.set(displayStatus, []);
+      this.byStatus.get(displayStatus).push(r);
       if (!this.byPriority.has(r.priority)) this.byPriority.set(r.priority, []);
       this.byPriority.get(r.priority).push(r);
 

@@ -83,6 +83,8 @@ const TicketSummaryState = {
   open: 0,
   highRisk: 0,
   statusCounts: {},
+  moduleCounts: {},
+  moduleOptions: [],
   filterKey: '',
   loaded: false
 };
@@ -248,6 +250,62 @@ function hasActiveTicketFilters() {
       ((state.devTeamStatus && state.devTeamStatus !== 'All') ||
         (state.issueRelated && state.issueRelated !== 'All')))
   );
+}
+
+function normalizeTicketSummaryCounts(counts = {}) {
+  const normalizedCounts = {};
+  TICKET_STATUS_OPTIONS.forEach(status => {
+    normalizedCounts[normalizeTicketStatus(status)] = 0;
+  });
+  Object.entries(counts || {}).forEach(([status, value]) => {
+    const displayStatus = getDisplayTicketStatus(status);
+    const key = normalizeTicketStatus(displayStatus);
+    if (!key) return;
+    normalizedCounts[key] = (normalizedCounts[key] || 0) + Number(value || 0);
+  });
+  return normalizedCounts;
+}
+
+function getTicketModuleOptionsFromState() {
+  const values = [
+    ...(Array.isArray(TicketSummaryState.moduleOptions) ? TicketSummaryState.moduleOptions : []),
+    ...Object.keys(TicketSummaryState.moduleCounts || {}),
+    ...(DataStore.rows || []).map(row => getTicketModule(row))
+  ];
+  return Array.from(
+    new Set(values.map(value => String(value || '').trim()).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b));
+}
+
+function buildTicketStatusChartData(list = []) {
+  const sourceCounts = Object.keys(TicketSummaryState.statusCounts || {}).length
+    ? TicketSummaryState.statusCounts
+    : (list || []).reduce((acc, row) => {
+        const key = normalizeTicketStatus(getDisplayTicketStatus(row.status));
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
+  const normalizedCounts = normalizeTicketSummaryCounts(sourceCounts);
+  return TICKET_STATUS_OPTIONS.reduce((acc, status) => {
+    acc[status] = normalizedCounts[normalizeTicketStatus(status)] || 0;
+    return acc;
+  }, {});
+}
+
+function buildTicketModuleChartData(list = []) {
+  const sourceCounts = Object.keys(TicketSummaryState.moduleCounts || {}).length
+    ? TicketSummaryState.moduleCounts
+    : (list || []).reduce((acc, row) => {
+        const moduleName = String(getTicketModule(row) || 'Unspecified').trim() || 'Unspecified';
+        acc[moduleName] = (acc[moduleName] || 0) + 1;
+        return acc;
+      }, {});
+  return Object.keys(sourceCounts)
+    .sort((a, b) => a.localeCompare(b))
+    .reduce((acc, key) => {
+      acc[key] = Number(sourceCounts[key] || 0);
+      return acc;
+    }, {});
 }
 
 function isRelevantOpenTicket(ticket = {}) {
@@ -736,19 +794,21 @@ UI.Issues = {
         a.localeCompare(b)
       );
     
-    if (E.moduleFilter)
-      E.moduleFilter.innerHTML = ['All', ...uniq(DataStore.rows.map(r => r.module))]
-        .map(v => `<option>${v}</option>`)
+    if (E.moduleFilter) {
+      const moduleOptions = getTicketModuleOptionsFromState();
+      E.moduleFilter.innerHTML = ['All', ...moduleOptions]
+        .map(v => `<option value="${U.escapeAttr(v)}">${U.escapeHtml(v === 'All' ? 'All Modules' : v)}</option>`)
         .join('');
+    }
       if (E.categoryFilter) {
       const categories = buildIssueCategoryOptions();
       E.categoryFilter.innerHTML = ['All', ...categories]
-        .map(v => `<option>${v}</option>`)
+        .map(v => `<option value="${U.escapeAttr(v)}">${U.escapeHtml(v === 'All' ? 'All Categories' : v)}</option>`)
         .join('');
     }
     if (E.priorityFilter)
       E.priorityFilter.innerHTML = ['All', ...uniq(DataStore.rows.map(r => r.priority))]
-        .map(v => `<option>${v}</option>`)
+        .map(v => `<option value="${U.escapeAttr(v)}">${U.escapeHtml(v === 'All' ? 'All Priorities' : v)}</option>`)
         .join('');
     if (E.statusFilter)
       E.statusFilter.innerHTML = ['All', ...TICKET_STATUS_OPTIONS]
@@ -757,11 +817,11 @@ UI.Issues = {
     const allowInternalFilters = Permissions.canUseInternalIssueFilters();
     if (E.devTeamStatusFilter && allowInternalFilters)
       E.devTeamStatusFilter.innerHTML = ['All', ...DEV_TEAM_STATUS_OPTIONS]
-        .map(v => `<option value="${U.escapeAttr(v)}">${U.escapeHtml(v)}</option>`)
+        .map(v => `<option value="${U.escapeAttr(v)}">${U.escapeHtml(v === 'All' ? 'All Dev Team Statuses' : v)}</option>`)
         .join('');
     if (E.issueRelatedFilter && allowInternalFilters) {
       E.issueRelatedFilter.innerHTML = ['All', ...TICKET_RELATED_OPTIONS]
-        .map(v => `<option value="${U.escapeAttr(v)}">${U.escapeHtml(v)}</option>`)
+        .map(v => `<option value="${U.escapeAttr(v)}">${U.escapeHtml(v === 'All' ? 'All Related' : v)}</option>`)
         .join('');
     }
      setIfOptionExists(E.moduleFilter, Filters.state.module);
@@ -791,7 +851,7 @@ UI.Issues = {
 
     const selectedModule = normalizeTicketFilterValue(s.module);
     const selectedPriority = normalizeTicketFilterValue(s.priority);
-    const selectedStatus = normalizeTicketStatus(s.status);
+    const selectedStatus = normalizeTicketStatus(getDisplayTicketStatus(s.status));
     const selectedDevTeamStatus = normalizeTicketFilterValue(s.devTeamStatus);
     const selectedIssueRelated = normalizeTicketFilterValue(canonicalTicketRelatedValue(s.issueRelated));
     const selectedDepartment = normalizeTicketFilterValue(s.department);
@@ -801,7 +861,7 @@ UI.Issues = {
     return DataStore.rows.filter(r => {
       const hay = [
         r.id,
-        r.module,
+        getTicketModule(r),
         r.title,
         r.desc,
         r.log,
@@ -838,7 +898,7 @@ UI.Issues = {
       const rowRequester = normalizeTicketFilterValue(r.requester || r.name || r.emailAddressee || r.email || '');
 
       return (
-        (!selectedModule || selectedModule === 'all' || normalizeTicketFilterValue(r.module) === selectedModule) &&
+        (!selectedModule || selectedModule === 'all' || normalizeTicketFilterValue(getTicketModule(r)) === selectedModule) &&
           matchesCategory(r) &&
         (!selectedPriority || selectedPriority === 'all' || normalizeTicketFilterValue(r.priority) === selectedPriority) &&
         (!selectedStatus || selectedStatus === 'all' || rowStatus === selectedStatus) &&
@@ -865,7 +925,7 @@ UI.Issues = {
       fallbackCounts[statusKey] = (fallbackCounts[statusKey] || 0) + 1;
     });
     const hasSummaryCounts = Object.keys(TicketSummaryState.statusCounts || {}).length > 0;
-    const counts = hasSummaryCounts ? TicketSummaryState.statusCounts : fallbackCounts;
+    const counts = normalizeTicketSummaryCounts(hasSummaryCounts ? TicketSummaryState.statusCounts : fallbackCounts);
     const total = Number(TicketSummaryState.total || 0) || list.length;
     const statusKeyToLabel = Object.fromEntries(TICKET_STATUS_OPTIONS.map(label => [normalizeTicketFilterValue(label), label]));
     const preferredOrder = TICKET_STATUS_OPTIONS.map(label => normalizeTicketFilterValue(label));
@@ -926,12 +986,8 @@ UI.Issues = {
       add(statusKeyToLabel[statusKey] || DataStore.normalizeStatus(statusKey), value);
       seen.add(statusKey);
     });
-    Object.entries(counts)
-      .filter(([statusKey, value]) => !seen.has(statusKey) && Number(value || 0) > 0)
-      .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
-      .forEach(([statusKey, value]) =>
-        add(statusKeyToLabel[statusKey] || DataStore.normalizeStatus(statusKey), Number(value || 0))
-      );
+    // Status KPI cards intentionally use only the final approved status list.
+    // Legacy/raw statuses are folded into the approved labels by normalizeTicketSummaryCounts().
   },
   renderTable(list) {
     if (!E.issuesTbody) return;
@@ -1117,13 +1173,12 @@ ColumnManager.apply();
       cssVar('--status-onstage')
     ];
     const statusColors = {
-      Resolved: cssVar('--status-resolved'),
-      'Under Development': cssVar('--status-underdev'),
-      Rejected: cssVar('--status-rejected'),
-      'On Hold': cssVar('--status-onhold'),
+      New: cssVar('--status-new'),
       'Not Started Yet': cssVar('--status-notstarted'),
-      Sent: cssVar('--status-sent'),
-      'On Stage': cssVar('--status-onstage')
+      'Under Development': cssVar('--status-underdev'),
+      'On Hold': cssVar('--status-onhold'),
+      Resolved: cssVar('--status-resolved'),
+      Rejected: cssVar('--status-rejected')
     };
     const priorityColors = {
       High: cssVar('--priority-high'),
@@ -1184,9 +1239,9 @@ ColumnManager.apply();
         }
       });
     };
-    make('byModule', 'bar', group(list, 'module'));
+    make('byModule', 'bar', buildTicketModuleChartData(list));
     make('byPriority', 'doughnut', group(list, 'priority'), priorityColors);
-    make('byStatus', 'bar', group(list, 'status'), statusColors);
+    make('byStatus', 'bar', buildTicketStatusChartData(list), statusColors);
 
     const categoryOptions = buildIssueCategoryOptions();
     const normalizedCategoryMap = new Map(
@@ -3789,8 +3844,15 @@ async function loadIssues(force = false) {
       TicketSummaryState.highRisk = Number(summaryResponse?.highRisk ?? 0);
       TicketSummaryState.statusCounts =
         summaryResponse && typeof summaryResponse.statusCounts === 'object'
-          ? Object.fromEntries(Object.entries(summaryResponse.statusCounts).map(([status, value]) => [DataStore.normalizeStatusKey(status), Number(value || 0)]))
+          ? normalizeTicketSummaryCounts(Object.fromEntries(Object.entries(summaryResponse.statusCounts).map(([status, value]) => [DataStore.normalizeStatusKey(status), Number(value || 0)])))
           : {};
+      TicketSummaryState.moduleCounts =
+        summaryResponse && typeof summaryResponse.moduleCounts === 'object'
+          ? Object.fromEntries(Object.entries(summaryResponse.moduleCounts).map(([moduleName, value]) => [String(moduleName || '').trim(), Number(value || 0)]).filter(([moduleName]) => moduleName))
+          : {};
+      TicketSummaryState.moduleOptions = Array.isArray(summaryResponse?.moduleOptions)
+        ? summaryResponse.moduleOptions.map(value => String(value || '').trim()).filter(Boolean)
+        : Object.keys(TicketSummaryState.moduleCounts || {});
       TicketSummaryState.filterKey = summaryFilterKey;
       TicketSummaryState.loaded = true;
     } else if (!TicketSummaryState.loaded) {
@@ -3798,6 +3860,8 @@ async function loadIssues(force = false) {
       TicketSummaryState.open = 0;
       TicketSummaryState.highRisk = 0;
       TicketSummaryState.statusCounts = {};
+      TicketSummaryState.moduleCounts = {};
+      TicketSummaryState.moduleOptions = [];
       TicketSummaryState.filterKey = summaryFilterKey;
     }
     const rawRows = extractEventsPayload(response);
@@ -4493,11 +4557,7 @@ function exportIssuesToExcel(rows, suffix) {
   });
    wsIssues['!cols'] = headers.map(h => ({ wch: Math.max(12, h.length + 4) }));
 
-  const statusCounts = rows.reduce((acc, r) => {
-    const normalizedStatus = DataStore.normalizeStatus(r.status);
-    acc[normalizedStatus] = (acc[normalizedStatus] || 0) + 1;
-    return acc;
-  }, {});
+  const statusCounts = buildTicketStatusChartData(rows);
   const summaryRows = [
     ['Generated at', U.fmtDisplayDate(new Date())],
     ['Filter - Search', Filters.state.search || ''],
@@ -4512,9 +4572,7 @@ function exportIssuesToExcel(rows, suffix) {
     [],
     ['Status breakdown', 'Count']
   ];
-  Object.entries(statusCounts)
-    .sort((a, b) => b[1] - a[1])
-    .forEach(([status, count]) => summaryRows.push([status, count]));
+  TICKET_STATUS_OPTIONS.forEach(status => summaryRows.push([status, statusCounts[status] || 0]));
   const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
   wsSummary['!cols'] = [{ wch: 24 }, { wch: 18 }];
 

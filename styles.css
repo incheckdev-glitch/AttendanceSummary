@@ -8,6 +8,7 @@
   --section-alt:rgba(15,23,42,.6);
 
   /* Status colors */
+  --status-new:#2563eb;
   --status-resolved:#16a34a;
   --status-underdev:#2563eb;
   --status-rejected:#dc2626;
@@ -1288,6 +1289,7 @@ th.sorted-desc::after{
 }
 
 /* updated to dash-format class names (matches JS badgeStatus) */
+.status-New{background:var(--status-new);color:#fff}
 .status-Resolved{background:var(--status-resolved);color:#fff}
 .status-Under-Development{background:var(--status-underdev);color:#fff}
 .status-Rejected{background:var(--status-rejected);color:#fff}
