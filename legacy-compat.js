@@ -1,15 +1,16 @@
 (function initLegacyCompat(global) {
   const TICKET_STATUS_MAP = Object.freeze({
     new: 'New',
-    'under review': 'Under Review',
+    'under review': 'Not Started Yet',
     'under development': 'In Progress',
     'in progress': 'In Progress',
-    'not started yet': 'New',
+    'not started yet': 'Not Started Yet',
+    'not started': 'Not Started Yet',
     'on hold': 'On Hold',
     'on stage': 'In Progress',
     sent: 'In Progress',
     resolved: 'Resolved',
-    closed: 'Closed',
+    closed: 'Resolved',
     rejected: 'Rejected'
   });
 

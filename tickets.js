@@ -1,11 +1,10 @@
 /** Ticket filter/display helpers */
 const TICKET_STATUS_OPTIONS = [
   'New',
-  'Under Review',
+  'Not Started Yet',
   'In Progress',
   'On Hold',
   'Resolved',
-  'Closed',
   'Rejected'
 ];
 
@@ -25,12 +24,34 @@ const DEV_TEAM_STATUS_OPTIONS = [
   'Disregard'
 ];
 
-function normalizeTicketFilterValue(value) {
+function normalizeTicketStatus(value) {
   return String(value || '')
     .trim()
     .toLowerCase()
     .replace(/[_-]+/g, ' ')
     .replace(/\s+/g, ' ');
+}
+
+function normalizeTicketFilterValue(value) {
+  return normalizeTicketStatus(value);
+}
+
+function getDisplayTicketStatus(value) {
+  const normalized = normalizeTicketStatus(value);
+
+  if (normalized === 'under review') return 'Not Started Yet';
+  if (normalized === 'closed') return 'Resolved';
+  if (normalized === 'new') return 'New';
+  if (normalized === 'not started yet' || normalized === 'not started') return 'Not Started Yet';
+  if (normalized === 'under development') return 'In Progress';
+  if (normalized === 'on stage') return 'In Progress';
+  if (normalized === 'sent') return 'In Progress';
+  if (normalized === 'in progress') return 'In Progress';
+  if (normalized === 'on hold') return 'On Hold';
+  if (normalized === 'resolved') return 'Resolved';
+  if (normalized === 'rejected') return 'Rejected';
+
+  return value || 'Not Started Yet';
 }
 
 function getTicketRelated(ticket) {
@@ -52,9 +73,10 @@ function getDevTeamStatus(ticket) {
 }
 
 function canonicalTicketStatusValue(value) {
-  const normalized = normalizeTicketFilterValue(value);
-  const direct = TICKET_STATUS_OPTIONS.find(option => normalizeTicketFilterValue(option) === normalized);
-  return direct || String(value || '').trim();
+  const displayValue = getDisplayTicketStatus(value);
+  const normalized = normalizeTicketStatus(displayValue);
+  const direct = TICKET_STATUS_OPTIONS.find(option => normalizeTicketStatus(option) === normalized);
+  return direct || String(displayValue || '').trim();
 }
 
 function canonicalTicketRelatedValue(value) {
@@ -94,7 +116,9 @@ if (typeof window !== 'undefined') {
   window.TICKET_STATUS_OPTIONS = TICKET_STATUS_OPTIONS;
   window.TICKET_RELATED_OPTIONS = TICKET_RELATED_OPTIONS;
   window.DEV_TEAM_STATUS_OPTIONS = DEV_TEAM_STATUS_OPTIONS;
+  window.normalizeTicketStatus = normalizeTicketStatus;
   window.normalizeTicketFilterValue = normalizeTicketFilterValue;
+  window.getDisplayTicketStatus = getDisplayTicketStatus;
   window.getTicketRelated = getTicketRelated;
   window.getDevTeamStatus = getDevTeamStatus;
   window.canonicalTicketStatusValue = canonicalTicketStatusValue;
@@ -118,25 +142,10 @@ const DataStore = {
   etag: null,
 
   normalizeStatusKey(status) {
-    return normalizeTicketFilterValue(status) || 'new';
+    return normalizeTicketStatus(getDisplayTicketStatus(status)) || normalizeTicketStatus('Not Started Yet');
   },
   normalizeStatus(s) {
-    const key = DataStore.normalizeStatusKey(s);
-    if (typeof window.normalizeTicketStatus === 'function') return window.normalizeTicketStatus(key);
-    const map = {
-      new: 'New',
-      'under review': 'Under Review',
-      'in progress': 'In Progress',
-      'under development': 'In Progress',
-      'not started yet': 'New',
-      'on hold': 'On Hold',
-      'on stage': 'In Progress',
-      sent: 'In Progress',
-      resolved: 'Resolved',
-      closed: 'Closed',
-      rejected: 'Rejected'
-    };
-    return map[key] || String(s || '').trim() || 'New';
+    return getDisplayTicketStatus(s);
   },
   normalizePriority(p) {
     const i = (p || '').trim().toLowerCase();
