@@ -557,13 +557,13 @@
     'customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_email',
     'provider_legal_name','provider_address','support_email','subtotal_locations','subtotal_one_time','invoice_total',
     'is_poc','poc_location_count','poc_license_count','poc_license_months','poc_service_start_date','poc_service_end_date','poc_success_kpis','poc_conversion_commitment',
-    'old_paid_total','paid_now','amount_paid','received_amount','pending_amount','balance_due','payment_state','payment_status','payment_conclusion','amount_in_words','status','notes','account_setup_billing_mode','paid_at',
+    'old_paid_total','paid_now','amount_paid','received_amount','pending_amount','balance_due','payment_state','payment_status','payment_conclusion','amount_in_words','status','notes','account_setup_billing_mode','is_renewal','invoice_type','source_type','renewal_status','renewal_due_date','renewed_from_agreement_id','renewed_from_invoice_id','renewed_from_invoice_item_id','renewed_from_location_name','renewal_batch_id','renewal_notes','paid_at',
     'created_by','updated_by','currency','created_at','updated_at'
   ]);
   const INVOICE_ITEM_COLUMNS = new Set([
     'item_id','invoice_id','section','line_no','location_name','item_name','unit_price','discount_percent',
     'discounted_unit_price','quantity','line_total','capability_name','capability_value','notes',
-    'service_start_date','service_end_date','source_agreement_item_id','source_agreement_id'
+    'service_start_date','service_end_date','source_agreement_item_id','source_agreement_id','renewal_batch_id','renewed_from_invoice_id','renewed_from_invoice_item_id','renewed_from_location_name'
   ]);
   const RECEIPT_COLUMNS = new Set([
     'receipt_id','receipt_number','invoice_id','invoice_number','agreement_uuid','agreement_id','agreement_number','client_id','company_id','company_name','customer_name','customer_legal_name','customer_address','contact_id','contact_name','contact_email','contact_phone','contact_mobile','receipt_status','amount_paid','payment_date','payment_method',
@@ -668,7 +668,7 @@
       'provider_legal_name','provider_address','support_email','subtotal_locations','subtotal_one_time','invoice_total',
       'is_poc','poc_location_count','poc_license_count','poc_license_months','poc_service_start_date','poc_service_end_date','poc_success_kpis','poc_conversion_commitment',
       'old_paid_total','paid_now','amount_paid','received_amount','pending_amount','payment_state','payment_conclusion','amount_in_words',
-      'status','notes','account_setup_billing_mode','currency','created_by','updated_by','created_at','updated_at'
+      'status','notes','account_setup_billing_mode','is_renewal','invoice_type','source_type','renewal_status','renewal_due_date','renewed_from_agreement_id','renewed_from_invoice_id','renewed_from_invoice_item_id','renewed_from_location_name','renewal_batch_id','renewal_notes','currency','created_by','updated_by','created_at','updated_at'
     ]),
     receipts: new Set([
       'id','receipt_id','receipt_number','invoice_id','agreement_uuid','agreement_id','agreement_number','client_id','receipt_date','amount_received','payment_method',
@@ -1564,6 +1564,17 @@
       status: trimOrNull(firstDefined(record, ['status'])),
       notes: trimOrNull(firstDefined(record, ['notes'])),
       account_setup_billing_mode: trimOrNull(firstDefined(record, ['account_setup_billing_mode', 'accountSetupBillingMode'])),
+      is_renewal: toDbBoolean(firstDefined(record, ['is_renewal', 'isRenewal']), false),
+      invoice_type: trimOrNull(firstDefined(record, ['invoice_type', 'invoiceType'])),
+      source_type: trimOrNull(firstDefined(record, ['source_type', 'sourceType'])),
+      renewal_status: trimOrNull(firstDefined(record, ['renewal_status', 'renewalStatus'])),
+      renewal_due_date: normalizeNullableDateValue(firstDefined(record, ['renewal_due_date', 'renewalDueDate'])),
+      renewed_from_agreement_id: trimOrNull(firstDefined(record, ['renewed_from_agreement_id', 'renewedFromAgreementId'])),
+      renewed_from_invoice_id: trimOrNull(firstDefined(record, ['renewed_from_invoice_id', 'renewedFromInvoiceId'])),
+      renewed_from_invoice_item_id: trimOrNull(firstDefined(record, ['renewed_from_invoice_item_id', 'renewedFromInvoiceItemId'])),
+      renewed_from_location_name: trimOrNull(firstDefined(record, ['renewed_from_location_name', 'renewedFromLocationName'])),
+      renewal_batch_id: trimOrNull(firstDefined(record, ['renewal_batch_id', 'renewalBatchId'])),
+      renewal_notes: trimOrNull(firstDefined(record, ['renewal_notes', 'renewalNotes'])),
       currency: trimOrNull(firstDefined(record, ['currency'])),
       created_at: trimOrNull(firstDefined(record, ['created_at', 'createdAt'])),
       updated_at: trimOrNull(firstDefined(record, ['updated_at', 'updatedAt']))
@@ -1593,7 +1604,11 @@
       service_start_date: trimOrNull(firstDefined(record, ['service_start_date', 'serviceStartDate'])),
       service_end_date: trimOrNull(firstDefined(record, ['service_end_date', 'serviceEndDate'])),
       source_agreement_item_id: trimOrNull(firstDefined(record, ['source_agreement_item_id', 'sourceAgreementItemId'])),
-      source_agreement_id: trimOrNull(firstDefined(record, ['source_agreement_id', 'sourceAgreementId']))
+      source_agreement_id: trimOrNull(firstDefined(record, ['source_agreement_id', 'sourceAgreementId'])),
+      renewal_batch_id: trimOrNull(firstDefined(record, ['renewal_batch_id', 'renewalBatchId'])),
+      renewed_from_invoice_id: trimOrNull(firstDefined(record, ['renewed_from_invoice_id', 'renewedFromInvoiceId'])),
+      renewed_from_invoice_item_id: trimOrNull(firstDefined(record, ['renewed_from_invoice_item_id', 'renewedFromInvoiceItemId'])),
+      renewed_from_location_name: trimOrNull(firstDefined(record, ['renewed_from_location_name', 'renewedFromLocationName']))
     });
     Object.keys(sanitized).forEach(key => { if (!INVOICE_ITEM_COLUMNS.has(key)) delete sanitized[key]; });
     return sanitized;

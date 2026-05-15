@@ -1502,7 +1502,7 @@ Sample:
             <div id="clientDetailTabButtons" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
               <button class="btn ghost sm" type="button" data-client-detail-tab="overview">Overview</button>
               <button class="btn ghost sm" type="button" data-permission-resource="clients" data-permission-action="view_statement" data-client-detail-tab="statement">Statement of Account</button>
-              <button class="btn ghost sm" type="button" data-permission-resource="clients" data-permission-action="view_renewals" data-client-detail-tab="renewals">Renewals &amp; Payments Timeline</button>
+              <button class="btn ghost sm" type="button" data-permission-resource="clients" data-permission-action="view_renewals" data-client-detail-tab="renewals">Payment &amp; Renewals</button>
             </div>
             <section id="clientOverviewSection">
               <details open>
@@ -1574,7 +1574,7 @@ Sample:
               </div>
               <div class="table-wrap" style="margin-top:8px;">
                 <table>
-                  <thead><tr><th>Location</th><th>Module</th><th>Service Start Date</th><th>Service End Date</th><th>Renewal Date</th><th>Billing Frequency</th><th>Payment Status</th></tr></thead>
+                  <thead><tr><th></th><th>Location</th><th>Agreement</th><th>Invoice</th><th>Service Start Date</th><th>Service End Date</th><th>Renewal Due Date</th><th>Payment Status</th><th>Renewal Status</th><th>Amount</th><th>Action</th></tr></thead>
                   <tbody id="clientRenewalsTbody"></tbody>
                 </table>
               </div>
