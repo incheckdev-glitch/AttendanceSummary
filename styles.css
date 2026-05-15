@@ -578,8 +578,8 @@ body.auth-locked .login-logo,
 .login-brand-logo,
 .auth-brand-logo{
   display:block;
-  width:min(220px,70vw);
-  max-width:220px;
+  width:min(280px,72vw);
+  max-width:280px;
   height:auto;
   max-height:90px;
   object-fit:contain;
