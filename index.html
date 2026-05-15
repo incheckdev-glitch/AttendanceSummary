@@ -3616,6 +3616,12 @@ Sample:
         <div class="divider" style="margin:12px 0;"></div>
         <div id="invoiceAgreementLocationSelectionSection" class="card" style="display:none;margin:12px 0;">
           <strong style="display:block;margin-bottom:8px;">Select Locations to Invoice</strong>
+          <div id="invoiceAccountSetupBillingOptions" class="card" style="display:none;margin:0 0 12px;padding:10px;background:#f8fafc;">
+            <strong style="display:block;margin-bottom:6px;">Account Setup Fee Billing:</strong>
+            <label style="display:block;margin:4px 0;"><input type="radio" name="invoiceAccountSetupBillingMode" id="invoiceAccountSetupBillingPerSelected" value="per_selected_locations" checked /> Per selected invoiced locations</label>
+            <label style="display:block;margin:4px 0;"><input type="radio" name="invoiceAccountSetupBillingMode" id="invoiceAccountSetupBillingFullFirst" value="full_first_batch" /> Full account setup fee in first invoice batch</label>
+            <div id="invoiceAccountSetupBillingNote" class="muted" style="display:none;margin-top:6px;"></div>
+          </div>
           <div class="table-wrap"><table><thead><tr><th>Select</th><th>Location / Item</th><th>License / Month</th><th>Service Start Date</th><th>Service End Date</th><th>Amount</th><th>Invoice Status</th></tr></thead><tbody id="invoiceAgreementLocationSelectionBody"></tbody></table></div>
         </div>
         <strong style="display:block;margin-bottom:8px;">Invoice Items</strong>

@@ -46,6 +46,7 @@ const Invoices = {
     'payment_conclusion',
     'amount_in_words',
     'notes',
+    'account_setup_billing_mode',
     'updated_at'
   ],
   state: {
@@ -75,6 +76,7 @@ const Invoices = {
     loadingInvoiceReceiptIds: new Set(),
     rowActionInFlight: new Set(),
     selectedAgreementItemIds: new Set(),
+    accountSetupBillingMode: 'per_selected_locations',
     agreementInvoiceSelection: null
   },
   statusOptions: ['Draft', 'Issued', 'Sent', 'Not Paid', 'Partially Paid', 'Fully Paid', 'Overdue', 'Cancelled'],
@@ -584,7 +586,8 @@ const Invoices = {
       payment_state: String(source.payment_state || '').trim() || 'Not Paid',
       payment_conclusion: String(source.payment_conclusion || '').trim() || this.derivePaymentConclusion(source),
       amount_in_words: String(source.amount_in_words || '').trim() || null,
-      notes: String(source.notes || '').trim() || null
+      notes: String(source.notes || '').trim() || null,
+      account_setup_billing_mode: this.normalizeSetupBillingMode(source.account_setup_billing_mode || this.state.accountSetupBillingMode)
     };
   },
   getInvoicePaymentSchedulePlan(paymentTerm) {
@@ -1506,6 +1509,75 @@ const Invoices = {
     const normalized = this.normalizeSection(section);
     return ['one_time_fee', 'one_time', 'setup', 'non_recurring', 'non-recurring'].includes(normalized);
   },
+  isOneTimeFeeItem(item = {}) {
+    const source = item && typeof item === 'object' ? item : {};
+    const sectionText = this.normalizeText([source.section, source.item_section, source.itemSection, source.type, source.item_type, source.itemType, source.category, source.item_category, source.itemCategory].join(' '));
+    const nameText = this.normalizeText([source.item_name, source.itemName, source.name, source.description, source.notes].join(' '));
+    const combined = `${sectionText} ${nameText}`.replace(/[\s_-]+/g, ' ').trim();
+    const recurringPattern = /\b(annual|saas|subscription|recurring|license monthly|monthly license|license month|per month|monthly|yearly|per year)\b/;
+    if (recurringPattern.test(combined) && !/\b(account setup|setup fee|one time|one time fee|implementation|activation|non recurring)\b/.test(combined)) return false;
+    if (this.isOneTimeSection(sectionText)) return true;
+    return /\b(one time|one time fee|account setup|setup fee|implementation|activation|non recurring)\b/.test(combined);
+  },
+  normalizeSetupBillingMode(value = '') {
+    return String(value || '').trim() === 'full_first_batch' ? 'full_first_batch' : 'per_selected_locations';
+  },
+  getSetupBillingModeFromForm() {
+    const checked = E.invoiceForm?.querySelector?.('input[name="invoiceAccountSetupBillingMode"]:checked');
+    return this.normalizeSetupBillingMode(checked?.value || this.state.accountSetupBillingMode);
+  },
+  getAgreementItemLinkKeys(item = {}) {
+    const values = [
+      item.location_name, item.locationName, item.default_location_name, item.defaultLocationName,
+      item.annual_saas_location_id, item.annualSaasLocationId, item.subscription_item_id, item.subscriptionItemId,
+      item.parent_item_id, item.parentItemId, item.linked_agreement_item_id, item.linkedAgreementItemId,
+      item.source_subscription_item_id, item.sourceSubscriptionItemId, item.location_id, item.locationId
+    ];
+    return new Set(values.map(value => this.normalizeText(value)).filter(Boolean));
+  },
+  setupItemMatchesSelectedSubscriptions(setupItem = {}, selectedSubscriptionItems = []) {
+    const setupKeys = this.getAgreementItemLinkKeys(setupItem);
+    if (!setupKeys.size) return false;
+    return (Array.isArray(selectedSubscriptionItems) ? selectedSubscriptionItems : []).some(subscriptionItem => {
+      const id = this.getAgreementItemRecordId(subscriptionItem);
+      if (id && setupKeys.has(this.normalizeText(id))) return true;
+      for (const key of this.getAgreementItemLinkKeys(subscriptionItem)) {
+        if (setupKeys.has(key)) return true;
+      }
+      return false;
+    });
+  },
+  buildSetupFeeItemsForInvoice({ agreementItems = [], selectedSubscriptionItemIds = [], setupBillingMode = 'per_selected_locations', alreadyInvoicedSetupItemIds = [] } = {}) {
+    const mode = this.normalizeSetupBillingMode(setupBillingMode);
+    const selectedIds = new Set((Array.isArray(selectedSubscriptionItemIds) ? selectedSubscriptionItemIds : [])
+      .map(value => String(value || '').trim())
+      .filter(Boolean));
+    const normalizedAgreementItems = Array.isArray(agreementItems) ? agreementItems : [];
+    const selectedSubscriptions = normalizedAgreementItems.filter(item => selectedIds.has(this.getAgreementItemRecordId(item)));
+    const alreadyInvoiced = new Set((Array.isArray(alreadyInvoicedSetupItemIds) ? alreadyInvoicedSetupItemIds : [])
+      .map(value => String(value || '').trim())
+      .filter(Boolean));
+    const setupItems = normalizedAgreementItems.filter(item => this.isOneTimeFeeItem(item));
+    const subscriptionItems = normalizedAgreementItems.filter(item => this.isSubscriptionSection(this.normalizeItem(item).section));
+    let candidates = mode === 'full_first_batch'
+      ? setupItems
+      : setupItems.filter(item => this.setupItemMatchesSelectedSubscriptions(item, selectedSubscriptions));
+    if (mode === 'per_selected_locations' && !candidates.length && setupItems.length === subscriptionItems.length && selectedSubscriptions.length) {
+      const selectedIndexSet = new Set(selectedSubscriptions.map(item => subscriptionItems.findIndex(subscriptionItem => this.getAgreementItemRecordId(subscriptionItem) === this.getAgreementItemRecordId(item))).filter(index => index >= 0));
+      candidates = setupItems.filter((_item, index) => selectedIndexSet.has(index));
+    }
+    const included = [];
+    const skippedAlreadyInvoiced = [];
+    candidates.forEach(item => {
+      const itemId = this.getAgreementItemRecordId(item);
+      if (itemId && alreadyInvoiced.has(itemId)) {
+        skippedAlreadyInvoiced.push(item);
+        return;
+      }
+      included.push(item);
+    });
+    return { included, skippedAlreadyInvoiced, candidateCount: candidates.length, totalSetupCount: setupItems.length };
+  },
   calculateInvoiceTotals(items = []) {
     return this.filterInvoiceCommercialItems(items).reduce(
       (acc, rawItem) => {
@@ -2333,6 +2405,7 @@ const Invoices = {
   openInvoice(invoice = this.emptyInvoice(), items = [], { readOnly = false } = {}) {
     if (!E.invoiceFormModal || !E.invoiceForm) return;
     this.state.selectedAgreementItemIds = new Set();
+    this.state.accountSetupBillingMode = 'per_selected_locations';
     this.state.agreementInvoiceSelection = null;
     this.renderAgreementLocationSelection();
     this.state.selectedInvoice = this.normalizeInvoice(invoice);
@@ -2426,6 +2499,7 @@ const Invoices = {
     this.state.selectedInvoice = null;
     this.state.items = [];
     this.state.selectedAgreementItemIds = new Set();
+    this.state.accountSetupBillingMode = 'per_selected_locations';
     this.state.agreementInvoiceSelection = null;
     this.renderAgreementLocationSelection();
     this.renderItems([]);
@@ -2526,6 +2600,71 @@ const Invoices = {
       return [];
     }
   },
+  async getAlreadyInvoicedSetupAgreementItemIds(agreementId = '') {
+    const id = String(agreementId || '').trim();
+    const result = new Set();
+    if (!id) return result;
+    const client = this.getSupabaseClient();
+    if (!client) return result;
+
+    const addRows = rows => {
+      (Array.isArray(rows) ? rows : []).forEach(row => {
+        const sourceId = String(row?.source_agreement_item_id || row?.agreement_item_id || row?.id || '').trim();
+        if (!sourceId) return;
+        if (this.isOneTimeFeeItem(row)) result.add(sourceId);
+      });
+    };
+
+    try {
+      const { data, error } = await client
+        .from('invoice_items')
+        .select('source_agreement_item_id,source_agreement_id,section,item_name,notes')
+        .eq('source_agreement_id', id);
+      if (error) throw error;
+      addRows(data);
+    } catch (error) {
+      console.warn('[Invoice] Unable to verify setup fees by source_agreement_id from invoice_items.', error);
+    }
+
+    try {
+      const { data, error } = await client
+        .from('invoice_items')
+        .select('source_agreement_item_id,source_agreement_id,section,item_name,notes')
+        .eq('agreement_id', id);
+      if (error) throw error;
+      addRows(data);
+    } catch (error) {
+      console.warn('[Invoice] invoice_items.agreement_id check skipped or failed.', error);
+    }
+
+    try {
+      const { data, error } = await client
+        .from('invoice_items')
+        .select('agreement_item_id,source_agreement_id,section,item_name,notes')
+        .eq('source_agreement_id', id);
+      if (error) throw error;
+      addRows(data);
+    } catch (error) {
+      console.warn('[Invoice] invoice_items.agreement_item_id setup-fee check skipped or failed.', error);
+    }
+
+    try {
+      const { data, error } = await client
+        .from('agreement_items')
+        .select('id,section,item_section,type,item_type,category,item_name,name,notes,invoice_status')
+        .eq('agreement_id', id)
+        .eq('invoice_status', 'invoiced');
+      if (error) throw error;
+      (Array.isArray(data) ? data : []).forEach(row => {
+        const rowId = String(row?.id || '').trim();
+        if (rowId && this.isOneTimeFeeItem(row)) result.add(rowId);
+      });
+    } catch (error) {
+      console.warn('[Invoice] agreement_items.invoice_status setup-fee check skipped or failed.', error);
+    }
+
+    return result;
+  },
   async getActualInvoicedAgreementItemMap(itemIds = []) {
     const ids = [...new Set((Array.isArray(itemIds) ? itemIds : [])
       .map(id => String(id || '').trim())
@@ -2571,10 +2710,31 @@ const Invoices = {
     if (!section || !body) return;
     if (!selection?.active) {
       section.style.display = 'none';
+      if (E.invoiceAccountSetupBillingOptions) E.invoiceAccountSetupBillingOptions.style.display = 'none';
+      if (E.invoiceAccountSetupBillingNote) E.invoiceAccountSetupBillingNote.style.display = 'none';
       body.innerHTML = '';
       return;
     }
     section.style.display = '';
+    const setupRows = Array.isArray(selection.oneTimeItems) ? selection.oneTimeItems : [];
+    const hasSetupRows = setupRows.some(item => this.isOneTimeFeeItem(item));
+    if (E.invoiceAccountSetupBillingOptions) E.invoiceAccountSetupBillingOptions.style.display = hasSetupRows ? '' : 'none';
+    const mode = this.normalizeSetupBillingMode(selection.setupBillingMode || this.state.accountSetupBillingMode);
+    this.state.accountSetupBillingMode = mode;
+    if (E.invoiceAccountSetupBillingPerSelected) E.invoiceAccountSetupBillingPerSelected.checked = mode !== 'full_first_batch';
+    if (E.invoiceAccountSetupBillingFullFirst) E.invoiceAccountSetupBillingFullFirst.checked = mode === 'full_first_batch';
+    if (E.invoiceAccountSetupBillingNote) {
+      const skipped = Number(selection.setupFeesSkippedAlreadyInvoiced || 0);
+      const showAlreadyInvoicedNote = hasSetupRows && mode === 'full_first_batch' && skipped > 0 && Number(selection.setupFeesIncluded || 0) === 0;
+      E.invoiceAccountSetupBillingNote.textContent = showAlreadyInvoicedNote ? 'Account setup fee was already invoiced for this agreement.' : '';
+      E.invoiceAccountSetupBillingNote.style.display = showAlreadyInvoicedNote ? '' : 'none';
+    }
+    E.invoiceForm?.querySelectorAll?.('input[name="invoiceAccountSetupBillingMode"]').forEach(input => {
+      input.onchange = () => {
+        this.state.accountSetupBillingMode = this.normalizeSetupBillingMode(input.value);
+        this.rebuildAgreementInvoiceItemsFromSelection();
+      };
+    });
     const annualRows = Array.isArray(selection.annualItems) ? selection.annualItems : [];
     if (!annualRows.length) {
       body.innerHTML = '<tr><td colspan="7" class="muted">No annual SaaS locations were found on this agreement. Reopen the agreement and confirm the Annual SaaS rows are saved.</td></tr>';
@@ -2618,18 +2778,34 @@ const Invoices = {
     const selectedIds = this.state.selectedAgreementItemIds || new Set();
     const agreementUuid = String(selection.agreementUuid || '').trim();
     const selectedAnnual = (selection.invoiceableItems || []).filter(item => selectedIds.has(this.getAgreementItemRecordId(item)));
-    const selectedLocationKeys = new Set(selectedAnnual.map(item => this.normalizeText(item.location_name)).filter(Boolean));
-    const linkedOneTime = (selection.oneTimeItems || []).filter(item => {
-      const key = this.normalizeText(item.location_name);
-      return key && selectedLocationKeys.has(key);
+    const setupBillingMode = this.getSetupBillingModeFromForm();
+    const selectedSubscriptionItemIds = selectedAnnual.map(item => this.getAgreementItemRecordId(item)).filter(Boolean);
+    const setupResult = this.buildSetupFeeItemsForInvoice({
+      agreementItems: [
+        ...(selection.annualItems || []),
+        ...(selection.oneTimeItems || [])
+      ],
+      selectedSubscriptionItemIds,
+      setupBillingMode,
+      alreadyInvoicedSetupItemIds: [...(selection.alreadyInvoicedSetupItemIds || new Set())]
     });
-    const oneTimeSource = linkedOneTime.length ? linkedOneTime : (selection.oneTimeItems || []);
-    const oneTimeItems = oneTimeSource.map(item => ({
+    const oneTimeItems = setupResult.included.map(item => ({
       ...item,
-      quantity: linkedOneTime.length ? item.quantity : Math.max(1, selectedAnnual.length),
-      source_agreement_item_id: linkedOneTime.length ? this.getAgreementItemRecordId(item) : '',
+      quantity: item.quantity || 1,
+      source_agreement_item_id: this.getAgreementItemRecordId(item),
       source_agreement_id: agreementUuid
     }));
+    this.state.accountSetupBillingMode = setupBillingMode;
+    this.state.agreementInvoiceSelection = {
+      ...selection,
+      setupBillingMode,
+      setupFeesIncluded: oneTimeItems.length,
+      setupFeesSkippedAlreadyInvoiced: setupResult.skippedAlreadyInvoiced.length
+    };
+    console.log('[Invoice] Account setup billing mode:', setupBillingMode);
+    console.log('[Invoice] Selected subscription count:', selectedAnnual.length);
+    console.log('[Invoice] Setup fee rows included:', oneTimeItems.length);
+    console.log('[Invoice] Setup fee rows skipped because already invoiced:', setupResult.skippedAlreadyInvoiced.length);
     return [
       ...selectedAnnual.map(item => ({
         ...item,
@@ -2921,6 +3097,10 @@ const Invoices = {
     const selectedAgreementItemIds = annualItems
       .map(item => String(item.source_agreement_item_id || item.sourceAgreementItemId || '').trim())
       .filter(Boolean);
+    const setupAgreementItemIds = invoiceItems
+      .filter(item => this.isOneTimeFeeItem(item))
+      .map(item => String(item.source_agreement_item_id || item.sourceAgreementItemId || '').trim())
+      .filter(Boolean);
 
     const created = await this.createOperationsAndTechnicalForInvoicedLocations(
       normalizedInvoice,
@@ -2929,10 +3109,11 @@ const Invoices = {
       selectedAgreementItemIds
     );
 
-    if (invoiceId && selectedAgreementItemIds.length) {
-      await this.markSelectedAgreementItemsInvoiced(invoiceId, selectedAgreementItemIds).catch(error => {
+    const agreementItemIdsToMark = this.getUniqueTextList([...selectedAgreementItemIds, ...setupAgreementItemIds]);
+    if (invoiceId && agreementItemIdsToMark.length) {
+      await this.markSelectedAgreementItemsInvoiced(invoiceId, agreementItemIdsToMark).catch(error => {
         console.warn('[Invoice] Agreement item invoice-status update failed after issued invoice Operations row creation.', error);
-        UI.toast('Operations onboarding was created, but the agreement location invoice flag could not be updated.');
+        UI.toast('Operations onboarding was created, but agreement item invoice flags could not be updated.');
       });
     }
 
@@ -3109,7 +3290,8 @@ const Invoices = {
       const catalogLookup = await this.getProposalCatalogLookup();
       const normalizedItems = this.filterInvoiceCommercialItems(items).map(item => this.copyInvoiceItemFields(item, this.mergeCatalogItem(item, catalogLookup)));
       let annualItems = normalizedItems.filter(item => this.isSubscriptionSection(item.section));
-      const oneTimeItems = normalizedItems.filter(item => this.isOneTimeSection(item.section));
+      const oneTimeItems = normalizedItems.filter(item => this.isOneTimeFeeItem(item));
+      const alreadyInvoicedSetupItemIds = await this.getAlreadyInvoicedSetupAgreementItemIds(agreementUuid || id);
       const actualInvoicedMap = await this.getActualInvoicedAgreementItemMap(annualItems.map(item => this.getAgreementItemRecordId(item)));
       annualItems = annualItems.map(item => {
         const itemId = this.getAgreementItemRecordId(item);
@@ -3123,14 +3305,21 @@ const Invoices = {
       const invoiceableItems = annualItems.filter(item => this.isAgreementItemInvoiceable(item) && this.getAgreementItemRecordId(item));
       const alreadyInvoicedItems = annualItems.filter(item => this.isAgreementItemInvoiced(item));
       this.state.selectedAgreementItemIds = new Set(invoiceableItems.map(item => this.getAgreementItemRecordId(item)).filter(Boolean));
+      this.state.accountSetupBillingMode = 'per_selected_locations';
       this.state.agreementInvoiceSelection = {
         active: true,
         agreementUuid,
         annualItems,
         oneTimeItems,
         invoiceableItems,
-        alreadyInvoicedItems
+        alreadyInvoicedItems,
+        alreadyInvoicedSetupItemIds,
+        setupBillingMode: 'per_selected_locations',
+        setupFeesIncluded: 0,
+        setupFeesSkippedAlreadyInvoiced: 0
       };
+      if (E.invoiceAccountSetupBillingPerSelected) E.invoiceAccountSetupBillingPerSelected.checked = true;
+      if (E.invoiceAccountSetupBillingFullFirst) E.invoiceAccountSetupBillingFullFirst.checked = false;
       const selectedItems = this.buildAgreementInvoiceItemsFromSelection();
       this.state.items = selectedItems;
       this.renderItems(selectedItems);
@@ -3301,6 +3490,9 @@ const Invoices = {
     const id = String(E.invoiceForm?.dataset.id || '').trim();
     if (id) return this.saveExistingInvoiceMetadata(id);
     const { invoice, items } = this.collectFormValues();
+    if (this.state.agreementInvoiceSelection?.active) {
+      invoice.account_setup_billing_mode = this.getSetupBillingModeFromForm();
+    }
     const sourceAgreementId = String(E.invoiceForm?.dataset.agreementId || invoice.agreement_id || '').trim();
     const isDirectCreate = !id && !sourceAgreementId;
     if (isDirectCreate && !String(invoice.company_id || '').trim()) {

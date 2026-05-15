@@ -527,7 +527,7 @@
     'customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_email',
     'provider_legal_name','provider_address','support_email','subtotal_locations','subtotal_one_time','invoice_total',
     'is_poc','poc_location_count','poc_license_count','poc_license_months','poc_service_start_date','poc_service_end_date','poc_success_kpis','poc_conversion_commitment',
-    'old_paid_total','paid_now','amount_paid','received_amount','pending_amount','balance_due','payment_state','payment_status','payment_conclusion','amount_in_words','status','notes','paid_at',
+    'old_paid_total','paid_now','amount_paid','received_amount','pending_amount','balance_due','payment_state','payment_status','payment_conclusion','amount_in_words','status','notes','account_setup_billing_mode','paid_at',
     'created_by','updated_by','currency','created_at','updated_at'
   ]);
   const INVOICE_ITEM_COLUMNS = new Set([
@@ -638,7 +638,7 @@
       'provider_legal_name','provider_address','support_email','subtotal_locations','subtotal_one_time','invoice_total',
       'is_poc','poc_location_count','poc_license_count','poc_license_months','poc_service_start_date','poc_service_end_date','poc_success_kpis','poc_conversion_commitment',
       'old_paid_total','paid_now','amount_paid','received_amount','pending_amount','payment_state','payment_conclusion','amount_in_words',
-      'status','notes','currency','created_by','updated_by','created_at','updated_at'
+      'status','notes','account_setup_billing_mode','currency','created_by','updated_by','created_at','updated_at'
     ]),
     receipts: new Set([
       'id','receipt_id','receipt_number','invoice_id','agreement_uuid','agreement_id','agreement_number','client_id','receipt_date','amount_received','payment_method',
@@ -1527,6 +1527,7 @@
       amount_in_words: trimOrNull(firstDefined(record, ['amount_in_words', 'amountInWords'])),
       status: trimOrNull(firstDefined(record, ['status'])),
       notes: trimOrNull(firstDefined(record, ['notes'])),
+      account_setup_billing_mode: trimOrNull(firstDefined(record, ['account_setup_billing_mode', 'accountSetupBillingMode'])),
       currency: trimOrNull(firstDefined(record, ['currency'])),
       created_at: trimOrNull(firstDefined(record, ['created_at', 'createdAt'])),
       updated_at: trimOrNull(firstDefined(record, ['updated_at', 'updatedAt']))
