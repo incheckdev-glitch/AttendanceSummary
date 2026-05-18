@@ -413,6 +413,54 @@ const ClientsService = {
     }
     return this.agreementBelongsToClient(agreement, client);
   },
+  isRenewalInvoice_(invoice = {}) {
+    return Boolean(
+      invoice?.is_renewal
+      || String(invoice?.invoice_type || '').trim().toLowerCase() === 'renewal'
+      || String(invoice?.source_type || '').trim().toLowerCase() === 'renewal'
+      || String(invoice?.renewal_batch_id || '').trim()
+    );
+  },
+  isVoidInvoice_(invoice = {}) {
+    const status = String(invoice?.status || invoice?.payment_state || invoice?.payment_status || '').trim().toLowerCase();
+    return ['void', 'voided', 'cancelled', 'canceled', 'failed', 'error'].includes(status);
+  },
+  renewalInvoiceDedupeKey_(invoice = {}) {
+    const explicit = String(invoice.renewal_batch_id || '').trim();
+    if (explicit) return `batch:${explicit}`;
+    const clientKey = String(invoice.client_id || invoice.company_id || invoice.customer_legal_name || invoice.customer_name || invoice.company_name || '').trim().toLowerCase();
+    const agreementKey = String(invoice.agreement_id || invoice.agreement_number || invoice.renewed_from_agreement_id || '').trim().toLowerCase();
+    const periodKey = [invoice.renewal_due_date, invoice.due_date, invoice.issue_date].map(value => String(value || '').trim()).filter(Boolean).join(':');
+    const totalKey = String(this.toNumber(invoice.invoice_total ?? invoice.grand_total));
+    return [clientKey, agreementKey, periodKey, totalKey].filter(Boolean).join('|');
+  },
+  dedupeRenewalInvoicesForTotals_(invoices = []) {
+    const output = [];
+    const seenRenewalDrafts = new Map();
+    invoices.forEach(invoice => {
+      if (!this.isRenewalInvoice_(invoice)) {
+        output.push(invoice);
+        return;
+      }
+      if (this.isVoidInvoice_(invoice)) return;
+      const status = String(invoice.status || '').trim().toLowerCase();
+      const isDraft = !status || status === 'draft';
+      if (!isDraft) {
+        output.push(invoice);
+        return;
+      }
+      const key = this.renewalInvoiceDedupeKey_(invoice);
+      if (!key) {
+        output.push(invoice);
+        return;
+      }
+      const current = seenRenewalDrafts.get(key);
+      const invoiceTime = new Date(invoice.updated_at || invoice.created_at || 0).getTime() || 0;
+      const currentTime = current ? (new Date(current.updated_at || current.created_at || 0).getTime() || 0) : -1;
+      if (!current || invoiceTime >= currentTime) seenRenewalDrafts.set(key, invoice);
+    });
+    return output.concat([...seenRenewalDrafts.values()]);
+  },
   computeTotalsForClient(client = {}, agreements = [], invoices = [], receipts = [], agreementItems = []) {
     const linkedAgreements = agreements.filter(row => this.matchAgreementClient(row, client));
     const linkedAgreementKeys = linkedAgreements
@@ -432,7 +480,7 @@ const ClientsService = {
         .filter(Boolean);
       return itemKeys.some(itemKey => linkedAgreementKeys.some(agreementKey => this.valuesMatch(itemKey, agreementKey)));
     });
-    const linkedInvoices = invoices.filter(row => this.invoiceBelongsToClient(row, client, linkedAgreements));
+    const linkedInvoices = this.dedupeRenewalInvoicesForTotals_(invoices.filter(row => this.invoiceBelongsToClient(row, client, linkedAgreements)));
     const linkedReceipts = receipts.filter(row => this.receiptBelongsToClient(row, client, linkedAgreements, linkedInvoices));
 
     const totalAgreements = linkedAgreements.length;

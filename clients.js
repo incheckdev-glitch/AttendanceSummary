@@ -1345,6 +1345,77 @@ const Clients = {
       || invoiceOrContext?.renewal_batch_id
     );
   },
+  getCanonicalClientCompanyKey_(row = {}) {
+    const clientId = String(row.client_id || row.clientId || '').trim();
+    if (clientId) return `client:${clientId}`;
+    const companyId = String(row.company_id || row.companyId || '').trim();
+    if (companyId) return `company:${companyId}`;
+    const name = this.normalizeMatchValue(row.customer_legal_name || row.legal_name || row.legalName || row.company_name || row.companyName || row.customer_name || row.client_name || row.name);
+    return name ? `name:${name}` : '';
+  },
+  mergeLatestDate_(left = '', right = '') {
+    const leftTime = left ? new Date(left).getTime() : 0;
+    const rightTime = right ? new Date(right).getTime() : 0;
+    if (!Number.isFinite(leftTime) || rightTime > leftTime) return right || left || '';
+    return left || right || '';
+  },
+  normalizeRenewalSnapshotRows(rows = []) {
+    const groups = new Map();
+    (Array.isArray(rows) ? rows : []).forEach(row => {
+      const key = this.getCanonicalClientCompanyKey_(row);
+      if (!key) return;
+      const analytics = row.analytics || {};
+      if (!groups.has(key)) {
+        groups.set(key, {
+          ...row,
+          analytics: { ...analytics },
+          _source_client_ids: new Set(),
+          _agreement_keys: new Set(),
+          _location_keys: new Set(),
+          _invoice_keys: new Set(),
+          _receipt_keys: new Set()
+        });
+      }
+      const group = groups.get(key);
+      const groupAnalytics = group.analytics || {};
+      const rowUpdated = row.updated_at || row.created_at || analytics.latest_activity_date || '';
+      const groupUpdated = group.updated_at || group.created_at || groupAnalytics.latest_activity_date || '';
+      if ((new Date(rowUpdated).getTime() || 0) > (new Date(groupUpdated).getTime() || 0)) {
+        ['status', 'updated_at', 'created_at', 'source_agreement_id', 'billing_frequency', 'payment_term'].forEach(field => {
+          if (row[field]) group[field] = row[field];
+        });
+      }
+      [row.client_id, row.id].map(value => String(value || '').trim()).filter(Boolean).forEach(value => group._source_client_ids.add(value));
+      const agreementCount = this.toNumberSafe(analytics.total_agreements ?? row.total_agreements);
+      for (let i = 0; i < agreementCount; i += 1) group._agreement_keys.add(`${key}:agreement:${i + 1}`);
+      const locationCount = this.toNumberSafe(analytics.total_locations ?? row.total_locations);
+      for (let i = 0; i < locationCount; i += 1) group._location_keys.add(`${key}:location:${i + 1}`);
+      const invoiced = this.toNumberSafe(analytics.total_invoiced_value ?? analytics.total_value ?? row.total_value);
+      const paid = this.toNumberSafe(analytics.total_paid_amount ?? row.total_paid);
+      const due = this.toNumberSafe(analytics.total_due_amount ?? row.total_due);
+      groupAnalytics.total_value = Math.max(this.toNumberSafe(groupAnalytics.total_value), invoiced);
+      groupAnalytics.total_invoiced_value = Math.max(this.toNumberSafe(groupAnalytics.total_invoiced_value), invoiced);
+      groupAnalytics.total_paid_amount = Math.max(this.toNumberSafe(groupAnalytics.total_paid_amount), paid);
+      groupAnalytics.total_due_amount = Math.max(this.toNumberSafe(groupAnalytics.total_due_amount), due);
+      groupAnalytics.latest_activity_date = this.mergeLatestDate_(groupAnalytics.latest_activity_date, analytics.latest_activity_date || row.updated_at || row.created_at);
+      group.analytics = groupAnalytics;
+    });
+    return [...groups.values()].map(group => {
+      const analytics = { ...(group.analytics || {}) };
+      analytics.total_agreements = Math.max(this.toNumberSafe(analytics.total_agreements), group._agreement_keys.size);
+      analytics.total_locations = Math.max(this.toNumberSafe(analytics.total_locations), group._location_keys.size);
+      return {
+        ...group,
+        analytics,
+        source_client_ids: [...group._source_client_ids],
+        _source_client_ids: undefined,
+        _agreement_keys: undefined,
+        _location_keys: undefined,
+        _invoice_keys: undefined,
+        _receipt_keys: undefined
+      };
+    });
+  },
   getRenewalRowId_(row = {}) {
     return [row.client_id, row.agreement_id, row.invoice_id, row.invoice_item_id, row.source_agreement_item_id, row.location_name, row.service_end_date]
       .map(value => String(value || '').trim().replace(/\s+/g, '_'))
@@ -1601,13 +1672,17 @@ const Clients = {
       const payload = this.buildRenewalInvoicePayload_(batchId || `REN-${Date.now()}`);
       const response = await Api.requestWithSession('invoices', 'create', { invoice: payload.invoice, items: payload.items }, { requireAuth: true });
       await this.persistRenewalHistory_(payload.invoice.renewal_batch_id, 'direct_location_renewal', 'Renewal Invoice Created', response).catch(error => console.warn('[Renewal] Optional renewal history save failed.', error));
-      UI.toast('Renewal invoice draft created. Operations onboarding and Technical Admin were not created.');
+      const reusedDraft = Boolean(response?.data?._renewal_draft_reused || response?._renewal_draft_reused);
+      UI.toast(reusedDraft
+        ? 'A draft renewal invoice already exists for this client and renewal period. The existing draft has been opened for update.'
+        : 'Renewal invoice draft created. Operations onboarding and Technical Admin were not created.');
       this.closeRenewalModal_();
       await this.loadClientDetailData_(this.state.selectedClientId, { force: true }).catch(() => {});
       this.render();
     } catch (error) {
       console.warn('[Renewal] Unable to create renewal invoice draft.', error);
-      UI.toast('Unable to create renewal invoice draft: ' + (error?.message || 'Unknown error'));
+      const message = String(error?.message || 'Unknown error');
+      UI.toast(message.includes('Renewal invoice draft was created, but annual SaaS items could not be saved') ? message : 'Unable to create renewal invoice draft: ' + message);
     }
   },
   buildCommercialRenewalPayload_(batchId = '', path = 'proposal') {
@@ -1729,9 +1804,32 @@ const Clients = {
       updated_at: now,
       notes: 'Commercial renewal only; no onboarding or Technical Admin request.'
     }));
-    const { error } = await client.from('renewals').insert(records);
-    if (error) console.info('[Renewal] renewals table unavailable or schema mismatch; continuing without blocking.', error);
-    return !error;
+    try {
+      for (const record of records) {
+        let query = client.from('renewals').select('id,renewal_batch_id,updated_at').limit(1);
+        if (record.client_id) query = query.eq('client_id', record.client_id);
+        if (record.agreement_id) query = query.eq('agreement_id', record.agreement_id);
+        if (record.location_name) query = query.ilike('location_name', record.location_name);
+        if (record.new_service_start_date) query = query.eq('new_service_start_date', record.new_service_start_date);
+        if (record.new_service_end_date) query = query.eq('new_service_end_date', record.new_service_end_date);
+        const { data: existingRows, error: selectError } = await query;
+        if (selectError) throw selectError;
+        const existing = Array.isArray(existingRows) ? existingRows[0] : null;
+        if (existing?.id) {
+          const updateRecord = { ...record };
+          delete updateRecord.created_at;
+          const { error: updateError } = await client.from('renewals').update(updateRecord).eq('id', existing.id);
+          if (updateError) throw updateError;
+        } else {
+          const { error: insertError } = await client.from('renewals').insert(record);
+          if (insertError) throw insertError;
+        }
+      }
+      return true;
+    } catch (error) {
+      console.info('[Renewal] renewals table unavailable or schema mismatch; continuing without blocking.', error);
+      return false;
+    }
   },
   computeRunningBalance(rows = []) {
     let running = 0;
@@ -2351,7 +2449,8 @@ const Clients = {
       E.clientsTbody.innerHTML = '<tr><td colspan="9" class="muted" style="text-align:center;">No clients found.</td></tr>';
       return;
     }
-    E.clientsTbody.innerHTML = this.state.filteredRows
+    const snapshotRows = this.normalizeRenewalSnapshotRows(this.state.filteredRows);
+    E.clientsTbody.innerHTML = snapshotRows
       .map(client => {
         const analytics = client.analytics || {};
         const activeClass = this.state.selectedClientId === client.client_id ? ' style="background:rgba(59,130,246,.08);"' : '';
@@ -2485,7 +2584,8 @@ const Clients = {
     this.renderList();
     this.renderDetail();
     if (E.clientsState) {
-      E.clientsState.textContent = this.state.loadError || `Loaded ${this.state.filteredRows.length} of ${this.state.rows.length} clients.`;
+      const snapshotRows = this.normalizeRenewalSnapshotRows(this.state.filteredRows);
+      E.clientsState.textContent = this.state.loadError || `Loaded ${snapshotRows.length} of ${this.state.rows.length} clients.`;
     }
     if (E.clientsStatusFilter) {
       const statuses = ['All', ...new Set(this.state.rows.map(item => item.status).filter(Boolean))];
@@ -2493,7 +2593,8 @@ const Clients = {
       E.clientsStatusFilter.value = statuses.includes(this.state.status) ? this.state.status : 'All';
     }
     if (E.clientsGlobalRenewals) {
-      const allRenewals = this.state.rows.flatMap(client => this.buildClientRenewalRows(client));
+      const snapshotRows = this.normalizeRenewalSnapshotRows(this.state.rows);
+      const allRenewals = snapshotRows.flatMap(client => this.buildClientRenewalRows(client));
       const overdueRenewals = allRenewals.filter(row => (this.getDaysLeft(row.renewal_date) ?? 1) < 0).length;
       const dueSoon = allRenewals.filter(row => {
         const days = this.getDaysLeft(row.renewal_date);
