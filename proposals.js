@@ -1932,8 +1932,7 @@ const Proposals = {
     });
     const currency = String(proposalData.currency || 'USD').trim().toUpperCase();
     const normalizedStatus = this.normalizeProposalStatus(proposalData.status);
-    const proposalStatusLabel = this.getProposalStatusLabel(normalizedStatus || proposalData.status || 'draft');
-    const showDraftWatermark = normalizedStatus === 'draft' || normalizedStatus === 'pending_approval';
+    const showDraftWatermark = normalizedStatus === 'draft';
     const providerCompanyName = this.providerContactDefaults.name;
     const providerAddress = this.providerContactDefaults.address;
     const money = value => this.formatMoneyWithCurrency(this.toNumberSafe(value), currency, false);
@@ -2233,7 +2232,6 @@ const Proposals = {
               <div class="meta-row"><div class="meta-key">Reference #</div><div>${textValue(proposalData.ref_number)}</div></div>
               <div class="meta-row"><div class="meta-key">Proposal Date</div><div>${dateValue(proposalData.proposal_date)}</div></div>
               <div class="meta-row"><div class="meta-key">Valid Until</div><div>${dateValue(proposalData.valid_until || proposalData.proposal_valid_until || this.getAutoValidUntil(proposalData.proposal_date))}</div></div>
-              <div class="meta-row"><div class="meta-key">Status</div><div>${textValue(proposalStatusLabel)}</div></div>
             </div>
           </div>
         </section>
