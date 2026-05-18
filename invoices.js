@@ -1270,7 +1270,7 @@ const Invoices = {
       .trim()
       .toLowerCase();
     if (!raw) return '';
-    if (['subscription', 'annual', 'annual_saas', 'annual saas', 'saas', 'recurring'].includes(raw)) return 'annual_saas';
+    if (['subscription', 'annual', 'annual_saas', 'annual saas', 'saas', 'recurring'].includes(raw) || (raw.includes('annual') && (raw.includes('saas') || raw.includes('subscription') || raw.includes('renewal')))) return 'annual_saas';
     if (['one_time', 'one-time_fee', 'one_time_fee', 'one-time', 'one-time fee', 'one time fee', 'onetime', 'setup', 'non_recurring', 'non-recurring'].includes(raw))
       return 'one_time_fee';
     if (raw === 'capability') return 'capability';

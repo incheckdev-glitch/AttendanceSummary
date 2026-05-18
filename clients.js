@@ -461,6 +461,9 @@ const Clients = {
       service_start_date: String(raw.service_start_date || raw.serviceStartDate || raw.start_date || raw.startDate || '').trim(),
       service_end_date: String(raw.service_end_date || raw.serviceEndDate || raw.end_date || raw.endDate || raw.renewal_date || raw.renewalDate || '').trim(),
       renewal_date: String(raw.renewal_date || raw.renewalDate || raw.service_end_date || raw.serviceEndDate || raw.end_date || raw.endDate || '').trim(),
+      unit_price: this.toNumberSafe(raw.unit_price ?? raw.unitPrice ?? raw.license_price_year ?? raw.licensePriceYear ?? raw.annual_license_price ?? raw.annualLicensePrice),
+      discount_percent: this.toNumberSafe(raw.discount_percent ?? raw.discountPercent),
+      quantity: this.toNumberSafe(raw.quantity ?? raw.qty ?? raw.license_months ?? raw.licenseMonths),
       line_total: this.toNumberSafe(raw.line_total ?? raw.lineTotal ?? raw.total ?? raw.amount ?? raw.price ?? raw.unit_price),
       created_at: String(raw.created_at || raw.createdAt || '').trim()
     };
@@ -1363,16 +1366,61 @@ const Clients = {
     return date.toISOString().slice(0, 10);
   },
   getRenewalLicenseMonths_(row = {}) {
+    const explicitMonths = this.toNumberSafe(row.renewal_months ?? row.license_months ?? row.new_license_months);
+    if (explicitMonths > 0) return Math.min(12, Math.max(1, explicitMonths));
+    const quantityMonths = this.toNumberSafe(row.quantity ?? row.qty);
+    if (quantityMonths > 1) return Math.min(12, Math.max(1, quantityMonths));
     const term = String(row.contract_term || row.billing_frequency || row.payment_term || '').toLowerCase();
     const match = term.match(/(\d+)\s*(month|months|mo|mos)/);
-    if (match) return Number(match[1]) || 12;
+    if (match) return Math.min(12, Math.max(1, Number(match[1]) || 12));
     if (term.includes('quarter')) return 3;
     if (term.includes('semi')) return 6;
     if (term.includes('month')) return 1;
     return 12;
   },
+  getRenewalAnnualLicensePrice_(row = {}) {
+    const directAnnual = this.toNumberSafe(
+      row.annual_license_price ??
+      row.license_price_year ??
+      row.license_price_per_year ??
+      row.yearly_license_price ??
+      row.catalog_annual_price
+    );
+    if (directAnnual > 0) return directAnnual;
+
+    const unitPrice = this.toNumberSafe(row.unit_price ?? row.unitPrice);
+    if (unitPrice > 0) return unitPrice;
+
+    const itemName = this.normalizeText(row.item_name || row.itemName || row.module_name || row.moduleName || row.name);
+    const catalogRows = typeof window !== 'undefined' && Array.isArray(window.ProposalCatalog?.state?.rows)
+      ? window.ProposalCatalog.state.rows
+      : [];
+    const catalogMatch = catalogRows.find(item => {
+      const section = this.normalizeText(item?.section || item?.category || item?.type);
+      const name = this.normalizeText(item?.item_name || item?.itemName || item?.name);
+      return item?.is_active !== false && itemName && name === itemName && (section.includes('annual') || section.includes('saas'));
+    });
+    const catalogPrice = this.toNumberSafe(catalogMatch?.unit_price ?? catalogMatch?.unitPrice);
+    if (catalogPrice > 0) return catalogPrice;
+
+    const previousQuantity = this.toNumberSafe(row.quantity ?? row.qty ?? row.previous_license_months);
+    const previousLineTotal = this.toNumberSafe(row.line_total ?? row.lineTotal ?? row.total ?? row.amount ?? row.price);
+    const previousDiscount = Math.min(100, Math.max(0, this.toNumberSafe(row.discount_percent ?? row.discountPercent)));
+    if (previousLineTotal > 0 && previousQuantity > 0 && previousQuantity <= 12) {
+      const undiscountedLine = previousDiscount >= 100 ? previousLineTotal : previousLineTotal / (1 - (previousDiscount / 100));
+      return undiscountedLine * (12 / previousQuantity);
+    }
+
+    return previousLineTotal > 0 ? previousLineTotal : this.toNumberSafe(row.amount_due);
+  },
+  calculateRenewalLineTotal_(row = {}, months = this.getRenewalLicenseMonths_(row), discountPercent = 0) {
+    const annualPrice = this.getRenewalAnnualLicensePrice_(row);
+    const safeMonths = Math.min(12, Math.max(1, this.toNumberSafe(months) || 12));
+    const discountRatio = Math.min(100, Math.max(0, this.toNumberSafe(discountPercent))) / 100;
+    return Math.max(0, annualPrice * (safeMonths / 12) * (1 - discountRatio));
+  },
   getRenewalPrice_(row = {}) {
-    return this.toNumberSafe(row.renewal_price ?? row.line_total ?? row.invoice_item_total ?? row.amount ?? row.unit_price ?? row.amount_due);
+    return this.calculateRenewalLineTotal_(row, this.getRenewalLicenseMonths_(row), row.discount_percent ?? 0);
   },
   formatCurrency_(amount = 0, currency = 'USD') {
     const code = this.normalizeCurrencyCode_(currency || 'USD');
@@ -1421,7 +1469,15 @@ const Clients = {
       const oldEnd = row.service_end_date || row.renewal_date || '';
       const newStart = this.nextDay_(oldEnd);
       const months = this.getRenewalLicenseMonths_(row);
-      return { ...row, new_service_start_date: newStart, new_service_end_date: this.addMonthsMinusOneDay_(newStart, months), license_months: months, renewal_price: this.getRenewalPrice_(row) };
+      const annualPrice = this.getRenewalAnnualLicensePrice_(row);
+      return {
+        ...row,
+        annual_license_price: annualPrice,
+        license_months: months,
+        new_service_start_date: newStart,
+        new_service_end_date: this.addMonthsMinusOneDay_(newStart, months),
+        renewal_price: this.calculateRenewalLineTotal_({ ...row, annual_license_price: annualPrice }, months, 0)
+      };
     });
     return { renewal_batch_id: batchId, rows: enrichedRows, notes: '' };
   },
@@ -1486,7 +1542,7 @@ const Clients = {
   },
   buildRenewalInvoicePayload_(batchId = '') {
     const rows = this.state.activeRenewalRows || [];
-    const total = rows.reduce((sum, row) => sum + this.getRenewalPrice_(row), 0);
+    const total = rows.reduce((sum, row) => sum + this.calculateRenewalLineTotal_(row, row.license_months || this.getRenewalLicenseMonths_(row), row.discount_percent || 0), 0);
     const first = rows[0] || {};
     const today = new Date().toISOString().slice(0, 10);
     const notes = String(document.querySelector('#clientRenewalModal [data-renew-notes]')?.value || '').trim();
@@ -1519,19 +1575,20 @@ const Clients = {
       },
       items: rows.map((row, index) => ({
         item_id: `REN-ITEM-${Date.now()}-${index + 1}`,
-        section: 'Annual SaaS / Subscription Renewal',
+        section: 'annual_saas',
         line_no: index + 1,
         location_name: row.location_name || '',
         item_name: `${row.module_name || 'Annual SaaS'} renewal`,
-        unit_price: this.getRenewalPrice_(row),
-        discount_percent: 0,
-        discounted_unit_price: this.getRenewalPrice_(row),
-        quantity: 1,
-        line_total: this.getRenewalPrice_(row),
+        unit_price: this.getRenewalAnnualLicensePrice_(row),
+        discount_percent: this.toNumberSafe(row.discount_percent),
+        discounted_unit_price: this.getRenewalAnnualLicensePrice_(row) * (1 - (Math.min(100, Math.max(0, this.toNumberSafe(row.discount_percent))) / 100)),
+        quantity: row.license_months || this.getRenewalLicenseMonths_(row),
+        line_total: this.calculateRenewalLineTotal_(row, row.license_months || this.getRenewalLicenseMonths_(row), row.discount_percent || 0),
         service_start_date: row.new_service_start_date || '',
         service_end_date: row.new_service_end_date || '',
         source_agreement_item_id: row.source_agreement_item_id || '',
         source_agreement_id: row.agreement_id || '',
+        notes: `Renewal annual SaaS line. Annual license price ${this.getRenewalAnnualLicensePrice_(row)}; renewed months ${row.license_months || this.getRenewalLicenseMonths_(row)}.`,
         renewal_batch_id: batchId,
         renewed_from_invoice_id: row.invoice_id || '',
         renewed_from_invoice_item_id: row.invoice_item_id || '',
@@ -1557,7 +1614,7 @@ const Clients = {
     const rows = this.state.activeRenewalRows || [];
     const first = rows[0] || {};
     const agreement = this.findAgreementForRenewalRow_(first);
-    const total = rows.reduce((sum, row) => sum + this.getRenewalPrice_(row), 0);
+    const total = rows.reduce((sum, row) => sum + this.calculateRenewalLineTotal_(row, row.license_months || this.getRenewalLicenseMonths_(row), row.discount_percent || 0), 0);
     const startDates = rows.map(row => row.new_service_start_date).filter(Boolean).sort();
     const endDates = rows.map(row => row.new_service_end_date).filter(Boolean).sort();
     const today = new Date().toISOString().slice(0, 10);
@@ -1591,15 +1648,15 @@ const Clients = {
     };
     const items = rows.map((row, index) => ({
       item_id: `REN-COM-${Date.now()}-${index + 1}`,
-      section: 'Annual SaaS / Subscription Renewal',
+      section: 'annual_saas',
       line_no: index + 1,
       location_name: row.location_name || '',
       item_name: `${row.module_name || 'Annual SaaS'} renewal`,
-      unit_price: this.getRenewalPrice_(row),
-      discount_percent: 0,
-      discounted_unit_price: this.getRenewalPrice_(row),
-      quantity: 1,
-      line_total: this.getRenewalPrice_(row),
+      unit_price: this.getRenewalAnnualLicensePrice_(row),
+      discount_percent: this.toNumberSafe(row.discount_percent),
+      discounted_unit_price: this.getRenewalAnnualLicensePrice_(row) * (1 - (Math.min(100, Math.max(0, this.toNumberSafe(row.discount_percent))) / 100)),
+      quantity: row.license_months || this.getRenewalLicenseMonths_(row),
+      line_total: this.calculateRenewalLineTotal_(row, row.license_months || this.getRenewalLicenseMonths_(row), row.discount_percent || 0),
       service_start_date: row.new_service_start_date || '',
       service_end_date: row.new_service_end_date || '',
       notes: 'Renewal for existing invoiced location; no setup fee.'
@@ -1816,6 +1873,10 @@ const Clients = {
         receipt_received_date: latestReceipt?.created_at || latestReceipt?.payment_date || '',
         amount_paid: amountPaid,
         amount_due: Math.max(invoiceTotal - amountPaid, 0),
+        annual_license_price: this.getRenewalAnnualLicensePrice_(item),
+        unit_price: this.getRenewalAnnualLicensePrice_(item),
+        quantity: this.getRenewalLicenseMonths_(item),
+        discount_percent: this.toNumberSafe(item.discount_percent ?? item.discountPercent),
         payment_status: paymentStatus,
         status: agreement.status || 'Active',
         currency: this.getField(item, 'currency', 'currency_code') || agreement.currency || this.getClientCurrency_(clientId)
@@ -1885,6 +1946,11 @@ const Clients = {
       renewal_due_date: String(this.getField(raw, 'renewal_due_date', 'renewalDueDate') || '').trim(),
       renewal_batch_id: String(this.getField(raw, 'renewal_batch_id', 'renewalBatchId') || '').trim(),
       renewal_notes: String(this.getField(raw, 'renewal_notes', 'renewalNotes') || '').trim(),
+      annual_license_price: this.toNumberSafe(this.getField(raw, 'annual_license_price', 'annualLicensePrice', 'license_price_year', 'licensePriceYear', 'license_price_per_year', 'yearly_license_price')),
+      unit_price: this.toNumberSafe(this.getField(raw, 'unit_price', 'unitPrice', 'annual_license_price', 'annualLicensePrice', 'license_price_year', 'licensePriceYear')),
+      quantity: this.toNumberSafe(this.getField(raw, 'quantity', 'qty', 'license_months', 'licenseMonths')),
+      discount_percent: this.toNumberSafe(this.getField(raw, 'discount_percent', 'discountPercent')),
+      line_total: this.toNumberSafe(this.getField(raw, 'line_total', 'lineTotal', 'total', 'amount', 'price')),
       currency: this.normalizeCurrencyCode_(this.getField(raw, 'currency', 'currency_code', 'currencyCode') || 'USD')
     };
   },
