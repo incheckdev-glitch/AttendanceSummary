@@ -21,7 +21,7 @@ const ClientsService = {
   },
   normalizeText(value) { return String(value || '').trim().toLowerCase(); },
   normalizeMatchValue(value) {
-    return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    return String(value || '').trim().toLowerCase().replace(/s\.?a\.?l\.?/gi, 'sal').replace(/\s+/g, ' ');
   },
   compactValues(values = []) {
     return values.filter(value => String(value || '').trim());
@@ -30,6 +30,50 @@ const ClientsService = {
     const left = this.normalizeMatchValue(a);
     const right = this.normalizeMatchValue(b);
     return Boolean(left && right && left === right);
+  },
+  getClientCanonicalNames_(input = {}) {
+    const legalName = String(input.company_name || input.companyName || input.customer_legal_name || input.customerLegalName || '').trim();
+    const companyName = String(input.client_name || input.clientName || input.customer_name || input.customerName || '').trim();
+    return { legalName, companyName };
+  },
+  clientPayloadMatchesIdentity_(row = {}, input = {}) {
+    const incomingClientId = String(input.client_id || input.clientId || '').trim();
+    const incomingCompanyId = String(input.company_id || input.companyId || '').trim();
+    if (incomingClientId && String(row.client_id || '').trim() === incomingClientId) return true;
+    if (incomingCompanyId && String(row.company_id || row.companyId || '').trim() === incomingCompanyId) return true;
+    const names = this.getClientCanonicalNames_(input);
+    const legalKey = this.normalizeCompanyKey(names.legalName);
+    const companyKey = this.normalizeCompanyKey(names.companyName);
+    const rowLegalKey = this.normalizeCompanyKey(row.company_name || row.customer_legal_name || row.legal_name || '');
+    const rowCompanyKey = this.normalizeCompanyKey(row.client_name || row.customer_name || row.company_name || '');
+    return Boolean((legalKey && (legalKey === rowLegalKey || legalKey === rowCompanyKey)) || (companyKey && (companyKey === rowLegalKey || companyKey === rowCompanyKey)));
+  },
+  async findExistingClientForCreate_(input = {}) {
+    const db = this.getDb();
+    const payload = this.sanitizeClientPayload(input, { includeCreatedBy: false });
+    const directClientId = String(payload.client_id || '').trim();
+    if (directClientId) {
+      const { data, error } = await db.from('clients').select('*').eq('client_id', directClientId).maybeSingle();
+      if (!error && data) return this.mapDbClientToUi(data);
+    }
+    const sourceAgreementId = String(payload.source_agreement_id || '').trim();
+    if (sourceAgreementId) {
+      const { data, error } = await db.from('clients').select('*').eq('source_agreement_id', sourceAgreementId).limit(1);
+      if (!error && Array.isArray(data) && data[0]) return this.mapDbClientToUi(data[0]);
+    }
+    const names = this.getClientCanonicalNames_(input);
+    const candidateNames = [names.legalName, names.companyName].map(value => String(value || '').trim()).filter(Boolean);
+    for (const name of candidateNames) {
+      const { data, error } = await db
+        .from('clients')
+        .select('*')
+        .or(`company_name.ilike.%${name.replace(/[%*,]/g, '')}%,client_name.ilike.%${name.replace(/[%*,]/g, '')}%`)
+        .limit(25);
+      if (error) continue;
+      const match = (Array.isArray(data) ? data : []).find(row => this.clientPayloadMatchesIdentity_(row, input));
+      if (match) return this.mapDbClientToUi(match);
+    }
+    return null;
   },
   normalizeAgreementForClient(agreement = {}) {
     const normalized = {
@@ -159,6 +203,7 @@ const ClientsService = {
     return String(value || '')
       .trim()
       .toLowerCase()
+      .replace(/s\.?a\.?l\.?/gi, 'sal')
       .replace(/[^a-z0-9]+/g, ' ')
       .replace(/\b(inc|llc|ltd|co|corp|corporation|company|the)\b/g, ' ')
       .replace(/\s+/g, ' ')
@@ -529,6 +574,11 @@ const ClientsService = {
   async createClient(input = {}) {
     const db = this.getDb();
     const payload = this.sanitizeClientPayload(input, { includeCreatedBy: true });
+    const existing = await this.findExistingClientForCreate_(input);
+    if (existing?.id) {
+      const updated = await this.updateClient(existing.id, payload, { softFail: true });
+      return updated || existing;
+    }
     const { data, error } = await db.from('clients').insert(payload).select('*').single();
     if (error) throw this.friendlyError('Unable to create client', error);
     const mapped = this.mapDbClientToUi(data);

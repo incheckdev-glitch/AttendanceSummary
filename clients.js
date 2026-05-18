@@ -151,6 +151,7 @@ const Clients = {
     return String(value || '')
       .trim()
       .toLowerCase()
+      .replace(/s\.?a\.?l\.?/gi, 'sal')
       .replace(/\s+/g, ' ');
   },
   compactValues(values = []) {
@@ -225,7 +226,8 @@ const Clients = {
       client.email,
       client.client_email,
       client.phone,
-      client.mobile
+      client.mobile,
+      ...(Array.isArray(client.source_client_ids) ? client.source_client_ids : [])
     ]);
   },
   getAgreementKeys(agreement = {}) {
@@ -320,6 +322,7 @@ const Clients = {
     return String(value || '')
       .trim()
       .toLowerCase()
+      .replace(/s\.?a\.?l\.?/gi, 'sal')
       .replace(/[^a-z0-9]+/g, ' ')
       .replace(/\b(inc|llc|ltd|co|corp|corporation|company|the)\b/g, ' ')
       .replace(/\s+/g, ' ')
@@ -1351,18 +1354,104 @@ const Clients = {
     );
   },
   getCanonicalClientCompanyKey_(row = {}) {
-    const clientId = String(row.client_id || row.clientId || '').trim();
-    if (clientId) return `client:${clientId}`;
-    const companyId = String(row.company_id || row.companyId || '').trim();
+    const companyId = String(row.company_id || row.companyId || row.company_uuid || row.companyUuid || '').trim();
     if (companyId) return `company:${companyId}`;
-    const name = this.normalizeMatchValue(row.customer_legal_name || row.legal_name || row.legalName || row.company_name || row.companyName || row.customer_name || row.client_name || row.name);
-    return name ? `name:${name}` : '';
+    const legalName = this.normalizeCompanyKey(row.customer_legal_name || row.legal_name || row.legalName || row.company_name || row.companyName || '');
+    if (legalName) return `legal:${legalName}`;
+    const companyName = this.normalizeCompanyKey(row.customer_name || row.client_name || row.clientName || row.name || '');
+    if (companyName) return `company_name:${companyName}`;
+    const clientId = String(row.client_id || row.clientId || '').trim();
+    return clientId ? `client:${clientId}` : '';
   },
   mergeLatestDate_(left = '', right = '') {
     const leftTime = left ? new Date(left).getTime() : 0;
     const rightTime = right ? new Date(right).getTime() : 0;
     if (!Number.isFinite(leftTime) || rightTime > leftTime) return right || left || '';
     return left || right || '';
+  },
+  pickBestClientField_(current = '', incoming = '') {
+    const left = String(current || '').trim();
+    const right = String(incoming || '').trim();
+    if (!left) return right;
+    if (!right) return left;
+    return right.length > left.length ? right : left;
+  },
+  getClientRawActivityDate_(row = {}) {
+    return row.updated_at || row.created_at || row.analytics?.latest_activity_date || '';
+  },
+  groupClientIntelligenceRows(rows = [], { log = false } = {}) {
+    const groups = new Map();
+    const rawRows = Array.isArray(rows) ? rows : [];
+    rawRows.forEach(row => {
+      const key = this.getCanonicalClientCompanyKey_(row);
+      if (!key) return;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          ...row,
+          source_client_ids: [],
+          _source_client_id_set: new Set(),
+          _agreement_id_set: new Set(),
+          _invoice_id_set: new Set(),
+          _receipt_id_set: new Set(),
+          _raw_rows: []
+        });
+      }
+      const group = groups.get(key);
+      group._raw_rows.push(row);
+      [row.client_id, row.id, ...(Array.isArray(row.source_client_ids) ? row.source_client_ids : [])]
+        .map(value => String(value || '').trim())
+        .filter(Boolean)
+        .forEach(value => group._source_client_id_set.add(value));
+      const rowTime = new Date(this.getClientRawActivityDate_(row) || 0).getTime() || 0;
+      const groupTime = new Date(this.getClientRawActivityDate_(group) || 0).getTime() || 0;
+      group.customer_name = this.pickBestClientField_(group.customer_name, row.customer_name);
+      group.customer_legal_name = this.pickBestClientField_(group.customer_legal_name, row.customer_legal_name);
+      group.primary_contact_name = this.pickBestClientField_(group.primary_contact_name, row.primary_contact_name);
+      group.primary_contact_email = this.pickBestClientField_(group.primary_contact_email, row.primary_contact_email);
+      group.phone = this.pickBestClientField_(group.phone, row.phone);
+      if (rowTime >= groupTime) {
+        ['status', 'updated_at', 'created_at', 'source_agreement_id', 'billing_frequency', 'payment_term'].forEach(field => {
+          if (row[field]) group[field] = row[field];
+        });
+      }
+      const analytics = row.analytics || {};
+      const groupAnalytics = group.analytics || {};
+      groupAnalytics.total_locations = Math.max(this.toNumberSafe(groupAnalytics.total_locations), this.toNumberSafe(analytics.total_locations ?? row.total_locations));
+      groupAnalytics.total_agreements = Math.max(this.toNumberSafe(groupAnalytics.total_agreements), this.toNumberSafe(analytics.total_agreements ?? row.total_agreements));
+      groupAnalytics.total_invoiced_value = Math.max(this.toNumberSafe(groupAnalytics.total_invoiced_value), this.toNumberSafe(analytics.total_invoiced_value ?? row.total_value));
+      groupAnalytics.total_paid_amount = Math.max(this.toNumberSafe(groupAnalytics.total_paid_amount), this.toNumberSafe(analytics.total_paid_amount ?? row.total_paid));
+      groupAnalytics.total_due_amount = Math.max(this.toNumberSafe(groupAnalytics.total_due_amount), this.toNumberSafe(analytics.total_due_amount ?? row.total_due));
+      groupAnalytics.latest_activity_date = this.mergeLatestDate_(groupAnalytics.latest_activity_date, analytics.latest_activity_date || row.updated_at || row.created_at);
+      group.analytics = groupAnalytics;
+    });
+    const duplicateGroups = [];
+    const groupedRows = [...groups.entries()].map(([key, group]) => {
+      const rawCount = group._raw_rows.length;
+      const sourceClientIds = [...group._source_client_id_set];
+      if (rawCount > 1) {
+        const legalName = group.customer_legal_name || group.company_name || '';
+        const agreementIds = [...new Set(group._raw_rows.flatMap(row => [row.source_agreement_id, row.agreement_id, row.agreement_number]).map(value => String(value || '').trim()).filter(Boolean))];
+        const invoiceIds = [...new Set(group._raw_rows.flatMap(row => [row.invoice_id, row.invoice_number]).map(value => String(value || '').trim()).filter(Boolean))];
+        duplicateGroups.push({ key, legalName, rawCount, clientIds: sourceClientIds, agreementIds, invoiceIds });
+      }
+      const normalized = {
+        ...group,
+        client_id: group.client_id || sourceClientIds[0] || '',
+        source_client_ids: sourceClientIds,
+        normalized_company_key: group.normalized_company_key || this.normalizeCompanyKey(group.customer_legal_name || group.customer_name)
+      };
+      delete normalized._source_client_id_set;
+      delete normalized._agreement_id_set;
+      delete normalized._invoice_id_set;
+      delete normalized._receipt_id_set;
+      delete normalized._raw_rows;
+      return normalized;
+    });
+    if (log) {
+      console.info('[ClientsHub] client rows grouped', { rawRowCount: rawRows.length, groupedRowCount: groupedRows.length, duplicateGroupCount: duplicateGroups.length });
+      duplicateGroups.forEach(group => console.warn('[ClientsHub] Duplicate client group merged', group));
+    }
+    return groupedRows;
   },
   normalizeRenewalSnapshotRows(rows = []) {
     const groups = new Map();
@@ -2639,8 +2728,7 @@ const Clients = {
     this.renderList();
     this.renderDetail();
     if (E.clientsState) {
-      const snapshotRows = this.normalizeRenewalSnapshotRows(this.state.filteredRows);
-      E.clientsState.textContent = this.state.loadError || `Loaded ${snapshotRows.length} of ${this.state.rows.length} clients.`;
+      E.clientsState.textContent = this.state.loadError || `Loaded ${this.state.filteredRows.length} of ${this.state.rows.length} clients.`;
     }
     if (E.clientsStatusFilter) {
       const statuses = ['All', ...new Set(this.state.rows.map(item => item.status).filter(Boolean))];
@@ -2741,9 +2829,18 @@ const Clients = {
       this.state.agreements.forEach(agreement => {
         this.findOrCreateClientFromSignedAgreement_(agreement);
       });
+      this.state.rows = this.groupClientIntelligenceRows(this.state.rows, { log: true });
       this.state.rows.forEach(client => {
         client.analytics = this.computeClientAnalytics_(client);
       });
+      this.state.rows = this.groupClientIntelligenceRows(this.state.rows, { log: false });
+      if (this.state.selectedClientId && !this.state.rows.some(row => row.client_id === this.state.selectedClientId)) {
+        const selectedGroup = this.state.rows.find(row => Array.isArray(row.source_client_ids) && row.source_client_ids.includes(this.state.selectedClientId));
+        if (selectedGroup?.client_id) this.state.selectedClientId = selectedGroup.client_id;
+      }
+      this.state.total = this.state.rows.length;
+      this.state.returned = this.state.rows.length;
+      this.state.hasMore = false;
       if (!this.state.selectedClientId && this.state.rows[0]?.client_id) this.state.selectedClientId = this.state.rows[0].client_id;
       this.state.loaded = true;
       this.state.lastLoadedAt = Date.now();

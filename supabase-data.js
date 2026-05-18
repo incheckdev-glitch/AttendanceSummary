@@ -1516,6 +1516,56 @@
     return sanitized;
   }
 
+
+  function normalizeClientCompanyKey(value = '') {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/s\.?a\.?l\.?/gi, 'sal')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\b(inc|llc|ltd|co|corp|corporation|company|the)\b/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function clientCreatePayloadMatchesExisting(row = {}, record = {}) {
+    const directClientId = String(record.client_id || '').trim();
+    if (directClientId && String(row.client_id || '').trim() === directClientId) return true;
+    const sourceAgreementId = String(record.source_agreement_id || '').trim();
+    if (sourceAgreementId && String(row.source_agreement_id || '').trim() === sourceAgreementId) return true;
+    const incomingLegal = normalizeClientCompanyKey(record.company_name || record.customer_legal_name || record.legal_name || '');
+    const incomingCompany = normalizeClientCompanyKey(record.client_name || record.customer_name || record.company_name || '');
+    const rowLegal = normalizeClientCompanyKey(row.company_name || row.customer_legal_name || row.legal_name || '');
+    const rowCompany = normalizeClientCompanyKey(row.client_name || row.customer_name || row.company_name || '');
+    return Boolean((incomingLegal && (incomingLegal === rowLegal || incomingLegal === rowCompany)) || (incomingCompany && (incomingCompany === rowLegal || incomingCompany === rowCompany)));
+  }
+
+  async function findExistingClientForCreate(client, createRecord = {}) {
+    const directClientId = String(createRecord.client_id || '').trim();
+    if (directClientId) {
+      const { data, error } = await client.from('clients').select('*').eq('client_id', directClientId).maybeSingle();
+      if (!error && data) return data;
+    }
+    const sourceAgreementId = String(createRecord.source_agreement_id || '').trim();
+    if (sourceAgreementId) {
+      const { data, error } = await client.from('clients').select('*').eq('source_agreement_id', sourceAgreementId).limit(1);
+      if (!error && Array.isArray(data) && data[0]) return data[0];
+    }
+    const candidateNames = [createRecord.company_name, createRecord.client_name].map(value => String(value || '').trim()).filter(Boolean);
+    for (const name of candidateNames) {
+      const safeName = name.replace(/[%*,]/g, '');
+      const { data, error } = await client
+        .from('clients')
+        .select('*')
+        .or(`company_name.ilike.%${safeName}%,client_name.ilike.%${safeName}%`)
+        .limit(25);
+      if (error) continue;
+      const match = (Array.isArray(data) ? data : []).find(row => clientCreatePayloadMatchesExisting(row, createRecord));
+      if (match) return match;
+    }
+    return null;
+  }
+
   function sanitizeInvoicesRecord(record = {}, { includeCreatedBy = false, userId = '' } = {}) {
     const sanitized = compactObject({
       invoice_id: trimOrNull(firstDefined(record, ['invoice_id', 'invoiceId'])),
@@ -6732,6 +6782,24 @@
         return { handled: true, data: await withItems(resource, normalizedRow) };
       }
       const finalCreateRecord = sanitizeUuidColumnsForMutation(table, createRecord);
+      if (resource === 'clients') {
+        const existingClient = await findExistingClientForCreate(client, finalCreateRecord);
+        if (existingClient?.id) {
+          const updatePayload = { ...finalCreateRecord, client_id: existingClient.client_id || finalCreateRecord.client_id, updated_at: new Date().toISOString() };
+          delete updatePayload.created_at;
+          delete updatePayload.created_by;
+          const { data: updatedClient, error: updateError } = await updateSelectSingleWithSchemaRetry(
+            client,
+            'clients',
+            updatePayload,
+            'id',
+            existingClient.id,
+            'Unable to update existing client'
+          );
+          if (updateError) throw friendlyError('Unable to update existing client', updateError);
+          return { handled: true, data: normalizeRow(resource, updatedClient || existingClient) };
+        }
+      }
       const requestedItems = Array.isArray(payload.items) ? payload.items : [];
       if (resource === 'invoices' && isRenewalInvoiceDraft(finalCreateRecord)) {
         if (!requestedItems.length) throw new Error('Renewal invoice must include Annual SaaS invoice_items.');
