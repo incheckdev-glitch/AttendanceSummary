@@ -563,7 +563,8 @@
   const INVOICE_ITEM_COLUMNS = new Set([
     'item_id','invoice_id','section','line_no','location_name','item_name','unit_price','discount_percent',
     'discounted_unit_price','quantity','line_total','capability_name','capability_value','notes',
-    'service_start_date','service_end_date','source_agreement_item_id','source_agreement_id','renewal_batch_id','renewed_from_invoice_id','renewed_from_invoice_item_id','renewed_from_location_name'
+    'service_start_date','service_end_date','source_agreement_item_id','source_agreement_id','source_agreement_reference','agreement_id','agreement_reference','agreement_display_id','reference_no','display_id','related_reference',
+    'proposal_id','client_id','company_id','contact_id','location_id','source_invoice_id','source_proposal_id','previous_invoice_id','renewal_batch_id','renewed_from_invoice_id','renewed_from_invoice_item_id','renewed_from_location_name'
   ]);
   const RECEIPT_COLUMNS = new Set([
     'receipt_id','receipt_number','invoice_id','invoice_number','agreement_uuid','agreement_id','agreement_number','client_id','company_id','company_name','customer_name','customer_legal_name','customer_address','contact_id','contact_name','contact_email','contact_phone','contact_mobile','receipt_status','amount_paid','payment_date','payment_method',
@@ -710,7 +711,7 @@
     agreement_items: new Set(['agreement_id']),
     clients: new Set(['source_agreement_id', 'created_by', 'updated_by']),
     invoices: new Set(['client_id', 'agreement_uuid', 'proposal_id', 'created_by', 'updated_by']),
-    invoice_items: new Set(['invoice_id']),
+    invoice_items: new Set(['id', 'invoice_id', 'proposal_id', 'agreement_id', 'client_id', 'company_id', 'contact_id', 'location_id', 'source_invoice_id', 'source_agreement_id', 'source_proposal_id', 'previous_invoice_id', 'renewed_from_invoice_id']),
     receipts: new Set(['invoice_id', 'agreement_uuid', 'client_id', 'created_by', 'updated_by']),
     receipt_items: new Set(['receipt_id', 'invoice_item_id']),
     operations_onboarding: new Set(['agreement_id', 'client_id', 'created_by', 'updated_by']),
@@ -1113,7 +1114,8 @@
   }
 
   function isUuid(value) {
-    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+    return typeof value === 'string'
+      && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
   }
 
   const WORKFLOW_RESOURCE_RECORD_MAP = {
@@ -1585,7 +1587,39 @@
     return sanitized;
   }
 
+  function firstUuidValue(...values) {
+    return values.map(value => String(value || '').trim()).find(value => isUuid(value)) || null;
+  }
+
+  function firstReferenceValue(...values) {
+    return values
+      .map(value => String(value || '').trim())
+      .find(value => value && !isUuid(value)) || null;
+  }
+
+
   function sanitizeInvoiceItemRecord(record = {}, invoiceUuid = '') {
+    const agreementUuid = firstUuidValue(
+      firstDefined(record, ['agreement_id', 'agreementId']),
+      firstDefined(record, ['agreement_uuid', 'agreementUuid']),
+      firstDefined(record, ['source_agreement_id', 'sourceAgreementId']),
+      firstDefined(record, ['source_agreement_uuid', 'sourceAgreementUuid'])
+    );
+    const agreementReference = firstReferenceValue(
+      firstDefined(record, ['agreement_reference', 'agreementReference']),
+      firstDefined(record, ['agreement_display_id', 'agreementDisplayId']),
+      firstDefined(record, ['source_agreement_reference', 'sourceAgreementReference']),
+      firstDefined(record, ['agreement_id', 'agreementId']),
+      firstDefined(record, ['source_agreement_id', 'sourceAgreementId']),
+      firstDefined(record, ['agreement_number', 'agreementNumber'])
+    );
+    const relatedReference = firstReferenceValue(
+      firstDefined(record, ['related_reference', 'relatedReference']),
+      firstDefined(record, ['proposal_id', 'proposalId']),
+      firstDefined(record, ['source_proposal_id', 'sourceProposalId']),
+      firstDefined(record, ['source_invoice_id', 'sourceInvoiceId']),
+      firstDefined(record, ['previous_invoice_id', 'previousInvoiceId'])
+    );
     const sanitized = compactObject({
       item_id: trimOrNull(firstDefined(record, ['item_id', 'itemId'])),
       invoice_id: invoiceUuid,
@@ -1604,9 +1638,24 @@
       service_start_date: trimOrNull(firstDefined(record, ['service_start_date', 'serviceStartDate'])),
       service_end_date: trimOrNull(firstDefined(record, ['service_end_date', 'serviceEndDate'])),
       source_agreement_item_id: trimOrNull(firstDefined(record, ['source_agreement_item_id', 'sourceAgreementItemId'])),
-      source_agreement_id: trimOrNull(firstDefined(record, ['source_agreement_id', 'sourceAgreementId'])),
+      agreement_id: agreementUuid,
+      agreement_reference: agreementReference,
+      agreement_display_id: trimOrNull(firstDefined(record, ['agreement_display_id', 'agreementDisplayId'])) || agreementReference,
+      source_agreement_id: agreementUuid,
+      source_agreement_reference: trimOrNull(firstDefined(record, ['source_agreement_reference', 'sourceAgreementReference'])) || agreementReference,
+      reference_no: trimOrNull(firstDefined(record, ['reference_no', 'referenceNo'])) || relatedReference,
+      display_id: trimOrNull(firstDefined(record, ['display_id', 'displayId'])),
+      related_reference: relatedReference,
+      proposal_id: firstUuidValue(firstDefined(record, ['proposal_id', 'proposalId'])),
+      client_id: firstUuidValue(firstDefined(record, ['client_id', 'clientId'])),
+      company_id: firstUuidValue(firstDefined(record, ['company_id', 'companyId'])),
+      contact_id: firstUuidValue(firstDefined(record, ['contact_id', 'contactId'])),
+      location_id: firstUuidValue(firstDefined(record, ['location_id', 'locationId'])),
+      source_invoice_id: firstUuidValue(firstDefined(record, ['source_invoice_id', 'sourceInvoiceId'])),
+      source_proposal_id: firstUuidValue(firstDefined(record, ['source_proposal_id', 'sourceProposalId'])),
+      previous_invoice_id: firstUuidValue(firstDefined(record, ['previous_invoice_id', 'previousInvoiceId'])),
       renewal_batch_id: trimOrNull(firstDefined(record, ['renewal_batch_id', 'renewalBatchId'])),
-      renewed_from_invoice_id: trimOrNull(firstDefined(record, ['renewed_from_invoice_id', 'renewedFromInvoiceId'])),
+      renewed_from_invoice_id: firstUuidValue(firstDefined(record, ['renewed_from_invoice_id', 'renewedFromInvoiceId'])),
       renewed_from_invoice_item_id: trimOrNull(firstDefined(record, ['renewed_from_invoice_item_id', 'renewedFromInvoiceItemId'])),
       renewed_from_location_name: trimOrNull(firstDefined(record, ['renewed_from_location_name', 'renewedFromLocationName']))
     });
@@ -1686,10 +1735,48 @@
     return null;
   }
 
+  const INVOICE_ITEM_UUID_COLUMNS = new Set(['id', 'invoice_id', 'proposal_id', 'agreement_id', 'client_id', 'company_id', 'contact_id', 'location_id', 'source_invoice_id', 'source_agreement_id', 'source_proposal_id', 'previous_invoice_id', 'renewed_from_invoice_id']);
+
+  function assertInvoiceItemUuidColumns(rows = [], context = 'Invoice item') {
+    (Array.isArray(rows) ? rows : []).forEach((row, index) => {
+      Object.entries(row || {}).forEach(([column, value]) => {
+        if (!INVOICE_ITEM_UUID_COLUMNS.has(column) || isBlankText(value)) return;
+        const normalized = String(value || '').trim();
+        if (isUuid(normalized)) return;
+        if (column === 'agreement_id' || column === 'source_agreement_id') {
+          throw new Error(`Renewal invoice item contains an invalid UUID mapping. ${column} received ${normalized}. The display agreement reference must be stored separately from the internal agreement UUID.`);
+        }
+        throw new Error(`${context} contains an invalid UUID mapping. ${column} received ${normalized}. Display references must be stored separately from internal UUID columns.`);
+      });
+      if (!isUuid(String(row?.invoice_id || '').trim())) {
+        throw new Error(`${context} ${index + 1} is missing the created invoice UUID.`);
+      }
+    });
+  }
+
+  function logRenewalInvoiceItemDebug(invoiceUuid = '', rows = []) {
+    const first = Array.isArray(rows) ? (rows[0] || {}) : {};
+    const uuidFields = ['invoice_id', 'agreement_id', 'source_agreement_id', 'client_id', 'company_id', 'contact_id', 'location_id'];
+    console.info('[Renewal] invoice_items payload UUID check', {
+      invoice_id: invoiceUuid,
+      agreement_id: first.agreement_id || first.source_agreement_id || null,
+      agreement_reference: first.agreement_reference || first.source_agreement_reference || null,
+      client_id: first.client_id || null,
+      row_count: Array.isArray(rows) ? rows.length : 0,
+      uuid_fields: uuidFields.reduce((acc, field) => {
+        const value = first[field];
+        acc[field] = value === undefined || value === null || String(value).trim() === '' ? null : isUuid(String(value).trim());
+        return acc;
+      }, {})
+    });
+  }
+
   async function replaceInvoiceItemsForRenewalDraft(client, invoiceUuid = '', items = [], context = 'Unable to save renewal invoice items') {
     const parentId = String(invoiceUuid || '').trim();
     if (!isUuid(parentId)) throw new Error('Renewal invoice items were not saved because the invoice UUID is missing.');
     const insertRows = (Array.isArray(items) ? items : []).map(item => sanitizeInvoiceItemRecord(item, parentId));
+    assertInvoiceItemUuidColumns(insertRows, 'Renewal invoice item');
+    logRenewalInvoiceItemDebug(parentId, insertRows);
     const annualSaasTotal = insertRows
       .filter(item => String(item.section || '').trim().toLowerCase().includes('annual') || String(item.section || '').trim().toLowerCase().includes('saas'))
       .reduce((sum, item) => sum + (numberOrNull(item.line_total) || 0), 0);
@@ -6892,6 +6979,10 @@
         );
         if (resource === 'proposals' && insertRows.some(row => !isUuid(row.proposal_id))) {
           throw new Error('Proposal items were not saved because the proposal reference is invalid.');
+        }
+        if (resource === 'invoices' && isRenewalInvoiceDraft(created)) {
+          assertInvoiceItemUuidColumns(insertRows, 'Renewal invoice item');
+          logRenewalInvoiceItemDebug(parentId, insertRows);
         }
         const childResp = await insertSelectRowsWithSchemaRetry(client, itemTable, insertRows, `Unable to create ${itemTable}`);
         if (childResp.error) {

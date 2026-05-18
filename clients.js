@@ -79,6 +79,10 @@ const Clients = {
     const found = keys.find(key => raw[key] !== undefined && raw[key] !== null);
     return found ? raw[found] : '';
   },
+  isUuid(value) {
+    return typeof value === 'string'
+      && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
+  },
   normalizeText(value) {
     return String(value || '').trim().toLowerCase();
   },
@@ -371,7 +375,8 @@ const Clients = {
     const legalName = String(raw.customer_legal_name || raw.customerLegalName || raw.company_name || raw.companyName || '').trim();
     const normalized = {
       id: String(raw.id || '').trim(),
-      client_id: String(raw.client_id || raw.clientId || '').trim(),
+      client_uuid: String(raw.client_uuid || raw.clientUuid || raw.id || '').trim(),
+      client_id: String(raw.client_id || raw.clientId || raw.id || '').trim(),
       client_code: String(raw.client_code || raw.clientCode || '').trim(),
       customer_name: customerName,
       customer_legal_name: legalName,
@@ -1531,8 +1536,17 @@ const Clients = {
     return { ok: true };
   },
   findAgreementForRenewalRow_(row = {}) {
-    const keys = [row.agreement_id, row.agreement_number].map(value => String(value || '').trim()).filter(Boolean);
-    return (this.state.agreements || []).find(agreement => keys.some(key => [agreement.id, agreement.agreement_id, agreement.agreement_number].some(value => this.valuesMatch(key, value)))) || {};
+    const keys = [row.agreement_uuid, row.agreement_id, row.agreement_reference, row.agreement_number]
+      .map(value => String(value || '').trim())
+      .filter(Boolean);
+    return (this.state.agreements || []).find(agreement => keys.some(key => [
+      agreement.id,
+      agreement.uuid,
+      agreement.agreement_uuid,
+      agreement.agreement_id,
+      agreement.agreement_reference,
+      agreement.agreement_number
+    ].some(value => this.valuesMatch(key, value)))) || {};
   },
   buildRenewalDraft_(rows = []) {
     const batchId = `REN-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
@@ -1615,15 +1629,38 @@ const Clients = {
     const rows = this.state.activeRenewalRows || [];
     const total = rows.reduce((sum, row) => sum + this.calculateRenewalLineTotal_(row, row.license_months || this.getRenewalLicenseMonths_(row), row.discount_percent || 0), 0);
     const first = rows[0] || {};
+    const agreement = this.findAgreementForRenewalRow_(first);
+    const agreementUuid = [
+      agreement?.id,
+      agreement?.uuid,
+      agreement?.agreement_uuid,
+      first.agreement_uuid,
+      first.agreement_id
+    ].map(value => String(value || '').trim()).find(value => this.isUuid(value)) || '';
+    const agreementReference = [
+      agreement?.agreement_reference,
+      agreement?.agreement_id,
+      agreement?.display_id,
+      first.agreement_reference,
+      first.agreement_number,
+      first.agreement_id
+    ].map(value => String(value || '').trim()).find(value => value && !this.isUuid(value)) || '';
+    const clientUuid = [first.client_uuid, first.client_id].map(value => String(value || '').trim()).find(value => this.isUuid(value)) || '';
+    const companyUuid = [agreement?.company_id, first.company_id].map(value => String(value || '').trim()).find(value => this.isUuid(value)) || '';
+    const contactUuid = [agreement?.contact_id, first.contact_id].map(value => String(value || '').trim()).find(value => this.isUuid(value)) || '';
+    const now = Date.now();
     const today = new Date().toISOString().slice(0, 10);
     const notes = String(document.querySelector('#clientRenewalModal [data-renew-notes]')?.value || '').trim();
     return {
       invoice: {
-        invoice_number: `REN-INV-${Date.now()}`,
-        invoice_id: `REN-INV-${Date.now()}`,
-        client_id: first.client_id || '',
-        agreement_id: first.agreement_id || '',
-        agreement_number: first.agreement_number || '',
+        invoice_number: `REN-INV-${now}`,
+        invoice_id: `REN-INV-${now}`,
+        client_id: clientUuid,
+        agreement_uuid: agreementUuid,
+        agreement_id: agreementUuid,
+        agreement_number: agreementReference || first.agreement_number || '',
+        company_id: companyUuid,
+        contact_id: contactUuid,
         issue_date: today,
         due_date: today,
         billing_frequency: first.billing_frequency || 'Annual',
@@ -1658,10 +1695,17 @@ const Clients = {
         service_start_date: row.new_service_start_date || '',
         service_end_date: row.new_service_end_date || '',
         source_agreement_item_id: row.source_agreement_item_id || '',
-        source_agreement_id: row.agreement_id || '',
+        agreement_id: agreementUuid,
+        agreement_reference: agreementReference,
+        source_agreement_id: agreementUuid,
+        source_agreement_reference: agreementReference,
+        client_id: clientUuid,
+        company_id: companyUuid,
+        contact_id: contactUuid,
+        location_id: this.isUuid(String(row.location_id || '').trim()) ? String(row.location_id || '').trim() : null,
         notes: `Renewal annual SaaS line. Annual license price ${this.getRenewalAnnualLicensePrice_(row)}; renewed months ${row.license_months || this.getRenewalLicenseMonths_(row)}.`,
         renewal_batch_id: batchId,
-        renewed_from_invoice_id: row.invoice_id || '',
+        renewed_from_invoice_id: this.isUuid(String(row.invoice_uuid || row.invoice_id || '').trim()) ? String(row.invoice_uuid || row.invoice_id || '').trim() : null,
         renewed_from_invoice_item_id: row.invoice_item_id || '',
         renewed_from_location_name: row.location_name || ''
       }))
@@ -1948,13 +1992,17 @@ const Clients = {
         source: 'agreement_item',
         type: 'Location Renewal',
         client_id: clientId,
-        agreement_id: agreement.agreement_id || agreement.id || item.agreement_id,
+        client_uuid: client.id || client.client_uuid || '',
+        agreement_uuid: agreement.id || agreement.agreement_uuid || '',
+        agreement_id: agreement.id || agreement.agreement_uuid || item.agreement_id,
+        agreement_reference: agreement.agreement_reference || agreement.agreement_id || item.agreement_reference || item.agreement_id || '',
         agreement_number: agreement.agreement_number || item.agreement_number,
         agreement_status: agreement.status || '',
         agreement_service_start_date: agreement.service_start_date || agreement.effective_date || '',
         agreement_service_end_date: agreement.service_end_date || agreement.end_service_date || '',
         agreement_expiry_date: agreement.expiry_date || agreement.expiration_date || agreement.valid_until || '',
-        invoice_id: relatedInvoice?.invoice_id || relatedInvoice?.id || '',
+        invoice_uuid: relatedInvoice?.id || relatedInvoice?.invoice_uuid || '',
+        invoice_id: relatedInvoice?.id || relatedInvoice?.invoice_id || '',
         invoice_number: relatedInvoice?.invoice_number || '',
         invoice_item_id: item.invoice_item_id || item.invoiceItemId || '',
         source_agreement_item_id: item.id || item.item_id || item.agreement_item_id || item.agreementItemId || '',
@@ -2018,10 +2066,17 @@ const Clients = {
       client_id: String(this.getField(raw, 'client_id', 'clientId') || '').trim(),
       source_agreement_item_id: String(this.getField(raw, 'source_agreement_item_id', 'sourceAgreementItemId') || '').trim(),
       invoice_item_id: String(this.getField(raw, 'invoice_item_id', 'invoiceItemId') || '').trim(),
+      agreement_uuid: String(this.getField(raw, 'agreement_uuid', 'agreementUuid') || '').trim(),
       agreement_id: String(this.getField(raw, 'agreement_id', 'agreementId') || '').trim(),
+      agreement_reference: String(this.getField(raw, 'agreement_reference', 'agreementReference', 'agreement_display_id', 'agreementDisplayId') || '').trim(),
       agreement_number: String(this.getField(raw, 'agreement_number', 'agreementNo', 'agreementNumber') || '').trim(),
+      invoice_uuid: String(this.getField(raw, 'invoice_uuid', 'invoiceUuid') || '').trim(),
       invoice_id: String(this.getField(raw, 'invoice_id', 'invoiceId') || '').trim(),
       invoice_number: String(this.getField(raw, 'invoice_no', 'invoiceNo', 'invoice_number', 'invoiceNumber') || '').trim(),
+      client_uuid: String(this.getField(raw, 'client_uuid', 'clientUuid') || '').trim(),
+      company_id: String(this.getField(raw, 'company_id', 'companyId') || '').trim(),
+      contact_id: String(this.getField(raw, 'contact_id', 'contactId') || '').trim(),
+      location_id: String(this.getField(raw, 'location_id', 'locationId') || '').trim(),
       client_name: String(this.getField(raw, 'client', 'client_name', 'customer_name', 'customerName') || '').trim(),
       location_name: String(this.getField(raw, 'location_name', 'locationName') || '').trim(),
       module_name: String(this.getField(raw, 'module_name', 'moduleName', 'item_name', 'name') || '').trim(),
