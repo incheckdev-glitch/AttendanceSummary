@@ -1614,6 +1614,95 @@
     return sanitized;
   }
 
+  function isRenewalInvoiceDraft(record = {}) {
+    const status = String(record.status || '').trim().toLowerCase();
+    const isRenewal = record.is_renewal === true
+      || String(record.invoice_type || '').trim().toLowerCase() === 'renewal'
+      || String(record.source_type || '').trim().toLowerCase() === 'renewal'
+      || Boolean(String(record.renewal_batch_id || '').trim());
+    return isRenewal && (!status || status === 'draft');
+  }
+
+  function normalizeRenewalTextKey(value = '') {
+    return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+
+  function renewalInvoiceItemSignature(items = []) {
+    return (Array.isArray(items) ? items : [])
+      .map(item => ({
+        location: normalizeRenewalTextKey(item.location_name || item.renewed_from_location_name || ''),
+        sourceItem: normalizeRenewalTextKey(item.source_agreement_item_id || item.renewed_from_invoice_item_id || ''),
+        start: String(item.service_start_date || '').trim(),
+        end: String(item.service_end_date || '').trim()
+      }))
+      .map(item => [item.sourceItem || item.location, item.start, item.end].join('|'))
+      .filter(key => key.replace(/\|/g, '').trim())
+      .sort()
+      .join(';;');
+  }
+
+  function renewalInvoicePeriod(items = []) {
+    const starts = (Array.isArray(items) ? items : []).map(item => String(item.service_start_date || '').trim()).filter(Boolean).sort();
+    const ends = (Array.isArray(items) ? items : []).map(item => String(item.service_end_date || '').trim()).filter(Boolean).sort();
+    return { start: starts[0] || '', end: ends[ends.length - 1] || '' };
+  }
+
+  async function findExistingDraftRenewalInvoice(client, invoiceRecord = {}, items = []) {
+    if (!isRenewalInvoiceDraft(invoiceRecord)) return null;
+    const expectedSignature = renewalInvoiceItemSignature(items);
+    const period = renewalInvoicePeriod(items);
+    let query = client
+      .from('invoices')
+      .select('*')
+      .ilike('status', 'draft')
+      .eq('is_renewal', true)
+      .order('updated_at', { ascending: false })
+      .limit(25);
+    if (invoiceRecord.client_id) query = query.eq('client_id', invoiceRecord.client_id);
+    if (invoiceRecord.agreement_id) query = query.eq('agreement_id', invoiceRecord.agreement_id);
+    const { data: candidates, error } = await query;
+    if (error) {
+      console.warn('[renewal invoice] draft lookup skipped; continuing with create.', error);
+      return null;
+    }
+    for (const candidate of (Array.isArray(candidates) ? candidates : [])) {
+      const candidateId = String(candidate.id || '').trim();
+      if (!candidateId) continue;
+      const { data: candidateItems, error: itemsError } = await client
+        .from('invoice_items')
+        .select('*')
+        .eq('invoice_id', candidateId);
+      if (itemsError) {
+        console.warn('[renewal invoice] draft item lookup skipped for candidate.', itemsError);
+        continue;
+      }
+      const signature = renewalInvoiceItemSignature(candidateItems || []);
+      if (expectedSignature && signature === expectedSignature) return candidate;
+      const candidatePeriod = renewalInvoicePeriod(candidateItems || []);
+      const samePeriod = period.start && period.end && candidatePeriod.start === period.start && candidatePeriod.end === period.end;
+      const sameBatch = invoiceRecord.renewal_batch_id && String(candidate.renewal_batch_id || '').trim() === String(invoiceRecord.renewal_batch_id || '').trim();
+      if (sameBatch || samePeriod) return candidate;
+    }
+    return null;
+  }
+
+  async function replaceInvoiceItemsForRenewalDraft(client, invoiceUuid = '', items = [], context = 'Unable to save renewal invoice items') {
+    const parentId = String(invoiceUuid || '').trim();
+    if (!isUuid(parentId)) throw new Error('Renewal invoice items were not saved because the invoice UUID is missing.');
+    const insertRows = (Array.isArray(items) ? items : []).map(item => sanitizeInvoiceItemRecord(item, parentId));
+    const annualSaasTotal = insertRows
+      .filter(item => String(item.section || '').trim().toLowerCase().includes('annual') || String(item.section || '').trim().toLowerCase().includes('saas'))
+      .reduce((sum, item) => sum + (numberOrNull(item.line_total) || 0), 0);
+    if (annualSaasTotal <= 0) throw new Error('Renewal invoice must include Annual SaaS invoice_items.');
+    const sumItems = insertRows.reduce((sum, item) => sum + (numberOrNull(item.line_total) || 0), 0);
+    if (sumItems <= 0) throw new Error('Renewal invoice must include invoice_items with positive totals.');
+    const { error: deleteError } = await client.from('invoice_items').delete().eq('invoice_id', parentId);
+    if (deleteError) throw friendlyError(context, deleteError);
+    const childResp = await insertSelectRowsWithSchemaRetry(client, 'invoice_items', insertRows, context);
+    if (childResp.error) throw friendlyError(context, childResp.error);
+    return { rows: childResp.data || [], total: sumItems };
+  }
+
   function normalizeReceiptPaymentStateForSave(record = {}) {
     const rawState = String(firstDefined(record, ['payment_state', 'paymentState']) || '').trim();
     const receivedAmount = numberOrNull(firstDefined(record, ['received_amount', 'receivedAmount', 'amount_received', 'amountReceived', 'amount_paid', 'amountPaid', 'paid_now', 'paidNow', 'amount'])) || 0;
@@ -6556,6 +6645,37 @@
         return { handled: true, data: await withItems(resource, normalizedRow) };
       }
       const finalCreateRecord = sanitizeUuidColumnsForMutation(table, createRecord);
+      const requestedItems = Array.isArray(payload.items) ? payload.items : [];
+      if (resource === 'invoices' && isRenewalInvoiceDraft(finalCreateRecord)) {
+        if (!requestedItems.length) throw new Error('Renewal invoice must include Annual SaaS invoice_items.');
+        const itemTotal = requestedItems.reduce((sum, item) => sum + (numberOrNull(firstDefined(item, ['line_total', 'lineTotal'])) || 0), 0);
+        finalCreateRecord.invoice_total = itemTotal;
+        finalCreateRecord.subtotal_locations = itemTotal;
+        finalCreateRecord.pending_amount = Math.max(itemTotal - (numberOrNull(finalCreateRecord.amount_paid) || 0), 0);
+        const existingDraft = await findExistingDraftRenewalInvoice(client, finalCreateRecord, requestedItems);
+        if (existingDraft?.id) {
+          const updatePayload = { ...finalCreateRecord, invoice_id: existingDraft.invoice_id || finalCreateRecord.invoice_id, invoice_number: existingDraft.invoice_number || finalCreateRecord.invoice_number, updated_at: new Date().toISOString() };
+          delete updatePayload.created_at;
+          const { data: updatedDraft, error: updateError } = await updateSelectSingleWithSchemaRetry(
+            client,
+            'invoices',
+            updatePayload,
+            'id',
+            existingDraft.id,
+            'Unable to update existing renewal invoice draft'
+          );
+          if (updateError) throw friendlyError('Unable to update existing renewal invoice draft', updateError);
+          try {
+            await replaceInvoiceItemsForRenewalDraft(client, existingDraft.id, requestedItems, 'Unable to update renewal invoice_items');
+          } catch (itemError) {
+            throw new Error(`Renewal invoice draft was created, but annual SaaS items could not be saved. Existing draft will be reused on retry. Supabase error: ${itemError?.message || 'Unknown error'}.`);
+          }
+          const normalizedDraft = normalizeRow(resource, updatedDraft || existingDraft);
+          normalizedDraft._renewal_draft_reused = true;
+          normalizedDraft._renewal_draft_message = 'A draft renewal invoice already exists for this client and renewal period. The existing draft has been opened for update.';
+          return { handled: true, data: await withItems(resource, normalizedDraft) };
+        }
+      }
       let data;
       if (resource === 'tickets') {
         data = await insertTicketWithRetry(client, table, finalCreateRecord);
@@ -6749,7 +6869,7 @@
           });
         }
       }
-      const items = Array.isArray(payload.items) ? payload.items : [];
+      const items = requestedItems;
       const itemTable = ITEM_TABLES[resource];
       const fk = ITEM_FK[resource];
       if (itemTable && items.length && (created[fk] || created.id)) {
@@ -6774,7 +6894,12 @@
           throw new Error('Proposal items were not saved because the proposal reference is invalid.');
         }
         const childResp = await insertSelectRowsWithSchemaRetry(client, itemTable, insertRows, `Unable to create ${itemTable}`);
-        if (childResp.error) throw friendlyError(`Unable to create ${itemTable}`, childResp.error);
+        if (childResp.error) {
+          if (resource === 'invoices' && isRenewalInvoiceDraft(created)) {
+            throw new Error(`Renewal invoice draft was created, but annual SaaS items could not be saved. Existing draft will be reused on retry. Supabase error: ${childResp.error?.message || 'Unknown error'}.`);
+          }
+          throw friendlyError(`Unable to create ${itemTable}`, childResp.error);
+        }
       }
       return { handled: true, data: await withItems(resource, created) };
     }
