@@ -1622,12 +1622,12 @@ const Agreements = {
       .doc-sheet.is-draft::before { content: "DRAFT"; position: absolute; inset: 36% auto auto 50%; transform: translate(-50%, -50%) rotate(-24deg); font-size: 44mm; font-weight: 900; letter-spacing: 0.08em; color: rgba(15, 23, 42, 0.055); z-index: 0; pointer-events: none; white-space: nowrap; }
       .doc-sheet > * { position: relative; z-index: 1; }
       .doc-header { border-bottom: 1px solid #d8e1ec; padding-bottom: 8mm; margin-bottom: 6mm; }
-      .agreement-document-header { display: grid; grid-template-columns: 34mm 1fr 68mm; align-items: center; gap: 8mm; width: 100%; margin: 0; }
-      .agreement-document-logo { display: flex; align-items: center; justify-content: flex-start; min-height: 24mm; }
-      .agreement-document-logo .incheck360-doc-logo-wrap { float: none; margin: 0; width: 32mm; max-width: 32mm; height: 20mm; max-height: 20mm; position: static !important; transform: none !important; }
-      .agreement-document-title-wrap { display: flex; align-items: center; justify-content: center; min-height: 24mm; }
+      .agreement-document-header { display: grid; grid-template-columns: 44mm 1fr 68mm; align-items: center; gap: 8mm; width: 100%; margin: 0; }
+      .agreement-document-logo { display: flex; align-items: center; justify-content: flex-start; min-height: 28mm; }
+      .agreement-document-logo .incheck360-doc-logo-wrap { float: none; margin: 0; width: 40mm; max-width: 40mm; height: 24mm; max-height: 24mm; position: static !important; transform: none !important; }
+      .agreement-document-title-wrap { display: flex; align-items: center; justify-content: center; min-height: 28mm; }
       .doc-label { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: 0.02em; color: #0b214a; line-height: 1; text-align: center; }
-      .agreement-document-summary { display: flex; align-items: center; justify-content: flex-end; min-height: 24mm; }
+      .agreement-document-summary { display: flex; align-items: center; justify-content: flex-end; min-height: 28mm; }
       .meta-box { width: 100%; border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; background: #fbfdff; }
       .meta-row { display: grid; grid-template-columns: 130px 1fr; border-bottom: 1px solid #e3eaf3; }
       .meta-row:last-child { border-bottom: 0; }

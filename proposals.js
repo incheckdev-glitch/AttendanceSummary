@@ -2061,7 +2061,7 @@ const Proposals = {
       .proposal-preview-header,
       .proposal-document-header {
         display: grid;
-        grid-template-columns: 38mm 1fr 68mm;
+        grid-template-columns: 44mm 1fr 68mm;
         align-items: center;
         gap: 8mm;
         width: 100%;
@@ -2075,7 +2075,7 @@ const Proposals = {
         display: flex;
         align-items: center;
         justify-content: flex-start;
-        height: 26mm;
+        height: 28mm;
         min-width: 0;
         margin: 0;
         padding: 0;
@@ -2091,10 +2091,10 @@ const Proposals = {
         justify-content: flex-start;
         margin: 0;
         padding: 0;
-        width: 32mm;
-        max-width: 32mm;
-        height: 20mm;
-        max-height: 20mm;
+        width: 40mm;
+        max-width: 40mm;
+        height: 24mm;
+        max-height: 24mm;
         text-align: left;
         position: static;
         transform: none;
@@ -2108,8 +2108,8 @@ const Proposals = {
       .proposal-document-logo img,
       .proposal-document-logo svg {
         display: block;
-        max-width: 32mm;
-        max-height: 20mm;
+        max-width: 40mm;
+        max-height: 24mm;
         width: auto;
         height: auto;
         object-fit: contain;
@@ -2126,7 +2126,7 @@ const Proposals = {
         display: flex;
         align-items: center;
         justify-content: center;
-        height: 26mm;
+        height: 28mm;
         min-width: 0;
         margin: 0;
         padding: 0;
@@ -2151,7 +2151,7 @@ const Proposals = {
         display: flex;
         align-items: center;
         justify-content: flex-end;
-        height: 26mm;
+        height: 28mm;
         min-width: 0;
         margin: 0;
         padding: 0;
