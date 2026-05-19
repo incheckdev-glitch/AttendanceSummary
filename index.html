@@ -1673,6 +1673,38 @@ Sample:
                 <input class="input" name="agreement_file" type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" style="grid-column:1/-1;" />
               </div>
             </div>
+            <div class="card" style="grid-column:1/-1;margin:0;padding:12px;">
+              <strong>Annual SaaS Items</strong>
+              <div style="overflow:auto;margin-top:10px;">
+                <table style="width:100%;min-width:960px;">
+                  <thead><tr><th>License / Item</th><th>Qty</th><th>License Price / Year</th><th>License / Month</th><th>Service Start Date</th><th>Service End Date</th><th>Discount %</th><th>Line Total</th><th>Actions</th></tr></thead>
+                  <tbody id="importOldAnnualItemsTbody"></tbody>
+                </table>
+              </div>
+              <div class="actions" style="justify-content:flex-start;margin-top:8px;"><button id="importOldAddAnnualRowBtn" class="btn ghost sm" type="button">Add Row</button></div>
+            </div>
+            <div class="card" style="grid-column:1/-1;margin:0;padding:12px;">
+              <strong>One Time Fee Items</strong>
+              <div style="overflow:auto;margin-top:10px;">
+                <table style="width:100%;min-width:760px;">
+                  <thead><tr><th>Item</th><th>Qty</th><th>Unit Price</th><th>Discount %</th><th>Line Total</th><th>Actions</th></tr></thead>
+                  <tbody id="importOldOneTimeItemsTbody"></tbody>
+                </table>
+              </div>
+              <div class="actions" style="justify-content:flex-start;margin-top:8px;"><button id="importOldAddOneTimeRowBtn" class="btn ghost sm" type="button">Add Row</button></div>
+            </div>
+            <div class="card" style="grid-column:1/-1;margin:0;padding:12px;">
+              <strong>Totals Summary</strong>
+              <div class="grid cols-4" style="gap:10px;margin-top:10px;">
+                <input class="input" id="importOldAnnualSubtotal" readonly placeholder="Annual SaaS Subtotal" />
+                <input class="input" id="importOldOneTimeSubtotal" readonly placeholder="One Time Fee Subtotal" />
+                <input class="input" id="importOldDiscountTotal" readonly placeholder="Discount Total" />
+                <input class="input" id="importOldGrandTotal" readonly placeholder="Grand Total" />
+              </div>
+              <div id="importOldTotalsWarning" class="muted" style="margin-top:8px;"></div>
+              <input type="hidden" name="annual_saas_items_json" id="importOldAnnualItemsJson" />
+              <input type="hidden" name="one_time_fee_items_json" id="importOldOneTimeItemsJson" />
+            </div>
             <textarea class="input" name="notes" placeholder="Notes" style="grid-column:1/-1;min-height:70px;"></textarea>
             <label style="grid-column:1/-1;display:flex;gap:8px;align-items:flex-start;"><input type="checkbox" name="historical_lock" checked disabled /><span>Imported historical agreement — create Company + Contact + Agreement only, with no workflow, onboarding, technical admin, invoice, receipt, or notifications.</span></label>
             <div class="actions" style="grid-column:1/-1;justify-content:flex-end;">
