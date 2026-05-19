@@ -4049,10 +4049,24 @@ const Agreements = {
       if (!Permissions.canCreateAgreement()) return UI.toast('Login is required to save agreements.');
       this.openAgreementForm();
     });
-    if (E.agreementsImportOldClientBtn) E.agreementsImportOldClientBtn.addEventListener('click', () => {
-      if (!window.Clients?.canImportOldClient?.()) return UI.toast('Only admin/dev can import old client agreements.');
-      window.Clients.openImportOldClientModal();
-    });
+    if (E.agreementsImportOldClientBtn) {
+      E.agreementsImportOldClientBtn.disabled = false;
+      E.agreementsImportOldClientBtn.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        const role = String(Session?.role?.() || '').trim().toLowerCase();
+        const canImport = window.Clients?.canImportOldClient?.() || Permissions?.isAdmin?.() || Permissions?.isDev?.() || ['admin', 'dev', 'developer'].includes(role);
+        if (!canImport) return UI.toast('Only admin/dev can import old client agreements.');
+        if (window.Clients?.openImportOldClientModal) {
+          window.Clients.openImportOldClientModal();
+          return;
+        }
+        const modal = document.getElementById('importOldClientModal');
+        if (!modal) return UI.toast('Import modal is unavailable. Please refresh and try again.');
+        modal.classList.add('open');
+        modal.setAttribute('aria-hidden', 'false');
+      });
+    }
     if (E.agreementsTbody) E.agreementsTbody.addEventListener('click', event => {
       const trigger = event.target?.closest?.('button[data-agreement-view], button[data-agreement-edit], button[data-agreement-upload-signed], button[data-agreement-request-technical], button[data-agreement-preview], button[data-agreement-create-invoice], button[data-agreement-delete]');
       if (!trigger) return;

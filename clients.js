@@ -15,7 +15,14 @@ const Clients = {
   canExportClientStatement() {
     return Permissions.canExportClientStatement();
   },
-  canImportOldClient() { return Permissions.canCreate('clients') && (Permissions.hasRole('admin') || Permissions.hasRole('dev')); },
+  canImportOldClient() {
+    const role = String(Session?.role?.() || '').trim().toLowerCase();
+    const isAdminOrDev =
+      Permissions?.isAdmin?.() ||
+      Permissions?.isDev?.() ||
+      ['admin', 'dev', 'developer'].includes(role);
+    return Boolean(isAdminOrDev);
+  },
   parseImportMeta_(client = {}) { try { return JSON.parse(String(client.notes || '{}')); } catch (_) { return {}; } },
   clientFields: [
     'client_id',
@@ -2888,8 +2895,27 @@ const Clients = {
     E.newClientModal.setAttribute('aria-hidden', 'true');
     if (E.newClientForm) E.newClientForm.reset();
   },
-  openImportOldClientModal() { if (E.importOldClientModal) { E.importOldClientModal.classList.add('open'); E.importOldClientModal.setAttribute('aria-hidden', 'false'); } },
-  closeImportOldClientModal() { if (E.importOldClientModal) { E.importOldClientModal.classList.remove('open'); E.importOldClientModal.setAttribute('aria-hidden', 'true'); } if (E.importOldClientForm) E.importOldClientForm.reset(); },
+  openImportOldClientModal() {
+    const modal = E.importOldClientModal || document.getElementById('importOldClientModal');
+    if (!modal) {
+      console.warn('[Clients] Import Old Client Agreement modal is missing from the DOM.');
+      UI.toast?.('Import modal is unavailable. Please refresh and try again.');
+      return;
+    }
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+    const firstInput = modal.querySelector('input, select, textarea, button');
+    if (firstInput && typeof firstInput.focus === 'function') setTimeout(() => firstInput.focus(), 0);
+  },
+  closeImportOldClientModal() {
+    const modal = E.importOldClientModal || document.getElementById('importOldClientModal');
+    if (modal) {
+      modal.classList.remove('open');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+    const form = E.importOldClientForm || document.getElementById('importOldClientForm');
+    if (form) form.reset();
+  },
   collectImportOldClientFormData() {
     if (!E.importOldClientForm) return null;
     const fd = new FormData(E.importOldClientForm);
@@ -2902,6 +2928,25 @@ const Clients = {
       payload[key] = String(value || '').trim();
     });
     return payload;
+  },
+  bindImportOldClientAgreementFallback_() {
+    if (document.body?.dataset?.importOldClientAgreementFallbackBound === 'true') return;
+    if (document.body?.dataset) document.body.dataset.importOldClientAgreementFallbackBound = 'true';
+
+    document.addEventListener('click', event => {
+      const trigger = event.target?.closest?.('#importOldClientBtn, #agreementsImportOldClientBtn, [data-import-old-client-agreement]');
+      if (!trigger) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (!this.canImportOldClient()) {
+        UI.toast?.('Only admin/dev can import old client agreements.');
+        return;
+      }
+
+      this.openImportOldClientModal();
+    }, true);
   },
   async runClientAction(action) {
     const clientId = String(this.state.selectedClientId || '').trim();
@@ -3134,7 +3179,17 @@ const Clients = {
         }
       });
     }
-    if (E.importOldClientBtn) { E.importOldClientBtn.style.display = this.canImportOldClient() ? '' : 'none'; E.importOldClientBtn.addEventListener('click', () => { if (!this.canImportOldClient()) return UI.toast('Only admin/dev can import old client agreements.'); this.openImportOldClientModal(); }); }
+    if (E.importOldClientBtn) {
+      E.importOldClientBtn.style.display = this.canImportOldClient() ? '' : 'none';
+      E.importOldClientBtn.disabled = false;
+      E.importOldClientBtn.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!this.canImportOldClient()) return UI.toast('Only admin/dev can import old client agreements.');
+        this.openImportOldClientModal();
+      });
+    }
+    this.bindImportOldClientAgreementFallback_();
     if (E.importOldClientCloseBtn) E.importOldClientCloseBtn.addEventListener('click', () => this.closeImportOldClientModal());
     if (E.importOldClientCancelBtn) E.importOldClientCancelBtn.addEventListener('click', () => this.closeImportOldClientModal());
     if (E.importOldClientModal) E.importOldClientModal.addEventListener('click', e => { if (e.target === E.importOldClientModal) this.closeImportOldClientModal(); });
