@@ -1153,8 +1153,10 @@ const OperationsOnboarding = {
       const rowRecordId = row.id || row.db_id || row.onboarding_id || '';
       const rowDbId = U.escapeAttr(rowRecordId);
       const onboardingLabel = U.escapeHtml(row.onboarding_id || row.id || '—');
-      const isPocRow = String(row.onboarding_type || '').trim().toLowerCase() === 'poc';
+      const isPocRow = this.isPocTechnicalFlow(row);
       const hasAgreementId = Boolean(String(row.agreement_id || '').trim());
+      const proposalId = String(row.proposal_id || '').trim();
+      const hasProposalId = Boolean(proposalId);
       const hasRowDbId = Boolean(String(rowRecordId || '').trim());
       const assignedCsmName = row.assigned_csm_name || row.csm_assigned_to || '';
       const showAssignCsmButton = canAssignCsm && !this.isOnboardingClosed(row);
@@ -1171,8 +1173,8 @@ const OperationsOnboarding = {
           <td>${onboardingLabel}</td><td>${text(displayRow.agreement_id)}</td><td>${text(isPocRow ? (displayRow.proposal_reference || displayRow.proposal_id || 'POC') : displayRow.agreement_number)}</td><td>${text(displayRow.client_name)}</td><td>${text(this.formatDate(displayRow.signed_date))}</td><td>${text(displayRow.onboarding_status)}</td>
           <td>${text(displayRow.request_type || displayRow.technical_request_type)}</td><td>${text(displayRow.requested_by)}</td><td>${text(this.formatDate(displayRow.requested_at))}</td><td>${text(displayRow.technical_request_status || displayRow.technical_admin_request)}</td><td>${text(displayRow.request_message || displayRow.technical_request_details || displayRow.technical_admin_request_message)}</td><td><strong>${text(assignedCsmName || 'Unassigned')}</strong>${displayRow.assigned_csm_email ? `<div class="muted">${U.escapeHtml(displayRow.assigned_csm_email)}</div>` : ''}</td><td>${text(locationCount)}</td><td>${text(this.formatDate(serviceStart))}</td><td>${text(this.formatDate(serviceEnd))}</td><td>${text(billingFrequency)}</td><td>${text(paymentTerm)}</td><td>${text(this.formatDate(displayRow.updated_at))}</td>
           <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
-            <button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-open-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Open Agreement</button>
-            <button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-preview-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Preview Agreement</button>
+            ${isPocRow ? `<button class="btn ghost sm" type="button" data-permission-resource="proposals" data-permission-action="view" data-op-open-proposal="${U.escapeAttr(proposalId)}" ${hasProposalId ? '' : 'disabled title="Proposal is not linked to this POC onboarding row."'}>Open Proposal</button>` : `<button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-open-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Open Agreement</button>
+            <button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-preview-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Preview Agreement</button>`}
             <button class="btn ghost sm" type="button" data-op-open-details="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Open Onboarding Details</button>
             ${canCreateTechnicalRequest ? `<button class="btn ghost sm" type="button" data-op-technical-admin="${agreementId}" data-op-technical-onboarding="${rowDbId}" ${(!hasAgreementId && !isPocRow) ? 'disabled title="Agreement ID not available"' : ''}>Technical Admin Request</button>` : ''}
             ${showAssignCsmButton ? `<button class="btn ghost sm" type="button" data-op-assign-csm="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>${assignCsmButtonLabel}</button>` : ''}
@@ -1280,7 +1282,7 @@ const OperationsOnboarding = {
       }
       const agreement = this.state.agreementMap.get(detail.agreement_id) || {};
       detail = this.applyAgreementFallbacks(detail, agreement);
-      const isPocDetail = String(detail.onboarding_type || '').trim().toLowerCase() === 'poc' || String(detail.request_type || '').trim().toLowerCase() === 'poc';
+      const isPocDetail = this.isPocTechnicalFlow(detail);
       const agreementItems = this.state.agreementItemsMap.get(detail.agreement_id) || [];
       const locations = isPocDetail
         ? (Number(detail.poc_location_count || detail.location_count || detail.number_of_locations || 0) || 0)
@@ -1293,8 +1295,8 @@ const OperationsOnboarding = {
       E.operationsOnboardingDetailsContent.innerHTML = `
         <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;">
           <div><span class="muted">Onboarding ID:</span> ${U.escapeHtml(detail.onboarding_id || '—')}</div>
-          <div><span class="muted">Source:</span> ${U.escapeHtml(isPocDetail ? 'POC Proposal' : 'Agreement')}</div>
-          <div><span class="muted">Agreement ID:</span> ${U.escapeHtml(detail.agreement_id || '—')}</div>
+          <div><span class="muted">Source:</span> ${U.escapeHtml(isPocDetail ? 'Proposal' : 'Agreement')}</div>
+          <div><span class="muted">${U.escapeHtml(isPocDetail ? 'Proposal ID:' : 'Agreement ID:')}</span> ${U.escapeHtml(isPocDetail ? (detail.proposal_id || '—') : (detail.agreement_id || '—'))}</div>
           <div><span class="muted">Status:</span> ${U.escapeHtml(detail.onboarding_status || '—')}</div>
           <div><span class="muted">Reference:</span> ${U.escapeHtml(isPocDetail ? (detail.proposal_reference || detail.proposal_id || 'POC') : (detail.agreement_number || '—'))}</div>
           <div><span class="muted">Client Name:</span> ${U.escapeHtml(detail.client_name || '—')}</div>
@@ -1320,7 +1322,7 @@ const OperationsOnboarding = {
           <div style="grid-column:1/-1;"><span class="muted">Notes:</span> ${U.escapeHtml(detail.notes || '—')}</div>
         </div>
         <div class="actions" style="justify-content:flex-start;gap:8px;margin-top:12px;">
-          ${String(detail.agreement_id || '').trim() ? `<button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-details-open-agreement="${U.escapeAttr(detail.agreement_id || '')}">Open Agreement</button><button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-details-preview-agreement="${U.escapeAttr(detail.agreement_id || '')}">Preview Agreement</button>` : ''}
+          ${isPocDetail ? `<button class="btn ghost sm" type="button" data-permission-resource="proposals" data-permission-action="view" data-op-details-open-proposal="${U.escapeAttr(detail.proposal_id || '')}" ${String(detail.proposal_id || '').trim() ? '' : 'disabled title="Proposal is not linked to this POC onboarding row."'}>Open Proposal</button>` : (String(detail.agreement_id || '').trim() ? `<button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-details-open-agreement="${U.escapeAttr(detail.agreement_id || '')}">Open Agreement</button><button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-details-preview-agreement="${U.escapeAttr(detail.agreement_id || '')}">Preview Agreement</button>` : '')}
           ${this.canRequestTechnicalAdmin() && (String(detail.agreement_id || '').trim() || isPocDetail) ? `<button class="btn ghost sm" type="button" data-op-technical-admin="${U.escapeAttr(detail.agreement_id || '')}" data-op-technical-onboarding="${U.escapeAttr(detail.id || detail.db_id || detail.onboarding_id || '')}">Technical Admin Request</button>` : ''}
           ${this.canAssignCsm() && !this.isOnboardingClosed(detail) ? `<button class="btn sm" type="button" data-op-details-assign-csm="${U.escapeAttr(detail.id || detail.db_id || detail.onboarding_id || '')}" data-op-agreement-id="${U.escapeAttr(detail.agreement_id || '')}">${(detail.assigned_csm_name || detail.csm_assigned_to) ? 'Change CSM' : 'Assign CSM'}</button>` : ''}
         </div>`;
@@ -1530,12 +1532,32 @@ const OperationsOnboarding = {
     if (value === null) return null;
     return String(value || '').trim() || fallback;
   },
+  isPocTechnicalFlow(record = {}) {
+    const normalizedValues = [
+      record?.onboarding_type,
+      record?.request_type,
+      record?.technical_request_type,
+      record?.source_type
+    ].map(value => String(value || '').trim().toLowerCase());
+    if (normalizedValues.some(value => value === 'poc' || value === 'proposal')) return true;
+    const hasProposalId = Boolean(String(record?.proposal_id || '').trim());
+    const hasAgreementId = Boolean(String(record?.agreement_id || '').trim());
+    const sourceType = String(record?.source_type || '').trim().toLowerCase();
+    return sourceType === 'proposal' || (hasProposalId && !hasAgreementId);
+  },
   async openAgreementRecord(agreementId, { readOnly = true, trigger = null } = {}) {
     const id = String(agreementId || '').trim();
     if (!id) return UI.toast('Agreement ID is required.');
     if (!window.Agreements?.openAgreementFormById) return UI.toast('Agreement module is not available.');
     if (typeof setActiveView === 'function') setActiveView('agreements');
     return window.Agreements.openAgreementFormById(id, { readOnly, trigger });
+  },
+  async openProposalRecord(proposalId, { readOnly = true, trigger = null } = {}) {
+    const id = String(proposalId || '').trim();
+    if (!id) return UI.toast('Proposal is not linked to this POC onboarding row.', 'warning');
+    if (!window.Proposals?.openProposalFormById) return UI.toast('Proposal module is not available.');
+    if (typeof setActiveView === 'function') setActiveView('proposals');
+    return window.Proposals.openProposalFormById(id, { readOnly, trigger });
   },
   async previewAgreement(agreementId, trigger = null) {
     const id = String(agreementId || '').trim();
@@ -1564,7 +1586,7 @@ const OperationsOnboarding = {
       const rowId = String(row.id || row.db_id || row.onboarding_id || '').trim();
       return (normalizedOnboardingRowId && rowId === normalizedOnboardingRowId) || (!normalizedOnboardingRowId && String(row.agreement_id || '') === id);
     }) || {};
-    const isPoc = String(summary.onboarding_type || '').trim().toLowerCase() === 'poc' || String(summary.request_type || '').trim().toLowerCase() === 'poc';
+    const isPoc = this.isPocTechnicalFlow(summary);
     if (!id && !isPoc) return UI.toast('Agreement ID is required.');
     if (isPoc && !normalizedOnboardingRowId) return UI.toast('POC onboarding row ID is required.');
     const agreementLabel = isPoc
@@ -1659,6 +1681,7 @@ const OperationsOnboarding = {
         if (trigger.hasAttribute('data-op-open-agreement')) {
           return this.openAgreementRecord(agreementId, { readOnly: !this.canWrite(), trigger });
         }
+        if (trigger.hasAttribute('data-op-open-proposal')) return this.openProposalRecord(trigger.getAttribute('data-op-open-proposal') || '', { readOnly: true, trigger });
         if (trigger.hasAttribute('data-op-preview-agreement')) return this.previewAgreement(agreementId, trigger);
         if (trigger.hasAttribute('data-op-open-details')) return this.openOnboardingDetails(detailOnboardingId, agreementId);
         if (trigger.hasAttribute('data-op-technical-admin')) {
@@ -1678,6 +1701,8 @@ const OperationsOnboarding = {
       E.operationsOnboardingDetailsModal.addEventListener('click', event => {
         const openAgreementTrigger = event.target?.closest?.('button[data-op-details-open-agreement]');
         if (openAgreementTrigger) return this.openAgreementRecord(openAgreementTrigger.getAttribute('data-op-details-open-agreement') || '', { readOnly: !this.canWrite(), trigger: openAgreementTrigger });
+        const openProposalTrigger = event.target?.closest?.('button[data-op-details-open-proposal]');
+        if (openProposalTrigger) return this.openProposalRecord(openProposalTrigger.getAttribute('data-op-details-open-proposal') || '', { readOnly: true, trigger: openProposalTrigger });
         const previewAgreementTrigger = event.target?.closest?.('button[data-op-details-preview-agreement]');
         if (previewAgreementTrigger) return this.previewAgreement(previewAgreementTrigger.getAttribute('data-op-details-preview-agreement') || '', previewAgreementTrigger);
         const technicalRequestTrigger = event.target?.closest?.('button[data-op-technical-admin]');

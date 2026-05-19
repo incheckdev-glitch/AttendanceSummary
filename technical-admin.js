@@ -882,11 +882,15 @@ const TechnicalAdmin = {
         const requestId = U.escapeAttr(row.technical_request_id || '');
         const requestDbId = U.escapeAttr(row.id || row.technical_request_id || '');
         const onboardingId = U.escapeAttr(row.onboarding_id || '');
+        const isPocRow = this.isPocTechnicalFlow(row);
         const agreementId = String(row.agreement_id || '').trim();
-        const agreementAction = `<button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-technical-admin-action="open-agreement" data-agreement-id="${U.escapeAttr(agreementId)}" data-request-id="${requestDbId}" ${agreementId ? '' : 'disabled title="No agreement linked"'}>Open Agreement</button><button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-technical-admin-action="preview-agreement" data-agreement-id="${U.escapeAttr(agreementId)}" data-request-id="${requestDbId}" ${agreementId ? '' : 'disabled title="No agreement linked"'}>Preview Agreement</button>${agreementId ? '' : '<small class="muted">No agreement linked</small>'}`;
+        const proposalId = String(row.proposal_id || '').trim();
+        const agreementAction = isPocRow
+          ? `<button class="btn ghost sm" type="button" data-permission-resource="proposals" data-permission-action="view" data-technical-admin-action="open-proposal" data-proposal-id="${U.escapeAttr(proposalId)}" data-request-id="${requestDbId}" ${proposalId ? '' : 'disabled title="Proposal is not linked to this POC request."'}>Open Proposal</button>`
+          : `<button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-technical-admin-action="open-agreement" data-agreement-id="${U.escapeAttr(agreementId)}" data-request-id="${requestDbId}" ${agreementId ? '' : 'disabled title="No agreement linked"'}>Open Agreement</button><button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-technical-admin-action="preview-agreement" data-agreement-id="${U.escapeAttr(agreementId)}" data-request-id="${requestDbId}" ${agreementId ? '' : 'disabled title="No agreement linked"'}>Preview Agreement</button>${agreementId ? '' : '<small class="muted">No agreement linked</small>'}`;
         return `<tr data-technical-request-id="${requestDbId}" data-technical-onboarding-id="${onboardingId}" data-technical-request-key="${requestId}">
           <td>${text(row.technical_request_display || row.technical_request_number || row.technical_request_id)}</td>
-          <td>${text(row.agreement_number)}</td>
+          <td>${text(isPocRow ? (row.proposal_reference || row.proposal_id || 'POC') : row.agreement_number)}</td>
           <td>${text(row.client_name)}</td>
           <td>${text(row.number_of_locations || row.location_count || row.locations_count || '')}</td>
           <td>${U.escapeHtml(this.toDisplayDate(row.service_start_date))}</td>
@@ -987,6 +991,26 @@ const TechnicalAdmin = {
     if (!id) return null;
     return this.state.rows.find(row => String(row.id || row.technical_request_id || '') === id) || null;
   },
+  isPocTechnicalFlow(record = {}) {
+    const normalizedValues = [
+      record?.onboarding_type,
+      record?.request_type,
+      record?.technical_request_type,
+      record?.source_type
+    ].map(value => String(value || '').trim().toLowerCase());
+    if (normalizedValues.some(value => value === 'poc' || value === 'proposal')) return true;
+    const hasProposalId = Boolean(String(record?.proposal_id || '').trim());
+    const hasAgreementId = Boolean(String(record?.agreement_id || '').trim());
+    const sourceType = String(record?.source_type || '').trim().toLowerCase();
+    return sourceType === 'proposal' || (hasProposalId && !hasAgreementId);
+  },
+  async openProposalRecord(proposalId, trigger = null) {
+    const id = String(proposalId || '').trim();
+    if (!id) return UI.toast('Proposal is not linked to this POC request.', 'warning');
+    if (!window.Proposals?.openProposalFormById) return UI.toast('Proposal module is not available.');
+    if (typeof setActiveView === 'function') setActiveView('proposals');
+    return window.Proposals.openProposalFormById(id, { readOnly: true, trigger });
+  },
   closeDetails() {
     if (!E.technicalAdminDetailsModal) return;
     E.technicalAdminDetailsModal.classList.remove('open');
@@ -1015,7 +1039,9 @@ const TechnicalAdmin = {
       E.technicalAdminDetailsTitle.textContent = `Technical Admin Request ${row.technical_request_display || row.technical_request_number || row.technical_request_id || ''}`.trim();
     }
     if (E.technicalAdminDetailsContent) {
+      const isPocRow = this.isPocTechnicalFlow(row);
       const agreementId = String(row.agreement_id || '').trim();
+      const proposalId = String(row.proposal_id || '').trim();
       const hasAgreementId = !!agreementId;
       const hasAgreementNumberOnly = !hasAgreementId && !!String(row.agreement_number || '').trim();
       const previewDisabledAttr = hasAgreementId ? '' : 'disabled';
@@ -1025,18 +1051,18 @@ const TechnicalAdmin = {
       E.technicalAdminDetailsContent.innerHTML = `
         <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">
           <div><span class="muted">TR #:</span> ${U.escapeHtml(row.technical_request_display || row.technical_request_number || row.technical_request_id || '—')}</div>
-          <div><span class="muted">Agreement ID:</span> ${U.escapeHtml(row.agreement_id || '—')}</div>
-          <div><span class="muted">Agreement Number:</span> ${U.escapeHtml(row.agreement_number || '—')}</div>
+          <div><span class="muted">${U.escapeHtml(isPocRow ? 'Proposal ID:' : 'Agreement ID:')}</span> ${U.escapeHtml(isPocRow ? (row.proposal_id || '—') : (row.agreement_id || '—'))}</div>
+          <div><span class="muted">${U.escapeHtml(isPocRow ? 'Proposal Ref:' : 'Agreement Number:')}</span> ${U.escapeHtml(isPocRow ? (row.proposal_reference || '—') : (row.agreement_number || '—'))}</div>
           <div><span class="muted">Onboarding ID:</span> ${U.escapeHtml(row.onboarding_id || '—')}</div>
           <div><span class="muted">Client ID:</span> ${U.escapeHtml(row.client_id || '—')}</div>
           <div><span class="muted">Client Name:</span> ${U.escapeHtml(row.client_name || '—')}</div>
-          <div><span class="muted">Request Type:</span> ${U.escapeHtml(row.request_type || '—')}</div>
+          <div><span class="muted">Request Type:</span> ${U.escapeHtml(isPocRow ? 'POC' : (row.request_type || '—'))}</div>
           <div><span class="muted">Status:</span> ${this.statusBadge(row.request_status)}</div>
           <div><span class="muted">Number of Locations:</span> ${U.escapeHtml(String(row.number_of_locations || row.location_count || '—'))}</div>
           <div><span class="muted">Invoice Number:</span> ${U.escapeHtml(row.invoice_number || row.source_invoice_number || '—')}</div>
           <div style="grid-column:1/-1;"><span class="muted">Invoiced Locations:</span> ${U.escapeHtml(row.invoiced_location_names || row.invoiced_locations || row.location_names || '—')}</div>
-          <div><span class="muted">Service Start Date:</span> ${U.escapeHtml(this.toDisplayDate(row.service_start_date))}</div>
-          <div><span class="muted">Service End Date:</span> ${U.escapeHtml(this.toDisplayDate(row.service_end_date))}</div>
+          <div><span class="muted">${U.escapeHtml(isPocRow ? 'POC Start Date:' : 'Service Start Date:')}</span> ${U.escapeHtml(this.toDisplayDate(isPocRow ? (row.poc_start_date || row.service_start_date) : row.service_start_date))}</div>
+          <div><span class="muted">${U.escapeHtml(isPocRow ? 'POC End Date:' : 'Service End Date:')}</span> ${U.escapeHtml(this.toDisplayDate(isPocRow ? (row.poc_end_date || row.service_end_date) : row.service_end_date))}</div>
           <div><span class="muted">Billing Frequency:</span> ${U.escapeHtml(row.billing_frequency || '—')}</div>
           <div><span class="muted">Payment Term:</span> ${U.escapeHtml(row.payment_term || row.payment_terms || '—')}</div>
           <div><span class="muted">Requested By:</span> ${U.escapeHtml(this.getUserDisplayName(row, 'requested'))}</div>
@@ -1051,9 +1077,11 @@ const TechnicalAdmin = {
         </div>
         <div class="actions" style="justify-content:flex-end;gap:8px;margin-top:14px;">
           <div style="margin-right:auto;display:flex;flex-direction:column;gap:4px;align-items:flex-start;">
-            <button class="btn ghost" type="button" data-permission-resource="agreements" data-permission-action="view" data-technical-open-agreement-detail="${U.escapeAttr(agreementId)}" ${previewDisabledAttr}>Open Agreement</button>
+            ${isPocRow
+              ? `<button class="btn ghost" type="button" data-permission-resource="proposals" data-permission-action="view" data-technical-open-proposal-detail="${U.escapeAttr(proposalId)}" ${proposalId ? '' : 'disabled title="Proposal is not linked to this POC request."'}>Open Proposal</button>`
+              : `<button class="btn ghost" type="button" data-permission-resource="agreements" data-permission-action="view" data-technical-open-agreement-detail="${U.escapeAttr(agreementId)}" ${previewDisabledAttr}>Open Agreement</button>
             <button class="btn ghost" type="button" data-permission-resource="agreements" data-permission-action="view" data-technical-preview-detail="${U.escapeAttr(agreementId)}" ${previewDisabledAttr}>Preview Agreement</button>
-            ${previewHint}
+            ${previewHint}`}
           </div>
           <button class="btn ghost" type="button" data-permission-resource="technical_admin_requests" data-permission-action="update_status" data-technical-status="In Progress">Mark In Progress</button>
           <button class="btn ghost" type="button" data-permission-resource="technical_admin_requests" data-permission-action="update_status" data-technical-status="Completed">Mark Completed</button>
@@ -1239,6 +1267,15 @@ const TechnicalAdmin = {
           if (action === 'open-agreement') return this.runRowAction(`open-agreement:${requestId}`, trigger, () => this.openAgreementRecord(agreementId, trigger), 'Opening…');
           return this.runRowAction(`preview:${requestId}`, trigger, () => this.previewAgreement(agreementId), 'Loading…');
         }
+        if (action === 'open-proposal') {
+          const proposalId = String(trigger.getAttribute('data-proposal-id') || '').trim();
+          if (!proposalId) {
+            UI.toast('Proposal is not linked to this POC request.', 'warning');
+            return;
+          }
+          const requestId = trigger.getAttribute('data-request-id') || proposalId;
+          return this.runRowAction(`open-proposal:${requestId}`, trigger, () => this.openProposalRecord(proposalId, trigger), 'Opening…');
+        }
         if (action === 'filter-status') { this.state.status = String(trigger.getAttribute('data-status') || 'All'); this.applyFilters(); this.renderFilters(); this.render(); return; }
         if (action === 'filter-assignee') { this.state.assignee = String(trigger.getAttribute('data-assignee-id') || 'All Assignees'); this.applyFilters(); this.renderFilters(); this.render(); return; }
         if (action === 'filter-kpi') {
@@ -1268,6 +1305,12 @@ const TechnicalAdmin = {
           const openId = String(openAgreementBtn.getAttribute('data-technical-open-agreement-detail') || '').trim();
           if (!openId) return UI.toast('Linked agreement not available');
           return this.openAgreementRecord(openId, openAgreementBtn);
+        }
+        const openProposalBtn = event.target?.closest?.('button[data-technical-open-proposal-detail]');
+        if (openProposalBtn) {
+          const proposalId = String(openProposalBtn.getAttribute('data-technical-open-proposal-detail') || '').trim();
+          if (!proposalId) return UI.toast('Proposal is not linked to this POC request.', 'warning');
+          return this.openProposalRecord(proposalId, openProposalBtn);
         }
         const previewBtn = event.target?.closest?.('button[data-technical-preview-detail]');
         if (previewBtn) {
