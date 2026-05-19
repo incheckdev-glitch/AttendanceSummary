@@ -1459,6 +1459,7 @@ Sample:
               </select>
               <button id="clientsRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
               <button id="clientsCreateBtn" class="btn sm" type="button">New Client</button>
+              <button id="importOldClientBtn" class="btn ghost sm" type="button">Import Old Client</button>
             </div>
           </div>
           <div id="clientsState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
@@ -1610,6 +1611,39 @@ Sample:
             <div class="actions" style="grid-column:1/-1;justify-content:flex-end;">
               <button id="newClientCancelBtn" class="btn ghost" type="button">Cancel</button>
               <button id="newClientSaveBtn" class="btn" type="submit">Save Client</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div id="importOldClientModal" class="modal" aria-hidden="true">
+        <div class="modal-content" style="max-width:860px;">
+          <div class="header">
+            <strong>Import Old Client</strong>
+            <button id="importOldClientCloseBtn" class="modal-close" type="button" aria-label="Close">×</button>
+          </div>
+          <form id="importOldClientForm" class="grid cols-2" style="gap:10px;">
+            <input class="input" name="legal_company_name" placeholder="Legal Company Name *" required />
+            <input class="input" name="company_name" placeholder="Company Name *" required />
+            <input class="input" name="country" placeholder="Country *" required />
+            <input class="input" name="city" placeholder="City *" required />
+            <input class="input" name="address" placeholder="Address *" required style="grid-column:1/-1;" />
+            <input class="input" name="main_contact_name" placeholder="Main Contact Name *" required />
+            <input class="input" name="main_contact_email" type="email" placeholder="Main Contact Email *" required />
+            <input class="input" name="main_contact_phone" placeholder="Main Contact Phone *" required />
+            <input class="input" name="legacy_client_ref" placeholder="Legacy Client Ref" />
+            <input class="input" name="account_number" placeholder="Account Number" />
+            <input class="input" name="industry" placeholder="Industry" />
+            <input class="input" name="tax_vat_number" placeholder="Tax/VAT Number" />
+            <input class="input" name="billing_email" type="email" placeholder="Billing Email" />
+            <input class="input" name="currency" placeholder="Currency" value="USD" />
+            <input class="input" name="old_client_since_date" type="date" placeholder="Old Client Since Date" />
+            <select class="select" name="status"><option value="Active">Active</option><option value="Inactive">Inactive</option></select>
+            <textarea class="input" name="notes" placeholder="Notes" style="grid-column:1/-1;min-height:70px;"></textarea>
+            <label style="grid-column:1/-1;display:flex;gap:8px;align-items:flex-start;"><input type="checkbox" name="historical_lock" checked disabled /><span>Imported historical client — do not run workflows</span></label>
+            <div class="actions" style="grid-column:1/-1;justify-content:flex-end;">
+              <button id="importOldClientCancelBtn" class="btn ghost" type="button">Cancel</button>
+              <button class="btn" type="submit">Import Client</button>
             </div>
           </form>
         </div>
