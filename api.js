@@ -1052,6 +1052,62 @@ const Api = {
       technical_request: this.unwrapApiPayload(technicalRequest) || technicalRequest || null
     };
   },
+  async requestPocTechnicalAdmin({ onboardingId = '', message = '' } = {}) {
+    const normalizedOnboardingId = String(onboardingId || '').trim();
+    if (!normalizedOnboardingId) throw new Error('onboarding_id is required for POC technical requests.');
+    const onboardingResponse = await this.getOperationsOnboarding({ id: normalizedOnboardingId });
+    const onboarding = this.unwrapApiPayload(onboardingResponse)?.onboarding || this.unwrapApiPayload(onboardingResponse) || onboardingResponse || {};
+    const isPoc = String(onboarding.onboarding_type || onboarding.request_type || '').trim().toLowerCase() === 'poc';
+    if (!isPoc) throw new Error('Selected onboarding row is not a POC onboarding row.');
+    const proposalId = String(onboarding.proposal_id || onboarding.source_id || '').trim();
+    const requestMessage = String(message || onboarding.poc_notes || onboarding.request_message || 'Please proceed with POC technical setup.').trim();
+    const payload = {
+      onboarding_id: normalizedOnboardingId,
+      onboarding_type: 'poc',
+      request_type: 'poc',
+      source_type: 'proposal',
+      source_id: proposalId || null,
+      proposal_id: proposalId || null,
+      agreement_id: null,
+      agreement_number: null,
+      client_id: onboarding.client_id || onboarding.company_id || null,
+      client_name: onboarding.client_name || onboarding.legal_company_name || onboarding.company_name || null,
+      location_count: Number(onboarding.poc_location_count || onboarding.location_count || onboarding.number_of_locations || 0) || null,
+      number_of_locations: Number(onboarding.poc_location_count || onboarding.location_count || onboarding.number_of_locations || 0) || null,
+      service_start_date: onboarding.poc_start_date || onboarding.poc_service_start_date || onboarding.service_start_date || null,
+      service_end_date: onboarding.poc_end_date || onboarding.poc_service_end_date || onboarding.service_end_date || null,
+      request_message: requestMessage,
+      request_details: requestMessage,
+      technical_request_details: requestMessage,
+      requested_at: new Date().toISOString(),
+      technical_request_status: 'Requested',
+      request_status: 'Requested'
+    };
+    const existingList = await this.listTechnicalAdminRequests({ onboarding_id: normalizedOnboardingId, request_type: 'poc' });
+    const existingRows = this.normalizeListResponse(existingList).rows || [];
+    const existingActive = existingRows.find(row => !['cancelled', 'canceled', 'rejected'].includes(String(row.request_status || '').trim().toLowerCase()));
+    let technicalRequest;
+    if (existingActive?.id || existingActive?.technical_request_id) {
+      technicalRequest = await this.requestWithSession('technical_admin_requests', 'update', {
+        technical_request_id: String(existingActive.technical_request_id || existingActive.id).trim(),
+        updates: payload
+      });
+    } else {
+      technicalRequest = await this.requestWithSession('technical_admin_requests', 'save', { technical_admin_request: payload });
+    }
+    await this.updateOperationsOnboardingAction({
+      onboardingId: normalizedOnboardingId,
+      updates: {
+        onboarding_status: 'Technical Requested',
+        technical_request_status: 'Requested',
+        request_status: 'Requested',
+        request_type: 'POC',
+        technical_request_type: 'POC',
+        request_message: requestMessage
+      }
+    });
+    return { operations_onboarding: onboarding, technical_request: this.unwrapApiPayload(technicalRequest) || technicalRequest };
+  },
   async assignAgreementCsm(agreementId, assignment = {}) {
     return this.requestWithSession('agreements', 'assign_csm', {
       agreement_id: agreementId,

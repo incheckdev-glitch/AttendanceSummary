@@ -6945,6 +6945,37 @@
         }, 'proposals:create').catch(error => {
           console.warn('[notifications:pwa] proposals:create failed', error);
         });
+        const proposalStatus = String(created.status || '').trim().toLowerCase();
+        const hasPoc = Boolean(created.is_poc || created.poc_enabled || created.has_poc || created.include_poc || created.poc_checked || created.proof_of_concept_enabled);
+        if (proposalStatus === 'accepted' && hasPoc) {
+          const proposalUuid = String(created.id || '').trim();
+          const existingRes = await client
+            .from('operations_onboarding')
+            .select('id')
+            .eq('source_type', 'proposal')
+            .eq('source_id', proposalUuid)
+            .eq('onboarding_type', 'poc')
+            .limit(1);
+          const existing = Array.isArray(existingRes?.data) ? existingRes.data[0] : null;
+          const pocPayload = {
+            proposal_id: proposalUuid,
+            source_type: 'proposal',
+            source_id: proposalUuid,
+            onboarding_type: 'poc',
+            request_type: 'POC',
+            proposal_reference: created.proposal_id || created.ref_number || null,
+            client_id: created.company_id || null,
+            client_name: created.legal_company_name || created.company_name || null,
+            onboarding_status: 'Pending Technical Request',
+            poc_start_date: created.poc_start_date || created.poc_service_start_date || null,
+            poc_end_date: created.poc_end_date || created.poc_service_end_date || null,
+            poc_location_count: created.poc_location_count || null,
+            poc_notes: created.poc_notes || created.poc_scope || null,
+            requested_by: created.created_by || null
+          };
+          if (existing?.id) await client.from('operations_onboarding').update(pocPayload).eq('id', existing.id);
+          else await client.from('operations_onboarding').insert(pocPayload);
+        }
       }
       if (resource === 'agreements') {
         await createNotificationAndPush({
@@ -7415,6 +7446,35 @@
       }
       if (resource === 'proposals') {
         const nextStatus = String(data?.status || '').trim().toLowerCase();
+        const hasPoc = Boolean(data?.is_poc || data?.poc_enabled || data?.has_poc || data?.include_poc || data?.poc_checked || data?.proof_of_concept_enabled);
+        if (nextStatus === 'accepted' && hasPoc) {
+          const proposalUuid = String(data?.id || id || '').trim();
+          const existingRes = await client
+            .from('operations_onboarding')
+            .select('id')
+            .eq('source_type', 'proposal')
+            .eq('source_id', proposalUuid)
+            .eq('onboarding_type', 'poc')
+            .limit(1);
+          const existing = Array.isArray(existingRes?.data) ? existingRes.data[0] : null;
+          const pocPayload = {
+            proposal_id: proposalUuid,
+            source_type: 'proposal',
+            source_id: proposalUuid,
+            onboarding_type: 'poc',
+            request_type: 'POC',
+            proposal_reference: data?.proposal_id || data?.ref_number || null,
+            client_id: data?.company_id || null,
+            client_name: data?.legal_company_name || data?.company_name || null,
+            onboarding_status: 'Pending Technical Request',
+            poc_start_date: data?.poc_start_date || data?.poc_service_start_date || null,
+            poc_end_date: data?.poc_end_date || data?.poc_service_end_date || null,
+            poc_location_count: data?.poc_location_count || null,
+            poc_notes: data?.poc_notes || data?.poc_scope || null
+          };
+          if (existing?.id) await client.from('operations_onboarding').update(pocPayload).eq('id', existing.id);
+          else await client.from('operations_onboarding').insert(pocPayload);
+        }
         if (nextStatus && IMPORTANT_PROPOSAL_STATUSES.has(nextStatus) && previousProposalStatus.trim().toLowerCase() !== nextStatus) {
           await createNotificationAndPush({
             title: 'Proposal updated',
