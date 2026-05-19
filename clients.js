@@ -1326,14 +1326,13 @@ const Clients = {
     return rawStatus || this.getPaymentStatus(row) || 'Not Paid';
   },
   getRenewalStatus(row = {}) {
-    const days = this.getDaysLeft(row.renewal_date || row.renewalDate || row.service_end_date);
-    const paymentStatus = this.getPaymentStatus(row);
-    if (days === null) return paymentStatus || 'Unknown';
-    if (days < 0) return 'Renewal Overdue';
-    if (days <= 7) return 'Renewal Due in 7 days';
-    if (days <= 30) return 'Renewal Due in 30 days';
-    if (days <= 60) return 'Renewal Due in 60 days';
-    return paymentStatus === 'Overdue' ? 'Payment Overdue' : 'Scheduled';
+    const serviceEnd = String(row.service_end_date || row.renewal_date || row.renewalDate || '').trim();
+    const days = this.getDaysLeft(serviceEnd);
+    if (days === null) return 'Unknown';
+    if (days < 0) return 'Expired';
+    if (days === 0) return 'Due';
+    if (days <= 30) return 'Due Soon';
+    return 'Active';
   },
   isAgreementStillActive(agreement) {
     const status = String(agreement?.status || '').trim().toLowerCase();
@@ -2032,7 +2031,45 @@ const Clients = {
     const receipts = this.listClientRelatedReceipts_(clientId);
     const rows = [];
 
-    const pickRelatedInvoice = (item = {}, agreement = {}) => {
+    const invoiceItems = this.listClientRelatedInvoiceItems_(clientId);
+
+    const pickRelatedInvoiceItem = (item = {}, agreement = {}) => {
+      const agreementItemKeys = [item.id, item.item_id, item.agreement_item_id, item.agreementItemId]
+        .map(v => String(v || '').trim())
+        .filter(Boolean);
+      const agreementKeys = [agreement.id, agreement.agreement_id, agreement.agreement_number, item.agreement_id, item.agreement_number]
+        .map(v => String(v || '').trim())
+        .filter(Boolean);
+      const locationToken = this.normalizeText(item.location_name || item.locationName || '');
+      const moduleToken = this.normalizeText(item.module_name || item.moduleName || item.item_name || item.itemName || '');
+      return invoiceItems.find(invItem => {
+        const sourceKeys = [invItem.source_agreement_item_id, invItem.agreement_item_id, invItem.agreementItemId, invItem.item_id]
+          .map(v => String(v || '').trim())
+          .filter(Boolean);
+        if (sourceKeys.length && agreementItemKeys.some(key => sourceKeys.some(source => this.valuesMatch(source, key)))) return true;
+        const invAgreementKeys = [invItem.agreement_id, invItem.source_agreement_id, invItem.agreement_number]
+          .map(v => String(v || '').trim())
+          .filter(Boolean);
+        const agreementMatch = agreementKeys.some(key => invAgreementKeys.some(invKey => this.valuesMatch(invKey, key)));
+        if (!agreementMatch) return false;
+        const invLocationToken = this.normalizeText(invItem.location_name || invItem.locationName || '');
+        const invModuleToken = this.normalizeText(invItem.module_name || invItem.moduleName || invItem.item_name || invItem.itemName || '');
+        return (locationToken && invLocationToken && locationToken === invLocationToken)
+          || (moduleToken && invModuleToken && moduleToken === invModuleToken);
+      }) || null;
+    };
+
+    const pickRelatedInvoice = (item = {}, agreement = {}, relatedInvoiceItem = null) => {
+      const linkedInvoiceKeys = relatedInvoiceItem
+        ? [relatedInvoiceItem.invoice_id, relatedInvoiceItem.parent_invoice_id, relatedInvoiceItem.invoice_number].map(v => String(v || '').trim()).filter(Boolean)
+        : [];
+      if (linkedInvoiceKeys.length) {
+        const linked = invoices.find(invoice => {
+          const invoiceKeys = [invoice.id, invoice.invoice_id, invoice.invoice_number].map(v => String(v || '').trim()).filter(Boolean);
+          return linkedInvoiceKeys.some(linkKey => invoiceKeys.some(invoiceKey => this.valuesMatch(invoiceKey, linkKey)));
+        });
+        if (linked) return linked;
+      }
       const itemKeyTokens = [
         item.id, item.item_id, item.agreement_item_id, item.agreementItemId,
         item.location_name, item.locationName, item.module_name, item.moduleName,
@@ -2061,7 +2098,9 @@ const Clients = {
 
     locationItems.forEach(item => {
       const agreement = this.findAgreementForItem_(item, agreements);
-      const relatedInvoice = pickRelatedInvoice(item, agreement);
+      const relatedInvoiceItem = pickRelatedInvoiceItem(item, agreement);
+      const relatedInvoice = pickRelatedInvoice(item, agreement, relatedInvoiceItem);
+      if (!relatedInvoice) return;
       const relatedReceipts = relatedInvoice ? relatedReceiptsForInvoice(relatedInvoice) : [];
       const latestReceipt = relatedReceipts
         .slice()
@@ -2082,9 +2121,17 @@ const Clients = {
           paymentStatus = daysLeft !== null && daysLeft < 0 ? 'Overdue' : 'Not Paid';
         }
       }
-      const serviceStart = this.getField(item, 'service_start_date', 'serviceStartDate', 'start_date', 'startDate') || agreement.service_start_date || agreement.effective_date || agreement.agreement_date || '';
-      const serviceEnd = this.getField(item, 'service_end_date', 'serviceEndDate', 'end_date', 'endDate') || agreement.service_end_date || '';
-      const renewalDate = this.getField(item, 'service_end_date', 'serviceEndDate', 'renewal_date', 'renewalDate') || agreement.service_end_date || '';
+      const serviceStart = this.getField(relatedInvoiceItem, 'service_start_date', 'serviceStartDate')
+        || this.getField(item, 'service_start_date', 'serviceStartDate', 'start_date', 'startDate')
+        || agreement.service_start_date
+        || agreement.effective_date
+        || agreement.agreement_date
+        || '';
+      const serviceEnd = this.getField(relatedInvoiceItem, 'service_end_date', 'serviceEndDate')
+        || this.getField(item, 'service_end_date', 'serviceEndDate', 'end_date', 'endDate')
+        || agreement.service_end_date
+        || '';
+      const renewalDate = serviceEnd || String(relatedInvoice?.invoice_date || relatedInvoice?.issue_date || relatedInvoice?.issued_at || relatedInvoice?.created_at || '').trim();
       rows.push(this.normalizeRenewalRow({
         ...item,
         source: 'agreement_item',
@@ -2102,7 +2149,7 @@ const Clients = {
         invoice_uuid: relatedInvoice?.id || relatedInvoice?.invoice_uuid || '',
         invoice_id: relatedInvoice?.id || relatedInvoice?.invoice_id || '',
         invoice_number: relatedInvoice?.invoice_number || '',
-        invoice_item_id: item.invoice_item_id || item.invoiceItemId || '',
+        invoice_item_id: relatedInvoiceItem?.id || relatedInvoiceItem?.item_id || item.invoice_item_id || item.invoiceItemId || '',
         source_agreement_item_id: item.id || item.item_id || item.agreement_item_id || item.agreementItemId || '',
         client_name: agreement.customer_name || agreement.customer_legal_name || client.customer_name || client.client_name || client.company_name || '—',
         location_name: this.getField(item, 'location_name', 'locationName', 'location', 'site', 'site_name', 'branch', 'branch_name', 'store_name') || this.getField(item, 'description', 'item_name', 'itemName') || 'Location',
