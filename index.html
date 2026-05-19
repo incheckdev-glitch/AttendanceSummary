@@ -1619,7 +1619,7 @@ Sample:
       <div id="importOldClientModal" class="modal" aria-hidden="true">
         <div class="modal-content" style="max-width:980px;">
           <div class="header">
-            <strong>Import Old Client Agreement</strong>
+            <div style="display:flex;align-items:center;gap:8px;"><strong>Import Old Client Agreement</strong><span class="badge warning">Historical / Imported Agreement</span></div>
             <button id="importOldClientCloseBtn" class="modal-close" type="button" aria-label="Close">×</button>
           </div>
           <form id="importOldClientForm" class="grid cols-2" style="gap:10px;">
@@ -1681,7 +1681,7 @@ Sample:
                   <tbody id="importOldAnnualItemsTbody"></tbody>
                 </table>
               </div>
-              <div class="actions" style="justify-content:flex-start;margin-top:8px;"><button id="importOldAddAnnualRowBtn" class="btn ghost sm" type="button">Add Row</button></div>
+              <div class="actions" style="justify-content:flex-start;margin-top:8px;"><button id="importOldAddAnnualRowBtn" class="btn ghost sm" type="button" data-import-agreement-action="add-annual-saas-row">Add Row</button></div>
             </div>
             <div class="card" style="grid-column:1/-1;margin:0;padding:12px;">
               <strong>One Time Fee Items</strong>
@@ -1691,7 +1691,7 @@ Sample:
                   <tbody id="importOldOneTimeItemsTbody"></tbody>
                 </table>
               </div>
-              <div class="actions" style="justify-content:flex-start;margin-top:8px;"><button id="importOldAddOneTimeRowBtn" class="btn ghost sm" type="button">Add Row</button></div>
+              <div class="actions" style="justify-content:flex-start;margin-top:8px;"><button id="importOldAddOneTimeRowBtn" class="btn ghost sm" type="button" data-import-agreement-action="add-one-time-fee-row">Add Row</button></div>
             </div>
             <div class="card" style="grid-column:1/-1;margin:0;padding:12px;">
               <strong>Totals Summary</strong>
