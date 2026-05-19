@@ -94,25 +94,44 @@ const TechnicalAdmin = {
   isUuid(value = '') {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
   },
-  formatTechnicalRequestNumber(record = {}, index = null) {
+  formatTechnicalRequestNumber(record = {}, index = 0) {
     const safe = record && typeof record === 'object' ? record : {};
-    const rawValue = String(this.pick(
-      safe.technical_admin_request_no, safe.technicalRequestNo,
-      safe.technical_request_number, safe.technicalRequestNumber,
-      safe.request_number, safe.requestNumber,
-      safe.reference_number, safe.referenceNumber,
-      safe.display_id, safe.displayId
-    ) || '').trim();
-    const formatPadded = value => `TR #${String(Math.max(0, Number(value) || 0)).padStart(5, '0')}`;
-    if (rawValue) {
-      const normalized = rawValue.replace(/\s+/g, ' ').trim();
-      if (/^\d+$/.test(normalized)) return formatPadded(normalized);
-      const trMatch = normalized.match(/^TR\s*#?\s*(\d+)$/i);
-      if (trMatch) return formatPadded(trMatch[1]);
-      if (!this.isUuid(normalized)) return normalized;
+    const raw = this.pick(
+      safe.technical_request_ref,
+      safe.technical_request_no,
+      safe.technical_request_number,
+      safe.request_number,
+      safe.display_id,
+      safe.reference_number,
+      safe.technical_admin_request_no,
+      safe.technicalRequestNo,
+      safe.technicalRequestNumber,
+      safe.requestNumber,
+      safe.displayId,
+      safe.referenceNumber
+    );
+
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
+      return `TR #${String(raw).padStart(5, '0')}`;
     }
-    if (Number.isFinite(Number(index)) && Number(index) >= 0) return formatPadded(Number(index) + 1);
-    return 'TR #00000';
+
+    if (typeof raw === 'string' && raw.trim()) {
+      const value = raw.trim();
+
+      const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+      if (uuidLike) return `TR #${String(index + 1).padStart(5, '0')}`;
+
+      const numberMatch = value.match(/\d+/);
+      if (value.toUpperCase().startsWith('TR') && numberMatch) {
+        return `TR #${String(Number(numberMatch[0])).padStart(5, '0')}`;
+      }
+
+      if (/^\d+$/.test(value)) {
+        return `TR #${String(Number(value)).padStart(5, '0')}`;
+      }
+    }
+
+    return `TR #${String(index + 1).padStart(5, '0')}`;
   },
   toDisplayDate(value) {
     const raw = String(value || '').trim();
@@ -267,7 +286,6 @@ const TechnicalAdmin = {
     return peopleById;
   },
   extractAgreementTokens(agreement = {}) {
-    const technicalRequestDisplayNumber = this.formatTechnicalRequestNumber(source);
     return {
       id: String(this.pick(agreement.id, agreement.agreement_id, agreement.agreementId)).trim(),
       number: String(this.pick(agreement.agreement_number, agreement.number, agreement.agreement_code, agreement.agreementNumber)).trim()
