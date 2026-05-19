@@ -1520,7 +1520,8 @@ const Proposals = {
     normalized.discountPercent = normalized.discount_percent;
 
     if (section === 'annual_saas') {
-      if (!normalized.quantity) normalized.quantity = 12;
+      const isUserBased = this.isAnnualSaasUserItem(normalized);
+      normalized.quantity = Math.max(1, normalized.quantity || (isUserBased ? 1 : 12));
       if (!normalized.service_start_date) normalized.service_start_date = this.getDefaultAnnualServiceStartDate();
       if (!normalized.service_end_date) normalized.service_end_date = this.addMonthsMinusOneDay(normalized.service_start_date, normalized.quantity);
     } else if (section === 'one_time_fee') {
@@ -3250,7 +3251,8 @@ const Proposals = {
         const discountLockAttr = annualDiscountLocked ? ' readonly aria-readonly="true" title="Discount is only available when License / Month is 12 or higher."' : '';
         const quantityLockAttr = oneTimeQuantityLocked ? ' readonly aria-readonly="true" title="Quantity is linked to the number of SaaS subscription rows."' : '';
         const discountCell = `<td><input class="input" type="number" step="0.01" min="0" max="100" data-item-field="discount_percent" value="${U.escapeAttr(annualDiscountLocked ? 0 : (computed.discount_percent ?? ''))}"${discountLockAttr} /></td>`;
-        const quantityCell = `<td><input class="input" type="number" step="0.01" min="0.01" ${section === 'annual_saas' && !isAnnualUserBased ? 'max="12"' : ''} data-item-field="quantity" value="${U.escapeAttr(oneTimeQuantityLocked ? (computed.quantity || 1) : (computed.quantity ?? ''))}"${quantityLockAttr} /></td>`;
+        const annualUserQtyAttrs = section === 'annual_saas' && isAnnualUserBased ? 'step="1" min="1"' : 'step="0.01" min="1"';
+        const quantityCell = `<td><input class="input" type="number" ${annualUserQtyAttrs} ${section === 'annual_saas' && !isAnnualUserBased ? 'max="12"' : ''} data-item-field="quantity" value="${U.escapeAttr(oneTimeQuantityLocked ? (computed.quantity || 1) : (computed.quantity ?? ''))}"${quantityLockAttr} /></td>`;
         const commercialCells = section === 'annual_saas'
           ? `${quantityCell}${serviceDateCells}${discountCell}`
           : `${discountCell}${quantityCell}`;
@@ -3422,7 +3424,8 @@ const Proposals = {
           quantity: get('quantity')
         };
         const isAnnualUserBased = section === 'annual_saas' && this.isAnnualSaasUserItem(annualRowDraft);
-        let quantity = Math.max(0, this.toNumberSafe(get('quantity')) || (section === 'annual_saas' ? (isAnnualUserBased ? 1 : 12) : 1));
+        let quantity = Math.max(1, this.toNumberSafe(get('quantity')) || (section === 'annual_saas' ? (isAnnualUserBased ? 1 : 12) : 1));
+        if (section === 'annual_saas' && isAnnualUserBased) quantity = Math.max(1, Math.round(quantity));
         if (section === 'one_time_fee' && !this.isCsHoursItem({ item_name: get('item_name') })) quantity = linkedOneTimeQuantity;
         let discountPercent = this.normalizeDiscountPercentValue(get('discount_percent'));
         if (section === 'annual_saas' && !isAnnualUserBased && quantity < 12) discountPercent = 0;
