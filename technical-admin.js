@@ -8,6 +8,12 @@ const TechnicalAdmin = {
     initialized: false,
     search: '',
     status: 'All',
+    assignee: 'All Assignees',
+    client: 'All Clients',
+    dateRangeDays: '30',
+    onlyOverdue: false,
+    myRequestsOnly: false,
+    volumeRangeDays: 30,
     page: 1,
     limit: 50,
     offset: 0,
@@ -645,6 +651,11 @@ const TechnicalAdmin = {
   applyFilters() {
     const query = String(this.state.search || '').trim().toLowerCase();
     const statusFilter = String(this.state.status || 'All').trim();
+    const assigneeFilter = String(this.state.assignee || 'All Assignees').trim();
+    const clientFilter = String(this.state.client || 'All Clients').trim();
+    const days = Number(this.state.dateRangeDays || 30);
+    const cutoff = Number.isFinite(days) && days > 0 ? (Date.now() - (days * 86400000)) : null;
+    const currentUser = String(window.Session?.user?.()?.profile?.name || window.Session?.user?.()?.email || '').trim().toLowerCase();
     this.state.filteredRows = this.state.rows.filter(row => {
       const hay = [
         row.technical_request_id,
@@ -663,7 +674,19 @@ const TechnicalAdmin = {
         .join(' ')
         .toLowerCase();
       if (query && !hay.includes(query)) return false;
-      return statusFilter === 'All' || row.request_status === statusFilter;
+      if (statusFilter !== 'All' && row.request_status !== statusFilter) return false;
+      const assignee = String(row.assigned_to_display || row.assigned_to || '').trim();
+      const client = String(row.client_name || '').trim();
+      if (assigneeFilter !== 'All Assignees' && assignee !== assigneeFilter) return false;
+      if (clientFilter !== 'All Clients' && client !== clientFilter) return false;
+      const due = new Date(this.pick(row.service_start_date, row.target_date, row.due_date)).getTime();
+      if (this.state.onlyOverdue && (!due || due >= Date.now())) return false;
+      if (this.state.myRequestsOnly && currentUser && !String(assignee).toLowerCase().includes(currentUser)) return false;
+      if (cutoff) {
+        const created = new Date(this.pick(row.created_at, row.requested_at, row.updated_at)).getTime();
+        if (created && created < cutoff) return false;
+      }
+      return true;
     });
   },
   canUpdateStatus() {
@@ -676,18 +699,66 @@ const TechnicalAdmin = {
     if (!E.technicalAdminSummary) return;
     const rows = this.state.filteredRows;
     const total = rows.length;
-    const requested = rows.filter(row => this.statusBucket(row.request_status) === 'Requested').length;
+    const requested = rows.filter(row => !/completed|cancelled/i.test(String(row.request_status || ''))).length;
     const inProgress = rows.filter(row => this.statusBucket(row.request_status) === 'In Progress').length;
-    const completed = rows.filter(row => this.statusBucket(row.request_status) === 'Completed').length;
+    const now = new Date();
+    const overdue = rows.filter(row => new Date(this.pick(row.service_start_date, row.target_date, row.due_date)).getTime() < Date.now() && !/completed|cancelled/i.test(String(row.request_status || ''))).length;
+    const completed = rows.filter(row => {
+      if (this.statusBucket(row.request_status) !== 'Completed') return false;
+      const d = new Date(this.pick(row.completed_at, row.updated_at));
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    }).length;
     const cards = [
-      ['Total Requests', total],
-      ['Requested', requested],
+      ['Pending Requests', requested],
       ['In Progress', inProgress],
-      ['Completed', completed]
+      ['Overdue / SLA Risk', overdue],
+      ['Completed This Month', completed]
     ];
     E.technicalAdminSummary.innerHTML = cards
-      .map(([label, value]) => `<div class="card kpi"><div class="label">${U.escapeHtml(label)}</div><div class="value">${U.escapeHtml(String(value))}</div></div>`)
+      .map(([label, value]) => `<button class="technical-admin-kpi-card" data-kpi-filter="${U.escapeAttr(label)}"><div class="label">${U.escapeHtml(label)}</div><div class="value">${U.escapeHtml(String(value))}</div><div class="muted">Live from filtered dataset</div></button>`)
       .join('');
+    this.renderSecondaryMetrics(rows);
+    this.renderDashboardPanels(rows);
+  },
+  renderSecondaryMetrics(rows = []) {
+    const host = document.getElementById('technicalAdminSecondaryMetrics'); if (!host) return;
+    const open = rows.filter(r => !/completed|cancelled/i.test(String(r.request_status || '')));
+    const clients = new Set(open.map(r => String(r.client_name || '').trim()).filter(Boolean));
+    const unassigned = open.filter(r => !String(r.assigned_to || r.assigned_to_display || '').trim()).length;
+    const locations = rows.reduce((a, r) => a + Number(r.number_of_locations || r.location_count || 0), 0);
+    const dueWeek = open.filter(r => { const d = new Date(this.pick(r.service_start_date, r.target_date, r.due_date)).getTime(); return d && d <= Date.now() + 7 * 86400000 && d >= Date.now(); }).length;
+    host.innerHTML = [['Total Requests', rows.length], ['Active Clients', clients.size], ['Total Locations', locations], ['Unassigned', unassigned], ['Due This Week', dueWeek]]
+      .map(([l,v]) => `<div class="technical-admin-kpi-card"><div class="label">${U.escapeHtml(l)}</div><div class="value">${U.escapeHtml(String(v))}</div></div>`).join('');
+  },
+  renderDashboardPanels(rows = []) {
+    const statusHost = document.getElementById('technicalAdminStatusPipeline');
+    const workloadHost = document.getElementById('technicalAdminAssigneeWorkload');
+    const critHost = document.getElementById('technicalAdminCriticalQueue');
+    const upcomingHost = document.getElementById('technicalAdminUpcomingPanel');
+    const recentHost = document.getElementById('technicalAdminRecentActivity');
+    const volumeHost = document.getElementById('technicalAdminVolumeChart');
+    if (statusHost) {
+      const counts = rows.reduce((a,r)=>{const k=String(r.request_status||'Unknown');a[k]=(a[k]||0)+1;return a;},{});
+      const total = rows.length || 1;
+      statusHost.innerHTML = Object.entries(counts).map(([k,v])=>`<div class="technical-admin-mini-row"><button class="btn ghost sm" data-status-quick="${U.escapeAttr(k)}">${U.escapeHtml(k)}</button><span>${v} (${Math.round(v*100/total)}%)</span></div>`).join('');
+    }
+    if (workloadHost) {
+      const open = rows.filter(r=>!/completed|cancelled/i.test(String(r.request_status||'')));
+      const map = {};
+      open.forEach(r=>{const a=String(r.assigned_to_display||r.assigned_to||'Unassigned'); map[a]=(map[a]||0)+1;});
+      workloadHost.innerHTML = Object.entries(map).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([a,v])=>`<div class="technical-admin-mini-row"><button class="btn ghost sm" data-assignee-quick="${U.escapeAttr(a)}">${U.escapeHtml(a)}</button><strong>${v}</strong></div>`).join('');
+    }
+    const dueRows = rows.map(r=>({r,d:new Date(this.pick(r.service_start_date,r.target_date,r.due_date)).getTime()})).filter(x=>x.d).sort((a,b)=>a.d-b.d);
+    if (upcomingHost) upcomingHost.innerHTML = dueRows.slice(0,6).map(({r,d})=>`<div class="technical-admin-mini-row"><span>${U.escapeHtml(r.technical_request_id||r.id||'')} · ${U.escapeHtml(r.client_name||'')}</span><span>${Math.ceil((d-Date.now())/86400000)}d</span></div>`).join('');
+    if (critHost) critHost.innerHTML = dueRows.filter(x=>x.d < Date.now()).slice(0,6).map(({r,d})=>`<div class="technical-admin-mini-row"><span>${U.escapeHtml(r.technical_request_id||r.id||'')} overdue</span><button class="btn ghost sm" data-technical-open="${U.escapeAttr(r.id||r.technical_request_id||'')}">Open</button></div>`).join('') || '<div class="muted">No critical items.</div>';
+    if (recentHost) recentHost.innerHTML = rows.slice().sort((a,b)=>new Date(b.updated_at)-new Date(a.updated_at)).slice(0,6).map(r=>`<div class="technical-admin-mini-row"><span>${U.escapeHtml(r.client_name||'')}</span><span>${U.escapeHtml(this.toDisplayDateTime(r.updated_at))}</span></div>`).join('');
+    if (volumeHost) {
+      const days = Number(this.state.volumeRangeDays || 30); const buckets = {};
+      for (let i=days-1;i>=0;i--){const d=new Date(Date.now()-i*86400000); buckets[d.toISOString().slice(0,10)]=0;}
+      rows.forEach(r=>{const k=new Date(this.pick(r.created_at,r.requested_at,r.updated_at)).toISOString().slice(0,10); if (k in buckets) buckets[k]+=1;});
+      const max = Math.max(1,...Object.values(buckets));
+      volumeHost.innerHTML = `<div class="tech-chart-bars">${Object.entries(buckets).map(([k,v])=>`<div class="tech-bar-line"><span>${k.slice(5)}</span><div class="bar" style="width:${Math.max(4,(v/max)*100)}%"></div><span>${v}</span></div>`).join('')}</div>`;
+    }
   },
   renderFilters() {
     if (!E.technicalAdminStatusFilter) return;
@@ -696,6 +767,18 @@ const TechnicalAdmin = {
     E.technicalAdminStatusFilter.innerHTML = options.map(v => `<option>${U.escapeHtml(v)}</option>`).join('');
     E.technicalAdminStatusFilter.value = options.includes(this.state.status) ? this.state.status : 'All';
     if (E.technicalAdminSearchInput) E.technicalAdminSearchInput.value = this.state.search;
+    const assigneeEl = document.getElementById('technicalAdminAssigneeFilter');
+    const clientEl = document.getElementById('technicalAdminClientFilter');
+    if (assigneeEl) {
+      const assignees = [...new Set(this.state.rows.map(r => String(r.assigned_to_display || r.assigned_to || '').trim()).filter(Boolean))].sort();
+      assigneeEl.innerHTML = ['All Assignees', ...assignees].map(v => `<option>${U.escapeHtml(v)}</option>`).join('');
+      assigneeEl.value = this.state.assignee;
+    }
+    if (clientEl) {
+      const clients = [...new Set(this.state.rows.map(r => String(r.client_name || '').trim()).filter(Boolean))].sort();
+      clientEl.innerHTML = ['All Clients', ...clients].map(v => `<option>${U.escapeHtml(v)}</option>`).join('');
+      clientEl.value = this.state.client;
+    }
   },
   render() {
     if (!E.technicalAdminState || !E.technicalAdminTbody) return;
@@ -1023,11 +1106,25 @@ const TechnicalAdmin = {
     };
     bindState(E.technicalAdminSearchInput, 'search');
     bindState(E.technicalAdminStatusFilter, 'status');
+    bindState(document.getElementById('technicalAdminAssigneeFilter'), 'assignee');
+    bindState(document.getElementById('technicalAdminClientFilter'), 'client');
+    bindState(document.getElementById('technicalAdminDateRangeFilter'), 'dateRangeDays');
+    document.getElementById('technicalAdminMyRequestsToggle')?.addEventListener('change', e => { this.state.myRequestsOnly = !!e.target.checked; this.applyFilters(); this.render(); });
+    document.getElementById('technicalAdminOnlyOverdueToggle')?.addEventListener('change', e => { this.state.onlyOverdue = !!e.target.checked; this.applyFilters(); this.render(); });
+    document.getElementById('technicalAdminResetFiltersBtn')?.addEventListener('click', () => { this.state.search=''; this.state.status='All'; this.state.assignee='All Assignees'; this.state.client='All Clients'; this.state.dateRangeDays='30'; this.state.myRequestsOnly=false; this.state.onlyOverdue=false; this.applyFilters(); this.renderFilters(); this.render(); });
+    document.getElementById('technicalAdminExportBtn')?.addEventListener('click', () => {
+      const rows = this.state.filteredRows || []; const header = ['request_id','client','status','assignee']; const csv = [header.join(',')].concat(rows.map(r => [r.technical_request_id||r.id,r.client_name,r.request_status,r.assigned_to_display||r.assigned_to].map(v => `"${String(v||'').replace(/"/g,'""')}"`).join(','))).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'technical-admin-dashboard.csv'; a.click(); URL.revokeObjectURL(url);
+    });
     if (E.technicalAdminRefreshBtn) E.technicalAdminRefreshBtn.addEventListener('click', () => this.loadAndRefresh({ force: true }));
     if (E.technicalAdminTbody)
       E.technicalAdminTbody.addEventListener('click', event => {
-        const trigger = event.target?.closest?.('button[data-technical-open], button[data-technical-open-agreement], button[data-technical-preview]');
+        const trigger = event.target?.closest?.('button[data-technical-open], button[data-technical-open-agreement], button[data-technical-preview], button[data-status-quick], button[data-assignee-quick], button[data-kpi-filter], button[data-volume-range]');
         if (!trigger) return;
+        const quickStatus = trigger.getAttribute('data-status-quick'); if (quickStatus) { this.state.status = quickStatus; this.applyFilters(); this.renderFilters(); this.render(); return; }
+        const quickAssignee = trigger.getAttribute('data-assignee-quick'); if (quickAssignee) { this.state.assignee = quickAssignee; this.applyFilters(); this.renderFilters(); this.render(); return; }
+        const kpi = trigger.getAttribute('data-kpi-filter'); if (kpi) { if (/In Progress/i.test(kpi)) this.state.status='In Progress'; if (/Overdue/i.test(kpi)) this.state.onlyOverdue=true; this.applyFilters(); this.render(); return; }
+        const range = trigger.getAttribute('data-volume-range'); if (range) { this.state.volumeRangeDays = Number(trigger.getAttribute('data-range') || 30); this.renderDashboardPanels(this.state.filteredRows); return; }
         const id = trigger.getAttribute('data-technical-open') || '';
         if (id) return this.openDetails(id);
         const openAgreementId = trigger.getAttribute('data-technical-open-agreement') || '';
