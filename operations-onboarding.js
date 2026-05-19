@@ -110,6 +110,11 @@ const OperationsOnboarding = {
       onboarding_id: String(this.pick(source.onboarding_id, source.onboardingId)).trim(),
       agreement_id: String(this.pick(source.agreement_id, source.agreementId, source.agreement_uuid, source.agreementUuid, nestedAgreement.agreement_id, nestedAgreement.agreementId, nestedAgreement.id)).trim(),
       agreement_number: String(this.pick(source.agreement_number, source.agreementNumber, nestedAgreement.agreement_number, nestedAgreement.agreementNumber)).trim(),
+      proposal_id: String(this.pick(source.proposal_id, source.proposalId)).trim(),
+      source_type: String(this.pick(source.source_type, source.sourceType)).trim(),
+      source_id: String(this.pick(source.source_id, source.sourceId)).trim(),
+      onboarding_type: String(this.pick(source.onboarding_type, source.onboardingType)).trim(),
+      proposal_reference: String(this.pick(source.proposal_reference, source.proposalReference, source.proposal_number, source.proposalNumber, source.proposal_id, source.proposalId)).trim(),
       client_id: String(this.pick(source.client_id, source.clientId, source.customer_id, source.customerId, nestedAgreement.client_id, nestedAgreement.clientId)).trim(),
       client_name: String(this.pick(source.client_name, source.clientName, source.customer_name, source.customerName, nestedAgreement.client_name, nestedAgreement.clientName, nestedAgreement.customer_name, nestedAgreement.customerName)).trim(),
       agreement_status: String(this.pick(source.agreement_status, source.agreementStatus, nestedAgreement.agreement_status, nestedAgreement.agreementStatus)).trim(),
@@ -150,6 +155,10 @@ const OperationsOnboarding = {
       training_request: String(this.pick(source.training_request, source.trainingRequest)).trim(),
       service_start_date: String(this.pick(source.service_start_date, source.serviceStartDate)).trim(),
       service_end_date: String(this.pick(source.service_end_date, source.serviceEndDate)).trim(),
+      poc_start_date: String(this.pick(source.poc_start_date, source.pocStartDate, source.poc_service_start_date, source.pocServiceStartDate)).trim(),
+      poc_end_date: String(this.pick(source.poc_end_date, source.pocEndDate, source.poc_service_end_date, source.pocServiceEndDate)).trim(),
+      poc_location_count: Number(this.pick(source.poc_location_count, source.pocLocationCount)) || 0,
+      poc_notes: String(this.pick(source.poc_notes, source.pocNotes, source.poc_scope, source.pocScope)).trim(),
       billing_frequency: String(this.pick(source.billing_frequency, source.billingFrequency)).trim(),
       payment_term: String(this.pick(source.payment_term, source.paymentTerm)).trim(),
       module_summary: String(this.pick(source.module_summary, source.moduleSummary)).trim(),
@@ -1144,6 +1153,7 @@ const OperationsOnboarding = {
       const rowRecordId = row.id || row.db_id || row.onboarding_id || '';
       const rowDbId = U.escapeAttr(rowRecordId);
       const onboardingLabel = U.escapeHtml(row.onboarding_id || row.id || '—');
+      const isPocRow = String(row.onboarding_type || '').trim().toLowerCase() === 'poc';
       const hasAgreementId = Boolean(String(row.agreement_id || '').trim());
       const hasRowDbId = Boolean(String(rowRecordId || '').trim());
       const assignedCsmName = row.assigned_csm_name || row.csm_assigned_to || '';
@@ -1152,19 +1162,19 @@ const OperationsOnboarding = {
       const agreement = this.state.agreementMap.get(row.agreement_id) || {};
       const displayRow = this.applyAgreementFallbacks(row, agreement);
       const agreementItems = this.state.agreementItemsMap.get(row.agreement_id) || [];
-      const locationCount = this.getRowLocationCount(displayRow, agreement, agreementItems);
-      const serviceStart = this.getRowServiceStart(displayRow, agreement, agreementItems);
-      const serviceEnd = this.getRowServiceEnd(displayRow, agreement, agreementItems);
+      const locationCount = isPocRow ? (Number(displayRow.poc_location_count || displayRow.location_count || 0) || 0) : this.getRowLocationCount(displayRow, agreement, agreementItems);
+      const serviceStart = isPocRow ? (displayRow.poc_start_date || displayRow.service_start_date) : this.getRowServiceStart(displayRow, agreement, agreementItems);
+      const serviceEnd = isPocRow ? (displayRow.poc_end_date || displayRow.service_end_date) : this.getRowServiceEnd(displayRow, agreement, agreementItems);
       const billingFrequency = displayRow.billing_frequency || agreement.billing_frequency;
       const paymentTerm = displayRow.payment_term || agreement.payment_term;
       return `<tr>
-          <td>${onboardingLabel}</td><td>${text(displayRow.agreement_id)}</td><td>${text(displayRow.agreement_number)}</td><td>${text(displayRow.client_name)}</td><td>${text(this.formatDate(displayRow.signed_date))}</td><td>${text(displayRow.onboarding_status)}</td>
+          <td>${onboardingLabel}</td><td>${text(displayRow.agreement_id)}</td><td>${text(isPocRow ? (displayRow.proposal_reference || displayRow.proposal_id || 'POC') : displayRow.agreement_number)}</td><td>${text(displayRow.client_name)}</td><td>${text(this.formatDate(displayRow.signed_date))}</td><td>${text(displayRow.onboarding_status)}</td>
           <td>${text(displayRow.request_type || displayRow.technical_request_type)}</td><td>${text(displayRow.requested_by)}</td><td>${text(this.formatDate(displayRow.requested_at))}</td><td>${text(displayRow.technical_request_status || displayRow.technical_admin_request)}</td><td>${text(displayRow.request_message || displayRow.technical_request_details || displayRow.technical_admin_request_message)}</td><td><strong>${text(assignedCsmName || 'Unassigned')}</strong>${displayRow.assigned_csm_email ? `<div class="muted">${U.escapeHtml(displayRow.assigned_csm_email)}</div>` : ''}</td><td>${text(locationCount)}</td><td>${text(this.formatDate(serviceStart))}</td><td>${text(this.formatDate(serviceEnd))}</td><td>${text(billingFrequency)}</td><td>${text(paymentTerm)}</td><td>${text(this.formatDate(displayRow.updated_at))}</td>
           <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
             <button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-open-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Open Agreement</button>
             <button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-preview-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Preview Agreement</button>
             <button class="btn ghost sm" type="button" data-op-open-details="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Open Onboarding Details</button>
-            ${canCreateTechnicalRequest ? `<button class="btn ghost sm" type="button" data-op-technical-admin="${agreementId}" data-op-technical-onboarding="${rowDbId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Technical Admin Request</button>` : ''}
+            ${canCreateTechnicalRequest ? `<button class="btn ghost sm" type="button" data-op-technical-admin="${agreementId}" data-op-technical-onboarding="${rowDbId}" ${(!hasAgreementId && !isPocRow) ? 'disabled title="Agreement ID not available"' : ''}>Technical Admin Request</button>` : ''}
             ${showAssignCsmButton ? `<button class="btn ghost sm" type="button" data-op-assign-csm="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>${assignCsmButtonLabel}</button>` : ''}
             ${canWrite ? `<button class="btn ghost sm" type="button" data-op-mark-progress="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Mark In Progress</button>
             <button class="btn ghost sm" type="button" data-op-mark-completed="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Mark Completed</button>` : ''}
@@ -1540,13 +1550,16 @@ const OperationsOnboarding = {
       const rowId = String(row.id || row.db_id || row.onboarding_id || '').trim();
       return (normalizedOnboardingRowId && rowId === normalizedOnboardingRowId) || (!normalizedOnboardingRowId && String(row.agreement_id || '') === id);
     }) || {};
+    const isPoc = String(summary.onboarding_type || '').trim().toLowerCase() === 'poc' || String(summary.request_type || '').trim().toLowerCase() === 'poc';
     const agreementLabel = summary.agreement_number || id;
     const existingMessage = String(summary.request_message || summary.technical_request_details || summary.technical_admin_request_message || summary.request_details || '').trim();
     const defaultMessage = existingMessage || this.buildDefaultTechnicalAdminMessage(summary, agreementLabel);
     const message = this.promptTechnicalAdminRequestMessage(defaultMessage);
     if (message === null) return UI.toast('Technical Admin request cancelled.');
     try {
-      const response = await Api.requestAgreementTechnicalAdmin(id, message, { onboardingId: normalizedOnboardingRowId });
+      const response = isPoc
+        ? await Api.requestPocTechnicalAdmin({ onboardingId: normalizedOnboardingRowId, message })
+        : await Api.requestAgreementTechnicalAdmin(id, message, { onboardingId: normalizedOnboardingRowId });
       Api.clearApiCache('operations_onboarding:list');
       const onboardingRecord = Api.unwrapApiPayload?.(response?.operations_onboarding || response) || response?.operations_onboarding || null;
       this.upsertLocalRow({
@@ -1554,8 +1567,8 @@ const OperationsOnboarding = {
         ...(onboardingRecord && typeof onboardingRecord === 'object' ? onboardingRecord : {}),
         id: normalizedOnboardingRowId || summary.id || summary.db_id || summary.onboarding_id,
         agreement_id: id,
-        request_type: 'Technical Admin',
-        technical_request_type: 'Technical Admin',
+        request_type: isPoc ? 'POC' : 'Technical Admin',
+        technical_request_type: isPoc ? 'POC' : 'Technical Admin',
         request_message: message,
         request_details: message,
         technical_request_details: message,
@@ -1576,7 +1589,7 @@ const OperationsOnboarding = {
       } else {
         Api.clearApiCache('technical_admin_requests:list');
       }
-      UI.toast(`Technical Admin requested for agreement ${agreementLabel}.`);
+      UI.toast(isPoc ? 'Technical Admin requested for POC onboarding.' : `Technical Admin requested for agreement ${agreementLabel}.`);
     } catch (error) {
       UI.toast('Unable to request Technical Admin: ' + (error?.message || 'Unknown error'));
     }
