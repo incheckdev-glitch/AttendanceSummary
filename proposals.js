@@ -3104,6 +3104,27 @@ const Proposals = {
       })
       .join('');
   },
+  buildCatalogSelectOptions(section, selectedItemName = '') {
+    const rows = this.getCatalogRowsForSection(section);
+    const selectedNormalized = this.normalizeText(selectedItemName);
+    const seen = new Set();
+    const options = rows
+      .filter(row => {
+        const key = this.normalizeText(row?.item_name);
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map(row => {
+        const itemName = String(row?.item_name || '').trim();
+        const normalizedName = this.normalizeText(itemName);
+        const isSelected = normalizedName && normalizedName === selectedNormalized;
+        return `<option value="${U.escapeAttr(itemName)}"${isSelected ? ' selected' : ''}>${U.escapeHtml(itemName)}</option>`;
+      })
+      .join('');
+    const placeholderSelected = !selectedNormalized ? ' selected' : '';
+    return `<option value=""${placeholderSelected}>Select item…</option>${options}`;
+  },
   renderCatalogOptionLists() {
     this.renderCatalogOptionList('annual_saas');
     this.renderCatalogOptionList('one_time_fee');
@@ -3285,7 +3306,7 @@ const Proposals = {
           : `${discountCell}${quantityCell}`;
         return `<tr data-item-row="${section}">
           <td><input class="input" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}" /><input type="hidden" data-item-field="location_address" value="${U.escapeAttr(computed.location_address || '')}" /></td>
-          <td><input type="hidden" data-item-field="catalog_item_id" value="${U.escapeAttr(computed.catalog_item_id || '')}" /><input class="input" data-item-field="item_name" list="proposalCatalogOptions-${section}" value="${U.escapeAttr(computed.item_name || '')}" /></td>
+          <td><input type="hidden" data-item-field="catalog_item_id" value="${U.escapeAttr(computed.catalog_item_id || '')}" /><select class="input" data-item-field="item_name">${this.buildCatalogSelectOptions(section, computed.item_name || '')}</select></td>
           ${section === 'annual_saas' ? licenseQtyCell : ''}
           <td><input class="input" type="number" step="0.01" data-item-field="unit_price" value="${U.escapeAttr(computed.unit_price ?? '')}" /></td>
           ${commercialCells}

@@ -2570,6 +2570,7 @@ const Agreements = {
         service_start_date: section === 'annual_saas' ? this.normalizeDateInputValue(get('service_start_date')) : '',
         service_end_date: section === 'annual_saas' ? this.calculateServiceEndDate(get('service_start_date'), quantity) : '',
         item_name: itemName,
+        catalog_item_id: String(get('catalog_item_id')).trim(),
         unit_price: unitPrice,
         discount_percent: discountPercent,
         discounted_unit_price: this.toNumberSafe(get('discounted_unit_price')) || this.toNumberSafe(computed.discounted_unit_price),
@@ -2628,6 +2629,56 @@ const Agreements = {
   },
   getAnnualSaasRowCountFromDom() {
     return Array.from(E.agreementAnnualItemsTbody?.querySelectorAll?.('tr[data-item-row="annual_saas"]') || []).length;
+  },
+  getCatalogRowsForSection(section) {
+    const rows = typeof window.ProposalCatalog?.getActiveCatalogItems === 'function'
+      ? window.ProposalCatalog.getActiveCatalogItems(section)
+      : Array.isArray(window.ProposalCatalog?.state?.rows)
+        ? window.ProposalCatalog.state.rows
+        : [];
+    return rows
+      .filter(row => row?.is_active !== false && String(row?.section || '').trim().toLowerCase() === section)
+      .sort((a, b) => String(a?.item_name || '').localeCompare(String(b?.item_name || '')));
+  },
+  getCatalogItemById(section, catalogItemId) {
+    const targetId = String(catalogItemId || '').trim();
+    if (!targetId) return null;
+    return this.getCatalogRowsForSection(section).find(row => String(row?.id || '').trim() === targetId) || null;
+  },
+  getCatalogItemByName(section, itemName) {
+    const target = String(itemName || '').trim().toLowerCase();
+    if (!target) return null;
+    return this.getCatalogRowsForSection(section).find(row => String(row?.item_name || '').trim().toLowerCase() === target) || null;
+  },
+  buildCatalogSelectOptions(section, selectedItemName = '') {
+    const selected = String(selectedItemName || '').trim().toLowerCase();
+    const seen = new Set();
+    const options = this.getCatalogRowsForSection(section)
+      .filter(row => {
+        const key = String(row?.item_name || '').trim().toLowerCase();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map(row => {
+        const name = String(row?.item_name || '').trim();
+        const isSelected = String(name).toLowerCase() === selected;
+        return `<option value="${U.escapeAttr(name)}"${isSelected ? ' selected' : ''}>${U.escapeHtml(name)}</option>`;
+      })
+      .join('');
+    return `<option value=""${selected ? '' : ' selected'}>Select item…</option>${options}`;
+  },
+  applyCatalogSelectionToRow(tr, section) {
+    if (!tr || section === 'capability') return;
+    const itemInput = tr.querySelector('[data-item-field="item_name"]');
+    const catalogIdInput = tr.querySelector('[data-item-field="catalog_item_id"]');
+    const unitPriceInput = tr.querySelector('[data-item-field="unit_price"]');
+    if (!itemInput || !catalogIdInput || !unitPriceInput) return;
+    const selected = this.getCatalogItemById(section, catalogIdInput.value) || this.getCatalogItemByName(section, itemInput.value);
+    if (!selected) return;
+    catalogIdInput.value = String(selected.id || '');
+    itemInput.value = String(selected.item_name || itemInput.value || '');
+    if (selected.unit_price !== null && selected.unit_price !== undefined) unitPriceInput.value = String(selected.unit_price);
   },
 
   isAnnualSaasUserItem(item = {}) {
@@ -2823,7 +2874,7 @@ const Agreements = {
       const invoiceStatusCell = section === 'annual_saas' ? `<td><span class="badge">${U.escapeHtml(invoiceStatusLabel)}</span></td>` : '';
       return `<tr data-item-row="${section}" data-item-payload="${payload}">
       <td><input class="input" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}"${lockAttr} /><input type="hidden" data-item-field="location_address" value="${U.escapeAttr(computed.location_address || '')}" /></td>
-      <td><input class="input" data-item-field="item_name" value="${U.escapeAttr(computed.item_name || '')}"${lockAttr} /></td>
+      <td><input type="hidden" data-item-field="catalog_item_id" value="${U.escapeAttr(computed.catalog_item_id || '')}" /><select class="input" data-item-field="item_name"${lockAttr}>${this.buildCatalogSelectOptions(section, computed.item_name || '')}</select></td>
       ${section === 'annual_saas' ? licenseQtyCell : ''}
       <td><input class="input" data-item-field="unit_price" type="number" step="0.01" value="${U.escapeAttr(computed.unit_price ?? '')}"${lockAttr} /></td>
       ${commercialCells}
@@ -2834,6 +2885,10 @@ const Agreements = {
     };
     if (E.agreementAnnualItemsTbody) E.agreementAnnualItemsTbody.innerHTML = grouped.annual_saas.map((item, idx) => rowHtml('annual_saas', item, idx)).join('');
     if (E.agreementOneTimeItemsTbody) E.agreementOneTimeItemsTbody.innerHTML = grouped.one_time_fee.map((item, idx) => rowHtml('one_time_fee', item, idx)).join('');
+    [E.agreementAnnualItemsTbody, E.agreementOneTimeItemsTbody].forEach((tbody, index) => {
+      const section = index === 0 ? 'annual_saas' : 'one_time_fee';
+      Array.from(tbody?.querySelectorAll?.('tr[data-item-row]') || []).forEach(tr => this.applyCatalogSelectionToRow(tr, section));
+    });
     this.refreshOneTimeFeeQuantityInputs();
     if (E.agreementCapabilityItemsTbody) E.agreementCapabilityItemsTbody.innerHTML = '';
     const totals = this.calculateTotals([...grouped.annual_saas, ...grouped.one_time_fee]);
