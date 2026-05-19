@@ -5410,11 +5410,24 @@
       : normalizedChannel === 'email'
         ? rule?.email_enabled
         : (rule?.in_app_enabled ?? rule?.bell_enabled ?? rule?.notification_hub_enabled);
-    if (value === undefined || value === null || value === '') return true;
-    if (value === false) return false;
-    if (String(value).trim().toLowerCase() === 'false') return false;
-    if (String(value).trim() === '0') return false;
-    return true;
+    if (value === true) return true;
+    if (String(value).trim().toLowerCase() === 'true') return true;
+    if (String(value).trim() === '1') return true;
+    return false;
+  }
+
+  async function resolveNotificationChannels(resource = '', action = '', context = {}) {
+    const eventKey = String(context?.eventKey || context?.event_key || '').trim().toLowerCase();
+    const { rule } = await findNotificationRule(getClient(), resource, action, eventKey);
+    if (!rule || isNotificationRuleEnabled(rule) === false) {
+      return { inApp: false, pwa: false, email: false, rule };
+    }
+    return {
+      inApp: isNotificationChannelEnabled(rule, 'in_app'),
+      pwa: isNotificationChannelEnabled(rule, 'push'),
+      email: isNotificationChannelEnabled(rule, 'email'),
+      rule
+    };
   }
 
   function resolveRecipientsFromMatchingRules(rules = [], payload = {}) {
@@ -5663,14 +5676,15 @@
     const hasAnyConfiguredRecipients = enabledRulesForRecipients.some(rule => hasConfiguredRecipients(rule, resolvedRecipients));
     const recipientsCount = recipientUserIds.size + recipientEmails.size + normalizedRoles.length;
     const primaryRule = enabledRulesForRecipients[0] || matchingRules[0] || null;
+    const resolvedChannels = await resolveNotificationChannels(resource, action, { eventKey, event_key: eventKey });
     const decision = {
       channels: {
-        in_app: Boolean(primaryRule && isNotificationRuleEnabled(primaryRule) && isNotificationChannelEnabled(primaryRule, 'in_app') && recipientsCount > 0),
-        push: Boolean(primaryRule && isNotificationRuleEnabled(primaryRule) && isNotificationChannelEnabled(primaryRule, 'push') && recipientsCount > 0),
-        email: Boolean(primaryRule && isNotificationRuleEnabled(primaryRule) && isNotificationChannelEnabled(primaryRule, 'email') && recipientsCount > 0)
+        in_app: Boolean(resolvedChannels.inApp && recipientsCount > 0),
+        push: Boolean(resolvedChannels.pwa && recipientsCount > 0),
+        email: Boolean(resolvedChannels.email && recipientsCount > 0)
       }
     };
-    console.info('[notifications] channel decision', {
+    console.info('[Notification Channels]', {
       resource,
       action,
       eventKey,
