@@ -94,6 +94,26 @@ const TechnicalAdmin = {
   isUuid(value = '') {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
   },
+  formatTechnicalRequestNumber(record = {}, index = null) {
+    const safe = record && typeof record === 'object' ? record : {};
+    const rawValue = String(this.pick(
+      safe.technical_admin_request_no, safe.technicalRequestNo,
+      safe.technical_request_number, safe.technicalRequestNumber,
+      safe.request_number, safe.requestNumber,
+      safe.reference_number, safe.referenceNumber,
+      safe.display_id, safe.displayId
+    ) || '').trim();
+    const formatPadded = value => `TR #${String(Math.max(0, Number(value) || 0)).padStart(5, '0')}`;
+    if (rawValue) {
+      const normalized = rawValue.replace(/\s+/g, ' ').trim();
+      if (/^\d+$/.test(normalized)) return formatPadded(normalized);
+      const trMatch = normalized.match(/^TR\s*#?\s*(\d+)$/i);
+      if (trMatch) return formatPadded(trMatch[1]);
+      if (!this.isUuid(normalized)) return normalized;
+    }
+    if (Number.isFinite(Number(index)) && Number(index) >= 0) return formatPadded(Number(index) + 1);
+    return 'TR #00000';
+  },
   toDisplayDate(value) {
     const raw = String(value || '').trim();
     if (!raw) return '—';
@@ -247,6 +267,7 @@ const TechnicalAdmin = {
     return peopleById;
   },
   extractAgreementTokens(agreement = {}) {
+    const technicalRequestDisplayNumber = this.formatTechnicalRequestNumber(source);
     return {
       id: String(this.pick(agreement.id, agreement.agreement_id, agreement.agreementId)).trim(),
       number: String(this.pick(agreement.agreement_number, agreement.number, agreement.agreement_code, agreement.agreementNumber)).trim()
@@ -337,10 +358,13 @@ const TechnicalAdmin = {
     const technicalRequestType = String(this.pick(source.technical_request_type, source.request_type, source.requestType, 'Technical Admin')).trim();
     const technicalRequestDetails = String(this.pick(source.technical_request_details, source.request_details, source.request_message, source.requestMessage)).trim();
     const technicalRequestStatus = String(this.pick(source.technical_request_status, source.request_status, source.requestStatus)).trim() || 'Requested';
+    const technicalRequestDisplayNumber = this.formatTechnicalRequestNumber(source);
     return {
       id: sourceId,
       db_id: sourceId,
       technical_request_id: onboardingId || sourceId,
+      technical_request_number: technicalRequestDisplayNumber,
+      technical_request_display: technicalRequestDisplayNumber,
       agreement_id: String(this.pick(source.agreement_id, source.agreementId)).trim(),
       agreement_number: String(this.pick(source.agreement_number, source.agreementNumber)).trim(),
       onboarding_id: onboardingId,
@@ -658,6 +682,8 @@ const TechnicalAdmin = {
     const currentUser = String(window.Session?.user?.()?.profile?.name || window.Session?.user?.()?.email || '').trim().toLowerCase();
     this.state.filteredRows = this.state.rows.filter(row => {
       const hay = [
+        row.technical_request_display,
+        row.technical_request_number,
         row.technical_request_id,
         row.agreement_id,
         row.agreement_number,
@@ -750,9 +776,9 @@ const TechnicalAdmin = {
       workloadHost.innerHTML = Object.entries(map).sort((a,b)=>b[1].open-a[1].open).slice(0,8).map(([a,v])=>`<div class="workload-row"><div class="identity"><span class="avatar">${U.escapeHtml(String(a).slice(0,2).toUpperCase())}</span><button class="btn ghost sm" data-assignee-quick="${U.escapeAttr(a)}">${U.escapeHtml(a)}</button></div><div class="metrics"><span>Open ${v.open}</span><span class="warn">Overdue ${v.overdue}</span><span>In Progress ${v.inprogress}</span></div><div class="status-bar"><span style="width:${Math.round((v.open/max)*100)}%"></span></div></div>`).join('') || '<div class="muted">No assignee data.</div>';
     }
     const dueRows = rows.map(r=>({r,d:new Date(this.pick(r.service_start_date,r.target_date,r.due_date)).getTime()})).filter(x=>x.d).sort((a,b)=>a.d-b.d);
-    if (upcomingHost) upcomingHost.innerHTML = dueRows.slice(0,6).map(({r,d})=>{const days=Math.ceil((d-Date.now())/86400000);return `<div class="task-row"><div><strong>${U.escapeHtml(r.technical_request_id||r.id||'')}</strong><small>${U.escapeHtml(r.client_name||'')}</small></div><div><span class="pill ${days<0?'red':days<4?'amber':'blue'}">${days<0?`${Math.abs(days)}d overdue`:`${days}d`}</span>${this.statusBadge(r.request_status)}</div></div>`}).join('') || '<div class="muted">No scheduled items.</div>';
-    if (critHost) critHost.innerHTML = dueRows.filter(x=>x.d < Date.now()).slice(0,6).map(({r,d})=>`<div class="alert-row"><div><strong>${U.escapeHtml(r.technical_request_id||r.id||'')} · ${U.escapeHtml(r.client_name||'')}</strong><small>Age ${Math.abs(Math.ceil((d-Date.now())/86400000))} days</small></div><div><span class="pill red">Critical</span><button class="btn sm" data-technical-open="${U.escapeAttr(r.id||r.technical_request_id||'')}">Open</button></div></div>`).join('') || '<div class="muted">No critical items.</div>';
-    if (recentHost) recentHost.innerHTML = rows.slice().sort((a,b)=>new Date(b.updated_at)-new Date(a.updated_at)).slice(0,6).map(r=>`<div class="timeline-row"><span class="dot"></span><div><strong>${U.escapeHtml(r.request_title||'Request updated')}</strong><small>${U.escapeHtml(r.client_name||'')} · ${U.escapeHtml(r.technical_request_id||'')}</small></div><span>${U.escapeHtml(this.toDisplayDateTime(r.updated_at))}</span></div>`).join('') || '<div class="muted">No recent activity.</div>';
+    if (upcomingHost) upcomingHost.innerHTML = dueRows.slice(0,6).map(({r,d})=>{const days=Math.ceil((d-Date.now())/86400000);return `<div class="task-row"><div><strong>${U.escapeHtml(r.technical_request_display||r.technical_request_number||r.technical_request_id||'')}</strong><small>${U.escapeHtml(r.client_name||'')}</small></div><div><span class="pill ${days<0?'red':days<4?'amber':'blue'}">${days<0?`${Math.abs(days)}d overdue`:`${days}d`}</span>${this.statusBadge(r.request_status)}</div></div>`}).join('') || '<div class="muted">No scheduled items.</div>';
+    if (critHost) critHost.innerHTML = dueRows.filter(x=>x.d < Date.now()).slice(0,6).map(({r,d})=>`<div class="alert-row"><div><strong>${U.escapeHtml(r.technical_request_display||r.technical_request_number||r.technical_request_id||'')} · ${U.escapeHtml(r.client_name||'')}</strong><small>Age ${Math.abs(Math.ceil((d-Date.now())/86400000))} days</small></div><div><span class="pill red">Critical</span><button class="btn sm" data-technical-open="${U.escapeAttr(r.id||r.technical_request_id||'')}">Open</button></div></div>`).join('') || '<div class="muted">No critical items.</div>';
+    if (recentHost) recentHost.innerHTML = rows.slice().sort((a,b)=>new Date(b.updated_at)-new Date(a.updated_at)).slice(0,6).map(r=>`<div class="timeline-row"><span class="dot"></span><div><strong>${U.escapeHtml(r.request_title||'Request updated')}</strong><small>${U.escapeHtml(r.client_name||'')} · ${U.escapeHtml(r.technical_request_display||r.technical_request_number||r.technical_request_id||'')}</small></div><span>${U.escapeHtml(this.toDisplayDateTime(r.updated_at))}</span></div>`).join('') || '<div class="muted">No recent activity.</div>';
     if (volumeHost) {
       const days = Number(this.state.volumeRangeDays || 30); const buckets = {};
       for (let i=days-1;i>=0;i--){const d=new Date(Date.now()-i*86400000); buckets[d.toISOString().slice(0,10)]=0;}
@@ -811,7 +837,7 @@ const TechnicalAdmin = {
           ? `<button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-technical-open-agreement="${U.escapeAttr(agreementId)}" data-technical-request-preview="${requestId}">Open Agreement</button><button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-technical-preview="${U.escapeAttr(agreementId)}" data-technical-request-preview="${requestId}">Preview Agreement</button>`
           : '';
         return `<tr data-technical-request-id="${requestDbId}" data-technical-onboarding-id="${onboardingId}" data-technical-request-key="${requestId}">
-          <td>${text(row.technical_request_id)}</td>
+          <td>${text(row.technical_request_display || row.technical_request_number || row.technical_request_id)}</td>
           <td>${text(row.agreement_number)}</td>
           <td>${text(row.client_name)}</td>
           <td>${text(row.number_of_locations || row.location_count || row.locations_count || '')}</td>
@@ -876,7 +902,9 @@ const TechnicalAdmin = {
         sort_dir: 'desc'
       }, { forceRefresh: !!options.force });
       const rows = Api.normalizeListResponse(response)?.rows || [];
-      this.state.rows = (await this.enrichRows(rows)).filter(row => row.id || row.technical_request_id);
+      this.state.rows = (await this.enrichRows(rows))
+        .map((row, index) => ({ ...row, technical_request_display: this.formatTechnicalRequestNumber(row, index) }))
+        .filter(row => row.id || row.technical_request_id);
       const normalized = Api.normalizeListResponse(response);
       this.state.page = Number(normalized.page || this.state.page || 1);
       this.state.limit = U.normalizePageSize(normalized.limit ?? this.state.limit, 50, 200);
@@ -896,7 +924,7 @@ const TechnicalAdmin = {
     }
   },
   upsertLocalRow(row) {
-    const normalized = this.normalizeRow(row);
+    const normalized = { ...this.normalizeRow(row), technical_request_display: this.formatTechnicalRequestNumber(row || {}) };
     const requestId = String(normalized.id || normalized.technical_request_id || '').trim();
     if (!requestId) return;
     const idx = this.state.rows.findIndex(item => String(item.id || item.technical_request_id || '') === requestId);
@@ -936,7 +964,7 @@ const TechnicalAdmin = {
     }
     if (!row) return UI.toast('Unable to load technical admin request details.');
     if (E.technicalAdminDetailsTitle) {
-      E.technicalAdminDetailsTitle.textContent = `Technical Admin Request ${row.technical_request_id || ''}`.trim();
+      E.technicalAdminDetailsTitle.textContent = `Technical Admin Request ${row.technical_request_display || row.technical_request_number || row.technical_request_id || ''}`.trim();
     }
     if (E.technicalAdminDetailsContent) {
       const agreementId = String(row.agreement_id || '').trim();
@@ -948,7 +976,7 @@ const TechnicalAdmin = {
         : '';
       E.technicalAdminDetailsContent.innerHTML = `
         <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">
-          <div><span class="muted">Technical Request ID:</span> ${U.escapeHtml(row.technical_request_id || '—')}</div>
+          <div><span class="muted">TR #:</span> ${U.escapeHtml(row.technical_request_display || row.technical_request_number || row.technical_request_id || '—')}</div>
           <div><span class="muted">Agreement ID:</span> ${U.escapeHtml(row.agreement_id || '—')}</div>
           <div><span class="muted">Agreement Number:</span> ${U.escapeHtml(row.agreement_number || '—')}</div>
           <div><span class="muted">Onboarding ID:</span> ${U.escapeHtml(row.onboarding_id || '—')}</div>
@@ -1038,7 +1066,8 @@ const TechnicalAdmin = {
           console.warn('[TechnicalAdmin] unable to sync operations_onboarding technical status', syncError);
         });
       }
-      const labelId = String(this.getRowById(rowId)?.technical_request_id || row?.technical_request_id || rowId).trim();
+      const refreshedRow = this.getRowById(rowId);
+      const labelId = String(refreshedRow?.technical_request_display || refreshedRow?.technical_request_number || refreshedRow?.technical_request_id || row?.technical_request_display || row?.technical_request_number || row?.technical_request_id || rowId).trim();
       UI.toast(`Technical request ${labelId} updated to ${nextStatus}.`);
       await this.loadAndRefresh({ force: true });
       if (window.OperationsOnboarding?.loadAndRefresh) {
@@ -1114,7 +1143,21 @@ const TechnicalAdmin = {
     document.getElementById('technicalAdminOnlyOverdueToggle')?.addEventListener('change', e => { this.state.onlyOverdue = !!e.target.checked; this.applyFilters(); this.render(); });
     document.getElementById('technicalAdminResetFiltersBtn')?.addEventListener('click', () => { this.state.search=''; this.state.status='All'; this.state.assignee='All Assignees'; this.state.client='All Clients'; this.state.dateRangeDays='30'; this.state.myRequestsOnly=false; this.state.onlyOverdue=false; this.applyFilters(); this.renderFilters(); this.render(); });
     document.getElementById('technicalAdminExportBtn')?.addEventListener('click', () => {
-      const rows = this.state.filteredRows || []; const header = ['request_id','client','status','assignee']; const csv = [header.join(',')].concat(rows.map(r => [r.technical_request_id||r.id,r.client_name,r.request_status,r.assigned_to_display||r.assigned_to].map(v => `"${String(v||'').replace(/"/g,'""')}"`).join(','))).join('\n');
+      const rows = this.state.filteredRows || [];
+      const header = ['TR #','Client Name','Agreement Number','Number of Locations','Service Start Date','Service End Date','Billing Frequency','Payment Term','Status','Requested By','Assigned To'];
+      const csv = [header.join(',')].concat(rows.map((r, index) => [
+        this.formatTechnicalRequestNumber(r, index),
+        r.client_name,
+        r.agreement_number,
+        r.number_of_locations || r.location_count || '',
+        this.toDisplayDate(r.service_start_date),
+        this.toDisplayDate(r.service_end_date),
+        r.billing_frequency,
+        r.payment_term || r.payment_terms,
+        r.request_status,
+        r.requested_by_display || r.requested_by,
+        r.assigned_to_display || r.assigned_to
+      ].map(v => `"${String(v||'').replace(/"/g,'""')}"`).join(','))).join('\n');
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'technical-admin-dashboard.csv'; a.click(); URL.revokeObjectURL(url);
     });
     if (E.technicalAdminRefreshBtn) E.technicalAdminRefreshBtn.addEventListener('click', () => this.loadAndRefresh({ force: true }));
