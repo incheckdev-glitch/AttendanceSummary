@@ -2895,6 +2895,17 @@ const Clients = {
     E.newClientModal.setAttribute('aria-hidden', 'true');
     if (E.newClientForm) E.newClientForm.reset();
   },
+
+  createImportAnnualRow_() {
+    return { item_type: 'annual_saas', item_name: '', catalog_item_id: null, license_quantity: 1, unit_price: 0, quantity: 12, service_start_date: '', service_end_date: '', discount_percent: 0, line_total: 0 };
+  },
+  createImportOneTimeRow_() {
+    return { item_type: 'one_time_fee', item_name: '', catalog_item_id: null, quantity: 1, unit_price: 0, discount_percent: 0, line_total: 0 };
+  },
+  ensureImportOldAgreementState_() {
+    if (!this.importOldAgreementState) this.importOldAgreementState = { annualSaasItems: [], oneTimeFeeItems: [] };
+    return this.importOldAgreementState;
+  },
   openImportOldClientModal() {
     const modal = E.importOldClientModal || document.getElementById('importOldClientModal');
     if (!modal) {
@@ -2906,20 +2917,10 @@ const Clients = {
     modal.setAttribute('aria-hidden', 'false');
     const firstInput = modal.querySelector('input, select, textarea, button');
     if (firstInput && typeof firstInput.focus === 'function') setTimeout(() => firstInput.focus(), 0);
-    const addRow = (section) => {
-      const isAnnual = section === 'annual_saas';
-      const tbody = document.getElementById(isAnnual ? 'importOldAnnualItemsTbody' : 'importOldOneTimeItemsTbody');
-      if (!tbody) return;
-      const options = this.getImportCatalogRows_(section).map(row => `<option value="${U.escapeAttr(row.item_name || '')}" data-id="${U.escapeAttr(row.id || '')}" data-price="${U.escapeAttr(row.unit_price ?? 0)}">${U.escapeHtml(row.item_name || '')}</option>`).join('');
-      const tr = document.createElement('tr');
-      tr.innerHTML = isAnnual
-        ? `<td><input type="hidden" data-f="catalog_item_id" /><select class="input" data-f="item_name"><option value="">Select item…</option>${options}</select></td><td><input class="input" data-f="quantity" type="number" min="1" step="1" value="1" /></td><td><input class="input" data-f="unit_price" type="number" min="0" step="0.01" value="0" /></td><td><input class="input" data-f="license_month" type="number" min="1" max="12" step="1" value="12" /></td><td><input class="input" data-f="service_start_date" type="date" /></td><td><input class="input" data-f="service_end_date" type="date" /></td><td><input class="input" data-f="discount_percent" type="number" min="0" max="100" step="0.01" value="0" /></td><td><input class="input" data-f="line_total" readonly /></td><td><button type="button" class="btn ghost sm" data-remove-row>Remove</button></td>`
-        : `<td><input type="hidden" data-f="catalog_item_id" /><select class="input" data-f="item_name"><option value="">Select item…</option>${options}</select></td><td><input class="input" data-f="quantity" type="number" min="1" step="1" value="1" /></td><td><input class="input" data-f="unit_price" type="number" min="0" step="0.01" value="0" /></td><td><input class="input" data-f="discount_percent" type="number" min="0" max="100" step="0.01" value="0" /></td><td><input class="input" data-f="line_total" readonly /></td><td><button type="button" class="btn ghost sm" data-remove-row>Remove</button></td>`;
-      tbody.appendChild(tr);
-      this.renderImportAgreementItems_();
-    };
-    if (!document.getElementById('importOldAnnualItemsTbody')?.children.length) addRow('annual_saas');
-    if (!document.getElementById('importOldOneTimeItemsTbody')?.children.length) addRow('one_time_fee');
+    const state = this.ensureImportOldAgreementState_();
+    if (!state.annualSaasItems.length) state.annualSaasItems.push(this.createImportAnnualRow_());
+    if (!state.oneTimeFeeItems.length) state.oneTimeFeeItems.push(this.createImportOneTimeRow_());
+    this.renderImportAgreementItems_();
   },
   closeImportOldClientModal() {
     const modal = E.importOldClientModal || document.getElementById('importOldClientModal');
@@ -2933,6 +2934,7 @@ const Clients = {
     const oneTimeTbody = document.getElementById('importOldOneTimeItemsTbody');
     if (annualTbody) annualTbody.innerHTML = '';
     if (oneTimeTbody) oneTimeTbody.innerHTML = '';
+    this.importOldAgreementState = { annualSaasItems: [], oneTimeFeeItems: [] };
   },
   collectImportOldClientFormData() {
     if (!E.importOldClientForm) return null;
@@ -2956,66 +2958,28 @@ const Clients = {
     return rows.filter(row => String(row?.section || '').trim().toLowerCase() === section);
   },
   addImportItemRow_(section) {
-    const tbody = document.getElementById(section === 'annual_saas' ? 'importOldAnnualItemsTbody' : 'importOldOneTimeItemsTbody');
-    if (!tbody) return;
-    const src = tbody.querySelector('tr');
-    if (src) {
-      const clone = src.cloneNode(true);
-      clone.querySelectorAll('input').forEach(input => { if (input.type !== 'hidden') input.value = input.readOnly ? '' : (input.type === 'number' ? '0' : ''); });
-      clone.querySelectorAll('select').forEach(select => { select.value = ''; });
-      tbody.appendChild(clone);
-      return;
-    }
-    this.openImportOldClientModal();
+    const state = this.ensureImportOldAgreementState_();
+    if (section === 'annual_saas') state.annualSaasItems.push(this.createImportAnnualRow_());
+    else state.oneTimeFeeItems.push(this.createImportOneTimeRow_());
+    this.renderImportAgreementItems_();
   },
   renderImportAgreementItems_() {
+    const state = this.ensureImportOldAgreementState_();
     const annualTbody = document.getElementById('importOldAnnualItemsTbody');
     const oneTimeTbody = document.getElementById('importOldOneTimeItemsTbody');
     if (!annualTbody || !oneTimeTbody) return;
-    const annualRows = Array.from(annualTbody.querySelectorAll('tr'));
-    const oneTimeRows = Array.from(oneTimeTbody.querySelectorAll('tr'));
-    const toNum = v => Number.parseFloat(v || 0) || 0;
-    const annualItems = annualRows.map(tr => {
-      const item = tr.querySelector('[data-f="item_name"]')?.value || '';
-      const qty = toNum(tr.querySelector('[data-f="quantity"]')?.value || 1);
-      const unit = toNum(tr.querySelector('[data-f="unit_price"]')?.value || 0);
-      const months = toNum(tr.querySelector('[data-f="license_month"]')?.value || 12);
-      const discountPct = toNum(tr.querySelector('[data-f="discount_percent"]')?.value || 0);
-      const raw = unit * qty * (months / 12);
-      const line = Math.max(0, raw - (raw * discountPct / 100));
-      tr.querySelector('[data-f="line_total"]').value = line.toFixed(2);
-      return { item_type: 'annual_saas', item_name: item, catalog_item_id: tr.querySelector('[data-f="catalog_item_id"]')?.value || '', quantity: qty, license_quantity: qty, license_price_year: unit, unit_price: unit, license_month: months, service_start_date: tr.querySelector('[data-f="service_start_date"]')?.value || '', service_end_date: tr.querySelector('[data-f="service_end_date"]')?.value || '', discount_percent: discountPct, line_total: line };
-    }).filter(row => row.item_name);
-    const oneTimeItems = oneTimeRows.map(tr => {
-      const item = tr.querySelector('[data-f="item_name"]')?.value || '';
-      const qty = toNum(tr.querySelector('[data-f="quantity"]')?.value || 1);
-      const unit = toNum(tr.querySelector('[data-f="unit_price"]')?.value || 0);
-      const discountPct = toNum(tr.querySelector('[data-f="discount_percent"]')?.value || 0);
-      const raw = unit * qty;
-      const line = Math.max(0, raw - (raw * discountPct / 100));
-      tr.querySelector('[data-f="line_total"]').value = line.toFixed(2);
-      return { item_type: 'one_time_fee', item_name: item, catalog_item_id: tr.querySelector('[data-f="catalog_item_id"]')?.value || '', quantity: qty, unit_price: unit, discount_percent: discountPct, line_total: line };
-    }).filter(row => row.item_name);
-    const annualSubtotal = annualItems.reduce((sum, row) => sum + (row.line_total || 0), 0);
-    const oneTimeSubtotal = oneTimeItems.reduce((sum, row) => sum + (row.line_total || 0), 0);
-    const discountTotal = [...annualItems, ...oneTimeItems].reduce((sum, row) => {
-      const qty = toNum(row.quantity || row.license_quantity || 1);
-      const unit = toNum(row.unit_price || row.license_price_year || 0);
-      const months = toNum(row.license_month || 12);
-      const gross = row.item_type === 'annual_saas' ? (unit * qty * (months / 12)) : (unit * qty);
-      return sum + Math.max(0, gross - toNum(row.line_total));
-    }, 0);
-    const grand = annualSubtotal + oneTimeSubtotal;
-    document.getElementById('importOldAnnualSubtotal').value = annualSubtotal.toFixed(2);
-    document.getElementById('importOldOneTimeSubtotal').value = oneTimeSubtotal.toFixed(2);
-    document.getElementById('importOldDiscountTotal').value = discountTotal.toFixed(2);
-    document.getElementById('importOldGrandTotal').value = grand.toFixed(2);
-    document.getElementById('importOldAnnualItemsJson').value = JSON.stringify(annualItems);
-    document.getElementById('importOldOneTimeItemsJson').value = JSON.stringify(oneTimeItems);
-    const totalInput = E.importOldClientForm?.querySelector('[name="total_amount"]');
-    const declaredTotal = toNum(totalInput?.value || 0);
-    const warning = document.getElementById('importOldTotalsWarning');
-    if (warning) warning.textContent = declaredTotal > 0 && Math.abs(declaredTotal - grand) > 0.01 ? `Warning: header total (${declaredTotal.toFixed(2)}) does not match item grand total (${grand.toFixed(2)}).` : '';
+    const optionsAnnual = this.getImportCatalogRows_('annual_saas').map(r => `<option value="${U.escapeAttr(r.item_name||'')}" data-id="${U.escapeAttr(r.id||'')}" data-price="${U.escapeAttr(r.unit_price ?? 0)}">${U.escapeHtml(r.item_name||'')}</option>`).join('');
+    const optionsOne = this.getImportCatalogRows_('one_time_fee').map(r => `<option value="${U.escapeAttr(r.item_name||'')}" data-id="${U.escapeAttr(r.id||'')}" data-price="${U.escapeAttr(r.unit_price ?? 0)}">${U.escapeHtml(r.item_name||'')}</option>`).join('');
+    annualTbody.innerHTML = state.annualSaasItems.map((row, i) => `<tr><td><input type="hidden" data-section="annual_saas" data-index="${i}" data-field="catalog_item_id" value="${U.escapeAttr(row.catalog_item_id||'')}"/><select class="input" data-section="annual_saas" data-index="${i}" data-field="item_name"><option value="">Select item…</option>${optionsAnnual}</select></td><td><input class="input" type="number" min="1" data-section="annual_saas" data-index="${i}" data-field="license_quantity" value="${row.license_quantity ?? 1}"/></td><td><input class="input" type="number" min="0" step="0.01" data-section="annual_saas" data-index="${i}" data-field="unit_price" value="${row.unit_price ?? 0}"/></td><td><input class="input" type="number" min="1" max="12" data-section="annual_saas" data-index="${i}" data-field="quantity" value="${row.quantity ?? 12}"/></td><td><input class="input" type="date" data-section="annual_saas" data-index="${i}" data-field="service_start_date" value="${U.escapeAttr(row.service_start_date||'')}"/></td><td><input class="input" type="date" data-section="annual_saas" data-index="${i}" data-field="service_end_date" value="${U.escapeAttr(row.service_end_date||'')}"/></td><td><input class="input" type="number" min="0" max="100" step="0.01" data-section="annual_saas" data-index="${i}" data-field="discount_percent" value="${row.discount_percent ?? 0}"/></td><td><input class="input" readonly value="${(Number(row.line_total||0)).toFixed(2)}"/></td><td><button type="button" class="btn ghost sm" data-import-agreement-action="remove-annual-saas-row" data-index="${i}">Remove</button></td></tr>`).join('');
+    oneTimeTbody.innerHTML = state.oneTimeFeeItems.map((row, i) => `<tr><td><input type="hidden" data-section="one_time_fee" data-index="${i}" data-field="catalog_item_id" value="${U.escapeAttr(row.catalog_item_id||'')}"/><select class="input" data-section="one_time_fee" data-index="${i}" data-field="item_name"><option value="">Select item…</option>${optionsOne}</select></td><td><input class="input" type="number" min="1" data-section="one_time_fee" data-index="${i}" data-field="quantity" value="${row.quantity ?? 1}"/></td><td><input class="input" type="number" min="0" step="0.01" data-section="one_time_fee" data-index="${i}" data-field="unit_price" value="${row.unit_price ?? 0}"/></td><td><input class="input" type="number" min="0" max="100" step="0.01" data-section="one_time_fee" data-index="${i}" data-field="discount_percent" value="${row.discount_percent ?? 0}"/></td><td><input class="input" readonly value="${(Number(row.line_total||0)).toFixed(2)}"/></td><td><button type="button" class="btn ghost sm" data-import-agreement-action="remove-one-time-fee-row" data-index="${i}">Remove</button></td></tr>`).join('');
+    annualTbody.querySelectorAll('select[data-field="item_name"]').forEach((el,i)=>el.value=state.annualSaasItems[i]?.item_name||'');
+    oneTimeTbody.querySelectorAll('select[data-field="item_name"]').forEach((el,i)=>el.value=state.oneTimeFeeItems[i]?.item_name||'');
+    const annualItems = state.annualSaasItems.map(r=>{const gross=(+r.unit_price||0)*(+r.license_quantity||1)*((+r.quantity||12)/12);const line=Math.max(0,gross-(gross*(+r.discount_percent||0)/100));r.line_total=line;return r;}).filter(r=>r.item_name||r.unit_price||r.line_total);
+    const oneItems = state.oneTimeFeeItems.map(r=>{const gross=(+r.unit_price||0)*(+r.quantity||1);const line=Math.max(0,gross-(gross*(+r.discount_percent||0)/100));r.line_total=line;return r;}).filter(r=>r.item_name||r.unit_price||r.line_total);
+    const a=annualItems.reduce((s,r)=>s+(+r.line_total||0),0), o=oneItems.reduce((s,r)=>s+(+r.line_total||0),0,);
+    document.getElementById('importOldAnnualSubtotal').value = a.toFixed(2); document.getElementById('importOldOneTimeSubtotal').value=o.toFixed(2); document.getElementById('importOldGrandTotal').value=(a+o).toFixed(2);
+    document.getElementById('importOldAnnualItemsJson').value=JSON.stringify(annualItems); document.getElementById('importOldOneTimeItemsJson').value=JSON.stringify(oneItems);
+    const total = Number(E.importOldClientForm?.querySelector('[name="total_amount"]')?.value||0); const warning=document.getElementById('importOldTotalsWarning'); if (warning) warning.textContent = total>0 && Math.abs(total-(a+o))>0.01 ? 'Entered total amount does not match item totals. You can continue because this is a historical imported agreement.' : '';
   },
   bindImportOldClientAgreementFallback_() {
     if (document.body?.dataset?.importOldClientAgreementFallbackBound === 'true') return;
@@ -3281,32 +3245,41 @@ const Clients = {
     if (E.importOldClientCloseBtn) E.importOldClientCloseBtn.addEventListener('click', () => this.closeImportOldClientModal());
     if (E.importOldClientCancelBtn) E.importOldClientCancelBtn.addEventListener('click', () => this.closeImportOldClientModal());
     if (E.importOldClientModal) E.importOldClientModal.addEventListener('click', e => { if (e.target === E.importOldClientModal) this.closeImportOldClientModal(); });
-    document.getElementById('importOldAddAnnualRowBtn')?.addEventListener('click', () => { this.addImportItemRow_('annual_saas'); this.renderImportAgreementItems_(); });
-    document.getElementById('importOldAddOneTimeRowBtn')?.addEventListener('click', () => { this.addImportItemRow_('one_time_fee'); this.renderImportAgreementItems_(); });
+    document.getElementById('importOldAddAnnualRowBtn')?.addEventListener('click', () => this.addImportItemRow_('annual_saas'));
+    document.getElementById('importOldAddOneTimeRowBtn')?.addEventListener('click', () => this.addImportItemRow_('one_time_fee'));
     E.importOldClientForm?.addEventListener('click', event => {
-      if (event.target?.closest?.('[data-remove-row]')) {
-        event.target.closest('tr')?.remove();
-        this.renderImportAgreementItems_();
-      }
+      const actionEl = event.target?.closest?.('[data-import-agreement-action]');
+      if (!actionEl) return;
+      const action = actionEl.getAttribute('data-import-agreement-action');
+      const state = this.ensureImportOldAgreementState_();
+      const idx = Number(actionEl.getAttribute('data-index') || -1);
+      if (action === 'add-annual-saas-row') this.addImportItemRow_('annual_saas');
+      if (action === 'add-one-time-fee-row') this.addImportItemRow_('one_time_fee');
+      if (action === 'remove-annual-saas-row' && idx >= 0) { state.annualSaasItems.splice(idx, 1); this.renderImportAgreementItems_(); }
+      if (action === 'remove-one-time-fee-row' && idx >= 0) { state.oneTimeFeeItems.splice(idx, 1); this.renderImportAgreementItems_(); }
     });
-    E.importOldClientForm?.addEventListener('change', event => {
-      const sel = event.target?.closest?.('select[data-f="item_name"]');
-      if (sel) {
-        const opt = sel.selectedOptions?.[0];
-        const tr = sel.closest('tr');
-        if (tr) {
-          const catalogId = opt?.getAttribute('data-id') || '';
-          const price = opt?.getAttribute('data-price') || '';
-          const hidden = tr.querySelector('[data-f="catalog_item_id"]');
-          const unitInput = tr.querySelector('[data-f="unit_price"]');
-          if (hidden) hidden.value = catalogId;
-          if (unitInput && price) unitInput.value = price;
-        }
+    const handleImportItemFieldChange = event => {
+      const input = event.target?.closest?.('[data-field]');
+      if (!input) return;
+      const section = input.getAttribute('data-section');
+      const idx = Number(input.getAttribute('data-index') || -1);
+      const field = input.getAttribute('data-field');
+      if (idx < 0 || !field) return;
+      const state = this.ensureImportOldAgreementState_();
+      const list = section === 'annual_saas' ? state.annualSaasItems : state.oneTimeFeeItems;
+      const row = list[idx]; if (!row) return;
+      row[field] = input.type === 'number' ? (Number(input.value || 0) || 0) : input.value;
+      if (field === 'item_name' && input.tagName === 'SELECT') {
+        const opt = input.selectedOptions?.[0];
+        row.catalog_item_id = opt?.getAttribute('data-id') || '';
+        if (Number(row.unit_price || 0) <= 0) row.unit_price = Number(opt?.getAttribute('data-price') || 0) || 0;
       }
-      if (event.target?.closest?.('[data-f]')) this.renderImportAgreementItems_();
-    });
+      this.renderImportAgreementItems_();
+    };
+    E.importOldClientForm?.addEventListener('change', handleImportItemFieldChange);
     E.importOldClientForm?.addEventListener('input', event => {
-      if (event.target?.closest?.('[data-f]') || event.target?.getAttribute?.('name') === 'total_amount') this.renderImportAgreementItems_();
+      if (event.target?.getAttribute?.('name') === 'total_amount') this.renderImportAgreementItems_();
+      handleImportItemFieldChange(event);
     });
     if (E.importOldClientForm) E.importOldClientForm.addEventListener('submit', async event => {
       event.preventDefault();
