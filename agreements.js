@@ -530,6 +530,96 @@ const Agreements = {
     link.remove();
     URL.revokeObjectURL(url);
   },
+
+  getAgreementProposalDisplayRef(row = {}) {
+    const directKeys = ['proposal_display_ref', 'proposalDisplayRef', 'proposal_reference', 'proposalReference'];
+    for (const key of directKeys) {
+      const value = String(row?.[key] ?? '').trim();
+      if (value) return value;
+    }
+    const proposal = row?.proposal && typeof row.proposal === 'object' ? row.proposal : null;
+    if (proposal) {
+      const proposalKeys = [
+        'proposal_number',
+        'proposalNumber',
+        'proposal_ref',
+        'proposalRef',
+        'display_id',
+        'displayId',
+        'reference_number',
+        'referenceNumber',
+        'proposal_code',
+        'proposalCode'
+      ];
+      for (const key of proposalKeys) {
+        const value = String(proposal?.[key] ?? '').trim();
+        if (value) return value;
+      }
+    }
+    return '—';
+  },
+  buildProposalDisplayRefFromProposal(proposal = {}) {
+    const source = proposal && typeof proposal === 'object' ? proposal : {};
+    const keys = [
+      'proposal_number',
+      'proposalNumber',
+      'proposal_ref',
+      'proposalRef',
+      'display_id',
+      'displayId',
+      'reference_number',
+      'referenceNumber',
+      'proposal_code',
+      'proposalCode'
+    ];
+    for (const key of keys) {
+      const value = String(source?.[key] ?? '').trim();
+      if (value) return value;
+    }
+    return '';
+  },
+  async enrichAgreementsWithProposalDisplayRefs(rows = []) {
+    const normalizedRows = Array.isArray(rows) ? rows : [];
+    const withDirectRef = normalizedRows.map(row => ({
+      ...row,
+      proposal_display_ref: this.getAgreementProposalDisplayRef(row)
+    }));
+    const missingRefRows = withDirectRef.filter(row => row.proposal_display_ref === '—');
+    const proposalIds = [...new Set(missingRefRows
+      .map(row => String(row?.proposal_id || row?.proposalId || '').trim())
+      .filter(Boolean))];
+    if (!proposalIds.length) return withDirectRef;
+
+    const client = this.getSupabaseClient();
+    if (!client?.from) return withDirectRef;
+
+    const proposalMap = new Map();
+    try {
+      const { data, error } = await client
+        .from('proposals')
+        .select('id,proposal_number,proposal_ref,display_id,reference_number,proposal_code')
+        .in('id', proposalIds);
+      if (error) throw error;
+      (Array.isArray(data) ? data : []).forEach(proposal => {
+        const id = String(proposal?.id || '').trim();
+        if (!id) return;
+        const displayRef = this.buildProposalDisplayRefFromProposal(proposal);
+        if (displayRef) proposalMap.set(id, displayRef);
+      });
+    } catch (error) {
+      console.warn('[Agreements] unable to enrich proposal display references', error);
+      return withDirectRef;
+    }
+
+    return withDirectRef.map(row => {
+      if (row.proposal_display_ref && row.proposal_display_ref !== '—') return row;
+      const proposalId = String(row?.proposal_id || row?.proposalId || '').trim();
+      return {
+        ...row,
+        proposal_display_ref: proposalMap.get(proposalId) || '—'
+      };
+    });
+  },
   exportAgreementsCsv() {
     if (!this.canExportAgreements()) {
       UI.toast('You do not have permission to export agreements.');
@@ -566,7 +656,7 @@ const Agreements = {
       const record = {
         agreementId: pick(row, ['agreement_id', 'agreementId']),
         agreementNumber: pick(row, ['agreement_number', 'agreementNumber']),
-        proposalId: pick(row, ['proposal_id', 'proposalId']),
+        proposalId: this.getAgreementProposalDisplayRef(row),
         proposalNumber: pick(row, ['proposal_number', 'proposalNumber']),
         customerName: this.getAgreementCustomerName(row),
         contactName: pick(row, ['contact_name', 'contactName', 'customer_contact_name', 'customerContactName']),
@@ -2221,11 +2311,11 @@ const Agreements = {
     this.state.filteredRows = this.state.rows.filter(row => {
       if (this.state.status !== 'All' && this.resolveAgreementStatus(row) !== this.state.status) return false;
       if (!this.matchesKpiFilter(row)) return false;
-      const hay = [row.agreement_id, row.agreement_number, row.customer_name, row.customer_contact_email, row.agreement_title, row.proposal_id, row.deal_id, row.status]
+      const hay = [row.agreement_id, row.agreement_number, row.customer_name, row.customer_contact_email, row.agreement_title, row.proposal_id, row.proposal_display_ref, row.deal_id, row.status]
         .filter(Boolean).join(' ').toLowerCase();
       if (terms.length && !terms.every(t => hay.includes(t))) return false;
       if (relationTerms.length) {
-        const relationHay = [row.proposal_id, row.deal_id].filter(Boolean).join(' ').toLowerCase();
+        const relationHay = [row.proposal_id, row.proposal_display_ref, row.deal_id].filter(Boolean).join(' ').toLowerCase();
         if (!relationTerms.every(t => relationHay.includes(t))) return false;
       }
       return true;
@@ -2324,7 +2414,7 @@ const Agreements = {
       const signedRow = this.isAgreementLockedAsSigned(row);
       return `<tr>
         <td>${textCell(row.agreement_id)}</td><td>${textCell(row.agreement_number)}</td><td>${textCell(row.agreement_title)}</td>
-        <td>${textCell(row.customer_name)}</td><td>${textCell(row.proposal_id)}</td><td>${textCell(row.deal_id)}</td>
+        <td>${textCell(row.customer_name)}</td><td>${textCell(this.getAgreementProposalDisplayRef(row))}</td><td>${textCell(row.deal_id)}</td>
         <td>${U.escapeHtml(U.fmtDisplayDate(row.service_start_date))}</td><td>${textCell(row.agreement_length)}</td><td>${textCell(row.billing_frequency)}</td>
         <td>${textCell(this.getPaymentTermDisplay(row.payment_term))}</td><td>${textCell(row.currency)}</td><td>${textCell(this.formatMoney(rowTotals.grand_total))}</td>
         <td>${textCell(this.resolveAgreementStatus(row))}</td><td>${U.escapeHtml(U.fmtDisplayDate(row.updated_at))}</td>
@@ -3820,7 +3910,7 @@ const Agreements = {
         forceRefresh: force
       });
       const normalized = this.extractListResult(response);
-      this.state.rows = normalized.rows.map(row => this.normalizeAgreement(row));
+      this.state.rows = await this.enrichAgreementsWithProposalDisplayRefs(normalized.rows.map(row => this.normalizeAgreement(row)));
       this.state.total = normalized.total;
       this.state.returned = normalized.returned;
       this.state.hasMore = normalized.hasMore;
