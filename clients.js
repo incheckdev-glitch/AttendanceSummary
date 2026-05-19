@@ -2890,7 +2890,19 @@ const Clients = {
   },
   openImportOldClientModal() { if (E.importOldClientModal) { E.importOldClientModal.classList.add('open'); E.importOldClientModal.setAttribute('aria-hidden', 'false'); } },
   closeImportOldClientModal() { if (E.importOldClientModal) { E.importOldClientModal.classList.remove('open'); E.importOldClientModal.setAttribute('aria-hidden', 'true'); } if (E.importOldClientForm) E.importOldClientForm.reset(); },
-  collectImportOldClientFormData() { if (!E.importOldClientForm) return null; const fd = new FormData(E.importOldClientForm); return Object.fromEntries([...fd.entries()].map(([k,v]) => [k, String(v || '').trim()])); },
+  collectImportOldClientFormData() {
+    if (!E.importOldClientForm) return null;
+    const fd = new FormData(E.importOldClientForm);
+    const payload = {};
+    fd.forEach((value, key) => {
+      if (value instanceof File) {
+        if (value.name) payload[key] = value;
+        return;
+      }
+      payload[key] = String(value || '').trim();
+    });
+    return payload;
+  },
   async runClientAction(action) {
     const clientId = String(this.state.selectedClientId || '').trim();
     if (!clientId) {
@@ -3122,11 +3134,33 @@ const Clients = {
         }
       });
     }
-    if (E.importOldClientBtn) { E.importOldClientBtn.style.display = this.canImportOldClient() ? '' : 'none'; E.importOldClientBtn.addEventListener('click', () => { if (!this.canImportOldClient()) return UI.toast('Only admin/dev can import old clients.'); this.openImportOldClientModal(); }); }
+    if (E.importOldClientBtn) { E.importOldClientBtn.style.display = this.canImportOldClient() ? '' : 'none'; E.importOldClientBtn.addEventListener('click', () => { if (!this.canImportOldClient()) return UI.toast('Only admin/dev can import old client agreements.'); this.openImportOldClientModal(); }); }
     if (E.importOldClientCloseBtn) E.importOldClientCloseBtn.addEventListener('click', () => this.closeImportOldClientModal());
     if (E.importOldClientCancelBtn) E.importOldClientCancelBtn.addEventListener('click', () => this.closeImportOldClientModal());
     if (E.importOldClientModal) E.importOldClientModal.addEventListener('click', e => { if (e.target === E.importOldClientModal) this.closeImportOldClientModal(); });
-    if (E.importOldClientForm) E.importOldClientForm.addEventListener('submit', async event => { event.preventDefault(); if (!this.canImportOldClient()) return UI.toast('Only admin/dev can import old clients.'); const payload = this.collectImportOldClientFormData(); const duplicates = await window.ClientsService.findOldClientImportDuplicates(payload); if (duplicates.length && !window.confirm(`Possible duplicate found (${duplicates.length}). Continue and update/link existing company?`)) return; const result = await window.ClientsService.importOldClient(payload); this.state.rows.unshift(this.normalizeClient(result.client)); this.closeImportOldClientModal(); this.render(); UI.toast('Historical client imported without workflow automation.'); });
+    if (E.importOldClientForm) E.importOldClientForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (!this.canImportOldClient()) return UI.toast('Only admin/dev can import old client agreements.');
+      const submitBtn = E.importOldClientForm.querySelector('button[type="submit"]');
+      const originalText = submitBtn?.textContent || '';
+      try {
+        if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Importing…'; }
+        const payload = this.collectImportOldClientFormData();
+        const duplicates = await window.ClientsService.findOldClientImportDuplicates(payload);
+        if (duplicates.length && !window.confirm(`Possible duplicate company found (${duplicates.length}). Continue and reuse/update existing company?`)) return;
+        const result = await window.ClientsService.importOldClient(payload);
+        if (result?.client) this.state.rows.unshift(this.normalizeClient(result.client));
+        this.closeImportOldClientModal();
+        await this.loadAndRefresh({ force: true });
+        if (window.Agreements?.loadAndRefresh) window.Agreements.loadAndRefresh({ force: true }).catch(error => console.warn('[Clients] agreement refresh after historical import failed', error));
+        UI.toast('Historical Company + Contact + Agreement imported without workflow automation.');
+      } catch (error) {
+        console.error('[Clients] historical agreement import failed', error);
+        UI.toast(error?.message || 'Unable to import old client agreement.');
+      } finally {
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = originalText || 'Import Old Agreement'; }
+      }
+    });
     if (E.clientActionProposalBtn) E.clientActionProposalBtn.addEventListener('click', () => this.runClientAction('proposal'));
     if (E.clientActionAgreementBtn) E.clientActionAgreementBtn.addEventListener('click', () => this.runClientAction('agreement'));
     if (E.clientActionInvoiceBtn) E.clientActionInvoiceBtn.addEventListener('click', () => this.runClientAction('invoice'));

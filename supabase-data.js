@@ -475,10 +475,10 @@
   ]);
 
   const COMPANY_COLUMNS = new Set([
-    'company_id','company_name','legal_name','authorized_signatory_full_name','authorized_signatory_title','registration_number','company_type','industry','website','main_email','main_phone','country','city','address','tax_number','company_status','source','owner_name','owner_email','notes','created_by','created_by_email','created_at','updated_at','documents_verified','documents_verification_status','documents_verified_at','documents_verified_by','documents_verification_notes','documents_verified_snapshot','documents_verification_invalidated_at','documents_verification_invalidated_reason'
+    'company_id','company_name','legal_name','authorized_signatory_full_name','authorized_signatory_title','registration_number','company_type','industry','website','main_email','main_phone','country','city','address','tax_number','company_status','source','owner_name','owner_email','notes','legacy_client_ref','is_imported','is_historical_client','imported_from','imported_at','imported_by','old_client_since','skip_workflow','skip_notifications','skip_onboarding','skip_technical_admin','skip_invoice_creation','skip_receipt_creation','created_by','created_by_email','created_at','updated_at','documents_verified','documents_verification_status','documents_verified_at','documents_verified_by','documents_verification_notes','documents_verified_snapshot','documents_verification_invalidated_at','documents_verification_invalidated_reason'
   ]);
   const CONTACT_COLUMNS = new Set([
-    'contact_id','company_id','company_name','company_ids','company_names','first_name','last_name','full_name','job_title','department','email','phone','mobile','decision_role','is_primary_contact','contact_status','notes','created_by','created_by_email','created_at','updated_at'
+    'contact_id','company_id','company_name','company_ids','company_names','first_name','last_name','full_name','job_title','department','email','phone','mobile','decision_role','is_primary_contact','contact_status','notes','legacy_contact_ref','is_imported','imported_from','imported_at','imported_by','created_by','created_by_email','created_at','updated_at'
   ]);
   const DEAL_COLUMNS = new Set([
     'deal_id',
@@ -539,7 +539,7 @@
     'customer_sign_date','provider_official_signatory_1_name','provider_official_signatory_1_title','provider_official_signatory_1_sign_date','provider_official_signatory_2_name','provider_official_signatory_2_title','provider_official_signatory_2_sign_date','provider_signatory_name','provider_signatory_title','provider_signatory_email','provider_signatory_secondary','provider_signatory_name_secondary','provider_signatory_title_secondary','provider_primary_signatory_name','provider_primary_signatory_title','provider_secondary_signatory_name','provider_secondary_signatory_title','provider_sign_date','gm_signed',
     'financial_controller_signed','signed_date','status','subtotal_locations','subtotal_one_time','total_discount',
     'grand_total','is_poc','poc_location_count','poc_license_count','poc_license_months','poc_service_start_date','poc_service_end_date','poc_success_kpis','poc_conversion_commitment','generated_by','created_by','updated_by','currency','created_at','updated_at','customer_legal_name','provider_legal_name','provider_name',
-    'agreement_title','notes'
+    'agreement_title','notes','legacy_agreement_ref','is_imported','is_historical_agreement','imported_from','imported_at','imported_by','imported_document_bucket','imported_document_path','imported_document_name','imported_document_uploaded_at','imported_document_uploaded_by','signed_document_path','signed_document_name','signed_document_uploaded_at','signed_document_uploaded_by','signed_document_url','signed_agreement_document_path','signed_agreement_document_name','signed_agreement_document_uploaded_at','signed_agreement_document_uploaded_by','signed_agreement_document_url','skip_workflow','skip_notifications','skip_onboarding','skip_technical_admin','skip_invoice_creation','skip_receipt_creation'
   ]);
   const AGREEMENT_ITEM_COLUMNS = new Set([
     'item_id','agreement_id','section','line_no','location_name','item_name','unit_price','discount_percent',
@@ -711,7 +711,7 @@
     deals: new Set(['lead_id', 'source_lead_uuid', 'created_by', 'updated_by']),
     proposals: new Set(['deal_id', 'provider_signatory_user_id', 'created_by', 'updated_by']),
     proposal_items: new Set(['proposal_id']),
-    agreements: new Set(['proposal_id', 'created_by', 'updated_by']),
+    agreements: new Set(['proposal_id', 'created_by', 'updated_by', 'imported_by', 'imported_document_uploaded_by', 'signed_document_uploaded_by', 'signed_agreement_document_uploaded_by']),
     agreement_items: new Set(['agreement_id']),
     clients: new Set(['source_agreement_id', 'created_by', 'updated_by']),
     invoices: new Set(['client_id', 'agreement_uuid', 'proposal_id', 'created_by', 'updated_by']),

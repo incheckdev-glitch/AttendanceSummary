@@ -120,6 +120,23 @@ const Agreements = {
     'signed_agreement_document_uploaded_at',
     'signed_agreement_document_uploaded_by',
     'signed_agreement_document_url',
+    'legacy_agreement_ref',
+    'is_imported',
+    'is_historical_agreement',
+    'imported_from',
+    'imported_at',
+    'imported_by',
+    'imported_document_bucket',
+    'imported_document_path',
+    'imported_document_name',
+    'imported_document_uploaded_at',
+    'imported_document_uploaded_by',
+    'skip_workflow',
+    'skip_notifications',
+    'skip_onboarding',
+    'skip_technical_admin',
+    'skip_invoice_creation',
+    'skip_receipt_creation',
     'total_discount',
     'generated_by',
     'company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_contact_phone','company_email','company_phone','country','city','tax_number','customer_signatory_email','customer_signatory_phone','provider_signatory_name','provider_signatory_title','provider_signatory_email','provider_primary_signatory_name','provider_primary_signatory_title','provider_secondary_signatory_name','provider_secondary_signatory_title',
@@ -2412,8 +2429,11 @@ const Agreements = {
       const id = U.escapeAttr(row.id || row.agreement_id || row.agreement_number || row.agreementId || '');
       const rowTotals = this.calculateTotalsFromAgreementRecord(row);
       const signedRow = this.isAgreementLockedAsSigned(row);
+      const importedBadge = this.toDbBoolean(row.is_imported ?? row.isImported, false) || this.toDbBoolean(row.is_historical_agreement ?? row.isHistoricalAgreement, false)
+        ? ' <span class="chip" style="margin-left:6px;">Historical</span>'
+        : '';
       return `<tr>
-        <td>${textCell(row.agreement_id)}</td><td>${textCell(row.agreement_number)}</td><td>${textCell(row.agreement_title)}</td>
+        <td>${textCell(row.agreement_id)}${importedBadge}</td><td>${textCell(row.agreement_number)}</td><td>${textCell(row.agreement_title)}</td>
         <td>${textCell(row.customer_name)}</td><td>${textCell(this.getAgreementProposalDisplayRef(row))}</td><td>${textCell(row.deal_id)}</td>
         <td>${U.escapeHtml(U.fmtDisplayDate(row.service_start_date))}</td><td>${textCell(row.agreement_length)}</td><td>${textCell(row.billing_frequency)}</td>
         <td>${textCell(this.getPaymentTermDisplay(row.payment_term))}</td><td>${textCell(row.currency)}</td><td>${textCell(this.formatMoney(rowTotals.grand_total))}</td>
@@ -4028,6 +4048,10 @@ const Agreements = {
     if (E.agreementsCreateBtn) E.agreementsCreateBtn.addEventListener('click', () => {
       if (!Permissions.canCreateAgreement()) return UI.toast('Login is required to save agreements.');
       this.openAgreementForm();
+    });
+    if (E.agreementsImportOldClientBtn) E.agreementsImportOldClientBtn.addEventListener('click', () => {
+      if (!window.Clients?.canImportOldClient?.()) return UI.toast('Only admin/dev can import old client agreements.');
+      window.Clients.openImportOldClientModal();
     });
     if (E.agreementsTbody) E.agreementsTbody.addEventListener('click', event => {
       const trigger = event.target?.closest?.('button[data-agreement-view], button[data-agreement-edit], button[data-agreement-upload-signed], button[data-agreement-request-technical], button[data-agreement-preview], button[data-agreement-create-invoice], button[data-agreement-delete]');

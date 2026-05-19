@@ -715,6 +715,7 @@ function cacheEls() {
     'agreementsExportCsvBtn',
     'agreementsRefreshBtn',
     'agreementsCreateBtn',
+    'agreementsImportOldClientBtn',
     'agreementsState',
     'agreementsTable',
     'agreementsTbody',

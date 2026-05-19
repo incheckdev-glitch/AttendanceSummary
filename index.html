@@ -1459,7 +1459,7 @@ Sample:
               </select>
               <button id="clientsRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
               <button id="clientsCreateBtn" class="btn sm" type="button">New Client</button>
-              <button id="importOldClientBtn" class="btn ghost sm" type="button">Import Old Client</button>
+              <button id="importOldClientBtn" class="btn ghost sm" type="button">Import Old Client Agreement</button>
             </div>
           </div>
           <div id="clientsState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
@@ -1617,33 +1617,67 @@ Sample:
       </div>
 
       <div id="importOldClientModal" class="modal" aria-hidden="true">
-        <div class="modal-content" style="max-width:860px;">
+        <div class="modal-content" style="max-width:980px;">
           <div class="header">
-            <strong>Import Old Client</strong>
+            <strong>Import Old Client Agreement</strong>
             <button id="importOldClientCloseBtn" class="modal-close" type="button" aria-label="Close">×</button>
           </div>
           <form id="importOldClientForm" class="grid cols-2" style="gap:10px;">
-            <input class="input" name="legal_company_name" placeholder="Legal Company Name *" required />
-            <input class="input" name="company_name" placeholder="Company Name *" required />
-            <input class="input" name="country" placeholder="Country *" required />
-            <input class="input" name="city" placeholder="City *" required />
-            <input class="input" name="address" placeholder="Address *" required style="grid-column:1/-1;" />
-            <input class="input" name="main_contact_name" placeholder="Main Contact Name *" required />
-            <input class="input" name="main_contact_email" type="email" placeholder="Main Contact Email *" required />
-            <input class="input" name="main_contact_phone" placeholder="Main Contact Phone *" required />
-            <input class="input" name="legacy_client_ref" placeholder="Legacy Client Ref" />
-            <input class="input" name="account_number" placeholder="Account Number" />
-            <input class="input" name="industry" placeholder="Industry" />
-            <input class="input" name="tax_vat_number" placeholder="Tax/VAT Number" />
-            <input class="input" name="billing_email" type="email" placeholder="Billing Email" />
-            <input class="input" name="currency" placeholder="Currency" value="USD" />
-            <input class="input" name="old_client_since_date" type="date" placeholder="Old Client Since Date" />
-            <select class="select" name="status"><option value="Active">Active</option><option value="Inactive">Inactive</option></select>
+            <div class="card" style="grid-column:1/-1;margin:0;padding:12px;">
+              <strong>Company Details</strong>
+              <div class="grid cols-2" style="gap:10px;margin-top:10px;">
+                <input class="input" name="legal_company_name" placeholder="Legal Company Name *" required />
+                <input class="input" name="company_name" placeholder="Company Name *" required />
+                <input class="input" name="country" placeholder="Country" />
+                <input class="input" name="city" placeholder="City" />
+                <input class="input" name="address" placeholder="Address" style="grid-column:1/-1;" />
+                <input class="input" name="legacy_client_ref" placeholder="Legacy Client Ref" />
+                <input class="input" name="account_number" placeholder="Account Number" />
+                <input class="input" name="industry" placeholder="Industry" />
+                <input class="input" name="tax_vat_number" placeholder="Tax/VAT Number" />
+                <input class="input" name="billing_email" type="email" placeholder="Billing Email" />
+                <input class="input" name="currency" placeholder="Currency" value="USD" />
+              </div>
+            </div>
+            <div class="card" style="grid-column:1/-1;margin:0;padding:12px;">
+              <strong>Contact Details</strong>
+              <div class="grid cols-2" style="gap:10px;margin-top:10px;">
+                <input class="input" name="contact_first_name" placeholder="Contact First Name" />
+                <input class="input" name="contact_last_name" placeholder="Contact Last Name" />
+                <input class="input" name="main_contact_name" placeholder="Main Contact Name" />
+                <input class="input" name="main_contact_email" type="email" placeholder="Main Contact Email" />
+                <input class="input" name="main_contact_phone" placeholder="Main Contact Phone" />
+                <input class="input" name="contact_position" placeholder="Position / Role" />
+                <input class="input" name="contact_department" placeholder="Department" />
+              </div>
+            </div>
+            <div class="card" style="grid-column:1/-1;margin:0;padding:12px;">
+              <strong>Historical Agreement Details</strong>
+              <div class="grid cols-2" style="gap:10px;margin-top:10px;">
+                <input class="input" name="legacy_agreement_ref" placeholder="Old Agreement Number / Reference *" required />
+                <input class="input" name="agreement_title" placeholder="Agreement Title" />
+                <input class="input" name="agreement_date" type="date" placeholder="Agreement Date" />
+                <select class="select" name="agreement_status">
+                  <option value="Signed">Signed</option>
+                  <option value="Expired">Expired</option>
+                  <option value="Cancelled">Cancelled</option>
+                  <option value="Approved">Approved</option>
+                  <option value="Draft">Draft</option>
+                </select>
+                <input class="input" name="signed_date" type="date" placeholder="Signed Date" />
+                <input class="input" name="service_start_date" type="date" placeholder="Service Start Date" />
+                <input class="input" name="service_end_date" type="date" placeholder="Service End Date" />
+                <input class="input" name="total_amount" type="number" min="0" step="0.01" placeholder="Total Amount" />
+                <select class="select" name="billing_frequency"><option value="Annual">Annual</option></select>
+                <select class="select" name="payment_term"><option>Net 7</option><option>Net 14</option><option>Net 21</option><option selected>Net 30</option></select>
+                <input class="input" name="agreement_file" type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" style="grid-column:1/-1;" />
+              </div>
+            </div>
             <textarea class="input" name="notes" placeholder="Notes" style="grid-column:1/-1;min-height:70px;"></textarea>
-            <label style="grid-column:1/-1;display:flex;gap:8px;align-items:flex-start;"><input type="checkbox" name="historical_lock" checked disabled /><span>Imported historical client — do not run workflows</span></label>
+            <label style="grid-column:1/-1;display:flex;gap:8px;align-items:flex-start;"><input type="checkbox" name="historical_lock" checked disabled /><span>Imported historical agreement — create Company + Contact + Agreement only, with no workflow, onboarding, technical admin, invoice, receipt, or notifications.</span></label>
             <div class="actions" style="grid-column:1/-1;justify-content:flex-end;">
               <button id="importOldClientCancelBtn" class="btn ghost" type="button">Cancel</button>
-              <button class="btn" type="submit">Import Client</button>
+              <button class="btn" type="submit">Import Old Agreement</button>
             </div>
           </form>
         </div>
@@ -1740,6 +1774,7 @@ Sample:
               <button id="agreementsExportCsvBtn" class="btn ghost sm" type="button">Export CSV</button>
               <button id="agreementsRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
               <button id="agreementsCreateBtn" class="btn sm" type="button">Create Agreement</button>
+              <button id="agreementsImportOldClientBtn" class="btn ghost sm" type="button">Import Old Client Agreement</button>
             </div>
           </div>
           <div id="agreementsState" class="muted" style="margin-bottom:8px;">No data loaded.</div>

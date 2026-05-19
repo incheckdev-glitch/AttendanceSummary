@@ -585,6 +585,106 @@ const ClientsService = {
     this.refreshCompanyLifecycleStatus(mapped);
     return mapped;
   },
+  normalizeImportDateValue_(value) {
+    const text = String(value || '').trim();
+    return text || null;
+  },
+  normalizeImportedAgreementStatus_(value) {
+    const raw = String(value || 'Signed').trim().toLowerCase().replace(/[_-]+/g, ' ');
+    if (raw.includes('expire')) return 'Expired';
+    if (raw.includes('cancel')) return 'Cancelled';
+    if (raw.includes('draft')) return 'Draft';
+    if (raw.includes('approved')) return 'Approved';
+    if (raw.includes('reject')) return 'Rejected';
+    // Historical active/archived agreements should be stored as Signed so they stay outside draft workflow.
+    return 'Signed';
+  },
+  buildImportReference_(prefix = 'AGR') {
+    const now = new Date();
+    const stamp = now.toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
+    return `${prefix}-IMP-${stamp}`;
+  },
+  sanitizeStorageFileName_(value = '') {
+    return String(value || 'document')
+      .trim()
+      .replace(/[\\/<>:"|?*]+/g, '-')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .slice(0, 140) || 'document';
+  },
+  extractUnknownColumnName_(error) {
+    const text = String(error?.message || error?.details || error?.hint || error || '');
+    return (
+      text.match(/column "([^"]+)" of relation "[^"]+" does not exist/i)?.[1] ||
+      text.match(/Could not find the '([^']+)' column/i)?.[1] ||
+      text.match(/Could not find column '([^']+)'/i)?.[1] ||
+      ''
+    );
+  },
+  async insertRowWithOptionalColumns_(table, payload = {}, { select = '*' } = {}) {
+    const db = this.getDb();
+    let current = { ...payload };
+    const removed = [];
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const { data, error } = await db.from(table).insert(current).select(select).single();
+      if (!error) {
+        if (removed.length) console.warn(`[ClientsService] ${table} import skipped unavailable columns`, removed);
+        return data;
+      }
+      const missingColumn = this.extractUnknownColumnName_(error);
+      if (missingColumn && Object.prototype.hasOwnProperty.call(current, missingColumn)) {
+        removed.push(missingColumn);
+        delete current[missingColumn];
+        continue;
+      }
+      throw this.friendlyError(`Unable to create ${table} during import`, error);
+    }
+    throw new Error(`Unable to create ${table}: too many unavailable columns were removed.`);
+  },
+  async updateRowWithOptionalColumns_(table, idColumn, idValue, payload = {}, { select = '*' } = {}) {
+    const db = this.getDb();
+    let current = { ...payload };
+    const removed = [];
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const { data, error } = await db.from(table).update(current).eq(idColumn, idValue).select(select).maybeSingle();
+      if (!error) {
+        if (removed.length) console.warn(`[ClientsService] ${table} import update skipped unavailable columns`, removed);
+        return data;
+      }
+      const missingColumn = this.extractUnknownColumnName_(error);
+      if (missingColumn && Object.prototype.hasOwnProperty.call(current, missingColumn)) {
+        removed.push(missingColumn);
+        delete current[missingColumn];
+        continue;
+      }
+      throw this.friendlyError(`Unable to update ${table} during import`, error);
+    }
+    throw new Error(`Unable to update ${table}: too many unavailable columns were removed.`);
+  },
+  async uploadHistoricalAgreementDocument_(file, input = {}, userId = '') {
+    if (!file || typeof file !== 'object' || !String(file.name || '').trim()) return null;
+    const db = this.getDb();
+    if (!db.storage?.from) throw new Error('Supabase Storage is not available for imported agreement document upload.');
+    const bucket = 'agreement-signed-documents';
+    const agreementRef = this.sanitizeStorageFileName_(input.legacy_agreement_ref || input.agreement_reference || this.buildImportReference_('AGR'));
+    const fileName = this.sanitizeStorageFileName_(file.name || 'agreement-document.pdf');
+    const path = `historical-agreements/${agreementRef}/${Date.now()}-${fileName}`;
+    const { error } = await db.storage.from(bucket).upload(path, file, {
+      cacheControl: '3600',
+      upsert: false,
+      contentType: file.type || undefined
+    });
+    if (error) throw this.friendlyError('Unable to upload imported agreement document', error);
+    return {
+      bucket,
+      path,
+      name: file.name,
+      type: file.type || '',
+      size: Number(file.size || 0),
+      uploaded_at: new Date().toISOString(),
+      uploaded_by: userId || null
+    };
+  },
   async findOldClientImportDuplicates(input = {}) {
     const db = this.getDb();
     const legalName = String(input.legal_company_name || '').trim();
@@ -595,7 +695,10 @@ const ClientsService = {
     if (legalName) checks.push(db.from('companies').select('id,company_id,company_name,legal_name,main_email').or(`legal_name.ilike.${legalName},company_name.ilike.${legalName}`).limit(5));
     if (email) checks.push(db.from('companies').select('id,company_id,company_name,legal_name,main_email').eq('main_email', email).limit(5));
     if (accountNumber) checks.push(db.from('companies').select('id,company_id,company_name,legal_name').eq('registration_number', accountNumber).limit(5));
-    if (legacyRef) checks.push(db.from('companies').select('id,company_id,company_name,legal_name').ilike('notes', `%${legacyRef}%`).limit(5));
+    if (legacyRef) {
+      checks.push(db.from('companies').select('id,company_id,company_name,legal_name').ilike('legacy_client_ref', `%${legacyRef}%`).limit(5));
+      checks.push(db.from('companies').select('id,company_id,company_name,legal_name').ilike('notes', `%${legacyRef}%`).limit(5));
+    }
     const results = await Promise.allSettled(checks);
     const rows = [];
     results.forEach(result => {
@@ -605,61 +708,250 @@ const ClientsService = {
     rows.forEach(row => { const key = String(row.id || row.company_id || '').trim(); if (key && !unique.has(key)) unique.set(key, row); });
     return [...unique.values()];
   },
+  async findExistingAgreementByLegacyRef_(legacyAgreementRef = '') {
+    const ref = String(legacyAgreementRef || '').trim();
+    if (!ref) return null;
+    const db = this.getDb();
+    const queries = [
+      db.from('agreements').select('*').eq('agreement_number', ref).limit(1),
+      db.from('agreements').select('*').eq('agreement_id', ref).limit(1),
+      db.from('agreements').select('*').eq('legacy_agreement_ref', ref).limit(1)
+    ];
+    const results = await Promise.allSettled(queries);
+    for (const result of results) {
+      if (result.status === 'fulfilled' && Array.isArray(result.value?.data) && result.value.data[0]) return result.value.data[0];
+    }
+    return null;
+  },
+  async findExistingImportedContact_(company, input = {}) {
+    const email = String(input.main_contact_email || input.contact_email || '').trim();
+    if (!email) return null;
+    const companyId = String(company?.company_id || company?.id || '').trim();
+    const db = this.getDb();
+    const { data, error } = await db.from('contacts').select('*').eq('email', email).limit(25);
+    if (error || !Array.isArray(data)) return null;
+    return data.find(row => {
+      const rowCompanyIds = Array.isArray(row.company_ids) ? row.company_ids.map(String) : [];
+      return String(row.company_id || '').trim() === companyId || rowCompanyIds.includes(companyId);
+    }) || data[0] || null;
+  },
+  buildImportedContactParts_(input = {}) {
+    const explicitFirst = String(input.contact_first_name || '').trim();
+    const explicitLast = String(input.contact_last_name || '').trim();
+    if (explicitFirst || explicitLast) {
+      return { first_name: explicitFirst || explicitLast, last_name: explicitFirst ? explicitLast : '' };
+    }
+    const full = String(input.main_contact_name || '').trim();
+    const parts = full.split(/\s+/).filter(Boolean);
+    const first_name = parts.shift() || full;
+    return { first_name, last_name: parts.join(' ') };
+  },
   async importOldClient(input = {}) {
     const db = this.getDb();
     const nowIso = new Date().toISOString();
     const userId = this.getCurrentUserId();
+    const legacyAgreementRef = String(input.legacy_agreement_ref || input.agreement_reference || '').trim() || this.buildImportReference_('AGR');
+    const legalCompanyName = String(input.legal_company_name || '').trim();
+    const displayCompanyName = String(input.company_name || legalCompanyName).trim();
+    if (!legalCompanyName && !displayCompanyName) throw new Error('Legal Company Name or Company Name is required.');
+    if (!legacyAgreementRef) throw new Error('Old Agreement Number / Reference is required.');
+
+    const documentUpload = await this.uploadHistoricalAgreementDocument_(input.agreement_file, { ...input, legacy_agreement_ref: legacyAgreementRef }, userId);
+
+    const importNoteParts = [
+      String(input.notes || '').trim(),
+      input.legacy_client_ref ? `Legacy Client Ref: ${input.legacy_client_ref}` : '',
+      input.account_number ? `Account Number: ${input.account_number}` : '',
+      legacyAgreementRef ? `Imported Agreement Ref: ${legacyAgreementRef}` : '',
+      'Imported historical agreement — no workflow, onboarding, technical admin, invoice, receipt, or notification automation.'
+    ].filter(Boolean);
+
     const companyPayload = {
-      company_name: String(input.company_name || '').trim(),
-      legal_name: String(input.legal_company_name || '').trim(),
+      company_name: displayCompanyName,
+      legal_name: legalCompanyName || displayCompanyName,
       country: String(input.country || '').trim(),
       city: String(input.city || '').trim(),
       address: String(input.address || '').trim(),
-      main_email: String(input.main_contact_email || '').trim(),
+      main_email: String(input.main_contact_email || input.billing_email || '').trim(),
       main_phone: String(input.main_contact_phone || '').trim(),
       industry: String(input.industry || '').trim(),
       tax_number: String(input.tax_vat_number || '').trim(),
-      notes: [String(input.notes || '').trim(), input.legacy_client_ref ? `Legacy Ref: ${input.legacy_client_ref}` : '', input.account_number ? `Account Number: ${input.account_number}` : '', 'Imported historical client — do not run workflows'].filter(Boolean).join('\n'),
+      registration_number: String(input.account_number || '').trim(),
+      legacy_client_ref: String(input.legacy_client_ref || '').trim(),
+      is_imported: true,
+      is_historical_client: true,
+      imported_from: 'old_client_agreement_manual_import',
+      imported_at: nowIso,
+      imported_by: userId || null,
+      old_client_since: this.normalizeImportDateValue_(input.old_client_since_date || input.agreement_date || input.service_start_date),
+      skip_workflow: true,
+      skip_notifications: true,
+      skip_onboarding: true,
+      skip_technical_admin: true,
+      skip_invoice_creation: true,
+      skip_receipt_creation: true,
+      notes: importNoteParts.join('\n'),
       company_status: 'Active'
     };
-    const clientPayload = {
-      client_name: companyPayload.company_name,
-      company_name: companyPayload.legal_name || companyPayload.company_name,
-      primary_email: String(input.main_contact_email || '').trim(),
-      primary_phone: String(input.main_contact_phone || '').trim(),
-      status: String(input.status || 'Active').trim(),
-      source_agreement_id: null,
-      total_agreements: 0, total_locations: 0, total_value: 0, total_paid: 0, total_due: 0,
-      notes: JSON.stringify({
-        imported: true, is_imported: true, is_historical_client: true, imported_from: 'old_client_manual_import', imported_at: nowIso, imported_by: userId,
-        legacy_client_ref: String(input.legacy_client_ref || '').trim(), account_number: String(input.account_number || '').trim(), billing_email: String(input.billing_email || '').trim(),
-        currency: String(input.currency || '').trim(), old_client_since_date: String(input.old_client_since_date || '').trim(),
-        skip_workflow: true, skip_notifications: true, skip_onboarding: true, skip_technical_admin: true, skip_invoice_creation: true, skip_receipt_creation: true
-      })
-    };
+
     let company = null;
     const duplicateCompanies = await this.findOldClientImportDuplicates(input);
     if (duplicateCompanies[0]?.id) {
-      const { data, error } = await db.from('companies').update(companyPayload).eq('id', duplicateCompanies[0].id).select('*').single();
-      if (error) throw this.friendlyError('Unable to update existing company during import', error);
-      company = data;
+      try {
+        company = await this.updateRowWithOptionalColumns_('companies', 'id', duplicateCompanies[0].id, companyPayload);
+      } catch (error) {
+        console.warn('[ClientsService] Existing company could not be updated during historical import; reusing it as-is.', error);
+        company = duplicateCompanies[0];
+      }
     } else {
-      const { data, error } = await db.from('companies').insert(companyPayload).select('*').single();
-      if (error) throw this.friendlyError('Unable to create company during import', error);
-      company = data;
+      company = await this.insertRowWithOptionalColumns_('companies', companyPayload);
     }
+
+    const contactParts = this.buildImportedContactParts_(input);
+    let contact = await this.findExistingImportedContact_(company, input);
+    if (!contact && (contactParts.first_name || input.main_contact_email || input.main_contact_phone)) {
+      const companyPublicId = String(company?.company_id || company?.id || '').trim();
+      const contactPayload = {
+        first_name: contactParts.first_name || 'Imported',
+        last_name: contactParts.last_name || '',
+        full_name: [contactParts.first_name, contactParts.last_name].filter(Boolean).join(' '),
+        email: String(input.main_contact_email || '').trim(),
+        phone: String(input.main_contact_phone || '').trim(),
+        mobile: String(input.main_contact_phone || '').trim(),
+        job_title: String(input.contact_position || '').trim(),
+        department: String(input.contact_department || '').trim(),
+        company_id: companyPublicId || null,
+        company_ids: companyPublicId ? [companyPublicId] : [],
+        company_name: company?.company_name || displayCompanyName,
+        legacy_contact_ref: String(input.legacy_contact_ref || '').trim(),
+        is_imported: true,
+        imported_from: 'old_client_agreement_manual_import',
+        imported_at: nowIso,
+        imported_by: userId || null,
+        notes: 'Imported historical contact',
+        contact_status: 'Active',
+        updated_by: userId || null,
+        created_by: userId || null
+      };
+      contact = await this.insertRowWithOptionalColumns_('contacts', contactPayload);
+    }
+
+    let agreement = await this.findExistingAgreementByLegacyRef_(legacyAgreementRef);
+    const totalAmount = this.toNumber(input.total_amount || input.grand_total);
+    if (!agreement) {
+      const agreementStatus = this.normalizeImportedAgreementStatus_(input.agreement_status || input.status);
+      const customerContactName = [contactParts.first_name, contactParts.last_name].filter(Boolean).join(' ') || String(input.main_contact_name || '').trim();
+      const agreementPayload = {
+        agreement_id: legacyAgreementRef,
+        agreement_number: legacyAgreementRef,
+        legacy_agreement_ref: legacyAgreementRef,
+        agreement_title: String(input.agreement_title || `Historical Agreement ${legacyAgreementRef}`).trim(),
+        company_id: String(company?.company_id || company?.id || '').trim() || null,
+        company_name: company?.company_name || displayCompanyName,
+        contact_id: String(contact?.contact_id || contact?.id || '').trim() || null,
+        contact_name: customerContactName,
+        contact_email: String(input.main_contact_email || contact?.email || '').trim(),
+        contact_phone: String(input.main_contact_phone || contact?.phone || '').trim(),
+        contact_mobile: String(input.main_contact_phone || contact?.mobile || '').trim(),
+        customer_name: displayCompanyName,
+        customer_legal_name: legalCompanyName || displayCompanyName,
+        customer_address: String(input.address || '').trim(),
+        customer_contact_name: customerContactName,
+        customer_contact_email: String(input.main_contact_email || '').trim(),
+        customer_contact_phone: String(input.main_contact_phone || '').trim(),
+        customer_contact_mobile: String(input.main_contact_phone || '').trim(),
+        agreement_date: this.normalizeImportDateValue_(input.agreement_date),
+        effective_date: this.normalizeImportDateValue_(input.agreement_date || input.service_start_date),
+        service_start_date: this.normalizeImportDateValue_(input.service_start_date),
+        service_end_date: this.normalizeImportDateValue_(input.service_end_date),
+        signed_date: agreementStatus === 'Signed' ? this.normalizeImportDateValue_(input.signed_date || input.agreement_date) : null,
+        customer_sign_date: agreementStatus === 'Signed' ? this.normalizeImportDateValue_(input.signed_date || input.agreement_date) : null,
+        customer_official_sign_date: agreementStatus === 'Signed' ? this.normalizeImportDateValue_(input.signed_date || input.agreement_date) : null,
+        customer_official_signatory_name: customerContactName,
+        customer_signatory_name: customerContactName,
+        customer_official_signatory_title: String(input.contact_position || '').trim(),
+        customer_signatory_title: String(input.contact_position || '').trim(),
+        provider_official_signatory_1_name: 'Simon Moujaly',
+        provider_official_signatory_1_title: 'Senior Financial Controller',
+        provider_official_signatory_2_name: 'Hanna Khattar',
+        provider_official_signatory_2_title: 'General Manager',
+        billing_frequency: String(input.billing_frequency || 'Annual').trim() || 'Annual',
+        payment_term: String(input.payment_term || 'Net 30').trim() || 'Net 30',
+        payment_terms: String(input.payment_term || 'Net 30').trim() || 'Net 30',
+        currency: String(input.currency || 'USD').trim() || 'USD',
+        status: agreementStatus,
+        subtotal_locations: totalAmount,
+        subtotal_one_time: 0,
+        total_discount: 0,
+        grand_total: totalAmount,
+        is_imported: true,
+        is_historical_agreement: true,
+        imported_from: 'old_client_agreement_manual_import',
+        imported_at: nowIso,
+        imported_by: userId || null,
+        skip_workflow: true,
+        skip_notifications: true,
+        skip_onboarding: true,
+        skip_technical_admin: true,
+        skip_invoice_creation: true,
+        skip_receipt_creation: true,
+        imported_document_bucket: documentUpload?.bucket || null,
+        imported_document_path: documentUpload?.path || null,
+        imported_document_name: documentUpload?.name || null,
+        imported_document_uploaded_at: documentUpload?.uploaded_at || null,
+        imported_document_uploaded_by: documentUpload?.uploaded_by || null,
+        signed_document_path: documentUpload?.path || null,
+        signed_document_name: documentUpload?.name || null,
+        signed_document_uploaded_at: documentUpload?.uploaded_at || null,
+        signed_document_uploaded_by: documentUpload?.uploaded_by || null,
+        signed_agreement_document_path: documentUpload?.path || null,
+        signed_agreement_document_name: documentUpload?.name || null,
+        signed_agreement_document_uploaded_at: documentUpload?.uploaded_at || null,
+        signed_agreement_document_uploaded_by: documentUpload?.uploaded_by || null,
+        notes: importNoteParts.join('\n'),
+        created_by: userId || null,
+        updated_by: userId || null
+      };
+      agreement = await this.insertRowWithOptionalColumns_('agreements', agreementPayload);
+    }
+
+    const clientPayload = {
+      client_name: displayCompanyName,
+      company_name: legalCompanyName || displayCompanyName,
+      primary_email: String(input.main_contact_email || input.billing_email || '').trim(),
+      primary_phone: String(input.main_contact_phone || '').trim(),
+      billing_frequency: String(input.billing_frequency || 'Annual').trim() || 'Annual',
+      payment_term: String(input.payment_term || 'Net 30').trim() || 'Net 30',
+      status: 'Active',
+      source_agreement_id: String(agreement?.id || agreement?.agreement_id || '').trim() || null,
+      total_agreements: 1,
+      total_locations: this.toNumber(input.total_locations || input.number_of_locations || 0),
+      total_value: totalAmount,
+      total_paid: 0,
+      total_due: 0,
+      notes: JSON.stringify({
+        imported: true,
+        is_imported: true,
+        is_historical_client: true,
+        imported_from: 'old_client_agreement_manual_import',
+        imported_at: nowIso,
+        imported_by: userId,
+        legacy_client_ref: String(input.legacy_client_ref || '').trim(),
+        legacy_agreement_ref: legacyAgreementRef,
+        account_number: String(input.account_number || '').trim(),
+        billing_email: String(input.billing_email || '').trim(),
+        currency: String(input.currency || '').trim(),
+        old_client_since_date: String(input.old_client_since_date || input.agreement_date || '').trim(),
+        skip_workflow: true,
+        skip_notifications: true,
+        skip_onboarding: true,
+        skip_technical_admin: true,
+        skip_invoice_creation: true,
+        skip_receipt_creation: true
+      })
+    };
     const createdClient = await this.createClient(clientPayload);
-    if (input.main_contact_name && input.main_contact_email) {
-      const contactParts = String(input.main_contact_name || '').trim().split(/\s+/);
-      const first_name = contactParts.shift() || String(input.main_contact_name || '').trim();
-      const last_name = contactParts.join(' ');
-      await db.from('contacts').insert({
-        first_name, last_name, email: String(input.main_contact_email || '').trim(), phone: String(input.main_contact_phone || '').trim(),
-        company_id: company.company_id || null, company_ids: company.company_id ? [company.company_id] : [], company_name: company.company_name || null,
-        notes: 'Imported historical contact', contact_status: 'Active', updated_by: userId || null, created_by: userId || null
-      });
-    }
-    return { client: createdClient, company, duplicateCompanies };
+    return { client: createdClient, company, contact, agreement, documentUpload, duplicateCompanies };
   },
   isClientUpdateNoRowOrPermissionError_(error) {
     const text = String(error?.message || error?.details || error?.hint || error || '').toLowerCase();
