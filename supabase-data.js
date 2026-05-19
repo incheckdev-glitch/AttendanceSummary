@@ -529,7 +529,7 @@
     'subtotal_locations','subtotal_one_time','total_discount','grand_total','status','approved_annual_saas_discount_percent','approved_one_time_fee_discount_percent','approved_discount_percent','discount_approval_status','discount_approved_at','discount_approved_by','last_discount_approval_request_id','approval_required_reason','signed_document_path','signed_document_name','signed_document_uploaded_at','signed_document_uploaded_by','generated_by','created_by','updated_by','created_at','updated_at'
   ]);
   const PROPOSAL_ITEM_COLUMNS = new Set([
-    'item_id','proposal_id','section','line_no','location_name','item_name','unit_price','discount_percent','discounted_unit_price','quantity',
+    'item_id','proposal_id','section','line_no','location_name','item_name','unit_price','discount_percent','discounted_unit_price','quantity','license_quantity',
     'line_total','service_start_date','service_end_date','capability_name','capability_value','notes'
   ]);
   const AGREEMENT_COLUMNS = new Set([
@@ -543,7 +543,7 @@
   ]);
   const AGREEMENT_ITEM_COLUMNS = new Set([
     'item_id','agreement_id','section','line_no','location_name','item_name','unit_price','discount_percent',
-    'discounted_unit_price','quantity','line_total','service_start_date','service_end_date','capability_name','capability_value','notes',
+    'discounted_unit_price','quantity','license_quantity','line_total','service_start_date','service_end_date','capability_name','capability_value','notes',
     'invoice_status','invoiced_invoice_id','invoiced_at'
   ]);
   const CLIENT_COLUMNS = new Set([
@@ -562,7 +562,7 @@
   ]);
   const INVOICE_ITEM_COLUMNS = new Set([
     'item_id','invoice_id','section','line_no','location_name','item_name','unit_price','discount_percent',
-    'discounted_unit_price','quantity','line_total','capability_name','capability_value','notes',
+    'discounted_unit_price','quantity','license_quantity','line_total','capability_name','capability_value','notes',
     'service_start_date','service_end_date','source_agreement_item_id','source_agreement_id','source_agreement_reference','agreement_id','agreement_reference','agreement_display_id','reference_no','display_id','related_reference',
     'proposal_id','client_id','company_id','contact_id','location_id','source_invoice_id','source_proposal_id','previous_invoice_id','renewal_batch_id','renewed_from_invoice_id','renewed_from_invoice_item_id','renewed_from_location_name'
   ]);
@@ -3040,6 +3040,7 @@
       discount_percent: normalizeNumericValue(firstDefined(record, ['discount_percent', 'discountPercent']), 0),
       discounted_unit_price: normalizeNumericValue(firstDefined(record, ['discounted_unit_price', 'discountedUnitPrice']), 0),
       quantity: normalizeNumericValue(firstDefined(record, ['quantity']), 0),
+      license_quantity: normalizeNumericValue(firstDefined(record, ['license_quantity','licenseQuantity','user_quantity','userQuantity','item_quantity','itemQuantity']), 0),
       line_total: normalizeNumericValue(firstDefined(record, ['line_total', 'lineTotal']), 0),
       service_start_date: normalizeNullableDateValue(firstDefined(record, ['service_start_date', 'serviceStartDate'])),
       service_end_date: normalizeNullableDateValue(firstDefined(record, ['service_end_date', 'serviceEndDate'])),
@@ -3076,10 +3077,13 @@
       let quantity = normalizeNumericValue(firstDefined(item, ['quantity', 'qty']), 0);
       if (!quantity && section === 'annual_saas') quantity = 12;
       if (!quantity && section === 'one_time_fee') quantity = 1;
+      const itemName = String(firstDefined(item, ['item_name','itemName','name','license']) || '').toLowerCase();
+      const isAnnualUserBased = section === 'annual_saas' && (itemName.includes('user(s)') || itemName.includes('users') || itemName.includes('user license') || itemName.includes('user subscription') || itemName === 'user');
+      const licenseQuantity = isAnnualUserBased ? Math.max(1, normalizeNumericValue(firstDefined(item, ['license_quantity','licenseQuantity','user_quantity','userQuantity','item_quantity','itemQuantity']), 1)) : 1;
       const discountPercentRaw = normalizeNumericValue(firstDefined(item, ['discount_percent', 'discountPercent']), 0);
       const discountRatio = Math.max(0, Math.min(100, discountPercentRaw)) / 100;
       const storedLineTotal = normalizeNumericValue(firstDefined(item, ['line_total', 'lineTotal']), 0);
-      const baseAmount = section === 'annual_saas' ? unit * (quantity / 12) : unit * quantity;
+      const baseAmount = section === 'annual_saas' ? unit * licenseQuantity * (quantity / 12) : unit * quantity;
       const calculatedLineTotal = Math.max(0, baseAmount * (1 - discountRatio));
       const lineTotal = storedLineTotal > 0 ? storedLineTotal : calculatedLineTotal;
       if (section === 'annual_saas') totals.subtotal_locations += lineTotal;
