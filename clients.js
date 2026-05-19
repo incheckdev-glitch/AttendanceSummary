@@ -15,6 +15,8 @@ const Clients = {
   canExportClientStatement() {
     return Permissions.canExportClientStatement();
   },
+  canImportOldClient() { return Permissions.canCreate('clients') && (Permissions.hasRole('admin') || Permissions.hasRole('dev')); },
+  parseImportMeta_(client = {}) { try { return JSON.parse(String(client.notes || '{}')); } catch (_) { return {}; } },
   clientFields: [
     'client_id',
     'client_code',
@@ -2599,7 +2601,7 @@ const Clients = {
         const analytics = client.analytics || {};
         const activeClass = this.state.selectedClientId === client.client_id ? ' style="background:rgba(59,130,246,.08);"' : '';
         return `<tr data-client-row="${U.escapeAttr(client.client_id)}"${activeClass}>
-          <td>${U.escapeHtml(client.customer_name || '—')}</td>
+          <td>${U.escapeHtml(client.customer_name || '—')} ${this.parseImportMeta_(client).is_historical_client ? '<span class="chip" style="margin-left:6px;">Historical Client</span>' : ''}</td>
           <td>${U.escapeHtml(client.customer_legal_name || '—')}</td>
           <td>${U.escapeHtml(String(analytics.total_locations ?? 0))}</td>
           <td>${U.escapeHtml(String(analytics.total_agreements ?? 0))}</td>
@@ -2644,7 +2646,7 @@ const Clients = {
         .slice().sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime())[0];
       const billing = client.billing_frequency || client.billingFrequency || latestAgreement?.billing_frequency || latestAgreement?.billingFrequency || latestInvoice?.billing_frequency || latestInvoice?.billingFrequency || '—';
       const warning = linkedCompany ? '' : 'Company details are not linked yet. | ';
-      E.clientDetailOverview.textContent = `${warning}Main Email: ${linkedCompany?.main_email || linkedCompany?.email || client.main_email || client.contact_email || '—'} | Main Phone: ${linkedCompany?.main_phone || linkedCompany?.phone || linkedContact?.mobile || linkedContact?.phone || client.contact_phone || client.phone || '—'} | Country: ${linkedCompany?.country || client.country || '—'} | City: ${linkedCompany?.city || client.city || '—'} | Address: ${linkedCompany?.address || client.customer_address || client.address || '—'} | Billing: ${billing} | Tax: ${linkedCompany?.tax_number || linkedCompany?.taxNumber || linkedCompany?.vat_number || linkedCompany?.vatNumber || client.tax_number || '—'} | Industry: ${linkedCompany?.industry || client.industry || '—'} | Source: ${linkedCompany?.source || linkedCompany?.lead_source || client.source || '—'} | Notes: ${linkedCompany?.notes || client.notes || '—'} | Contact: ${this.buildContactPersonName(linkedContact) || client.contact_name || client.primary_contact_name || '—'} | Contact Email: ${linkedContact?.email || client.contact_email || client.primary_contact_email || '—'} | Contact Phone: ${linkedContact?.mobile || linkedContact?.phone || client.contact_phone || client.phone || '—'}`;
+      const importMeta = this.parseImportMeta_(client); const importInfo = importMeta?.is_historical_client ? ` | Imported From: ${importMeta.imported_from || '—'} | Imported At: ${U.fmtDisplayDate(importMeta.imported_at) || '—'} | Imported By: ${importMeta.imported_by || '—'} | Legacy Client Ref: ${importMeta.legacy_client_ref || '—'}` : ''; E.clientDetailOverview.textContent = `${warning}Main Email: ${linkedCompany?.main_email || linkedCompany?.email || client.main_email || client.contact_email || '—'} | Main Phone: ${linkedCompany?.main_phone || linkedCompany?.phone || linkedContact?.mobile || linkedContact?.phone || client.contact_phone || client.phone || '—'} | Country: ${linkedCompany?.country || client.country || '—'} | City: ${linkedCompany?.city || client.city || '—'} | Address: ${linkedCompany?.address || client.customer_address || client.address || '—'} | Billing: ${billing} | Tax: ${linkedCompany?.tax_number || linkedCompany?.taxNumber || linkedCompany?.vat_number || linkedCompany?.vatNumber || client.tax_number || '—'} | Industry: ${linkedCompany?.industry || client.industry || '—'} | Source: ${linkedCompany?.source || linkedCompany?.lead_source || client.source || '—'} | Notes: ${linkedCompany?.notes || client.notes || '—'} | Contact: ${this.buildContactPersonName(linkedContact) || client.contact_name || client.primary_contact_name || '—'} | Contact Email: ${linkedContact?.email || client.contact_email || client.primary_contact_email || '—'} | Contact Phone: ${linkedContact?.mobile || linkedContact?.phone || client.contact_phone || client.phone || '—'}${importInfo}`;
     }
 
     const displayCurrency = this.normalizeCurrencyCode_(analytics.currency || this.getClientCurrency_(client.client_id));
@@ -2886,6 +2888,9 @@ const Clients = {
     E.newClientModal.setAttribute('aria-hidden', 'true');
     if (E.newClientForm) E.newClientForm.reset();
   },
+  openImportOldClientModal() { if (E.importOldClientModal) { E.importOldClientModal.classList.add('open'); E.importOldClientModal.setAttribute('aria-hidden', 'false'); } },
+  closeImportOldClientModal() { if (E.importOldClientModal) { E.importOldClientModal.classList.remove('open'); E.importOldClientModal.setAttribute('aria-hidden', 'true'); } if (E.importOldClientForm) E.importOldClientForm.reset(); },
+  collectImportOldClientFormData() { if (!E.importOldClientForm) return null; const fd = new FormData(E.importOldClientForm); return Object.fromEntries([...fd.entries()].map(([k,v]) => [k, String(v || '').trim()])); },
   async runClientAction(action) {
     const clientId = String(this.state.selectedClientId || '').trim();
     if (!clientId) {
@@ -3117,6 +3122,11 @@ const Clients = {
         }
       });
     }
+    if (E.importOldClientBtn) { E.importOldClientBtn.style.display = this.canImportOldClient() ? '' : 'none'; E.importOldClientBtn.addEventListener('click', () => { if (!this.canImportOldClient()) return UI.toast('Only admin/dev can import old clients.'); this.openImportOldClientModal(); }); }
+    if (E.importOldClientCloseBtn) E.importOldClientCloseBtn.addEventListener('click', () => this.closeImportOldClientModal());
+    if (E.importOldClientCancelBtn) E.importOldClientCancelBtn.addEventListener('click', () => this.closeImportOldClientModal());
+    if (E.importOldClientModal) E.importOldClientModal.addEventListener('click', e => { if (e.target === E.importOldClientModal) this.closeImportOldClientModal(); });
+    if (E.importOldClientForm) E.importOldClientForm.addEventListener('submit', async event => { event.preventDefault(); if (!this.canImportOldClient()) return UI.toast('Only admin/dev can import old clients.'); const payload = this.collectImportOldClientFormData(); const duplicates = await window.ClientsService.findOldClientImportDuplicates(payload); if (duplicates.length && !window.confirm(`Possible duplicate found (${duplicates.length}). Continue and update/link existing company?`)) return; const result = await window.ClientsService.importOldClient(payload); this.state.rows.unshift(this.normalizeClient(result.client)); this.closeImportOldClientModal(); this.render(); UI.toast('Historical client imported without workflow automation.'); });
     if (E.clientActionProposalBtn) E.clientActionProposalBtn.addEventListener('click', () => this.runClientAction('proposal'));
     if (E.clientActionAgreementBtn) E.clientActionAgreementBtn.addEventListener('click', () => this.runClientAction('agreement'));
     if (E.clientActionInvoiceBtn) E.clientActionInvoiceBtn.addEventListener('click', () => this.runClientAction('invoice'));

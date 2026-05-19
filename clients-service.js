@@ -585,6 +585,82 @@ const ClientsService = {
     this.refreshCompanyLifecycleStatus(mapped);
     return mapped;
   },
+  async findOldClientImportDuplicates(input = {}) {
+    const db = this.getDb();
+    const legalName = String(input.legal_company_name || '').trim();
+    const accountNumber = String(input.account_number || '').trim();
+    const legacyRef = String(input.legacy_client_ref || '').trim();
+    const email = String(input.main_contact_email || input.billing_email || '').trim();
+    const checks = [];
+    if (legalName) checks.push(db.from('companies').select('id,company_id,company_name,legal_name,main_email').or(`legal_name.ilike.${legalName},company_name.ilike.${legalName}`).limit(5));
+    if (email) checks.push(db.from('companies').select('id,company_id,company_name,legal_name,main_email').eq('main_email', email).limit(5));
+    if (accountNumber) checks.push(db.from('companies').select('id,company_id,company_name,legal_name').eq('registration_number', accountNumber).limit(5));
+    if (legacyRef) checks.push(db.from('companies').select('id,company_id,company_name,legal_name').ilike('notes', `%${legacyRef}%`).limit(5));
+    const results = await Promise.allSettled(checks);
+    const rows = [];
+    results.forEach(result => {
+      if (result.status === 'fulfilled' && Array.isArray(result.value?.data)) rows.push(...result.value.data);
+    });
+    const unique = new Map();
+    rows.forEach(row => { const key = String(row.id || row.company_id || '').trim(); if (key && !unique.has(key)) unique.set(key, row); });
+    return [...unique.values()];
+  },
+  async importOldClient(input = {}) {
+    const db = this.getDb();
+    const nowIso = new Date().toISOString();
+    const userId = this.getCurrentUserId();
+    const companyPayload = {
+      company_name: String(input.company_name || '').trim(),
+      legal_name: String(input.legal_company_name || '').trim(),
+      country: String(input.country || '').trim(),
+      city: String(input.city || '').trim(),
+      address: String(input.address || '').trim(),
+      main_email: String(input.main_contact_email || '').trim(),
+      main_phone: String(input.main_contact_phone || '').trim(),
+      industry: String(input.industry || '').trim(),
+      tax_number: String(input.tax_vat_number || '').trim(),
+      notes: [String(input.notes || '').trim(), input.legacy_client_ref ? `Legacy Ref: ${input.legacy_client_ref}` : '', input.account_number ? `Account Number: ${input.account_number}` : '', 'Imported historical client — do not run workflows'].filter(Boolean).join('\n'),
+      company_status: 'Active'
+    };
+    const clientPayload = {
+      client_name: companyPayload.company_name,
+      company_name: companyPayload.legal_name || companyPayload.company_name,
+      primary_email: String(input.main_contact_email || '').trim(),
+      primary_phone: String(input.main_contact_phone || '').trim(),
+      status: String(input.status || 'Active').trim(),
+      source_agreement_id: null,
+      total_agreements: 0, total_locations: 0, total_value: 0, total_paid: 0, total_due: 0,
+      notes: JSON.stringify({
+        imported: true, is_imported: true, is_historical_client: true, imported_from: 'old_client_manual_import', imported_at: nowIso, imported_by: userId,
+        legacy_client_ref: String(input.legacy_client_ref || '').trim(), account_number: String(input.account_number || '').trim(), billing_email: String(input.billing_email || '').trim(),
+        currency: String(input.currency || '').trim(), old_client_since_date: String(input.old_client_since_date || '').trim(),
+        skip_workflow: true, skip_notifications: true, skip_onboarding: true, skip_technical_admin: true, skip_invoice_creation: true, skip_receipt_creation: true
+      })
+    };
+    let company = null;
+    const duplicateCompanies = await this.findOldClientImportDuplicates(input);
+    if (duplicateCompanies[0]?.id) {
+      const { data, error } = await db.from('companies').update(companyPayload).eq('id', duplicateCompanies[0].id).select('*').single();
+      if (error) throw this.friendlyError('Unable to update existing company during import', error);
+      company = data;
+    } else {
+      const { data, error } = await db.from('companies').insert(companyPayload).select('*').single();
+      if (error) throw this.friendlyError('Unable to create company during import', error);
+      company = data;
+    }
+    const createdClient = await this.createClient(clientPayload);
+    if (input.main_contact_name && input.main_contact_email) {
+      const contactParts = String(input.main_contact_name || '').trim().split(/\s+/);
+      const first_name = contactParts.shift() || String(input.main_contact_name || '').trim();
+      const last_name = contactParts.join(' ');
+      await db.from('contacts').insert({
+        first_name, last_name, email: String(input.main_contact_email || '').trim(), phone: String(input.main_contact_phone || '').trim(),
+        company_id: company.company_id || null, company_ids: company.company_id ? [company.company_id] : [], company_name: company.company_name || null,
+        notes: 'Imported historical contact', contact_status: 'Active', updated_by: userId || null, created_by: userId || null
+      });
+    }
+    return { client: createdClient, company, duplicateCompanies };
+  },
   isClientUpdateNoRowOrPermissionError_(error) {
     const text = String(error?.message || error?.details || error?.hint || error || '').toLowerCase();
     return text.includes('cannot coerce the result to a single json object')
