@@ -85,8 +85,9 @@ const Clients = {
     renewalRowsById: new Map()
   },
   getField(raw = {}, ...keys) {
-    const found = keys.find(key => raw[key] !== undefined && raw[key] !== null);
-    return found ? raw[found] : '';
+    const source = raw && typeof raw === 'object' ? raw : {};
+    const found = keys.find(key => source[key] !== undefined && source[key] !== null);
+    return found ? source[found] : '';
   },
   isUuid(value) {
     return typeof value === 'string'
@@ -172,55 +173,57 @@ const Clients = {
     return Boolean(l && r && l === r);
   },
   normalizeAgreementForClient(agreement = {}) {
+    const source = agreement && typeof agreement === 'object' ? agreement : {};
     return {
-      ...agreement,
+      ...source,
       client_name:
-        agreement.client_name ||
-        agreement.customer_name ||
-        agreement.customer_legal_name ||
-        agreement.provider_name ||
+        source.client_name ||
+        source.customer_name ||
+        source.customer_legal_name ||
+        source.provider_name ||
         '',
       client_email:
-        agreement.client_email ||
-        agreement.customer_contact_email ||
+        source.client_email ||
+        source.customer_contact_email ||
         '',
       client_phone:
-        agreement.client_phone ||
-        agreement.customer_contact_mobile ||
+        source.client_phone ||
+        source.customer_contact_mobile ||
         '',
       number_of_locations:
-        agreement.number_of_locations ||
-        agreement.locations_count ||
-        agreement.location_count ||
-        agreement.subtotal_locations ||
+        source.number_of_locations ||
+        source.locations_count ||
+        source.location_count ||
+        source.subtotal_locations ||
         '',
       payment_terms:
-        agreement.payment_terms ||
-        agreement.payment_term ||
+        source.payment_terms ||
+        source.payment_term ||
         '',
       payment_term:
-        agreement.payment_term ||
-        agreement.payment_terms ||
+        source.payment_term ||
+        source.payment_terms ||
         '',
       service_start_date:
-        agreement.service_start_date ||
-        agreement.effective_date ||
-        agreement.agreement_date ||
+        source.service_start_date ||
+        source.effective_date ||
+        source.agreement_date ||
         '',
       service_end_date:
-        agreement.service_end_date ||
+        source.service_end_date ||
         '',
       total_value:
         this.toNumberSafe(
-          agreement.grand_total ||
-            agreement.total_value ||
-            agreement.total_amount ||
-            agreement.amount ||
+          source.grand_total ||
+            source.total_value ||
+            source.total_amount ||
+            source.amount ||
             0
         )
     };
   },
   getClientKeys(client = {}) {
+    client = client && typeof client === 'object' ? client : {};
     return this.compactValues([
       client.client_id,
       client.id,
@@ -240,6 +243,7 @@ const Clients = {
     ]);
   },
   getAgreementKeys(agreement = {}) {
+    agreement = agreement && typeof agreement === 'object' ? agreement : {};
     const normalizedAgreement = this.normalizeAgreementForClient(agreement);
     return this.compactValues([
       agreement.id,
@@ -780,6 +784,8 @@ const Clients = {
     return recordKeys.some(recordKey => clientKeys.some(clientKey => this.valuesMatch(recordKey, clientKey)));
   },
   matchesClientAgreement_(agreement = {}, client = {}) {
+    agreement = agreement && typeof agreement === 'object' ? agreement : {};
+    client = client && typeof client === 'object' ? client : {};
     const sourceAgreementId = String(client.source_agreement_id || '').trim();
     if (sourceAgreementId) {
       const agreementUuid = String(agreement.id || '').trim();
@@ -792,7 +798,7 @@ const Clients = {
   listClientRelatedAgreements_(clientId) {
     const client = this.state.rows.find(row => row.client_id === clientId);
     if (!client) return [];
-    const matchedAgreements = this.state.agreements.filter(item => this.matchesClientAgreement_(item, client));
+    const matchedAgreements = (Array.isArray(this.state.agreements) ? this.state.agreements : []).filter(Boolean).filter(item => this.matchesClientAgreement_(item, client));
     console.log('[AgreementMapping] matched agreements for client', {
       clientName: client?.client_name || client?.company_name || client?.name || client?.customer_name,
       matched: matchedAgreements.length
@@ -800,11 +806,13 @@ const Clients = {
     return matchedAgreements;
   },
   getAgreementMatchKeys_(agreement = {}) {
+    agreement = agreement && typeof agreement === 'object' ? agreement : {};
     return [agreement.id, agreement.agreement_id, agreement.agreement_number, agreement.source_agreement_id, agreement.source_agreement_number]
       .map(value => String(value || '').trim())
       .filter(Boolean);
   },
   getAgreementItemMatchKeys_(item = {}) {
+    item = item && typeof item === 'object' ? item : {};
     return [
       item.agreement_id,
       item.agreement_number,
@@ -817,8 +825,10 @@ const Clients = {
       .filter(Boolean);
   },
   findAgreementForItem_(item = {}, agreements = []) {
+    item = item && typeof item === 'object' ? item : {};
+    const safeAgreements = Array.isArray(agreements) ? agreements.filter(Boolean) : [];
     const itemKeys = this.getAgreementItemMatchKeys_(item);
-    return agreements.find(agreement => {
+    return safeAgreements.find(agreement => {
       const agreementKeys = this.getAgreementMatchKeys_(agreement);
       return itemKeys.some(itemKey => agreementKeys.some(agreementKey => this.valuesMatch(itemKey, agreementKey)));
     }) || {};
@@ -826,7 +836,8 @@ const Clients = {
   listClientAgreementLocationItems_(clientId) {
     const linkedAgreements = this.listClientRelatedAgreements_(clientId);
     const linkedAgreementKeys = linkedAgreements.flatMap(item => this.getAgreementMatchKeys_(item));
-    return this.state.agreementItems
+    return (Array.isArray(this.state.agreementItems) ? this.state.agreementItems : [])
+      .filter(Boolean)
       .filter(item => {
         const itemKeys = this.getAgreementItemMatchKeys_(item);
         return itemKeys.some(key => linkedAgreementKeys.some(agreementKey => this.valuesMatch(key, agreementKey)));
@@ -837,7 +848,7 @@ const Clients = {
     const client = this.state.rows.find(row => row.client_id === clientId);
     if (!client) return [];
     const linkedAgreements = this.listClientRelatedAgreements_(clientId);
-    const relatedInvoices = this.state.invoices.filter(item => this.invoiceBelongsToClient(item, client, linkedAgreements));
+    const relatedInvoices = (Array.isArray(this.state.invoices) ? this.state.invoices : []).filter(Boolean).filter(item => this.invoiceBelongsToClient(item, client, linkedAgreements));
     if (this.isDebugMode_()) {
       const unmatched = this.state.invoices.filter(item => !this.invoiceBelongsToClient(item, client, linkedAgreements)).slice(0, 20);
       if (unmatched.length) console.debug('[ClientsDetail] unmatched invoices', unmatched);
@@ -849,7 +860,7 @@ const Clients = {
     if (!client) return [];
     const linkedAgreements = this.listClientRelatedAgreements_(clientId);
     const linkedInvoices = this.listClientRelatedInvoices_(clientId);
-    const relatedReceipts = this.state.receipts.filter(item => this.receiptBelongsToClient(item, client, linkedAgreements, linkedInvoices));
+    const relatedReceipts = (Array.isArray(this.state.receipts) ? this.state.receipts : []).filter(Boolean).filter(item => this.receiptBelongsToClient(item, client, linkedAgreements, linkedInvoices));
     if (this.isDebugMode_()) {
       const unmatched = this.state.receipts.filter(item => !this.receiptBelongsToClient(item, client, linkedAgreements, linkedInvoices)).slice(0, 20);
       if (unmatched.length) console.debug('[ClientsDetail] unmatched receipts', unmatched);
@@ -1004,6 +1015,7 @@ const Clients = {
     return !['one_time_fee', 'one_time', 'one time', 'one-time', 'setup', 'implementation', 'onboarding'].some(token => text.includes(token));
   },
   isActiveAnnualSaasLocationItem(item = {}) {
+    item = item && typeof item === 'object' ? item : {};
     const startValue = String(item.service_start_date || item.serviceStartDate || '').trim();
     const endValue = String(item.service_end_date || item.serviceEndDate || '').trim();
     if (!startValue) return false;
@@ -1326,13 +1338,14 @@ const Clients = {
     return rawStatus || this.getPaymentStatus(row) || 'Not Paid';
   },
   getRenewalStatus(row = {}) {
-    const serviceEnd = String(row.service_end_date || row.renewal_date || row.renewalDate || '').trim();
-    const days = this.getDaysLeft(serviceEnd);
-    if (days === null) return 'Unknown';
-    if (days < 0) return 'Expired';
-    if (days === 0) return 'Due';
-    if (days <= 30) return 'Due Soon';
-    return 'Active';
+    const days = this.getDaysLeft(row.renewal_date || row.renewalDate || row.service_end_date);
+    const paymentStatus = this.getPaymentStatus(row);
+    if (days === null) return paymentStatus || 'Unknown';
+    if (days < 0) return 'Renewal Overdue';
+    if (days <= 7) return 'Renewal Due in 7 days';
+    if (days <= 30) return 'Renewal Due in 30 days';
+    if (days <= 60) return 'Renewal Due in 60 days';
+    return paymentStatus === 'Overdue' ? 'Payment Overdue' : 'Scheduled';
   },
   isAgreementStillActive(agreement) {
     const status = String(agreement?.status || '').trim().toLowerCase();
@@ -1603,28 +1616,13 @@ const Clients = {
       return `${code} ${this.toNumberSafe(amount).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
     }
   },
-  getRenewalServiceDates_(row = {}) {
-    const serviceStartDate = this.getField(row?.invoice_item, 'service_start_date', 'serviceStartDate')
-      || this.getField(row?.agreement_item, 'service_start_date', 'serviceStartDate')
-      || this.getField(row?.agreement, 'service_start_date', 'serviceStartDate')
-      || this.getField(row, 'service_start_date', 'serviceStartDate')
-      || null;
-    const serviceEndDate = this.getField(row?.invoice_item, 'service_end_date', 'serviceEndDate')
-      || this.getField(row?.agreement_item, 'service_end_date', 'serviceEndDate')
-      || this.getField(row?.agreement, 'service_end_date', 'serviceEndDate')
-      || this.getField(row, 'service_end_date', 'serviceEndDate')
-      || null;
-    return { serviceStartDate, serviceEndDate };
-  },
   isRenewalRowRenewable_(row = {}) {
-    const { serviceEndDate } = this.getRenewalServiceDates_(row);
-    if (!serviceEndDate) return false;
     const status = String(row.renewal_status || row.status || '').trim().toLowerCase();
     if (['renewed', 'renewal invoice created', 'renewal proposal created', 'renewal agreement created', 'cancelled', 'canceled', 'not renewed'].includes(status)) return false;
     const locationStatus = String(row.location_status || row.invoice_status || row.payment_status || '').trim().toLowerCase();
     const alreadyInvoiced = Boolean(row.invoice_id || row.invoice_number || ['active', 'invoiced', 'fully paid', 'paid', 'partially paid', 'not paid', 'overdue', 'open'].some(token => locationStatus.includes(token)));
     if (!alreadyInvoiced) return false;
-    const days = this.getDaysLeft(serviceEndDate || row.renewal_date || row.service_end_date);
+    const days = this.getDaysLeft(row.renewal_date || row.service_end_date);
     return days === null || days <= 60;
   },
   getRenewalActionLabel_(row = {}) {
@@ -1632,9 +1630,6 @@ const Clients = {
     if (renewalStatus === 'renewed') return '<span class="badge ok">Renewed</span>';
     if (renewalStatus.includes('proposal')) return '<span class="badge info">View Renewal Proposal</span>';
     if (renewalStatus.includes('agreement')) return '<span class="badge info">View Renewal Agreement</span>';
-    if (String(row.renewal_status || '').trim().toLowerCase() === 'missing service dates') {
-      return '<span class="badge warning">Missing Service Dates</span>';
-    }
     if (!this.isRenewalRowRenewable_(row)) return '<span class="muted">—</span>';
     return `<button class="btn ghost sm" type="button" data-renew-row="${U.escapeHtml(row.row_id || '')}">Renew</button>`;
   },
@@ -1667,9 +1662,6 @@ const Clients = {
     const batchId = `REN-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
     const enrichedRows = rows.map(row => {
       const oldEnd = row.service_end_date || row.renewal_date || '';
-      if (!oldEnd) {
-        throw new Error('Cannot renew this row because the service end date is missing.');
-      }
       const newStart = this.nextDay_(oldEnd);
       const months = this.getRenewalLicenseMonths_(row);
       const annualPrice = this.getRenewalAnnualLicensePrice_(row);
@@ -1690,8 +1682,6 @@ const Clients = {
       if (validation.confirmDifferentDates && window.confirm(validation.message)) return this.openRenewalFlow_(rows, { allowDifferentDates: true });
       return UI.toast(validation.message);
     }
-    const missingEndDateRow = rows.find(row => !String(row?.service_end_date || row?.renewal_date || '').trim());
-    if (missingEndDateRow) return UI.toast('Cannot renew this row because the service end date is missing.');
     const agreement = this.findAgreementForRenewalRow_(rows[0] || {});
     const draft = this.buildRenewalDraft_(rows);
     this.state.activeRenewalRows = draft.rows;
@@ -2047,52 +2037,15 @@ const Clients = {
     return this.computeRunningBalance([...invoiceRows, ...receiptRows]);
   },
   buildClientRenewalRows(client) {
-    const clientId = String(client?.client_id || '').trim();
-    const agreements = this.listClientRelatedAgreements_(clientId);
-    const locationItems = this.listClientAgreementLocationItems_(clientId).filter(item => this.isSaasAnnualItem(item));
-    const invoices = this.listClientRelatedInvoices_(clientId);
-    const receipts = this.listClientRelatedReceipts_(clientId);
+    const safeClient = client && typeof client === 'object' ? client : {};
+    const clientId = String(safeClient.client_id || '').trim();
+    const agreements = this.listClientRelatedAgreements_(clientId).filter(Boolean);
+    const locationItems = this.listClientAgreementLocationItems_(clientId).filter(Boolean).filter(item => this.isSaasAnnualItem(item));
+    const invoices = this.listClientRelatedInvoices_(clientId).filter(Boolean);
+    const receipts = this.listClientRelatedReceipts_(clientId).filter(Boolean);
     const rows = [];
 
-    const invoiceItems = this.listClientRelatedInvoiceItems_(clientId);
-
-    const pickRelatedInvoiceItem = (item = {}, agreement = {}) => {
-      const agreementItemKeys = [item.id, item.item_id, item.agreement_item_id, item.agreementItemId]
-        .map(v => String(v || '').trim())
-        .filter(Boolean);
-      const agreementKeys = [agreement.id, agreement.agreement_id, agreement.agreement_number, item.agreement_id, item.agreement_number]
-        .map(v => String(v || '').trim())
-        .filter(Boolean);
-      const locationToken = this.normalizeText(item.location_name || item.locationName || '');
-      const moduleToken = this.normalizeText(item.module_name || item.moduleName || item.item_name || item.itemName || '');
-      return invoiceItems.find(invItem => {
-        const sourceKeys = [invItem.source_agreement_item_id, invItem.agreement_item_id, invItem.agreementItemId, invItem.item_id]
-          .map(v => String(v || '').trim())
-          .filter(Boolean);
-        if (sourceKeys.length && agreementItemKeys.some(key => sourceKeys.some(source => this.valuesMatch(source, key)))) return true;
-        const invAgreementKeys = [invItem.agreement_id, invItem.source_agreement_id, invItem.agreement_number]
-          .map(v => String(v || '').trim())
-          .filter(Boolean);
-        const agreementMatch = agreementKeys.some(key => invAgreementKeys.some(invKey => this.valuesMatch(invKey, key)));
-        if (!agreementMatch) return false;
-        const invLocationToken = this.normalizeText(invItem.location_name || invItem.locationName || '');
-        const invModuleToken = this.normalizeText(invItem.module_name || invItem.moduleName || invItem.item_name || invItem.itemName || '');
-        return (locationToken && invLocationToken && locationToken === invLocationToken)
-          || (moduleToken && invModuleToken && moduleToken === invModuleToken);
-      }) || null;
-    };
-
-    const pickRelatedInvoice = (item = {}, agreement = {}, relatedInvoiceItem = null) => {
-      const linkedInvoiceKeys = relatedInvoiceItem
-        ? [relatedInvoiceItem.invoice_id, relatedInvoiceItem.parent_invoice_id, relatedInvoiceItem.invoice_number].map(v => String(v || '').trim()).filter(Boolean)
-        : [];
-      if (linkedInvoiceKeys.length) {
-        const linked = invoices.find(invoice => {
-          const invoiceKeys = [invoice.id, invoice.invoice_id, invoice.invoice_number].map(v => String(v || '').trim()).filter(Boolean);
-          return linkedInvoiceKeys.some(linkKey => invoiceKeys.some(invoiceKey => this.valuesMatch(invoiceKey, linkKey)));
-        });
-        if (linked) return linked;
-      }
+    const pickRelatedInvoice = (item = {}, agreement = {}) => {
       const itemKeyTokens = [
         item.id, item.item_id, item.agreement_item_id, item.agreementItemId,
         item.location_name, item.locationName, item.module_name, item.moduleName,
@@ -2120,10 +2073,9 @@ const Clients = {
     });
 
     locationItems.forEach(item => {
-      const agreement = this.findAgreementForItem_(item, agreements);
-      const relatedInvoiceItem = pickRelatedInvoiceItem(item, agreement);
-      const relatedInvoice = pickRelatedInvoice(item, agreement, relatedInvoiceItem);
-      if (!relatedInvoice) return;
+      item = item && typeof item === 'object' ? item : {};
+      const agreement = this.findAgreementForItem_(item, agreements) || {};
+      const relatedInvoice = pickRelatedInvoice(item, agreement);
       const relatedReceipts = relatedInvoice ? relatedReceiptsForInvoice(relatedInvoice) : [];
       const latestReceipt = relatedReceipts
         .slice()
@@ -2144,47 +2096,36 @@ const Clients = {
           paymentStatus = daysLeft !== null && daysLeft < 0 ? 'Overdue' : 'Not Paid';
         }
       }
-      const serviceStart = this.getField(relatedInvoiceItem, 'service_start_date', 'serviceStartDate')
-        || this.getField(item, 'service_start_date', 'serviceStartDate', 'start_date', 'startDate')
-        || this.getField(agreement, 'service_start_date', 'serviceStartDate')
-        || null;
-      const serviceEnd = this.getField(relatedInvoiceItem, 'service_end_date', 'serviceEndDate')
-        || this.getField(item, 'service_end_date', 'serviceEndDate', 'end_date', 'endDate')
-        || this.getField(agreement, 'service_end_date', 'serviceEndDate')
-        || null;
-      const renewalDate = serviceEnd || String(relatedInvoice?.invoice_date || relatedInvoice?.issue_date || relatedInvoice?.issued_at || relatedInvoice?.created_at || '').trim() || '';
-      const missingServiceDates = !serviceStart || !serviceEnd;
+      const serviceStart = this.getField(item, 'service_start_date', 'serviceStartDate', 'start_date', 'startDate') || this.getField(agreement, 'service_start_date', 'effective_date', 'agreement_date') || '';
+      const serviceEnd = this.getField(item, 'service_end_date', 'serviceEndDate', 'end_date', 'endDate') || this.getField(agreement, 'service_end_date') || '';
+      const renewalDate = this.getField(item, 'service_end_date', 'serviceEndDate', 'renewal_date', 'renewalDate') || this.getField(agreement, 'service_end_date') || '';
       rows.push(this.normalizeRenewalRow({
         ...item,
         source: 'agreement_item',
         type: 'Location Renewal',
         client_id: clientId,
-        client_uuid: client.id || client.client_uuid || '',
+        client_uuid: safeClient.id || safeClient.client_uuid || '',
         agreement_uuid: agreement.id || agreement.agreement_uuid || '',
         agreement_id: agreement.id || agreement.agreement_uuid || item.agreement_id,
         agreement_reference: agreement.agreement_reference || agreement.agreement_id || item.agreement_reference || item.agreement_id || '',
         agreement_number: agreement.agreement_number || item.agreement_number,
         agreement_status: agreement.status || '',
-        agreement_service_start_date: this.getField(agreement, 'service_start_date', 'serviceStartDate') || '',
-        agreement_service_end_date: this.getField(agreement, 'service_end_date', 'serviceEndDate', 'end_service_date', 'endServiceDate') || '',
-        agreement_expiry_date: agreement.expiry_date || agreement.expiration_date || agreement.valid_until || '',
+        agreement_service_start_date: this.getField(agreement, 'service_start_date', 'effective_date') || '',
+        agreement_service_end_date: this.getField(agreement, 'service_end_date', 'end_service_date') || '',
+        agreement_expiry_date: this.getField(agreement, 'expiry_date', 'expiration_date', 'valid_until') || '',
         invoice_uuid: relatedInvoice?.id || relatedInvoice?.invoice_uuid || '',
         invoice_id: relatedInvoice?.id || relatedInvoice?.invoice_id || '',
         invoice_number: relatedInvoice?.invoice_number || '',
-        invoice_item_id: relatedInvoiceItem?.id || relatedInvoiceItem?.item_id || item.invoice_item_id || item.invoiceItemId || '',
+        invoice_item_id: item.invoice_item_id || item.invoiceItemId || '',
         source_agreement_item_id: item.id || item.item_id || item.agreement_item_id || item.agreementItemId || '',
-        client_name: agreement.customer_name || agreement.customer_legal_name || client.customer_name || client.client_name || client.company_name || '—',
+        client_name: agreement.customer_name || agreement.customer_legal_name || safeClient.customer_name || safeClient.client_name || safeClient.company_name || '—',
         location_name: this.getField(item, 'location_name', 'locationName', 'location', 'site', 'site_name', 'branch', 'branch_name', 'store_name') || this.getField(item, 'description', 'item_name', 'itemName') || 'Location',
         module_name: this.getField(item, 'module_name', 'moduleName', 'module', 'service_name', 'serviceName', 'product_name', 'productName', 'item_name', 'itemName') || 'SaaS Annual',
-        invoice_item: relatedInvoiceItem || null,
-        agreement_item: item || null,
-        agreement: agreement || null,
-        service_start_date: serviceStart || '',
-        service_end_date: serviceEnd || '',
-        renewal_date: serviceEnd || renewalDate,
-        renewal_due_date: serviceEnd || '',
-        billing_frequency: this.getField(item, 'billing_frequency', 'billingFrequency', 'billing_cycle', 'billingCycle', 'frequency') || agreement.billing_frequency,
-        payment_term: this.getField(item, 'payment_term', 'payment_terms', 'paymentTerm', 'paymentTerms') || agreement.payment_term,
+        service_start_date: serviceStart,
+        service_end_date: serviceEnd,
+        renewal_date: renewalDate,
+        billing_frequency: this.getField(item, 'billing_frequency', 'billingFrequency', 'billing_cycle', 'billingCycle', 'frequency') || this.getField(agreement, 'billing_frequency'),
+        payment_term: this.getField(item, 'payment_term', 'payment_terms', 'paymentTerm', 'paymentTerms') || this.getField(agreement, 'payment_term'),
         invoice_issued_date: relatedInvoice?.created_at || relatedInvoice?.invoice_date || '',
         due_date: relatedInvoice?.due_date || '',
         receipt_received_date: latestReceipt?.created_at || latestReceipt?.payment_date || '',
@@ -2195,16 +2136,15 @@ const Clients = {
         quantity: this.getRenewalLicenseMonths_(item),
         discount_percent: this.toNumberSafe(item.discount_percent ?? item.discountPercent),
         payment_status: paymentStatus,
-        renewal_status: missingServiceDates ? 'Missing Service Dates' : '',
         status: agreement.status || 'Active',
-        currency: this.getField(item, 'currency', 'currency_code') || agreement.currency || this.getClientCurrency_(clientId)
+        currency: this.getField(item, 'currency', 'currency_code') || this.getField(agreement, 'currency') || this.getClientCurrency_(clientId)
       }));
     });
 
     rows.forEach(row => { row.row_id = row.row_id || this.getRenewalRowId_(row); });
 
     if (this.isDebugMode_()) {
-      console.log('[ClientRenewals] renewal source counts', { client: client.client_name || client.company_name || client.name || client.customer_name, relatedAgreements: agreements.length, agreementItemsLoaded: this.state.agreementItems.length, linkedAgreementItems: locationItems.length, saasAnnualItems: locationItems.length, renewalRows: rows.length });
+      console.log('[ClientRenewals] renewal source counts', { client: safeClient.client_name || safeClient.company_name || safeClient.name || safeClient.customer_name, relatedAgreements: agreements.length, agreementItemsLoaded: this.state.agreementItems.length, linkedAgreementItems: locationItems.length, saasAnnualItems: locationItems.length, renewalRows: rows.length });
     }
     return rows.sort((a, b) => {
       const ad = this.dateValueForSort_(a);
@@ -2632,13 +2572,13 @@ const Clients = {
                 <td>${U.escapeHtml(U.fmtDisplayDate(row.service_end_date) || '—')}</td>
                 <td>${U.escapeHtml(U.fmtDisplayDate(row.renewal_due_date || row.renewal_date) || (this.dateValueForSort_(row) ? '—' : 'Date not set'))}</td>
                 <td>${U.escapeHtml(row.payment_status || this.getPaymentStatus(row) || '—')}</td>
-                <td>${U.escapeHtml(row.renewal_status || this.getRenewalStatus(row) || '—')}${row.renewal_status === 'Missing Service Dates' ? ' <span class="badge warning">Missing Service Dates</span>' : ''}</td>
+                <td>${U.escapeHtml(row.renewal_status || this.getRenewalStatus(row) || '—')}</td>
                 <td>${U.escapeHtml(this.formatCurrency_(this.getRenewalPrice_(row), row.currency || 'USD'))}</td>
                 <td>${this.getRenewalActionLabel_(row)}</td>
               </tr>`;
             })
             .join('')
-        : `<tr><td colspan="11" class="muted" style="text-align:center;">${U.escapeHtml(detailData.statementError ? 'Unable to load statement data.' : detailData.noLinkedRows ? 'No linked rows found. Check client ID/name mapping.' : 'No renewable SaaS locations found for this client.')}</td></tr>`;
+        : `<tr><td colspan="11" class="muted" style="text-align:center;">${U.escapeHtml(detailData.statementError ? 'Unable to load statement data.' : detailData.noLinkedRows ? 'No linked rows found. Check client ID/name mapping.' : 'No renewals or payments timeline rows.')}</td></tr>`;
     }
     if (E.clientRenewalEvents) {
       const milestones = this.getMilestoneValues_({ ...detailData, renewalRows: baseRenewalRows }, fallbackClient);
@@ -3056,9 +2996,23 @@ const Clients = {
     const total = Number(E.importOldClientForm?.querySelector('[name="total_amount"]')?.value||0); const warning=document.getElementById('importOldTotalsWarning'); if (warning) warning.textContent = total>0 && Math.abs(total-(a+o))>0.01 ? 'Entered total amount does not match item totals. You can continue because this is a historical imported agreement.' : '';
   },
   bindImportOldClientAgreementFallback_() {
-    // Import Old Client Agreement has been retired. Admin/dev should use the normal live workflow with Admin Override.
-    if (E.importOldClientBtn) { E.importOldClientBtn.style.display = 'none'; E.importOldClientBtn.hidden = true; E.importOldClientBtn.disabled = true; }
-    if (E.agreementsImportOldClientBtn) { E.agreementsImportOldClientBtn.style.display = 'none'; E.agreementsImportOldClientBtn.hidden = true; E.agreementsImportOldClientBtn.disabled = true; }
+    if (document.body?.dataset?.importOldClientAgreementFallbackBound === 'true') return;
+    if (document.body?.dataset) document.body.dataset.importOldClientAgreementFallbackBound = 'true';
+
+    document.addEventListener('click', event => {
+      const trigger = event.target?.closest?.('#importOldClientBtn, #agreementsImportOldClientBtn, [data-import-old-client-agreement]');
+      if (!trigger) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (!this.canImportOldClient()) {
+        UI.toast?.('Only admin/dev can import old client agreements.');
+        return;
+      }
+
+      this.openImportOldClientModal();
+    }, true);
   },
   async runClientAction(action) {
     const clientId = String(this.state.selectedClientId || '').trim();
@@ -3292,9 +3246,14 @@ const Clients = {
       });
     }
     if (E.importOldClientBtn) {
-      E.importOldClientBtn.style.display = 'none';
-      E.importOldClientBtn.hidden = true;
-      E.importOldClientBtn.disabled = true;
+      E.importOldClientBtn.style.display = this.canImportOldClient() ? '' : 'none';
+      E.importOldClientBtn.disabled = false;
+      E.importOldClientBtn.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!this.canImportOldClient()) return UI.toast('Only admin/dev can import old client agreements.');
+        this.openImportOldClientModal();
+      });
     }
     this.bindImportOldClientAgreementFallback_();
     if (E.importOldClientCloseBtn) E.importOldClientCloseBtn.addEventListener('click', () => this.closeImportOldClientModal());

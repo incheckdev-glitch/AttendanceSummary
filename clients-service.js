@@ -76,53 +76,55 @@ const ClientsService = {
     return null;
   },
   normalizeAgreementForClient(agreement = {}) {
+    const source = agreement && typeof agreement === 'object' ? agreement : {};
     const normalized = {
-      ...agreement,
+      ...source,
       client_name:
-        agreement.client_name ||
-        agreement.customer_name ||
-        agreement.customer_legal_name ||
-        agreement.provider_name ||
+        source.client_name ||
+        source.customer_name ||
+        source.customer_legal_name ||
+        source.provider_name ||
         '',
       client_email:
-        agreement.client_email ||
-        agreement.customer_contact_email ||
+        source.client_email ||
+        source.customer_contact_email ||
         '',
       client_phone:
-        agreement.client_phone ||
-        agreement.customer_contact_mobile ||
+        source.client_phone ||
+        source.customer_contact_mobile ||
         '',
       number_of_locations:
-        agreement.number_of_locations ||
-        agreement.locations_count ||
-        agreement.location_count ||
-        agreement.subtotal_locations ||
+        source.number_of_locations ||
+        source.locations_count ||
+        source.location_count ||
+        source.subtotal_locations ||
         '',
       payment_terms:
-        agreement.payment_terms ||
-        agreement.payment_term ||
+        source.payment_terms ||
+        source.payment_term ||
         '',
       payment_term:
-        agreement.payment_term ||
-        agreement.payment_terms ||
+        source.payment_term ||
+        source.payment_terms ||
         '',
       service_start_date:
-        agreement.service_start_date ||
-        agreement.effective_date ||
-        agreement.agreement_date ||
+        source.service_start_date ||
+        source.effective_date ||
+        source.agreement_date ||
         '',
       service_end_date:
-        agreement.service_end_date ||
+        source.service_end_date ||
         '',
       total_value:
-        agreement.total_value ||
-        agreement.grand_total ||
-        agreement.subtotal_locations ||
+        source.total_value ||
+        source.grand_total ||
+        source.subtotal_locations ||
         0
     };
     return normalized;
   },
   getClientKeys(client = {}) {
+    client = client && typeof client === 'object' ? client : {};
     return this.compactValues([
       client.client_id,
       client.id,
@@ -140,6 +142,7 @@ const ClientsService = {
     ]);
   },
   getAgreementKeys(agreement = {}) {
+    agreement = agreement && typeof agreement === 'object' ? agreement : {};
     const normalized = this.normalizeAgreementForClient(agreement);
     return this.compactValues([
       agreement.id,
