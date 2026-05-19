@@ -2861,6 +2861,7 @@
       discount_percent: normalizedDiscountPercent,
       discounted_unit_price: firstDefined(record, ['discounted_unit_price', 'discountedUnitPrice']),
       quantity: firstDefined(record, ['quantity']),
+      license_quantity: firstDefined(record, ['license_quantity', 'licenseQuantity', 'user_quantity', 'userQuantity', 'item_quantity', 'itemQuantity']),
       line_total: firstDefined(record, ['line_total', 'lineTotal']),
       service_start_date: normalizeNullableDateValue(firstDefined(record, ['service_start_date', 'serviceStartDate'])),
       service_end_date: normalizeNullableDateValue(firstDefined(record, ['service_end_date', 'serviceEndDate'])),

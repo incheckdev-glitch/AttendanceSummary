@@ -345,13 +345,33 @@ const Proposals = {
       const sectionType = this.classifyProposalItemBilling(safe);
       if (sectionType === 'capability') return;
 
+      const section = sectionType === 'saas'
+        ? 'annual_saas'
+        : sectionType === 'one_time'
+          ? 'one_time_fee'
+          : String(safe.section || '').trim().toLowerCase();
       const defaultQuantity = sectionType === 'saas' ? 12 : sectionType === 'one_time' ? 1 : 1;
       const quantity = Math.max(0, this.toNumberSafe(safe.quantity ?? safe.qty) || defaultQuantity);
       const unitPrice = this.toNumberSafe(safe.unit_price ?? safe.unitPrice);
       const discountPercent = this.getNormalizedItemDiscountPercent(safe);
-      const base = sectionType === 'saas' ? unitPrice * (quantity / 12) : quantity * unitPrice;
-      const discountAmount = (base * discountPercent) / 100;
-      const lineTotal = Math.max(0, base - discountAmount);
+      const isAnnualUserBased = section === 'annual_saas' && this.isAnnualSaasUserItem(safe);
+      const licenseQuantity = isAnnualUserBased
+        ? Math.max(1, Math.round(this.toNumberSafe(safe.license_quantity ?? safe.licenseQuantity ?? safe.user_quantity ?? safe.userQuantity ?? safe.item_quantity ?? safe.itemQuantity) || 1))
+        : 1;
+      const discountRatio = Math.max(0, Math.min(100, discountPercent)) / 100;
+      const base = section === 'annual_saas'
+        ? unitPrice * licenseQuantity * (quantity / 12)
+        : quantity * unitPrice;
+      const computed = this.computeCommercialRow({
+        ...safe,
+        section,
+        unit_price: unitPrice,
+        discount_percent: discountPercent,
+        quantity,
+        license_quantity: licenseQuantity
+      });
+      const lineTotal = this.toNumberSafe(computed.line_total);
+      const discountAmount = Math.max(0, base - lineTotal) || (base * discountRatio);
 
       totals.subtotal += base;
       totals.discount_total += discountAmount;
@@ -4607,6 +4627,8 @@ const Proposals = {
               }
               const computed = this.computeCommercialRow({
                 section,
+                item_name: get('item_name'),
+                license: get('item_name'),
                 unit_price: get('unit_price'),
                 discount_percent: get('discount_percent'),
                 quantity: section === 'one_time_fee' && !this.isCsHoursItem({ item_name: get('item_name') })
@@ -4645,6 +4667,8 @@ const Proposals = {
         }
         const computed = this.computeCommercialRow({
           section,
+          item_name: get('item_name'),
+          license: get('item_name'),
           unit_price: get('unit_price'),
           discount_percent: get('discount_percent'),
           quantity: section === 'one_time_fee' && !this.isCsHoursItem({ item_name: get('item_name') })
