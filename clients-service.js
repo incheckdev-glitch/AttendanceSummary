@@ -836,8 +836,15 @@ const ClientsService = {
       contact = await this.insertRowWithOptionalColumns_('contacts', contactPayload);
     }
 
+    const parseItems = raw => { try { const p = JSON.parse(String(raw || '[]')); return Array.isArray(p) ? p : []; } catch (_e) { return []; } };
+    const annualItems = parseItems(input.annual_saas_items_json);
+    const oneTimeItems = parseItems(input.one_time_fee_items_json);
+    const importedItems = [...annualItems, ...oneTimeItems];
+    const computedAnnualSubtotal = annualItems.reduce((s, r) => s + this.toNumber(r?.line_total), 0);
+    const computedOneTimeSubtotal = oneTimeItems.reduce((s, r) => s + this.toNumber(r?.line_total), 0);
+    const computedGrand = computedAnnualSubtotal + computedOneTimeSubtotal;
     let agreement = await this.findExistingAgreementByLegacyRef_(legacyAgreementRef);
-    const totalAmount = this.toNumber(input.total_amount || input.grand_total);
+    const totalAmount = computedGrand > 0 ? computedGrand : this.toNumber(input.total_amount || input.grand_total);
     if (!agreement) {
       const agreementStatus = this.normalizeImportedAgreementStatus_(input.agreement_status || input.status);
       const customerContactName = [contactParts.first_name, contactParts.last_name].filter(Boolean).join(' ') || String(input.main_contact_name || '').trim();
@@ -880,8 +887,8 @@ const ClientsService = {
         payment_terms: String(input.payment_term || 'Net 30').trim() || 'Net 30',
         currency: String(input.currency || 'USD').trim() || 'USD',
         status: agreementStatus,
-        subtotal_locations: totalAmount,
-        subtotal_one_time: 0,
+        subtotal_locations: computedAnnualSubtotal || totalAmount,
+        subtotal_one_time: computedOneTimeSubtotal,
         total_discount: 0,
         grand_total: totalAmount,
         is_imported: true,
@@ -913,6 +920,33 @@ const ClientsService = {
         updated_by: userId || null
       };
       agreement = await this.insertRowWithOptionalColumns_('agreements', agreementPayload);
+    }
+    const agreementPublicId = String(agreement?.agreement_id || agreement?.id || '').trim();
+    for (const [index, item] of importedItems.entries()) {
+      if (!String(item?.item_name || '').trim()) continue;
+      await this.insertRowWithOptionalColumns_('agreement_items', {
+        agreement_id: agreementPublicId || null,
+        item_type: String(item?.item_type || '').trim() || (annualItems.includes(item) ? 'annual_saas' : 'one_time_fee'),
+        section: String(item?.item_type || '').trim() || (annualItems.includes(item) ? 'annual_saas' : 'one_time_fee'),
+        line_no: index + 1,
+        item_name: String(item?.item_name || '').trim(),
+        catalog_item_id: String(item?.catalog_item_id || '').trim() || null,
+        quantity: this.toNumber(item?.quantity || item?.license_quantity || 1),
+        license_quantity: this.toNumber(item?.license_quantity || item?.quantity || 1),
+        unit_price: this.toNumber(item?.unit_price || item?.license_price_year || 0),
+        license_price_year: this.toNumber(item?.license_price_year || item?.unit_price || 0),
+        license_month: this.toNumber(item?.license_month || 12),
+        service_start_date: this.normalizeImportDateValue_(item?.service_start_date),
+        service_end_date: this.normalizeImportDateValue_(item?.service_end_date),
+        discount_percent: this.toNumber(item?.discount_percent || 0),
+        line_total: this.toNumber(item?.line_total || 0),
+        currency: String(input.currency || 'USD').trim() || 'USD',
+        is_imported: true,
+        is_historical_item: true,
+        imported_from: 'old_client_agreement_manual_import',
+        imported_at: nowIso,
+        imported_by: userId || null
+      }, { select: '*' });
     }
 
     const clientPayload = {
