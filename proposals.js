@@ -3244,7 +3244,7 @@ const Proposals = {
           <td><input class="input readonly-field locked-field" type="date" data-item-field="service_end_date" value="${U.escapeAttr(computed.service_end_date || '')}" readonly aria-readonly="true" title="Auto-calculated from Service Start Date and License / Month." /></td>`
           : '';
         const annualDiscountLocked = section === 'annual_saas' && this.toNumberSafe(computed.quantity) < 12;
-        const oneTimeQuantityLocked = section === 'one_time_fee';
+        const oneTimeQuantityLocked = section === 'one_time_fee' && !this.isCsHoursItem(computed);
         const discountLockAttr = annualDiscountLocked ? ' readonly aria-readonly="true" title="Discount is only available when License / Month is 12 or higher."' : '';
         const quantityLockAttr = oneTimeQuantityLocked ? ' readonly aria-readonly="true" title="Quantity is linked to the number of SaaS subscription rows."' : '';
         const discountCell = `<td><input class="input" type="number" step="0.01" min="0" max="100" data-item-field="discount_percent" value="${U.escapeAttr(annualDiscountLocked ? 0 : (computed.discount_percent ?? ''))}"${discountLockAttr} /></td>`;
@@ -3275,12 +3275,33 @@ const Proposals = {
   getAnnualSaasRowCountFromDom() {
     return Array.from(E.proposalAnnualItemsTbody?.querySelectorAll?.('tr[data-item-row="annual_saas"]') || []).length;
   },
+  isCsHoursItem(item = {}) {
+    const value = [
+      item?.name,
+      item?.item_name,
+      item?.title,
+      item?.description,
+      item?.sku,
+      item?.catalog_label,
+      item?.product_name
+    ].filter(Boolean).join(' ').toLowerCase();
+    return value.includes('cs hours')
+      || value.includes('cs hour')
+      || value.includes('customer success hours')
+      || value.includes('customer success')
+      || value.includes('cs_hours')
+      || value.includes('customer_success_hours');
+  },
   syncOneTimeFeeRowsWithAnnualCount(groups = {}) {
     const annualRows = Array.isArray(groups.annual_saas) ? groups.annual_saas : [];
     const annualCount = annualRows.length;
     const linkedQuantity = Math.max(1, annualCount || 1);
     let oneTimeRows = Array.isArray(groups.one_time_fee) ? groups.one_time_fee : [];
-    oneTimeRows = oneTimeRows.map(row => ({ ...row, section: 'one_time_fee', quantity: linkedQuantity }));
+    oneTimeRows = oneTimeRows.map((row) => (
+      this.isCsHoursItem(row)
+        ? { ...row, section: 'one_time_fee' }
+        : { ...row, section: 'one_time_fee', quantity: linkedQuantity }
+    ));
     if (annualCount > 0 && !oneTimeRows.length) {
       oneTimeRows = [{ section: 'one_time_fee', quantity: linkedQuantity, discount_percent: 0, unit_price: 0, line_total: 0 }];
     }
@@ -3290,19 +3311,32 @@ const Proposals = {
     const linkedQuantity = Math.max(1, this.getAnnualSaasRowCountFromDom() || 1);
     Array.from(E.proposalOneTimeItemsTbody?.querySelectorAll?.('tr[data-item-row="one_time_fee"]') || []).forEach(tr => {
       const quantityInput = tr.querySelector('[data-item-field="quantity"]');
+      const itemName = tr.querySelector('[data-item-field="item_name"]')?.value ?? '';
+      const isCsHours = this.isCsHoursItem({ item_name: itemName });
+      const rowQuantity = isCsHours
+        ? Math.max(0, this.toNumberSafe(quantityInput?.value) || 1)
+        : linkedQuantity;
       if (quantityInput) {
-        quantityInput.value = String(linkedQuantity);
-        quantityInput.readOnly = true;
-        quantityInput.setAttribute('aria-readonly', 'true');
-        quantityInput.title = 'Quantity is linked to the number of SaaS subscription rows.';
-        quantityInput.classList.add('readonly-field', 'locked-field');
+        quantityInput.value = String(rowQuantity);
+        if (isCsHours) {
+          quantityInput.readOnly = false;
+          quantityInput.removeAttribute('readonly');
+          quantityInput.removeAttribute('aria-readonly');
+          quantityInput.removeAttribute('title');
+          quantityInput.classList.remove('readonly-field', 'locked-field');
+        } else {
+          quantityInput.readOnly = true;
+          quantityInput.setAttribute('aria-readonly', 'true');
+          quantityInput.title = 'Quantity is linked to the number of SaaS subscription rows.';
+          quantityInput.classList.add('readonly-field', 'locked-field');
+        }
       }
       const get = key => tr.querySelector(`[data-item-field="${key}"]`)?.value ?? '';
       const computed = this.computeCommercialRow({
         section: 'one_time_fee',
         unit_price: get('unit_price'),
         discount_percent: get('discount_percent'),
-        quantity: linkedQuantity
+        quantity: rowQuantity
       });
       const lineTotalEl = tr.querySelector('[data-item-display="line_total"]');
       if (lineTotalEl) lineTotalEl.textContent = this.formatMoney(computed.line_total);
@@ -3344,7 +3378,7 @@ const Proposals = {
         }
         const unitPrice = this.toNumberSafe(get('unit_price'));
         let quantity = Math.max(0, this.toNumberSafe(get('quantity')) || (section === 'annual_saas' ? 12 : 1));
-        if (section === 'one_time_fee') quantity = linkedOneTimeQuantity;
+        if (section === 'one_time_fee' && !this.isCsHoursItem({ item_name: get('item_name') })) quantity = linkedOneTimeQuantity;
         let discountPercent = this.normalizeDiscountPercentValue(get('discount_percent'));
         if (section === 'annual_saas' && quantity < 12) discountPercent = 0;
         const serviceStartDate = this.normalizeDateInputValue(get('service_start_date'));
@@ -4514,7 +4548,9 @@ const Proposals = {
                 section,
                 unit_price: get('unit_price'),
                 discount_percent: get('discount_percent'),
-                quantity: section === 'one_time_fee' ? Math.max(1, this.getAnnualSaasRowCountFromDom() || 1) : get('quantity')
+                quantity: section === 'one_time_fee' && !this.isCsHoursItem({ item_name: get('item_name') })
+                  ? Math.max(1, this.getAnnualSaasRowCountFromDom() || 1)
+                  : get('quantity')
               });
               const lineTotalEl = tr.querySelector('[data-item-display="line_total"]');
               if (lineTotalEl) lineTotalEl.textContent = this.formatMoney(computed.line_total);
@@ -4545,7 +4581,9 @@ const Proposals = {
           section,
           unit_price: get('unit_price'),
           discount_percent: get('discount_percent'),
-          quantity: section === 'one_time_fee' ? Math.max(1, this.getAnnualSaasRowCountFromDom() || 1) : get('quantity')
+          quantity: section === 'one_time_fee' && !this.isCsHoursItem({ item_name: get('item_name') })
+            ? Math.max(1, this.getAnnualSaasRowCountFromDom() || 1)
+            : get('quantity')
         });
         const lineTotalEl = tr.querySelector('[data-item-display="line_total"]');
         if (lineTotalEl) lineTotalEl.textContent = this.formatMoney(computed.line_total);
