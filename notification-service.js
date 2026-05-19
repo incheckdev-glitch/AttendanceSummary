@@ -343,6 +343,35 @@
     return { attempted: false, skipped: true, reason };
   }
 
+  async function resolveNotificationChannels(resource = '', action = '', context = {}) {
+    const normalizedResource = String(resource || '').trim();
+    const normalizedAction = String(action || '').trim();
+    const normalizedEventKey = String(context?.eventKey || context?.event_key || `${normalizedResource}.${normalizedAction}`).trim();
+    if (!normalizedResource || !normalizedAction) {
+      return { inApp: true, pwa: false, email: false, rule: null };
+    }
+
+    let rules = [];
+    try {
+      rules = await listNotificationRules();
+    } catch (error) {
+      console.warn('[notifications] resolveNotificationChannels unable to load rules', { resource: normalizedResource, action: normalizedAction, error: error?.message || String(error) });
+    }
+    const matchedRule = rules.find(item => ruleMatches(item, { resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey })) || null;
+    if (matchedRule && !isRuleEnabled(matchedRule)) {
+      return { inApp: false, pwa: false, email: false, rule: matchedRule };
+    }
+    if (!matchedRule) {
+      return { inApp: true, pwa: false, email: false, rule: null };
+    }
+    return {
+      inApp: isChannelEnabled(matchedRule, 'in_app'),
+      pwa: isChannelEnabled(matchedRule, 'push'),
+      email: isChannelEnabled(matchedRule, 'email'),
+      rule: matchedRule
+    };
+  }
+
   async function listNotificationRules() {
     const client = global.SupabaseClient?.getClient?.();
     if (client) {
@@ -526,6 +555,7 @@
   }
 
   const NotificationService = {
+    resolveNotificationChannels,
     async sendBusinessNotification({ resource = '', action = '', eventKey = '', recordId = '', recordNumber = '', title = '', body = '', targetUsers = [], targetEmails = [], url = '', metadata = {}, channels = ['in_app', 'push', 'email'], roles = ['admin'] } = {}) {
       const normalizedResource = String(resource || '').trim();
       const normalizedAction = String(action || '').trim();

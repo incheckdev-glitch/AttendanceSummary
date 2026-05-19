@@ -1420,6 +1420,15 @@
         console.warn('[Communication Centre PWA] Api.sendWebPush is unavailable');
         return;
       }
+      const channelDecision = await global.NotificationService?.resolveNotificationChannels?.('communication_centre', 'message_created', { eventKey: 'communication_centre.message_created' });
+      if (channelDecision && !channelDecision.pwa) {
+        console.info('[Communication Centre PWA] skipped: disabled_by_notification_settings', {
+          action: 'message_created',
+          conversationId,
+          channel_skipped_reason: 'disabled_by_notification_settings'
+        });
+        return;
+      }
 
       const recipients = await getCommunicationCentrePushRecipients(conversationId, senderUserId);
 
@@ -1550,7 +1559,8 @@
         });
 
         const hasPushTargets = Boolean(targetUserIds.length || targetEmails.length || targetRoles.length);
-        if (hasPushTargets && global.Api?.sendWebPush) {
+        const channelDecision = await global.NotificationService?.resolveNotificationChannels?.('communication_centre', normalizedAction, { eventKey: `communication_centre.${normalizedAction}` });
+        if (hasPushTargets && global.Api?.sendWebPush && (!channelDecision || channelDecision.pwa)) {
           try {
             await global.Api.sendWebPush({
               // Keep every alias because older/newer Edge Function versions have used different names.
@@ -1591,6 +1601,12 @@
           } catch (error) {
             console.warn('[Communication Centre PWA failed]', error);
           }
+        } else if (channelDecision && !channelDecision.pwa) {
+          console.info('[Communication Centre PWA skipped: disabled_by_notification_settings]', {
+            action: normalizedAction,
+            conversationId: normalizedConversationId,
+            channel_skipped_reason: 'disabled_by_notification_settings'
+          });
         } else {
           console.warn('[Communication Centre PWA skipped: no push target returned]', {
             action: normalizedAction,
