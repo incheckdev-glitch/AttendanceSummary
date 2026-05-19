@@ -1,4 +1,26 @@
 const Receipts = {
+  canUseAdminOverride() {
+    return Boolean(window.AdminOverride?.canOverride?.() || Permissions?.isAdminLike?.());
+  },
+  applyAdminOverrideBanner(message = '') {
+    if (!this.canUseAdminOverride() || !E.receiptForm) return;
+    window.AdminOverride?.applyBanner?.(E.receiptForm, {
+      active: true,
+      message: message || 'Admin Override Mode: this receipt can be edited even if it is normally locked.'
+    });
+  },
+  logAdminOverride(action = 'receipt_override', oldValues = null, newValues = null) {
+    if (!this.canUseAdminOverride()) return;
+    const recordId = String(E.receiptForm?.dataset?.id || newValues?.id || newValues?.receipt_id || '').trim();
+    window.AdminOverride?.logOverride?.({
+      resource: 'receipts',
+      recordId,
+      action,
+      oldValues,
+      newValues,
+      reason: 'Admin override from Receipts module'
+    });
+  },
   RECEIPT_ALLOWED_COLUMNS: new Set([
     'id',
     'receipt_id',
@@ -788,9 +810,10 @@ const Receipts = {
       ['receiptFormInvoiceGrandTotal', 'receiptFormOldPaidTotal', 'receiptFormNewPaidTotal', 'receiptFormReceivedAmount', 'receiptFormPendingAmount', 'receiptFormPaymentState', 'receiptFormPaymentConclusion']
         .forEach(id => {
           const el = E[id];
-          if (el) el.readOnly = true;
+          if (el) el.readOnly = !this.canUseAdminOverride();
         });
-      if (E.receiptFormPaidNow) E.receiptFormPaidNow.readOnly = !!readOnly;
+      if (E.receiptFormPaidNow) E.receiptFormPaidNow.readOnly = !!readOnly && !this.canUseAdminOverride();
+      if (this.canUseAdminOverride() && receipt.id) this.applyAdminOverrideBanner();
     }
     if (E.receiptFormModal) {
       E.receiptFormModal.classList.add('open');
@@ -1638,12 +1661,14 @@ const Receipts = {
       return;
     }
     const currentRecord = this.state.rows.find(row => this.receiptDbId(row.id) === id) || {};
-    const workflowCheck = await this.validateReceiptWorkflowOrFallback(currentRecord, {
-      receipt_id: id,
-      current_status: currentRecord?.status || '',
-      requested_status: updates.status || '',
-      requested_changes: { receipt: updates }
-    });
+    const workflowCheck = this.canUseAdminOverride()
+      ? { allowed: true, skipped: true, reason: 'Admin override bypassed receipt workflow.' }
+      : await this.validateReceiptWorkflowOrFallback(currentRecord, {
+        receipt_id: id,
+        current_status: currentRecord?.status || '',
+        requested_status: updates.status || '',
+        requested_changes: { receipt: updates }
+      });
     if (workflowCheck && !workflowCheck.allowed) {
       if (workflowCheck.pendingApproval === true && workflowCheck.approvalCreated === true) {
         UI.toast('Approval request submitted successfully.');
@@ -1670,6 +1695,7 @@ const Receipts = {
       const parsed = this.extractReceiptAndItems(response, id);
       const persisted = parsed?.receipt?.id ? parsed.receipt : { ...updates, id, receipt_id: currentRecord?.receipt_id || id };
       const normalized = this.upsertLocalRow(persisted);
+      if (id && this.canUseAdminOverride()) this.logAdminOverride('receipt_update_override', currentRecord || null, normalized || persisted);
       this.setCachedDetail(normalized?.id || id, persisted, parsed?.items || this.state.items, linkedInvoice, invoiceReceipts);
       if (normalized?.id && this.state.selectedReceipt?.id === normalized.id) {
         this.state.selectedReceipt = normalized;

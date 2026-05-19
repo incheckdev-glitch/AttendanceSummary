@@ -1066,7 +1066,7 @@
 
   function getClient() { return global.SupabaseClient.getClient(); }
   function role() { return String(global.Session?.role?.() || '').toLowerCase(); }
-  function isAdminDev() { return ['admin','dev'].includes(role()); }
+  function isAdminDev() { return ['admin','dev','developer'].includes(role()) || Boolean(global.AdminOverride?.canOverride?.()); }
   function allowedRoles(resource, action) {
     const matrix = global.AppPermissions?.baseMatrix || {};
     const rules = matrix?.[resource];

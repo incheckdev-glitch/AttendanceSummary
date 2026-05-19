@@ -197,6 +197,29 @@ const Agreements = {
     selectedAgreementCompanyForVerification: null
   },
 
+  canUseAdminOverride() {
+    return Boolean(window.AdminOverride?.canOverride?.() || Permissions?.isAdminLike?.());
+  },
+  applyAdminOverrideBanner(message = '') {
+    if (!this.canUseAdminOverride()) return;
+    window.AdminOverride?.applyBanner?.(E.agreementForm, {
+      active: true,
+      message: message || 'Admin Override Mode: this agreement can be edited even if it is signed, expired, imported, or normally locked.'
+    });
+  },
+  logAdminOverride(action = 'agreement_override', oldValues = null, newValues = null) {
+    if (!this.canUseAdminOverride()) return;
+    const recordId = String(E.agreementForm?.dataset?.id || this.state.currentAgreementId || newValues?.id || newValues?.agreement_id || '').trim();
+    window.AdminOverride?.logOverride?.({
+      resource: 'agreements',
+      recordId,
+      action,
+      oldValues,
+      newValues,
+      reason: 'Admin override from Agreements module'
+    });
+  },
+
   providerIdentityDefaults: {
     legalName: 'InCheck 360 Holding BV',
     name: 'InCheck 360 Holding BV',
@@ -1397,10 +1420,12 @@ const Agreements = {
     return this.normalizeAgreementRoleKey(roleRaw);
   },
   canEditProviderOfficialSignatory1SignDate() {
+    if (this.canUseAdminOverride()) return true;
     const role = this.getCurrentAgreementRoleKey();
     return ['senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc'].includes(role);
   },
   canEditProviderOfficialSignatory2SignDate() {
+    if (this.canUseAdminOverride()) return true;
     const role = this.getCurrentAgreementRoleKey();
     return ['general_manager', 'gm'].includes(role);
   },
@@ -2429,6 +2454,7 @@ const Agreements = {
       const id = U.escapeAttr(row.id || row.agreement_id || row.agreement_number || row.agreementId || '');
       const rowTotals = this.calculateTotalsFromAgreementRecord(row);
       const signedRow = this.isAgreementLockedAsSigned(row);
+      const adminOverride = this.canUseAdminOverride();
       const importedBadge = this.toDbBoolean(row.is_imported ?? row.isImported, false) || this.toDbBoolean(row.is_historical_agreement ?? row.isHistoricalAgreement, false)
         ? ' <span class="chip" style="margin-left:6px;">Historical</span>'
         : '';
@@ -2650,6 +2676,17 @@ const Agreements = {
   getAnnualSaasRowCountFromDom() {
     return Array.from(E.agreementAnnualItemsTbody?.querySelectorAll?.('tr[data-item-row="annual_saas"]') || []).length;
   },
+  async ensureCatalogLoaded() {
+    try {
+      if (typeof window.ProposalCatalog?.ensureLookupLoaded === 'function') {
+        await window.ProposalCatalog.ensureLookupLoaded();
+      } else if (typeof window.ProposalCatalog?.loadAndRefresh === 'function' && !window.ProposalCatalog?.state?.loaded) {
+        await window.ProposalCatalog.loadAndRefresh({ force: true });
+      }
+    } catch (error) {
+      console.warn('[Agreements] Catalog lookup failed; using fallback item options.', error);
+    }
+  },
   getCatalogRowsForSection(section) {
     const rows = typeof window.ProposalCatalog?.getActiveCatalogItems === 'function'
       ? window.ProposalCatalog.getActiveCatalogItems(section)
@@ -2673,7 +2710,16 @@ const Agreements = {
   buildCatalogSelectOptions(section, selectedItemName = '') {
     const selected = String(selectedItemName || '').trim().toLowerCase();
     const seen = new Set();
-    const options = this.getCatalogRowsForSection(section)
+    let rows = this.getCatalogRowsForSection(section);
+    if (!rows.length) {
+      const fallbackNames = section === 'annual_saas'
+        ? ['Location', 'User(s)']
+        : section === 'one_time_fee'
+          ? ['Setup Fee', 'Onboarding Fee', 'CS Hours']
+          : [];
+      rows = fallbackNames.map(name => ({ item_name: name, is_active: true, section }));
+    }
+    const options = rows
       .filter(row => {
         const key = String(row?.item_name || '').trim().toLowerCase();
         if (!key || seen.has(key)) return false;
@@ -2962,6 +3008,7 @@ const Agreements = {
     });
   },
   applyIdentityFieldLocks() {
+    if (this.canUseAdminOverride()) return;
     const locked = ['customer_official_signatory_name','customer_official_signatory_title','customer_signatory_name','customer_signatory_title','provider_official_signatory_1_name','provider_official_signatory_1_title','provider_official_signatory_2_name','provider_official_signatory_2_title','provider_signatory_name_primary','provider_signatory_title_primary','provider_signatory_name_secondary','provider_signatory_title_secondary','company_id','company_name','customer_name','customer_legal_name','customer_address','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_contact_name','customer_contact_email','customer_contact_phone','customer_contact_mobile','provider_legal_name','provider_name','provider_address','provider_contact_name','provider_contact_email','provider_contact_mobile','billing_frequency'];
     locked.forEach(field => {
       const id = this.agreementFieldToFormInputId(field);
@@ -3233,6 +3280,7 @@ const Agreements = {
       || !!String(E.agreementForm?.dataset?.id || this.state.currentAgreementId || '').trim();
   },
   isAgreementItemsLocked(agreement = this.state.currentAgreement || {}) {
+    if (this.canUseAdminOverride()) return false;
     const readOnlyMode = String(E.agreementForm?.dataset?.readOnly || '').trim() === 'true';
     const status = this.normalizeAgreementStatus(this.resolveAgreementStatus(agreement));
     const signedOrAccepted = this.isAgreementSigned(agreement) || status.includes('accepted') || status.includes('active');
@@ -3280,7 +3328,8 @@ const Agreements = {
     const isEditMode = this.isAgreementEditMode();
     const readOnlyMode = String(E.agreementForm?.dataset?.readOnly || '').trim() === 'true';
     const proposalLocked = this.isProposalLockedAgreementContext();
-    const lockItems = isEditMode || readOnlyMode || proposalLocked;
+    const adminOverride = this.canUseAdminOverride();
+    const lockItems = adminOverride ? false : (isEditMode || readOnlyMode || proposalLocked);
     E.agreementForm.classList.toggle('agreement-edit-locked', lockItems);
     if (E.agreementAddAnnualRowBtn) {
       E.agreementAddAnnualRowBtn.style.display = lockItems ? 'none' : '';
@@ -3291,7 +3340,7 @@ const Agreements = {
       E.agreementAddOneTimeRowBtn.disabled = lockItems;
     }
     E.agreementForm.querySelectorAll('input, select, textarea').forEach(el => {
-      const allowed = !readOnlyMode && (!isEditMode || this.isAgreementEditableInEditMode(el));
+      const allowed = adminOverride || (!readOnlyMode && (!isEditMode || this.isAgreementEditableInEditMode(el)));
       const isHidden = String(el.type || '').toLowerCase() === 'hidden';
       if (isHidden || this.isAgreementSignedDocumentControl(el)) return;
       if (!allowed) {
@@ -3312,6 +3361,17 @@ const Agreements = {
   },
   applyAgreementProposalLocks() {
     if (!E.agreementForm) return;
+    if (this.canUseAdminOverride()) {
+      E.agreementForm.querySelectorAll('.proposal-locked-field').forEach(el => {
+        if ('disabled' in el) el.disabled = false;
+        if ('readOnly' in el) el.readOnly = false;
+        el.removeAttribute('aria-readonly');
+        el.removeAttribute('aria-disabled');
+        el.classList.remove('readonly-field', 'locked-field', 'proposal-locked-field');
+      });
+      this.applyAgreementItemLocks();
+      return;
+    }
     const proposalLocked = this.isProposalLockedAgreementContext();
     const readOnlyMode = String(E.agreementForm?.dataset?.readOnly || '').trim() === 'true';
     const alwaysLocked = ['agreementFormServiceEndDate'];
@@ -3353,6 +3413,13 @@ const Agreements = {
     this.applyAgreementItemLocks();
   },
   buildAgreementEditableUpdate(agreement = {}) {
+    if (this.canUseAdminOverride()) {
+      const full = { ...agreement };
+      delete full.id;
+      delete full.created_at;
+      delete full.updated_at;
+      return full;
+    }
     const allowedFields = [
       'status',
       'customer_official_signatory_name',
@@ -3386,7 +3453,8 @@ const Agreements = {
   openAgreementForm(agreement = this.emptyAgreement(), items = [], { readOnly = false } = {}) {
     if (!E.agreementFormModal || !E.agreementForm) return;
     const signedLocked = this.isAgreementLockedAsSigned(agreement);
-    const effectiveReadOnly = readOnly || signedLocked;
+    const adminOverride = this.canUseAdminOverride();
+    const effectiveReadOnly = adminOverride ? !!readOnly : (readOnly || signedLocked);
     E.agreementForm.dataset.id = agreement.id || '';
     E.agreementForm.dataset.mode = agreement.id ? 'edit' : 'create';
     E.agreementForm.dataset.source = agreement.id ? '' : String(agreement.proposal_id || '').trim() ? 'proposal' : '';
@@ -3405,15 +3473,19 @@ const Agreements = {
     this.captureProviderSignDateOriginalValues();
     this.initializeProviderSignDateDefaultTracking(agreement);
     this.renderItemRows(items);
+    this.ensureCatalogLoaded().then(() => {
+      if (E.agreementFormModal?.classList?.contains('open')) this.renderItemRows(this.state.currentItems || items || []);
+    }).catch(() => {});
     this.state.selectedAgreementCompanyForVerification = this.hasCompanyVerificationFields(agreement) ? agreement : null;
     this.updateAgreementCompanyVerificationUi(this.state.selectedAgreementCompanyForVerification);
-    if (E.agreementFormTitle) E.agreementFormTitle.textContent = agreement.id ? (signedLocked ? 'Signed Agreement · Upload Document' : (effectiveReadOnly ? 'View Agreement' : 'Edit Agreement')) : 'Create Agreement';
-    if (E.agreementSignedLockMessage) E.agreementSignedLockMessage.style.display = signedLocked ? '' : 'none';
+    if (E.agreementFormTitle) E.agreementFormTitle.textContent = agreement.id ? (signedLocked && !adminOverride ? 'Signed Agreement · Upload Document' : (effectiveReadOnly ? 'View Agreement' : 'Edit Agreement')) : 'Create Agreement';
+    if (E.agreementSignedLockMessage) E.agreementSignedLockMessage.style.display = signedLocked && !adminOverride ? '' : 'none';
     if (E.agreementFormDeleteBtn) E.agreementFormDeleteBtn.style.display = !effectiveReadOnly && agreement.id && Permissions.canDeleteAgreement() ? '' : 'none';
     if (E.agreementFormSaveBtn) {
       const canSave = agreement.id ? Permissions.canUpdateAgreement() : Permissions.canCreateAgreement();
       E.agreementFormSaveBtn.style.display = !effectiveReadOnly && canSave ? '' : 'none';
     }
+    if (adminOverride && agreement.id && (signedLocked || readOnly || this.isAgreementExpired(agreement))) this.applyAdminOverrideBanner();
     this.setFormReadOnly(effectiveReadOnly);
     this.applyIdentityFieldLocks();
     this.syncAgreementServiceEndDate();
@@ -3601,12 +3673,12 @@ const Agreements = {
         UI.toast('Unable to verify agreement lock status: ' + (error?.message || 'Unknown error'));
         return;
       }
-      if (this.isAgreementLockedAsSigned(latestExistingAgreement)) {
+      if (this.isAgreementLockedAsSigned(latestExistingAgreement) && !this.canUseAdminOverride()) {
         UI.toast('Signed agreements are locked and cannot be edited.');
         return;
       }
     }
-    if (!this.validateProviderSignDateRoleChanges()) return;
+    if (!this.canUseAdminOverride() && !this.validateProviderSignDateRoleChanges()) return;
     if (!id && !this.validateCommercialItems(items)) return;
     const isDirectCreate = !id && source !== 'create_from_proposal' && !String(formProposalUuid || agreement.proposal_id || '').trim();
     const provider = this.getSignedInUserForAgreement();
@@ -3634,7 +3706,7 @@ const Agreements = {
     this.normalizeAgreementSignatoryDateAliases(agreement);
     agreement.status = this.resolveAgreementStatus(agreement);
     agreement.provider_signatory_email = String(provider.email || '').trim();
-    if (!String(agreement.customer_official_signatory_name || '').trim() || !String(agreement.customer_official_signatory_title || '').trim()) {
+    if (!this.canUseAdminOverride() && (!String(agreement.customer_official_signatory_name || '').trim() || !String(agreement.customer_official_signatory_title || '').trim())) {
       this.showBlockingDialog(
         'Company Authorized Signatory Required',
         'Company authorized signatory details are missing. Please update the company profile before creating the agreement.'
@@ -3642,13 +3714,13 @@ const Agreements = {
       return;
     }
 
-    if (!id && !(await this.ensureCompanyVerifiedBeforeAgreement({
+    if (!this.canUseAdminOverride() && !id && !(await this.ensureCompanyVerifiedBeforeAgreement({
       ...agreement,
       company: this.state.selectedAgreementCompanyForVerification || agreement.company
     }))) {
       return;
     }
-    if (isDirectCreate && !String(agreement.contact_id || '').trim()) {
+    if (!this.canUseAdminOverride() && isDirectCreate && !String(agreement.contact_id || '').trim()) {
       UI.toast('Please select a contact.');
       return;
     }
@@ -3675,7 +3747,9 @@ const Agreements = {
     }
     const workflowAction = id ? 'update' : 'create';
     let workflowDecision = null;
-    if (this.shouldSkipAgreementWorkflow({
+    if (this.canUseAdminOverride()) {
+      workflowDecision = { allowed: true, ok: true, skipped: true, reason: 'Admin override bypassed agreement workflow.' };
+    } else if (this.shouldSkipAgreementWorkflow({
       currentStatus,
       nextStatus: agreement.status,
       action: workflowAction,
@@ -3742,8 +3816,9 @@ const Agreements = {
     this.setFormBusy(true);
     console.time('entity-save');
     try {
+      const adminOverrideItems = id && this.canUseAdminOverride() ? this.hydrateItemIdsForSave(items, { isCreate: false }) : null;
       const saveResponse = id
-        ? await this.updateAgreement(id, agreementUpdatePayload, null)
+        ? await this.updateAgreement(id, agreementUpdatePayload, adminOverrideItems)
         : await this.createAgreement(agreement, preparedItems);
       const persistedAgreement = this.extractAgreementAndItems(saveResponse, id).agreement;
       const persistedAgreementUuid = String(persistedAgreement?.id || id || '').trim();
@@ -3764,8 +3839,9 @@ const Agreements = {
         }
       }
       const savedAgreement = { ...agreement, ...(persistedAgreement || {}) };
+      if (id && this.canUseAdminOverride()) this.logAdminOverride('agreement_update_override', currentRecord || latestExistingAgreement || null, savedAgreement);
       const savedAgreementId = String(persistedAgreement?.id || id || '').trim();
-      if (this.isAgreementLockedAsSigned(savedAgreement) && savedAgreementId) {
+      if (this.isAgreementLockedAsSigned(savedAgreement) && savedAgreementId && !this.canUseAdminOverride()) {
         const refreshedAgreement = await this.reloadLatestAgreementRow(savedAgreementId).catch(() => null);
         const lockedAgreement = refreshedAgreement || savedAgreement;
         this.openAgreementForm(lockedAgreement, preparedItems || items, { readOnly: true });
@@ -4050,22 +4126,9 @@ const Agreements = {
       this.openAgreementForm();
     });
     if (E.agreementsImportOldClientBtn) {
-      E.agreementsImportOldClientBtn.disabled = false;
-      E.agreementsImportOldClientBtn.addEventListener('click', event => {
-        event.preventDefault();
-        event.stopPropagation();
-        const role = String(Session?.role?.() || '').trim().toLowerCase();
-        const canImport = window.Clients?.canImportOldClient?.() || Permissions?.isAdmin?.() || Permissions?.isDev?.() || ['admin', 'dev', 'developer'].includes(role);
-        if (!canImport) return UI.toast('Only admin/dev can import old client agreements.');
-        if (window.Clients?.openImportOldClientModal) {
-          window.Clients.openImportOldClientModal();
-          return;
-        }
-        const modal = document.getElementById('importOldClientModal');
-        if (!modal) return UI.toast('Import modal is unavailable. Please refresh and try again.');
-        modal.classList.add('open');
-        modal.setAttribute('aria-hidden', 'false');
-      });
+      E.agreementsImportOldClientBtn.style.display = 'none';
+      E.agreementsImportOldClientBtn.hidden = true;
+      E.agreementsImportOldClientBtn.disabled = true;
     }
     if (E.agreementsTbody) E.agreementsTbody.addEventListener('click', event => {
       const trigger = event.target?.closest?.('button[data-agreement-view], button[data-agreement-edit], button[data-agreement-upload-signed], button[data-agreement-request-technical], button[data-agreement-preview], button[data-agreement-create-invoice], button[data-agreement-delete]');
@@ -4076,7 +4139,7 @@ const Agreements = {
       if (editId) {
         if (!Permissions.canUpdateAgreement()) return UI.toast('You do not have permission to edit agreements.');
         const row = this.state.rows.find(entry => String(entry?.id || entry?.agreement_id || entry?.agreement_number || '').trim() === String(editId || '').trim());
-        if (row && this.isAgreementLockedAsSigned(row)) {
+        if (row && this.isAgreementLockedAsSigned(row) && !this.canUseAdminOverride()) {
           UI.toast('Signed agreements are locked. You can only upload the signed agreement document.');
           return this.runRowAction(`upload-signed:${editId}`, trigger, () => this.openAgreementFormById(editId, { readOnly: true, trigger, focusSignedDocument: true }));
         }

@@ -2982,23 +2982,9 @@ const Clients = {
     const total = Number(E.importOldClientForm?.querySelector('[name="total_amount"]')?.value||0); const warning=document.getElementById('importOldTotalsWarning'); if (warning) warning.textContent = total>0 && Math.abs(total-(a+o))>0.01 ? 'Entered total amount does not match item totals. You can continue because this is a historical imported agreement.' : '';
   },
   bindImportOldClientAgreementFallback_() {
-    if (document.body?.dataset?.importOldClientAgreementFallbackBound === 'true') return;
-    if (document.body?.dataset) document.body.dataset.importOldClientAgreementFallbackBound = 'true';
-
-    document.addEventListener('click', event => {
-      const trigger = event.target?.closest?.('#importOldClientBtn, #agreementsImportOldClientBtn, [data-import-old-client-agreement]');
-      if (!trigger) return;
-
-      event.preventDefault();
-      event.stopPropagation();
-
-      if (!this.canImportOldClient()) {
-        UI.toast?.('Only admin/dev can import old client agreements.');
-        return;
-      }
-
-      this.openImportOldClientModal();
-    }, true);
+    // Import Old Client Agreement has been retired. Admin/dev should use the normal live workflow with Admin Override.
+    if (E.importOldClientBtn) { E.importOldClientBtn.style.display = 'none'; E.importOldClientBtn.hidden = true; E.importOldClientBtn.disabled = true; }
+    if (E.agreementsImportOldClientBtn) { E.agreementsImportOldClientBtn.style.display = 'none'; E.agreementsImportOldClientBtn.hidden = true; E.agreementsImportOldClientBtn.disabled = true; }
   },
   async runClientAction(action) {
     const clientId = String(this.state.selectedClientId || '').trim();
@@ -3232,14 +3218,9 @@ const Clients = {
       });
     }
     if (E.importOldClientBtn) {
-      E.importOldClientBtn.style.display = this.canImportOldClient() ? '' : 'none';
-      E.importOldClientBtn.disabled = false;
-      E.importOldClientBtn.addEventListener('click', event => {
-        event.preventDefault();
-        event.stopPropagation();
-        if (!this.canImportOldClient()) return UI.toast('Only admin/dev can import old client agreements.');
-        this.openImportOldClientModal();
-      });
+      E.importOldClientBtn.style.display = 'none';
+      E.importOldClientBtn.hidden = true;
+      E.importOldClientBtn.disabled = true;
     }
     this.bindImportOldClientAgreementFallback_();
     if (E.importOldClientCloseBtn) E.importOldClientCloseBtn.addEventListener('click', () => this.closeImportOldClientModal());

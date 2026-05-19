@@ -1,4 +1,26 @@
 const Proposals = {
+  canUseAdminOverride() {
+    return Boolean(window.AdminOverride?.canOverride?.() || Permissions?.isAdminLike?.());
+  },
+  applyAdminOverrideBanner(message = '') {
+    if (!this.canUseAdminOverride() || !E.proposalForm) return;
+    window.AdminOverride?.applyBanner?.(E.proposalForm, {
+      active: true,
+      message: message || 'Admin Override Mode: this proposal can be edited even if it is accepted, expired, or normally locked.'
+    });
+  },
+  logAdminOverride(action = 'proposal_override', oldValues = null, newValues = null) {
+    if (!this.canUseAdminOverride()) return;
+    const recordId = String(E.proposalForm?.dataset?.id || this.state.currentProposalId || newValues?.id || newValues?.proposal_id || '').trim();
+    window.AdminOverride?.logOverride?.({
+      resource: 'proposals',
+      recordId,
+      action,
+      oldValues,
+      newValues,
+      reason: 'Admin override from Proposals module'
+    });
+  },
   signedDocumentBucket: 'proposal-signed-documents',
   providerContactDefaults: {
     name: 'InCheck 360 Holding BV',
@@ -2725,7 +2747,7 @@ const Proposals = {
           <td>${textCell(row.generated_by)}</td>
           <td>
             ${Permissions.canPreviewProposal() ? `<button class="btn ghost sm" type="button" data-proposal-view="${id}" data-permission-resource="proposals" data-permission-action="view">View</button>` : ''}
-            ${Permissions.canUpdateProposal() && !isLocked ? `<button class="btn ghost sm" type="button" data-proposal-edit="${id}" data-permission-resource="proposals" data-permission-action="update">Edit</button>` : ''}
+            ${Permissions.canUpdateProposal() && (!isLocked || this.canUseAdminOverride()) ? `<button class="btn ghost sm" type="button" data-proposal-edit="${id}" data-permission-resource="proposals" data-permission-action="update">${isLocked && this.canUseAdminOverride() ? 'Admin Edit' : 'Edit'}</button>` : ''}
             ${Permissions.canPreviewProposal() ? `<button class="btn ghost sm" type="button" data-proposal-preview="${id}" data-permission-resource="proposals" data-permission-action="view">Preview</button>` : ''}
             ${this.canShowConvertToAgreement(row) && !this.isAgreementAlreadyCreated(row)
               ? `<button class="btn ghost sm" type="button" data-proposal-convert-agreement="${id}" data-permission-resource="agreements" data-permission-action="create_from_proposal">Convert to Agreement</button>`
@@ -3685,7 +3707,8 @@ const Proposals = {
     const mode = base.id ? 'edit' : 'create';
     const acceptedLocked = this.isProposalAccepted(base);
     const expiredLocked = this.isProposalExpired(base);
-    const effectiveReadOnly = !!readOnly || acceptedLocked || expiredLocked;
+    const adminOverride = this.canUseAdminOverride();
+    const effectiveReadOnly = adminOverride ? !!readOnly : (!!readOnly || acceptedLocked || expiredLocked);
     this.resetForm();
     this.state.formMode = mode;
     this.state.formReadOnly = effectiveReadOnly;
@@ -3755,7 +3778,8 @@ const Proposals = {
       E.proposalFormSaveBtn.style.display = !effectiveReadOnly && canSave ? '' : 'none';
     }
 
-    this.syncProposalAcceptedLockMessage(acceptedLocked);
+    this.syncProposalAcceptedLockMessage((acceptedLocked || expiredLocked) && !adminOverride);
+    if (adminOverride && mode === 'edit' && (acceptedLocked || expiredLocked || readOnly)) this.applyAdminOverrideBanner();
     this.setFormReadOnly(effectiveReadOnly);
 
     E.proposalFormModal.style.display = 'flex';
@@ -3982,7 +4006,7 @@ const Proposals = {
     const proposalId = String(E.proposalForm?.dataset.id || '').trim();
     this.syncValidUntilFromProposalDate({ forceDefault: true });
     const proposal = this.collectProposalFormData();
-    if (mode === 'edit' && this.isProposalExpired({ ...(this.state.currentProposal || {}), ...proposal })) {
+    if (mode === 'edit' && this.isProposalExpired({ ...(this.state.currentProposal || {}), ...proposal }) && !this.canUseAdminOverride()) {
       UI.toast('This proposal has expired and cannot be edited.');
       return;
     }
@@ -4006,7 +4030,7 @@ const Proposals = {
     }
     if (!this.validatePocDetails(proposal)) return;
     const items = this.collectProposalItems();
-    if (!this.validateCommercialItems(items)) return;
+    if (!this.canUseAdminOverride() && !this.validateCommercialItems(items)) return;
     let currentRecord = {};
     let latestItems = this.state.currentItems;
     if (mode === 'edit' && proposalId) {
@@ -4024,7 +4048,7 @@ const Proposals = {
         UI.toast('Unable to verify proposal status before saving: ' + (error?.message || 'Unknown error'));
         return;
       }
-      if (this.isProposalAccepted(currentRecord)) {
+      if (this.isProposalAccepted(currentRecord) && !this.canUseAdminOverride()) {
         UI.toast('Accepted proposals are locked and cannot be edited.');
         this.openProposalForm(currentRecord, latestItems, { readOnly: true });
         return;
@@ -4039,7 +4063,7 @@ const Proposals = {
       : items.reduce((max, item) => Math.max(max, this.toNumberSafe(item.discount_percent)), 0);
     const currentStatus = this.normalizeProposalStatus(currentRecord?.status);
     const requestedStatus = this.normalizeProposalStatus(proposal.status);
-    if (currentStatus === 'pending_approval' && requestedStatus && requestedStatus !== 'pending_approval') {
+    if (currentStatus === 'pending_approval' && requestedStatus && requestedStatus !== 'pending_approval' && !this.canUseAdminOverride()) {
       UI.toast('This proposal is already pending approval. Approval must be approved or rejected before changing to another status.');
       if (E.proposalFormStatus) E.proposalFormStatus.value = 'pending_approval';
       return;
@@ -4053,7 +4077,7 @@ const Proposals = {
       approvedGeneric: currentRecord?.approved_discount_percent,
       approvalStatus: currentRecord?.discount_approval_status
     });
-    const shouldValidateWorkflow = this.shouldValidateWorkflowBeforeSave({
+    const shouldValidateWorkflow = !this.canUseAdminOverride() && this.shouldValidateWorkflowBeforeSave({
       proposalId,
       currentStatus,
       requestedStatus,
@@ -4162,6 +4186,7 @@ const Proposals = {
       if (!savedUuid) {
         throw new Error('Proposal save failed because no internal proposal ID was returned.');
       }
+      if (mode === 'edit' && this.canUseAdminOverride()) this.logAdminOverride('proposal_update_override', currentRecord || null, savedProposal);
       if (parsed?.proposal) {
         this.upsertLocalRow(parsed.proposal);
         this.setCachedDetail(parsed.proposal.id || proposalId, parsed.proposal, parsed.items);
@@ -4170,7 +4195,7 @@ const Proposals = {
         }
       }
       UI.toast(mode === 'edit' ? 'Proposal updated.' : 'Proposal created.');
-      if (parsed?.proposal) this.openProposalForm(parsed.proposal, parsed.items, { readOnly: this.isProposalAccepted(parsed.proposal) || this.isProposalExpired(parsed.proposal) });
+      if (parsed?.proposal) this.openProposalForm(parsed.proposal, parsed.items, { readOnly: !this.canUseAdminOverride() && (this.isProposalAccepted(parsed.proposal) || this.isProposalExpired(parsed.proposal)) });
       else this.closeProposalForm();
     } catch (error) {
       if (typeof isPermissionError === 'function' && isPermissionError(error)) {

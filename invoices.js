@@ -1,4 +1,26 @@
 const Invoices = {
+  canUseAdminOverride() {
+    return Boolean(window.AdminOverride?.canOverride?.() || Permissions?.isAdminLike?.());
+  },
+  applyAdminOverrideBanner(message = '') {
+    if (!this.canUseAdminOverride() || !E.invoiceForm) return;
+    window.AdminOverride?.applyBanner?.(E.invoiceForm, {
+      active: true,
+      message: message || 'Admin Override Mode: this invoice can be edited even if it is issued, paid, or normally locked.'
+    });
+  },
+  logAdminOverride(action = 'invoice_override', oldValues = null, newValues = null) {
+    if (!this.canUseAdminOverride()) return;
+    const recordId = String(E.invoiceForm?.dataset?.id || newValues?.id || newValues?.invoice_id || '').trim();
+    window.AdminOverride?.logOverride?.({
+      resource: 'invoices',
+      recordId,
+      action,
+      oldValues,
+      newValues,
+      reason: 'Admin override from Invoices module'
+    });
+  },
   invoiceFields: [
     'invoice_id',
     'invoice_number',
@@ -151,6 +173,14 @@ const Invoices = {
     const el = E.invoiceFormPaymentTerm || document.getElementById('invoiceFormPaymentTerm');
     if (!el) return;
     el.value = this.normalizePaymentTerm(el.value || this.state.selectedInvoice?.payment_term || 'Net 30');
+    if (this.canUseAdminOverride()) {
+      el.disabled = false;
+      if ('readOnly' in el) el.readOnly = false;
+      el.classList.remove('readonly-field', 'locked-field');
+      el.removeAttribute('aria-readonly');
+      el.title = 'Admin Override: payment term can be edited.';
+      return;
+    }
     el.disabled = true;
     if ('readOnly' in el) el.readOnly = true;
     el.classList.add('readonly-field', 'locked-field');
@@ -2572,7 +2602,8 @@ const Invoices = {
       ? Permissions.canUpdateInvoice()
       : Permissions.canCreateInvoice();
     if (E.invoiceFormDeleteBtn) E.invoiceFormDeleteBtn.style.display = !readOnly && this.state.selectedInvoice.id && Permissions.canDeleteInvoice() ? '' : 'none';
-    const isExistingLocked = isExistingInvoice;
+    const adminOverride = this.canUseAdminOverride();
+    const isExistingLocked = isExistingInvoice && !adminOverride;
     const allowedExistingEditIds = new Set(['invoiceFormStatus', 'invoiceFormPaymentStatus', 'invoiceFormInvoiceDate', 'invoiceFormDueDate']);
     if (E.invoiceFormSaveBtn) E.invoiceFormSaveBtn.style.display = !readOnly && canSave ? '' : 'none';
     E.invoiceForm.querySelectorAll('input, select, textarea').forEach(el => {
@@ -2588,14 +2619,15 @@ const Invoices = {
     if (E.invoiceFormPendingAmount) E.invoiceFormPendingAmount.readOnly = true;
     if (E.invoiceFormPaymentState) E.invoiceFormPaymentState.readOnly = true;
     this.lockInvoicePaymentTermField();
-    if (E.invoiceAddAnnualRowBtn) E.invoiceAddAnnualRowBtn.style.display = 'none';
-    if (E.invoiceAddOneTimeRowBtn) E.invoiceAddOneTimeRowBtn.style.display = 'none';
-    if (E.invoiceAddCapabilityRowBtn) E.invoiceAddCapabilityRowBtn.style.display = 'none';
+    if (E.invoiceAddAnnualRowBtn) E.invoiceAddAnnualRowBtn.style.display = adminOverride ? '' : 'none';
+    if (E.invoiceAddOneTimeRowBtn) E.invoiceAddOneTimeRowBtn.style.display = adminOverride ? '' : 'none';
+    if (E.invoiceAddCapabilityRowBtn) E.invoiceAddCapabilityRowBtn.style.display = adminOverride ? '' : 'none';
     E.invoiceForm.querySelectorAll('[data-item-field]').forEach(el => {
       el.disabled = readOnly || isExistingLocked;
       if ('readOnly' in el) el.readOnly = readOnly || isExistingLocked;
     });
     E.invoiceForm.querySelectorAll('button[data-item-remove]').forEach(btn => { btn.style.display = readOnly || isExistingLocked ? 'none' : ''; });
+    if (adminOverride && isExistingInvoice) this.applyAdminOverrideBanner();
     if (E.invoiceFormIssuedHelperText) {
       E.invoiceFormIssuedHelperText.textContent = isExistingLocked
         ? 'Invoice commercial details are locked after creation. Only status, invoice date, and due date can be edited.'
@@ -3567,7 +3599,7 @@ const Invoices = {
     const payloadInvoice = this.buildInvoiceMetadataUpdatePayload();
     const currentRecord = this.state.rows.find(row => this.invoiceDbId(row.id) === id) || this.state.selectedInvoice || {};
     const wasIssuedBeforeSave = this.isIssuedInvoice(currentRecord);
-    const workflowCheck = await this.enforceInvoiceWorkflowBeforeSave(currentRecord, {
+    const workflowCheck = this.canUseAdminOverride() ? { allowed: true, skipped: true, reason: 'Admin override bypassed invoice workflow.' } : await this.enforceInvoiceWorkflowBeforeSave(currentRecord, {
       invoice_id: id,
       current_status: currentRecord?.status || '',
       requested_status: payloadInvoice.status || '',
@@ -3599,6 +3631,7 @@ const Invoices = {
         ? await this.ensureOperationsOnboardingForIssuedInvoice(persisted, persistedItems)
         : null;
       const normalized = this.upsertLocalRow(persisted);
+      if (id && this.canUseAdminOverride()) this.logAdminOverride('invoice_metadata_update_override', currentRecord || null, normalized || persisted);
       this.setCachedDetail(normalized?.id || id, persisted, persistedItems);
       this.state.selectedInvoice = normalized || persisted;
       this.state.items = persistedItems;
@@ -3652,18 +3685,20 @@ const Invoices = {
     const payloadInvoice = this.buildInvoiceSavePayload(normalizedInvoice);
     this.assignFormValues(normalizedInvoice);
     const currentRecord = this.state.rows.find(row => this.invoiceDbId(row.id) === id) || {};
-    if (id && this.isIssuedInvoice(currentRecord)) {
+    if (id && this.isIssuedInvoice(currentRecord) && !this.canUseAdminOverride()) {
       UI.toast('Issued invoices cannot be edited. Create a receipt to record payment.');
       return;
     }
     const requestedDiscount = items.reduce((max, item) => Math.max(max, this.toNumberSafe(item.discount_percent)), 0);
-    const workflowCheck = await this.enforceInvoiceWorkflowBeforeSave(currentRecord, {
-      invoice_id: id,
-      current_status: currentRecord?.status || '',
-      requested_status: payloadInvoice.status || '',
-      discount_percent: requestedDiscount,
-      requested_changes: { invoice: payloadInvoice, items }
-    });
+    const workflowCheck = this.canUseAdminOverride()
+      ? { allowed: true, skipped: true, reason: 'Admin override bypassed invoice workflow.' }
+      : await this.enforceInvoiceWorkflowBeforeSave(currentRecord, {
+        invoice_id: id,
+        current_status: currentRecord?.status || '',
+        requested_status: payloadInvoice.status || '',
+        discount_percent: requestedDiscount,
+        requested_changes: { invoice: payloadInvoice, items }
+      });
     if (workflowCheck && !workflowCheck.allowed) {
       if (workflowCheck.pendingApproval === true && workflowCheck.approvalCreated === true) {
         UI.toast('Approval request submitted successfully.');
@@ -3694,6 +3729,7 @@ const Invoices = {
         id: parsed?.invoice?.id || id || normalizedInvoice.id
       });
       const normalized = this.upsertLocalRow(persisted);
+      if (id && this.canUseAdminOverride()) this.logAdminOverride('invoice_update_override', currentRecord || null, normalized || persisted);
       if (!id) {
         const createdInvoiceId = this.invoiceDbId(
           normalized?.id ||
