@@ -3019,18 +3019,19 @@ const Proposals = {
   computeCommercialRow(item) {
     const section = String(item?.section || '').trim().toLowerCase();
     const unit = this.toNumberSafe(item.unit_price);
+    const isAnnualUserBased = section === 'annual_saas' && this.isAnnualSaasUserItem(item);
     let qty = this.toNumberSafe(item.quantity);
-    if (!qty && section === 'annual_saas') qty = 12;
+    if (!qty && section === 'annual_saas') qty = isAnnualUserBased ? 1 : 12;
     if (!qty && section === 'one_time_fee') qty = 1;
     const rawDiscountRatio = this.normalizeDiscount(item.discount_percent);
-    const discountRatio = section === 'annual_saas' && qty < 12 ? 0 : rawDiscountRatio;
-    const baseAmount = section === 'annual_saas' ? unit * (qty / 12) : unit * qty;
+    const discountRatio = section === 'annual_saas' && !isAnnualUserBased && qty < 12 ? 0 : rawDiscountRatio;
+    const baseAmount = section === 'annual_saas' ? (isAnnualUserBased ? unit * qty : unit * (qty / 12)) : unit * qty;
     const discounted = section === 'annual_saas' ? baseAmount * (1 - discountRatio) : unit * (1 - discountRatio);
     const lineTotal = Math.max(0, baseAmount * (1 - discountRatio));
     return {
       ...item,
       quantity: qty,
-      discount_percent: section === 'annual_saas' && qty < 12 ? 0 : item.discount_percent,
+      discount_percent: section === 'annual_saas' && !isAnnualUserBased && qty < 12 ? 0 : item.discount_percent,
       discounted_unit_price: discounted,
       line_total: lineTotal
     };
@@ -3232,8 +3233,9 @@ const Proposals = {
     tbody.innerHTML = safeRows
       .map((row, index) => {
         const linkedOneTimeQuantity = Math.max(1, this.getAnnualSaasRowCountFromDom?.() || this.getAnnualSaasRowCountFromItems?.(this.collectSectionItems?.('annual_saas') || []) || 1);
+        const isAnnualUserBased = section === 'annual_saas' && this.isAnnualSaasUserItem(row);
         const rowDefaults = section === 'annual_saas'
-          ? { ...row, quantity: row.quantity || 12, service_start_date: row.service_start_date || this.getDefaultAnnualServiceStartDate() }
+          ? { ...row, quantity: row.quantity || (isAnnualUserBased ? 1 : 12), service_start_date: row.service_start_date || this.getDefaultAnnualServiceStartDate() }
           : { ...row, quantity: linkedOneTimeQuantity };
         if (section === 'annual_saas') {
           rowDefaults.service_end_date = this.addMonthsMinusOneDay(rowDefaults.service_start_date, rowDefaults.quantity);
@@ -3243,12 +3245,12 @@ const Proposals = {
           ? `<td><input class="input" type="date" data-item-field="service_start_date" value="${U.escapeAttr(computed.service_start_date || '')}" /></td>
           <td><input class="input readonly-field locked-field" type="date" data-item-field="service_end_date" value="${U.escapeAttr(computed.service_end_date || '')}" readonly aria-readonly="true" title="Auto-calculated from Service Start Date and License / Month." /></td>`
           : '';
-        const annualDiscountLocked = section === 'annual_saas' && this.toNumberSafe(computed.quantity) < 12;
+        const annualDiscountLocked = section === 'annual_saas' && !isAnnualUserBased && this.toNumberSafe(computed.quantity) < 12;
         const oneTimeQuantityLocked = section === 'one_time_fee' && !this.isCsHoursItem(computed);
         const discountLockAttr = annualDiscountLocked ? ' readonly aria-readonly="true" title="Discount is only available when License / Month is 12 or higher."' : '';
         const quantityLockAttr = oneTimeQuantityLocked ? ' readonly aria-readonly="true" title="Quantity is linked to the number of SaaS subscription rows."' : '';
         const discountCell = `<td><input class="input" type="number" step="0.01" min="0" max="100" data-item-field="discount_percent" value="${U.escapeAttr(annualDiscountLocked ? 0 : (computed.discount_percent ?? ''))}"${discountLockAttr} /></td>`;
-        const quantityCell = `<td><input class="input" type="number" step="0.01" min="0.01" ${section === 'annual_saas' ? 'max="12"' : ''} data-item-field="quantity" value="${U.escapeAttr(oneTimeQuantityLocked ? (computed.quantity || 1) : (computed.quantity ?? ''))}"${quantityLockAttr} /></td>`;
+        const quantityCell = `<td><input class="input" type="number" step="0.01" min="0.01" ${section === 'annual_saas' && !isAnnualUserBased ? 'max="12"' : ''} data-item-field="quantity" value="${U.escapeAttr(oneTimeQuantityLocked ? (computed.quantity || 1) : (computed.quantity ?? ''))}"${quantityLockAttr} /></td>`;
         const commercialCells = section === 'annual_saas'
           ? `${quantityCell}${serviceDateCells}${discountCell}`
           : `${discountCell}${quantityCell}`;
@@ -3291,6 +3293,26 @@ const Proposals = {
       || value.includes('customer success')
       || value.includes('cs_hours')
       || value.includes('customer_success_hours');
+  },
+  isAnnualSaasUserItem(item = {}) {
+    const value = [
+      item?.name,
+      item?.item_name,
+      item?.title,
+      item?.description,
+      item?.sku,
+      item?.catalog_label,
+      item?.product_name,
+      item?.billing_unit,
+      item?.unit_type
+    ].filter(Boolean).join(' ').toLowerCase();
+    return value.includes('user(s)')
+      || value.includes('users')
+      || value.includes('user license')
+      || value.includes('user subscription')
+      || value.includes('annual users')
+      || value.includes('saas users')
+      || value.includes('additional users');
   },
   syncOneTimeFeeRowsWithAnnualCount(groups = {}) {
     const annualRows = Array.isArray(groups.annual_saas) ? groups.annual_saas : [];
@@ -3377,10 +3399,11 @@ const Proposals = {
           };
         }
         const unitPrice = this.toNumberSafe(get('unit_price'));
-        let quantity = Math.max(0, this.toNumberSafe(get('quantity')) || (section === 'annual_saas' ? 12 : 1));
+        const isAnnualUserBased = section === 'annual_saas' && this.isAnnualSaasUserItem({ item_name: get('item_name') });
+        let quantity = Math.max(0, this.toNumberSafe(get('quantity')) || (section === 'annual_saas' ? (isAnnualUserBased ? 1 : 12) : 1));
         if (section === 'one_time_fee' && !this.isCsHoursItem({ item_name: get('item_name') })) quantity = linkedOneTimeQuantity;
         let discountPercent = this.normalizeDiscountPercentValue(get('discount_percent'));
-        if (section === 'annual_saas' && quantity < 12) discountPercent = 0;
+        if (section === 'annual_saas' && !isAnnualUserBased && quantity < 12) discountPercent = 0;
         const serviceStartDate = this.normalizeDateInputValue(get('service_start_date'));
         const serviceEndDate = section === 'annual_saas'
           ? this.calculateServiceEndDate(serviceStartDate, quantity)
