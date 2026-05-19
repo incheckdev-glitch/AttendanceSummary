@@ -417,6 +417,12 @@ const TechnicalAdmin = {
       technical_request_display: technicalRequestDisplayNumber,
       agreement_id: String(this.pick(source.agreement_id, source.agreementId)).trim(),
       agreement_number: String(this.pick(source.agreement_number, source.agreementNumber)).trim(),
+      proposal_id: String(this.pick(source.proposal_id, source.proposalId, source.source_proposal_id, source.sourceProposalId, (String(source.source_type || '').trim().toLowerCase() === 'proposal' ? source.source_id : ''))).trim(),
+      proposal_reference: String(this.pick(source.proposal_reference, source.proposalReference, source.proposal_ref, source.proposalRef)).trim(),
+      onboarding_type: String(this.pick(source.onboarding_type, source.onboardingType)).trim(),
+      source_type: String(this.pick(source.source_type, source.sourceType)).trim(),
+      source_id: String(this.pick(source.source_id, source.sourceId)).trim(),
+      source_proposal_id: String(this.pick(source.source_proposal_id, source.sourceProposalId)).trim(),
       onboarding_id: onboardingId,
       client_id: String(this.pick(source.client_id, source.clientId)).trim(),
       client_name: String(this.pick(source.client_name, source.clientName, source.customer_name, source.customerName)).trim(),
@@ -884,7 +890,7 @@ const TechnicalAdmin = {
         const onboardingId = U.escapeAttr(row.onboarding_id || '');
         const isPocRow = this.isPocTechnicalFlow(row);
         const agreementId = String(row.agreement_id || '').trim();
-        const proposalId = String(row.proposal_id || '').trim();
+        const proposalId = this.getTechnicalAdminProposalId(row);
         const agreementAction = isPocRow
           ? `<button class="btn ghost sm" type="button" data-permission-resource="proposals" data-permission-action="view" data-technical-admin-action="open-proposal" data-proposal-id="${U.escapeAttr(proposalId)}" data-request-id="${requestDbId}" ${proposalId ? '' : 'disabled title="Proposal is not linked to this POC request."'}>Open Proposal</button>`
           : `<button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-technical-admin-action="open-agreement" data-agreement-id="${U.escapeAttr(agreementId)}" data-request-id="${requestDbId}" ${agreementId ? '' : 'disabled title="No agreement linked"'}>Open Agreement</button><button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-technical-admin-action="preview-agreement" data-agreement-id="${U.escapeAttr(agreementId)}" data-request-id="${requestDbId}" ${agreementId ? '' : 'disabled title="No agreement linked"'}>Preview Agreement</button>${agreementId ? '' : '<small class="muted">No agreement linked</small>'}`;
@@ -992,17 +998,24 @@ const TechnicalAdmin = {
     return this.state.rows.find(row => String(row.id || row.technical_request_id || '') === id) || null;
   },
   isPocTechnicalFlow(record = {}) {
-    const normalizedValues = [
-      record?.onboarding_type,
+    const values = [
       record?.request_type,
+      record?.onboarding_type,
       record?.technical_request_type,
       record?.source_type
-    ].map(value => String(value || '').trim().toLowerCase());
-    if (normalizedValues.some(value => value === 'poc' || value === 'proposal')) return true;
-    const hasProposalId = Boolean(String(record?.proposal_id || '').trim());
-    const hasAgreementId = Boolean(String(record?.agreement_id || '').trim());
-    const sourceType = String(record?.source_type || '').trim().toLowerCase();
-    return sourceType === 'proposal' || (hasProposalId && !hasAgreementId);
+    ].map(v => String(v || '').trim().toLowerCase());
+
+    return values.includes('poc')
+      || values.includes('proposal')
+      || (!!this.getTechnicalAdminProposalId(record) && !String(record?.agreement_id || '').trim());
+  },
+  getTechnicalAdminProposalId(record = {}) {
+    return String(
+      record?.proposal_id
+      || (String(record?.source_type || '').toLowerCase() === 'proposal' ? record?.source_id : '')
+      || record?.source_proposal_id
+      || ''
+    ).trim();
   },
   async openProposalRecord(proposalId, trigger = null) {
     const id = String(proposalId || '').trim();
@@ -1041,7 +1054,7 @@ const TechnicalAdmin = {
     if (E.technicalAdminDetailsContent) {
       const isPocRow = this.isPocTechnicalFlow(row);
       const agreementId = String(row.agreement_id || '').trim();
-      const proposalId = String(row.proposal_id || '').trim();
+      const proposalId = this.getTechnicalAdminProposalId(row);
       const hasAgreementId = !!agreementId;
       const hasAgreementNumberOnly = !hasAgreementId && !!String(row.agreement_number || '').trim();
       const previewDisabledAttr = hasAgreementId ? '' : 'disabled';
