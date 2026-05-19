@@ -1603,13 +1603,28 @@ const Clients = {
       return `${code} ${this.toNumberSafe(amount).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
     }
   },
+  getRenewalServiceDates_(row = {}) {
+    const serviceStartDate = this.getField(row?.invoice_item, 'service_start_date', 'serviceStartDate')
+      || this.getField(row?.agreement_item, 'service_start_date', 'serviceStartDate')
+      || this.getField(row?.agreement, 'service_start_date', 'serviceStartDate')
+      || this.getField(row, 'service_start_date', 'serviceStartDate')
+      || null;
+    const serviceEndDate = this.getField(row?.invoice_item, 'service_end_date', 'serviceEndDate')
+      || this.getField(row?.agreement_item, 'service_end_date', 'serviceEndDate')
+      || this.getField(row?.agreement, 'service_end_date', 'serviceEndDate')
+      || this.getField(row, 'service_end_date', 'serviceEndDate')
+      || null;
+    return { serviceStartDate, serviceEndDate };
+  },
   isRenewalRowRenewable_(row = {}) {
+    const { serviceEndDate } = this.getRenewalServiceDates_(row);
+    if (!serviceEndDate) return false;
     const status = String(row.renewal_status || row.status || '').trim().toLowerCase();
     if (['renewed', 'renewal invoice created', 'renewal proposal created', 'renewal agreement created', 'cancelled', 'canceled', 'not renewed'].includes(status)) return false;
     const locationStatus = String(row.location_status || row.invoice_status || row.payment_status || '').trim().toLowerCase();
     const alreadyInvoiced = Boolean(row.invoice_id || row.invoice_number || ['active', 'invoiced', 'fully paid', 'paid', 'partially paid', 'not paid', 'overdue', 'open'].some(token => locationStatus.includes(token)));
     if (!alreadyInvoiced) return false;
-    const days = this.getDaysLeft(row.renewal_date || row.service_end_date);
+    const days = this.getDaysLeft(serviceEndDate || row.renewal_date || row.service_end_date);
     return days === null || days <= 60;
   },
   getRenewalActionLabel_(row = {}) {
@@ -1617,6 +1632,9 @@ const Clients = {
     if (renewalStatus === 'renewed') return '<span class="badge ok">Renewed</span>';
     if (renewalStatus.includes('proposal')) return '<span class="badge info">View Renewal Proposal</span>';
     if (renewalStatus.includes('agreement')) return '<span class="badge info">View Renewal Agreement</span>';
+    if (String(row.renewal_status || '').trim().toLowerCase() === 'missing service dates') {
+      return '<span class="badge warning">Missing Service Dates</span>';
+    }
     if (!this.isRenewalRowRenewable_(row)) return '<span class="muted">—</span>';
     return `<button class="btn ghost sm" type="button" data-renew-row="${U.escapeHtml(row.row_id || '')}">Renew</button>`;
   },
@@ -1649,6 +1667,9 @@ const Clients = {
     const batchId = `REN-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
     const enrichedRows = rows.map(row => {
       const oldEnd = row.service_end_date || row.renewal_date || '';
+      if (!oldEnd) {
+        throw new Error('Cannot renew this row because the service end date is missing.');
+      }
       const newStart = this.nextDay_(oldEnd);
       const months = this.getRenewalLicenseMonths_(row);
       const annualPrice = this.getRenewalAnnualLicensePrice_(row);
@@ -1669,6 +1690,8 @@ const Clients = {
       if (validation.confirmDifferentDates && window.confirm(validation.message)) return this.openRenewalFlow_(rows, { allowDifferentDates: true });
       return UI.toast(validation.message);
     }
+    const missingEndDateRow = rows.find(row => !String(row?.service_end_date || row?.renewal_date || '').trim());
+    if (missingEndDateRow) return UI.toast('Cannot renew this row because the service end date is missing.');
     const agreement = this.findAgreementForRenewalRow_(rows[0] || {});
     const draft = this.buildRenewalDraft_(rows);
     this.state.activeRenewalRows = draft.rows;
@@ -2123,15 +2146,14 @@ const Clients = {
       }
       const serviceStart = this.getField(relatedInvoiceItem, 'service_start_date', 'serviceStartDate')
         || this.getField(item, 'service_start_date', 'serviceStartDate', 'start_date', 'startDate')
-        || agreement.service_start_date
-        || agreement.effective_date
-        || agreement.agreement_date
-        || '';
+        || this.getField(agreement, 'service_start_date', 'serviceStartDate')
+        || null;
       const serviceEnd = this.getField(relatedInvoiceItem, 'service_end_date', 'serviceEndDate')
         || this.getField(item, 'service_end_date', 'serviceEndDate', 'end_date', 'endDate')
-        || agreement.service_end_date
-        || '';
-      const renewalDate = serviceEnd || String(relatedInvoice?.invoice_date || relatedInvoice?.issue_date || relatedInvoice?.issued_at || relatedInvoice?.created_at || '').trim();
+        || this.getField(agreement, 'service_end_date', 'serviceEndDate')
+        || null;
+      const renewalDate = serviceEnd || String(relatedInvoice?.invoice_date || relatedInvoice?.issue_date || relatedInvoice?.issued_at || relatedInvoice?.created_at || '').trim() || '';
+      const missingServiceDates = !serviceStart || !serviceEnd;
       rows.push(this.normalizeRenewalRow({
         ...item,
         source: 'agreement_item',
@@ -2143,8 +2165,8 @@ const Clients = {
         agreement_reference: agreement.agreement_reference || agreement.agreement_id || item.agreement_reference || item.agreement_id || '',
         agreement_number: agreement.agreement_number || item.agreement_number,
         agreement_status: agreement.status || '',
-        agreement_service_start_date: agreement.service_start_date || agreement.effective_date || '',
-        agreement_service_end_date: agreement.service_end_date || agreement.end_service_date || '',
+        agreement_service_start_date: this.getField(agreement, 'service_start_date', 'serviceStartDate') || '',
+        agreement_service_end_date: this.getField(agreement, 'service_end_date', 'serviceEndDate', 'end_service_date', 'endServiceDate') || '',
         agreement_expiry_date: agreement.expiry_date || agreement.expiration_date || agreement.valid_until || '',
         invoice_uuid: relatedInvoice?.id || relatedInvoice?.invoice_uuid || '',
         invoice_id: relatedInvoice?.id || relatedInvoice?.invoice_id || '',
@@ -2154,9 +2176,13 @@ const Clients = {
         client_name: agreement.customer_name || agreement.customer_legal_name || client.customer_name || client.client_name || client.company_name || '—',
         location_name: this.getField(item, 'location_name', 'locationName', 'location', 'site', 'site_name', 'branch', 'branch_name', 'store_name') || this.getField(item, 'description', 'item_name', 'itemName') || 'Location',
         module_name: this.getField(item, 'module_name', 'moduleName', 'module', 'service_name', 'serviceName', 'product_name', 'productName', 'item_name', 'itemName') || 'SaaS Annual',
-        service_start_date: serviceStart,
-        service_end_date: serviceEnd,
-        renewal_date: renewalDate,
+        invoice_item: relatedInvoiceItem || null,
+        agreement_item: item || null,
+        agreement: agreement || null,
+        service_start_date: serviceStart || '',
+        service_end_date: serviceEnd || '',
+        renewal_date: serviceEnd || renewalDate,
+        renewal_due_date: serviceEnd || '',
         billing_frequency: this.getField(item, 'billing_frequency', 'billingFrequency', 'billing_cycle', 'billingCycle', 'frequency') || agreement.billing_frequency,
         payment_term: this.getField(item, 'payment_term', 'payment_terms', 'paymentTerm', 'paymentTerms') || agreement.payment_term,
         invoice_issued_date: relatedInvoice?.created_at || relatedInvoice?.invoice_date || '',
@@ -2169,6 +2195,7 @@ const Clients = {
         quantity: this.getRenewalLicenseMonths_(item),
         discount_percent: this.toNumberSafe(item.discount_percent ?? item.discountPercent),
         payment_status: paymentStatus,
+        renewal_status: missingServiceDates ? 'Missing Service Dates' : '',
         status: agreement.status || 'Active',
         currency: this.getField(item, 'currency', 'currency_code') || agreement.currency || this.getClientCurrency_(clientId)
       }));
@@ -2605,13 +2632,13 @@ const Clients = {
                 <td>${U.escapeHtml(U.fmtDisplayDate(row.service_end_date) || '—')}</td>
                 <td>${U.escapeHtml(U.fmtDisplayDate(row.renewal_due_date || row.renewal_date) || (this.dateValueForSort_(row) ? '—' : 'Date not set'))}</td>
                 <td>${U.escapeHtml(row.payment_status || this.getPaymentStatus(row) || '—')}</td>
-                <td>${U.escapeHtml(row.renewal_status || this.getRenewalStatus(row) || '—')}</td>
+                <td>${U.escapeHtml(row.renewal_status || this.getRenewalStatus(row) || '—')}${row.renewal_status === 'Missing Service Dates' ? ' <span class="badge warning">Missing Service Dates</span>' : ''}</td>
                 <td>${U.escapeHtml(this.formatCurrency_(this.getRenewalPrice_(row), row.currency || 'USD'))}</td>
                 <td>${this.getRenewalActionLabel_(row)}</td>
               </tr>`;
             })
             .join('')
-        : `<tr><td colspan="11" class="muted" style="text-align:center;">${U.escapeHtml(detailData.statementError ? 'Unable to load statement data.' : detailData.noLinkedRows ? 'No linked rows found. Check client ID/name mapping.' : 'No renewals or payments timeline rows.')}</td></tr>`;
+        : `<tr><td colspan="11" class="muted" style="text-align:center;">${U.escapeHtml(detailData.statementError ? 'Unable to load statement data.' : detailData.noLinkedRows ? 'No linked rows found. Check client ID/name mapping.' : 'No renewable SaaS locations found for this client.')}</td></tr>`;
     }
     if (E.clientRenewalEvents) {
       const milestones = this.getMilestoneValues_({ ...detailData, renewalRows: baseRenewalRows }, fallbackClient);
