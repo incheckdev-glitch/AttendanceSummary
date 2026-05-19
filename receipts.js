@@ -309,7 +309,7 @@ const Receipts = {
     normalized.currency = String(normalized.currency || '').trim() || 'USD';
     normalized.status = String(normalized.status || '').trim() || 'Issued';
     const normalizedReceiptDate = this.normalizeDateValue(
-      pickDefined(source.receipt_date, source.receiptDate, source.created_at, source.createdAt)
+      pickDefined(source.receipt_date, source.receiptDate, source.payment_date, source.paymentDate)
     );
     normalized.receipt_date = normalizedReceiptDate || String(normalized.receipt_date || '').trim();
     normalized.receiptDate = normalized.receipt_date;
@@ -876,6 +876,18 @@ const Receipts = {
     if (!raw) return '';
     const prefixMatch = raw.match(/^(\d{4}-\d{2}-\d{2})/);
     if (prefixMatch) return prefixMatch[1];
+    const dmyNamedMatch = raw.match(/^(\d{1,2})[-\/ ]([A-Za-z]{3,9})[-\/ ](\d{4})$/);
+    if (dmyNamedMatch) {
+      const [, dayRaw, monthRaw, yearRaw] = dmyNamedMatch;
+      const monthKey = String(monthRaw || '').slice(0, 3).toLowerCase();
+      const monthMap = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+      const month = monthMap[monthKey];
+      const day = Number(dayRaw);
+      const year = Number(yearRaw);
+      if (month && Number.isInteger(day) && day >= 1 && day <= 31 && Number.isInteger(year) && year >= 1000) {
+        return `${yearRaw.padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      }
+    }
     const parsed = new Date(raw);
     if (Number.isNaN(parsed.getTime())) return '';
     return parsed.toISOString().slice(0, 10);
@@ -1421,7 +1433,7 @@ const Receipts = {
       contact_email: get('receiptFormContactEmail') || String(form?.dataset.contactEmail || '').trim(),
       contact_phone: get('receiptFormContactPhone') || String(form?.dataset.contactPhone || '').trim(),
       contact_mobile: get('receiptFormContactMobile') || String(form?.dataset.contactMobile || '').trim(),
-      receipt_date: get('receiptFormReceiptDate'),
+      receipt_date: this.normalizeDateValue(get('receiptFormReceiptDate')),
       customer_name: get('receiptFormCustomerName'),
       customer_legal_name: get('receiptFormCustomerLegalName'),
       customer_address: get('receiptFormCustomerAddress'),
@@ -1489,7 +1501,8 @@ const Receipts = {
       contact_email: String(formValues.contact_email || existing.contact_email || linkedInvoice?.contact_email || '').trim() || null,
       contact_phone: String(formValues.contact_phone || existing.contact_phone || linkedInvoice?.contact_phone || '').trim() || null,
       contact_mobile: String(formValues.contact_mobile || existing.contact_mobile || linkedInvoice?.contact_mobile || '').trim() || null,
-      receipt_date: String(formValues.receipt_date || existing.receipt_date || '').trim() || null,
+      receipt_date: this.normalizeDateValue(formValues.receipt_date || existing.receipt_date || existing.payment_date) || null,
+      payment_date: this.normalizeDateValue(formValues.receipt_date || formValues.payment_date || existing.payment_date || existing.receipt_date) || null,
       amount_received: paymentSnapshot.received_amount,
       received_amount: paymentSnapshot.received_amount,
       payment_method: String(E.receiptForm?.dataset.paymentMethod || existing.payment_method || '').trim() || null,
@@ -1547,8 +1560,11 @@ const Receipts = {
       console.time('entity-save');
       try {
         const snapshot = await this.computeReceiptSnapshot(invoiceUuid, normalizedAmount);
+        const selectedReceiptDate = this.normalizeDateValue(updates.receipt_date) || this.todayInputValue();
         const response = await Api.createReceiptFromInvoice(invoiceUuid, {
           amount: normalizedAmount,
+          receipt_date: selectedReceiptDate,
+          payment_date: selectedReceiptDate,
           payment_method: String(E.receiptForm?.dataset.paymentMethod || '').trim() || null,
           payment_reference: String(E.receiptForm?.dataset.paymentReference || '').trim() || null
         });
