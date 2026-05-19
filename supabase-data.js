@@ -6139,7 +6139,8 @@
         p_invoice_uuid: invoiceUuid,
         p_amount: normalizedAmount,
         p_payment_method: normalizeOptionalText(payload.payment_method || payload.method),
-        p_payment_reference: normalizeOptionalText(payload.payment_reference || payload.reference)
+        p_payment_reference: normalizeOptionalText(payload.payment_reference || payload.reference),
+        p_receipt_date: normalizeOptionalText(payload.receipt_date || payload.receiptDate)
       });
       if (error) throw friendlyError('Receipt creation from invoice failed', error);
       devLog(logPrefix, 'RPC created receipt header', { invoiceUuid, rpcResponse: data });

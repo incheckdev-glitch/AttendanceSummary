@@ -1506,6 +1506,7 @@ const Api = {
       if (options.amount !== undefined) payload.amount = options.amount;
       if (options.payment_method !== undefined) payload.payment_method = options.payment_method;
       if (options.payment_reference !== undefined) payload.payment_reference = options.payment_reference;
+      if (options.receipt_date !== undefined) payload.receipt_date = options.receipt_date;
     }
     const response = await this.requestWithSession('receipts', 'create_from_invoice', payload);
     const recordId = this.extractBusinessRecordId(response, invoiceId);
