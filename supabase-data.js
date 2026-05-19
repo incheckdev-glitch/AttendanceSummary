@@ -633,6 +633,8 @@
       'id', 'onboarding_id', 'agreement_id', 'agreement_number', 'client_id', 'client_name',
       'onboarding_status', 'request_type', 'request_status', 'request_message', 'request_details',
       'technical_request_type', 'technical_request_status', 'technical_request_details',
+      'source_type', 'source_id', 'proposal_id', 'proposal_reference', 'onboarding_type',
+      'poc_start_date', 'poc_end_date', 'poc_location_count', 'poc_notes', 'poc_details', 'technical_admin_request_id',
       'source_invoice_id', 'invoice_id', 'source_invoice_number', 'invoice_number',
       'invoiced_location_names', 'invoiced_locations', 'location_names', 'invoiced_agreement_item_ids',
       'invoiced_location_count', 'location_count', 'locations_count', 'number_of_locations',
@@ -683,6 +685,8 @@
       'agreement_id','agreement_number','onboarding_id','client_id','client_name',
       'request_type','request_title','request_message','request_details','request_status',
       'technical_request_type','technical_request_details','technical_request_status',
+      'onboarding_type','source_type','source_id','proposal_id','proposal_reference',
+      'poc_start_date','poc_end_date','poc_location_count','poc_details',
       'priority','location_count','number_of_locations','locations_count',
       'source_invoice_id','invoice_id','source_invoice_number','invoice_number',
       'invoiced_location_names','invoiced_locations','location_names','invoiced_agreement_item_ids',
@@ -700,8 +704,8 @@
   };
   const LIST_SEARCH_COLUMNS_BY_RESOURCE = {
     agreements: ['agreement_id', 'agreement_number', 'agreement_title', 'customer_name', 'customer_legal_name', 'customer_contact_name', 'status'],
-    operations_onboarding: ['onboarding_id', 'agreement_id', 'agreement_number', 'client_name', 'request_type', 'request_status', 'technical_request_status', 'invoice_number', 'source_invoice_number', 'invoiced_location_names', 'csm_assigned_to', 'go_live_target_date'],
-    technical_admin_requests: ['request_id', 'technical_request_id', 'agreement_id', 'agreement_number', 'client_name', 'request_status', 'request_message', 'request_details']
+    operations_onboarding: ['onboarding_id', 'agreement_id', 'agreement_number', 'client_name', 'request_type', 'request_status', 'technical_request_status', 'invoice_number', 'source_invoice_number', 'proposal_reference', 'onboarding_type', 'source_type', 'invoiced_location_names', 'csm_assigned_to', 'go_live_target_date'],
+    technical_admin_requests: ['request_id', 'technical_request_id', 'agreement_id', 'agreement_number', 'client_name', 'request_status', 'request_message', 'request_details', 'proposal_reference', 'request_type', 'onboarding_type']
   };
   const UUID_COLUMNS_BY_TABLE = {
     deals: new Set(['lead_id', 'source_lead_uuid', 'created_by', 'updated_by']),
@@ -714,8 +718,8 @@
     invoice_items: new Set(['id', 'invoice_id', 'proposal_id', 'agreement_id', 'client_id', 'company_id', 'contact_id', 'location_id', 'source_invoice_id', 'source_agreement_id', 'source_proposal_id', 'previous_invoice_id', 'renewed_from_invoice_id']),
     receipts: new Set(['invoice_id', 'agreement_uuid', 'client_id', 'created_by', 'updated_by']),
     receipt_items: new Set(['receipt_id', 'invoice_item_id']),
-    operations_onboarding: new Set(['agreement_id', 'client_id', 'created_by', 'updated_by']),
-    technical_admin_requests: new Set(['agreement_id', 'onboarding_id', 'client_id', 'requested_by', 'updated_by']),
+    operations_onboarding: new Set(['agreement_id', 'client_id', 'source_id', 'proposal_id', 'technical_admin_request_id', 'created_by', 'updated_by']),
+    technical_admin_requests: new Set(['agreement_id', 'onboarding_id', 'client_id', 'source_id', 'proposal_id', 'requested_by', 'updated_by']),
     notifications: new Set(['recipient_user_id', 'actor_user_id']),
     leads: new Set([
       'id',
@@ -824,6 +828,152 @@
     out.notes = String(out.notes || out.request_message || '').trim() || null;
 
     return out;
+  }
+
+
+  function isTruthyFlag(value) {
+    if (value === true || value === 1) return true;
+    const text = String(value ?? '').trim().toLowerCase();
+    return ['true', '1', 'yes', 'y', 'checked', 'on'].includes(text);
+  }
+
+  function buildPocOperationsOnboardingPayload(proposal = {}) {
+    const proposalUuid = String(proposal?.id || '').trim();
+    if (!isUuid(proposalUuid)) return null;
+
+    const pocLocationCount = Number(
+      proposal?.poc_location_count ??
+      proposal?.pocLocationCount ??
+      proposal?.poc_license_count ??
+      proposal?.pocLicenseCount ??
+      0
+    ) || 0;
+    const pocStartDate = normalizeDateOnlyForMutation(proposal?.poc_start_date || proposal?.poc_service_start_date || proposal?.pocStartDate || proposal?.pocServiceStartDate);
+    const pocEndDate = normalizeDateOnlyForMutation(proposal?.poc_end_date || proposal?.poc_service_end_date || proposal?.pocEndDate || proposal?.pocServiceEndDate);
+    const pocNotes = String(
+      proposal?.poc_notes ||
+      proposal?.poc_scope ||
+      proposal?.poc_success_kpis ||
+      proposal?.poc_conversion_commitment ||
+      ''
+    ).trim();
+    const proposalRef = String(proposal?.proposal_id || proposal?.ref_number || proposal?.proposal_number || '').trim();
+    const clientName = String(
+      proposal?.customer_legal_name ||
+      proposal?.legal_company_name ||
+      proposal?.customer_name ||
+      proposal?.company_name ||
+      ''
+    ).trim();
+    const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
+
+    return compactObject({
+      onboarding_id: `OP-POC-${stamp}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+      proposal_id: proposalUuid,
+      source_type: 'proposal',
+      source_id: proposalUuid,
+      onboarding_type: 'poc',
+      request_type: 'POC',
+      technical_request_type: 'POC',
+      proposal_reference: proposalRef || null,
+      agreement_id: null,
+      agreement_number: null,
+      client_name: clientName || null,
+      onboarding_status: 'Pending Technical Request',
+      request_status: 'Not Requested',
+      technical_request_status: 'Not Requested',
+      request_message: pocNotes || `POC technical onboarding required${proposalRef ? ` for proposal ${proposalRef}` : ''}.`,
+      request_details: pocNotes || null,
+      technical_request_details: pocNotes || null,
+      poc_start_date: pocStartDate || null,
+      poc_end_date: pocEndDate || null,
+      poc_location_count: pocLocationCount || null,
+      location_count: pocLocationCount || 0,
+      locations_count: pocLocationCount || 0,
+      number_of_locations: pocLocationCount || 0,
+      poc_notes: pocNotes || null,
+      requested_by: isUuid(String(proposal?.created_by || '').trim()) ? String(proposal.created_by).trim() : null,
+      requested_at: new Date().toISOString()
+    });
+  }
+
+  async function ensurePocOperationsOnboardingFromProposal(client, proposal = {}) {
+    const proposalStatus = String(proposal?.status || proposal?.proposal_status || '').trim().toLowerCase();
+    const hasPoc = isTruthyFlag(proposal?.is_poc ?? proposal?.isPoc)
+      || isTruthyFlag(proposal?.poc_enabled)
+      || isTruthyFlag(proposal?.has_poc)
+      || isTruthyFlag(proposal?.include_poc)
+      || isTruthyFlag(proposal?.poc_checked)
+      || isTruthyFlag(proposal?.proof_of_concept_enabled);
+
+    if (proposalStatus !== 'accepted' || !hasPoc) return null;
+
+    const proposalUuid = String(proposal?.id || '').trim();
+    if (!isUuid(proposalUuid)) {
+      console.warn('[POC onboarding] Accepted POC proposal has no internal UUID; cannot create Operations Onboarding row.', proposal);
+      return null;
+    }
+
+    // Preferred path: SECURITY DEFINER RPC from the SQL migration. This works even when
+    // the proposal owner does not have direct insert rights on operations_onboarding.
+    try {
+      const { data, error } = await client.rpc('ensure_poc_operations_onboarding_from_proposal', {
+        p_proposal_id: proposalUuid
+      });
+      if (!error && data) return Array.isArray(data) ? data[0] : data;
+      if (error) console.warn('[POC onboarding] RPC failed; trying direct fallback.', error);
+    } catch (rpcError) {
+      console.warn('[POC onboarding] RPC unavailable; trying direct fallback.', rpcError);
+    }
+
+    const payload = buildPocOperationsOnboardingPayload(proposal);
+    if (!payload) return null;
+
+    const existingRes = await client
+      .from('operations_onboarding')
+      .select('id')
+      .eq('source_type', 'proposal')
+      .eq('source_id', proposalUuid)
+      .eq('onboarding_type', 'poc')
+      .limit(1);
+    if (existingRes.error) {
+      console.warn('[POC onboarding] Unable to check existing POC onboarding row.', existingRes.error);
+      return null;
+    }
+
+    const existing = Array.isArray(existingRes?.data) ? existingRes.data[0] : null;
+    const directPayload = sanitizeUuidColumnsForMutation('operations_onboarding', { ...payload });
+    delete directPayload.client_id;
+    delete directPayload.company_id;
+
+    if (existing?.id) {
+      delete directPayload.onboarding_id;
+      const { data, error } = await updateSelectSingleWithSchemaRetry(
+        client,
+        'operations_onboarding',
+        directPayload,
+        'id',
+        existing.id,
+        'Unable to update POC operations onboarding row'
+      );
+      if (error) {
+        console.warn('[POC onboarding] Direct update fallback failed.', error);
+        return null;
+      }
+      return data;
+    }
+
+    const { data, error } = await insertSelectSingleWithSchemaRetry(
+      client,
+      'operations_onboarding',
+      directPayload,
+      'Unable to create POC operations onboarding row'
+    );
+    if (error) {
+      console.warn('[POC onboarding] Direct insert fallback failed. Apply POC onboarding SQL migration if not applied yet.', error);
+      return null;
+    }
+    return data;
   }
 
   const WRITE_PROTECTED_TIMESTAMP_FIELDS = new Set([
@@ -6304,10 +6454,14 @@
         ''
       ).trim();
       const agreementId = String(dbFilters.agreement_id ?? controls.agreement_id ?? '').trim();
+      const onboardingId = String(dbFilters.onboarding_id ?? controls.onboarding_id ?? '').trim();
+      const requestType = String(dbFilters.request_type ?? dbFilters.technical_request_type ?? controls.request_type ?? controls.technical_request_type ?? '').trim();
 
       const applyTechnicalFilters = queryBase => {
         let query = queryBase;
         if (agreementId) query = query.eq('agreement_id', agreementId);
+        if (onboardingId) query = query.eq('onboarding_id', onboardingId);
+        if (requestType) query = query.or(`request_type.ilike.%${requestType.replace(/[%]/g, '')}%,technical_request_type.ilike.%${requestType.replace(/[%]/g, '')}%`);
         if (statusValue) {
           const normalizedStatus = statusValue.toLowerCase().replace(/[\s-]+/g, '_');
           const statusMap = {
@@ -6360,6 +6514,8 @@
           .select('*', { count: 'exact' })
           .or('technical_request_type.not.is.null,technical_request_status.not.is.null,request_message.not.is.null,technical_request_details.not.is.null');
         if (agreementId) fallbackQuery = fallbackQuery.eq('agreement_id', agreementId);
+        if (onboardingId) fallbackQuery = fallbackQuery.eq('id', onboardingId);
+        if (requestType) fallbackQuery = fallbackQuery.or(`request_type.ilike.%${requestType.replace(/[%]/g, '')}%,technical_request_type.ilike.%${requestType.replace(/[%]/g, '')}%`);
         if (statusValue) {
           const normalizedStatus = statusValue.toLowerCase().replace(/[\s-]+/g, '_');
           const statusMap = {
@@ -6945,36 +7101,10 @@
         }, 'proposals:create').catch(error => {
           console.warn('[notifications:pwa] proposals:create failed', error);
         });
-        const proposalStatus = String(created.status || '').trim().toLowerCase();
-        const hasPoc = Boolean(created.is_poc || created.poc_enabled || created.has_poc || created.include_poc || created.poc_checked || created.proof_of_concept_enabled);
-        if (proposalStatus === 'accepted' && hasPoc) {
-          const proposalUuid = String(created.id || '').trim();
-          const existingRes = await client
-            .from('operations_onboarding')
-            .select('id')
-            .eq('source_type', 'proposal')
-            .eq('source_id', proposalUuid)
-            .eq('onboarding_type', 'poc')
-            .limit(1);
-          const existing = Array.isArray(existingRes?.data) ? existingRes.data[0] : null;
-          const pocPayload = {
-            proposal_id: proposalUuid,
-            source_type: 'proposal',
-            source_id: proposalUuid,
-            onboarding_type: 'poc',
-            request_type: 'POC',
-            proposal_reference: created.proposal_id || created.ref_number || null,
-            client_id: created.company_id || null,
-            client_name: created.legal_company_name || created.company_name || null,
-            onboarding_status: 'Pending Technical Request',
-            poc_start_date: created.poc_start_date || created.poc_service_start_date || null,
-            poc_end_date: created.poc_end_date || created.poc_service_end_date || null,
-            poc_location_count: created.poc_location_count || null,
-            poc_notes: created.poc_notes || created.poc_scope || null,
-            requested_by: created.created_by || null
-          };
-          if (existing?.id) await client.from('operations_onboarding').update(pocPayload).eq('id', existing.id);
-          else await client.from('operations_onboarding').insert(pocPayload);
+        const pocOnboarding = await ensurePocOperationsOnboardingFromProposal(client, created);
+        if (pocOnboarding) {
+          created._poc_onboarding_id = pocOnboarding.id || pocOnboarding.onboarding_id || '';
+          created._poc_onboarding_status = 'created_or_updated';
         }
       }
       if (resource === 'agreements') {
@@ -7446,34 +7576,10 @@
       }
       if (resource === 'proposals') {
         const nextStatus = String(data?.status || '').trim().toLowerCase();
-        const hasPoc = Boolean(data?.is_poc || data?.poc_enabled || data?.has_poc || data?.include_poc || data?.poc_checked || data?.proof_of_concept_enabled);
-        if (nextStatus === 'accepted' && hasPoc) {
-          const proposalUuid = String(data?.id || id || '').trim();
-          const existingRes = await client
-            .from('operations_onboarding')
-            .select('id')
-            .eq('source_type', 'proposal')
-            .eq('source_id', proposalUuid)
-            .eq('onboarding_type', 'poc')
-            .limit(1);
-          const existing = Array.isArray(existingRes?.data) ? existingRes.data[0] : null;
-          const pocPayload = {
-            proposal_id: proposalUuid,
-            source_type: 'proposal',
-            source_id: proposalUuid,
-            onboarding_type: 'poc',
-            request_type: 'POC',
-            proposal_reference: data?.proposal_id || data?.ref_number || null,
-            client_id: data?.company_id || null,
-            client_name: data?.legal_company_name || data?.company_name || null,
-            onboarding_status: 'Pending Technical Request',
-            poc_start_date: data?.poc_start_date || data?.poc_service_start_date || null,
-            poc_end_date: data?.poc_end_date || data?.poc_service_end_date || null,
-            poc_location_count: data?.poc_location_count || null,
-            poc_notes: data?.poc_notes || data?.poc_scope || null
-          };
-          if (existing?.id) await client.from('operations_onboarding').update(pocPayload).eq('id', existing.id);
-          else await client.from('operations_onboarding').insert(pocPayload);
+        const pocOnboarding = await ensurePocOperationsOnboardingFromProposal(client, data);
+        if (pocOnboarding) {
+          data._poc_onboarding_id = pocOnboarding.id || pocOnboarding.onboarding_id || '';
+          data._poc_onboarding_status = 'created_or_updated';
         }
         if (nextStatus && IMPORTANT_PROPOSAL_STATUSES.has(nextStatus) && previousProposalStatus.trim().toLowerCase() !== nextStatus) {
           await createNotificationAndPush({

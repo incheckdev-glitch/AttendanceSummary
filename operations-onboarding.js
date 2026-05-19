@@ -1280,19 +1280,23 @@ const OperationsOnboarding = {
       }
       const agreement = this.state.agreementMap.get(detail.agreement_id) || {};
       detail = this.applyAgreementFallbacks(detail, agreement);
+      const isPocDetail = String(detail.onboarding_type || '').trim().toLowerCase() === 'poc' || String(detail.request_type || '').trim().toLowerCase() === 'poc';
       const agreementItems = this.state.agreementItemsMap.get(detail.agreement_id) || [];
-      const locations = this.getRowLocationCount(detail, agreement, agreementItems);
-      const serviceStart = this.getRowServiceStart(detail, agreement, agreementItems);
-      const serviceEnd = this.getRowServiceEnd(detail, agreement, agreementItems);
+      const locations = isPocDetail
+        ? (Number(detail.poc_location_count || detail.location_count || detail.number_of_locations || 0) || 0)
+        : this.getRowLocationCount(detail, agreement, agreementItems);
+      const serviceStart = isPocDetail ? (detail.poc_start_date || detail.service_start_date) : this.getRowServiceStart(detail, agreement, agreementItems);
+      const serviceEnd = isPocDetail ? (detail.poc_end_date || detail.service_end_date) : this.getRowServiceEnd(detail, agreement, agreementItems);
       const billingFrequency = detail.billing_frequency || agreement.billing_frequency;
       const paymentTerm = detail.payment_term || agreement.payment_term;
       if (!E.operationsOnboardingDetailsContent || !E.operationsOnboardingDetailsModal) return;
       E.operationsOnboardingDetailsContent.innerHTML = `
         <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;">
           <div><span class="muted">Onboarding ID:</span> ${U.escapeHtml(detail.onboarding_id || '—')}</div>
+          <div><span class="muted">Source:</span> ${U.escapeHtml(isPocDetail ? 'POC Proposal' : 'Agreement')}</div>
           <div><span class="muted">Agreement ID:</span> ${U.escapeHtml(detail.agreement_id || '—')}</div>
           <div><span class="muted">Status:</span> ${U.escapeHtml(detail.onboarding_status || '—')}</div>
-          <div><span class="muted">Agreement Number:</span> ${U.escapeHtml(detail.agreement_number || '—')}</div>
+          <div><span class="muted">Reference:</span> ${U.escapeHtml(isPocDetail ? (detail.proposal_reference || detail.proposal_id || 'POC') : (detail.agreement_number || '—'))}</div>
           <div><span class="muted">Client Name:</span> ${U.escapeHtml(detail.client_name || '—')}</div>
           <div><span class="muted">Agreement Status:</span> ${U.escapeHtml(detail.agreement_status || '—')}</div>
           <div><span class="muted">Signed Date:</span> ${U.escapeHtml(this.formatDate(detail.signed_date))}</div>
@@ -1317,7 +1321,7 @@ const OperationsOnboarding = {
         </div>
         <div class="actions" style="justify-content:flex-start;gap:8px;margin-top:12px;">
           ${String(detail.agreement_id || '').trim() ? `<button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-details-open-agreement="${U.escapeAttr(detail.agreement_id || '')}">Open Agreement</button><button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-details-preview-agreement="${U.escapeAttr(detail.agreement_id || '')}">Preview Agreement</button>` : ''}
-          ${this.canRequestTechnicalAdmin() && String(detail.agreement_id || '').trim() ? `<button class="btn ghost sm" type="button" data-op-technical-admin="${U.escapeAttr(detail.agreement_id || '')}" data-op-technical-onboarding="${U.escapeAttr(detail.id || detail.db_id || detail.onboarding_id || '')}">Technical Admin Request</button>` : ''}
+          ${this.canRequestTechnicalAdmin() && (String(detail.agreement_id || '').trim() || isPocDetail) ? `<button class="btn ghost sm" type="button" data-op-technical-admin="${U.escapeAttr(detail.agreement_id || '')}" data-op-technical-onboarding="${U.escapeAttr(detail.id || detail.db_id || detail.onboarding_id || '')}">Technical Admin Request</button>` : ''}
           ${this.canAssignCsm() && !this.isOnboardingClosed(detail) ? `<button class="btn sm" type="button" data-op-details-assign-csm="${U.escapeAttr(detail.id || detail.db_id || detail.onboarding_id || '')}" data-op-agreement-id="${U.escapeAttr(detail.agreement_id || '')}">${(detail.assigned_csm_name || detail.csm_assigned_to) ? 'Change CSM' : 'Assign CSM'}</button>` : ''}
         </div>`;
       E.operationsOnboardingDetailsModal.classList.add('open');
@@ -1499,6 +1503,17 @@ const OperationsOnboarding = {
   },
   buildDefaultTechnicalAdminMessage(summary = {}, agreementLabel = '') {
     const safeSummary = summary && typeof summary === 'object' ? summary : {};
+    const isPoc = String(safeSummary.onboarding_type || '').trim().toLowerCase() === 'poc'
+      || String(safeSummary.request_type || '').trim().toLowerCase() === 'poc';
+    if (isPoc) {
+      const proposalLabel = String(safeSummary.proposal_reference || safeSummary.proposal_id || safeSummary.source_id || 'the accepted POC proposal').trim();
+      const pocCount = Number(safeSummary.poc_location_count || safeSummary.location_count || safeSummary.number_of_locations || 0) || 0;
+      const pocDates = [safeSummary.poc_start_date || safeSummary.service_start_date, safeSummary.poc_end_date || safeSummary.service_end_date]
+        .filter(Boolean)
+        .map(value => this.formatDate(value))
+        .join(' to ');
+      return `Please proceed with the POC technical setup for ${proposalLabel}${pocCount ? ` (${pocCount} location${pocCount === 1 ? '' : 's'})` : ''}${pocDates ? `, POC period ${pocDates}` : ''}.`;
+    }
     const label = String(agreementLabel || safeSummary.agreement_number || safeSummary.agreement_id || '').trim() || 'the agreement';
     const locationText = String(safeSummary.invoiced_location_names || safeSummary.invoiced_locations || safeSummary.location_names || '').trim();
     const textLocationCount = this.countStoredLocations(locationText);
@@ -1543,7 +1558,6 @@ const OperationsOnboarding = {
   },
   async requestTechnicalAdmin(agreementId, onboardingRowId = '') {
     const id = String(agreementId || '').trim();
-    if (!id) return UI.toast('Agreement ID is required.');
     if (!this.canRequestTechnicalAdmin()) return UI.toast('Insufficient permissions.');
     const normalizedOnboardingRowId = String(onboardingRowId || '').trim();
     const summary = this.state.rows.find(row => {
@@ -1551,7 +1565,11 @@ const OperationsOnboarding = {
       return (normalizedOnboardingRowId && rowId === normalizedOnboardingRowId) || (!normalizedOnboardingRowId && String(row.agreement_id || '') === id);
     }) || {};
     const isPoc = String(summary.onboarding_type || '').trim().toLowerCase() === 'poc' || String(summary.request_type || '').trim().toLowerCase() === 'poc';
-    const agreementLabel = summary.agreement_number || id;
+    if (!id && !isPoc) return UI.toast('Agreement ID is required.');
+    if (isPoc && !normalizedOnboardingRowId) return UI.toast('POC onboarding row ID is required.');
+    const agreementLabel = isPoc
+      ? (summary.proposal_reference || summary.proposal_id || summary.source_id || 'POC')
+      : (summary.agreement_number || id);
     const existingMessage = String(summary.request_message || summary.technical_request_details || summary.technical_admin_request_message || summary.request_details || '').trim();
     const defaultMessage = existingMessage || this.buildDefaultTechnicalAdminMessage(summary, agreementLabel);
     const message = this.promptTechnicalAdminRequestMessage(defaultMessage);
@@ -1566,7 +1584,12 @@ const OperationsOnboarding = {
         ...summary,
         ...(onboardingRecord && typeof onboardingRecord === 'object' ? onboardingRecord : {}),
         id: normalizedOnboardingRowId || summary.id || summary.db_id || summary.onboarding_id,
-        agreement_id: id,
+        agreement_id: isPoc ? (summary.agreement_id || '') : id,
+        onboarding_type: isPoc ? 'poc' : (summary.onboarding_type || 'agreement'),
+        source_type: isPoc ? 'proposal' : (summary.source_type || ''),
+        source_id: isPoc ? (summary.source_id || summary.proposal_id || '') : (summary.source_id || ''),
+        proposal_id: isPoc ? (summary.proposal_id || summary.source_id || '') : (summary.proposal_id || ''),
+        proposal_reference: isPoc ? (summary.proposal_reference || '') : (summary.proposal_reference || ''),
         request_type: isPoc ? 'POC' : 'Technical Admin',
         technical_request_type: isPoc ? 'POC' : 'Technical Admin',
         request_message: message,
