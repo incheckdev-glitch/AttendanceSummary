@@ -80,6 +80,12 @@ const Agreements = {
     'provider_contact_mobile',
     'provider_contact_email',
     'status',
+    'sent_at',
+    'agreement_sent_at',
+    'issued_at',
+    'valid_until',
+    'signing_deadline',
+    'expires_at',
     'saas_total',
     'one_time_total',
     'grand_total',
@@ -691,7 +697,39 @@ const Agreements = {
       || this.providerIdentityDefaults.secondarySignatoryName;
     normalized.provider_secondary_signatory_title = String(normalized.provider_secondary_signatory_title || normalized.provider_signatory_title_secondary || '').trim()
       || this.providerIdentityDefaults.secondarySignatoryTitle;
-    return this.applyOfficialSignatoryDefaults(normalized);
+    return this.applyAgreementValidity(this.applyOfficialSignatoryDefaults(normalized));
+  },
+  getAgreementValidityBaseDate(agreement = {}) {
+    return this.normalizeDateInputValue(
+      agreement?.sent_at || agreement?.agreement_sent_at || agreement?.issued_at || agreement?.created_at || agreement?.agreement_date || ''
+    );
+  },
+  addDaysToDateInput(dateValue = '', days = 0) {
+    const normalized = this.normalizeDateInputValue(dateValue);
+    if (!normalized) return '';
+    const dt = new Date(`${normalized}T00:00:00Z`);
+    if (Number.isNaN(dt.getTime())) return '';
+    dt.setUTCDate(dt.getUTCDate() + Number(days || 0));
+    return dt.toISOString().slice(0, 10);
+  },
+  isUnsignedAgreementStatus(status = '') {
+    const normalized = this.normalizeAgreementStatus(status);
+    return ['draft', 'sent', 'pending', 'pending_signature', 'awaiting_signature', 'under_review'].some(token => normalized.includes(token));
+  },
+  applyAgreementValidity(agreement = {}) {
+    const next = agreement && typeof agreement === 'object' ? { ...agreement } : {};
+    const existingDeadline = this.normalizeDateInputValue(next.valid_until || next.signing_deadline || next.expires_at || '');
+    const baseDate = this.getAgreementValidityBaseDate(next);
+    const signingDeadline = existingDeadline || (baseDate ? this.addDaysToDateInput(baseDate, 30) : '');
+    if (signingDeadline) {
+      next.valid_until = signingDeadline;
+      next.signing_deadline = signingDeadline;
+      next.expires_at = signingDeadline;
+    }
+    if (!this.isAgreementSigned(next) && this.isUnsignedAgreementStatus(next.status) && signingDeadline && this.todayDateString() > signingDeadline) {
+      next.status = 'expired';
+    }
+    return next;
   },
   getCompanyLegalName(company = {}) {
     return String(company?.legal_name || company?.legalName || company?.company_name || company?.companyName || '').trim();
@@ -2958,7 +2996,10 @@ const Agreements = {
   },
   isAgreementItemsLocked(agreement = this.state.currentAgreement || {}) {
     const readOnlyMode = String(E.agreementForm?.dataset?.readOnly || '').trim() === 'true';
-    return readOnlyMode || this.isAgreementEditMode() || this.isProposalLockedAgreementContext(agreement);
+    const status = this.normalizeAgreementStatus(this.resolveAgreementStatus(agreement));
+    const signedOrAccepted = this.isAgreementSigned(agreement) || status.includes('accepted') || status.includes('active');
+    const expired = status.includes('expired');
+    return readOnlyMode || expired || signedOrAccepted || this.isProposalLockedAgreementContext(agreement);
   },
   applyAgreementItemLocks() {
     if (!E.agreementForm) return;
