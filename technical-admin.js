@@ -94,6 +94,38 @@ const TechnicalAdmin = {
   isUuid(value = '') {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
   },
+
+  isUuidLike(value) {
+    return typeof value === 'string'
+      && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.trim());
+  },
+  getUserDisplayName(record = {}, fieldPrefix = 'assigned') {
+    const candidates = [];
+    if (fieldPrefix === 'assigned') {
+      candidates.push(
+        record?.assigned_to_name, record?.assigned_user_name, record?.assignee_name, record?.assignedToName,
+        record?.assigned_to_display, record?.assigned_to_email, record?.assigned_user_email, record?.assignee_email
+      );
+    }
+    if (fieldPrefix === 'requested') {
+      candidates.push(
+        record?.requested_by_name, record?.requester_name, record?.created_by_name, record?.requestedByName,
+        record?.requested_by_display, record?.requested_by_email, record?.requester_email, record?.created_by_email
+      );
+    }
+    for (const value of candidates) {
+      if (typeof value === 'string' && value.trim() && !this.isUuidLike(value)) return value.trim();
+    }
+    return fieldPrefix === 'assigned' ? 'Unassigned' : 'Unknown User';
+  },
+  getInitials(name) {
+    if (!name || this.isUuidLike(name)) return '—';
+    const clean = String(name).trim();
+    if (!clean || clean === 'Unassigned' || clean === 'Unknown User') return '—';
+    const parts = clean.replace(/[<>]/g, '').split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    return clean.slice(0, 2).toUpperCase();
+  },
   formatTechnicalRequestNumber(record = {}, index = 0) {
     const safe = record && typeof record === 'object' ? record : {};
     const raw = this.pick(
@@ -719,7 +751,7 @@ const TechnicalAdmin = {
         .toLowerCase();
       if (query && !hay.includes(query)) return false;
       if (statusFilter !== 'All' && row.request_status !== statusFilter) return false;
-      const assignee = String(row.assigned_to_display || row.assigned_to || '').trim();
+      const assignee = this.getUserDisplayName(row, 'assigned');
       const client = String(row.client_name || '').trim();
       if (assigneeFilter !== 'All Assignees' && assignee !== assigneeFilter) return false;
       if (clientFilter !== 'All Clients' && client !== clientFilter) return false;
@@ -768,7 +800,7 @@ const TechnicalAdmin = {
     const host = document.getElementById('technicalAdminSecondaryMetrics'); if (!host) return;
     const open = rows.filter(r => !/completed|cancelled/i.test(String(r.request_status || '')));
     const clients = new Set(open.map(r => String(r.client_name || '').trim()).filter(Boolean));
-    const unassigned = open.filter(r => !String(r.assigned_to || r.assigned_to_display || '').trim()).length;
+    const unassigned = open.filter(r => this.getUserDisplayName(r, 'assigned') === 'Unassigned').length;
     const locations = rows.reduce((a, r) => a + Number(r.number_of_locations || r.location_count || 0), 0);
     const dueWeek = open.filter(r => { const d = new Date(this.pick(r.service_start_date, r.target_date, r.due_date)).getTime(); return d && d <= Date.now() + 7 * 86400000 && d >= Date.now(); }).length;
     host.innerHTML = [['Total Requests', rows.length, 'gray'], ['Active Clients', clients.size, 'blue'], ['Total Locations', locations, 'green'], ['Unassigned', unassigned, 'amber'], ['Due This Week', dueWeek, 'red']]
@@ -789,9 +821,9 @@ const TechnicalAdmin = {
     }
     if (workloadHost) {
       const map = {};
-      openRows.forEach(r=>{const a=String(r.assigned_to_display||r.assigned_to||'Unassigned');if(!map[a]) map[a]={open:0,overdue:0,inprogress:0};map[a].open+=1; if(new Date(this.pick(r.service_start_date,r.target_date,r.due_date)).getTime()<Date.now()) map[a].overdue+=1; if(this.statusBucket(r.request_status)==='In Progress') map[a].inprogress+=1;});
+      openRows.forEach(r=>{const a=this.getUserDisplayName(r,'assigned');if(!map[a]) map[a]={open:0,overdue:0,inprogress:0};map[a].open+=1; if(new Date(this.pick(r.service_start_date,r.target_date,r.due_date)).getTime()<Date.now()) map[a].overdue+=1; if(this.statusBucket(r.request_status)==='In Progress') map[a].inprogress+=1;});
       const max = Math.max(1,...Object.values(map).map(v=>v.open));
-      workloadHost.innerHTML = Object.entries(map).sort((a,b)=>b[1].open-a[1].open).slice(0,8).map(([a,v])=>`<div class="workload-row"><div class="identity"><span class="avatar">${U.escapeHtml(String(a).slice(0,2).toUpperCase())}</span><button class="btn ghost sm" data-assignee-quick="${U.escapeAttr(a)}">${U.escapeHtml(a)}</button></div><div class="metrics"><span>Open ${v.open}</span><span class="warn">Overdue ${v.overdue}</span><span>In Progress ${v.inprogress}</span></div><div class="status-bar"><span style="width:${Math.round((v.open/max)*100)}%"></span></div></div>`).join('') || '<div class="muted">No assignee data.</div>';
+      workloadHost.innerHTML = Object.entries(map).sort((a,b)=>b[1].open-a[1].open).slice(0,8).map(([a,v])=>`<div class="workload-row"><div class="identity"><span class="avatar">${U.escapeHtml(this.getInitials(a))}</span><button class="btn ghost sm" data-assignee-quick="${U.escapeAttr(a)}">${U.escapeHtml(a)}</button></div><div class="metrics"><span>Open ${v.open}</span><span class="warn">Overdue ${v.overdue}</span><span>In Progress ${v.inprogress}</span></div><div class="status-bar"><span style="width:${Math.round((v.open/max)*100)}%"></span></div></div>`).join('') || '<div class="muted">No assignee data.</div>';
     }
     const dueRows = rows.map(r=>({r,d:new Date(this.pick(r.service_start_date,r.target_date,r.due_date)).getTime()})).filter(x=>x.d).sort((a,b)=>a.d-b.d);
     if (upcomingHost) upcomingHost.innerHTML = dueRows.slice(0,6).map(({r,d})=>{const days=Math.ceil((d-Date.now())/86400000);return `<div class="task-row"><div><strong>${U.escapeHtml(r.technical_request_display||r.technical_request_number||r.technical_request_id||'')}</strong><small>${U.escapeHtml(r.client_name||'')}</small></div><div><span class="pill ${days<0?'red':days<4?'amber':'blue'}">${days<0?`${Math.abs(days)}d overdue`:`${days}d`}</span>${this.statusBadge(r.request_status)}</div></div>`}).join('') || '<div class="muted">No scheduled items.</div>';
@@ -815,7 +847,7 @@ const TechnicalAdmin = {
     const assigneeEl = document.getElementById('technicalAdminAssigneeFilter');
     const clientEl = document.getElementById('technicalAdminClientFilter');
     if (assigneeEl) {
-      const assignees = [...new Set(this.state.rows.map(r => String(r.assigned_to_display || r.assigned_to || '').trim()).filter(Boolean))].sort();
+      const assignees = [...new Set(this.state.rows.map(r => this.getUserDisplayName(r, 'assigned')).filter(Boolean))].sort();
       assigneeEl.innerHTML = ['All Assignees', ...assignees].map(v => `<option>${U.escapeHtml(v)}</option>`).join('');
       assigneeEl.value = this.state.assignee;
     }
@@ -864,9 +896,9 @@ const TechnicalAdmin = {
           <td>${text(row.billing_frequency)}</td>
           <td>${text(row.payment_term || row.payment_terms)}</td>
           <td>${this.statusBadge(row.request_status)}</td>
-          <td>${text(row.requested_by_display || row.requested_by)}</td>
+          <td>${text(this.getUserDisplayName(row, 'requested'))}</td>
           <td>${U.escapeHtml(this.toDisplayDateTime(row.requested_at))}</td>
-          <td>${text(row.assigned_to_display || row.assigned_to || row.assigned_user)}</td>
+          <td>${text(this.getUserDisplayName(row, 'assigned'))}</td>
           <td>
             <div style="display:flex;gap:6px;flex-wrap:wrap;">
               <button class="btn ghost sm" type="button" data-permission-resource="technical_admin_requests" data-permission-action="view" data-technical-open="${requestDbId}">Open</button>
@@ -1009,9 +1041,9 @@ const TechnicalAdmin = {
           <div><span class="muted">Service End Date:</span> ${U.escapeHtml(this.toDisplayDate(row.service_end_date))}</div>
           <div><span class="muted">Billing Frequency:</span> ${U.escapeHtml(row.billing_frequency || '—')}</div>
           <div><span class="muted">Payment Term:</span> ${U.escapeHtml(row.payment_term || row.payment_terms || '—')}</div>
-          <div><span class="muted">Requested By:</span> ${U.escapeHtml(row.requested_by_display || row.requested_by || '—')}</div>
+          <div><span class="muted">Requested By:</span> ${U.escapeHtml(this.getUserDisplayName(row, 'requested'))}</div>
           <div><span class="muted">Requested At:</span> ${U.escapeHtml(this.toDisplayDateTime(row.requested_at))}</div>
-          <div><span class="muted">Assigned To:</span> ${U.escapeHtml(row.assigned_to_display || row.assigned_to || '—')}</div>
+          <div><span class="muted">Assigned To:</span> ${U.escapeHtml(this.getUserDisplayName(row, 'assigned'))}</div>
           <div><span class="muted">Updated At:</span> ${U.escapeHtml(U.fmtDisplayDate(row.updated_at))}</div>
           <div style="grid-column:1/-1;"><span class="muted">Request Title:</span> ${U.escapeHtml(row.request_title || '—')}</div>
           <div style="grid-column:1/-1;"><span class="muted">Request Message:</span> ${U.escapeHtml(row.request_message || '—')}</div>
@@ -1173,8 +1205,8 @@ const TechnicalAdmin = {
         r.billing_frequency,
         r.payment_term || r.payment_terms,
         r.request_status,
-        r.requested_by_display || r.requested_by,
-        r.assigned_to_display || r.assigned_to
+        this.getUserDisplayName(r, 'requested'),
+        this.getUserDisplayName(r, 'assigned')
       ].map(v => `"${String(v||'').replace(/"/g,'""')}"`).join(','))).join('\n');
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'technical-admin-dashboard.csv'; a.click(); URL.revokeObjectURL(url);
     });
