@@ -2455,10 +2455,11 @@ const Agreements = {
         baseItem = {};
       }
       let quantity = this.toNumberSafe(get('quantity'));
-      if (!quantity && section === 'annual_saas') quantity = this.isAnnualSaasUserItem({ item_name: get('item_name') }) ? 1 : 12;
+      const annualRowDraft = { item_name: get('item_name'), license: get('item_name'), quantity: get('quantity') };
+      if (!quantity && section === 'annual_saas') quantity = this.isAnnualSaasUserItem(annualRowDraft) ? 1 : 12;
       if (section === 'one_time_fee' && !this.isCsHoursItem({ item_name: get('item_name') })) quantity = linkedOneTimeQuantity;
       let discountPercent = this.toNumberSafe(get('discount_percent'));
-      if (section === 'annual_saas' && !this.isAnnualSaasUserItem({ item_name: get('item_name') }) && quantity < 12) discountPercent = 0;
+      if (section === 'annual_saas' && !this.isAnnualSaasUserItem(annualRowDraft) && quantity < 12) discountPercent = 0;
       const unitPrice = this.toNumberSafe(get('unit_price'));
       const itemName = get('item_name');
       const locationName = get('location_name');
@@ -2533,9 +2534,20 @@ const Agreements = {
   },
 
   isAnnualSaasUserItem(item = {}) {
-    const value = [item?.name, item?.item_name, item?.title, item?.description, item?.sku, item?.catalog_label, item?.product_name, item?.billing_unit, item?.unit_type]
-      .filter(Boolean).join(' ').toLowerCase();
-    return value.includes('user(s)') || value.includes('users') || value.includes('user license') || value.includes('user subscription') || value.includes('annual users') || value.includes('saas users') || value.includes('additional users');
+    const value = [item?.license, item?.license_name, item?.license_type, item?.name, item?.item_name, item?.title, item?.description, item?.sku, item?.catalog_label, item?.product_name, item?.billing_unit, item?.unit_type]
+      .filter(Boolean).join(' ').toLowerCase().trim();
+    return value.includes('user(s)') || value.includes('users') || value.includes('user license') || value.includes('user subscription') || value.includes('annual users') || value.includes('saas users') || value.includes('additional users') || value === 'user' || value === 'user(s)';
+  },
+  updateAnnualSaasHeaderForAgreement(hasUserBasedAnnualSaas) {
+    const headerRow = E.agreementAnnualItemsTbody?.closest('table')?.querySelector('thead tr');
+    if (!headerRow) return;
+    const qtyHeader = '<th>Qty</th>';
+    const hasQtyHeader = headerRow.innerHTML.includes(qtyHeader);
+    if (hasUserBasedAnnualSaas && !hasQtyHeader) {
+      headerRow.innerHTML = headerRow.innerHTML.replace('<th>License Price / Year</th>', `${qtyHeader}<th>License Price / Year</th>`);
+    } else if (!hasUserBasedAnnualSaas && hasQtyHeader) {
+      headerRow.innerHTML = headerRow.innerHTML.replace(qtyHeader, '');
+    }
   },
   isCsHoursItem(item = {}) {
     const value = [
@@ -2675,6 +2687,7 @@ const Agreements = {
   },
   renderItemRows(items = []) {
     const grouped = this.syncOneTimeFeeRowsWithAnnualCount(this.groupedItems(items));
+    this.updateAnnualSaasHeaderForAgreement((grouped.annual_saas || []).some(item => this.isAnnualSaasUserItem(item)));
     const editLocked = this.isAgreementItemsLocked();
     const lockAttr = editLocked ? ' readonly disabled aria-readonly="true" aria-disabled="true"' : '';
     const removeCell = (section, index) => editLocked

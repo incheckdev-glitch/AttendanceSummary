@@ -3296,6 +3296,9 @@ const Proposals = {
   },
   isAnnualSaasUserItem(item = {}) {
     const value = [
+      item?.license,
+      item?.license_name,
+      item?.license_type,
       item?.name,
       item?.item_name,
       item?.title,
@@ -3305,14 +3308,27 @@ const Proposals = {
       item?.product_name,
       item?.billing_unit,
       item?.unit_type
-    ].filter(Boolean).join(' ').toLowerCase();
+    ].filter(Boolean).join(' ').toLowerCase().trim();
     return value.includes('user(s)')
       || value.includes('users')
       || value.includes('user license')
       || value.includes('user subscription')
       || value.includes('annual users')
       || value.includes('saas users')
-      || value.includes('additional users');
+      || value.includes('additional users')
+      || value === 'user'
+      || value === 'user(s)';
+  },
+  updateAnnualSaasHeaderForProposal(hasUserBasedAnnualSaas) {
+    const headerRow = E.proposalAnnualItemsTbody?.closest('table')?.querySelector('thead tr');
+    if (!headerRow) return;
+    const qtyHeader = '<th>Qty</th>';
+    const hasQtyHeader = headerRow.innerHTML.includes(qtyHeader);
+    if (hasUserBasedAnnualSaas && !hasQtyHeader) {
+      headerRow.innerHTML = headerRow.innerHTML.replace('<th>License Price / Year</th>', `${qtyHeader}<th>License Price / Year</th>`);
+    } else if (!hasUserBasedAnnualSaas && hasQtyHeader) {
+      headerRow.innerHTML = headerRow.innerHTML.replace(qtyHeader, '');
+    }
   },
   syncOneTimeFeeRowsWithAnnualCount(groups = {}) {
     const annualRows = Array.isArray(groups.annual_saas) ? groups.annual_saas : [];
@@ -3367,6 +3383,7 @@ const Proposals = {
   renderProposalItems(items = []) {
     this.renderCatalogOptionLists();
     const groups = this.syncOneTimeFeeRowsWithAnnualCount(this.groupedItems(items));
+    this.updateAnnualSaasHeaderForProposal((groups.annual_saas || []).some(item => this.isAnnualSaasUserItem(item)));
     this.renderSectionRows('annual_saas', groups.annual_saas);
     this.renderSectionRows('one_time_fee', groups.one_time_fee);
     this.refreshOneTimeFeeQuantityInputs();
@@ -3399,7 +3416,12 @@ const Proposals = {
           };
         }
         const unitPrice = this.toNumberSafe(get('unit_price'));
-        const isAnnualUserBased = section === 'annual_saas' && this.isAnnualSaasUserItem({ item_name: get('item_name') });
+        const annualRowDraft = {
+          item_name: get('item_name'),
+          license: get('item_name'),
+          quantity: get('quantity')
+        };
+        const isAnnualUserBased = section === 'annual_saas' && this.isAnnualSaasUserItem(annualRowDraft);
         let quantity = Math.max(0, this.toNumberSafe(get('quantity')) || (section === 'annual_saas' ? (isAnnualUserBased ? 1 : 12) : 1));
         if (section === 'one_time_fee' && !this.isCsHoursItem({ item_name: get('item_name') })) quantity = linkedOneTimeQuantity;
         let discountPercent = this.normalizeDiscountPercentValue(get('discount_percent'));
@@ -4562,6 +4584,10 @@ const Proposals = {
                 if (endInput) endInput.value = this.calculateServiceEndDate(get('service_start_date'), get('quantity'));
               }
               if (section === 'annual_saas') {
+                if (field === 'item_name') {
+                  this.renderProposalItems([...this.collectSectionItems('annual_saas'), ...this.collectSectionItems('one_time_fee')]);
+                  return;
+                }
                 this.syncAnnualDiscountLockForRow(tr);
                 this.refreshOneTimeFeeQuantityInputs();
               } else if (section === 'one_time_fee') {
@@ -4595,6 +4621,10 @@ const Proposals = {
           if (endInput) endInput.value = this.calculateServiceEndDate(get('service_start_date'), get('quantity'));
         }
         if (section === 'annual_saas') {
+          if (field === 'item_name') {
+            this.renderProposalItems([...this.collectSectionItems('annual_saas'), ...this.collectSectionItems('one_time_fee')]);
+            return;
+          }
           this.syncAnnualDiscountLockForRow(tr);
           this.refreshOneTimeFeeQuantityInputs();
         } else if (section === 'one_time_fee') {
