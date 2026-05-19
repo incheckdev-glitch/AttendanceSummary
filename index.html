@@ -1776,26 +1776,32 @@ Sample:
 
       <section id="technicalAdminView" class="view" role="tabpanel" aria-labelledby="technicalAdminTab">
         <div class="card technical-admin-dashboard-shell">
-          <div class="technical-admin-filterbar">
-            <input id="technicalAdminSearchInput" class="input" type="search" placeholder="Search request, agreement, client..." aria-label="Search technical admin requests" />
-            <select id="technicalAdminStatusFilter" class="select" aria-label="Filter by request status"><option>All</option></select>
-            <select id="technicalAdminAssigneeFilter" class="select" aria-label="Filter by assignee"><option>All Assignees</option></select>
-            <select id="technicalAdminClientFilter" class="select" aria-label="Filter by client"><option>All Clients</option></select>
-            <select id="technicalAdminDateRangeFilter" class="select" aria-label="Filter by date range"><option value="30">Last 30 Days</option><option value="7">Last 7 Days</option><option value="90">Last 90 Days</option><option value="0">All Time</option></select>
-            <label><input id="technicalAdminMyRequestsToggle" type="checkbox" /> My Requests</label>
-            <label><input id="technicalAdminOnlyOverdueToggle" type="checkbox" /> Only Overdue</label>
-            <button id="technicalAdminResetFiltersBtn" class="btn ghost sm" type="button">Reset Filters</button>
-            <button id="technicalAdminRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
+          <div class="technical-admin-filterbar card">
+            <div class="technical-admin-filter-col search"><input id="technicalAdminSearchInput" class="input" type="search" placeholder="Search request, agreement, client..." aria-label="Search technical admin requests" /></div>
+            <div class="technical-admin-filter-col selects">
+              <select id="technicalAdminStatusFilter" class="select" aria-label="Filter by request status"><option>All</option></select>
+              <select id="technicalAdminAssigneeFilter" class="select" aria-label="Filter by assignee"><option>All Assignees</option></select>
+              <select id="technicalAdminClientFilter" class="select" aria-label="Filter by client"><option>All Clients</option></select>
+              <select id="technicalAdminDateRangeFilter" class="select" aria-label="Filter by date range"><option value="30">Last 30 Days</option><option value="7">Last 7 Days</option><option value="90">Last 90 Days</option><option value="0">All Time</option></select>
+            </div>
+            <div class="technical-admin-filter-col actions">
+              <label class="technical-admin-toggle"><input id="technicalAdminMyRequestsToggle" type="checkbox" /> My Requests</label>
+              <label class="technical-admin-toggle"><input id="technicalAdminOnlyOverdueToggle" type="checkbox" /> Only Overdue</label>
+              <button id="technicalAdminResetFiltersBtn" class="btn ghost sm" type="button">Reset Filters</button>
+              <button id="technicalAdminRefreshBtn" class="btn sm" type="button">Refresh</button>
+            </div>
           </div>
           <div class="technical-admin-kpi-grid primary" id="technicalAdminSummary" aria-live="polite"></div>
           <div class="technical-admin-kpi-grid secondary" id="technicalAdminSecondaryMetrics"></div>
+          <div class="technical-admin-panel-grid primary-grid">
+            <article class="card technical-widget"><div class="technical-admin-panel-head"><div><strong>Request Volume Trend</strong><p>Creation volume over selected range</p></div><div class="btn-row"><button class="btn ghost sm" type="button" data-range="7" data-volume-range>7D</button><button class="btn ghost sm" type="button" data-range="30" data-volume-range>30D</button><button class="btn ghost sm" type="button" data-range="90" data-volume-range>90D</button></div></div><div id="technicalAdminVolumeChart"></div></article>
+            <article class="card technical-widget"><div class="technical-admin-panel-head"><div><strong>Status Distribution</strong><p>Operational mix of current request statuses</p></div></div><div id="technicalAdminStatusPipeline"></div></article>
+          </div>
           <div class="technical-admin-panel-grid">
-            <article class="card"><div class="technical-admin-panel-head"><strong>Request Volume Trend</strong><div class="btn-row"><button class="btn ghost sm" type="button" data-range="7" data-volume-range>7D</button><button class="btn ghost sm" type="button" data-range="30" data-volume-range>30D</button><button class="btn ghost sm" type="button" data-range="90" data-volume-range>90D</button></div></div><div id="technicalAdminVolumeChart"></div></article>
-            <article class="card"><div class="technical-admin-panel-head"><strong>Status Distribution</strong></div><div id="technicalAdminStatusPipeline"></div></article>
-            <article class="card"><div class="technical-admin-panel-head"><strong>Assignee Workload</strong></div><div id="technicalAdminAssigneeWorkload"></div></article>
-            <article class="card"><div class="technical-admin-panel-head"><strong>Attention Required</strong><button class="btn ghost sm" type="button" data-technical-view-all="critical">View All</button></div><div id="technicalAdminCriticalQueue"></div></article>
-            <article class="card"><div class="technical-admin-panel-head"><strong>Upcoming Dates</strong></div><div id="technicalAdminUpcomingPanel"></div></article>
-            <article class="card"><div class="technical-admin-panel-head"><strong>Recent Activity</strong></div><div id="technicalAdminRecentActivity"></div></article>
+            <article class="card technical-widget"><div class="technical-admin-panel-head"><div><strong>Assignee Workload</strong><p>Open request load and risk per assignee</p></div></div><div id="technicalAdminAssigneeWorkload"></div></article>
+            <article class="card technical-widget"><div class="technical-admin-panel-head"><div><strong>Attention Required</strong><p>Overdue or aging requests requiring intervention</p></div><button class="btn ghost sm" type="button" data-technical-view-all="critical">View All</button></div><div id="technicalAdminCriticalQueue"></div></article>
+            <article class="card technical-widget"><div class="technical-admin-panel-head"><div><strong>Upcoming Dates</strong><p>Near-term schedule and delivery deadlines</p></div></div><div id="technicalAdminUpcomingPanel"></div></article>
+            <article class="card technical-widget"><div class="technical-admin-panel-head"><div><strong>Recent Activity</strong><p>Latest updates across technical admin requests</p></div></div><div id="technicalAdminRecentActivity"></div></article>
           </div>
         </div>
         <div class="card" aria-label="Technical admin request list">

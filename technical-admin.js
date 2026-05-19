@@ -709,13 +709,13 @@ const TechnicalAdmin = {
       return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
     }).length;
     const cards = [
-      ['Pending Requests', requested],
-      ['In Progress', inProgress],
-      ['Overdue / SLA Risk', overdue],
-      ['Completed This Month', completed]
+      ['Pending Requests', requested, 'amber', '⏳', `${Math.max(0, requested - overdue)} active`],
+      ['In Progress', inProgress, 'blue', '⚙️', `${Math.round((inProgress / Math.max(1, total)) * 100)}% of total`],
+      ['Overdue / SLA Risk', overdue, 'red', '⚠️', `${Math.round((overdue / Math.max(1, requested || 1)) * 100)}% of open`],
+      ['Completed This Month', completed, 'green', '✅', `${Math.round((completed / Math.max(1, total)) * 100)}% completion`]
     ];
     E.technicalAdminSummary.innerHTML = cards
-      .map(([label, value]) => `<button class="technical-admin-kpi-card" data-kpi-filter="${U.escapeAttr(label)}"><div class="label">${U.escapeHtml(label)}</div><div class="value">${U.escapeHtml(String(value))}</div><div class="muted">Live from filtered dataset</div></button>`)
+      .map(([label, value, tone, icon, trend]) => `<button class="technical-admin-kpi-card primary ${tone}" data-kpi-filter="${U.escapeAttr(label)}"><div class="kpi-head"><span class="label">${U.escapeHtml(label)}</span><span class="kpi-icon">${icon}</span></div><div class="value">${U.escapeHtml(String(value))}</div><div class="kpi-meta"><span>Live from filtered dataset</span><span>${U.escapeHtml(trend)}</span></div></button>`)
       .join('');
     this.renderSecondaryMetrics(rows);
     this.renderDashboardPanels(rows);
@@ -727,8 +727,8 @@ const TechnicalAdmin = {
     const unassigned = open.filter(r => !String(r.assigned_to || r.assigned_to_display || '').trim()).length;
     const locations = rows.reduce((a, r) => a + Number(r.number_of_locations || r.location_count || 0), 0);
     const dueWeek = open.filter(r => { const d = new Date(this.pick(r.service_start_date, r.target_date, r.due_date)).getTime(); return d && d <= Date.now() + 7 * 86400000 && d >= Date.now(); }).length;
-    host.innerHTML = [['Total Requests', rows.length], ['Active Clients', clients.size], ['Total Locations', locations], ['Unassigned', unassigned], ['Due This Week', dueWeek]]
-      .map(([l,v]) => `<div class="technical-admin-kpi-card"><div class="label">${U.escapeHtml(l)}</div><div class="value">${U.escapeHtml(String(v))}</div></div>`).join('');
+    host.innerHTML = [['Total Requests', rows.length, 'gray'], ['Active Clients', clients.size, 'blue'], ['Total Locations', locations, 'green'], ['Unassigned', unassigned, 'amber'], ['Due This Week', dueWeek, 'red']]
+      .map(([l,v,t]) => `<div class="technical-admin-kpi-card mini ${t}"><div class="label">${U.escapeHtml(l)}</div><div class="value">${U.escapeHtml(String(v))}</div></div>`).join('');
   },
   renderDashboardPanels(rows = []) {
     const statusHost = document.getElementById('technicalAdminStatusPipeline');
@@ -737,27 +737,28 @@ const TechnicalAdmin = {
     const upcomingHost = document.getElementById('technicalAdminUpcomingPanel');
     const recentHost = document.getElementById('technicalAdminRecentActivity');
     const volumeHost = document.getElementById('technicalAdminVolumeChart');
+    const openRows = rows.filter(r => !/completed|cancelled/i.test(String(r.request_status || '')));
     if (statusHost) {
       const counts = rows.reduce((a,r)=>{const k=String(r.request_status||'Unknown');a[k]=(a[k]||0)+1;return a;},{});
       const total = rows.length || 1;
-      statusHost.innerHTML = Object.entries(counts).map(([k,v])=>`<div class="technical-admin-mini-row"><button class="btn ghost sm" data-status-quick="${U.escapeAttr(k)}">${U.escapeHtml(k)}</button><span>${v} (${Math.round(v*100/total)}%)</span></div>`).join('');
+      statusHost.innerHTML = `<div class="technical-admin-mini-list">${Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="status-row"><div><button class="btn ghost sm" data-status-quick="${U.escapeAttr(k)}">${U.escapeHtml(k)}</button><small>${v} requests</small></div><div class="status-bar"><span style="width:${Math.max(5,Math.round(v*100/total))}%"></span></div><strong>${Math.round(v*100/total)}%</strong></div>`).join('')}</div>`;
     }
     if (workloadHost) {
-      const open = rows.filter(r=>!/completed|cancelled/i.test(String(r.request_status||'')));
       const map = {};
-      open.forEach(r=>{const a=String(r.assigned_to_display||r.assigned_to||'Unassigned'); map[a]=(map[a]||0)+1;});
-      workloadHost.innerHTML = Object.entries(map).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([a,v])=>`<div class="technical-admin-mini-row"><button class="btn ghost sm" data-assignee-quick="${U.escapeAttr(a)}">${U.escapeHtml(a)}</button><strong>${v}</strong></div>`).join('');
+      openRows.forEach(r=>{const a=String(r.assigned_to_display||r.assigned_to||'Unassigned');if(!map[a]) map[a]={open:0,overdue:0,inprogress:0};map[a].open+=1; if(new Date(this.pick(r.service_start_date,r.target_date,r.due_date)).getTime()<Date.now()) map[a].overdue+=1; if(this.statusBucket(r.request_status)==='In Progress') map[a].inprogress+=1;});
+      const max = Math.max(1,...Object.values(map).map(v=>v.open));
+      workloadHost.innerHTML = Object.entries(map).sort((a,b)=>b[1].open-a[1].open).slice(0,8).map(([a,v])=>`<div class="workload-row"><div class="identity"><span class="avatar">${U.escapeHtml(String(a).slice(0,2).toUpperCase())}</span><button class="btn ghost sm" data-assignee-quick="${U.escapeAttr(a)}">${U.escapeHtml(a)}</button></div><div class="metrics"><span>Open ${v.open}</span><span class="warn">Overdue ${v.overdue}</span><span>In Progress ${v.inprogress}</span></div><div class="status-bar"><span style="width:${Math.round((v.open/max)*100)}%"></span></div></div>`).join('') || '<div class="muted">No assignee data.</div>';
     }
     const dueRows = rows.map(r=>({r,d:new Date(this.pick(r.service_start_date,r.target_date,r.due_date)).getTime()})).filter(x=>x.d).sort((a,b)=>a.d-b.d);
-    if (upcomingHost) upcomingHost.innerHTML = dueRows.slice(0,6).map(({r,d})=>`<div class="technical-admin-mini-row"><span>${U.escapeHtml(r.technical_request_id||r.id||'')} · ${U.escapeHtml(r.client_name||'')}</span><span>${Math.ceil((d-Date.now())/86400000)}d</span></div>`).join('');
-    if (critHost) critHost.innerHTML = dueRows.filter(x=>x.d < Date.now()).slice(0,6).map(({r,d})=>`<div class="technical-admin-mini-row"><span>${U.escapeHtml(r.technical_request_id||r.id||'')} overdue</span><button class="btn ghost sm" data-technical-open="${U.escapeAttr(r.id||r.technical_request_id||'')}">Open</button></div>`).join('') || '<div class="muted">No critical items.</div>';
-    if (recentHost) recentHost.innerHTML = rows.slice().sort((a,b)=>new Date(b.updated_at)-new Date(a.updated_at)).slice(0,6).map(r=>`<div class="technical-admin-mini-row"><span>${U.escapeHtml(r.client_name||'')}</span><span>${U.escapeHtml(this.toDisplayDateTime(r.updated_at))}</span></div>`).join('');
+    if (upcomingHost) upcomingHost.innerHTML = dueRows.slice(0,6).map(({r,d})=>{const days=Math.ceil((d-Date.now())/86400000);return `<div class="task-row"><div><strong>${U.escapeHtml(r.technical_request_id||r.id||'')}</strong><small>${U.escapeHtml(r.client_name||'')}</small></div><div><span class="pill ${days<0?'red':days<4?'amber':'blue'}">${days<0?`${Math.abs(days)}d overdue`:`${days}d`}</span>${this.statusBadge(r.request_status)}</div></div>`}).join('') || '<div class="muted">No scheduled items.</div>';
+    if (critHost) critHost.innerHTML = dueRows.filter(x=>x.d < Date.now()).slice(0,6).map(({r,d})=>`<div class="alert-row"><div><strong>${U.escapeHtml(r.technical_request_id||r.id||'')} · ${U.escapeHtml(r.client_name||'')}</strong><small>Age ${Math.abs(Math.ceil((d-Date.now())/86400000))} days</small></div><div><span class="pill red">Critical</span><button class="btn sm" data-technical-open="${U.escapeAttr(r.id||r.technical_request_id||'')}">Open</button></div></div>`).join('') || '<div class="muted">No critical items.</div>';
+    if (recentHost) recentHost.innerHTML = rows.slice().sort((a,b)=>new Date(b.updated_at)-new Date(a.updated_at)).slice(0,6).map(r=>`<div class="timeline-row"><span class="dot"></span><div><strong>${U.escapeHtml(r.request_title||'Request updated')}</strong><small>${U.escapeHtml(r.client_name||'')} · ${U.escapeHtml(r.technical_request_id||'')}</small></div><span>${U.escapeHtml(this.toDisplayDateTime(r.updated_at))}</span></div>`).join('') || '<div class="muted">No recent activity.</div>';
     if (volumeHost) {
       const days = Number(this.state.volumeRangeDays || 30); const buckets = {};
       for (let i=days-1;i>=0;i--){const d=new Date(Date.now()-i*86400000); buckets[d.toISOString().slice(0,10)]=0;}
-      rows.forEach(r=>{const k=new Date(this.pick(r.created_at,r.requested_at,r.updated_at)).toISOString().slice(0,10); if (k in buckets) buckets[k]+=1;});
-      const max = Math.max(1,...Object.values(buckets));
-      volumeHost.innerHTML = `<div class="tech-chart-bars">${Object.entries(buckets).map(([k,v])=>`<div class="tech-bar-line"><span>${k.slice(5)}</span><div class="bar" style="width:${Math.max(4,(v/max)*100)}%"></div><span>${v}</span></div>`).join('')}</div>`;
+      rows.forEach(r=>{const dt = new Date(this.pick(r.created_at,r.requested_at,r.updated_at)); if(!Number.isNaN(dt.getTime())){const k=dt.toISOString().slice(0,10); if (k in buckets) buckets[k]+=1;}});
+      const values=Object.values(buckets); const max = Math.max(1,...values);
+      volumeHost.innerHTML = `<div class="tech-chart-bars">${Object.entries(buckets).map(([k,v])=>`<div class="tech-bar-col"><div class="bar" style="height:${Math.max(8,Math.round((v/max)*100))}%"></div><span>${k.slice(5)}</span></div>`).join('')}</div>`;
     }
   },
   renderFilters() {
@@ -1117,10 +1118,20 @@ const TechnicalAdmin = {
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'technical-admin-dashboard.csv'; a.click(); URL.revokeObjectURL(url);
     });
     if (E.technicalAdminRefreshBtn) E.technicalAdminRefreshBtn.addEventListener('click', () => this.loadAndRefresh({ force: true }));
+    document.getElementById('technicalAdminView')?.addEventListener('click', event => {
+      const rangeBtn = event.target?.closest?.('button[data-volume-range]');
+      if (!rangeBtn) return;
+      this.state.volumeRangeDays = Number(rangeBtn.getAttribute('data-range') || 30);
+      this.renderDashboardPanels(this.state.filteredRows);
+    });
     if (E.technicalAdminTbody)
       E.technicalAdminTbody.addEventListener('click', event => {
         const trigger = event.target?.closest?.('button[data-technical-open], button[data-technical-open-agreement], button[data-technical-preview], button[data-status-quick], button[data-assignee-quick], button[data-kpi-filter], button[data-volume-range]');
-        if (!trigger) return;
+        if (!trigger) {
+          const row = event.target?.closest?.('tr[data-technical-request-id]');
+          if (row) this.openDetails(row.getAttribute('data-technical-request-id') || '');
+          return;
+        }
         const quickStatus = trigger.getAttribute('data-status-quick'); if (quickStatus) { this.state.status = quickStatus; this.applyFilters(); this.renderFilters(); this.render(); return; }
         const quickAssignee = trigger.getAttribute('data-assignee-quick'); if (quickAssignee) { this.state.assignee = quickAssignee; this.applyFilters(); this.renderFilters(); this.render(); return; }
         const kpi = trigger.getAttribute('data-kpi-filter'); if (kpi) { if (/In Progress/i.test(kpi)) this.state.status='In Progress'; if (/Overdue/i.test(kpi)) this.state.onlyOverdue=true; this.applyFilters(); this.render(); return; }
