@@ -1150,16 +1150,16 @@ const OperationsOnboarding = {
     const canCreateTechnicalRequest = this.canRequestTechnicalAdmin();
     E.operationsOnboardingTbody.innerHTML = rows.map(row => {
       const agreementId = U.escapeAttr(row.agreement_id);
-      const rowRecordId = row.id || row.db_id || row.onboarding_id || '';
+      const proposalId = String(row.proposal_id || '').trim();
+      const rowRecordId = String(row.id || row.db_id || row.onboarding_id || '').trim();
       const rowDbId = U.escapeAttr(rowRecordId);
       const onboardingLabel = U.escapeHtml(row.onboarding_id || row.id || '—');
       const isPocRow = this.isPocTechnicalFlow(row);
       const hasAgreementId = Boolean(String(row.agreement_id || '').trim());
-      const proposalId = String(row.proposal_id || '').trim();
       const hasProposalId = Boolean(proposalId);
-      const hasRowDbId = Boolean(String(rowRecordId || '').trim());
+      const hasRowDbId = Boolean(rowRecordId);
       const assignedCsmName = row.assigned_csm_name || row.csm_assigned_to || '';
-      const showAssignCsmButton = canAssignCsm && !this.isOnboardingClosed(row);
+      const showAssignCsmButton = canAssignCsm && !this.isOnboardingClosed(row) && hasRowDbId;
       const assignCsmButtonLabel = assignedCsmName ? 'Change CSM' : 'Assign CSM';
       const agreement = this.state.agreementMap.get(row.agreement_id) || {};
       const displayRow = this.applyAgreementFallbacks(row, agreement);
@@ -1177,7 +1177,7 @@ const OperationsOnboarding = {
             <button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-preview-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Preview Agreement</button>`}
             <button class="btn ghost sm" type="button" data-op-open-details="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Open Onboarding Details</button>
             ${canCreateTechnicalRequest ? `<button class="btn ghost sm" type="button" data-op-technical-admin="${agreementId}" data-op-technical-onboarding="${rowDbId}" ${(!hasAgreementId && !isPocRow) ? 'disabled title="Agreement ID not available"' : ''}>Technical Admin Request</button>` : ''}
-            ${showAssignCsmButton ? `<button class="btn ghost sm" type="button" data-op-assign-csm="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>${assignCsmButtonLabel}</button>` : ''}
+            ${showAssignCsmButton ? `<button class="btn ghost sm" type="button" data-op-assign-csm="${rowDbId}" data-op-agreement-id="${agreementId}" data-op-proposal-id="${U.escapeAttr(row.proposal_id || '')}">${assignCsmButtonLabel}</button>` : ''}
             ${canWrite ? `<button class="btn ghost sm" type="button" data-op-mark-progress="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Mark In Progress</button>
             <button class="btn ghost sm" type="button" data-op-mark-completed="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Mark Completed</button>` : ''}
           </div></td>
@@ -1324,7 +1324,7 @@ const OperationsOnboarding = {
         <div class="actions" style="justify-content:flex-start;gap:8px;margin-top:12px;">
           ${isPocDetail ? `<button class="btn ghost sm" type="button" data-permission-resource="proposals" data-permission-action="view" data-op-details-open-proposal="${U.escapeAttr(detail.proposal_id || '')}" ${String(detail.proposal_id || '').trim() ? '' : 'disabled title="Proposal is not linked to this POC onboarding row."'}>Open Proposal</button>` : (String(detail.agreement_id || '').trim() ? `<button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-details-open-agreement="${U.escapeAttr(detail.agreement_id || '')}">Open Agreement</button><button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-details-preview-agreement="${U.escapeAttr(detail.agreement_id || '')}">Preview Agreement</button>` : '')}
           ${this.canRequestTechnicalAdmin() && (String(detail.agreement_id || '').trim() || isPocDetail) ? `<button class="btn ghost sm" type="button" data-op-technical-admin="${U.escapeAttr(detail.agreement_id || '')}" data-op-technical-onboarding="${U.escapeAttr(detail.id || detail.db_id || detail.onboarding_id || '')}">Technical Admin Request</button>` : ''}
-          ${this.canAssignCsm() && !this.isOnboardingClosed(detail) ? `<button class="btn sm" type="button" data-op-details-assign-csm="${U.escapeAttr(detail.id || detail.db_id || detail.onboarding_id || '')}" data-op-agreement-id="${U.escapeAttr(detail.agreement_id || '')}">${(detail.assigned_csm_name || detail.csm_assigned_to) ? 'Change CSM' : 'Assign CSM'}</button>` : ''}
+          ${this.canAssignCsm() && !this.isOnboardingClosed(detail) && Boolean(String(detail.id || detail.db_id || detail.onboarding_id || '').trim()) ? `<button class="btn sm" type="button" data-op-details-assign-csm="${U.escapeAttr(detail.id || detail.db_id || detail.onboarding_id || '')}" data-op-agreement-id="${U.escapeAttr(detail.agreement_id || '')}">${(detail.assigned_csm_name || detail.csm_assigned_to) ? 'Change CSM' : 'Assign CSM'}</button>` : ''}
         </div>`;
       E.operationsOnboardingDetailsModal.classList.add('open');
       E.operationsOnboardingDetailsModal.setAttribute('aria-hidden', 'false');
@@ -1339,11 +1339,11 @@ const OperationsOnboarding = {
     modalEl.setAttribute('aria-hidden', 'true');
     if (modalEl === E.operationsOnboardingDetailsModal && window.setAppHashRoute) setAppHashRoute('#operations-onboarding');
   },
-  openAssignCsmModal(onboardingId, agreementId, onDone) {
+  openAssignCsmModal(onboardingId, agreementId = '', onDone) {
     if (!this.canAssignCsm()) return UI.toast('Insufficient permissions.');
     this.state.pendingOnboardingId = String(onboardingId || '').trim();
     this.state.pendingAgreementId = String(agreementId || '').trim();
-    if (!this.state.pendingOnboardingId) return UI.toast('Unable to assign CSM for this onboarding row because no onboarding row ID is available.');
+    if (!this.state.pendingOnboardingId) return UI.toast('Unable to assign CSM because the onboarding row ID is missing.');
     this.state.postSubmitHook = typeof onDone === 'function' ? onDone : null;
     if (E.operationsAssignCsmForm) E.operationsAssignCsmForm.reset();
     const existingRow = this.state.rows.find(row => String(row.id || row.db_id || row.onboarding_id || '') === this.state.pendingOnboardingId || String(row.agreement_id || '') === this.state.pendingAgreementId) || {};
