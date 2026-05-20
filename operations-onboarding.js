@@ -391,6 +391,14 @@ const OperationsOnboarding = {
   isOnboardingClosed(record) {
     return isOnboardingClosed(record);
   },
+  isOnboardingCancelledOrClosed(record) {
+    const status = String(record?.status || record?.onboarding_status || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_');
+
+    return ['cancelled', 'canceled', 'closed'].includes(status);
+  },
   isActiveStatus(status = '') {
     const normalized = String(status || '').trim().toLowerCase();
     if (!normalized) return true;
@@ -1159,7 +1167,10 @@ const OperationsOnboarding = {
       const hasProposalId = Boolean(proposalId);
       const hasRowDbId = Boolean(rowRecordId);
       const assignedCsmName = row.assigned_csm_name || row.csm_assigned_to || '';
-      const showAssignCsmButton = canAssignCsm && !this.isOnboardingClosed(row) && hasRowDbId;
+      const showAssignCsmButton =
+        canAssignCsm
+        && hasRowDbId
+        && !this.isOnboardingCancelledOrClosed(row);
       const assignCsmButtonLabel = assignedCsmName ? 'Change CSM' : 'Assign CSM';
       const agreement = this.state.agreementMap.get(row.agreement_id) || {};
       const displayRow = this.applyAgreementFallbacks(row, agreement);
@@ -1324,7 +1335,7 @@ const OperationsOnboarding = {
         <div class="actions" style="justify-content:flex-start;gap:8px;margin-top:12px;">
           ${isPocDetail ? `<button class="btn ghost sm" type="button" data-permission-resource="proposals" data-permission-action="view" data-op-details-open-proposal="${U.escapeAttr(detail.proposal_id || '')}" ${String(detail.proposal_id || '').trim() ? '' : 'disabled title="Proposal is not linked to this POC onboarding row."'}>Open Proposal</button>` : (String(detail.agreement_id || '').trim() ? `<button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-details-open-agreement="${U.escapeAttr(detail.agreement_id || '')}">Open Agreement</button><button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-details-preview-agreement="${U.escapeAttr(detail.agreement_id || '')}">Preview Agreement</button>` : '')}
           ${this.canRequestTechnicalAdmin() && (String(detail.agreement_id || '').trim() || isPocDetail) ? `<button class="btn ghost sm" type="button" data-op-technical-admin="${U.escapeAttr(detail.agreement_id || '')}" data-op-technical-onboarding="${U.escapeAttr(detail.id || detail.db_id || detail.onboarding_id || '')}">Technical Admin Request</button>` : ''}
-          ${this.canAssignCsm() && !this.isOnboardingClosed(detail) && Boolean(String(detail.id || detail.db_id || detail.onboarding_id || '').trim()) ? `<button class="btn sm" type="button" data-op-details-assign-csm="${U.escapeAttr(detail.id || detail.db_id || detail.onboarding_id || '')}" data-op-agreement-id="${U.escapeAttr(detail.agreement_id || '')}">${(detail.assigned_csm_name || detail.csm_assigned_to) ? 'Change CSM' : 'Assign CSM'}</button>` : ''}
+          ${this.canAssignCsm() && Boolean(detail.id || detail.db_id || detail.onboarding_id) && !this.isOnboardingCancelledOrClosed(detail) ? `<button class="btn sm" type="button" data-op-details-assign-csm="${U.escapeAttr(detail.id || detail.db_id || detail.onboarding_id || '')}" data-op-agreement-id="${U.escapeAttr(detail.agreement_id || '')}">${(detail.assigned_csm_name || detail.csm_assigned_to) ? 'Change CSM' : 'Assign CSM'}</button>` : ''}
         </div>`;
       E.operationsOnboardingDetailsModal.classList.add('open');
       E.operationsOnboardingDetailsModal.setAttribute('aria-hidden', 'false');
