@@ -1068,6 +1068,13 @@ const ClientsService = {
     console.log('[AgreementMapping] loaded agreements', agreementRows.length);
     itemRows = this.coerceLinkedRows_(itemsRes, 'agreement_items');
     console.log('[ClientsService] agreement_items count', itemRows.length, itemRows.slice(0, 5));
+    console.log('[ClientsService] agreement_items sample dates', itemRows.slice(0, 5).map(row => ({
+      id: row.id,
+      section: row.section,
+      location_name: row.location_name,
+      service_start_date: row.service_start_date,
+      service_end_date: row.service_end_date
+    })));
     if (canViewRenewals) {
       // Client profile renewals timeline is controlled by clients:view_renewals, not agreements:view.
       const [invoicesRes, invoiceItemsRes, receiptsRes, receiptItemsRes] = await Promise.all([
