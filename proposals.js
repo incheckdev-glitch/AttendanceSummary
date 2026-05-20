@@ -218,15 +218,33 @@ const Proposals = {
     if (Number.isNaN(parsed.getTime())) return raw;
     return parsed.toISOString().slice(0, 10);
   },
-  getPaymentTermDisplay(value = '') {
+  normalizePaymentTerm(value = '', fallback = '') {
     const raw = String(value || '').trim();
-    const map = {
-      'net 7': 'Monthly',
-      'net 14': 'Quarterly',
-      'net 21': 'Semi-Annually',
-      'net 30': 'Annually'
+    const displayToValue = {
+      monthly: 'Net 7',
+      quarterly: 'Net 14',
+      'semi-annually': 'Net 21',
+      semiannually: 'Net 21',
+      annually: 'Net 30',
+      annual: 'Net 30'
     };
-    return map[raw.toLowerCase()] || raw;
+
+    if (['Net 7', 'Net 14', 'Net 21', 'Net 30'].includes(raw)) return raw;
+
+    const mapped = displayToValue[raw.toLowerCase()];
+    if (mapped) return mapped;
+
+    return fallback || '';
+  },
+  getPaymentTermDisplay(value = '') {
+    const normalized = this.normalizePaymentTerm(value, '');
+    const map = {
+      'Net 7': 'Monthly',
+      'Net 14': 'Quarterly',
+      'Net 21': 'Semi-Annually',
+      'Net 30': 'Annually'
+    };
+    return map[normalized] || String(value || '').trim();
   },
   calculateServiceEndDate(startDateValue, monthsValue) {
     const startValue = this.normalizeDateInputValue(startDateValue);
@@ -3104,7 +3122,7 @@ const Proposals = {
     set(E.proposalFormContractTerm, proposal.contract_term || '');
     set(E.proposalFormAccountNumber, proposal.account_number || '');
     set(E.proposalFormBillingFrequency, 'Annual');
-    set(E.proposalFormPaymentTerm, ['Net 7', 'Net 14', 'Net 21', 'Net 30'].includes(proposal.payment_term) ? proposal.payment_term : 'Net 30');
+    set(E.proposalFormPaymentTerm, this.normalizePaymentTerm(proposal.payment_term || proposal.payment_terms, 'Net 30'));
     set(E.proposalFormPoNumber, proposal.po_number || '');
     const isPoc = this.normalizeTruthy(proposal.is_poc ?? proposal.isPoc);
     if (E.proposalFormIsPoc) E.proposalFormIsPoc.checked = isPoc;
@@ -3732,7 +3750,8 @@ const Proposals = {
       contract_term: String(E.proposalFormContractTerm?.value || '').trim(),
       account_number: String(E.proposalFormAccountNumber?.value || '').trim(),
       billing_frequency: 'Annual',
-      payment_term: (() => { const term = String(E.proposalFormPaymentTerm?.value || '').trim(); return ['Net 7', 'Net 14', 'Net 21', 'Net 30'].includes(term) ? term : 'Net 30'; })(),
+      payment_term: this.normalizePaymentTerm(E.proposalFormPaymentTerm?.value, 'Net 30'),
+      payment_terms: this.normalizePaymentTerm(E.proposalFormPaymentTerm?.value, 'Net 30'),
       po_number: String(E.proposalFormPoNumber?.value || '').trim(),
       ...pocPayload,
       customer_signatory_name: mapped.customer_signatory_name || '',

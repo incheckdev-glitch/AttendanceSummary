@@ -294,15 +294,33 @@ const Agreements = {
     const num = this.toNumberSafe(value);
     return num.toLocaleString(undefined, { maximumFractionDigits: 2 });
   },
-  getPaymentTermDisplay(value = '') {
+  normalizePaymentTerm(value = '', fallback = '') {
     const raw = String(value || '').trim();
-    const map = {
-      'net 7': 'Monthly',
-      'net 14': 'Quarterly',
-      'net 21': 'Semi-Annually',
-      'net 30': 'Annually'
+    const displayToValue = {
+      monthly: 'Net 7',
+      quarterly: 'Net 14',
+      'semi-annually': 'Net 21',
+      semiannually: 'Net 21',
+      annually: 'Net 30',
+      annual: 'Net 30'
     };
-    return map[raw.toLowerCase()] || raw;
+
+    if (['Net 7', 'Net 14', 'Net 21', 'Net 30'].includes(raw)) return raw;
+
+    const mapped = displayToValue[raw.toLowerCase()];
+    if (mapped) return mapped;
+
+    return fallback || '';
+  },
+  getPaymentTermDisplay(value = '') {
+    const normalized = this.normalizePaymentTerm(value, '');
+    const map = {
+      'Net 7': 'Monthly',
+      'Net 14': 'Quarterly',
+      'Net 21': 'Semi-Annually',
+      'Net 30': 'Annually'
+    };
+    return map[normalized] || String(value || '').trim();
   },
   formatMoneyWithCurrency(value, currency = '', includeZeroDecimals = false) {
     const amount = this.toNumberSafe(value);
@@ -801,10 +819,11 @@ const Agreements = {
     normalized.poc_service_end_date = this.normalizeDateInputValue(source.poc_service_end_date ?? source.pocServiceEndDate ?? normalized.poc_service_end_date);
     normalized.poc_success_kpis = String(source.poc_success_kpis ?? source.pocSuccessKpis ?? normalized.poc_success_kpis ?? '').trim();
     normalized.poc_conversion_commitment = String(source.poc_conversion_commitment ?? source.pocConversionCommitment ?? normalized.poc_conversion_commitment ?? '').trim();
-    const validPaymentTerms = ['Net 7', 'Net 14', 'Net 21', 'Net 30'];
-    normalized.payment_term = validPaymentTerms.includes(String(normalized.payment_term || '').trim())
-      ? String(normalized.payment_term || '').trim()
-      : 'Net 30';
+    normalized.payment_term = this.normalizePaymentTerm(
+      normalized.payment_term || normalized.payment_terms || source.payment_term || source.payment_terms,
+      'Net 30'
+    );
+    normalized.payment_terms = normalized.payment_term;
     normalized.provider_legal_name = this.providerIdentityDefaults.legalName;
     normalized.provider_name = this.providerIdentityDefaults.name;
     normalized.provider_address = this.providerIdentityDefaults.address;
@@ -1285,6 +1304,10 @@ const Agreements = {
   buildDraftAgreementFromProposal(proposal = {}, proposalItems = []) {
     const source = proposal && typeof proposal === 'object' ? proposal : {};
     const proposalUuid = String(source.id || source.proposal_uuid || '').trim();
+    const proposalPaymentTerm = this.normalizePaymentTerm(
+      source.payment_term || source.payment_terms || source.paymentTerm || source.paymentTerms,
+      'Net 30'
+    );
     const draft = this.normalizeAgreement({
       ...this.emptyAgreement(),
       proposal_id: proposalUuid,
@@ -1298,7 +1321,8 @@ const Agreements = {
       agreement_length: String(source.contract_term || source.agreement_length || source.agreementLength || '').trim(),
       account_number: this.ensureAccountNumber(source.account_number || source.accountNumber || ''),
       billing_frequency: String(source.billing_frequency || source.billingFrequency || '').trim(),
-      payment_term: String(source.payment_term || source.paymentTerm || '').trim(),
+      payment_term: proposalPaymentTerm,
+      payment_terms: proposalPaymentTerm,
       po_number: String(source.po_number || source.poNumber || '').trim(),
       is_poc: this.toDbBoolean(source.is_poc ?? source.isPoc, false),
       poc_location_count: this.toNullableNumber(source.poc_location_count ?? source.pocLocationCount),
@@ -3361,6 +3385,7 @@ const Agreements = {
   },
   isAgreementEditableInEditMode(el) {
     if (!el) return false;
+    if (el.id === 'agreementFormPaymentTerm') return true;
     if (el.id === 'agreementFormStatus') return true;
     if (el.closest?.('.signatory-section')) return true;
     return false;
@@ -3418,7 +3443,6 @@ const Agreements = {
     const readOnlyMode = String(E.agreementForm?.dataset?.readOnly || '').trim() === 'true';
     const alwaysLocked = ['agreementFormServiceEndDate'];
     const proposalLockedIds = [
-      'agreementFormPaymentTerm',
       'agreementFormIsPocToggle',
       'agreementFormPocLocationCount',
       'agreementFormPocLicenseMonths',
@@ -3725,8 +3749,7 @@ const Agreements = {
     const isDirectCreate = !id && source !== 'create_from_proposal' && !String(formProposalUuid || agreement.proposal_id || '').trim();
     const provider = this.getSignedInUserForAgreement();
     agreement.billing_frequency = 'Annual';
-    const validPaymentTerms = ['Net 7', 'Net 14', 'Net 21', 'Net 30'];
-    agreement.payment_term = validPaymentTerms.includes(String(agreement.payment_term || agreement.payment_terms || '').trim()) ? String(agreement.payment_term || agreement.payment_terms || '').trim() : 'Net 30';
+    agreement.payment_term = this.normalizePaymentTerm(E.agreementFormPaymentTerm?.value || agreement.payment_term || agreement.payment_terms, 'Net 30');
     agreement.payment_terms = agreement.payment_term;
     agreement.provider_legal_name = this.providerIdentityDefaults.legalName;
     agreement.provider_name = this.providerIdentityDefaults.name;
