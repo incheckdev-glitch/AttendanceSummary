@@ -2036,6 +2036,34 @@ const Clients = {
     }));
     return this.computeRunningBalance([...invoiceRows, ...receiptRows]);
   },
+
+  getAnnualSaasServiceDates_(item = {}, agreement = {}) {
+    const itemStart = this.getField(
+      item,
+      'service_start_date',
+      'serviceStartDate',
+      'start_service_date',
+      'startServiceDate',
+      'start_date',
+      'startDate'
+    );
+
+    const itemEnd = this.getField(
+      item,
+      'service_end_date',
+      'serviceEndDate',
+      'end_service_date',
+      'endServiceDate',
+      'end_date',
+      'endDate'
+    );
+
+    return {
+      serviceStart: String(itemStart || '').trim(),
+      serviceEnd: String(itemEnd || '').trim(),
+      renewalDate: String(itemEnd || '').trim()
+    };
+  },
   buildClientRenewalRows(client) {
     const safeClient = client && typeof client === 'object' ? client : {};
     const clientId = String(safeClient.client_id || '').trim();
@@ -2096,9 +2124,10 @@ const Clients = {
           paymentStatus = daysLeft !== null && daysLeft < 0 ? 'Overdue' : 'Not Paid';
         }
       }
-      const serviceStart = this.getField(item, 'service_start_date', 'serviceStartDate', 'start_date', 'startDate') || this.getField(agreement, 'service_start_date', 'effective_date', 'agreement_date') || '';
-      const serviceEnd = this.getField(item, 'service_end_date', 'serviceEndDate', 'end_date', 'endDate') || this.getField(agreement, 'service_end_date') || '';
-      const renewalDate = this.getField(item, 'service_end_date', 'serviceEndDate', 'renewal_date', 'renewalDate') || this.getField(agreement, 'service_end_date') || '';
+      const serviceDates = this.getAnnualSaasServiceDates_(item, agreement);
+      const serviceStart = serviceDates.serviceStart;
+      const serviceEnd = serviceDates.serviceEnd;
+      const renewalDate = serviceDates.renewalDate;
       rows.push(this.normalizeRenewalRow({
         ...item,
         source: 'agreement_item',
@@ -2124,6 +2153,7 @@ const Clients = {
         service_start_date: serviceStart,
         service_end_date: serviceEnd,
         renewal_date: renewalDate,
+        renewal_due_date: renewalDate,
         billing_frequency: this.getField(item, 'billing_frequency', 'billingFrequency', 'billing_cycle', 'billingCycle', 'frequency') || this.getField(agreement, 'billing_frequency'),
         payment_term: this.getField(item, 'payment_term', 'payment_terms', 'paymentTerm', 'paymentTerms') || this.getField(agreement, 'payment_term'),
         invoice_issued_date: relatedInvoice?.created_at || relatedInvoice?.invoice_date || '',
@@ -2171,7 +2201,8 @@ const Clients = {
     };
   },
   normalizeRenewalRow(raw = {}) {
-    const renewalDate = String(this.getField(raw, 'renewal_date', 'renewalDate', 'next_renewal_date', 'nextRenewalDate', 'service_end_date', 'serviceEndDate') || '').trim();
+    const serviceEnd = String(this.getField(raw, 'service_end_date', 'serviceEndDate') || '').trim();
+    const renewalDate = serviceEnd || String(this.getField(raw, 'renewal_date', 'renewalDate', 'next_renewal_date', 'nextRenewalDate') || '').trim();
     const paymentStatus = String(this.getField(raw, 'payment_status', 'paymentStatus') || '').trim();
     return {
       row_id: String(this.getField(raw, 'row_id', 'rowId') || '').trim(),
@@ -2193,7 +2224,7 @@ const Clients = {
       location_name: String(this.getField(raw, 'location_name', 'locationName') || '').trim(),
       module_name: String(this.getField(raw, 'module_name', 'moduleName', 'item_name', 'name') || '').trim(),
       service_start_date: String(this.getField(raw, 'service_start_date', 'serviceStartDate') || '').trim(),
-      service_end_date: String(this.getField(raw, 'service_end_date', 'serviceEndDate') || '').trim(),
+      service_end_date: serviceEnd,
       due_date: String(this.getField(raw, 'due_date', 'dueDate') || '').trim(),
       renewal_date: renewalDate,
       billing_frequency: String(this.getField(raw, 'billing_frequency', 'billingFrequency') || '').trim(),
@@ -2208,7 +2239,7 @@ const Clients = {
       agreement_service_end_date: String(this.getField(raw, 'agreement_service_end_date', 'agreementServiceEndDate') || '').trim(),
       agreement_expiry_date: String(this.getField(raw, 'agreement_expiry_date', 'agreementExpiryDate', 'expiry_date', 'expiration_date') || '').trim(),
       renewal_status: String(this.getField(raw, 'renewal_status', 'renewalStatus') || '').trim(),
-      renewal_due_date: String(this.getField(raw, 'renewal_due_date', 'renewalDueDate') || '').trim(),
+      renewal_due_date: renewalDate,
       renewal_batch_id: String(this.getField(raw, 'renewal_batch_id', 'renewalBatchId') || '').trim(),
       renewal_notes: String(this.getField(raw, 'renewal_notes', 'renewalNotes') || '').trim(),
       annual_license_price: this.toNumberSafe(this.getField(raw, 'annual_license_price', 'annualLicensePrice', 'license_price_year', 'licensePriceYear', 'license_price_per_year', 'yearly_license_price')),
