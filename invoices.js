@@ -159,6 +159,28 @@ const Invoices = {
     };
     return lookup[raw.toLowerCase().replace(/\s+/g, ' ')] || (this.getValidPaymentTerms().includes(raw) ? raw : 'Net 30');
   },
+
+  resolveInvoicePaymentTerm(invoice = {}, agreement = {}, options = {}) {
+    const mode = String(options?.mode || '').trim().toLowerCase();
+    const isExisting = mode === 'existing';
+    const priority = isExisting
+      ? [
+        invoice?.payment_term,
+        invoice?.payment_terms,
+        agreement?.payment_term,
+        agreement?.payment_terms,
+        'Net 30'
+      ]
+      : [
+        agreement?.payment_term,
+        agreement?.payment_terms,
+        invoice?.payment_term,
+        invoice?.payment_terms,
+        'Net 30'
+      ];
+    const chosen = priority.find(value => String(value || '').trim());
+    return this.normalizePaymentTerm(chosen || 'Net 30');
+  },
   getPaymentTermDisplay(value = '') {
     const term = this.normalizePaymentTerm(value);
     const map = {
@@ -616,7 +638,7 @@ const Invoices = {
       provider_legal_name: String(source.provider_legal_name || '').trim() || null,
       provider_address: String(source.provider_address || '').trim() || null,
       support_email: String(source.support_email || '').trim() || null,
-      payment_term: this.normalizePaymentTerm(source.payment_term || 'Net 30'),
+      payment_term: this.resolveInvoicePaymentTerm(source, this.state.selectedAgreement || {}, { mode: source.id ? 'existing' : 'new' }),
       is_poc: this.normalizeTruthy(source.is_poc),
       poc_location_count: this.normalizeTruthy(source.is_poc) ? this.toNullableNumber(source.poc_location_count) : null,
       poc_license_count: this.normalizeTruthy(source.is_poc) ? this.toNullableNumber(source.poc_license_count) : null,
@@ -1175,7 +1197,7 @@ const Invoices = {
               <div class="meta-row"><div class="meta-key">Invoice #</div><div>${textValue(invoiceData.invoice_number || invoiceData.invoice_id)}</div></div>
               <div class="meta-row"><div class="meta-key">Invoice Date</div><div>${dateValue(invoiceData.issue_date || invoiceData.invoice_date)}</div></div>
               <div class="meta-row"><div class="meta-key">Due Date</div><div>${dateValue(invoiceData.due_date)}</div></div>
-              <div class="meta-row"><div class="meta-key">Payment Term</div><div>${textValue(this.getPaymentTermDisplay(invoiceData.payment_term))}</div></div>
+              <div class="meta-row"><div class="meta-key">Payment Term</div><div>${textValue(this.getPaymentTermDisplay(invoiceData.payment_term || this.state.selectedAgreement?.payment_term || this.state.selectedAgreement?.payment_terms))}</div></div>
             </div>
           </div>
         </section>
@@ -2421,13 +2443,18 @@ const Invoices = {
     });
     invoice.issue_date = this.normalizeDateInputValue(get('invoiceFormInvoiceDate') || invoice.issue_date || invoice.invoice_date);
     invoice.invoice_date = invoice.issue_date;
-    invoice.payment_term = this.normalizePaymentTerm(
-      get('invoiceFormPaymentTerm') ||
-      existingInvoice.payment_term ||
-      existingInvoice.payment_terms ||
-      this.state.selectedAgreement?.payment_term ||
-      this.state.selectedAgreement?.payment_terms ||
-      'Net 30'
+    const selectedAgreement = this.state.selectedAgreement || {};
+    const isExistingInvoice = Boolean(String(existingInvoice?.id || E.invoiceForm?.dataset?.id || '').trim());
+    const paymentTermFromForm = get('invoiceFormPaymentTerm');
+    const formInvoiceForResolution = {
+      ...existingInvoice,
+      ...invoice,
+      ...(paymentTermFromForm ? { payment_term: paymentTermFromForm } : {})
+    };
+    invoice.payment_term = this.resolveInvoicePaymentTerm(
+      formInvoiceForResolution,
+      selectedAgreement,
+      { mode: isExistingInvoice ? 'existing' : 'new' }
     );
     const items = this.collectItems();
     invoice.old_paid_total = this.toNumberSafe(E.invoiceFormOldPaidTotal?.value);
@@ -2445,7 +2472,6 @@ const Invoices = {
     invoice.subtotal_locations = this.toNumberSafe(invoice.subtotal_locations);
     invoice.subtotal_one_time = this.toNumberSafe(invoice.subtotal_one_time);
     invoice.invoice_total = this.toNumberSafe(invoice.invoice_total);
-    const selectedAgreement = this.state.selectedAgreement || {};
     const selectedCompany = this.state.selectedCompany || {};
     const selectedContact = this.state.selectedContact || {};
     const customerName = this.getCustomerLegalName(selectedCompany, selectedAgreement);
@@ -3387,12 +3413,7 @@ const Invoices = {
           agreement.providerContactEmail
         ),
         billing_frequency: pickAgreementValue(agreement.billing_frequency, agreement.billingFrequency),
-        payment_term: this.normalizePaymentTerm(pickAgreementValue(
-          agreement.payment_term,
-          agreement.payment_terms,
-          agreement.paymentTerm,
-          agreement.paymentTerms
-        ) || 'Net 30'),
+        payment_term: this.resolveInvoicePaymentTerm({}, agreement, { mode: 'new' }),
         currency: pickAgreementValue(agreement.currency, agreement.customer?.currency),
         subtotal_subscription: pickAgreementValue(
           agreement.saas_total,
@@ -3436,6 +3457,12 @@ const Invoices = {
       const fullCompany = await this.getFullCompanyRecord(agreement.company_id || agreement.companyId || agreement.company || null);
       const fullContact = await this.getFullContactRecord(agreement.contact_id || agreement.contactId || agreement.contact || null);
       this.state.selectedAgreement = agreement || null;
+      const agreementPaymentTerm = this.resolveInvoicePaymentTerm({}, agreement || {}, { mode: 'new' });
+      mappedInvoice.payment_term = agreementPaymentTerm;
+      console.log('[invoice payment term sync]', {
+        agreementPaymentTerm,
+        invoicePaymentTerm: mappedInvoice.payment_term
+      });
       const agreementUuid = String(agreement?.id || agreement?.uuid || agreement?.agreement_uuid || agreement?.agreementUuid || '').trim();
       const agreementId = String(agreement?.agreement_id || agreement?.agreementId || agreement?.agreement_number || agreement?.agreementNumber || '').trim();
       const agreementNumber = String(agreement?.agreement_number || agreement?.agreementNumber || agreement?.agreement_id || agreement?.agreementId || '').trim();
