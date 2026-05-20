@@ -2724,7 +2724,14 @@
     const proposalIdSource = firstDefined(record, ['proposal_id', 'proposalId']);
     const refNumberSource = firstDefined(record, ['ref_number', 'refNumber']);
     const proposalDateForRecord = normalizeNullableDateValue(firstDefined(record, ['proposal_date', 'proposalDate'])) || (ensureBusinessIds ? todayDateString() : null);
-    const validUntilForRecord = proposalDateForRecord ? addDaysToDateString(proposalDateForRecord, 14) : firstDefined(record, ['proposal_valid_until', 'proposalValidUntil', 'valid_until']);
+    const proposedValidUntil = normalizeNullableDateValue(firstDefined(record, ['proposal_valid_until', 'proposalValidUntil', 'valid_until']));
+    const autoValidUntilForRecord = proposalDateForRecord ? addDaysToDateString(proposalDateForRecord, 14) : null;
+    const maxValidUntilForRecord = proposalDateForRecord ? addDaysToDateString(proposalDateForRecord, 30) : null;
+    let validUntilForRecord = proposedValidUntil || autoValidUntilForRecord;
+    if (proposalDateForRecord && validUntilForRecord) {
+      if (validUntilForRecord < proposalDateForRecord) validUntilForRecord = autoValidUntilForRecord;
+      if (maxValidUntilForRecord && validUntilForRecord > maxValidUntilForRecord) validUntilForRecord = maxValidUntilForRecord;
+    }
     const mapped = compactObject({
       proposal_id: ensureBusinessIds ? ensureBusinessProposalId(proposalIdSource) : proposalIdSource,
       ref_number: ensureBusinessIds ? ensureProposalRefNumber(refNumberSource) : refNumberSource,
@@ -2831,9 +2838,14 @@
     sanitized.payment_term = validPaymentTerms.includes(String(sanitized.payment_term || '').trim()) ? String(sanitized.payment_term).trim() : 'Net 30';
     if (sanitized.proposal_date) {
       const autoValidUntil = addDaysToDateString(sanitized.proposal_date, 14);
-      if (autoValidUntil) {
-        sanitized.proposal_valid_until = autoValidUntil;
-        sanitized.valid_until = autoValidUntil;
+      const maxValidUntil = addDaysToDateString(sanitized.proposal_date, 30);
+      const selectedValidUntil = normalizeNullableDateValue(sanitized.proposal_valid_until || sanitized.valid_until);
+      let resolvedValidUntil = selectedValidUntil || autoValidUntil;
+      if (resolvedValidUntil && resolvedValidUntil < sanitized.proposal_date) resolvedValidUntil = autoValidUntil;
+      if (resolvedValidUntil && maxValidUntil && resolvedValidUntil > maxValidUntil) resolvedValidUntil = maxValidUntil;
+      if (resolvedValidUntil) {
+        sanitized.proposal_valid_until = resolvedValidUntil;
+        sanitized.valid_until = resolvedValidUntil;
       }
     }
     sanitized.status = normalizeProposalBusinessStatus(sanitized.status);

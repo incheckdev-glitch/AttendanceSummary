@@ -927,54 +927,110 @@ const Proposals = {
   canShowConvertToAgreement(proposal = {}) {
     return this.isProposalAccepted(proposal) && !this.isProposalExpired(proposal) && Permissions.canCreateAgreementFromProposal();
   },
+  PROPOSAL_DEFAULT_VALIDITY_DAYS: 14,
+  PROPOSAL_MAX_VALIDITY_DAYS: 30,
   todayDateString() {
     const date = new Date();
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   },
-  addDaysToDateString(value = '', days = 14) {
+  normalizeDateInput(value) {
     const source = String(value || '').trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(source)) return '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(source)) return null;
     const [year, month, day] = source.split('-').map(Number);
     const date = new Date(year, month - 1, day);
-    date.setDate(date.getDate() + Number(days || 0));
+    if (Number.isNaN(date.getTime())) return null;
+    date.setHours(0, 0, 0, 0);
+    return date;
+  },
+  formatDateInput(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  },
+  addDays(date, days) {
+    const source = date instanceof Date ? new Date(date) : this.normalizeDateInput(date);
+    if (!source) return null;
+    source.setDate(source.getDate() + Number(days || 0));
+    return source;
+  },
+  diffDays(startDate, endDate) {
+    const start = this.normalizeDateInput(startDate);
+    const end = this.normalizeDateInput(endDate);
+    if (!start || !end) return Number.NaN;
+    return Math.round((end.getTime() - start.getTime()) / 86400000);
+  },
+  addDaysToDateString(value = '', days = 14) {
+    return this.formatDateInput(this.addDays(value, days));
   },
   getProposalDateOrToday(value = '') {
     return String(value || '').trim() || this.todayDateString();
   },
   getAutoValidUntil(proposalDate = '') {
     const date = this.getProposalDateOrToday(proposalDate);
-    return this.addDaysToDateString(date, 14);
+    return this.addDaysToDateString(date, this.PROPOSAL_DEFAULT_VALIDITY_DAYS);
   },
   getMaxValidUntil(proposalDate = '') {
     const date = this.getProposalDateOrToday(proposalDate);
-    return this.addDaysToDateString(date, 30);
+    return this.addDaysToDateString(date, this.PROPOSAL_MAX_VALIDITY_DAYS);
+  },
+  resolveProposalValidUntil(proposalDate, currentValidUntil, options = {}) {
+    const baseDate = this.normalizeDateInput(proposalDate) || this.normalizeDateInput(this.todayDateString()) || new Date();
+    const defaultValidUntil = this.addDays(baseDate, this.PROPOSAL_DEFAULT_VALIDITY_DAYS);
+    const maxValidUntil = this.addDays(baseDate, this.PROPOSAL_MAX_VALIDITY_DAYS);
+    if (!currentValidUntil) return this.formatDateInput(defaultValidUntil);
+    const selected = this.normalizeDateInput(currentValidUntil);
+    if (!selected) return this.formatDateInput(defaultValidUntil);
+    if (selected > maxValidUntil) return this.formatDateInput(maxValidUntil);
+    if (selected < baseDate) return this.formatDateInput(defaultValidUntil);
+    return this.formatDateInput(selected);
   },
   getValidatedProposalValidUntil(proposalDateValue = '', validUntilValue = '', { showToast = false } = {}) {
-    return this.getAutoValidUntil(proposalDateValue);
+    const proposalDate = this.getProposalDateOrToday(proposalDateValue);
+    const rawValidUntil = String(validUntilValue || '').trim();
+    const validUntil = this.resolveProposalValidUntil(proposalDate, rawValidUntil);
+    const days = this.diffDays(proposalDate, validUntil);
+    const rawDays = this.diffDays(proposalDate, rawValidUntil);
+    if (!rawValidUntil || Number.isNaN(days)) {
+      if (showToast) UI.toast('Valid Until is required.');
+      return '';
+    }
+    if (!Number.isNaN(rawDays) && rawDays < 0) {
+      if (showToast) UI.toast('Proposal validity cannot be before the proposal date.');
+      return '';
+    }
+    if (!Number.isNaN(rawDays) && rawDays > this.PROPOSAL_MAX_VALIDITY_DAYS) {
+      if (showToast) UI.toast('Proposal validity cannot exceed 30 days from the proposal date.');
+      return '';
+    }
+    if (days < 0 || days > this.PROPOSAL_MAX_VALIDITY_DAYS) {
+      if (showToast) UI.toast('Proposal validity cannot exceed 30 days from the proposal date.');
+      return '';
+    }
+    return validUntil;
   },
   syncProposalValidityLimits() {
     if (!E.proposalFormProposalDate || !E.proposalFormValidUntil) return;
     const proposalDate = this.getProposalDateOrToday(E.proposalFormProposalDate.value);
     E.proposalFormProposalDate.value = proposalDate;
     E.proposalFormValidUntil.min = proposalDate;
-    E.proposalFormValidUntil.max = this.getAutoValidUntil(proposalDate);
+    E.proposalFormValidUntil.max = this.getMaxValidUntil(proposalDate);
   },
   syncValidUntilFromProposalDate({ forceDefault = false } = {}) {
     if (!E.proposalFormProposalDate || !E.proposalFormValidUntil) return;
     const proposalDate = this.getProposalDateOrToday(E.proposalFormProposalDate.value);
+    const oldAuto = String(E.proposalFormValidUntil.dataset.autoValidUntil || '').trim();
+    const current = String(E.proposalFormValidUntil.value || '').trim();
     const nextAuto = this.getAutoValidUntil(proposalDate);
     E.proposalFormProposalDate.value = proposalDate;
     this.syncProposalValidityLimits();
-    E.proposalFormValidUntil.value = nextAuto;
+    const shouldRecalc = forceDefault || !current || (oldAuto && current === oldAuto);
+    const resolved = shouldRecalc ? nextAuto : this.resolveProposalValidUntil(proposalDate, current);
+    E.proposalFormValidUntil.value = resolved;
     E.proposalFormValidUntil.dataset.autoValidUntil = nextAuto;
-    E.proposalFormValidUntil.readOnly = true;
-    E.proposalFormValidUntil.classList.add('readonly-field', 'locked-field');
-    E.proposalFormValidUntil.setAttribute('aria-readonly', 'true');
-    E.proposalFormValidUntil.title = 'Auto-calculated as 14 days after the proposal date.';
+    E.proposalFormValidUntil.title = 'Defaults to 14 days after proposal date; extendable up to 30 days.';
   },
   syncValidUntilManualEdit() {
-    this.syncValidUntilFromProposalDate({ forceDefault: true });
+    if (!E.proposalFormProposalDate || !E.proposalFormValidUntil) return;
+    E.proposalFormValidUntil.value = this.resolveProposalValidUntil(E.proposalFormProposalDate.value, E.proposalFormValidUntil.value);
   },
   getContactPosition(contact = {}) {
     return String(contact.job_title || contact.jobTitle || contact.position || contact.title || '').trim();
@@ -1346,7 +1402,7 @@ const Proposals = {
       normalized.deal_code = String(linkedDeal?.deal_id || '').trim();
     }
     normalized.proposal_date = this.getProposalDateOrToday(normalized.proposal_date || source.proposalDate || source.proposal_date);
-    normalized.proposal_valid_until = this.getAutoValidUntil(normalized.proposal_date);
+    normalized.proposal_valid_until = this.resolveProposalValidUntil(normalized.proposal_date, normalized.proposal_valid_until || source.proposal_valid_until || source.valid_until);
     normalized.valid_until = normalized.proposal_valid_until;
     if (this.isProposalExpired(normalized)) normalized.status = 'expired';
     normalized.saas_total = this.toNumberSafe(
@@ -1876,7 +1932,7 @@ const Proposals = {
     const hasProposalDate = Object.prototype.hasOwnProperty.call(base, 'proposal_date') || Object.prototype.hasOwnProperty.call(base, 'proposalDate');
     const hasValidUntil = Object.prototype.hasOwnProperty.call(base, 'proposal_valid_until') || Object.prototype.hasOwnProperty.call(base, 'valid_until');
     const proposalDate = hasProposalDate || ensureBusinessProposalId ? this.getProposalDateOrToday(base.proposal_date || base.proposalDate) : '';
-    const proposalValidUntil = proposalDate ? this.getAutoValidUntil(proposalDate) : '';
+    const proposalValidUntil = proposalDate ? this.resolveProposalValidUntil(proposalDate, base.proposal_valid_until || base.valid_until) : '';
     const hasStatus = Object.prototype.hasOwnProperty.call(base, 'status');
     const generatedByFallback = String(
       base.generated_by || Session?.state?.name || Session?.state?.email || Session?.state?.username || ''
@@ -3029,7 +3085,7 @@ const Proposals = {
     set(E.proposalFormTitleField, proposal.proposal_title || '');
     set(E.proposalFormDealId, proposal.deal_id || '');
     const proposalDate = this.getProposalDateOrToday(proposal.proposal_date);
-    const validUntil = this.getAutoValidUntil(proposalDate);
+    const validUntil = this.resolveProposalValidUntil(proposalDate, proposal.valid_until || proposal.proposal_valid_until);
     set(E.proposalFormProposalDate, proposalDate);
     set(E.proposalFormValidUntil, validUntil);
     this.syncProposalValidityLimits();
@@ -3636,7 +3692,9 @@ const Proposals = {
     const providerSignDateValue = this.normalizeDateInputValue(providerSignDate);
     const autoAcceptedStatus = Boolean(customerSignDateValue && providerSignDateValue);
     const requestedStatus = autoAcceptedStatus ? 'accepted' : (currentStatus === 'accepted' ? 'sent' : currentStatus);
-    const proposalValidUntilValue = this.getAutoValidUntil(E.proposalFormProposalDate?.value);
+    const proposalDateValue = this.getProposalDateOrToday(E.proposalFormProposalDate?.value);
+    const proposalValidUntilValue = this.getValidatedProposalValidUntil(proposalDateValue, E.proposalFormValidUntil?.value, { showToast: true });
+    if (!proposalValidUntilValue) throw new Error('Invalid proposal validity period.');
     const acceptedBeforeExpiry = this.wasProposalAcceptedBeforeExpiry({
       ...(this.state.currentProposal || {}),
       status: requestedStatus,
@@ -3655,7 +3713,7 @@ const Proposals = {
       ref_number: this.ensureRefNumber(existingRefNumber),
       proposal_title: String(E.proposalFormTitleField?.value || '').trim(),
       deal_id: this.resolveDealUuid(E.proposalFormDealId?.value || ''),
-      proposal_date: this.getProposalDateOrToday(E.proposalFormProposalDate?.value),
+      proposal_date: proposalDateValue,
       proposal_valid_until: proposalValidUntilValue,
       valid_until: proposalValidUntilValue,
       status: acceptedBeforeExpiry ? 'accepted' : (isExpiredByValidity ? 'expired' : requestedStatus),
@@ -4596,10 +4654,12 @@ const Proposals = {
       E.proposalFormProposalDate.addEventListener('input', syncProposalDateDependents);
     }
     if (E.proposalFormValidUntil) {
-      E.proposalFormValidUntil.readOnly = true;
-      E.proposalFormValidUntil.classList.add('readonly-field', 'locked-field');
-      E.proposalFormValidUntil.setAttribute('aria-readonly', 'true');
-      E.proposalFormValidUntil.title = 'Auto-calculated as 14 days after the proposal date.';
+      E.proposalFormValidUntil.addEventListener('change', () => this.syncValidUntilManualEdit());
+      E.proposalFormValidUntil.addEventListener('input', () => this.syncValidUntilManualEdit());
+      E.proposalFormValidUntil.readOnly = false;
+      E.proposalFormValidUntil.classList.remove('readonly-field', 'locked-field');
+      E.proposalFormValidUntil.removeAttribute('aria-readonly');
+      E.proposalFormValidUntil.title = 'Defaults to 14 days after proposal date; extendable up to 30 days.';
     }
     if (E.proposalFormStatus) {
       E.proposalFormStatus.addEventListener('change', () => this.refreshSignedDocumentUi(this.state.currentProposal || {}));
