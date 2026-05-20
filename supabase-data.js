@@ -2834,8 +2834,17 @@
     });
     PROPOSAL_LEGACY_FIELDS.forEach(key => delete sanitized[key]);
     const validPaymentTerms = ['Net 7', 'Net 14', 'Net 21', 'Net 30'];
+    const rawPaymentTerm = firstDefined(record, [
+      'payment_term',
+      'payment_terms',
+      'paymentTerm',
+      'paymentTerms'
+    ]);
     sanitized.billing_frequency = 'Annual';
-    sanitized.payment_term = validPaymentTerms.includes(String(sanitized.payment_term || '').trim()) ? String(sanitized.payment_term).trim() : 'Net 30';
+    sanitized.payment_term = validPaymentTerms.includes(String(rawPaymentTerm || '').trim())
+      ? String(rawPaymentTerm || '').trim()
+      : 'Net 30';
+    sanitized.payment_terms = sanitized.payment_term;
     if (sanitized.proposal_date) {
       const autoValidUntil = addDaysToDateString(sanitized.proposal_date, 14);
       const maxValidUntil = addDaysToDateString(sanitized.proposal_date, 30);
