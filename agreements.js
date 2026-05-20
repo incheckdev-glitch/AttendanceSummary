@@ -248,13 +248,18 @@ const Agreements = {
     return fallback;
   },
 
-  isPersistedLineItem(row = {}) {
-    return Boolean(row?.id || row?.item_id || row?.agreement_item_id || row?.proposal_item_id);
+  isPersistedAgreementLineItem(item = {}) {
+    return Boolean(
+      String(item?.id || '').trim() ||
+      String(item?.agreement_item_id || item?.agreementItemId || '').trim()
+    );
   },
-  hasSavedForcedDiscount(row = {}) {
-    const discount = Number(row?.discount_percent ?? row?.discountPercent ?? 0);
-    const hasId = this.isPersistedLineItem(row);
-    return hasId && Number.isFinite(discount) && discount > 0;
+  hasSavedForcedAnnualDiscount(item = {}) {
+    const section = String(item?.section || '').trim().toLowerCase();
+    const discount = this.toNumberSafe(item?.discount_percent ?? item?.discountPercent);
+    return section === 'annual_saas'
+      && this.isPersistedAgreementLineItem(item)
+      && discount > 0;
   },
   toNullableNumber(value) {
     if (value === null || value === undefined) return null;
@@ -533,11 +538,15 @@ const Agreements = {
     if (!qty && section === 'one_time_fee') qty = 1;
     const licenseQty = isAnnualUserBased ? Math.max(1, Math.round(this.toNumberSafe(item.license_quantity ?? item.user_quantity ?? item.item_quantity) || 1)) : 1;
     const rawDiscountRatio = this.normalizeDiscount(item.discount_percent);
-    const hasForcedSavedDiscount = this.hasSavedForcedDiscount(item);
-    const discountRatio = section === 'annual_saas' && qty < 12 && !hasForcedSavedDiscount ? 0 : rawDiscountRatio;
+    const hasSavedForcedDiscount = this.hasSavedForcedAnnualDiscount(item);
+    const shouldForceNoDiscount =
+      section === 'annual_saas'
+      && qty < 12
+      && !hasSavedForcedDiscount;
+    const discountRatio = shouldForceNoDiscount ? 0 : rawDiscountRatio;
     const baseAmount = section === 'annual_saas' ? unit * licenseQty * (qty / 12) : unit * qty;
     const discountedUnitPrice = section === 'annual_saas' ? baseAmount * (1 - discountRatio) : unit * (1 - discountRatio);
-    return { ...item, quantity: qty, license_quantity: licenseQty, discount_percent: section === 'annual_saas' && qty < 12 && !hasForcedSavedDiscount ? 0 : item.discount_percent, discounted_unit_price: discountedUnitPrice, line_total: Math.max(0, baseAmount * (1 - discountRatio)) };
+    return { ...item, quantity: qty, license_quantity: licenseQty, discount_percent: shouldForceNoDiscount ? 0 : item.discount_percent, discounted_unit_price: discountedUnitPrice, line_total: Math.max(0, baseAmount * (1 - discountRatio)) };
   },
   canExportAgreements() {
     return Permissions.canExport('agreements');
@@ -1148,6 +1157,8 @@ const Agreements = {
       return '';
     };
     const section = String(pick(source.section, source.type, sectionFallback)).trim().toLowerCase();
+    const rawDiscountedUnitPrice = pick(source.discounted_unit_price, source.discountedUnitPrice);
+    const rawLineTotal = pick(source.line_total, source.lineTotal);
     const normalized = {
       // Keep the real Supabase row id separate from the business item_id.
       // The agreement view uses this id to verify invoice status from invoice_items.
@@ -1165,10 +1176,10 @@ const Agreements = {
       item_name: String(pick(source.item_name, source.itemName, source.name)).trim(),
       unit_price: this.toNumberSafe(pick(source.unit_price, source.unitPrice)),
       discount_percent: this.toNumberSafe(pick(source.discount_percent, source.discountPercent)),
-      discounted_unit_price: this.toNumberSafe(pick(source.discounted_unit_price, source.discountedUnitPrice)),
+      discounted_unit_price: rawDiscountedUnitPrice === '' ? '' : this.toNumberSafe(rawDiscountedUnitPrice),
       quantity: this.toNumberSafe(pick(source.quantity, source.qty)),
       license_quantity: this.toNumberSafe(pick(source.license_quantity, source.licenseQuantity, source.user_quantity, source.userQuantity, source.item_quantity, source.itemQuantity)),
-      line_total: this.toNumberSafe(pick(source.line_total, source.lineTotal)),
+      line_total: rawLineTotal === '' ? '' : this.toNumberSafe(rawLineTotal),
       capability_name: String(pick(source.capability_name, source.capabilityName)).trim(),
       capability_value: String(pick(source.capability_value, source.capabilityValue)).trim(),
       notes: String(pick(source.notes)).trim(),
@@ -1188,8 +1199,8 @@ const Agreements = {
     }
     if (section === 'annual_saas' || section === 'one_time_fee') {
       const computed = this.computeCommercialRow(normalized);
-      if (!normalized.discounted_unit_price) normalized.discounted_unit_price = computed.discounted_unit_price;
-      if (!normalized.line_total) normalized.line_total = computed.line_total;
+      if (normalized.discounted_unit_price === '') normalized.discounted_unit_price = computed.discounted_unit_price;
+      if (normalized.line_total === '') normalized.line_total = computed.line_total;
     }
     return normalized;
   },
@@ -2637,7 +2648,12 @@ const Agreements = {
       const licenseQuantity = isAnnualUserBased ? Math.max(1, Math.round(this.toNumberSafe(get('license_quantity')) || 1)) : 1;
       if (section === 'one_time_fee' && shouldAutoLinkOneTimeFees && !this.isCsHoursItem({ item_name: get('item_name') })) quantity = linkedOneTimeQuantity;
       let discountPercent = this.toNumberSafe(get('discount_percent'));
-      if (section === 'annual_saas' && quantity < 12 && !this.hasSavedForcedDiscount(baseItem)) discountPercent = 0;
+      const hasSavedForcedDiscount = this.hasSavedForcedAnnualDiscount({
+        ...baseItem,
+        section,
+        discount_percent: discountPercent
+      });
+      if (section === 'annual_saas' && quantity < 12 && !hasSavedForcedDiscount) discountPercent = 0;
       const unitPrice = this.toNumberSafe(get('unit_price'));
       const itemName = get('item_name');
       const locationName = get('location_name');
@@ -2996,14 +3012,15 @@ const Agreements = {
         ? `<td><input class="input" type="date" data-item-field="service_start_date" value="${U.escapeAttr(computed.service_start_date || '')}"${lockAttr} /></td>
       <td><input class="input readonly-field locked-field" type="date" data-item-field="service_end_date" value="${U.escapeAttr(computed.service_end_date || '')}" readonly aria-readonly="true"${lockAttr} /></td>`
         : '';
-      const annualHasSavedForcedDiscount = this.hasSavedForcedDiscount(rowDefaults);
-        const annualDiscountLocked = section === 'annual_saas' && this.toNumberSafe(computed.quantity) < 12 && !annualHasSavedForcedDiscount;
+      const hasSavedForcedDiscount = this.hasSavedForcedAnnualDiscount({ ...rowDefaults, ...computed, section });
+      const annualDiscountLocked = section === 'annual_saas' && this.toNumberSafe(computed.quantity) < 12 && !hasSavedForcedDiscount;
       const inCheckBasicCount = this.getInCheckBasicAnnualRowCountFromDom();
       const shouldAutoLinkOneTimeFees = inCheckBasicCount > 0;
       const oneTimeQuantityLocked = section === 'one_time_fee' && shouldAutoLinkOneTimeFees && !this.isCsHoursItem(computed);
       const discountLockAttr = annualDiscountLocked ? ' readonly aria-readonly="true" title="Discount is only available when License / Month is 12."' : '';
       const quantityLockAttr = oneTimeQuantityLocked ? ' readonly aria-readonly="true" title="Quantity is linked to the number of InCheck Basic Annual SaaS rows."' : '';
-      const discountCell = `<td><input class="input" data-item-field="discount_percent" type="number" min="0" max="100" step="0.01" value="${U.escapeAttr(computed.discount_percent ?? '')}"${discountLockAttr}${lockAttr} /></td>`;
+      const discountValue = annualDiscountLocked ? 0 : (computed.discount_percent ?? rowDefaults.discount_percent ?? '');
+      const discountCell = `<td><input class="input" data-item-field="discount_percent" type="number" min="0" max="100" step="0.01" value="${U.escapeAttr(discountValue)}"${discountLockAttr}${lockAttr} /></td>`;
       const hasUserBasedAnnualSaas = section === 'annual_saas' && (grouped.annual_saas || []).some(row => this.isAnnualSaasUserItem(row));
       const quantityCell = `<td><input class="input" data-item-field="quantity" type="number" step="0.01" min="1" ${section === 'annual_saas' ? 'max="12"' : ''} value="${U.escapeAttr(oneTimeQuantityLocked ? (computed.quantity || 1) : (computed.quantity ?? ''))}"${quantityLockAttr}${lockAttr} /></td>`;
       const licenseQtyCell = hasUserBasedAnnualSaas
@@ -3709,10 +3726,11 @@ const Agreements = {
       const discount = this.toNumberSafe(item.discount_percent);
       const start = this.normalizeDateInputValue(item.service_start_date);
       const end = this.normalizeDateInputValue(item.service_end_date);
-      return unit < 0 || qty <= 0 || qty > 12 || discount < 0 || discount > 100 || !start || !end || end <= start;
+      const hasSavedForcedDiscount = this.hasSavedForcedAnnualDiscount(item);
+      return unit < 0 || qty <= 0 || qty > 12 || discount < 0 || discount > 100 || (qty < 12 && discount > 0 && !hasSavedForcedDiscount) || !start || !end || end <= start;
     });
     if (hasInvalidAnnual) {
-      UI.toast('Please complete the annual SaaS service dates and license months.');
+      UI.toast('Please complete the annual SaaS service dates and license months. Discount must be 0% when License / Month is below 12 unless it is a saved persisted discount.');
       return false;
     }
     const hasInvalidOneTime = safeItems.some(item => {
