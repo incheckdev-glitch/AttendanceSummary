@@ -1134,11 +1134,23 @@ const Clients = {
   },
   buildTimeline_(clientId) {
     const events = [];
-    this.buildClientRenewalRows({ client_id: clientId }).forEach(item => {
+    const renewalRows = this.buildClientRenewalRows({ client_id: clientId });
+    console.log('[client renewal source check]', renewalRows.map(row => ({
+      location: row.location_name,
+      item: row.item_name || row.module_name,
+      service_start_date: row.service_start_date,
+      service_end_date: row.service_end_date,
+      renewal_date: row.renewal_date,
+      invoice_date: row.invoice_date,
+      due_date: row.due_date
+    })));
+    renewalRows.forEach(item => {
+      const renewalDate = item.service_end_date || item.renewal_date || item.renewal_due_date;
+      if (!item.service_end_date || !renewalDate) return;
       events.push({
         type: 'renewal_item',
-        date: item.renewal_date || item.service_end_date,
-        label: `${item.location_name || 'Location'} · ${item.module_name || 'Annual SaaS'} renewal`
+        date: renewalDate,
+        label: `${item.location_name || 'Location'} · ${item.module_name || item.item_name || 'Annual SaaS'} renewal`
       });
     });
     this.listClientRelatedAgreements_(clientId).forEach(item => {
@@ -2037,38 +2049,35 @@ const Clients = {
     return this.computeRunningBalance([...invoiceRows, ...receiptRows]);
   },
 
-  getAnnualSaasServiceDates_(item = {}, agreement = {}) {
-    const itemStart = this.getField(
-      item,
-      'service_start_date',
-      'serviceStartDate',
-      'start_service_date',
-      'startServiceDate',
-      'start_date',
-      'startDate'
-    );
+  getAnnualSaasServiceDates_(item = {}) {
+    const serviceStart = String(
+      item?.service_start_date ||
+      item?.serviceStartDate ||
+      item?.start_service_date ||
+      item?.startServiceDate ||
+      ''
+    ).trim();
 
-    const itemEnd = this.getField(
-      item,
-      'service_end_date',
-      'serviceEndDate',
-      'end_service_date',
-      'endServiceDate',
-      'end_date',
-      'endDate'
-    );
+    const serviceEnd = String(
+      item?.service_end_date ||
+      item?.serviceEndDate ||
+      item?.end_service_date ||
+      item?.endServiceDate ||
+      ''
+    ).trim();
 
     return {
-      serviceStart: String(itemStart || '').trim(),
-      serviceEnd: String(itemEnd || '').trim(),
-      renewalDate: String(itemEnd || '').trim()
+      service_start_date: serviceStart,
+      service_end_date: serviceEnd,
+      renewal_date: serviceEnd,
+      renewal_due_date: serviceEnd
     };
   },
   buildClientRenewalRows(client) {
     const safeClient = client && typeof client === 'object' ? client : {};
     const clientId = String(safeClient.client_id || '').trim();
     const agreements = this.listClientRelatedAgreements_(clientId).filter(Boolean);
-    const locationItems = this.listClientAgreementLocationItems_(clientId).filter(Boolean).filter(item => this.isSaasAnnualItem(item));
+    const locationItems = this.listClientAgreementLocationItems_(clientId).filter(Boolean);
     const invoices = this.listClientRelatedInvoices_(clientId).filter(Boolean);
     const receipts = this.listClientRelatedReceipts_(clientId).filter(Boolean);
     const rows = [];
@@ -2124,10 +2133,16 @@ const Clients = {
           paymentStatus = daysLeft !== null && daysLeft < 0 ? 'Overdue' : 'Not Paid';
         }
       }
-      const serviceDates = this.getAnnualSaasServiceDates_(item, agreement);
-      const serviceStart = serviceDates.serviceStart;
-      const serviceEnd = serviceDates.serviceEnd;
-      const renewalDate = serviceDates.renewalDate;
+      const section = String(item.section || item.item_section || '').toLowerCase();
+      const isAnnualSaas = section === 'annual_saas' || section === 'annual saas' || section.includes('annual');
+      if (!isAnnualSaas) return;
+      const serviceDates = this.getAnnualSaasServiceDates_(item);
+      const serviceStart = serviceDates.service_start_date;
+      const serviceEnd = serviceDates.service_end_date;
+      const renewalDate = serviceDates.service_end_date;
+      if (!renewalDate) {
+        console.warn('[clients renewals] missing annual SaaS service_end_date, skipping renewal date fallback', { item, agreement });
+      }
       rows.push(this.normalizeRenewalRow({
         ...item,
         source: 'agreement_item',
@@ -2150,6 +2165,7 @@ const Clients = {
         client_name: agreement.customer_name || agreement.customer_legal_name || safeClient.customer_name || safeClient.client_name || safeClient.company_name || '—',
         location_name: this.getField(item, 'location_name', 'locationName', 'location', 'site', 'site_name', 'branch', 'branch_name', 'store_name') || this.getField(item, 'description', 'item_name', 'itemName') || 'Location',
         module_name: this.getField(item, 'module_name', 'moduleName', 'module', 'service_name', 'serviceName', 'product_name', 'productName', 'item_name', 'itemName') || 'SaaS Annual',
+        item_name: this.getField(item, 'item_name', 'itemName', 'module_name', 'moduleName') || 'Annual SaaS',
         service_start_date: serviceStart,
         service_end_date: serviceEnd,
         renewal_date: renewalDate,
@@ -2174,7 +2190,7 @@ const Clients = {
     rows.forEach(row => { row.row_id = row.row_id || this.getRenewalRowId_(row); });
 
     if (this.isDebugMode_()) {
-      console.log('[ClientRenewals] renewal source counts', { client: safeClient.client_name || safeClient.company_name || safeClient.name || safeClient.customer_name, relatedAgreements: agreements.length, agreementItemsLoaded: this.state.agreementItems.length, linkedAgreementItems: locationItems.length, saasAnnualItems: locationItems.length, renewalRows: rows.length });
+      console.log('[ClientRenewals] renewal source counts', { client: safeClient.client_name || safeClient.company_name || safeClient.name || safeClient.customer_name, relatedAgreements: agreements.length, agreementItemsLoaded: this.state.agreementItems.length, linkedAgreementItems: locationItems.length, saasAnnualItems: rows.length, renewalRows: rows.length });
     }
     return rows.sort((a, b) => {
       const ad = this.dateValueForSort_(a);
@@ -2239,7 +2255,7 @@ const Clients = {
       agreement_service_end_date: String(this.getField(raw, 'agreement_service_end_date', 'agreementServiceEndDate') || '').trim(),
       agreement_expiry_date: String(this.getField(raw, 'agreement_expiry_date', 'agreementExpiryDate', 'expiry_date', 'expiration_date') || '').trim(),
       renewal_status: String(this.getField(raw, 'renewal_status', 'renewalStatus') || '').trim(),
-      renewal_due_date: renewalDate,
+      renewal_due_date: serviceEnd || String(this.getField(raw, 'renewal_due_date', 'renewalDueDate', 'renewal_date', 'renewalDate') || '').trim(),
       renewal_batch_id: String(this.getField(raw, 'renewal_batch_id', 'renewalBatchId') || '').trim(),
       renewal_notes: String(this.getField(raw, 'renewal_notes', 'renewalNotes') || '').trim(),
       annual_license_price: this.toNumberSafe(this.getField(raw, 'annual_license_price', 'annualLicensePrice', 'license_price_year', 'licensePriceYear', 'license_price_per_year', 'yearly_license_price')),
@@ -2382,7 +2398,7 @@ const Clients = {
   getFilteredRenewalRows_(rows = []) {
     const { dateFrom, dateTo } = this.state.renewalsFilters;
     return rows.filter(row => {
-      const dateValue = String(row.renewal_date || '').trim();
+      const dateValue = String(row.service_end_date || row.renewal_date || row.renewal_due_date || '').trim();
       if (!dateValue) return true;
       const parsedDate = this.parseFlexibleDate_(dateValue);
       if (dateFrom && parsedDate && new Date(parsedDate).getTime() < new Date(dateFrom).getTime()) return false;
@@ -2402,7 +2418,7 @@ const Clients = {
     const totalDue = Math.max(totalInvoiced - totalPaid, 0);
     const lastPayment = rows.find(item => this.toNumberSafe(item.credit) > 0)?.date || '';
     const nextRenewal = ((Array.isArray(detailData.renewalRows) && detailData.renewalRows.length ? detailData.renewalRows : this.buildClientRenewalRows(fallbackClient)) || [])
-      .map(item => item.renewal_date)
+      .map(item => item.service_end_date || item.renewal_date || item.renewal_due_date)
       .filter(Boolean)
       .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0];
     if (E.clientStatementCards) {
@@ -2561,6 +2577,15 @@ const Clients = {
       ? detailData.renewalRows
       : this.buildClientRenewalRows(fallbackClient);
     const rows = this.getFilteredRenewalRows_(baseRenewalRows);
+    console.log('[client renewal source check]', baseRenewalRows.map(row => ({
+      location: row.location_name,
+      item: row.item_name || row.module_name,
+      service_start_date: row.service_start_date,
+      service_end_date: row.service_end_date,
+      renewal_date: row.renewal_date,
+      invoice_date: row.invoice_date,
+      due_date: row.due_date
+    })));
     const buckets = { d7: 0, d30: 0, d60: 0, overdueRenewals: 0, overduePayments: 0 };
     rows.forEach(row => {
       const days = this.getDaysLeft(row.renewal_date);
