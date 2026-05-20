@@ -1125,7 +1125,7 @@ const Api = {
   async updateOperationsOnboardingAction({ onboardingId = '', agreementId = '', updates = {}, syncTechnicalStatus = '' } = {}) {
     const normalizedOnboardingId = String(onboardingId || '').trim();
     const normalizedAgreementId = String(agreementId || '').trim();
-    if (!normalizedOnboardingId) throw new Error('operations_onboarding id is required.');
+    if (!normalizedOnboardingId) throw new Error('Missing id for operations_onboarding update');
     const payload = updates && typeof updates === 'object' ? { ...updates } : {};
     delete payload.id;
     delete payload.db_id;
