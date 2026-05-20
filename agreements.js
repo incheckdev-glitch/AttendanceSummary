@@ -247,6 +247,15 @@ const Agreements = {
     if (['false', '0', 'no', 'n', 'unsigned', 'off'].includes(raw)) return false;
     return fallback;
   },
+
+  isPersistedLineItem(row = {}) {
+    return Boolean(row?.id || row?.item_id || row?.agreement_item_id || row?.proposal_item_id);
+  },
+  hasSavedForcedDiscount(row = {}) {
+    const discount = Number(row?.discount_percent ?? row?.discountPercent ?? 0);
+    const hasId = this.isPersistedLineItem(row);
+    return hasId && Number.isFinite(discount) && discount > 0;
+  },
   toNullableNumber(value) {
     if (value === null || value === undefined) return null;
     const raw = String(value).replace(/,/g, '').trim();
@@ -524,10 +533,11 @@ const Agreements = {
     if (!qty && section === 'one_time_fee') qty = 1;
     const licenseQty = isAnnualUserBased ? Math.max(1, Math.round(this.toNumberSafe(item.license_quantity ?? item.user_quantity ?? item.item_quantity) || 1)) : 1;
     const rawDiscountRatio = this.normalizeDiscount(item.discount_percent);
-    const discountRatio = section === 'annual_saas' && qty < 12 ? 0 : rawDiscountRatio;
+    const hasForcedSavedDiscount = this.hasSavedForcedDiscount(item);
+    const discountRatio = section === 'annual_saas' && qty < 12 && !hasForcedSavedDiscount ? 0 : rawDiscountRatio;
     const baseAmount = section === 'annual_saas' ? unit * licenseQty * (qty / 12) : unit * qty;
     const discountedUnitPrice = section === 'annual_saas' ? baseAmount * (1 - discountRatio) : unit * (1 - discountRatio);
-    return { ...item, quantity: qty, license_quantity: licenseQty, discount_percent: section === 'annual_saas' && qty < 12 ? 0 : item.discount_percent, discounted_unit_price: discountedUnitPrice, line_total: Math.max(0, baseAmount * (1 - discountRatio)) };
+    return { ...item, quantity: qty, license_quantity: licenseQty, discount_percent: section === 'annual_saas' && qty < 12 && !hasForcedSavedDiscount ? 0 : item.discount_percent, discounted_unit_price: discountedUnitPrice, line_total: Math.max(0, baseAmount * (1 - discountRatio)) };
   },
   canExportAgreements() {
     return Permissions.canExport('agreements');
@@ -2627,7 +2637,7 @@ const Agreements = {
       const licenseQuantity = isAnnualUserBased ? Math.max(1, Math.round(this.toNumberSafe(get('license_quantity')) || 1)) : 1;
       if (section === 'one_time_fee' && shouldAutoLinkOneTimeFees && !this.isCsHoursItem({ item_name: get('item_name') })) quantity = linkedOneTimeQuantity;
       let discountPercent = this.toNumberSafe(get('discount_percent'));
-      if (section === 'annual_saas' && quantity < 12) discountPercent = 0;
+      if (section === 'annual_saas' && quantity < 12 && !this.hasSavedForcedDiscount(baseItem)) discountPercent = 0;
       const unitPrice = this.toNumberSafe(get('unit_price'));
       const itemName = get('item_name');
       const locationName = get('location_name');
@@ -2986,13 +2996,14 @@ const Agreements = {
         ? `<td><input class="input" type="date" data-item-field="service_start_date" value="${U.escapeAttr(computed.service_start_date || '')}"${lockAttr} /></td>
       <td><input class="input readonly-field locked-field" type="date" data-item-field="service_end_date" value="${U.escapeAttr(computed.service_end_date || '')}" readonly aria-readonly="true"${lockAttr} /></td>`
         : '';
-      const annualDiscountLocked = section === 'annual_saas' && this.toNumberSafe(computed.quantity) < 12;
+      const annualHasSavedForcedDiscount = this.hasSavedForcedDiscount(rowDefaults);
+        const annualDiscountLocked = section === 'annual_saas' && this.toNumberSafe(computed.quantity) < 12 && !annualHasSavedForcedDiscount;
       const inCheckBasicCount = this.getInCheckBasicAnnualRowCountFromDom();
       const shouldAutoLinkOneTimeFees = inCheckBasicCount > 0;
       const oneTimeQuantityLocked = section === 'one_time_fee' && shouldAutoLinkOneTimeFees && !this.isCsHoursItem(computed);
       const discountLockAttr = annualDiscountLocked ? ' readonly aria-readonly="true" title="Discount is only available when License / Month is 12."' : '';
       const quantityLockAttr = oneTimeQuantityLocked ? ' readonly aria-readonly="true" title="Quantity is linked to the number of InCheck Basic Annual SaaS rows."' : '';
-      const discountCell = `<td><input class="input" data-item-field="discount_percent" type="number" min="0" max="100" step="0.01" value="${U.escapeAttr(annualDiscountLocked ? 0 : (computed.discount_percent ?? ''))}"${discountLockAttr}${lockAttr} /></td>`;
+      const discountCell = `<td><input class="input" data-item-field="discount_percent" type="number" min="0" max="100" step="0.01" value="${U.escapeAttr(computed.discount_percent ?? '')}"${discountLockAttr}${lockAttr} /></td>`;
       const hasUserBasedAnnualSaas = section === 'annual_saas' && (grouped.annual_saas || []).some(row => this.isAnnualSaasUserItem(row));
       const quantityCell = `<td><input class="input" data-item-field="quantity" type="number" step="0.01" min="1" ${section === 'annual_saas' ? 'max="12"' : ''} value="${U.escapeAttr(oneTimeQuantityLocked ? (computed.quantity || 1) : (computed.quantity ?? ''))}"${quantityLockAttr}${lockAttr} /></td>`;
       const licenseQtyCell = hasUserBasedAnnualSaas
