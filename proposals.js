@@ -1977,7 +1977,13 @@ const Proposals = {
     });
     const currency = String(proposalData.currency || 'USD').trim().toUpperCase();
     const normalizedStatus = this.normalizeProposalStatus(proposalData.status);
-    const showDraftWatermark = normalizedStatus === 'draft';
+    const watermarkText =
+      normalizedStatus === 'draft'
+        ? 'DRAFT'
+        : normalizedStatus === 'pending_approval'
+          ? 'PENDING APPROVAL'
+          : '';
+    const showStatusWatermark = Boolean(watermarkText);
     const providerCompanyName = this.providerContactDefaults.name;
     const providerAddress = this.providerContactDefaults.address;
     const money = value => this.formatMoneyWithCurrency(this.toNumberSafe(value), currency, false);
@@ -2264,7 +2270,7 @@ const Proposals = {
   </head>
   <body>
     <div class="proposal-preview-page proposal-document-page doc-sheet">
-      ${showDraftWatermark ? '<div class="draft-watermark" aria-hidden="true">DRAFT</div>' : ''}
+      ${showStatusWatermark ? `<div class="draft-watermark" aria-hidden="true">${U.escapeHtml(watermarkText)}</div>` : ''}
       <header class="doc-header">
         <section class="proposal-preview-header proposal-document-header">
           <div class="proposal-preview-header__logo proposal-document-header__logo proposal-preview-logo proposal-document-logo"><div data-incheck360-doc-logo-slot></div></div>
