@@ -486,6 +486,7 @@ const Agreements = {
   },
   resolveAgreementCustomerSignatory(agreement = {}, company = {}) {
     const savedName = String(
+      agreement.customer_signatory_Name ||
       agreement.customer_signatory_name ||
       agreement.customer_authorized_signatory_name ||
       agreement.customer_official_signatory_name ||
@@ -504,6 +505,8 @@ const Agreements = {
     const companyName = String(
       company.authorized_signatory_name ||
       company.authorizedSignatoryName ||
+      company.authorized_signatory_full_name ||
+      company.authorizedSignatoryFullName ||
       company.customer_authorized_signatory_name ||
       company.signatory_name ||
       ''
@@ -535,9 +538,24 @@ const Agreements = {
   },
   resolveCustomerSignatorySnapshot(record = {}, company = {}) {
     const locked = this.isSignedOrAcceptedDocument(record);
-    const snapshot = this.resolveAgreementCustomerSignatory(record, company);
-    if (locked && (snapshot.name || snapshot.title)) return snapshot;
-    return snapshot;
+    const savedName = String(
+      record.customer_signatory_Name ||
+      record.customer_signatory_name ||
+      record.customer_authorized_signatory_name ||
+      record.customer_official_signatory_name ||
+      record.authorized_signatory_name ||
+      ''
+    ).trim();
+    const savedTitle = String(
+      record.customer_signatory_title ||
+      record.customer_authorized_signatory_title ||
+      record.customer_official_signatory_title ||
+      record.authorized_signatory_title ||
+      ''
+    ).trim();
+    const companySigner = this.resolveCompanyAuthorizedSignatory(company);
+    if (locked && (savedName || savedTitle)) return { name: savedName, title: savedTitle };
+    return { name: savedName || companySigner.name, title: savedTitle || companySigner.title };
   },
   applyOfficialSignatoryDefaults(agreement = {}, company = null) {
     const next = agreement && typeof agreement === 'object' ? { ...agreement } : {};
@@ -912,7 +930,7 @@ const Agreements = {
     normalized.provider_contact_name = this.providerIdentityDefaults.contactName;
     normalized.provider_contact_mobile = this.providerIdentityDefaults.contactMobile;
     normalized.provider_contact_email = this.providerIdentityDefaults.contactEmail;
-    normalized.customer_official_signatory_name = String(normalized.customer_official_signatory_name || source.customerOfficialSignatoryName || normalized.customer_signatory_name || source.customerSignatoryName || '').trim();
+    normalized.customer_official_signatory_name = String(normalized.customer_official_signatory_name || source.customerOfficialSignatoryName || source.customer_signatory_Name || normalized.customer_signatory_name || source.customerSignatoryName || '').trim();
     normalized.customer_official_signatory_title = String(normalized.customer_official_signatory_title || source.customerOfficialSignatoryTitle || normalized.customer_signatory_title || source.customerSignatoryTitle || '').trim();
     normalized.customer_official_sign_date = this.normalizeDateInputValue(normalized.customer_official_sign_date || source.customerOfficialSignDate || normalized.customer_sign_date || source.customerSignDate || '');
     normalized.customer_signatory_name = normalized.customer_official_signatory_name;
@@ -3858,6 +3876,7 @@ const Agreements = {
     const customerSignatoryName = String(E.agreementFormCustomerSignatoryName?.value || '').trim();
     const customerSignatoryTitle = String(E.agreementFormCustomerSignatoryTitle?.value || '').trim();
     agreement.customer_signatory_name = customerSignatoryName;
+    agreement.customer_signatory_Name = customerSignatoryName;
     agreement.customer_authorized_signatory_name = customerSignatoryName;
     agreement.customer_official_signatory_name = customerSignatoryName;
     agreement.customer_signatory_title = customerSignatoryTitle;
@@ -3879,6 +3898,7 @@ const Agreements = {
       agreement.customer_official_signatory_title = customerSignatoryTitle;
     }
     agreement.customer_authorized_signatory_name = String(agreement.customer_signatory_name || agreement.customer_official_signatory_name || '').trim();
+    agreement.customer_signatory_Name = String(agreement.customer_signatory_name || agreement.customer_official_signatory_name || '').trim();
     agreement.customer_authorized_signatory_title = String(agreement.customer_signatory_title || agreement.customer_official_signatory_title || '').trim();
     this.normalizeAgreementSignatoryDateAliases(agreement);
     agreement.status = this.resolveAgreementStatus(agreement);

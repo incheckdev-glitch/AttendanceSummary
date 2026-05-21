@@ -1347,8 +1347,10 @@ const Proposals = {
   resolveCustomerSignatorySnapshot(record = {}, company = {}) {
     const locked = this.isSignedOrAcceptedDocument(record);
     const existingName = String(
+      record.customer_signatory_Name ||
       record.customer_signatory_name ||
       record.customer_authorized_signatory_name ||
+      record.customer_official_signatory_name ||
       record.authorized_signatory_name ||
       ''
     ).trim();
@@ -1371,6 +1373,7 @@ const Proposals = {
       customer_address: customerAddress,
       customerAddress: customerAddress,
       customer_signatory_name: signatorySnapshot.name || '',
+      customer_signatory_Name: signatorySnapshot.name || '',
       customerSignatoryName: signatorySnapshot.name || '',
       customer_signatory_title: signatorySnapshot.title || '',
       customerSignatoryTitle: signatorySnapshot.title || '',
