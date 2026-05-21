@@ -436,6 +436,28 @@ const ClientsService = {
 
     return ['annual', 'yearly', '12 month', '12-month', 'year', 'renewal'].some(token => text.includes(token));
   },
+  isAnnualSaasItem(item = {}) {
+    const section = String(item?.section || item?.item_section || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_');
+    return section === 'annual_saas';
+  },
+  isSupersededItem(item = {}) {
+    return item?.is_superseded === true
+      || String(item?.is_superseded).toLowerCase() === 'true'
+      || Boolean(item?.superseded_by_item_id || item?.supersededByItemId);
+  },
+  agreementHasCurrentAnnualSaasItems(agreement = {}) {
+    const items = Array.isArray(agreement?.items)
+      ? agreement.items
+      : Array.isArray(agreement?.agreement_items)
+        ? agreement.agreement_items
+        : Array.isArray(agreement?.line_items)
+          ? agreement.line_items
+          : [];
+    return items.some(item => this.isAnnualSaasItem(item) && !this.isSupersededItem(item));
+  },
   async fetchAgreementItemsForClients_(db) {
     // temporary analytics fallback - replace with SQL view/RPC aggregation
     return db
