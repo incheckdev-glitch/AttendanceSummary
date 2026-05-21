@@ -258,29 +258,44 @@ const Clients = {
       agreement.customer_contact_mobile
     ]);
   },
+  getClientCompanyId(client = {}) {
+    return String(
+      client.company_id ||
+      client.id ||
+      client.companyId ||
+      client.customer_company_id ||
+      ''
+    ).trim();
+  },
+  getAgreementCompanyId(agreement = {}) {
+    return String(
+      agreement.company_id ||
+      agreement.customer_company_id ||
+      agreement.client_company_id ||
+      agreement.companyId ||
+      agreement.customerCompanyId ||
+      ''
+    ).trim();
+  },
+  getClientLegalName(client = {}) {
+    return String(client.customer_legal_name || client.company_name || client.customer_name || client.client_name || client.name || '').trim();
+  },
+  getAgreementLegalName(agreement = {}) {
+    return String(agreement.customer_legal_name || agreement.company_name || agreement.customer_name || agreement.client_name || '').trim();
+  },
+  hasStrictClientOwnership(agreement = {}, client = {}) {
+    const clientCompanyId = this.getClientCompanyId(client);
+    const agreementCompanyId = this.getAgreementCompanyId(agreement);
+    if (clientCompanyId || agreementCompanyId) return Boolean(clientCompanyId && agreementCompanyId && String(agreementCompanyId) === String(clientCompanyId));
+    const agreementName = this.normalizeCompanyKey(this.getAgreementLegalName(agreement));
+    const clientName = this.normalizeCompanyKey(this.getClientLegalName(client));
+    return Boolean(agreementName && clientName && agreementName === clientName);
+  },
   agreementBelongsToClient(agreement = {}, client = {}) {
-    const agreementKeys = this.getAgreementKeys(agreement);
-    const clientKeys = this.getClientKeys(client);
-    return agreementKeys.some(agreementKey => clientKeys.some(clientKey => this.valuesMatch(agreementKey, clientKey)));
+    return this.hasStrictClientOwnership(agreement, client);
   },
   invoiceBelongsToClient(invoice = {}, client = {}, relatedAgreements = []) {
-    const clientKeys = this.getClientKeys(client);
-    const invoiceClientKeys = this.compactValues([
-      invoice.client_id,
-      invoice.customer_id,
-      invoice.company_id,
-      invoice.client_name,
-      invoice.customer_name,
-      invoice.company_name,
-      invoice.email,
-      invoice.client_email,
-      invoice.customer_contact_email,
-      invoice.customer_contact_mobile,
-      invoice.phone,
-      invoice.client_phone
-    ]);
-    const directMatch = invoiceClientKeys.some(invoiceKey => clientKeys.some(clientKey => this.valuesMatch(invoiceKey, clientKey)));
-    if (directMatch) return true;
+    if (this.hasStrictClientOwnership(invoice, client)) return true;
     return relatedAgreements.some(agreement =>
       this.valuesMatch(invoice.agreement_id, agreement.id) ||
       this.valuesMatch(invoice.agreement_id, agreement.agreement_id) ||
@@ -292,23 +307,7 @@ const Clients = {
     );
   },
   receiptBelongsToClient(receipt = {}, client = {}, relatedAgreements = [], relatedInvoices = []) {
-    const clientKeys = this.getClientKeys(client);
-    const receiptClientKeys = this.compactValues([
-      receipt.client_id,
-      receipt.customer_id,
-      receipt.company_id,
-      receipt.client_name,
-      receipt.customer_name,
-      receipt.company_name,
-      receipt.email,
-      receipt.client_email,
-      receipt.customer_contact_email,
-      receipt.customer_contact_mobile,
-      receipt.phone,
-      receipt.client_phone
-    ]);
-    const directMatch = receiptClientKeys.some(receiptKey => clientKeys.some(clientKey => this.valuesMatch(receiptKey, clientKey)));
-    if (directMatch) return true;
+    if (this.hasStrictClientOwnership(receipt, client)) return true;
     const invoiceMatch = relatedInvoices.some(invoice =>
       this.valuesMatch(receipt.invoice_id, invoice.id) ||
       this.valuesMatch(receipt.invoice_id, invoice.invoice_id) ||
@@ -794,7 +793,7 @@ const Clients = {
       if (agreementUuid && agreementUuid === sourceAgreementId) return true;
       if (agreementBusinessId && agreementBusinessId === sourceAgreementId) return true;
     }
-    return this.agreementBelongsToClient(agreement, client) || this.matchesClient_(agreement, client);
+    return this.agreementBelongsToClient(agreement, client);
   },
   listClientRelatedAgreements_(clientId) {
     const client = this.state.rows.find(row => row.client_id === clientId);
