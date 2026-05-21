@@ -557,32 +557,38 @@ const ClientsService = {
   },
 
   normalizeLocationKey(value = '') {
-    return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFKC')
+      .replace(/\s+/g, ' ');
   },
-  isSupersededRenewalItem(item = {}) {
-    const flag = item?.is_superseded;
-    return flag === true || String(flag || '').trim().toLowerCase() === 'true' || Boolean(item?.superseded_by_item_id || item?.supersededByItemId);
+  getLocationRowRankTime_(item = {}) {
+    const serviceEndAt = new Date(item?.service_end_date || item?.serviceEndDate || 0).getTime() || 0;
+    const updatedAt = new Date(item?.updated_at || item?.updatedAt || item?.agreement_date || item?.agreementDate || item?.signed_date || item?.customer_sign_date || item?.created_at || 0).getTime() || 0;
+    return { serviceEndAt, updatedAt };
   },
   buildUniqueCurrentLocationRows(items = []) {
     const map = new Map();
     for (const item of Array.isArray(items) ? items : []) {
-      if (!this.isAnnualSaasClientLocationItem(item)) continue;
-      if (this.isSupersededRenewalItem(item)) continue;
-      const invoiceStatus = this.normalizeText(item?.invoice_status || item?.invoiceStatus || '');
-      if (invoiceStatus === 'cancelled' || invoiceStatus === 'canceled') continue;
+      if (!this.isAnnualSaasItem(item)) continue;
+      if (this.isSupersededItem(item)) continue;
       const locationKey = this.normalizeLocationKey(item?.location_name || item?.locationName || item?.location || '');
       if (!locationKey) continue;
       const itemKey = this.normalizeLocationKey(item?.item_name || item?.itemName || item?.license || item?.module_name || item?.moduleName || '');
-      const clientKey = this.normalizeLocationKey(item?.client_id || item?.clientId || item?.company_id || item?.companyId || '');
-      const key = `${clientKey}::${locationKey}::${itemKey}`;
+      const key = `${locationKey}::${itemKey}`;
       const existing = map.get(key);
       if (!existing) {
         map.set(key, item);
         continue;
       }
-      const existingEnd = new Date(existing.service_end_date || existing.serviceEndDate || 0).getTime() || 0;
-      const itemEnd = new Date(item.service_end_date || item.serviceEndDate || 0).getTime() || 0;
-      if (itemEnd >= existingEnd) map.set(key, item);
+      const existingRank = this.getLocationRowRankTime_(existing);
+      const itemRank = this.getLocationRowRankTime_(item);
+      if (itemRank.serviceEndAt > existingRank.serviceEndAt) {
+        map.set(key, item);
+        continue;
+      }
+      if (itemRank.serviceEndAt === existingRank.serviceEndAt && itemRank.updatedAt >= existingRank.updatedAt) map.set(key, item);
     }
     return Array.from(map.values());
   },
