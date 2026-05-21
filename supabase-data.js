@@ -144,13 +144,22 @@
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   }
 
-  function getInvoicePaymentSchedulePlan(paymentTerm) {
-    const term = String(paymentTerm || '').trim().toLowerCase().replace(/\s+/g, '');
-    if (term === 'net7') return { count: 12, intervalMonths: 1, firstDueNetDays: 0, label: 'Monthly' };
-    if (term === 'net14') return { count: 4, intervalMonths: 3, firstDueNetDays: 0, label: 'Quarterly' };
-    if (term === 'net21') return { count: 2, intervalMonths: 6, firstDueNetDays: 0, label: 'Semi-Annual' };
-    if (term === 'net30') return { count: 1, intervalMonths: 12, firstDueNetDays: 0, label: 'Annual' };
-    return { count: 1, intervalMonths: 12, firstDueNetDays: 0, label: 'Annual' };
+  function getPaymentScheduleConfig(paymentTerm = '') {
+    const term = String(paymentTerm || '').trim().toLowerCase();
+
+    if (term === 'net 7' || term === 'monthly') {
+      return { label: 'Monthly', intervalMonths: 1, count: 12 };
+    }
+
+    if (term === 'net 14' || term === 'quarterly') {
+      return { label: 'Quarterly', intervalMonths: 3, count: 4 };
+    }
+
+    if (term === 'net 21' || term === 'semi-annually' || term === 'semi annually' || term === 'semiannually') {
+      return { label: 'Semi-Annually', intervalMonths: 6, count: 2 };
+    }
+
+    return { label: 'Annually', intervalMonths: 12, count: 1 };
   }
   function addMonthsToDateString(value = '', months = 0) {
     const source = String(value || '').trim();
@@ -175,8 +184,9 @@
   function buildInvoicePaymentScheduleRows(invoice = {}) {
     const invoiceId = String(invoice?.id || invoice?.invoice_uuid || '').trim();
     if (!invoiceId) throw new Error('Invoice UUID is required to build payment schedule.');
-    const plan = getInvoicePaymentSchedulePlan(invoice.payment_term || invoice.payment_terms);
-    const firstDueDate = String(invoice.due_date || invoice.dueDate || invoice.initial_due_date || invoice.initialDueDate || invoice.payment_start_date || invoice.issue_date || todayDateString()).slice(0, 10) || todayDateString();
+    const plan = getPaymentScheduleConfig(invoice.payment_term || invoice.payment_terms);
+    const firstDueDate = String(invoice.due_date || invoice.dueDate || invoice.initial_due_date || invoice.initialDueDate || '').trim().slice(0, 10);
+    if (!firstDueDate) return [];
     const totalCents = Math.round(getInvoiceTotalForSchedule(invoice) * 100);
     const baseCents = plan.count > 0 ? Math.floor(totalCents / plan.count) : totalCents;
     let allocated = 0;

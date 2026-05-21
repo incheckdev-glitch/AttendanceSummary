@@ -665,23 +665,30 @@ const Invoices = {
       account_setup_billing_mode: this.normalizeSetupBillingMode(source.account_setup_billing_mode || this.state.accountSetupBillingMode)
     };
   },
-  getInvoiceInitialDueDate(invoice = {}) {
-    const dueDate = String(invoice.due_date || invoice.dueDate || '').trim();
-    return this.normalizeDateInputValue(dueDate) || dueDate || '';
+  getInvoiceScheduleStartDate(invoice = {}) {
+    return String(
+      invoice.due_date ||
+      invoice.dueDate ||
+      invoice.initial_due_date ||
+      invoice.initialDueDate ||
+      ''
+    ).trim();
   },
-  getPaymentScheduleConfig(paymentTerm = '', items = []) {
+  getPaymentScheduleConfig(paymentTerm = '') {
     const term = String(paymentTerm || '').trim().toLowerCase();
+
     if (term === 'net 7' || term === 'monthly') {
-      const annualItems = Array.isArray(items) ? items : [];
-      const licenseMonths = annualItems
-        .map(item => this.toNumberSafe(item.license_months || item.licenseMonths || item.term_months || item.termMonths || item.service_months || item.serviceMonths))
-        .filter(value => value > 0);
-      const derivedCount = licenseMonths.length ? Math.min(...licenseMonths) : 12;
-      const count = derivedCount > 0 && derivedCount < 12 ? Math.floor(derivedCount) : 12;
-      return { label: 'Monthly', intervalMonths: 1, count: count || 12 };
+      return { label: 'Monthly', intervalMonths: 1, count: 12 };
     }
-    if (term === 'net 14' || term === 'quarterly') return { label: 'Quarterly', intervalMonths: 3, count: 4 };
-    if (term === 'net 21' || term === 'semi-annually' || term === 'semi annually') return { label: 'Semi-Annually', intervalMonths: 6, count: 2 };
+
+    if (term === 'net 14' || term === 'quarterly') {
+      return { label: 'Quarterly', intervalMonths: 3, count: 4 };
+    }
+
+    if (term === 'net 21' || term === 'semi-annually' || term === 'semi annually' || term === 'semiannually') {
+      return { label: 'Semi-Annually', intervalMonths: 6, count: 2 };
+    }
+
     return { label: 'Annually', intervalMonths: 12, count: 1 };
   },
   addMonthsPreserveDay(dateValue, monthsToAdd) {
@@ -694,17 +701,36 @@ const Invoices = {
     return result.toISOString().slice(0, 10);
   },
   buildInvoicePaymentSchedule(invoice = {}, items = [], agreement = {}) {
-    const initialDueDate = this.getInvoiceInitialDueDate(invoice, items, agreement);
-    const paymentTerm = invoice.payment_term || invoice.payment_terms || agreement.payment_term || agreement.payment_terms || 'Net 30';
-    const config = this.getPaymentScheduleConfig(paymentTerm, items);
-    const total = this.toNumberSafe(invoice.grand_total || invoice.grand_tota || invoice.total_amount || invoice.total || invoice.invoice_total || 0);
-    const rowsCount = Math.max(1, Number(config.count || 1));
-    const baseAmount = Math.floor((total / rowsCount) * 100) / 100;
+    const startDate = this.getInvoiceScheduleStartDate(invoice);
+
+    if (!startDate) return [];
+
+    const config = this.getPaymentScheduleConfig(
+      invoice.payment_term ||
+      invoice.payment_terms ||
+      agreement.payment_term ||
+      agreement.payment_terms ||
+      'Net 30'
+    );
+
+    const total = this.toNumberSafe(
+      invoice.grand_total ||
+      invoice.grand_tota ||
+      invoice.total_amount ||
+      invoice.total ||
+      0
+    );
+
+    const count = Math.max(1, config.count);
+    const baseAmount = Math.floor((total / count) * 100) / 100;
     let remaining = total;
-    return Array.from({ length: rowsCount }).map((_, index) => {
-      const dueDate = this.addMonthsPreserveDay(initialDueDate, index * config.intervalMonths);
-      const scheduledAmount = index === rowsCount - 1 ? remaining : baseAmount;
+
+    return Array.from({ length: count }).map((_, index) => {
+      const dueDate = this.addMonthsPreserveDay(startDate, index * config.intervalMonths);
+      const scheduledAmount = index === count - 1 ? remaining : baseAmount;
+
       remaining = Number((remaining - scheduledAmount).toFixed(2));
+
       return this.normalizeScheduleRow({
         schedule_no: index + 1,
         installment_no: index + 1,
@@ -712,17 +738,9 @@ const Invoices = {
         scheduled_amount: Number(scheduledAmount.toFixed(2)),
         paid_amount: 0,
         balance_due: Number(scheduledAmount.toFixed(2)),
-        status: 'scheduled'
+        status: this.isDateBeforeToday(dueDate) ? 'overdue' : 'scheduled'
       });
     });
-  },
-  getInvoicePaymentSchedulePlan(paymentTerm) {
-    const term = String(paymentTerm || '').trim().toLowerCase().replace(/\s+/g, '');
-    if (term === 'net7') return { count: 12, intervalMonths: 1, firstDueNetDays: 7, label: 'Monthly' };
-    if (term === 'net14') return { count: 4, intervalMonths: 3, firstDueNetDays: 14, label: 'Quarterly' };
-    if (term === 'net21') return { count: 2, intervalMonths: 6, firstDueNetDays: 21, label: 'Semi-Annual' };
-    if (term === 'net30') return { count: 1, intervalMonths: 12, firstDueNetDays: 30, label: 'Annual' };
-    return { count: 1, intervalMonths: 12, firstDueNetDays: 30, label: 'Annual' };
   },
   getInvoiceScheduleCacheKey(invoiceId) {
     return String(invoiceId || '').trim();
