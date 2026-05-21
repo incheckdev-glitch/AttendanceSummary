@@ -665,33 +665,9 @@ const Invoices = {
       account_setup_billing_mode: this.normalizeSetupBillingMode(source.account_setup_billing_mode || this.state.accountSetupBillingMode)
     };
   },
-  getInvoiceInitialDueDate(invoice = {}, items = [], agreement = {}) {
-    const direct = String(
-      invoice.initial_due_date ||
-      invoice.initialDueDate ||
-      invoice.payment_start_date ||
-      ''
-    ).trim();
-    if (direct) return this.normalizeDateInputValue(direct) || direct;
-
-    const annualItems = (Array.isArray(items) ? items : []).filter(item => {
-      const section = String(item.section || item.item_section || '').toLowerCase();
-      return section === 'annual_saas' || section === 'annual saas' || section.includes('annual');
-    });
-    const serviceStarts = annualItems
-      .map(item => item.service_start_date || item.serviceStartDate || item.start_service_date || item.startServiceDate)
-      .filter(Boolean)
-      .map(value => this.normalizeDateInputValue(value) || String(value).trim())
-      .sort((a, b) => new Date(a) - new Date(b));
-    if (serviceStarts[0]) return serviceStarts[0];
-
-    return this.normalizeDateInputValue(
-      agreement.service_start_date ||
-      agreement.serviceStartDate ||
-      invoice.due_date ||
-      invoice.dueDate ||
-      ''
-    ) || '';
+  getInvoiceInitialDueDate(invoice = {}) {
+    const dueDate = String(invoice.due_date || invoice.dueDate || '').trim();
+    return this.normalizeDateInputValue(dueDate) || dueDate || '';
   },
   getPaymentScheduleConfig(paymentTerm = '', items = []) {
     const term = String(paymentTerm || '').trim().toLowerCase();
