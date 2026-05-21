@@ -1413,15 +1413,16 @@ const Agreements = {
   },
 
   buildContactPersonName(contact = {}) {
-    const first = String(contact.first_name || contact.firstName || '').trim();
-    const last = String(contact.last_name || contact.lastName || '').trim();
+    const c = contact && typeof contact === 'object' ? contact : {};
+    const first = String(c.first_name || c.firstName || '').trim();
+    const last = String(c.last_name || c.lastName || '').trim();
     const name = [first, last].filter(Boolean).join(' ').trim();
     if (name) return name;
     const stripEmailSuffix = value => String(value || '').trim().replace(/\s+[—-]\s+\S+@\S+$/u, '').trim();
-    return stripEmailSuffix(contact.full_name || contact.fullName)
-      || stripEmailSuffix(contact.name)
-      || stripEmailSuffix(contact.contact_name || contact.contactName)
-      || String(contact.email || '').trim();
+    return stripEmailSuffix(c.full_name || c.fullName)
+      || stripEmailSuffix(c.name)
+      || stripEmailSuffix(c.contact_name || c.contactName)
+      || String(c.email || '').trim();
   },
   getContactPosition(contact = {}) {
     return String(contact.job_title || contact.jobTitle || contact.position || contact.title || '').trim();

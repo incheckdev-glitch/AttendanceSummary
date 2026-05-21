@@ -152,10 +152,11 @@ const Clients = {
     ).trim();
   },
   buildContactPersonName(contact = {}) {
-    const first = String(contact.first_name || contact.firstName || '').trim();
-    const last = String(contact.last_name || contact.lastName || '').trim();
+    const c = contact && typeof contact === 'object' ? contact : {};
+    const first = String(c.first_name || c.firstName || '').trim();
+    const last = String(c.last_name || c.lastName || '').trim();
     return [first, last].filter(Boolean).join(' ').trim() ||
-      String(contact.contact_name || contact.contactName || contact.full_name || contact.fullName || '').trim();
+      String(c.contact_name || c.contactName || c.full_name || c.fullName || '').trim();
   },
   normalizeMatchValue(value) {
     return String(value || '')

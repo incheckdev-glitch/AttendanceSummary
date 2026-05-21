@@ -303,14 +303,15 @@
     return str(company.legal_name || company.company_name || company.company_id || 'Unnamed company');
   }
   function displayContact(contact = {}, { includeEmail = false } = {}) {
-    const first = str(contact.first_name);
-    const last = str(contact.last_name);
+    const c = contact && typeof contact === 'object' ? contact : {};
+    const first = str(c.first_name);
+    const last = str(c.last_name);
     const firstLast = str([first, last].filter(Boolean).join(' '));
     const stripEmailSuffix = value => str(value).replace(/\s+[—-]\s+\S+@\S+$/u, '').trim();
-    const full = stripEmailSuffix(contact.full_name || contact.fullName);
-    const contactName = stripEmailSuffix(contact.contact_name || contact.contactName || contact.name);
-    const base = firstLast || full || contactName || str(contact.email) || 'Unnamed contact';
-    if (includeEmail && str(contact.email) && normalizeCompare(base) !== normalizeCompare(contact.email)) return `${base} — ${str(contact.email)}`;
+    const full = stripEmailSuffix(c.full_name || c.fullName);
+    const contactName = stripEmailSuffix(c.contact_name || c.contactName || c.name);
+    const base = firstLast || full || contactName || str(c.email) || 'Unnamed contact';
+    if (includeEmail && str(c.email) && normalizeCompare(base) !== normalizeCompare(c.email)) return `${base} — ${str(c.email)}`;
     return base;
   }
   function setValue(id, value, { readonly = true } = {}) {
