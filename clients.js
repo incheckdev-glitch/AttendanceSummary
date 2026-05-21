@@ -1015,6 +1015,51 @@ const Clients = {
     if (!text) return false;
     return !['one_time_fee', 'one_time', 'one time', 'one-time', 'setup', 'implementation', 'onboarding'].some(token => text.includes(token));
   },
+
+  normalizeLocationKey(value = '') {
+    return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  },
+  isAnnualSaasItem(item = {}) {
+    const section = String(item?.section || item?.item_section || item?.item_type || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_');
+    return section === 'annual_saas';
+  },
+  isSupersededRenewalItem(item = {}) {
+    const flag = item?.is_superseded;
+    return flag === true || String(flag || '').trim().toLowerCase() === 'true' || Boolean(item?.superseded_by_item_id || item?.supersededByItemId);
+  },
+  compareLocationRowsForCurrent_(candidate = {}, existing = {}) {
+    const candidateSuperseded = this.isSupersededRenewalItem(candidate);
+    const existingSuperseded = this.isSupersededRenewalItem(existing);
+    if (candidateSuperseded !== existingSuperseded) return existingSuperseded ? 1 : -1;
+
+    const endAt = row => new Date(String(row?.service_end_date || row?.serviceEndDate || '') || 0).getTime() || 0;
+    const cEnd = endAt(candidate);
+    const eEnd = endAt(existing);
+    if (cEnd !== eEnd) return cEnd - eEnd;
+
+    const agreementAt = row => new Date(String(row?.agreement_date || row?.agreementDate || row?.signed_date || row?.customer_sign_date || row?.created_at || '') || 0).getTime() || 0;
+    return agreementAt(candidate) - agreementAt(existing);
+  },
+  buildUniqueCurrentLocationRows(items = []) {
+    const map = new Map();
+    for (const item of Array.isArray(items) ? items : []) {
+      if (!this.isAnnualSaasItem(item)) continue;
+      if (this.isSupersededRenewalItem(item)) continue;
+      const invoiceStatus = this.normalizeText(item?.invoice_status || item?.invoiceStatus || '');
+      if (invoiceStatus === 'cancelled' || invoiceStatus === 'canceled') continue;
+      const locationKey = this.normalizeLocationKey(item?.location_name || item?.locationName || item?.location || '');
+      if (!locationKey) continue;
+      const itemKey = this.normalizeLocationKey(item?.item_name || item?.itemName || item?.license || item?.module_name || item?.moduleName || '');
+      const clientKey = this.normalizeLocationKey(item?.client_id || item?.clientId || item?.company_id || item?.companyId || '');
+      const key = `${clientKey}::${locationKey}::${itemKey}`;
+      const existing = map.get(key);
+      if (!existing || this.compareLocationRowsForCurrent_(item, existing) >= 0) map.set(key, item);
+    }
+    return Array.from(map.values());
+  },
   isActiveAnnualSaasLocationItem(item = {}) {
     item = item && typeof item === 'object' ? item : {};
     const startValue = String(item.service_start_date || item.serviceStartDate || '').trim();
@@ -1071,11 +1116,12 @@ const Clients = {
     });
     const signedAgreements = agreements.filter(item => this.isSignedAgreement(item));
     const locationItems = this.listClientAgreementLocationItems_(clientId);
-    const activeLocationItems = locationItems.filter(item => this.isActiveAnnualSaasLocationItem(item));
+    const currentLocationRows = this.buildUniqueCurrentLocationRows(locationItems);
+    const activeLocationItems = currentLocationRows.filter(item => this.isActiveAnnualSaasLocationItem(item));
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const totalLocations = locationItems.length;
+    const totalLocations = currentLocationRows.length;
     const activeLocations = activeLocationItems.length;
 
     const totalAgreementValue = agreements.reduce((sum, item) => sum + this.toNumberSafe(item.grand_total), 0);
@@ -1091,7 +1137,7 @@ const Clients = {
     const latestInvoiceDate = this.maxDate(...invoices.map(item => item.issued_date || item.created_at || item.updated_at));
     const latestReceiptDate = this.maxDate(...receipts.map(item => item.receipt_date || item.created_at || item.updated_at));
 
-    const renewalCandidates = locationItems
+    const renewalCandidates = currentLocationRows
       .map(item => String(item.service_end_date || item.serviceEndDate || '').trim())
       .filter(Boolean)
       .map(value => new Date(value))
