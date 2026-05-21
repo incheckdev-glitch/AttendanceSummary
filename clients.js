@@ -259,21 +259,26 @@ const Clients = {
     ]);
   },
   getClientCompanyId(client = {}) {
+    const source = client && typeof client === 'object' ? client : {};
     return String(
-      client.company_id ||
-      client.id ||
-      client.companyId ||
-      client.customer_company_id ||
+      source.company_id ||
+      source.companyId ||
+      source.customer_company_id ||
+      source.customerCompanyId ||
+      source.client_company_id ||
+      source.clientCompanyId ||
       ''
     ).trim();
   },
   getAgreementCompanyId(agreement = {}) {
+    const source = agreement && typeof agreement === 'object' ? agreement : {};
     return String(
-      agreement.company_id ||
-      agreement.customer_company_id ||
-      agreement.client_company_id ||
-      agreement.companyId ||
-      agreement.customerCompanyId ||
+      source.company_id ||
+      source.companyId ||
+      source.customer_company_id ||
+      source.customerCompanyId ||
+      source.client_company_id ||
+      source.clientCompanyId ||
       ''
     ).trim();
   },
@@ -335,9 +340,11 @@ const Clients = {
     return String(value || '')
       .trim()
       .toLowerCase()
+      .normalize('NFKC')
+      .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
       .replace(/s\.?a\.?l\.?/gi, 'sal')
-      .replace(/[^a-z0-9]+/g, ' ')
-      .replace(/\b(inc|llc|ltd|co|corp|corporation|company|the)\b/g, ' ')
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .replace(/\b(inc|llc|ltd|co|corp|corporation|company|the)\b/gi, ' ')
       .replace(/\s+/g, ' ')
       .trim();
   },
@@ -393,6 +400,9 @@ const Clients = {
       id: String(raw.id || '').trim(),
       client_uuid: String(raw.client_uuid || raw.clientUuid || raw.id || '').trim(),
       client_id: String(raw.client_id || raw.clientId || raw.id || '').trim(),
+      company_id: String(raw.company_id || raw.companyId || '').trim(),
+      customer_company_id: String(raw.customer_company_id || raw.customerCompanyId || '').trim(),
+      client_company_id: String(raw.client_company_id || raw.clientCompanyId || '').trim(),
       client_code: String(raw.client_code || raw.clientCode || '').trim(),
       customer_name: customerName,
       customer_legal_name: legalName,
@@ -434,6 +444,8 @@ const Clients = {
       client_uuid: String(raw.client_uuid || raw.clientUuid || '').trim(),
       customer_id: String(raw.customer_id || raw.customerId || '').trim(),
       company_id: String(raw.company_id || raw.companyId || '').trim(),
+      customer_company_id: String(raw.customer_company_id || raw.customerCompanyId || '').trim(),
+      client_company_id: String(raw.client_company_id || raw.clientCompanyId || '').trim(),
       client_name: String(raw.client_name || raw.clientName || '').trim(),
       company_name: String(raw.company_name || raw.companyName || '').trim(),
       customer_name: String(raw.customer_name || raw.customerName || '').trim(),
@@ -504,6 +516,8 @@ const Clients = {
       client_uuid: String(raw.client_uuid || raw.clientUuid || '').trim(),
       customer_id: String(raw.customer_id || raw.customerId || '').trim(),
       company_id: String(raw.company_id || raw.companyId || '').trim(),
+      customer_company_id: String(raw.customer_company_id || raw.customerCompanyId || '').trim(),
+      client_company_id: String(raw.client_company_id || raw.clientCompanyId || '').trim(),
       client_name: String(raw.client_name || raw.clientName || '').trim(),
       company_name: String(raw.company_name || raw.companyName || '').trim(),
       customer_name: String(raw.customer_name || raw.customerName || '').trim(),
@@ -543,6 +557,8 @@ const Clients = {
       client_uuid: String(raw.client_uuid || raw.clientUuid || '').trim(),
       customer_id: String(raw.customer_id || raw.customerId || '').trim(),
       company_id: String(raw.company_id || raw.companyId || '').trim(),
+      customer_company_id: String(raw.customer_company_id || raw.customerCompanyId || '').trim(),
+      client_company_id: String(raw.client_company_id || raw.clientCompanyId || '').trim(),
       client_name: String(raw.client_name || raw.clientName || '').trim(),
       company_name: String(raw.company_name || raw.companyName || '').trim(),
       customer_name: String(raw.customer_name || raw.customerName || '').trim(),
@@ -786,14 +802,17 @@ const Clients = {
   matchesClientAgreement_(agreement = {}, client = {}) {
     agreement = agreement && typeof agreement === 'object' ? agreement : {};
     client = client && typeof client === 'object' ? client : {};
+    if (this.agreementBelongsToClient(agreement, client)) return true;
     const sourceAgreementId = String(client.source_agreement_id || '').trim();
-    if (sourceAgreementId) {
-      const agreementUuid = String(agreement.id || '').trim();
-      const agreementBusinessId = String(agreement.agreement_id || '').trim();
-      if (agreementUuid && agreementUuid === sourceAgreementId) return true;
-      if (agreementBusinessId && agreementBusinessId === sourceAgreementId) return true;
-    }
-    return this.agreementBelongsToClient(agreement, client);
+    if (!sourceAgreementId) return false;
+    const agreementKeys = [agreement.id, agreement.agreement_id, agreement.agreement_number]
+      .map(value => String(value || '').trim())
+      .filter(Boolean);
+    if (!agreementKeys.includes(sourceAgreementId)) return false;
+    const clientCompanyId = this.getClientCompanyId(client);
+    const agreementCompanyId = this.getAgreementCompanyId(agreement);
+    if (clientCompanyId && agreementCompanyId) return clientCompanyId === agreementCompanyId;
+    return true;
   },
   listClientRelatedAgreements_(clientId) {
     const client = this.state.rows.find(row => row.client_id === clientId);
@@ -931,6 +950,7 @@ const Clients = {
     const created = this.normalizeClient({
       client_id: `virtual-${key || Date.now()}`,
       customer_name: fallbackName,
+      company_id: String(agreement.company_id || agreement.customer_company_id || agreement.client_company_id || '').trim(),
       customer_legal_name: String(agreement.customer_legal_name || '').trim(),
       normalized_company_key: key,
       status: 'Active',

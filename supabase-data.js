@@ -146,11 +146,11 @@
 
   function getInvoicePaymentSchedulePlan(paymentTerm) {
     const term = String(paymentTerm || '').trim().toLowerCase().replace(/\s+/g, '');
-    if (term === 'net7') return { count: 12, intervalMonths: 1, firstDueNetDays: 7, label: 'Monthly' };
-    if (term === 'net14') return { count: 4, intervalMonths: 3, firstDueNetDays: 14, label: 'Quarterly' };
-    if (term === 'net21') return { count: 2, intervalMonths: 6, firstDueNetDays: 21, label: 'Semi-Annual' };
-    if (term === 'net30') return { count: 1, intervalMonths: 12, firstDueNetDays: 30, label: 'Annual' };
-    return { count: 1, intervalMonths: 12, firstDueNetDays: 30, label: 'Annual' };
+    if (term === 'net7') return { count: 12, intervalMonths: 1, firstDueNetDays: 0, label: 'Monthly' };
+    if (term === 'net14') return { count: 4, intervalMonths: 3, firstDueNetDays: 0, label: 'Quarterly' };
+    if (term === 'net21') return { count: 2, intervalMonths: 6, firstDueNetDays: 0, label: 'Semi-Annual' };
+    if (term === 'net30') return { count: 1, intervalMonths: 12, firstDueNetDays: 0, label: 'Annual' };
+    return { count: 1, intervalMonths: 12, firstDueNetDays: 0, label: 'Annual' };
   }
   function addMonthsToDateString(value = '', months = 0) {
     const source = String(value || '').trim();
@@ -176,10 +176,9 @@
     const invoiceId = String(invoice?.id || invoice?.invoice_uuid || '').trim();
     if (!invoiceId) throw new Error('Invoice UUID is required to build payment schedule.');
     const plan = getInvoicePaymentSchedulePlan(invoice.payment_term || invoice.payment_terms);
-    const baseDate = String(invoice.invoice_date || invoice.issue_date || todayDateString()).slice(0, 10);
-    const firstDueDate = addDaysToDateString(baseDate, plan.firstDueNetDays) || todayDateString();
+    const firstDueDate = String(invoice.due_date || invoice.dueDate || invoice.initial_due_date || invoice.initialDueDate || invoice.payment_start_date || invoice.issue_date || todayDateString()).slice(0, 10) || todayDateString();
     const totalCents = Math.round(getInvoiceTotalForSchedule(invoice) * 100);
-    const baseCents = plan.count > 0 ? Math.round(totalCents / plan.count) : totalCents;
+    const baseCents = plan.count > 0 ? Math.floor(totalCents / plan.count) : totalCents;
     let allocated = 0;
     const today = todayDateString();
     return Array.from({ length: plan.count }, (_, index) => {
@@ -214,16 +213,9 @@
   async function createInvoicePaymentScheduleRows(client, invoiceId, force = false) {
     const id = String(invoiceId || '').trim();
     if (!isUuid(id)) throw new Error('Valid invoice UUID is required to create payment schedule.');
-    try {
-      const { data, error } = await client.rpc('create_invoice_payment_schedule', { p_invoice_id: id, p_force: force === true });
-      if (!error) return data || await listInvoicePaymentScheduleRows(client, id);
-      console.warn('[invoice_payment_schedule] RPC create failed; falling back to client insert', error);
-    } catch (error) {
-      console.warn('[invoice_payment_schedule] RPC create unavailable; falling back to client insert', error);
-    }
     const existing = await listInvoicePaymentScheduleRows(client, id).catch(() => []);
     if (existing.length && !force) return existing;
-    if (force && existing.length) {
+    if (existing.length) {
       const { error: deleteError } = await client.from('invoice_payment_schedule').delete().eq('invoice_id', id);
       if (deleteError) throw friendlyError('Unable to replace invoice payment schedule', deleteError);
     }
@@ -238,15 +230,9 @@
   async function recalculateInvoicePaymentScheduleRows(client, invoiceId) {
     const id = String(invoiceId || '').trim();
     if (!isUuid(id)) throw new Error('Valid invoice UUID is required to recalculate payment schedule.');
-    try {
-      const { data, error } = await client.rpc('recalculate_invoice_payment_schedule', { p_invoice_id: id });
-      if (!error) return data || await listInvoicePaymentScheduleRows(client, id);
-      console.warn('[invoice_payment_schedule] RPC recalculate failed; falling back to client allocation', error);
-    } catch (error) {
-      console.warn('[invoice_payment_schedule] RPC recalculate unavailable; falling back to client allocation', error);
-    }
-    let schedule = await listInvoicePaymentScheduleRows(client, id).catch(() => []);
-    if (!schedule.length) schedule = await createInvoicePaymentScheduleRows(client, id, false);
+    // Rebuild the schedule locally so Net 7/14/21/30 does not shift the first date.
+    // Row 1 must equal invoices.due_date exactly; the payment term only controls later intervals.
+    const schedule = await createInvoicePaymentScheduleRows(client, id, true);
     const { data: receipts, error: receiptsError } = await client
       .from('receipts')
       .select('id,receipt_id,amount_received,received_amount,paid_now,amount_paid,status,receipt_status,payment_state')

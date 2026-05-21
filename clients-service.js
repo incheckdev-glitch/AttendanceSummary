@@ -1,6 +1,6 @@
 const ClientsService = {
   CLIENT_COLUMNS: new Set([
-    'client_id','client_name','company_name','primary_email','primary_phone','billing_frequency','payment_term',
+    'client_id','client_name','company_name','company_id','primary_email','primary_phone','billing_frequency','payment_term',
     'status','source_agreement_id','total_agreements','total_locations','total_value','total_paid','total_due','created_by','updated_by'
   ]),
   AGREEMENT_SELECT_COLUMNS: '*',
@@ -157,21 +157,26 @@ const ClientsService = {
     ]);
   },
   getClientCompanyId(client = {}) {
+    const source = client && typeof client === 'object' ? client : {};
     return String(
-      client.company_id ||
-      client.id ||
-      client.companyId ||
-      client.customer_company_id ||
+      source.company_id ||
+      source.companyId ||
+      source.customer_company_id ||
+      source.customerCompanyId ||
+      source.client_company_id ||
+      source.clientCompanyId ||
       ''
     ).trim();
   },
   getAgreementCompanyId(agreement = {}) {
+    const source = agreement && typeof agreement === 'object' ? agreement : {};
     return String(
-      agreement.company_id ||
-      agreement.customer_company_id ||
-      agreement.client_company_id ||
-      agreement.companyId ||
-      agreement.customerCompanyId ||
+      source.company_id ||
+      source.companyId ||
+      source.customer_company_id ||
+      source.customerCompanyId ||
+      source.client_company_id ||
+      source.clientCompanyId ||
       ''
     ).trim();
   },
@@ -225,9 +230,11 @@ const ClientsService = {
     return String(value || '')
       .trim()
       .toLowerCase()
+      .normalize('NFKC')
+      .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
       .replace(/s\.?a\.?l\.?/gi, 'sal')
-      .replace(/[^a-z0-9]+/g, ' ')
-      .replace(/\b(inc|llc|ltd|co|corp|corporation|company|the)\b/g, ' ')
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .replace(/\b(inc|llc|ltd|co|corp|corporation|company|the)\b/gi, ' ')
       .replace(/\s+/g, ' ')
       .trim();
   },
@@ -239,8 +246,12 @@ const ClientsService = {
       ...row,
       id: String(row.id || '').trim(),
       client_id: String(row.client_id || '').trim(),
+      company_id: String(row.company_id || row.companyId || '').trim(),
+      client_company_id: String(row.client_company_id || row.clientCompanyId || '').trim(),
+      customer_company_id: String(row.customer_company_id || row.customerCompanyId || '').trim(),
       client_name: clientName,
       company_name: companyName,
+      company_id: String(agreement.company_id || agreement.customer_company_id || agreement.client_company_id || '').trim(),
       primary_email: String(row.primary_email || '').trim(),
       primary_phone: String(row.primary_phone || '').trim(),
       billing_frequency: String(row.billing_frequency || '').trim(),
@@ -263,6 +274,10 @@ const ClientsService = {
       id: String(row.id || '').trim(),
       agreement_id: String(row.agreement_id || '').trim(),
       agreement_number: String(row.agreement_number || '').trim(),
+      company_id: String(row.company_id || row.companyId || '').trim(),
+      customer_company_id: String(row.customer_company_id || row.customerCompanyId || '').trim(),
+      client_company_id: String(row.client_company_id || row.clientCompanyId || '').trim(),
+      company_name: String(row.company_name || '').trim(),
       client_name: String(row.client_name || row.customer_name || row.customer_legal_name || '').trim(),
       client_email: String(row.client_email || row.customer_contact_email || '').trim(),
       client_phone: String(row.client_phone || row.customer_contact_mobile || '').trim(),
@@ -271,9 +286,10 @@ const ClientsService = {
       customer_contact_email: String(row.customer_contact_email || '').trim(),
       customer_contact_mobile: String(row.customer_contact_mobile || '').trim(),
       status: String(row.status || '').trim(),
-      grand_total: this.toNumber(row.grand_total),
+      grand_total: this.toNumber(row.grand_total ?? row.grand_tota ?? row.total_amount ?? row.total),
       currency: String(row.currency || '').trim() || 'USD',
       updated_at: String(row.updated_at || '').trim(),
+      created_at: String(row.created_at || '').trim(),
       service_start_date: String(row.service_start_date || '').trim(),
       service_end_date: String(row.service_end_date || '').trim(),
       agreement_date: String(row.agreement_date || '').trim(),
@@ -290,6 +306,7 @@ const ClientsService = {
       client_id: input.client_id || input.clientId,
       client_name: input.client_name || input.clientName || input.customer_name || input.customerName,
       company_name: input.company_name || input.companyName || input.customer_legal_name || input.customerLegalName,
+      company_id: input.company_id || input.companyId || input.customer_company_id || input.customerCompanyId || input.client_company_id || input.clientCompanyId,
       primary_email: input.primary_email || input.primaryEmail || input.primary_contact_email || input.primaryContactEmail,
       primary_phone: input.primary_phone || input.primaryPhone || input.phone,
       billing_frequency: input.billing_frequency || input.billingFrequency,
@@ -310,7 +327,7 @@ const ClientsService = {
     const userId = this.getCurrentUserId();
     if (includeCreatedBy && userId) cleaned.created_by = userId;
     if (userId) cleaned.updated_by = userId;
-    ['source_agreement_id', 'created_by', 'updated_by'].forEach(key => {
+    ['company_id', 'source_agreement_id', 'created_by', 'updated_by'].forEach(key => {
       if (!Object.prototype.hasOwnProperty.call(cleaned, key)) return;
       const normalized = String(cleaned[key] || '').trim();
       if (!normalized || !this.isUuid(normalized)) delete cleaned[key];
@@ -319,15 +336,37 @@ const ClientsService = {
     return cleaned;
   },
   attachAgreementItems(agreements = [], agreementItems = []) {
-    const byAgreementId = new Map();
+    const byKey = new Map();
+    const addKey = (key, item) => {
+      const normalized = String(key || '').trim();
+      if (!normalized) return;
+      if (!byKey.has(normalized)) byKey.set(normalized, []);
+      byKey.get(normalized).push(item);
+    };
     agreementItems.forEach(item => {
-      const key = String(item.agreement_id || '').trim();
-      if (!key) return;
-      if (!byAgreementId.has(key)) byAgreementId.set(key, []);
-      byAgreementId.get(key).push(item);
+      [
+        item.agreement_id,
+        item.agreement_number,
+        item.parent_agreement_id,
+        item.parent_agreement_number,
+        item.source_agreement_id,
+        item.source_agreement_number
+      ].forEach(key => addKey(key, item));
     });
     return agreements.map(agreement => {
-      const items = byAgreementId.get(String(agreement.id || '').trim()) || [];
+      const keys = [agreement.id, agreement.agreement_id, agreement.agreement_number]
+        .map(value => String(value || '').trim())
+        .filter(Boolean);
+      const seen = new Set();
+      const items = [];
+      keys.forEach(key => {
+        (byKey.get(key) || []).forEach(item => {
+          const itemKey = String(item.id || `${item.agreement_id || ''}:${item.line_no || ''}:${item.location_name || ''}:${item.item_name || ''}`).trim();
+          if (seen.has(itemKey)) return;
+          seen.add(itemKey);
+          items.push(item);
+        });
+      });
       return {
         ...agreement,
         items,
@@ -345,6 +384,7 @@ const ClientsService = {
     return {
       client_name: displayName,
       company_name: companyName,
+      company_id: String(agreement.company_id || agreement.customer_company_id || agreement.client_company_id || '').trim(),
       primary_email: String(agreement.customer_contact_email || '').trim(),
       primary_phone: String(agreement.customer_contact_mobile || '').trim(),
       billing_frequency: String(agreement.billing_frequency || '').trim(),
@@ -368,6 +408,7 @@ const ClientsService = {
     return {
       client_name: merge(existing.client_name, incoming.client_name),
       company_name: merge(existing.company_name, incoming.company_name),
+      company_id: merge(existing.company_id, incoming.company_id),
       primary_email: merge(existing.primary_email, incoming.primary_email),
       primary_phone: merge(existing.primary_phone, incoming.primary_phone),
       billing_frequency: merge(existing.billing_frequency, incoming.billing_frequency),
@@ -383,15 +424,17 @@ const ClientsService = {
   findMatchingClientForAgreement(agreement = {}, clients = []) {
     const agreementUuid = String(agreement.id || '').trim();
     const agreementBusinessId = String(agreement.agreement_id || '').trim();
-    const email = this.normalizeText(agreement.customer_contact_email);
-    const company = this.normalizeCompanyKey(agreement.customer_legal_name || agreement.customer_name);
+    const agreementNumber = String(agreement.agreement_number || '').trim();
     return clients.find(client => {
+      if (this.hasStrictClientOwnership(agreement, client)) return true;
       const source = String(client.source_agreement_id || '').trim();
-      if (source && (source === agreementUuid || source === agreementBusinessId)) return true;
-      const clientEmail = this.normalizeText(client.primary_email);
-      if (email && clientEmail && clientEmail === email) return true;
-      const clientCompany = this.normalizeCompanyKey(client.company_name || client.client_name);
-      return company && clientCompany && clientCompany === company;
+      if (!source) return false;
+      const sourceMatches = [agreementUuid, agreementBusinessId, agreementNumber].some(value => value && value === source);
+      if (!sourceMatches) return false;
+      const clientCompanyId = this.getClientCompanyId(client);
+      const agreementCompanyId = this.getAgreementCompanyId(agreement);
+      if (clientCompanyId && agreementCompanyId) return clientCompanyId === agreementCompanyId;
+      return true;
     }) || null;
   },
   async syncSignedAgreementsToClients(agreements = [], baseClients = []) {
@@ -493,14 +536,17 @@ const ClientsService = {
     return Array.isArray(res.data) ? res.data : [];
   },
   matchAgreementClient(agreement = {}, client = {}) {
+    if (this.agreementBelongsToClient(agreement, client)) return true;
     const sourceAgreement = String(client.source_agreement_id || '').trim();
-    if (sourceAgreement) {
-      const agreementUuid = String(agreement.id || '').trim();
-      const agreementBusinessId = String(agreement.agreement_id || '').trim();
-      if (agreementUuid && agreementUuid === sourceAgreement) return true;
-      if (agreementBusinessId && agreementBusinessId === sourceAgreement) return true;
-    }
-    return this.agreementBelongsToClient(agreement, client);
+    if (!sourceAgreement) return false;
+    const agreementKeys = [agreement.id, agreement.agreement_id, agreement.agreement_number]
+      .map(value => String(value || '').trim())
+      .filter(Boolean);
+    if (!agreementKeys.includes(sourceAgreement)) return false;
+    const clientCompanyId = this.getClientCompanyId(client);
+    const agreementCompanyId = this.getAgreementCompanyId(agreement);
+    if (clientCompanyId && agreementCompanyId) return clientCompanyId === agreementCompanyId;
+    return true;
   },
   isRenewalInvoice_(invoice = {}) {
     return Boolean(
@@ -603,7 +649,12 @@ const ClientsService = {
     const linkedInvoices = this.dedupeRenewalInvoicesForTotals_(invoices.filter(row => this.invoiceBelongsToClient(row, client, linkedAgreements)));
     const linkedReceipts = receipts.filter(row => this.receiptBelongsToClient(row, client, linkedAgreements, linkedInvoices));
 
-    const totalAgreements = linkedAgreements.length;
+    const currentAgreements = linkedAgreements.filter(agreement => {
+      const status = String(agreement.status || '').trim().toLowerCase();
+      const isSignedOrActive = ['signed', 'active'].includes(status) || this.isSignedAgreement(agreement);
+      return isSignedOrActive && this.agreementHasCurrentAnnualSaasItems(agreement);
+    });
+    const totalAgreements = currentAgreements.length;
     const totalLocations = this.buildUniqueCurrentLocationRows(linkedAgreementItems).length;
     const totalValue = linkedAgreements.reduce((sum, agreement) => sum + this.toNumber(agreement.grand_total), 0);
     const totalInvoiced = linkedInvoices.reduce((sum, invoice) => sum + this.toNumber(invoice.invoice_total ?? invoice.grand_total), 0);
