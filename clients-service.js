@@ -338,41 +338,50 @@ const ClientsService = {
   },
   attachAgreementItems(agreements = [], agreementItems = []) {
     const byAgreementKey = new Map();
-    const addKey = (key, item) => {
+
+    const add = (key, item) => {
       const normalized = String(key || '').trim();
       if (!normalized) return;
       if (!byAgreementKey.has(normalized)) byAgreementKey.set(normalized, []);
       byAgreementKey.get(normalized).push(item);
     };
 
-    agreementItems.forEach(item => {
-      [
-        item.agreement_id,
-        item.agreement_number,
-        item.parent_agreement_id,
-        item.parent_agreement_number,
-        item.source_agreement_id,
-        item.source_agreement_number
-      ].forEach(key => addKey(key, item));
-    });
+    for (const item of Array.isArray(agreementItems) ? agreementItems : []) {
+      add(item.agreement_id, item);
+      add(item.agreementId, item);
+      add(item.agreement_number, item);
+      add(item.agreementNumber, item);
+      add(item.parent_agreement_id, item);
+      add(item.source_agreement_id, item);
+      add(item.parent_agreement_number, item);
+      add(item.source_agreement_number, item);
+    }
 
-    return agreements.map(agreement => {
-      const keys = [agreement.id, agreement.agreement_id, agreement.agreement_number]
-        .map(value => String(value || '').trim())
-        .filter(Boolean);
+    return (Array.isArray(agreements) ? agreements : []).map(agreement => {
+      const keys = [
+        agreement.id,
+        agreement.agreement_id,
+        agreement.agreementId,
+        agreement.agreement_number,
+        agreement.agreementNumber
+      ].map(value => String(value || '').trim()).filter(Boolean);
+
       const seen = new Set();
       const items = [];
-      keys.forEach(key => {
-        (byAgreementKey.get(key) || []).forEach(item => {
-          const itemKey = String(item.id || `${key}:${items.length}:${item.line_no || ''}`).trim();
-          if (seen.has(itemKey)) return;
+
+      for (const key of keys) {
+        for (const item of byAgreementKey.get(key) || []) {
+          const itemKey = String(item.id || `${item.agreement_id}-${item.line_no}-${item.location_name}`).trim();
+          if (seen.has(itemKey)) continue;
           seen.add(itemKey);
           items.push(item);
-        });
-      });
+        }
+      }
+
       return {
         ...agreement,
         items,
+        agreement_items: items,
         location_name: String(items.find(item => String(item.location_name || '').trim())?.location_name || '').trim()
       };
     });

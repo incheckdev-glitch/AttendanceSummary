@@ -1048,7 +1048,7 @@ const Clients = {
       .replace(/\s+/g, ' ');
   },
   isAnnualSaasItem(item = {}) {
-    const section = String(item?.section || item?.item_section || item?.item_type || '')
+    const section = String(item?.section || item?.item_section || '')
       .trim()
       .toLowerCase()
       .replace(/\s+/g, '_');
@@ -1158,6 +1158,17 @@ const Clients = {
       return this.isSignedAgreement(agreement);
     });
     const currentAgreements = signedAgreements.filter(agreement => this.agreementHasCurrentAnnualSaasItems(agreement));
+    console.log('[client current agreement debug]', agreements.map(agreement => ({
+      agreement_number: agreement.agreement_number,
+      status: agreement.status,
+      item_count: (agreement.items || agreement.agreement_items || []).length,
+      active_annual_saas_items: (agreement.items || agreement.agreement_items || []).filter(item =>
+        this.isAnnualSaasItem(item) && !this.isSupersededItem(item)
+      ).length,
+      superseded_annual_saas_items: (agreement.items || agreement.agreement_items || []).filter(item =>
+        this.isAnnualSaasItem(item) && this.isSupersededItem(item)
+      ).length
+    })));
     const locationItems = this.listClientAgreementLocationItems_(clientId);
     const currentLocationRows = this.buildUniqueCurrentLocationRows(locationItems);
     const activeLocationItems = currentLocationRows.filter(item => this.isActiveAnnualSaasLocationItem(item));
