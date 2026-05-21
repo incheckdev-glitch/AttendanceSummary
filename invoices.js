@@ -666,7 +666,13 @@ const Invoices = {
     };
   },
   getInvoiceScheduleStartDate(invoice = {}) {
+    const formDueDate =
+      E.invoiceFormDueDate?.value ||
+      E.invoiceDueDate?.value ||
+      '';
+
     return String(
+      formDueDate ||
       invoice.due_date ||
       invoice.dueDate ||
       invoice.initial_due_date ||
@@ -674,7 +680,7 @@ const Invoices = {
       ''
     ).trim();
   },
-  getPaymentScheduleConfig(paymentTerm = '') {
+  getInvoicePaymentScheduleConfig(paymentTerm = '') {
     const term = String(paymentTerm || '').trim().toLowerCase();
 
     if (term === 'net 7' || term === 'monthly') {
@@ -692,7 +698,7 @@ const Invoices = {
     return { label: 'Annually', intervalMonths: 12, count: 1 };
   },
   addMonthsPreserveDay(dateValue, monthsToAdd) {
-    const date = new Date(dateValue);
+    const date = new Date(`${dateValue}T00:00:00`);
     if (Number.isNaN(date.getTime())) return '';
     const originalDay = date.getDate();
     const result = new Date(date);
@@ -705,9 +711,10 @@ const Invoices = {
 
     if (!startDate) return [];
 
-    const config = this.getPaymentScheduleConfig(
+    const config = this.getInvoicePaymentScheduleConfig(
       invoice.payment_term ||
       invoice.payment_terms ||
+      E.invoiceFormPaymentTerm?.value ||
       agreement.payment_term ||
       agreement.payment_terms ||
       'Net 30'
@@ -718,6 +725,7 @@ const Invoices = {
       invoice.grand_tota ||
       invoice.total_amount ||
       invoice.total ||
+      E.invoiceFormGrandTotal?.value ||
       0
     );
 
@@ -732,15 +740,39 @@ const Invoices = {
       remaining = Number((remaining - scheduledAmount).toFixed(2));
 
       return this.normalizeScheduleRow({
+        line_no: index + 1,
         schedule_no: index + 1,
-        installment_no: index + 1,
         due_date: dueDate,
         scheduled_amount: Number(scheduledAmount.toFixed(2)),
         paid_amount: 0,
         balance_due: Number(scheduledAmount.toFixed(2)),
-        status: this.isDateBeforeToday(dueDate) ? 'overdue' : 'scheduled'
+        status: this.isDateBeforeToday?.(dueDate) ? 'overdue' : 'scheduled',
+        receipts: []
       });
     });
+  },
+  rebuildInvoicePaymentScheduleWithPayments(invoiceData = {}, invoiceItems = [], linkedAgreement = {}, oldRows = []) {
+    const rebuiltRows = this.buildInvoicePaymentSchedule(invoiceData, invoiceItems, linkedAgreement);
+    const safeOldRows = Array.isArray(oldRows) ? oldRows : [];
+    return rebuiltRows.map((row, index) => {
+      const old = this.normalizeScheduleRow(safeOldRows[index] || {});
+      const paidAmount = this.toNumberSafe(old.paid_amount || old.paidAmount || 0);
+      return this.normalizeScheduleRow({
+        ...row,
+        paid_amount: paidAmount,
+        receipt_ids: Array.isArray(old.receipt_ids) ? old.receipt_ids : [],
+        balance_due: Math.max(0, this.toNumberSafe(row.scheduled_amount) - paidAmount),
+        status: paidAmount > 0 && paidAmount >= this.toNumberSafe(row.scheduled_amount) ? 'paid' : row.status
+      });
+    });
+  },
+  refreshPaymentSchedule() {
+    const invoiceData = this.collectFormValues().invoice || this.state.selectedInvoice || {};
+    const invoiceItems = this.collectItems();
+    const linkedAgreement = this.state.selectedAgreement || {};
+    const oldRows = this.getInvoicePaymentScheduleRows(this.state.selectedInvoice?.id);
+    const scheduleRows = this.rebuildInvoicePaymentScheduleWithPayments(invoiceData, invoiceItems, linkedAgreement, oldRows);
+    this.renderInvoicePaymentSchedule(scheduleRows);
   },
   getInvoiceScheduleCacheKey(invoiceId) {
     return String(invoiceId || '').trim();
@@ -780,9 +812,11 @@ const Invoices = {
         response = await Api.createInvoicePaymentSchedule(id, false);
         rows = this.extractRows(response).map(row => this.normalizeScheduleRow(row));
       }
-      this.setInvoicePaymentScheduleRows(id, rows);
-      this.renderInvoicePaymentSchedule(rows);
-      return rows;
+      const invoiceData = this.state.selectedInvoice || {};
+      const mergedRows = this.rebuildInvoicePaymentScheduleWithPayments(invoiceData, this.state.items || [], this.state.selectedAgreement || {}, rows);
+      this.setInvoicePaymentScheduleRows(id, mergedRows);
+      this.renderInvoicePaymentSchedule(mergedRows);
+      return mergedRows;
     } catch (error) {
       console.warn('[invoices] unable to load payment schedule', error);
       this.renderInvoicePaymentSchedule([]);
@@ -824,9 +858,11 @@ const Invoices = {
     try {
       const response = await Api.recalculateInvoicePaymentSchedule(id);
       const rows = this.extractRows(response).map(row => this.normalizeScheduleRow(row));
-      this.setInvoicePaymentScheduleRows(id, rows);
-      if (String(E.invoiceForm?.dataset.id || '').trim() === id) this.renderInvoicePaymentSchedule(rows);
-      return rows;
+      const invoiceData = this.state.selectedInvoice || {};
+      const mergedRows = this.rebuildInvoicePaymentScheduleWithPayments(invoiceData, this.state.items || [], this.state.selectedAgreement || {}, rows);
+      this.setInvoicePaymentScheduleRows(id, mergedRows);
+      if (String(E.invoiceForm?.dataset.id || '').trim() === id) this.renderInvoicePaymentSchedule(mergedRows);
+      return mergedRows;
     } catch (error) {
       console.warn('[invoices] unable to recalculate payment schedule', error);
       return [];
@@ -2682,7 +2718,7 @@ const Invoices = {
     this.syncPaymentFieldsInForm();
     this.syncPaymentConclusion(summary);
     this.renderInvoiceReceipts(this.state.selectedInvoice);
-    this.renderInvoicePaymentSchedule(this.getInvoicePaymentScheduleRows(this.state.selectedInvoice.id));
+    this.refreshPaymentSchedule();
     if (this.state.selectedInvoice.id) {
       this.refreshInvoiceReceipts(this.state.selectedInvoice.id, { force: true });
       this.loadInvoicePaymentSchedule(this.state.selectedInvoice.id, { forceCreate: true });
@@ -4153,6 +4189,9 @@ const Invoices = {
         if (['invoiceFormStatus', 'invoiceFormPaidNow', 'invoiceFormGrandTotal', 'invoiceFormOldPaidTotal', 'invoiceFormSubtotalSubscription', 'invoiceFormSubtotalOneTime'].includes(event.target?.id)) {
           this.syncPaymentFieldsInForm();
         }
+        if (['invoiceFormGrandTotal', 'invoiceFormDueDate'].includes(event.target?.id)) {
+          this.refreshPaymentSchedule();
+        }
         const field = event.target?.getAttribute('data-item-field');
         if (!field) return;
         if (String(E.invoiceForm?.dataset.id || '').trim()) return;
@@ -4181,6 +4220,9 @@ const Invoices = {
       E.invoiceForm.addEventListener('change', event => {
         if (['invoiceFormStatus', 'invoiceFormPaidNow', 'invoiceFormGrandTotal', 'invoiceFormOldPaidTotal', 'invoiceFormSubtotalSubscription', 'invoiceFormSubtotalOneTime'].includes(event.target?.id)) {
           this.syncPaymentFieldsInForm();
+        }
+        if (['invoiceFormDueDate', 'invoiceFormPaymentTerm', 'invoiceFormGrandTotal'].includes(event.target?.id)) {
+          this.refreshPaymentSchedule();
         }
         const field = event.target?.getAttribute('data-item-field');
         if (field !== 'item_name') return;
