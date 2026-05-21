@@ -1041,7 +1041,11 @@ const Clients = {
   },
 
   normalizeLocationKey(value = '') {
-    return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFKC')
+      .replace(/\s+/g, ' ');
   },
   isAnnualSaasItem(item = {}) {
     const section = String(item?.section || item?.item_section || item?.item_type || '')
@@ -1050,37 +1054,37 @@ const Clients = {
       .replace(/\s+/g, '_');
     return section === 'annual_saas';
   },
-  isSupersededRenewalItem(item = {}) {
-    const flag = item?.is_superseded;
-    return flag === true || String(flag || '').trim().toLowerCase() === 'true' || Boolean(item?.superseded_by_item_id || item?.supersededByItemId);
+  isSupersededItem(item = {}) {
+    return item?.is_superseded === true
+      || String(item?.is_superseded).toLowerCase() === 'true'
+      || Boolean(item?.superseded_by_item_id || item?.supersededByItemId);
   },
-  compareLocationRowsForCurrent_(candidate = {}, existing = {}) {
-    const candidateSuperseded = this.isSupersededRenewalItem(candidate);
-    const existingSuperseded = this.isSupersededRenewalItem(existing);
-    if (candidateSuperseded !== existingSuperseded) return existingSuperseded ? 1 : -1;
-
-    const endAt = row => new Date(String(row?.service_end_date || row?.serviceEndDate || '') || 0).getTime() || 0;
-    const cEnd = endAt(candidate);
-    const eEnd = endAt(existing);
-    if (cEnd !== eEnd) return cEnd - eEnd;
-
-    const agreementAt = row => new Date(String(row?.agreement_date || row?.agreementDate || row?.signed_date || row?.customer_sign_date || row?.created_at || '') || 0).getTime() || 0;
-    return agreementAt(candidate) - agreementAt(existing);
+  getLocationRowRankTime_(item = {}) {
+    const serviceEndAt = new Date(item?.service_end_date || item?.serviceEndDate || 0).getTime() || 0;
+    const updatedAt = new Date(item?.updated_at || item?.updatedAt || item?.agreement_date || item?.agreementDate || item?.signed_date || item?.customer_sign_date || item?.created_at || 0).getTime() || 0;
+    return { serviceEndAt, updatedAt };
   },
   buildUniqueCurrentLocationRows(items = []) {
     const map = new Map();
     for (const item of Array.isArray(items) ? items : []) {
       if (!this.isAnnualSaasItem(item)) continue;
-      if (this.isSupersededRenewalItem(item)) continue;
-      const invoiceStatus = this.normalizeText(item?.invoice_status || item?.invoiceStatus || '');
-      if (invoiceStatus === 'cancelled' || invoiceStatus === 'canceled') continue;
+      if (this.isSupersededItem(item)) continue;
       const locationKey = this.normalizeLocationKey(item?.location_name || item?.locationName || item?.location || '');
       if (!locationKey) continue;
       const itemKey = this.normalizeLocationKey(item?.item_name || item?.itemName || item?.license || item?.module_name || item?.moduleName || '');
-      const clientKey = this.normalizeLocationKey(item?.client_id || item?.clientId || item?.company_id || item?.companyId || '');
-      const key = `${clientKey}::${locationKey}::${itemKey}`;
+      const key = `${locationKey}::${itemKey}`;
       const existing = map.get(key);
-      if (!existing || this.compareLocationRowsForCurrent_(item, existing) >= 0) map.set(key, item);
+      if (!existing) {
+        map.set(key, item);
+        continue;
+      }
+      const existingRank = this.getLocationRowRankTime_(existing);
+      const itemRank = this.getLocationRowRankTime_(item);
+      if (itemRank.serviceEndAt > existingRank.serviceEndAt) {
+        map.set(key, item);
+        continue;
+      }
+      if (itemRank.serviceEndAt === existingRank.serviceEndAt && itemRank.updatedAt >= existingRank.updatedAt) map.set(key, item);
     }
     return Array.from(map.values());
   },
@@ -1127,18 +1131,6 @@ const Clients = {
           ? agreement.line_items
           : [];
     return items.filter(item => this.isAnnualSaasClientLocationItem(item)).length;
-  },
-  isAnnualSaasItem(item = {}) {
-    const section = String(item?.section || item?.item_section || '')
-      .trim()
-      .toLowerCase()
-      .replace(/\s+/g, '_');
-    return section === 'annual_saas';
-  },
-  isSupersededItem(item = {}) {
-    return item?.is_superseded === true
-      || String(item?.is_superseded).toLowerCase() === 'true'
-      || Boolean(item?.superseded_by_item_id || item?.supersededByItemId);
   },
   agreementHasCurrentAnnualSaasItems(agreement = {}) {
     const items = Array.isArray(agreement?.items)
@@ -2175,7 +2167,7 @@ const Clients = {
     const safeClient = client && typeof client === 'object' ? client : {};
     const clientId = String(safeClient.client_id || '').trim();
     const agreements = this.listClientRelatedAgreements_(clientId).filter(Boolean);
-    const locationItems = this.listClientAgreementLocationItems_(clientId).filter(Boolean);
+    const locationItems = this.buildUniqueCurrentLocationRows(this.listClientAgreementLocationItems_(clientId).filter(Boolean));
     const invoices = this.listClientRelatedInvoices_(clientId).filter(Boolean);
     const receipts = this.listClientRelatedReceipts_(clientId).filter(Boolean);
     const rows = [];
