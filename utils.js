@@ -162,10 +162,11 @@ const U = {
   },
 
   buildContactDisplayName: (contact = {}) => {
-    const first = String(contact.first_name || contact.firstName || '').trim();
-    const last = String(contact.last_name || contact.lastName || '').trim();
+    const c = contact && typeof contact === 'object' ? contact : {};
+    const first = String(c.first_name || c.firstName || '').trim();
+    const last = String(c.last_name || c.lastName || '').trim();
     const full = [first, last].filter(Boolean).join(' ').trim();
-    return full || String(contact.contact_name || contact.contactName || contact.full_name || contact.fullName || '').trim();
+    return full || String(c.contact_name || c.contactName || c.full_name || c.fullName || '').trim();
   },
   getCustomerLegalName: (record = {}, company = null) => {
     const looksLikeCompany = value => Boolean(value && typeof value === 'object' && (
