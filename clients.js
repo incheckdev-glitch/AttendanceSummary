@@ -259,26 +259,24 @@ const Clients = {
     ]);
   },
   getClientCompanyId(client = {}) {
-    const source = client && typeof client === 'object' ? client : {};
     return String(
-      source.company_id ||
-      source.companyId ||
-      source.customer_company_id ||
-      source.customerCompanyId ||
-      source.client_company_id ||
-      source.clientCompanyId ||
+      client.company_id ||
+      client.companyId ||
+      client.customer_company_id ||
+      client.customerCompanyId ||
+      client.client_company_id ||
+      client.clientCompanyId ||
       ''
     ).trim();
   },
   getAgreementCompanyId(agreement = {}) {
-    const source = agreement && typeof agreement === 'object' ? agreement : {};
     return String(
-      source.company_id ||
-      source.companyId ||
-      source.customer_company_id ||
-      source.customerCompanyId ||
-      source.client_company_id ||
-      source.clientCompanyId ||
+      agreement.company_id ||
+      agreement.companyId ||
+      agreement.customer_company_id ||
+      agreement.customerCompanyId ||
+      agreement.client_company_id ||
+      agreement.clientCompanyId ||
       ''
     ).trim();
   },
@@ -291,7 +289,11 @@ const Clients = {
   hasStrictClientOwnership(agreement = {}, client = {}) {
     const clientCompanyId = this.getClientCompanyId(client);
     const agreementCompanyId = this.getAgreementCompanyId(agreement);
-    if (clientCompanyId || agreementCompanyId) return Boolean(clientCompanyId && agreementCompanyId && String(agreementCompanyId) === String(clientCompanyId));
+    if (clientCompanyId && agreementCompanyId) return String(agreementCompanyId) === String(clientCompanyId);
+
+    // Historical/imported agreements may not have company_id yet. In that case,
+    // allow only exact normalized legal/company name matching. Never use email,
+    // partial includes, contact names, notes, or address for ownership.
     const agreementName = this.normalizeCompanyKey(this.getAgreementLegalName(agreement));
     const clientName = this.normalizeCompanyKey(this.getClientLegalName(client));
     return Boolean(agreementName && clientName && agreementName === clientName);
@@ -340,11 +342,9 @@ const Clients = {
     return String(value || '')
       .trim()
       .toLowerCase()
-      .normalize('NFKC')
-      .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
       .replace(/s\.?a\.?l\.?/gi, 'sal')
-      .replace(/[^\p{L}\p{N}]+/gu, ' ')
-      .replace(/\b(inc|llc|ltd|co|corp|corporation|company|the)\b/gi, ' ')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\b(inc|llc|ltd|co|corp|corporation|company|the)\b/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
   },
@@ -400,9 +400,7 @@ const Clients = {
       id: String(raw.id || '').trim(),
       client_uuid: String(raw.client_uuid || raw.clientUuid || raw.id || '').trim(),
       client_id: String(raw.client_id || raw.clientId || raw.id || '').trim(),
-      company_id: String(raw.company_id || raw.companyId || '').trim(),
-      customer_company_id: String(raw.customer_company_id || raw.customerCompanyId || '').trim(),
-      client_company_id: String(raw.client_company_id || raw.clientCompanyId || '').trim(),
+      company_id: String(raw.company_id || raw.companyId || raw.customer_company_id || raw.customerCompanyId || raw.client_company_id || raw.clientCompanyId || '').trim(),
       client_code: String(raw.client_code || raw.clientCode || '').trim(),
       customer_name: customerName,
       customer_legal_name: legalName,
@@ -455,7 +453,7 @@ const Clients = {
       phone: String(raw.phone || '').trim(),
       client_phone: String(raw.client_phone || raw.clientPhone || raw.customer_contact_mobile || '').trim(),
       status: String(raw.status || '').trim(),
-      grand_total: this.toNumberSafe(raw.grand_total ?? raw.grandTotal),
+      grand_total: this.toNumberSafe(raw.grand_total ?? raw.grand_tota ?? raw.grandTotal ?? raw.total_amount ?? raw.total),
       currency: String(raw.currency || raw.currency_code || raw.currencyCode || '').trim() || 'USD',
       updated_at: String(raw.updated_at || raw.updatedAt || '').trim(),
       service_start_date: String(raw.service_start_date || raw.serviceStartDate || raw.effective_date || '').trim(),
@@ -480,6 +478,10 @@ const Clients = {
       id: String(raw.id || raw.item_id || raw.itemId || '').trim(),
       agreement_id: String(raw.agreement_id || raw.agreementId || raw.parent_agreement_id || raw.parentAgreementId || '').trim(),
       agreement_number: String(raw.agreement_number || raw.agreementNumber || raw.parent_agreement_number || raw.parentAgreementNumber || '').trim(),
+      company_id: String(raw.company_id || raw.companyId || '').trim(),
+      is_superseded: raw.is_superseded === true || String(raw.is_superseded || raw.isSuperseded || '').trim().toLowerCase() === 'true',
+      superseded_by_item_id: String(raw.superseded_by_item_id || raw.supersededByItemId || '').trim(),
+      renewed_from_item_id: String(raw.renewed_from_item_id || raw.renewedFromItemId || '').trim(),
       parent_agreement_id: String(raw.parent_agreement_id || raw.parentAgreementId || '').trim(),
       parent_agreement_number: String(raw.parent_agreement_number || raw.parentAgreementNumber || '').trim(),
       source_agreement_id: String(raw.source_agreement_id || raw.sourceAgreementId || '').trim(),
@@ -803,16 +805,20 @@ const Clients = {
     agreement = agreement && typeof agreement === 'object' ? agreement : {};
     client = client && typeof client === 'object' ? client : {};
     if (this.agreementBelongsToClient(agreement, client)) return true;
+
     const sourceAgreementId = String(client.source_agreement_id || '').trim();
     if (!sourceAgreementId) return false;
-    const agreementKeys = [agreement.id, agreement.agreement_id, agreement.agreement_number]
+
+    const sourceMatches = [agreement.id, agreement.agreement_id, agreement.agreement_number]
       .map(value => String(value || '').trim())
-      .filter(Boolean);
-    if (!agreementKeys.includes(sourceAgreementId)) return false;
+      .some(value => value && value === sourceAgreementId);
+    if (!sourceMatches) return false;
+
     const clientCompanyId = this.getClientCompanyId(client);
     const agreementCompanyId = this.getAgreementCompanyId(agreement);
-    if (clientCompanyId && agreementCompanyId) return clientCompanyId === agreementCompanyId;
-    return true;
+    if (clientCompanyId || agreementCompanyId) return Boolean(clientCompanyId && agreementCompanyId && clientCompanyId === agreementCompanyId);
+
+    return this.agreementBelongsToClient(agreement, client);
   },
   listClientRelatedAgreements_(clientId) {
     const client = this.state.rows.find(row => row.client_id === clientId);
@@ -950,7 +956,6 @@ const Clients = {
     const created = this.normalizeClient({
       client_id: `virtual-${key || Date.now()}`,
       customer_name: fallbackName,
-      company_id: String(agreement.company_id || agreement.customer_company_id || agreement.client_company_id || '').trim(),
       customer_legal_name: String(agreement.customer_legal_name || '').trim(),
       normalized_company_key: key,
       status: 'Active',

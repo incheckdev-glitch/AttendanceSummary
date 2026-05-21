@@ -665,20 +665,9 @@ const Invoices = {
       account_setup_billing_mode: this.normalizeSetupBillingMode(source.account_setup_billing_mode || this.state.accountSetupBillingMode)
     };
   },
-  getInvoiceInitialDueDate(invoice = {}, items = [], agreement = {}) {
-    const formDueDate = String(E.invoiceFormDueDate?.value || '').trim();
-    const directDueDate = String(invoice.due_date || invoice.dueDate || formDueDate || '').trim();
-    const normalizedDirect = this.normalizeDateInputValue(directDueDate);
-    if (normalizedDirect) return normalizedDirect;
-
-    const annualItems = (Array.isArray(items) ? items : []).filter(item => this.isSubscriptionSection?.(item?.section) || String(item?.section || '').trim().toLowerCase().replace(/\s+/g, '_') === 'annual_saas');
-    const firstServiceStart = annualItems
-      .map(item => this.normalizeDateInputValue(item.service_start_date || item.serviceStartDate || item.start_service_date || item.startServiceDate || item.start_date || item.startDate))
-      .filter(Boolean)
-      .sort()[0];
-    if (firstServiceStart) return firstServiceStart;
-
-    return this.normalizeDateInputValue(agreement.service_start_date || agreement.serviceStartDate || agreement.effective_date || agreement.agreement_date || invoice.issue_date || invoice.issueDate) || '';
+  getInvoiceInitialDueDate(invoice = {}) {
+    const dueDate = String(invoice.due_date || invoice.dueDate || '').trim();
+    return this.normalizeDateInputValue(dueDate) || dueDate || '';
   },
   getPaymentScheduleConfig(paymentTerm = '', items = []) {
     const term = String(paymentTerm || '').trim().toLowerCase();
@@ -729,11 +718,11 @@ const Invoices = {
   },
   getInvoicePaymentSchedulePlan(paymentTerm) {
     const term = String(paymentTerm || '').trim().toLowerCase().replace(/\s+/g, '');
-    if (term === 'net7') return { count: 12, intervalMonths: 1, firstDueNetDays: 0, label: 'Monthly' };
-    if (term === 'net14') return { count: 4, intervalMonths: 3, firstDueNetDays: 0, label: 'Quarterly' };
-    if (term === 'net21') return { count: 2, intervalMonths: 6, firstDueNetDays: 0, label: 'Semi-Annual' };
-    if (term === 'net30') return { count: 1, intervalMonths: 12, firstDueNetDays: 0, label: 'Annual' };
-    return { count: 1, intervalMonths: 12, firstDueNetDays: 0, label: 'Annual' };
+    if (term === 'net7') return { count: 12, intervalMonths: 1, firstDueNetDays: 7, label: 'Monthly' };
+    if (term === 'net14') return { count: 4, intervalMonths: 3, firstDueNetDays: 14, label: 'Quarterly' };
+    if (term === 'net21') return { count: 2, intervalMonths: 6, firstDueNetDays: 21, label: 'Semi-Annual' };
+    if (term === 'net30') return { count: 1, intervalMonths: 12, firstDueNetDays: 30, label: 'Annual' };
+    return { count: 1, intervalMonths: 12, firstDueNetDays: 30, label: 'Annual' };
   },
   getInvoiceScheduleCacheKey(invoiceId) {
     return String(invoiceId || '').trim();
