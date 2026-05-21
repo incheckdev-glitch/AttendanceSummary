@@ -187,11 +187,13 @@ const ClientsService = {
   hasStrictClientOwnership(agreement = {}, client = {}) {
     const clientCompanyId = this.getClientCompanyId(client);
     const agreementCompanyId = this.getAgreementCompanyId(agreement);
-    if (clientCompanyId && agreementCompanyId) return String(agreementCompanyId) === String(clientCompanyId);
+    if (clientCompanyId && agreementCompanyId) {
+      return String(agreementCompanyId) === String(clientCompanyId);
+    }
 
-    // Historical/imported agreements may not have company_id yet. In that case,
-    // allow only exact normalized legal/company name matching. Never use email,
-    // partial includes, contact names, notes, or address for ownership.
+    // Some imported/historical agreements still do not have company_id.
+    // In that case only allow an exact normalized legal/company name match.
+    // Never use email or partial text includes for client ownership.
     const agreementName = this.normalizeCompanyKey(this.getAgreementLegalName(agreement));
     const clientName = this.normalizeCompanyKey(this.getClientLegalName(client));
     return Boolean(agreementName && clientName && agreementName === clientName);
@@ -232,9 +234,11 @@ const ClientsService = {
     return String(value || '')
       .trim()
       .toLowerCase()
-      .replace(/s\.?a\.?l\.?/gi, 'sal')
-      .replace(/[^a-z0-9]+/g, ' ')
-      .replace(/\b(inc|llc|ltd|co|corp|corporation|company|the)\b/g, ' ')
+      .normalize('NFKC')
+      .replace(/[ً-ٰٟـ]/g, '')
+      .replace(/s\.?\s*a\.?\s*l\.?/gi, 'sal')
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .replace(/\b(inc|llc|ltd|co|corp|corporation|company|the)\b/gi, ' ')
       .replace(/\s+/g, ' ')
       .trim();
   },
@@ -246,9 +250,9 @@ const ClientsService = {
       ...row,
       id: String(row.id || '').trim(),
       client_id: String(row.client_id || '').trim(),
-      company_id: String(row.company_id || row.companyId || row.customer_company_id || row.customerCompanyId || row.client_company_id || row.clientCompanyId || '').trim(),
       client_name: clientName,
       company_name: companyName,
+      company_id: String(row.company_id || row.companyId || row.customer_company_id || row.customerCompanyId || '').trim(),
       primary_email: String(row.primary_email || '').trim(),
       primary_phone: String(row.primary_phone || '').trim(),
       billing_frequency: String(row.billing_frequency || '').trim(),
@@ -270,16 +274,16 @@ const ClientsService = {
     return {
       id: String(row.id || '').trim(),
       agreement_id: String(row.agreement_id || '').trim(),
-      agreement_number: String(row.agreement_number || '').trim(),
+      agreement_number: String(row.agreement_number || row.agreement_reference || '').trim(),
       company_id: String(row.company_id || row.companyId || '').trim(),
       customer_company_id: String(row.customer_company_id || row.customerCompanyId || '').trim(),
       client_company_id: String(row.client_company_id || row.clientCompanyId || '').trim(),
-      company_name: String(row.company_name || row.companyName || '').trim(),
-      client_name: String(row.client_name || row.customer_name || row.customer_legal_name || '').trim(),
+      company_name: String(row.company_name || '').trim(),
+      client_name: String(row.client_name || row.customer_name || row.customer_legal_name || row.company_name || '').trim(),
       client_email: String(row.client_email || row.customer_contact_email || '').trim(),
       client_phone: String(row.client_phone || row.customer_contact_mobile || '').trim(),
       customer_name: String(row.customer_name || '').trim(),
-      customer_legal_name: String(row.customer_legal_name || '').trim(),
+      customer_legal_name: String(row.customer_legal_name || row.company_name || '').trim(),
       customer_contact_email: String(row.customer_contact_email || '').trim(),
       customer_contact_mobile: String(row.customer_contact_mobile || '').trim(),
       status: String(row.status || '').trim(),
@@ -291,16 +295,16 @@ const ClientsService = {
       agreement_date: String(row.agreement_date || '').trim(),
       customer_sign_date: String(row.customer_sign_date || '').trim(),
       billing_frequency: String(row.billing_frequency || '').trim(),
-      payment_term: String(row.payment_term || '').trim(),
+      payment_term: String(row.payment_term || row.payment_terms || '').trim(),
       subtotal_locations: this.toNumber(row.subtotal_locations),
       contract_term: String(row.contract_term || '').trim(),
-      effective_date: String(row.effective_date || '').trim()
+      effective_date: String(row.effective_date || '').trim(),
+      renewed_from_agreement_id: String(row.renewed_from_agreement_id || row.renewedFromAgreementId || '').trim()
     };
   },
   sanitizeClientPayload(input = {}, { includeCreatedBy = false } = {}) {
     const payload = {
       client_id: input.client_id || input.clientId,
-      company_id: input.company_id || input.companyId || input.customer_company_id || input.customerCompanyId || input.client_company_id || input.clientCompanyId,
       client_name: input.client_name || input.clientName || input.customer_name || input.customerName,
       company_name: input.company_name || input.companyName || input.customer_legal_name || input.customerLegalName,
       primary_email: input.primary_email || input.primaryEmail || input.primary_contact_email || input.primaryContactEmail,
@@ -308,6 +312,7 @@ const ClientsService = {
       billing_frequency: input.billing_frequency || input.billingFrequency,
       payment_term: input.payment_term || input.paymentTerm || input.payment_terms,
       status: input.status,
+      company_id: input.company_id || input.companyId || input.customer_company_id || input.customerCompanyId || input.client_company_id || input.clientCompanyId,
       source_agreement_id: input.source_agreement_id || input.sourceAgreementId,
       total_agreements: input.total_agreements ?? input.totalAgreements,
       total_locations: input.total_locations ?? input.totalLocations,
@@ -323,7 +328,7 @@ const ClientsService = {
     const userId = this.getCurrentUserId();
     if (includeCreatedBy && userId) cleaned.created_by = userId;
     if (userId) cleaned.updated_by = userId;
-    ['company_id', 'source_agreement_id', 'created_by', 'updated_by'].forEach(key => {
+    ['source_agreement_id', 'created_by', 'updated_by'].forEach(key => {
       if (!Object.prototype.hasOwnProperty.call(cleaned, key)) return;
       const normalized = String(cleaned[key] || '').trim();
       if (!normalized || !this.isUuid(normalized)) delete cleaned[key];
@@ -332,12 +337,12 @@ const ClientsService = {
     return cleaned;
   },
   attachAgreementItems(agreements = [], agreementItems = []) {
-    const byKey = new Map();
+    const byAgreementKey = new Map();
     const addKey = (key, item) => {
       const normalized = String(key || '').trim();
       if (!normalized) return;
-      if (!byKey.has(normalized)) byKey.set(normalized, []);
-      byKey.get(normalized).push(item);
+      if (!byAgreementKey.has(normalized)) byAgreementKey.set(normalized, []);
+      byAgreementKey.get(normalized).push(item);
     };
 
     agreementItems.forEach(item => {
@@ -352,29 +357,19 @@ const ClientsService = {
     });
 
     return agreements.map(agreement => {
-      const keys = [
-        agreement.id,
-        agreement.agreement_id,
-        agreement.agreement_number,
-        agreement.source_agreement_id,
-        agreement.source_agreement_number
-      ].map(value => String(value || '').trim()).filter(Boolean);
-
+      const keys = [agreement.id, agreement.agreement_id, agreement.agreement_number]
+        .map(value => String(value || '').trim())
+        .filter(Boolean);
       const seen = new Set();
       const items = [];
       keys.forEach(key => {
-        (byKey.get(key) || []).forEach(item => {
-          const itemKey = String(item.id || item.item_id || JSON.stringify(item)).trim();
+        (byAgreementKey.get(key) || []).forEach(item => {
+          const itemKey = String(item.id || `${key}:${items.length}:${item.line_no || ''}`).trim();
           if (seen.has(itemKey)) return;
           seen.add(itemKey);
-          items.push({
-            ...item,
-            company_id: item.company_id || agreement.company_id || agreement.customer_company_id || agreement.client_company_id || '',
-            agreement_number: item.agreement_number || agreement.agreement_number || ''
-          });
+          items.push(item);
         });
       });
-
       return {
         ...agreement,
         items,
@@ -392,7 +387,7 @@ const ClientsService = {
     return {
       client_name: displayName,
       company_name: companyName,
-      company_id: String(agreement.company_id || agreement.customer_company_id || agreement.client_company_id || '').trim(),
+      company_id: String(agreement.company_id || agreement.companyId || agreement.customer_company_id || agreement.customerCompanyId || agreement.client_company_id || agreement.clientCompanyId || '').trim() || null,
       primary_email: String(agreement.customer_contact_email || '').trim(),
       primary_phone: String(agreement.customer_contact_mobile || '').trim(),
       billing_frequency: String(agreement.billing_frequency || '').trim(),
@@ -454,7 +449,7 @@ const ClientsService = {
   },
   countLocationItems(agreement = {}) {
     const items = Array.isArray(agreement.items) ? agreement.items : [];
-    return items.filter(item => this.isAnnualSaasClientLocationItem(item)).length;
+    return this.buildUniqueCurrentLocationRows(items).length;
   },
   isAnnualSaasClientLocationItem(item = {}) {
     const text = this.normalizeText([
@@ -530,22 +525,14 @@ const ClientsService = {
     return Array.isArray(res.data) ? res.data : [];
   },
   matchAgreementClient(agreement = {}, client = {}) {
-    if (this.hasStrictClientOwnership(agreement, client)) return true;
-
     const sourceAgreement = String(client.source_agreement_id || '').trim();
-    if (!sourceAgreement) return false;
-
-    const agreementUuid = String(agreement.id || '').trim();
-    const agreementBusinessId = String(agreement.agreement_id || '').trim();
-    const agreementNumber = String(agreement.agreement_number || '').trim();
-    const sourceMatches = [agreementUuid, agreementBusinessId, agreementNumber].some(value => value && value === sourceAgreement);
-    if (!sourceMatches) return false;
-
-    const clientCompanyId = this.getClientCompanyId(client);
-    const agreementCompanyId = this.getAgreementCompanyId(agreement);
-    if (clientCompanyId || agreementCompanyId) return Boolean(clientCompanyId && agreementCompanyId && clientCompanyId === agreementCompanyId);
-
-    return this.hasStrictClientOwnership(agreement, client);
+    if (sourceAgreement) {
+      const agreementUuid = String(agreement.id || '').trim();
+      const agreementBusinessId = String(agreement.agreement_id || '').trim();
+      if (agreementUuid && agreementUuid === sourceAgreement) return true;
+      if (agreementBusinessId && agreementBusinessId === sourceAgreement) return true;
+    }
+    return this.agreementBelongsToClient(agreement, client);
   },
   isRenewalInvoice_(invoice = {}) {
     return Boolean(
@@ -648,10 +635,19 @@ const ClientsService = {
     const linkedInvoices = this.dedupeRenewalInvoicesForTotals_(invoices.filter(row => this.invoiceBelongsToClient(row, client, linkedAgreements)));
     const linkedReceipts = receipts.filter(row => this.receiptBelongsToClient(row, client, linkedAgreements, linkedInvoices));
 
-    const currentAgreements = linkedAgreements.filter(agreement => this.agreementHasCurrentAnnualSaasItems(agreement));
-    const totalAgreements = currentAgreements.length;
+    const currentAgreementIdSet = new Set(
+      linkedAgreements
+        .filter(agreement => this.agreementHasCurrentAnnualSaasItems(agreement))
+        .map(agreement => String(agreement.id || agreement.agreement_id || agreement.agreement_number || '').trim())
+        .filter(Boolean)
+    );
+    const currentAgreements = linkedAgreements.filter(agreement => {
+      const key = String(agreement.id || agreement.agreement_id || agreement.agreement_number || '').trim();
+      return key && currentAgreementIdSet.has(key);
+    });
+    const totalAgreements = currentAgreements.length || linkedAgreements.length;
     const totalLocations = this.buildUniqueCurrentLocationRows(linkedAgreementItems).length;
-    const totalValue = currentAgreements.reduce((sum, agreement) => sum + this.toNumber(agreement.grand_total), 0);
+    const totalValue = (currentAgreements.length ? currentAgreements : linkedAgreements).reduce((sum, agreement) => sum + this.toNumber(agreement.grand_total), 0);
     const totalInvoiced = linkedInvoices.reduce((sum, invoice) => sum + this.toNumber(invoice.invoice_total ?? invoice.grand_total), 0);
     const totalPaidFromReceipts = linkedReceipts.reduce((sum, receipt) => sum + this.toNumber(receipt.amount_received ?? receipt.amount_paid ?? receipt.paid_amount), 0);
     const fallbackInvoicePaid = linkedReceipts.length ? 0 : linkedInvoices.reduce((sum, invoice) => sum + this.toNumber(invoice.amount_paid ?? invoice.received_amount), 0);
