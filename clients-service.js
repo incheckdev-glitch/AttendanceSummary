@@ -436,6 +436,28 @@ const ClientsService = {
 
     return ['annual', 'yearly', '12 month', '12-month', 'year', 'renewal'].some(token => text.includes(token));
   },
+  isAnnualSaasItem(item = {}) {
+    const section = String(item?.section || item?.item_section || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_');
+    return section === 'annual_saas';
+  },
+  isSupersededItem(item = {}) {
+    return item?.is_superseded === true
+      || String(item?.is_superseded).toLowerCase() === 'true'
+      || Boolean(item?.superseded_by_item_id || item?.supersededByItemId);
+  },
+  agreementHasCurrentAnnualSaasItems(agreement = {}) {
+    const items = Array.isArray(agreement?.items)
+      ? agreement.items
+      : Array.isArray(agreement?.agreement_items)
+        ? agreement.agreement_items
+        : Array.isArray(agreement?.line_items)
+          ? agreement.line_items
+          : [];
+    return items.some(item => this.isAnnualSaasItem(item) && !this.isSupersededItem(item));
+  },
   async fetchAgreementItemsForClients_(db) {
     // temporary analytics fallback - replace with SQL view/RPC aggregation
     return db
@@ -531,7 +553,11 @@ const ClientsService = {
     const linkedInvoices = this.dedupeRenewalInvoicesForTotals_(invoices.filter(row => this.invoiceBelongsToClient(row, client, linkedAgreements)));
     const linkedReceipts = receipts.filter(row => this.receiptBelongsToClient(row, client, linkedAgreements, linkedInvoices));
 
-    const totalAgreements = linkedAgreements.length;
+    const signedOrActiveAgreements = linkedAgreements.filter(agreement => {
+      const status = String(agreement?.status || '').trim().toLowerCase();
+      return ['signed', 'active'].includes(status) || this.isSignedAgreement(agreement);
+    });
+    const totalAgreements = signedOrActiveAgreements.filter(agreement => this.agreementHasCurrentAnnualSaasItems(agreement)).length;
     const totalLocations = linkedAgreementItems.filter(item => this.isAnnualSaasClientLocationItem(item)).length;
     const totalValue = linkedAgreements.reduce((sum, agreement) => sum + this.toNumber(agreement.grand_total), 0);
     const totalInvoiced = linkedInvoices.reduce((sum, invoice) => sum + this.toNumber(invoice.invoice_total ?? invoice.grand_total), 0);

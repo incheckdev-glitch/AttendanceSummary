@@ -1059,6 +1059,28 @@ const Clients = {
           : [];
     return items.filter(item => this.isAnnualSaasClientLocationItem(item)).length;
   },
+  isAnnualSaasItem(item = {}) {
+    const section = String(item?.section || item?.item_section || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_');
+    return section === 'annual_saas';
+  },
+  isSupersededItem(item = {}) {
+    return item?.is_superseded === true
+      || String(item?.is_superseded).toLowerCase() === 'true'
+      || Boolean(item?.superseded_by_item_id || item?.supersededByItemId);
+  },
+  agreementHasCurrentAnnualSaasItems(agreement = {}) {
+    const items = Array.isArray(agreement?.items)
+      ? agreement.items
+      : Array.isArray(agreement?.agreement_items)
+        ? agreement.agreement_items
+        : Array.isArray(agreement?.line_items)
+          ? agreement.line_items
+          : [];
+    return items.some(item => this.isAnnualSaasItem(item) && !this.isSupersededItem(item));
+  },
   computeClientAnalytics_(client) {
     const clientId = String(client?.client_id || '').trim();
     const agreements = this.listClientRelatedAgreements_(clientId);
@@ -1069,7 +1091,12 @@ const Clients = {
       if (invoiceUuid && invoiceUuidSet.has(invoiceUuid)) return true;
       return !invoiceUuid;
     });
-    const signedAgreements = agreements.filter(item => this.isSignedAgreement(item));
+    const signedAgreements = agreements.filter(agreement => {
+      const status = String(agreement?.status || '').trim().toLowerCase();
+      if (['signed', 'active'].includes(status)) return true;
+      return this.isSignedAgreement(agreement);
+    });
+    const currentAgreements = signedAgreements.filter(agreement => this.agreementHasCurrentAnnualSaasItems(agreement));
     const locationItems = this.listClientAgreementLocationItems_(clientId);
     const activeLocationItems = locationItems.filter(item => this.isActiveAnnualSaasLocationItem(item));
     const today = new Date();
@@ -1113,8 +1140,8 @@ const Clients = {
     return {
       total_locations: totalLocations,
       active_locations: activeLocations,
-      total_agreements: agreements.length,
-      signed_agreements: agreements.filter(item => this.isSignedAgreement(item) || item.signed_date || item.customer_sign_date).length,
+      total_agreements: currentAgreements.length,
+      signed_agreements: signedAgreements.length,
       total_agreement_value: totalAgreementValue,
       total_invoiced_value: totalInvoicedValue,
       total_paid_amount: totalPaidAmount,
@@ -2732,7 +2759,7 @@ const Clients = {
       ['Locations', analytics.active_locations === null || analytics.active_locations === undefined
         ? `${analytics.total_locations || 0}`
         : `${analytics.total_locations || 0} (${analytics.active_locations || 0} active)`],
-      ['Agreements', `${analytics.total_agreements || 0} (${analytics.signed_agreements || 0} signed)`],
+      ['Current Agreements', `${analytics.total_agreements || 0} (${analytics.signed_agreements || 0} total signed)`],
       ['Agreement Value', this.formatMoneyWithCurrency_(analytics.total_agreement_value || 0, displayCurrency)],
       ['Total Invoiced', this.formatMoneyWithCurrency_(analytics.total_invoiced_value || 0, displayCurrency)],
       ['Total Paid', this.formatMoneyWithCurrency_(analytics.total_paid_amount || 0, displayCurrency)],
