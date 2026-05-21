@@ -650,18 +650,40 @@ const ClientsService = {
     const linkedInvoices = this.dedupeRenewalInvoicesForTotals_(invoices.filter(row => this.invoiceBelongsToClient(row, client, linkedAgreements)));
     const linkedReceipts = receipts.filter(row => this.receiptBelongsToClient(row, client, linkedAgreements, linkedInvoices));
 
-    const currentAgreementIdSet = new Set(
-      linkedAgreements
-        .filter(agreement => this.agreementHasCurrentAnnualSaasItems(agreement))
-        .map(agreement => String(agreement.id || agreement.agreement_id || agreement.agreement_number || '').trim())
-        .filter(Boolean)
-    );
-    const currentAgreements = linkedAgreements.filter(agreement => {
-      const key = String(agreement.id || agreement.agreement_id || agreement.agreement_number || '').trim();
-      return key && currentAgreementIdSet.has(key);
+    const currentLocationRows = this.buildUniqueCurrentLocationRows(linkedAgreementItems);
+    const currentAgreementMap = new Map();
+
+    currentLocationRows.forEach(item => {
+      const itemKeys = [
+        item.agreement_id,
+        item.agreement_number,
+        item.parent_agreement_id,
+        item.parent_agreement_number,
+        item.source_agreement_id,
+        item.source_agreement_number
+      ].map(value => String(value || '').trim()).filter(Boolean);
+
+      const agreement = linkedAgreements.find(row => {
+        const agreementKeys = [row.id, row.agreement_id, row.agreement_number]
+          .map(value => String(value || '').trim())
+          .filter(Boolean);
+        return itemKeys.some(itemKey => agreementKeys.some(agreementKey => this.valuesMatch(itemKey, agreementKey)));
+      });
+
+      const key = String(agreement?.id || agreement?.agreement_id || agreement?.agreement_number || '').trim();
+      if (key) currentAgreementMap.set(key, agreement);
     });
-    const totalAgreements = currentAgreements.length || linkedAgreements.length;
-    const totalLocations = this.buildUniqueCurrentLocationRows(linkedAgreementItems).length;
+
+    linkedAgreements
+      .filter(agreement => this.agreementHasCurrentAnnualSaasItems(agreement))
+      .forEach(agreement => {
+        const key = String(agreement.id || agreement.agreement_id || agreement.agreement_number || '').trim();
+        if (key && !currentAgreementMap.has(key)) currentAgreementMap.set(key, agreement);
+      });
+
+    const currentAgreements = Array.from(currentAgreementMap.values());
+    const totalAgreements = currentAgreements.length;
+    const totalLocations = currentLocationRows.length;
     const totalValue = (currentAgreements.length ? currentAgreements : linkedAgreements).reduce((sum, agreement) => sum + this.toNumber(agreement.grand_total), 0);
     const totalInvoiced = linkedInvoices.reduce((sum, invoice) => sum + this.toNumber(invoice.invoice_total ?? invoice.grand_total), 0);
     const totalPaidFromReceipts = linkedReceipts.reduce((sum, receipt) => sum + this.toNumber(receipt.amount_received ?? receipt.amount_paid ?? receipt.paid_amount), 0);

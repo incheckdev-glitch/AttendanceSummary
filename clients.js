@@ -1157,20 +1157,43 @@ const Clients = {
       if (['signed', 'active'].includes(status)) return true;
       return this.isSignedAgreement(agreement);
     });
-    const currentAgreements = signedAgreements.filter(agreement => this.agreementHasCurrentAnnualSaasItems(agreement));
-    console.log('[client current agreement debug]', agreements.map(agreement => ({
-      agreement_number: agreement.agreement_number,
-      status: agreement.status,
-      item_count: (agreement.items || agreement.agreement_items || []).length,
-      active_annual_saas_items: (agreement.items || agreement.agreement_items || []).filter(item =>
-        this.isAnnualSaasItem(item) && !this.isSupersededItem(item)
-      ).length,
-      superseded_annual_saas_items: (agreement.items || agreement.agreement_items || []).filter(item =>
-        this.isAnnualSaasItem(item) && this.isSupersededItem(item)
-      ).length
-    })));
     const locationItems = this.listClientAgreementLocationItems_(clientId);
     const currentLocationRows = this.buildUniqueCurrentLocationRows(locationItems);
+
+    const currentAgreementMap = new Map();
+    currentLocationRows.forEach(item => {
+      const agreement = this.findAgreementForItem_(item, signedAgreements);
+      const key = String(agreement?.id || agreement?.agreement_id || agreement?.agreement_number || '').trim();
+      if (key) currentAgreementMap.set(key, agreement);
+    });
+
+    const fallbackCurrentAgreements = signedAgreements.filter(agreement => this.agreementHasCurrentAnnualSaasItems(agreement));
+    fallbackCurrentAgreements.forEach(agreement => {
+      const key = String(agreement?.id || agreement?.agreement_id || agreement?.agreement_number || '').trim();
+      if (key && !currentAgreementMap.has(key)) currentAgreementMap.set(key, agreement);
+    });
+
+    const currentAgreements = Array.from(currentAgreementMap.values());
+
+    console.log('[client current agreement debug]', agreements.map(agreement => {
+      const agreementItems = locationItems.filter(item => {
+        const agreementKeys = this.getAgreementMatchKeys_(agreement);
+        const itemKeys = this.getAgreementItemMatchKeys_(item);
+        return itemKeys.some(itemKey => agreementKeys.some(agreementKey => this.valuesMatch(itemKey, agreementKey)));
+      });
+      return {
+        agreement_number: agreement.agreement_number,
+        status: agreement.status,
+        attached_item_count: (agreement.items || agreement.agreement_items || []).length,
+        matched_location_item_count: agreementItems.length,
+        active_annual_saas_items: agreementItems.filter(item =>
+          this.isAnnualSaasItem(item) && !this.isSupersededItem(item)
+        ).length,
+        superseded_annual_saas_items: agreementItems.filter(item =>
+          this.isAnnualSaasItem(item) && this.isSupersededItem(item)
+        ).length
+      };
+    }));
     const activeLocationItems = currentLocationRows.filter(item => this.isActiveAnnualSaasLocationItem(item));
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -2463,9 +2486,10 @@ const Clients = {
     const relationAttempts = Boolean(client && (this.state.agreements.length || this.state.invoices.length || this.state.receipts.length));
     const loadSuccess = !this.state.loadError;
     const noLinkedRows = relationAttempts && loadSuccess && !agreements.length && !invoices.length && !receipts.length;
+    const computedAnalytics = this.computeClientAnalytics_(client || {});
     const detailBundle = {
       detail: client || {},
-      analytics: client?.analytics || this.computeClientAnalytics_(client || {}),
+      analytics: { ...(client?.analytics || {}), ...computedAnalytics },
       timeline: this.canViewClientRenewals() ? (normalizedTimeline.length ? normalizedTimeline : fallbackTimeline) : [],
       statementRows,
       renewalRows,
