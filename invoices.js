@@ -690,14 +690,57 @@ const Invoices = {
 
     return { intervalMonths: 12, count: 1 };
   },
+  parseDateOnly(value) {
+    const raw = String(value || '').trim();
+    const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!match) return null;
+
+    return {
+      year: Number(match[1]),
+      month: Number(match[2]),
+      day: Number(match[3])
+    };
+  },
+  formatDateOnlyInput(parts) {
+    if (!parts) return '';
+    const yyyy = String(parts.year).padStart(4, '0');
+    const mm = String(parts.month).padStart(2, '0');
+    const dd = String(parts.day).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  },
+  addMonthsDateOnly(value, monthsToAdd = 0) {
+    const parts = this.parseDateOnly(value);
+    if (!parts) return '';
+
+    const originalDay = parts.day;
+    const date = new Date(parts.year, parts.month - 1, originalDay, 12, 0, 0);
+    date.setMonth(date.getMonth() + Number(monthsToAdd || 0));
+
+    if (date.getDate() !== originalDay) {
+      date.setDate(0);
+    }
+
+    return [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, '0'),
+      String(date.getDate()).padStart(2, '0')
+    ].join('-');
+  },
+  formatDateOnlyDisplay(value) {
+    const parts = this.parseDateOnly(value);
+    if (!parts) return '—';
+
+    const date = new Date(parts.year, parts.month - 1, parts.day, 12, 0, 0);
+
+    return date.toLocaleDateString(undefined, {
+      weekday: 'short',
+      month: 'short',
+      day: '2-digit',
+      year: 'numeric'
+    });
+  },
   addMonthsPreserveDay(dateValue, monthsToAdd) {
-    const date = new Date(`${dateValue}T00:00:00`);
-    if (Number.isNaN(date.getTime())) return '';
-    const originalDay = date.getDate();
-    const result = new Date(date);
-    result.setMonth(result.getMonth() + Number(monthsToAdd || 0));
-    if (result.getDate() !== originalDay) result.setDate(0);
-    return result.toISOString().slice(0, 10);
+    return this.addMonthsDateOnly(dateValue, monthsToAdd);
   },
   buildInvoicePaymentSchedule(invoice = {}, items = [], agreement = {}) {
     const startDate = this.getInvoiceScheduleStartDate(invoice);
@@ -727,7 +770,7 @@ const Invoices = {
     let remaining = total;
 
     return Array.from({ length: count }).map((_, index) => {
-      const dueDate = this.addMonthsPreserveDay(startDate, index * config.intervalMonths);
+      const dueDate = this.addMonthsDateOnly(startDate, index * config.intervalMonths);
       const scheduledAmount = index === count - 1 ? remaining : baseAmount;
 
       remaining = Number((remaining - scheduledAmount).toFixed(2));
@@ -835,7 +878,7 @@ const Invoices = {
         const receipts = row.receipt_ids.length ? row.receipt_ids.map(id => U.escapeHtml(String(id))).join('<br>') : '—';
         return `<tr>
           <td>${U.escapeHtml(String(row.schedule_no || ''))}</td>
-          <td>${U.escapeHtml(U.fmtDisplayDate(row.due_date) || row.due_date || '—')}</td>
+          <td>${U.escapeHtml(this.formatDateOnlyDisplay(row.due_date))}</td>
           <td>${U.escapeHtml(money(row.scheduled_amount))}</td>
           <td>${U.escapeHtml(money(row.paid_amount))}</td>
           <td>${U.escapeHtml(money(row.balance_due))}</td>
@@ -1439,11 +1482,9 @@ const Invoices = {
   normalizeDateInputValue(value) {
     const raw = String(value ?? '').trim();
     if (!raw) return '';
-    const prefixMatch = raw.match(/^(\d{4}-\d{2}-\d{2})/);
-    if (prefixMatch) return prefixMatch[1];
-    const parsed = new Date(raw);
-    if (Number.isNaN(parsed.getTime())) return raw;
-    return parsed.toISOString().slice(0, 10);
+    const parts = this.parseDateOnly(raw);
+    if (parts) return this.formatDateOnlyInput(parts);
+    return raw;
   },
   normalizeItem(raw = {}) {
     const source = raw && typeof raw === 'object' ? raw : {};
