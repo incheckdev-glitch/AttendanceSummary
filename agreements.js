@@ -474,6 +474,32 @@ const Agreements = {
     const signatory = this.getCompanyAuthorizedSignatory(company);
     return Boolean(signatory.name && signatory.title);
   },
+  isDocumentLockedForSignatoryRefresh(record = {}) {
+    const status = String(record.status || '').trim().toLowerCase().replace(/\s+/g, '_');
+    return ['accepted', 'signed', 'issued', 'paid', 'partially_paid', 'expired'].includes(status);
+  },
+  resolveCustomerSignatorySnapshot(record = {}, company = {}) {
+    const locked = this.isDocumentLockedForSignatoryRefresh(record);
+    const existingName = String(
+      record.customer_signatory_name ||
+      record.customer_authorized_signatory_name ||
+      record.authorized_signatory_name ||
+      record.customer_official_signatory_name ||
+      ''
+    ).trim();
+    const existingTitle = String(
+      record.customer_signatory_title ||
+      record.customer_authorized_signatory_title ||
+      record.authorized_signatory_title ||
+      record.customer_official_signatory_title ||
+      ''
+    ).trim();
+    if (locked && (existingName || existingTitle)) return { name: existingName, title: existingTitle };
+    return {
+      name: existingName || String(company.authorized_signatory_full_name || company.authorized_signatory_name || company.signatory_name || '').trim(),
+      title: existingTitle || String(company.authorized_signatory_title || company.signatory_title || '').trim()
+    };
+  },
   applyOfficialSignatoryDefaults(agreement = {}, company = null) {
     const next = agreement && typeof agreement === 'object' ? { ...agreement } : {};
     const explicitDate = (...values) => {
@@ -483,11 +509,9 @@ const Agreements = {
       }
       return '';
     };
-    const companySignatory = company ? this.getCompanyAuthorizedSignatory(company) : { name: '', title: '' };
-    const customerName = companySignatory.name
-      || String(next.customer_official_signatory_name || next.customerOfficialSignatoryName || next.customer_signatory_name || next.customerSignatoryName || '').trim();
-    const customerTitle = companySignatory.title
-      || String(next.customer_official_signatory_title || next.customerOfficialSignatoryTitle || next.customer_signatory_title || next.customerSignatoryTitle || '').trim();
+    const customerSnapshot = this.resolveCustomerSignatorySnapshot(next, company || {});
+    const customerName = customerSnapshot.name;
+    const customerTitle = customerSnapshot.title;
     next.customer_official_signatory_name = customerName;
     next.customer_official_signatory_title = customerTitle;
     next.customer_official_sign_date = explicitDate(next.customer_official_sign_date, next.customerOfficialSignDate, next.customer_sign_date, next.customerSignDate);
@@ -1329,6 +1353,7 @@ const Agreements = {
       source.payment_term || source.payment_terms || source.paymentTerm || source.paymentTerms,
       'Net 30'
     );
+    const proposalSignatorySnapshot = this.resolveCustomerSignatorySnapshot(source, {});
     const draft = this.normalizeAgreement({
       ...this.emptyAgreement(),
       proposal_id: proposalUuid,
@@ -1374,10 +1399,10 @@ const Agreements = {
       provider_contact_mobile: this.providerIdentityDefaults.contactMobile,
       provider_contact_email: this.providerIdentityDefaults.contactEmail,
       terms_conditions: String(source.terms_conditions || source.termsConditions || '').trim(),
-      customer_official_signatory_name: '',
-      customer_official_signatory_title: '',
-      customer_signatory_name: '',
-      customer_signatory_title: '',
+      customer_official_signatory_name: proposalSignatorySnapshot.name || '',
+      customer_official_signatory_title: proposalSignatorySnapshot.title || '',
+      customer_signatory_name: proposalSignatorySnapshot.name || '',
+      customer_signatory_title: proposalSignatorySnapshot.title || '',
       provider_official_signatory_1_name: this.providerIdentityDefaults.primarySignatoryName,
       provider_official_signatory_1_title: this.providerIdentityDefaults.primarySignatoryTitle,
       provider_official_signatory_1_sign_date: '',

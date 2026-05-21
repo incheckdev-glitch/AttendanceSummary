@@ -1320,18 +1320,43 @@ const Proposals = {
       provider_contact_email: this.providerContactDefaults.email
     };
   },
+  isDocumentLockedForSignatoryRefresh(record = {}) {
+    const status = String(record.status || '').trim().toLowerCase().replace(/\s+/g, '_');
+    return ['accepted', 'signed', 'issued', 'paid', 'partially_paid', 'expired'].includes(status);
+  },
+  resolveCustomerSignatorySnapshot(record = {}, company = {}) {
+    const locked = this.isDocumentLockedForSignatoryRefresh(record);
+    const existingName = String(
+      record.customer_signatory_name ||
+      record.customer_authorized_signatory_name ||
+      record.authorized_signatory_name ||
+      ''
+    ).trim();
+    const existingTitle = String(
+      record.customer_signatory_title ||
+      record.customer_authorized_signatory_title ||
+      record.authorized_signatory_title ||
+      ''
+    ).trim();
+    if (locked && (existingName || existingTitle)) return { name: existingName, title: existingTitle };
+    return {
+      name: existingName || String(company.authorized_signatory_full_name || company.authorized_signatory_name || company.signatory_name || '').trim(),
+      title: existingTitle || String(company.authorized_signatory_title || company.signatory_title || '').trim()
+    };
+  },
   hydrateMappedProposalFields(proposal = {}, selectedCompany = {}, selectedContact = {}) {
     const customerAddress = String(selectedCompany?.address || '').trim();
     const contactPersonName = this.buildContactDisplayName(selectedContact);
     const contactPosition = this.getContactPosition(selectedContact);
+    const signatorySnapshot = this.resolveCustomerSignatorySnapshot(proposal, selectedCompany);
     return this.applyProposalProviderSessionFields({
       ...proposal,
       customer_address: customerAddress,
       customerAddress: customerAddress,
-      customer_signatory_name: contactPersonName,
-      customerSignatoryName: contactPersonName,
-      customer_signatory_title: contactPosition,
-      customerSignatoryTitle: contactPosition
+      customer_signatory_name: signatorySnapshot.name || contactPersonName,
+      customerSignatoryName: signatorySnapshot.name || contactPersonName,
+      customer_signatory_title: signatorySnapshot.title || contactPosition,
+      customerSignatoryTitle: signatorySnapshot.title || contactPosition
     });
   },
   async getFullCompanyRecord(companyIdOrRecord) { const seed = typeof companyIdOrRecord === 'object' ? companyIdOrRecord : {}; const companyId = typeof companyIdOrRecord === 'object' ? (seed.company_id || seed.companyId) : companyIdOrRecord; const hasFullFields = seed.legal_name || seed.legalName || seed.company_type || seed.companyType || seed.industry || seed.website || seed.main_email || seed.mainEmail || seed.main_phone || seed.mainPhone || seed.country || seed.city || seed.address || seed.company_status || seed.companyStatus; if (hasFullFields) return this.normalizeCompany(seed); if (!companyId) return null; const response = await Api.requestWithSession('companies','list',{ filters:{ company_id: companyId }, limit:1 },{ requireAuth:true }); const rows = response?.rows || response?.items || response?.data || []; const row = Array.isArray(rows) ? rows[0] : rows; return row ? this.normalizeCompany(row) : null; },
