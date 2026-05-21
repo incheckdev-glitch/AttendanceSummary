@@ -665,9 +665,10 @@ const Invoices = {
       account_setup_billing_mode: this.normalizeSetupBillingMode(source.account_setup_billing_mode || this.state.accountSetupBillingMode)
     };
   },
-  getInvoiceScheduleStartDate(invoice = {}) {
+  getInvoiceScheduleStartDate(invoice = {}, options = {}) {
+    const includeFormValue = options?.includeFormValue !== false;
     return String(
-      E.invoiceFormDueDate?.value ||
+      (includeFormValue ? E.invoiceFormDueDate?.value : '') ||
       invoice.due_date ||
       invoice.dueDate ||
       ''
@@ -741,6 +742,53 @@ const Invoices = {
   },
   addMonthsPreserveDay(dateValue, monthsToAdd) {
     return this.addMonthsDateOnly(dateValue, monthsToAdd);
+  },
+  buildPreviewPaymentSchedule(invoice = {}, items = [], agreement = {}) {
+    const paymentTerm = this.normalizePaymentTerm(
+      invoice.payment_term ||
+      invoice.payment_terms ||
+      invoice.paymentTerm ||
+      agreement.payment_term ||
+      agreement.payment_terms ||
+      agreement.paymentTerm ||
+      'Net 30'
+    );
+
+    const config = this.getInvoicePaymentScheduleConfig(paymentTerm);
+    const startDate = this.getInvoiceScheduleStartDate(invoice, { includeFormValue: false });
+
+    if (!startDate) return [];
+
+    const total = this.toNumberSafe(
+      invoice.grand_total ||
+      invoice.grand_tota ||
+      invoice.total_amount ||
+      invoice.total ||
+      invoice.invoice_total ||
+      0
+    );
+
+    const count = Math.max(1, config.count);
+    const baseAmount = Math.floor((total / count) * 100) / 100;
+    let remaining = total;
+
+    return Array.from({ length: count }).map((_, index) => {
+      const dueDate = this.addMonthsDateOnly(startDate, index * config.intervalMonths);
+      const scheduledAmount = index === count - 1 ? remaining : baseAmount;
+
+      remaining = Number((remaining - scheduledAmount).toFixed(2));
+
+      return this.normalizeScheduleRow({
+        line_no: index + 1,
+        schedule_no: index + 1,
+        due_date: dueDate,
+        scheduled_amount: Number(scheduledAmount.toFixed(2)),
+        paid_amount: 0,
+        balance_due: Number(scheduledAmount.toFixed(2)),
+        status: this.isDateBeforeToday?.(dueDate) ? 'overdue' : 'scheduled',
+        receipts: []
+      });
+    });
   },
   buildInvoicePaymentSchedule(invoice = {}, items = [], agreement = {}) {
     const startDate = this.getInvoiceScheduleStartDate(invoice);
@@ -1216,7 +1264,7 @@ const Invoices = {
           .join('')
       : '<tr><td colspan="6" class="cell-center muted">No one-time fee items found.</td></tr>';
     const linkedAgreement = this.state.selectedAgreement || {};
-    const scheduleRows = this.buildInvoicePaymentSchedule(invoiceData, normalizedItems, linkedAgreement);
+    const scheduleRows = this.buildPreviewPaymentSchedule(invoiceData, normalizedItems, linkedAgreement);
     const paymentScheduleHtml = scheduleRows.length
       ? scheduleRows
           .sort((a, b) => Number(a.schedule_no || 0) - Number(b.schedule_no || 0))
