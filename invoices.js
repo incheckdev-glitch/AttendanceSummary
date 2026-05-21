@@ -664,6 +664,81 @@ const Invoices = {
       account_setup_billing_mode: this.normalizeSetupBillingMode(source.account_setup_billing_mode || this.state.accountSetupBillingMode)
     };
   },
+  getInvoiceInitialDueDate(invoice = {}, items = [], agreement = {}) {
+    const direct = String(
+      invoice.initial_due_date ||
+      invoice.initialDueDate ||
+      invoice.payment_start_date ||
+      ''
+    ).trim();
+    if (direct) return this.normalizeDateInputValue(direct) || direct;
+
+    const annualItems = (Array.isArray(items) ? items : []).filter(item => {
+      const section = String(item.section || item.item_section || '').toLowerCase();
+      return section === 'annual_saas' || section === 'annual saas' || section.includes('annual');
+    });
+    const serviceStarts = annualItems
+      .map(item => item.service_start_date || item.serviceStartDate || item.start_service_date || item.startServiceDate)
+      .filter(Boolean)
+      .map(value => this.normalizeDateInputValue(value) || String(value).trim())
+      .sort((a, b) => new Date(a) - new Date(b));
+    if (serviceStarts[0]) return serviceStarts[0];
+
+    return this.normalizeDateInputValue(
+      agreement.service_start_date ||
+      agreement.serviceStartDate ||
+      invoice.due_date ||
+      invoice.dueDate ||
+      ''
+    ) || '';
+  },
+  getPaymentScheduleConfig(paymentTerm = '', items = []) {
+    const term = String(paymentTerm || '').trim().toLowerCase();
+    if (term === 'net 7' || term === 'monthly') {
+      const annualItems = Array.isArray(items) ? items : [];
+      const licenseMonths = annualItems
+        .map(item => this.toNumberSafe(item.license_months || item.licenseMonths || item.term_months || item.termMonths || item.service_months || item.serviceMonths))
+        .filter(value => value > 0);
+      const derivedCount = licenseMonths.length ? Math.min(...licenseMonths) : 12;
+      const count = derivedCount > 0 && derivedCount < 12 ? Math.floor(derivedCount) : 12;
+      return { label: 'Monthly', intervalMonths: 1, count: count || 12 };
+    }
+    if (term === 'net 14' || term === 'quarterly') return { label: 'Quarterly', intervalMonths: 3, count: 4 };
+    if (term === 'net 21' || term === 'semi-annually' || term === 'semi annually') return { label: 'Semi-Annually', intervalMonths: 6, count: 2 };
+    return { label: 'Annually', intervalMonths: 12, count: 1 };
+  },
+  addMonthsPreserveDay(dateValue, monthsToAdd) {
+    const date = new Date(dateValue);
+    if (Number.isNaN(date.getTime())) return '';
+    const originalDay = date.getDate();
+    const result = new Date(date);
+    result.setMonth(result.getMonth() + Number(monthsToAdd || 0));
+    if (result.getDate() !== originalDay) result.setDate(0);
+    return result.toISOString().slice(0, 10);
+  },
+  buildInvoicePaymentSchedule(invoice = {}, items = [], agreement = {}) {
+    const initialDueDate = this.getInvoiceInitialDueDate(invoice, items, agreement);
+    const paymentTerm = invoice.payment_term || invoice.payment_terms || agreement.payment_term || agreement.payment_terms || 'Net 30';
+    const config = this.getPaymentScheduleConfig(paymentTerm, items);
+    const total = this.toNumberSafe(invoice.grand_total || invoice.grand_tota || invoice.total_amount || invoice.total || invoice.invoice_total || 0);
+    const rowsCount = Math.max(1, Number(config.count || 1));
+    const baseAmount = Math.floor((total / rowsCount) * 100) / 100;
+    let remaining = total;
+    return Array.from({ length: rowsCount }).map((_, index) => {
+      const dueDate = this.addMonthsPreserveDay(initialDueDate, index * config.intervalMonths);
+      const scheduledAmount = index === rowsCount - 1 ? remaining : baseAmount;
+      remaining = Number((remaining - scheduledAmount).toFixed(2));
+      return this.normalizeScheduleRow({
+        schedule_no: index + 1,
+        installment_no: index + 1,
+        due_date: dueDate,
+        scheduled_amount: Number(scheduledAmount.toFixed(2)),
+        paid_amount: 0,
+        balance_due: Number(scheduledAmount.toFixed(2)),
+        status: 'scheduled'
+      });
+    });
+  },
   getInvoicePaymentSchedulePlan(paymentTerm) {
     const term = String(paymentTerm || '').trim().toLowerCase().replace(/\s+/g, '');
     if (term === 'net7') return { count: 12, intervalMonths: 1, firstDueNetDays: 7, label: 'Monthly' };
@@ -1073,7 +1148,8 @@ const Invoices = {
           })
           .join('')
       : '<tr><td colspan="6" class="cell-center muted">No one-time fee items found.</td></tr>';
-    const scheduleRows = (Array.isArray(paymentScheduleRows) ? paymentScheduleRows : []).map(row => this.normalizeScheduleRow(row));
+    const linkedAgreement = this.state.selectedAgreement || {};
+    const scheduleRows = this.buildInvoicePaymentSchedule(invoiceData, normalizedItems, linkedAgreement);
     const paymentScheduleHtml = scheduleRows.length
       ? scheduleRows
           .sort((a, b) => Number(a.schedule_no || 0) - Number(b.schedule_no || 0))
