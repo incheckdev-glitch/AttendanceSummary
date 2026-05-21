@@ -504,6 +504,37 @@ const ClientsService = {
     const totalKey = String(this.toNumber(invoice.invoice_total ?? invoice.grand_total));
     return [clientKey, agreementKey, periodKey, totalKey].filter(Boolean).join('|');
   },
+
+  normalizeLocationKey(value = '') {
+    return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  },
+  isSupersededRenewalItem(item = {}) {
+    const flag = item?.is_superseded;
+    return flag === true || String(flag || '').trim().toLowerCase() === 'true' || Boolean(item?.superseded_by_item_id || item?.supersededByItemId);
+  },
+  buildUniqueCurrentLocationRows(items = []) {
+    const map = new Map();
+    for (const item of Array.isArray(items) ? items : []) {
+      if (!this.isAnnualSaasClientLocationItem(item)) continue;
+      if (this.isSupersededRenewalItem(item)) continue;
+      const invoiceStatus = this.normalizeText(item?.invoice_status || item?.invoiceStatus || '');
+      if (invoiceStatus === 'cancelled' || invoiceStatus === 'canceled') continue;
+      const locationKey = this.normalizeLocationKey(item?.location_name || item?.locationName || item?.location || '');
+      if (!locationKey) continue;
+      const itemKey = this.normalizeLocationKey(item?.item_name || item?.itemName || item?.license || item?.module_name || item?.moduleName || '');
+      const clientKey = this.normalizeLocationKey(item?.client_id || item?.clientId || item?.company_id || item?.companyId || '');
+      const key = `${clientKey}::${locationKey}::${itemKey}`;
+      const existing = map.get(key);
+      if (!existing) {
+        map.set(key, item);
+        continue;
+      }
+      const existingEnd = new Date(existing.service_end_date || existing.serviceEndDate || 0).getTime() || 0;
+      const itemEnd = new Date(item.service_end_date || item.serviceEndDate || 0).getTime() || 0;
+      if (itemEnd >= existingEnd) map.set(key, item);
+    }
+    return Array.from(map.values());
+  },
   dedupeRenewalInvoicesForTotals_(invoices = []) {
     const output = [];
     const seenRenewalDrafts = new Map();
@@ -553,12 +584,8 @@ const ClientsService = {
     const linkedInvoices = this.dedupeRenewalInvoicesForTotals_(invoices.filter(row => this.invoiceBelongsToClient(row, client, linkedAgreements)));
     const linkedReceipts = receipts.filter(row => this.receiptBelongsToClient(row, client, linkedAgreements, linkedInvoices));
 
-    const signedOrActiveAgreements = linkedAgreements.filter(agreement => {
-      const status = String(agreement?.status || '').trim().toLowerCase();
-      return ['signed', 'active'].includes(status) || this.isSignedAgreement(agreement);
-    });
-    const totalAgreements = signedOrActiveAgreements.filter(agreement => this.agreementHasCurrentAnnualSaasItems(agreement)).length;
-    const totalLocations = linkedAgreementItems.filter(item => this.isAnnualSaasClientLocationItem(item)).length;
+    const totalAgreements = linkedAgreements.length;
+    const totalLocations = this.buildUniqueCurrentLocationRows(linkedAgreementItems).length;
     const totalValue = linkedAgreements.reduce((sum, agreement) => sum + this.toNumber(agreement.grand_total), 0);
     const totalInvoiced = linkedInvoices.reduce((sum, invoice) => sum + this.toNumber(invoice.invoice_total ?? invoice.grand_total), 0);
     const totalPaidFromReceipts = linkedReceipts.reduce((sum, receipt) => sum + this.toNumber(receipt.amount_received ?? receipt.amount_paid ?? receipt.paid_amount), 0);
