@@ -666,17 +666,10 @@ const Invoices = {
     };
   },
   getInvoiceScheduleStartDate(invoice = {}) {
-    const formDueDate =
-      E.invoiceFormDueDate?.value ||
-      E.invoiceDueDate?.value ||
-      '';
-
     return String(
-      formDueDate ||
+      E.invoiceFormDueDate?.value ||
       invoice.due_date ||
       invoice.dueDate ||
-      invoice.initial_due_date ||
-      invoice.initialDueDate ||
       ''
     ).trim();
   },
@@ -684,18 +677,18 @@ const Invoices = {
     const term = String(paymentTerm || '').trim().toLowerCase();
 
     if (term === 'net 7' || term === 'monthly') {
-      return { label: 'Monthly', intervalMonths: 1, count: 12 };
+      return { intervalMonths: 1, count: 12 };
     }
 
     if (term === 'net 14' || term === 'quarterly') {
-      return { label: 'Quarterly', intervalMonths: 3, count: 4 };
+      return { intervalMonths: 3, count: 4 };
     }
 
     if (term === 'net 21' || term === 'semi-annually' || term === 'semi annually' || term === 'semiannually') {
-      return { label: 'Semi-Annually', intervalMonths: 6, count: 2 };
+      return { intervalMonths: 6, count: 2 };
     }
 
-    return { label: 'Annually', intervalMonths: 12, count: 1 };
+    return { intervalMonths: 12, count: 1 };
   },
   addMonthsPreserveDay(dateValue, monthsToAdd) {
     const date = new Date(`${dateValue}T00:00:00`);
@@ -712,9 +705,9 @@ const Invoices = {
     if (!startDate) return [];
 
     const config = this.getInvoicePaymentScheduleConfig(
+      E.invoiceFormPaymentTerm?.value ||
       invoice.payment_term ||
       invoice.payment_terms ||
-      E.invoiceFormPaymentTerm?.value ||
       agreement.payment_term ||
       agreement.payment_terms ||
       'Net 30'
