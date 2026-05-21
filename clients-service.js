@@ -601,6 +601,65 @@ const ClientsService = {
     }
     return Array.from(map.values());
   },
+  parseDateOnly(value) {
+    const raw = String(value || '').trim();
+    const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!match) return null;
+
+    return new Date(
+      Number(match[1]),
+      Number(match[2]) - 1,
+      Number(match[3]),
+      12,
+      0,
+      0
+    );
+  },
+  isServiceActiveToday(item = {}) {
+    const today = new Date();
+    const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0);
+
+    const start = this.parseDateOnly(item.service_start_date || item.serviceStartDate);
+    const end = this.parseDateOnly(item.service_end_date || item.serviceEndDate);
+
+    if (!start || !end) return false;
+
+    return start <= todayOnly && todayOnly <= end;
+  },
+  buildUniqueActiveServiceLocationRows(items = []) {
+    const map = new Map();
+
+    for (const item of Array.isArray(items) ? items : []) {
+      if (!this.isAnnualSaasItem(item)) continue;
+      if (!this.isServiceActiveToday(item)) continue;
+
+      const locationKey = this.normalizeLocationKey(
+        item.location_name || item.locationName || item.location || ''
+      );
+      const itemKey = this.normalizeLocationKey(
+        item.item_name || item.itemName || item.license || item.product_name || ''
+      );
+
+      if (!locationKey) continue;
+
+      const key = `${locationKey}::${itemKey}`;
+      const existing = map.get(key);
+
+      if (!existing) {
+        map.set(key, item);
+        continue;
+      }
+
+      const existingEnd = this.parseDateOnly(existing.service_end_date || existing.serviceEndDate);
+      const itemEnd = this.parseDateOnly(item.service_end_date || item.serviceEndDate);
+
+      if ((itemEnd?.getTime() || 0) >= (existingEnd?.getTime() || 0)) {
+        map.set(key, item);
+      }
+    }
+
+    return Array.from(map.values());
+  },
   dedupeRenewalInvoicesForTotals_(invoices = []) {
     const output = [];
     const seenRenewalDrafts = new Map();
