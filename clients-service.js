@@ -251,7 +251,6 @@ const ClientsService = {
       customer_company_id: String(row.customer_company_id || row.customerCompanyId || '').trim(),
       client_name: clientName,
       company_name: companyName,
-      company_id: String(agreement.company_id || agreement.customer_company_id || agreement.client_company_id || '').trim(),
       primary_email: String(row.primary_email || '').trim(),
       primary_phone: String(row.primary_phone || '').trim(),
       billing_frequency: String(row.billing_frequency || '').trim(),
