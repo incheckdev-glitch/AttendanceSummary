@@ -464,22 +464,39 @@ const Agreements = {
     // They stay empty unless the user explicitly enters a signature date.
     return '';
   },
-  getCompanyAuthorizedSignatory(company = {}) {
+  resolveCompanyAuthorizedSignatory(company = {}) {
     return {
-      name: String(company?.authorized_signatory_full_name || company?.authorizedSignatoryFullName || '').trim(),
-      title: String(company?.authorized_signatory_title || company?.authorizedSignatoryTitle || '').trim()
+      name: String(
+        company?.authorized_signatory_name ||
+        company?.authorizedSignatoryName ||
+        company?.authorized_signatory_full_name ||
+        company?.authorizedSignatoryFullName ||
+        company?.customer_authorized_signatory_name ||
+        company?.signatory_name ||
+        ''
+      ).trim(),
+      title: String(
+        company?.authorized_signatory_title ||
+        company?.authorizedSignatoryTitle ||
+        company?.customer_authorized_signatory_title ||
+        company?.signatory_title ||
+        ''
+      ).trim()
     };
   },
+  getCompanyAuthorizedSignatory(company = {}) {
+    return this.resolveCompanyAuthorizedSignatory(company);
+  },
   hasCompanyAuthorizedSignatory(company = {}) {
-    const signatory = this.getCompanyAuthorizedSignatory(company);
+    const signatory = this.resolveCompanyAuthorizedSignatory(company);
     return Boolean(signatory.name && signatory.title);
   },
-  isDocumentLockedForSignatoryRefresh(record = {}) {
+  isSignedOrAcceptedDocument(record = {}) {
     const status = String(record.status || '').trim().toLowerCase().replace(/\s+/g, '_');
-    return ['accepted', 'signed', 'issued', 'paid', 'partially_paid', 'expired'].includes(status);
+    return ['accepted', 'signed', 'active', 'issued', 'paid', 'partially_paid', 'expired'].includes(status);
   },
   resolveCustomerSignatorySnapshot(record = {}, company = {}) {
-    const locked = this.isDocumentLockedForSignatoryRefresh(record);
+    const locked = this.isSignedOrAcceptedDocument(record);
     const existingName = String(
       record.customer_signatory_name ||
       record.customer_authorized_signatory_name ||
@@ -496,8 +513,8 @@ const Agreements = {
     ).trim();
     if (locked && (existingName || existingTitle)) return { name: existingName, title: existingTitle };
     return {
-      name: existingName || String(company.authorized_signatory_full_name || company.authorized_signatory_name || company.signatory_name || '').trim(),
-      title: existingTitle || String(company.authorized_signatory_title || company.signatory_title || '').trim()
+      name: existingName || this.resolveCompanyAuthorizedSignatory(company).name,
+      title: existingTitle || this.resolveCompanyAuthorizedSignatory(company).title
     };
   },
   applyOfficialSignatoryDefaults(agreement = {}, company = null) {
@@ -3823,6 +3840,8 @@ const Agreements = {
     agreement.customer_legal_name = String(companyHydratedAgreement.customer_legal_name || agreement.customer_legal_name || '').trim();
     agreement.customer_name = agreement.customer_legal_name;
     Object.assign(agreement, this.applyOfficialSignatoryDefaults(companyHydratedAgreement, this.state.selectedAgreementCompanyForVerification || companyHydratedAgreement.company || null));
+    agreement.customer_authorized_signatory_name = String(agreement.customer_signatory_name || agreement.customer_official_signatory_name || '').trim();
+    agreement.customer_authorized_signatory_title = String(agreement.customer_signatory_title || agreement.customer_official_signatory_title || '').trim();
     this.normalizeAgreementSignatoryDateAliases(agreement);
     agreement.status = this.resolveAgreementStatus(agreement);
     agreement.provider_signatory_email = String(provider.email || '').trim();
