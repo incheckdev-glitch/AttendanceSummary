@@ -635,18 +635,55 @@ const Agreements = {
   getFilteredAgreementRows() {
     return Array.isArray(this.state.filteredRows) ? [...this.state.filteredRows] : [];
   },
-  getAgreementCustomerName(agreement = {}) {
-    return String(
-      agreement.customer_name ||
-      agreement.customerName ||
-      agreement.company_name ||
-      agreement.companyName ||
-      agreement.client_name ||
-      agreement.clientName ||
-      agreement.full_name ||
-      agreement.fullName ||
+  resolveAgreementCustomerDisplay(agreement = {}) {
+    const companyId = String(
+      agreement.company_id ||
+      agreement.companyId ||
+      agreement.customer_company_id ||
+      agreement.customerCompanyId ||
+      agreement.client_company_id ||
+      agreement.clientCompanyId ||
       ''
     ).trim();
+
+    if (companyId) {
+      const companiesState = window.Companies?.state || {};
+      const company =
+        this.state.companiesById?.[companyId] ||
+        this.state.companiesByCompanyId?.[companyId] ||
+        companiesState.companiesById?.get?.(companyId) ||
+        companiesState.companiesByCompanyId?.get?.(companyId) ||
+        (Array.isArray(companiesState.rows)
+          ? companiesState.rows.find(row =>
+              String(
+                row?.company_id || row?.companyId || row?.id || ''
+              ).trim() === companyId
+            )
+          : null) ||
+        null;
+
+      const linkedName = String(
+        company?.legal_name ||
+        company?.legal_company_name ||
+        company?.company_name ||
+        company?.name ||
+        ''
+      ).trim();
+
+      if (linkedName) return linkedName;
+    }
+
+    return String(
+      agreement.customer_name ||
+      agreement.company_name ||
+      agreement.client_name ||
+      agreement.customer_company_name ||
+      agreement.customer_legal_name ||
+      ''
+    ).trim();
+  },
+  getAgreementCustomerName(agreement = {}) {
+    return this.resolveAgreementCustomerDisplay(agreement);
   },
   formatDateMMDDYYYY(value) {
     const raw = String(value || '').trim();
@@ -2588,7 +2625,7 @@ const Agreements = {
         : '';
       return `<tr>
         <td>${textCell(row.agreement_id)}${importedBadge}</td><td>${textCell(row.agreement_number)}</td><td>${textCell(row.agreement_title)}</td>
-        <td>${textCell(row.customer_name)}</td><td>${textCell(this.getAgreementProposalDisplayRef(row))}</td><td>${textCell(row.deal_id)}</td>
+        <td>${textCell(this.resolveAgreementCustomerDisplay(row))}</td><td>${textCell(this.getAgreementProposalDisplayRef(row))}</td><td>${textCell(row.deal_id)}</td>
         <td>${U.escapeHtml(U.fmtDisplayDate(row.service_start_date))}</td><td>${textCell(row.agreement_length)}</td><td>${textCell(row.billing_frequency)}</td>
         <td>${textCell(this.getPaymentTermDisplay(row.payment_term))}</td><td>${textCell(row.currency)}</td><td>${textCell(this.formatMoney(rowTotals.grand_total))}</td>
         <td>${textCell(this.resolveAgreementStatus(row))}</td><td>${U.escapeHtml(U.fmtDisplayDate(row.updated_at))}</td>

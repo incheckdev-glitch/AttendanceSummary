@@ -187,8 +187,8 @@ const ClientsService = {
   hasStrictClientOwnership(agreement = {}, client = {}) {
     const clientCompanyId = this.getClientCompanyId(client);
     const agreementCompanyId = this.getAgreementCompanyId(agreement);
-    if (clientCompanyId && agreementCompanyId) {
-      return String(agreementCompanyId) === String(clientCompanyId);
+    if (clientCompanyId || agreementCompanyId) {
+      return Boolean(clientCompanyId && agreementCompanyId && String(agreementCompanyId) === String(clientCompanyId));
     }
 
     // Some imported/historical agreements still do not have company_id.
