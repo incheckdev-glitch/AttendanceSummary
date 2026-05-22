@@ -1240,6 +1240,51 @@ const ClientsService = {
     this.refreshCompanyLifecycleStatus(mapped);
     return mapped;
   },
+
+  attachInvoiceItems(invoices = [], invoiceItems = []) {
+    const byInvoiceKey = new Map();
+    const add = (key, item) => {
+      const normalized = String(key || '').trim();
+      if (!normalized) return;
+      if (!byInvoiceKey.has(normalized)) byInvoiceKey.set(normalized, []);
+      byInvoiceKey.get(normalized).push(item);
+    };
+
+    for (const item of Array.isArray(invoiceItems) ? invoiceItems : []) {
+      add(item.invoice_id, item);
+      add(item.invoiceId, item);
+      add(item.invoice_number, item);
+      add(item.invoiceNumber, item);
+    }
+
+    return (Array.isArray(invoices) ? invoices : []).map(invoice => {
+      const keys = [
+        invoice.id,
+        invoice.invoice_id,
+        invoice.invoiceId,
+        invoice.invoice_number,
+        invoice.invoiceNumber
+      ].map(value => String(value || '').trim()).filter(Boolean);
+
+      const seen = new Set();
+      const items = [];
+
+      for (const key of keys) {
+        for (const item of byInvoiceKey.get(key) || []) {
+          const itemKey = String(item.id || `${item.invoice_id}-${item.line_no}-${item.location_name}`).trim();
+          if (seen.has(itemKey)) continue;
+          seen.add(itemKey);
+          items.push(item);
+        }
+      }
+
+      return {
+        ...invoice,
+        items,
+        invoice_items: items
+      };
+    });
+  },
   refreshCompanyLifecycleStatus(client = {}) {
     const status = String(client?.status || client?.account_status || '').trim().toLowerCase();
     if (status && !status.includes('active') && !status.includes('live')) return;
@@ -1300,7 +1345,7 @@ const ClientsService = {
     }
 
     const agreements = this.attachAgreementItems(agreementRows.map(row => this.mapAgreementRow(row)), itemRows);
-    const invoices = invoiceRows;
+    const invoices = this.attachInvoiceItems(invoiceRows, invoiceItemRows);
     const receipts = receiptRows;
     const clientsList = await this.listClients(options);
     const allowClientMutations = options.allowClientMutations !== undefined
