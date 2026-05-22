@@ -386,6 +386,64 @@ const ClientsService = {
       };
     });
   },
+  attachInvoiceItems(invoices = [], invoiceItems = []) {
+    const byInvoiceKey = new Map();
+
+    const add = (key, item) => {
+      const normalized = String(key || '').trim();
+      if (!normalized) return;
+      if (!byInvoiceKey.has(normalized)) byInvoiceKey.set(normalized, []);
+      byInvoiceKey.get(normalized).push(item);
+    };
+
+    for (const item of Array.isArray(invoiceItems) ? invoiceItems : []) {
+      add(item.invoice_id, item);
+      add(item.invoiceId, item);
+      add(item.invoice_uuid, item);
+      add(item.invoiceUuid, item);
+      add(item.invoice_number, item);
+      add(item.invoiceNumber, item);
+      add(item.invoice_no, item);
+      add(item.invoiceNo, item);
+      add(item.parent_invoice_id, item);
+      add(item.parent_invoice_number, item);
+      add(item.source_invoice_id, item);
+      add(item.source_invoice_number, item);
+    }
+
+    return (Array.isArray(invoices) ? invoices : []).map(invoice => {
+      const keys = [
+        invoice.id,
+        invoice.invoice_id,
+        invoice.invoiceId,
+        invoice.invoice_uuid,
+        invoice.invoiceUuid,
+        invoice.invoice_number,
+        invoice.invoiceNumber,
+        invoice.invoice_no,
+        invoice.invoiceNo
+      ].map(value => String(value || '').trim()).filter(Boolean);
+
+      const seen = new Set();
+      const items = [];
+
+      for (const key of keys) {
+        for (const item of byInvoiceKey.get(key) || []) {
+          const itemKey = String(item.id || `${item.invoice_id || item.invoice_number}-${item.line_no}-${item.location_name}`).trim();
+          if (seen.has(itemKey)) continue;
+          seen.add(itemKey);
+          items.push(item);
+        }
+      }
+
+      return {
+        ...invoice,
+        items,
+        invoice_items: items
+      };
+    });
+  },
+
   isSignedAgreement(agreement = {}) {
     return this.normalizeText(agreement.status).includes('signed') || Boolean(String(agreement.signed_date || agreement.customer_sign_date || '').trim());
   },
@@ -599,65 +657,6 @@ const ClientsService = {
       }
       if (itemRank.serviceEndAt === existingRank.serviceEndAt && itemRank.updatedAt >= existingRank.updatedAt) map.set(key, item);
     }
-    return Array.from(map.values());
-  },
-  parseDateOnly(value) {
-    const raw = String(value || '').trim();
-    const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (!match) return null;
-
-    return new Date(
-      Number(match[1]),
-      Number(match[2]) - 1,
-      Number(match[3]),
-      12,
-      0,
-      0
-    );
-  },
-  isServiceActiveToday(item = {}) {
-    const today = new Date();
-    const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0);
-
-    const start = this.parseDateOnly(item.service_start_date || item.serviceStartDate);
-    const end = this.parseDateOnly(item.service_end_date || item.serviceEndDate);
-
-    if (!start || !end) return false;
-
-    return start <= todayOnly && todayOnly <= end;
-  },
-  buildUniqueActiveServiceLocationRows(items = []) {
-    const map = new Map();
-
-    for (const item of Array.isArray(items) ? items : []) {
-      if (!this.isAnnualSaasItem(item)) continue;
-      if (!this.isServiceActiveToday(item)) continue;
-
-      const locationKey = this.normalizeLocationKey(
-        item.location_name || item.locationName || item.location || ''
-      );
-      const itemKey = this.normalizeLocationKey(
-        item.item_name || item.itemName || item.license || item.product_name || ''
-      );
-
-      if (!locationKey) continue;
-
-      const key = `${locationKey}::${itemKey}`;
-      const existing = map.get(key);
-
-      if (!existing) {
-        map.set(key, item);
-        continue;
-      }
-
-      const existingEnd = this.parseDateOnly(existing.service_end_date || existing.serviceEndDate);
-      const itemEnd = this.parseDateOnly(item.service_end_date || item.serviceEndDate);
-
-      if ((itemEnd?.getTime() || 0) >= (existingEnd?.getTime() || 0)) {
-        map.set(key, item);
-      }
-    }
-
     return Array.from(map.values());
   },
   dedupeRenewalInvoicesForTotals_(invoices = []) {
@@ -1239,51 +1238,6 @@ const ClientsService = {
     const mapped = this.mapDbClientToUi(data);
     this.refreshCompanyLifecycleStatus(mapped);
     return mapped;
-  },
-
-  attachInvoiceItems(invoices = [], invoiceItems = []) {
-    const byInvoiceKey = new Map();
-    const add = (key, item) => {
-      const normalized = String(key || '').trim();
-      if (!normalized) return;
-      if (!byInvoiceKey.has(normalized)) byInvoiceKey.set(normalized, []);
-      byInvoiceKey.get(normalized).push(item);
-    };
-
-    for (const item of Array.isArray(invoiceItems) ? invoiceItems : []) {
-      add(item.invoice_id, item);
-      add(item.invoiceId, item);
-      add(item.invoice_number, item);
-      add(item.invoiceNumber, item);
-    }
-
-    return (Array.isArray(invoices) ? invoices : []).map(invoice => {
-      const keys = [
-        invoice.id,
-        invoice.invoice_id,
-        invoice.invoiceId,
-        invoice.invoice_number,
-        invoice.invoiceNumber
-      ].map(value => String(value || '').trim()).filter(Boolean);
-
-      const seen = new Set();
-      const items = [];
-
-      for (const key of keys) {
-        for (const item of byInvoiceKey.get(key) || []) {
-          const itemKey = String(item.id || `${item.invoice_id}-${item.line_no}-${item.location_name}`).trim();
-          if (seen.has(itemKey)) continue;
-          seen.add(itemKey);
-          items.push(item);
-        }
-      }
-
-      return {
-        ...invoice,
-        items,
-        invoice_items: items
-      };
-    });
   },
   refreshCompanyLifecycleStatus(client = {}) {
     const status = String(client?.status || client?.account_status || '').trim().toLowerCase();
