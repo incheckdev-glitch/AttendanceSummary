@@ -286,15 +286,74 @@ const Clients = {
   getAgreementLegalName(agreement = {}) {
     return String(agreement.customer_legal_name || agreement.company_name || agreement.customer_name || agreement.client_name || '').trim();
   },
+  getRawCompanyIdValues_(record = {}) {
+    const source = record && typeof record === 'object' ? record : {};
+    return [
+      source.company_id,
+      source.companyId,
+      source.company_uuid,
+      source.companyUuid,
+      source.customer_company_id,
+      source.customerCompanyId,
+      source.client_company_id,
+      source.clientCompanyId
+    ].map(value => String(value || '').trim()).filter(Boolean);
+  },
+  findCompanyForRecord_(record = {}) {
+    const source = record && typeof record === 'object' ? record : {};
+    const rawIds = this.getRawCompanyIdValues_(source);
+    for (const id of rawIds) {
+      const company = this.state.companiesById?.get?.(id);
+      if (company) return company;
+    }
+
+    const names = [
+      source.customer_legal_name,
+      source.customerLegalName,
+      source.legal_name,
+      source.legalName,
+      source.company_name,
+      source.companyName,
+      source.customer_name,
+      source.customerName,
+      source.client_name,
+      source.clientName,
+      source.name
+    ].map(value => this.normalizeCompanyKey(value)).filter(Boolean);
+
+    for (const name of names) {
+      const company = this.state.companiesByName?.get?.(name);
+      if (company) return company;
+    }
+
+    return null;
+  },
+  getExpandedCompanyIdKeys_(record = {}) {
+    const keys = new Set(this.getRawCompanyIdValues_(record));
+    const company = this.findCompanyForRecord_(record);
+    if (company) {
+      this.getCompanyIdKeys(company).forEach(key => keys.add(key));
+    }
+    return keys;
+  },
+  companyKeySetsIntersect_(left = new Set(), right = new Set()) {
+    for (const key of left) if (right.has(key)) return true;
+    return false;
+  },
   hasStrictClientOwnership(agreement = {}, client = {}) {
-    const clientCompanyId = this.getClientCompanyId(client);
-    const agreementCompanyId = this.getAgreementCompanyId(agreement);
-    if (clientCompanyId || agreementCompanyId) {
-      return Boolean(clientCompanyId && agreementCompanyId && String(agreementCompanyId) === String(clientCompanyId));
+    const clientCompanyKeys = this.getExpandedCompanyIdKeys_(client);
+    const agreementCompanyKeys = this.getExpandedCompanyIdKeys_(agreement);
+
+    if (clientCompanyKeys.size || agreementCompanyKeys.size) {
+      return Boolean(
+        clientCompanyKeys.size &&
+        agreementCompanyKeys.size &&
+        this.companyKeySetsIntersect_(clientCompanyKeys, agreementCompanyKeys)
+      );
     }
 
     // Historical/imported records can fallback to strict exact legal/company name matching
-    // only when both sides are missing company_id.
+    // only when both sides are missing company_id. Never use email or partial includes.
     const agreementName = this.normalizeCompanyKey(this.getAgreementLegalName(agreement));
     const clientName = this.normalizeCompanyKey(this.getClientLegalName(client));
     return Boolean(agreementName && clientName && agreementName === clientName);
@@ -343,9 +402,11 @@ const Clients = {
     return String(value || '')
       .trim()
       .toLowerCase()
-      .replace(/s\.?a\.?l\.?/gi, 'sal')
-      .replace(/[^a-z0-9]+/g, ' ')
-      .replace(/\b(inc|llc|ltd|co|corp|corporation|company|the)\b/g, ' ')
+      .normalize('NFKC')
+      .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
+      .replace(/s\.?\s*a\.?\s*l\.?/gi, 'sal')
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .replace(/\b(inc|llc|ltd|co|corp|corporation|company|the)\b/gi, ' ')
       .replace(/\s+/g, ' ')
       .trim();
   },

@@ -4,6 +4,7 @@ const ClientsService = {
     'status','company_id','source_agreement_id','total_agreements','total_locations','total_value','total_paid','total_due','created_by','updated_by'
   ]),
   AGREEMENT_SELECT_COLUMNS: '*',
+  companyLookup: { byId: new Map(), byName: new Map() },
   getDb() {
     const db = window.SupabaseClient?.getClient?.();
     if (!db || typeof db.from !== 'function') {
@@ -184,11 +185,93 @@ const ClientsService = {
   getAgreementLegalName(agreement = {}) {
     return String(agreement.customer_legal_name || agreement.company_name || agreement.customer_name || agreement.client_name || '').trim();
   },
+  getCompanyIdKeys(company = {}) {
+    return [company.id, company.company_id, company.company_uuid, company.uuid, company.companyId, company.companyUuid]
+      .map(value => String(value || '').trim())
+      .filter(Boolean);
+  },
+  getCompanyNameKeys(company = {}) {
+    return [
+      company.legal_company_name,
+      company.legalCompanyName,
+      company.legal_name,
+      company.legalName,
+      company.company_name,
+      company.companyName,
+      company.customer_name,
+      company.customerName,
+      company.client_name,
+      company.clientName,
+      company.name
+    ].map(value => this.normalizeCompanyKey(value)).filter(Boolean);
+  },
+  rebuildCompanyLookupMaps(companies = []) {
+    const byId = new Map();
+    const byName = new Map();
+    (Array.isArray(companies) ? companies : []).filter(Boolean).forEach(company => {
+      this.getCompanyIdKeys(company).forEach(key => {
+        if (!byId.has(key)) byId.set(key, company);
+      });
+      this.getCompanyNameKeys(company).forEach(key => {
+        if (!byName.has(key)) byName.set(key, company);
+      });
+    });
+    this.companyLookup = { byId, byName };
+  },
+  getRawCompanyIdValues_(record = {}) {
+    const source = record && typeof record === 'object' ? record : {};
+    return [
+      source.company_id,
+      source.companyId,
+      source.company_uuid,
+      source.companyUuid,
+      source.customer_company_id,
+      source.customerCompanyId,
+      source.client_company_id,
+      source.clientCompanyId
+    ].map(value => String(value || '').trim()).filter(Boolean);
+  },
+  findCompanyForRecord_(record = {}) {
+    const source = record && typeof record === 'object' ? record : {};
+    const rawIds = this.getRawCompanyIdValues_(source);
+    for (const id of rawIds) {
+      const company = this.companyLookup?.byId?.get?.(id);
+      if (company) return company;
+    }
+    const names = [
+      source.customer_legal_name,
+      source.customerLegalName,
+      source.legal_name,
+      source.legalName,
+      source.company_name,
+      source.companyName,
+      source.customer_name,
+      source.customerName,
+      source.client_name,
+      source.clientName,
+      source.name
+    ].map(value => this.normalizeCompanyKey(value)).filter(Boolean);
+    for (const name of names) {
+      const company = this.companyLookup?.byName?.get?.(name);
+      if (company) return company;
+    }
+    return null;
+  },
+  getExpandedCompanyIdKeys_(record = {}) {
+    const keys = new Set(this.getRawCompanyIdValues_(record));
+    const company = this.findCompanyForRecord_(record);
+    if (company) this.getCompanyIdKeys(company).forEach(key => keys.add(key));
+    return keys;
+  },
+  companyKeySetsIntersect_(left = new Set(), right = new Set()) {
+    for (const key of left) if (right.has(key)) return true;
+    return false;
+  },
   hasStrictClientOwnership(agreement = {}, client = {}) {
-    const clientCompanyId = this.getClientCompanyId(client);
-    const agreementCompanyId = this.getAgreementCompanyId(agreement);
-    if (clientCompanyId || agreementCompanyId) {
-      return Boolean(clientCompanyId && agreementCompanyId && String(agreementCompanyId) === String(clientCompanyId));
+    const clientCompanyKeys = this.getExpandedCompanyIdKeys_(client);
+    const agreementCompanyKeys = this.getExpandedCompanyIdKeys_(agreement);
+    if (clientCompanyKeys.size || agreementCompanyKeys.size) {
+      return Boolean(clientCompanyKeys.size && agreementCompanyKeys.size && this.companyKeySetsIntersect_(clientCompanyKeys, agreementCompanyKeys));
     }
 
     // Some imported/historical agreements still do not have company_id.
@@ -1283,11 +1366,14 @@ const ClientsService = {
     let invoiceItemRows = [];
     let receiptRows = [];
     let receiptItemRows = [];
-    const [agreementsRes, itemsRes] = await Promise.all([
+    const [agreementsRes, itemsRes, companiesRes] = await Promise.all([
       db.from('agreements').select(this.AGREEMENT_SELECT_COLUMNS).order('updated_at', { ascending: false }).limit(analyticsLimit),
-      this.fetchAgreementItemsForClients_(db)
+      this.fetchAgreementItemsForClients_(db),
+      db.from('companies').select('*').limit(analyticsLimit)
     ]);
     if (agreementsRes.error) throw this.friendlyError('Unable to load agreements for clients', agreementsRes.error);
+    if (companiesRes?.error) console.warn('[ClientsService] companies lookup query failed; client analytics will fallback to raw ids/names.', companiesRes.error);
+    this.rebuildCompanyLookupMaps(this.coerceLinkedRows_(companiesRes, 'companies'));
     agreementRows = this.coerceLinkedRows_(agreementsRes, 'agreements');
     console.log('[AgreementMapping] loaded agreements', agreementRows.length);
     itemRows = this.coerceLinkedRows_(itemsRes, 'agreement_items');
