@@ -503,6 +503,36 @@ const Clients = {
       created_at: String(raw.created_at || raw.createdAt || '').trim()
     };
   },
+  normalizeInvoiceItem(raw = {}) {
+    const source = raw && typeof raw === 'object' ? raw : {};
+    return {
+      ...source,
+      id: String(source.id || source.item_id || source.itemId || source.invoice_item_id || source.invoiceItemId || '').trim(),
+      invoice_id: String(source.invoice_id || source.invoiceId || source.invoice_uuid || source.invoiceUuid || source.parent_invoice_id || source.parentInvoiceId || '').trim(),
+      invoice_number: String(source.invoice_number || source.invoiceNumber || source.invoice_no || source.invoiceNo || source.parent_invoice_number || source.parentInvoiceNumber || source.source_invoice_number || source.sourceInvoiceNumber || '').trim(),
+      invoice_no: String(source.invoice_no || source.invoiceNo || source.invoice_number || source.invoiceNumber || '').trim(),
+      agreement_id: String(source.agreement_id || source.agreementId || source.parent_agreement_id || source.parentAgreementId || '').trim(),
+      agreement_number: String(source.agreement_number || source.agreementNumber || source.parent_agreement_number || source.parentAgreementNumber || source.source_agreement_number || source.sourceAgreementNumber || '').trim(),
+      company_id: String(source.company_id || source.companyId || '').trim(),
+      section: String(source.section || source.item_section || source.itemSection || source.category || source.type || '').trim(),
+      category: String(source.category || source.section || source.type || '').trim(),
+      line_no: source.line_no ?? source.lineNo ?? source.sort_order ?? source.sortOrder ?? '',
+      location_name: String(source.location_name || source.locationName || source.location || source.site || source.site_name || source.branch || source.branch_name || source.store_name || '').trim(),
+      item_name: String(source.item_name || source.itemName || source.product_name || source.productName || source.service_name || source.serviceName || source.module || source.module_name || source.moduleName || source.description || '').trim(),
+      module_name: String(source.module_name || source.moduleName || source.module || source.service_name || source.serviceName || source.product_name || source.productName || source.item_name || source.itemName || '').trim(),
+      service_start_date: String(source.service_start_date || source.serviceStartDate || source.start_service_date || source.startServiceDate || source.start_date || source.startDate || '').trim(),
+      service_end_date: String(source.service_end_date || source.serviceEndDate || source.end_service_date || source.endServiceDate || source.end_date || source.endDate || source.renewal_date || source.renewalDate || '').trim(),
+      renewal_date: String(source.renewal_date || source.renewalDate || source.service_end_date || source.serviceEndDate || source.end_date || source.endDate || '').trim(),
+      unit_price: this.toNumberSafe(source.unit_price ?? source.unitPrice ?? source.license_price_year ?? source.licensePriceYear ?? source.annual_license_price ?? source.annualLicensePrice),
+      discount_percent: this.toNumberSafe(source.discount_percent ?? source.discountPercent),
+      quantity: this.toNumberSafe(source.quantity ?? source.qty ?? source.license_months ?? source.licenseMonths),
+      license_quantity: this.toNumberSafe(source.license_quantity ?? source.licenseQuantity),
+      line_total: this.toNumberSafe(source.line_total ?? source.lineTotal ?? source.total ?? source.amount ?? source.price ?? source.unit_price),
+      currency: String(source.currency || source.currency_code || source.currencyCode || '').trim(),
+      created_at: String(source.created_at || source.createdAt || '').trim(),
+      updated_at: String(source.updated_at || source.updatedAt || '').trim()
+    };
+  },
   normalizeInvoice(raw = {}) {
     return {
       ...raw,
@@ -2290,52 +2320,106 @@ const Clients = {
 
   getInvoiceAnnualSaasRenewalRows(client = {}) {
     const safeClient = client && typeof client === 'object' ? client : {};
+    const clientId = String(safeClient.client_id || safeClient.clientId || this.state.selectedClientId || '').trim();
     const invoices = Array.isArray(safeClient.invoices) && safeClient.invoices.length
       ? safeClient.invoices
-      : this.listClientRelatedInvoices_(String(safeClient.client_id || '').trim());
-    const rows = [];
+      : this.listClientRelatedInvoices_(clientId);
+
+    const invoiceKeys = new Set();
+    invoices.forEach(invoice => this.getInvoiceMatchKeys_(invoice).forEach(key => invoiceKeys.add(String(key || '').trim())));
+
+    const seenItems = new Set();
+    const collectItems = [];
+    const pushItem = (item, invoice = {}) => {
+      if (!item || typeof item !== 'object') return;
+      const normalized = this.normalizeInvoiceItem ? this.normalizeInvoiceItem(item) : item;
+      const itemKey = String(normalized.id || `${normalized.invoice_id || normalized.invoice_number}-${normalized.line_no}-${normalized.location_name}`).trim();
+      if (itemKey && seenItems.has(itemKey)) return;
+      if (itemKey) seenItems.add(itemKey);
+      collectItems.push({ item: normalized, invoice });
+    };
 
     invoices.forEach(invoice => {
-      const invoiceStatus = String(invoice?.status || '').trim().toLowerCase();
-      if (['cancelled', 'canceled', 'void', 'deleted', 'rejected'].includes(invoiceStatus)) return;
-
-      const invoiceItems = Array.isArray(invoice?.items)
+      const nestedItems = Array.isArray(invoice?.items)
         ? invoice.items
         : Array.isArray(invoice?.invoice_items)
           ? invoice.invoice_items
           : [];
+      nestedItems.forEach(item => pushItem(item, invoice));
+    });
 
-      invoiceItems.forEach(item => {
-        const section = String(item?.section || item?.item_section || item?.itemSection || '')
-          .trim()
-          .toLowerCase()
-          .replace(/\s+/g, '_');
-        if (section !== 'annual_saas') return;
+    const explicitInvoiceItems = Array.isArray(safeClient.invoiceItems)
+      ? safeClient.invoiceItems
+      : Array.isArray(safeClient.invoice_items)
+        ? safeClient.invoice_items
+        : [];
 
-        const serviceStart = String(item?.service_start_date || item?.serviceStartDate || '').trim();
-        const serviceEnd = String(item?.service_end_date || item?.serviceEndDate || '').trim();
-        if (!serviceEnd) return;
+    explicitInvoiceItems.forEach(item => {
+      const normalized = this.normalizeInvoiceItem ? this.normalizeInvoiceItem(item) : item;
+      const invoice = this.findInvoiceForItem_(normalized, invoices) || {};
+      pushItem(normalized, invoice);
+    });
 
-        rows.push(this.normalizeRenewalRow({
-          id: item?.id || `${invoice?.id || invoice?.invoice_number}-${item?.line_no || item?.location_name}`,
-          source: 'invoice_item',
-          location_name: item?.location_name || item?.locationName || '',
-          item_name: item?.item_name || item?.itemName || '',
-          agreement_id: invoice?.agreement_id || item?.agreement_id || '',
-          agreement_number: invoice?.agreement_number || item?.agreement_number || '',
-          invoice_id: invoice?.id || invoice?.invoice_id || '',
-          invoice_number: invoice?.invoice_number || invoice?.invoiceNumber || '',
-          service_start_date: serviceStart,
-          service_end_date: serviceEnd,
-          renewal_date: serviceEnd,
-          renewal_due_date: serviceEnd,
-          payment_status: invoice?.payment_status || invoiceStatus || '',
-          renewal_status: this.getRenewalStatusFromDate ? this.getRenewalStatusFromDate(serviceEnd) : '',
-          amount_due: this.toNumberSafe(item?.line_total || item?.total || item?.amount || 0),
-          line_total: this.toNumberSafe(item?.line_total || item?.total || item?.amount || 0),
-          currency: this.getField(item, 'currency', 'currency_code') || this.getField(invoice, 'currency') || this.getClientCurrency_(String(safeClient.client_id || '').trim())
-        }));
+    if (clientId) {
+      this.listClientRelatedInvoiceItems_(clientId).forEach(item => {
+        const normalized = this.normalizeInvoiceItem ? this.normalizeInvoiceItem(item) : item;
+        const invoice = this.findInvoiceForItem_(normalized, invoices) || {};
+        pushItem(normalized, invoice);
       });
+    } else if (invoiceKeys.size && Array.isArray(this.state.invoiceItems)) {
+      this.state.invoiceItems.forEach(item => {
+        const normalized = this.normalizeInvoiceItem ? this.normalizeInvoiceItem(item) : item;
+        const links = this.getInvoiceItemMatchKeys_(normalized);
+        if (!links.some(link => invoiceKeys.has(String(link || '').trim()))) return;
+        const invoice = this.findInvoiceForItem_(normalized, invoices) || {};
+        pushItem(normalized, invoice);
+      });
+    }
+
+    const rows = [];
+    collectItems.forEach(({ item, invoice }) => {
+      const invoiceStatus = String(invoice?.status || '').trim().toLowerCase();
+      if (['cancelled', 'canceled', 'void', 'deleted', 'rejected'].includes(invoiceStatus)) return;
+
+      const section = String(item?.section || item?.item_section || item?.itemSection || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '_');
+      if (section !== 'annual_saas') return;
+
+      const serviceStart = String(item?.service_start_date || item?.serviceStartDate || '').trim();
+      const serviceEnd = String(item?.service_end_date || item?.serviceEndDate || '').trim();
+      if (!serviceEnd) return;
+
+      rows.push(this.normalizeRenewalRow({
+        id: item?.id || `${invoice?.id || invoice?.invoice_number || item?.invoice_id}-${item?.line_no || item?.location_name}`,
+        row_id: item?.id || `${invoice?.id || invoice?.invoice_number || item?.invoice_id}-${item?.line_no || item?.location_name}`,
+        source: 'invoice_item',
+        location_name: item?.location_name || item?.locationName || '',
+        item_name: item?.item_name || item?.itemName || item?.module_name || '',
+        agreement_id: invoice?.agreement_id || item?.agreement_id || '',
+        agreement_number: invoice?.agreement_number || item?.agreement_number || '',
+        invoice_id: invoice?.id || invoice?.invoice_id || item?.invoice_id || '',
+        invoice_number: invoice?.invoice_number || invoice?.invoiceNumber || item?.invoice_number || item?.invoiceNumber || '',
+        service_start_date: serviceStart,
+        service_end_date: serviceEnd,
+        renewal_date: serviceEnd,
+        renewal_due_date: serviceEnd,
+        due_date: invoice?.due_date || invoice?.dueDate || '',
+        payment_status: invoice?.payment_status || invoiceStatus || '',
+        renewal_status: this.getRenewalStatusFromDate ? this.getRenewalStatusFromDate(serviceEnd) : '',
+        amount_due: this.toNumberSafe(item?.line_total || item?.total || item?.amount || 0),
+        line_total: this.toNumberSafe(item?.line_total || item?.total || item?.amount || 0),
+        currency: this.getField(item, 'currency', 'currency_code') || this.getField(invoice, 'currency') || this.getClientCurrency_(clientId)
+      }));
+    });
+
+    console.debug('[client invoice renewal rows]', {
+      clientId,
+      invoices: invoices.length,
+      invoiceItemsState: Array.isArray(this.state.invoiceItems) ? this.state.invoiceItems.length : 0,
+      collectedInvoiceItems: collectItems.length,
+      annualSaasRows: rows.length
     });
 
     return rows.sort((a, b) => new Date(a.renewal_date || a.service_end_date).getTime() - new Date(b.renewal_date || b.service_end_date).getTime());
@@ -2730,9 +2814,18 @@ const Clients = {
   },
   renderRenewalsSection_(detailData = {}, client = {}) {
     const fallbackClient = client && client.client_id ? client : (this.state.rows.find(row => row.client_id === this.state.selectedClientId) || {});
-    const baseRenewalRows = Array.isArray(detailData.renewalRows) && detailData.renewalRows.length
+    let baseRenewalRows = Array.isArray(detailData.renewalRows) && detailData.renewalRows.length
       ? detailData.renewalRows
       : this.buildClientRenewalRows(fallbackClient);
+    if (!baseRenewalRows.length) {
+      const clientId = String(fallbackClient.client_id || this.state.selectedClientId || '').trim();
+      baseRenewalRows = this.getInvoiceAnnualSaasRenewalRows({
+        ...fallbackClient,
+        client_id: clientId,
+        invoices: this.listClientRelatedInvoices_(clientId),
+        invoice_items: this.listClientRelatedInvoiceItems_(clientId)
+      });
+    }
     const rows = this.getFilteredRenewalRows_(baseRenewalRows);
     console.log('[client renewal source check]', baseRenewalRows.map(row => ({
       location: row.location_name,
@@ -3039,7 +3132,7 @@ const Clients = {
       this.state.agreements = this.extractListResult(clientsRes.agreements || []).rows.map(item => this.normalizeAgreement(item));
       this.state.agreementItems = this.extractListResult(clientsRes.agreement_items || []).rows.map(item => this.normalizeAgreementItem(item));
       this.state.invoices = this.extractListResult(clientsRes.invoices || []).rows.map(item => this.normalizeInvoice(item));
-      this.state.invoiceItems = this.extractListResult(clientsRes.invoice_items || []).rows;
+      this.state.invoiceItems = this.extractListResult(clientsRes.invoice_items || []).rows.map(item => this.normalizeInvoiceItem(item));
       this.state.receipts = this.extractListResult(clientsRes.receipts || []).rows.map(item => this.normalizeReceipt(item));
       this.state.receiptItems = this.extractListResult(clientsRes.receipt_items || []).rows;
       const [companiesRes, contactsRes, agreementsRes, invoicesRes, receiptsRes] = await Promise.allSettled([
