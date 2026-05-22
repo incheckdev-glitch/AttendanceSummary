@@ -289,11 +289,12 @@ const Clients = {
   hasStrictClientOwnership(agreement = {}, client = {}) {
     const clientCompanyId = this.getClientCompanyId(client);
     const agreementCompanyId = this.getAgreementCompanyId(agreement);
-    if (clientCompanyId && agreementCompanyId) return String(agreementCompanyId) === String(clientCompanyId);
+    if (clientCompanyId || agreementCompanyId) {
+      return Boolean(clientCompanyId && agreementCompanyId && String(agreementCompanyId) === String(clientCompanyId));
+    }
 
-    // Historical/imported agreements may not have company_id yet. In that case,
-    // allow only exact normalized legal/company name matching. Never use email,
-    // partial includes, contact names, notes, or address for ownership.
+    // Historical/imported records can fallback to strict exact legal/company name matching
+    // only when both sides are missing company_id.
     const agreementName = this.normalizeCompanyKey(this.getAgreementLegalName(agreement));
     const clientName = this.normalizeCompanyKey(this.getClientLegalName(client));
     return Boolean(agreementName && clientName && agreementName === clientName);
