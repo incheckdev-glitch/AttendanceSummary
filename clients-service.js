@@ -519,6 +519,12 @@ const ClientsService = {
     return this.buildUniqueCurrentLocationRows(items).length;
   },
   isAnnualSaasClientLocationItem(item = {}) {
+    const section = String(item?.section || item?.item_section || item?.itemSection || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_');
+    if (section === 'annual_saas') return true;
+
     const text = this.normalizeText([
       item.section,
       item.category,
@@ -549,10 +555,10 @@ const ClientsService = {
     );
     if (isOneTimeOrSetup) return false;
 
-    const isSaasFamily = ['annual_saas', 'saas', 'subscription', 'recurring'].some(token => text.includes(token));
+    const isSaasFamily = ['annual_saas', 'saas annual', 'saas', 'subscription', 'recurring'].some(token => text.includes(token));
     if (!isSaasFamily) return false;
 
-    return ['annual', 'yearly', '12 month', '12-month', 'year', 'renewal'].some(token => text.includes(token));
+    return text.includes('annual_saas') || ['annual', 'yearly', '12 month', '12-month', 'year', 'renewal'].some(token => text.includes(token));
   },
   isAnnualSaasItem(item = {}) {
     const section = String(item?.section || item?.item_section || '')
@@ -592,13 +598,22 @@ const ClientsService = {
     return Array.isArray(res.data) ? res.data : [];
   },
   matchAgreementClient(agreement = {}, client = {}) {
+    if (this.agreementBelongsToClient(agreement, client)) return true;
+
     const sourceAgreement = String(client.source_agreement_id || '').trim();
-    if (sourceAgreement) {
-      const agreementUuid = String(agreement.id || '').trim();
-      const agreementBusinessId = String(agreement.agreement_id || '').trim();
-      if (agreementUuid && agreementUuid === sourceAgreement) return true;
-      if (agreementBusinessId && agreementBusinessId === sourceAgreement) return true;
+    if (!sourceAgreement) return false;
+
+    const sourceMatches = [agreement.id, agreement.agreement_id, agreement.agreement_number]
+      .map(value => String(value || '').trim())
+      .some(value => value && value === sourceAgreement);
+    if (!sourceMatches) return false;
+
+    const clientCompanyId = this.getClientCompanyId(client);
+    const agreementCompanyId = this.getAgreementCompanyId(agreement);
+    if (clientCompanyId || agreementCompanyId) {
+      return Boolean(clientCompanyId && agreementCompanyId && String(clientCompanyId) === String(agreementCompanyId));
     }
+
     return this.agreementBelongsToClient(agreement, client);
   },
   isRenewalInvoice_(invoice = {}) {

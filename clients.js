@@ -1085,10 +1085,23 @@ const Clients = {
     if (this.hasBackendAnalytics_(payload)) return payload;
     return null;
   },
+  getNormalizedSection_(item = {}) {
+    return String(item?.section || item?.item_section || item?.itemSection || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_');
+  },
   isSaasAnnualItem(item = {}) {
+    const section = this.getNormalizedSection_(item);
+    if (section === 'annual_saas') return true;
+
     const normalizedType = this.normalizeText(item.agreement_item_type || item.item_class || item.plan_type || item.planType || item.item_type || item.itemType);
-    if (normalizedType === 'saas_annual' || normalizedType === 'saas annual') return true;
+    if (normalizedType === 'saas_annual' || normalizedType === 'saas annual' || normalizedType === 'annual_saas') return true;
+
     const text = this.normalizeText([
+      item.section,
+      item.item_section,
+      item.itemSection,
       item.item_type,
       item.itemType,
       item.category,
@@ -1106,10 +1119,13 @@ const Clients = {
       item.module_name,
       item.moduleName
     ].filter(Boolean).join(' '));
-    return text.includes('saas annual') || (text.includes('saas') && text.includes('annual'));
+    return text.includes('annual_saas') || text.includes('saas annual') || (text.includes('saas') && text.includes('annual'));
   },
   isAnnualSaasClientLocationItem(item = {}) {
+    const section = this.getNormalizedSection_(item);
+    if (section === 'annual_saas') return true;
     if (!this.isSaasAnnualItem(item)) return false;
+
     const text = this.normalizeText([
       item.section,
       item.category,
@@ -1134,8 +1150,20 @@ const Clients = {
       item.billingCycle,
       item.frequency
     ].filter(Boolean).join(' '));
-    if (!text) return false;
+    if (!text) return true;
     return !['one_time_fee', 'one_time', 'one time', 'one-time', 'setup', 'implementation', 'onboarding'].some(token => text.includes(token));
+  },
+
+  parseDateOnly_(value) {
+    const raw = String(value || '').trim();
+    const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!match) return null;
+    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12, 0, 0);
+    return Number.isNaN(date.getTime()) ? null : date;
+  },
+  getTodayDateOnly_() {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0);
   },
 
   normalizeLocationKey(value = '') {
@@ -1146,11 +1174,7 @@ const Clients = {
       .replace(/\s+/g, ' ');
   },
   isAnnualSaasItem(item = {}) {
-    const section = String(item?.section || item?.item_section || '')
-      .trim()
-      .toLowerCase()
-      .replace(/\s+/g, '_');
-    return section === 'annual_saas';
+    return this.getNormalizedSection_(item) === 'annual_saas';
   },
   isSupersededItem(item = {}) {
     return item?.is_superseded === true
@@ -1188,20 +1212,32 @@ const Clients = {
   },
   isActiveAnnualSaasLocationItem(item = {}) {
     item = item && typeof item === 'object' ? item : {};
-    const startValue = String(item.service_start_date || item.serviceStartDate || '').trim();
-    const endValue = String(item.service_end_date || item.serviceEndDate || '').trim();
-    if (!startValue) return false;
-    const start = new Date(startValue);
-    if (Number.isNaN(start.getTime())) return false;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    start.setHours(0, 0, 0, 0);
-    if (today.getTime() < start.getTime()) return false;
-    if (!endValue) return true;
-    const end = new Date(endValue);
-    if (Number.isNaN(end.getTime())) return false;
-    end.setHours(0, 0, 0, 0);
-    return today.getTime() <= end.getTime();
+    const start = this.parseDateOnly_(item.service_start_date || item.serviceStartDate || '');
+    const end = this.parseDateOnly_(item.service_end_date || item.serviceEndDate || '');
+    if (!start || !end) return false;
+    const today = this.getTodayDateOnly_();
+    return start.getTime() <= today.getTime() && today.getTime() <= end.getTime();
+  },
+  buildUniqueActiveServiceLocationRows(items = []) {
+    const map = new Map();
+    for (const item of Array.isArray(items) ? items : []) {
+      if (!this.isAnnualSaasItem(item)) continue;
+      if (!this.isActiveAnnualSaasLocationItem(item)) continue;
+
+      const locationKey = this.normalizeLocationKey(item?.location_name || item?.locationName || item?.location || '');
+      if (!locationKey) continue;
+      const itemKey = this.normalizeLocationKey(item?.item_name || item?.itemName || item?.license || item?.module_name || item?.moduleName || '');
+      const key = `${locationKey}::${itemKey}`;
+      const existing = map.get(key);
+      if (!existing) {
+        map.set(key, item);
+        continue;
+      }
+      const existingEnd = this.parseDateOnly_(existing?.service_end_date || existing?.serviceEndDate || '');
+      const itemEnd = this.parseDateOnly_(item?.service_end_date || item?.serviceEndDate || '');
+      if ((itemEnd?.getTime() || 0) >= (existingEnd?.getTime() || 0)) map.set(key, item);
+    }
+    return Array.from(map.values());
   },
   normalizeCurrencyCode_(value) {
     return String(value || '').trim().toUpperCase() || 'USD';
@@ -1273,7 +1309,7 @@ const Clients = {
 
     const currentAgreements = Array.from(currentAgreementMap.values());
 
-    console.log('[client current agreement debug]', agreements.map(agreement => {
+    if (this.isDebugMode_()) console.debug('[client current agreement debug]', agreements.map(agreement => {
       const agreementItems = locationItems.filter(item => {
         const agreementKeys = this.getAgreementMatchKeys_(agreement);
         const itemKeys = this.getAgreementItemMatchKeys_(item);
@@ -1292,9 +1328,10 @@ const Clients = {
         ).length
       };
     }));
-    const activeLocationItems = currentLocationRows.filter(item => this.isActiveAnnualSaasLocationItem(item));
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Total locations are current/non-superseded rows. Active locations are based on service dates
+    // across all Annual SaaS rows, then deduped by location/item so renewed overlaps count once.
+    const activeLocationItems = this.buildUniqueActiveServiceLocationRows(locationItems);
+    const today = this.getTodayDateOnly_();
 
     const totalLocations = currentLocationRows.length;
     const activeLocations = activeLocationItems.length;
@@ -1316,9 +1353,11 @@ const Clients = {
     const renewalCandidates = renewalRows
       .map(item => String(item.renewal_date || item.service_end_date || '').trim())
       .filter(Boolean)
-      .map(value => new Date(value))
-      .filter(date => !Number.isNaN(date.getTime()) && date.getTime() >= today.getTime())
-      .sort((a, b) => a.getTime() - b.getTime());
+      .filter(value => {
+        const date = this.parseDateOnly_(value);
+        return date && date.getTime() >= today.getTime();
+      })
+      .sort((a, b) => (this.parseDateOnly_(a)?.getTime() || 0) - (this.parseDateOnly_(b)?.getTime() || 0));
 
     const paymentBucket = invoices.reduce(
       (bucket, invoice) => {
@@ -1351,7 +1390,7 @@ const Clients = {
       latest_invoice_date: latestInvoiceDate,
       latest_receipt_date: latestReceiptDate,
       latest_activity_date: this.maxDate(latestAgreementDate, latestInvoiceDate, latestReceiptDate),
-      next_renewal_date: renewalCandidates.length ? renewalCandidates[0].toISOString() : '',
+      next_renewal_date: renewalCandidates[0] || '',
       currency: this.getClientCurrency_(clientId)
     };
   },
@@ -1540,11 +1579,10 @@ const Clients = {
   getDaysLeft(date) {
     const value = String(date || '').trim();
     if (!value) return null;
-    const parsed = new Date(value);
+    const parsed = this.parseDateOnly_(value) || new Date(value);
     if (Number.isNaN(parsed.getTime())) return null;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    parsed.setHours(0, 0, 0, 0);
+    const today = this.getTodayDateOnly_();
+    parsed.setHours(12, 0, 0, 0);
     return Math.round((parsed.getTime() - today.getTime()) / 86400000);
   },
   getPaymentStatus(row = {}) {
