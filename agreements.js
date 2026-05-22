@@ -985,27 +985,102 @@ const Agreements = {
   getCompanyLegalName(company = {}) {
     return String(company?.legal_name || company?.legalName || company?.company_name || company?.companyName || '').trim();
   },
+  companyRecordIdCandidates(company = {}) {
+    const source = company && typeof company === 'object' ? company : {};
+    return [
+      source.id,
+      source.company_id,
+      source.companyId,
+      source.company_uuid,
+      source.companyUuid,
+      source.company_business_id,
+      source.companyBusinessId
+    ].map(value => String(value || '').trim()).filter(Boolean);
+  },
+  companyRecordMatchesId(company = {}, value = '') {
+    const key = String(value || '').trim();
+    if (!key) return false;
+    return this.companyRecordIdCandidates(company).some(candidate => candidate === key);
+  },
   async getFullCompanyRecord(companyIdOrRecord) {
     const seed = companyIdOrRecord && typeof companyIdOrRecord === 'object' ? companyIdOrRecord : {};
-    const companyId = companyIdOrRecord && typeof companyIdOrRecord === 'object' ? (seed.company_id || seed.companyId) : companyIdOrRecord;
-    const hasFullFields = seed.legal_name || seed.legalName || seed.address || seed.company_name || seed.companyName;
+    const requestedId = String(
+      companyIdOrRecord && typeof companyIdOrRecord === 'object'
+        ? (seed.id || seed.company_id || seed.companyId || seed.company_uuid || seed.companyUuid || '')
+        : companyIdOrRecord || ''
+    ).trim();
+    const hasFullFields = seed.legal_name || seed.legalName || seed.address || seed.company_name || seed.companyName || seed.name;
     if (hasFullFields) return seed;
-    if (!companyId) return null;
-    const response = await Api.requestWithSession('companies', 'list', { filters: { company_id: companyId }, limit: 1 }, { requireAuth: true });
-    const rows = response?.rows || response?.items || response?.data || [];
-    const row = Array.isArray(rows) ? rows[0] : rows;
-    return row && typeof row === 'object' ? row : null;
+    if (!requestedId) return null;
+
+    const rowsFromResponse = response => {
+      const rows = response?.rows || response?.items || response?.data || response?.result || response;
+      return Array.isArray(rows) ? rows : (rows && typeof rows === 'object' ? [rows] : []);
+    };
+
+    const findMatch = rows => (Array.isArray(rows) ? rows : []).find(row => this.companyRecordMatchesId(row, requestedId)) || null;
+
+    try {
+      if (Api?.requestWithSession) {
+        const attempts = [
+          { filters: { id: requestedId }, limit: 5 },
+          { filters: { company_id: requestedId }, limit: 5 },
+          { search: requestedId, limit: 50 }
+        ];
+        for (const payload of attempts) {
+          try {
+            const response = await Api.requestWithSession('companies', 'list', payload, { requireAuth: true });
+            const rows = rowsFromResponse(response);
+            const matched = findMatch(rows);
+            if (matched) return matched;
+          } catch (error) {
+            console.warn('[Agreement] Company lookup attempt failed.', error);
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('[Agreement] Company API lookup failed.', error);
+    }
+
+    try {
+      const client = window.supabaseClient || window.supabase;
+      if (client?.from) {
+        const { data, error } = await client
+          .from('companies')
+          .select('*')
+          .or(`id.eq.${requestedId},company_id.eq.${requestedId}`)
+          .limit(5);
+        if (error) throw error;
+        const matched = findMatch(data || []);
+        if (matched) return matched;
+      }
+    } catch (error) {
+      console.warn('[Agreement] Company Supabase lookup failed.', error);
+    }
+
+    try {
+      const companies = await window.CrmCompanyContactSelectors?.loadCompanies?.();
+      const matched = findMatch(companies || []);
+      if (matched) return matched;
+    } catch (error) {
+      console.warn('[Agreement] Company selector cache lookup failed.', error);
+    }
+
+    return null;
   },
   async applyCompanyIdentityToAgreement(agreement = {}, { allowFallbackToAgreement = false } = {}) {
     const next = agreement && typeof agreement === 'object' ? { ...agreement } : {};
-    const selectedCompany = await this.getFullCompanyRecord(next.company_id || next.companyId || {});
+    const originalCompanyId = String(next.company_id || next.companyId || next.customer_company_id || next.customerCompanyId || next.client_company_id || next.clientCompanyId || '').trim();
+    const selectedCompany = await this.getFullCompanyRecord(originalCompanyId || {});
     const customerLegalName = this.getCompanyLegalName(selectedCompany || {});
     if (selectedCompany) {
-      next.company_id = String(selectedCompany.company_id || selectedCompany.companyId || next.company_id || '').trim();
-      next.company_name = String(selectedCompany.company_name || selectedCompany.companyName || '').trim();
+      const resolvedCompanyId = originalCompanyId || String(selectedCompany.id || selectedCompany.company_id || selectedCompany.companyId || '').trim();
+      next.company_id = resolvedCompanyId;
+      next.companyId = resolvedCompanyId;
+      next.company_name = String(selectedCompany.company_name || selectedCompany.companyName || selectedCompany.name || customerLegalName || '').trim();
       next.customer_address = String(selectedCompany.address || '').trim();
-      next.customer_legal_name = customerLegalName;
-      next.customer_name = customerLegalName;
+      next.customer_legal_name = customerLegalName || next.company_name;
+      next.customer_name = customerLegalName || next.company_name;
       return this.applyOfficialSignatoryDefaults(next, selectedCompany);
     }
     if (allowFallbackToAgreement) {
@@ -3173,10 +3248,16 @@ const Agreements = {
   },
   companyRecordMatchesAgreement(company = {}, agreement = {}) {
     const ids = this.getAgreementCompanyIdCandidates(agreement).map(value => value.toLowerCase());
-    const companyIds = [company.company_id, company.companyId, company.id, company.company_uuid, company.companyUuid]
+    const companyIds = this.companyRecordIdCandidates(company)
       .map(value => String(value || '').trim().toLowerCase())
       .filter(Boolean);
-    if (ids.length && companyIds.some(value => ids.includes(value))) return true;
+
+    // If the agreement has any company id field, that id is authoritative.
+    // Never fall back to stale customer/company text in that case, because it can
+    // select the wrong company in the agreement form.
+    if (ids.length) {
+      return companyIds.some(value => ids.includes(value));
+    }
 
     const names = this.getAgreementCompanyNameCandidates(agreement).map(value => this.normalizeText(value)).filter(Boolean);
     const companyNames = [company.legal_name, company.legalName, company.company_name, company.companyName, company.name]
