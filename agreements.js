@@ -635,55 +635,18 @@ const Agreements = {
   getFilteredAgreementRows() {
     return Array.isArray(this.state.filteredRows) ? [...this.state.filteredRows] : [];
   },
-  resolveAgreementCustomerDisplay(agreement = {}) {
-    const companyId = String(
-      agreement.company_id ||
-      agreement.companyId ||
-      agreement.customer_company_id ||
-      agreement.customerCompanyId ||
-      agreement.client_company_id ||
-      agreement.clientCompanyId ||
-      ''
-    ).trim();
-
-    if (companyId) {
-      const companiesState = window.Companies?.state || {};
-      const company =
-        this.state.companiesById?.[companyId] ||
-        this.state.companiesByCompanyId?.[companyId] ||
-        companiesState.companiesById?.get?.(companyId) ||
-        companiesState.companiesByCompanyId?.get?.(companyId) ||
-        (Array.isArray(companiesState.rows)
-          ? companiesState.rows.find(row =>
-              String(
-                row?.company_id || row?.companyId || row?.id || ''
-              ).trim() === companyId
-            )
-          : null) ||
-        null;
-
-      const linkedName = String(
-        company?.legal_name ||
-        company?.legal_company_name ||
-        company?.company_name ||
-        company?.name ||
-        ''
-      ).trim();
-
-      if (linkedName) return linkedName;
-    }
-
+  getAgreementCustomerName(agreement = {}) {
     return String(
       agreement.customer_name ||
+      agreement.customerName ||
       agreement.company_name ||
+      agreement.companyName ||
       agreement.client_name ||
-      agreement.customer_company_name ||
-      agreement.customer_legal_name ||
+      agreement.clientName ||
+      agreement.full_name ||
+      agreement.fullName ||
       ''
     ).trim();
-  },
-  getAgreementCustomerName(agreement = {}) {
-    return this.resolveAgreementCustomerDisplay(agreement);
   },
   formatDateMMDDYYYY(value) {
     const raw = String(value || '').trim();
@@ -2625,7 +2588,7 @@ const Agreements = {
         : '';
       return `<tr>
         <td>${textCell(row.agreement_id)}${importedBadge}</td><td>${textCell(row.agreement_number)}</td><td>${textCell(row.agreement_title)}</td>
-        <td>${textCell(this.resolveAgreementCustomerDisplay(row))}</td><td>${textCell(this.getAgreementProposalDisplayRef(row))}</td><td>${textCell(row.deal_id)}</td>
+        <td>${textCell(row.customer_name)}</td><td>${textCell(this.getAgreementProposalDisplayRef(row))}</td><td>${textCell(row.deal_id)}</td>
         <td>${U.escapeHtml(U.fmtDisplayDate(row.service_start_date))}</td><td>${textCell(row.agreement_length)}</td><td>${textCell(row.billing_frequency)}</td>
         <td>${textCell(this.getPaymentTermDisplay(row.payment_term))}</td><td>${textCell(row.currency)}</td><td>${textCell(this.formatMoney(rowTotals.grand_total))}</td>
         <td>${textCell(this.resolveAgreementStatus(row))}</td><td>${U.escapeHtml(U.fmtDisplayDate(row.updated_at))}</td>
@@ -3177,6 +3140,100 @@ const Agreements = {
     if (E.agreementGrandTotal) E.agreementGrandTotal.textContent = this.formatMoney(totals.grand_total);
     this.applyAgreementItemLocks();
   },
+  getAgreementCompanyIdCandidates(agreement = {}) {
+    const source = agreement && typeof agreement === 'object' ? agreement : {};
+    return [
+      source.company_id,
+      source.companyId,
+      source.customer_company_id,
+      source.customerCompanyId,
+      source.client_company_id,
+      source.clientCompanyId,
+      source.company?.company_id,
+      source.company?.companyId,
+      source.company?.id
+    ].map(value => String(value || '').trim()).filter(Boolean);
+  },
+  getAgreementCompanyNameCandidates(agreement = {}) {
+    const source = agreement && typeof agreement === 'object' ? agreement : {};
+    return [
+      source.company_name,
+      source.companyName,
+      source.customer_name,
+      source.customerName,
+      source.customer_legal_name,
+      source.customerLegalName,
+      source.client_name,
+      source.clientName,
+      source.customer_company_name,
+      source.customerCompanyName,
+      source.legal_name,
+      source.legalName
+    ].map(value => String(value || '').trim()).filter(Boolean);
+  },
+  companyRecordMatchesAgreement(company = {}, agreement = {}) {
+    const ids = this.getAgreementCompanyIdCandidates(agreement).map(value => value.toLowerCase());
+    const companyIds = [company.company_id, company.companyId, company.id, company.company_uuid, company.companyUuid]
+      .map(value => String(value || '').trim().toLowerCase())
+      .filter(Boolean);
+    if (ids.length && companyIds.some(value => ids.includes(value))) return true;
+
+    const names = this.getAgreementCompanyNameCandidates(agreement).map(value => this.normalizeText(value)).filter(Boolean);
+    const companyNames = [company.legal_name, company.legalName, company.company_name, company.companyName, company.name]
+      .map(value => this.normalizeText(value))
+      .filter(Boolean);
+    return Boolean(names.length && companyNames.some(value => names.includes(value)));
+  },
+  syncAgreementCompanySelectorFromRecord(agreement = {}) {
+    const select = document.getElementById('agreementFormCompanySelector');
+    const hidden = document.getElementById('agreementFormCompanyId');
+    const form = document.getElementById('agreementForm');
+    const candidates = this.getAgreementCompanyIdCandidates(agreement);
+    const firstCandidate = candidates[0] || '';
+    if (hidden && firstCandidate) hidden.value = firstCandidate;
+    if (form && firstCandidate) form.dataset.companyId = firstCandidate;
+    if (!select) return;
+
+    const optionValues = [...select.options].map(option => String(option.value || '').trim()).filter(Boolean);
+    const directMatch = candidates.find(candidate => optionValues.includes(candidate));
+    if (directMatch) {
+      select.value = directMatch;
+      return;
+    }
+
+    // Important: clear stale company selection from a previously opened agreement.
+    // Do not leave the first/previous company selected when the current agreement id cannot be matched yet.
+    select.value = '';
+  },
+  async resolveAgreementCompanySelectorFromCompanies(agreement = {}) {
+    const select = document.getElementById('agreementFormCompanySelector');
+    const hidden = document.getElementById('agreementFormCompanyId');
+    const form = document.getElementById('agreementForm');
+    if (!select || !window.CrmCompanyContactSelectors?.loadCompanies) return;
+    try {
+      const companies = await window.CrmCompanyContactSelectors.loadCompanies();
+      const rows = Array.isArray(companies) ? companies : [];
+      const matched = rows.find(company => this.companyRecordMatchesAgreement(company, agreement));
+      if (!matched) {
+        this.syncAgreementCompanySelectorFromRecord(agreement);
+        return;
+      }
+      const optionValue = String(matched.company_id || matched.companyId || matched.id || '').trim();
+      if (optionValue && [...select.options].some(option => String(option.value || '').trim() === optionValue)) {
+        select.value = optionValue;
+      } else {
+        this.syncAgreementCompanySelectorFromRecord(agreement);
+      }
+      const canonicalId = this.getAgreementCompanyIdCandidates(agreement)[0] || optionValue;
+      if (hidden && canonicalId) hidden.value = canonicalId;
+      if (form && canonicalId) form.dataset.companyId = canonicalId;
+      this.state.selectedAgreementCompanyForVerification = matched;
+      this.updateAgreementCompanyVerificationUi(matched);
+    } catch (error) {
+      console.warn('[Agreement] Unable to sync company selector from agreement company_id.', error);
+      this.syncAgreementCompanySelectorFromRecord(agreement);
+    }
+  },
   assignFormValues(agreement = {}) {
     const normalizedAgreement = this.applyAgreementDerivedDates(this.normalizeAgreement(
       this.applyOfficialSignatoryDefaults(agreement, this.state.selectedAgreementCompanyForVerification)
@@ -3683,6 +3740,8 @@ const Agreements = {
     this.state.currentAgreement = agreement && typeof agreement === 'object' ? { ...agreement } : null;
     this.state.currentItems = Array.isArray(items) ? [...items] : [];
     this.assignFormValues(agreement);
+    this.syncAgreementCompanySelectorFromRecord(agreement);
+    this.resolveAgreementCompanySelectorFromCompanies(agreement).catch(error => console.warn('[Agreement] Company selector sync failed.', error));
     this.syncAgreementStatusFromSignatoryDates();
     this.captureProviderSignDateOriginalValues();
     this.initializeProviderSignDateDefaultTracking(agreement);
@@ -3711,6 +3770,8 @@ const Agreements = {
     E.agreementFormModal.setAttribute('aria-hidden', 'false');
     window.setTimeout(() => {
       window.CrmCompanyContactSelectors?.initializeCompanyContactSelectorsForAgreement?.();
+      this.syncAgreementCompanySelectorFromRecord(this.state.currentAgreement || agreement);
+      this.resolveAgreementCompanySelectorFromCompanies(this.state.currentAgreement || agreement).catch(error => console.warn('[Agreement] Company selector sync failed after selector init.', error));
       this.syncAgreementServiceEndDate();
       this.applyAgreementEditLocks();
       this.applyAgreementProposalLocks();

@@ -87,7 +87,7 @@
         const form = byId('proposalForm');
         if (!form) return;
         if (company) {
-          form.dataset.companyId = company.company_id || '';
+          form.dataset.companyId = getCompanyOptionValue(company);
           form.dataset.companyName = company.company_name || company.legal_name || '';
           form.dataset.companyAddress = company.address || '';
           form.dataset.companyLegalName = company.legal_name || company.company_name || '';
@@ -144,7 +144,7 @@
         const form = byId('agreementForm');
         if (!form) return;
         if (company) {
-          form.dataset.companyId = company.company_id || '';
+          form.dataset.companyId = getCompanyOptionValue(company);
           form.dataset.companyName = company.company_name || company.legal_name || '';
           form.dataset.companyAddress = company.address || '';
         }
@@ -219,7 +219,7 @@
         const form = byId('receiptForm');
         if (!form) return;
         if (company) {
-          form.dataset.companyId = company.company_id || '';
+          form.dataset.companyId = getCompanyOptionValue(company);
           form.dataset.companyName = company.company_name || company.legal_name || '';
           form.dataset.companyAddress = company.address || '';
         }
@@ -251,9 +251,14 @@
   }
   function normalizeCompany(raw = {}) {
     const c = raw && typeof raw === 'object' ? raw : {};
+    const uuid = str(c.id);
+    const businessId = str(c.company_id || c.companyId);
+    const canonicalId = businessId || uuid;
     return {
-      id: str(c.id),
-      company_id: str(c.company_id || c.companyId),
+      id: uuid,
+      company_id: canonicalId,
+      company_uuid: uuid,
+      company_business_id: businessId,
       company_name: str(c.company_name || c.companyName || c.name),
       legal_name: str(c.legal_name || c.legalName),
       company_type: str(c.company_type || c.companyType),
@@ -334,7 +339,23 @@
     else el.textContent = value ?? '';
   }
   function companyDisplayName(company = {}) {
-    return str(company.legal_name || company.company_name || company.name || company.company_id);
+    return str(company.legal_name || company.company_name || company.name || company.company_id || company.id);
+  }
+  function companyMatchesId(company = {}, value = '') {
+    const key = str(value);
+    if (!key) return false;
+    return [company.company_id, company.company_uuid, company.company_business_id, company.id]
+      .map(str)
+      .filter(Boolean)
+      .some(candidate => candidate === key);
+  }
+  function findCompanyByAnyId(value = '') {
+    const key = str(value);
+    if (!key) return null;
+    return state.companies.find(company => companyMatchesId(company, key)) || null;
+  }
+  function getCompanyOptionValue(company = {}) {
+    return str(company.company_id || company.company_uuid || company.id || company.company_business_id);
   }
   function contactPhone(contact = {}) {
     return str(contact.mobile || contact.phone);
@@ -345,7 +366,7 @@
     const options = [`<option value="">${escapeHtml(placeholder)}</option>`];
     rows.forEach(row => {
       const value = type === 'company'
-        ? (row.company_id || row.id || '')
+        ? getCompanyOptionValue(row)
         : (row.contact_id || row.id || '');
       if (!value) return;
       const label = type === 'company'
@@ -368,7 +389,7 @@
       try {
         if (global.Api?.requestWithSession) {
           const response = await global.Api.requestWithSession('companies', 'list', { limit: 200, page: 1, sort_by: 'company_name', sort_dir: 'asc' }, { requireAuth: true });
-          state.companies = rowsFrom(response).map(normalizeCompany).filter(c => c.company_id);
+          state.companies = rowsFrom(response).map(normalizeCompany).filter(c => getCompanyOptionValue(c));
           return state.companies;
         }
       } catch (error) {
@@ -379,7 +400,7 @@
         if (client?.from) {
           const { data, error } = await client.from('companies').select('*').order('company_name', { ascending: true }).limit(200);
           if (error) throw error;
-          state.companies = (data || []).map(normalizeCompany).filter(c => c.company_id);
+          state.companies = (data || []).map(normalizeCompany).filter(c => getCompanyOptionValue(c));
         }
       } catch (error) {
         console.warn('[crm selectors] company Supabase load failed', error);
@@ -512,7 +533,7 @@
     }
     contactSelect.disabled = true;
     contactSelect.innerHTML = '<option value="">Loading contacts…</option>';
-    const selectedCompany = state.companies.find(c => c.company_id === str(companyId) || c.id === str(companyId)) || { company_id: str(companyId), id: str(companyId) };
+    const selectedCompany = findCompanyByAnyId(companyId) || { company_id: str(companyId), id: str(companyId), company_uuid: str(companyId) };
     const contacts = await resolveContactsForCompany(selectedCompany);
     if (!contacts.length) {
       contactSelect.innerHTML = '<option value="">No contacts found for this company</option>';
@@ -529,12 +550,12 @@
 
   function applyCompany(cfg, company) {
     const c = normalizeCompany(company || {});
-    const companyId = c.company_id || '';
+    const companyId = getCompanyOptionValue(c);
     const displayName = companyDisplayName(c);
     setValue(cfg.companyHiddenId, companyId, { readonly: false });
     setValue(`${cfg.formId.replace('Form', 'Form')}CompanyName`, c.company_name || displayName, { readonly: false });
     if (cfg.companyFields) {
-      setMany(cfg.companyFields.id, c.company_id);
+      setMany(cfg.companyFields.id, companyId);
       setMany(cfg.companyFields.name, displayName);
       setMany(cfg.companyFields.legalName, c.legal_name || c.company_name || displayName);
       setMany(cfg.companyFields.type, c.company_type);
@@ -611,11 +632,22 @@
     if (!form || !companySelect || !contactSelect) return;
     const currentCompanyId = str(byId(cfg.companyHiddenId)?.value || form.dataset.companyId || companySelect.value);
     const currentContactId = str(byId(cfg.contactHiddenId)?.value || form.dataset.contactId || contactSelect.value);
-    if (currentCompanyId && [...companySelect.options].some(opt => opt.value === currentCompanyId)) companySelect.value = currentCompanyId;
-    if (currentCompanyId) loadContactsForConfig(cfg, currentCompanyId, currentContactId);
+    const matchedCompany = findCompanyByAnyId(currentCompanyId);
+    const matchedCompanyValue = matchedCompany ? getCompanyOptionValue(matchedCompany) : '';
+    if (matchedCompanyValue && [...companySelect.options].some(opt => opt.value === matchedCompanyValue)) {
+      companySelect.value = matchedCompanyValue;
+    } else if (!currentCompanyId || ![...companySelect.options].some(opt => opt.value === currentCompanyId)) {
+      // Never keep a stale company selection from a previously opened agreement.
+      // This was causing many agreements to display the first/previous company.
+      companySelect.value = '';
+    } else {
+      companySelect.value = currentCompanyId;
+    }
+    const contactCompanyKey = matchedCompanyValue || currentCompanyId;
+    if (contactCompanyKey) loadContactsForConfig(cfg, contactCompanyKey, currentContactId);
     const direct = isDirectCreate(cfg);
     companySelect.disabled = !direct && currentCompanyId ? true : false;
-    contactSelect.disabled = !currentCompanyId || (!direct && currentContactId ? true : contactSelect.disabled);
+    contactSelect.disabled = !contactCompanyKey || (!direct && currentContactId ? true : contactSelect.disabled);
     companySelect.classList.remove('readonly-field', 'locked-field');
     contactSelect.classList.remove('readonly-field', 'locked-field');
   }
@@ -629,7 +661,7 @@
 
     companySelect.addEventListener('change', async () => {
       const companyId = str(companySelect.value);
-      const company = state.companies.find(c => c.company_id === companyId) || null;
+      const company = findCompanyByAnyId(companyId) || null;
       if (company) applyCompany(cfg, company);
       setValue(cfg.contactHiddenId, '', { readonly: false });
       ['ContactName', 'ContactEmail', 'ContactPhone', 'ContactMobile', 'CustomerContactName', 'CustomerContactEmail', 'CustomerContactPhone', 'CustomerContactMobile', 'CustomerSignatoryName', 'CustomerSignatoryTitle', 'CustomerSignatoryEmail', 'CustomerSignatoryPhone']
@@ -646,7 +678,7 @@
     contactSelect.addEventListener('change', async () => {
       const companyId = str(companySelect.value);
       const contactId = str(contactSelect.value);
-      const company = state.companies.find(c => c.company_id === companyId || c.id === companyId) || { company_id: companyId, id: companyId };
+      const company = findCompanyByAnyId(companyId) || { company_id: companyId, id: companyId, company_uuid: companyId };
       const contacts = await resolveContactsForCompany(company);
       const contact = contacts.find(c => c.contact_id === contactId) || null;
       if (contact) applyContact(cfg, contact);
