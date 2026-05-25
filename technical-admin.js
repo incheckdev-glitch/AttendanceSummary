@@ -737,7 +737,7 @@ const TechnicalAdmin = {
       return 'completed';
     }
 
-    if (['in_progress', 'started', 'active', 'assigned'].includes(raw)) {
+    if (['in_progress', 'in-progress', 'started', 'active', 'assigned'].includes(raw)) {
       return 'in_progress';
     }
 
@@ -746,6 +746,21 @@ const TechnicalAdmin = {
     }
 
     return raw || 'requested';
+  },
+
+
+  getTechnicalRequestActivityDate(request = {}) {
+    return (
+      request.updated_at ||
+      request.updatedAt ||
+      request.completed_at ||
+      request.completedAt ||
+      request.resolved_at ||
+      request.resolvedAt ||
+      request.created_at ||
+      request.createdAt ||
+      ''
+    );
   },
 
   getTechnicalRequestClientKey(request = {}) {
@@ -760,14 +775,15 @@ const TechnicalAdmin = {
     ).trim();
   },
   resolveTechnicalRequestLocationCount(request = {}) {
-    const direct = Number(
-      request.number_of_locations ||
-      request.locations_count ||
-      request.location_count ||
-      request.location_number ||
-      request.locations_number ||
-      0
-    );
+    const directRaw =
+      request.number_of_locations ??
+      request.locations_count ??
+      request.location_count ??
+      request.location_number ??
+      request.locations_number ??
+      '';
+
+    const direct = Number(directRaw);
 
     if (Number.isFinite(direct) && direct > 0) return direct;
 
@@ -775,6 +791,8 @@ const TechnicalAdmin = {
       request.location_name ||
       request.locationName ||
       request.location ||
+      request.site_name ||
+      request.siteName ||
       ''
     ).trim();
 
@@ -792,13 +810,9 @@ const TechnicalAdmin = {
     const inProgressRequests = filteredRequests.filter(request =>
       this.normalizeTechnicalRequestStatus(request) === 'in_progress'
     );
-    const completedRequests = filteredRequests.filter(request => {
-      if (this.normalizeTechnicalRequestStatus(request) !== 'completed') return false;
-      const completedDate = new Date(this.pick(request.completed_at, request.resolved_at, request.closed_at, request.updated_at));
-      if (Number.isNaN(completedDate.getTime())) return false;
-      const now = new Date();
-      return completedDate.getMonth() === now.getMonth() && completedDate.getFullYear() === now.getFullYear();
-    });
+    const completedRequests = filteredRequests.filter(request =>
+      this.normalizeTechnicalRequestStatus(request) === 'completed'
+    );
     const openRequests = filteredRequests.filter(request => this.normalizeTechnicalRequestStatus(request) !== 'completed');
 
     const clientKeys = new Set(
@@ -960,7 +974,7 @@ const TechnicalAdmin = {
       if (this.state.onlyOverdue && (!due || due >= Date.now())) return false;
       if (this.state.myRequestsOnly && currentUser && !String(assignee).toLowerCase().includes(currentUser)) return false;
       if (cutoff) {
-        const created = new Date(this.pick(row.created_at, row.requested_at, row.updated_at)).getTime();
+        const created = new Date(this.getTechnicalRequestActivityDate(row)).getTime();
         if (created && created < cutoff) return false;
       }
       return true;
@@ -975,25 +989,33 @@ const TechnicalAdmin = {
   renderSummary() {
     if (!E.technicalAdminSummary) return;
     const rows = this.state.filteredRows;
+    const tableRows = rows;
+    if (rows.length > 0 && tableRows.length === 0) {
+      console.warn('[technical dashboard mismatch]', {
+        totalRequests: rows.length,
+        tableRows: tableRows.length,
+        statusFilter: this.state.status,
+        assigneeFilter: this.state.assignee,
+        clientFilter: this.state.client,
+        dateFilter: this.state.dateRangeDays,
+        onlyOverdue: this.state.onlyOverdue,
+        myRequests: this.state.myRequestsOnly
+      });
+    }
     const total = rows.length;
     const requested = rows.filter(row => this.normalizeTechnicalRequestStatus(row) === 'requested').length;
     const inProgress = rows.filter(row => this.normalizeTechnicalRequestStatus(row) === 'in_progress').length;
-    const now = new Date();
     const overdue = rows.filter(row => {
       const normalizedStatus = this.normalizeTechnicalRequestStatus(row);
       if (!['requested', 'in_progress'].includes(normalizedStatus)) return false;
       return new Date(this.pick(row.service_start_date, row.target_date, row.due_date)).getTime() < Date.now();
     }).length;
-    const completed = rows.filter(row => {
-      if (this.normalizeTechnicalRequestStatus(row) !== 'completed') return false;
-      const d = new Date(this.pick(row.completed_at, row.resolved_at, row.closed_at, row.updated_at));
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    }).length;
+    const completed = rows.filter(row => this.normalizeTechnicalRequestStatus(row) === 'completed').length;
     const cards = [
       ['Pending Requests', requested, 'amber', '⏳', `${Math.max(0, requested - overdue)} active`],
       ['In Progress', inProgress, 'blue', '⚙️', `${Math.round((inProgress / Math.max(1, total)) * 100)}% of total`],
       ['Overdue / SLA Risk', overdue, 'red', '⚠️', `${Math.round((overdue / Math.max(1, requested || 1)) * 100)}% of open`],
-      ['Completed This Month', completed, 'green', '✅', `${Math.round((completed / Math.max(1, total)) * 100)}% completion`]
+      ['Completed', completed, 'green', '✅', `${Math.round((completed / Math.max(1, total)) * 100)}% completion`]
     ];
     E.technicalAdminSummary.innerHTML = cards
       .map(([label, value, tone, icon, trend]) => `<button type="button" class="technical-admin-kpi-card primary ${tone}" data-technical-admin-action="filter-kpi" data-kpi-filter="${U.escapeAttr(label)}"><div class="kpi-head"><span class="label">${U.escapeHtml(label)}</span><span class="kpi-icon">${icon}</span></div><div class="value">${U.escapeHtml(String(value))}</div><div class="kpi-meta"><span>Live from filtered dataset</span><span>${U.escapeHtml(trend)}</span></div></button>`)
@@ -1039,7 +1061,7 @@ const TechnicalAdmin = {
     if (volumeHost) {
       const days = Number(this.state.volumeRangeDays || 30); const buckets = {};
       for (let i=days-1;i>=0;i--){const d=new Date(Date.now()-i*86400000); buckets[d.toISOString().slice(0,10)]=0;}
-      rows.forEach(r=>{const dt = new Date(this.pick(r.created_at,r.requested_at,r.updated_at)); if(!Number.isNaN(dt.getTime())){const k=dt.toISOString().slice(0,10); if (k in buckets) buckets[k]+=1;}});
+      rows.forEach(r=>{const dt = new Date(this.getTechnicalRequestActivityDate(r)); if(!Number.isNaN(dt.getTime())){const k=dt.toISOString().slice(0,10); if (k in buckets) buckets[k]+=1;}});
       const values=Object.values(buckets); const max = Math.max(1,...values);
       volumeHost.innerHTML = `<div class="tech-chart-bars">${Object.entries(buckets).map(([k,v])=>`<div class="tech-bar-col"><div class="bar" style="height:${Math.max(8,Math.round((v/max)*100))}%"></div><span>${k.slice(5)}</span></div>`).join('')}</div>`;
     }
@@ -1098,7 +1120,7 @@ const TechnicalAdmin = {
           <td>${text(row.technical_request_display || row.technical_request_number || row.technical_request_id)}</td>
           <td>${text(isPocRow ? (row.proposal_reference || row.proposal_id || 'POC') : row.agreement_number)}</td>
           <td>${text(row.client_name)}</td>
-          <td>${text(this.resolveTechnicalRequestLocationCount(row, { agreement_items: row.linked_agreement_items || row.agreement_items || row.items }) || '—')}</td>
+          <td>${(() => { const locationCount = this.resolveTechnicalRequestLocationCount(row); return text(locationCount || '—'); })()}</td>
           <td>${U.escapeHtml(this.toDisplayDate(row.service_start_date))}</td>
           <td>${U.escapeHtml(this.toDisplayDate(row.service_end_date))}</td>
           <td>${text(row.billing_frequency)}</td>
@@ -1497,7 +1519,7 @@ const TechnicalAdmin = {
           if (/Pending Requests/i.test(kpi)) this.state.status = 'Requested';
           if (/In Progress/i.test(kpi)) this.state.status = 'In Progress';
           if (/Overdue/i.test(kpi)) { this.state.status = 'All'; this.state.onlyOverdue = true; }
-          if (/Completed This Month/i.test(kpi)) this.state.status = 'Completed';
+          if (/Completed/i.test(kpi)) this.state.status = 'Completed';
           this.applyFilters(); this.renderFilters(); this.render(); return;
         }
         console.warn('Unknown technical admin action');
