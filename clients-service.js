@@ -257,6 +257,63 @@ const ClientsService = {
     }
     return null;
   },
+
+  normalizeClientName(value = '') {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFKC')
+      .replace(/[()（）]/g, '')
+      .replace(/\s+/g, ' ');
+  },
+  getCompanyDisplayName(company = {}) {
+    return String(
+      company.legal_name ||
+      company.company_name ||
+      company.name ||
+      company.customer_name ||
+      ''
+    ).trim();
+  },
+  getCompanyKeySetForClient(client = {}, companies = []) {
+    const keys = new Set();
+
+    const add = value => {
+      const text = String(value || '').trim();
+      if (text) keys.add(text);
+    };
+
+    add(client.id);
+    add(client.company_id);
+    add(client.companyId);
+    add(client.customer_company_id);
+    add(client.client_company_id);
+
+    const selectedNameKey = this.normalizeClientName(this.getCompanyDisplayName(client));
+
+    for (const company of Array.isArray(companies) ? companies : []) {
+      const companyNameKey = this.normalizeClientName(this.getCompanyDisplayName(company));
+
+      const directMatch =
+        String(company.id || '').trim() === String(client.id || '').trim()
+        || String(company.company_id || '').trim() === String(client.company_id || '').trim()
+        || String(company.id || '').trim() === String(client.company_id || '').trim()
+        || String(company.company_id || '').trim() === String(client.id || '').trim();
+
+      const exactNameMatch =
+        selectedNameKey
+        && companyNameKey
+        && selectedNameKey === companyNameKey;
+
+      if (directMatch || exactNameMatch) {
+        add(company.id);
+        add(company.company_id);
+        add(company.companyId);
+      }
+    }
+
+    return keys;
+  },
   getExpandedCompanyIdKeys_(record = {}) {
     const keys = new Set(this.getRawCompanyIdValues_(record));
     const company = this.findCompanyForRecord_(record);
@@ -268,7 +325,8 @@ const ClientsService = {
     return false;
   },
   hasStrictClientOwnership(agreement = {}, client = {}) {
-    const clientCompanyKeys = this.getExpandedCompanyIdKeys_(client);
+    const clientCompanyKeys = this.getCompanyKeySetForClient(client, this.state?.companies || this.companies || []);
+    this.getExpandedCompanyIdKeys_(client).forEach(key => clientCompanyKeys.add(key));
     const agreementCompanyKeys = this.getExpandedCompanyIdKeys_(agreement);
     if (clientCompanyKeys.size || agreementCompanyKeys.size) {
       return Boolean(clientCompanyKeys.size && agreementCompanyKeys.size && this.companyKeySetsIntersect_(clientCompanyKeys, agreementCompanyKeys));
