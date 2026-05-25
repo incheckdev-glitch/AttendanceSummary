@@ -31,6 +31,18 @@ function isAgreementSigned(agreement) {
 
 function agreementHasSignedDocument(agreement) {
   return Boolean(
+    agreement?.signed_document_url ||
+    agreement?.signedDocumentUrl ||
+    agreement?.signed_document_path ||
+    agreement?.signedDocumentPath ||
+    agreement?.signed_document_file ||
+    agreement?.signedDocumentFile ||
+    agreement?.signed_file_url ||
+    agreement?.signedFileUrl ||
+    agreement?.signed_agreement_url ||
+    agreement?.signedAgreementUrl ||
+    agreement?.signed_document_uploaded_at ||
+    agreement?.signedDocumentUploadedAt ||
     agreement?.signed_document_path ||
     agreement?.signed_agreement_document_path ||
     agreement?.signed_document_url ||
@@ -321,6 +333,12 @@ const Agreements = {
   },
   agreementHasSignedDocument(agreement = {}) {
     return agreementHasSignedDocument(agreement);
+  },
+  hasSignedDocument(record = {}) {
+    return agreementHasSignedDocument(record);
+  },
+  canUploadSignedDocument(record = {}) {
+    return !this.hasSignedDocument(record);
   },
   getSupabaseClient() {
     return window.SupabaseClient?.getClient?.() || window.supabaseClient || window.supabase || null;
@@ -2704,6 +2722,8 @@ const Agreements = {
         ? ' <span class="chip" style="margin-left:6px;">Historical</span>'
         : '';
       const invoiceBlocked = signedRow && this.state.invoiceBlockedAgreementIds.has(String(row?.id || '').trim());
+      const signedDocUploaded = this.hasSignedDocument(row);
+      const uploadBlocked = signedDocUploaded;
       return `<tr>
         <td>${textCell(row.agreement_id)}${importedBadge}</td><td>${textCell(row.agreement_number)}</td><td>${textCell(row.agreement_title)}</td>
         <td>${textCell(row.customer_name)}</td><td>${textCell(this.getAgreementProposalDisplayRef(row))}</td><td>${textCell(row.deal_id)}</td>
@@ -2712,7 +2732,7 @@ const Agreements = {
         <td>${textCell(this.resolveAgreementStatus(row))}</td><td>${U.escapeHtml(U.fmtDisplayDate(row.updated_at))}</td>
         <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
         ${Permissions.canView('agreements') ? `<button class="btn ghost sm" type="button" data-agreement-view="${id}">View</button>` : ''}
-        ${signedRow && Permissions.canUpdateAgreement() ? `<button class=\"btn ghost sm\" type=\"button\" data-agreement-upload-signed=\"${id}\" data-permission-resource=\"agreements\" data-permission-action=\"update\">Upload Signed Doc</button>` : ''}
+        ${signedRow && Permissions.canUpdateAgreement() ? `<button class=\"btn ghost sm action-btn upload-signed-doc-btn${uploadBlocked ? ' is-disabled is-blocked' : ''}\" type=\"button\" data-agreement-upload-signed=\"${id}\" data-permission-resource=\"agreements\" data-permission-action=\"update\" ${uploadBlocked ? 'disabled aria-disabled="true"' : ''} title="${U.escapeAttr(uploadBlocked ? 'Signed document has already been uploaded.' : 'Upload signed document')}">${uploadBlocked ? 'Signed Doc Uploaded' : 'Upload Signed Doc'}</button>` : ''}
         ${!signedRow && Permissions.canUpdateAgreement() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="agreements" data-permission-action="update" data-agreement-edit=\"${id}\" data-permission-resource=\"agreements\" data-permission-action=\"update\">Edit</button>` : ''}
         ${Permissions.canRequestTechnicalAdmin() ? `<button class=\"btn ghost sm\" type=\"button\" data-agreement-request-technical=\"${id}\" data-permission-resource=\"technical_admin_requests\" data-permission-action=\"create\">Request Technical</button>` : ''}
         ${Permissions.canGenerateAgreementHtml() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="agreements" data-permission-action="view" data-agreement-preview=\"${id}\">View Agreement</button>` : ''}
@@ -3498,7 +3518,17 @@ const Agreements = {
     const hasDocument = this.agreementHasSignedDocument(snapshot);
     section.style.display = signed ? '' : 'none';
     if (elements.file) elements.file.disabled = !signed || !persisted;
-    if (elements.uploadBtn) elements.uploadBtn.disabled = !signed || !persisted;
+    const uploadBlocked = hasDocument || !signed || !persisted;
+    if (elements.uploadBtn) {
+      elements.uploadBtn.disabled = uploadBlocked;
+      elements.uploadBtn.setAttribute('aria-disabled', uploadBlocked ? 'true' : 'false');
+      elements.uploadBtn.classList.toggle('is-disabled', uploadBlocked);
+      elements.uploadBtn.classList.toggle('is-blocked', uploadBlocked);
+      elements.uploadBtn.textContent = hasDocument ? 'Signed Doc Uploaded' : 'Upload Signed Agreement';
+      elements.uploadBtn.title = hasDocument
+        ? 'Signed document has already been uploaded.'
+        : 'Upload signed document';
+    }
     if (elements.openBtn) elements.openBtn.style.display = hasDocument ? '' : 'none';
     if (elements.state) {
       if (!signed) {
@@ -3564,6 +3594,7 @@ const Agreements = {
     const agreement = this.getSignedDocumentAgreementSnapshot(this.state.currentAgreement || {});
     if (!agreement.id) { UI.toast('Save this agreement before uploading the signed agreement document.'); return; }
     if (!this.isAgreementSigned(agreement)) { UI.toast('Upload the signed agreement document only after the agreement status is signed.'); return; }
+    if (this.hasSignedDocument(agreement)) { return; }
     const elements = this.ensureSignedAgreementDocumentSection();
     const file = elements.file?.files?.[0];
     if (!file) { UI.toast('Choose a signed agreement document to upload.'); return; }
@@ -3578,6 +3609,7 @@ const Agreements = {
         UI.toast('Upload the signed agreement document only after the agreement status is signed.');
         return;
       }
+      if (this.hasSignedDocument(latestAgreement)) return;
       const path = this.buildSignedAgreementDocumentPath(latestAgreement, file);
       const { error: uploadError } = await client.storage
         .from(this.signedDocumentBucket)
@@ -4589,6 +4621,8 @@ const Agreements = {
       const uploadSignedId = trigger.getAttribute('data-agreement-upload-signed');
       if (uploadSignedId) {
         if (!Permissions.canUpdateAgreement()) return UI.toast('You do not have permission to upload signed agreement documents.');
+        const row = this.state.rows.find(entry => String(entry?.id || '').trim() === String(uploadSignedId || '').trim());
+        if (row && this.hasSignedDocument(row)) return;
         return this.runRowAction(`upload-signed:${uploadSignedId}`, trigger, () => this.openAgreementFormById(uploadSignedId, { readOnly: true, trigger, focusSignedDocument: true }));
       }
       const requestTechnicalId = trigger.getAttribute('data-agreement-request-technical');
