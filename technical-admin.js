@@ -774,18 +774,29 @@ const TechnicalAdmin = {
       ''
     ).trim();
   },
+  toNumberSafe(value, fallback = 0) {
+    if (value === null || value === undefined || value === '') return fallback;
+    const n = Number(String(value).replace(/,/g, '').trim());
+    return Number.isFinite(n) ? n : fallback;
+  },
   resolveTechnicalRequestLocationCount(request = {}) {
-    const directRaw =
-      request.number_of_locations ??
-      request.locations_count ??
-      request.location_count ??
-      request.location_number ??
-      request.locations_number ??
-      '';
+    const directCandidates = [
+      request.number_of_locations,
+      request.numberOfLocations,
+      request.locations_count,
+      request.locationsCount,
+      request.location_count,
+      request.locationCount,
+      request.location_number,
+      request.locationNumber,
+      request.locations_number,
+      request.locationsNumber
+    ];
 
-    const direct = Number(directRaw);
-
-    if (Number.isFinite(direct) && direct > 0) return direct;
+    for (const value of directCandidates) {
+      const n = this.toNumberSafe(value, 0);
+      if (n > 0) return n;
+    }
 
     const locationName = String(
       request.location_name ||
@@ -1120,7 +1131,7 @@ const TechnicalAdmin = {
           <td>${text(row.technical_request_display || row.technical_request_number || row.technical_request_id)}</td>
           <td>${text(isPocRow ? (row.proposal_reference || row.proposal_id || 'POC') : row.agreement_number)}</td>
           <td>${text(row.client_name)}</td>
-          <td>${(() => { const locationCount = this.resolveTechnicalRequestLocationCount(row); return text(locationCount || '—'); })()}</td>
+          <td>${(() => { const locationCount = this.resolveTechnicalRequestLocationCount(row); return text(locationCount > 0 ? locationCount : '—'); })()}</td>
           <td>${U.escapeHtml(this.toDisplayDate(row.service_start_date))}</td>
           <td>${U.escapeHtml(this.toDisplayDate(row.service_end_date))}</td>
           <td>${text(row.billing_frequency)}</td>
