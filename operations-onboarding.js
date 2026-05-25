@@ -247,6 +247,42 @@ const OperationsOnboarding = {
   normalizeRole(value = '') {
     return String(value || '').trim().toLowerCase().replace(/\s+/g, '_');
   },
+  normalizeOnboardingStatus(value = '') {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_');
+  },
+  isOnboardingInProgress(row = {}) {
+    const status = this.normalizeOnboardingStatus(
+      row.status ||
+      row.onboarding_status ||
+      row.state ||
+      ''
+    );
+    return ['in_progress', 'started', 'active'].includes(status);
+  },
+  isOnboardingCompleted(row = {}) {
+    const status = this.normalizeOnboardingStatus(
+      row.status ||
+      row.onboarding_status ||
+      row.state ||
+      ''
+    );
+    return ['completed', 'complete', 'done', 'closed'].includes(status)
+      || Boolean(row.completed_at || row.completedAt);
+  },
+  canMarkOnboardingInProgress(row = {}) {
+    return !this.isOnboardingInProgress(row) && !this.isOnboardingCompleted(row);
+  },
+  canMarkOnboardingCompleted(row = {}) {
+    return !this.isOnboardingCompleted(row);
+  },
+  findRowById(onboardingId = '') {
+    const id = String(onboardingId || '').trim();
+    if (!id) return null;
+    return this.state.rows.find(row => String(row.id || row.db_id || row.onboarding_id || '').trim() === id) || null;
+  },
   isUserActive(user = {}) {
     if (!user || typeof user !== 'object') return false;
     if (typeof user.is_active === 'boolean') return user.is_active;
@@ -1187,6 +1223,8 @@ const OperationsOnboarding = {
       const hasAgreementId = Boolean(String(row.agreement_id || '').trim());
       const hasProposalId = Boolean(proposalId);
       const hasRowDbId = Boolean(rowRecordId);
+      const inProgressBlocked = !this.canMarkOnboardingInProgress(row);
+      const completedBlocked = !this.canMarkOnboardingCompleted(row);
       const assignedCsmName = row.assigned_csm_name || row.csm_assigned_to || '';
       const showAssignCsmButton =
         canAssignCsm
@@ -1218,8 +1256,8 @@ const OperationsOnboarding = {
             <button class="btn ghost sm" type="button" data-op-open-details="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Open Onboarding Details</button>
             ${canCreateTechnicalRequest ? `<button class="btn ghost sm action-btn technical-request-btn ${technicalRequestExists ? 'is-disabled is-blocked' : ''}" type="button" data-op-technical-admin="${agreementId}" data-op-technical-onboarding="${rowDbId}" ${technicalRequestExists ? 'disabled aria-disabled="true"' : ((!hasAgreementId && !isPocRow) ? 'disabled title="Agreement ID not available"' : '')} title="${U.escapeAttr(technicalRequestExists ? 'Technical request has already been created for this location.' : 'Request technical support')}">${technicalRequestExists ? 'Technical Requested' : 'Request Technical'}</button>` : ''}
             ${showAssignCsmButton ? `<button class="btn ghost sm" type="button" data-op-assign-csm="${rowDbId}" data-op-agreement-id="${agreementId}" data-op-proposal-id="${U.escapeAttr(row.proposal_id || '')}">${assignCsmButtonLabel}</button>` : ''}
-            ${canWrite ? `<button class="btn ghost sm" type="button" data-op-mark-progress="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Mark In Progress</button>
-            <button class="btn ghost sm" type="button" data-op-mark-completed="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Mark Completed</button>` : ''}
+            ${canWrite ? `<button class="btn ghost sm action-btn onboarding-progress-btn ${inProgressBlocked ? 'is-disabled is-blocked' : ''}" type="button" data-op-mark-progress="${rowDbId}" data-op-agreement-id="${agreementId}" ${(inProgressBlocked || !hasRowDbId) ? 'disabled aria-disabled="true"' : ''} title="${U.escapeAttr(!hasRowDbId ? 'Onboarding row ID not available' : (inProgressBlocked ? 'This onboarding has already been marked in progress or completed.' : 'Mark as in progress'))}">${inProgressBlocked ? 'In Progress Marked' : 'Mark In Progress'}</button>
+            <button class="btn ghost sm action-btn onboarding-complete-btn ${completedBlocked ? 'is-disabled is-blocked' : ''}" type="button" data-op-mark-completed="${rowDbId}" data-op-agreement-id="${agreementId}" ${(completedBlocked || !hasRowDbId) ? 'disabled aria-disabled="true"' : ''} title="${U.escapeAttr(!hasRowDbId ? 'Onboarding row ID not available' : (completedBlocked ? 'This onboarding has already been completed.' : 'Mark as completed'))}">${completedBlocked ? 'Completed' : 'Mark Completed'}</button>` : ''}
           </div></td>
         </tr>`;
     }).join('');
@@ -1523,11 +1561,21 @@ const OperationsOnboarding = {
     const normalizedStatus = String(status || '').trim();
     if (!normalizedOnboardingId) return UI.toast('Onboarding row ID is required.');
     if (!normalizedStatus) return UI.toast('Status is required.');
+    const localRow = this.findRowById(normalizedOnboardingId);
+    if (this.normalizeOnboardingStatus(normalizedStatus) === 'in_progress' && localRow && !this.canMarkOnboardingInProgress(localRow)) {
+      if (this.isOnboardingCompleted(localRow)) return UI.toast('This onboarding is already completed.');
+      return UI.toast('This onboarding is already in progress.');
+    }
+    if (this.normalizeOnboardingStatus(normalizedStatus) === 'completed' && localRow && !this.canMarkOnboardingCompleted(localRow)) {
+      return UI.toast('This onboarding is already completed.');
+    }
     const nowIso = new Date().toISOString();
     const payload = {
       onboarding_status: normalizedStatus,
       updated_at: nowIso
     };
+    if (this.normalizeOnboardingStatus(normalizedStatus) === 'in_progress') payload.started_at = localRow?.started_at || nowIso;
+    if (this.normalizeOnboardingStatus(normalizedStatus) === 'completed') payload.completed_at = localRow?.completed_at || nowIso;
     console.log(`[OperationsOnboarding] clicked action: Mark ${normalizedStatus}`, { onboarding_id: normalizedOnboardingId, agreement_id: normalizedAgreementId });
     console.log(`[OperationsOnboarding] Mark ${normalizedStatus} payload`, payload);
     try {
@@ -1538,6 +1586,19 @@ const OperationsOnboarding = {
         syncTechnicalStatus: normalizedStatus
       });
       console.log(`[OperationsOnboarding] Mark ${normalizedStatus} Supabase response`, response);
+      if (localRow) {
+        if (this.normalizeOnboardingStatus(normalizedStatus) === 'in_progress') {
+          localRow.status = 'in_progress';
+          localRow.onboarding_status = 'In Progress';
+          localRow.started_at = localRow.started_at || nowIso;
+        }
+        if (this.normalizeOnboardingStatus(normalizedStatus) === 'completed') {
+          localRow.status = 'completed';
+          localRow.onboarding_status = 'Completed';
+          localRow.completed_at = localRow.completed_at || nowIso;
+        }
+        localRow.updated_at = nowIso;
+      }
       await this.refreshCompanyLifecycleForOnboarding({ ...payload, agreement_id: normalizedAgreementId }, this.isCompletedStatus(normalizedStatus) ? 'Active Client' : 'Onboarding');
       await this.loadAndRefresh({ force: true });
       UI.toast(`Onboarding marked ${normalizedStatus}.`);
