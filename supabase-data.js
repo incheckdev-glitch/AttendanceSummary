@@ -557,7 +557,7 @@
   const AGREEMENT_ITEM_COLUMNS = new Set([
     'item_id','agreement_id','section','line_no','location_name','item_name','unit_price','discount_percent',
     'discounted_unit_price','quantity','license_quantity','line_total','service_start_date','service_end_date','capability_name','capability_value','notes',
-    'invoice_status','invoiced_invoice_id','invoiced_at','renewed_from_item_id','is_superseded','superseded_by_item_id'
+    'invoice_status','invoiced_invoice_id','invoiced_at','renewed_from_item_id','is_superseded','superseded_at','superseded_by_item_id','superseded_by_agreement_id','superseded_by_agreement_number','renewal_key'
   ]);
   const CLIENT_COLUMNS = new Set([
     'client_id','client_name','company_name','primary_email','primary_phone','billing_frequency','payment_term',
@@ -651,7 +651,9 @@
       'source_invoice_id', 'invoice_id', 'source_invoice_number', 'invoice_number',
       'invoiced_location_names', 'invoiced_locations', 'location_names', 'invoiced_agreement_item_ids',
       'invoiced_location_count', 'location_count', 'locations_count', 'number_of_locations',
-      'requested_by', 'requested_at', 'csm_assigned_to', 'go_live_target_date', 'go_live_date', 'go_live_at', 'completed_at', 'updated_at', 'created_at'
+      'requested_by', 'requested_at', 'csm_assigned_to', 'go_live_target_date', 'go_live_date', 'go_live_at', 'completed_at',
+      'is_superseded','superseded_at','superseded_by_agreement_id','superseded_by_agreement_number','renewal_key',
+      'updated_at', 'created_at'
     ]),
     proposal_catalog: new Set([
       'id', 'catalog_item_id', 'is_active', 'section', 'category', 'item_name', 'default_location_name',
@@ -706,7 +708,9 @@
       'invoiced_location_count',
       'service_start_date','service_end_date','billing_frequency','payment_term',
       'module_summary','agreement_status','requested_by','requested_at',
-      'technical_admin_assigned_to','started_at','completed_at','updated_by','updated_at','notes',
+      'technical_admin_assigned_to','started_at','completed_at',
+      'is_superseded','superseded_at','superseded_by_agreement_id','superseded_by_agreement_number','renewal_key',
+      'updated_by','updated_at','notes',
       'created_at'
     ]),
     notifications: new Set([

@@ -30,6 +30,14 @@ const TechnicalAdmin = {
     }
     return '';
   },
+  isSupersededRecord(record = {}) {
+    return record.is_superseded === true
+      || record.isSuperseded === true
+      || String(record.is_superseded || '').trim().toLowerCase() === 'true'
+      || String(record.isSuperseded || '').trim().toLowerCase() === 'true'
+      || Boolean(record.superseded_by_agreement_id || record.supersededByAgreementId)
+      || Boolean(record.superseded_by_agreement_number || record.supersededByAgreementNumber);
+  },
   hasInvoiceScope(row = {}) {
     return Boolean(this.pick(
       row.source_invoice_id, row.sourceInvoiceId, row.invoice_id, row.invoiceId,
@@ -518,6 +526,11 @@ const TechnicalAdmin = {
       technical_request_details: technicalRequestDetails,
       request_status: technicalRequestStatus,
       technical_request_status: technicalRequestStatus,
+      is_superseded: source.is_superseded === true || String(source.is_superseded || source.isSuperseded || '').trim().toLowerCase() === 'true',
+      superseded_at: String(this.pick(source.superseded_at, source.supersededAt)).trim(),
+      superseded_by_agreement_id: String(this.pick(source.superseded_by_agreement_id, source.supersededByAgreementId)).trim(),
+      superseded_by_agreement_number: String(this.pick(source.superseded_by_agreement_number, source.supersededByAgreementNumber)).trim(),
+      renewal_key: String(this.pick(source.renewal_key, source.renewalKey)).trim(),
       priority: String(this.pick(source.priority)).trim(),
       location_count: Number.isFinite(Number(resolvedLocationCount)) ? Number(resolvedLocationCount) : null,
       number_of_locations: Number.isFinite(Number(resolvedLocationCount)) ? Number(resolvedLocationCount) : null,
@@ -1023,6 +1036,8 @@ const TechnicalAdmin = {
     }
   },
   applyFilters() {
+    const allTechnicalRequests = Array.isArray(this.state.rows) ? this.state.rows : [];
+    const currentTechnicalRequests = allTechnicalRequests.filter(request => !this.isSupersededRecord(request));
     const query = String(this.state.search || '').trim().toLowerCase();
     const statusFilter = String(this.state.status || 'All').trim();
     const assigneeFilter = String(this.state.assignee || 'All Assignees').trim();
@@ -1030,7 +1045,7 @@ const TechnicalAdmin = {
     const days = Number(this.state.dateRangeDays || 30);
     const cutoff = Number.isFinite(days) && days > 0 ? (Date.now() - (days * 86400000)) : null;
     const currentUser = String(window.Session?.user?.()?.profile?.name || window.Session?.user?.()?.email || '').trim().toLowerCase();
-    this.state.filteredRows = this.state.rows.filter(row => {
+    this.state.filteredRows = currentTechnicalRequests.filter(row => {
       const hay = [
         row.technical_request_display,
         row.technical_request_number,

@@ -708,9 +708,16 @@ const ClientsService = {
       .replace(/\s+/g, '_');
     return section === 'annual_saas';
   },
+  isSupersededRecord(record = {}) {
+    return record.is_superseded === true
+      || record.isSuperseded === true
+      || String(record.is_superseded || '').trim().toLowerCase() === 'true'
+      || String(record.isSuperseded || '').trim().toLowerCase() === 'true'
+      || Boolean(record.superseded_by_agreement_id || record.supersededByAgreementId)
+      || Boolean(record.superseded_by_agreement_number || record.supersededByAgreementNumber);
+  },
   isSupersededItem(item = {}) {
-    return item?.is_superseded === true
-      || String(item?.is_superseded).toLowerCase() === 'true'
+    return this.isSupersededRecord(item)
       || Boolean(item?.superseded_by_item_id || item?.supersededByItemId);
   },
   agreementHasCurrentAnnualSaasItems(agreement = {}) {
