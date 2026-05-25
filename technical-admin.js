@@ -693,16 +693,73 @@ const TechnicalAdmin = {
     rowEl.classList.add('row-highlight-pulse');
     window.setTimeout(() => rowEl.classList.remove('row-highlight-pulse'), 2200);
   },
-  statusBucket(status = '') {
-    const normalized = String(status || '').trim().toLowerCase();
-    if (!normalized) return 'Requested';
-    if (normalized.includes('progress')) return 'In Progress';
-    if (normalized.includes('complete')) return 'Completed';
+  normalizeTechnicalRequestStatus(request = {}) {
+    const raw = String(
+      request.status ||
+      request.request_status ||
+      request.technical_status ||
+      request.admin_status ||
+      request.state ||
+      request.stage ||
+      ''
+    ).trim().toLowerCase().replace(/\s+/g, '_');
+
+    const hasCompletedDate = Boolean(
+      request.completed_at ||
+      request.completedAt ||
+      request.resolved_at ||
+      request.resolvedAt ||
+      request.closed_at ||
+      request.closedAt ||
+      request.done_at ||
+      request.doneAt ||
+      request.completion_date ||
+      request.completionDate
+    );
+
+    const hasCompletedFlag =
+      request.is_completed === true ||
+      request.completed === true ||
+      request.is_resolved === true ||
+      request.resolved === true ||
+      request.is_closed === true ||
+      request.closed === true ||
+      String(request.is_completed).toLowerCase() === 'true' ||
+      String(request.completed).toLowerCase() === 'true' ||
+      String(request.is_resolved).toLowerCase() === 'true' ||
+      String(request.resolved).toLowerCase() === 'true';
+
+    if (
+      hasCompletedDate ||
+      hasCompletedFlag ||
+      ['completed', 'complete', 'done', 'resolved', 'closed'].includes(raw)
+    ) {
+      return 'completed';
+    }
+
+    if (['in_progress', 'started', 'active', 'assigned'].includes(raw)) {
+      return 'in_progress';
+    }
+
+    if (['requested', 'request', 'pending', 'open', 'new', 'created'].includes(raw)) {
+      return 'requested';
+    }
+
+    return raw || 'requested';
+  },
+  statusBucket(requestOrStatus = {}) {
+    const normalized = typeof requestOrStatus === 'object'
+      ? this.normalizeTechnicalRequestStatus(requestOrStatus)
+      : this.normalizeTechnicalRequestStatus({ request_status: requestOrStatus });
+    if (normalized === 'completed') return 'Completed';
+    if (normalized === 'in_progress') return 'In Progress';
     return 'Requested';
   },
-  statusBadge(status = '') {
-    const normalized = String(status || '').trim();
-    const label = normalized || 'Requested';
+  statusBadge(requestOrStatus = {}) {
+    const normalized = typeof requestOrStatus === 'object'
+      ? this.normalizeTechnicalRequestStatus(requestOrStatus)
+      : this.normalizeTechnicalRequestStatus({ request_status: requestOrStatus });
+    const label = normalized === 'completed' ? 'Completed' : normalized === 'in_progress' ? 'In Progress' : 'Requested';
     return `<span class="pill status-${U.toStatusClass(label)}">${U.escapeHtml(label)}</span>`;
   },
   setTriggerBusy(trigger, busy, loadingLabel = 'Loading…') {
@@ -795,7 +852,7 @@ const TechnicalAdmin = {
         .join(' ')
         .toLowerCase();
       if (query && !hay.includes(query)) return false;
-      if (statusFilter !== 'All' && row.request_status !== statusFilter) return false;
+      if (statusFilter !== 'All' && this.statusBucket(row) !== statusFilter) return false;
       const assignee = this.getUserDisplayName(row, 'assigned');
       const client = String(row.client_name || '').trim();
       if (assigneeFilter !== 'All Assignees' && assignee !== assigneeFilter) return false;
@@ -820,13 +877,17 @@ const TechnicalAdmin = {
     if (!E.technicalAdminSummary) return;
     const rows = this.state.filteredRows;
     const total = rows.length;
-    const requested = rows.filter(row => !/completed|cancelled/i.test(String(row.request_status || ''))).length;
-    const inProgress = rows.filter(row => this.statusBucket(row.request_status) === 'In Progress').length;
+    const requested = rows.filter(row => this.normalizeTechnicalRequestStatus(row) === 'requested').length;
+    const inProgress = rows.filter(row => this.normalizeTechnicalRequestStatus(row) === 'in_progress').length;
     const now = new Date();
-    const overdue = rows.filter(row => new Date(this.pick(row.service_start_date, row.target_date, row.due_date)).getTime() < Date.now() && !/completed|cancelled/i.test(String(row.request_status || ''))).length;
+    const overdue = rows.filter(row => {
+      const normalizedStatus = this.normalizeTechnicalRequestStatus(row);
+      if (!['requested', 'in_progress'].includes(normalizedStatus)) return false;
+      return new Date(this.pick(row.service_start_date, row.target_date, row.due_date)).getTime() < Date.now();
+    }).length;
     const completed = rows.filter(row => {
-      if (this.statusBucket(row.request_status) !== 'Completed') return false;
-      const d = new Date(this.pick(row.completed_at, row.updated_at));
+      if (this.normalizeTechnicalRequestStatus(row) !== 'completed') return false;
+      const d = new Date(this.pick(row.completed_at, row.resolved_at, row.closed_at, row.updated_at));
       return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
     }).length;
     const cards = [
@@ -843,7 +904,7 @@ const TechnicalAdmin = {
   },
   renderSecondaryMetrics(rows = []) {
     const host = document.getElementById('technicalAdminSecondaryMetrics'); if (!host) return;
-    const open = rows.filter(r => !/completed|cancelled/i.test(String(r.request_status || '')));
+    const open = rows.filter(r => ['requested', 'in_progress'].includes(this.normalizeTechnicalRequestStatus(r)));
     const clients = new Set(open.map(r => String(r.client_name || '').trim()).filter(Boolean));
     const unassigned = open.filter(r => this.getUserDisplayName(r, 'assigned') === 'Unassigned').length;
     const locations = rows.reduce((a, r) => a + Number(r.number_of_locations || r.location_count || 0), 0);
@@ -858,21 +919,21 @@ const TechnicalAdmin = {
     const upcomingHost = document.getElementById('technicalAdminUpcomingPanel');
     const recentHost = document.getElementById('technicalAdminRecentActivity');
     const volumeHost = document.getElementById('technicalAdminVolumeChart');
-    const openRows = rows.filter(r => !/completed|cancelled/i.test(String(r.request_status || '')));
+    const openRows = rows.filter(r => ['requested', 'in_progress'].includes(this.normalizeTechnicalRequestStatus(r)));
     if (statusHost) {
-      const counts = rows.reduce((a,r)=>{const k=String(r.request_status||'Unknown');a[k]=(a[k]||0)+1;return a;},{});
+      const counts = rows.reduce((a,r)=>{const k=this.statusBucket(r);a[k]=(a[k]||0)+1;return a;},{});
       const total = rows.length || 1;
       statusHost.innerHTML = `<div class="technical-admin-mini-list">${Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="status-row"><div><button type="button" class="btn ghost sm" data-technical-admin-action="filter-status" data-status="${U.escapeAttr(k)}">${U.escapeHtml(k)}</button><small>${v} requests</small></div><div class="status-bar"><span style="width:${Math.max(5,Math.round(v*100/total))}%"></span></div><strong>${Math.round(v*100/total)}%</strong></div>`).join('')}</div>`;
     }
     if (workloadHost) {
       const map = {};
-      openRows.forEach(r=>{const a=this.getUserDisplayName(r,'assigned');if(!map[a]) map[a]={open:0,overdue:0,inprogress:0};map[a].open+=1; if(new Date(this.pick(r.service_start_date,r.target_date,r.due_date)).getTime()<Date.now()) map[a].overdue+=1; if(this.statusBucket(r.request_status)==='In Progress') map[a].inprogress+=1;});
+      openRows.forEach(r=>{const a=this.getUserDisplayName(r,'assigned');if(!map[a]) map[a]={open:0,overdue:0,inprogress:0};map[a].open+=1; if(new Date(this.pick(r.service_start_date,r.target_date,r.due_date)).getTime()<Date.now()) map[a].overdue+=1; if(this.normalizeTechnicalRequestStatus(r)==='in_progress') map[a].inprogress+=1;});
       const max = Math.max(1,...Object.values(map).map(v=>v.open));
       workloadHost.innerHTML = Object.entries(map).sort((a,b)=>b[1].open-a[1].open).slice(0,8).map(([a,v])=>`<div class="workload-row"><div class="identity"><span class="avatar">${U.escapeHtml(this.getInitials(a))}</span><button type="button" class="btn ghost sm" data-technical-admin-action="filter-assignee" data-assignee-id="${U.escapeAttr(a)}">${U.escapeHtml(a)}</button></div><div class="metrics"><span>Open ${v.open}</span><span class="warn">Overdue ${v.overdue}</span><span>In Progress ${v.inprogress}</span></div><div class="status-bar"><span style="width:${Math.round((v.open/max)*100)}%"></span></div></div>`).join('') || '<div class="muted">No assignee data.</div>';
     }
     const dueRows = rows.map(r=>({r,d:new Date(this.pick(r.service_start_date,r.target_date,r.due_date)).getTime()})).filter(x=>x.d).sort((a,b)=>a.d-b.d);
-    if (upcomingHost) upcomingHost.innerHTML = dueRows.slice(0,6).map(({r,d})=>{const days=Math.ceil((d-Date.now())/86400000);const requestId=U.escapeAttr(r.id||'');return `<div class="task-row"><div><strong>${U.escapeHtml(r.technical_request_display||r.technical_request_number||r.technical_request_id||'')}</strong><small>${U.escapeHtml(r.client_name||'')}</small></div><div><span class="pill ${days<0?'red':days<4?'amber':'blue'}">${days<0?`${Math.abs(days)}d overdue`:`${days}d`}</span>${this.statusBadge(r.request_status)}<button type="button" class="btn ghost sm" data-technical-admin-action="open-request" data-request-id="${requestId}" ${requestId ? '' : 'disabled title="Missing request id"'}>Open</button></div></div>`}).join('') || '<div class="muted">No scheduled items.</div>';
-    if (critHost) critHost.innerHTML = dueRows.filter(x=>x.d < Date.now()).slice(0,6).map(({r,d})=>`<div class="alert-row"><div><strong>${U.escapeHtml(r.technical_request_display||r.technical_request_number||r.technical_request_id||'')} · ${U.escapeHtml(r.client_name||'')}</strong><small>Age ${Math.abs(Math.ceil((d-Date.now())/86400000))} days</small></div><div><span class="pill red">Critical</span><button type="button" class="btn sm" data-technical-admin-action="open-request" data-request-id="${U.escapeAttr(r.id||'')}" ${r.id ? '' : 'disabled title="Missing request id"'}>Open</button></div></div>`).join('') || '<div class="muted">No critical items.</div>';
+    if (upcomingHost) upcomingHost.innerHTML = dueRows.slice(0,6).map(({r,d})=>{const days=Math.ceil((d-Date.now())/86400000);const requestId=U.escapeAttr(r.id||'');return `<div class="task-row"><div><strong>${U.escapeHtml(r.technical_request_display||r.technical_request_number||r.technical_request_id||'')}</strong><small>${U.escapeHtml(r.client_name||'')}</small></div><div><span class="pill ${days<0?'red':days<4?'amber':'blue'}">${days<0?`${Math.abs(days)}d overdue`:`${days}d`}</span>${this.statusBadge(r)}<button type="button" class="btn ghost sm" data-technical-admin-action="open-request" data-request-id="${requestId}" ${requestId ? '' : 'disabled title="Missing request id"'}>Open</button></div></div>`}).join('') || '<div class="muted">No scheduled items.</div>';
+    if (critHost) critHost.innerHTML = dueRows.filter(x=>x.d < Date.now() && ['requested', 'in_progress'].includes(this.normalizeTechnicalRequestStatus(x.r))).slice(0,6).map(({r,d})=>`<div class="alert-row"><div><strong>${U.escapeHtml(r.technical_request_display||r.technical_request_number||r.technical_request_id||'')} · ${U.escapeHtml(r.client_name||'')}</strong><small>Age ${Math.abs(Math.ceil((d-Date.now())/86400000))} days</small></div><div><span class="pill red">Critical</span><button type="button" class="btn sm" data-technical-admin-action="open-request" data-request-id="${U.escapeAttr(r.id||'')}" ${r.id ? '' : 'disabled title="Missing request id"'}>Open</button></div></div>`).join('') || '<div class="muted">No critical items.</div>';
     if (recentHost) recentHost.innerHTML = rows.slice().sort((a,b)=>new Date(b.updated_at)-new Date(a.updated_at)).slice(0,6).map(r=>`<div class="timeline-row"><span class="dot"></span><div><strong>${U.escapeHtml(r.request_title||'Request updated')}</strong><small>${U.escapeHtml(r.client_name||'')} · ${U.escapeHtml(r.technical_request_display||r.technical_request_number||r.technical_request_id||'')}</small></div><span>${U.escapeHtml(this.toDisplayDateTime(r.updated_at))}</span><button type="button" class="btn ghost sm" data-technical-admin-action="open-request" data-request-id="${U.escapeAttr(r.id||'')}" ${r.id ? '' : 'disabled title="Missing request id"'}>Open</button></div>`).join('') || '<div class="muted">No recent activity.</div>';
     if (volumeHost) {
       const days = Number(this.state.volumeRangeDays || 30); const buckets = {};
@@ -884,8 +945,7 @@ const TechnicalAdmin = {
   },
   renderFilters() {
     if (!E.technicalAdminStatusFilter) return;
-    const statuses = [...new Set(this.state.rows.map(row => String(row.request_status || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-    const options = ['All', ...statuses];
+    const options = ['All', 'Requested', 'In Progress', 'Completed'];
     E.technicalAdminStatusFilter.innerHTML = options.map(v => `<option>${U.escapeHtml(v)}</option>`).join('');
     E.technicalAdminStatusFilter.value = options.includes(this.state.status) ? this.state.status : 'All';
     if (E.technicalAdminSearchInput) E.technicalAdminSearchInput.value = this.state.search;
@@ -942,7 +1002,7 @@ const TechnicalAdmin = {
           <td>${U.escapeHtml(this.toDisplayDate(row.service_end_date))}</td>
           <td>${text(row.billing_frequency)}</td>
           <td>${text(row.payment_term || row.payment_terms)}</td>
-          <td>${this.statusBadge(row.request_status)}</td>
+          <td>${this.statusBadge(row)}</td>
           <td>${text(this.getUserDisplayName(row, 'requested'))}</td>
           <td>${U.escapeHtml(this.toDisplayDateTime(row.requested_at))}</td>
           <td>${text(this.getUserDisplayName(row, 'assigned'))}</td>
@@ -1109,7 +1169,7 @@ const TechnicalAdmin = {
           <div><span class="muted">Client ID:</span> ${U.escapeHtml(row.client_id || '—')}</div>
           <div><span class="muted">Client Name:</span> ${U.escapeHtml(row.client_name || '—')}</div>
           <div><span class="muted">Request Type:</span> ${U.escapeHtml(isPocRow ? 'POC' : (row.request_type || '—'))}</div>
-          <div><span class="muted">Status:</span> ${this.statusBadge(row.request_status)}</div>
+          <div><span class="muted">Status:</span> ${this.statusBadge(row)}</div>
           <div><span class="muted">Number of Locations:</span> ${U.escapeHtml(String(row.number_of_locations || row.location_count || '—'))}</div>
           <div><span class="muted">Invoice Number:</span> ${U.escapeHtml(row.invoice_number || row.source_invoice_number || '—')}</div>
           <div style="grid-column:1/-1;"><span class="muted">Invoiced Locations:</span> ${U.escapeHtml(row.invoiced_location_names || row.invoiced_locations || row.location_names || '—')}</div>
