@@ -207,7 +207,28 @@ const Agreements = {
     openingAgreementIds: new Set(),
     rowActionInFlight: new Set(),
     selectedAgreementCompanyForVerification: null,
-    invoiceBlockedAgreementIds: new Set()
+    invoiceBlockedAgreementIds: new Set(),
+    technicalAdminRequests: []
+  },
+  normalizeLocationKey(value = '') {
+    return String(value || '').trim().toLowerCase().normalize('NFKC').replace(/\s+/g, ' ');
+  },
+  isTechnicalRequestForContext(request = {}, context = {}) {
+    const requestOnboardingId = String(request.operations_onboarding_id || request.onboarding_id || request.source_onboarding_id || '').trim();
+    const contextOnboardingId = String(context.operations_onboarding_id || context.onboarding_id || context.source_onboarding_id || context.id || '').trim();
+    if (contextOnboardingId && requestOnboardingId && requestOnboardingId === contextOnboardingId) return true;
+    const requestAgreementId = String(request.agreement_id || request.source_agreement_id || '').trim();
+    const contextAgreementId = String(context.agreement_id || context.source_agreement_id || context.agreementId || '').trim();
+    const requestProposalId = String(request.proposal_id || request.source_proposal_id || '').trim();
+    const contextProposalId = String(context.proposal_id || context.source_proposal_id || context.proposalId || '').trim();
+    const requestLocation = this.normalizeLocationKey(request.location_name || request.locationName || request.location || '');
+    const contextLocation = this.normalizeLocationKey(context.location_name || context.locationName || context.location || '');
+    if (contextAgreementId && requestAgreementId && requestAgreementId === contextAgreementId) return (!contextLocation || !requestLocation) ? true : requestLocation === contextLocation;
+    if (contextProposalId && requestProposalId && requestProposalId === contextProposalId) return (!contextLocation || !requestLocation) ? true : requestLocation === contextLocation;
+    return false;
+  },
+  hasExistingTechnicalRequest(context = {}, technicalRequests = []) {
+    return (Array.isArray(technicalRequests) ? technicalRequests : []).some(request => this.isTechnicalRequestForContext(request, context));
   },
   isAgreementItemInvoiced(item = {}) {
     const status = String(item.invoice_status || item.invoiceStatus || '').trim().toLowerCase();
@@ -2724,6 +2745,7 @@ const Agreements = {
       const invoiceBlocked = signedRow && this.state.invoiceBlockedAgreementIds.has(String(row?.id || '').trim());
       const signedDocUploaded = this.hasSignedDocument(row);
       const uploadBlocked = signedDocUploaded;
+      const technicalRequestExists = this.hasExistingTechnicalRequest({ agreement_id: row.id, location_name: row.location_name, company_id: row.company_id }, this.state.technicalAdminRequests || []);
       return `<tr>
         <td>${textCell(row.agreement_id)}${importedBadge}</td><td>${textCell(row.agreement_number)}</td><td>${textCell(row.agreement_title)}</td>
         <td>${textCell(row.customer_name)}</td><td>${textCell(this.getAgreementProposalDisplayRef(row))}</td><td>${textCell(row.deal_id)}</td>
@@ -2734,7 +2756,7 @@ const Agreements = {
         ${Permissions.canView('agreements') ? `<button class="btn ghost sm" type="button" data-agreement-view="${id}">View</button>` : ''}
         ${signedRow && Permissions.canUpdateAgreement() ? `<button class=\"btn ghost sm action-btn upload-signed-doc-btn${uploadBlocked ? ' is-disabled is-blocked' : ''}\" type=\"button\" data-agreement-upload-signed=\"${id}\" data-permission-resource=\"agreements\" data-permission-action=\"update\" ${uploadBlocked ? 'disabled aria-disabled="true"' : ''} title="${U.escapeAttr(uploadBlocked ? 'Signed document has already been uploaded.' : 'Upload signed document')}">${uploadBlocked ? 'Signed Doc Uploaded' : 'Upload Signed Doc'}</button>` : ''}
         ${!signedRow && Permissions.canUpdateAgreement() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="agreements" data-permission-action="update" data-agreement-edit=\"${id}\" data-permission-resource=\"agreements\" data-permission-action=\"update\">Edit</button>` : ''}
-        ${Permissions.canRequestTechnicalAdmin() ? `<button class=\"btn ghost sm\" type=\"button\" data-agreement-request-technical=\"${id}\" data-permission-resource=\"technical_admin_requests\" data-permission-action=\"create\">Request Technical</button>` : ''}
+        ${Permissions.canRequestTechnicalAdmin() ? `<button class=\"btn ghost sm action-btn technical-request-btn ${technicalRequestExists ? 'is-disabled is-blocked' : ''}\" type=\"button\" data-agreement-request-technical=\"${id}\" data-permission-resource=\"technical_admin_requests\" data-permission-action=\"create\" ${technicalRequestExists ? 'disabled aria-disabled=\"true\"' : ''} title=\"${U.escapeAttr(technicalRequestExists ? 'Technical request has already been created for this location.' : 'Request technical support')}\">${technicalRequestExists ? 'Technical Requested' : 'Request Technical'}</button>` : ''}
         ${Permissions.canGenerateAgreementHtml() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="agreements" data-permission-action="view" data-agreement-preview=\"${id}\">View Agreement</button>` : ''}
         ${signedRow && Permissions.canCreateInvoiceFromAgreement() ? `<button class=\"btn ghost sm create-invoice-btn${invoiceBlocked ? ' is-disabled is-blocked' : ''}\" type=\"button\" data-permission-resource="invoices" data-permission-action="create_from_agreement" data-agreement-create-invoice=\"${id}\" data-permission-resource=\"invoices\" data-permission-action=\"create\" ${invoiceBlocked ? 'disabled aria-disabled="true"' : ''} title="${U.escapeAttr(invoiceBlocked ? 'All Annual SaaS locations have already been invoiced.' : 'Create invoice')}">Create Invoice</button>` : ''}
         ${Permissions.canDeleteAgreement() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="agreements" data-permission-action="delete" data-agreement-delete=\"${id}\" data-permission-resource=\"agreements\" data-permission-action=\"delete\">Delete</button>` : ''}
@@ -4533,6 +4555,8 @@ const Agreements = {
       });
       const normalized = this.extractListResult(response);
       this.state.rows = await this.enrichAgreementsWithProposalDisplayRefs(normalized.rows.map(row => this.normalizeAgreement(row)));
+      const technicalList = await Api.listTechnicalAdminRequests({}, { forceRefresh: force });
+      this.state.technicalAdminRequests = Array.isArray(technicalList?.rows) ? technicalList.rows : [];
       this.state.invoiceBlockedAgreementIds = await this.loadInvoiceBlockedAgreementIds(this.state.rows);
       this.state.total = normalized.total;
       this.state.returned = normalized.returned;
@@ -4550,6 +4574,7 @@ const Agreements = {
       console.error('[Agreements] load failed', error);
       this.state.rows = [];
       this.state.invoiceBlockedAgreementIds = new Set();
+      this.state.technicalAdminRequests = [];
       this.state.loadError = String(error?.message || '').trim() || 'Unable to load agreements.';
     } finally {
       this.state.loading = false;

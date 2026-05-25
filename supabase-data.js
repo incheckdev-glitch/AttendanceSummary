@@ -73,6 +73,23 @@
     mobile: '+31 97 010280855',
     email: 'Info@incheck360.nl'
   });
+  function normalizeLocationKey(value = '') {
+    return String(value || '').trim().toLowerCase().normalize('NFKC').replace(/\s+/g, ' ');
+  }
+  function isTechnicalRequestForContext(request = {}, context = {}) {
+    const requestOnboardingId = String(request.operations_onboarding_id || request.onboarding_id || request.source_onboarding_id || '').trim();
+    const contextOnboardingId = String(context.operations_onboarding_id || context.onboarding_id || context.source_onboarding_id || context.id || '').trim();
+    if (contextOnboardingId && requestOnboardingId && requestOnboardingId === contextOnboardingId) return true;
+    const requestAgreementId = String(request.agreement_id || request.source_agreement_id || '').trim();
+    const contextAgreementId = String(context.agreement_id || context.source_agreement_id || '').trim();
+    const requestProposalId = String(request.proposal_id || request.source_proposal_id || '').trim();
+    const contextProposalId = String(context.proposal_id || context.source_proposal_id || '').trim();
+    const requestLocation = normalizeLocationKey(request.location_name || '');
+    const contextLocation = normalizeLocationKey(context.location_name || '');
+    if (contextAgreementId && requestAgreementId && requestAgreementId === contextAgreementId) return (!contextLocation || !requestLocation) ? true : requestLocation === contextLocation;
+    if (contextProposalId && requestProposalId && requestProposalId === contextProposalId) return (!contextLocation || !requestLocation) ? true : requestLocation === contextLocation;
+    return false;
+  }
 
   function isProposalDiscountApprovalPayload(payload = {}) {
     const safe = payload && typeof payload === 'object' ? payload : {};
@@ -7012,6 +7029,19 @@
         }
       }
       const requestedItems = Array.isArray(payload.items) ? payload.items : [];
+      if (resource === 'technical_admin_requests') {
+        const existingStatuses = ['open', 'pending', 'in_progress', 'assigned', 'completed', 'done', 'resolved', 'closed'];
+        const { data: existingRequests, error: existingError } = await client
+          .from('technical_admin_requests')
+          .select('id,operations_onboarding_id,onboarding_id,source_onboarding_id,agreement_id,source_agreement_id,proposal_id,source_proposal_id,location_name,request_status');
+        if (existingError) throw friendlyError('Unable to validate technical request duplicates', existingError);
+        const duplicate = (Array.isArray(existingRequests) ? existingRequests : []).find(request => {
+          const status = String(request.request_status || '').trim().toLowerCase();
+          if (status && !existingStatuses.includes(status)) return false;
+          return isTechnicalRequestForContext(request, finalCreateRecord);
+        });
+        if (duplicate) throw new Error('Technical request has already been created for this location.');
+      }
       if (resource === 'invoices' && isRenewalInvoiceDraft(finalCreateRecord)) {
         if (!requestedItems.length) throw new Error('Renewal invoice must include Annual SaaS invoice_items.');
         const itemTotal = requestedItems.reduce((sum, item) => sum + (numberOrNull(firstDefined(item, ['line_total', 'lineTotal'])) || 0), 0);

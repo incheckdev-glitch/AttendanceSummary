@@ -54,7 +54,28 @@ const OperationsOnboarding = {
     agreementItemsMap: new Map(),
     loadingAgreementIds: new Set(),
     analytics: null,
-    drilldown: { kind: '', value: '', label: '' }
+    drilldown: { kind: '', value: '', label: '' },
+    technicalAdminRequests: []
+  },
+  normalizeLocationKey(value = '') {
+    return String(value || '').trim().toLowerCase().normalize('NFKC').replace(/\s+/g, ' ');
+  },
+  isTechnicalRequestForContext(request = {}, context = {}) {
+    const requestOnboardingId = String(request.operations_onboarding_id || request.onboarding_id || request.source_onboarding_id || '').trim();
+    const contextOnboardingId = String(context.operations_onboarding_id || context.onboarding_id || context.source_onboarding_id || context.id || '').trim();
+    if (contextOnboardingId && requestOnboardingId && requestOnboardingId === contextOnboardingId) return true;
+    const requestAgreementId = String(request.agreement_id || request.source_agreement_id || '').trim();
+    const contextAgreementId = String(context.agreement_id || context.source_agreement_id || context.agreementId || '').trim();
+    const requestProposalId = String(request.proposal_id || request.source_proposal_id || '').trim();
+    const contextProposalId = String(context.proposal_id || context.source_proposal_id || context.proposalId || '').trim();
+    const requestLocation = this.normalizeLocationKey(request.location_name || request.locationName || request.location || '');
+    const contextLocation = this.normalizeLocationKey(context.location_name || context.locationName || context.location || '');
+    if (contextAgreementId && requestAgreementId && requestAgreementId === contextAgreementId) return (!contextLocation || !requestLocation) ? true : requestLocation === contextLocation;
+    if (contextProposalId && requestProposalId && requestProposalId === contextProposalId) return (!contextLocation || !requestLocation) ? true : requestLocation === contextLocation;
+    return false;
+  },
+  hasExistingTechnicalRequest(context = {}, technicalRequests = []) {
+    return (Array.isArray(technicalRequests) ? technicalRequests : []).some(request => this.isTechnicalRequestForContext(request, context));
   },
   pick(...values) {
     for (const value of values) {
@@ -1180,6 +1201,14 @@ const OperationsOnboarding = {
       const serviceEnd = isPocRow ? (displayRow.poc_end_date || displayRow.service_end_date) : this.getRowServiceEnd(displayRow, agreement, agreementItems);
       const billingFrequency = displayRow.billing_frequency || agreement.billing_frequency;
       const paymentTerm = displayRow.payment_term || agreement.payment_term;
+      const technicalRequestExists = this.hasExistingTechnicalRequest({
+        operations_onboarding_id: row.id,
+        onboarding_id: row.id,
+        agreement_id: row.agreement_id,
+        proposal_id: row.proposal_id,
+        location_name: row.location_name || row.invoiced_location_names || row.invoiced_locations || row.location_names,
+        company_id: row.company_id || row.client_company_id || row.customer_company_id
+      }, this.state.technicalAdminRequests || []);
       return `<tr>
           <td>${onboardingLabel}</td><td>${text(displayRow.agreement_id)}</td><td>${text(isPocRow ? (displayRow.proposal_reference || displayRow.proposal_id || 'POC') : displayRow.agreement_number)}</td><td>${text(displayRow.client_name)}</td><td>${text(this.formatDate(displayRow.signed_date))}</td><td>${text(displayRow.onboarding_status)}</td>
           <td>${text(displayRow.request_type || displayRow.technical_request_type)}</td><td>${text(displayRow.requested_by)}</td><td>${text(this.formatDate(displayRow.requested_at))}</td><td>${text(displayRow.technical_request_status || displayRow.technical_admin_request)}</td><td>${text(displayRow.request_message || displayRow.technical_request_details || displayRow.technical_admin_request_message)}</td><td><strong>${text(assignedCsmName || 'Unassigned')}</strong>${displayRow.assigned_csm_email ? `<div class="muted">${U.escapeHtml(displayRow.assigned_csm_email)}</div>` : ''}</td><td>${text(locationCount)}</td><td>${text(this.formatDate(serviceStart))}</td><td>${text(this.formatDate(serviceEnd))}</td><td>${text(billingFrequency)}</td><td>${text(paymentTerm)}</td><td>${text(this.formatDate(displayRow.updated_at))}</td>
@@ -1187,7 +1216,7 @@ const OperationsOnboarding = {
             ${isPocRow ? `<button class="btn ghost sm" type="button" data-permission-resource="proposals" data-permission-action="view" data-op-open-proposal="${U.escapeAttr(proposalId)}" ${hasProposalId ? '' : 'disabled title="Proposal is not linked to this POC onboarding row."'}>Open Proposal</button>` : `<button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-open-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Open Agreement</button>
             <button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-preview-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Preview Agreement</button>`}
             <button class="btn ghost sm" type="button" data-op-open-details="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Open Onboarding Details</button>
-            ${canCreateTechnicalRequest ? `<button class="btn ghost sm" type="button" data-op-technical-admin="${agreementId}" data-op-technical-onboarding="${rowDbId}" ${(!hasAgreementId && !isPocRow) ? 'disabled title="Agreement ID not available"' : ''}>Technical Admin Request</button>` : ''}
+            ${canCreateTechnicalRequest ? `<button class="btn ghost sm action-btn technical-request-btn ${technicalRequestExists ? 'is-disabled is-blocked' : ''}" type="button" data-op-technical-admin="${agreementId}" data-op-technical-onboarding="${rowDbId}" ${technicalRequestExists ? 'disabled aria-disabled="true"' : ((!hasAgreementId && !isPocRow) ? 'disabled title="Agreement ID not available"' : '')} title="${U.escapeAttr(technicalRequestExists ? 'Technical request has already been created for this location.' : 'Request technical support')}">${technicalRequestExists ? 'Technical Requested' : 'Request Technical'}</button>` : ''}
             ${showAssignCsmButton ? `<button class="btn ghost sm" type="button" data-op-assign-csm="${rowDbId}" data-op-agreement-id="${agreementId}" data-op-proposal-id="${U.escapeAttr(row.proposal_id || '')}">${assignCsmButtonLabel}</button>` : ''}
             ${canWrite ? `<button class="btn ghost sm" type="button" data-op-mark-progress="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Mark In Progress</button>
             <button class="btn ghost sm" type="button" data-op-mark-completed="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Mark Completed</button>` : ''}
@@ -1237,6 +1266,8 @@ const OperationsOnboarding = {
       });
       const normalizedResponse = Api.normalizeListResponse(response);
       this.state.rows = this.extractRows(normalizedResponse).map(row => this.normalizeRow(row));
+      const technicalList = await Api.listTechnicalAdminRequests({}, { forceRefresh: force });
+      this.state.technicalAdminRequests = Array.isArray(technicalList?.rows) ? technicalList.rows : [];
       this.state.page = Number(normalizedResponse.page || this.state.page || 1);
       this.state.limit = U.normalizePageSize(normalizedResponse.limit ?? this.state.limit, 50, 200);
       this.state.offset = Number(normalizedResponse.offset ?? Math.max(0, (this.state.page - 1) * this.state.limit));
@@ -1247,6 +1278,7 @@ const OperationsOnboarding = {
       this.state.loaded = true;
     } catch (error) {
       this.state.rows = [];
+      this.state.technicalAdminRequests = [];
       this.state.loadError = String(error?.message || '').trim() || 'Unable to load operations onboarding.';
     } finally {
       this.state.loading = false;
