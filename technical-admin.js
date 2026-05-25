@@ -747,6 +747,105 @@ const TechnicalAdmin = {
 
     return raw || 'requested';
   },
+
+  getTechnicalRequestClientKey(request = {}) {
+    return String(
+      request.company_id ||
+      request.customer_company_id ||
+      request.client_company_id ||
+      request.client_name ||
+      request.company_name ||
+      request.customer_name ||
+      ''
+    ).trim();
+  },
+  resolveTechnicalRequestLocationCount(request = {}) {
+    const direct = Number(
+      request.number_of_locations ||
+      request.locations_count ||
+      request.location_count ||
+      request.location_number ||
+      request.locations_number ||
+      0
+    );
+
+    if (Number.isFinite(direct) && direct > 0) return direct;
+
+    const locationName = String(
+      request.location_name ||
+      request.locationName ||
+      request.location ||
+      ''
+    ).trim();
+
+    if (locationName) return 1;
+
+    return 0;
+  },
+  buildTechnicalDashboardAnalytics(requests = []) {
+    const filteredRequests = Array.isArray(requests) ? requests : [];
+
+    const totalRequests = filteredRequests.length;
+    const requestedRequests = filteredRequests.filter(request =>
+      this.normalizeTechnicalRequestStatus(request) === 'requested'
+    );
+    const inProgressRequests = filteredRequests.filter(request =>
+      this.normalizeTechnicalRequestStatus(request) === 'in_progress'
+    );
+    const completedRequests = filteredRequests.filter(request => {
+      if (this.normalizeTechnicalRequestStatus(request) !== 'completed') return false;
+      const completedDate = new Date(this.pick(request.completed_at, request.resolved_at, request.closed_at, request.updated_at));
+      if (Number.isNaN(completedDate.getTime())) return false;
+      const now = new Date();
+      return completedDate.getMonth() === now.getMonth() && completedDate.getFullYear() === now.getFullYear();
+    });
+    const openRequests = filteredRequests.filter(request => this.normalizeTechnicalRequestStatus(request) !== 'completed');
+
+    const clientKeys = new Set(
+      filteredRequests
+        .map(request => this.getTechnicalRequestClientKey(request))
+        .filter(Boolean)
+    );
+
+    const totalLocations = filteredRequests.reduce((sum, request) => (
+      sum + this.resolveTechnicalRequestLocationCount(request)
+    ), 0);
+
+    const unassigned = openRequests.filter(request => {
+      const assignee = String(
+        request.assigned_to ||
+        request.assigned_to_name ||
+        request.assignee ||
+        request.assignee_name ||
+        request.owner_name ||
+        ''
+      ).trim();
+
+      return !assignee;
+    }).length;
+
+    const dueThisWeek = openRequests.filter(request => {
+      const due = new Date(this.pick(request.service_start_date, request.target_date, request.due_date)).getTime();
+      return due && due <= Date.now() + (7 * 86400000) && due >= Date.now();
+    }).length;
+
+    const overdue = openRequests.filter(request => {
+      const due = new Date(this.pick(request.service_start_date, request.target_date, request.due_date)).getTime();
+      return due && due < Date.now();
+    }).length;
+
+    return {
+      totalRequests,
+      pendingRequests: requestedRequests.length,
+      inProgress: inProgressRequests.length,
+      completed: completedRequests.length,
+      activeClients: clientKeys.size,
+      totalLocations,
+      unassigned,
+      dueThisWeek,
+      overdue
+    };
+  },
   statusBucket(requestOrStatus = {}) {
     const normalized = typeof requestOrStatus === 'object'
       ? this.normalizeTechnicalRequestStatus(requestOrStatus)
@@ -903,14 +1002,16 @@ const TechnicalAdmin = {
     this.renderDashboardPanels(rows);
   },
   renderSecondaryMetrics(rows = []) {
-    const host = document.getElementById('technicalAdminSecondaryMetrics'); if (!host) return;
-    const open = rows.filter(r => ['requested', 'in_progress'].includes(this.normalizeTechnicalRequestStatus(r)));
-    const clients = new Set(open.map(r => String(r.client_name || '').trim()).filter(Boolean));
-    const unassigned = open.filter(r => this.getUserDisplayName(r, 'assigned') === 'Unassigned').length;
-    const locations = rows.reduce((a, r) => a + Number(r.number_of_locations || r.location_count || 0), 0);
-    const dueWeek = open.filter(r => { const d = new Date(this.pick(r.service_start_date, r.target_date, r.due_date)).getTime(); return d && d <= Date.now() + 7 * 86400000 && d >= Date.now(); }).length;
-    host.innerHTML = [['Total Requests', rows.length, 'gray'], ['Active Clients', clients.size, 'blue'], ['Total Locations', locations, 'green'], ['Unassigned', unassigned, 'amber'], ['Due This Week', dueWeek, 'red']]
-      .map(([l,v,t]) => `<div class="technical-admin-kpi-card mini ${t}"><div class="label">${U.escapeHtml(l)}</div><div class="value">${U.escapeHtml(String(v))}</div></div>`).join('');
+    const host = document.getElementById('technicalAdminSecondaryMetrics');
+    if (!host) return;
+    const analytics = this.buildTechnicalDashboardAnalytics(rows);
+    host.innerHTML = [
+      ['Total Requests', analytics.totalRequests, 'gray'],
+      ['Active Clients', analytics.activeClients, 'blue'],
+      ['Total Locations', analytics.totalLocations, 'green'],
+      ['Unassigned', analytics.unassigned, 'amber'],
+      ['Due This Week', analytics.dueThisWeek, 'red']
+    ].map(([l, v, t]) => `<div class="technical-admin-kpi-card mini ${t}"><div class="label">${U.escapeHtml(l)}</div><div class="value">${U.escapeHtml(String(v))}</div></div>`).join('');
   },
   renderDashboardPanels(rows = []) {
     const statusHost = document.getElementById('technicalAdminStatusPipeline');
