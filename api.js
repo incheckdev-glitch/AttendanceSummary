@@ -920,8 +920,15 @@ const Api = {
 
     const scopedOnboardingCount = existingOnboarding ? parseCount(
       existingOnboarding.number_of_locations,
+      existingOnboarding.locations_count,
+      existingOnboarding.number_of_locations,
       existingOnboarding.location_count,
-      existingOnboarding.locations_count
+      existingOnboarding.location_number,
+      existingOnboarding.locations_number,
+      existingOnboarding.invoiced_locations_count,
+      existingOnboarding.invoiced_location_count,
+      existingOnboarding.invoicedLocationCount,
+      existingOnboarding.location_name ? 1 : ''
     ) : null;
     const scopedInvoicedLocationNames = existingOnboarding ? String(pickFirst(
       existingOnboarding.invoiced_location_names,
@@ -951,6 +958,9 @@ const Api = {
       if (scopedOnboardingCount) {
         requestFields.number_of_locations = scopedOnboardingCount;
         requestFields.location_count = scopedOnboardingCount;
+        requestFields.locations_count = scopedOnboardingCount;
+        requestFields.location_number = scopedOnboardingCount;
+        requestFields.locations_number = scopedOnboardingCount;
       }
       if (scopedInvoicedLocationNames) requestFields.invoiced_location_names = scopedInvoicedLocationNames;
       if (scopedInvoicedAgreementItemIds) requestFields.invoiced_agreement_item_ids = scopedInvoicedAgreementItemIds;
@@ -996,6 +1006,9 @@ const Api = {
           client_name: clientName || null,
           number_of_locations: requestFields.number_of_locations || locationCount,
           location_count: requestFields.location_count || requestFields.number_of_locations || locationCount,
+          locations_count: requestFields.locations_count || requestFields.location_count || requestFields.number_of_locations || locationCount,
+          location_number: requestFields.location_number || requestFields.location_count || requestFields.number_of_locations || locationCount,
+          locations_number: requestFields.locations_number || requestFields.location_count || requestFields.number_of_locations || locationCount,
           service_start_date: requestFields.service_start_date || serviceStartDate || null,
           service_end_date: requestFields.service_end_date || serviceEndDate || null,
           source_invoice_id: requestFields.source_invoice_id || null,
@@ -1072,8 +1085,11 @@ const Api = {
       agreement_number: null,
       client_id: onboarding.client_id || onboarding.company_id || null,
       client_name: onboarding.client_name || onboarding.legal_company_name || onboarding.company_name || null,
-      location_count: Number(onboarding.poc_location_count || onboarding.location_count || onboarding.number_of_locations || 0) || null,
-      number_of_locations: Number(onboarding.poc_location_count || onboarding.location_count || onboarding.number_of_locations || 0) || null,
+      location_count: Number(onboarding.poc_location_count || onboarding.location_count || onboarding.locations_count || onboarding.number_of_locations || onboarding.location_number || onboarding.locations_number || 0) || null,
+      number_of_locations: Number(onboarding.poc_location_count || onboarding.number_of_locations || onboarding.locations_count || onboarding.location_count || onboarding.location_number || onboarding.locations_number || 0) || null,
+      locations_count: Number(onboarding.poc_location_count || onboarding.locations_count || onboarding.number_of_locations || onboarding.location_count || onboarding.location_number || onboarding.locations_number || 0) || null,
+      location_number: Number(onboarding.poc_location_count || onboarding.location_number || onboarding.number_of_locations || onboarding.locations_count || onboarding.location_count || onboarding.locations_number || 0) || null,
+      locations_number: Number(onboarding.poc_location_count || onboarding.locations_number || onboarding.number_of_locations || onboarding.locations_count || onboarding.location_count || onboarding.location_number || 0) || null,
       service_start_date: onboarding.poc_start_date || onboarding.poc_service_start_date || onboarding.service_start_date || null,
       service_end_date: onboarding.poc_end_date || onboarding.poc_service_end_date || onboarding.service_end_date || null,
       request_message: requestMessage,

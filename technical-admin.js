@@ -239,6 +239,44 @@ const TechnicalAdmin = {
     if ((safe.service_start_date || safe.serviceStartDate) && (safe.service_end_date || safe.serviceEndDate) && (safe.location || safe.location_name || safe.locationName)) return true;
     return false;
   },
+  isAnnualSaasItem(item = {}) {
+    return String(item.section || item.item_section || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_') === 'annual_saas';
+  },
+  resolveTechnicalRequestLocationCount(request = {}, context = {}) {
+    const direct = Number(
+      request.number_of_locations ||
+      request.locations_count ||
+      request.location_count ||
+      request.location_number ||
+      request.locations_number ||
+      context.number_of_locations ||
+      context.locations_count ||
+      context.location_count ||
+      context.invoiced_locations_count ||
+      context.invoiced_location_count ||
+      0
+    );
+    if (Number.isFinite(direct) && direct > 0) return direct;
+    const locationName = String(
+      request.location_name ||
+      request.locationName ||
+      context.location_name ||
+      context.locationName ||
+      ''
+    ).trim();
+    if (locationName) return 1;
+    const agreementItems = Array.isArray(context.agreement_items)
+      ? context.agreement_items
+      : Array.isArray(context.items)
+        ? context.items
+        : [];
+    const annualRows = agreementItems.filter(item => this.isAnnualSaasItem(item));
+    if (annualRows.length) return annualRows.length;
+    return null;
+  },
   deriveAgreementLocationCount(agreementItems = []) {
     const safeItems = Array.isArray(agreementItems) ? agreementItems : [];
     const annualSaasRows = safeItems.filter(item => this.isAnnualSaasLocationItem(item));
@@ -601,6 +639,7 @@ const TechnicalAdmin = {
         );
       return {
         ...row,
+        linked_agreement_items: linkedItems,
         agreement_number: String(this.pick(row.agreement_number, agreement.agreement_number, agreement.number, agreement.agreement_code, agreement.agreementNumber)).trim(),
         client_name: String(this.pick(row.client_name, agreement.client_name, agreement.company_name, agreement.customer_name)).trim(),
         location_count: Number.isFinite(Number(locationCount)) ? Number(locationCount) : null,
@@ -898,7 +937,7 @@ const TechnicalAdmin = {
           <td>${text(row.technical_request_display || row.technical_request_number || row.technical_request_id)}</td>
           <td>${text(isPocRow ? (row.proposal_reference || row.proposal_id || 'POC') : row.agreement_number)}</td>
           <td>${text(row.client_name)}</td>
-          <td>${text(row.number_of_locations || row.location_count || row.locations_count || '')}</td>
+          <td>${text(this.resolveTechnicalRequestLocationCount(row, { agreement_items: row.linked_agreement_items || row.agreement_items || row.items }) || '—')}</td>
           <td>${U.escapeHtml(this.toDisplayDate(row.service_start_date))}</td>
           <td>${U.escapeHtml(this.toDisplayDate(row.service_end_date))}</td>
           <td>${text(row.billing_frequency)}</td>
