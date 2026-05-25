@@ -4390,6 +4390,26 @@ const Agreements = {
         UI.toast('You should upload the signed agreement document before creating an invoice.');
         return;
       }
+      const client = this.getSupabaseClient();
+      if (!client) throw new Error('Supabase client is unavailable.');
+      const { data: agreementItems, error: agreementItemsError } = await client
+        .from('agreement_items')
+        .select('id,agreement_id,agreementId,section,item_section,invoice_status,invoiced_invoice_id,invoiced_at')
+        .eq('agreement_id', String(latestAgreement?.id || '').trim());
+      if (agreementItemsError) throw agreementItemsError;
+      const canCreateInvoice = (Array.isArray(agreementItems) ? agreementItems : []).some(item => {
+        const section = String(item.section || item.item_section || '').trim().toLowerCase().replace(/\s+/g, '_');
+        if (section !== 'annual_saas') return false;
+        const status = String(item.invoice_status || item.invoiceStatus || '').trim().toLowerCase();
+        const invoiced = ['invoiced', 'issued'].includes(status)
+          || Boolean(item.invoiced_invoice_id || item.invoicedInvoiceId)
+          || Boolean(item.invoiced_at || item.invoicedAt);
+        return !invoiced;
+      });
+      if (!canCreateInvoice) {
+        UI.toast('Invoice cannot be created because all Annual SaaS locations are already invoiced.');
+        return;
+      }
       if (typeof setActiveView === 'function') setActiveView('invoices');
       if (window.Invoices?.openCreateFromAgreementTemplate) {
         await window.Invoices.openCreateFromAgreementTemplate(id);

@@ -3074,13 +3074,34 @@ const Invoices = {
   getAgreementItemRecordId(item = {}) {
     return String(item?.id || item?.source_agreement_item_id || '').trim();
   },
+  isAnnualSaasItem(item = {}) {
+    return String(item.section || item.item_section || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_') === 'annual_saas';
+  },
   normalizeAgreementItemInvoiceStatus(item = {}) {
     return this.normalizeText(item?.invoice_status || item?.invoiceStatus || '')
       .replace(/[\s-]+/g, '_');
   },
   isAgreementItemInvoiced(item = {}) {
-    const status = this.normalizeAgreementItemInvoiceStatus(item);
-    return ['invoiced', 'invoice_created', 'billed'].includes(status) || Boolean(String(item?.invoiced_invoice_id || item?.invoicedInvoiceId || '').trim());
+    const status = String(item.invoice_status || item.invoiceStatus || '').trim().toLowerCase();
+    return ['invoiced', 'issued'].includes(status)
+      || Boolean(item.invoiced_invoice_id || item.invoicedInvoiceId)
+      || Boolean(item.invoiced_at || item.invoicedAt);
+  },
+  getUninvoicedAnnualSaasItems(agreement = {}, agreementItems = []) {
+    const agreementId = String(agreement.id || agreement.agreement_id || '').trim();
+    return (Array.isArray(agreementItems) ? agreementItems : [])
+      .filter(item => {
+        const itemAgreementId = String(item.agreement_id || item.agreementId || '').trim();
+        return itemAgreementId === agreementId
+          && this.isAnnualSaasItem(item)
+          && !this.isAgreementItemInvoiced(item);
+      });
+  },
+  hasUninvoicedAnnualSaasItems(agreement = {}, agreementItems = []) {
+    return this.getUninvoicedAnnualSaasItems(agreement, agreementItems).length > 0;
   },
   isAgreementItemInvoiceable(item = {}) {
     return !this.isAgreementItemInvoiced(item);
@@ -3716,7 +3737,7 @@ const Invoices = {
       this.state.items = selectedItems;
       this.renderItems(selectedItems);
       this.renderAgreementLocationSelection();
-      if (annualItems.length && !invoiceableItems.length) UI.toast('All agreement locations have already been invoiced.');
+      if (annualItems.length && !invoiceableItems.length) UI.toast('Invoice cannot be created because all Annual SaaS locations are already invoiced.');
       else if (!annualItems.length) UI.toast('No annual SaaS locations were found on this agreement.');
       const summary = this.deriveCalculatedSummary(mappedInvoice, selectedItems);
       this.state.selectedInvoice = this.normalizeInvoice({ ...mappedInvoice, ...summary });
@@ -3902,7 +3923,7 @@ const Invoices = {
       : [];
     if (agreementSelectionActive && !selectedAgreementItemIds.length) {
       const hasInvoiceable = (this.state.agreementInvoiceSelection?.invoiceableItems || []).length > 0;
-      UI.toast(hasInvoiceable ? 'Please select at least one agreement location to invoice.' : 'All agreement locations have already been invoiced.');
+      UI.toast(hasInvoiceable ? 'Please select at least one agreement location to invoice.' : 'Invoice cannot be created because all Annual SaaS locations are already invoiced.');
       return;
     }
     if (!this.validateInvoice(invoice)) return;
@@ -4166,6 +4187,11 @@ const Invoices = {
     if (!id) return;
     this.openInvoice(this.normalizeInvoice({ ...this.emptyInvoice(), agreement_uuid: id, agreement_id: '', agreement_number: '' }), [], { readOnly: false });
     await this.hydrateFromAgreement(id);
+    const selection = this.state.agreementInvoiceSelection || {};
+    if (selection.active && !(selection.invoiceableItems || []).length) {
+      UI.toast('Invoice cannot be created because all Annual SaaS locations are already invoiced.');
+      this.closeForm();
+    }
   },
   async refresh(force = false) {
     if (this.state.loading && !force) return;
