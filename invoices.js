@@ -3033,7 +3033,7 @@ const Invoices = {
     try {
       const { data, error } = await client
         .from('agreement_items')
-        .select('id,section,item_section,type,item_type,category,item_name,name,notes,invoice_status')
+        .select('*')
         .eq('agreement_id', id)
         .eq('invoice_status', 'invoiced');
       if (error) throw error;

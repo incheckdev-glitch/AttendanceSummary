@@ -4394,7 +4394,7 @@ const Agreements = {
       if (!client) throw new Error('Supabase client is unavailable.');
       const { data: agreementItems, error: agreementItemsError } = await client
         .from('agreement_items')
-        .select('id,agreement_id,section,item_section,invoice_status,invoiced_invoice_id,invoiced_at')
+        .select('id,agreement_id,section,invoice_status,invoiced_invoice_id,invoiced_at')
         .eq('agreement_id', String(latestAgreement?.id || '').trim());
       if (agreementItemsError) throw agreementItemsError;
       const canCreateInvoice = (Array.isArray(agreementItems) ? agreementItems : []).some(item => {

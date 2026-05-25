@@ -6012,7 +6012,7 @@
       if (!isUuid(agreementUuid)) throw new Error('Agreement UUID is required to create invoice from agreement.');
       const { data: agreementItems, error: agreementItemsError } = await client
         .from('agreement_items')
-        .select('id,agreement_id,section,item_section,invoice_status,invoiced_invoice_id,invoiced_at')
+        .select('id,agreement_id,section,invoice_status,invoiced_invoice_id,invoiced_at')
         .eq('agreement_id', agreementUuid);
       if (agreementItemsError) throw friendlyError('Unable to validate annual SaaS invoice eligibility', agreementItemsError);
       const hasUninvoicedAnnualSaas = (Array.isArray(agreementItems) ? agreementItems : []).some(item => {
