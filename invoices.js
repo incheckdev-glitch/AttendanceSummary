@@ -1346,6 +1346,7 @@ const Invoices = {
       .meta-row > div { padding: 2mm 2.4mm; font-size: 11px; min-width: 0; overflow-wrap: anywhere; }
       .meta-row .meta-key { background: #f5f8fc; font-weight: 700; color: #334155; border-right: 1px solid #e3eaf3; }
       .info-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 5mm; margin-top: 5mm; width: 100%; }
+      .info-grid.info-grid-single { grid-template-columns: minmax(0, 1fr); }
       .info-box { border: 1px solid #d7e1ed; min-height: 32mm; border-radius: 6px; overflow: hidden; background: #fff; min-width: 0; }
       .info-head { background: #f8fbff; border-bottom: 1px solid #e3eaf3; padding: 9px 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: #1e3a5f; }
       .info-body { padding: 12px; font-size: 12.5px; line-height: 1.55; }
@@ -1414,20 +1415,12 @@ const Invoices = {
         </section>
       </header>
 
-      <section class="info-grid">
+      <section class="info-grid info-grid-single">
         <div class="info-box">
           <div class="info-head">BILL TO</div>
           <div class="info-body">
             <div><strong>${textValue(customerName)}</strong></div>
             <div class="muted">${textValue(customerAddress)}</div>
-          </div>
-        </div>
-        <div class="info-box">
-          <div class="info-head">CUSTOMER CONTACT</div>
-          <div class="info-body">
-            <div><strong>Contact:</strong> ${textValue(invoiceData.customer_contact_name)}</div>
-            <div><strong>Mobile:</strong> ${textValue(invoiceData.customer_contact_mobile)}</div>
-            <div><strong>Email:</strong> ${textValue(invoiceData.customer_contact_email)}</div>
           </div>
         </div>
       </section>
