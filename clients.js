@@ -995,40 +995,51 @@ const Clients = {
       invoice.invoice_number,
       invoice.invoiceNumber,
       invoice.invoice_no,
-      invoice.invoiceNo,
-      invoice.invoice_reference,
-      invoice.invoiceReference,
-      invoice.reference
+      invoice.invoiceNo
     ]
       .map(value => String(value || '').trim())
       .filter(Boolean);
   },
-  getInvoiceAgreementMatchKeys_(invoice = {}) {
-    invoice = invoice && typeof invoice === 'object' ? invoice : {};
-    return [
-      invoice.agreement_id,
-      invoice.agreementId,
-      invoice.agreement_uuid,
-      invoice.agreementUuid,
-      invoice.linked_agreement_id,
-      invoice.linkedAgreementId,
-      invoice.source_agreement_id,
-      invoice.sourceAgreementId,
-      invoice.agreement_number,
-      invoice.agreementNumber,
-      invoice.agreement_reference,
-      invoice.agreementReference,
-      invoice.agreement_ref,
-      invoice.agreementRef,
-      invoice.linked_agreement_number,
-      invoice.linkedAgreementNumber,
-      invoice.source_agreement_number,
-      invoice.sourceAgreementNumber,
-      invoice.related_agreement_number,
-      invoice.relatedAgreementNumber
-    ]
-      .map(value => String(value || '').trim())
-      .filter(Boolean);
+  attachInvoiceItemsToInvoices_(invoices = [], invoiceItems = []) {
+    const byKey = new Map();
+    const add = (key, item) => {
+      const normalized = String(key || '').trim();
+      if (!normalized) return;
+      if (!byKey.has(normalized)) byKey.set(normalized, []);
+      byKey.get(normalized).push(item);
+    };
+    (Array.isArray(invoiceItems) ? invoiceItems : []).forEach(item => {
+      this.getInvoiceItemMatchKeys_(item).forEach(key => add(key, item));
+      this.getInvoiceItemAgreementMatchKeys_(item).forEach(key => add(key, item));
+    });
+    return (Array.isArray(invoices) ? invoices : []).map(invoice => {
+      const keys = [
+        ...this.getInvoiceMatchKeys_(invoice),
+        invoice.agreement_id,
+        invoice.agreementId,
+        invoice.agreement_uuid,
+        invoice.agreementUuid,
+        invoice.agreement_number,
+        invoice.agreementNumber,
+        invoice.agreement_reference,
+        invoice.agreementReference,
+        invoice.agreement_ref,
+        invoice.agreementRef,
+        invoice.linked_agreement_number,
+        invoice.linkedAgreementNumber
+      ].map(value => String(value || '').trim()).filter(Boolean);
+      const seen = new Set();
+      const items = [];
+      keys.forEach(key => {
+        (byKey.get(key) || []).forEach(item => {
+          const itemKey = String(item.id || `${item.invoice_id || item.invoice_number}-${item.line_no}-${item.location_name}-${item.item_name}`).trim();
+          if (itemKey && seen.has(itemKey)) return;
+          if (itemKey) seen.add(itemKey);
+          items.push(item);
+        });
+      });
+      return { ...invoice, items, invoice_items: items };
+    });
   },
   getInvoiceItemMatchKeys_(item = {}) {
     item = item && typeof item === 'object' ? item : {};
@@ -1041,16 +1052,10 @@ const Clients = {
       item.invoiceNumber,
       item.invoice_no,
       item.invoiceNo,
-      item.invoice_reference,
-      item.invoiceReference,
       item.parent_invoice_id,
-      item.parentInvoiceId,
       item.parent_invoice_number,
-      item.parentInvoiceNumber,
       item.source_invoice_id,
-      item.sourceInvoiceId,
-      item.source_invoice_number,
-      item.sourceInvoiceNumber
+      item.source_invoice_number
     ]
       .map(value => String(value || '').trim())
       .filter(Boolean);
@@ -1062,87 +1067,116 @@ const Clients = {
       item.agreementId,
       item.agreement_uuid,
       item.agreementUuid,
-      item.linked_agreement_id,
-      item.linkedAgreementId,
-      item.source_agreement_id,
-      item.sourceAgreementId,
-      item.parent_agreement_id,
-      item.parentAgreementId,
       item.agreement_number,
       item.agreementNumber,
       item.agreement_reference,
       item.agreementReference,
       item.agreement_ref,
       item.agreementRef,
-      item.linked_agreement_number,
-      item.linkedAgreementNumber,
-      item.source_agreement_number,
-      item.sourceAgreementNumber,
+      item.parent_agreement_id,
+      item.parentAgreementId,
       item.parent_agreement_number,
       item.parentAgreementNumber,
-      item.related_agreement_number,
-      item.relatedAgreementNumber
+      item.source_agreement_id,
+      item.sourceAgreementId,
+      item.source_agreement_number,
+      item.sourceAgreementNumber,
+      item.linked_agreement_id,
+      item.linkedAgreementId,
+      item.linked_agreement_number,
+      item.linkedAgreementNumber
     ]
       .map(value => String(value || '').trim())
       .filter(Boolean);
-  },
-  keySetContainsMatch_(set = new Set(), values = []) {
-    return (Array.isArray(values) ? values : []).some(value => {
-      const normalized = String(value || '').trim();
-      if (!normalized) return false;
-      for (const existing of set) {
-        if (this.valuesMatch(existing, normalized)) return true;
-      }
-      return false;
-    });
   },
   findInvoiceForItem_(item = {}, invoices = []) {
     item = item && typeof item === 'object' ? item : {};
     const safeInvoices = Array.isArray(invoices) ? invoices.filter(Boolean) : [];
     const itemKeys = this.getInvoiceItemMatchKeys_(item);
-    const direct = safeInvoices.find(invoice => {
+    const byInvoiceKey = safeInvoices.find(invoice => {
       const invoiceKeys = this.getInvoiceMatchKeys_(invoice);
       return itemKeys.some(itemKey => invoiceKeys.some(invoiceKey => this.valuesMatch(itemKey, invoiceKey)));
     });
-    if (direct) return direct;
+    if (byInvoiceKey) return byInvoiceKey;
 
-    // Some legacy invoice_items rows were saved with agreement links but without an invoice_id.
-    // In that case, attach the line to the related invoice through the agreement link so the
-    // Payment & Renewals table does not become empty.
     const itemAgreementKeys = this.getInvoiceItemAgreementMatchKeys_(item);
-    if (!itemAgreementKeys.length) return null;
-
-    const agreementMatches = safeInvoices.filter(invoice => {
-      const invoiceAgreementKeys = this.getInvoiceAgreementMatchKeys_(invoice);
+    const byAgreementKey = safeInvoices.find(invoice => {
+      const invoiceAgreementKeys = [
+        invoice.agreement_id,
+        invoice.agreementId,
+        invoice.agreement_uuid,
+        invoice.agreementUuid,
+        invoice.agreement_number,
+        invoice.agreementNumber,
+        invoice.agreement_reference,
+        invoice.agreementReference,
+        invoice.agreement_ref,
+        invoice.agreementRef,
+        invoice.source_agreement_id,
+        invoice.sourceAgreementId,
+        invoice.source_agreement_number,
+        invoice.sourceAgreementNumber,
+        invoice.linked_agreement_number,
+        invoice.linkedAgreementNumber
+      ].map(value => String(value || '').trim()).filter(Boolean);
       return itemAgreementKeys.some(itemKey => invoiceAgreementKeys.some(invoiceKey => this.valuesMatch(itemKey, invoiceKey)));
     });
+    if (byAgreementKey) return byAgreementKey;
 
-    if (agreementMatches.length === 1) return agreementMatches[0];
-    if (agreementMatches.length > 1) {
-      return agreementMatches
-        .slice()
-        .sort((a, b) => new Date(b.updated_at || b.created_at || b.invoice_date || 0).getTime() - new Date(a.updated_at || a.created_at || a.invoice_date || 0).getTime())[0];
+    const itemCompanyKeys = this.getExpandedCompanyIdKeys_(item);
+    if (itemCompanyKeys.size) {
+      const byCompany = safeInvoices.find(invoice => {
+        const invoiceCompanyKeys = this.getExpandedCompanyIdKeys_(invoice);
+        return invoiceCompanyKeys.size && this.companyKeySetsIntersect_(itemCompanyKeys, invoiceCompanyKeys);
+      });
+      if (byCompany) return byCompany;
     }
 
     return null;
   },
+  invoiceItemBelongsToClient_(item = {}, client = {}, relatedAgreements = [], relatedInvoices = []) {
+    if (!item || typeof item !== 'object') return false;
+
+    const invoiceItemKeys = this.getInvoiceItemMatchKeys_(item);
+    const invoiceKeys = relatedInvoices
+      .flatMap(invoice => this.getInvoiceMatchKeys_(invoice))
+      .map(value => String(value || '').trim())
+      .filter(Boolean);
+    if (invoiceItemKeys.some(itemKey => invoiceKeys.some(invoiceKey => this.valuesMatch(itemKey, invoiceKey)))) return true;
+
+    const itemAgreementKeys = this.getInvoiceItemAgreementMatchKeys_(item);
+    const agreementKeys = relatedAgreements
+      .flatMap(agreement => this.getAgreementMatchKeys_(agreement))
+      .map(value => String(value || '').trim())
+      .filter(Boolean);
+    if (itemAgreementKeys.some(itemKey => agreementKeys.some(agreementKey => this.valuesMatch(itemKey, agreementKey)))) return true;
+
+    const itemCompanyKeys = this.getExpandedCompanyIdKeys_(item);
+    const clientCompanyKeys = this.getExpandedCompanyIdKeys_(client);
+    if (itemCompanyKeys.size && clientCompanyKeys.size && this.companyKeySetsIntersect_(itemCompanyKeys, clientCompanyKeys)) return true;
+
+    const itemNameKey = this.normalizeCompanyKey(item.customer_legal_name || item.customer_name || item.company_name || item.client_name || item.bill_to_name || '');
+    const clientNameKey = this.normalizeCompanyKey(this.getClientLegalName(client));
+    return Boolean(itemNameKey && clientNameKey && itemNameKey === clientNameKey);
+  },
   listClientRelatedInvoiceItems_(clientId) {
-    const client = this.state.rows.find(row => row.client_id === clientId);
+    const client = this.state.rows.find(row => row.client_id === clientId) || {};
     const invoices = this.listClientRelatedInvoices_(clientId);
     const linkedAgreements = this.listClientRelatedAgreements_(clientId);
-    const invoiceIds = new Set(invoices.flatMap(item => this.getInvoiceMatchKeys_(item)).map(value => String(value || '').trim()).filter(Boolean));
-    const linkedAgreementKeys = new Set(linkedAgreements.flatMap(item => this.getAgreementMatchKeys_(item)).map(value => String(value || '').trim()).filter(Boolean));
-    const clientCompanyKeys = client ? this.getExpandedCompanyIdKeys_(client) : new Set();
     const seen = new Set();
     const rows = [];
 
-    const pushItem = item => {
+    const pushItem = (item, invoice = null) => {
       if (!item || typeof item !== 'object') return;
-      const normalized = this.normalizeInvoiceItem ? this.normalizeInvoiceItem(item) : item;
-      const itemKey = String(normalized.id || `${normalized.invoice_id || normalized.invoice_number || normalized.agreement_id || normalized.agreement_number}-${normalized.line_no}-${normalized.location_name}`).trim();
+      const normalized = this.normalizeInvoiceItem ? this.normalizeInvoiceItem(item) : { ...item };
+      const parentInvoice = invoice || this.findInvoiceForItem_(normalized, invoices) || null;
+      const itemKey = String(
+        normalized.id ||
+        `${normalized.invoice_id || normalized.invoice_number || parentInvoice?.id || parentInvoice?.invoice_number || 'invoice'}-${normalized.line_no || ''}-${normalized.location_name || ''}-${normalized.item_name || ''}`
+      ).trim();
       if (itemKey && seen.has(itemKey)) return;
       if (itemKey) seen.add(itemKey);
-      rows.push(normalized);
+      rows.push(parentInvoice ? { ...normalized, _invoice: parentInvoice } : normalized);
     };
 
     invoices.forEach(invoice => {
@@ -1150,25 +1184,16 @@ const Clients = {
         ? invoice.items
         : Array.isArray(invoice.invoice_items)
           ? invoice.invoice_items
-          : [];
-      nested.forEach(pushItem);
+          : Array.isArray(invoice.line_items)
+            ? invoice.line_items
+            : [];
+      nested.forEach(item => pushItem(item, invoice));
     });
 
     (Array.isArray(this.state.invoiceItems) ? this.state.invoiceItems : [])
       .filter(Boolean)
-      .filter(item => {
-        const invoiceLinks = this.getInvoiceItemMatchKeys_(item);
-        if (this.keySetContainsMatch_(invoiceIds, invoiceLinks)) return true;
-
-        const itemAgreementLinks = this.getInvoiceItemAgreementMatchKeys_(item);
-        if (this.keySetContainsMatch_(linkedAgreementKeys, itemAgreementLinks)) return true;
-
-        const itemCompanyKeys = this.getExpandedCompanyIdKeys_(item);
-        if (clientCompanyKeys.size && itemCompanyKeys.size && this.companyKeySetsIntersect_(clientCompanyKeys, itemCompanyKeys)) return true;
-
-        return false;
-      })
-      .forEach(pushItem);
+      .filter(item => this.invoiceItemBelongsToClient_(item, client, linkedAgreements, invoices))
+      .forEach(item => pushItem(item));
 
     return rows;
   },
@@ -2513,11 +2538,42 @@ const Clients = {
     return ['cancelled', 'canceled', 'void', 'deleted', 'rejected'].includes(status);
   },
   isAnnualSaasInvoiceItem_(item = {}) {
-    const section = String(item?.section || item?.item_section || item?.itemSection || '')
+    const section = String(item?.section || item?.item_section || item?.itemSection || item?.category || item?.type || '')
       .trim()
       .toLowerCase()
       .replace(/\s+/g, '_');
-    return section === 'annual_saas';
+    if (section === 'annual_saas') return true;
+
+    const text = this.normalizeText([
+      item?.section,
+      item?.item_section,
+      item?.category,
+      item?.type,
+      item?.item_type,
+      item?.item_name,
+      item?.itemName,
+      item?.product_name,
+      item?.productName,
+      item?.service_name,
+      item?.serviceName,
+      item?.module_name,
+      item?.moduleName,
+      item?.description,
+      item?.billing_frequency,
+      item?.billingFrequency,
+      item?.billing_cycle,
+      item?.billingCycle,
+      item?.frequency
+    ].filter(Boolean).join(' '));
+
+    if (!text) return false;
+    if (['one_time_fee', 'one time', 'one-time', 'setup', 'account setup', 'implementation', 'onboarding'].some(token => text.includes(token))) return false;
+    if (text.includes('annual_saas') || text.includes('saas annual')) return true;
+    if (text.includes('incheck basic') || text.includes('subscription') || text.includes('license')) return true;
+
+    const hasServicePeriod = Boolean(String(item?.service_start_date || item?.serviceStartDate || '').trim() || String(item?.service_end_date || item?.serviceEndDate || '').trim());
+    const hasRecurringSignal = ['annual', 'yearly', 'monthly', 'quarterly', 'semi', 'renewal', 'recurring', 'saas'].some(token => text.includes(token));
+    return Boolean(hasServicePeriod && hasRecurringSignal);
   },
   getClientInvoiceAnnualSaasItems_(clientId) {
     const invoices = this.listClientRelatedInvoices_(clientId).filter(invoice => !this.isInvoiceStatusExcludedFromRenewals_(invoice));
@@ -2530,6 +2586,37 @@ const Clients = {
       });
   },
 
+  findAgreementItemForInvoiceItem_(invoiceItem = {}, clientId = '') {
+    const relatedAgreementItems = this.listClientAgreementLocationItems_(clientId);
+    if (!relatedAgreementItems.length) return null;
+
+    const locationKey = this.normalizeLocationKey(invoiceItem.location_name || invoiceItem.locationName || invoiceItem.location || '');
+    const itemKey = this.normalizeLocationKey(invoiceItem.item_name || invoiceItem.itemName || invoiceItem.module_name || invoiceItem.moduleName || invoiceItem.license || '');
+    const lineNo = String(invoiceItem.line_no || invoiceItem.lineNo || '').trim();
+    const agreementKeys = this.getInvoiceItemAgreementMatchKeys_(invoiceItem);
+
+    return relatedAgreementItems.find(item => {
+      const candidateLocation = this.normalizeLocationKey(item.location_name || item.locationName || item.location || '');
+      const candidateItem = this.normalizeLocationKey(item.item_name || item.itemName || item.module_name || item.moduleName || item.license || '');
+      const candidateLineNo = String(item.line_no || item.lineNo || '').trim();
+      const candidateAgreementKeys = this.getAgreementItemMatchKeys_(item);
+      const agreementMatches = !agreementKeys.length || agreementKeys.some(key => candidateAgreementKeys.some(candidateKey => this.valuesMatch(key, candidateKey)));
+      const locationMatches = !locationKey || !candidateLocation || locationKey === candidateLocation;
+      const itemMatches = !itemKey || !candidateItem || itemKey === candidateItem;
+      const lineMatches = !lineNo || !candidateLineNo || lineNo === candidateLineNo;
+      return agreementMatches && locationMatches && itemMatches && lineMatches;
+    }) || null;
+  },
+  calculateServiceEndFromMonths_(serviceStart = '', months = 12) {
+    const raw = String(serviceStart || '').trim();
+    const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!match) return '';
+    const count = Math.max(1, Number(months) || 12);
+    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12, 0, 0);
+    date.setMonth(date.getMonth() + count);
+    date.setDate(date.getDate() - 1);
+    return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+  },
   getInvoiceAnnualSaasRenewalRows(client = {}) {
     const safeClient = client && typeof client === 'object' ? client : {};
     const clientId = String(safeClient.client_id || safeClient.clientId || this.state.selectedClientId || '').trim();
@@ -2593,14 +2680,28 @@ const Clients = {
       const invoiceStatus = String(invoice?.status || '').trim().toLowerCase();
       if (['cancelled', 'canceled', 'void', 'deleted', 'rejected'].includes(invoiceStatus)) return;
 
-      const section = String(item?.section || item?.item_section || item?.itemSection || '')
-        .trim()
-        .toLowerCase()
-        .replace(/\s+/g, '_');
-      if (section !== 'annual_saas') return;
+      if (!this.isAnnualSaasInvoiceItem_(item)) return;
 
-      const serviceStart = String(item?.service_start_date || item?.serviceStartDate || '').trim();
-      const serviceEnd = String(item?.service_end_date || item?.serviceEndDate || '').trim();
+      const matchedAgreementItem = this.findAgreementItemForInvoiceItem_(item, clientId);
+      const serviceStart = String(
+        item?.service_start_date ||
+        item?.serviceStartDate ||
+        matchedAgreementItem?.service_start_date ||
+        matchedAgreementItem?.serviceStartDate ||
+        ''
+      ).trim();
+      let serviceEnd = String(
+        item?.service_end_date ||
+        item?.serviceEndDate ||
+        item?.renewal_date ||
+        item?.renewalDate ||
+        matchedAgreementItem?.service_end_date ||
+        matchedAgreementItem?.serviceEndDate ||
+        matchedAgreementItem?.renewal_date ||
+        matchedAgreementItem?.renewalDate ||
+        ''
+      ).trim();
+      if (!serviceEnd && serviceStart) serviceEnd = this.calculateServiceEndFromMonths_(serviceStart, item?.quantity || item?.license_months || item?.licenseMonths || matchedAgreementItem?.quantity || 12);
       if (!serviceEnd) return;
 
       rows.push(this.normalizeRenewalRow({
@@ -3347,17 +3448,23 @@ const Clients = {
       this.state.invoiceItems = this.extractListResult(clientsRes.invoice_items || []).rows.map(item => this.normalizeInvoiceItem(item));
       this.state.receipts = this.extractListResult(clientsRes.receipts || []).rows.map(item => this.normalizeReceipt(item));
       this.state.receiptItems = this.extractListResult(clientsRes.receipt_items || []).rows;
-      const [companiesRes, contactsRes, agreementsRes, invoicesRes, receiptsRes] = await Promise.allSettled([
+      const [companiesRes, contactsRes, agreementsRes, invoicesRes, invoiceItemsRes, receiptsRes] = await Promise.allSettled([
         Api.requestWithSession('companies', 'list', { limit: 10000 }, { requireAuth: true }),
         Api.requestWithSession('contacts', 'list', { limit: 10000 }, { requireAuth: true }),
         this.canViewClientRenewals() ? Api.requestWithSession('agreements', 'list', { limit: 10000 }, { requireAuth: true }) : Promise.resolve({ rows: [] }),
         this.canViewClientRenewals() ? Api.requestWithSession('invoices', 'list', { limit: 10000 }, { requireAuth: true }) : Promise.resolve({ rows: [] }),
+        this.canViewClientRenewals() ? Api.requestWithSession('invoice_items', 'list', { limit: 10000 }, { requireAuth: true }) : Promise.resolve({ rows: [] }),
         this.canViewClientRenewals() ? Api.requestWithSession('receipts', 'list', { limit: 10000 }, { requireAuth: true }) : Promise.resolve({ rows: [] })
       ]);
       this.state.companies = companiesRes.status === 'fulfilled' ? this.extractListResult(companiesRes.value).rows : [];
       this.state.contacts = contactsRes.status === 'fulfilled' ? this.extractListResult(contactsRes.value).rows : [];
       if (agreementsRes.status === 'fulfilled') this.state.agreements = this.extractListResult(agreementsRes.value).rows.map(item => this.normalizeAgreement(item));
       if (invoicesRes.status === 'fulfilled') this.state.invoices = this.extractListResult(invoicesRes.value).rows.map(item => this.normalizeInvoice(item));
+      if (invoiceItemsRes.status === 'fulfilled') {
+        const apiInvoiceItems = this.extractListResult(invoiceItemsRes.value).rows.map(item => this.normalizeInvoiceItem(item));
+        if (apiInvoiceItems.length) this.state.invoiceItems = apiInvoiceItems;
+      }
+      this.state.invoices = this.attachInvoiceItemsToInvoices_(this.state.invoices, this.state.invoiceItems);
       if (receiptsRes.status === 'fulfilled') this.state.receipts = this.extractListResult(receiptsRes.value).rows.map(item => this.normalizeReceipt(item));
       if (companiesRes.status === 'rejected') console.warn('[Clients] companies optional load failed; continuing without company lookup data', companiesRes.reason);
       this.rebuildCompanyLookupMaps(this.state.companies);
