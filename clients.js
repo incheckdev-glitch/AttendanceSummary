@@ -168,6 +168,80 @@ const Clients = {
   compactValues(values = []) {
     return values.filter(value => String(value || '').trim());
   },
+
+  normalizeClientName(value = '') {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFKC')
+      .replace(/[()（）]/g, '')
+      .replace(/\s+/g, ' ');
+  },
+  getCompanyKeySetForClient(client = {}, companies = []) {
+    const keys = new Set();
+
+    const add = value => {
+      const text = String(value || '').trim();
+      if (text) keys.add(text);
+    };
+
+    add(client.id);
+    add(client.company_id);
+    add(client.companyId);
+
+    const selectedName = this.normalizeClientName(
+      client.legal_name ||
+      client.company_name ||
+      client.name ||
+      client.customer_name ||
+      ''
+    );
+
+    for (const company of Array.isArray(companies) ? companies : []) {
+      const companyName = this.normalizeClientName(
+        company.legal_name ||
+        company.company_name ||
+        company.name ||
+        ''
+      );
+
+      if (
+        selectedName &&
+        companyName &&
+        selectedName === companyName
+      ) {
+        add(company.id);
+        add(company.company_id);
+        add(company.companyId);
+      }
+    }
+
+    return keys;
+  },
+  getLinkedContactsForClient(client = {}, contacts = [], companies = []) {
+    const companyKeys = this.getCompanyKeySetForClient(client, companies);
+
+    return (Array.isArray(contacts) ? contacts : []).filter(contact => {
+      const contactCompanyKeys = [
+        contact.company_id,
+        contact.companyId,
+        contact.customer_company_id,
+        contact.client_company_id
+      ].map(value => String(value || '').trim()).filter(Boolean);
+
+      return contactCompanyKeys.some(key => companyKeys.has(key));
+    });
+  },
+  getPrimaryContactForClient(client = {}, contacts = [], companies = []) {
+    const linkedContacts = this.getLinkedContactsForClient(client, contacts, companies);
+
+    if (!linkedContacts.length) return null;
+
+    return linkedContacts.find(contact =>
+      contact.is_primary === true ||
+      String(contact.is_primary).toLowerCase() === 'true'
+    ) || linkedContacts[0];
+  },
   valuesMatch(left, right) {
     const l = this.normalizeMatchValue(left);
     const r = this.normalizeMatchValue(right);
@@ -329,62 +403,6 @@ const Clients = {
     return null;
   },
 
-  normalizeClientName(value = '') {
-    return String(value || '')
-      .trim()
-      .toLowerCase()
-      .normalize('NFKC')
-      .replace(/[()（）]/g, '')
-      .replace(/\s+/g, ' ');
-  },
-  getCompanyDisplayName(company = {}) {
-    return String(
-      company.legal_name ||
-      company.company_name ||
-      company.name ||
-      company.customer_name ||
-      ''
-    ).trim();
-  },
-  getCompanyKeySetForClient(client = {}, companies = []) {
-    const keys = new Set();
-
-    const add = value => {
-      const text = String(value || '').trim();
-      if (text) keys.add(text);
-    };
-
-    add(client.id);
-    add(client.company_id);
-    add(client.companyId);
-    add(client.customer_company_id);
-    add(client.client_company_id);
-
-    const selectedNameKey = this.normalizeClientName(this.getCompanyDisplayName(client));
-
-    for (const company of Array.isArray(companies) ? companies : []) {
-      const companyNameKey = this.normalizeClientName(this.getCompanyDisplayName(company));
-
-      const directMatch =
-        String(company.id || '').trim() === String(client.id || '').trim()
-        || String(company.company_id || '').trim() === String(client.company_id || '').trim()
-        || String(company.id || '').trim() === String(client.company_id || '').trim()
-        || String(company.company_id || '').trim() === String(client.id || '').trim();
-
-      const exactNameMatch =
-        selectedNameKey
-        && companyNameKey
-        && selectedNameKey === companyNameKey;
-
-      if (directMatch || exactNameMatch) {
-        add(company.id);
-        add(company.company_id);
-        add(company.companyId);
-      }
-    }
-
-    return keys;
-  },
   getExpandedCompanyIdKeys_(record = {}) {
     const keys = new Set(this.getRawCompanyIdValues_(record));
     const company = this.findCompanyForRecord_(record);
@@ -787,20 +805,9 @@ const Clients = {
     return null;
   },
   resolveContactForClient(client = {}, linkedCompany = null, context = {}) {
-    const { contactsById = new Map(), contacts = [] } = context;
-    const directContactId = String(client.contact_id || client.contactId || '').trim();
-    if (directContactId && contactsById.has(directContactId)) return contactsById.get(directContactId);
-    const companyId = String(linkedCompany?.company_id || linkedCompany?.companyId || client.company_id || client.companyId || '').trim();
-    if (companyId) {
-      const companyContacts = contacts.filter(contact => String(contact.company_id || contact.companyId || '').trim() === companyId);
-      const primary = companyContacts.find(contact =>
-        contact.is_primary_contact === true || String(contact.is_primary_contact || '').toLowerCase() === 'true'
-      );
-      return primary || companyContacts[0] || null;
-    }
-    const email = this.normalizeText(client.contact_email || client.contactEmail || client.primary_contact_email);
-    if (email) return contacts.find(contact => this.normalizeText(contact.email) === email) || null;
-    return null;
+    const contacts = Array.isArray(context.contacts) ? context.contacts : [];
+    const companies = Array.isArray(context.companies) ? context.companies : [];
+    return this.getPrimaryContactForClient(client, contacts, companies);
   },
   canRunClientAction_(action) {
     if (action === 'proposal') return canAnyPermission([['proposals','create'], ['proposals','create_from_client'], ['proposals','manage']]);
@@ -3279,12 +3286,12 @@ const Clients = {
     if (E.clientRenewalsDateFrom) E.clientRenewalsDateFrom.value = this.state.renewalsFilters.dateFrom || '';
     if (E.clientRenewalsDateTo) E.clientRenewalsDateTo.value = this.state.renewalsFilters.dateTo || '';
     const linkedCompany = this.resolveCompanyForClient(client, this.state);
-    const linkedContact = this.resolveContactForClient(client, linkedCompany, this.state);
+    const primaryContact = this.getPrimaryContactForClient(client, this.state.contacts || [], this.state.companies || []);
     const title = this.getCompanyLegalDisplay(linkedCompany, client) || '—';
     const subtitle = String(linkedCompany?.company_name || linkedCompany?.companyName || '').trim();
     const subtitleValue = subtitle && this.normalizeText(subtitle) !== this.normalizeText(title) ? subtitle : '';
     if (E.clientDetailName) E.clientDetailName.textContent = title;
-    if (E.clientDetailMeta) E.clientDetailMeta.textContent = `${subtitleValue || client.customer_legal_name || 'No legal name'} • ${this.buildContactPersonName(linkedContact) || client.primary_contact_name || 'No contact'} • ${linkedContact?.email || client.primary_contact_email || 'No email'}`;
+    if (E.clientDetailMeta) E.clientDetailMeta.textContent = `${subtitleValue || client.customer_legal_name || 'No legal name'} • ${this.buildContactPersonName(primaryContact) || 'No contact'} • ${(String(primaryContact?.email || primaryContact?.contact_email || '').trim()) || '—'}`;
     if (E.clientDetailStatus) E.clientDetailStatus.textContent = client.status || 'Unknown';
     if (E.clientDetailOverview) {
       const latestAgreement = this.resolveLatestAgreementContext_(client.client_id).preferred;
@@ -3292,7 +3299,7 @@ const Clients = {
         .slice().sort((a, b) => new Date(b.updated_at || b.created_at || 0).getTime() - new Date(a.updated_at || a.created_at || 0).getTime())[0];
       const billing = client.billing_frequency || client.billingFrequency || latestAgreement?.billing_frequency || latestAgreement?.billingFrequency || latestInvoice?.billing_frequency || latestInvoice?.billingFrequency || '—';
       const warning = linkedCompany ? '' : 'Company details are not linked yet. | ';
-      const importMeta = this.parseImportMeta_(client); const importInfo = importMeta?.is_historical_client ? ` | Imported From: ${importMeta.imported_from || '—'} | Imported At: ${U.fmtDisplayDate(importMeta.imported_at) || '—'} | Imported By: ${importMeta.imported_by || '—'} | Legacy Client Ref: ${importMeta.legacy_client_ref || '—'}` : ''; E.clientDetailOverview.textContent = `${warning}Main Email: ${linkedCompany?.main_email || linkedCompany?.email || client.main_email || client.contact_email || '—'} | Main Phone: ${linkedCompany?.main_phone || linkedCompany?.phone || linkedContact?.mobile || linkedContact?.phone || client.contact_phone || client.phone || '—'} | Country: ${linkedCompany?.country || client.country || '—'} | City: ${linkedCompany?.city || client.city || '—'} | Address: ${linkedCompany?.address || client.customer_address || client.address || '—'} | Billing: ${billing} | Tax: ${linkedCompany?.tax_number || linkedCompany?.taxNumber || linkedCompany?.vat_number || linkedCompany?.vatNumber || client.tax_number || '—'} | Industry: ${linkedCompany?.industry || client.industry || '—'} | Source: ${linkedCompany?.source || linkedCompany?.lead_source || client.source || '—'} | Notes: ${linkedCompany?.notes || client.notes || '—'} | Contact: ${this.buildContactPersonName(linkedContact) || client.contact_name || client.primary_contact_name || '—'} | Contact Email: ${linkedContact?.email || client.contact_email || client.primary_contact_email || '—'} | Contact Phone: ${linkedContact?.mobile || linkedContact?.phone || client.contact_phone || client.phone || '—'}${importInfo}`;
+      const importMeta = this.parseImportMeta_(client); const importInfo = importMeta?.is_historical_client ? ` | Imported From: ${importMeta.imported_from || '—'} | Imported At: ${U.fmtDisplayDate(importMeta.imported_at) || '—'} | Imported By: ${importMeta.imported_by || '—'} | Legacy Client Ref: ${importMeta.legacy_client_ref || '—'}` : ''; E.clientDetailOverview.textContent = `${warning}Main Email: ${linkedCompany?.main_email || linkedCompany?.email || client.main_email || client.contact_email || '—'} | Main Phone: ${linkedCompany?.main_phone || linkedCompany?.phone || client.contact_phone || client.phone || '—'} | Country: ${linkedCompany?.country || client.country || '—'} | City: ${linkedCompany?.city || client.city || '—'} | Address: ${linkedCompany?.address || client.customer_address || client.address || '—'} | Billing: ${billing} | Tax: ${linkedCompany?.tax_number || linkedCompany?.taxNumber || linkedCompany?.vat_number || linkedCompany?.vatNumber || client.tax_number || '—'} | Industry: ${linkedCompany?.industry || client.industry || '—'} | Source: ${linkedCompany?.source || linkedCompany?.lead_source || client.source || '—'} | Notes: ${linkedCompany?.notes || client.notes || '—'} | Contact: ${this.buildContactPersonName(primaryContact) || '—'} | Contact Email: ${(String(primaryContact?.email || primaryContact?.contact_email || '').trim()) || '—'} | Contact Phone: ${(String(primaryContact?.phone || primaryContact?.mobile || primaryContact?.contact_phone || '').trim()) || '—'}${importInfo}`;
     }
 
     const displayCurrency = this.normalizeCurrencyCode_(analytics.currency || this.getClientCurrency_(client.client_id));
