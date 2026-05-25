@@ -618,6 +618,10 @@ const Clients = {
       agreement_number: String(raw.agreement_number || raw.agreementNumber || raw.parent_agreement_number || raw.parentAgreementNumber || '').trim(),
       company_id: String(raw.company_id || raw.companyId || '').trim(),
       is_superseded: raw.is_superseded === true || String(raw.is_superseded || raw.isSuperseded || '').trim().toLowerCase() === 'true',
+      superseded_at: String(raw.superseded_at || raw.supersededAt || '').trim(),
+      superseded_by_agreement_id: String(raw.superseded_by_agreement_id || raw.supersededByAgreementId || '').trim(),
+      superseded_by_agreement_number: String(raw.superseded_by_agreement_number || raw.supersededByAgreementNumber || '').trim(),
+      renewal_key: String(raw.renewal_key || raw.renewalKey || '').trim(),
       superseded_by_item_id: String(raw.superseded_by_item_id || raw.supersededByItemId || '').trim(),
       renewed_from_item_id: String(raw.renewed_from_item_id || raw.renewedFromItemId || '').trim(),
       parent_agreement_id: String(raw.parent_agreement_id || raw.parentAgreementId || '').trim(),
@@ -1404,9 +1408,16 @@ const Clients = {
   isAnnualSaasItem(item = {}) {
     return this.getNormalizedSection_(item) === 'annual_saas';
   },
+  isSupersededRecord(record = {}) {
+    return record.is_superseded === true
+      || record.isSuperseded === true
+      || String(record.is_superseded || '').trim().toLowerCase() === 'true'
+      || String(record.isSuperseded || '').trim().toLowerCase() === 'true'
+      || Boolean(record.superseded_by_agreement_id || record.supersededByAgreementId)
+      || Boolean(record.superseded_by_agreement_number || record.supersededByAgreementNumber);
+  },
   isSupersededItem(item = {}) {
-    return item?.is_superseded === true
-      || String(item?.is_superseded).toLowerCase() === 'true'
+    return this.isSupersededRecord(item)
       || Boolean(item?.superseded_by_item_id || item?.supersededByItemId);
   },
   getLocationRowRankTime_(item = {}) {

@@ -279,6 +279,11 @@ const OperationsOnboarding = {
       handover_note: String(this.pick(source.handover_note, source.handoverNote)).trim(),
       updated_at: String(this.pick(source.updated_at, source.updatedAt)).trim(),
       completed_at: String(this.pick(source.completed_at, source.completedAt)).trim(),
+      is_superseded: source.is_superseded === true || String(source.is_superseded || source.isSuperseded || '').trim().toLowerCase() === 'true',
+      superseded_at: String(this.pick(source.superseded_at, source.supersededAt)).trim(),
+      superseded_by_agreement_id: String(this.pick(source.superseded_by_agreement_id, source.supersededByAgreementId)).trim(),
+      superseded_by_agreement_number: String(this.pick(source.superseded_by_agreement_number, source.supersededByAgreementNumber)).trim(),
+      renewal_key: String(this.pick(source.renewal_key, source.renewalKey)).trim(),
       created_at: String(this.pick(source.created_at, source.createdAt)).trim(),
       notes: String(this.pick(source.notes)).trim(),
       location_count: normalizedLocationCount,
@@ -538,6 +543,14 @@ const OperationsOnboarding = {
   isOnboardingClosed(record) {
     return isOnboardingClosed(record);
   },
+  isSupersededRecord(record = {}) {
+    return record.is_superseded === true
+      || record.isSuperseded === true
+      || String(record.is_superseded || '').trim().toLowerCase() === 'true'
+      || String(record.isSuperseded || '').trim().toLowerCase() === 'true'
+      || Boolean(record.superseded_by_agreement_id || record.supersededByAgreementId)
+      || Boolean(record.superseded_by_agreement_number || record.supersededByAgreementNumber);
+  },
   isOnboardingCancelledOrClosed(record) {
     const status = String(record?.status || record?.onboarding_status || '')
       .trim()
@@ -794,10 +807,11 @@ const OperationsOnboarding = {
       last_request_date: entry.last_request_date ? entry.last_request_date.slice(0, 10) : ''
     }));
   },
-  getBaseFilteredRows() {
+  getBaseFilteredRows(sourceRows = null) {
     const search = String(this.state.search || '').trim().toLowerCase();
     const terms = search ? search.split(/\s+/).filter(Boolean) : [];
-    return this.state.rows.filter(row => {
+    const rows = Array.isArray(sourceRows) ? sourceRows : this.state.rows;
+    return rows.filter(row => {
       if (this.state.onboardingStatus !== 'All' && row.onboarding_status !== this.state.onboardingStatus) return false;
       if (this.state.requestType !== 'All' && row.request_type !== this.state.requestType) return false;
       if (this.state.assignedCsm !== 'All' && row.csm_assigned_to !== this.state.assignedCsm) return false;
@@ -851,7 +865,9 @@ const OperationsOnboarding = {
     this.render();
   },
   applyFilters() {
-    const baseRows = this.getBaseFilteredRows();
+    const allOnboardingRows = Array.isArray(this.state.rows) ? this.state.rows : [];
+    const currentOnboardingRows = allOnboardingRows.filter(row => !this.isSupersededRecord(row));
+    const baseRows = this.getBaseFilteredRows(currentOnboardingRows);
     this.state.filteredRows = baseRows.filter(row => this.matchesDrilldown(row));
     this.state.analytics = this.computeAnalytics(this.state.filteredRows);
   },
