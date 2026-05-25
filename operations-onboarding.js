@@ -60,6 +60,96 @@ const OperationsOnboarding = {
   normalizeLocationKey(value = '') {
     return String(value || '').trim().toLowerCase().normalize('NFKC').replace(/\s+/g, ' ');
   },
+
+  normalizeTextKey(value = '') {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFKC')
+      .replace(/[()（）]/g, '')
+      .replace(/\s+/g, ' ');
+  },
+  isAnnualSaasItem(item = {}) {
+    return String(item.section || item.item_section || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_') === 'annual_saas';
+  },
+  getAgreementClientKey(agreement = {}) {
+    return String(
+      agreement.company_id ||
+      agreement.customer_company_id ||
+      agreement.client_company_id ||
+      ''
+    ).trim() || this.normalizeTextKey(
+      agreement.customer_name ||
+      agreement.company_name ||
+      agreement.client_name ||
+      agreement.customer_legal_name ||
+      ''
+    );
+  },
+  getAgreementNumberSortValue(agreement = {}) {
+    const raw = String(
+      agreement.agreement_number ||
+      agreement.agreement_id ||
+      agreement.agreement_reference ||
+      ''
+    );
+    const n = Number(raw.replace(/\D/g, ''));
+    return Number.isFinite(n) ? n : 0;
+  },
+  getAgreementRenewalDateValue(agreement = {}, item = {}) {
+    const date =
+      item.service_start_date ||
+      item.serviceStartDate ||
+      agreement.start_date ||
+      agreement.agreement_date ||
+      agreement.effective_date ||
+      agreement.created_at ||
+      '';
+
+    const time = date ? new Date(date).getTime() : 0;
+    return Number.isFinite(time) ? time : 0;
+  },
+  buildCurrentRenewalLocationMap(agreements = [], agreementItems = []) {
+    const map = new Map();
+    const agreementById = new Map((Array.isArray(agreements) ? agreements : []).map(a => [String(a.id || a.agreement_id || '').trim(), a]));
+
+    for (const item of (Array.isArray(agreementItems) ? agreementItems : [])) {
+      if (!this.isAnnualSaasItem(item)) continue;
+
+      const agreementId = String(item.agreement_id || item.agreementId || '').trim();
+      const agreement = agreementById.get(agreementId);
+      if (!agreement) continue;
+
+      const clientKey = this.getAgreementClientKey(agreement);
+      const locationKey = this.normalizeTextKey(item.location_name || item.locationName || item.location || '');
+      if (!clientKey || !locationKey) continue;
+
+      const renewalKey = `${clientKey}::${locationKey}`;
+      const candidate = {
+        agreement,
+        item,
+        agreementId,
+        renewalKey,
+        dateValue: this.getAgreementRenewalDateValue(agreement, item),
+        agreementNumberValue: this.getAgreementNumberSortValue(agreement)
+      };
+      const existing = map.get(renewalKey);
+      if (!existing) {
+        map.set(renewalKey, candidate);
+        continue;
+      }
+      const candidateIsNewer = candidate.dateValue > existing.dateValue || (
+        candidate.dateValue === existing.dateValue &&
+        candidate.agreementNumberValue > existing.agreementNumberValue
+      );
+      if (candidateIsNewer) map.set(renewalKey, candidate);
+    }
+
+    return map;
+  },
   isTechnicalRequestForContext(request = {}, context = {}) {
     const requestOnboardingId = String(request.operations_onboarding_id || request.onboarding_id || request.source_onboarding_id || '').trim();
     const contextOnboardingId = String(context.operations_onboarding_id || context.onboarding_id || context.source_onboarding_id || context.id || '').trim();
@@ -575,9 +665,17 @@ const OperationsOnboarding = {
     if (scopedDate || this.hasInvoiceScope(row)) return scopedDate;
     return agreement.service_end_date || '';
   },
-  deriveAgreementLocationMetrics(agreementItems = []) {
+  deriveAgreementLocationMetrics(agreementItems = [], agreement = {}, renewalMap = null) {
     const safeItems = Array.isArray(agreementItems) ? agreementItems : [];
-    const annualItems = safeItems.filter(item => this.isAnnualSaasLocationItem(item));
+    const agreementId = String(agreement.id || agreement.agreement_id || agreement.agreementId || "").trim();
+    const annualItems = safeItems.filter(item => this.isAnnualSaasLocationItem(item)).filter(item => {
+      if (!renewalMap) return true;
+      const clientKey = this.getAgreementClientKey(agreement);
+      const locationKey = this.normalizeTextKey(item.location_name || item.locationName || item.location || "");
+      if (!clientKey || !locationKey) return true;
+      const current = renewalMap.get(`${clientKey}::${locationKey}`);
+      return !current || String(current.agreementId || "").trim() === agreementId;
+    });
     const activeItems = annualItems.filter(item => this.isActiveAnnualSaasLocationItem(item));
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -605,6 +703,9 @@ const OperationsOnboarding = {
     return this.deriveAgreementLocationMetrics(agreementItems).total_locations;
   },
   buildAgreementAnalyticsRollup(onboardingRows, agreementMap, agreementItemsMap) {
+    const agreements = [...agreementMap.values()];
+    const agreementItems = [...agreementItemsMap.values()].flat();
+    const renewalMap = this.buildCurrentRenewalLocationMap(agreements, agreementItems);
     const rollup = [];
     (Array.isArray(onboardingRows) ? onboardingRows : []).forEach(row => {
       const agreementId = String(row.agreement_id || '').trim();
@@ -612,7 +713,7 @@ const OperationsOnboarding = {
       const agreement = agreementMap.get(agreementId) || {};
       const items = agreementItemsMap.get(agreementId) || [];
       const scopedItems = this.filterAgreementItemsForOnboardingRow(row, items);
-      const locationMetrics = this.deriveAgreementLocationMetrics(scopedItems);
+      const locationMetrics = this.deriveAgreementLocationMetrics(scopedItems, agreement, renewalMap);
       const rowLocationCount = this.getRowLocationCount(row, agreement, items);
       const rowServiceEnd = this.getRowServiceEnd(row, agreement, items);
       rollup.push({

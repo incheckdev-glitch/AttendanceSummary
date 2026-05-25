@@ -239,6 +239,52 @@ const TechnicalAdmin = {
     if ((safe.service_start_date || safe.serviceStartDate) && (safe.service_end_date || safe.serviceEndDate) && (safe.location || safe.location_name || safe.locationName)) return true;
     return false;
   },
+
+  normalizeTextKey(value = '') {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFKC')
+      .replace(/[()（）]/g, '')
+      .replace(/\s+/g, ' ');
+  },
+  getAgreementClientKey(agreement = {}) {
+    return String(
+      agreement.company_id ||
+      agreement.customer_company_id ||
+      agreement.client_company_id ||
+      ''
+    ).trim() || this.normalizeTextKey(
+      agreement.customer_name ||
+      agreement.company_name ||
+      agreement.client_name ||
+      agreement.customer_legal_name ||
+      ''
+    );
+  },
+  getAgreementNumberSortValue(agreement = {}) {
+    const raw = String(
+      agreement.agreement_number ||
+      agreement.agreement_id ||
+      agreement.agreement_reference ||
+      ''
+    );
+    const n = Number(raw.replace(/\D/g, ''));
+    return Number.isFinite(n) ? n : 0;
+  },
+  getAgreementRenewalDateValue(agreement = {}, item = {}) {
+    const date =
+      item.service_start_date ||
+      item.serviceStartDate ||
+      agreement.start_date ||
+      agreement.agreement_date ||
+      agreement.effective_date ||
+      agreement.created_at ||
+      '';
+
+    const time = date ? new Date(date).getTime() : 0;
+    return Number.isFinite(time) ? time : 0;
+  },
   isAnnualSaasItem(item = {}) {
     return String(item.section || item.item_section || '')
       .trim()
@@ -811,8 +857,36 @@ const TechnicalAdmin = {
 
     return 0;
   },
+
+  buildCurrentTechnicalRenewalRequests(requests = []) {
+    const map = new Map();
+    for (const request of (Array.isArray(requests) ? requests : [])) {
+      const agreement = this.extractLinkedAgreement(request) || {};
+      const item = { section: 'annual_saas', service_start_date: this.pick(request.service_start_date, request.serviceStartDate, request.target_date, request.created_at) };
+      const clientKey = this.getAgreementClientKey({ ...agreement, ...request });
+      const locationKey = this.normalizeTextKey(request.location_name || request.locationName || request.location || request.site_name || request.siteName || '');
+      if (!clientKey || !locationKey) continue;
+      const renewalKey = `${clientKey}::${locationKey}`;
+      const candidate = {
+        request,
+        renewalKey,
+        dateValue: Math.max(this.getAgreementRenewalDateValue({ ...agreement, ...request }, item), new Date(this.getTechnicalRequestDate(request) || 0).getTime() || 0),
+        agreementNumberValue: this.getAgreementNumberSortValue({ ...agreement, ...request })
+      };
+      const existing = map.get(renewalKey);
+      if (!existing || candidate.dateValue > existing.dateValue || (candidate.dateValue === existing.dateValue && candidate.agreementNumberValue > existing.agreementNumberValue)) {
+        map.set(renewalKey, candidate);
+      }
+    }
+    return new Set([...map.values()].map(v => v.request));
+  },
   buildTechnicalDashboardAnalytics(requests = []) {
-    const filteredRequests = Array.isArray(requests) ? requests : [];
+    const latestRenewalRequests = this.buildCurrentTechnicalRenewalRequests(requests);
+    const filteredRequests = (Array.isArray(requests) ? requests : []).filter(request => {
+      const locationKey = this.normalizeTextKey(request.location_name || request.locationName || request.location || request.site_name || request.siteName || "");
+      if (!locationKey || !this.isAnnualSaasItem({ section: "annual_saas" })) return true;
+      return latestRenewalRequests.has(request);
+    });
 
     const totalRequests = filteredRequests.length;
     const requestedRequests = filteredRequests.filter(request =>
