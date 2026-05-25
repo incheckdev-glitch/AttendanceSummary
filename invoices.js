@@ -1294,6 +1294,7 @@ const Invoices = {
     const customerAddress = String(invoiceData.customer_address || '').trim();
     const footerNote = String(invoiceData.footer_note || '').trim();
     const bank = this.getInCheckBankDetails();
+    const paymentReference = invoiceData.invoice_number || invoiceData.invoiceNumber || invoiceData.invoice_id || invoiceData.id || '—';
     const bankRows = [
       ['Bank Name', textValue(bank.bank_name)],
       ['Account Name', textValue(bank.account_name)],
@@ -1301,7 +1302,7 @@ const Invoices = {
       ['Routing Number', textValue(bank.routing_number)],
       ['SWIFT / BIC', textValue(bank.swift_bic)],
       ['Bank Address', textValue(bank.bank_address)],
-      ['Payment Reference', textValue(invoiceData.invoice_number || invoiceData.invoiceNumber || invoiceData.invoice_id || invoiceData.id)]
+      ['Payment Reference', textValue(paymentReference)]
     ];
 
     return `<!doctype html>
@@ -1377,6 +1378,15 @@ const Invoices = {
       .bank-row:last-child { border-bottom: 0; }
       .bank-row > div { padding: 7px 9px; font-size: 12px; min-width: 0; overflow-wrap: anywhere; }
       .bank-key { background: #f5f8fc; font-weight: 700; border-right: 1px solid #e3eaf3; }
+      .invoice-payment-note {
+        margin-top: 10px;
+        padding: 8px 10px;
+        font-size: 11.5px;
+        color: #334155;
+        border: 1px solid #d7e1ed;
+        border-radius: 6px;
+        background: #f8fafc;
+      }
       .footer-note { margin-top: 16px; font-size: 11px; color: #64748b; border-top: 1px solid #e3eaf3; padding-top: 10px; text-align: center; }
       @page { size: A4; margin: 0; }
       @media print {
@@ -1511,9 +1521,12 @@ const Invoices = {
             .map(([label, value]) => `<div class="bank-row"><div class="bank-key">${U.escapeHtml(label)}</div><div>${value}</div></div>`)
             .join('')}
         </div>
+        <div class="invoice-payment-note">
+          <strong>Payment Note:</strong> All Bank/Transfer Charges to Be Covered by Client
+        </div>
       </section>
 
-      <footer class="footer-note">${textValue(footerNote || 'For billing support, please contact accounts@company.com · +1 (000) 000-0000')}</footer>
+      <footer class="footer-note">${textValue(footerNote || 'If you have any questions about this Invoice, please contact: info@incheck360.nl')}</footer>
     </div>
   </body>
 </html>`;
