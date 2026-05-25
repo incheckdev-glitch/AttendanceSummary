@@ -6010,6 +6010,23 @@
       assertAllowed('invoices', 'create_from_agreement');
       const agreementUuid = await resolveResourceUuid('agreements', { ...payload, id: payload.agreement_uuid || payload.id, agreement_id: payload.agreement_id }, client);
       if (!isUuid(agreementUuid)) throw new Error('Agreement UUID is required to create invoice from agreement.');
+      const { data: agreementItems, error: agreementItemsError } = await client
+        .from('agreement_items')
+        .select('id,agreement_id,section,item_section,invoice_status,invoiced_invoice_id,invoiced_at')
+        .eq('agreement_id', agreementUuid);
+      if (agreementItemsError) throw friendlyError('Unable to validate annual SaaS invoice eligibility', agreementItemsError);
+      const hasUninvoicedAnnualSaas = (Array.isArray(agreementItems) ? agreementItems : []).some(item => {
+        const section = String(item?.section || item?.item_section || '').trim().toLowerCase().replace(/\s+/g, '_');
+        if (section !== 'annual_saas') return false;
+        const status = String(item?.invoice_status || '').trim().toLowerCase();
+        const invoiced = ['invoiced', 'issued'].includes(status)
+          || Boolean(item?.invoiced_invoice_id)
+          || Boolean(item?.invoiced_at);
+        return !invoiced;
+      });
+      if (!hasUninvoicedAnnualSaas) {
+        throw new Error('Invoice cannot be created because all Annual SaaS locations are already invoiced.');
+      }
       const { data, error } = await client.rpc('create_invoice_from_agreement', { p_agreement_uuid: agreementUuid });
       if (error) throw friendlyError('Invoice creation from agreement failed', error);
       const recordId = String(data?.invoice_id || data?.id || data?.invoice_uuid || data?.created_invoice_uuid || '').trim();
