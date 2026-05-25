@@ -194,7 +194,49 @@ const Agreements = {
     detailCacheTtlMs: 90 * 1000,
     openingAgreementIds: new Set(),
     rowActionInFlight: new Set(),
-    selectedAgreementCompanyForVerification: null
+    selectedAgreementCompanyForVerification: null,
+    invoiceBlockedAgreementIds: new Set()
+  },
+  isAgreementItemInvoiced(item = {}) {
+    const status = String(item.invoice_status || item.invoiceStatus || '').trim().toLowerCase();
+    return ['invoiced', 'issued'].includes(status)
+      || Boolean(item.invoiced_invoice_id || item.invoicedInvoiceId)
+      || Boolean(item.invoiced_at || item.invoicedAt);
+  },
+  isAnnualSaasItem(item = {}) {
+    return String(item.section || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_') === 'annual_saas';
+  },
+  async loadInvoiceBlockedAgreementIds(agreements = []) {
+    const agreementIds = (Array.isArray(agreements) ? agreements : [])
+      .map(row => String(row?.id || '').trim())
+      .filter(Boolean);
+    if (!agreementIds.length) return new Set();
+    const client = this.getSupabaseClient();
+    if (!client) return new Set();
+    const { data, error } = await client
+      .from('agreement_items')
+      .select('agreement_id,section,invoice_status,invoiced_invoice_id,invoiced_at')
+      .in('agreement_id', agreementIds)
+      .eq('section', 'annual_saas');
+    if (error) throw error;
+    const grouped = new Map();
+    (Array.isArray(data) ? data : []).forEach(item => {
+      const key = String(item?.agreement_id || '').trim();
+      if (!key) return;
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(item);
+    });
+    const blockedIds = new Set();
+    agreementIds.forEach(id => {
+      const annualItems = grouped.get(id) || [];
+      if (!annualItems.length) return;
+      const hasUninvoiced = annualItems.some(item => this.isAnnualSaasItem(item) && !this.isAgreementItemInvoiced(item));
+      if (!hasUninvoiced) blockedIds.add(id);
+    });
+    return blockedIds;
   },
 
   canUseAdminOverride() {
@@ -2661,6 +2703,7 @@ const Agreements = {
       const importedBadge = this.toDbBoolean(row.is_imported ?? row.isImported, false) || this.toDbBoolean(row.is_historical_agreement ?? row.isHistoricalAgreement, false)
         ? ' <span class="chip" style="margin-left:6px;">Historical</span>'
         : '';
+      const invoiceBlocked = signedRow && this.state.invoiceBlockedAgreementIds.has(String(row?.id || '').trim());
       return `<tr>
         <td>${textCell(row.agreement_id)}${importedBadge}</td><td>${textCell(row.agreement_number)}</td><td>${textCell(row.agreement_title)}</td>
         <td>${textCell(row.customer_name)}</td><td>${textCell(this.getAgreementProposalDisplayRef(row))}</td><td>${textCell(row.deal_id)}</td>
@@ -2673,7 +2716,7 @@ const Agreements = {
         ${!signedRow && Permissions.canUpdateAgreement() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="agreements" data-permission-action="update" data-agreement-edit=\"${id}\" data-permission-resource=\"agreements\" data-permission-action=\"update\">Edit</button>` : ''}
         ${Permissions.canRequestTechnicalAdmin() ? `<button class=\"btn ghost sm\" type=\"button\" data-agreement-request-technical=\"${id}\" data-permission-resource=\"technical_admin_requests\" data-permission-action=\"create\">Request Technical</button>` : ''}
         ${Permissions.canGenerateAgreementHtml() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="agreements" data-permission-action="view" data-agreement-preview=\"${id}\">View Agreement</button>` : ''}
-        ${signedRow && Permissions.canCreateInvoiceFromAgreement() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="invoices" data-permission-action="create_from_agreement" data-agreement-create-invoice=\"${id}\" data-permission-resource=\"invoices\" data-permission-action=\"create\">Create Invoice</button>` : ''}
+        ${signedRow && Permissions.canCreateInvoiceFromAgreement() ? `<button class=\"btn ghost sm create-invoice-btn${invoiceBlocked ? ' is-disabled is-blocked' : ''}\" type=\"button\" data-permission-resource="invoices" data-permission-action="create_from_agreement" data-agreement-create-invoice=\"${id}\" data-permission-resource=\"invoices\" data-permission-action=\"create\" ${invoiceBlocked ? 'disabled aria-disabled="true"' : ''} title="${U.escapeAttr(invoiceBlocked ? 'All Annual SaaS locations have already been invoiced.' : 'Create invoice')}">Create Invoice</button>` : ''}
         ${Permissions.canDeleteAgreement() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="agreements" data-permission-action="delete" data-agreement-delete=\"${id}\" data-permission-resource=\"agreements\" data-permission-action=\"delete\">Delete</button>` : ''}
         </div></td></tr>`;
     }).join('');
@@ -4458,6 +4501,7 @@ const Agreements = {
       });
       const normalized = this.extractListResult(response);
       this.state.rows = await this.enrichAgreementsWithProposalDisplayRefs(normalized.rows.map(row => this.normalizeAgreement(row)));
+      this.state.invoiceBlockedAgreementIds = await this.loadInvoiceBlockedAgreementIds(this.state.rows);
       this.state.total = normalized.total;
       this.state.returned = normalized.returned;
       this.state.hasMore = normalized.hasMore;
@@ -4473,6 +4517,7 @@ const Agreements = {
       }
       console.error('[Agreements] load failed', error);
       this.state.rows = [];
+      this.state.invoiceBlockedAgreementIds = new Set();
       this.state.loadError = String(error?.message || '').trim() || 'Unable to load agreements.';
     } finally {
       this.state.loading = false;
@@ -4554,7 +4599,12 @@ const Agreements = {
       const previewId = trigger.getAttribute('data-agreement-preview');
       if (previewId) { if (!Permissions.canGenerateAgreementHtml()) return UI.toast('You do not have permission to preview agreements.'); return this.runRowAction(`preview:${previewId}`, trigger, () => this.previewAgreementHtml(previewId)); }
       const createInvoiceId = trigger.getAttribute('data-agreement-create-invoice');
-      if (createInvoiceId) return this.runRowAction(`create-invoice:${createInvoiceId}`, trigger, () => this.createInvoiceFromAgreementFlow(createInvoiceId));
+      if (createInvoiceId) {
+        const row = this.state.rows.find(entry => String(entry?.id || '').trim() === String(createInvoiceId || '').trim());
+        const invoiceBlocked = Boolean(row && this.state.invoiceBlockedAgreementIds.has(String(row?.id || '').trim()));
+        if (invoiceBlocked) return;
+        return this.runRowAction(`create-invoice:${createInvoiceId}`, trigger, () => this.createInvoiceFromAgreementFlow(createInvoiceId));
+      }
       const deleteId = trigger.getAttribute('data-agreement-delete');
       if (deleteId) return this.runRowAction(`delete:${deleteId}`, trigger, () => this.deleteById(deleteId));
     });
