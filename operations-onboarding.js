@@ -1724,7 +1724,40 @@ const OperationsOnboarding = {
         technical_admin_request: 'Requested',
         technical_request_status: 'Requested',
         request_status: 'Requested',
-        technical_admin_request_message: message
+        technical_admin_request_message: message,
+        number_of_locations:
+          summary.number_of_locations ||
+          summary.locations_count ||
+          summary.location_count ||
+          summary.invoiced_locations_count ||
+          summary.invoiced_location_count ||
+          (summary.location_name ? 1 : null),
+        locations_count:
+          summary.locations_count ||
+          summary.number_of_locations ||
+          summary.location_count ||
+          summary.invoiced_locations_count ||
+          summary.invoiced_location_count ||
+          (summary.location_name ? 1 : null),
+        location_count:
+          summary.location_count ||
+          summary.number_of_locations ||
+          summary.locations_count ||
+          summary.invoiced_locations_count ||
+          summary.invoiced_location_count ||
+          (summary.location_name ? 1 : null),
+        location_number:
+          summary.location_number ||
+          summary.number_of_locations ||
+          summary.locations_count ||
+          summary.location_count ||
+          (summary.location_name ? 1 : null),
+        locations_number:
+          summary.locations_number ||
+          summary.number_of_locations ||
+          summary.locations_count ||
+          summary.location_count ||
+          (summary.location_name ? 1 : null)
       });
       await this.loadAndRefresh({ force: true });
       if (window.TechnicalAdmin?.loadAndRefresh) {
