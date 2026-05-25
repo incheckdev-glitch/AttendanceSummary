@@ -133,6 +133,16 @@ const Invoices = {
   formatMoney(value) {
     return this.toNumberSafe(value).toLocaleString(undefined, { maximumFractionDigits: 2 });
   },
+  getInCheckBankDetails() {
+    return {
+      bank_name: 'WISE US Inc',
+      account_name: 'InCheck 360 Holding B.V.',
+      account_number: '367413263110026',
+      routing_number: '084009519',
+      swift_bic: 'TRWIUS35XXX',
+      bank_address: '108 W 13th St Wilmington 19801 - USA'
+    };
+  },
   getValidPaymentTerms() {
     return ['Net 7', 'Net 14', 'Net 21', 'Net 30'];
   },
@@ -1283,15 +1293,15 @@ const Invoices = {
     const customerName = String(invoiceData.customer_legal_name || invoiceData.customer_name || invoiceData.client_name || '').trim();
     const customerAddress = String(invoiceData.customer_address || '').trim();
     const footerNote = String(invoiceData.footer_note || '').trim();
+    const bank = this.getInCheckBankDetails();
     const bankRows = [
-      ['Bank Name', textValue(invoiceData.bank_name)],
-      ['Account Name', textValue(invoiceData.bank_account_name)],
-      ['Account Number', textValue(invoiceData.bank_account_number)],
-      ['IBAN', textValue(invoiceData.bank_iban)],
-      ['SWIFT / BIC', textValue(invoiceData.bank_swift)],
-      ['Branch', textValue(invoiceData.bank_branch)],
-      ['Beneficiary Address', textValue(invoiceData.bank_beneficiary_address)],
-      ['Payment Reference', textValue(invoiceData.invoice_number || invoiceData.invoice_id)]
+      ['Bank Name', textValue(bank.bank_name)],
+      ['Account Name', textValue(bank.account_name)],
+      ['Account Number', textValue(bank.account_number)],
+      ['Routing Number', textValue(bank.routing_number)],
+      ['SWIFT / BIC', textValue(bank.swift_bic)],
+      ['Bank Address', textValue(bank.bank_address)],
+      ['Payment Reference', textValue(invoiceData.invoice_number || invoiceData.invoiceNumber || invoiceData.invoice_id || invoiceData.id)]
     ];
 
     return `<!doctype html>
