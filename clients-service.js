@@ -471,27 +471,70 @@ const ClientsService = {
   },
   attachInvoiceItems(invoices = [], invoiceItems = []) {
     const byInvoiceKey = new Map();
+    const byAgreementKey = new Map();
 
-    const add = (key, item) => {
+    const add = (map, key, item) => {
       const normalized = String(key || '').trim();
       if (!normalized) return;
-      if (!byInvoiceKey.has(normalized)) byInvoiceKey.set(normalized, []);
-      byInvoiceKey.get(normalized).push(item);
+      if (!map.has(normalized)) map.set(normalized, []);
+      map.get(normalized).push(item);
     };
 
+    const invoiceKeysForItem = item => [
+      item.invoice_id,
+      item.invoiceId,
+      item.invoice_uuid,
+      item.invoiceUuid,
+      item.invoice_number,
+      item.invoiceNumber,
+      item.invoice_no,
+      item.invoiceNo,
+      item.invoice_reference,
+      item.invoiceReference,
+      item.parent_invoice_id,
+      item.parentInvoiceId,
+      item.parent_invoice_number,
+      item.parentInvoiceNumber,
+      item.source_invoice_id,
+      item.sourceInvoiceId,
+      item.source_invoice_number,
+      item.sourceInvoiceNumber
+    ].map(value => String(value || '').trim()).filter(Boolean);
+
+    const agreementKeysForItem = item => [
+      item.agreement_id,
+      item.agreementId,
+      item.agreement_uuid,
+      item.agreementUuid,
+      item.linked_agreement_id,
+      item.linkedAgreementId,
+      item.source_agreement_id,
+      item.sourceAgreementId,
+      item.parent_agreement_id,
+      item.parentAgreementId,
+      item.agreement_number,
+      item.agreementNumber,
+      item.agreement_reference,
+      item.agreementReference,
+      item.agreement_ref,
+      item.agreementRef,
+      item.linked_agreement_number,
+      item.linkedAgreementNumber,
+      item.source_agreement_number,
+      item.sourceAgreementNumber,
+      item.parent_agreement_number,
+      item.parentAgreementNumber
+    ].map(value => String(value || '').trim()).filter(Boolean);
+
     for (const item of Array.isArray(invoiceItems) ? invoiceItems : []) {
-      add(item.invoice_id, item);
-      add(item.invoiceId, item);
-      add(item.invoice_uuid, item);
-      add(item.invoiceUuid, item);
-      add(item.invoice_number, item);
-      add(item.invoiceNumber, item);
-      add(item.invoice_no, item);
-      add(item.invoiceNo, item);
-      add(item.parent_invoice_id, item);
-      add(item.parent_invoice_number, item);
-      add(item.source_invoice_id, item);
-      add(item.source_invoice_number, item);
+      const itemInvoiceKeys = invoiceKeysForItem(item);
+      itemInvoiceKeys.forEach(key => add(byInvoiceKey, key, item));
+
+      // Legacy invoice_items rows may have agreement_id/agreement_number but no invoice_id.
+      // Keep a fallback agreement index so Payment & Renewals can still render the line.
+      if (!itemInvoiceKeys.length) {
+        agreementKeysForItem(item).forEach(key => add(byAgreementKey, key, item));
+      }
     }
 
     return (Array.isArray(invoices) ? invoices : []).map(invoice => {
@@ -504,19 +547,49 @@ const ClientsService = {
         invoice.invoice_number,
         invoice.invoiceNumber,
         invoice.invoice_no,
-        invoice.invoiceNo
+        invoice.invoiceNo,
+        invoice.invoice_reference,
+        invoice.invoiceReference,
+        invoice.reference
+      ].map(value => String(value || '').trim()).filter(Boolean);
+
+      const agreementKeys = [
+        invoice.agreement_id,
+        invoice.agreementId,
+        invoice.agreement_uuid,
+        invoice.agreementUuid,
+        invoice.linked_agreement_id,
+        invoice.linkedAgreementId,
+        invoice.source_agreement_id,
+        invoice.sourceAgreementId,
+        invoice.agreement_number,
+        invoice.agreementNumber,
+        invoice.agreement_reference,
+        invoice.agreementReference,
+        invoice.agreement_ref,
+        invoice.agreementRef,
+        invoice.linked_agreement_number,
+        invoice.linkedAgreementNumber,
+        invoice.source_agreement_number,
+        invoice.sourceAgreementNumber
       ].map(value => String(value || '').trim()).filter(Boolean);
 
       const seen = new Set();
       const items = [];
 
+      const pushItem = item => {
+        const itemKey = String(item.id || `${item.invoice_id || item.invoice_number || item.agreement_id || item.agreement_number}-${item.line_no}-${item.location_name}`).trim();
+        if (seen.has(itemKey)) return;
+        seen.add(itemKey);
+        items.push(item);
+      };
+
       for (const key of keys) {
-        for (const item of byInvoiceKey.get(key) || []) {
-          const itemKey = String(item.id || `${item.invoice_id || item.invoice_number}-${item.line_no}-${item.location_name}`).trim();
-          if (seen.has(itemKey)) continue;
-          seen.add(itemKey);
-          items.push(item);
-        }
+        for (const item of byInvoiceKey.get(key) || []) pushItem(item);
+      }
+
+      for (const key of agreementKeys) {
+        for (const item of byAgreementKey.get(key) || []) pushItem(item);
       }
 
       return {

@@ -995,7 +995,37 @@ const Clients = {
       invoice.invoice_number,
       invoice.invoiceNumber,
       invoice.invoice_no,
-      invoice.invoiceNo
+      invoice.invoiceNo,
+      invoice.invoice_reference,
+      invoice.invoiceReference,
+      invoice.reference
+    ]
+      .map(value => String(value || '').trim())
+      .filter(Boolean);
+  },
+  getInvoiceAgreementMatchKeys_(invoice = {}) {
+    invoice = invoice && typeof invoice === 'object' ? invoice : {};
+    return [
+      invoice.agreement_id,
+      invoice.agreementId,
+      invoice.agreement_uuid,
+      invoice.agreementUuid,
+      invoice.linked_agreement_id,
+      invoice.linkedAgreementId,
+      invoice.source_agreement_id,
+      invoice.sourceAgreementId,
+      invoice.agreement_number,
+      invoice.agreementNumber,
+      invoice.agreement_reference,
+      invoice.agreementReference,
+      invoice.agreement_ref,
+      invoice.agreementRef,
+      invoice.linked_agreement_number,
+      invoice.linkedAgreementNumber,
+      invoice.source_agreement_number,
+      invoice.sourceAgreementNumber,
+      invoice.related_agreement_number,
+      invoice.relatedAgreementNumber
     ]
       .map(value => String(value || '').trim())
       .filter(Boolean);
@@ -1011,34 +1041,108 @@ const Clients = {
       item.invoiceNumber,
       item.invoice_no,
       item.invoiceNo,
+      item.invoice_reference,
+      item.invoiceReference,
       item.parent_invoice_id,
+      item.parentInvoiceId,
       item.parent_invoice_number,
+      item.parentInvoiceNumber,
       item.source_invoice_id,
-      item.source_invoice_number
+      item.sourceInvoiceId,
+      item.source_invoice_number,
+      item.sourceInvoiceNumber
     ]
       .map(value => String(value || '').trim())
       .filter(Boolean);
   },
+  getInvoiceItemAgreementMatchKeys_(item = {}) {
+    item = item && typeof item === 'object' ? item : {};
+    return [
+      item.agreement_id,
+      item.agreementId,
+      item.agreement_uuid,
+      item.agreementUuid,
+      item.linked_agreement_id,
+      item.linkedAgreementId,
+      item.source_agreement_id,
+      item.sourceAgreementId,
+      item.parent_agreement_id,
+      item.parentAgreementId,
+      item.agreement_number,
+      item.agreementNumber,
+      item.agreement_reference,
+      item.agreementReference,
+      item.agreement_ref,
+      item.agreementRef,
+      item.linked_agreement_number,
+      item.linkedAgreementNumber,
+      item.source_agreement_number,
+      item.sourceAgreementNumber,
+      item.parent_agreement_number,
+      item.parentAgreementNumber,
+      item.related_agreement_number,
+      item.relatedAgreementNumber
+    ]
+      .map(value => String(value || '').trim())
+      .filter(Boolean);
+  },
+  keySetContainsMatch_(set = new Set(), values = []) {
+    return (Array.isArray(values) ? values : []).some(value => {
+      const normalized = String(value || '').trim();
+      if (!normalized) return false;
+      for (const existing of set) {
+        if (this.valuesMatch(existing, normalized)) return true;
+      }
+      return false;
+    });
+  },
   findInvoiceForItem_(item = {}, invoices = []) {
     item = item && typeof item === 'object' ? item : {};
+    const safeInvoices = Array.isArray(invoices) ? invoices.filter(Boolean) : [];
     const itemKeys = this.getInvoiceItemMatchKeys_(item);
-    return (Array.isArray(invoices) ? invoices : []).find(invoice => {
+    const direct = safeInvoices.find(invoice => {
       const invoiceKeys = this.getInvoiceMatchKeys_(invoice);
       return itemKeys.some(itemKey => invoiceKeys.some(invoiceKey => this.valuesMatch(itemKey, invoiceKey)));
-    }) || null;
+    });
+    if (direct) return direct;
+
+    // Some legacy invoice_items rows were saved with agreement links but without an invoice_id.
+    // In that case, attach the line to the related invoice through the agreement link so the
+    // Payment & Renewals table does not become empty.
+    const itemAgreementKeys = this.getInvoiceItemAgreementMatchKeys_(item);
+    if (!itemAgreementKeys.length) return null;
+
+    const agreementMatches = safeInvoices.filter(invoice => {
+      const invoiceAgreementKeys = this.getInvoiceAgreementMatchKeys_(invoice);
+      return itemAgreementKeys.some(itemKey => invoiceAgreementKeys.some(invoiceKey => this.valuesMatch(itemKey, invoiceKey)));
+    });
+
+    if (agreementMatches.length === 1) return agreementMatches[0];
+    if (agreementMatches.length > 1) {
+      return agreementMatches
+        .slice()
+        .sort((a, b) => new Date(b.updated_at || b.created_at || b.invoice_date || 0).getTime() - new Date(a.updated_at || a.created_at || a.invoice_date || 0).getTime())[0];
+    }
+
+    return null;
   },
   listClientRelatedInvoiceItems_(clientId) {
+    const client = this.state.rows.find(row => row.client_id === clientId);
     const invoices = this.listClientRelatedInvoices_(clientId);
-    const invoiceIds = new Set(invoices.flatMap(item => this.getInvoiceMatchKeys_(item)));
+    const linkedAgreements = this.listClientRelatedAgreements_(clientId);
+    const invoiceIds = new Set(invoices.flatMap(item => this.getInvoiceMatchKeys_(item)).map(value => String(value || '').trim()).filter(Boolean));
+    const linkedAgreementKeys = new Set(linkedAgreements.flatMap(item => this.getAgreementMatchKeys_(item)).map(value => String(value || '').trim()).filter(Boolean));
+    const clientCompanyKeys = client ? this.getExpandedCompanyIdKeys_(client) : new Set();
     const seen = new Set();
     const rows = [];
 
     const pushItem = item => {
       if (!item || typeof item !== 'object') return;
-      const itemKey = String(item.id || `${item.invoice_id || item.invoice_number}-${item.line_no}-${item.location_name}`).trim();
-      if (seen.has(itemKey)) return;
-      seen.add(itemKey);
-      rows.push(item);
+      const normalized = this.normalizeInvoiceItem ? this.normalizeInvoiceItem(item) : item;
+      const itemKey = String(normalized.id || `${normalized.invoice_id || normalized.invoice_number || normalized.agreement_id || normalized.agreement_number}-${normalized.line_no}-${normalized.location_name}`).trim();
+      if (itemKey && seen.has(itemKey)) return;
+      if (itemKey) seen.add(itemKey);
+      rows.push(normalized);
     };
 
     invoices.forEach(invoice => {
@@ -1053,8 +1157,16 @@ const Clients = {
     (Array.isArray(this.state.invoiceItems) ? this.state.invoiceItems : [])
       .filter(Boolean)
       .filter(item => {
-        const links = this.getInvoiceItemMatchKeys_(item);
-        return links.some(link => invoiceIds.has(link));
+        const invoiceLinks = this.getInvoiceItemMatchKeys_(item);
+        if (this.keySetContainsMatch_(invoiceIds, invoiceLinks)) return true;
+
+        const itemAgreementLinks = this.getInvoiceItemAgreementMatchKeys_(item);
+        if (this.keySetContainsMatch_(linkedAgreementKeys, itemAgreementLinks)) return true;
+
+        const itemCompanyKeys = this.getExpandedCompanyIdKeys_(item);
+        if (clientCompanyKeys.size && itemCompanyKeys.size && this.companyKeySetsIntersect_(clientCompanyKeys, itemCompanyKeys)) return true;
+
+        return false;
       })
       .forEach(pushItem);
 
