@@ -548,6 +548,12 @@ const Clients = {
       parent_agreement_number: String(raw.parent_agreement_number || raw.parentAgreementNumber || '').trim(),
       source_agreement_id: String(raw.source_agreement_id || raw.sourceAgreementId || '').trim(),
       source_agreement_number: String(raw.source_agreement_number || raw.sourceAgreementNumber || '').trim(),
+      invoice_id: String(raw.invoice_id || raw.invoiceId || raw.invoiced_invoice_id || raw.invoicedInvoiceId || raw.source_invoice_id || raw.sourceInvoiceId || '').trim(),
+      invoice_number: String(raw.invoice_number || raw.invoiceNumber || raw.invoiced_invoice_number || raw.invoicedInvoiceNumber || raw.source_invoice_number || raw.sourceInvoiceNumber || '').trim(),
+      invoiced_invoice_id: String(raw.invoiced_invoice_id || raw.invoicedInvoiceId || raw.invoice_id || raw.invoiceId || '').trim(),
+      invoiced_invoice_number: String(raw.invoiced_invoice_number || raw.invoicedInvoiceNumber || raw.invoice_number || raw.invoiceNumber || '').trim(),
+      invoice_status: String(raw.invoice_status || raw.invoiceStatus || '').trim(),
+      invoiced_at: String(raw.invoiced_at || raw.invoicedAt || '').trim(),
       section: String(raw.section || raw.category || raw.type || raw.section_name || raw.section_label || '').trim(),
       category: String(raw.category || raw.section || raw.type || '').trim(),
       location_name: String(raw.location_name || raw.locationName || raw.location || raw.site || raw.site_name || raw.branch || raw.branch_name || raw.store_name || '').trim(),
@@ -573,8 +579,9 @@ const Clients = {
       invoice_id: String(source.invoice_id || source.invoiceId || source.invoice_uuid || source.invoiceUuid || source.parent_invoice_id || source.parentInvoiceId || '').trim(),
       invoice_number: String(source.invoice_number || source.invoiceNumber || source.invoice_no || source.invoiceNo || source.parent_invoice_number || source.parentInvoiceNumber || source.source_invoice_number || source.sourceInvoiceNumber || '').trim(),
       invoice_no: String(source.invoice_no || source.invoiceNo || source.invoice_number || source.invoiceNumber || '').trim(),
-      agreement_id: String(source.agreement_id || source.agreementId || source.parent_agreement_id || source.parentAgreementId || '').trim(),
-      agreement_number: String(source.agreement_number || source.agreementNumber || source.parent_agreement_number || source.parentAgreementNumber || source.source_agreement_number || source.sourceAgreementNumber || '').trim(),
+      agreement_id: String(source.agreement_id || source.agreementId || source.parent_agreement_id || source.parentAgreementId || source.source_agreement_id || source.sourceAgreementId || '').trim(),
+      agreement_number: String(source.agreement_number || source.agreementNumber || source.parent_agreement_number || source.parentAgreementNumber || source.source_agreement_number || source.sourceAgreementNumber || source.agreement_reference || source.agreementReference || source.linked_agreement_number || source.linkedAgreementNumber || '').trim(),
+      agreement_reference: String(source.agreement_reference || source.agreementReference || source.agreement_ref || source.agreementRef || source.linked_agreement_number || source.linkedAgreementNumber || '').trim(),
       company_id: String(source.company_id || source.companyId || '').trim(),
       section: String(source.section || source.item_section || source.itemSection || source.category || source.type || '').trim(),
       category: String(source.category || source.section || source.type || '').trim(),
@@ -1000,47 +1007,6 @@ const Clients = {
       .map(value => String(value || '').trim())
       .filter(Boolean);
   },
-  attachInvoiceItemsToInvoices_(invoices = [], invoiceItems = []) {
-    const byKey = new Map();
-    const add = (key, item) => {
-      const normalized = String(key || '').trim();
-      if (!normalized) return;
-      if (!byKey.has(normalized)) byKey.set(normalized, []);
-      byKey.get(normalized).push(item);
-    };
-    (Array.isArray(invoiceItems) ? invoiceItems : []).forEach(item => {
-      this.getInvoiceItemMatchKeys_(item).forEach(key => add(key, item));
-      this.getInvoiceItemAgreementMatchKeys_(item).forEach(key => add(key, item));
-    });
-    return (Array.isArray(invoices) ? invoices : []).map(invoice => {
-      const keys = [
-        ...this.getInvoiceMatchKeys_(invoice),
-        invoice.agreement_id,
-        invoice.agreementId,
-        invoice.agreement_uuid,
-        invoice.agreementUuid,
-        invoice.agreement_number,
-        invoice.agreementNumber,
-        invoice.agreement_reference,
-        invoice.agreementReference,
-        invoice.agreement_ref,
-        invoice.agreementRef,
-        invoice.linked_agreement_number,
-        invoice.linkedAgreementNumber
-      ].map(value => String(value || '').trim()).filter(Boolean);
-      const seen = new Set();
-      const items = [];
-      keys.forEach(key => {
-        (byKey.get(key) || []).forEach(item => {
-          const itemKey = String(item.id || `${item.invoice_id || item.invoice_number}-${item.line_no}-${item.location_name}-${item.item_name}`).trim();
-          if (itemKey && seen.has(itemKey)) return;
-          if (itemKey) seen.add(itemKey);
-          items.push(item);
-        });
-      });
-      return { ...invoice, items, invoice_items: items };
-    });
-  },
   getInvoiceItemMatchKeys_(item = {}) {
     item = item && typeof item === 'object' ? item : {};
     return [
@@ -1060,7 +1026,7 @@ const Clients = {
       .map(value => String(value || '').trim())
       .filter(Boolean);
   },
-  getInvoiceItemAgreementMatchKeys_(item = {}) {
+  getAgreementLinkKeysFromInvoiceItem_(item = {}) {
     item = item && typeof item === 'object' ? item : {};
     return [
       item.agreement_id,
@@ -1073,34 +1039,53 @@ const Clients = {
       item.agreementReference,
       item.agreement_ref,
       item.agreementRef,
-      item.parent_agreement_id,
-      item.parentAgreementId,
-      item.parent_agreement_number,
-      item.parentAgreementNumber,
+      item.linked_agreement_number,
+      item.linkedAgreementNumber,
       item.source_agreement_id,
       item.sourceAgreementId,
       item.source_agreement_number,
-      item.sourceAgreementNumber,
-      item.linked_agreement_id,
-      item.linkedAgreementId,
-      item.linked_agreement_number,
-      item.linkedAgreementNumber
-    ]
-      .map(value => String(value || '').trim())
-      .filter(Boolean);
+      item.sourceAgreementNumber
+    ].map(value => String(value || '').trim()).filter(Boolean);
   },
-  findInvoiceForItem_(item = {}, invoices = []) {
+  getInvoiceKeysFromAgreementItem_(item = {}) {
     item = item && typeof item === 'object' ? item : {};
-    const safeInvoices = Array.isArray(invoices) ? invoices.filter(Boolean) : [];
-    const itemKeys = this.getInvoiceItemMatchKeys_(item);
-    const byInvoiceKey = safeInvoices.find(invoice => {
+    return [
+      item.invoice_id,
+      item.invoiceId,
+      item.invoice_uuid,
+      item.invoiceUuid,
+      item.invoice_number,
+      item.invoiceNumber,
+      item.invoice_no,
+      item.invoiceNo,
+      item.invoiced_invoice_id,
+      item.invoicedInvoiceId,
+      item.invoiced_invoice_number,
+      item.invoicedInvoiceNumber,
+      item.source_invoice_id,
+      item.sourceInvoiceId,
+      item.source_invoice_number,
+      item.sourceInvoiceNumber
+    ].map(value => String(value || '').trim()).filter(Boolean);
+  },
+  isAgreementItemInvoiced_(item = {}) {
+    const status = String(item?.invoice_status || item?.invoiceStatus || '').trim().toLowerCase().replace(/\s+/g, '_');
+    if (['not_invoiced', 'notinvoiced', 'none', ''].includes(status)) {
+      return Boolean(String(item?.invoiced_invoice_id || item?.invoicedInvoiceId || item?.invoice_id || item?.invoiceId || item?.invoiced_at || item?.invoicedAt || '').trim());
+    }
+    if (['invoiced', 'issued', 'partially_invoiced', 'partially_paid', 'paid', 'settled'].includes(status)) return true;
+    return Boolean(String(item?.invoiced_invoice_id || item?.invoicedInvoiceId || item?.invoice_id || item?.invoiceId || item?.invoiced_at || item?.invoicedAt || '').trim());
+  },
+  findInvoiceForAgreementItem_(item = {}, invoices = []) {
+    const itemInvoiceKeys = this.getInvoiceKeysFromAgreementItem_(item);
+    const directInvoice = (Array.isArray(invoices) ? invoices : []).find(invoice => {
       const invoiceKeys = this.getInvoiceMatchKeys_(invoice);
-      return itemKeys.some(itemKey => invoiceKeys.some(invoiceKey => this.valuesMatch(itemKey, invoiceKey)));
+      return itemInvoiceKeys.some(itemKey => invoiceKeys.some(invoiceKey => this.valuesMatch(itemKey, invoiceKey)));
     });
-    if (byInvoiceKey) return byInvoiceKey;
+    if (directInvoice) return directInvoice;
 
-    const itemAgreementKeys = this.getInvoiceItemAgreementMatchKeys_(item);
-    const byAgreementKey = safeInvoices.find(invoice => {
+    const itemAgreementKeys = this.getAgreementItemMatchKeys_(item);
+    const sameAgreementInvoices = (Array.isArray(invoices) ? invoices : []).filter(invoice => {
       const invoiceAgreementKeys = [
         invoice.agreement_id,
         invoice.agreementId,
@@ -1110,73 +1095,51 @@ const Clients = {
         invoice.agreementNumber,
         invoice.agreement_reference,
         invoice.agreementReference,
-        invoice.agreement_ref,
-        invoice.agreementRef,
         invoice.source_agreement_id,
         invoice.sourceAgreementId,
         invoice.source_agreement_number,
-        invoice.sourceAgreementNumber,
-        invoice.linked_agreement_number,
-        invoice.linkedAgreementNumber
+        invoice.sourceAgreementNumber
       ].map(value => String(value || '').trim()).filter(Boolean);
       return itemAgreementKeys.some(itemKey => invoiceAgreementKeys.some(invoiceKey => this.valuesMatch(itemKey, invoiceKey)));
     });
-    if (byAgreementKey) return byAgreementKey;
 
-    const itemCompanyKeys = this.getExpandedCompanyIdKeys_(item);
-    if (itemCompanyKeys.size) {
-      const byCompany = safeInvoices.find(invoice => {
-        const invoiceCompanyKeys = this.getExpandedCompanyIdKeys_(invoice);
-        return invoiceCompanyKeys.size && this.companyKeySetsIntersect_(itemCompanyKeys, invoiceCompanyKeys);
-      });
-      if (byCompany) return byCompany;
-    }
-
-    return null;
+    return sameAgreementInvoices.length === 1 ? sameAgreementInvoices[0] : null;
   },
-  invoiceItemBelongsToClient_(item = {}, client = {}, relatedAgreements = [], relatedInvoices = []) {
-    if (!item || typeof item !== 'object') return false;
+  findAgreementItemForInvoiceItem_(invoiceItem = {}, agreementItems = []) {
+    const item = invoiceItem && typeof invoiceItem === 'object' ? invoiceItem : {};
+    const itemAgreementKeys = this.getAgreementLinkKeysFromInvoiceItem_(item);
+    const locationKey = this.normalizeLocationKey(item.location_name || item.locationName || item.location || '');
+    const itemKey = this.normalizeLocationKey(item.item_name || item.itemName || item.module_name || item.moduleName || item.license || '');
 
-    const invoiceItemKeys = this.getInvoiceItemMatchKeys_(item);
-    const invoiceKeys = relatedInvoices
-      .flatMap(invoice => this.getInvoiceMatchKeys_(invoice))
-      .map(value => String(value || '').trim())
-      .filter(Boolean);
-    if (invoiceItemKeys.some(itemKey => invoiceKeys.some(invoiceKey => this.valuesMatch(itemKey, invoiceKey)))) return true;
-
-    const itemAgreementKeys = this.getInvoiceItemAgreementMatchKeys_(item);
-    const agreementKeys = relatedAgreements
-      .flatMap(agreement => this.getAgreementMatchKeys_(agreement))
-      .map(value => String(value || '').trim())
-      .filter(Boolean);
-    if (itemAgreementKeys.some(itemKey => agreementKeys.some(agreementKey => this.valuesMatch(itemKey, agreementKey)))) return true;
-
-    const itemCompanyKeys = this.getExpandedCompanyIdKeys_(item);
-    const clientCompanyKeys = this.getExpandedCompanyIdKeys_(client);
-    if (itemCompanyKeys.size && clientCompanyKeys.size && this.companyKeySetsIntersect_(itemCompanyKeys, clientCompanyKeys)) return true;
-
-    const itemNameKey = this.normalizeCompanyKey(item.customer_legal_name || item.customer_name || item.company_name || item.client_name || item.bill_to_name || '');
-    const clientNameKey = this.normalizeCompanyKey(this.getClientLegalName(client));
-    return Boolean(itemNameKey && clientNameKey && itemNameKey === clientNameKey);
+    return (Array.isArray(agreementItems) ? agreementItems : []).find(agreementItem => {
+      const agreementKeys = this.getAgreementItemMatchKeys_(agreementItem);
+      const agreementMatches = !itemAgreementKeys.length || itemAgreementKeys.some(key => agreementKeys.some(agreementKey => this.valuesMatch(key, agreementKey)));
+      if (!agreementMatches) return false;
+      const agreementLocationKey = this.normalizeLocationKey(agreementItem.location_name || agreementItem.locationName || agreementItem.location || '');
+      const agreementItemKey = this.normalizeLocationKey(agreementItem.item_name || agreementItem.itemName || agreementItem.module_name || agreementItem.moduleName || agreementItem.license || '');
+      return Boolean(locationKey && locationKey === agreementLocationKey && (!itemKey || !agreementItemKey || itemKey === agreementItemKey));
+    }) || null;
+  },
+  findInvoiceForItem_(item = {}, invoices = []) {
+    item = item && typeof item === 'object' ? item : {};
+    const itemKeys = this.getInvoiceItemMatchKeys_(item);
+    return (Array.isArray(invoices) ? invoices : []).find(invoice => {
+      const invoiceKeys = this.getInvoiceMatchKeys_(invoice);
+      return itemKeys.some(itemKey => invoiceKeys.some(invoiceKey => this.valuesMatch(itemKey, invoiceKey)));
+    }) || null;
   },
   listClientRelatedInvoiceItems_(clientId) {
-    const client = this.state.rows.find(row => row.client_id === clientId) || {};
     const invoices = this.listClientRelatedInvoices_(clientId);
-    const linkedAgreements = this.listClientRelatedAgreements_(clientId);
+    const invoiceIds = new Set(invoices.flatMap(item => this.getInvoiceMatchKeys_(item)));
     const seen = new Set();
     const rows = [];
 
-    const pushItem = (item, invoice = null) => {
+    const pushItem = item => {
       if (!item || typeof item !== 'object') return;
-      const normalized = this.normalizeInvoiceItem ? this.normalizeInvoiceItem(item) : { ...item };
-      const parentInvoice = invoice || this.findInvoiceForItem_(normalized, invoices) || null;
-      const itemKey = String(
-        normalized.id ||
-        `${normalized.invoice_id || normalized.invoice_number || parentInvoice?.id || parentInvoice?.invoice_number || 'invoice'}-${normalized.line_no || ''}-${normalized.location_name || ''}-${normalized.item_name || ''}`
-      ).trim();
-      if (itemKey && seen.has(itemKey)) return;
-      if (itemKey) seen.add(itemKey);
-      rows.push(parentInvoice ? { ...normalized, _invoice: parentInvoice } : normalized);
+      const itemKey = String(item.id || `${item.invoice_id || item.invoice_number}-${item.line_no}-${item.location_name}`).trim();
+      if (seen.has(itemKey)) return;
+      seen.add(itemKey);
+      rows.push(item);
     };
 
     invoices.forEach(invoice => {
@@ -1184,16 +1147,17 @@ const Clients = {
         ? invoice.items
         : Array.isArray(invoice.invoice_items)
           ? invoice.invoice_items
-          : Array.isArray(invoice.line_items)
-            ? invoice.line_items
-            : [];
-      nested.forEach(item => pushItem(item, invoice));
+          : [];
+      nested.forEach(pushItem);
     });
 
     (Array.isArray(this.state.invoiceItems) ? this.state.invoiceItems : [])
       .filter(Boolean)
-      .filter(item => this.invoiceItemBelongsToClient_(item, client, linkedAgreements, invoices))
-      .forEach(item => pushItem(item));
+      .filter(item => {
+        const links = this.getInvoiceItemMatchKeys_(item);
+        return links.some(link => invoiceIds.has(link));
+      })
+      .forEach(pushItem);
 
     return rows;
   },
@@ -2537,43 +2501,35 @@ const Clients = {
     const status = String(invoice?.status || '').trim().toLowerCase().replace(/\s+/g, '_');
     return ['cancelled', 'canceled', 'void', 'deleted', 'rejected'].includes(status);
   },
-  isAnnualSaasInvoiceItem_(item = {}) {
-    const section = String(item?.section || item?.item_section || item?.itemSection || item?.category || item?.type || '')
+  normalizeSectionKey_(value = '') {
+    return String(value || '')
       .trim()
       .toLowerCase()
-      .replace(/\s+/g, '_');
-    if (section === 'annual_saas') return true;
+      .replace(/[\s\-]+/g, '_');
+  },
+  isAnnualSaasInvoiceItem_(item = {}) {
+    const section = this.normalizeSectionKey_(item?.section || item?.item_section || item?.itemSection || item?.category || item?.type || '');
+    if (['annual_saas', 'saas_annual', 'subscription_annual', 'annual_subscription'].includes(section)) return true;
 
-    const text = this.normalizeText([
-      item?.section,
-      item?.item_section,
-      item?.category,
-      item?.type,
-      item?.item_type,
+    const itemText = String([
       item?.item_name,
       item?.itemName,
+      item?.module_name,
+      item?.moduleName,
       item?.product_name,
       item?.productName,
       item?.service_name,
       item?.serviceName,
-      item?.module_name,
-      item?.moduleName,
-      item?.description,
-      item?.billing_frequency,
-      item?.billingFrequency,
-      item?.billing_cycle,
-      item?.billingCycle,
-      item?.frequency
-    ].filter(Boolean).join(' '));
+      item?.description
+    ].filter(Boolean).join(' ')).toLowerCase();
 
-    if (!text) return false;
-    if (['one_time_fee', 'one time', 'one-time', 'setup', 'account setup', 'implementation', 'onboarding'].some(token => text.includes(token))) return false;
-    if (text.includes('annual_saas') || text.includes('saas annual')) return true;
-    if (text.includes('incheck basic') || text.includes('subscription') || text.includes('license')) return true;
+    if (section.includes('one_time') || section.includes('setup') || itemText.includes('account setup') || itemText.includes('one time')) return false;
 
-    const hasServicePeriod = Boolean(String(item?.service_start_date || item?.serviceStartDate || '').trim() || String(item?.service_end_date || item?.serviceEndDate || '').trim());
-    const hasRecurringSignal = ['annual', 'yearly', 'monthly', 'quarterly', 'semi', 'renewal', 'recurring', 'saas'].some(token => text.includes(token));
-    return Boolean(hasServicePeriod && hasRecurringSignal);
+    const hasServiceDates = Boolean(String(item?.service_start_date || item?.serviceStartDate || '').trim() || String(item?.service_end_date || item?.serviceEndDate || '').trim());
+    const hasLicenseFields = item?.license_quantity !== undefined || item?.licenseQuantity !== undefined || item?.license_months !== undefined || item?.licenseMonths !== undefined;
+    const looksLikeSaas = itemText.includes('incheck') || itemText.includes('license') || itemText.includes('subscription') || itemText.includes('saas');
+
+    return Boolean(hasServiceDates && (hasLicenseFields || looksLikeSaas));
   },
   getClientInvoiceAnnualSaasItems_(clientId) {
     const invoices = this.listClientRelatedInvoices_(clientId).filter(invoice => !this.isInvoiceStatusExcludedFromRenewals_(invoice));
@@ -2586,56 +2542,66 @@ const Clients = {
       });
   },
 
-  findAgreementItemForInvoiceItem_(invoiceItem = {}, clientId = '') {
-    const relatedAgreementItems = this.listClientAgreementLocationItems_(clientId);
-    if (!relatedAgreementItems.length) return null;
-
-    const locationKey = this.normalizeLocationKey(invoiceItem.location_name || invoiceItem.locationName || invoiceItem.location || '');
-    const itemKey = this.normalizeLocationKey(invoiceItem.item_name || invoiceItem.itemName || invoiceItem.module_name || invoiceItem.moduleName || invoiceItem.license || '');
-    const lineNo = String(invoiceItem.line_no || invoiceItem.lineNo || '').trim();
-    const agreementKeys = this.getInvoiceItemAgreementMatchKeys_(invoiceItem);
-
-    return relatedAgreementItems.find(item => {
-      const candidateLocation = this.normalizeLocationKey(item.location_name || item.locationName || item.location || '');
-      const candidateItem = this.normalizeLocationKey(item.item_name || item.itemName || item.module_name || item.moduleName || item.license || '');
-      const candidateLineNo = String(item.line_no || item.lineNo || '').trim();
-      const candidateAgreementKeys = this.getAgreementItemMatchKeys_(item);
-      const agreementMatches = !agreementKeys.length || agreementKeys.some(key => candidateAgreementKeys.some(candidateKey => this.valuesMatch(key, candidateKey)));
-      const locationMatches = !locationKey || !candidateLocation || locationKey === candidateLocation;
-      const itemMatches = !itemKey || !candidateItem || itemKey === candidateItem;
-      const lineMatches = !lineNo || !candidateLineNo || lineNo === candidateLineNo;
-      return agreementMatches && locationMatches && itemMatches && lineMatches;
-    }) || null;
-  },
-  calculateServiceEndFromMonths_(serviceStart = '', months = 12) {
-    const raw = String(serviceStart || '').trim();
-    const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (!match) return '';
-    const count = Math.max(1, Number(months) || 12);
-    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12, 0, 0);
-    date.setMonth(date.getMonth() + count);
-    date.setDate(date.getDate() - 1);
-    return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
-  },
   getInvoiceAnnualSaasRenewalRows(client = {}) {
     const safeClient = client && typeof client === 'object' ? client : {};
     const clientId = String(safeClient.client_id || safeClient.clientId || this.state.selectedClientId || '').trim();
-    const invoices = Array.isArray(safeClient.invoices) && safeClient.invoices.length
+    const invoices = (Array.isArray(safeClient.invoices) && safeClient.invoices.length
       ? safeClient.invoices
-      : this.listClientRelatedInvoices_(clientId);
+      : this.listClientRelatedInvoices_(clientId))
+      .filter(invoice => !this.isInvoiceStatusExcludedFromRenewals_(invoice));
 
     const invoiceKeys = new Set();
     invoices.forEach(invoice => this.getInvoiceMatchKeys_(invoice).forEach(key => invoiceKeys.add(String(key || '').trim())));
 
+    const agreementItems = this.listClientAgreementLocationItems_(clientId)
+      .filter(item => this.isAnnualSaasInvoiceItem_(item));
+
     const seenItems = new Set();
     const collectItems = [];
-    const pushItem = (item, invoice = {}) => {
+
+    const pushItem = (item, invoice = {}, source = 'invoice_item') => {
       if (!item || typeof item !== 'object') return;
-      const normalized = this.normalizeInvoiceItem ? this.normalizeInvoiceItem(item) : item;
-      const itemKey = String(normalized.id || `${normalized.invoice_id || normalized.invoice_number}-${normalized.line_no}-${normalized.location_name}`).trim();
-      if (itemKey && seenItems.has(itemKey)) return;
-      if (itemKey) seenItems.add(itemKey);
-      collectItems.push({ item: normalized, invoice });
+      const normalized = source === 'agreement_item'
+        ? this.normalizeAgreementItem(item)
+        : (this.normalizeInvoiceItem ? this.normalizeInvoiceItem(item) : item);
+
+      const invoiceForItem = invoice && Object.keys(invoice).length
+        ? invoice
+        : (source === 'agreement_item'
+          ? this.findInvoiceForAgreementItem_(normalized, invoices)
+          : this.findInvoiceForItem_(normalized, invoices));
+
+      if (!invoiceForItem || !Object.keys(invoiceForItem).length) return;
+      if (this.isInvoiceStatusExcludedFromRenewals_(invoiceForItem)) return;
+
+      if (!this.isAnnualSaasInvoiceItem_(normalized)) return;
+
+      let enriched = { ...normalized };
+      if (source !== 'agreement_item') {
+        const matchingAgreementItem = this.findAgreementItemForInvoiceItem_(normalized, agreementItems);
+        if (matchingAgreementItem) {
+          enriched = {
+            ...matchingAgreementItem,
+            ...normalized,
+            service_start_date: normalized.service_start_date || matchingAgreementItem.service_start_date || '',
+            service_end_date: normalized.service_end_date || matchingAgreementItem.service_end_date || '',
+            location_name: normalized.location_name || matchingAgreementItem.location_name || '',
+            item_name: normalized.item_name || matchingAgreementItem.item_name || matchingAgreementItem.module_name || '',
+            line_total: this.toNumberSafe(normalized.line_total || matchingAgreementItem.line_total || 0),
+            currency: normalized.currency || matchingAgreementItem.currency || ''
+          };
+        }
+      }
+
+      const invoiceIdentity = String(invoiceForItem.id || invoiceForItem.invoice_id || invoiceForItem.invoice_number || '').trim();
+      const locationKey = this.normalizeLocationKey(enriched.location_name || enriched.locationName || enriched.location || '');
+      const itemKey = this.normalizeLocationKey(enriched.item_name || enriched.itemName || enriched.module_name || enriched.moduleName || '');
+      const sourceId = String(enriched.id || '').trim();
+      const itemIdentity = sourceId || `${invoiceIdentity}-${locationKey}-${itemKey}-${enriched.line_no || ''}`;
+      if (itemIdentity && seenItems.has(itemIdentity)) return;
+      if (itemIdentity) seenItems.add(itemIdentity);
+
+      collectItems.push({ item: enriched, invoice: invoiceForItem, source });
     };
 
     invoices.forEach(invoice => {
@@ -2644,7 +2610,7 @@ const Clients = {
         : Array.isArray(invoice?.invoice_items)
           ? invoice.invoice_items
           : [];
-      nestedItems.forEach(item => pushItem(item, invoice));
+      nestedItems.forEach(item => pushItem(item, invoice, 'invoice_item'));
     });
 
     const explicitInvoiceItems = Array.isArray(safeClient.invoiceItems)
@@ -2653,73 +2619,49 @@ const Clients = {
         ? safeClient.invoice_items
         : [];
 
-    explicitInvoiceItems.forEach(item => {
-      const normalized = this.normalizeInvoiceItem ? this.normalizeInvoiceItem(item) : item;
-      const invoice = this.findInvoiceForItem_(normalized, invoices) || {};
-      pushItem(normalized, invoice);
+    explicitInvoiceItems.forEach(item => pushItem(item, this.findInvoiceForItem_(item, invoices) || {}, 'invoice_item'));
+
+    // State-level invoice_items can be old/imported and may only link by invoice number/UUID/agreement.
+    (Array.isArray(this.state.invoiceItems) ? this.state.invoiceItems : [])
+      .filter(Boolean)
+      .forEach(item => {
+        const normalized = this.normalizeInvoiceItem ? this.normalizeInvoiceItem(item) : item;
+        const invoice = this.findInvoiceForItem_(normalized, invoices);
+        if (invoice) pushItem(normalized, invoice, 'invoice_item');
+      });
+
+    // Final reliable fallback: agreement_items that were actually invoiced.
+    // This still follows the business rule: renewals are based on invoiced Annual SaaS locations,
+    // not on all agreement Annual SaaS rows.
+    agreementItems.forEach(item => {
+      if (!this.isAgreementItemInvoiced_(item)) return;
+      const invoice = this.findInvoiceForAgreementItem_(item, invoices);
+      if (!invoice) return;
+      pushItem(item, invoice, 'agreement_item');
     });
 
-    if (clientId) {
-      this.listClientRelatedInvoiceItems_(clientId).forEach(item => {
-        const normalized = this.normalizeInvoiceItem ? this.normalizeInvoiceItem(item) : item;
-        const invoice = this.findInvoiceForItem_(normalized, invoices) || {};
-        pushItem(normalized, invoice);
-      });
-    } else if (invoiceKeys.size && Array.isArray(this.state.invoiceItems)) {
-      this.state.invoiceItems.forEach(item => {
-        const normalized = this.normalizeInvoiceItem ? this.normalizeInvoiceItem(item) : item;
-        const links = this.getInvoiceItemMatchKeys_(normalized);
-        if (!links.some(link => invoiceKeys.has(String(link || '').trim()))) return;
-        const invoice = this.findInvoiceForItem_(normalized, invoices) || {};
-        pushItem(normalized, invoice);
-      });
-    }
-
     const rows = [];
-    collectItems.forEach(({ item, invoice }) => {
-      const invoiceStatus = String(invoice?.status || '').trim().toLowerCase();
-      if (['cancelled', 'canceled', 'void', 'deleted', 'rejected'].includes(invoiceStatus)) return;
-
-      if (!this.isAnnualSaasInvoiceItem_(item)) return;
-
-      const matchedAgreementItem = this.findAgreementItemForInvoiceItem_(item, clientId);
-      const serviceStart = String(
-        item?.service_start_date ||
-        item?.serviceStartDate ||
-        matchedAgreementItem?.service_start_date ||
-        matchedAgreementItem?.serviceStartDate ||
-        ''
-      ).trim();
-      let serviceEnd = String(
-        item?.service_end_date ||
-        item?.serviceEndDate ||
-        item?.renewal_date ||
-        item?.renewalDate ||
-        matchedAgreementItem?.service_end_date ||
-        matchedAgreementItem?.serviceEndDate ||
-        matchedAgreementItem?.renewal_date ||
-        matchedAgreementItem?.renewalDate ||
-        ''
-      ).trim();
-      if (!serviceEnd && serviceStart) serviceEnd = this.calculateServiceEndFromMonths_(serviceStart, item?.quantity || item?.license_months || item?.licenseMonths || matchedAgreementItem?.quantity || 12);
+    collectItems.forEach(({ item, invoice, source }) => {
+      const serviceStart = String(item?.service_start_date || item?.serviceStartDate || '').trim();
+      const serviceEnd = String(item?.service_end_date || item?.serviceEndDate || item?.renewal_date || item?.renewalDate || '').trim();
       if (!serviceEnd) return;
 
       rows.push(this.normalizeRenewalRow({
         id: item?.id || `${invoice?.id || invoice?.invoice_number || item?.invoice_id}-${item?.line_no || item?.location_name}`,
-        row_id: item?.id || `${invoice?.id || invoice?.invoice_number || item?.invoice_id}-${item?.line_no || item?.location_name}`,
-        source: 'invoice_item',
+        row_id: `${source}:${item?.id || invoice?.id || invoice?.invoice_number || item?.line_no || item?.location_name}`,
+        source,
         location_name: item?.location_name || item?.locationName || '',
-        item_name: item?.item_name || item?.itemName || item?.module_name || '',
-        agreement_id: invoice?.agreement_id || item?.agreement_id || '',
-        agreement_number: invoice?.agreement_number || item?.agreement_number || '',
+        item_name: item?.item_name || item?.itemName || item?.module_name || item?.moduleName || '',
+        agreement_id: invoice?.agreement_id || invoice?.agreementId || item?.agreement_id || item?.agreementId || '',
+        agreement_number: invoice?.agreement_number || invoice?.agreementNumber || invoice?.agreement_reference || item?.agreement_number || item?.agreementNumber || item?.agreement_reference || '',
         invoice_id: invoice?.id || invoice?.invoice_id || item?.invoice_id || '',
-        invoice_number: invoice?.invoice_number || invoice?.invoiceNumber || item?.invoice_number || item?.invoiceNumber || '',
+        invoice_number: invoice?.invoice_number || invoice?.invoiceNumber || invoice?.invoice_no || item?.invoice_number || item?.invoiceNumber || '',
         service_start_date: serviceStart,
         service_end_date: serviceEnd,
         renewal_date: serviceEnd,
         renewal_due_date: serviceEnd,
         due_date: invoice?.due_date || invoice?.dueDate || '',
-        payment_status: invoice?.payment_status || invoiceStatus || '',
+        payment_status: invoice?.payment_status || invoice?.paymentStatus || invoice?.status || '',
         renewal_status: this.getRenewalStatusFromDate ? this.getRenewalStatusFromDate(serviceEnd) : '',
         amount_due: this.toNumberSafe(item?.line_total || item?.total || item?.amount || 0),
         line_total: this.toNumberSafe(item?.line_total || item?.total || item?.amount || 0),
@@ -2727,25 +2669,31 @@ const Clients = {
       }));
     });
 
+    const uniqueRows = this.buildUniqueInvoiceRenewalRows_(rows);
+
     console.debug('[client invoice renewal rows]', {
       clientId,
       invoices: invoices.length,
       invoiceItemsState: Array.isArray(this.state.invoiceItems) ? this.state.invoiceItems.length : 0,
-      collectedInvoiceItems: collectItems.length,
-      annualSaasRows: rows.length
+      agreementItems: agreementItems.length,
+      collectedItems: collectItems.length,
+      annualSaasRows: uniqueRows.length,
+      invoiceNumbers: invoices.map(invoice => invoice.invoice_number || invoice.invoice_id || invoice.id).slice(0, 10)
     });
 
-    return rows.sort((a, b) => new Date(a.renewal_date || a.service_end_date).getTime() - new Date(b.renewal_date || b.service_end_date).getTime());
+    return uniqueRows.sort((a, b) => new Date(a.renewal_date || a.service_end_date).getTime() - new Date(b.renewal_date || b.service_end_date).getTime());
   },
   buildUniqueInvoiceRenewalRows_(items = []) {
     const map = new Map();
     for (const item of Array.isArray(items) ? items : []) {
-      if (!this.isAnnualSaasInvoiceItem_(item)) continue;
+      const hasRenewalDates = Boolean(String(item.service_end_date || item.serviceEndDate || item.renewal_date || '').trim());
+      if (!hasRenewalDates) continue;
+      if (!this.isAnnualSaasInvoiceItem_(item) && !String(item.source || '').includes('agreement_item') && !String(item.source || '').includes('invoice_item')) continue;
       const locationKey = this.normalizeLocationKey(item.location_name || item.locationName || item.location || '');
-      const itemKey = this.normalizeLocationKey(item.item_name || item.itemName || item.license || item.product_name || '');
+      const itemKey = this.normalizeLocationKey(item.item_name || item.itemName || item.module_name || item.moduleName || item.license || item.product_name || '');
       if (!locationKey) continue;
       const invoice = item._invoice || {};
-      const key = `${locationKey}::${itemKey}::${String(invoice.id || invoice.invoice_id || invoice.invoice_number || item.invoice_id || '').trim()}`;
+      const key = `${locationKey}::${itemKey}::${String(invoice.id || invoice.invoice_id || invoice.invoice_number || item.invoice_id || item.invoice_number || '').trim()}`;
       const existing = map.get(key);
       if (!existing) {
         map.set(key, item);
@@ -3448,23 +3396,17 @@ const Clients = {
       this.state.invoiceItems = this.extractListResult(clientsRes.invoice_items || []).rows.map(item => this.normalizeInvoiceItem(item));
       this.state.receipts = this.extractListResult(clientsRes.receipts || []).rows.map(item => this.normalizeReceipt(item));
       this.state.receiptItems = this.extractListResult(clientsRes.receipt_items || []).rows;
-      const [companiesRes, contactsRes, agreementsRes, invoicesRes, invoiceItemsRes, receiptsRes] = await Promise.allSettled([
+      const [companiesRes, contactsRes, agreementsRes, invoicesRes, receiptsRes] = await Promise.allSettled([
         Api.requestWithSession('companies', 'list', { limit: 10000 }, { requireAuth: true }),
         Api.requestWithSession('contacts', 'list', { limit: 10000 }, { requireAuth: true }),
         this.canViewClientRenewals() ? Api.requestWithSession('agreements', 'list', { limit: 10000 }, { requireAuth: true }) : Promise.resolve({ rows: [] }),
         this.canViewClientRenewals() ? Api.requestWithSession('invoices', 'list', { limit: 10000 }, { requireAuth: true }) : Promise.resolve({ rows: [] }),
-        this.canViewClientRenewals() ? Api.requestWithSession('invoice_items', 'list', { limit: 10000 }, { requireAuth: true }) : Promise.resolve({ rows: [] }),
         this.canViewClientRenewals() ? Api.requestWithSession('receipts', 'list', { limit: 10000 }, { requireAuth: true }) : Promise.resolve({ rows: [] })
       ]);
       this.state.companies = companiesRes.status === 'fulfilled' ? this.extractListResult(companiesRes.value).rows : [];
       this.state.contacts = contactsRes.status === 'fulfilled' ? this.extractListResult(contactsRes.value).rows : [];
       if (agreementsRes.status === 'fulfilled') this.state.agreements = this.extractListResult(agreementsRes.value).rows.map(item => this.normalizeAgreement(item));
       if (invoicesRes.status === 'fulfilled') this.state.invoices = this.extractListResult(invoicesRes.value).rows.map(item => this.normalizeInvoice(item));
-      if (invoiceItemsRes.status === 'fulfilled') {
-        const apiInvoiceItems = this.extractListResult(invoiceItemsRes.value).rows.map(item => this.normalizeInvoiceItem(item));
-        if (apiInvoiceItems.length) this.state.invoiceItems = apiInvoiceItems;
-      }
-      this.state.invoices = this.attachInvoiceItemsToInvoices_(this.state.invoices, this.state.invoiceItems);
       if (receiptsRes.status === 'fulfilled') this.state.receipts = this.extractListResult(receiptsRes.value).rows.map(item => this.normalizeReceipt(item));
       if (companiesRes.status === 'rejected') console.warn('[Clients] companies optional load failed; continuing without company lookup data', companiesRes.reason);
       this.rebuildCompanyLookupMaps(this.state.companies);
