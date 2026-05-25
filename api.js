@@ -1130,6 +1130,23 @@ const Api = {
     delete payload.id;
     delete payload.db_id;
     delete payload.record_id;
+    const normalizeStatus = value => String(value || '').trim().toLowerCase().replace(/\s+/g, '_');
+    const isCompleted = row => {
+      const status = normalizeStatus(row?.status || row?.onboarding_status || row?.state || '');
+      return ['completed', 'complete', 'done', 'closed'].includes(status) || Boolean(row?.completed_at || row?.completedAt);
+    };
+    const isInProgress = row => {
+      const status = normalizeStatus(row?.status || row?.onboarding_status || row?.state || '');
+      return ['in_progress', 'started', 'active'].includes(status);
+    };
+    const currentRecordResponse = await this.getOperationsOnboarding({ id: normalizedOnboardingId });
+    const currentRecord = this.unwrapApiPayload(currentRecordResponse) || currentRecordResponse || {};
+    const targetStatus = normalizeStatus(payload.onboarding_status || payload.status || '');
+    if (targetStatus === 'in_progress') {
+      if (isCompleted(currentRecord)) throw new Error('This onboarding is already completed.');
+      if (isInProgress(currentRecord)) throw new Error('This onboarding is already in progress.');
+    }
+    if (targetStatus === 'completed' && isCompleted(currentRecord)) throw new Error('This onboarding is already completed.');
     console.log('[operations onboarding] update id', normalizedOnboardingId, payload);
     const response = await this.updateOperationsOnboarding(normalizedOnboardingId, payload);
     const updatedOnboarding = this.unwrapApiPayload(response) || response || null;
