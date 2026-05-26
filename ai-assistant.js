@@ -21,6 +21,8 @@
     currentRole: '',
     root: null,
     sessionId: null,
+    isSending: false,
+    eventsBound: false,
 
     init() {
       try {
@@ -49,6 +51,9 @@
     },
 
     bindEvents() {
+      if (this.eventsBound) return;
+      this.eventsBound = true;
+
       const root = this.root || document;
       const form = root.querySelector('[data-ai-form], #ai-assistant-form');
       const input = root.querySelector('[data-ai-input], #ai-assistant-input, #aiAssistantInput');
@@ -68,9 +73,10 @@
       }
 
       if (button) {
-        button.setAttribute('type', 'button');
+        button.type = 'button';
         button.addEventListener('click', (event) => {
           event.preventDefault();
+          event.stopPropagation();
           this.sendCurrentMessage();
         });
       }
@@ -136,6 +142,9 @@
           </form>
         </section>
       `;
+      this.eventsBound = false;
+      this.bindEvents();
+
       const promptsContainer = root.querySelector('#aiAssistantPrompts, [data-ai-suggestions]');
       if (promptsContainer) {
         promptsContainer.innerHTML = SUGGESTIONS.map((text) => (
@@ -158,6 +167,13 @@
     },
 
     async sendMessage(message) {
+      if (this.isSending) {
+        console.warn('[AI Assistant] send ignored because request already in progress');
+        return;
+      }
+
+      this.isSending = true;
+
       try {
         console.log('[AI Assistant] sending message', message);
 
@@ -173,12 +189,25 @@
         const currentUser = this.getResolvedCurrentUser();
         const role = this.getAppRole();
         const token = window.SupabaseClient?.getAccessToken?.() || window.Session?.token || '';
+        const anonKey = window.SUPABASE_ANON_KEY || window.SUPABASE_CONFIG?.anonKey || window.__SUPABASE_ANON_KEY__ || '';
+        const SUPABASE_URL =
+          window.SUPABASE_URL ||
+          window.SUPABASE_CONFIG?.url ||
+          window.SupabaseClient?.url ||
+          window.__SUPABASE_URL__;
 
-        const response = await fetch('/functions/v1/ai-assistant', {
+        if (!SUPABASE_URL) {
+          throw new Error('Supabase URL is not configured.');
+        }
+
+        const functionUrl = `${SUPABASE_URL}/functions/v1/ai-assistant`;
+
+        const response = await fetch(functionUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`
+            Authorization: `Bearer ${token || anonKey}`,
+            apikey: anonKey
           },
           body: JSON.stringify({
             session_id: this.sessionId || null,
@@ -201,6 +230,11 @@
         });
 
         if (!response.ok) {
+          console.error('[AI Assistant] failed response', {
+            status: response.status,
+            payload
+          });
+
           throw new Error(payload.error || payload.message || `AI Assistant failed with status ${response.status}`);
         }
 
