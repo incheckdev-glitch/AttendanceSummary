@@ -170,6 +170,21 @@ const Agreements = {
 
     return false;
   },
+
+  wasEmpty(value) {
+    return value === null || value === undefined || String(value).trim() === '';
+  },
+  isFilled(value) {
+    return !this.wasEmpty(value);
+  },
+  didBecomeFilled(before = {}, after = {}, fields = []) {
+    return (Array.isArray(fields) ? fields : []).some(field => this.wasEmpty(before?.[field]) && this.isFilled(after?.[field]));
+  },
+  didStatusBecomeSigned(before = {}, after = {}) {
+    const beforeStatus = String(before?.status || '').trim().toLowerCase();
+    const afterStatus = String(after?.status || '').trim().toLowerCase();
+    return beforeStatus !== 'signed' && afterStatus === 'signed';
+  },
   isAgreementWorkflowUnavailableDecision(decision = {}) {
     if (!decision || typeof decision !== 'object') return false;
     if (decision.unavailable === true || decision.fallback === true) return true;
@@ -4312,6 +4327,19 @@ const Agreements = {
         }
       }
       const savedAgreement = { ...agreement, ...(persistedAgreement || {}) };
+      try {
+        const customerSigned = this.didBecomeFilled(currentRecord || {}, savedAgreement || {}, ['customer_sign_date','customer_signed_at','customer_signature_date','customer_signatory_date','customer_signed_date','customer_official_sign_date']);
+        const fcSigned = this.didBecomeFilled(currentRecord || {}, savedAgreement || {}, ['provider_signatory_1_date','provider_signatory1_date','financial_controller_signed_at','financial_controller_sign_date','provider_fc_signed_at','provider_official_signatory_1_sign_date']);
+        const fullySigned = this.didStatusBecomeSigned(currentRecord || {}, savedAgreement || {});
+        const agreementNumber = String(savedAgreement?.agreement_number || savedAgreement?.agreement_id || savedAgreementId || '').trim();
+        const customerName = String(savedAgreement?.customer_name || savedAgreement?.company_name || '').trim() || 'customer';
+        const notify = window.NotificationService?.sendBusinessNotification;
+        if (typeof notify === 'function') {
+          if (customerSigned) void notify({ resource:'agreements', action:'agreement_customer_signed', recordId:savedAgreementId || agreementNumber, recordNumber:agreementNumber, title:'Agreement signed by customer', body:`Agreement ${agreementNumber} for ${customerName} has been signed by the customer and is ready for Financial Controller review/signature.`, url:`#agreements?agreement_id=${encodeURIComponent(agreementNumber)}`, roles:['financial_controller'] }).catch(err => console.warn('[agreement notification failed] agreement_customer_signed', err));
+          if (fcSigned) void notify({ resource:'agreements', action:'agreement_financial_controller_signed', recordId:savedAgreementId || agreementNumber, recordNumber:agreementNumber, title:'Agreement ready for General Manager signature', body:`Agreement ${agreementNumber} for ${customerName} has been signed by the Financial Controller and is ready for General Manager signature.`, url:`#agreements?agreement_id=${encodeURIComponent(agreementNumber)}`, roles:['gm'] }).catch(err => console.warn('[agreement notification failed] agreement_financial_controller_signed', err));
+          if (fullySigned) void notify({ resource:'agreements', action:'agreement_fully_signed', recordId:savedAgreementId || agreementNumber, recordNumber:agreementNumber, title:'Agreement fully signed', body:`Agreement ${agreementNumber} for ${customerName} is now fully signed.`, url:`#agreements?agreement_id=${encodeURIComponent(agreementNumber)}`, roles:['head_of_sales','sales_executive'], targetEmails:[savedAgreement?.head_of_sales_email,savedAgreement?.sales_executive_email,savedAgreement?.owner_email,savedAgreement?.assigned_sales_email,savedAgreement?.created_by_email].filter(Boolean) }).catch(err => console.warn('[agreement notification failed] agreement_fully_signed', err));
+        }
+      } catch (notifyError) { console.warn('[agreement notifications] non-blocking failure', notifyError); }
       if (id && this.canUseAdminOverride()) this.logAdminOverride('agreement_update_override', currentRecord || latestExistingAgreement || null, savedAgreement);
       const savedAgreementId = String(persistedAgreement?.id || id || '').trim();
       if (this.isAgreementLockedAsSigned(savedAgreement) && savedAgreementId && !this.canUseAdminOverride()) {

@@ -5285,6 +5285,11 @@
     { resource: 'deals', action: 'deal_important_stage', recipient_roles: ['admin'], users_from_record: ['owner_email'] },
     { resource: 'proposals', action: 'proposal_requires_approval', recipient_roles: ['financial_controller', 'gm'] },
     { resource: 'agreements', action: 'agreement_signed', recipient_roles: ['admin', 'accounting', 'hoo'] },
+    { resource: 'agreements', action: 'agreement_customer_signed', recipient_roles: ['financial_controller'], users_from_record: ['financial_controller_email'] },
+    { resource: 'agreements', action: 'agreement_financial_controller_signed', recipient_roles: ['gm'] },
+    { resource: 'agreements', action: 'agreement_fully_signed', recipient_roles: ['head_of_sales', 'sales_executive'], users_from_record: ['head_of_sales_email','sales_executive_email','owner_email','assigned_sales_email','created_by_email'] },
+    { resource: 'leads', action: 'lead_follow_up_due_today', recipient_roles: ['sales_executive'], users_from_record: ['assigned_to_email','assignee_email','owner_email','sales_executive_email'] },
+    { resource: 'deals', action: 'deal_follow_up_due_today', recipient_roles: ['sales_executive'], users_from_record: ['assigned_to_email','assignee_email','owner_email','sales_executive_email'] },
     { resource: 'technical_admin_requests', action: 'technical_request_submitted', recipient_roles: ['admin', 'dev', 'hoo'] },
     { resource: 'workflow', action: 'workflow_approval_requested', recipient_roles: ['financial_controller', 'gm'] },
     { resource: 'communication_centre', action: 'conversation_created', recipient_mode: 'assigned_participants_except_actor', in_app_enabled: true, pwa_enabled: true, email_enabled: false, title_template: 'New Communication Centre conversation', body_template: '{actor_name} created “{conversation_title}”' },
@@ -7684,20 +7689,51 @@
           });
         }
       }
+      function wasEmpty(value) { return value === null || value === undefined || String(value).trim() === ''; }
+      function isFilled(value) { return !wasEmpty(value); }
+      function didBecomeFilled(before = {}, after = {}, fields = []) { return fields.some(field => wasEmpty(before?.[field]) && isFilled(after?.[field])); }
+      function didStatusBecomeSigned(before = {}, after = {}) { const b = String(before?.status || '').trim().toLowerCase(); const a = String(after?.status || '').trim().toLowerCase(); return b !== 'signed' && a === 'signed'; }
+
       if (resource === 'agreements') {
-        const nextStatus = String(data?.status || '').trim().toLowerCase();
-        if (nextStatus.includes('signed') && previousAgreementStatus.trim().toLowerCase() !== nextStatus) {
+        const agreementRecordId = String(data?.agreement_id || data?.agreement_number || data?.id || id || '').trim();
+        const agreementUuid = String(data?.id || id || '').trim();
+        const customerFilled = didBecomeFilled(previousAgreement || {}, data || {}, ['customer_sign_date','customer_signed_at','customer_signature_date','customer_signatory_date','customer_signed_date','customer_official_sign_date']);
+        const fcFilled = didBecomeFilled(previousAgreement || {}, data || {}, ['provider_signatory_1_date','provider_signatory1_date','financial_controller_signed_at','financial_controller_sign_date','provider_fc_signed_at','provider_official_signatory_1_sign_date']);
+        const becameSigned = didStatusBecomeSigned(previousAgreement || {}, data || {}) || (String(data?.status || '').trim().toLowerCase().includes('signed') && previousAgreementStatus.trim().toLowerCase() !== String(data?.status || '').trim().toLowerCase());
+
+        if (customerFilled) {
           await createNotificationAndPush({
-            title: 'Agreement signed',
-            message: `Agreement ${String(data?.agreement_id || data?.agreement_number || data?.id || id || '').trim()} has been signed.`,
+            title: 'Agreement signed by customer',
+            message: `Agreement ${agreementRecordId} for ${String(data?.customer_name || data?.company_name || '').trim() || 'customer'} has been signed by the customer and is ready for Financial Controller review/signature.`,
             resource: 'agreements',
-            action: 'agreement_signed',
-            record_id: String(data?.agreement_id || data?.id || id || '').trim(),
-            target_roles: ['admin', 'hoo'],
-            dedupe_key: `agreements-signed-${String(data?.agreement_id || data?.id || id || '').trim()}`
-          }, 'agreements:update:signed').catch(error => {
-            console.warn('[notifications:pwa] agreements:update:signed failed', error);
-          });
+            action: 'agreement_customer_signed',
+            record_id: agreementUuid || agreementRecordId,
+            target_roles: ['financial_controller'],
+            dedupe_key: `agreement_customer_signed:${agreementUuid || agreementRecordId}`
+          }, 'agreements:update:customer-signed').catch(error => console.warn('[notifications:pwa] agreements customer signed failed', error));
+        }
+        if (fcFilled) {
+          await createNotificationAndPush({
+            title: 'Agreement ready for General Manager signature',
+            message: `Agreement ${agreementRecordId} for ${String(data?.customer_name || data?.company_name || '').trim() || 'customer'} has been signed by the Financial Controller and is ready for General Manager signature.`,
+            resource: 'agreements',
+            action: 'agreement_financial_controller_signed',
+            record_id: agreementUuid || agreementRecordId,
+            target_roles: ['gm'],
+            dedupe_key: `agreement_financial_controller_signed:${agreementUuid || agreementRecordId}`
+          }, 'agreements:update:financial-controller-signed').catch(error => console.warn('[notifications:pwa] agreements financial controller signed failed', error));
+        }
+        if (becameSigned) {
+          await createNotificationAndPush({
+            title: 'Agreement fully signed',
+            message: `Agreement ${agreementRecordId} for ${String(data?.customer_name || data?.company_name || '').trim() || 'customer'} is now fully signed.`,
+            resource: 'agreements',
+            action: 'agreement_fully_signed',
+            record_id: agreementUuid || agreementRecordId,
+            users_from_record: ['head_of_sales_email','head_of_sales_id','sales_executive_email','sales_executive_id','owner_email','assigned_sales_email','created_by_email'],
+            target_roles: ['head_of_sales','sales_executive'],
+            dedupe_key: `agreement_fully_signed:${agreementUuid || agreementRecordId}`
+          }, 'agreements:update:fully-signed').catch(error => console.warn('[notifications:pwa] agreements fully signed failed', error));
         }
       }
       if (resource === 'receipts') {

@@ -2,10 +2,10 @@ const NotificationSetup = {
   state: { rules: [], roles: [], dirty: new Set(), filterModule: '', filterStatus: 'all', search: '' },
   moduleActions: [
     ['tickets',['ticket_created','ticket_high_priority','ticket_status_changed','dev_team_status_changed','ticket_under_development','ticket_youtrack_changed','ticket_issue_related_changed']],
-    ['leads',['lead_created','lead_updated','lead_converted_to_deal']],
-    ['deals',['deal_created','deal_updated','deal_created_from_lead','deal_important_stage']],
+    ['leads',['lead_created','lead_updated','lead_converted_to_deal','lead_follow_up_due_today']],
+    ['deals',['deal_created','deal_updated','deal_created_from_lead','deal_important_stage','deal_follow_up_due_today']],
     ['proposals',['proposal_created','proposal_updated','proposal_requires_approval','proposal_approved','proposal_rejected','proposal_created_from_deal']],
-    ['agreements',['agreement_created','agreement_created_from_proposal','agreement_requires_signature','agreement_signed']],
+    ['agreements',['agreement_created','agreement_created_from_proposal','agreement_requires_signature','agreement_signed','agreement_customer_signed','agreement_financial_controller_signed','agreement_fully_signed']],
     ['invoices',['invoice_created','invoice_created_from_agreement','invoice_payment_state_changed','invoice_fully_paid']],
     ['receipts',['receipt_created','receipt_created_from_invoice','receipt_updated']],
     ['operations_onboarding',['onboarding_created','operations_onboarding_created','onboarding_status_changed','onboarding_request_submitted','assigned_csm']],
