@@ -5946,6 +5946,7 @@ function wireDashboardGate() {
     window.__AUTH_RESTORED__ = true;
     const currentUser = Permissions.getResolvedCurrentUser?.() || Session.authContext?.()?.profile || null;
     window.AppState = window.AppState || {};
+    window.AppState.authReady = true;
     window.AppState.currentUser = currentUser || window.AppState.currentUser;
     window.AppState.role = currentUser?.role_key || currentUser?.role || window.Session?.role || window.AppState.role;
     window.dispatchEvent(new CustomEvent('incheck360:auth-ready', {
