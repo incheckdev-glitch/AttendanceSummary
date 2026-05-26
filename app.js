@@ -2922,7 +2922,7 @@ window.shouldShowTicketFilters = shouldShowTicketFilters;
 
 function setActiveView(view) {
  view = normalizeViewKey(view);
- const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
+ const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
  const requestedView = view;
  const firstAllowedView = names.find(name => Permissions.canAccessTab(name)) || 'issues';
  if (!Permissions.canAccessTab(view)) {
@@ -2967,6 +2967,8 @@ function setActiveView(view) {
         ? E.proposalCatalogTab
         : name === 'communicationCentre' || name === 'communication_centre'
         ? E.communicationCentreTab
+        : name === 'aiAssistant'
+        ? E.aiAssistantTab
         : name === 'notifications'
         ? E.notificationsTab
         : name === 'notificationSetup'
@@ -3013,6 +3015,8 @@ function setActiveView(view) {
         ? E.proposalCatalogView
         : name === 'communicationCentre' || name === 'communication_centre'
         ? E.communicationCentreView
+        : name === 'aiAssistant'
+        ? E.aiAssistantView
         : name === 'notifications'
         ? E.notificationsView
         : name === 'notificationSetup'
@@ -5327,6 +5331,7 @@ function wireCore() {
     E.clientsTab,
     E.proposalCatalogTab,
     E.communicationCentreTab,
+    E.aiAssistantTab,
     E.notificationsTab,
     E.notificationSetupTab,
     E.workflowTab,
@@ -5914,7 +5919,7 @@ function wireDashboardGate() {
     return 'issues';
   };
   const getFirstAllowedView = preferredView => {
-    const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
+    const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
     const preferred = String(preferredView || '').trim();
     if (preferred && Permissions.canAccessTab(preferred)) return preferred;
     return names.find(name => Permissions.canAccessTab(name)) || 'issues';

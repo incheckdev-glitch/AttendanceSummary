@@ -138,6 +138,7 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
   analytics: Object.freeze({ list: ['admin', 'dev', 'viewer', 'hoo'] }),
   insights: Object.freeze({ list: ['admin', 'dev', 'viewer', 'hoo'] }),
   ai_insights: Object.freeze({ list: ['admin', 'dev', 'viewer', 'hoo'] }),
+  ai_assistant: Object.freeze({ view: ['admin', 'dev', 'viewer', 'hoo'], ask: ['admin', 'dev', 'viewer', 'hoo'] }),
   notifications: Object.freeze({
     list: ['admin', 'dev', 'viewer', 'hoo'],
     get_unread_count: ['admin', 'dev', 'viewer', 'hoo'],
@@ -203,6 +204,7 @@ const Permissions = {
     proposalCatalog: [{ resource: 'proposal_catalog', action: 'list' }],
     communicationCentre: [{ resource: 'communication_centre', action: 'manage' }],
     communication_centre: [{ resource: 'communication_centre', action: 'manage' }],
+    aiAssistant: [{ resource: 'ai_assistant', action: 'view' }, { resource: 'ai_assistant', action: 'ask' }],
     notifications: [{ resource: 'notifications', action: 'list' }],
     notificationSetup: [{ resource: 'notification_settings', action: 'list' }],
     workflow: [{ resource: 'workflow', action: 'list' }],
