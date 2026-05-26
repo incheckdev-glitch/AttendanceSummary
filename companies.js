@@ -339,16 +339,49 @@ const Companies = {
     const normalized = this.normalize(company);
     const status = String(normalized.documents_verification_status || 'not_verified').trim().toLowerCase();
     const docs = Array.isArray(this.state.documents) ? this.state.documents : [];
-    const canAdminVerify = this.canVerifyCompanyDocuments();
+    const canVerify = this.canVerifyCompany();
     const actionLabel = status === 'verified' ? 'Re-verify' : status === 'needs_reverification' ? 'Re-verify Company' : 'Mark as Verified';
     const noDocsMessage = '<p class="muted" style="margin:6px 0 0;">Upload at least one company document before verifying.</p>';
-    const adminAction = canAdminVerify
+    const verificationAction = canVerify
       ? (docs.length ? `<button type="button" id="companyVerifyBtn" class="btn ghost sm">${U.escapeHtml(actionLabel)}</button>` : noDocsMessage)
-      : '<p class="muted" style="margin:6px 0 0;">Only admin can verify company data.</p>';
-    panel.innerHTML = `<div class="row between center" style="gap:10px;flex-wrap:wrap;"><div><strong>Company Verification</strong><p class="muted" style="margin:6px 0 0;">Admin must compare the uploaded company documents with the filled company fields before marking this company as verified.</p></div>${this.renderCompanyVerificationBadge(normalized)}</div><div class="stack" style="gap:6px;"><div><span class="muted">Current verification status:</span> ${this.renderCompanyVerificationBadge(normalized)}</div>${normalized.documents_verified_at ? `<div><span class="muted">Last verified:</span> ${U.escapeHtml(U.fmtTS(normalized.documents_verified_at))}</div>` : ''}${normalized.documents_verification_notes ? `<div><span class="muted">Verification notes:</span> ${U.escapeHtml(normalized.documents_verification_notes)}</div>` : ''}${status === 'needs_reverification' && normalized.documents_verification_invalidated_reason ? `<div><span class="muted">Invalidated reason:</span> ${U.escapeHtml(normalized.documents_verification_invalidated_reason)}</div>` : ''}${adminAction}</div>`;
+      : '<p class="muted" style="margin:6px 0 0;">You do not have permission to verify company data.</p>';
+    panel.innerHTML = `<div class="row between center" style="gap:10px;flex-wrap:wrap;"><div><strong>Company Verification</strong><p class="muted" style="margin:6px 0 0;">An authorized user must compare the uploaded company documents with the filled company fields before marking this company as verified.</p></div>${this.renderCompanyVerificationBadge(normalized)}</div><div class="stack" style="gap:6px;"><div><span class="muted">Current verification status:</span> ${this.renderCompanyVerificationBadge(normalized)}</div>${normalized.documents_verified_at ? `<div><span class="muted">Last verified:</span> ${U.escapeHtml(U.fmtTS(normalized.documents_verified_at))}</div>` : ''}${normalized.documents_verification_notes ? `<div><span class="muted">Verification notes:</span> ${U.escapeHtml(normalized.documents_verification_notes)}</div>` : ''}${status === 'needs_reverification' && normalized.documents_verification_invalidated_reason ? `<div><span class="muted">Invalidated reason:</span> ${U.escapeHtml(normalized.documents_verification_invalidated_reason)}</div>` : ''}${verificationAction}</div>`;
     const btn = document.getElementById('companyVerifyBtn'); if (btn) btn.onclick = () => this.openCompanyVerificationDialog(normalized);
   },
-  canVerifyCompanyDocuments() { return Boolean(Permissions?.isAdmin?.() || Session?.isAdmin?.() || String(Session?.role?.() || '').trim().toLowerCase() === 'admin'); },
+  canVerifyCompany() {
+    const user = this.currentUser || this.state?.currentUser || window.currentUser || Session?.user?.() || {};
+    const role = String(user.role || user.role_key || user.roleKey || Session?.role?.() || '').trim().toLowerCase();
+
+    if (role === 'admin') return true;
+    if (role === 'accountant') return true;
+    if (role === 'accounting') return true;
+
+    if (typeof this.hasPermission === 'function') {
+      return Boolean(
+        this.hasPermission('companies', 'verify') ||
+        this.hasPermission('companies', 'update') ||
+        this.hasPermission('company_documents', 'verify') ||
+        this.hasPermission('company_documents', 'update')
+      );
+    }
+
+    if (window.Permissions && typeof window.Permissions.hasPermission === 'function') {
+      return Boolean(
+        window.Permissions.hasPermission('companies', 'verify') ||
+        window.Permissions.hasPermission('companies', 'update') ||
+        window.Permissions.hasPermission('company_documents', 'verify') ||
+        window.Permissions.hasPermission('company_documents', 'update')
+      );
+    }
+
+    return Boolean(
+      Permissions?.can?.('companies', 'verify') ||
+      Permissions?.can?.('companies', 'update') ||
+      Permissions?.can?.('company_documents', 'verify') ||
+      Permissions?.can?.('company_documents', 'update')
+    );
+  },
+  canVerifyCompanyDocuments() { return this.canVerifyCompany(); },
   getCurrentUserId() { return String(Session?.userId?.() || Session?.authContext?.()?.user?.id || Session?.authContext?.()?.profile?.id || Session?.user?.()?.user_id || '').trim(); },
   getFormVerificationCompany(company = this.state.currentCompany) {
     const value = id => document.getElementById(id)?.value?.trim?.() || '';
@@ -369,11 +402,11 @@ const Companies = {
     return modal;
   },
   openCompanyVerificationDialog(company = this.state.currentCompany) {
-    if (!this.canVerifyCompanyDocuments()) return;
+    if (!this.canVerifyCompany()) return;
     if (!Array.isArray(this.state.documents) || !this.state.documents.length) { UI?.toast?.('Upload at least one company document before verifying', 'error'); return; }
     const modal = this.ensureCompanyVerificationDialog(); const body = document.getElementById('companyVerificationDialogBody'); const snapshot = this.buildCompanyVerificationSnapshot(company);
     const fields = [['Company Name', snapshot.company_name], ['Legal Name', snapshot.legal_name || snapshot.legal_company_name], ['Registration Number', snapshot.registration_number], ['Tax/VAT Number', [snapshot.tax_number, snapshot.vat_number].filter(Boolean).join(' / ')], ['Authorized Signatory Full Name', snapshot.authorized_signatory_full_name], ['Authorized Signatory Title', snapshot.authorized_signatory_title], ['Country/City/Address', [snapshot.country, snapshot.city, snapshot.address].filter(Boolean).join(' / ')]];
-    body.innerHTML = `<p class="muted">Review each item below against the uploaded documents. This is a manual admin verification workflow; no OCR or automatic document reading is performed.</p><div class="card"><strong>Checklist</strong><ul>${fields.map(([label, value]) => `<li>☐ <strong>${U.escapeHtml(label)}:</strong> ${U.escapeHtml(value || '—')}</li>`).join('')}</ul></div><div class="card"><strong>Uploaded Documents</strong><div class="stack" style="gap:6px;margin-top:8px;">${this.state.documents.map(doc => `<div class="row between center" style="gap:8px;flex-wrap:wrap;"><span>${U.escapeHtml(doc.document_title || doc.file_name || 'Document')}</span><button type="button" class="chip-btn" data-verify-doc-open="${U.escapeAttr(doc.id)}">Open/View</button></div>`).join('')}</div></div><div class="filter-row"><label class="muted" for="companyVerificationNotesInput">Verification notes (optional)</label><textarea id="companyVerificationNotesInput" class="input" rows="3">${U.escapeHtml(company?.documents_verification_notes || '')}</textarea></div><label class="row" style="gap:8px;align-items:flex-start;"><input id="companyVerificationConfirmCheck" type="checkbox" style="margin-top:3px;" /> <span>I confirm that I compared the uploaded company documents with the company data and they match.</span></label>`;
+    body.innerHTML = `<p class="muted">Review each item below against the uploaded documents. This is a manual verification workflow; no OCR or automatic document reading is performed.</p><div class="card"><strong>Checklist</strong><ul>${fields.map(([label, value]) => `<li>☐ <strong>${U.escapeHtml(label)}:</strong> ${U.escapeHtml(value || '—')}</li>`).join('')}</ul></div><div class="card"><strong>Uploaded Documents</strong><div class="stack" style="gap:6px;margin-top:8px;">${this.state.documents.map(doc => `<div class="row between center" style="gap:8px;flex-wrap:wrap;"><span>${U.escapeHtml(doc.document_title || doc.file_name || 'Document')}</span><button type="button" class="chip-btn" data-verify-doc-open="${U.escapeAttr(doc.id)}">Open/View</button></div>`).join('')}</div></div><div class="filter-row"><label class="muted" for="companyVerificationNotesInput">Verification notes (optional)</label><textarea id="companyVerificationNotesInput" class="input" rows="3">${U.escapeHtml(company?.documents_verification_notes || '')}</textarea></div><label class="row" style="gap:8px;align-items:flex-start;"><input id="companyVerificationConfirmCheck" type="checkbox" style="margin-top:3px;" /> <span>I confirm that I compared the uploaded company documents with the company data and they match.</span></label>`;
     body.querySelectorAll('[data-verify-doc-open]').forEach(btn => btn.onclick = () => this.openCompanyDocument(btn.dataset.verifyDocOpen));
     const confirmBtn = document.getElementById('companyVerificationConfirmBtn'); const checkbox = document.getElementById('companyVerificationConfirmCheck');
     confirmBtn.disabled = true; checkbox.onchange = () => { confirmBtn.disabled = !checkbox.checked; };
@@ -382,7 +415,7 @@ const Companies = {
   },
   closeCompanyVerificationDialog() { const modal = document.getElementById('companyVerificationDialog'); if (modal) { modal.style.display = 'none'; modal.setAttribute('aria-hidden', 'true'); } },
   async verifyCompanyDocuments(company = this.state.currentCompany, notes = '') {
-    if (!this.canVerifyCompanyDocuments()) return;
+    if (!this.canVerifyCompany()) return;
     if (!company?.id || !Array.isArray(this.state.documents) || !this.state.documents.length) { UI?.toast?.('Upload at least one company document before verifying', 'error'); return; }
     const confirmBtn = document.getElementById('companyVerificationConfirmBtn'); if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Verifying…'; }
     const previousStatus = String(company.documents_verification_status || 'not_verified').trim() || 'not_verified';
@@ -392,7 +425,7 @@ const Companies = {
       const client = this.getSupabaseClient();
       const { data, error } = await client.from('companies').update(payload).eq('id', company.id).select('*').single();
       if (error) throw error;
-      const { error: auditError } = await client.from('company_verification_audit').insert({ company_uuid: company.id, action: 'admin_marked_verified', previous_status: previousStatus, new_status: 'verified', verified_by: verifiedBy || null, verification_notes: verificationNotes, verification_snapshot: snapshot });
+      const { error: auditError } = await client.from('company_verification_audit').insert({ company_uuid: company.id, action: 'marked_verified', previous_status: previousStatus, new_status: 'verified', verified_by: verifiedBy || null, verification_notes: verificationNotes, verification_snapshot: snapshot });
       if (auditError) throw auditError;
       this.state.currentCompany = this.normalize(data || { ...company, ...payload });
       this.closeCompanyVerificationDialog();
