@@ -36,7 +36,6 @@
         this.root = root;
         this.sessionId = localStorage.getItem(STORAGE_KEY) || null;
         this.render();
-        this.bindEvents();
 
         this.initialized = true;
         console.log('[AI Assistant] initialized');
@@ -99,25 +98,49 @@
     render() {
       const root = this.root || document.querySelector('#aiAssistantView');
       if (!root) return;
+      const permission = this.canUseAiAssistant();
 
-      const promptsContainer = root.querySelector('#aiAssistantPrompts, [data-ai-suggestions]');
-      const messages = root.querySelector('#aiAssistantMessages, [data-ai-messages]');
-      const state = root.querySelector('#aiAssistantState, [data-ai-state]');
-
-      if (!this.authReady && !window.__AUTH_RESTORED__ && !window.__APP_UNLOCKED__) {
-        if (state) state.textContent = 'Loading AI Assistant...';
-        if (messages && !messages.children.length) {
-          messages.innerHTML = '<div class="muted">Loading AI Assistant...</div>';
-        }
-      } else if (!this.canUseAiAssistant()) {
-        if (state) state.textContent = '';
-        if (messages) {
-          messages.innerHTML = '<div class="muted">You do not have permission to use AI Assistant.</div>';
-        }
-      } else if (state) {
-        state.textContent = '';
+      if (permission === null) {
+        root.innerHTML = `
+          <section class="ai-assistant-page">
+            <h1>AI Assistant</h1>
+            <p>Loading AI Assistant...</p>
+          </section>
+        `;
+        return;
       }
 
+      if (permission === false) {
+        root.innerHTML = `
+          <section class="ai-assistant-page">
+            <h1>AI Assistant</h1>
+            <p>You do not have permission to use AI Assistant.</p>
+          </section>
+        `;
+        return;
+      }
+
+      this.renderChatUi();
+      this.bindEvents();
+    },
+
+    renderChatUi() {
+      const root = this.root || document.querySelector('#aiAssistantView');
+      if (!root) return;
+      root.innerHTML = `
+        <section class="ai-assistant-page">
+          <h1>AI Assistant</h1>
+          <p class="muted">Ask for account, invoicing, agreement, onboarding, lead, and deal insights.</p>
+          <div id="aiAssistantPrompts" data-ai-suggestions class="row" style="gap:8px;flex-wrap:wrap;margin:12px 0;"></div>
+          <div id="aiAssistantMessages" data-ai-messages class="col" style="gap:8px;max-height:50vh;overflow:auto;"></div>
+          <div id="aiAssistantState" data-ai-state class="muted" style="min-height:20px;margin-top:8px;"></div>
+          <form id="ai-assistant-form" data-ai-form class="row" style="gap:8px;margin-top:10px;">
+            <input id="ai-assistant-input" data-ai-input class="input" placeholder="Ask AI Assistant..." style="flex:1;" />
+            <button id="ai-assistant-send" data-ai-send class="btn primary" type="button">Send</button>
+          </form>
+        </section>
+      `;
+      const promptsContainer = root.querySelector('#aiAssistantPrompts, [data-ai-suggestions]');
       if (promptsContainer) {
         promptsContainer.innerHTML = SUGGESTIONS.map((text) => (
           `<button class="btn sm ghost" data-ai-suggestion="${this.escapeHtml(text)}">${this.escapeHtml(text)}</button>`
@@ -142,13 +165,9 @@
       try {
         console.log('[AI Assistant] sending message', message);
 
-        if (!this.isAuthReady()) {
-          this.showError('Loading AI Assistant...');
-          return;
-        }
-
-        if (!this.canUseAiAssistant()) {
-          this.appendAssistantMessage('You do not have permission to use AI Assistant.');
+        const permission = this.canUseAiAssistant();
+        if (permission !== true) {
+          this.render();
           return;
         }
 
@@ -156,7 +175,7 @@
         this.setLoading(true);
 
         const currentUser = this.getResolvedCurrentUser();
-        const role = this.getResolvedRole(currentUser);
+        const role = this.getAppRole();
         const token = window.SupabaseClient?.getAccessToken?.() || window.Session?.token || '';
 
         const response = await fetch('/functions/v1/ai-assistant', {
@@ -222,19 +241,55 @@
 
     isAuthReady() {
       return Boolean(
-        this.authReady ||
-        window.__AUTH_RESTORED__ ||
-        window.__APP_UNLOCKED__ ||
+        window.Session?.user ||
+        window.Session?.profile ||
+        window.Session?.role ||
+        window.Permissions?.matrix ||
+        window.Permissions?.permissions ||
+        window.Permissions?.matrixLoaded ||
+        window.AppState?.currentUser ||
         window.AppState?.authReady ||
-        window.AuthState?.ready ||
-        window.Permissions?.state?.loaded
+        window.__APP_UNLOCKED__
       );
     },
 
     canUseAiAssistant() {
-      const user = this.getResolvedCurrentUser();
-      const role = this.getResolvedRole(user);
-      return role === 'admin';
+      if (!this.isAuthReady()) return null;
+      return this.getAppRole() === 'admin';
+    },
+
+    getAppRole() {
+      const candidates = [
+        window.Session?.role,
+        window.Session?.currentRole,
+        window.Session?.user?.role,
+        window.Session?.user?.role_key,
+        window.Session?.profile?.role,
+        window.Session?.profile?.role_key,
+        window.Permissions?.role,
+        window.Permissions?.currentRole,
+        window.Permissions?.roleKey,
+        window.Permissions?.currentRoleKey,
+        window.AppState?.role,
+        window.AppState?.currentRole,
+        window.AppState?.currentUser?.role,
+        window.AppState?.currentUser?.role_key,
+        window.AppState?.user?.role,
+        window.AppState?.user?.role_key,
+        window.currentUser?.role,
+        window.currentUser?.role_key
+      ];
+      const role = candidates
+        .map(value => String(value || '').trim().toLowerCase())
+        .find(Boolean);
+      console.log('[AI Assistant role detection]', {
+        role,
+        Session: window.Session,
+        Permissions: window.Permissions,
+        AppState: window.AppState,
+        currentUser: window.currentUser
+      });
+      return role || '';
     },
 
     getResolvedCurrentUser() {
