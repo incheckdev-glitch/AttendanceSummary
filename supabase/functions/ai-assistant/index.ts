@@ -6,17 +6,18 @@ const SYSTEM = `You are the InCheck360 AI Assistant. Answer only using data avai
 Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response('ok');
   try {
-    const { session_id, message, current_user } = await req.json();
+    const { session_id, message, current_user, currentUser } = await req.json();
+    const resolvedCurrentUser = current_user || currentUser || {};
     const url = Deno.env.get('SUPABASE_URL')!;
     const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const openai = new OpenAI({ apiKey: Deno.env.get('OPENAI_API_KEY')! });
     const db = createClient(url, key);
 
     const role = String(
-      current_user?.role_key ||
-      current_user?.roleKey ||
-      current_user?.role ||
-      current_user?.user_role ||
+      resolvedCurrentUser?.role_key ||
+      resolvedCurrentUser?.roleKey ||
+      resolvedCurrentUser?.role ||
+      resolvedCurrentUser?.user_role ||
       ''
     ).trim().toLowerCase();
 
@@ -28,8 +29,8 @@ Deno.serve(async req => {
     }
 
     const sid = session_id || crypto.randomUUID();
-    await db.from('ai_chat_sessions').upsert({ id: sid, user_id: current_user.id || '', title: 'AI Assistant', updated_at: new Date().toISOString() });
-    await db.from('ai_chat_messages').insert({ session_id: sid, user_id: current_user.id || '', role: 'user', content: message });
+    await db.from('ai_chat_sessions').upsert({ id: sid, user_id: resolvedCurrentUser.id || '', title: 'AI Assistant', updated_at: new Date().toISOString() });
+    await db.from('ai_chat_messages').insert({ session_id: sid, user_id: resolvedCurrentUser.id || '', role: 'user', content: message });
 
     const toolResult = async (name: string, args: any) => ({ name, args, rows: [] });
 
@@ -58,7 +59,7 @@ Deno.serve(async req => {
     }
 
     const answer = response.output_text || 'No data found from allowed tools.';
-    await db.from('ai_chat_messages').insert({ session_id: sid, user_id: current_user.id || '', role: 'assistant', content: answer });
+    await db.from('ai_chat_messages').insert({ session_id: sid, user_id: resolvedCurrentUser.id || '', role: 'assistant', content: answer });
     return new Response(JSON.stringify({ session_id: sid, answer }), { headers: { 'Content-Type': 'application/json' } });
   } catch (e) {
     return new Response(JSON.stringify({ error: String(e?.message || e) }), { status: 500 });
