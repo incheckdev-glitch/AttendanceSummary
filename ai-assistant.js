@@ -82,6 +82,7 @@
       }
 
       if (input) {
+        input.disabled = false;
         input.addEventListener('keydown', (event) => {
           if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault();
@@ -163,7 +164,7 @@
       }
 
       input.value = '';
-      return this.sendMessage(message);
+      this.sendMessage(message);
     },
 
     async sendMessage(message) {
@@ -172,10 +173,14 @@
         return;
       }
 
+      const text = String(message || '').trim();
+      if (!text) return;
+
       this.isSending = true;
+      this.setLoading(true);
 
       try {
-        console.log('[AI Assistant] sending message', message);
+        console.log('[AI Assistant] sending message', text);
 
         const permission = this.canUseAiAssistant();
         if (permission !== true) {
@@ -183,8 +188,7 @@
           return;
         }
 
-        this.appendUserMessage(message);
-        this.setLoading(true);
+        this.appendUserMessage(text);
 
         const currentUser = this.getResolvedCurrentUser();
         const role = this.getAppRole();
@@ -211,7 +215,7 @@
           },
           body: JSON.stringify({
             session_id: this.sessionId || null,
-            message,
+            message: text,
             current_user: {
               id: currentUser?.id,
               email: currentUser?.email,
@@ -245,7 +249,10 @@
         console.error('[AI Assistant] send failed', error);
         this.appendAssistantMessage(`AI Assistant error: ${error.message || error}`);
       } finally {
+        this.isSending = false;
         this.setLoading(false);
+        this.enableInput();
+        this.focusInput();
       }
     },
 
@@ -265,8 +272,30 @@
     },
 
     setLoading(isLoading) {
+      const input = this.root?.querySelector('[data-ai-input], #ai-assistant-input, #aiAssistantInput');
+      const button = this.root?.querySelector('[data-ai-send], #ai-assistant-send, #aiAssistantSend');
       const state = this.root?.querySelector('#aiAssistantState, [data-ai-state]');
+      if (input) input.disabled = false;
+      if (button) {
+        button.disabled = Boolean(isLoading);
+        button.textContent = isLoading ? 'Sending...' : 'Send';
+      }
       if (state) state.textContent = isLoading ? 'Thinking...' : '';
+    },
+
+    enableInput() {
+      const input = this.root?.querySelector('[data-ai-input], #ai-assistant-input, #aiAssistantInput');
+      const button = this.root?.querySelector('[data-ai-send], #ai-assistant-send, #aiAssistantSend');
+      if (input) input.disabled = false;
+      if (button) {
+        button.disabled = false;
+        button.textContent = 'Send';
+      }
+    },
+
+    focusInput() {
+      const input = this.root?.querySelector('[data-ai-input], #ai-assistant-input, #aiAssistantInput');
+      if (input) input.focus();
     },
 
     isAuthReady() {
