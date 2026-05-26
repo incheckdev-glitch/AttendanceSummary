@@ -6778,6 +6778,9 @@ function wireAIQuery() {
 const CSMActivity = {
   cacheTtlMs: 2 * 60 * 1000,
   rows: [],
+  allRows: [],
+  filteredRows: [],
+  visibleRows: [],
   loaded: false,
   lastLoadedAt: 0,
   isLoading: false,
@@ -6998,6 +7001,7 @@ const CSMActivity = {
       });
       const rows = Array.isArray(response?.rows) ? response.rows : [];
       this.rows = rows.filter(row => row.id || row.csmName || row.client || row.timestamp);
+      this.allRows = [...this.rows];
       this.page = Number(response?.page || this.page || 1);
       this.limit = U.normalizePageSize(response?.limit ?? this.limit, 50, 200);
       this.offset = Number(response?.offset ?? Math.max(0, (this.page - 1) * this.limit));
@@ -7014,6 +7018,9 @@ const CSMActivity = {
       }
       this.loadError = String(error?.message || 'Unknown backend error');
       this.rows = [];
+      this.allRows = [];
+      this.filteredRows = [];
+      this.visibleRows = [];
       this.loaded = false;
       this.hydrateOptions();
       this.refresh();
@@ -7044,9 +7051,9 @@ const CSMActivity = {
     const terms = (s.search || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
     const minMinutes = s.minMinutes === '' ? null : Number(s.minMinutes);
     const maxMinutes = s.maxMinutes === '' ? null : Number(s.maxMinutes);
-    const startDate = s.startDate ? new Date(`${s.startDate}T00:00:00`) : null;
-    const endDate = s.endDate ? new Date(`${s.endDate}T23:59:59.999`) : null;
-    return this.rows.filter(row => {
+    const dateFrom = s.startDate || '';
+    const dateTo = s.endDate || '';
+    this.filteredRows = (Array.isArray(this.allRows) ? this.allRows : []).filter(row => {
       const hay = [row.csmName, row.client, row.supportType, row.effortRequirement, row.supportChannel, row.notes]
         .join(' ')
         .toLowerCase();
@@ -7058,16 +7065,44 @@ const CSMActivity = {
       if (s.channel !== 'All' && row.supportChannel !== s.channel) return false;
       if (minMinutes != null && row.timeSpentMinutes < minMinutes) return false;
       if (maxMinutes != null && row.timeSpentMinutes > maxMinutes) return false;
-      if (startDate || endDate) {
-        if (!row.parsedDate) return false;
-        if (startDate && row.parsedDate < startDate) return false;
-        if (endDate && row.parsedDate > endDate) return false;
-      }
+      if ((dateFrom || dateTo) && !this.isWithinDateRange(row, dateFrom, dateTo)) return false;
       return true;
     });
+    return this.filteredRows;
   },
   getFilteredCsmActivityRows() {
-    return this.applyFilters();
+    return Array.isArray(this.filteredRows) ? this.filteredRows : [];
+  },
+  getCsmActivityDate(row = {}) {
+    return (
+      row.activity_date ||
+      row.submitted_at ||
+      row.timestamp ||
+      row.created_at ||
+      row.date ||
+      row.task_date ||
+      row.submittedAt ||
+      row.createdAt ||
+      ''
+    );
+  },
+  toLocalDateOnly(value) {
+    if (!value) return '';
+    const raw = String(value).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return '';
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  },
+  isWithinDateRange(row, dateFrom, dateTo) {
+    const rowDate = this.toLocalDateOnly(this.getCsmActivityDate(row));
+    if (!rowDate) return false;
+    if (dateFrom && rowDate < dateFrom) return false;
+    if (dateTo && rowDate > dateTo) return false;
+    return true;
   },
   formatTimestampForDisplay(row = {}) {
     const timestampValue = row.parsedDate || row.timestamp || row.submittedAt || row.createdAt || '';
@@ -7493,29 +7528,32 @@ const CSMActivity = {
     }
     ['csmInlineTimestamp','csmInlineCsmName','csmInlineClient','csmInlineMinutes','csmInlineSupportType','csmInlineEffort','csmInlineChannel','csmInlineNotes']
       .forEach(id => { if (E[id]) E[id].disabled = !canCreate || this.isSaving; });
-    const filtered = this.getFilteredCsmActivityRows();
+    const filtered = this.applyFilters();
     this.renderKPIs(filtered);
     this.renderInsights(filtered);
     this.renderCharts(filtered);
-    this.renderTable(filtered);
+    const start = Math.max(0, (this.page - 1) * this.limit);
+    const end = start + this.limit;
+    this.visibleRows = filtered.slice(start, end);
+    this.renderTable(this.visibleRows);
     const paginationHost = U.ensurePaginationHost({ hostId: 'csmPagination', anchor: E.csmTableBody?.closest?.('.table-wrap') });
     U.renderPaginationControls({
       host: paginationHost,
       moduleKey: 'csm',
       page: this.page,
       pageSize: this.limit,
-      hasMore: this.hasMore,
-      returned: this.returned,
+      hasMore: end < filtered.length,
+      returned: filtered.length,
       loading: this.isLoading,
       pageSizeOptions: [25, 50, 100],
       onPageChange: nextPage => {
         this.page = U.normalizePageNumber(nextPage, 1);
-        this.loadAndRefresh({ force: true });
+        this.refresh();
       },
       onPageSizeChange: nextSize => {
         this.limit = U.normalizePageSize(nextSize, 50, 200);
         this.page = 1;
-        this.loadAndRefresh({ force: true });
+        this.refresh();
       }
     });
   },
@@ -7742,12 +7780,8 @@ function wireCSMActivity() {
     const sync = () => {
       CSMActivity.state[key] = type === 'valueAsNumber' ? element.valueAsNumber : element.value;
       if (type === 'valueAsNumber' && Number.isNaN(CSMActivity.state[key])) CSMActivity.state[key] = '';
-      if (reload) {
-        CSMActivity.page = 1;
-        CSMActivity.loadAndRefresh({ force: true });
-      } else {
-        CSMActivity.refresh();
-      }
+      if (reload) CSMActivity.page = 1;
+      CSMActivity.refresh();
     };
     element.addEventListener('input', sync);
     element.addEventListener('change', sync);
