@@ -17,16 +17,13 @@
   window.AIAssistant = window.AIAssistant || {
     initialized: false,
     authReady: false,
+    currentUser: null,
+    currentRole: '',
     root: null,
     sessionId: null,
 
     init() {
       try {
-        if (this.initialized) {
-          console.log('[AI Assistant] init skipped (already initialized)');
-          return;
-        }
-
         const root = document.querySelector('#ai-assistant-root, [data-module="ai-assistant"], #aiAssistant, #aiAssistantView');
         if (!root) {
           console.warn('[AI Assistant] root not found yet');
@@ -34,21 +31,21 @@
         }
 
         this.root = root;
-        this.sessionId = localStorage.getItem(STORAGE_KEY) || null;
+        this.sessionId = this.sessionId || localStorage.getItem(STORAGE_KEY) || null;
+
+        // Always render, even if already initialized, because auth role may have changed.
         this.render();
 
-        this.initialized = true;
-        console.log('[AI Assistant] initialized');
+        if (!this.initialized) {
+          this.initialized = true;
+          console.log('[AI Assistant] initialized');
+        }
+
+        this.bindEvents?.();
       } catch (error) {
         console.error('[AI Assistant] init failed', error);
         this.showError('AI Assistant failed to initialize. Check console logs.');
       }
-    },
-
-    markAuthReady() {
-      this.authReady = true;
-      console.log('[AI Assistant] auth ready received');
-      this.render();
     },
 
     bindEvents() {
@@ -121,7 +118,6 @@
       }
 
       this.renderChatUi();
-      this.bindEvents();
     },
 
     renderChatUi() {
@@ -241,15 +237,13 @@
 
     isAuthReady() {
       return Boolean(
-        window.Session?.user ||
-        window.Session?.profile ||
-        window.Session?.role ||
-        window.Permissions?.matrix ||
-        window.Permissions?.permissions ||
-        window.Permissions?.matrixLoaded ||
-        window.AppState?.currentUser ||
+        this.authReady ||
+        window.__APP_UNLOCKED__ ||
         window.AppState?.authReady ||
-        window.__APP_UNLOCKED__
+        window.AppState?.role ||
+        window.AppState?.currentUser ||
+        window.Session?.role ||
+        window.Session?.user
       );
     },
 
@@ -260,36 +254,35 @@
 
     getAppRole() {
       const candidates = [
-        window.Session?.role,
-        window.Session?.currentRole,
-        window.Session?.user?.role,
-        window.Session?.user?.role_key,
-        window.Session?.profile?.role,
-        window.Session?.profile?.role_key,
-        window.Permissions?.role,
-        window.Permissions?.currentRole,
-        window.Permissions?.roleKey,
-        window.Permissions?.currentRoleKey,
+        this.currentRole,
+
         window.AppState?.role,
         window.AppState?.currentRole,
-        window.AppState?.currentUser?.role,
         window.AppState?.currentUser?.role_key,
-        window.AppState?.user?.role,
+        window.AppState?.currentUser?.role,
         window.AppState?.user?.role_key,
-        window.currentUser?.role,
-        window.currentUser?.role_key
+        window.AppState?.user?.role,
+
+        window.Session?.role,
+        window.Session?.currentRole,
+        window.Session?.user?.role_key,
+        window.Session?.user?.role,
+        window.Session?.profile?.role_key,
+        window.Session?.profile?.role
       ];
+
       const role = candidates
         .map(value => String(value || '').trim().toLowerCase())
-        .find(Boolean);
+        .find(Boolean) || '';
+
       console.log('[AI Assistant role detection]', {
-        role,
-        Session: window.Session,
-        Permissions: window.Permissions,
+        resolvedRole: role,
+        currentRole: this.currentRole,
         AppState: window.AppState,
-        currentUser: window.currentUser
+        Session: window.Session
       });
-      return role || '';
+
+      return role;
     },
 
     getResolvedCurrentUser() {
@@ -340,8 +333,20 @@
     window.AIAssistant?.init?.();
   });
 
-  window.addEventListener('incheck360:auth-ready', () => {
-    window.AIAssistant?.markAuthReady?.();
-    window.AIAssistant?.init?.();
+  window.addEventListener('incheck360:auth-ready', (event) => {
+    console.log('[AI Assistant] auth ready received', event.detail);
+
+    if (window.AIAssistant) {
+      window.AIAssistant.authReady = true;
+      window.AIAssistant.currentUser = event.detail?.currentUser || window.AIAssistant.currentUser || null;
+      window.AIAssistant.currentRole = event.detail?.role || event.detail?.currentRole || window.AIAssistant.currentRole || '';
+
+      if (!window.AIAssistant.initialized) {
+        window.AIAssistant.init();
+      } else {
+        window.AIAssistant.render();
+        window.AIAssistant.bindEvents?.();
+      }
+    }
   });
 })();
