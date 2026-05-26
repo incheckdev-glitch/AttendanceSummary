@@ -4530,6 +4530,25 @@ const Agreements = {
       } catch {}
     }
   },
+  isOptionalTechnicalRequestPermissionError(error) {
+    const message = String(error?.message || error || '').toLowerCase();
+    return (
+      message.includes('forbidden')
+      || message.includes('cannot list technical_admin_requests')
+      || message.includes('permission')
+    );
+  },
+  async loadOptionalTechnicalAdminRequests({ force = false } = {}) {
+    if (!Permissions.canViewTechnicalAdmin?.()) return [];
+    try {
+      const technicalList = await Api.listTechnicalAdminRequests({}, { forceRefresh: force });
+      return Array.isArray(technicalList?.rows) ? technicalList.rows : [];
+    } catch (error) {
+      if (!this.isOptionalTechnicalRequestPermissionError(error)) throw error;
+      console.warn('[Agreements] Optional technical requests load failed. Continuing without technical requests.', error);
+      return [];
+    }
+  },
   async loadAndRefresh({ force = false } = {}) {
     try {
       if (this.state.loading && !force) return;
@@ -4555,8 +4574,7 @@ const Agreements = {
       });
       const normalized = this.extractListResult(response);
       this.state.rows = await this.enrichAgreementsWithProposalDisplayRefs(normalized.rows.map(row => this.normalizeAgreement(row)));
-      const technicalList = await Api.listTechnicalAdminRequests({}, { forceRefresh: force });
-      this.state.technicalAdminRequests = Array.isArray(technicalList?.rows) ? technicalList.rows : [];
+      this.state.technicalAdminRequests = await this.loadOptionalTechnicalAdminRequests({ force });
       this.state.invoiceBlockedAgreementIds = await this.loadInvoiceBlockedAgreementIds(this.state.rows);
       this.state.total = normalized.total;
       this.state.returned = normalized.returned;
