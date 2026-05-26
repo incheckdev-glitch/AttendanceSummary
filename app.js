@@ -7069,6 +7069,13 @@ const CSMActivity = {
   getFilteredCsmActivityRows() {
     return this.applyFilters();
   },
+  formatTimestampForDisplay(row = {}) {
+    const timestampValue = row.parsedDate || row.timestamp || row.submittedAt || row.createdAt || '';
+    if (!timestampValue) return '—';
+    const date = timestampValue instanceof Date ? timestampValue : new Date(timestampValue);
+    if (Number.isNaN(date.getTime())) return '—';
+    return U.formatDateTimeMMDDYYYYHHMM(date);
+  },
   csvEscape(value) {
     const text = String(value ?? '');
     if (/[",\n\r]/.test(text)) {
@@ -7111,9 +7118,8 @@ const CSMActivity = {
       headers.map(value => this.csvEscape(value)).join(','),
       ...filteredRows.map(row => {
         const clientDisplay = row.client || row.clientName || row.companyName || '';
-        const timestampValue = row.parsedDate || row.timestamp || row.createdAt || '';
         return [
-          U.formatDateTimeMMDDYYYYHHMM(timestampValue),
+          this.formatTimestampForDisplay(row),
           row.csmName || '',
           clientDisplay,
           Math.round(Number(row.timeSpentMinutes) || 0),
@@ -7332,7 +7338,7 @@ const CSMActivity = {
     E.csmTableBody.innerHTML = list
       .map(
         row => `<tr>
-          <td>${U.escapeHtml(row.timestamp || '—')}</td>
+          <td>${U.escapeHtml(this.formatTimestampForDisplay(row))}</td>
           <td>${U.escapeHtml(row.csmName || '—')}</td>
           <td>${U.escapeHtml(row.client || row.clientName || row.companyName || '—')}</td>
           <td>${Math.round(Number(row.timeSpentMinutes) || 0)}</td>
