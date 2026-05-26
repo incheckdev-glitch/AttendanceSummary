@@ -3139,3 +3139,45 @@ body.permissions-loading [data-permission-resource][data-permission-action]{disp
 @media (max-width: 1080px){.technical-admin-filterbar{grid-template-columns:1fr}.technical-admin-filter-col.actions{justify-content:flex-start}}
 @media (max-width: 980px){.technical-admin-panel-grid{grid-template-columns:1fr}}
 @media (max-width: 760px){.technical-admin-filterbar{position:static}.technical-admin-kpi-card .value{font-size:1.35rem}.tech-chart-bars{height:150px}}
+
+/* AI Assistant message formatting */
+.ai-message.ai-message-assistant{
+  max-width:100%;
+}
+.ai-message p{
+  margin:0 0 8px;
+}
+.ai-message ul,
+.ai-message ol{
+  margin:0 0 8px 18px;
+  padding:0;
+}
+.ai-message-table-wrap{
+  width:100%;
+  overflow-x:auto;
+}
+.ai-message table{
+  width:100%;
+  border-collapse:collapse;
+  margin-top:8px;
+  font-size:13px;
+  min-width:640px;
+}
+.ai-message th,
+.ai-message td{
+  border:1px solid #e5e7eb;
+  padding:8px 10px;
+  text-align:left;
+  vertical-align:top;
+}
+.ai-message th{
+  background:#f8fafc;
+  font-weight:700;
+}
+.ai-message tr:nth-child(even){
+  background:#fafafa;
+}
+.ai-message a{
+  color:#1d4ed8;
+  text-decoration:underline;
+}

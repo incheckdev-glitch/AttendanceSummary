@@ -267,11 +267,87 @@
       const messages = this.root?.querySelector('#aiAssistantMessages, [data-ai-messages]');
       if (!messages) return;
       const item = document.createElement('div');
-      item.className = 'card';
+      item.className = `card ai-message ${author === 'Assistant' ? 'ai-message-assistant' : 'ai-message-user'}`;
       item.style.padding = '10px';
-      item.innerHTML = `<div class="muted" style="font-size:12px;margin-bottom:6px;">${author}</div><div>${this.escapeHtml(String(content || ''))}</div>`;
+      const renderedContent = author === 'Assistant'
+        ? this.renderAssistantContent(content)
+        : this.escapeHtml(String(content || '')).replace(/\n/g, '<br>');
+      item.innerHTML = `<div class="muted" style="font-size:12px;margin-bottom:6px;">${author}</div><div>${renderedContent}</div>`;
       messages.appendChild(item);
       messages.scrollTop = messages.scrollHeight;
+    },
+    renderAssistantContent(text) {
+      const safeText = this.escapeHtml(String(text || ''));
+      return this.renderMarkdown(safeText);
+    },
+
+    renderMarkdown(text) {
+      const lines = String(text || '').split('\n');
+      const output = [];
+      let i = 0;
+
+      while (i < lines.length) {
+        const line = lines[i];
+        const trimmed = line.trim();
+
+        if (!trimmed) {
+          i += 1;
+          continue;
+        }
+
+        if (trimmed.startsWith('|') && i + 1 < lines.length && lines[i + 1].includes('|---')) {
+          const tableLines = [line, lines[i + 1]];
+          i += 2;
+          while (i < lines.length && lines[i].trim().startsWith('|')) {
+            tableLines.push(lines[i]);
+            i += 1;
+          }
+          output.push(this.renderMarkdownTable(tableLines));
+          continue;
+        }
+
+        if (/^[-*]\s+/.test(trimmed)) {
+          const items = [];
+          while (i < lines.length && /^[-*]\s+/.test(lines[i].trim())) {
+            items.push(lines[i].trim().replace(/^[-*]\s+/, ''));
+            i += 1;
+          }
+          output.push(`<ul>${items.map((item) => `<li>${this.renderInlineMarkdown(item)}</li>`).join('')}</ul>`);
+          continue;
+        }
+
+        if (/^\d+\.\s+/.test(trimmed)) {
+          const items = [];
+          while (i < lines.length && /^\d+\.\s+/.test(lines[i].trim())) {
+            items.push(lines[i].trim().replace(/^\d+\.\s+/, ''));
+            i += 1;
+          }
+          output.push(`<ol>${items.map((item) => `<li>${this.renderInlineMarkdown(item)}</li>`).join('')}</ol>`);
+          continue;
+        }
+
+        output.push(`<p>${this.renderInlineMarkdown(trimmed)}</p>`);
+        i += 1;
+      }
+
+      return output.join('');
+    },
+
+    renderMarkdownTable(lines) {
+      const parseRow = (row) => row.split('|').slice(1, -1).map((cell) => this.renderInlineMarkdown(cell.trim()));
+      const header = parseRow(lines[0]);
+      const bodyRows = lines.slice(2).map(parseRow).filter((row) => row.length);
+
+      const thead = `<thead><tr>${header.map((cell) => `<th>${cell}</th>`).join('')}</tr></thead>`;
+      const tbody = `<tbody>${bodyRows.map((row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join('')}</tr>`).join('')}</tbody>`;
+      return `<div class="ai-message-table-wrap"><table>${thead}${tbody}</table></div>`;
+    },
+
+    renderInlineMarkdown(value) {
+      let text = String(value || '');
+      text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      text = text.replace(/\[(.*?)\]\((https?:\/\/[^\s)]+|#[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+      return text;
     },
 
     setLoading(isLoading) {
