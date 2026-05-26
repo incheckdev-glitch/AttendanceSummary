@@ -6778,6 +6778,8 @@ function wireAIQuery() {
 const CSMActivity = {
   cacheTtlMs: 2 * 60 * 1000,
   rows: [],
+  filteredRows: [],
+  visibleRows: [],
   loaded: false,
   lastLoadedAt: 0,
   isLoading: false,
@@ -6984,25 +6986,15 @@ const CSMActivity = {
     this.loadError = '';
     this.refresh();
     try {
-      const response = await window.CsmActivityService.listActivities({
-        page: this.page,
-        limit: this.limit,
-        search: this.state.search,
-        csmName: this.state.csmName,
-        client: this.state.client,
-        supportType: this.state.supportType,
-        effort: this.state.effort,
-        channel: this.state.channel,
-        startDate: this.state.startDate,
-        endDate: this.state.endDate
-      });
+      const response = await window.CsmActivityService.listActivities({ batchSize: 1000 });
       const rows = Array.isArray(response?.rows) ? response.rows : [];
       this.rows = rows.filter(row => row.id || row.csmName || row.client || row.timestamp);
       this.page = Number(response?.page || this.page || 1);
-      this.limit = U.normalizePageSize(response?.limit ?? this.limit, 50, 200);
-      this.offset = Number(response?.offset ?? Math.max(0, (this.page - 1) * this.limit));
-      this.returned = Number(response?.returned ?? this.rows.length);
-      this.hasMore = Boolean(response?.hasMore);
+      this.limit = U.normalizePageSize(this.limit, 50, 200);
+      this.page = 1;
+      this.offset = 0;
+      this.returned = this.rows.length;
+      this.hasMore = false;
       this.loaded = true;
       this.lastLoadedAt = Date.now();
       this.hydrateOptions();
@@ -7014,6 +7006,8 @@ const CSMActivity = {
       }
       this.loadError = String(error?.message || 'Unknown backend error');
       this.rows = [];
+      this.filteredRows = [];
+      this.visibleRows = [];
       this.loaded = false;
       this.hydrateOptions();
       this.refresh();
@@ -7326,7 +7320,7 @@ const CSMActivity = {
         ? 'No activity rows match the current filters.'
         : 'No CSM activities found in backend yet.';
       E.csmTableBody.innerHTML = `<tr><td colspan="9" class="muted" style="text-align:center;">${U.escapeHtml(msg)}</td></tr>`;
-      if (E.csmRowCount) E.csmRowCount.textContent = '0 rows';
+      if (E.csmRowCount) E.csmRowCount.textContent = `0 of ${this.rows.length} rows`;
       return;
     }
     E.csmTableBody.innerHTML = list
@@ -7344,7 +7338,7 @@ const CSMActivity = {
         </tr>`
       )
       .join('');
-    if (E.csmRowCount) E.csmRowCount.textContent = `${list.length} row${list.length === 1 ? '' : 's'}`;
+    if (E.csmRowCount) E.csmRowCount.textContent = `${list.length} of ${this.filteredRows.length} rows`;
   },
   renderKPIs(list) {
     const totalActivities = list.length;
@@ -7488,10 +7482,21 @@ const CSMActivity = {
     ['csmInlineTimestamp','csmInlineCsmName','csmInlineClient','csmInlineMinutes','csmInlineSupportType','csmInlineEffort','csmInlineChannel','csmInlineNotes']
       .forEach(id => { if (E[id]) E[id].disabled = !canCreate || this.isSaving; });
     const filtered = this.getFilteredCsmActivityRows();
+    const totalFiltered = filtered.length;
+    const normalizedPageSize = U.normalizePageSize(this.limit, 50, 200);
+    const totalPages = Math.max(1, Math.ceil(Math.max(1, totalFiltered) / normalizedPageSize));
+    this.page = Math.min(U.normalizePageNumber(this.page, 1), totalPages);
+    this.limit = normalizedPageSize;
+    this.offset = Math.max(0, (this.page - 1) * this.limit);
+    const visible = filtered.slice(this.offset, this.offset + this.limit);
+    this.filteredRows = filtered;
+    this.visibleRows = visible;
+    this.returned = visible.length;
+    this.hasMore = this.offset + visible.length < totalFiltered;
     this.renderKPIs(filtered);
     this.renderInsights(filtered);
     this.renderCharts(filtered);
-    this.renderTable(filtered);
+    this.renderTable(visible);
     const paginationHost = U.ensurePaginationHost({ hostId: 'csmPagination', anchor: E.csmTableBody?.closest?.('.table-wrap') });
     U.renderPaginationControls({
       host: paginationHost,
@@ -7504,12 +7509,12 @@ const CSMActivity = {
       pageSizeOptions: [25, 50, 100],
       onPageChange: nextPage => {
         this.page = U.normalizePageNumber(nextPage, 1);
-        this.loadAndRefresh({ force: true });
+        this.refresh();
       },
       onPageSizeChange: nextSize => {
         this.limit = U.normalizePageSize(nextSize, 50, 200);
         this.page = 1;
-        this.loadAndRefresh({ force: true });
+        this.refresh();
       }
     });
   },
