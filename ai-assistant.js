@@ -9,7 +9,26 @@ window.AIAssistant = (() => {
   ];
   const key = 'ai_assistant_session_id';
 
-  const canUse = () => window.Permissions?.can?.('ai_assistant', 'view') && window.Permissions?.can?.('ai_assistant', 'ask');
+  function getCurrentUserRole() {
+    const user =
+      window.currentUser ||
+      window.AppState?.currentUser ||
+      window.Auth?.currentUser ||
+      window.Session?.authContext?.()?.profile ||
+      {};
+
+    return String(
+      user.role_key ||
+      user.roleKey ||
+      user.role ||
+      user.user_role ||
+      user.profile?.role_key ||
+      user.profile?.role ||
+      ''
+    ).trim().toLowerCase();
+  }
+
+  const canUse = () => getCurrentUserRole() === 'admin';
 
   function renderPrompts() {
     if (!E.aiAssistantPrompts) return;
@@ -39,7 +58,18 @@ window.AIAssistant = (() => {
       const client = window.SupabaseClient?.getClient?.();
       const sessionId = localStorage.getItem(key) || null;
       const currentUser = window.Session?.authContext?.()?.profile || {};
-      const { data, error } = await client.functions.invoke('ai-assistant', { body: { session_id: sessionId, message, current_user: { id: currentUser.id, role: currentUser.role_key || currentUser.role } } });
+      const { data, error } = await client.functions.invoke('ai-assistant', {
+        body: {
+          session_id: sessionId,
+          message,
+          current_user: {
+            id: currentUser.id,
+            email: currentUser.email,
+            role: currentUser.role || currentUser.role_key,
+            role_key: currentUser.role_key || currentUser.role
+          }
+        }
+      });
       if (error) throw error;
       if (data?.session_id) localStorage.setItem(key, data.session_id);
       append('assistant', data?.answer || 'No response.');
@@ -52,6 +82,12 @@ window.AIAssistant = (() => {
 
   function init() {
     if (!E.aiAssistantView) return;
+    const role = getCurrentUserRole();
+    console.log('[AI Assistant permission]', {
+      currentUser: window.Session?.authContext?.()?.profile || window.currentUser || window.AppState?.currentUser,
+      detectedRole: role
+    });
+
     if (!canUse()) {
       E.aiAssistantView.innerHTML = '<div class="section"><div class="muted">You do not have permission to use AI Assistant.</div></div>';
       return;

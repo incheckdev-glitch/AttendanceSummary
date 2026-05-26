@@ -12,8 +12,20 @@ Deno.serve(async req => {
     const openai = new OpenAI({ apiKey: Deno.env.get('OPENAI_API_KEY')! });
     const db = createClient(url, key);
 
-    const hasView = !!current_user?.role;
-    if (!hasView) return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 });
+    const role = String(
+      current_user?.role_key ||
+      current_user?.roleKey ||
+      current_user?.role ||
+      current_user?.user_role ||
+      ''
+    ).trim().toLowerCase();
+
+    if (role !== 'admin') {
+      return new Response(
+        JSON.stringify({ error: 'You do not have permission to use AI Assistant.' }),
+        { status: 403, headers: { 'content-type': 'application/json' } }
+      );
+    }
 
     const sid = session_id || crypto.randomUUID();
     await db.from('ai_chat_sessions').upsert({ id: sid, user_id: current_user.id || '', title: 'AI Assistant', updated_at: new Date().toISOString() });

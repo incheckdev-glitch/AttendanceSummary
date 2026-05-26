@@ -914,10 +914,32 @@ const Permissions = {
   canUseInternalIssueFilters() {
     return this.canPerformAction('tickets', 'internal_filters');
   },
+  getCurrentUserRole() {
+    const user =
+      window.currentUser ||
+      window.AppState?.currentUser ||
+      window.Auth?.currentUser ||
+      window.Session?.authContext?.()?.profile ||
+      {};
+
+    return this.normalizeRole(
+      user.role_key ||
+      user.roleKey ||
+      user.role ||
+      user.user_role ||
+      user.profile?.role_key ||
+      user.profile?.role ||
+      ''
+    );
+  },
+  canUseAiAssistant() {
+    return this.getCurrentUserRole() === 'admin';
+  },
   canAccessTab(viewKey) {
     const key = String(viewKey || '').trim();
     if (!key) return false;
     if (!Session.isAuthenticated()) return false;
+    if (key === 'aiAssistant') return this.canUseAiAssistant();
 
     const requirements = this.getTabPermissionRequirements(key);
     if (!requirements.length) return true;
