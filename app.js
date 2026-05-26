@@ -6988,16 +6988,8 @@ const CSMActivity = {
     this.refresh();
     try {
       const response = await window.CsmActivityService.listActivities({
-        page: this.page,
-        limit: this.limit,
-        search: this.state.search,
-        csmName: this.state.csmName,
-        client: this.state.client,
-        supportType: this.state.supportType,
-        effort: this.state.effort,
-        channel: this.state.channel,
-        startDate: this.state.startDate,
-        endDate: this.state.endDate
+        page: 1,
+        limit: this.limit
       });
       const rows = Array.isArray(response?.rows) ? response.rows : [];
       this.rows = rows.filter(row => row.id || row.csmName || row.client || row.timestamp);
@@ -7367,7 +7359,10 @@ const CSMActivity = {
         ? 'No activity rows match the current filters.'
         : 'No CSM activities found in backend yet.';
       E.csmTableBody.innerHTML = `<tr><td colspan="9" class="muted" style="text-align:center;">${U.escapeHtml(msg)}</td></tr>`;
-      if (E.csmRowCount) E.csmRowCount.textContent = '0 rows';
+      if (E.csmRowCount) {
+        const totalCount = Array.isArray(this.allRows) ? this.allRows.length : 0;
+        E.csmRowCount.textContent = totalCount ? `0 filtered / ${totalCount} total` : '0 rows';
+      }
       return;
     }
     E.csmTableBody.innerHTML = list
@@ -7385,7 +7380,14 @@ const CSMActivity = {
         </tr>`
       )
       .join('');
-    if (E.csmRowCount) E.csmRowCount.textContent = `${list.length} row${list.length === 1 ? '' : 's'}`;
+    if (E.csmRowCount) {
+      const filteredCount = Array.isArray(this.filteredRows) ? this.filteredRows.length : list.length;
+      const totalCount = Array.isArray(this.allRows) ? this.allRows.length : filteredCount;
+      const visibleLabel = `${list.length} visible of ${filteredCount} filtered`;
+      E.csmRowCount.textContent = totalCount === filteredCount
+        ? `${visibleLabel} / ${totalCount} total`
+        : `${visibleLabel} / ${totalCount} total`;
+    }
   },
   renderKPIs(list) {
     const totalActivities = list.length;
@@ -7532,6 +7534,8 @@ const CSMActivity = {
     this.renderKPIs(filtered);
     this.renderInsights(filtered);
     this.renderCharts(filtered);
+    const totalPages = Math.max(1, Math.ceil(filtered.length / this.limit));
+    if (this.page > totalPages) this.page = totalPages;
     const start = Math.max(0, (this.page - 1) * this.limit);
     const end = start + this.limit;
     this.visibleRows = filtered.slice(start, end);

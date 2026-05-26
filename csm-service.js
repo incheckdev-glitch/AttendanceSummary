@@ -372,47 +372,40 @@
 
   async function listActivities(options = {}) {
     const page = Math.max(1, Number(options.page) || 1);
-    const pageSize = Math.max(1, Math.min(200, Number(options.limit || options.pageSize) || 50));
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize;
+    const uiPageSize = Math.max(1, Math.min(200, Number(options.limit || options.pageSize) || 50));
+    const fetchSize = 1000;
     const client = getClient();
-    let query = client.from(TABLE).select('*').order('updated_at', { ascending: false });
-    const search = cleanString(options.search).replace(/[%]/g, '').replace(/,/g, ' ');
-    if (search) {
-      query = query.or([
-        `client.ilike.%${search}%`,
-        `client_name.ilike.%${search}%`,
-        `company_name.ilike.%${search}%`,
-        `csm_name.ilike.%${search}%`,
-        `notes.ilike.%${search}%`
-      ].join(','));
+    const allRows = [];
+    let from = 0;
+
+    // Load the full CSM activity dataset in batches. The UI applies search/date/filter
+    // rules locally against the complete dataset, then paginates only the visible table.
+    // This prevents the old "first 50 rows only" problem and keeps KPI/cards/charts/export accurate.
+    while (true) {
+      const to = from + fetchSize - 1;
+      const { data, error } = await client
+        .from(TABLE)
+        .select('*')
+        .order('created_at', { ascending: false })
+        .range(from, to);
+
+      if (error) throw readableError('Unable to load CSM activities', error);
+
+      const batch = Array.isArray(data) ? data : [];
+      allRows.push(...batch.map(normalizeCsmRow));
+
+      if (batch.length < fetchSize) break;
+      from += fetchSize;
     }
-    const csmName = cleanString(options.csmName);
-    if (csmName && csmName !== 'All') query = query.eq('csm_name', csmName);
-    const clientName = cleanString(options.client);
-    if (clientName && clientName !== 'All') query = query.eq('client', clientName);
-    const supportType = cleanString(options.supportType);
-    if (supportType && supportType !== 'All') query = query.eq('type_of_support', supportType);
-    const effort = cleanString(options.effort);
-    if (effort && effort !== 'All') query = query.eq('effort_requirement', effort);
-    const channel = cleanString(options.channel);
-    if (channel && channel !== 'All') query = query.eq('support_channel', channel);
-    const startDate = cleanString(options.startDate);
-    if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
-    const endDate = cleanString(options.endDate);
-    if (endDate) query = query.lte('created_at', `${endDate}T23:59:59.999`);
-    query = query.range(from, to);
-    const { data, error } = await query;
-    if (error) throw readableError('Unable to load CSM activities', error);
-    const rows = Array.isArray(data) ? data : [];
-    const limitedRows = rows.slice(0, pageSize).map(normalizeCsmRow);
+
     return {
-      rows: limitedRows,
+      rows: allRows,
       page,
-      limit: pageSize,
-      offset: from,
-      returned: limitedRows.length,
-      hasMore: rows.length > pageSize
+      limit: uiPageSize,
+      offset: 0,
+      returned: allRows.length,
+      total: allRows.length,
+      hasMore: false
     };
   }
 
