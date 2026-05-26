@@ -4208,6 +4208,58 @@
       if (normalizedResource === 'receipts' && id) return `/#finance?tab=receipts&id=${encodeURIComponent(id)}`;
       return String(fallback || '').trim() || '/#notifications';
     }
+    function getRecordRef(resource, record = {}) {
+      const safeRecord = record && typeof record === 'object' ? record : {};
+      const valueByResource = {
+        tickets: safeRecord.ticket_number || safeRecord.ticket_id || safeRecord.ticket_ref || safeRecord.reference,
+        agreements: safeRecord.agreement_number || safeRecord.agreement_reference || safeRecord.agreement_ref || safeRecord.agreement_id,
+        proposals: safeRecord.proposal_number || safeRecord.proposal_reference || safeRecord.proposal_ref || safeRecord.proposal_id,
+        invoices: safeRecord.invoice_number || safeRecord.invoice_no || safeRecord.invoice_ref || safeRecord.invoice_id,
+        receipts: safeRecord.receipt_number || safeRecord.receipt_no || safeRecord.receipt_ref || safeRecord.receipt_id,
+        leads: safeRecord.lead_number || safeRecord.lead_reference || safeRecord.lead_ref || safeRecord.lead_id,
+        deals: safeRecord.deal_number || safeRecord.deal_reference || safeRecord.deal_ref || safeRecord.deal_id,
+        operations_onboarding: safeRecord.onboarding_number || safeRecord.onboarding_ref || safeRecord.onboarding_id || safeRecord.reference,
+        technical_admin_requests: safeRecord.request_number || safeRecord.technical_request_number || safeRecord.technical_request_id || safeRecord.request_ref || safeRecord.reference,
+        events: safeRecord.event_number || safeRecord.event_ref || safeRecord.event_id || safeRecord.reference
+      };
+      const direct = String(valueByResource[String(resource || '').trim().toLowerCase()] || '').trim();
+      if (direct && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(direct)) return direct;
+      return String(safeRecord.reference || safeRecord.number || safeRecord.code || '').trim();
+    }
+    function getRecordDeepLink(resource, record = {}) {
+      const ref = encodeURIComponent(getRecordRef(resource, record) || '');
+      const routes = {
+        tickets: `#tickets?ticket_id=${ref}`,
+        agreements: `#agreements?agreement_id=${ref}`,
+        proposals: `#proposals?proposal_id=${ref}`,
+        invoices: `#invoices?invoice_id=${ref}`,
+        receipts: `#receipts?receipt_id=${ref}`,
+        leads: `#leads?lead_id=${ref}`,
+        deals: `#deals?deal_id=${ref}`,
+        operations_onboarding: `#operations-onboarding?onboarding_id=${ref}`,
+        technical_admin_requests: `#technical-admin-requests?request_id=${ref}`,
+        events: `#events?event_id=${ref}`
+      };
+      return routes[String(resource || '').trim().toLowerCase()] || `#${String(resource || '').trim().toLowerCase()}?record_id=${ref}`;
+    }
+    function renderNotificationTemplate(template = '', context = {}) {
+      const safeContext = context && typeof context === 'object' ? context : {};
+      const directMap = {
+        record_ref: safeContext.record_ref || '',
+        display_ref: safeContext.display_ref || safeContext.record_ref || '',
+        ticket_number: safeContext.ticket_number || safeContext.record_ref || '',
+        agreement_number: safeContext.agreement_number || safeContext.record_ref || '',
+        invoice_number: safeContext.invoice_number || safeContext.record_ref || '',
+        receipt_number: safeContext.receipt_number || safeContext.record_ref || '',
+        lead_number: safeContext.lead_number || safeContext.record_ref || '',
+        deal_number: safeContext.deal_number || safeContext.record_ref || '',
+        request_number: safeContext.request_number || safeContext.record_ref || ''
+      };
+      return String(template || '').replace(/\{([a-z0-9_]+)\}/gi, (_, key) => {
+        const value = directMap[key] ?? safeContext[key] ?? '';
+        return String(value || '');
+      }).trim();
+    }
     function normalizeNotificationRoles(...roleSources) {
       return [...new Set(
         roleSources
@@ -5707,6 +5759,8 @@
       ...assignedEmails
     ]);
     const record = normalizedPayload?.record && typeof normalizedPayload.record === 'object' ? normalizedPayload.record : normalizedPayload;
+    const recordRef = getRecordRef(resource, record);
+    const deepLink = getRecordDeepLink(resource, record);
     const dynamicRecipientEmails = [];
     assignedEmails.forEach(value => {
       dynamicRecipientEmails.push(value);
@@ -5720,6 +5774,30 @@
     const hasAnyConfiguredRecipients = enabledRulesForRecipients.some(rule => hasConfiguredRecipients(rule, resolvedRecipients));
     const recipientsCount = recipientUserIds.size + recipientEmails.size + normalizedRoles.length;
     const primaryRule = enabledRulesForRecipients[0] || matchingRules[0] || null;
+    const templateContext = {
+      ...(record && typeof record === 'object' ? record : {}),
+      record_ref: recordRef || String(normalizedPayload?.record_ref || normalizedPayload?.display_ref || '').trim(),
+      display_ref: recordRef || String(normalizedPayload?.display_ref || normalizedPayload?.record_ref || '').trim(),
+      ticket_number: record?.ticket_number || recordRef,
+      agreement_number: record?.agreement_number || recordRef,
+      invoice_number: record?.invoice_number || recordRef,
+      receipt_number: record?.receipt_number || recordRef,
+      lead_number: record?.lead_number || recordRef,
+      deal_number: record?.deal_number || recordRef,
+      request_number: record?.request_number || record?.technical_request_number || recordRef
+    };
+    const synthesizedTitle = renderNotificationTemplate(primaryRule?.title_template, templateContext);
+    const synthesizedMessage = renderNotificationTemplate(primaryRule?.body_template, templateContext);
+    const payloadWithRefs = {
+      ...normalizedPayload,
+      record_id: String(record?.id || normalizedPayload?.record_id || '').trim() || normalizedPayload?.record_id,
+      record_ref: templateContext.record_ref,
+      display_ref: templateContext.display_ref,
+      deep_link: String(normalizedPayload?.deep_link || normalizedPayload?.url || '').trim() || deepLink,
+      title: synthesizedTitle || normalizedPayload?.title,
+      message: synthesizedMessage || normalizedPayload?.message || normalizedPayload?.body,
+      body: synthesizedMessage || normalizedPayload?.body || normalizedPayload?.message
+    };
     const resolvedChannels = await resolveNotificationChannels(resource, action, { eventKey, event_key: eventKey });
     const decision = {
       channels: {
@@ -5780,7 +5858,7 @@
     const recordId = String(normalizedPayload?.record_id || record?.id || '').trim();
     const dedupeKey = resource + ':' + action + ':' + (recordId || 'na') + ':' + (targetUserIds[0] || 'na') + ':in_app:' + dedupeMinuteBucket;
     const sanitizedHubPayload = {
-      ...normalizedPayload,
+      ...payloadWithRefs,
       target_role: undefined,
       target_roles: normalizedRoles,
       target_user_id: normalizedRoles.length ? undefined : (targetUserIds[0] || undefined),
@@ -5795,7 +5873,7 @@
     const finalEmailRecipients = [...new Set([...recipientEmails].map(value => String(value || '').trim().toLowerCase()).filter(isValidNotificationEmail))];
     const pushPromise = shouldAttemptPush
       ? sendPwaPushForNotification({
-        ...normalizedPayload,
+        ...payloadWithRefs,
         target_user_ids: targetUserIds,
         target_emails: [...recipientEmails],
         target_roles: normalizedRoles,
@@ -5804,7 +5882,7 @@
       : Promise.resolve({ attempted: false, reason: decision.channels.push ? 'no-target' : 'push-disabled' });
     const emailPromise = decision.channels.email
       ? sendEmailForNotification({
-        ...normalizedPayload,
+        ...payloadWithRefs,
         target_user_ids: targetUserIds,
         target_emails: finalEmailRecipients,
         target_roles: normalizedRoles,
