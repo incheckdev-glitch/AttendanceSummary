@@ -49,6 +49,9 @@ function agreementHasSignedDocument(agreement) {
     agreement?.signed_agreement_document_url
   );
 }
+const DEFAULT_AGREEMENT_TERMS_AND_CONDITIONS = `Provider and Customer hereby agree to abide by and be bound to this Subscription Agreement, Provider’s Terms of Use, and Provider's Privacy Policy. Provider's Terms of Use and Privacy Policy can be found at https://www.incheck360.com/terms-of-use and https://www.incheck360.com/privacy-policy, respectively, and are hereby incorporated into this Agreement. The Subscription Agreement, Provider's Terms of Use, and Privacy Policy form the Agreement between Customer, as listed above, and InCheck 360 Holding B.V.
+
+IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by their authorized representatives as of the date of last signature by either party ("Effective Date").`;
 
 const Agreements = {
   signedDocumentBucket: 'agreement-signed-documents',
@@ -1044,7 +1047,29 @@ const Agreements = {
       || this.providerIdentityDefaults.secondarySignatoryName;
     normalized.provider_secondary_signatory_title = String(normalized.provider_secondary_signatory_title || normalized.provider_signatory_title_secondary || '').trim()
       || this.providerIdentityDefaults.secondarySignatoryTitle;
+    normalized.terms_conditions = this.resolveAgreementTermsAndConditions(normalized, source);
     return this.applyAgreementValidity(this.applyOfficialSignatoryDefaults(normalized));
+  },
+  resolveAgreementTermsAndConditions(agreement = {}, source = {}) {
+    const firstFilled = (...values) => values
+      .map(value => (value === undefined || value === null ? '' : String(value).trim()))
+      .find(Boolean) || '';
+    const resolved = firstFilled(
+      agreement?.terms_conditions,
+      agreement?.terms_and_conditions,
+      agreement?.termsConditions,
+      agreement?.terms,
+      agreement?.agreement_terms,
+      agreement?.legal_terms,
+      source?.terms_conditions,
+      source?.terms_and_conditions,
+      source?.termsConditions,
+      source?.terms,
+      source?.agreement_terms,
+      source?.legal_terms
+    );
+    if (resolved) return resolved;
+    return this.isAgreementSigned(agreement) ? '' : DEFAULT_AGREEMENT_TERMS_AND_CONDITIONS;
   },
   getAgreementValidityBaseDate(agreement = {}) {
     return this.normalizeDateInputValue(
@@ -1626,7 +1651,7 @@ const Agreements = {
       provider_contact_name: this.providerIdentityDefaults.contactName,
       provider_contact_mobile: this.providerIdentityDefaults.contactMobile,
       provider_contact_email: this.providerIdentityDefaults.contactEmail,
-      terms_conditions: String(source.terms_conditions || source.termsConditions || '').trim(),
+      terms_conditions: this.resolveAgreementTermsAndConditions(source, source),
       customer_official_signatory_name: proposalSignatorySnapshot.name || '',
       customer_official_signatory_title: proposalSignatorySnapshot.title || '',
       customer_signatory_name: proposalSignatorySnapshot.name || '',
@@ -1982,7 +2007,7 @@ const Agreements = {
     };
   },
   buildAgreementPreviewHtml(agreement = {}, items = []) {
-    const agreementData = agreement && typeof agreement === 'object' ? agreement : {};
+    const agreementData = this.normalizeAgreement(agreement && typeof agreement === 'object' ? agreement : {});
     const normalizedItems = (Array.isArray(items) ? items : []).map((item, index) => {
       const normalized = this.normalizeItem(item);
       if (!normalized.line_no) normalized.line_no = index + 1;

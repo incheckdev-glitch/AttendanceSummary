@@ -73,6 +73,9 @@
     mobile: '+31 97 010280855',
     email: 'Info@incheck360.nl'
   });
+  const DEFAULT_AGREEMENT_TERMS_AND_CONDITIONS = `Provider and Customer hereby agree to abide by and be bound to this Subscription Agreement, Provider’s Terms of Use, and Provider's Privacy Policy. Provider's Terms of Use and Privacy Policy can be found at https://www.incheck360.com/terms-of-use and https://www.incheck360.com/privacy-policy, respectively, and are hereby incorporated into this Agreement. The Subscription Agreement, Provider's Terms of Use, and Privacy Policy form the Agreement between Customer, as listed above, and InCheck 360 Holding B.V.
+
+IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by their authorized representatives as of the date of last signature by either party ("Effective Date").`;
   function normalizeLocationKey(value = '') {
     return String(value || '').trim().toLowerCase().normalize('NFKC').replace(/\s+/g, ' ');
   }
@@ -2983,7 +2986,7 @@
       poc_service_end_date: normalizeNullableDateValue(firstDefined(record, ['poc_service_end_date', 'pocServiceEndDate'])),
       poc_success_kpis: trimOrNull(firstDefined(record, ['poc_success_kpis', 'pocSuccessKpis'])),
       poc_conversion_commitment: trimOrNull(firstDefined(record, ['poc_conversion_commitment', 'pocConversionCommitment'])),
-      terms_conditions: firstDefined(record, ['terms_conditions', 'termsConditions']),
+      terms_conditions: firstDefined(record, ['terms_conditions', 'terms_and_conditions', 'termsConditions', 'terms', 'agreement_terms', 'legal_terms']),
       customer_official_signatory_name: firstDefined(record, ['customer_official_signatory_name', 'customerOfficialSignatoryName', 'customer_signatory_Name', 'customer_signatory_name', 'customerSignatoryName']),
       customer_official_signatory_title: firstDefined(record, ['customer_official_signatory_title', 'customerOfficialSignatoryTitle', 'customer_signatory_title', 'customerSignatoryTitle']),
       customer_signatory_name: firstDefined(record, ['customer_signatory_Name', 'customer_signatory_name', 'customerSignatoryName', 'customer_official_signatory_name', 'customerOfficialSignatoryName']),
@@ -3045,6 +3048,15 @@
       ? String(sanitized.payment_term || '').trim()
       : 'Net 30';
     sanitized.payment_terms = sanitized.payment_term;
+    const hasTerms = sanitized.terms_conditions !== undefined && sanitized.terms_conditions !== null && String(sanitized.terms_conditions).trim() !== '';
+    const statusValue = String(sanitized.status || '').trim().toLowerCase();
+    const isSignedLike = statusValue.includes('signed')
+      || statusValue === 'active'
+      || Boolean(sanitized.signed_date)
+      || Boolean(sanitized.customer_official_sign_date || sanitized.customer_sign_date)
+      || Boolean(sanitized.provider_official_signatory_1_sign_date || sanitized.provider_sign_date)
+      || Boolean(sanitized.provider_official_signatory_2_sign_date);
+    if (!hasTerms && !isSignedLike) sanitized.terms_conditions = DEFAULT_AGREEMENT_TERMS_AND_CONDITIONS;
     sanitized.provider_legal_name = 'InCheck 360 Holding BV';
     sanitized.provider_name = 'InCheck 360 Holding BV';
     sanitized.provider_address = 'Pyrmontstraat 5, 7513 BN, Enschede, The Netherlands';
