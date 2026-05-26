@@ -5944,8 +5944,15 @@ function wireDashboardGate() {
     if (!routed && !hasPendingDeepLink()) setActiveView(getFirstAllowedView(defaultView));
     window.__APP_UNLOCKED__ = true;
     window.__AUTH_RESTORED__ = true;
+    const currentUser = Permissions.getResolvedCurrentUser?.() || Session.authContext?.()?.profile || null;
+    window.AppState = window.AppState || {};
+    window.AppState.currentUser = currentUser || window.AppState.currentUser;
+    window.AppState.role = currentUser?.role_key || currentUser?.role || window.Session?.role || window.AppState.role;
     window.dispatchEvent(new CustomEvent('incheck360:auth-ready', {
-      detail: { currentUser: Permissions.getResolvedCurrentUser?.() || Session.authContext?.()?.profile || null, role: Permissions.getCurrentUserRole?.() || Session.role() }
+      detail: {
+        currentUser: window.AppState.currentUser,
+        role: window.AppState.role || Permissions.getCurrentUserRole?.() || Session.role()
+      }
     }));
     console.info('[wireDashboardGate.unlockApp] app unlocked');
   };
