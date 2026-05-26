@@ -372,11 +372,10 @@
 
   async function listActivities(options = {}) {
     const page = Math.max(1, Number(options.page) || 1);
-    const pageSize = Math.max(1, Math.min(200, Number(options.limit || options.pageSize) || 50));
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize;
+    const pageSize = Math.max(1, Math.min(500, Number(options.limit || options.pageSize) || 50));
+    const batchSize = Math.max(100, Math.min(1000, Number(options.batchSize) || 1000));
     const client = getClient();
-    let query = client.from(TABLE).select('*').order('updated_at', { ascending: false });
+    let query = client.from(TABLE).select('*', { count: 'exact' }).order('updated_at', { ascending: false });
     const search = cleanString(options.search).replace(/[%]/g, '').replace(/,/g, ' ');
     if (search) {
       query = query.or([
@@ -401,18 +400,32 @@
     if (startDate) query = query.gte('created_at', `${startDate}T00:00:00`);
     const endDate = cleanString(options.endDate);
     if (endDate) query = query.lte('created_at', `${endDate}T23:59:59.999`);
-    query = query.range(from, to);
-    const { data, error } = await query;
-    if (error) throw readableError('Unable to load CSM activities', error);
-    const rows = Array.isArray(data) ? data : [];
-    const limitedRows = rows.slice(0, pageSize).map(normalizeCsmRow);
+    let from = 0;
+    let allRows = [];
+    let totalCount = 0;
+    while (true) {
+      const to = from + batchSize - 1;
+      const { data, error, count } = await query.range(from, to);
+      if (error) throw readableError('Unable to load CSM activities', error);
+      if (Number.isFinite(count)) totalCount = Number(count);
+      const rows = Array.isArray(data) ? data : [];
+      allRows = allRows.concat(rows);
+      if (rows.length < batchSize) break;
+      from += batchSize;
+    }
+    const normalizedRows = allRows.map(normalizeCsmRow);
+    const total = Number.isFinite(totalCount) && totalCount > 0 ? totalCount : normalizedRows.length;
+    const offset = (page - 1) * pageSize;
+    const visibleRows = normalizedRows.slice(offset, offset + pageSize);
     return {
-      rows: limitedRows,
+      rows: normalizedRows,
+      visibleRows,
+      total,
       page,
       limit: pageSize,
-      offset: from,
-      returned: limitedRows.length,
-      hasMore: rows.length > pageSize
+      offset,
+      returned: visibleRows.length,
+      hasMore: offset + visibleRows.length < total
     };
   }
 
