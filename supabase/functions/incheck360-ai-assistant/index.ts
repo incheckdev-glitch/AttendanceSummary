@@ -41,6 +41,59 @@ const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 const READONLY_BLOCK_MESSAGE = 'Action execution is not enabled yet. I can only provide read-only ERP information.';
 
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
+function base64ToBytes(base64: string) {
+  return Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+}
+
+function bytesToBase64(bytes: ArrayBuffer | Uint8Array) {
+  return btoa(String.fromCharCode(...new Uint8Array(bytes)));
+}
+
+async function getEncryptionKey() {
+  const rawKey = Deno.env.get('AI_CHAT_ENCRYPTION_KEY');
+  if (!rawKey) throw new Error('Missing AI_CHAT_ENCRYPTION_KEY');
+
+  return crypto.subtle.importKey(
+    'raw',
+    base64ToBytes(rawKey),
+    { name: 'AES-GCM' },
+    false,
+    ['encrypt', 'decrypt'],
+  );
+}
+
+async function encryptText(text: string) {
+  const key = await getEncryptionKey();
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encrypted = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    encoder.encode(String(text || '')),
+  );
+
+  return {
+    content_encrypted: bytesToBase64(encrypted),
+    content_iv: bytesToBase64(iv),
+    encryption_version: 'aes-gcm-v1',
+  };
+}
+
+async function decryptText(row: { content_encrypted?: string; content_iv?: string; content?: string | null }) {
+  if (!row?.content_encrypted || !row?.content_iv) return row?.content || '';
+
+  const key = await getEncryptionKey();
+  const decrypted = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: base64ToBytes(row.content_iv) },
+    key,
+    base64ToBytes(row.content_encrypted),
+  );
+
+  return decoder.decode(decrypted);
+}
+
 const RESOURCE_ALIASES: Record<string, string[]> = {
   customer: ['companies', 'clients'], client: ['clients', 'companies'], payment: ['invoices', 'receipts'], renewal: ['invoice_items', 'invoices'],
   'technical request': ['technical_admin_requests'], onboarding: ['operations_onboarding'], issue: ['tickets'], 'agreement line': ['agreement_items'], 'invoice line': ['invoice_items'],
@@ -79,7 +132,19 @@ Deno.serve(async (req) => {
     const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
     const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
     await db.from('ai_chat_sessions').upsert({ id: sid, user_id: resolvedCurrentUser.id || '', title: 'AI Assistant', updated_at: new Date().toISOString() });
-    await db.from('ai_chat_messages').insert({ session_id: sid, user_id: resolvedCurrentUser.id || '', role: 'user', content: message });
+    const userId = resolvedCurrentUser.id || '';
+    const messageText = String(message || '');
+    const encryptedUserMessage = await encryptText(messageText);
+
+    await db.from('ai_chat_messages').insert({
+      session_id: sid,
+      user_id: userId,
+      role: 'user',
+      content: '[encrypted]',
+      content_encrypted: encryptedUserMessage.content_encrypted,
+      content_iv: encryptedUserMessage.content_iv,
+      encryption_version: encryptedUserMessage.encryption_version,
+    });
 
     const searchERP = async (args: any) => {
       const limit = normalizeLimit(args?.limit);
@@ -262,13 +327,22 @@ Deno.serve(async (req) => {
     };
 
     if (hasWriteIntent(String(message || ''))) {
-      await db.from('ai_chat_messages').insert({ session_id: sid, user_id: resolvedCurrentUser.id || '', role: 'assistant', content: READONLY_BLOCK_MESSAGE });
+      const encryptedAssistantBlockMessage = await encryptText(READONLY_BLOCK_MESSAGE);
+      await db.from('ai_chat_messages').insert({
+        session_id: sid,
+        user_id: userId,
+        role: 'assistant',
+        content: '[encrypted]',
+        content_encrypted: encryptedAssistantBlockMessage.content_encrypted,
+        content_iv: encryptedAssistantBlockMessage.content_iv,
+        encryption_version: encryptedAssistantBlockMessage.encryption_version,
+      });
       return jsonResponse({ ok: true, answer: READONLY_BLOCK_MESSAGE, session_id: sid }, 200);
     }
 
     const tools = Object.keys(toolHandlers).map((name) => ({ type: 'function' as const, name, description: name, parameters: { type: 'object', properties: { resource: { type: 'string' }, query: { type: 'string' }, status: { type: 'string' }, client_name: { type: 'string' }, reference: { type: 'string' }, date_from: { type: 'string' }, date_to: { type: 'string' }, limit: { type: 'number' }, days: { type: 'number' } } } }));
 
-    let response = await openai.responses.create({ model: 'gpt-4.1-mini', input: [{ role: 'system', content: SYSTEM }, { role: 'user', content: String(message || '') }], tools });
+    let response = await openai.responses.create({ model: 'gpt-4.1-mini', input: [{ role: 'system', content: SYSTEM }, { role: 'user', content: messageText }], tools });
     const toolOutputs: any[] = [];
     for (const item of response.output || []) {
       if (item.type !== 'function_call') continue;
@@ -280,7 +354,16 @@ Deno.serve(async (req) => {
 
     let answer = response.output_text || 'No data found from allowed tools.';
     if (/"truncated":true/.test(answer)) answer += '\n\nShowing first 100 records.';
-    await db.from('ai_chat_messages').insert({ session_id: sid, user_id: resolvedCurrentUser.id || '', role: 'assistant', content: answer });
+    const encryptedAssistantMessage = await encryptText(answer);
+    await db.from('ai_chat_messages').insert({
+      session_id: sid,
+      user_id: userId,
+      role: 'assistant',
+      content: '[encrypted]',
+      content_encrypted: encryptedAssistantMessage.content_encrypted,
+      content_iv: encryptedAssistantMessage.content_iv,
+      encryption_version: encryptedAssistantMessage.encryption_version,
+    });
     return jsonResponse({ ok: true, answer, session_id: sid }, 200);
   } catch (error) {
     console.error('[incheck360-ai-assistant] failed', error);
