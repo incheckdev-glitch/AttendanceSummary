@@ -36,7 +36,9 @@ For client summary (example: "Summarize GT Karting"):
   - Agreements
   - Invoices
   - Receipts
-  - Renewals / Payments`;
+  - Renewals / Payments
+
+Sensitive ERP fields may be replaced with placeholders like CLIENT_001, CONTACT_001, ADDRESS_001, EMAIL_001, PHONE_001. Use these placeholders naturally in your answer. Do not ask for the real values. The system will restore the real values after your response.`;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 const READONLY_BLOCK_MESSAGE = 'Action execution is not enabled yet. I can only provide read-only ERP information.';
@@ -114,6 +116,131 @@ const normalizeText = (value: unknown) =>
 const safeNum = (v: unknown) => Number(v ?? 0) || 0;
 const maybeFields = (row: any, fields: string[]) => fields.map((f) => row?.[f]).find((v) => v !== null && v !== undefined && String(v).trim() !== '');
 
+
+function createPrivacyMasker() {
+  const realToToken = new Map<string, string>();
+  const tokenToReal = new Map<string, string>();
+
+  const counters: Record<string, number> = {
+    CLIENT: 0,
+    CONTACT: 0,
+    ADDRESS: 0,
+    EMAIL: 0,
+    PHONE: 0,
+    SIGNATORY: 0,
+    REGISTRATION: 0,
+  };
+
+  const fieldTypeMap: Record<string, string> = {
+    customer_name: 'CLIENT',
+    company_name: 'CLIENT',
+    client_name: 'CLIENT',
+    legal_name: 'CLIENT',
+    name: 'CLIENT',
+    display_name: 'CLIENT',
+    customer_legal_name: 'CLIENT',
+    contact_name: 'CONTACT',
+    primary_contact_name: 'CONTACT',
+    requested_by_name: 'CONTACT',
+    assigned_to_name: 'CONTACT',
+    authorized_signatory_name: 'SIGNATORY',
+    signatory_name: 'SIGNATORY',
+    email: 'EMAIL',
+    contact_email: 'EMAIL',
+    primary_contact_email: 'EMAIL',
+    assigned_to_email: 'EMAIL',
+    owner_email: 'EMAIL',
+    sales_executive_email: 'EMAIL',
+    phone: 'PHONE',
+    mobile: 'PHONE',
+    contact_phone: 'PHONE',
+    primary_contact_phone: 'PHONE',
+    address: 'ADDRESS',
+    street_address: 'ADDRESS',
+    billing_address: 'ADDRESS',
+    city: 'ADDRESS',
+    location_address: 'ADDRESS',
+    registration_number: 'REGISTRATION',
+    company_registration_number: 'REGISTRATION',
+    tax_number: 'REGISTRATION',
+    vat_number: 'REGISTRATION',
+  };
+
+  const emailRegex = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
+  const phoneRegex = /\+?\d[\d\s().-]{6,}\d/g;
+
+  function nextToken(type: string) {
+    counters[type] = (counters[type] || 0) + 1;
+    return `${type}_${String(counters[type]).padStart(3, '0')}`;
+  }
+
+  function add(value: unknown, type: string) {
+    const real = String(value || '').trim();
+    if (!real) return real;
+    if (realToToken.has(real)) return realToToken.get(real)!;
+    const token = nextToken(type);
+    realToToken.set(real, token);
+    tokenToReal.set(token, real);
+    return token;
+  }
+
+  function registerTextEntities(text: unknown) {
+    const value = String(text || '');
+    for (const match of value.match(emailRegex) || []) add(match, 'EMAIL');
+    for (const match of value.match(phoneRegex) || []) add(match, 'PHONE');
+  }
+
+  function maskText(text: unknown) {
+    registerTextEntities(text);
+    let output = String(text || '');
+    const values = Array.from(realToToken.keys()).filter(Boolean).sort((a, b) => b.length - a.length);
+    for (const real of values) {
+      const token = realToToken.get(real);
+      if (token) output = output.split(real).join(token);
+    }
+    return output;
+  }
+
+  function restoreText(text: unknown) {
+    let output = String(text || '');
+    const tokens = Array.from(tokenToReal.keys()).filter(Boolean).sort((a, b) => b.length - a.length);
+    for (const token of tokens) {
+      const real = tokenToReal.get(token);
+      if (real) output = output.split(token).join(real);
+    }
+    return output;
+  }
+
+  function maskData(data: any): any {
+    if (Array.isArray(data)) return data.map(maskData);
+    if (!data || typeof data !== 'object') return data;
+
+    const masked: any = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (value && typeof value === 'object') {
+        masked[key] = maskData(value);
+        continue;
+      }
+
+      const type = fieldTypeMap[key];
+      if (type) {
+        masked[key] = add(value, type);
+        continue;
+      }
+
+      if (typeof value === 'string') {
+        registerTextEntities(value);
+        masked[key] = maskText(value);
+      } else {
+        masked[key] = value;
+      }
+    }
+    return masked;
+  }
+
+  return { add, maskText, restoreText, maskData };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { status: 200, headers: corsHeaders });
   if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed. Use POST.' }, 405);
@@ -129,11 +256,14 @@ Deno.serve(async (req) => {
     if (role !== 'admin') return jsonResponse({ error: 'You do not have permission to use AI Assistant.' }, 403);
 
     const sid = session_id || crypto.randomUUID();
+    const masker = createPrivacyMasker();
     const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
     const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
     await db.from('ai_chat_sessions').upsert({ id: sid, user_id: resolvedCurrentUser.id || '', title: 'AI Assistant', updated_at: new Date().toISOString() });
     const userId = resolvedCurrentUser.id || '';
     const messageText = String(message || '');
+    const clientSummaryMatch = messageText.match(/\bsummarize\s+(.+)/i);
+    if (clientSummaryMatch?.[1]) masker.add(clientSummaryMatch[1].trim(), 'CLIENT');
     const encryptedUserMessage = await encryptText(messageText);
 
     await db.from('ai_chat_messages').insert({
@@ -342,17 +472,22 @@ Deno.serve(async (req) => {
 
     const tools = Object.keys(toolHandlers).map((name) => ({ type: 'function' as const, name, description: name, parameters: { type: 'object', properties: { resource: { type: 'string' }, query: { type: 'string' }, status: { type: 'string' }, client_name: { type: 'string' }, reference: { type: 'string' }, date_from: { type: 'string' }, date_to: { type: 'string' }, limit: { type: 'number' }, days: { type: 'number' } } } }));
 
-    let response = await openai.responses.create({ model: 'gpt-4.1-mini', input: [{ role: 'system', content: SYSTEM }, { role: 'user', content: messageText }], tools });
+    const maskedUserMessage = masker.maskText(messageText);
+    let response = await openai.responses.create({ model: 'gpt-4.1-mini', input: [{ role: 'system', content: SYSTEM }, { role: 'user', content: maskedUserMessage }], tools });
     const toolOutputs: any[] = [];
     for (const item of response.output || []) {
       if (item.type !== 'function_call') continue;
       const handler = toolHandlers[item.name];
-      const result = handler ? await handler(JSON.parse(item.arguments || '{}')) : { error: `Unknown tool ${item.name}` };
-      toolOutputs.push({ type: 'function_call_output', call_id: item.call_id, output: JSON.stringify(result) });
+      const parsedArgs = JSON.parse(item.arguments || '{}');
+      const args = JSON.parse(masker.restoreText(JSON.stringify(parsedArgs)));
+      const result = handler ? await handler(args) : { error: `Unknown tool ${item.name}` };
+      const maskedResult = masker.maskData(result);
+      toolOutputs.push({ type: 'function_call_output', call_id: item.call_id, output: JSON.stringify(maskedResult) });
     }
     if (toolOutputs.length) response = await openai.responses.create({ model: 'gpt-4.1-mini', previous_response_id: response.id, input: toolOutputs });
 
-    let answer = response.output_text || 'No data found from allowed tools.';
+    const maskedAnswer = response.output_text || 'No data found from allowed tools.';
+    let answer = masker.restoreText(maskedAnswer);
     if (/"truncated":true/.test(answer)) answer += '\n\nShowing first 100 records.';
     const encryptedAssistantMessage = await encryptText(answer);
     await db.from('ai_chat_messages').insert({
@@ -364,7 +499,7 @@ Deno.serve(async (req) => {
       content_iv: encryptedAssistantMessage.content_iv,
       encryption_version: encryptedAssistantMessage.encryption_version,
     });
-    return jsonResponse({ ok: true, answer, session_id: sid }, 200);
+    return jsonResponse({ ok: true, answer, session_id: sid, privacy_mode: 'masked_before_openai' }, 200);
   } catch (error) {
     console.error('[incheck360-ai-assistant] failed', error);
     return jsonResponse({ error: error?.message || String(error) }, 500);
