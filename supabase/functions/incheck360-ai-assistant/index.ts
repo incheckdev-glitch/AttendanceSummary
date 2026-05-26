@@ -21,6 +21,70 @@ const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-
 const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'content-type': 'application/json' } });
 const normalizeLimit = (n?: number) => Math.min(MAX_LIMIT, Math.max(1, Number.isFinite(n) ? Number(n) : DEFAULT_LIMIT));
 const safeNum = (v: unknown) => Number(v ?? 0) || 0;
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+let encryptionKeyPromise: Promise<CryptoKey> | null = null;
+
+const bytesToBase64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
+const base64ToBytes = (base64: string) => Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+
+async function getEncryptionKey() {
+  if (encryptionKeyPromise) return encryptionKeyPromise;
+  const keyRaw = Deno.env.get('AI_CHAT_ENCRYPTION_KEY') || Deno.env.get('CHAT_ENCRYPTION_KEY') || '';
+  if (!keyRaw) throw new Error('Missing AI chat encryption key');
+  const keyBytes = keyRaw.includes('=') ? base64ToBytes(keyRaw) : encoder.encode(keyRaw.padEnd(32, '0').slice(0, 32));
+  encryptionKeyPromise = crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+  return encryptionKeyPromise;
+}
+
+async function encryptText(plainText: string) {
+  const key = await getEncryptionKey();
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoder.encode(plainText));
+  return { content_encrypted: bytesToBase64(new Uint8Array(encrypted)), content_iv: bytesToBase64(iv) };
+}
+
+async function decryptText(row: any) {
+  if (!row?.content_encrypted || !row?.content_iv) {
+    return row?.content && row.content !== '[encrypted]' ? String(row.content) : '';
+  }
+  const key = await getEncryptionKey();
+  const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: base64ToBytes(row.content_iv) }, key, base64ToBytes(row.content_encrypted));
+  return decoder.decode(decrypted);
+}
+
+async function loadRecentChatHistory(db: any, sessionId: string, limit = 12) {
+  if (!sessionId) return [];
+  const { data, error } = await db.from('ai_chat_messages').select('*').eq('session_id', sessionId).order('created_at', { ascending: false }).limit(limit);
+  if (error) {
+    console.warn('[AI Assistant] unable to load chat history', error.message);
+    return [];
+  }
+  const rows = [...(data || [])].reverse();
+  const history = [];
+  for (const row of rows) {
+    const content = await decryptText(row);
+    const role = row.role === 'assistant' ? 'assistant' : row.role === 'user' ? 'user' : 'system';
+    if (!content || content === '[encrypted]') continue;
+    history.push({ role, content });
+  }
+  return history;
+}
+
+async function saveChatMessage(db: any, sid: string, role: 'user' | 'assistant' | 'system', content: string, currentUser: any) {
+  const encrypted = await encryptText(content);
+  const payload = {
+    session_id: sid,
+    role,
+    content: '[encrypted]',
+    content_encrypted: encrypted.content_encrypted,
+    content_iv: encrypted.content_iv,
+    user_id: currentUser?.id || null,
+    user_email: currentUser?.email || null,
+  };
+  const { error } = await db.from('ai_chat_messages').insert(payload);
+  if (error) console.warn('[AI Assistant] unable to save chat message', error.message);
+}
 const maybeFields = (row: any, fields: string[]) => fields.map((f) => row?.[f]).find((v) => v !== null && v !== undefined && String(v).trim() !== '');
 const normalizeText = (value: unknown) => String(value ?? '').toLowerCase().trim().replace(/[^\p{L}\p{N}\s\-_.#]/gu, ' ').replace(/\s+/g, ' ');
 
@@ -93,8 +157,13 @@ Deno.serve(async (req) => {
     const masker = createPrivacyMasker();
 
     const messageText = String(message || '');
+    const previousHistory = await loadRecentChatHistory(db, sid, 12);
+    await saveChatMessage(db, sid, 'user', messageText, resolvedCurrentUser);
     const isHowTo = /^\s*how\s+to\b/i.test(messageText);
-    if (looksLikeWriteAction(messageText) && !isHowTo) return jsonResponse({ ok: true, answer: READONLY_BLOCK_MESSAGE, session_id: sid }, 200);
+    if (looksLikeWriteAction(messageText) && !isHowTo) {
+      await saveChatMessage(db, sid, 'assistant', READONLY_BLOCK_MESSAGE, resolvedCurrentUser);
+      return jsonResponse({ ok: true, answer: READONLY_BLOCK_MESSAGE, session_id: sid }, 200);
+    }
 
     const safeSelect = async (table: string, limit = MAX_LIMIT) => {
       const { data, error } = await db.from(table).select('*').limit(limit);
@@ -183,11 +252,16 @@ Deno.serve(async (req) => {
     else if (lower.includes('open ticket')) directResult = await tools.get_open_tickets({});
     else if (lower.includes('technical request')) directResult = await tools.get_open_technical_requests({});
 
-    if (directResult) return jsonResponse({ ok: true, answer: directResult, session_id: sid }, 200);
+    if (directResult) {
+      const answer = typeof directResult === 'string' ? directResult : JSON.stringify(directResult);
+      await saveChatMessage(db, sid, 'assistant', answer, resolvedCurrentUser);
+      return jsonResponse({ ok: true, answer: directResult, session_id: sid }, 200);
+    }
 
     const openAITools = Object.keys(tools).map((name) => ({ type: 'function' as const, name, description: name, parameters: { type: 'object', properties: { resource: { type: 'string' }, query: { type: 'string' }, reference: { type: 'string' }, status: { type: 'string' }, date_from: { type: 'string' }, date_to: { type: 'string' }, limit: { type: 'number' }, client_name: { type: 'string' }, topic: { type: 'string' } } } }));
 
-    let response = await openai.responses.create({ model: 'gpt-4.1-mini', input: [{ role: 'system', content: SYSTEM }, { role: 'user', content: masker.maskText(messageText) }], tools: openAITools });
+    const maskedHistory = previousHistory.map((msg: any) => ({ role: msg.role, content: masker.maskText(msg.content) }));
+    let response = await openai.responses.create({ model: 'gpt-4.1-mini', input: [{ role: 'system', content: SYSTEM }, ...maskedHistory, { role: 'user', content: masker.maskText(messageText) }], tools: openAITools });
     const outputs: any[] = [];
     for (const item of response.output || []) {
       if (item.type !== 'function_call') continue;
@@ -196,7 +270,9 @@ Deno.serve(async (req) => {
       outputs.push({ type: 'function_call_output', call_id: item.call_id, output: JSON.stringify(masker.maskData(result)) });
     }
     if (outputs.length) response = await openai.responses.create({ model: 'gpt-4.1-mini', previous_response_id: response.id, input: outputs });
-    return jsonResponse({ ok: true, answer: masker.restoreText(response.output_text || 'No data found from allowed tools.'), session_id: sid, privacy_mode: 'masked_before_openai' }, 200);
+    const finalAnswer = masker.restoreText(response.output_text || 'No data found from allowed tools.');
+    await saveChatMessage(db, sid, 'assistant', finalAnswer, resolvedCurrentUser);
+    return jsonResponse({ ok: true, answer: finalAnswer, session_id: sid, privacy_mode: 'masked_before_openai' }, 200);
   } catch (error) {
     console.error('[incheck360-ai-assistant] failed', error);
     return jsonResponse({ error: (error as any)?.message || String(error) }, 500);

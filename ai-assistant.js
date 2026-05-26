@@ -15,8 +15,6 @@
     'Summarize GT Karting'
   ];
 
-  const STORAGE_KEY = 'ai_assistant_session_id';
-
   window.AIAssistant = window.AIAssistant || {
     initialized: false,
     authReady: false,
@@ -24,6 +22,7 @@
     currentRole: '',
     root: null,
     sessionId: null,
+    messages: [],
     isSending: false,
     eventsBound: false,
 
@@ -36,7 +35,7 @@
         }
 
         this.root = root;
-        this.sessionId = this.sessionId || localStorage.getItem(STORAGE_KEY) || null;
+        this.sessionId = this.getActiveSessionId();
 
         // Always render, even if already initialized, because auth role may have changed.
         this.render();
@@ -95,6 +94,12 @@
       }
 
       root.addEventListener('click', (event) => {
+        const newChatButton = event.target.closest('[data-ai-new-chat]');
+        if (newChatButton) {
+          event.preventDefault();
+          this.startNewChat();
+          return;
+        }
         const btn = event.target.closest('[data-ai-suggestion]');
         if (!btn) return;
         const text = btn.getAttribute('data-ai-suggestion') || btn.textContent || '';
@@ -134,8 +139,11 @@
       const root = this.root || document.querySelector('#aiAssistantView');
       if (!root) return;
       root.innerHTML = `
-        <section class="ai-assistant-page">
+          <section class="ai-assistant-page">
           <h1>AI Assistant</h1>
+          <div class="row" style="justify-content:flex-end;margin:8px 0;">
+            <button class="btn sm ghost" type="button" data-ai-new-chat>New Chat</button>
+          </div>
           <p class="muted">Ask about clients, invoices, agreements, tickets, onboarding, renewals, or any ERP data...</p>
           <div id="aiAssistantPrompts" data-ai-suggestions class="row" style="gap:8px;flex-wrap:wrap;margin:12px 0;"></div>
           <div id="aiAssistantMessages" data-ai-messages class="col" style="gap:8px;max-height:50vh;overflow:auto;"></div>
@@ -155,6 +163,29 @@
           `<button class="btn sm ghost" data-ai-suggestion="${this.escapeHtml(text)}">${this.escapeHtml(text)}</button>`
         )).join('');
       }
+      for (const message of this.messages) this.appendMessage(message.author, message.content, false);
+    },
+
+    getSessionStorageKey() {
+      const user = this.getResolvedCurrentUser?.() || {};
+      return `incheck360_ai_assistant_session_${user.id || user.email || 'admin'}`;
+    },
+
+    getActiveSessionId() {
+      return this.sessionId || localStorage.getItem(this.getSessionStorageKey()) || null;
+    },
+
+    setActiveSessionId(sessionId) {
+      if (!sessionId) return;
+      this.sessionId = sessionId;
+      localStorage.setItem(this.getSessionStorageKey(), sessionId);
+    },
+
+    startNewChat() {
+      localStorage.removeItem(this.getSessionStorageKey());
+      this.sessionId = null;
+      this.messages = [];
+      this.renderChatUi();
     },
 
     sendCurrentMessage() {
@@ -217,7 +248,7 @@
             apikey: anonKey
           },
           body: JSON.stringify({
-            session_id: this.sessionId || null,
+            session_id: this.getActiveSessionId(),
             message: text,
             current_user: {
               id: currentUser?.id,
@@ -245,8 +276,7 @@
           throw new Error(payload.error || payload.message || `AI Assistant failed with status ${response.status}`);
         }
 
-        this.sessionId = payload.session_id || this.sessionId;
-        if (this.sessionId) localStorage.setItem(STORAGE_KEY, this.sessionId);
+        this.setActiveSessionId(payload.session_id);
         this.appendAssistantMessage(payload.answer || payload.message || 'No answer returned.');
       } catch (error) {
         console.error('[AI Assistant] send failed', error);
@@ -263,7 +293,8 @@
     appendAssistantMessage(message) { this.appendMessage('Assistant', message); },
     showError(message) { this.appendAssistantMessage(message); },
 
-    appendMessage(author, content) {
+    appendMessage(author, content, track = true) {
+      if (track) this.messages.push({ author, content });
       const messages = this.root?.querySelector('#aiAssistantMessages, [data-ai-messages]');
       if (!messages) return;
       const item = document.createElement('div');
