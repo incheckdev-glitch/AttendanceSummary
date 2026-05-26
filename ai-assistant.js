@@ -200,7 +200,7 @@
           throw new Error('Supabase URL is not configured.');
         }
 
-        const functionUrl = `${SUPABASE_URL}/functions/v1/ai-assistant`;
+        const functionUrl = `${SUPABASE_URL}/functions/v1/incheck360-ai-assistant`;
 
         const response = await fetch(functionUrl, {
           method: 'POST',
