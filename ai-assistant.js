@@ -5,11 +5,14 @@
     'Show renewals due in 7 days',
     'Show unpaid invoices',
     'Show signed agreements not invoiced',
+    'Show all records related to Agreement#00040',
+    'Which technical requests are overdue?',
+    'Which proposals are pending approval?',
     'Show open technical requests',
     'Show completed onboarding',
     "Show today’s lead follow-ups",
     "Show today’s deal follow-ups",
-    'Summarize a client'
+    'Summarize GT Karting'
   ];
 
   const STORAGE_KEY = 'ai_assistant_session_id';
@@ -133,12 +136,12 @@
       root.innerHTML = `
         <section class="ai-assistant-page">
           <h1>AI Assistant</h1>
-          <p class="muted">Ask for account, invoicing, agreement, onboarding, lead, and deal insights.</p>
+          <p class="muted">Ask about clients, invoices, agreements, tickets, onboarding, renewals, or any ERP data...</p>
           <div id="aiAssistantPrompts" data-ai-suggestions class="row" style="gap:8px;flex-wrap:wrap;margin:12px 0;"></div>
           <div id="aiAssistantMessages" data-ai-messages class="col" style="gap:8px;max-height:50vh;overflow:auto;"></div>
           <div id="aiAssistantState" data-ai-state class="muted" style="min-height:20px;margin-top:8px;"></div>
           <form id="ai-assistant-form" data-ai-form class="row" style="gap:8px;margin-top:10px;">
-            <input id="ai-assistant-input" data-ai-input class="input" placeholder="Ask AI Assistant..." style="flex:1;" />
+            <input id="ai-assistant-input" data-ai-input class="input" placeholder="Ask about clients, invoices, agreements, tickets, onboarding, renewals, or any ERP data..." style="flex:1;" />
             <button id="ai-assistant-send" data-ai-send class="btn primary" type="button">Send</button>
           </form>
         </section>
