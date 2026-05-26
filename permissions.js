@@ -34,9 +34,18 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     list: ['admin', 'dev', 'viewer', 'hoo'],
     get: ['admin', 'dev', 'viewer', 'hoo'],
     create: ['admin', 'dev'],
-    update: ['admin', 'dev'],
+    update: ['admin', 'dev', 'accountant', 'accounting'],
+    verify: ['admin', 'accountant', 'accounting'],
     delete: ['admin', 'dev'],
     export: ['admin', 'dev']
+  }),
+  company_documents: Object.freeze({
+    list: ['admin', 'dev', 'viewer', 'hoo'],
+    get: ['admin', 'dev', 'viewer', 'hoo'],
+    create: ['admin', 'dev'],
+    update: ['admin', 'dev', 'accountant', 'accounting'],
+    verify: ['admin', 'accountant', 'accounting'],
+    delete: ['admin', 'dev']
   }),
   contacts: Object.freeze({
     list: ['admin', 'dev', 'viewer', 'hoo'],
