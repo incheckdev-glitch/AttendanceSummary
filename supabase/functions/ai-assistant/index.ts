@@ -3,8 +3,27 @@ import { createClient } from 'npm:@supabase/supabase-js@2.49.8';
 
 const SYSTEM = `You are the InCheck360 AI Assistant. Answer only using data available from InCheck360 tools. Be concise, professional, and practical. If data is missing, say what is missing. Do not invent records. Use business reference numbers instead of UUIDs. Do not perform write actions.`;
 
-Deno.serve(async req => {
-  if (req.method === 'OPTIONS') return new Response('ok');
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
+  if (req.method !== 'POST') {
+    return new Response(
+      JSON.stringify({ error: 'Method not allowed. Use POST.' }),
+      {
+        status: 405,
+        headers: { ...corsHeaders, 'content-type': 'application/json' }
+      }
+    );
+  }
+
   try {
     const { session_id, message, current_user, currentUser } = await req.json();
     const resolvedCurrentUser = current_user || currentUser || {};
@@ -24,7 +43,7 @@ Deno.serve(async req => {
     if (role !== 'admin') {
       return new Response(
         JSON.stringify({ error: 'You do not have permission to use AI Assistant.' }),
-        { status: 403, headers: { 'content-type': 'application/json' } }
+        { status: 403, headers: { ...corsHeaders, 'content-type': 'application/json' } }
       );
     }
 
@@ -60,8 +79,21 @@ Deno.serve(async req => {
 
     const answer = response.output_text || 'No data found from allowed tools.';
     await db.from('ai_chat_messages').insert({ session_id: sid, user_id: resolvedCurrentUser.id || '', role: 'assistant', content: answer });
-    return new Response(JSON.stringify({ session_id: sid, answer }), { headers: { 'Content-Type': 'application/json' } });
-  } catch (e) {
-    return new Response(JSON.stringify({ error: String(e?.message || e) }), { status: 500 });
+
+    return new Response(
+      JSON.stringify({ ok: true, answer, session_id: sid }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, 'content-type': 'application/json' }
+      }
+    );
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ error: error?.message || String(error) }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'content-type': 'application/json' }
+      }
+    );
   }
 });
