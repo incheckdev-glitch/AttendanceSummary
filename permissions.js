@@ -914,13 +914,25 @@ const Permissions = {
   canUseInternalIssueFilters() {
     return this.canPerformAction('tickets', 'internal_filters');
   },
-  getCurrentUserRole() {
-    const user =
-      window.currentUser ||
+  getResolvedCurrentUser() {
+    return (
+      window.App?.currentUser ||
+      window.app?.currentUser ||
+      window.InCheck360?.currentUser ||
+      window.InCheck360App?.currentUser ||
+      window.AppState?.user ||
       window.AppState?.currentUser ||
-      window.Auth?.currentUser ||
+      window.AuthState?.user ||
+      window.AuthState?.currentUser ||
+      window.authUser ||
+      window.currentSession?.user ||
+      window.supabaseSession?.user ||
       window.Session?.authContext?.()?.profile ||
-      {};
+      null
+    );
+  },
+  getCurrentUserRole() {
+    const user = this.getResolvedCurrentUser() || {};
 
     return this.normalizeRole(
       user.role_key ||
@@ -929,10 +941,24 @@ const Permissions = {
       user.user_role ||
       user.profile?.role_key ||
       user.profile?.role ||
+      user.app_metadata?.role_key ||
+      user.app_metadata?.role ||
+      user.user_metadata?.role_key ||
+      user.user_metadata?.role ||
       ''
     );
   },
+  isAuthReady() {
+    return Boolean(
+      window.__AUTH_RESTORED__ ||
+      window.__APP_UNLOCKED__ ||
+      window.AppState?.authReady ||
+      window.AuthState?.ready ||
+      window.Permissions?.state?.loaded
+    );
+  },
   canUseAiAssistant() {
+    if (!this.isAuthReady()) return false;
     return this.getCurrentUserRole() === 'admin';
   },
   canAccessTab(viewKey) {

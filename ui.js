@@ -1209,15 +1209,7 @@ const UI = {
       let allowed = true;
       try {
         if (!rule.alwaysVisible) {
-          const requirements = Permissions.getTabPermissionRequirements(rule.key);
-          allowed = !requirements.length || requirements.some(req => {
-            if (String(req.resource || '').trim().toLowerCase() === 'communication_centre') {
-              return Permissions.can(req.resource, req.action || 'manage');
-            }
-            return Permissions.can(req.resource, 'list') ||
-              Permissions.can(req.resource, 'view') ||
-              Permissions.can(req.resource, 'manage');
-          });
+          allowed = Permissions.canAccessTab(rule.key);
         }
       } catch (error) {
         console.error(`[Tabs] permission check failed for "${rule.key}"`, error);

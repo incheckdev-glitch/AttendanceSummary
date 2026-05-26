@@ -5942,10 +5942,16 @@ function wireDashboardGate() {
       console.warn('[email deep link] route after unlock failed', error);
     }
     if (!routed && !hasPendingDeepLink()) setActiveView(getFirstAllowedView(defaultView));
+    window.__APP_UNLOCKED__ = true;
+    window.__AUTH_RESTORED__ = true;
+    window.dispatchEvent(new CustomEvent('incheck360:auth-ready', {
+      detail: { currentUser: Permissions.getResolvedCurrentUser?.() || Session.authContext?.()?.profile || null, role: Permissions.getCurrentUserRole?.() || Session.role() }
+    }));
     console.info('[wireDashboardGate.unlockApp] app unlocked');
   };
 
   const lockApp = () => {
+    window.__APP_UNLOCKED__ = false;
     document.body.classList.add('auth-locked');
     E.app.classList.add('is-locked');
     E.app.setAttribute('aria-hidden', 'true');

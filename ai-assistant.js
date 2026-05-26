@@ -5,30 +5,62 @@ window.AIAssistant = (() => {
     'Show agreements signed but not invoiced',
     'Show open technical requests',
     'Summarize a client',
-    'Show today’s lead/deal follow-ups'
+    'Show today's lead/deal follow-ups'
   ];
   const key = 'ai_assistant_session_id';
 
-  function getCurrentUserRole() {
-    const user =
-      window.currentUser ||
+  function getResolvedCurrentUser() {
+    return (
+      window.App?.currentUser ||
+      window.app?.currentUser ||
+      window.InCheck360?.currentUser ||
+      window.InCheck360App?.currentUser ||
+      window.AppState?.user ||
       window.AppState?.currentUser ||
-      window.Auth?.currentUser ||
+      window.AuthState?.user ||
+      window.AuthState?.currentUser ||
+      window.authUser ||
+      window.currentSession?.user ||
+      window.supabaseSession?.user ||
       window.Session?.authContext?.()?.profile ||
-      {};
+      null
+    );
+  }
 
+  function getResolvedRole(user = null) {
+    const u = user || getResolvedCurrentUser() || {};
     return String(
-      user.role_key ||
-      user.roleKey ||
-      user.role ||
-      user.user_role ||
-      user.profile?.role_key ||
-      user.profile?.role ||
+      u.role_key ||
+      u.roleKey ||
+      u.role ||
+      u.user_role ||
+      u.profile?.role_key ||
+      u.profile?.role ||
+      u.app_metadata?.role_key ||
+      u.app_metadata?.role ||
+      u.user_metadata?.role_key ||
+      u.user_metadata?.role ||
       ''
     ).trim().toLowerCase();
   }
 
-  const canUse = () => getCurrentUserRole() === 'admin';
+  function isAuthReady() {
+    return Boolean(
+      window.__AUTH_RESTORED__ ||
+      window.__APP_UNLOCKED__ ||
+      window.AppState?.authReady ||
+      window.AuthState?.ready ||
+      window.Permissions?.state?.loaded
+    );
+  }
+
+  function canUseAiAssistant() {
+    if (!isAuthReady()) return null;
+    const user = getResolvedCurrentUser();
+    const role = getResolvedRole(user);
+    console.log('[AI Assistant permission resolved]', { authReady: isAuthReady(), user, role });
+    return role === 'admin';
+  }
 
   function renderPrompts() {
     if (!E.aiAssistantPrompts) return;
@@ -48,7 +80,7 @@ window.AIAssistant = (() => {
     E.aiAssistantMessages.scrollTop = E.aiAssistantMessages.scrollHeight;
   }
   async function send() {
-    if (!canUse()) return UI.toast('You do not have AI Assistant access.');
+    if (canUseAiAssistant() !== true) return UI.toast('You do not have AI Assistant access.');
     const message = String(E.aiAssistantInput?.value || '').trim();
     if (!message) return;
     E.aiAssistantInput.value = '';
@@ -57,16 +89,17 @@ window.AIAssistant = (() => {
     try {
       const client = window.SupabaseClient?.getClient?.();
       const sessionId = localStorage.getItem(key) || null;
-      const currentUser = window.Session?.authContext?.()?.profile || {};
+      const user = getResolvedCurrentUser() || {};
+      const role = getResolvedRole(user);
       const { data, error } = await client.functions.invoke('ai-assistant', {
         body: {
           session_id: sessionId,
           message,
           current_user: {
-            id: currentUser.id,
-            email: currentUser.email,
-            role: currentUser.role || currentUser.role_key,
-            role_key: currentUser.role_key || currentUser.role
+            id: user?.id,
+            email: user?.email,
+            role,
+            role_key: role
           }
         }
       });
@@ -80,23 +113,28 @@ window.AIAssistant = (() => {
     }
   }
 
-  function init() {
+  function render() {
     if (!E.aiAssistantView) return;
-    const role = getCurrentUserRole();
-    console.log('[AI Assistant permission]', {
-      currentUser: window.Session?.authContext?.()?.profile || window.currentUser || window.AppState?.currentUser,
-      detectedRole: role
-    });
-
-    if (!canUse()) {
+    const permission = canUseAiAssistant();
+    if (permission === null) {
+      E.aiAssistantView.innerHTML = '<div class="section"><div class="muted">Loading AI Assistant...</div></div>';
+      return;
+    }
+    if (permission === false) {
       E.aiAssistantView.innerHTML = '<div class="section"><div class="muted">You do not have permission to use AI Assistant.</div></div>';
       return;
     }
     renderPrompts();
+  }
+
+  function init() {
+    if (!E.aiAssistantView) return;
+    render();
     E.aiAssistantSend?.addEventListener('click', send);
     E.aiAssistantInput?.addEventListener('keydown', (e) => { if (e.key === 'Enter') send(); });
+    window.addEventListener('incheck360:auth-ready', render);
   }
-  return { init };
+  return { init, render, getResolvedCurrentUser, getResolvedRole, isAuthReady, canUseAiAssistant };
 })();
 
 document.addEventListener('DOMContentLoaded', () => {
