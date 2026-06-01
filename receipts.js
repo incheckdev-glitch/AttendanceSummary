@@ -1868,7 +1868,6 @@ const Receipts = {
     const newPaidTotal = resolvedSnapshot.new_paid_total;
     const pendingAmount = resolvedSnapshot.pending_amount;
     const paymentState = this.normalizeReceiptPaymentState({ ...r, ...resolvedSnapshot }, invoice || r);
-    const paymentConclusion = String(r.payment_conclusion || '').trim() || resolvedSnapshot.payment_conclusion;
     const receiptPaymentAmount = this.getReceiptPaymentAmount({
       ...r,
       received_amount: r.received_amount ?? r.amount_received ?? resolvedSnapshot.received_amount,
@@ -2036,8 +2035,6 @@ const Receipts = {
           <div class="totals-row"><span>Amount Paid (Cumulative)</span><strong>${this.money(currency, newPaidTotal)}</strong></div>
           <div class="totals-row"><span>Pending Amount</span><strong>${this.money(currency, pendingAmount)}</strong></div>
           <div class="totals-row"><span>Payment State</span><strong>${text(paymentState || r.status)}</strong></div>
-          <div class="totals-row"><span>Payment Conclusion</span><strong>${text(paymentConclusion)}</strong></div>
-          <div class="totals-row"><span>Amount in Words</span><strong>${text(amountInWords)}</strong></div>
         </div>
       </section>
 

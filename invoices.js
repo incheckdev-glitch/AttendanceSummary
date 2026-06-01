@@ -1218,8 +1218,6 @@ const Invoices = {
       ? this.toNumberSafe(pendingInput)
       : Math.max(0, invoiceTotal - paidAmount);
     const paymentState = String(invoiceData.payment_state || '').trim() || U.calculatePaymentState(invoiceTotal, paidAmount);
-    const amountInWords = U.normalizeAmountWordsSentence(String(invoiceData.amount_in_words || '').trim() || this.amountToWords(invoiceTotal, currency));
-    const paymentConclusion = String(invoiceData.payment_conclusion || '').trim() || this.derivePaymentConclusion({ pending_amount: pendingAmount });
     const isPoc = this.normalizeTruthy(invoiceData.is_poc ?? invoiceData.isPoc);
     const pocDetailsHtml = isPoc ? `
       <section class="info-grid" style="margin-top:14px;grid-template-columns:1fr;">
@@ -1485,8 +1483,6 @@ const Invoices = {
           <div class="totals-row"><span>Amount Paid</span><strong>${money(paidAmount)}</strong></div>
           <div class="totals-row"><span>Pending Amount</span><strong>${money(pendingAmount)}</strong></div>
           <div class="totals-row"><span>Payment State</span><strong>${textValue(paymentState)}</strong></div>
-          <div class="totals-row"><span>Payment Conclusion</span><strong>${textValue(paymentConclusion)}</strong></div>
-          <div class="totals-row"><span>Amount in Words</span><strong>${textValue(amountInWords)}</strong></div>
         </div>
       </section>
 
