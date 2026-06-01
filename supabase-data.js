@@ -192,6 +192,20 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     date.setDate(Math.min(targetDay, lastDay));
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   }
+  function getAnnualSaasMonths(item = {}) {
+    const safe = item && typeof item === 'object' ? item : {};
+    const value =
+      safe.license_months ??
+      safe.license_month ??
+      safe.duration_months ??
+      safe.months ??
+      safe.quantity ??
+      safe.qty ??
+      12;
+
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : 12;
+  }
   function getInvoiceTotalForSchedule(invoice = {}) {
     const candidates = [invoice.grand_total, invoice.invoice_total, invoice.total_amount, invoice.amount_due, invoice.total, invoice.pending_amount];
     for (const value of candidates) {
@@ -2998,17 +3012,21 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       firstDefined(record, ['discount_percent', 'discountPercent', 'discount']),
       0
     );
+    const section = String(firstDefined(record, ['section']) || '').trim().toLowerCase();
+    const quantity = section === 'annual_saas'
+      ? getAnnualSaasMonths(record)
+      : firstDefined(record, ['quantity', 'qty']);
     const mapped = compactObject({
       item_id: firstDefined(record, ['item_id', 'itemId']),
       proposal_id: normalizeNullableUuidValue(proposalUuid || firstDefined(record, ['proposal_id', 'proposalId'])),
-      section: firstDefined(record, ['section']),
+      section,
       line_no: firstDefined(record, ['line_no', 'lineNo', 'line']),
       location_name: firstDefined(record, ['location_name', 'locationName']),
       item_name: firstDefined(record, ['item_name', 'itemName', 'name']),
       unit_price: firstDefined(record, ['unit_price', 'unitPrice']),
       discount_percent: normalizedDiscountPercent,
       discounted_unit_price: firstDefined(record, ['discounted_unit_price', 'discountedUnitPrice']),
-      quantity: firstDefined(record, ['quantity']),
+      quantity,
       license_quantity: firstDefined(record, ['license_quantity', 'licenseQuantity', 'user_quantity', 'userQuantity', 'item_quantity', 'itemQuantity']),
       line_total: firstDefined(record, ['line_total', 'lineTotal']),
       service_start_date: normalizeNullableDateValue(firstDefined(record, ['service_start_date', 'serviceStartDate'])),
@@ -3233,8 +3251,9 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       const section = getAgreementItemCommercialSection(item);
       if (section !== 'annual_saas' && section !== 'one_time_fee') return;
       const unit = normalizeNumericValue(firstDefined(item, ['unit_price', 'unitPrice']), 0);
-      let quantity = normalizeNumericValue(firstDefined(item, ['quantity', 'qty']), 0);
-      if (!quantity && section === 'annual_saas') quantity = 12;
+      let quantity = section === 'annual_saas'
+        ? getAnnualSaasMonths(item)
+        : normalizeNumericValue(firstDefined(item, ['quantity', 'qty']), 0);
       if (!quantity && section === 'one_time_fee') quantity = 1;
       const itemName = String(firstDefined(item, ['item_name','itemName','name','license']) || '').toLowerCase();
       const isAnnualUserBased = section === 'annual_saas' && (itemName.includes('user(s)') || itemName.includes('users') || itemName.includes('user license') || itemName.includes('user subscription') || itemName === 'user');

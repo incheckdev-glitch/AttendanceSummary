@@ -146,6 +146,20 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const parsed = Number(raw);
     return Number.isFinite(parsed) ? parsed : null;
   },
+  getAnnualSaasMonths(item = {}) {
+    const safe = item && typeof item === 'object' ? item : {};
+    const value =
+      safe.license_months ??
+      safe.license_month ??
+      safe.duration_months ??
+      safe.months ??
+      safe.quantity ??
+      safe.qty ??
+      12;
+
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n : 12;
+  },
 
   isPersistedProposalLineItem(item = {}) {
     return Boolean(
@@ -186,8 +200,9 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const safe = item && typeof item === 'object' ? item : {};
     const unitPrice = this.toNumberSafe(safe.unit_price ?? safe.unitPrice);
     const section = String(safe.section || safe.item_section || safe.type || '').trim().toLowerCase();
-    const defaultQuantity = section === 'annual_saas' ? 12 : 1;
-    const quantity = Math.max(0, this.toNumberSafe(safe.quantity ?? safe.qty) || (safe.quantity === 0 ? 0 : defaultQuantity));
+    const quantity = section === 'annual_saas'
+      ? this.getAnnualSaasMonths(safe)
+      : Math.max(0, this.toNumberSafe(safe.quantity ?? safe.qty) || (safe.quantity === 0 ? 0 : 1));
     const serviceStartDate = this.normalizeDateInputValue(safe.service_start_date ?? safe.serviceStartDate);
     const serviceEndDate = section === 'annual_saas'
       ? this.calculateServiceEndDate(serviceStartDate, quantity)
@@ -205,6 +220,10 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       discountPercent,
       unit_price: unitPrice,
       quantity,
+      qty: section === 'annual_saas' ? quantity : (safe.qty ?? quantity),
+      months: section === 'annual_saas' ? quantity : safe.months,
+      license_months: section === 'annual_saas' ? quantity : safe.license_months,
+      duration_months: section === 'annual_saas' ? quantity : safe.duration_months,
       service_start_date: serviceStartDate,
       service_end_date: serviceEndDate,
       discounted_unit_price: this.toNumberSafe(
@@ -409,8 +428,9 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         : sectionType === 'one_time'
           ? 'one_time_fee'
           : String(safe.section || '').trim().toLowerCase();
-      const defaultQuantity = sectionType === 'saas' ? 12 : sectionType === 'one_time' ? 1 : 1;
-      const quantity = Math.max(0, this.toNumberSafe(safe.quantity ?? safe.qty) || defaultQuantity);
+      const quantity = section === 'annual_saas'
+        ? this.getAnnualSaasMonths(safe)
+        : Math.max(0, this.toNumberSafe(safe.quantity ?? safe.qty) || 1);
       const unitPrice = this.toNumberSafe(safe.unit_price ?? safe.unitPrice);
       const discountPercent = this.getNormalizedItemDiscountPercent(safe);
       const isAnnualUserBased = section === 'annual_saas' && this.isAnnualSaasUserItem(safe);
@@ -1692,6 +1712,10 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       ),
       discounted_unit_price: rawDiscountedUnitPrice === '' ? '' : this.toNumberSafe(rawDiscountedUnitPrice),
       quantity: this.toNumberSafe(pick(source.quantity, source.qty, source.count)),
+      qty: this.toNumberSafe(pick(source.qty, source.quantity, source.count)),
+      months: this.toNumberSafe(pick(source.months, source.license_months, source.license_month, source.duration_months, source.quantity, source.qty)),
+      license_months: this.toNumberSafe(pick(source.license_months, source.license_month, source.duration_months, source.months, source.quantity, source.qty)),
+      duration_months: this.toNumberSafe(pick(source.duration_months, source.license_months, source.license_month, source.months, source.quantity, source.qty)),
       license_quantity: this.toNumberSafe(pick(source.license_quantity, source.licenseQuantity, source.user_quantity, source.userQuantity, source.item_quantity, source.itemQuantity)),
       service_start_date: this.normalizeDateInputValue(pick(source.service_start_date, source.serviceStartDate)),
       service_end_date: this.normalizeDateInputValue(pick(source.service_end_date, source.serviceEndDate)),
@@ -1704,11 +1728,15 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     normalized.discountPercent = normalized.discount_percent;
 
     if (section === 'annual_saas') {
-      const isUserBased = this.isAnnualSaasUserItem(normalized);
-      normalized.quantity = Math.max(1, normalized.quantity || 12);
+      const months = this.getAnnualSaasMonths({ ...source, ...normalized });
+      normalized.quantity = months;
+      normalized.qty = months;
+      normalized.months = months;
+      normalized.license_months = months;
+      normalized.duration_months = months;
       normalized.license_quantity = Math.max(1, normalized.license_quantity || 1);
       if (!normalized.service_start_date) normalized.service_start_date = this.getDefaultAnnualServiceStartDate();
-      if (!normalized.service_end_date) normalized.service_end_date = this.addMonthsMinusOneDay(normalized.service_start_date, normalized.quantity);
+      normalized.service_end_date = this.addMonthsMinusOneDay(normalized.service_start_date, months);
     } else if (section === 'one_time_fee') {
       const inCheckBasicCount = this.getInCheckBasicAnnualRowCountFromDom?.() || 0;
       normalized.quantity = inCheckBasicCount > 0
@@ -2143,7 +2171,9 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     };
     const computeRow = item => {
       const section = String(item?.section || '').trim().toLowerCase();
-      const quantity = this.toNumberSafe(item.quantity) || (section === 'annual_saas' ? 12 : 1);
+      const quantity = section === 'annual_saas'
+        ? this.getAnnualSaasMonths(item)
+        : (this.toNumberSafe(item.quantity) || 1);
       const unitPrice = this.toNumberSafe(item.unit_price);
       const discountPercent = this.toNumberSafe(item.discount_percent);
       const computed = this.computeCommercialRow({ ...item, section, quantity, unit_price: unitPrice, discount_percent: discountPercent });
@@ -3215,8 +3245,9 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const section = String(item?.section || '').trim().toLowerCase();
     const unit = this.toNumberSafe(item.unit_price);
     const isAnnualUserBased = section === 'annual_saas' && this.isAnnualSaasUserItem(item);
-    let qty = this.toNumberSafe(item.quantity);
-    if (!qty && section === 'annual_saas') qty = 12;
+    let qty = section === 'annual_saas'
+      ? this.getAnnualSaasMonths(item)
+      : this.toNumberSafe(item.quantity);
     if (!qty && section === 'one_time_fee') qty = 1;
     const licenseQty = isAnnualUserBased ? Math.max(1, Math.round(this.toNumberSafe(item.license_quantity ?? item.user_quantity ?? item.item_quantity) || 1)) : 1;
     const rawDiscountRatio = this.normalizeDiscount(item.discount_percent);
@@ -3232,6 +3263,10 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     return {
       ...item,
       quantity: qty,
+      qty: section === 'annual_saas' ? qty : item.qty,
+      months: section === 'annual_saas' ? qty : item.months,
+      license_months: section === 'annual_saas' ? qty : item.license_months,
+      duration_months: section === 'annual_saas' ? qty : item.duration_months,
       license_quantity: licenseQty,
       discount_percent: shouldForceNoDiscount ? 0 : item.discount_percent,
       discounted_unit_price: discounted,
@@ -3381,8 +3416,12 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
           quantityInput.removeAttribute('title');
           quantityInput.classList.remove('readonly-field', 'locked-field');
         }
+      } else if (section === 'annual_saas') {
+        const currentMonths = this.getAnnualSaasMonths({ quantity: quantityInput.value });
+        const selectedMonths = this.getAnnualSaasMonths(selected);
+        quantityInput.value = String(fromUserInput || !String(quantityInput.value || '').trim() ? selectedMonths : currentMonths);
       } else if (selected.quantity !== null && selected.quantity !== undefined) {
-        const selectedQuantity = this.toNumberSafe(selected.quantity) || 12;
+        const selectedQuantity = this.toNumberSafe(selected.quantity) || 1;
         quantityInput.value = String(selectedQuantity);
       }
     }
@@ -3470,8 +3509,9 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         const linkedOneTimeQuantity = Math.max(1, inCheckBasicCount || 1);
         const shouldAutoLinkOneTimeFees = inCheckBasicCount > 0;
         const isAnnualUserBased = section === 'annual_saas' && this.isAnnualSaasUserItem(row);
+        const months = section === 'annual_saas' ? this.getAnnualSaasMonths(row) : 0;
         const rowDefaults = section === 'annual_saas'
-          ? { ...row, quantity: row.quantity || 12, license_quantity: row.license_quantity || row.user_quantity || row.item_quantity || 1, service_start_date: row.service_start_date || this.getDefaultAnnualServiceStartDate() }
+          ? { ...row, quantity: months, qty: months, months, license_months: months, duration_months: months, license_quantity: row.license_quantity || row.user_quantity || row.item_quantity || 1, service_start_date: row.service_start_date || this.getDefaultAnnualServiceStartDate() }
           : { ...row, quantity: shouldAutoLinkOneTimeFees && !this.isCsHoursItem(row) ? linkedOneTimeQuantity : (row.quantity || 1) };
         if (section === 'annual_saas') {
           rowDefaults.service_end_date = this.addMonthsMinusOneDay(rowDefaults.service_start_date, rowDefaults.quantity);
@@ -3704,7 +3744,12 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
           quantity: get('quantity')
         };
         const isAnnualUserBased = section === 'annual_saas' && this.isAnnualSaasUserItem(annualRowDraft);
-        let quantity = Math.max(1, this.toNumberSafe(get('quantity')) || (section === 'annual_saas' ? (isAnnualUserBased ? 1 : 12) : 1));
+        const months = section === 'annual_saas'
+          ? this.getAnnualSaasMonths({ quantity: get('quantity') })
+          : 0;
+        let quantity = section === 'annual_saas'
+          ? months
+          : Math.max(1, this.toNumberSafe(get('quantity')) || 1);
         const licenseQuantity = section === 'annual_saas' && isAnnualUserBased ? Math.max(1, Math.round(this.toNumberSafe(get('license_quantity')) || 1)) : 1;
         if (section === 'one_time_fee' && shouldAutoLinkOneTimeFees && !this.isCsHoursItem({ item_name: get('item_name') })) quantity = linkedOneTimeQuantity;
         let baseItem = {};
@@ -3739,6 +3784,10 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
           unit_price: unitPrice,
           discount_percent: discountPercent,
           quantity,
+          qty: section === 'annual_saas' ? quantity : (baseItem.qty ?? quantity),
+          months: section === 'annual_saas' ? quantity : baseItem.months,
+          license_months: section === 'annual_saas' ? quantity : baseItem.license_months,
+          duration_months: section === 'annual_saas' ? quantity : baseItem.duration_months,
           license_quantity: licenseQuantity,
           service_start_date: serviceStartDate,
           service_end_date: serviceEndDate,
