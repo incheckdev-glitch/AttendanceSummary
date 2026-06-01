@@ -1866,7 +1866,7 @@ const Workflow = {
       ...normalized,
       approval_id: normalized.approvalId || '',
       approvalId: normalized.approvalId || '',
-      resource: normalized.resource || '',
+      resource: this.normalizeWorkflowResource(normalized.resource || normalized.module || normalized.record_type || ''),
       requester_role: normalized.requester_role || '',
       approval_role: normalized.approval_role || '',
       old_status: normalized.old_status || normalized.currentStatus || '',
@@ -1874,8 +1874,75 @@ const Workflow = {
       requested_changes: normalized.requestedChanges || {}
     };
   },
+  normalizeWorkflowResource(resource = '') {
+    const key = String(resource || '')
+      .trim()
+      .toLowerCase()
+      .replace(/^public\./, '')
+      .replace(/\s+/g, '_');
+    const aliases = {
+      proposal: 'proposals',
+      agreement: 'agreements',
+      invoice: 'invoices',
+      receipt: 'receipts'
+    };
+    return aliases[key] || key;
+  },
+  isDocumentWorkflowResource(resource = '') {
+    return ['proposals', 'agreements', 'invoices', 'receipts'].includes(this.normalizeWorkflowResource(resource));
+  },
+  getWorkflowRecordReference(request = {}) {
+    const requested = request?.requested_changes && typeof request.requested_changes === 'object' ? request.requested_changes : {};
+    const snapshot = request?.recordSnapshot && typeof request.recordSnapshot === 'object'
+      ? request.recordSnapshot
+      : (request?.record_snapshot && typeof request.record_snapshot === 'object' ? request.record_snapshot : {});
+    return String(
+      request.record_ref ||
+      request.record_reference ||
+      request.record_number ||
+      request.resource_display_id ||
+      request.previewTitle ||
+      request.previewRecordId ||
+      request.targetRecordId ||
+      request.recordId ||
+      request.record_id ||
+      requested.record_ref ||
+      requested.record_reference ||
+      requested.record_number ||
+      requested.resource_display_id ||
+      requested.resource_id ||
+      requested.target_id ||
+      requested.proposal_uuid ||
+      requested.agreement_uuid ||
+      requested.invoice_uuid ||
+      requested.receipt_uuid ||
+      requested.proposal?.id ||
+      requested.agreement?.id ||
+      requested.invoice?.id ||
+      requested.receipt?.id ||
+      requested.proposal_id ||
+      requested.proposal_number ||
+      requested.agreement_id ||
+      requested.agreement_number ||
+      requested.invoice_id ||
+      requested.invoice_number ||
+      requested.receipt_id ||
+      requested.receipt_number ||
+      snapshot.id ||
+      snapshot.proposal_id ||
+      snapshot.proposal_number ||
+      snapshot.agreement_id ||
+      snapshot.agreement_number ||
+      snapshot.invoice_id ||
+      snapshot.invoice_number ||
+      snapshot.receipt_id ||
+      snapshot.receipt_number ||
+      request.resource_id ||
+      ''
+    ).trim();
+  },
   isPreviewModalOpen(resource = '') {
-    const normalizedResource = String(resource || '').trim().toLowerCase();
+    const normalizedResource = this.normalizeWorkflowResource(resource);
     if (normalizedResource === 'proposals') return E.proposalPreviewModal?.style?.display === 'flex';
     if (normalizedResource === 'agreements') return E.agreementPreviewModal?.classList?.contains('open') === true;
     if (normalizedResource === 'invoices') return E.invoicePreviewModal?.classList?.contains('open') === true;
@@ -1888,7 +1955,7 @@ const Workflow = {
   async resolveApprovalResourceRecord(resource = '', rawId = '') {
     const resolver = window.WorkflowResourceResolver?.resolveResourceRecord;
     if (typeof resolver !== 'function') return null;
-    const record = await resolver(resource, rawId);
+    const record = await resolver(this.normalizeWorkflowResource(resource), rawId);
     console.log('[Workflow resolver]', {
       resource,
       rawId,
@@ -1898,7 +1965,7 @@ const Workflow = {
     return record;
   },
   async openResourcePreview(resource = '', recordId = '') {
-    const normalizedResource = String(resource || '').trim().toLowerCase();
+    const normalizedResource = this.normalizeWorkflowResource(resource);
     const id = String(recordId || '').trim();
     if (!id) return false;
     if (normalizedResource === 'proposals' && typeof window.Proposals?.previewProposalHtml === 'function') {
@@ -1922,6 +1989,22 @@ const Workflow = {
   clearResourcePreviewApprovalActions() {
     document.querySelectorAll('[data-workflow-resource-approval-actions]').forEach(node => node.remove());
   },
+  closeResourcePreview(resource = '') {
+    const normalizedResource = this.normalizeWorkflowResource(resource);
+    if (normalizedResource === 'proposals' && typeof window.Proposals?.closePreviewModal === 'function') return window.Proposals.closePreviewModal();
+    if (normalizedResource === 'agreements' && typeof window.Agreements?.closePreviewModal === 'function') return window.Agreements.closePreviewModal();
+    if (normalizedResource === 'invoices' && typeof window.Invoices?.closePreview === 'function') return window.Invoices.closePreview();
+    if (normalizedResource === 'receipts' && typeof window.Receipts?.closePreview === 'function') return window.Receipts.closePreview();
+    const modal = {
+      proposals: E.proposalPreviewModal,
+      agreements: E.agreementPreviewModal,
+      invoices: E.invoicePreviewModal,
+      receipts: E.receiptPreviewModal
+    }[normalizedResource];
+    modal?.classList?.remove('open');
+    if (modal?.style) modal.style.display = 'none';
+    modal?.setAttribute?.('aria-hidden', 'true');
+  },
   async renderResourcePreviewApprovalActions(approval = {}) {
     this.clearResourcePreviewApprovalActions();
     const normalized = this.normalizePendingApproval(approval);
@@ -1932,7 +2015,7 @@ const Workflow = {
       agreements: E.agreementPreviewModal,
       invoices: E.invoicePreviewModal,
       receipts: E.receiptPreviewModal
-    }[String(normalized.resource || '').trim().toLowerCase()];
+    }[this.normalizeWorkflowResource(normalized.resource)];
     const content = modal?.querySelector?.('.modal-content');
     if (!content) return;
     const actions = document.createElement('div');
@@ -1944,11 +2027,17 @@ const Workflow = {
     actions.innerHTML = `
       <button class="btn btn-success btn-sm" data-resource-approval-action="approve" type="button">Approve</button>
       <button class="btn btn-danger btn-sm" data-resource-approval-action="reject" type="button">Reject</button>
+      <button class="btn ghost sm" data-resource-approval-action="close" type="button">Close</button>
     `;
     actions.addEventListener('click', async event => {
       const button = event.target?.closest?.('[data-resource-approval-action]');
       if (!button) return;
       const action = button.getAttribute('data-resource-approval-action');
+      if (action === 'close') {
+        this.clearResourcePreviewApprovalActions();
+        this.closeResourcePreview(normalized.resource);
+        return;
+      }
       try {
         await this.actOnApproval(action, normalized.approvalId);
         this.clearResourcePreviewApprovalActions();
@@ -1968,7 +2057,7 @@ const Workflow = {
     if (!value) return 'Approval';
     return value.charAt(0).toUpperCase() + value.slice(1);
   },
-  buildApprovalPreviewModalHtml(normalized = {}) {
+  buildApprovalPreviewModalHtml(normalized = {}, options = {}) {
     const title = `${String(normalized.resource || 'approval').replace(/_/g, ' ')} · ${normalized.previewTitle || normalized.previewRecordId || 'Details'}`;
     const changedFields = Array.isArray(normalized.requestedChanges?.changed_fields) ? normalized.requestedChanges.changed_fields : [];
     const items = Array.isArray(normalized.requestedChanges?.items)
@@ -1990,31 +2079,39 @@ const Workflow = {
         <strong>Changed fields</strong>
         <div class="muted" style="margin-top:4px;">${U.escapeHtml(changedFields.join(', ') || 'Not specified')}</div>
       </div>
+      ${options.warning ? `<div class="notice warn" style="margin-top:10px;">${U.escapeHtml(options.warning)}</div>` : ''}
       <div style="margin-top:10px;">
-        <strong>Items</strong>
-        <pre style="max-height:120px;overflow:auto;margin-top:4px;">${U.escapeHtml(JSON.stringify(items, null, 2) || '[]')}</pre>
+        <strong>Items summary</strong>
+        <div class="muted" style="margin-top:4px;">${U.escapeHtml(items.length ? `${items.length} item(s) attached.` : 'No items attached.')}</div>
       </div>
       <div style="margin-top:10px;">
         <strong>Notes</strong>
         <div class="muted" style="margin-top:4px;">${U.escapeHtml(normalized.requestedChanges?.notes || normalized.recordSnapshot?.notes || '—')}</div>
       </div>
-      <div style="margin-top:10px;">
-        <strong>Requested Changes JSON</strong>
-        <pre style="max-height:180px;overflow:auto;margin-top:4px;">${U.escapeHtml(JSON.stringify(normalized.requestedChanges || {}, null, 2))}</pre>
-      </div>
-      <div style="margin-top:10px;">
-        <strong>Record Snapshot (read-only)</strong>
-        <pre style="max-height:180px;overflow:auto;margin-top:4px;">${U.escapeHtml(JSON.stringify(normalized.recordSnapshot || {}, null, 2))}</pre>
-      </div>
+      <details style="margin-top:12px;">
+        <summary class="muted" style="cursor:pointer;">Show technical details</summary>
+        <div style="margin-top:10px;">
+          <strong>Items JSON</strong>
+          <pre style="max-height:120px;overflow:auto;margin-top:4px;">${U.escapeHtml(JSON.stringify(items, null, 2) || '[]')}</pre>
+        </div>
+        <div style="margin-top:10px;">
+          <strong>Requested Changes JSON</strong>
+          <pre style="max-height:180px;overflow:auto;margin-top:4px;">${U.escapeHtml(JSON.stringify(normalized.requestedChanges || {}, null, 2))}</pre>
+        </div>
+        <div style="margin-top:10px;">
+          <strong>Record Snapshot (read-only)</strong>
+          <pre style="max-height:180px;overflow:auto;margin-top:4px;">${U.escapeHtml(JSON.stringify(normalized.recordSnapshot || {}, null, 2))}</pre>
+        </div>
+      </details>
     `;
   },
-  async openGenericApprovalPreview(normalizedApproval = {}) {
+  async openGenericApprovalPreview(normalizedApproval = {}, options = {}) {
     this.clearResourcePreviewApprovalActions();
     const normalized = this.normalizePendingApproval(normalizedApproval);
     this.state.activeApprovalPreview = normalized;
     const canAct = await canCurrentUserActOnApproval(normalized);
     if (E.workflowApprovalPreviewTitle) E.workflowApprovalPreviewTitle.textContent = `${this.toResourceLabel(normalized.resource)} Preview · ${normalized.previewTitle || normalized.previewRecordId || 'Details'}`;
-    if (E.workflowApprovalPreviewBody) E.workflowApprovalPreviewBody.innerHTML = this.buildApprovalPreviewModalHtml(normalized);
+    if (E.workflowApprovalPreviewBody) E.workflowApprovalPreviewBody.innerHTML = this.buildApprovalPreviewModalHtml(normalized, options);
     [E.workflowApprovalPreviewApproveBtn, E.workflowApprovalPreviewRejectBtn].forEach(button => {
       if (button) button.style.display = canAct ? '' : 'none';
     });
@@ -2036,35 +2133,23 @@ const Workflow = {
   async openApprovalPreview(approvalRow = {}) {
     const normalized = this.normalizePendingApproval(approvalRow);
     const context = this.buildApprovalContext(normalized);
-    const resource = String(context.resource || '').trim().toLowerCase();
-    const rawPreviewId = String(
-      context?.resource_id ||
-      context?.target_id ||
-      context?.requested_changes?.resource_id ||
-      context?.requested_changes?.target_id ||
-      context?.requested_changes?.proposal_uuid ||
-      context?.requested_changes?.agreement_uuid ||
-      context?.requested_changes?.invoice_uuid ||
-      context?.requested_changes?.receipt_uuid ||
-      context?.requested_changes?.proposal?.id ||
-      context?.requested_changes?.agreement?.id ||
-      context?.requested_changes?.invoice?.id ||
-      context?.requested_changes?.receipt?.id ||
-      context?.recordId ||
-      context?.requested_changes?.proposal_id ||
-      context?.requested_changes?.agreement_id ||
-      context?.requested_changes?.invoice_id ||
-      context?.requested_changes?.receipt_id ||
-      ''
-    ).trim();
-    let previewId = rawPreviewId;
-    this.state.activeApprovalPreview = context;
+    const resource = this.normalizeWorkflowResource(context.resource || context.module || context.record_type || '');
+    const rawPreviewId = this.getWorkflowRecordReference(context);
+
+    this.state.activeApprovalPreview = { ...context, resource };
+    if (!this.isDocumentWorkflowResource(resource)) {
+      await this.openGenericApprovalPreview({ ...context, resource });
+      return;
+    }
+
     try {
+      let previewId = rawPreviewId;
       const resolvedRecord = await this.resolveApprovalResourceRecord(resource, rawPreviewId);
       if (resolvedRecord?.id) {
         previewId = String(resolvedRecord.id).trim();
         this.state.activeApprovalPreview = {
           ...context,
+          resource,
           resolvedRecordId: previewId,
           resource_display_id: this.getWorkflowDisplayId(resolvedRecord) || context.resource_display_id || context?.requested_changes?.resource_display_id || ''
         };
@@ -2077,7 +2162,11 @@ const Workflow = {
     } catch (error) {
       console.warn(`Unable to open ${resource} preview from workflow approval, falling back to generic preview.`, error);
     }
-    await this.openGenericApprovalPreview(context);
+
+    await this.openGenericApprovalPreview(
+      { ...context, resource },
+      { warning: `${this.toResourceLabel(resource)} record could not be loaded. Showing technical approval details.` }
+    );
   },
   setMultiSelectValues(selectEl, values = []) {
     if (!selectEl) return;
