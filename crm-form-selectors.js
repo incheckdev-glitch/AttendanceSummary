@@ -382,6 +382,11 @@
   }
   function escapeAttr(value) { return escapeHtml(value).replace(/'/g, '&#39;'); }
 
+  function isCompanyListUnavailableError(error) {
+    const message = String(error?.message || error || '');
+    return message.includes('cannot list companies') || message.includes('Forbidden');
+  }
+
   async function fetchCompanies() {
     if (state.companies.length) return state.companies;
     if (state.loadingCompanies) return state.loadingCompanies;
@@ -394,6 +399,10 @@
         }
       } catch (error) {
         console.warn('[crm selectors] company API load failed', error);
+        if (isCompanyListUnavailableError(error)) {
+          state.companies = [];
+          return state.companies;
+        }
       }
       try {
         const client = global.supabaseClient || global.supabase;
@@ -516,10 +525,19 @@
     return !cfg.directSourceIds.some(id => str(byId(id)?.value || byId(id)?.dataset?.leadUuid));
   }
 
+  async function loadCompanyOptionsSafe() {
+    try {
+      return await fetchCompanies();
+    } catch (error) {
+      console.warn('[crm selectors] company API load failed', error);
+      return [];
+    }
+  }
+
   async function populateCompanySelect(cfg) {
     const select = byId(cfg.companySelectId);
     if (!select) return;
-    const companies = await fetchCompanies();
+    const companies = await loadCompanyOptionsSafe();
     setSelectOptions(select, companies, 'Select company', 'company');
   }
 
@@ -740,7 +758,7 @@
     initializeCompanyContactSelectorsForAgreement: () => initializeCompanyContactSelectorsForForm('agreement'),
     initializeCompanyContactSelectorsForInvoice: () => initializeCompanyContactSelectorsForForm('invoice'),
     initializeCompanyContactSelectorsForReceipt: () => initializeCompanyContactSelectorsForForm('receipt'),
-    loadCompanies: fetchCompanies,
+    loadCompanies: loadCompanyOptionsSafe,
     loadContactsForCompany: fetchContacts,
     applyCompanyToForm(formKey, company) { const cfg = FORM_CONFIG[formKey]; if (cfg) applyCompany(cfg, company); },
     applyContactToForm(formKey, contact) { const cfg = FORM_CONFIG[formKey]; if (cfg) applyContact(cfg, contact); }
