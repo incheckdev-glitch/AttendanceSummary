@@ -2090,7 +2090,7 @@ const Agreements = {
     const subtotalLocations = calculatedTotals.grand_total > 0 ? calculatedTotals.saas_total : this.toNumberSafe(agreementData.subtotal_locations || agreementData.saas_total);
     const subtotalOneTime = calculatedTotals.grand_total > 0 ? calculatedTotals.one_time_total : this.toNumberSafe(agreementData.subtotal_one_time || agreementData.one_time_total);
     const grandTotal = calculatedTotals.grand_total > 0 ? calculatedTotals.grand_total : this.toNumberSafe(agreementData.grand_total || subtotalLocations + subtotalOneTime);
-    const grandTotalInWords = U.amountToWords(grandTotal, currency);
+    const grandTotalInWords = U.formatAmountInWords(grandTotal, currency);
     const isPoc = this.toDbBoolean(agreementData.is_poc ?? agreementData.isPoc, false);
     const pocDetailsHtml = isPoc ? `
       <section class="info-grid" style="margin-top:14px;grid-template-columns:1fr;">

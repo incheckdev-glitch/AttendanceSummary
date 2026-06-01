@@ -250,6 +250,22 @@ const U = {
     const currencyLabel = currencyLabels[code] || code;
     return `${toWords(whole)} ${currencyLabel} and ${String(cents).padStart(2, '0')}/100`;
   },
+  normalizeAmountWordsSentence: text => {
+    let value = String(text || '')
+      .replace(/^only\s+/i, '')
+      .replace(/\bDollars?\b/gi, '')
+      .replace(/\bUSD\b/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    value = value.replace(/\s+USD Dollar$/i, '').trim();
+
+    return `Only ${value} USD Dollar`;
+  },
+  formatAmountInWords: (amount, currency = 'USD') => {
+    const words = U.amountToWords(amount, currency);
+    return U.normalizeAmountWordsSentence(words);
+  },
   escapeHtml: s =>
     String(s).replace(/[&<>"']/g, m => (
       {

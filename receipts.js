@@ -289,10 +289,11 @@ const Receipts = {
   },
   receiptAmountInWords(value, currency = 'USD', fallbackAmount = 0) {
     const explicit = this.sanitizeText(value);
-    if (explicit) return explicit;
+    if (explicit) return U.normalizeAmountWordsSentence(explicit);
+    if (U?.formatAmountInWords) return U.formatAmountInWords(fallbackAmount, currency);
     const amountInWords = window.Invoices?.amountToWords?.(fallbackAmount, currency);
-    if (typeof amountInWords === 'string' && amountInWords.trim()) return amountInWords.trim();
-    return `${this.money(currency, fallbackAmount)} only`;
+    if (typeof amountInWords === 'string' && amountInWords.trim()) return U.normalizeAmountWordsSentence(amountInWords.trim());
+    return U.normalizeAmountWordsSentence(`${this.money(currency, fallbackAmount)} and 00/100`);
   },
   normalizeReceipt(raw = {}) {
     const source = raw && typeof raw === 'object' ? raw : {};
