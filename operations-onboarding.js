@@ -6,9 +6,7 @@ function canAssignOperationsCsm(currentUser, permissions) {
     ''
   ).trim().toLowerCase();
 
-  if (['admin', 'hoo', 'head_of_operations', 'operations_manager'].includes(role)) {
-    return true;
-  }
+  if (role === 'admin') return true;
 
   return Boolean(
     permissions?.operations_onboarding?.manage ||

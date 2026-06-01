@@ -1215,17 +1215,23 @@ const UI = {
       }
       if (rule.tabEl) rule.tabEl.style.display = allowed ? '' : 'none';
       if (allowed) visibleTabs.push(rule.key);
-      if (!allowed && rule.viewEl?.classList.contains('active')) setActiveView('issues');
+      if (!allowed && rule.viewEl?.classList.contains('active')) {
+        const fallback = tabRegistry.find(candidate => candidate.key !== rule.key && Permissions.canAccessTab(candidate.key));
+        if (fallback?.key) setActiveView(fallback.key);
+        else rule.viewEl.classList.remove('active');
+      }
     });
     console.log('[tabs] permission-aware filtering result', visibleTabs);
-    if (Permissions.normalizeRole?.(role) === 'dev') {
-      console.log('[DEV ACCESS DEBUG]', {
-        role: Permissions.normalizeRole(role),
-        visibleTabs,
-        activePermissions: (Permissions.state?.rows || []).filter(row =>
-          Permissions.normalizeRole(row.role_key) === 'dev' &&
-          Permissions.toBoolean(row.is_allowed, true) === true &&
-          Permissions.toBoolean(row.is_active, true) === true
+    if (['hoo', 'head_of_operations'].includes(Permissions.normalizeRole?.(role))) {
+      const tabs = visibleTabs.map(key => ({ key }));
+      const permissionMatrix = Permissions.state?.rows || [];
+      console.log('[HOO ACCESS DEBUG]', {
+        role,
+        visibleTabs: tabs.map(t => t.key),
+        activePermissions: permissionMatrix.filter(p =>
+          ['hoo', 'head_of_operations'].includes(String(p.role_key || '').toLowerCase()) &&
+          p.is_allowed === true &&
+          p.is_active === true
         )
       });
     }

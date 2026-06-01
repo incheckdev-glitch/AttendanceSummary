@@ -1160,7 +1160,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       global.Session?.role?.() ||
       '';
     const roleKey = normalizeRoleKey(role);
-    if (['admin', 'accountant', 'accounting'].includes(roleKey)) return true;
+    if (roleKey === 'admin') return true;
     if (global.AppPermissions?.canPerformAction) {
       if (global.AppPermissions.canPerformAction('companies', 'verify', roleKey)) return true;
       if (global.AppPermissions.canPerformAction('companies', 'verify_company', roleKey)) return true;
