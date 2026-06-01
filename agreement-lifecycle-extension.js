@@ -1206,7 +1206,7 @@
     const totalCents = Math.round(Math.abs(amount) * 100);
     const whole = Math.floor(totalCents / 100);
     const cents = totalCents % 100;
-    return `Only ${amount < 0 ? 'Minus ' : ''}${convert(whole)} and ${String(cents).padStart(2, '0')}/100 USD Dollar`;
+    return `Only ${amount < 0 ? 'Minus ' : ''}${convert(whole)} and ${String(cents).padStart(2, '0')}/100 USD`;
   }
 
   function buildAmendmentPreviewHtml(amendment = {}, items = []) {

@@ -1989,7 +1989,7 @@ const Invoices = {
       });
       return out.join(' ');
     };
-    return `Only ${toWords(whole)} and ${String(cents).padStart(2, '0')}/100 USD Dollar`;
+    return `Only ${toWords(whole)} and ${String(cents).padStart(2, '0')}/100 USD`;
   },
   derivePaymentConclusion(invoice = {}) {
     const pending = this.toNumberSafe(invoice.pending_amount);
