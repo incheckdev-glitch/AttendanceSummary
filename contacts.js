@@ -1,3 +1,8 @@
+function canCreateContact(currentUser) {
+  if (window.Permissions?.canCreateContact) return window.Permissions.canCreateContact(currentUser);
+  return Boolean(window.Permissions?.canCreate?.('contacts'));
+}
+
 const Contacts = {
   state: {
     rows: [],
@@ -28,8 +33,8 @@ const Contacts = {
   },
 
   async openCreateForCompany(company = {}) {
-    if (!Permissions.canCreate('contacts')) {
-      UI?.toast?.('You do not have permission for this action.');
+    if (!canCreateContact(Permissions.getResolvedCurrentUser?.())) {
+      UI?.toast?.('You do not have permission to create contacts.', 'warning');
       return;
     }
     const companyId = company.company_id || '';
@@ -194,8 +199,14 @@ const Contacts = {
   },
 
   async openForm(existing = {}, isEdit = true) {
-    if (isEdit && !Permissions.canEdit('contacts')) return;
-    if (!isEdit && !Permissions.canCreate('contacts')) return;
+    if (isEdit && !Permissions.canEdit('contacts')) {
+      UI?.toast?.('You do not have permission for this action.', 'warning');
+      return;
+    }
+    if (!isEdit && !canCreateContact(Permissions.getResolvedCurrentUser?.())) {
+      UI?.toast?.('You do not have permission to create contacts.', 'warning');
+      return;
+    }
     this.bindFormEvents();
     await this.ensureCompanyOptions();
     const data = this.normalize(isEdit ? existing : { ...existing, contact_status: 'Active' });
@@ -275,7 +286,7 @@ const Contacts = {
     try {
       const action = recordId ? 'update' : 'create';
       if (recordId && !Permissions.canEdit('contacts')) { UI?.toast?.('You do not have permission for this action.'); return; }
-      if (!recordId && !Permissions.canCreate('contacts')) { UI?.toast?.('You do not have permission for this action.'); return; }
+      if (!recordId && !canCreateContact(Permissions.getResolvedCurrentUser?.())) { UI?.toast?.('You do not have permission to create contacts.', 'warning'); return; }
       const body = recordId ? { id: recordId, updates: payload } : payload;
       await Api.requestWithSession('contacts', action, body, { requireAuth: true });
       UI?.toast?.(recordId ? 'Contact updated' : 'Contact saved', 'success');
@@ -320,12 +331,30 @@ const Contacts = {
     applyPermissionVisibility(b);
     const pi = document.getElementById('contactsPageInfo');
     if (pi) pi.textContent = `Showing ${s}-${e} of ${this.state.total} records`;
-    const canCreateContact = Permissions.can('contacts','create') || Permissions.can('contacts','manage');
+    const canCreateContacts = canCreateContact(Permissions.getResolvedCurrentUser?.());
     const canExportContact = Permissions.can('contacts','export') || Permissions.can('contacts','manage');
     const cbtn = document.getElementById('contactsCreateBtn');
     if (cbtn) {
-      cbtn.style.display = canCreateContact ? '' : 'none';
-      cbtn.onclick = () => this.openForm({ company_id: this.state.companyId || '', company_name: this.state.companyName || '', company_ids: this.state.companyId ? [this.state.companyId] : [] }, false);
+      cbtn.style.display = canCreateContacts ? '' : 'none';
+      cbtn.hidden = !canCreateContacts;
+      cbtn.disabled = !canCreateContacts;
+      cbtn.setAttribute('data-action', 'create-contact');
+      cbtn.setAttribute('data-contact-create', 'true');
+      cbtn.classList.add('js-create-contact');
+      cbtn.classList.toggle('pointer-events-none', !canCreateContacts);
+      cbtn.classList.toggle('opacity-50', !canCreateContacts);
+      cbtn.classList.toggle('disabled', !canCreateContacts);
+      if (canCreateContacts) cbtn.removeAttribute('aria-disabled');
+      else cbtn.setAttribute('aria-disabled', 'true');
+      cbtn.onclick = event => {
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
+        if (!canCreateContact(Permissions.getResolvedCurrentUser?.())) {
+          UI?.toast?.('You do not have permission to create contacts.', 'warning');
+          return;
+        }
+        this.openForm({ company_id: this.state.companyId || '', company_name: this.state.companyName || '', company_ids: this.state.companyId ? [this.state.companyId] : [] }, false);
+      };
     }
     const exportBtn = document.getElementById('contactsExportBtn');
     if (exportBtn) {

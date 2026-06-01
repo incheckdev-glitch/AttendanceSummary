@@ -48,9 +48,9 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     delete: ['admin', 'dev']
   }),
   contacts: Object.freeze({
-    list: ['admin', 'dev', 'viewer', 'hoo'],
-    get: ['admin', 'dev', 'viewer', 'hoo'],
-    create: ['admin', 'dev'],
+    list: ['admin', 'dev', 'viewer', 'hoo', 'csm', 'customer_success', 'customer_success_manager', 'sales_executive', 'head_of_sales'],
+    get: ['admin', 'dev', 'viewer', 'hoo', 'csm', 'customer_success', 'customer_success_manager', 'sales_executive', 'head_of_sales'],
+    create: ['admin', 'dev', 'csm', 'customer_success', 'customer_success_manager', 'sales_executive', 'head_of_sales', 'hoo'],
     update: ['admin', 'dev'],
     delete: ['admin', 'dev'],
     export: ['admin', 'dev']
@@ -378,6 +378,7 @@ const Permissions = {
     const normalizedResource = String(resource || '').trim().toLowerCase();
     if (normalizedResource === 'csm') return ['csm', 'csm_activities'];
     if (normalizedResource === 'csm_activities') return ['csm_activities', 'csm'];
+    if (['contacts', 'crm_contacts'].includes(normalizedResource)) return ['contacts', 'crm_contacts'];
     if (['communicationcentre', 'communication-center', 'communication-centre', 'communication_center'].includes(normalizedResource)) return ['communication_centre'];
     return [normalizedResource];
   },
@@ -700,6 +701,39 @@ const Permissions = {
   },
   canCreateLead() {
     return this.canCreate('leads');
+  },
+  getContactCreateRole(currentUser = this.getResolvedCurrentUser()) {
+    const user = currentUser || {};
+    return this.normalizeRole(
+      user.role_key ||
+      user.roleKey ||
+      user.role ||
+      user.user_role ||
+      user.profile?.role_key ||
+      user.profile?.role ||
+      user.app_metadata?.role_key ||
+      user.app_metadata?.role ||
+      user.user_metadata?.role_key ||
+      user.user_metadata?.role ||
+      Session?.role?.() ||
+      ''
+    );
+  },
+  canCreateContact(currentUser = this.getResolvedCurrentUser()) {
+    const permissionChecks = [
+      () => this.can('contacts', 'create'),
+      () => this.can('crm_contacts', 'create'),
+      () => this.can('crm', 'create'),
+      () => window.PermissionService?.can?.('contacts', 'create'),
+      () => window.PermissionService?.can?.('crm_contacts', 'create'),
+      () => window.PermissionService?.can?.('crm', 'create')
+    ];
+    if (permissionChecks.some(check => {
+      try { return Boolean(check()); } catch (_error) { return false; }
+    })) return true;
+
+    const roleKey = this.getContactCreateRole(currentUser);
+    return ['admin', 'dev', 'developer', 'csm', 'customer_success', 'customer_success_manager', 'sales_executive', 'head_of_sales', 'hoo'].includes(roleKey);
   },
   canViewCsmActivity() {
     return this.canView('csm_activities');
