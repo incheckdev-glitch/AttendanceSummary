@@ -1,22 +1,6 @@
 (function initCsmService(global) {
   const TABLE = 'csm_activities';
-  const CSM_MUTATION_ROLE_KEYS = new Set([
-    'admin',
-    'hoo',
-    'head_of_operations',
-    'head_operations',
-    'operations_head'
-  ]);
-  const CSM_CREATE_ROLE_KEYS = new Set([
-    'admin',
-    'hoo',
-    'head_of_operations',
-    'head_operations',
-    'operations_head',
-    'csm',
-    'customer_success',
-    'customer_success_manager'
-  ]);
+  const CSM_ADMIN_ROLE_KEYS = new Set(['admin']);
   const CSM_ACTIVITY_COLUMNS = new Set([
     'id',
     'activity_id',
@@ -110,7 +94,7 @@
       if (global.PermissionService.can('csm_daily_activity_tracker', 'create')) return true;
     }
 
-    return CSM_CREATE_ROLE_KEYS.has(roleKey);
+    return CSM_ADMIN_ROLE_KEYS.has(roleKey);
   }
 
   function canManageExistingCsmActivity(action, currentUser = getCurrentUserForPermission()) {
@@ -130,7 +114,7 @@
 
     if (global.PermissionService?.can && global.PermissionService.can('csm_activities', normalizedAction)) return true;
 
-    return CSM_MUTATION_ROLE_KEYS.has(roleKey);
+    return CSM_ADMIN_ROLE_KEYS.has(roleKey);
   }
 
   function canUpdateCsmActivity(currentUser = getCurrentUserForPermission()) {

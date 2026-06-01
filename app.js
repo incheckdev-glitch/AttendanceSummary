@@ -2924,9 +2924,10 @@ function setActiveView(view) {
  view = normalizeViewKey(view);
  const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
  const requestedView = view;
- const firstAllowedView = names.find(name => Permissions.canAccessTab(name)) || 'issues';
+ const firstAllowedView = names.find(name => Permissions.canAccessTab(name)) || '';
  if (!Permissions.canAccessTab(view)) {
    if (requestedView === 'insights') UI.toast('You do not have permission to view AI Insights.');
+   else UI.toast('You do not have permission to view that module.');
    view = firstAllowedView;
  }
   names.forEach(name => {
@@ -3033,6 +3034,7 @@ function setActiveView(view) {
     }
     if (panel) panel.classList.toggle('active', active);
   });
+  if (!view) return;
   try {
     localStorage.setItem(LS_KEYS.view, view);
   } catch {}
@@ -5864,6 +5866,7 @@ function parseAppHashRoute(hash = '') {
   const [routePart, queryPart = ''] = raw.split('?');
   const route = decodeURIComponent(routePart || '').trim();
   const params = new URLSearchParams(queryPart || '');
+  if (['app', 'loginSection'].includes(route)) return null;
   if (route === 'tickets') return { module: 'tickets', resource: 'tickets', id: params.get('ticket_id') || params.get('id') || '' };
   if (route === 'events') return { module: 'events', resource: 'events', id: params.get('id') || params.get('event_id') || '' };
   if (route === 'workflow') return { module: 'workflow', resource: 'workflow', id: params.get('approval_id') || params.get('id') || '' };
@@ -5885,6 +5888,17 @@ function cleanupLegacyIssueQueryWhenHashExists() {
   console.info('[router] removed legacy issue query because hash route exists', { oldSearch: search, hash });
 }
 
+function canRouteToHashTarget(target = {}) {
+  const resource = String(target.resource || '').trim().toLowerCase();
+  if (!resource) return false;
+  return (
+    Permissions.can(resource, 'list') ||
+    Permissions.can(resource, 'view') ||
+    Permissions.can(resource, 'get') ||
+    Permissions.can(resource, 'manage')
+  );
+}
+
 async function routeAppHashAfterReady() {
   cleanupLegacyIssueQueryWhenHashExists();
   const hash = consumePendingDeepLink() || String(window.location.hash || '').trim();
@@ -5892,6 +5906,17 @@ async function routeAppHashAfterReady() {
   const target = parseAppHashRoute(hash);
   if (!target || !target.resource) return false;
   console.info('[router] parsed hash target', target);
+  if (!canRouteToHashTarget(target)) {
+    console.warn('[router] blocked hash route for missing permission', {
+      role: Session.role(),
+      resource: target.resource,
+      hash
+    });
+    UI.toast?.('You do not have permission to open that module.');
+    const fallback = UI.tabRegistry?.().find(tab => Permissions.canAccessTab(tab.key))?.key || '';
+    if (fallback) setActiveView(fallback);
+    return false;
+  }
   await new Promise(resolve => setTimeout(resolve, 300));
   if (window.Notifications?.routeToResourceTarget) {
     const opened = await window.Notifications.routeToResourceTarget(target.resource, target.id, {

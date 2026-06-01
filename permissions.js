@@ -468,16 +468,18 @@ const Permissions = {
         totalDeniedRows
       });
       this.state.loaded = true;
-      if (roleKey === 'dev') {
-        console.log('[DEV ACCESS DEBUG]', {
+      if (['hoo', 'head_of_operations'].includes(roleKey)) {
+        const tabs = typeof UI !== 'undefined' && UI?.tabRegistry
+          ? UI.tabRegistry().filter(tab => this.canAccessTab(tab.key))
+          : [];
+        const permissionMatrix = rows;
+        console.log('[HOO ACCESS DEBUG]', {
           role: roleKey,
-          visibleTabs: typeof UI !== 'undefined' && UI?.tabRegistry
-            ? UI.tabRegistry().filter(tab => this.canAccessTab(tab.key)).map(tab => tab.key)
-            : [],
-          activePermissions: rows.filter(row =>
-            this.normalizeRole(row.role_key) === 'dev' &&
-            this.toBoolean(row.is_allowed, true) === true &&
-            this.toBoolean(row.is_active, true) === true
+          visibleTabs: tabs.map(t => t.key),
+          activePermissions: permissionMatrix.filter(p =>
+            ['hoo', 'head_of_operations'].includes(String(p.role_key || '').toLowerCase()) &&
+            p.is_allowed === true &&
+            p.is_active === true
           )
         });
       }
@@ -632,10 +634,6 @@ const Permissions = {
     let decision = false;
     if (hasDeniedRow) decision = false;
     else if (hasAllowedRow) decision = true;
-    else if (currentRole !== ROLES.DEV) {
-      const allowedByBase = this.getBaseAllowedRoles(normalizedResource, normalizedAction).includes(currentRole);
-      if (allowedByBase) decision = true;
-    }
 
     console.log('[permissions check]', JSON.stringify({
       role: currentRole,
@@ -673,10 +671,7 @@ const Permissions = {
     const normalizedRole = this.normalizeRole(role);
     const normalizedResource = String(resource || '').trim().toLowerCase();
     const normalizedAction = String(action || '').trim().toLowerCase();
-    const isCompanyVerification = normalizedResource === 'companies' && ['verify', 'verify_company'].includes(normalizedAction);
-    if (!isCompanyVerification && (normalizedRole === ROLES.ADMIN || window.AdminOverride?.canOverride?.())) {
-      return true;
-    }
+    if (normalizedRole === ROLES.ADMIN) return true;
     return this.decidePermission(resource, action, role, options);
   },
   canView(resource, role = Session.role()) {
@@ -739,7 +734,7 @@ const Permissions = {
   },
   canVerifyCompany(currentUser = this.getResolvedCurrentUser()) {
     const roleKey = this.getCompanyVerificationRole(currentUser);
-    if (['admin', 'accountant', 'accounting'].includes(roleKey)) return true;
+    if (roleKey === 'admin') return true;
     return Boolean(
       this.can('companies', 'verify') ||
       this.can('companies', 'verify_company') ||
@@ -778,7 +773,7 @@ const Permissions = {
     })) return true;
 
     const roleKey = this.getContactCreateRole(currentUser);
-    return ['admin', 'csm', 'customer_success', 'customer_success_manager', 'sales_executive', 'head_of_sales', 'hoo'].includes(roleKey);
+    return roleKey === ROLES.ADMIN;
   },
   canViewCsmActivity() {
     return this.canView('csm_activities');
