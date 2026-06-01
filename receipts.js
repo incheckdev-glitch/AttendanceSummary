@@ -1868,12 +1868,17 @@ const Receipts = {
     const newPaidTotal = resolvedSnapshot.new_paid_total;
     const pendingAmount = resolvedSnapshot.pending_amount;
     const paymentState = this.normalizeReceiptPaymentState({ ...r, ...resolvedSnapshot }, invoice || r);
-    const receiptPaymentAmount = this.getReceiptPaymentAmount({
-      ...r,
-      received_amount: r.received_amount ?? r.amount_received ?? resolvedSnapshot.received_amount,
-      amount_received: r.amount_received ?? r.received_amount ?? resolvedSnapshot.received_amount,
-      paid_now: r.paid_now ?? resolvedSnapshot.paid_now
-    });
+    const receiptPaymentAmountSource = pickDefined(
+      r.received_amount,
+      r.amount_received,
+      r.grand_total,
+      r.total_amount,
+      r.amount,
+      r.total,
+      resolvedSnapshot.received_amount,
+      resolvedSnapshot.paid_now
+    );
+    const receiptPaymentAmount = this.toNumberSafe(receiptPaymentAmountSource);
     const amountInWords = this.receiptAmountInWords('', currency, receiptPaymentAmount);
     const customerName = r.customer_legal_name || r.customer_name || invoice?.customer_legal_name || invoice?.customer_name;
     const customerAddress = r.customer_address || invoice?.customer_address;
@@ -2032,6 +2037,7 @@ const Receipts = {
           <div class="totals-row grand"><span>Grand Total</span><strong>${this.money(currency, invoiceTotal)}</strong></div>
           <div class="totals-row"><span>Old Paid Total</span><strong>${this.money(currency, oldPaidTotal)}</strong></div>
           <div class="totals-row"><span>Paid Now</span><strong>${this.money(currency, paidNow)}</strong></div>
+          <div class="totals-row amount-in-words"><span>Grand Amount in Words:</span><strong>${text(amountInWords)}</strong></div>
           <div class="totals-row"><span>Amount Paid (Cumulative)</span><strong>${this.money(currency, newPaidTotal)}</strong></div>
           <div class="totals-row"><span>Pending Amount</span><strong>${this.money(currency, pendingAmount)}</strong></div>
           <div class="totals-row"><span>Payment State</span><strong>${text(paymentState || r.status)}</strong></div>

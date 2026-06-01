@@ -1211,7 +1211,11 @@ const Invoices = {
       hasCommercialItems ? itemTotals.subtotal_locations : (invoiceData.subtotal_locations ?? invoiceData.subtotal_subscription ?? 0)
     );
     const subtotalOneTime = this.toNumberSafe(hasCommercialItems ? itemTotals.subtotal_one_time : (invoiceData.subtotal_one_time ?? 0));
-    const invoiceTotal = this.toNumberSafe(hasCommercialItems ? itemTotals.invoice_total : (invoiceData.invoice_total ?? invoiceData.grand_total ?? 0));
+    const pickDefined = (...values) => values.find(value => value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === ''));
+    const invoiceTotal = this.toNumberSafe(hasCommercialItems
+      ? itemTotals.invoice_total
+      : pickDefined(invoiceData.grand_total, invoiceData.total_amount, invoiceData.total, invoiceData.amount_due, invoiceData.invoice_total, 0));
+    const grandAmountInWords = U.formatAmountInWords(invoiceTotal, currency);
     const paidAmount = this.toNumberSafe(invoiceData.received_amount ?? invoiceData.amount_paid ?? invoiceData.old_paid_total);
     const pendingInput = invoiceData.pending_amount ?? invoiceData.balance_due ?? invoiceData.balance_amount;
     const pendingAmount = pendingInput !== undefined && pendingInput !== null && String(pendingInput).trim() !== ''
@@ -1480,6 +1484,7 @@ const Invoices = {
           <div class="totals-row"><span>One Time Fees</span><strong>${money(subtotalOneTime)}</strong></div>
           <div class="totals-row"><span>Subscription Fees</span><strong>${money(subtotalLocations)}</strong></div>
           <div class="totals-row grand"><span>Grand Total</span><strong>${money(invoiceTotal)}</strong></div>
+          <div class="totals-row amount-in-words"><span>Grand Amount in Words:</span><strong>${textValue(grandAmountInWords)}</strong></div>
           <div class="totals-row"><span>Amount Paid</span><strong>${money(paidAmount)}</strong></div>
           <div class="totals-row"><span>Pending Amount</span><strong>${money(pendingAmount)}</strong></div>
           <div class="totals-row"><span>Payment State</span><strong>${textValue(paymentState)}</strong></div>

@@ -248,7 +248,7 @@ const U = {
 
     value = value.replace(/\s+and\s+(\d{2})\/100$/i, ' and $1/100');
 
-    return `Only ${value} USD`;
+    return `Only ${value || 'Zero and 00/100'} USD`.replace(/\bUSD\s+USD\b/gi, 'USD');
   },
   formatAmountInWords: (amount, currency = 'USD') => {
     const parsed = typeof amount === 'number' ? amount : Number(String(amount ?? '').replace(/,/g, '').trim());
@@ -260,10 +260,11 @@ const U = {
     const words = U.amountToWords(whole, currency)
       .replace(/\bDollars?\b/gi, '')
       .replace(/\bUSD\b/gi, '')
+      .replace(/\s+and\s+\d{2}\/100$/i, '')
       .replace(/\s+/g, ' ')
-      .trim();
+      .trim() || 'Zero';
 
-    return U.normalizeAmountWordsSentence(`${words.replace(/\s+and\s+\d{2}\/100$/i, '')} and ${cents}/100`);
+    return `Only ${words} and ${cents}/100 USD`.replace(/\bUSD\s+USD\b/gi, 'USD');
   },
   escapeHtml: s =>
     String(s).replace(/[&<>"']/g, m => (
