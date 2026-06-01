@@ -1218,7 +1218,7 @@ const Invoices = {
       ? this.toNumberSafe(pendingInput)
       : Math.max(0, invoiceTotal - paidAmount);
     const paymentState = String(invoiceData.payment_state || '').trim() || U.calculatePaymentState(invoiceTotal, paidAmount);
-    const amountInWords = String(invoiceData.amount_in_words || '').trim() || this.amountToWords(invoiceTotal, currency);
+    const amountInWords = U.normalizeAmountWordsSentence(String(invoiceData.amount_in_words || '').trim() || this.amountToWords(invoiceTotal, currency));
     const paymentConclusion = String(invoiceData.payment_conclusion || '').trim() || this.derivePaymentConclusion({ pending_amount: pendingAmount });
     const isPoc = this.normalizeTruthy(invoiceData.is_poc ?? invoiceData.isPoc);
     const pocDetailsHtml = isPoc ? `
@@ -1968,9 +1968,11 @@ const Invoices = {
     );
   },
   amountToWords(value, currency = 'USD') {
+    if (U?.formatAmountInWords) return U.formatAmountInWords(value, currency);
     const amount = this.toNumberSafe(value);
-    const whole = Math.floor(Math.max(0, amount));
-    const cents = Math.round((amount - whole) * 100);
+    const totalCents = Math.round(Math.max(0, amount) * 100);
+    const whole = Math.floor(totalCents / 100);
+    const cents = totalCents % 100;
     const ones = ['Zero','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
     const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
     const underThousand = n => {
@@ -1991,8 +1993,7 @@ const Invoices = {
       });
       return out.join(' ');
     };
-    const currencyLabel = String(currency || 'USD').trim().toUpperCase() === 'USD' ? 'Dollars' : String(currency || 'Currency').trim().toUpperCase();
-    return `${toWords(whole)} ${currencyLabel} and ${String(cents).padStart(2, '0')}/100`;
+    return `Only ${toWords(whole)} and ${String(cents).padStart(2, '0')}/100 USD Dollar`;
   },
   derivePaymentConclusion(invoice = {}) {
     const pending = this.toNumberSafe(invoice.pending_amount);

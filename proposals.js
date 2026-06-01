@@ -2206,7 +2206,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const grandTotal = hasCalculatedTotals
       ? calculatedTotals.grand_total
       : this.toNumberSafe(headerGrand || subtotalLocations + subtotalOneTime);
-    const grandTotalInWords = U.amountToWords(grandTotal, currency);
+    const grandTotalInWords = U.formatAmountInWords(grandTotal, currency);
     const providerSignatoryName = this.getProposalProviderSignatoryName(proposalData);
     const providerSignatoryTitle = this.getProposalProviderSignatoryTitle(proposalData);
     const isPoc = this.normalizeTruthy(proposalData.is_poc || proposalData.isPoc);

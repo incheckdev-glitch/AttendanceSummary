@@ -1201,9 +1201,12 @@
       if (n < 1000000) return `${convert(Math.floor(n / 1000))} Thousand${n % 1000 ? ` ${convert(n % 1000)}` : ''}`;
       return `${convert(Math.floor(n / 1000000))} Million${n % 1000000 ? ` ${convert(n % 1000000)}` : ''}`;
     };
+    if (typeof U !== 'undefined' && U?.formatAmountInWords) return U.formatAmountInWords(value, currency || 'USD');
     const amount = toNumber(value);
-    const cents = Math.round((Math.abs(amount) % 1) * 100);
-    return `${amount < 0 ? 'Minus ' : ''}${convert(amount)}${currency ? ` ${currency}` : ''}${cents ? ` and ${cents}/100` : ''}`;
+    const totalCents = Math.round(Math.abs(amount) * 100);
+    const whole = Math.floor(totalCents / 100);
+    const cents = totalCents % 100;
+    return `Only ${amount < 0 ? 'Minus ' : ''}${convert(whole)} and ${String(cents).padStart(2, '0')}/100 USD Dollar`;
   }
 
   function buildAmendmentPreviewHtml(amendment = {}, items = []) {
