@@ -81,7 +81,10 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     'terms_conditions',
     'customer_signatory_name',
     'customer_signatory_title',
+    'customer_signature_name',
+    'customer_signature_title',
     'customer_sign_date',
+    'customer_signed_at',
     'provider_signatory_user_id',
     'provider_signatory_name',
     'provider_signatory_title',
@@ -859,17 +862,27 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
   },
   normalizeContact(contact = {}) {
     const c = contact && typeof contact === 'object' ? contact : {};
-    return { contact_id:String(c.contact_id||c.contactId||'').trim(), company_id:String(c.company_id||c.companyId||'').trim(), first_name:String(c.first_name||c.firstName||'').trim(), last_name:String(c.last_name||c.lastName||'').trim(), full_name:String(c.full_name||c.fullName||'').trim(), name:String(c.name||'').trim(), contact_name:String(c.contact_name||c.contactName||'').trim(), job_title:String(c.job_title||c.jobTitle||'').trim(), department:String(c.department||'').trim(), email:String(c.email||'').trim(), phone:String(c.phone||'').trim(), mobile:String(c.mobile||'').trim(), decision_role:String(c.decision_role||c.decisionRole||'').trim(), contact_status:String(c.contact_status||c.contactStatus||'').trim() };
+    return { contact_id:String(c.contact_id||c.contactId||'').trim(), company_id:String(c.company_id||c.companyId||'').trim(), first_name:String(c.first_name||c.firstName||'').trim(), last_name:String(c.last_name||c.lastName||'').trim(), full_name:String(c.full_name||c.fullName||'').trim(), name:String(c.name||'').trim(), contact_name:String(c.contact_name||c.contactName||'').trim(), position:String(c.position||'').trim(), job_title:String(c.job_title||c.jobTitle||'').trim(), title:String(c.title||'').trim(), department:String(c.department||'').trim(), email:String(c.email||'').trim(), phone:String(c.phone||'').trim(), mobile:String(c.mobile||'').trim(), decision_role:String(c.decision_role||c.decisionRole||'').trim(), contact_status:String(c.contact_status||c.contactStatus||'').trim() };
+  },
+  getContactDisplayName(contact) {
+    if (!contact) return '';
+    const fullName = String(contact.full_name || contact.fullName || contact.name || '').trim();
+    if (fullName) return fullName;
+    return `${contact.first_name || contact.firstName || ''} ${contact.last_name || contact.lastName || ''}`.trim();
+  },
+  getContactTitle(contact) {
+    return String(
+      contact?.position ||
+      contact?.job_title ||
+      contact?.jobTitle ||
+      contact?.title ||
+      ''
+    ).trim();
   },
   buildContactDisplayName(contact = {}) {
     const c = contact && typeof contact === 'object' ? contact : {};
-    const first = String(c.first_name || c.firstName || '').trim();
-    const last = String(c.last_name || c.lastName || '').trim();
-    const name = [first, last].filter(Boolean).join(' ').trim();
-    if (name) return name;
     const stripEmailSuffix = value => String(value || '').trim().replace(/\s+[—-]\s+\S+@\S+$/u, '').trim();
-    return stripEmailSuffix(c.full_name || c.fullName)
-      || stripEmailSuffix(c.name)
+    return stripEmailSuffix(this.getContactDisplayName(c))
       || stripEmailSuffix(c.contact_name || c.contactName)
       || String(c.email || '').trim();
   },
@@ -1091,7 +1104,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     E.proposalFormValidUntil.value = this.resolveProposalValidUntil(E.proposalFormProposalDate.value, E.proposalFormValidUntil.value);
   },
   getContactPosition(contact = {}) {
-    return String(contact.job_title || contact.jobTitle || contact.position || contact.title || '').trim();
+    return this.getContactTitle(contact);
   },
   isUsefulProviderValue(value) {
     const text = String(value || '').trim();
@@ -1369,11 +1382,12 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       ).trim()
     };
   },
-  resolveCustomerSignatorySnapshot(record = {}, company = {}) {
+  resolveCustomerSignatorySnapshot(record = {}, company = {}, contact = {}) {
     const locked = this.isSignedOrAcceptedDocument(record);
     const existingName = String(
-      record.customer_signatory_Name ||
       record.customer_signatory_name ||
+      record.customer_signatory_Name ||
+      record.customer_signature_name ||
       record.customer_authorized_signatory_name ||
       record.customer_official_signatory_name ||
       record.authorized_signatory_name ||
@@ -1381,18 +1395,33 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     ).trim();
     const existingTitle = String(
       record.customer_signatory_title ||
+      record.customer_signature_title ||
       record.customer_authorized_signatory_title ||
       record.authorized_signatory_title ||
       ''
     ).trim();
-    if (locked && (existingName || existingTitle)) return { name: existingName, title: existingTitle };
+    if (locked) return { name: existingName, title: existingTitle };
+    const contactSigner = { name: this.getContactDisplayName(contact), title: this.getContactTitle(contact) };
     const companySigner = this.resolveCompanyAuthorizedSignatory(company);
-    return { name: existingName || companySigner.name, title: existingTitle || companySigner.title };
+    return {
+      name: existingName || contactSigner.name || companySigner.name,
+      title: existingTitle || contactSigner.title || companySigner.title
+    };
+  },
+  applyProposalContactSignatory(contact, options = {}) {
+    const isContactChanged = options.contactChanged === true;
+    const signatoryNameInput = document.querySelector('[name="customer_signatory_name"], [data-proposal-customer-signatory-name], #proposalFormCustomerSignatoryName');
+    const signatoryTitleInput = document.querySelector('[name="customer_signatory_title"], [data-proposal-customer-signatory-title], #proposalFormCustomerSignatoryTitle');
+    if (!signatoryNameInput || !signatoryTitleInput) return;
+    const contactName = this.getContactDisplayName(contact);
+    const contactTitle = this.getContactTitle(contact);
+    if (contactName && (!signatoryNameInput.value || isContactChanged)) signatoryNameInput.value = contactName;
+    if (contactTitle && (!signatoryTitleInput.value || isContactChanged)) signatoryTitleInput.value = contactTitle;
   },
   hydrateMappedProposalFields(proposal = {}, selectedCompany = {}, selectedContact = {}) {
     const customerAddress = String(selectedCompany?.address || '').trim();
     const contactPersonName = this.buildContactDisplayName(selectedContact);
-    const signatorySnapshot = this.resolveCustomerSignatorySnapshot(proposal, selectedCompany);
+    const signatorySnapshot = this.resolveCustomerSignatorySnapshot(proposal, selectedCompany, selectedContact);
     return this.applyProposalProviderSessionFields({
       ...proposal,
       customer_address: customerAddress,
@@ -1407,7 +1436,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     });
   },
   async getFullCompanyRecord(companyIdOrRecord) { const seed = typeof companyIdOrRecord === 'object' ? companyIdOrRecord : {}; const companyId = typeof companyIdOrRecord === 'object' ? (seed.company_id || seed.companyId) : companyIdOrRecord; const hasFullFields = seed.legal_name || seed.legalName || seed.company_type || seed.companyType || seed.industry || seed.website || seed.main_email || seed.mainEmail || seed.main_phone || seed.mainPhone || seed.country || seed.city || seed.address || seed.company_status || seed.companyStatus; if (hasFullFields) return this.normalizeCompany(seed); if (!companyId) return null; const response = await Api.requestWithSession('companies','list',{ filters:{ company_id: companyId }, limit:1 },{ requireAuth:true }); const rows = response?.rows || response?.items || response?.data || []; const row = Array.isArray(rows) ? rows[0] : rows; return row ? this.normalizeCompany(row) : null; },
-  async getFullContactRecord(contactIdOrRecord) { const seed = typeof contactIdOrRecord === 'object' ? contactIdOrRecord : {}; const contactId = typeof contactIdOrRecord === 'object' ? (seed.contact_id || seed.contactId) : contactIdOrRecord; const hasFullFields = seed.first_name || seed.firstName || seed.last_name || seed.lastName || seed.job_title || seed.jobTitle || seed.department || seed.email || seed.phone || seed.mobile || seed.decision_role || seed.decisionRole || seed.contact_status || seed.contactStatus; if (hasFullFields) return this.normalizeContact(seed); if (!contactId) return null; const response = await Api.requestWithSession('contacts','list',{ filters:{ contact_id: contactId }, limit:1 },{ requireAuth:true }); const rows = response?.rows || response?.items || response?.data || []; const row = Array.isArray(rows) ? rows[0] : rows; return row ? this.normalizeContact(row) : null; },
+  async getFullContactRecord(contactIdOrRecord) { const seed = typeof contactIdOrRecord === 'object' ? contactIdOrRecord : {}; const contactId = typeof contactIdOrRecord === 'object' ? (seed.contact_id || seed.contactId) : contactIdOrRecord; const hasFullFields = seed.first_name || seed.firstName || seed.last_name || seed.lastName || seed.job_title || seed.jobTitle || seed.position || seed.title || seed.department || seed.email || seed.phone || seed.mobile || seed.decision_role || seed.decisionRole || seed.contact_status || seed.contactStatus; if (hasFullFields) return this.normalizeContact(seed); if (!contactId) return null; const response = await Api.requestWithSession('contacts','list',{ filters:{ contact_id: contactId }, limit:1 },{ requireAuth:true }); const rows = response?.rows || response?.items || response?.data || []; const row = Array.isArray(rows) ? rows[0] : rows; return row ? this.normalizeContact(row) : null; },
   ensureProposalId(value = '') {
     const trimmed = String(value ?? '').trim();
     return trimmed || this.generateProposalId();
@@ -1480,7 +1509,9 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     normalized.contact_email = String(source.contact_email || source.contactEmail || normalized.customer_contact_email || '').trim();
     normalized.contact_phone = String(source.contact_phone || source.contactPhone || normalized.customer_contact_mobile || '').trim();
     normalized.contact_mobile = String(source.contact_mobile || source.contactMobile || normalized.customer_contact_mobile || '').trim();
-    normalized.customer_sign_date = String(source.customer_sign_date || source.customerSignDate || normalized.customer_sign_date || '').trim();
+    normalized.customer_signatory_name = String(source.customer_signatory_name || source.customer_signatory_Name || source.customer_signature_name || source.customerSignatoryName || normalized.customer_signatory_name || '').trim();
+    normalized.customer_signatory_title = String(source.customer_signatory_title || source.customer_signature_title || source.customerSignatoryTitle || normalized.customer_signatory_title || '').trim();
+    normalized.customer_sign_date = String(source.customer_sign_date || source.customer_signed_at || source.customerSignDate || normalized.customer_sign_date || '').trim();
     normalized.status = this.normalizeProposalStatus(normalized.status);
     normalized.provider_contact_name = this.providerContactDefaults.name;
     normalized.provider_contact_mobile = this.providerContactDefaults.mobile;
@@ -2019,6 +2050,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       'valid_until',
       'service_start_date',
       'customer_sign_date',
+      'customer_signed_at',
       'provider_sign_date',
       'poc_service_start_date',
       'poc_service_end_date'
@@ -2239,6 +2271,27 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const grandTotalInWords = U.formatAmountInWords(grandTotal, currency);
     const providerSignatoryName = this.getProposalProviderSignatoryName(proposalData);
     const providerSignatoryTitle = this.getProposalProviderSignatoryTitle(proposalData);
+    const proposalContact = proposalData.contact || {
+      full_name: proposalData.contact_name || proposalData.customer_contact_name || '',
+      position: proposalData.contact_position || proposalData.position || '',
+      job_title: proposalData.contact_job_title || proposalData.job_title || ''
+    };
+    const fallbackCompanySigner = this.resolveCompanyAuthorizedSignatory(proposalData.company || proposalData);
+    const customerSignatoryName = String(
+      proposalData.customer_signatory_name ||
+      proposalData.customer_signatory_Name ||
+      proposalData.customer_signature_name ||
+      this.getContactDisplayName(proposalContact) ||
+      fallbackCompanySigner.name ||
+      ''
+    ).trim();
+    const customerSignatoryTitle = String(
+      proposalData.customer_signatory_title ||
+      proposalData.customer_signature_title ||
+      this.getContactTitle(proposalContact) ||
+      fallbackCompanySigner.title ||
+      ''
+    ).trim();
     const isPoc = this.normalizeTruthy(proposalData.is_poc || proposalData.isPoc);
     const pocDetailsHtml = isPoc ? `
       <section class="info-grid" style="margin-top:14px;grid-template-columns:1fr;">
@@ -2569,9 +2622,9 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         <div class="signature-box">
           <div class="signature-head">CUSTOMER SIGNATORY</div>
           <div class="signature-body">
-            <div><strong>Name:</strong> ${textValue(proposalData.customer_signatory_name)}</div>
-            <div><strong>Title:</strong> ${textValue(proposalData.customer_signatory_title)}</div>
-            <div><strong>Sign Date:</strong> ${dateValue(proposalData.customer_sign_date)}</div>
+            <div><strong>Name:</strong> ${textValue(customerSignatoryName)}</div>
+            <div><strong>Title:</strong> ${textValue(customerSignatoryTitle)}</div>
+            <div><strong>Sign Date:</strong> ${dateValue(proposalData.customer_sign_date || proposalData.customer_signed_at)}</div>
           </div>
         </div>
         <div class="signature-box">
@@ -3861,6 +3914,13 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       U.getCustomerLegalName(selectedCompany, mapped) ||
       String(E.proposalFormCustomerName?.value || '').trim() ||
       String(selectedCompany.legal_name || selectedCompany.company_name || '').trim();
+    const currentLockedSnapshot = this.isSignedOrAcceptedDocument(this.state.currentProposal || {});
+    const customerSignatoryNameValue = currentLockedSnapshot
+      ? String(this.state.currentProposal?.customer_signatory_name || this.state.currentProposal?.customer_signatory_Name || this.state.currentProposal?.customer_signature_name || '').trim()
+      : (String(E.proposalFormCustomerSignatoryName?.value || '').trim() || this.getContactDisplayName(selectedContact));
+    const customerSignatoryTitleValue = currentLockedSnapshot
+      ? String(this.state.currentProposal?.customer_signatory_title || this.state.currentProposal?.customer_signature_title || '').trim()
+      : (String(E.proposalFormCustomerSignatoryTitle?.value || '').trim() || this.getContactTitle(selectedContact));
     return {
       proposal_id: String(E.proposalFormProposalId?.value || '').trim(),
       ref_number: this.ensureRefNumber(existingRefNumber),
@@ -3889,11 +3949,14 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       payment_terms: this.normalizePaymentTerm(E.proposalFormPaymentTerm?.value, 'Net 30'),
       po_number: String(E.proposalFormPoNumber?.value || '').trim(),
       ...pocPayload,
-      customer_signatory_name: mapped.customer_signatory_name || '',
-      customer_signatory_title: mapped.customer_signatory_title || '',
-      customer_authorized_signatory_name: mapped.customer_signatory_name || '',
-      customer_authorized_signatory_title: mapped.customer_signatory_title || '',
-      customer_sign_date: customerSignDateValue,
+      customer_signatory_name: customerSignatoryNameValue,
+      customer_signatory_title: customerSignatoryTitleValue,
+      customer_authorized_signatory_name: customerSignatoryNameValue,
+      customer_authorized_signatory_title: customerSignatoryTitleValue,
+      customer_signature_name: customerSignatoryNameValue,
+      customer_signature_title: customerSignatoryTitleValue,
+      customer_sign_date: customerSignDateValue || null,
+      customer_signed_at: customerSignDateValue || null,
       provider_signatory_name: this.getCleanProviderSignatoryValue(
         E.proposalFormProviderSignatoryName?.value || mapped.provider_signatory_name || mapped.providerSignatoryName || providerUserName,
         mapped
@@ -4018,7 +4081,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     E.proposalForm.dataset.contactFirstName = String(base.first_name || base.firstName || '').trim();
     E.proposalForm.dataset.contactLastName = String(base.last_name || base.lastName || '').trim();
     E.proposalForm.dataset.contactName = this.buildContactDisplayName(base) || String(base.contact_name || base.customer_contact_name || '').trim();
-    E.proposalForm.dataset.contactJobTitle = String(base.customer_signatory_title || '').trim();
+    E.proposalForm.dataset.contactJobTitle = String(base.contact_job_title || base.job_title || base.jobTitle || base.position || base.customer_signatory_title || '').trim();
     E.proposalForm.dataset.contactEmail = String(base.contact_email || base.customer_contact_email || '').trim();
     E.proposalForm.dataset.contactPhone = String(base.contact_phone || '').trim();
     E.proposalForm.dataset.contactMobile = String(base.contact_mobile || base.customer_contact_mobile || '').trim();
@@ -4039,6 +4102,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       }
     );
     this.assignFormValues(hydratedBase);
+    if (!effectiveReadOnly) this.applyProposalContactSignatory(hydratedBase);
     this.renderProposalItems(this.state.currentItems);
     this.ensureCatalogLoaded();
 

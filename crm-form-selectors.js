@@ -77,11 +77,11 @@
       },
       contactFields: {
         id: ['proposalFormContactId'],
-        fullName: ['proposalFormCustomerContactName', 'proposalFormCustomerSignatoryName', 'proposalFormContactNameHidden'],
+        fullName: ['proposalFormCustomerContactName', 'proposalFormContactNameHidden'],
         mobile: ['proposalFormCustomerContactMobile'],
         phone: ['proposalFormCustomerContactMobile'],
         email: ['proposalFormCustomerContactEmail'],
-        jobTitle: ['proposalFormCustomerSignatoryTitle']
+        jobTitle: []
       },
       updateModule(company, contact) {
         const form = byId('proposalForm');
@@ -108,7 +108,7 @@
           form.dataset.contactName = displayContact(contact, { includeEmail: false });
           form.dataset.contactFirstName = contact.first_name || '';
           form.dataset.contactLastName = contact.last_name || '';
-          form.dataset.contactJobTitle = contact.job_title || '';
+          form.dataset.contactJobTitle = contact.position || contact.job_title || contact.title || '';
           form.dataset.contactEmail = contact.email || '';
           form.dataset.contactPhone = contact.phone || '';
           form.dataset.contactMobile = contact.mobile || '';
@@ -159,7 +159,7 @@
           form.dataset.contactEmail = contact.email || '';
           form.dataset.contactPhone = contact.phone || '';
           form.dataset.contactMobile = contact.mobile || '';
-          form.dataset.contactJobTitle = contact.job_title || '';
+          form.dataset.contactJobTitle = contact.position || contact.job_title || contact.title || '';
         }
       }
     },
@@ -593,8 +593,12 @@
     setText(`${prefix}CustomerAddress`, c.address);
     setText(`${prefix}CustomerOfficialSignatoryName`, c.authorized_signatory_full_name);
     setText(`${prefix}CustomerOfficialSignatoryTitle`, c.authorized_signatory_title);
-    setText(`${prefix}CustomerSignatoryName`, c.authorized_signatory_full_name);
-    setText(`${prefix}CustomerSignatoryTitle`, c.authorized_signatory_title);
+    if (cfg.formId !== 'proposalForm' || !str(byId(cfg.contactHiddenId)?.value || byId(cfg.formId)?.dataset?.contactId)) {
+      const signatoryNameField = byId(`${prefix}CustomerSignatoryName`);
+      const signatoryTitleField = byId(`${prefix}CustomerSignatoryTitle`);
+      if (cfg.formId !== 'proposalForm' || !str(signatoryNameField?.value)) setText(`${prefix}CustomerSignatoryName`, c.authorized_signatory_full_name);
+      if (cfg.formId !== 'proposalForm' || !str(signatoryTitleField?.value)) setText(`${prefix}CustomerSignatoryTitle`, c.authorized_signatory_title);
+    }
     setText(`${prefix}CompanyName`, c.company_name || displayName);
     setText(`${prefix}CompanyEmail`, c.main_email);
     setText(`${prefix}CompanyPhone`, c.main_phone);
@@ -634,12 +638,14 @@
       setMany(cfg.contactFields.status, c.contact_status);
     }
     // Extra common customer/contact/signatory aliases used by downstream forms.
-    ['CustomerContactName', 'CustomerSignatoryName'].forEach(suffix => setText(`${prefix}${suffix}`, displayName));
+    setText(`${prefix}CustomerContactName`, displayName);
+    if (cfg.formId !== 'proposalForm') setText(`${prefix}CustomerSignatoryName`, displayName);
     ['CustomerContactEmail', 'CustomerSignatoryEmail'].forEach(suffix => setText(`${prefix}${suffix}`, c.email));
     ['CustomerContactPhone', 'CustomerSignatoryPhone'].forEach(suffix => setText(`${prefix}${suffix}`, phone));
     setText(`${prefix}CustomerContactMobile`, c.mobile || c.phone);
-    setText(`${prefix}CustomerSignatoryTitle`, c.job_title);
+    if (cfg.formId !== 'proposalForm') setText(`${prefix}CustomerSignatoryTitle`, c.position || c.job_title || c.title);
     cfg.updateModule?.(null, c);
+    if (cfg.formId === 'proposalForm') global.Proposals?.applyProposalContactSignatory?.(c, { contactChanged: true });
     byId(cfg.formId)?.dispatchEvent?.(new CustomEvent('crm-contact-selected', { bubbles: true, detail: { contact: c } }));
   }
 
