@@ -16,12 +16,7 @@ const Clients = {
     return Permissions.canExportClientStatement();
   },
   canImportOldClient() {
-    const role = String(Session?.role?.() || '').trim().toLowerCase();
-    const isAdminOrDev =
-      Permissions?.isAdmin?.() ||
-      Permissions?.isDev?.() ||
-      ['admin', 'dev', 'developer'].includes(role);
-    return Boolean(isAdminOrDev);
+    return Boolean(Permissions?.isAdmin?.() || Permissions?.canPerformAction?.('clients', 'import_old'));
   },
   parseImportMeta_(client = {}) { try { return JSON.parse(String(client.notes || '{}')); } catch (_) { return {}; } },
   clientFields: [
@@ -3650,7 +3645,7 @@ const Clients = {
       event.stopPropagation();
 
       if (!this.canImportOldClient()) {
-        UI.toast?.('Only admin/dev can import old client agreements.');
+        UI.toast?.('You do not have permission to import old client agreements.');
         return;
       }
 
@@ -3894,7 +3889,7 @@ const Clients = {
       E.importOldClientBtn.addEventListener('click', event => {
         event.preventDefault();
         event.stopPropagation();
-        if (!this.canImportOldClient()) return UI.toast('Only admin/dev can import old client agreements.');
+        if (!this.canImportOldClient()) return UI.toast('You do not have permission to import old client agreements.');
         this.openImportOldClientModal();
       });
     }
@@ -3940,7 +3935,7 @@ const Clients = {
     });
     if (E.importOldClientForm) E.importOldClientForm.addEventListener('submit', async event => {
       event.preventDefault();
-      if (!this.canImportOldClient()) return UI.toast('Only admin/dev can import old client agreements.');
+      if (!this.canImportOldClient()) return UI.toast('You do not have permission to import old client agreements.');
       const submitBtn = E.importOldClientForm.querySelector('button[type="submit"]');
       const originalText = submitBtn?.textContent || '';
       try {

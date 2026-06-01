@@ -1,7 +1,7 @@
 (function attachAdminOverride(global) {
   'use strict';
 
-  const ADMIN_OVERRIDE_ROLES = new Set(['admin', 'dev', 'developer']);
+  const ADMIN_OVERRIDE_ROLES = new Set(['admin']);
 
   function normalizeRole(value) {
     return String(value || '').trim().toLowerCase();

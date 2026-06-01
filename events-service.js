@@ -1,6 +1,5 @@
 (function initEventsService(global) {
   const TABLE = 'events';
-  const WRITE_ROLES = new Set(['admin', 'dev']);
   const EVENT_COLUMNS = new Set([
     'event_code',
     'title',
@@ -29,8 +28,8 @@
     return String(global.Session?.role?.() || '').trim().toLowerCase();
   }
 
-  function canWrite() {
-    return WRITE_ROLES.has(getCurrentRole());
+  function canWrite(action = 'update') {
+    return Boolean(global.Permissions?.canPerformAction?.('events', action));
   }
 
   function readableError(prefix, error) {
@@ -355,7 +354,7 @@
   }
 
   async function createEvent(input = {}) {
-    if (!canWrite()) throw new Error('Only admin/dev can create events.');
+    if (!canWrite('create')) throw new Error('You do not have permission to create events.');
     const payload = await toCreatePayload(input);
     console.log('[events] create payload', payload);
     const client = getClient();
@@ -386,7 +385,7 @@
   }
 
   async function updateEvent(id, updates = {}) {
-    if (!canWrite()) throw new Error('Only admin/dev can update events.');
+    if (!canWrite('update')) throw new Error('You do not have permission to update events.');
     const eventId = String(id || updates.id || '').trim();
     if (!eventId) throw new Error('Event id is required.');
     const payload = await toUpdatePayload(updates);
@@ -437,7 +436,7 @@
   }
 
   async function deleteEvent(id) {
-    if (!canWrite()) throw new Error('Only admin/dev can delete events.');
+    if (!canWrite('delete')) throw new Error('You do not have permission to delete events.');
     const eventId = String(id || '').trim();
     if (!eventId) throw new Error('Event id is required.');
     const client = getClient();

@@ -77,7 +77,7 @@ async function resolveAuthContext(req: Request) {
   }
   const user = data.user;
   const userId = normalizeString(user.id);
-  const privilegedByRole = hasRole(user as unknown as Record<string, unknown>, 'admin') || hasRole(user as unknown as Record<string, unknown>, 'dev');
+  const privilegedByRole = hasRole(user as unknown as Record<string, unknown>, 'admin');
   return {
     isAuthenticated: true,
     userId,

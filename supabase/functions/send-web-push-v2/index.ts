@@ -364,7 +364,7 @@ async function findRequesterRole(
 }
 
 function isPrivilegedRole(role: string): boolean {
-  return ["admin", "dev"].includes(normalizeRole(role));
+  return normalizeRole(role) === "admin";
 }
 
 function possibleUserIds(row: Record<string, unknown> | null): string[] {

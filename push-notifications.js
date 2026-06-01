@@ -119,7 +119,7 @@
 
     canManageNotificationHub() {
       const role = this.getCurrentUserRole();
-      return ['admin', 'administrator', 'super_admin', 'dev'].includes(role);
+      return ['admin', 'administrator', 'super_admin'].includes(role);
     },
 
     requireNotificationAdmin() {
