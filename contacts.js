@@ -149,15 +149,50 @@ const Contacts = {
       this.state.page = 1;
       this.loadAndRefresh();
     };
-    this.ensureFilterCompanies();
+    this.ensureFilterCompanies().catch(error => console.warn('[contacts] company filter load failed', error));
     this.bindFormEvents();
+  },
+
+  async loadCompanyOptionsSafe() {
+    try {
+      const res = await Api.requestWithSession('companies', 'list', { page: 1, limit: 200, search: '', filters: {}, sortBy: 'company_name', sortDir: 'asc' }, { requireAuth: true });
+      return { rows: Array.isArray(res?.rows) ? res.rows : Array.isArray(res) ? res : [], unavailable: false };
+    } catch (error) {
+      console.warn('[contacts] company API load failed', error);
+      return { rows: [], unavailable: true, error };
+    }
+  },
+
+  isCompanyListPermissionError(error) {
+    const message = String(error?.message || error || '');
+    return message.includes('cannot list companies') || message.includes('Forbidden');
+  },
+
+  ensureCompanyHelper() {
+    const select = document.getElementById('contactCompanyInput');
+    if (!select) return null;
+    let helper = document.getElementById('contactCompanyFallbackHelp');
+    if (!helper) {
+      helper = document.createElement('small');
+      helper.id = 'contactCompanyFallbackHelp';
+      helper.className = 'muted';
+      helper.style.display = 'none';
+      select.insertAdjacentElement('afterend', helper);
+    }
+    return helper;
+  },
+
+  setCompanyFallbackMessage(message = '') {
+    const helper = this.ensureCompanyHelper();
+    if (!helper) return;
+    helper.textContent = message;
+    helper.style.display = message ? 'block' : 'none';
   },
 
   async ensureFilterCompanies() {
     const select = document.getElementById('contactsCompanyFilter');
     if (!select) return;
-    const res = await Api.requestWithSession('companies', 'list', { page: 1, limit: 200, search: '', filters: {}, sortBy: 'company_name', sortDir: 'asc' }, { requireAuth: true });
-    const rows = Array.isArray(res?.rows) ? res.rows : [];
+    const { rows } = await this.loadCompanyOptionsSafe();
     select.innerHTML = `<option value=''>All Companies</option>${rows.map(r => `<option value="${U.escapeAttr(r.company_id || '')}">${U.escapeHtml(r.company_name || r.company_id || '')}</option>`).join('')}`;
     if (this.state.companyId) {
       select.value = this.state.companyId;
@@ -175,12 +210,34 @@ const Contacts = {
     });
   },
 
-  async ensureCompanyOptions() {
+  async ensureCompanyOptions(existing = {}) {
     const select = document.getElementById('contactCompanyInput');
-    if (!select) return;
-    const res = await Api.requestWithSession('companies', 'list', { page: 1, limit: 200, search: '', filters: {}, sortBy: 'company_name', sortDir: 'asc' }, { requireAuth: true });
-    const rows = Array.isArray(res?.rows) ? res.rows : Array.isArray(res) ? res : [];
-    select.innerHTML = rows.map(r => `<option value="${U.escapeAttr(r.company_id || '')}">${U.escapeHtml(r.company_name || r.company_id || '')}</option>`).join('');
+    if (!select) return [];
+    select.disabled = true;
+    select.innerHTML = '<option value="">Loading companies…</option>';
+    this.setCompanyFallbackMessage('');
+
+    const { rows, unavailable, error } = await this.loadCompanyOptionsSafe();
+    const normalizedExisting = this.normalize(existing || {});
+    const existingIds = normalizedExisting.company_ids.length ? normalizedExisting.company_ids : [normalizedExisting.company_id || this.state.companyId].filter(Boolean);
+    const rowIds = new Set(rows.map(r => String(r.company_id || '').trim()).filter(Boolean));
+    const mergedRows = [...rows];
+    existingIds.forEach(companyId => {
+      if (!companyId || rowIds.has(companyId)) return;
+      mergedRows.push({ company_id: companyId, company_name: normalizedExisting.company_name || this.state.companyName || normalizedExisting.company_names || companyId });
+      rowIds.add(companyId);
+    });
+
+    select.innerHTML = mergedRows.map(r => `<option value="${U.escapeAttr(r.company_id || '')}">${U.escapeHtml(r.company_name || r.company_id || '')}</option>`).join('');
+    const companyListDenied = unavailable && this.isCompanyListPermissionError(error);
+    if (!mergedRows.length || companyListDenied) {
+      select.disabled = true;
+      this.setCompanyFallbackMessage('Company list is not available for your role. You can still create the contact if company is optional, or ask admin to grant companies list access.');
+    } else {
+      select.disabled = false;
+      this.setCompanyFallbackMessage('');
+    }
+    return mergedRows;
   },
 
   setSelectedCompanies(companyIds = []) {
@@ -208,13 +265,18 @@ const Contacts = {
       return;
     }
     this.bindFormEvents();
-    await this.ensureCompanyOptions();
     const data = this.normalize(isEdit ? existing : { ...existing, contact_status: 'Active' });
     document.getElementById('contactModalTitle').textContent = isEdit ? 'Edit Contact' : 'Create Contact';
     document.getElementById('contactSaveBtn').textContent = isEdit ? 'Update Contact' : 'Save Contact';
     document.getElementById('contactRecordId').value = isEdit ? (data.id || '') : '';
     const set = (id, value = '') => { const el = document.getElementById(id); if (el) el.value = value || ''; };
-    this.setSelectedCompanies(data.company_ids.length ? data.company_ids : [data.company_id || this.state.companyId]);
+    const selectedCompanyIds = data.company_ids.length ? data.company_ids : [data.company_id || this.state.companyId];
+    const companySelect = document.getElementById('contactCompanyInput');
+    if (companySelect) {
+      companySelect.disabled = true;
+      companySelect.innerHTML = '<option value="">Loading companies…</option>';
+      this.setCompanyFallbackMessage('');
+    }
     set('contactFirstNameInput', data.first_name);
     set('contactLastNameInput', data.last_name);
     set('contactJobTitleInput', data.job_title);
@@ -229,6 +291,13 @@ const Contacts = {
     const modal = document.getElementById('contactModal');
     modal.style.display = 'flex';
     modal.setAttribute('aria-hidden', 'false');
+
+    this.ensureCompanyOptions(data)
+      .then(() => this.setSelectedCompanies(selectedCompanyIds))
+      .catch(error => {
+        console.warn('[contacts] company selector load failed after modal open', error);
+        this.setCompanyFallbackMessage('Company list is not available for your role. You can still create the contact if company is optional, or ask admin to grant companies list access.');
+      });
   },
 
   closeForm() {
@@ -251,6 +320,14 @@ const Contacts = {
   async submitForm(e) {
     e.preventDefault();
     const recordId = document.getElementById('contactRecordId').value;
+    if (recordId && !Permissions.canEdit('contacts')) {
+      UI?.toast?.('You do not have permission for this action.', 'warning');
+      return;
+    }
+    if (!recordId && !canCreateContact(Permissions.getResolvedCurrentUser?.())) {
+      UI?.toast?.('You do not have permission to create contacts.', 'warning');
+      return;
+    }
     const selectedCompanies = this.getSelectedCompanies();
     if (!selectedCompanies.length) {
       UI?.toast?.('At least one company is required', 'error');
@@ -285,8 +362,6 @@ const Contacts = {
     this.toggleSave(true);
     try {
       const action = recordId ? 'update' : 'create';
-      if (recordId && !Permissions.canEdit('contacts')) { UI?.toast?.('You do not have permission for this action.'); return; }
-      if (!recordId && !canCreateContact(Permissions.getResolvedCurrentUser?.())) { UI?.toast?.('You do not have permission to create contacts.', 'warning'); return; }
       const body = recordId ? { id: recordId, updates: payload } : payload;
       await Api.requestWithSession('contacts', action, body, { requireAuth: true });
       UI?.toast?.(recordId ? 'Contact updated' : 'Contact saved', 'success');

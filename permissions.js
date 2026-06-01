@@ -31,8 +31,9 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     convert_to_deal: ['admin', 'dev']
   }),
   companies: Object.freeze({
-    list: ['admin', 'dev', 'viewer', 'hoo'],
-    get: ['admin', 'dev', 'viewer', 'hoo'],
+    list: ['admin', 'dev', 'viewer', 'hoo', 'csm', 'customer_success', 'customer_success_manager'],
+    get: ['admin', 'dev', 'viewer', 'hoo', 'csm', 'customer_success', 'customer_success_manager'],
+    view: ['admin', 'dev', 'viewer', 'hoo', 'csm', 'customer_success', 'customer_success_manager'],
     create: ['admin', 'dev'],
     update: ['admin', 'dev', 'accountant', 'accounting'],
     verify: ['admin', 'accountant', 'accounting'],
