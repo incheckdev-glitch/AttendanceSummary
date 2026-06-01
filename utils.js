@@ -217,16 +217,6 @@ const U = {
     const cents = totalCents % 100;
     const ones = ['Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
     const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-    const currencyLabels = {
-      USD: 'Dollars',
-      EUR: 'Euros',
-      GBP: 'Pounds',
-      AED: 'Dirhams',
-      SAR: 'Riyals',
-      QAR: 'Riyals',
-      LBP: 'Lebanese Pounds'
-    };
-
     const underThousand = n => {
       if (n < 20) return ones[n];
       if (n < 100) return `${tens[Math.floor(n / 10)]}${n % 10 ? ` ${ones[n % 10]}` : ''}`;
@@ -246,9 +236,7 @@ const U = {
       return words.join(' ');
     };
 
-    const code = String(currency || 'USD').trim().toUpperCase() || 'USD';
-    const currencyLabel = currencyLabels[code] || code;
-    return `${toWords(whole)} ${currencyLabel} and ${String(cents).padStart(2, '0')}/100`;
+    return `${toWords(whole)} and ${String(cents).padStart(2, '0')}/100`;
   },
   normalizeAmountWordsSentence: text => {
     let value = String(text || '')
@@ -258,13 +246,24 @@ const U = {
       .replace(/\s+/g, ' ')
       .trim();
 
-    value = value.replace(/\s+USD Dollar$/i, '').trim();
+    value = value.replace(/\s+and\s+(\d{2})\/100$/i, ' and $1/100');
 
-    return `Only ${value} USD Dollar`;
+    return `Only ${value} USD`;
   },
   formatAmountInWords: (amount, currency = 'USD') => {
-    const words = U.amountToWords(amount, currency);
-    return U.normalizeAmountWordsSentence(words);
+    const parsed = typeof amount === 'number' ? amount : Number(String(amount ?? '').replace(/,/g, '').trim());
+    const numericAmount = Number.isFinite(parsed) ? parsed : 0;
+    const totalCents = Math.round(Math.abs(numericAmount) * 100);
+    const whole = Math.floor(totalCents / 100);
+    const cents = String(totalCents % 100).padStart(2, '0');
+
+    const words = U.amountToWords(whole, currency)
+      .replace(/\bDollars?\b/gi, '')
+      .replace(/\bUSD\b/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return U.normalizeAmountWordsSentence(`${words.replace(/\s+and\s+\d{2}\/100$/i, '')} and ${cents}/100`);
   },
   escapeHtml: s =>
     String(s).replace(/[&<>"']/g, m => (
