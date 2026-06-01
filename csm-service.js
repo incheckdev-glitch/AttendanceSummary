@@ -1,6 +1,22 @@
 (function initCsmService(global) {
   const TABLE = 'csm_activities';
-  const MUTATION_ROLES = new Set(['admin', 'hoo']);
+  const CSM_MUTATION_ROLE_KEYS = new Set([
+    'admin',
+    'hoo',
+    'head_of_operations',
+    'head_operations',
+    'operations_head'
+  ]);
+  const CSM_CREATE_ROLE_KEYS = new Set([
+    'admin',
+    'hoo',
+    'head_of_operations',
+    'head_operations',
+    'operations_head',
+    'csm',
+    'customer_success',
+    'customer_success_manager'
+  ]);
   const CSM_ACTIVITY_COLUMNS = new Set([
     'id',
     'activity_id',
@@ -37,12 +53,96 @@
     return global.SupabaseClient.getClient();
   }
 
-  function currentRole() {
-    return String(global.Session?.role?.() || '').trim().toLowerCase();
+  function normalizeRoleKey(role) {
+    return String(role || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_')
+      .replace(/-/g, '_')
+      .replace(/_+/g, '_');
+  }
+
+  function getCurrentUserForPermission() {
+    const sessionUser = global.Session?.user?.() || {};
+    const authContext = global.Session?.authContext?.() || {};
+    const profile = sessionUser.profile || authContext.profile || {};
+    const user = sessionUser.user || authContext.user || {};
+    const role = sessionUser.role || authContext.role || global.Session?.role?.() || profile.role_key || profile.role || '';
+    return {
+      ...sessionUser,
+      id: sessionUser.id || sessionUser.user_id || user.id || profile.id || '',
+      email: sessionUser.email || profile.email || user.email || '',
+      role,
+      role_key: sessionUser.role_key || profile.role_key || role,
+      user_role: sessionUser.user_role || profile.user_role || profile.role || '',
+      profile: { ...profile, role_key: profile.role_key || role },
+      user
+    };
+  }
+
+  function canCreateCsmActivity(currentUser = getCurrentUserForPermission()) {
+    const role =
+      currentUser?.role_key ||
+      currentUser?.role ||
+      currentUser?.user_role ||
+      currentUser?.profile?.role_key ||
+      currentUser?.profile?.role ||
+      '';
+
+    const roleKey = normalizeRoleKey(role);
+
+    if (global.Permissions?.can) {
+      const resources = ['csm_activities', 'csm_daily_activity', 'csm_daily_activity_tracker'];
+      const hasExplicitMatrixRows = typeof global.Permissions.getMatchedRows === 'function' && global.Permissions.isReady?.();
+      if (hasExplicitMatrixRows) {
+        const matrixRows = resources.flatMap(resource => global.Permissions.getMatchedRows(resource, 'create', roleKey, { includeDenied: true }) || []);
+        if (matrixRows.some(row => row.is_active === true && row.is_allowed === false)) return false;
+        if (matrixRows.some(row => row.is_active === true && row.is_allowed === true)) return true;
+      }
+      if (global.Permissions.can('csm_activities', 'create')) return true;
+      if (global.Permissions.can('csm_daily_activity', 'create')) return true;
+      if (global.Permissions.can('csm_daily_activity_tracker', 'create')) return true;
+    }
+
+    if (global.PermissionService?.can) {
+      if (global.PermissionService.can('csm_activities', 'create')) return true;
+      if (global.PermissionService.can('csm_daily_activity', 'create')) return true;
+      if (global.PermissionService.can('csm_daily_activity_tracker', 'create')) return true;
+    }
+
+    return CSM_CREATE_ROLE_KEYS.has(roleKey);
+  }
+
+  function canManageExistingCsmActivity(action, currentUser = getCurrentUserForPermission()) {
+    const role = currentUser?.role_key || currentUser?.role || currentUser?.user_role || currentUser?.profile?.role_key || currentUser?.profile?.role || '';
+    const roleKey = normalizeRoleKey(role);
+    const normalizedAction = String(action || '').trim().toLowerCase();
+
+    if (global.Permissions?.can) {
+      const hasExplicitMatrixRows = typeof global.Permissions.getMatchedRows === 'function' && global.Permissions.isReady?.();
+      if (hasExplicitMatrixRows) {
+        const matrixRows = global.Permissions.getMatchedRows('csm_activities', normalizedAction, roleKey, { includeDenied: true }) || [];
+        if (matrixRows.some(row => row.is_active === true && row.is_allowed === false)) return false;
+        if (matrixRows.some(row => row.is_active === true && row.is_allowed === true)) return true;
+      }
+      if (global.Permissions.can('csm_activities', normalizedAction)) return true;
+    }
+
+    if (global.PermissionService?.can && global.PermissionService.can('csm_activities', normalizedAction)) return true;
+
+    return CSM_MUTATION_ROLE_KEYS.has(roleKey);
+  }
+
+  function canUpdateCsmActivity(currentUser = getCurrentUserForPermission()) {
+    return canManageExistingCsmActivity('update', currentUser);
+  }
+
+  function canDeleteCsmActivity(currentUser = getCurrentUserForPermission()) {
+    return canManageExistingCsmActivity('delete', currentUser);
   }
 
   function canMutate() {
-    return MUTATION_ROLES.has(currentRole());
+    return canCreateCsmActivity();
   }
 
   function readableError(prefix, error) {
@@ -419,7 +519,7 @@
   }
 
   async function createActivity(input = {}) {
-    if (!canMutate()) throw new Error('Only admin/hoo can create CSM activities.');
+    if (!canCreateCsmActivity(getCurrentUserForPermission())) throw new Error('You do not have permission to create CSM activities.');
     const payload = await toInsertPayload(input);
     console.log('[csm activity] save payload', payload);
     const client = getClient();
@@ -432,7 +532,7 @@
   }
 
   async function updateActivity(id, updates = {}) {
-    if (!canMutate()) throw new Error('Only admin/hoo can update CSM activities.');
+    if (!canUpdateCsmActivity(getCurrentUserForPermission())) throw new Error('You do not have permission to update CSM activities.');
     const activityId = cleanString(id || updates.id);
     if (!activityId) throw new Error('CSM activity id is required.');
     const payload = await toUpdatePayload(updates);
@@ -447,7 +547,7 @@
   }
 
   async function deleteActivity(id) {
-    if (!canMutate()) throw new Error('Only admin/hoo can delete CSM activities.');
+    if (!canDeleteCsmActivity(getCurrentUserForPermission())) throw new Error('You do not have permission to delete CSM activities.');
     const activityId = cleanString(id);
     if (!activityId) throw new Error('CSM activity id is required.');
     const client = getClient();
@@ -460,6 +560,10 @@
     SUPPORT_TYPE_OPTIONS,
     EFFORT_OPTIONS,
     CHANNEL_OPTIONS,
+    normalizeRoleKey,
+    canCreateCsmActivity,
+    canUpdateCsmActivity,
+    canDeleteCsmActivity,
     canMutate,
     getCurrentUserIdentity,
     loadClientOptionsForCsmActivity,

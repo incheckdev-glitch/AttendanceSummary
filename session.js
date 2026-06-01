@@ -1,6 +1,7 @@
 const Session = {
   state: {
     role: null,
+    role_key: null,
     user_id: '',
     name: '',
     email: '',
@@ -42,13 +43,20 @@ const Session = {
   },
 
   normalizeRole(roleValue) {
-    return String(roleValue || '').trim().toLowerCase();
+    return String(roleValue || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_')
+      .replace(/-/g, '_')
+      .replace(/_+/g, '_');
   },
 
   buildState(user = null, session = null, profile = null) {
-    const role = this.normalizeRole(profile?.role_key);
+    const role = this.normalizeRole(profile?.role_key || profile?.role || user?.user_metadata?.role_key || user?.user_metadata?.role);
     return {
       role: role || null,
+      role_key: role || null,
+      id: String(profile?.id || user?.id || ''),
       user_id: String(profile?.id || user?.id || ''),
       name: String(profile?.full_name || profile?.name || user?.user_metadata?.full_name || '').trim(),
       email: String(profile?.email || user?.email || '').trim(),
@@ -62,8 +70,10 @@ const Session = {
   applyState(nextState, { clearRoleCacheOnChange = true } = {}) {
     const candidateState = nextState && typeof nextState === 'object'
       ? {
-          role: this.normalizeRole(nextState.role) || null,
-          user_id: String(nextState.user_id || '').trim(),
+          role: this.normalizeRole(nextState.role_key || nextState.role) || null,
+          role_key: this.normalizeRole(nextState.role_key || nextState.role) || null,
+          id: String(nextState.id || nextState.user_id || nextState.user?.id || nextState.profile?.id || '').trim(),
+          user_id: String(nextState.user_id || nextState.id || nextState.user?.id || nextState.profile?.id || '').trim(),
           name: String(nextState.name || '').trim(),
           email: String(nextState.email || '').trim(),
           username: String(nextState.username || '').trim(),
@@ -73,7 +83,7 @@ const Session = {
         }
       : this.buildState(null, null, null);
     const hasSession = Boolean(candidateState.session && (candidateState.session?.user?.id || candidateState.session?.access_token));
-    const hasUser = Boolean(candidateState.user?.id);
+    const hasUser = Boolean(candidateState.user?.id || candidateState.id || candidateState.user_id);
     const hasRole = Boolean(String(candidateState.role || '').trim());
     const isCompleteAuthenticatedState = hasSession && hasUser && hasRole;
     const normalizedState = isCompleteAuthenticatedState
@@ -239,7 +249,7 @@ const Session = {
   clearClientSession({ clearRoleCache = true } = {}) {
     if (clearRoleCache && this.state.role) this.clearRoleScopedCache();
     this.purgeLegacyStorage();
-    this.state = { role: null, user_id: '', name: '', email: '', username: '', session: null, user: null, profile: null };
+    this.state = { role: null, role_key: null, id: '', user_id: '', name: '', email: '', username: '', session: null, user: null, profile: null };
     this.notify();
   },
 
@@ -258,7 +268,9 @@ const Session = {
 
   user() {
     return {
+      id: this.state.id || this.state.user_id,
       role: this.state.role,
+      role_key: this.state.role_key || this.state.role,
       user_id: this.state.user_id,
       name: this.state.name,
       email: this.state.email,
@@ -279,7 +291,7 @@ const Session = {
   userId() { return this.state.user_id || ''; },
   displayName() { return this.state.name || this.state.username || this.state.email || ''; },
   isAdmin() { return this.role() === ROLES.ADMIN; },
-  authContext() { return { role: this.role(), session: this.state.session, user: this.state.user, profile: this.state.profile }; }
+  authContext() { return { role: this.role(), role_key: this.state.role_key || this.role(), id: this.userId(), email: this.state.email, session: this.state.session, user: this.state.user, profile: this.state.profile }; }
 };
 
 function isAuthError(error) {

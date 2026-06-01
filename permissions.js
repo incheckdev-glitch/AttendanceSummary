@@ -15,9 +15,9 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     delete: ['admin', 'dev']
   }),
   csm: Object.freeze({
-    list: ['admin', 'viewer', 'hoo'],
-    get: ['admin', 'viewer', 'hoo'],
-    create: ['admin', 'hoo'],
+    list: ['admin', 'viewer', 'hoo', 'head_of_operations', 'head_operations', 'operations_head', 'csm', 'customer_success', 'customer_success_manager'],
+    get: ['admin', 'viewer', 'hoo', 'head_of_operations', 'head_operations', 'operations_head', 'csm', 'customer_success', 'customer_success_manager'],
+    create: ['admin', 'hoo', 'head_of_operations', 'head_operations', 'operations_head', 'csm', 'customer_success', 'customer_success_manager'],
     update: ['admin', 'hoo'],
     delete: ['admin', 'hoo']
   }),
@@ -266,6 +266,7 @@ const Permissions = {
       .trim()
       .toLowerCase()
       .replace(/\s+/g, '_')
+      .replace(/-/g, '_')
       .replace(/_+/g, '_');
   },
   extractRows(response) {
@@ -616,6 +617,10 @@ const Permissions = {
     let decision = false;
     if (hasDeniedRow) decision = false;
     else if (hasAllowedRow) decision = true;
+    else {
+      const allowedByBase = this.getBaseAllowedRoles(normalizedResource, normalizedAction).includes(currentRole);
+      if (allowedByBase) decision = true;
+    }
 
     console.log('[permissions check]', JSON.stringify({
       role: currentRole,
@@ -1052,6 +1057,7 @@ window.PermissionAudit.checkVisibleActions = function () {
   return rows;
 };
 
+window.Permissions = Permissions;
 window.AppPermissions = Permissions;
 window.requirePermission = requirePermission;
 window.handleExpiredSession = handleExpiredSession;
