@@ -37,6 +37,7 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     create: ['admin', 'dev'],
     update: ['admin', 'dev', 'accountant', 'accounting'],
     verify: ['admin', 'accountant', 'accounting'],
+    verify_company: ['admin', 'accountant', 'accounting'],
     delete: ['admin', 'dev'],
     export: ['admin', 'dev']
   }),
@@ -658,7 +659,10 @@ const Permissions = {
   },
   canPerformAction(resource, action, role = Session.role(), options = {}) {
     const normalizedRole = this.normalizeRole(role);
-    if (['admin', 'dev', 'developer'].includes(normalizedRole) || window.AdminOverride?.canOverride?.()) {
+    const normalizedResource = String(resource || '').trim().toLowerCase();
+    const normalizedAction = String(action || '').trim().toLowerCase();
+    const isCompanyVerification = normalizedResource === 'companies' && ['verify', 'verify_company'].includes(normalizedAction);
+    if (!isCompanyVerification && (['admin', 'dev', 'developer'].includes(normalizedRole) || window.AdminOverride?.canOverride?.())) {
       return true;
     }
     return this.decidePermission(resource, action, role, options);
@@ -702,6 +706,34 @@ const Permissions = {
   },
   canCreateLead() {
     return this.canCreate('leads');
+  },
+
+  getCompanyVerificationRole(currentUser = this.getResolvedCurrentUser()) {
+    const user = currentUser || {};
+    return this.normalizeRole(
+      user.role_key ||
+      user.roleKey ||
+      user.role ||
+      user.user_role ||
+      user.profile?.role_key ||
+      user.profile?.role ||
+      user.app_metadata?.role_key ||
+      user.app_metadata?.role ||
+      user.user_metadata?.role_key ||
+      user.user_metadata?.role ||
+      Session?.role?.() ||
+      ''
+    );
+  },
+  canVerifyCompany(currentUser = this.getResolvedCurrentUser()) {
+    const roleKey = this.getCompanyVerificationRole(currentUser);
+    if (['admin', 'accountant', 'accounting'].includes(roleKey)) return true;
+    return Boolean(
+      this.can('companies', 'verify') ||
+      this.can('companies', 'verify_company') ||
+      window.PermissionService?.can?.('companies', 'verify') ||
+      window.PermissionService?.can?.('companies', 'verify_company')
+    );
   },
   getContactCreateRole(currentUser = this.getResolvedCurrentUser()) {
     const user = currentUser || {};

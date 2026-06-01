@@ -1116,6 +1116,70 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
   function getClient() { return global.SupabaseClient.getClient(); }
   function role() { return String(global.Session?.role?.() || '').toLowerCase(); }
   function isAdminDev() { return ['admin','dev','developer'].includes(role()) || Boolean(global.AdminOverride?.canOverride?.()); }
+
+  const COMPANY_VERIFICATION_FIELDS = new Set([
+    'documents_verified',
+    'documentsVerified',
+    'documents_verification_status',
+    'documentsVerificationStatus',
+    'documents_verified_at',
+    'documentsVerifiedAt',
+    'documents_verified_by',
+    'documentsVerifiedBy',
+    'documents_verification_notes',
+    'documentsVerificationNotes',
+    'documents_verified_snapshot',
+    'documentsVerifiedSnapshot',
+    'documents_verification_invalidated_at',
+    'documentsVerificationInvalidatedAt',
+    'documents_verification_invalidated_reason',
+    'documentsVerificationInvalidatedReason'
+  ]);
+  function normalizeRoleKey(role) {
+    return String(role || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_')
+      .replace(/-/g, '_');
+  }
+  function currentUserForCompanyVerification() {
+    const auth = global.Session?.authContext?.() || {};
+    return global.AppState?.currentUser ||
+      global.Permissions?.getResolvedCurrentUser?.() ||
+      auth.profile ||
+      { role_key: auth.role, role: auth.role, profile: auth.profile };
+  }
+  function canVerifyCompany(currentUser = currentUserForCompanyVerification()) {
+    const user = currentUser || {};
+    const role =
+      user?.role_key ||
+      user?.role ||
+      user?.user_role ||
+      user?.profile?.role_key ||
+      user?.profile?.role ||
+      global.Session?.role?.() ||
+      '';
+    const roleKey = normalizeRoleKey(role);
+    if (['admin', 'accountant', 'accounting'].includes(roleKey)) return true;
+    if (global.AppPermissions?.canPerformAction) {
+      if (global.AppPermissions.canPerformAction('companies', 'verify', roleKey)) return true;
+      if (global.AppPermissions.canPerformAction('companies', 'verify_company', roleKey)) return true;
+    }
+    if (global.PermissionService?.can) {
+      if (global.PermissionService.can('companies', 'verify')) return true;
+      if (global.PermissionService.can('companies', 'verify_company')) return true;
+    }
+    return false;
+  }
+  function hasCompanyVerificationFields(record = {}) {
+    if (!record || typeof record !== 'object') return false;
+    return Object.keys(record).some(key => COMPANY_VERIFICATION_FIELDS.has(key));
+  }
+  function assertCanVerifyCompanies() {
+    if (canVerifyCompany()) return;
+    throw new Error('You do not have permission to verify companies.');
+  }
+
   function allowedRoles(resource, action) {
     const matrix = global.AppPermissions?.baseMatrix || {};
     const rules = matrix?.[resource];
@@ -2515,6 +2579,17 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     delete output.updated_at;
     if (options.mode !== 'verification' && !output.company_name) throw new Error('Company name is required.');
     return output;
+  }
+
+  function sanitizeCompanyUpdateRecord(input = {}) {
+    const source = input && typeof input === 'object' ? input : {};
+    if (!hasCompanyVerificationFields(source)) return sanitizeCompanyRecord(source, { mode: 'update' });
+    const verificationRecord = sanitizeCompanyRecord(source, { mode: 'verification' });
+    const nonVerificationSource = { ...source };
+    COMPANY_VERIFICATION_FIELDS.forEach(field => { delete nonVerificationSource[field]; });
+    const hasNonVerificationFields = Object.keys(nonVerificationSource).some(key => !['id', 'company_id', 'companyId', 'resource', 'action', 'authToken'].includes(key));
+    if (!hasNonVerificationFields) return verificationRecord;
+    return { ...sanitizeCompanyRecord(nonVerificationSource, { mode: 'update' }), ...verificationRecord };
   }
 
   function normalizeContactCompanyIdsForWrite(value, fallback = '') {
@@ -6566,6 +6641,25 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const table = TABLE_BY_RESOURCE[resource];
     const client = getClient();
 
+    if (resource === 'companies' && ['verify', 'verify_company'].includes(action)) {
+      assertCanVerifyCompanies();
+      const id = requireResourceIdentifier(resource, payload, action);
+      const rawUpdates = payload.updates || payload.item || payload.company || payload.companies || payload;
+      const verificationPayload = sanitizeCompanyRecord(rawUpdates, { mode: 'verification' });
+      if (!hasCompanyVerificationFields(rawUpdates) || !Object.keys(verificationPayload).length) {
+        throw new Error('Company verification payload is empty after normalization.');
+      }
+      const finalVerificationPayload = sanitizeUuidColumnsForMutation(table, verificationPayload);
+      const { data, error } = await client
+        .from(table)
+        .update(finalVerificationPayload)
+        .eq(getPrimaryKeyForResource(resource), id)
+        .select('*')
+        .single();
+      if (error) throw friendlyError('Unable to update company verification', error);
+      return { handled: true, data: normalizeRow(resource, data) };
+    }
+
     if (resource === 'tickets' && action === 'list') {
       assertAllowed('tickets', 'list');
       const { controls } = splitListPayload(payload);
@@ -7023,6 +7117,9 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
           ? (payload.technical_admin_request || payload.technical_admin_requests || payload.request || payload.item || payload[resource] || payload)
           : (payload[resource.slice(0, -1)] || payload.item || payload.activity || payload[resource] || payload);
       const record = raw && typeof raw === 'object' ? { ...raw } : {};
+      if (resource === 'companies' && hasCompanyVerificationFields(record)) {
+        assertCanVerifyCompanies();
+      }
       if (['operations_onboarding', 'technical_admin_requests'].includes(resource)) {
         delete record.table;
         delete record.resource;
@@ -7496,6 +7593,10 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     }
 
     if (action === 'update') {
+      const requestedUpdates = payload.updates || payload.item || payload.activity || payload;
+      if (resource === 'companies' && hasCompanyVerificationFields(requestedUpdates)) {
+        assertCanVerifyCompanies();
+      }
       assertAllowed(resource, 'update');
       const pickedId = resource === 'operations_onboarding'
         ? await resolveOperationsOnboardingId(payload, client)
@@ -7518,7 +7619,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       const key = resource === 'operations_onboarding' ? 'id' : getPrimaryKeyForResource(resource);
       if (!id) throw new Error(`Missing ${key} for ${resource} update`);
       console.log('[CRUD] resource, pk, value', resource, key, id);
-      const updates = payload.updates || payload.item || payload.activity || payload;
+      const updates = requestedUpdates;
       const safeUpdates = { ...updates };
       if (resource === 'operations_onboarding') {
         delete safeUpdates.id;
@@ -7665,7 +7766,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
             : resource === 'receipts'
               ? sanitizeReceiptsRecord(safeUpdates, { includeCreatedBy: false, userId: await getCurrentUserId(client) })
             : resource === 'companies'
-              ? sanitizeCompanyRecord(safeUpdates, { mode: 'update' })
+              ? sanitizeCompanyUpdateRecord(safeUpdates)
             : resource === 'contacts'
               ? sanitizeContactRecord(safeUpdates, { mode: 'update' })
             : safeUpdates;

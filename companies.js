@@ -27,6 +27,55 @@ const COMPANY_INDUSTRY_FALLBACK_OPTIONS = [
   { value: 'other', label: 'Other' }
 ];
 
+
+function normalizeRoleKey(role) {
+  return String(role || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/-/g, '_');
+}
+
+function canVerifyCompany(currentUser) {
+  const user = currentUser ||
+    window.AppState?.currentUser ||
+    window.Permissions?.getResolvedCurrentUser?.() ||
+    window.Session?.authContext?.()?.profile ||
+    window.currentUser ||
+    {};
+  const role =
+    user?.role_key ||
+    user?.role ||
+    user?.user_role ||
+    user?.profile?.role_key ||
+    user?.profile?.role ||
+    window.Session?.role?.() ||
+    '';
+
+  const roleKey = normalizeRoleKey(role);
+
+  if (['admin', 'accountant', 'accounting'].includes(roleKey)) {
+    return true;
+  }
+
+  if (window.Permissions?.can) {
+    if (window.Permissions.can('companies', 'verify')) return true;
+    if (window.Permissions.can('companies', 'verify_company')) return true;
+  }
+
+  if (window.PermissionService?.can) {
+    if (window.PermissionService.can('companies', 'verify')) return true;
+    if (window.PermissionService.can('companies', 'verify_company')) return true;
+  }
+
+  return false;
+}
+
+if (typeof window !== 'undefined') {
+  window.normalizeRoleKey = window.normalizeRoleKey || normalizeRoleKey;
+  window.canVerifyCompany = canVerifyCompany;
+}
+
 const Companies = {
   state: { rows: [], page: 1, limit: 50, total: 0, search: '', filters: { company_status: '', company_type: '', industry: '', country: '', city: '', created_from: '', created_to: '' }, sortBy: 'created_at', sortDir: 'desc', companyTypeOptions: COMPANY_TYPE_FALLBACK_OPTIONS, companyIndustryOptions: COMPANY_INDUSTRY_FALLBACK_OPTIONS, currentCompany: null, documents: [] },
   formatCodeFallback(value = '') { return String(value || '').replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase()); },
@@ -340,46 +389,20 @@ const Companies = {
     const status = String(normalized.documents_verification_status || 'not_verified').trim().toLowerCase();
     const docs = Array.isArray(this.state.documents) ? this.state.documents : [];
     const canVerify = this.canVerifyCompany();
-    const actionLabel = status === 'verified' ? 'Re-verify' : status === 'needs_reverification' ? 'Re-verify Company' : 'Mark as Verified';
+    const actionLabel = status === 'verified' ? 'Mark as Not Verified' : status === 'needs_reverification' ? 'Re-verify Company' : 'Mark as Verified';
     const noDocsMessage = '<p class="muted" style="margin:6px 0 0;">Upload at least one company document before verifying.</p>';
     const verificationAction = canVerify
       ? (docs.length ? `<button type="button" id="companyVerifyBtn" class="btn ghost sm">${U.escapeHtml(actionLabel)}</button>` : noDocsMessage)
       : '<p class="muted" style="margin:6px 0 0;">You do not have permission to verify company data.</p>';
     panel.innerHTML = `<div class="row between center" style="gap:10px;flex-wrap:wrap;"><div><strong>Company Verification</strong><p class="muted" style="margin:6px 0 0;">An authorized user must compare the uploaded company documents with the filled company fields before marking this company as verified.</p></div>${this.renderCompanyVerificationBadge(normalized)}</div><div class="stack" style="gap:6px;"><div><span class="muted">Current verification status:</span> ${this.renderCompanyVerificationBadge(normalized)}</div>${normalized.documents_verified_at ? `<div><span class="muted">Last verified:</span> ${U.escapeHtml(U.fmtTS(normalized.documents_verified_at))}</div>` : ''}${normalized.documents_verification_notes ? `<div><span class="muted">Verification notes:</span> ${U.escapeHtml(normalized.documents_verification_notes)}</div>` : ''}${status === 'needs_reverification' && normalized.documents_verification_invalidated_reason ? `<div><span class="muted">Invalidated reason:</span> ${U.escapeHtml(normalized.documents_verification_invalidated_reason)}</div>` : ''}${verificationAction}</div>`;
-    const btn = document.getElementById('companyVerifyBtn'); if (btn) btn.onclick = () => this.openCompanyVerificationDialog(normalized);
+    const btn = document.getElementById('companyVerifyBtn');
+    if (btn) btn.onclick = () => {
+      if (status === 'verified') this.unverifyCompanyDocuments(normalized).catch(error => { UI?.toast?.(error?.message || 'Unable to update company verification', 'error'); console.error(error); });
+      else this.openCompanyVerificationDialog(normalized);
+    };
   },
-  canVerifyCompany() {
-    const user = this.currentUser || this.state?.currentUser || window.currentUser || Session?.user?.() || {};
-    const role = String(user.role || user.role_key || user.roleKey || Session?.role?.() || '').trim().toLowerCase();
-
-    if (role === 'admin') return true;
-    if (role === 'accountant') return true;
-    if (role === 'accounting') return true;
-
-    if (typeof this.hasPermission === 'function') {
-      return Boolean(
-        this.hasPermission('companies', 'verify') ||
-        this.hasPermission('companies', 'update') ||
-        this.hasPermission('company_documents', 'verify') ||
-        this.hasPermission('company_documents', 'update')
-      );
-    }
-
-    if (window.Permissions && typeof window.Permissions.hasPermission === 'function') {
-      return Boolean(
-        window.Permissions.hasPermission('companies', 'verify') ||
-        window.Permissions.hasPermission('companies', 'update') ||
-        window.Permissions.hasPermission('company_documents', 'verify') ||
-        window.Permissions.hasPermission('company_documents', 'update')
-      );
-    }
-
-    return Boolean(
-      Permissions?.can?.('companies', 'verify') ||
-      Permissions?.can?.('companies', 'update') ||
-      Permissions?.can?.('company_documents', 'verify') ||
-      Permissions?.can?.('company_documents', 'update')
-    );
+  canVerifyCompany(currentUser = this.currentUser || this.state?.currentUser || window.AppState?.currentUser || window.currentUser || window.Session?.authContext?.()?.profile || {}) {
+    return canVerifyCompany(currentUser);
   },
   canVerifyCompanyDocuments() { return this.canVerifyCompany(); },
   getCurrentUserId() { return String(Session?.userId?.() || Session?.authContext?.()?.user?.id || Session?.authContext?.()?.profile?.id || Session?.user?.()?.user_id || '').trim(); },
@@ -402,7 +425,7 @@ const Companies = {
     return modal;
   },
   openCompanyVerificationDialog(company = this.state.currentCompany) {
-    if (!this.canVerifyCompany()) return;
+    if (!this.canVerifyCompany()) { UI?.toast?.('You do not have permission to verify companies.', 'error'); return; }
     if (!Array.isArray(this.state.documents) || !this.state.documents.length) { UI?.toast?.('Upload at least one company document before verifying', 'error'); return; }
     const modal = this.ensureCompanyVerificationDialog(); const body = document.getElementById('companyVerificationDialogBody'); const snapshot = this.buildCompanyVerificationSnapshot(company);
     const fields = [['Company Name', snapshot.company_name], ['Legal Name', snapshot.legal_name || snapshot.legal_company_name], ['Registration Number', snapshot.registration_number], ['Tax/VAT Number', [snapshot.tax_number, snapshot.vat_number].filter(Boolean).join(' / ')], ['Authorized Signatory Full Name', snapshot.authorized_signatory_full_name], ['Authorized Signatory Title', snapshot.authorized_signatory_title], ['Country/City/Address', [snapshot.country, snapshot.city, snapshot.address].filter(Boolean).join(' / ')]];
@@ -410,21 +433,22 @@ const Companies = {
     body.querySelectorAll('[data-verify-doc-open]').forEach(btn => btn.onclick = () => this.openCompanyDocument(btn.dataset.verifyDocOpen));
     const confirmBtn = document.getElementById('companyVerificationConfirmBtn'); const checkbox = document.getElementById('companyVerificationConfirmCheck');
     confirmBtn.disabled = true; checkbox.onchange = () => { confirmBtn.disabled = !checkbox.checked; };
-    confirmBtn.onclick = () => this.verifyCompanyDocuments(company, document.getElementById('companyVerificationNotesInput')?.value || '');
+    confirmBtn.onclick = () => this.verifyCompanyDocuments(company, document.getElementById('companyVerificationNotesInput')?.value || '').catch(error => { UI?.toast?.(error?.message || 'Unable to verify company', 'error'); console.error(error); });
     modal.style.display = 'flex'; modal.setAttribute('aria-hidden', 'false');
   },
   closeCompanyVerificationDialog() { const modal = document.getElementById('companyVerificationDialog'); if (modal) { modal.style.display = 'none'; modal.setAttribute('aria-hidden', 'true'); } },
   async verifyCompanyDocuments(company = this.state.currentCompany, notes = '') {
-    if (!this.canVerifyCompany()) return;
+    if (!this.canVerifyCompany()) {
+      throw new Error('You do not have permission to verify companies.');
+    }
     if (!company?.id || !Array.isArray(this.state.documents) || !this.state.documents.length) { UI?.toast?.('Upload at least one company document before verifying', 'error'); return; }
     const confirmBtn = document.getElementById('companyVerificationConfirmBtn'); if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Verifying…'; }
     const previousStatus = String(company.documents_verification_status || 'not_verified').trim() || 'not_verified';
     const verifiedAt = new Date().toISOString(); const verifiedBy = this.getCurrentUserId(); const snapshot = this.buildCompanyVerificationSnapshot(company); const verificationNotes = String(notes || '').trim() || null;
     const payload = { documents_verified: true, documents_verification_status: 'verified', documents_verified_at: verifiedAt, documents_verified_by: verifiedBy || null, documents_verification_notes: verificationNotes, documents_verification_invalidated_at: null, documents_verification_invalidated_reason: null, documents_verified_snapshot: snapshot };
     try {
+      const data = await Api.requestWithSession('companies', 'verify', { id: company.id, updates: payload }, { requireAuth: true });
       const client = this.getSupabaseClient();
-      const { data, error } = await client.from('companies').update(payload).eq('id', company.id).select('*').single();
-      if (error) throw error;
       const { error: auditError } = await client.from('company_verification_audit').insert({ company_uuid: company.id, action: 'marked_verified', previous_status: previousStatus, new_status: 'verified', verified_by: verifiedBy || null, verification_notes: verificationNotes, verification_snapshot: snapshot });
       if (auditError) throw auditError;
       this.state.currentCompany = this.normalize(data || { ...company, ...payload });
@@ -434,6 +458,33 @@ const Companies = {
       await this.loadAndRefresh();
     } catch (error) { UI?.toast?.('Unable to verify company data', 'error'); console.error(error); }
     finally { if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Confirm Verified'; } }
+  },
+  async unverifyCompanyDocuments(company = this.state.currentCompany) {
+    if (!this.canVerifyCompany()) {
+      throw new Error('You do not have permission to verify companies.');
+    }
+    if (!company?.id) return;
+    const previousStatus = String(company.documents_verification_status || 'verified').trim() || 'verified';
+    const payload = {
+      documents_verified: false,
+      documents_verification_status: 'not_verified',
+      documents_verified_at: null,
+      documents_verified_by: null,
+      documents_verification_notes: null,
+      documents_verification_invalidated_at: null,
+      documents_verification_invalidated_reason: null,
+      documents_verified_snapshot: null
+    };
+    try {
+      const data = await Api.requestWithSession('companies', 'verify_company', { id: company.id, updates: payload }, { requireAuth: true });
+      const client = this.getSupabaseClient();
+      const { error: auditError } = await client.from('company_verification_audit').insert({ company_uuid: company.id, action: 'marked_not_verified', previous_status: previousStatus, new_status: 'not_verified', verified_by: this.getCurrentUserId() || null, verification_notes: null, verification_snapshot: null });
+      if (auditError) throw auditError;
+      this.state.currentCompany = this.normalize(data || { ...company, ...payload });
+      UI?.toast?.('Company verification removed', 'success');
+      await this.refreshCompanyVerificationState(company.id);
+      await this.loadAndRefresh();
+    } catch (error) { UI?.toast?.('Unable to update company verification', 'error'); console.error(error); throw error; }
   },
   async refreshCompanyDocuments(companyId) { if (!companyId) return; await this.loadCompanyDocuments({ ...(this.state.currentCompany || {}), id: companyId }); },
   async refreshCompanyVerificationState(companyId) {
