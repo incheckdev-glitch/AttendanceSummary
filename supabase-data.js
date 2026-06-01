@@ -1115,7 +1115,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
 
   function getClient() { return global.SupabaseClient.getClient(); }
   function role() { return String(global.Session?.role?.() || '').toLowerCase(); }
-  function isAdminDev() { return ['admin','dev','developer'].includes(role()) || Boolean(global.AdminOverride?.canOverride?.()); }
+  function isAdminDev() { return role() === 'admin' || Boolean(global.AdminOverride?.canOverride?.()); }
 
   const COMPANY_VERIFICATION_FIELDS = new Set([
     'documents_verified',

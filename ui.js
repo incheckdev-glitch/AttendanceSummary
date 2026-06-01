@@ -1095,9 +1095,7 @@ function requireAnyPermission(pairs = [], message = 'You do not have permission 
 
 function canShowAction(resource, action) {
   if (!window.Permissions || typeof Permissions.can !== 'function') return false;
-  if (Permissions.can(resource, action) === true) return true;
-  if (String(action || '').trim().toLowerCase() !== 'manage' && Permissions.can(resource, 'manage') === true) return true;
-  return false;
+  return Permissions.can(resource, action) === true;
 }
 
 function setActionVisibility(element, resource, action) {
@@ -1122,7 +1120,7 @@ function applyPermissionVisibility(root = document) {
 const UI = {
   tabRegistry() {
     return [
-      { key: 'issues', tabEl: E.issuesTab, viewEl: E.issuesView, alwaysVisible: true },
+      { key: 'issues', tabEl: E.issuesTab, viewEl: E.issuesView },
       { key: 'calendar', tabEl: E.calendarTab, viewEl: E.calendarView },
       { key: 'insights', tabEl: E.insightsTab, viewEl: E.insightsView },
       { key: 'csm', tabEl: E.csmTab, viewEl: E.csmView },
@@ -1220,6 +1218,17 @@ const UI = {
       if (!allowed && rule.viewEl?.classList.contains('active')) setActiveView('issues');
     });
     console.log('[tabs] permission-aware filtering result', visibleTabs);
+    if (Permissions.normalizeRole?.(role) === 'dev') {
+      console.log('[DEV ACCESS DEBUG]', {
+        role: Permissions.normalizeRole(role),
+        visibleTabs,
+        activePermissions: (Permissions.state?.rows || []).filter(row =>
+          Permissions.normalizeRole(row.role_key) === 'dev' &&
+          Permissions.toBoolean(row.is_allowed, true) === true &&
+          Permissions.toBoolean(row.is_active, true) === true
+        )
+      });
+    }
     if (E.addEventBtn) E.addEventBtn.style.display = Permissions.canManageEvents() ? '' : 'none';
     if (E.freezeManageBtn) E.freezeManageBtn.style.display = canManageFreezeWindows ? '' : 'none';
     if (E.freezeManageBtnSecondary) E.freezeManageBtnSecondary.style.display = canManageFreezeWindows ? '' : 'none';

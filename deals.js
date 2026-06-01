@@ -1654,7 +1654,7 @@ const Deals = {
   },
   async deleteDealById(dealUuid) {
     if (!this.canEditDelete()) {
-      UI.toast('Only admin/dev can delete deals.');
+      UI.toast('You do not have permission to delete deals.');
       return;
     }
     const row = this.state.rows.find(item => item.id === dealUuid);

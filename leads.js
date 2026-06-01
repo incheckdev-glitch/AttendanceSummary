@@ -1787,7 +1787,7 @@ const Leads = {
   },
   async deleteLeadById(leadUuid) {
     if (!this.canEditDelete()) {
-      UI.toast('Only admin/dev can delete leads.');
+      UI.toast('You do not have permission to delete leads.');
       return;
     }
     const row = this.state.rows.find(item => item.id === leadUuid);

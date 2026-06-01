@@ -337,7 +337,7 @@ const WorkflowEngine = {
   },
   canRequestProposalDiscountWorkflow(userRole = '') {
     const normalized = normalizeWorkflowRole(userRole);
-    return ['sales_executive', 'head_of_sales', 'admin', 'dev'].includes(normalized);
+    return ['sales_executive', 'head_of_sales', 'admin'].includes(normalized);
   },
   isProposalWorkflowResource(resource = '') {
     return ['proposals', 'proposal'].includes(String(resource || '').trim().toLowerCase());
@@ -1188,7 +1188,7 @@ function shouldShowApprovalActionButtons(approval) {
     return false;
   }
 
-  if (['admin', 'dev'].includes(currentRole)) return true;
+  if (currentRole === 'admin') return true;
 
   return roles.includes(currentRole);
 }
@@ -1320,7 +1320,7 @@ const Workflow = {
     return String(approval?.approval_id || approval?.id || approval?.workflow_approval_id || '').trim();
   },
   canSeeApproval(approval = {}) {
-    if (['admin', 'dev'].includes(getCurrentWorkflowRole())) return true;
+    if (getCurrentWorkflowRole() === 'admin') return true;
     const { id, email, role } = this.currentUserIdentifiers();
     if (roleMatchesApproval(role, approval)) return true;
     const assignedIds = [approval.assigned_user_id, approval.approver_user_id, approval.reviewer_user_id, approval.user_id].map(v => String(v || '').trim().toLowerCase()).filter(Boolean);
@@ -2322,7 +2322,7 @@ const Workflow = {
   renderAudit() {
     if (!E.workflowAuditTbody) return;
     if (!this.canProcessApprovals()) {
-      E.workflowAuditTbody.innerHTML = '<tr><td colspan="9" class="muted" style="text-align:center;">Audit log is visible to admin/dev only.</td></tr>';
+      E.workflowAuditTbody.innerHTML = '<tr><td colspan="9" class="muted" style="text-align:center;">Audit log is visible to permitted roles only.</td></tr>';
       return;
     }
     const query = String(E.workflowAuditSearch?.value || '').trim().toLowerCase();

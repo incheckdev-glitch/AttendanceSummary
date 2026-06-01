@@ -204,8 +204,8 @@ const Permissions = {
     lifecycleAnalytics: [{ resource: 'analytics', action: 'list' }],
     clients: [{ resource: 'clients', action: 'list' }],
     proposalCatalog: [{ resource: 'proposal_catalog', action: 'list' }],
-    communicationCentre: [{ resource: 'communication_centre', action: 'manage' }],
-    communication_centre: [{ resource: 'communication_centre', action: 'manage' }],
+    communicationCentre: [{ resource: 'communication_centre', action: 'list' }, { resource: 'communication_centre', action: 'view' }],
+    communication_centre: [{ resource: 'communication_centre', action: 'list' }, { resource: 'communication_centre', action: 'view' }],
     aiAssistant: [{ resource: 'ai_assistant', action: 'view' }, { resource: 'ai_assistant', action: 'ask' }],
     notifications: [{ resource: 'notifications', action: 'list' }],
     notificationSetup: [{ resource: 'notification_settings', action: 'list' }],
@@ -373,8 +373,7 @@ const Permissions = {
     return defaultValue;
   },
   canLoadRuntimeMatrix(role = Session.role()) {
-    const normalizedRole = this.normalizeRole(role);
-    return normalizedRole === ROLES.ADMIN || normalizedRole === ROLES.DEV;
+    return Boolean(this.normalizeRole(role));
   },
   resourceAliases(resource) {
     const normalizedResource = String(resource || '').trim().toLowerCase();
@@ -441,7 +440,7 @@ const Permissions = {
       rows = this.extractRows(data);
       total = rows.length;
       const roleKey = this.normalizeRole(currentRole);
-      rows = rows.filter(row => this.normalizeRole(row.role_key) === roleKey && this.toBoolean(row.is_allowed, true) === true && this.toBoolean(row.is_active, true) === true);
+      rows = rows.filter(row => this.normalizeRole(row.role_key) === roleKey && this.toBoolean(row.is_active, true) === true);
       const { matrix, totalActiveRows, totalDeniedRows } = this.buildMatrixFromRows(rows);
       this.state.rows = rows;
       this.state.total = total;
@@ -469,6 +468,19 @@ const Permissions = {
         totalDeniedRows
       });
       this.state.loaded = true;
+      if (roleKey === 'dev') {
+        console.log('[DEV ACCESS DEBUG]', {
+          role: roleKey,
+          visibleTabs: typeof UI !== 'undefined' && UI?.tabRegistry
+            ? UI.tabRegistry().filter(tab => this.canAccessTab(tab.key)).map(tab => tab.key)
+            : [],
+          activePermissions: rows.filter(row =>
+            this.normalizeRole(row.role_key) === 'dev' &&
+            this.toBoolean(row.is_allowed, true) === true &&
+            this.toBoolean(row.is_active, true) === true
+          )
+        });
+      }
       return rows;
     } catch (error) {
       this.state.rows = [];
@@ -620,7 +632,7 @@ const Permissions = {
     let decision = false;
     if (hasDeniedRow) decision = false;
     else if (hasAllowedRow) decision = true;
-    else {
+    else if (currentRole !== ROLES.DEV) {
       const allowedByBase = this.getBaseAllowedRoles(normalizedResource, normalizedAction).includes(currentRole);
       if (allowedByBase) decision = true;
     }
@@ -662,7 +674,7 @@ const Permissions = {
     const normalizedResource = String(resource || '').trim().toLowerCase();
     const normalizedAction = String(action || '').trim().toLowerCase();
     const isCompanyVerification = normalizedResource === 'companies' && ['verify', 'verify_company'].includes(normalizedAction);
-    if (!isCompanyVerification && (['admin', 'dev', 'developer'].includes(normalizedRole) || window.AdminOverride?.canOverride?.())) {
+    if (!isCompanyVerification && (normalizedRole === ROLES.ADMIN || window.AdminOverride?.canOverride?.())) {
       return true;
     }
     return this.decidePermission(resource, action, role, options);
@@ -699,7 +711,7 @@ const Permissions = {
     return this.normalizeRole(Session.role()) === ROLES.VIEWER;
   },
   isAdminLike() {
-    return this.isAdmin() || this.isDev();
+    return this.isAdmin();
   },
   canCreateTicket() {
     return this.canPerformAction('tickets', 'create') || this.canPerformAction('tickets', 'manage');
@@ -766,7 +778,7 @@ const Permissions = {
     })) return true;
 
     const roleKey = this.getContactCreateRole(currentUser);
-    return ['admin', 'dev', 'developer', 'csm', 'customer_success', 'customer_success_manager', 'sales_executive', 'head_of_sales', 'hoo'].includes(roleKey);
+    return ['admin', 'csm', 'customer_success', 'customer_success_manager', 'sales_executive', 'head_of_sales', 'hoo'].includes(roleKey);
   },
   canViewCsmActivity() {
     return this.canView('csm_activities');

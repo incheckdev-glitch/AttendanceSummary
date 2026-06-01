@@ -27,6 +27,14 @@ const Session = {
       LS_KEYS.dataVersion
     ];
     roleScopedKeys.forEach(key => { try { localStorage.removeItem(key); } catch {} });
+    const stalePermissionCachePattern = /permission|permissions|role_permissions|matrix|tabs|role/i;
+    [localStorage, sessionStorage].forEach(storage => {
+      try {
+        Object.keys(storage || {}).forEach(key => {
+          if (stalePermissionCachePattern.test(key)) storage.removeItem(key);
+        });
+      } catch {}
+    });
     try { if (window.Api?.clearApiCache) window.Api.clearApiCache(); } catch {}
   },
 
@@ -168,6 +176,7 @@ const Session = {
 
   async login(identifier = '', passcode = '') {
     this.purgeLegacyStorage();
+    this.clearRoleScopedCache();
     const email = String(identifier || '').trim().toLowerCase();
     const password = String(passcode || '').trim();
     if (!email) throw new Error('Email is required.');

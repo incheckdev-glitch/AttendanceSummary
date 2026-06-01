@@ -3188,7 +3188,7 @@ calendarReady = false,
 function wireCalendar() {
   if (E.addEventBtn)
     E.addEventBtn.addEventListener('click', () => {
-      if (!requirePermission(() => Permissions.canManageEvents(), 'Only admin/dev can create events.')) return;
+      if (!requirePermission(() => Permissions.canManageEvents(), 'You do not have permission to create events.')) return;
       const now = new Date();
       UI.Modals.openEvent({
         start: now,
@@ -3360,7 +3360,7 @@ function ensureCalendar() {
       right: 'dayGridMonth,timeGridWeek,listWeek today prev,next'
     },
     select: info => {
-      if (!requirePermission(() => Permissions.canManageEvents(), 'Only admin/dev can create events.')) return;
+      if (!requirePermission(() => Permissions.canManageEvents(), 'You do not have permission to create events.')) return;
       UI.Modals.openEvent({
         start: info.start,
         end: info.end,
@@ -3394,7 +3394,7 @@ function ensureCalendar() {
       UI.Modals.openEvent(ev);
     },
     eventDrop: async info => {
-      if (!requirePermission(() => Permissions.canManageEvents(), 'Only admin/dev can move events.')) {
+      if (!requirePermission(() => Permissions.canManageEvents(), 'You do not have permission to move events.')) {
         info.revert();
         return;
       }
@@ -4244,8 +4244,8 @@ async function saveTicketRecord(issue, auth = {}, options = {}) {
     }
 
     const currentRole = String(Session.role?.() || '').toLowerCase();
-    if (!['admin', 'dev'].includes(currentRole)) {
-      throw new Error('Only admin/dev can update tickets.');
+    if (!Permissions.canPerformAction('tickets', 'update')) {
+      throw new Error('You do not have permission to update tickets.');
     }
 
     const client = SupabaseClient.getClient();
@@ -4257,7 +4257,7 @@ async function saveTicketRecord(issue, auth = {}, options = {}) {
 
     let previousInternalRow = null;
 
-    if (['admin', 'dev'].includes(currentRole)) {
+    if (Permissions.canUseInternalIssueFilters()) {
       const { data: internalBefore } = await client
         .from('ticket_internal')
         .select('ticket_id,youtrack_reference,dev_team_status,issue_related,notes')
@@ -4871,7 +4871,7 @@ function renderPlannerResults(result, context) {
   // Wire per-slot "Add" buttons – include selected tickets as linked issue IDs
   E.plannerResults.querySelectorAll('[data-add-release]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      if (!requirePermission(() => Permissions.canManageEvents(), 'Only admin/dev can create planner events.'))
+      if (!requirePermission(() => Permissions.canManageEvents(), 'You do not have permission to create planner events.'))
         return;
       const startIso = btn.getAttribute('data-add-release');
       const endIso = btn.getAttribute('data-add-release-end');
@@ -5132,7 +5132,7 @@ function wirePlanner() {
 
   if (E.plannerAddEvent) {
     E.plannerAddEvent.addEventListener('click', async () => {
-      if (!requirePermission(() => Permissions.canManageEvents(), 'Only admin/dev can create planner events.'))
+      if (!requirePermission(() => Permissions.canManageEvents(), 'You do not have permission to create planner events.'))
         return;
       if (
         !LAST_PLANNER_CONTEXT ||
@@ -5224,7 +5224,7 @@ function wirePlanner() {
 
   if (E.plannerAssignBtn) {
     E.plannerAssignBtn.addEventListener('click', async () => {
-      if (!requirePermission(() => Permissions.canManageEvents(), 'Only admin/dev can assign planner tickets.'))
+      if (!requirePermission(() => Permissions.canManageEvents(), 'You do not have permission to assign planner tickets.'))
         return;
       const planId = E.plannerReleasePlan?.value || '';
       if (!planId) {
@@ -6481,7 +6481,7 @@ function wireModals() {
   if (E.eventForm) {
     E.eventForm.addEventListener('submit', async e => {
       e.preventDefault();
-      if (!requirePermission(() => Permissions.canManageEvents(), 'Only admin/dev can create or edit events.'))
+      if (!requirePermission(() => Permissions.canManageEvents(), 'You do not have permission to create or edit events.'))
         return;
       const id = E.eventForm.dataset.id || '';
       const allDay = !!(E.eventAllDay && E.eventAllDay.checked);
@@ -6548,7 +6548,7 @@ function wireModals() {
 
   if (E.eventDelete) {
     E.eventDelete.addEventListener('click', async () => {
-      if (!requirePermission(() => Permissions.canManageEvents(), 'Only admin/dev can delete events.')) return;
+      if (!requirePermission(() => Permissions.canManageEvents(), 'You do not have permission to delete events.')) return;
       if (!E.eventForm) return;
       const id = E.eventForm.dataset.id;
       if (!id) {
@@ -8097,8 +8097,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (isAuthenticated) {
     const role = Session.role();
     if (!Permissions.canLoadRuntimeMatrix(role)) {
-      // Runtime matrix is intentionally skipped for non-admin roles to prevent
-      // startup failures when role_permissions is restricted.
+      // Runtime matrix is required so every role follows the database permission matrix.
       Permissions.reset();
       Permissions.state.loaded = true;
     } else {
@@ -8172,7 +8171,7 @@ document.addEventListener('click', event => {
   const action = node.getAttribute('data-permission-action');
   const allowed = typeof canShowAction === 'function'
     ? canShowAction(resource, action)
-    : (Permissions.can(resource, action) || (String(action || '').trim().toLowerCase() !== 'manage' && Permissions.can(resource, 'manage')));
+    : Permissions.can(resource, action);
   if (!allowed) {
     event.preventDefault();
     event.stopPropagation();
