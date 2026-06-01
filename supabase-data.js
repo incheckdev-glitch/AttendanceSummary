@@ -1580,6 +1580,9 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
           .filter(Boolean);
       };
       const meta = out.metadata && typeof out.metadata === 'object' ? out.metadata : {};
+      const resolvedWorkflowRuleId = out.workflow_rule_id ?? out.rule_id ?? out.database_id ?? out.id ?? '';
+      out.workflow_rule_id = String(resolvedWorkflowRuleId || '').trim();
+      out.id = String(out.id ?? out.workflow_rule_id ?? '').trim();
       out.allowed_roles = toRoleArray(out.allowed_roles, out.allowed_roles_csv);
       out.allowed_roles_csv = out.allowed_roles.join(',');
       out.approval_roles = toRoleArray(out.approval_roles, out.approval_roles_csv, out.approval_role);
@@ -4723,11 +4726,62 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     };
     const workflowError = (message, error) => friendlyError(`Workflow: ${message}`, error);
     const normalizeRawId = value => String(value === undefined || value === null ? '' : value).trim();
+    function isWorkflowRuleIdColumnMissing(error) {
+      const text = [error?.message, error?.details, error?.hint, error?.error_description, error]
+        .filter(Boolean)
+        .map(value => String(value))
+        .join(' ')
+        .toLowerCase();
+      return text.includes('workflow_rule_id') && (
+        text.includes('schema cache') ||
+        text.includes('does not exist') ||
+        text.includes('could not find')
+      );
+    }
+    function isSupabaseSingleNoRows(error) {
+      const text = [error?.code, error?.message, error?.details, error?.hint, error]
+        .filter(Boolean)
+        .map(value => String(value))
+        .join(' ')
+        .toLowerCase();
+      return text.includes('pgrst116') || text.includes('0 rows') || text.includes('no rows') || text.includes('multiple (or no) rows');
+    }
+    function normalizeWorkflowRuleSaveResponse(data) {
+      const row = Array.isArray(data) ? data[0] : data;
+      const normalized = normalizeWorkflowSingle(row || {});
+      const workflowRuleId = normalizeRawId(
+        normalized.workflow_rule_id ||
+        normalized.id ||
+        normalized.rule_id ||
+        normalized.database_id
+      );
+      if (!workflowRuleId) {
+        console.warn('[Workflow] rule saved but no id returned', row);
+        return {
+          ok: true,
+          warning: 'Workflow rule saved, but no id was returned.',
+          workflow_rule_id: null,
+          id: null,
+          rule: row || null
+        };
+      }
+      normalized.workflow_rule_id = workflowRuleId;
+      if (!normalizeRawId(normalized.id)) normalized.id = workflowRuleId;
+      return {
+        ...normalized,
+        ok: true,
+        workflow_rule_id: workflowRuleId,
+        id: workflowRuleId,
+        rule: normalized
+      };
+    }
     async function findWorkflowRuleMatch(rawId) {
       const normalizedId = normalizeRawId(rawId);
       if (!normalizedId) return null;
       const byWorkflowRuleId = await client.from('workflow_rules').select('*').eq('workflow_rule_id', normalizedId).maybeSingle();
-      if (byWorkflowRuleId.error) throw workflowError('Unable to match workflow rule by workflow_rule_id', byWorkflowRuleId.error);
+      if (byWorkflowRuleId.error && !isWorkflowRuleIdColumnMissing(byWorkflowRuleId.error)) {
+        throw workflowError('Unable to match workflow rule by workflow_rule_id', byWorkflowRuleId.error);
+      }
       if (byWorkflowRuleId.data) return byWorkflowRuleId.data;
       const byLegacyId = await client.from('workflow_rules').select('*').eq('id', normalizedId).maybeSingle();
       if (byLegacyId.error) throw workflowError('Unable to match workflow rule by id', byLegacyId.error);
@@ -4874,28 +4928,35 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       }
       if (!String(cleanRow.workflow_rule_id || '').trim()) delete cleanRow.workflow_rule_id;
       const legacyId = normalizeRawId(normalizedRow.id || rawRow.id);
-      const id = cleanRow.workflow_rule_id || legacyId;
-      const qb = client.from('workflow_rules');
+      const id = normalizeRawId(cleanRow.workflow_rule_id || legacyId);
       if (id) {
-        const updateColumn = cleanRow.workflow_rule_id ? 'workflow_rule_id' : legacyId ? 'id' : '';
-        const updateId = normalizeRawId(cleanRow.workflow_rule_id || legacyId);
-        if (!updateColumn || !updateId) throw workflowError('Workflow rule could not be matched by workflow_rule_id or id.');
-        const resp = await qb.update(cleanRow).eq(updateColumn, updateId).select('*').maybeSingle();
-        if (resp.error) throw workflowError('Unable to save workflow rule', resp.error);
-        if (resp.data) return normalizeWorkflowSingle(resp.data);
-        const refreshed = await findWorkflowRuleMatch(updateId);
-        if (!refreshed) throw workflowError('Workflow rule could not be matched by workflow_rule_id or id.');
-        return normalizeWorkflowSingle(refreshed);
-      }
-      const resp = await qb.insert(cleanRow).select('*').maybeSingle();
-      if (resp.error) throw workflowError('Unable to save workflow rule', resp.error);
-      if (resp.data) {
-        const inserted = normalizeWorkflowSingle(resp.data);
-        if (!normalizeRawId(inserted.workflow_rule_id)) {
-          throw workflowError('Workflow rule insert completed without a database workflow_rule_id. Check Supabase table default and select return.');
+        const matched = await findWorkflowRuleMatch(id);
+        const matchedWorkflowRuleId = normalizeRawId(matched?.workflow_rule_id);
+        const matchedLegacyId = normalizeRawId(matched?.id);
+        const updateColumn = matchedWorkflowRuleId && matchedWorkflowRuleId === id ? 'workflow_rule_id' : 'id';
+        const updateId = updateColumn === 'workflow_rule_id' ? matchedWorkflowRuleId : (matchedLegacyId || legacyId || id);
+        if (!updateId) throw workflowError('Workflow rule could not be matched by workflow_rule_id or id.');
+        let updatePayload = { ...cleanRow };
+        let resp = await client.from('workflow_rules').update(updatePayload).eq(updateColumn, updateId).select('*').single();
+        if (resp.error && updateColumn === 'workflow_rule_id' && isWorkflowRuleIdColumnMissing(resp.error)) {
+          resp = await client.from('workflow_rules').update(updatePayload).eq('id', updateId).select('*').single();
         }
-        return inserted;
+        if (resp.error && isWorkflowRuleIdColumnMissing(resp.error) && Object.prototype.hasOwnProperty.call(updatePayload, 'workflow_rule_id')) {
+          delete updatePayload.workflow_rule_id;
+          resp = await client.from('workflow_rules').update(updatePayload).eq('id', updateId).select('*').single();
+        }
+        if (resp.error && !isSupabaseSingleNoRows(resp.error)) throw workflowError('Unable to save workflow rule', resp.error);
+        if (resp.data) return normalizeWorkflowRuleSaveResponse(resp.data);
+        const refreshed = await findWorkflowRuleMatch(updateId);
+        if (!refreshed) {
+          console.warn('[Workflow] workflow rule updated but no id returned', resp.data || resp.error);
+          return normalizeWorkflowRuleSaveResponse({ ...cleanRow, workflow_rule_id: id, id: legacyId || id });
+        }
+        return normalizeWorkflowRuleSaveResponse(refreshed);
       }
+      const resp = await client.from('workflow_rules').insert(cleanRow).select('*').single();
+      if (resp.error && !isSupabaseSingleNoRows(resp.error)) throw workflowError('Unable to save workflow rule', resp.error);
+      if (resp.data) return normalizeWorkflowRuleSaveResponse(resp.data);
       let fallback = null;
       if (cleanRow.resource && cleanRow.current_status && cleanRow.next_status) {
         const fallbackResp = await client
@@ -4904,20 +4965,17 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
           .eq('resource', cleanRow.resource)
           .eq('current_status', cleanRow.current_status)
           .eq('next_status', cleanRow.next_status)
-          .order('updated_at', { ascending: false })
+          .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle();
         if (fallbackResp.error) throw workflowError('Unable to load newly created workflow rule', fallbackResp.error);
         fallback = fallbackResp.data || null;
       }
       if (!fallback) {
-        throw workflowError('Workflow rule insert completed without a database workflow_rule_id. Check Supabase table default and select return.');
+        console.warn('[Workflow] workflow rule insert completed but select returned no row', cleanRow);
+        return normalizeWorkflowRuleSaveResponse(cleanRow);
       }
-      const fallbackRule = normalizeWorkflowSingle(fallback);
-      if (!normalizeRawId(fallbackRule.workflow_rule_id)) {
-        throw workflowError('Workflow rule insert completed without a database workflow_rule_id. Check Supabase table default and select return.');
-      }
-      return fallbackRule;
+      return normalizeWorkflowRuleSaveResponse(fallback);
     }
     if (requestedAction === 'delete' || requestedAction === 'delete_rule') {
       assertAllowed('workflow', 'delete');

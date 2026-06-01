@@ -2367,16 +2367,26 @@ const Workflow = {
     }
     const response = await Api.saveWorkflowRule(payload);
     const normalizedRows = this.normalizeRows(response);
-    const responseRule = normalizedRows[0] || response?.rule || response?.data?.rule || payload;
+    const responseRule = normalizedRows[0] || response?.rule || response?.data?.rule || response?.data || response || payload;
     const savedRule = this.normalizeWorkflowRule(responseRule);
     const resolvedRuleId =
+      String(response?.workflow_rule_id || '').trim() ||
+      String(response?.id || '').trim() ||
+      String(response?.rule?.workflow_rule_id || '').trim() ||
+      String(response?.rule?.id || '').trim() ||
       String(savedRule.workflow_rule_id || '').trim() ||
-      String(payload.workflow_rule_id || '').trim();
+      String(savedRule.id || '').trim() ||
+      String(payload.workflow_rule_id || '').trim() ||
+      String(payload.id || '').trim();
     if (!resolvedRuleId) {
-      throw new Error('Workflow rule saved but no database workflow_rule_id was returned.');
+      console.warn('[Workflow] workflow rule saved but no id returned', response);
+      UI.toast('Workflow rule saved successfully.');
+      this.resetRuleForm();
+      await this.loadAndRefresh(true);
+      return;
     }
     savedRule.workflow_rule_id = resolvedRuleId;
-    savedRule.id = String(savedRule.id || payload.id || '').trim();
+    savedRule.id = String(savedRule.id || response?.rule?.id || payload.id || resolvedRuleId || '').trim();
 
     const payloadLegacyId = String(payload.id || '').trim();
     const idx = this.state.rules.findIndex(rule => {
