@@ -2,7 +2,7 @@ const Leads = {
   formDropdownDefaults: {
     lead_source: ['Website', 'Referral', 'LinkedIn', 'Email', 'Call', 'WhatsApp', 'Event', 'Other'],
     service_interest: ['Software' , 'Other' , 'Consulting'],
-    status: ['Not Contacted Yet', 'Not Available', 'Negotiations', 'Lost', 'Qualified'],
+    status: ['not contacted yet', 'not available', 'negotiation', 'lost', 'qualified'],
     priority: ['High', 'Medium', 'Low'],
     currency: ['USD', 'EUR', 'GBP', 'AED']
   },
@@ -83,11 +83,41 @@ const Leads = {
   allowedLeadStatuses() {
     return this.formDropdownDefaults.status;
   },
-  normalizeLeadStatus(value) {
-    const raw = String(value || '').trim();
-    const allowed = this.allowedLeadStatuses();
-    const match = allowed.find(status => status.toLowerCase() === raw.toLowerCase());
-    return match || 'Not Contacted Yet';
+  normalizeLeadStatus(status) {
+    const value = String(status || '').trim().toLowerCase();
+
+    const map = {
+      '': 'not contacted yet',
+      'new': 'not contacted yet',
+      'open': 'not contacted yet',
+      'not contacted': 'not contacted yet',
+      'not contacted yet': 'not contacted yet',
+      'not_contacted_yet': 'not contacted yet',
+
+      'not available': 'not available',
+      'not_available': 'not available',
+      'unavailable': 'not available',
+
+      'negotiation': 'negotiation',
+      'negotiating': 'negotiation',
+      'in negotiation': 'negotiation',
+      'in_negotiation': 'negotiation',
+      'negotiations': 'negotiation',
+
+      'lost': 'lost',
+      'closed lost': 'lost',
+      'closed_lost': 'lost',
+
+      'qualified': 'qualified',
+      'qualify': 'qualified',
+      'converted': 'qualified',
+      'converted to deal': 'qualified',
+      'converted_to_deal': 'qualified',
+      'coverted to deal': 'qualified',
+      'coverted_to_deal': 'qualified'
+    };
+
+    return map[value] || 'not contacted yet';
   },
   pickNextFollowUpValue(lead = {}) {
     return String(
@@ -481,6 +511,7 @@ const Leads = {
       created_by: this.isUuid(userId) ? userId : undefined,
       updated_by: this.isUuid(userId) ? userId : undefined
     });
+    payload.status = this.normalizeLeadStatus(payload.status);
     this.debugLeadPayload('[leads] create payload', payload);
     const data = await Api.requestWithSession('leads', 'create', payload, { requireAuth: true });
     console.log('[leads] saved row', data);
@@ -506,6 +537,7 @@ const Leads = {
       ...this.backendLead(updates),
       updated_by: this.isUuid(userId) ? userId : undefined
     });
+    payload.status = this.normalizeLeadStatus(payload.status);
     Object.keys(payload).forEach(key => {
       if (payload[key] === undefined) delete payload[key];
     });
@@ -682,7 +714,7 @@ const Leads = {
     const normalized = this.normalizeLead(row || {});
     return (
       this.hasLeadConversionPermission() &&
-      normalized.status === 'Qualified' &&
+      normalized.status === 'qualified' &&
       !this.isConvertedLead(normalized) &&
       !!String(normalized.id || '').trim()
     );
@@ -999,7 +1031,7 @@ const Leads = {
     if (filter === 'total') return true;
     if (filter === 'not-contacted-yet') return status === 'not contacted yet';
     if (filter === 'not-available') return status === 'not available';
-    if (filter === 'negotiations') return status === 'negotiations';
+    if (filter === 'negotiation') return status === 'negotiation';
     if (filter === 'qualified' || filter === 'conversion-rate') return status === 'qualified';
     if (filter === 'lost') return status === 'lost';
     if (filter === 'high-priority') return priority === 'high' || priority === 'urgent';
@@ -1024,7 +1056,7 @@ const Leads = {
   },
   computeLeadAnalytics(leads = []) {
     const rows = Array.isArray(leads) ? leads : [];
-    const statusKeys = ['not contacted yet', 'not available', 'negotiations', 'lost', 'qualified'];
+    const statusKeys = ['not contacted yet', 'not available', 'negotiation', 'lost', 'qualified'];
     const statusBreakdown = Object.fromEntries(statusKeys.map(key => [key, 0]));
     const currencyTotals = new Set();
     let pipelineValue = 0;
@@ -1054,7 +1086,7 @@ const Leads = {
       total,
       newCount: statusBreakdown['not contacted yet'] || 0,
       notAvailableCount: statusBreakdown['not available'] || 0,
-      negotiationCount: statusBreakdown.negotiations || 0,
+      negotiationCount: statusBreakdown.negotiation || 0,
       qualifiedCount: statusBreakdown.qualified || 0,
       proposalSentCount: 0,
       wonCount,
@@ -1103,11 +1135,11 @@ const Leads = {
 
     if (E.leadsStatusDistribution) {
       const statuses = [
-        ['Not Contacted Yet', 'not contacted yet'],
-        ['Not Available', 'not available'],
-        ['Negotiations', 'negotiations'],
-        ['Lost', 'lost'],
-        ['Qualified', 'qualified']
+        ['not contacted yet', 'not contacted yet'],
+        ['not available', 'not available'],
+        ['negotiation', 'negotiation'],
+        ['lost', 'lost'],
+        ['qualified', 'qualified']
       ];
       const total = safe.total || 0;
       E.leadsStatusDistribution.innerHTML = statuses
@@ -1327,8 +1359,8 @@ const Leads = {
       if (E.leadFormLeadId) E.leadFormLeadId.value = 'Auto-generated';
       if (E.leadFormCreatedAt) E.leadFormCreatedAt.value = U.formatDateTimeMMDDYYYYHHMM(new Date());
       if (E.leadFormAssignedTo) E.leadFormAssignedTo.value = this.currentUserAssignee();
-      this.syncLeadFormDropdowns({ status: 'Not Contacted Yet' });
-      if (E.leadFormStatus) E.leadFormStatus.value = 'Not Contacted Yet';
+      this.syncLeadFormDropdowns({ status: 'not contacted yet' });
+      if (E.leadFormStatus) E.leadFormStatus.value = 'not contacted yet';
       if (E.leadFormNotes) E.leadFormNotes.value = '';
     }
 
@@ -1795,7 +1827,7 @@ const Leads = {
       if (E.leadFormNotes) E.leadFormNotes.focus();
       return;
     }
-    if (this.normalizeLeadStatus(row?.status) !== 'Qualified') {
+    if (this.normalizeLeadStatus(row?.status) !== 'qualified') {
       UI.toast('Lead must be qualified before converting to deal.');
       return;
     }
@@ -1810,7 +1842,7 @@ const Leads = {
     this.setFormBusy(true);
     try {
       const sourceLead = this.normalizeLead(await this.getLead(leadUuid));
-      if (sourceLead.status !== 'Qualified') {
+      if (sourceLead.status !== 'qualified') {
         UI.toast('Lead must be qualified before converting to deal.');
         return;
       }

@@ -441,13 +441,42 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     'selectedRoles'
   ]);
 
-  const ALLOWED_LEAD_STATUSES = new Set(['Not Contacted Yet', 'Not Available', 'Negotiations', 'Lost', 'Qualified']);
-  function normalizeLeadStatusValue(value) {
-    const raw = String(value || '').trim();
-    for (const status of ALLOWED_LEAD_STATUSES) {
-      if (status.toLowerCase() === raw.toLowerCase()) return status;
-    }
-    return 'Not Contacted Yet';
+  const ALLOWED_LEAD_STATUSES = new Set(['not contacted yet', 'not available', 'negotiation', 'lost', 'qualified']);
+  function normalizeLeadStatusValue(status) {
+    const value = String(status || '').trim().toLowerCase();
+
+    const map = {
+      '': 'not contacted yet',
+      'new': 'not contacted yet',
+      'open': 'not contacted yet',
+      'not contacted': 'not contacted yet',
+      'not contacted yet': 'not contacted yet',
+      'not_contacted_yet': 'not contacted yet',
+
+      'not available': 'not available',
+      'not_available': 'not available',
+      'unavailable': 'not available',
+
+      'negotiation': 'negotiation',
+      'negotiating': 'negotiation',
+      'in negotiation': 'negotiation',
+      'in_negotiation': 'negotiation',
+      'negotiations': 'negotiation',
+
+      'lost': 'lost',
+      'closed lost': 'lost',
+      'closed_lost': 'lost',
+
+      'qualified': 'qualified',
+      'qualify': 'qualified',
+      'converted': 'qualified',
+      'converted to deal': 'qualified',
+      'converted_to_deal': 'qualified',
+      'coverted to deal': 'qualified',
+      'coverted_to_deal': 'qualified'
+    };
+
+    return map[value] || 'not contacted yet';
   }
 
   const LEAD_COLUMNS = new Set([
@@ -5989,7 +6018,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         .limit(1);
       if (leadLoadError) throw friendlyError('Unable to validate lead before conversion', leadLoadError);
       const leadRow = Array.isArray(leadRows) ? leadRows[0] : null;
-      if (normalizeLeadStatusValue(leadRow?.status) !== 'Qualified') {
+      if (normalizeLeadStatusValue(leadRow?.status) !== 'qualified') {
         throw new Error('Lead must be qualified before converting to deal.');
       }
       if (!String(leadRow?.next_follow_up_at || leadRow?.next_follow_up || '').trim()) {
