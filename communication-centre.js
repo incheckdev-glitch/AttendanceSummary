@@ -250,6 +250,130 @@
     return '';
   }
 
+
+  function getCurrentUser() {
+    const sessionState = global.Session?.state || {};
+    const authContext = typeof global.Session?.authContext === 'function' ? global.Session.authContext() : {};
+    return Object.assign(
+      {},
+      sessionState.user || {},
+      sessionState.profile || {},
+      authContext.user || {},
+      authContext.profile || {},
+      global.Session?.currentUser?.() || {},
+      global.Session?.user?.() || {},
+      global.Session?.profile?.() || {},
+      global.Session?.currentProfile?.() || {},
+      {
+        id: firstNonEmpty(
+          global.Session?.user?.()?.id,
+          global.Session?.currentUser?.()?.id,
+          sessionState.user_id,
+          sessionState.user?.id,
+          sessionState.profile?.id
+        ),
+        email: firstNonEmpty(
+          global.Session?.user?.()?.email,
+          global.Session?.currentUser?.()?.email,
+          sessionState.email,
+          sessionState.user?.email,
+          sessionState.profile?.email
+        ),
+        role_key: firstNonEmpty(
+          global.Session?.role?.(),
+          sessionState.role_key,
+          sessionState.role,
+          sessionState.user?.role_key,
+          sessionState.user?.role,
+          sessionState.profile?.role_key,
+          sessionState.profile?.role
+        )
+      }
+    );
+  }
+
+  function getCurrentUserId(currentUser) {
+    return String(
+      currentUser?.id ||
+      currentUser?.user_id ||
+      currentUser?.profile_id ||
+      currentUser?.email ||
+      ''
+    ).trim();
+  }
+
+  function normalizeRoleKey(role) {
+    return String(role || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_')
+      .replace(/-/g, '_');
+  }
+
+  function conversationIncludesUser(conversation, currentUser = getCurrentUser()) {
+    if (!conversation) return false;
+    const userId = getCurrentUserId(currentUser);
+    const userIds = [
+      currentUser?.id,
+      currentUser?.user_id,
+      currentUser?.profile_id,
+      currentUser?.auth_user_id,
+      currentUser?.uuid
+    ].map(value => String(value || '').trim()).filter(Boolean);
+    if (userId && !userIds.includes(userId)) userIds.push(userId);
+    const email = String(currentUser?.email || '').trim().toLowerCase();
+    const role = normalizeRoleKey(currentUser?.role_key || currentUser?.role);
+
+    const participants = conversation.participants || conversation.communication_centre_participants || [];
+
+    const isParticipant = participants.some((p) => {
+      const participantIds = [p.user_id, p.profile_id, p.id, p.auth_user_id, p.uuid, p.email]
+        .map(value => String(value || '').trim())
+        .filter(Boolean);
+      return (
+        participantIds.some(value => userIds.includes(value)) ||
+        (email && String(p.email || '').trim().toLowerCase() === email) ||
+        (email && String(p.participant_email || '').trim().toLowerCase() === email) ||
+        (email && String(p.user_email || '').trim().toLowerCase() === email)
+      );
+    });
+
+    const assignedUserMatch = [
+      conversation.assigned_to,
+      conversation.assigned_to_id,
+      conversation.assignee_id,
+      conversation.owner_id,
+      conversation.created_by,
+      conversation.requested_by
+    ].some((value) => userIds.includes(String(value || '').trim()));
+
+    const assignedEmailMatch = [
+      conversation.assigned_to_email,
+      conversation.assignee_email,
+      conversation.owner_email,
+      conversation.created_by_email,
+      conversation.requested_by_email
+    ].some((value) => email && String(value || '').trim().toLowerCase() === email);
+
+    const rawAssignedRoles = Array.isArray(conversation.assigned_roles)
+      ? conversation.assigned_roles
+      : String(firstNonEmpty(conversation.assigned_roles, conversation.assigned_role, conversation.assignee_role, conversation.owner_role) || '')
+          .split(',');
+    const assignedRoles = rawAssignedRoles
+      .map(normalizeRoleKey)
+      .filter(Boolean);
+
+    const roleMatch = Boolean(role && assignedRoles.includes(role));
+
+    return isParticipant || assignedUserMatch || assignedEmailMatch || roleMatch;
+  }
+
+  function filterVisibleCommunicationConversations(conversations, currentUser = getCurrentUser()) {
+    return (conversations || []).filter((conversation) =>
+      conversationIncludesUser(conversation, currentUser)
+    );
+  }
+
   function formatCommunicationExportDate(value) {
     if (!value) return '-';
     try {
@@ -1097,6 +1221,30 @@
     return [];
   }
 
+  async function loadConversationParticipantsForRows(client, conversationIds = []) {
+    const ids = [...new Set((conversationIds || []).map(value => String(value || '').trim()).filter(Boolean))];
+    if (!client?.from || !ids.length) return new Map();
+    const participantsByConversation = new Map();
+    for (let i = 0; i < ids.length; i += 100) {
+      const chunk = ids.slice(i, i + 100);
+      const { data, error } = await client
+        .from('communication_centre_participants')
+        .select('*')
+        .in('conversation_id', chunk);
+      if (error) {
+        console.warn('[Communication Centre] unable to load participants for visibility filtering', error);
+        continue;
+      }
+      (data || []).forEach(row => {
+        const conversationId = String(row.conversation_id || '').trim();
+        if (!conversationId) return;
+        if (!participantsByConversation.has(conversationId)) participantsByConversation.set(conversationId, []);
+        participantsByConversation.get(conversationId).push(row);
+      });
+    }
+    return participantsByConversation;
+  }
+
   async function list() {
     const client = db();
     if (!client) throw new Error('Supabase client is not available.');
@@ -1109,15 +1257,28 @@
     ['status', 'priority', 'category', 'assigned_role', 'created_by_name'].forEach(key => {
       if (filters[key]) query = query.eq(key, filters[key]);
     });
-    const from = (M.state.page - 1) * M.state.limit;
-    const to = from + M.state.limit - 1;
-    const { data, error, count } = await query
+    const { data, error } = await query
       .order('is_pinned', { ascending: false })
       .order('updated_at', { ascending: false })
-      .range(from, to);
+      .limit(1000);
     if (error) throw error;
-    M.state.rows = data || [];
-    M.state.count = count || 0;
+
+    const currentUser = getCurrentUser();
+    const allConversations = data || [];
+    const participantsByConversation = await loadConversationParticipantsForRows(client, allConversations.map(row => row.id));
+    const enrichedConversations = allConversations.map(row => {
+      const participants = participantsByConversation.get(String(row.id || '').trim()) || row.participants || row.communication_centre_participants || [];
+      const enriched = { ...row, participants, communication_centre_participants: participants };
+      return {
+        ...enriched,
+        is_assigned_to_me: conversationIncludesUser(enriched, currentUser) ? 1 : 0
+      };
+    });
+    const visibleConversations = filterVisibleCommunicationConversations(enrichedConversations, currentUser);
+    M.state.count = visibleConversations.length;
+    const from = (M.state.page - 1) * M.state.limit;
+    const to = from + M.state.limit;
+    M.state.rows = visibleConversations.slice(from, to);
   }
 
   async function openDetail(id, options = {}) {
@@ -1141,23 +1302,47 @@
         showFriendlyError('Unable to open conversation. Please refresh and try again.');
         return;
       }
-      M.state.active = {
+      const participantsResult = await client
+        .from('communication_centre_participants')
+        .select('*')
+        .eq('conversation_id', id)
+        .order('participant_type', { ascending: true })
+        .order('user_name', { ascending: true });
+      if (participantsResult.error) console.error('[Communication Centre] unable to load participants', participantsResult.error);
+      const participantRows = participantsResult.data || [];
+      const visibleConversation = {
         ...data,
+        participants: participantRows,
+        communication_centre_participants: participantRows
+      };
+      if (!conversationIncludesUser(visibleConversation, getCurrentUser())) {
+        M.state.active = null;
+        M.state.messages = [];
+        M.state.participants = [];
+        M.state.readReceipts = [];
+        M.state.actionItems = [];
+        M.state.reactionsByMessage = {};
+        M.activeConversationId = null;
+        const messagesContainer = getCommunicationMessagesContainer();
+        if (messagesContainer) messagesContainer.innerHTML = '<div class="muted communication-centre-empty-state" style="padding:16px;">Select a conversation to view messages.</div>';
+        const drawer = $('communicationCentreDrawer');
+        if (drawer) drawer.innerHTML = '';
+        render();
+        ccNotify('You are not assigned to this conversation.', 'warning');
+        return;
+      }
+      M.state.active = {
+        ...visibleConversation,
         _relatedRecordLabel: await resolveRelatedRecordLabel(data.related_module, data.related_record_id)
       };
-      const [messagesResult, participantsResult, reactionsResult, readReceiptsResult, actionItemsResult] = await Promise.all([
+      const [messagesResult, reactionsResult, readReceiptsResult, actionItemsResult] = await Promise.all([
         client.rpc('list_communication_centre_messages_secure', { p_conversation_id: id }),
-        client.from('communication_centre_participants').select('*').eq('conversation_id', id).order('participant_type', { ascending: true }).order('user_name', { ascending: true }),
         client.from('communication_centre_message_reactions').select('*').eq('conversation_id', id),
         client.from('communication_centre_read_receipts').select('*').eq('conversation_id', id),
         client.from('communication_centre_action_items').select('*').eq('conversation_id', id).order('created_at', { ascending: false })
       ]);
       if (messagesResult.error) console.error('[Communication Centre encryption] secure message load failed', messagesResult.error);
-      if (participantsResult.error) console.error('[Communication Centre] unable to load participants', participantsResult.error);
       if (readReceiptsResult.error) console.warn('[Communication Centre] unable to load read receipts', readReceiptsResult.error);
-      // The database/RLS already controls whether this row can be read.
-      // Do not re-block here with frontend-only ID matching because profile/auth IDs can differ by deployment.
-      const participantRows = participantsResult.data || [];
       M.state.messages = messagesResult.data || [];
       M.state.participants = participantRows;
       M.state.readReceipts = readReceiptsResult.data || [];
