@@ -63,6 +63,8 @@ const ProposalCatalog = {
       catalog_item_id: this.normalizeText(pick(source.catalog_item_id, source.catalogItemId)),
       created_at: this.normalizeText(pick(source.created_at, source.createdAt)),
       updated_at: this.normalizeText(pick(source.updated_at, source.updatedAt)),
+      deactivated_at: this.normalizeText(pick(source.deactivated_at, source.deactivatedAt)),
+      deactivated_by: this.normalizeText(pick(source.deactivated_by, source.deactivatedBy)),
       is_active: this.toBool(pick(source.is_active, source.isActive), true),
       section: this.sectionValues.includes(section) ? section : 'annual_saas',
       is_capability: section === 'capability',
@@ -171,8 +173,17 @@ const ProposalCatalog = {
   async updateProposalCatalogItem(catalogItemUuid, updates) {
     return Api.updateProposalCatalogItem(catalogItemUuid, updates);
   },
+  async deactivateProposalCatalogItem(catalogItemUuid) {
+    return Api.deactivateProposalCatalogItem(catalogItemUuid);
+  },
+  async reactivateProposalCatalogItem(catalogItemUuid) {
+    return Api.reactivateProposalCatalogItem(catalogItemUuid);
+  },
   async deleteProposalCatalogItem(catalogItemUuid) {
-    return Api.deleteProposalCatalogItem(catalogItemUuid);
+    return this.deactivateProposalCatalogItem(catalogItemUuid);
+  },
+  canManageCatalogStatus() {
+    return Permissions.canUpdateProposalCatalogItem() || Permissions.can('proposal_catalog','manage') || Permissions.can('proposal_catalog_items','update');
   },
   applyFilters() {
     this.state.filteredRows = (Array.isArray(this.state.rows) ? this.state.rows : []).filter(item => !item.is_capability);
@@ -252,8 +263,8 @@ const ProposalCatalog = {
           <td>${this.formatNumber(row.sort_order)}</td>
           <td>${textCell(row.updated_at)}</td>
           <td>
-            ${(Permissions.canUpdateProposalCatalogItem() || Permissions.can('proposal_catalog','manage') || Permissions.can('proposal_catalog_items','update')) ? `<button class=\"btn ghost sm\" type=\"button\" data-proposal-catalog-edit=\"${id}\">Edit</button>` : ''}
-            ${(Permissions.canDeleteProposalCatalogItem() || Permissions.can('proposal_catalog','manage') || Permissions.can('proposal_catalog_items','delete')) ? `<button class=\"btn ghost sm\" type=\"button\" data-proposal-catalog-delete=\"${id}\">Delete</button>` : ''}
+            ${this.canManageCatalogStatus() ? `<button class=\"btn ghost sm\" type=\"button\" data-proposal-catalog-edit=\"${id}\">Edit</button>` : ''}
+            ${this.canManageCatalogStatus() ? `<button class=\"btn ghost sm\" type=\"button\" data-proposal-catalog-status=\"${id}\" data-next-active=\"${row.is_active ? 'false' : 'true'}\">${row.is_active ? 'Deactivate' : 'Reactivate'}</button>` : ''}
           </td>
         </tr>`;
       })
@@ -421,8 +432,9 @@ const ProposalCatalog = {
     if (E.proposalCatalogFormNotes) E.proposalCatalogFormNotes.value = normalized.notes || '';
     if (E.proposalCatalogFormDeleteBtn) {
       E.proposalCatalogFormDeleteBtn.setAttribute('data-permission-resource', 'proposal_catalog');
-      E.proposalCatalogFormDeleteBtn.setAttribute('data-permission-action', 'delete');
-      E.proposalCatalogFormDeleteBtn.style.display = mode === 'edit' && (Permissions.canDeleteProposalCatalogItem() || Permissions.can('proposal_catalog','manage') || Permissions.can('proposal_catalog_items','delete')) ? '' : 'none';
+      E.proposalCatalogFormDeleteBtn.setAttribute('data-permission-action', 'update');
+      E.proposalCatalogFormDeleteBtn.textContent = normalized.is_active ? 'Deactivate' : 'Reactivate';
+      E.proposalCatalogFormDeleteBtn.style.display = mode === 'edit' && this.canManageCatalogStatus() ? '' : 'none';
     }
     if (E.proposalCatalogFormSaveBtn) {
       const canSave = mode === 'edit' ? (Permissions.canUpdateProposalCatalogItem() || Permissions.can('proposal_catalog','manage') || Permissions.can('proposal_catalog_items','update')) : (Permissions.canCreateProposalCatalogItem() || Permissions.can('proposal_catalog','manage') || Permissions.can('proposal_catalog_items','create'));
@@ -532,30 +544,36 @@ const ProposalCatalog = {
       UI.toast('Unable to load catalog item: ' + (error?.message || 'Unknown error'));
     }
   },
-  async deleteById(catalogItemUuid) {
-    if (!(Permissions.canDeleteProposalCatalogItem() || Permissions.can('proposal_catalog','manage') || Permissions.can('proposal_catalog_items','delete'))) {
-      UI.toast('You do not have permission to delete catalog items.');
+  async setActiveById(catalogItemUuid, isActive) {
+    if (!this.canManageCatalogStatus()) {
+      UI.toast('You do not have permission to manage catalog item status.');
       return;
     }
     if (!catalogItemUuid) return;
     const row = this.state.rows.find(item => item.id === catalogItemUuid);
-    const label = row?.catalog_item_id || catalogItemUuid;
-    const confirmed = window.confirm(`Delete catalog item ${label}?`);
+    const label = row?.catalog_item_id || row?.item_name || catalogItemUuid;
+    const actionLabel = isActive ? 'reactivate' : 'deactivate';
+    const confirmed = window.confirm(`${isActive ? 'Reactivate' : 'Deactivate'} catalog item ${label}? Historical proposal, agreement, invoice, and receipt rows will keep their saved values.`);
     if (!confirmed) return;
 
     try {
-      await this.deleteProposalCatalogItem(catalogItemUuid);
-      this.removeLocalRow(catalogItemUuid);
+      const response = isActive
+        ? await this.reactivateProposalCatalogItem(catalogItemUuid)
+        : await this.deactivateProposalCatalogItem(catalogItemUuid);
+      this.upsertLocalRow(response?.item || response?.data?.item || response?.data || response || { ...row, id: catalogItemUuid, is_active: isActive });
       this.invalidateLookupCache();
-      UI.toast('Catalog item deleted.');
+      UI.toast(`Catalog item ${isActive ? 'reactivated' : 'deactivated'}.`);
       this.closeForm();
     } catch (error) {
       if (typeof isAuthError === 'function' && isAuthError(error)) {
         handleExpiredSession('Session expired. Please log in again.');
         return;
       }
-      UI.toast('Unable to delete catalog item: ' + (error?.message || 'Unknown error'));
+      UI.toast(`Unable to ${actionLabel} catalog item: ` + (error?.message || 'Unknown error'));
     }
+  },
+  async deleteById(catalogItemUuid) {
+    return this.setActiveById(catalogItemUuid, false);
   },
   getActiveCatalogItems(section = '') {
     const normalizedSection = String(section || '').trim().toLowerCase();
@@ -605,6 +623,11 @@ const ProposalCatalog = {
           this.openFormById(editId);
           return;
         }
+        const statusId = event.target?.getAttribute('data-proposal-catalog-status');
+        if (statusId) {
+          this.setActiveById(statusId, event.target?.getAttribute('data-next-active') === 'true');
+          return;
+        }
         const deleteId = event.target?.getAttribute('data-proposal-catalog-delete');
         if (deleteId) this.deleteById(deleteId);
       });
@@ -623,7 +646,10 @@ const ProposalCatalog = {
     if (E.proposalCatalogFormDeleteBtn) {
       E.proposalCatalogFormDeleteBtn.addEventListener('click', () => {
         const id = String(E.proposalCatalogForm?.dataset.id || '').trim();
-        if (id) this.deleteById(id);
+        if (id) {
+          const row = this.state.rows.find(item => item.id === id);
+          this.setActiveById(id, row?.is_active === false);
+        }
       });
     }
     if (E.proposalCatalogFormModal) {

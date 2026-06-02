@@ -3374,6 +3374,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const rows = this.getCatalogRowsForSection(section);
     const selectedNormalized = this.normalizeText(selectedItemName);
     const seen = new Set();
+    let selectedFound = false;
     const options = rows
       .filter(row => {
         const key = this.normalizeText(row?.item_name);
@@ -3385,11 +3386,15 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         const itemName = String(row?.item_name || '').trim();
         const normalizedName = this.normalizeText(itemName);
         const isSelected = normalizedName && normalizedName === selectedNormalized;
+        if (isSelected) selectedFound = true;
         return `<option value="${U.escapeAttr(itemName)}"${isSelected ? ' selected' : ''}>${U.escapeHtml(itemName)}</option>`;
       })
       .join('');
+    const inactiveSelectedOption = selectedNormalized && !selectedFound
+      ? `<option value="${U.escapeAttr(selectedItemName)}" selected>${U.escapeHtml(selectedItemName)} (Inactive catalog item)</option>`
+      : '';
     const placeholderSelected = !selectedNormalized ? ' selected' : '';
-    return `<option value=""${placeholderSelected}>Select item…</option>${options}`;
+    return `<option value=""${placeholderSelected}>Select item…</option>${inactiveSelectedOption}${options}`;
   },
   renderCatalogOptionLists() {
     this.renderCatalogOptionList('annual_saas');

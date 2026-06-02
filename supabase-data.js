@@ -702,7 +702,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       'updated_at', 'created_at'
     ]),
     proposal_catalog: new Set([
-      'id', 'catalog_item_id', 'is_active', 'section', 'category', 'item_name', 'default_location_name',
+      'id', 'catalog_item_id', 'is_active', 'deactivated_at', 'deactivated_by', 'section', 'category', 'item_name', 'default_location_name',
       'unit_price', 'discount_percent', 'quantity', 'capability_name', 'capability_value', 'notes',
       'sort_order', 'created_by', 'updated_by', 'created_at', 'updated_at'
     ]),
@@ -2827,9 +2827,12 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
   }
 
   function sanitizeProposalCatalogRecord(record = {}, { includeCreatedBy = false, userId = '' } = {}) {
-    const mapped = compactObject({
+    const mapped = {
       catalog_item_id: firstDefined(record, ['catalog_item_id', 'catalogItemId']),
       is_active: toDbBoolean(firstDefined(record, ['is_active', 'isActive']), null),
+      deactivated_at: firstDefined(record, ['deactivated_at', 'deactivatedAt']),
+      deactivated_by: firstDefined(record, ['deactivated_by', 'deactivatedBy']),
+      updated_at: firstDefined(record, ['updated_at', 'updatedAt']),
       section: firstDefined(record, ['section']),
       category: firstDefined(record, ['category']),
       item_name: firstDefined(record, ['item_name', 'itemName', 'name']),
@@ -2841,11 +2844,12 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       capability_value: firstDefined(record, ['capability_value', 'capabilityValue']),
       notes: firstDefined(record, ['notes']),
       sort_order: firstDefined(record, ['sort_order', 'sortOrder'])
-    });
+    };
     const sanitized = {};
     Object.entries(mapped).forEach(([key, value]) => {
       if (!PROPOSAL_CATALOG_COLUMNS.has(key)) return;
-      if (value === undefined || value === null) return;
+      if (value === undefined) return;
+      if (value === null && !['deactivated_at', 'deactivated_by'].includes(key)) return;
       sanitized[key] = value;
     });
     PROPOSAL_CATALOG_LEGACY_FIELDS.forEach(key => delete sanitized[key]);
@@ -8156,6 +8160,24 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       if (resource === 'receipts') {
         const { data: receiptBeforeDelete } = await client.from('receipts').select('invoice_id').eq(key, id).maybeSingle();
         deletedReceiptInvoiceId = String(receiptBeforeDelete?.invoice_id || '').trim();
+      }
+      if (resource === 'proposal_catalog') {
+        const now = new Date().toISOString();
+        const { data, error } = await updateSelectSingleWithSchemaRetry(
+          client,
+          table,
+          {
+            is_active: false,
+            deactivated_at: now,
+            deactivated_by: await getCurrentUserId(client),
+            updated_at: now
+          },
+          key,
+          id,
+          'Unable to deactivate proposal catalog item'
+        );
+        if (error) throw friendlyError('Unable to deactivate proposal catalog item', error);
+        return { handled: true, data: normalizeRow('proposal_catalog', data) };
       }
       if (resource === 'tickets' && isAdminDev()) {
         const { error: internalDeleteError } = await client.from('ticket_internal').delete().eq('ticket_id', ticketRowId({ id }));
