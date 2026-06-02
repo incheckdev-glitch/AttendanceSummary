@@ -132,6 +132,36 @@ const U = {
     return parsed.toDateString();
   },
   fmtDisplayDate: value => U.fmtDisplayDateSafe(value, '—'),
+  stripInternalDocumentLinks: html => String(html || '')
+    // Remove standalone internal-link actions entirely, then unwrap any remaining hash-route anchors.
+    .replace(/<a\b([^>]*?)href=["']#[^"']*["']([^>]*)>\s*(Open|View in ERP|ERP Link|Record Link|Deep Link|Open Link|Internal Link|Hash Link)\s*<\/a>/gis, '')
+    .replace(/<a\b([^>]*?)href=["']https?:\/\/[^"'#\s]+[^"']*#[^"']*["']([^>]*)>\s*(Open|View in ERP|ERP Link|Record Link|Deep Link|Open Link|Internal Link|Hash Link)\s*<\/a>/gis, '')
+    // Remove anchor tags whose href starts with a frontend hash route.
+    .replace(/<a\b([^>]*?)href=["']#[^"']*["']([^>]*)>(.*?)<\/a>/gis, '$3')
+    // Remove anchor tags whose href is an internal absolute URL with a hash route.
+    .replace(/<a\b([^>]*?)href=["']https?:\/\/[^"'#\s]+[^"']*#[^"']*["']([^>]*)>(.*?)<\/a>/gis, '$3')
+    // Remove empty internal link rows/labels.
+    .replace(/<tr[^>]*>\s*<td[^>]*>\s*(ERP Link|Deep Link|Record Link|Internal Link|Open Link|Hash Link)\s*<\/td>\s*<td[^>]*>.*?<\/td>\s*<\/tr>/gis, '')
+    .replace(/<div[^>]*>\s*(?:<strong>\s*)?(ERP Link|Deep Link|Record Link|Internal Link|Open Link|Hash Link|Open in ERP|View in ERP)(?:\s*<\/strong>)?\s*:.*?<\/div>/gis, '')
+    // Remove raw hash route text if accidentally rendered.
+    .replace(/#[a-z0-9_-]+\?[a-z0-9_=-]+[^\s<]*/gi, '')
+    .replace(/\s{2,}/g, ' '),
+  stripInternalDocumentLinkFields: value => {
+    const blockedKeys = new Set(['deep_link', 'erp_link', 'record_link', 'internal_link', 'hash_link', 'deeplink', 'erplink', 'recordlink', 'internallink', 'hashlink']);
+    const sanitizeValue = input => {
+      if (Array.isArray(input)) return input.map(sanitizeValue);
+      if (input && typeof input === 'object') {
+        return Object.fromEntries(
+          Object.entries(input)
+            .filter(([key]) => !blockedKeys.has(String(key || '').trim().toLowerCase()))
+            .map(([key, item]) => [key, sanitizeValue(item)])
+        );
+      }
+      if (typeof input === 'string') return U.stripInternalDocumentLinks(input);
+      return input;
+    };
+    return sanitizeValue(value);
+  },
   formatPreviewHtmlDates: html => {
     const rawHtml = String(html || '').trim();
     if (!rawHtml) return '';

@@ -1883,7 +1883,7 @@ const Receipts = {
     const customerName = r.customer_legal_name || r.customer_name || invoice?.customer_legal_name || invoice?.customer_name;
     const customerAddress = r.customer_address || invoice?.customer_address;
     const invoiceDisplay = r.invoice_number || r.invoice_id || invoice?.invoice_number || invoice?.invoice_id;
-    return `<!doctype html>
+    const html = `<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
@@ -2048,6 +2048,7 @@ const Receipts = {
     </div>
   </body>
 </html>`;
+    return U.stripInternalDocumentLinks(html);
   },
   async previewReceipt(receiptId) {
     const id = this.resolveReceiptUuid(receiptId);
