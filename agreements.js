@@ -3074,7 +3074,9 @@ const Agreements = {
     const selected = String(selectedItemName || '').trim().toLowerCase();
     const seen = new Set();
     let rows = this.getCatalogRowsForSection(section);
-    if (!rows.length) {
+    const catalogState = window.ProposalCatalog?.state || {};
+    const catalogHasLoadedRows = Boolean(catalogState.loaded || catalogState.lookupLoadedAt || (Array.isArray(catalogState.rows) && catalogState.rows.length));
+    if (!rows.length && !catalogHasLoadedRows) {
       const fallbackNames = section === 'annual_saas'
         ? ['Location', 'User(s)']
         : section === 'one_time_fee'
@@ -3082,6 +3084,7 @@ const Agreements = {
           : [];
       rows = fallbackNames.map(name => ({ item_name: name, is_active: true, section }));
     }
+    let selectedFound = false;
     const options = rows
       .filter(row => {
         const key = String(row?.item_name || '').trim().toLowerCase();
@@ -3092,10 +3095,14 @@ const Agreements = {
       .map(row => {
         const name = String(row?.item_name || '').trim();
         const isSelected = String(name).toLowerCase() === selected;
+        if (isSelected) selectedFound = true;
         return `<option value="${U.escapeAttr(name)}"${isSelected ? ' selected' : ''}>${U.escapeHtml(name)}</option>`;
       })
       .join('');
-    return `<option value=""${selected ? '' : ' selected'}>Select item…</option>${options}`;
+    const inactiveSelectedOption = selected && !selectedFound
+      ? `<option value="${U.escapeAttr(selectedItemName)}" selected>${U.escapeHtml(selectedItemName)} (Inactive catalog item)</option>`
+      : '';
+    return `<option value=""${selected ? '' : ' selected'}>Select item…</option>${inactiveSelectedOption}${options}`;
   },
   applyCatalogSelectionToRow(tr, section) {
     if (!tr || section === 'capability') return;

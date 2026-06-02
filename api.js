@@ -586,10 +586,34 @@ const Api = {
       updates
     });
   },
-  async deleteProposalCatalogItem(catalogItemId) {
-    return this.requestWithSession('proposal_catalog', 'delete', {
-      id: catalogItemId
+  getCurrentUserIdForAudit() {
+    return String(
+      window.Session?.userId?.() ||
+      window.Session?.authContext?.()?.id ||
+      window.Session?.authContext?.()?.user?.id ||
+      window.AppState?.currentUser?.id ||
+      ''
+    ).trim();
+  },
+  async deactivateProposalCatalogItem(catalogItemId) {
+    const now = new Date().toISOString();
+    return this.updateProposalCatalogItem(catalogItemId, {
+      is_active: false,
+      deactivated_at: now,
+      deactivated_by: this.getCurrentUserIdForAudit() || null,
+      updated_at: now
     });
+  },
+  async reactivateProposalCatalogItem(catalogItemId) {
+    return this.updateProposalCatalogItem(catalogItemId, {
+      is_active: true,
+      deactivated_at: null,
+      deactivated_by: null,
+      updated_at: new Date().toISOString()
+    });
+  },
+  async deleteProposalCatalogItem(catalogItemId) {
+    return this.deactivateProposalCatalogItem(catalogItemId);
   },
   async listAgreements(options = {}) {
     const payload = this.buildSummaryListPayload(options);
