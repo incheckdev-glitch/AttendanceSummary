@@ -2231,11 +2231,40 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     return sanitized;
   }
 
-  function parseEventDateValue(value) {
+  function parseEventDateValue(value, allDay = false) {
     if (value === undefined || value === null) return undefined;
+    if (value instanceof Date) {
+      const yyyy = String(value.getFullYear());
+      const mm = String(value.getMonth() + 1).padStart(2, '0');
+      const dd = String(value.getDate()).padStart(2, '0');
+      const hh = String(value.getHours()).padStart(2, '0');
+      const min = String(value.getMinutes()).padStart(2, '0');
+      return allDay ? `${yyyy}-${mm}-${dd}` : `${yyyy}-${mm}-${dd}T${hh}:${min}:00`;
+    }
     const raw = String(value).trim();
     if (!raw) return '';
-    if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(raw)) return raw.replace(/\s+/, 'T');
+    if (allDay) {
+      const dateOnly = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+      if (dateOnly) return dateOnly[1];
+    }
+    const localDateTime = raw.match(/^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2})(?::(\d{2}))?/);
+    if (localDateTime) return `${localDateTime[1]}T${localDateTime[2]}:${localDateTime[3] || '00'}`;
+    const displayDateTime = raw.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    if (displayDateTime) {
+      const [, day, mon, yyyy, hourText, minuteText, suffixText] = displayDateTime;
+      const months = {
+        jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+        jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12'
+      };
+      const month = months[String(mon || '').toLowerCase()];
+      let hour = Number(hourText);
+      if (month && Number.isFinite(hour)) {
+        const suffix = String(suffixText || '').toUpperCase();
+        if (suffix === 'PM' && hour < 12) hour += 12;
+        if (suffix === 'AM' && hour === 12) hour = 0;
+        return `${yyyy}-${month}-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${minuteText}:00`;
+      }
+    }
     return raw;
   }
 
@@ -2249,13 +2278,14 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const issueIdValue = Array.isArray(record.ticketIds)
       ? record.ticketIds.filter(Boolean).join(', ')
       : firstDefined(record, ['issue_id', 'issueId', 'ticketId']);
+    const allDay = !!firstDefined(record, ['all_day', 'allDay']);
 
     const mapped = compactObject({
       event_code: normalizedEventCode,
       title: firstDefined(record, ['title', 'eventTitle', 'name']),
       description: firstDefined(record, ['description', 'notes']),
-      start_at: parseEventDateValue(firstDefined(record, ['start_at', 'start', 'startDate', 'date'])),
-      end_at: parseEventDateValue(firstDefined(record, ['end_at', 'end', 'endDate', 'finish'])),
+      start_at: parseEventDateValue(firstDefined(record, ['start_at', 'start', 'startDate', 'date']), allDay),
+      end_at: parseEventDateValue(firstDefined(record, ['end_at', 'end', 'endDate', 'finish']), allDay),
       location: firstDefined(record, ['location']),
       status: firstDefined(record, ['status']) || 'Planned',
       type: firstDefined(record, ['type', 'eventType']),
@@ -2266,7 +2296,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         : firstDefined(record, ['modules']),
       impact_type: firstDefined(record, ['impact_type', 'impactType', 'impact']),
       issue_id: issueIdValue,
-      all_day: firstDefined(record, ['all_day', 'allDay']),
+      all_day: allDay,
       readiness: firstDefined(record, ['readiness', 'checklist']),
       created_by: includeCreatedBy
         ? (firstDefined(record, ['created_by', 'createdBy']) || userId || undefined)

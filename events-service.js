@@ -37,12 +37,51 @@
     return new Error(`${prefix}: ${message}`);
   }
 
-  function parseDateValue(value) {
+  function pad2(value) {
+    return String(value).padStart(2, '0');
+  }
+
+  function dateToLocalStorageValue(date) {
+    const d = date instanceof Date ? date : new Date(date);
+    if (Number.isNaN(d.getTime())) return '';
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:00`;
+  }
+
+  function parseDisplayDateTimeToLocalStorage(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const match = raw.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    if (!match) return '';
+    const [, dd, mon, yyyy, hh, mm, ampm] = match;
+    const months = {
+      jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+      jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12'
+    };
+    const month = months[String(mon || '').toLowerCase()];
+    if (!month) return '';
+    let hour = Number(hh);
+    if (!Number.isFinite(hour) || hour < 1 || hour > 12) return '';
+    const suffix = String(ampm || '').toUpperCase();
+    if (suffix === 'PM' && hour < 12) hour += 12;
+    if (suffix === 'AM' && hour === 12) hour = 0;
+    return `${yyyy}-${month}-${pad2(dd)}T${pad2(hour)}:${mm}:00`;
+  }
+
+  function parseDateValue(value, allDay = false) {
     if (value === undefined || value === null) return '';
+    if (value instanceof Date) {
+      const local = dateToLocalStorageValue(value);
+      return allDay ? local.slice(0, 10) : local;
+    }
     const raw = String(value).trim();
     if (!raw) return '';
-    if (/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(raw)) return raw.replace(/\s+/, 'T');
-    return raw;
+    if (allDay) {
+      const dateOnly = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+      if (dateOnly) return dateOnly[1];
+    }
+    const localDateTime = raw.match(/^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2})(?::(\d{2}))?/);
+    if (localDateTime) return `${localDateTime[1]}T${localDateTime[2]}:${localDateTime[3] || '00'}`;
+    return parseDisplayDateTimeToLocalStorage(raw) || raw;
   }
 
   function generateEventCode() {
@@ -107,8 +146,9 @@
     const raw = row && typeof row === 'object' ? row : {};
     const id = String(raw.id || raw.event_id || '').trim();
     const eventCode = String(raw.event_code || raw.code || '').trim();
-    const start = parseDateValue(raw.start_at ?? raw.start ?? raw.startDate ?? raw.date);
-    const end = parseDateValue(raw.end_at ?? raw.end ?? raw.endDate ?? raw.finish);
+    const allDay = Boolean(raw.all_day || raw.allDay);
+    const start = parseDateValue(raw.start_at ?? raw.start ?? raw.startDate ?? raw.date, allDay);
+    const end = parseDateValue(raw.end_at ?? raw.end ?? raw.endDate ?? raw.finish, allDay);
     const metadata = safeJsonObject(raw.metadata || raw.meta || raw.event_meta);
     const readiness = safeJsonObject(metadata.readiness || raw.readiness || raw.checklist);
 
@@ -135,7 +175,7 @@
       ticketIds: parseTicketIds(raw.issue_id || raw.issueId || raw.ticketId || raw.ticketIds),
       issueId: String(raw.issue_id || raw.issueId || '').trim(),
       ticketId: String(raw.ticketId || '').trim(),
-      allDay: Boolean(raw.all_day || raw.allDay),
+      allDay,
       notificationStatus: String(raw.notificationStatus || raw.notification_status || '').trim(),
       readiness,
       checklist: readiness
@@ -267,12 +307,13 @@
     const userId = await getCurrentUserId(getClient());
     const providedEventCode = String(input.event_code ?? input.eventCode ?? '').trim();
 
+    const allDay = !!(input.all_day ?? input.allDay);
     const mapped = {
       event_code: providedEventCode || generateEventCode(),
       title: input.title || input.eventTitle || '',
       description: input.description || input.notes || '',
-      start_at: parseDateValue(input.start_at ?? input.start ?? input.startDate ?? input.date),
-      end_at: parseDateValue(input.end_at ?? input.end ?? input.endDate ?? input.finish),
+      start_at: parseDateValue(input.start_at ?? input.start ?? input.startDate ?? input.date, allDay),
+      end_at: parseDateValue(input.end_at ?? input.end ?? input.endDate ?? input.finish, allDay),
       location: input.location || '',
       status: input.status || 'Planned',
       type: input.type || input.eventType || 'Other',
@@ -283,7 +324,7 @@
       issue_id: Array.isArray(input.ticketIds)
         ? input.ticketIds.filter(Boolean).join(', ')
         : String(input.issue_id || input.issueId || input.ticketId || '').trim(),
-      all_day: !!(input.all_day ?? input.allDay),
+      all_day: allDay,
       readiness: input.readiness ?? input.checklist ?? {},
       created_by: input.created_by || input.createdBy || userId || undefined,
       updated_by: input.updated_by || input.updatedBy || userId || undefined
@@ -299,15 +340,19 @@
         ? undefined
         : String(providedEventCode).trim() || undefined;
 
+    const allDay = input.all_day !== undefined || input.allDay !== undefined
+      ? !!(input.all_day ?? input.allDay)
+      : undefined;
+
     const mapped = {
       event_code: normalizedEventCode,
       title: input.title ?? input.eventTitle,
       description: input.description ?? input.notes,
       start_at: input.start_at !== undefined || input.start !== undefined || input.startDate !== undefined || input.date !== undefined
-        ? parseDateValue(input.start_at ?? input.start ?? input.startDate ?? input.date)
+        ? parseDateValue(input.start_at ?? input.start ?? input.startDate ?? input.date, !!allDay)
         : undefined,
       end_at: input.end_at !== undefined || input.end !== undefined || input.endDate !== undefined || input.finish !== undefined
-        ? parseDateValue(input.end_at ?? input.end ?? input.endDate ?? input.finish)
+        ? parseDateValue(input.end_at ?? input.end ?? input.endDate ?? input.finish, !!allDay)
         : undefined,
       location: input.location,
       status: input.status,
@@ -324,9 +369,7 @@
               ? input.ticketIds.filter(Boolean).join(', ')
               : String(input.ticketIds || '').trim())
           : (input.issue_id ?? input.issueId ?? input.ticketId),
-      all_day: input.all_day !== undefined || input.allDay !== undefined
-        ? !!(input.all_day ?? input.allDay)
-        : undefined,
+      all_day: allDay,
       readiness: input.readiness ?? input.checklist,
       updated_by: input.updated_by || input.updatedBy || userId || undefined
     };
