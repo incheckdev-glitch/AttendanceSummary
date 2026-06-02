@@ -76,7 +76,8 @@ const ProposalCatalog = {
       unit_price: this.toNumberOrNull(pick(source.unit_price, source.unitPrice)),
       discount_percent: this.toNumberOrNull(pick(source.discount_percent, source.discountPercent)),
       quantity: this.toNumberOrNull(source.quantity),
-      notes: this.normalizeText(source.notes),
+      notes: this.normalizeText(pick(source.notes, source.note, source.description, source.item_description, source.catalog_note, source.catalog_description, source.internal_note)),
+      description: this.normalizeText(pick(source.description, source.item_description, source.note, source.notes, source.catalog_note, source.catalog_description)),
       sort_order: this.toNumberOrNull(pick(source.sort_order, source.sortOrder))
     };
   },

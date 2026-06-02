@@ -1179,6 +1179,23 @@ const Invoices = {
       paymentSchedule: this.extractRows(scheduleResult).map(row => this.normalizeScheduleRow(row))
     };
   },
+  getItemDescription(item = {}) {
+    return String(
+      item?.description ||
+      item?.item_description ||
+      item?.note ||
+      item?.notes ||
+      item?.catalog_note ||
+      item?.catalog_description ||
+      ''
+    ).trim();
+  },
+  renderDocumentItemCell(item = {}, fallbackName = '') {
+    const itemName = String(item?.item_name || item?.name || item?.product_name || item?.modules || item?.capability_name || fallbackName || '').trim();
+    const itemDescription = this.getItemDescription(item);
+    const shouldShowDescription = itemDescription && itemDescription !== itemName;
+    return `<div class="doc-item-name">${U.escapeHtml(itemName || '—')}</div>${shouldShowDescription ? `<div class="doc-item-description">${U.escapeHtml(itemDescription)}</div>` : ''}`;
+  },
   buildInvoicePreviewHtml(invoice = {}, items = [], receipts = [], paymentScheduleRows = []) {
     const invoiceData = invoice && typeof invoice === 'object' ? invoice : {};
     const normalizedItems = this.filterInvoiceCommercialItems(items).map((item, index) => {
@@ -1248,7 +1265,7 @@ const Invoices = {
             const computed = this.computeCommercialRow(item);
             return `<tr>
               <td>${textValue(item.location_name)}</td>
-              <td>${textValue(item.item_name)}</td>
+              <td>${this.renderDocumentItemCell(item)}</td>
               <td class="cell-right">${money(item.unit_price)}</td>
               <td class="cell-center">${item.quantity ? U.escapeHtml(String(item.quantity)) : '—'}</td>
               <td class="cell-center">${dateValue(item.service_start_date)}</td>
@@ -1266,7 +1283,7 @@ const Invoices = {
             const computed = this.computeCommercialRow(item);
             return `<tr>
               <td>${textValue(item.location_name)}</td>
-              <td>${textValue(item.item_name)}</td>
+              <td>${this.renderDocumentItemCell(item)}</td>
               <td class="cell-right">${money(item.unit_price)}</td>
               <td class="cell-center">${U.escapeHtml(String(this.toNumberSafe(item.discount_percent)))}%</td>
               <td class="cell-center">${item.quantity ? U.escapeHtml(String(item.quantity)) : '—'}</td>
@@ -1364,6 +1381,8 @@ const Invoices = {
       th { text-align: center; background: #f5f8fc; color: #0f172a; font-weight: 700; }
       .cell-center { text-align: center; vertical-align: middle; }
       .cell-right { text-align: right; vertical-align: middle; white-space: nowrap; }
+      .doc-item-name { font-weight: 600; }
+      .doc-item-description { margin-top: 3px; font-size: 10px; line-height: 1.35; color: #555; font-weight: 400; }
       .total-row td { font-weight: 700; background: #f7faff; }
       .totals-wrap { display: flex; justify-content: flex-end; margin-top: 16px; }
       .totals-box { width: 96mm; max-width: 100%; border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; }
@@ -1582,6 +1601,7 @@ const Invoices = {
       service_start_date: normalizedServiceStartDate,
       service_end_date: normalizedServiceEndDate,
       item_name: normalizedItemName,
+      description: String(pick(source.description, source.item_description, source.itemDescription, source.note, source.notes, source.catalog_note, source.catalogNote, source.catalog_description, source.catalogDescription)).trim(),
       unit_price: this.toNumberSafe(pick(source.unit_price, source.unitPrice)),
       discount_percent: this.toNumberSafe(pick(source.discount_percent, source.discountPercent)),
       discounted_unit_price: this.toNumberSafe(
@@ -1614,7 +1634,8 @@ const Invoices = {
       unit_price: this.toNumberSafe(pick(source.unit_price, source.unitPrice)),
       discount_percent: this.toNumberSafe(pick(source.discount_percent, source.discountPercent)),
       quantity: this.toNumberSafe(pick(source.quantity, source.qty)),
-      notes: String(pick(source.notes)).trim()
+      notes: String(pick(source.notes, source.note, source.description, source.item_description, source.catalog_note, source.catalog_description, source.internal_note)).trim(),
+      description: String(pick(source.description, source.item_description, source.note, source.notes, source.catalog_note, source.catalog_description)).trim()
     };
   },
   async getProposalCatalogLookup() {
@@ -1723,6 +1744,7 @@ const Invoices = {
       catalog_item_id: catalogItemId || catalogMatch?.catalog_item_id || '',
       section: this.normalizeSection(base.section || catalogMatch?.section),
       item_name: base.item_name || catalogMatch?.item_name || '',
+      description: base.description || catalogMatch?.description || catalogMatch?.notes || '',
       notes: base.notes || catalogMatch?.notes || ''
     });
     const hasDiscountedUnitPrice = invoiceItem?.discounted_unit_price !== undefined && invoiceItem?.discounted_unit_price !== null;
@@ -1767,7 +1789,8 @@ const Invoices = {
       line_no: pickProvided(['line_no', 'lineNo', 'line'], merged.line_no, { numeric: true }),
       location_name: pickProvided(['location_name', 'locationName'], merged.location_name),
       location_address: pickProvided(['location_address', 'locationAddress'], merged.location_address),
-      item_name: pickProvided(['item_name', 'itemName', 'description', 'name'], merged.item_name),
+      item_name: pickProvided(['item_name', 'itemName', 'name'], merged.item_name),
+      description: pickProvided(['description', 'item_description', 'itemDescription', 'note', 'notes', 'catalog_note', 'catalogNote'], merged.description || merged.notes),
       unit_price: pickProvided(['unit_price', 'unitPrice'], merged.unit_price, { numeric: true }),
       discount_percent: pickProvided(['discount_percent', 'discountPercent'], merged.discount_percent, { numeric: true }),
       discounted_unit_price: pickProvided(['discounted_unit_price', 'discountedUnitPrice', 'discounted_price', 'discountedPrice'], merged.discounted_unit_price, { numeric: true }),
@@ -2499,6 +2522,7 @@ const Invoices = {
     const itemInput = tr.querySelector('[data-item-field="item_name"]');
     const unitPriceInput = tr.querySelector('[data-item-field="unit_price"]');
     const locationInput = tr.querySelector('[data-item-field="location_name"]');
+    const descriptionInput = tr.querySelector('[data-item-field="description"]');
     if (!itemInput || !unitPriceInput) return;
 
     const selected = this.getCatalogItemByName(section, itemInput.value);
@@ -2518,6 +2542,8 @@ const Invoices = {
     if (locationInput && !String(locationInput.value || '').trim() && selected.default_location_name) {
       locationInput.value = String(selected.default_location_name);
     }
+    const selectedDescription = this.getItemDescription(selected);
+    if (descriptionInput) descriptionInput.value = selectedDescription;
   },
   renderSectionRows(section, rows = []) {
     const tbody =
@@ -2541,7 +2567,7 @@ const Invoices = {
         const computed = this.computeCommercialRow({ ...rowDefaults, section });
         if (section === 'annual_saas') {
           return `<tr data-item-row="${section}">
-            <td><input class="input" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}" /><input type="hidden" data-item-field="location_address" value="${U.escapeAttr(computed.location_address || '')}" /><input type="hidden" data-item-field="notes" value="${U.escapeAttr(computed.notes || '')}" /><input type="hidden" data-item-field="source_agreement_item_id" value="${U.escapeAttr(computed.source_agreement_item_id || '')}" /><input type="hidden" data-item-field="source_agreement_id" value="${U.escapeAttr(computed.source_agreement_id || '')}" /></td>
+            <td><input class="input" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}" /><input type="hidden" data-item-field="location_address" value="${U.escapeAttr(computed.location_address || '')}" /><input type="hidden" data-item-field="notes" value="${U.escapeAttr(computed.notes || '')}" /><input type="hidden" data-item-field="description" value="${U.escapeAttr(computed.description || '')}" /><input type="hidden" data-item-field="source_agreement_item_id" value="${U.escapeAttr(computed.source_agreement_item_id || '')}" /><input type="hidden" data-item-field="source_agreement_id" value="${U.escapeAttr(computed.source_agreement_id || '')}" /></td>
             <td><input type="hidden" data-item-field="catalog_item_id" value="${U.escapeAttr(computed.catalog_item_id || '')}" /><input class="input" data-item-field="item_name" list="invoiceCatalogOptions-${section}" value="${U.escapeAttr(computed.item_name || '')}" /></td>
             <td><input class="input" type="number" step="0.01" data-item-field="unit_price" value="${U.escapeAttr(computed.unit_price ?? '')}" /></td>
             <td><input class="input" type="number" step="0.01" min="0.01" max="12" data-item-field="quantity" value="${U.escapeAttr(computed.quantity ?? '')}" /></td>
@@ -2552,7 +2578,7 @@ const Invoices = {
           </tr>`;
         }
         return `<tr data-item-row="${section}">
-          <td><input class="input" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}" /><input type="hidden" data-item-field="location_address" value="${U.escapeAttr(computed.location_address || '')}" /><input type="hidden" data-item-field="service_start_date" value="${U.escapeAttr(computed.service_start_date || '')}" /><input type="hidden" data-item-field="service_end_date" value="${U.escapeAttr(computed.service_end_date || '')}" /><input type="hidden" data-item-field="notes" value="${U.escapeAttr(computed.notes || '')}" /><input type="hidden" data-item-field="source_agreement_item_id" value="${U.escapeAttr(computed.source_agreement_item_id || '')}" /><input type="hidden" data-item-field="source_agreement_id" value="${U.escapeAttr(computed.source_agreement_id || '')}" /></td>
+          <td><input class="input" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}" /><input type="hidden" data-item-field="location_address" value="${U.escapeAttr(computed.location_address || '')}" /><input type="hidden" data-item-field="service_start_date" value="${U.escapeAttr(computed.service_start_date || '')}" /><input type="hidden" data-item-field="service_end_date" value="${U.escapeAttr(computed.service_end_date || '')}" /><input type="hidden" data-item-field="notes" value="${U.escapeAttr(computed.notes || '')}" /><input type="hidden" data-item-field="description" value="${U.escapeAttr(computed.description || '')}" /><input type="hidden" data-item-field="source_agreement_item_id" value="${U.escapeAttr(computed.source_agreement_item_id || '')}" /><input type="hidden" data-item-field="source_agreement_id" value="${U.escapeAttr(computed.source_agreement_id || '')}" /></td>
           <td><input type="hidden" data-item-field="catalog_item_id" value="${U.escapeAttr(computed.catalog_item_id || '')}" /><input class="input" data-item-field="item_name" list="invoiceCatalogOptions-${section}" value="${U.escapeAttr(computed.item_name || '')}" /></td>
           <td><input class="input" type="number" step="0.01" data-item-field="unit_price" value="${U.escapeAttr(computed.unit_price ?? '')}" /></td>
           <td><input class="input" type="number" step="0.01" min="0" max="100" data-item-field="discount_percent" value="${U.escapeAttr(computed.discount_percent ?? '')}" /></td>
@@ -2621,6 +2647,7 @@ const Invoices = {
           service_start_date: String(get('service_start_date')).trim(),
           service_end_date: String(get('service_end_date')).trim(),
           item_name: String(get('item_name')).trim(),
+          description: String(get('description') || get('notes') || '').trim(),
           unit_price: unitPrice,
           discount_percent: discountPercent,
           quantity,
