@@ -26,7 +26,9 @@
       loadingRoles: false,
       mobileView: 'list',
       detailsVisible: true,
-      exportingPdf: false
+      exportingPdf: false,
+      detailsEditing: false,
+      detailsDraftByConversation: new Map()
     },
     realtimeChannel: null,
     realtimeReady: false,
@@ -775,6 +777,79 @@
     M.state.detailsVisible = visible !== false;
     syncResponsiveLayout();
   }
+
+  function isInsideCommunicationDetails(event) {
+    return !!event?.target?.closest?.(
+      '[data-communication-details], .communication-details-panel, .conversation-details-panel'
+    );
+  }
+
+  function getDetailsDraftKey(conversationId) {
+    return String(conversationId || '');
+  }
+
+  function getCommunicationDetailsPanel() {
+    return document.querySelector('[data-communication-details]')
+      || document.querySelector('.communication-details-panel')
+      || document.querySelector('.conversation-details-panel')
+      || $('communicationCentreDrawer');
+  }
+
+  function saveDetailsDraftFromDom(conversationId = getActiveConversationId()) {
+    const panel = getCommunicationDetailsPanel();
+    const key = getDetailsDraftKey(conversationId);
+    if (!panel || !key) return;
+
+    const draft = {
+      user: panel.querySelector('[data-assignment-user-select]')?.value || '',
+      role: panel.querySelector('[data-role-snapshot-select]')?.value || '',
+      followUpAt: panel.querySelector('[data-follow-up-at]')?.value || '',
+      actionItemTitle: panel.querySelector('[data-action-item-title]')?.value || ''
+    };
+
+    M.state.detailsDraftByConversation.set(key, draft);
+  }
+
+  function applyDetailsDraftToDom(conversationId = getActiveConversationId()) {
+    const draft = M.state.detailsDraftByConversation.get(getDetailsDraftKey(conversationId));
+    const panel = getCommunicationDetailsPanel();
+    if (!draft || !panel) return;
+
+    const userSelect = panel.querySelector('[data-assignment-user-select]');
+    if (userSelect && draft.user) userSelect.value = draft.user;
+
+    const roleSelect = panel.querySelector('[data-role-snapshot-select]');
+    if (roleSelect && draft.role) roleSelect.value = draft.role;
+
+    const followUpInput = panel.querySelector('[data-follow-up-at]');
+    if (followUpInput && draft.followUpAt) followUpInput.value = draft.followUpAt;
+
+    const actionTitleInput = panel.querySelector('[data-action-item-title]');
+    if (actionTitleInput && draft.actionItemTitle) actionTitleInput.value = draft.actionItemTitle;
+  }
+
+  function markDetailsEditing(conversationId = getActiveConversationId()) {
+    if (!conversationId) return;
+    M.state.detailsEditing = true;
+    saveDetailsDraftFromDom(conversationId);
+  }
+
+  function clearDetailsEditing(conversationId = getActiveConversationId()) {
+    const key = getDetailsDraftKey(conversationId);
+    M.state.detailsEditing = false;
+    if (key) M.state.detailsDraftByConversation.delete(key);
+  }
+
+  function isDetailsEditingConversation(conversationId = getActiveConversationId()) {
+    return M.state.detailsEditing && getDetailsDraftKey(conversationId) === getDetailsDraftKey(getActiveConversationId());
+  }
+
+  function isBackgroundConversationRefresh(options = {}) {
+    return options.fromRealtime === true || options.autoScrollReason === 'background_refresh' || [
+      'polling',
+      'read_receipt_polling'
+    ].includes(String(options.reason || ''));
+  }
   function normalizeIdentityValue(value) {
     return String(value ?? '').trim().toLowerCase();
   }
@@ -1180,6 +1255,7 @@
       }
     });
     document.addEventListener('click', event => {
+      if (isInsideCommunicationDetails(event)) return;
       if (!list || !search) return;
       if (event.target === search || list.contains(event.target)) return;
       list.style.display = 'none';
@@ -1285,6 +1361,9 @@
     try {
       const conversationId = String(id || '');
       const wasActiveConversation = String(M.state.active?.id || '') === conversationId;
+      if (!wasActiveConversation) {
+        M.state.detailsEditing = false;
+      }
       const isFirstOpen = conversationId && !M.openedConversationIds.has(conversationId);
       M.activeConversationId = conversationId || null;
       const client = db();
@@ -1355,9 +1434,11 @@
         return acc;
       }, {});
       const autoScrollReason = options.autoScrollReason || (options.forceScroll === true ? 'force_scroll' : (isFirstOpen ? 'first_open' : 'none'));
+      const preserveDetailsPanel = wasActiveConversation && isDetailsEditingConversation(conversationId) && isBackgroundConversationRefresh(options);
       renderConversationMessages(conversationId, {
         autoScrollReason,
-        conversationChanged: !wasActiveConversation
+        conversationChanged: !wasActiveConversation,
+        preserveDetailsPanel
       });
       if (conversationId) M.openedConversationIds.add(conversationId);
       try {
@@ -1939,11 +2020,11 @@
       (hasNewMessages && wasNearBottom);
 
     if (shouldAutoScroll) {
-      renderDrawer({ skipAutoScroll: true });
+      renderDrawer({ skipAutoScroll: true, preserveDetailsPanel: options.preserveDetailsPanel === true });
       requestAnimationFrame(() => scrollCommunicationCentreToBottom(true));
     } else {
       preserveScrollPosition(container, () => {
-        renderDrawer({ skipAutoScroll: true });
+        renderDrawer({ skipAutoScroll: true, preserveDetailsPanel: options.preserveDetailsPanel === true });
       });
       if (hasNewMessages && !wasNearBottom) showNewMessagesButton();
     }
@@ -1952,6 +2033,7 @@
   }
 
   function renderDrawer(options = {}) {
+    const preserveDetailsPanel = options.preserveDetailsPanel === true;
     const drawer = $('communicationCentreDrawer');
     if (!drawer || !M.state.active) return;
     const conversation = M.state.active;
@@ -1969,8 +2051,8 @@
       const detailsLabel = (isMobileViewport() || isTabletViewport()) ? 'Details' : (M.state.detailsVisible === false ? 'Show details' : 'Hide details');
       if (header) header.innerHTML = `${mobileBack}<div class="cc-chat-heading"><h3>${escapeHtml((conversation.conversation_no || '') + ' ' + (conversation.title || ''))}</h3><div class="muted">${escapeHtml(conversation.category || 'General')} • ${escapeHtml(conversation.priority || 'Normal')} • ${escapeHtml(conversation.status || 'Open')}${relatedLabel ? ` • ${escapeHtml(relatedLabel)}` : ''}</div></div><div class="cc-chat-header-actions"><button id="communicationCentreExportPdfBtn" class="btn ghost sm" type="button">${M.state.exportingPdf ? 'Preparing PDF...' : 'Export PDF'}</button><button id="communicationCentreOpenDetails" class="btn ghost sm" type="button">${detailsLabel}</button></div>`;
       $('communicationCentreExportPdfBtn')?.addEventListener('click', exportActiveConversationPdf);
-    if (meta) meta.textContent = `${conversation.status || 'Open'} • ${conversation.priority || 'Normal'} • ${conversation.category || 'General'}`;
-    if (participants) {
+    if (meta && !preserveDetailsPanel) meta.textContent = `${conversation.status || 'Open'} • ${conversation.priority || 'Normal'} • ${conversation.category || 'General'}`;
+    if (participants && !preserveDetailsPanel) {
       participants.innerHTML = M.state.participants.map(participant => `
         <span class="chip cc-participant-chip">${escapeHtml(participant.participant_type || 'participant')}: ${escapeHtml(participant.user_name || participant.user_id || 'User')}</span>
       `).join(' ');
@@ -2004,7 +2086,8 @@
     if (replyWrap) replyWrap.style.display = (conversation.status !== 'Closed' && can('reply')) ? '' : 'none';
     if (closedMsg) closedMsg.style.display = conversation.status === 'Closed' ? '' : 'none';
     renderReplyTargetPreview();
-    renderDrawerActions();
+    if (!preserveDetailsPanel) renderDrawerActions();
+    else bindCommunicationDetailsPanelEvents();
     syncResponsiveLayout();
   }
 
@@ -2044,10 +2127,10 @@
       <div class="cc-details-section"><strong>Conversation Info</strong><div class="muted">#${escapeHtml(conversation.conversation_no || '—')} • ${escapeHtml(conversation.status || 'Open')} • ${escapeHtml(conversation.priority || 'Normal')} • ${escapeHtml(conversation.category || 'General')}</div><div class="muted">Created by ${escapeHtml(conversation.created_by_name || 'Unknown')} • ${escapeHtml(new Date(conversation.created_at).toLocaleString())}</div><div class="muted">Updated ${escapeHtml(new Date(conversation.updated_at || conversation.last_message_at || conversation.created_at).toLocaleString())}</div></div>
       <div class="cc-details-section"><strong>Assignment</strong><div class="muted">Assigned role: ${escapeHtml(conversation.assigned_role || '—')}</div><div class="muted">Participants: ${escapeHtml(String(M.state.participants.length || 0))}</div></div>
       <div class="cc-details-section"><strong>Related Record</strong><div><span class="chip">Related: ${escapeHtml(relatedDisplay)}</span></div><div class="muted">Module: ${escapeHtml(getRelatedModuleLabel(conversation.related_module || '') || '—')}</div><div class="muted">Record ID: ${escapeHtml(conversation.related_record_id || '—')}</div>${relatedButton}</div>
-      <div class="cc-details-section cc-assignment-manage-section"><strong>Add Assignment</strong><div class="muted">Add an existing user or snapshot all users currently under a role.</div><label class="muted" for="communicationCentreAssignUserSelect">Add user</label><select id="communicationCentreAssignUserSelect" class="select"><option value="">Select user</option></select><label class="muted" for="communicationCentreAssignRoleSelect">Add role snapshot</label><select id="communicationCentreAssignRoleSelect" class="select"><option value="">Select role</option></select><div class="muted cc-assignment-hint">Role assignment is snapshotted. Only users currently in the selected role will be added.</div><div class="actions"><button id="communicationCentreAddAssignmentBtn" class="btn ghost sm" type="button">Add Assignment</button></div></div>
+      <div class="cc-details-section cc-assignment-manage-section"><strong>Add Assignment</strong><div class="muted">Add an existing user or snapshot all users currently under a role.</div><label class="muted" for="communicationCentreAssignUserSelect">Add user</label><select id="communicationCentreAssignUserSelect" class="select" data-assignment-user-select><option value="">Select user</option></select><label class="muted" for="communicationCentreAssignRoleSelect">Add role snapshot</label><select id="communicationCentreAssignRoleSelect" class="select" data-role-snapshot-select><option value="">Select role</option></select><div class="muted cc-assignment-hint">Role assignment is snapshotted. Only users currently in the selected role will be added.</div><div class="actions"><button id="communicationCentreAddAssignmentBtn" class="btn ghost sm" data-add-role-assignment type="button">Add Assignment</button></div></div>
       <div class="cc-details-section"><strong>Actions</strong><div class="actions">${pinButton}${archiveButton}${closeButton}${reopenButton}${copyLinkButton}${deleteButton}<button id="communicationCentreEscalateBtn" class="btn ghost sm" type="button">${conversation.is_escalated ? 'Clear escalation' : 'Mark as escalated'}</button></div></div>
-      <div class="cc-details-section"><strong>Follow-up</strong><input id="communicationCentreFollowUpAt" class="input" type="datetime-local" value="${conversation.follow_up_at ? escapeAttr(new Date(conversation.follow_up_at).toISOString().slice(0,16)) : ''}" /><div class="actions"><button id="communicationCentreFollowUpSaveBtn" class="btn ghost sm" type="button">Save follow-up</button><button id="communicationCentreFollowUpClearBtn" class="btn ghost sm" type="button">Clear</button></div></div>
-      <div class="cc-details-section communication-action-item-card"><strong>Action Items</strong><div class="muted">Open: ${escapeHtml(String((M.state.actionItems||[]).filter(x => (x.status || 'open') === 'open').length))}</div><div class="actions"><input id="communicationCentreActionItemTitle" class="input" placeholder="Action item title" /><button id="communicationCentreActionItemAddBtn" class="btn ghost sm" type="button">Add</button></div></div>`;
+      <div class="cc-details-section"><strong>Follow-up</strong><input id="communicationCentreFollowUpAt" class="input" data-follow-up-at type="datetime-local" value="${conversation.follow_up_at ? escapeAttr(new Date(conversation.follow_up_at).toISOString().slice(0,16)) : ''}" /><div class="actions"><button id="communicationCentreFollowUpSaveBtn" class="btn ghost sm" type="button">Save follow-up</button><button id="communicationCentreFollowUpClearBtn" class="btn ghost sm" type="button">Clear</button></div></div>
+      <div class="cc-details-section communication-action-item-card"><strong>Action Items</strong><div class="muted">Open: ${escapeHtml(String((M.state.actionItems||[]).filter(x => (x.status || 'open') === 'open').length))}</div><div class="actions"><input id="communicationCentreActionItemTitle" class="input" data-action-item-title placeholder="Action item title" /><button id="communicationCentreActionItemAddBtn" class="btn ghost sm" type="button">Add</button></div></div>`;
     $('communicationCentrePinConversationBtn')?.addEventListener('click', togglePinConversation);
     $('communicationCentreArchiveConversationBtn')?.addEventListener('click', toggleArchiveConversation);
     $('communicationCentreOpenRelatedBtn')?.addEventListener('click', () => {
@@ -2066,7 +2149,37 @@
     $('communicationCentreFollowUpSaveBtn')?.addEventListener('click', saveFollowUp);
     $('communicationCentreFollowUpClearBtn')?.addEventListener('click', clearFollowUp);
     $('communicationCentreActionItemAddBtn')?.addEventListener('click', addActionItem);
+    bindCommunicationDetailsPanelEvents();
+    applyDetailsDraftToDom(conversation.id);
   }
+
+  function bindCommunicationDetailsPanelEvents() {
+    const detailsPanel = getCommunicationDetailsPanel();
+    if (!detailsPanel) return;
+    detailsPanel.setAttribute('data-communication-details', 'true');
+    detailsPanel.classList.add('communication-details-panel', 'conversation-details-panel');
+    if (detailsPanel.dataset.ccDetailsEventsBound === 'true') return;
+    detailsPanel.dataset.ccDetailsEventsBound = 'true';
+
+    detailsPanel.addEventListener('click', (event) => {
+      event.stopPropagation();
+    });
+    detailsPanel.addEventListener('mousedown', (event) => {
+      event.stopPropagation();
+    });
+    detailsPanel.addEventListener('focusin', () => {
+      markDetailsEditing();
+    });
+    detailsPanel.addEventListener('input', (event) => {
+      if (!event.target?.closest?.('[data-communication-details]')) return;
+      markDetailsEditing();
+    });
+    detailsPanel.addEventListener('change', (event) => {
+      if (!event.target?.closest?.('[data-communication-details]')) return;
+      markDetailsEditing();
+    });
+  }
+
   async function populateAssignmentPanelOptions() {
     try {
       const [users, roles] = await Promise.all([
@@ -2085,18 +2198,22 @@
       if (roleSelect) {
         roleSelect.innerHTML = '<option value="">Select role</option>' + (roles || []).map(role => `<option value="${escapeAttr(role._key)}">${escapeHtml(role._label || role._key)}</option>`).join('');
       }
+      applyDetailsDraftToDom();
     } catch (error) {
       console.warn('[Communication Centre] unable to load assignment options', error);
     }
   }
 
-  async function addAssignmentFromDetails() {
+  async function addAssignmentFromDetails(event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
     const conversation = M.state.active;
     if (!conversation?.id) return showFriendlyError('Open a conversation first.');
-    const userId = normalizeText($('communicationCentreAssignUserSelect')?.value);
-    const roleKey = normalizeText($('communicationCentreAssignRoleSelect')?.value);
+    const button = event?.target?.closest?.('[data-add-role-assignment]') || $('communicationCentreAddAssignmentBtn');
+    const panel = button?.closest?.('[data-communication-details]') || getCommunicationDetailsPanel();
+    const userId = normalizeText(panel?.querySelector('[data-assignment-user-select]')?.value);
+    const roleKey = normalizeText(panel?.querySelector('[data-role-snapshot-select]')?.value);
     if (!userId && !roleKey) return showFriendlyError('Select a user or role to assign.');
-    const button = $('communicationCentreAddAssignmentBtn');
     try {
       if (button) { button.disabled = true; button.textContent = 'Adding...'; }
       const client = db();
@@ -2108,8 +2225,8 @@
       });
       if (error) throw error;
       showFriendlySuccess('Assignment added.');
+      clearDetailsEditing(conversation.id);
       await openDetail(conversation.id);
-      await refresh();
     } catch (error) {
       console.error('[Communication Centre] add assignment failed', error);
       showFriendlyError('Unable to add assignment. Please try again.');
@@ -2118,10 +2235,10 @@
     }
   }
 
-  async function toggleEscalation(){ const c=M.state.active; if(!c) return; try{const v=!c.is_escalated; const {error}=await db().from('communication_centre_conversations').update({is_escalated:v,escalated_at:v?new Date().toISOString():null,escalated_by:v?(global.Session?.user?.()?.id||null):null}).eq('id',c.id); if(error) throw error; c.is_escalated=v; renderDrawer(); await refresh();}catch(e){console.error(e);showFriendlyError('Unable to update conversation. Please try again.');}}
-  async function saveFollowUp(){ const c=M.state.active; if(!c) return; const val=$('communicationCentreFollowUpAt')?.value||null; try{const {error}=await db().from('communication_centre_conversations').update({follow_up_at:val?new Date(val).toISOString():null,follow_up_by:global.Session?.user?.()?.id||null,follow_up_status:'pending'}).eq('id',c.id); if(error) throw error; await openDetail(c.id); await refresh();}catch(e){console.error(e);showFriendlyError('Unable to set follow-up. Please try again.');}}
-  async function clearFollowUp(){ const c=M.state.active; if(!c) return; try{const {error}=await db().from('communication_centre_conversations').update({follow_up_at:null,follow_up_by:null,follow_up_status:'pending'}).eq('id',c.id); if(error) throw error; await openDetail(c.id); await refresh();}catch(e){console.error(e);showFriendlyError('Unable to set follow-up. Please try again.');}}
-  async function addActionItem(){ const c=M.state.active; const title=normalizeText($('communicationCentreActionItemTitle')?.value); if(!c||!title) return; try{const {error}=await db().from('communication_centre_action_items').insert({conversation_id:c.id,title,created_by:global.Session?.user?.()?.id||null,status:'open'}); if(error) throw error; await openDetail(c.id);}catch(e){console.error(e);showFriendlyError('Unable to update action item. Please try again.');}}
+  async function toggleEscalation(){ const c=M.state.active; if(!c) return; try{const v=!c.is_escalated; const {error}=await db().from('communication_centre_conversations').update({is_escalated:v,escalated_at:v?new Date().toISOString():null,escalated_by:v?(global.Session?.user?.()?.id||null):null}).eq('id',c.id); if(error) throw error; c.is_escalated=v; clearDetailsEditing(c.id); await openDetail(c.id);}catch(e){console.error(e);showFriendlyError('Unable to update conversation. Please try again.');}}
+  async function saveFollowUp(event){ event?.preventDefault?.(); event?.stopPropagation?.(); const c=M.state.active; if(!c) return; const panel=event?.target?.closest?.('[data-communication-details]')||getCommunicationDetailsPanel(); const val=panel?.querySelector('[data-follow-up-at]')?.value||null; try{const {error}=await db().from('communication_centre_conversations').update({follow_up_at:val?new Date(val).toISOString():null,follow_up_by:global.Session?.user?.()?.id||null,follow_up_status:'pending'}).eq('id',c.id); if(error) throw error; clearDetailsEditing(c.id); await openDetail(c.id); showFriendlySuccess('Follow-up saved.');}catch(e){console.error(e);showFriendlyError('Unable to set follow-up. Please try again.');}}
+  async function clearFollowUp(event){ event?.preventDefault?.(); event?.stopPropagation?.(); const c=M.state.active; if(!c) return; try{const {error}=await db().from('communication_centre_conversations').update({follow_up_at:null,follow_up_by:null,follow_up_status:'pending'}).eq('id',c.id); if(error) throw error; clearDetailsEditing(c.id); await openDetail(c.id); showFriendlySuccess('Follow-up cleared.');}catch(e){console.error(e);showFriendlyError('Unable to set follow-up. Please try again.');}}
+  async function addActionItem(event){ event?.preventDefault?.(); event?.stopPropagation?.(); const c=M.state.active; const panel=event?.target?.closest?.('[data-communication-details]')||getCommunicationDetailsPanel(); const input=panel?.querySelector('[data-action-item-title]'); const title=normalizeText(input?.value); if(!c||!title) return showFriendlyError('Enter an action item title.'); try{const {error}=await db().from('communication_centre_action_items').insert({conversation_id:c.id,title,created_by:global.Session?.user?.()?.id||null,status:'open'}); if(error) throw error; clearDetailsEditing(c.id); await openDetail(c.id); showFriendlySuccess('Action item added.');}catch(e){console.error(e);showFriendlyError('Unable to update action item. Please try again.');}}
   async function togglePinConversation() {
     const conversation = M.state.active;
     if (!conversation || !canManageConversation()) return;
@@ -2641,15 +2758,21 @@
       if (isMobileViewport() || isTabletViewport()) setMobileView('chat');
       else setDetailsVisible(false);
     });
-    document.addEventListener('click', (e)=>{
-      if (e.target?.id==='communicationCentreOpenDetails') {
-        if (isMobileViewport() || isTabletViewport()) setMobileView('details');
-        else setDetailsVisible(M.state.detailsVisible === false);
-      }
-      if (e.target?.id === 'communicationCentreBackToList') setMobileView('list');
-      if (e.target?.id === 'communicationCentreBackToChat') setMobileView('chat');
-      if (e.target?.id === 'communicationCentreCancelReplyTarget') { M.state.replyToMessage = null; M.state.editingMessageId = null; M.state.editingMessageOriginal = null; if ($('communicationCentreReplyInput')) $('communicationCentreReplyInput').value = ''; renderReplyTargetPreview(); }
-    });
+    bindOnce($('communicationCentreBackToChat'), 'BackToChat', () => setMobileView('chat'));
+    bindOnce($('communicationCentreBackToList'), 'BackToList', () => setMobileView('list'));
+    if (!M.communicationDetailsEventsBound) {
+      M.communicationDetailsEventsBound = true;
+      document.addEventListener('click', (e)=>{
+        if (isInsideCommunicationDetails(e)) return;
+        if (e.target?.id==='communicationCentreOpenDetails') {
+          if (isMobileViewport() || isTabletViewport()) setMobileView('details');
+          else setDetailsVisible(M.state.detailsVisible === false);
+        }
+        if (e.target?.id === 'communicationCentreBackToList') setMobileView('list');
+        if (e.target?.id === 'communicationCentreBackToChat') setMobileView('chat');
+        if (e.target?.id === 'communicationCentreCancelReplyTarget') { M.state.replyToMessage = null; M.state.editingMessageId = null; M.state.editingMessageOriginal = null; if ($('communicationCentreReplyInput')) $('communicationCentreReplyInput').value = ''; renderReplyTargetPreview(); }
+      });
+    }
     const replyBtn = $('communicationCentreReplyBtn');
     if (replyBtn) replyBtn.style.display = can('reply') ? '' : 'none';
     const replyError = $('communicationCentreReplyError');
