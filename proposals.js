@@ -2309,7 +2309,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         </div>
       </section>` : '';
 
-    return `<!doctype html>
+    const html = `<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
@@ -2641,6 +2641,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     </div>
   </body>
 </html>`;
+    return U.stripInternalDocumentLinks(html);
   },
   buildProposalPreviewHtml(proposal = {}, items = []) {
     return this.buildProposalDocumentHtml(proposal, items, { mode: 'preview' });

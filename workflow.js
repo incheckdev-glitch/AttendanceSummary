@@ -2063,7 +2063,11 @@ const Workflow = {
     const items = Array.isArray(normalized.requestedChanges?.items)
       ? normalized.requestedChanges.items
       : Array.isArray(normalized.recordSnapshot?.items) ? normalized.recordSnapshot.items : [];
-    return `
+    const cleanRequestedChanges = U.stripInternalDocumentLinkFields(normalized.requestedChanges || {});
+    const cleanRecordSnapshot = U.stripInternalDocumentLinkFields(normalized.recordSnapshot || {});
+    const cleanItems = U.stripInternalDocumentLinkFields(items || []);
+    const cleanNotes = U.stripInternalDocumentLinks(normalized.requestedChanges?.notes || normalized.recordSnapshot?.notes || '—');
+    const html = `
       <div><strong>${U.escapeHtml(title)}</strong></div>
       <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px;">
         <div><span class="muted">Company / Client:</span> ${U.escapeHtml(normalized.companyName || '—')}</div>
@@ -2071,7 +2075,7 @@ const Workflow = {
         <div><span class="muted">Current status:</span> ${WorkflowEngine.getWorkflowBadgeHtml(normalized.currentStatus || '—')}</div>
         <div><span class="muted">Requested status:</span> ${WorkflowEngine.getWorkflowBadgeHtml(normalized.requestedStatus || '—')}</div>
         <div><span class="muted">Discount:</span> ${U.escapeHtml(this.formatDiscountPercent(normalized.discountPercent))}</div>
-        <div><span class="muted">Total amount:</span> ${U.escapeHtml(String(normalized.requestedChanges?.total_amount ?? normalized.recordSnapshot?.total_amount ?? '—'))}</div>
+        <div><span class="muted">Total amount:</span> ${U.escapeHtml(String(cleanRequestedChanges?.total_amount ?? cleanRecordSnapshot?.total_amount ?? '—'))}</div>
         <div><span class="muted">Requested by:</span> ${U.escapeHtml(normalized.requestedBy || '—')}</div>
         <div><span class="muted">Approval roles:</span> ${U.escapeHtml(this.approvalRoleDisplay(normalized))}</div>
       </div>
@@ -2082,28 +2086,29 @@ const Workflow = {
       ${options.warning ? `<div class="notice warn" style="margin-top:10px;">${U.escapeHtml(options.warning)}</div>` : ''}
       <div style="margin-top:10px;">
         <strong>Items summary</strong>
-        <div class="muted" style="margin-top:4px;">${U.escapeHtml(items.length ? `${items.length} item(s) attached.` : 'No items attached.')}</div>
+        <div class="muted" style="margin-top:4px;">${U.escapeHtml(cleanItems.length ? `${cleanItems.length} item(s) attached.` : 'No items attached.')}</div>
       </div>
       <div style="margin-top:10px;">
         <strong>Notes</strong>
-        <div class="muted" style="margin-top:4px;">${U.escapeHtml(normalized.requestedChanges?.notes || normalized.recordSnapshot?.notes || '—')}</div>
+        <div class="muted" style="margin-top:4px;">${U.escapeHtml(cleanNotes || '—')}</div>
       </div>
       <details style="margin-top:12px;">
         <summary class="muted" style="cursor:pointer;">Show technical details</summary>
         <div style="margin-top:10px;">
           <strong>Items JSON</strong>
-          <pre style="max-height:120px;overflow:auto;margin-top:4px;">${U.escapeHtml(JSON.stringify(items, null, 2) || '[]')}</pre>
+          <pre style="max-height:120px;overflow:auto;margin-top:4px;">${U.escapeHtml(JSON.stringify(cleanItems, null, 2) || '[]')}</pre>
         </div>
         <div style="margin-top:10px;">
           <strong>Requested Changes JSON</strong>
-          <pre style="max-height:180px;overflow:auto;margin-top:4px;">${U.escapeHtml(JSON.stringify(normalized.requestedChanges || {}, null, 2))}</pre>
+          <pre style="max-height:180px;overflow:auto;margin-top:4px;">${U.escapeHtml(JSON.stringify(cleanRequestedChanges, null, 2))}</pre>
         </div>
         <div style="margin-top:10px;">
           <strong>Record Snapshot (read-only)</strong>
-          <pre style="max-height:180px;overflow:auto;margin-top:4px;">${U.escapeHtml(JSON.stringify(normalized.recordSnapshot || {}, null, 2))}</pre>
+          <pre style="max-height:180px;overflow:auto;margin-top:4px;">${U.escapeHtml(JSON.stringify(cleanRecordSnapshot, null, 2))}</pre>
         </div>
       </details>
     `;
+    return U.stripInternalDocumentLinks(html);
   },
   async openGenericApprovalPreview(normalizedApproval = {}, options = {}) {
     this.clearResourcePreviewApprovalActions();

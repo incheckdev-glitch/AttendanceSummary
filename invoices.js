@@ -1307,7 +1307,7 @@ const Invoices = {
       ['Payment Reference', textValue(paymentReference)]
     ];
 
-    return `<!doctype html>
+    const html = `<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
@@ -1524,6 +1524,7 @@ const Invoices = {
     </div>
   </body>
 </html>`;
+    return U.stripInternalDocumentLinks(html);
   },
   normalizeSection(value) {
     const raw = String(value ?? '')

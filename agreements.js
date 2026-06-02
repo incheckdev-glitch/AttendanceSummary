@@ -2108,7 +2108,7 @@ const Agreements = {
         </div>
       </section>` : '';
 
-    return `<!doctype html>
+    const html = `<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
@@ -2321,6 +2321,7 @@ const Agreements = {
     </div>
   </body>
 </html>`;
+    return U.stripInternalDocumentLinks(html);
   },
   async createInvoiceFromAgreement(agreementId) { return Api.createInvoiceFromAgreement(agreementId); },
   extractTechnicalRequest(response) {
