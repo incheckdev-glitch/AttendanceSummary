@@ -164,14 +164,8 @@ function computeChangeCollisions(issues, events) {
 }
 
 function toLocalInputValue(date) {
-  const d = date instanceof Date ? date : new Date(date);
-  if (isNaN(d)) return '';
-  return `${d.getFullYear()}-${U.pad(d.getMonth() + 1)}-${U.pad(
-    d.getDate()
-  )}T${U.pad(d.getHours())}:${U.pad(d.getMinutes())}`;
+  return U.storageValueToLocalDateTimeInput(date);
 }
 function toLocalDateValue(date) {
-  const d = date instanceof Date ? date : new Date(date);
-  if (isNaN(d)) return '';
-  return `${d.getFullYear()}-${U.pad(d.getMonth() + 1)}-${U.pad(d.getDate())}`;
+  return U.storageValueToLocalDateInput(date);
 }

@@ -1865,16 +1865,16 @@ UI.Modals = {
       E.eventStart.type = allDay ? 'date' : 'datetime-local';
       E.eventStart.value = ev.start
         ? allDay
-          ? toLocalDateValue(ev.start)
-          : toLocalInputValue(ev.start)
+          ? U.storageValueToLocalDateInput(ev.start)
+          : U.storageValueToLocalDateTimeInput(ev.start)
         : '';
     }
     if (E.eventEnd) {
       E.eventEnd.type = allDay ? 'date' : 'datetime-local';
       E.eventEnd.value = ev.end
         ? allDay
-          ? toLocalDateValue(ev.end)
-          : toLocalInputValue(ev.end)
+          ? U.storageValueToLocalDateInput(ev.end)
+          : U.storageValueToLocalDateTimeInput(ev.end)
         : '';
     }
     if (E.eventDescription) E.eventDescription.value = ev.description || '';
@@ -3407,8 +3407,12 @@ function ensureCalendar() {
       }
       const updated = {
         ...ev,
-        start: info.event.start,
-        end: info.event.end,
+        start: info.event.allDay
+          ? U.storageValueToLocalDateInput(info.event.start)
+          : U.localDateTimeToStorageValue(U.toLocalDateTimeInputValue(info.event.start)),
+        end: info.event.allDay
+          ? U.storageValueToLocalDateInput(info.event.end)
+          : U.localDateTimeToStorageValue(U.toLocalDateTimeInputValue(info.event.end)),
         allDay: info.event.allDay
       };
       const saved = await saveEventRecord(updated);
@@ -6480,18 +6484,16 @@ function wireModals() {
       const allDay = E.eventAllDay.checked;
       if (E.eventStart) {
         const val = E.eventStart.value;
-        const d = val ? new Date(val) : null;
         E.eventStart.type = allDay ? 'date' : 'datetime-local';
-        if (d && !isNaN(d)) {
-          E.eventStart.value = allDay ? toLocalDateValue(d) : toLocalInputValue(d);
+        if (val) {
+          E.eventStart.value = allDay ? U.storageValueToLocalDateInput(val) : U.storageValueToLocalDateTimeInput(val);
         }
       }
       if (E.eventEnd) {
         const val = E.eventEnd.value;
-        const d = val ? new Date(val) : null;
         E.eventEnd.type = allDay ? 'date' : 'datetime-local';
-        if (d && !isNaN(d)) {
-          E.eventEnd.value = allDay ? toLocalDateValue(d) : toLocalInputValue(d);
+        if (val) {
+          E.eventEnd.value = allDay ? U.storageValueToLocalDateInput(val) : U.storageValueToLocalDateTimeInput(val);
         }
       }
     });
@@ -6547,8 +6549,12 @@ function wireModals() {
         issueId: issueIdValue,
         ticketId: ticketIds[0] || '',
         ticketIds,
-        start: E.eventStart?.value || '',
-        end: E.eventEnd?.value || '',
+        start: allDay
+          ? U.storageValueToLocalDateInput(E.eventStart?.value || '')
+          : (U.parseDisplayDateTimeToLocalStorage(E.eventStart?.value || '') || U.localDateTimeToStorageValue(E.eventStart?.value || '') || ''),
+        end: allDay
+          ? U.storageValueToLocalDateInput(E.eventEnd?.value || '')
+          : (U.parseDisplayDateTimeToLocalStorage(E.eventEnd?.value || '') || U.localDateTimeToStorageValue(E.eventEnd?.value || '') || ''),
         description: (E.eventDescription?.value || '').trim(),
         readiness,
          checklist: readiness,
