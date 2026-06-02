@@ -375,7 +375,7 @@ const Receipts = {
     const pick = (...values) => values.find(v => v !== undefined && v !== null && !(typeof v === 'string' && v.trim() === ''));
     const rawSection = pick(source.section, source.item_section, source.itemSection, source.type, source.category);
     const section = this.isOneTimeSection(rawSection) ? 'one_time_fee' : 'location_details';
-    const description = this.sanitizeText(pick(source.description));
+    const description = this.sanitizeText(pick(source.description, source.item_description, source.itemDescription, source.note, source.notes, source.catalog_note, source.catalogNote, source.catalog_description, source.catalogDescription));
     const parsedLocationAndModule = description.includes(' - ')
       ? description.split(' - ').map(part => part.trim())
       : [];
@@ -902,7 +902,7 @@ const Receipts = {
         location_name: normalized.location_name || null,
         location_address: normalized.location_address || null,
         item_name: normalized.item_name || normalized.modules || normalized.description || null,
-        description: normalized.description || normalized.item_name || normalized.modules || null,
+        description: normalized.description || normalized.note || normalized.catalog_note || '',
         quantity: this.toNumberSafe(normalized.quantity),
         unit_price: this.toNumberSafe(normalized.unit_price),
         discount_percent: this.toNumberSafe(normalized.discount_percent),
@@ -1224,6 +1224,7 @@ const Receipts = {
       service_end_date: this.normalizeDateValue(item.service_end_date || item.serviceEndDate),
       modules: description,
       item_name: itemName || description,
+      description: this.getItemDescription(item),
       quantity: this.toNumberSafe(item.quantity ?? item.qty),
       unit_price: this.toNumberSafe(item.unit_price ?? item.unitPrice),
       discount_percent: this.toNumberSafe(item.discount_percent ?? item.discountPercent),
@@ -1782,6 +1783,23 @@ const Receipts = {
     const normalizedReceipt = this.normalizeReceiptWithLedger(detail.receipt, invoice || {}, invoiceReceipts);
     return { receiptUuid, receipt: normalizedReceipt, items: this.filterReceiptCommercialItems(detail.items), invoice, invoiceItems: this.filterReceiptCommercialItems(invoiceItems), invoiceReceipts };
   },
+  getItemDescription(item = {}) {
+    return String(
+      item?.description ||
+      item?.item_description ||
+      item?.note ||
+      item?.notes ||
+      item?.catalog_note ||
+      item?.catalog_description ||
+      ''
+    ).trim();
+  },
+  renderDocumentItemCell(item = {}, fallbackName = '') {
+    const itemName = String(item?.item_name || item?.name || item?.product_name || item?.modules || item?.capability_name || fallbackName || '').trim();
+    const itemDescription = this.getItemDescription(item);
+    const shouldShowDescription = itemDescription && itemDescription !== itemName;
+    return `<div class="doc-item-name">${U.escapeHtml(itemName || '—')}</div>${shouldShowDescription ? `<div class="doc-item-description">${U.escapeHtml(itemDescription)}</div>` : ''}`;
+  },
   buildReceiptPreviewHtml(receipt = {}, items = [], invoice = null, invoiceItems = [], invoiceReceipts = null) {
     const r = this.normalizeReceipt(receipt || {});
     const normalizedItems = this.filterReceiptCommercialItems(items).map(item => this.normalizeItem(item));
@@ -1821,7 +1839,7 @@ const Receipts = {
       const computed = computeReceiptRow(item);
       return `<tr>
         <td>${text(item.location_name)}</td>
-        <td>${text(item.item_name || item.modules || item.description)}</td>
+        <td>${this.renderDocumentItemCell(item)}</td>
         <td class="cell-right">${this.money(currency, item.unit_price ?? 0)}</td>
         <td class="cell-center">${quantity(item.quantity)}</td>
         <td class="cell-center">${date(item.service_start_date)}</td>
@@ -1834,7 +1852,7 @@ const Receipts = {
       const computed = computeReceiptRow(item);
       return `<tr>
         <td>${text(item.location_name)}</td>
-        <td>${text(item.item_name || item.modules || item.description)}</td>
+        <td>${this.renderDocumentItemCell(item)}</td>
         <td class="cell-right">${this.money(currency, item.unit_price ?? 0)}</td>
         <td class="cell-center">${discount(item.discount_percent)}</td>
         <td class="cell-center">${quantity(item.quantity)}</td>
@@ -1936,6 +1954,8 @@ const Receipts = {
       th { text-align: center; background: #f5f8fc; color: #0f172a; font-weight: 700; }
       .cell-center { text-align: center; vertical-align: middle; }
       .cell-right { text-align: right; vertical-align: middle; white-space: nowrap; }
+      .doc-item-name { font-weight: 600; }
+      .doc-item-description { margin-top: 3px; font-size: 10px; line-height: 1.35; color: #555; font-weight: 400; }
       .total-row td { font-weight: 700; background: #f7faff; }
       .receipt-narrative { margin: 16px 0 0; font-size: 12.5px; line-height: 1.6; border: 1px solid #d7e1ed; border-radius: 6px; padding: 12px; background: #fbfdff; }
       .totals-wrap { display: flex; justify-content: flex-end; margin-top: 16px; }

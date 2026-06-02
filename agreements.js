@@ -1451,6 +1451,7 @@ const Agreements = {
       service_start_date: this.normalizeDateInputValue(pick(source.service_start_date, source.serviceStartDate)),
       service_end_date: this.normalizeDateInputValue(pick(source.service_end_date, source.serviceEndDate)),
       item_name: String(pick(source.item_name, source.itemName, source.name)).trim(),
+      description: String(pick(source.description, source.item_description, source.itemDescription, source.note, source.notes, source.catalog_note, source.catalogNote, source.catalog_description, source.catalogDescription)).trim(),
       unit_price: this.toNumberSafe(pick(source.unit_price, source.unitPrice)),
       discount_percent: this.toNumberSafe(pick(source.discount_percent, source.discountPercent)),
       discounted_unit_price: rawDiscountedUnitPrice === '' ? '' : this.toNumberSafe(rawDiscountedUnitPrice),
@@ -1587,6 +1588,7 @@ const Agreements = {
         service_start_date: source.service_start_date || source.serviceStartDate || '',
         service_end_date: source.service_end_date || source.serviceEndDate || '',
         item_name: source.item_name || source.itemName || source.name || '',
+        description: source.description || source.item_description || source.itemDescription || source.note || source.notes || source.catalog_note || '',
         unit_price: source.unit_price ?? source.unitPrice ?? 0,
         discount_percent: source.discount_percent ?? source.discountPercent ?? 0,
         discounted_unit_price: source.discounted_unit_price ?? source.discountedUnitPrice ?? 0,
@@ -2006,6 +2008,23 @@ const Agreements = {
       items: Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : []
     };
   },
+  getItemDescription(item = {}) {
+    return String(
+      item?.description ||
+      item?.item_description ||
+      item?.note ||
+      item?.notes ||
+      item?.catalog_note ||
+      item?.catalog_description ||
+      ''
+    ).trim();
+  },
+  renderDocumentItemCell(item = {}, fallbackName = '') {
+    const itemName = String(item?.item_name || item?.name || item?.product_name || item?.capability_name || fallbackName || '').trim();
+    const itemDescription = this.getItemDescription(item);
+    const shouldShowDescription = itemDescription && itemDescription !== itemName;
+    return `<div class="doc-item-name">${U.escapeHtml(itemName || '—')}</div>${shouldShowDescription ? `<div class="doc-item-description">${U.escapeHtml(itemDescription)}</div>` : ''}`;
+  },
   buildAgreementPreviewHtml(agreement = {}, items = []) {
     const agreementData = this.normalizeAgreement(agreement && typeof agreement === 'object' ? agreement : {});
     const normalizedItems = (Array.isArray(items) ? items : []).map((item, index) => {
@@ -2058,7 +2077,7 @@ const Agreements = {
             const computed = computeRow(item);
             return `<tr>
               <td>${textValue(item.location_name || item.locationName)}</td>
-              <td>${textValue(item.item_name || item.capability_name)}</td>
+              <td>${this.renderDocumentItemCell(item)}</td>
               <td class="cell-right">${money(computed.unitPrice)}</td>
               <td class="cell-center">${computed.quantity ? U.escapeHtml(String(computed.quantity)) : '—'}</td>
               <td class="cell-center">${dateValue(item.service_start_date || agreementData.service_start_date)}</td>
@@ -2076,7 +2095,7 @@ const Agreements = {
             const computed = computeRow(item);
             return `<tr>
               <td>${textValue(item.location_name || item.locationName)}</td>
-              <td>${textValue(item.item_name || item.capability_name)}</td>
+              <td>${this.renderDocumentItemCell(item)}</td>
               <td class="cell-right">${money(computed.unitPrice)}</td>
               <td class="cell-center">${U.escapeHtml(String(computed.discountPercent || 0))}%</td>
               <td class="cell-center">${computed.quantity ? U.escapeHtml(String(computed.quantity)) : '—'}</td>
@@ -2145,6 +2164,8 @@ const Agreements = {
       th { text-align: center; background: #f5f8fc; color: #0f172a; font-weight: 700; }
       .cell-center { text-align: center; vertical-align: middle; }
       .cell-right { text-align: right; vertical-align: middle; white-space: nowrap; }
+      .doc-item-name { font-weight: 600; }
+      .doc-item-description { margin-top: 3px; font-size: 10px; line-height: 1.35; color: #555; font-weight: 400; }
       .total-row td { font-weight: 700; background: #f9fafb; }
       .totals-wrap { display: flex; justify-content: flex-end; margin-top: 16px; }
       .totals-box { width: 460px; max-width: 100%; border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; }
@@ -2952,6 +2973,7 @@ const Agreements = {
         service_start_date: section === 'annual_saas' ? this.normalizeDateInputValue(get('service_start_date')) : '',
         service_end_date: section === 'annual_saas' ? this.calculateServiceEndDate(get('service_start_date'), quantity) : '',
         item_name: itemName,
+        description: String(get('description') || baseItem.description || baseItem.note || baseItem.catalog_note || '').trim(),
         catalog_item_id: String(get('catalog_item_id')).trim(),
         unit_price: unitPrice,
         discount_percent: discountPercent,
@@ -3109,12 +3131,15 @@ const Agreements = {
     const itemInput = tr.querySelector('[data-item-field="item_name"]');
     const catalogIdInput = tr.querySelector('[data-item-field="catalog_item_id"]');
     const unitPriceInput = tr.querySelector('[data-item-field="unit_price"]');
+    const descriptionInput = tr.querySelector('[data-item-field="description"]');
     if (!itemInput || !catalogIdInput || !unitPriceInput) return;
     const selected = this.getCatalogItemById(section, catalogIdInput.value) || this.getCatalogItemByName(section, itemInput.value);
     if (!selected) return;
     catalogIdInput.value = String(selected.id || '');
     itemInput.value = String(selected.item_name || itemInput.value || '');
     if (selected.unit_price !== null && selected.unit_price !== undefined) unitPriceInput.value = String(selected.unit_price);
+    const selectedDescription = this.getItemDescription(selected);
+    if (descriptionInput) descriptionInput.value = selectedDescription;
   },
 
   isAnnualSaasUserItem(item = {}) {
@@ -3325,7 +3350,7 @@ const Agreements = {
       const invoiceStatusCell = section === 'annual_saas' ? `<td><span class="badge">${U.escapeHtml(invoiceStatusLabel)}</span></td>` : '';
       return `<tr data-item-row="${section}" data-item-payload="${payload}">
       <td><input class="input" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}"${lockAttr} /><input type="hidden" data-item-field="location_address" value="${U.escapeAttr(computed.location_address || '')}" /></td>
-      <td><input type="hidden" data-item-field="catalog_item_id" value="${U.escapeAttr(computed.catalog_item_id || '')}" /><select class="input" data-item-field="item_name"${lockAttr}>${this.buildCatalogSelectOptions(section, computed.item_name || '')}</select></td>
+      <td><input type="hidden" data-item-field="catalog_item_id" value="${U.escapeAttr(computed.catalog_item_id || '')}" /><input type="hidden" data-item-field="description" value="${U.escapeAttr(computed.description || '')}" /><select class="input" data-item-field="item_name"${lockAttr}>${this.buildCatalogSelectOptions(section, computed.item_name || '')}</select></td>
       ${section === 'annual_saas' ? licenseQtyCell : ''}
       <td><input class="input" data-item-field="unit_price" type="number" step="0.01" value="${U.escapeAttr(computed.unit_price ?? '')}"${lockAttr} /></td>
       ${commercialCells}

@@ -1731,6 +1731,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       location_name: String(pick(source.location_name, source.locationName)).trim(),
       location_address: String(pick(source.location_address, source.locationAddress)).trim(),
       item_name: String(pick(source.item_name, source.itemName, source.name)).trim(),
+      description: String(pick(source.description, source.item_description, source.itemDescription, source.note, source.notes, source.catalog_note, source.catalogNote, source.catalog_description, source.catalogDescription)).trim(),
       unit_price: this.toNumberSafe(pick(source.unit_price, source.unitPrice)),
       discount_percent: this.normalizeDiscountPercentValue(
         pick(
@@ -2172,6 +2173,23 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       items: normalizedItems
     };
   },
+  getItemDescription(item = {}) {
+    return String(
+      item?.description ||
+      item?.item_description ||
+      item?.note ||
+      item?.notes ||
+      item?.catalog_note ||
+      item?.catalog_description ||
+      ''
+    ).trim();
+  },
+  renderDocumentItemCell(item = {}, fallbackName = '') {
+    const itemName = String(item?.item_name || item?.name || item?.product_name || item?.capability_name || fallbackName || '').trim();
+    const itemDescription = this.getItemDescription(item);
+    const shouldShowDescription = itemDescription && itemDescription !== itemName;
+    return `<div class="doc-item-name">${U.escapeHtml(itemName || '—')}</div>${shouldShowDescription ? `<div class="doc-item-description">${U.escapeHtml(itemDescription)}</div>` : ''}`;
+  },
   buildProposalDocumentHtml(proposal = {}, items = [], options = {}) {
     const proposalData = proposal && typeof proposal === 'object' ? proposal : {};
     const normalizedItems = (Array.isArray(items) ? items : []).map((item, index) => {
@@ -2230,7 +2248,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
             const computed = computeRow(item);
             return `<tr>
               <td>${textValue(item.location_name || item.locationName)}</td>
-              <td>${textValue(item.item_name || item.capability_name)}</td>
+              <td>${this.renderDocumentItemCell(item)}</td>
               <td class="cell-right">${money(computed.unitPrice)}</td>
               <td class="cell-center">${computed.quantity ? U.escapeHtml(String(computed.quantity)) : '—'}</td>
               <td class="cell-center">${dateValue(item.service_start_date || proposalData.service_start_date)}</td>
@@ -2248,7 +2266,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
             const computed = computeRow(item);
             return `<tr>
               <td>${textValue(item.location_name || item.locationName)}</td>
-              <td>${textValue(item.item_name || item.capability_name)}</td>
+              <td>${this.renderDocumentItemCell(item)}</td>
               <td class="cell-right">${money(computed.unitPrice)}</td>
               <td class="cell-center">${U.escapeHtml(String(computed.discountPercent || 0))}%</td>
               <td class="cell-center">${computed.quantity ? U.escapeHtml(String(computed.quantity)) : '—'}</td>
@@ -2457,6 +2475,8 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       th { text-align: center; background: #f5f8fc; color: #0f172a; font-weight: 700; }
       .cell-center { text-align: center; vertical-align: middle; }
       .cell-right { text-align: right; vertical-align: middle; white-space: nowrap; }
+      .doc-item-name { font-weight: 600; }
+      .doc-item-description { margin-top: 3px; font-size: 10px; line-height: 1.35; color: #555; font-weight: 400; }
       .total-row td { font-weight: 700; background: #f7faff; }
       .totals-wrap { display: flex; justify-content: flex-end; margin-top: 16px; }
       .totals-box { width: 96mm; max-width: 100%; border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; }
@@ -3429,6 +3449,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const discountPercentInput = tr.querySelector('[data-item-field="discount_percent"]');
     const quantityInput = tr.querySelector('[data-item-field="quantity"]');
     const locationInput = tr.querySelector('[data-item-field="location_name"]');
+    const descriptionInput = tr.querySelector('[data-item-field="description"]');
     if (!itemInput || !unitPriceInput || !catalogIdInput) return;
 
     const { selected, matchedBy } = this.resolveCatalogSelectionForRow(tr, section);
@@ -3449,6 +3470,14 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
 
     if (selected.unit_price !== null && selected.unit_price !== undefined) {
       unitPriceInput.value = String(selected.unit_price);
+    }
+    const selectedDescription = this.getItemDescription(selected);
+    if (descriptionInput) descriptionInput.value = selectedDescription;
+    try {
+      const payload = JSON.parse(tr.getAttribute('data-item-payload') || '{}');
+      tr.setAttribute('data-item-payload', JSON.stringify({ ...payload, description: selectedDescription }));
+    } catch (_error) {
+      tr.setAttribute('data-item-payload', JSON.stringify({ description: selectedDescription }));
     }
     const hasCatalogDiscount = ['discount_percent', 'discountPercent', 'discount', 'item_discount', 'itemDiscount'].some(
       key => selected[key] !== undefined && selected[key] !== null && String(selected[key]).trim() !== ''
@@ -3596,7 +3625,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
           : `${discountCell}${quantityCell}`;
         return `<tr data-item-row="${section}" data-item-payload="${U.escapeAttr(JSON.stringify(row || {}))}">
           <td><input class="input" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}" /><input type="hidden" data-item-field="location_address" value="${U.escapeAttr(computed.location_address || '')}" /></td>
-          <td><input type="hidden" data-item-field="catalog_item_id" value="${U.escapeAttr(computed.catalog_item_id || '')}" /><select class="input" data-item-field="item_name">${this.buildCatalogSelectOptions(section, computed.item_name || '')}</select></td>
+          <td><input type="hidden" data-item-field="catalog_item_id" value="${U.escapeAttr(computed.catalog_item_id || '')}" /><input type="hidden" data-item-field="description" value="${U.escapeAttr(computed.description || '')}" /><select class="input" data-item-field="item_name">${this.buildCatalogSelectOptions(section, computed.item_name || '')}</select></td>
           ${section === 'annual_saas' ? licenseQtyCell : ''}
           <td><input class="input" type="number" step="0.01" data-item-field="unit_price" value="${U.escapeAttr(computed.unit_price ?? '')}" /></td>
           ${commercialCells}
@@ -3840,6 +3869,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
           location_name: locationName,
           location_address: String(get('location_address')).trim(),
           item_name: itemName,
+          description: String(get('description') || baseItem.description || baseItem.note || baseItem.catalog_note || '').trim(),
           unit_price: unitPrice,
           discount_percent: discountPercent,
           quantity,
