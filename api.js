@@ -1603,6 +1603,11 @@ const Api = {
   getClientFilterValues(clientOrId = {}) {
     const source = clientOrId && typeof clientOrId === 'object' ? clientOrId : { client_id: clientOrId };
     const sourceClientIds = Array.isArray(source?.source_client_ids) ? source.source_client_ids : [];
+
+    // Important: display values like Client#00055, Invoice#00012, or Agreement#00017
+    // are NOT valid UUIDs. Only pass real UUID values to UUID columns.
+    // Do not use source.id as company_id because, in the client panel, source.id is usually
+    // the clients table UUID, not the linked companies.id UUID.
     const companyId = this.firstUuidValue_(
       source?.company_id,
       source?.companyId,
@@ -1626,39 +1631,65 @@ const Api = {
     const clientName = String(source?.legal_name || source?.company_name || source?.customer_legal_name || source?.customer_name || source?.client_name || source?.name || '').trim();
     return { companyId, clientId: clientUuid, clientUuid, displayClientId, clientName };
   },
-  getClientTextFilterColumns_(table = '') {
-    const byTable = {
-      agreements: ['customer_legal_name', 'customer_name', 'company_name', 'client_name'],
-      invoices: ['customer_legal_name', 'customer_name', 'company_name', 'client_name'],
-      receipts: ['customer_legal_name', 'customer_name', 'company_name', 'client_name'],
-      client_scheduled_payments: ['client_name'],
-      onboarding_requests: ['client_name', 'company_name'],
-      technical_requests: ['client_name', 'company_name'],
-      csm_activities: ['client_name', 'company_name']
+  getClientFilterConfig_(table = '') {
+    const configs = {
+      agreements: {
+        uuid: { company_id: 'companyId' },
+        text: ['customer_legal_name', 'customer_name', 'company_name']
+      },
+      invoices: {
+        uuid: { company_id: 'companyId', client_id: 'clientUuid' },
+        text: ['customer_legal_name', 'customer_name', 'company_name']
+      },
+      receipts: {
+        uuid: { company_id: 'companyId', client_id: 'clientUuid' },
+        text: ['customer_legal_name', 'customer_name', 'company_name']
+      },
+      client_scheduled_payments: {
+        uuid: { company_id: 'companyId', client_id: 'clientUuid' },
+        text: ['client_name']
+      },
+      onboarding_requests: {
+        uuid: { company_id: 'companyId', client_id: 'clientUuid' },
+        text: ['client_name', 'company_name']
+      },
+      technical_requests: {
+        uuid: { company_id: 'companyId', client_id: 'clientUuid' },
+        text: ['client_name', 'company_name']
+      },
+      csm_activities: {
+        uuid: { company_id: 'companyId', client_id: 'clientUuid' },
+        text: ['client_name', 'company_name']
+      }
     };
-    return byTable[String(table || '').trim()] || [];
+    return configs[String(table || '').trim()] || { uuid: {}, text: [] };
   },
   applyClientQueryFilters(query, clientOrId = {}, table = '') {
-    const { companyId, clientUuid, clientName } = this.getClientFilterValues(clientOrId);
+    const filterValues = this.getClientFilterValues(clientOrId);
+    const config = this.getClientFilterConfig_(table);
     const parts = [];
-    if (companyId) parts.push(`company_id.eq.${companyId}`);
-    if (clientUuid) parts.push(`client_id.eq.${clientUuid}`);
-    const safeName = this.sanitizePostgrestText_(clientName);
+
+    Object.entries(config.uuid || {}).forEach(([column, key]) => {
+      const value = String(filterValues[key] || '').trim();
+      if (value && this.isUuidValue(value)) parts.push(`${column}.eq.${value}`);
+    });
+
+    // Name fallback is only used when no UUID relationship exists. This prevents broad OR
+    // queries and avoids using columns that do not exist, such as invoices.client_name.
+    const safeName = this.sanitizePostgrestText_(filterValues.clientName);
     if (!parts.length && safeName) {
-      this.getClientTextFilterColumns_(table).forEach(column => parts.push(`${column}.ilike.%${safeName}%`));
+      (config.text || []).forEach(column => parts.push(`${column}.ilike.%${safeName}%`));
     }
-    return parts.length ? query.or(parts.join(',')) : query;
+
+    return parts.length ? query.or(parts.join(',')) : null;
   },
   async fetchPaged(table, clientOrId = {}, options = {}, configure = null) {
     const { page, pageSize, from, to } = this.normalizePagedOptions(options);
-    const filterValues = this.getClientFilterValues(clientOrId);
-    const hasUuidFilter = Boolean(filterValues.companyId || filterValues.clientUuid);
-    const hasNameFilter = Boolean(this.sanitizePostgrestText_(filterValues.clientName) && this.getClientTextFilterColumns_(table).length);
-    if (!hasUuidFilter && !hasNameFilter) return this.pagedResult([], 0, page, pageSize);
     const supabaseClient = window.SupabaseClient?.getClient?.() || window.supabase || null;
     if (!supabaseClient?.from) return this.pagedResult([], 0, page, pageSize);
     let query = supabaseClient.from(table).select('*', { count: 'exact' });
     query = this.applyClientQueryFilters(query, clientOrId, table);
+    if (!query) return this.pagedResult([], 0, page, pageSize);
     if (typeof configure === 'function') query = configure(query) || query;
     const { data, error, count } = await query.range(from, to);
     if (error) throw error;
