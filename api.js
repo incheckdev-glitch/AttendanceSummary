@@ -770,6 +770,8 @@ const Api = {
     console.log('[operations onboarding] manual technical admin request for onboarding row', { agreement_id: normalizedAgreementId, onboarding_id: targetOnboardingId });
     const norm = value => String(value || '').trim().toLowerCase();
     const same = (a, b) => Boolean(norm(a) && norm(b) && norm(a) === norm(b));
+    const isUuid = value => typeof value === 'string'
+      && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
     const pickFirst = (...values) => {
       for (const value of values) {
         if (value === undefined || value === null) continue;
@@ -891,12 +893,14 @@ const Api = {
     const paymentTerm = String(pickFirst(agreement?.payment_term, agreement?.payment_terms)).trim();
     const assignedTo = String(pickFirst(agreement?.assigned_to, agreement?.owner, agreement?.created_by)).trim();
     const agreementNumber = String(pickFirst(agreement?.agreement_number, agreement?.number, agreement?.agreement_code)).trim();
+    const safeAgreementUuid = isUuid(normalizedAgreementId) ? normalizedAgreementId : '';
+    const displayAgreementNumber = agreementNumber || (!safeAgreementUuid ? normalizedAgreementId : '');
     const clientName = String(pickFirst(agreement?.client_name, agreement?.company_name, agreement?.customer_name)).trim();
     const clientId = String(pickFirst(agreement?.client_id, agreement?.customer_id, agreement?.company_id)).trim();
 
     const requestFields = {
-      agreement_id: normalizedAgreementId,
-      agreement_number: agreementNumber || null,
+      agreement_id: safeAgreementUuid || normalizedAgreementId,
+      agreement_number: displayAgreementNumber || null,
       client_id: clientId || null,
       client_name: clientName || null,
       number_of_locations: locationCount,
@@ -988,10 +992,11 @@ const Api = {
       }
       if (scopedInvoicedLocationNames) requestFields.invoiced_location_names = scopedInvoicedLocationNames;
       if (scopedInvoicedAgreementItemIds) requestFields.invoiced_agreement_item_ids = scopedInvoicedAgreementItemIds;
-      if (scopedInvoiceId) requestFields.source_invoice_id = scopedInvoiceId;
-      if (scopedInvoiceNumber) {
-        requestFields.source_invoice_number = scopedInvoiceNumber;
-        requestFields.invoice_number = scopedInvoiceNumber;
+      if (scopedInvoiceId && isUuid(scopedInvoiceId)) requestFields.source_invoice_id = scopedInvoiceId;
+      if (scopedInvoiceNumber || (scopedInvoiceId && !isUuid(scopedInvoiceId))) {
+        const safeInvoiceReference = scopedInvoiceNumber || scopedInvoiceId;
+        requestFields.source_invoice_number = safeInvoiceReference;
+        requestFields.invoice_number = safeInvoiceReference;
       }
       if (scopedServiceStartDate) requestFields.service_start_date = scopedServiceStartDate;
       if (scopedServiceEndDate) requestFields.service_end_date = scopedServiceEndDate;
@@ -1018,14 +1023,29 @@ const Api = {
         const onboardingIdTokens = [targetOnboardingId, onboardingPayload?.id, onboardingPayload?.db_id, onboardingPayload?.onboarding_id]
           .map(value => String(value || '').trim())
           .filter(Boolean);
+        const invoiceTokens = [
+          requestFields.source_invoice_id,
+          requestFields.invoice_id,
+          requestFields.source_invoice_number,
+          requestFields.invoice_number
+        ].map(value => String(value || '').trim()).filter(Boolean);
         let existingRequest = null;
         if (onboardingIdTokens.length) {
-          existingRequest = technicalRows.find(row => onboardingIdTokens.includes(String(row?.onboarding_id || row?.operations_onboarding_id || '').trim())) || null;
+          existingRequest = technicalRows.find(row => [row?.operations_onboarding_id, row?.source_onboarding_id, row?.onboarding_id]
+            .map(value => String(value || '').trim())
+            .filter(Boolean)
+            .some(value => onboardingIdTokens.some(token => same(value, token)))) || null;
         }
-        // Do not reuse an agreement-level Technical request. Each manual request is tied to the clicked invoice-batch onboarding row.
+        if (!existingRequest && invoiceTokens.length) {
+          existingRequest = technicalRows.find(row => [row?.source_invoice_id, row?.invoice_id, row?.source_invoice_number, row?.invoice_number]
+            .map(value => String(value || '').trim())
+            .filter(Boolean)
+            .some(value => invoiceTokens.some(token => same(value, token)))) || null;
+        }
+        // Do not reuse an agreement-level Technical request. Each manual request is tied to the clicked invoice-batch onboarding row or invoice.
         const technicalPayload = {
-          agreement_id: normalizedAgreementId,
-          agreement_number: agreementNumber || null,
+          agreement_id: safeAgreementUuid || null,
+          agreement_number: displayAgreementNumber || null,
           client_id: clientId || null,
           client_name: clientName || null,
           number_of_locations: requestFields.number_of_locations || locationCount,
@@ -1035,7 +1055,8 @@ const Api = {
           locations_number: requestFields.locations_number || requestFields.location_count || requestFields.number_of_locations || locationCount,
           service_start_date: requestFields.service_start_date || serviceStartDate || null,
           service_end_date: requestFields.service_end_date || serviceEndDate || null,
-          source_invoice_id: requestFields.source_invoice_id || null,
+          source_invoice_id: isUuid(String(requestFields.source_invoice_id || '').trim()) ? requestFields.source_invoice_id : null,
+          invoice_id: isUuid(String(requestFields.invoice_id || requestFields.source_invoice_id || '').trim()) ? (requestFields.invoice_id || requestFields.source_invoice_id) : null,
           source_invoice_number: requestFields.source_invoice_number || null,
           invoice_number: requestFields.invoice_number || requestFields.source_invoice_number || null,
           invoiced_location_names: requestFields.invoiced_location_names || null,
@@ -1043,7 +1064,9 @@ const Api = {
           billing_frequency: billingFrequency || null,
           payment_term: paymentTerm || null,
           assigned_to: assignedTo || null,
-          onboarding_id: onboardingIdTokens[0] || null,
+          operations_onboarding_id: isUuid(String(onboardingPayload?.id || targetOnboardingId || '').trim()) ? (onboardingPayload?.id || targetOnboardingId) : null,
+          source_onboarding_id: onboardingIdTokens[0] || null,
+          onboarding_id: isUuid(String(onboardingIdTokens[0] || '').trim()) ? onboardingIdTokens[0] : null,
           technical_request_type: 'Technical Admin',
           request_type: 'Technical Admin',
           technical_request_details: technicalRequestDetails,

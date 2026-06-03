@@ -79,19 +79,74 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
   function normalizeLocationKey(value = '') {
     return String(value || '').trim().toLowerCase().normalize('NFKC').replace(/\s+/g, ' ');
   }
+  function normalizeKey(value) {
+    if (value === undefined || value === null) return '';
+    if (typeof value === 'object') {
+      value = value.id ?? value.value ?? value.label ?? value.name ?? JSON.stringify(value);
+    }
+    return String(value || '').trim().toLowerCase();
+  }
+  function sameKey(a, b) {
+    const left = normalizeKey(a);
+    const right = normalizeKey(b);
+    return Boolean(left && right && left === right);
+  }
+  function uniqueKeys(values = []) {
+    const seen = new Set();
+    const keys = [];
+    (Array.isArray(values) ? values : []).forEach(value => {
+      const normalized = normalizeKey(value);
+      if (!normalized || seen.has(normalized)) return;
+      seen.add(normalized);
+      keys.push(String(value && typeof value === 'object' ? normalized : value).trim());
+    });
+    return keys;
+  }
+  function getOnboardingKeys(row = {}) {
+    return uniqueKeys([row.id, row.operations_onboarding_id, row.source_onboarding_id, row.onboarding_id]);
+  }
+  function getTechnicalRequestOnboardingKeys(request = {}) {
+    return uniqueKeys([request.operations_onboarding_id, request.source_onboarding_id, request.onboarding_id]);
+  }
+  function getInvoiceKeys(row = {}) {
+    return uniqueKeys([
+      row.invoice_id,
+      row.source_invoice_id,
+      String(row.source_type || '').trim().toLowerCase() === 'invoice' ? row.source_id : '',
+      row.invoice_number,
+      row.source_invoice_number,
+      row.invoice_no,
+      row.invoice_reference
+    ]);
+  }
+  function getAgreementKeys(row = {}) {
+    return uniqueKeys([row.agreement_id, row.agreement_number, row.agreement_no, row.agreement_reference, row.source_agreement_id]);
+  }
+  function isInvoiceScopedOnboarding(row = {}) {
+    return String(row.source_type || '').trim().toLowerCase() === 'invoice'
+      || Boolean(normalizeKey(row.invoice_id))
+      || Boolean(normalizeKey(row.invoice_number))
+      || Boolean(normalizeKey(row.source_invoice_id))
+      || Boolean(normalizeKey(row.source_invoice_number));
+  }
+  function isTechnicalRequestLinkedToOnboarding(request = {}, context = {}) {
+    return getTechnicalRequestOnboardingKeys(request).some(requestKey => getOnboardingKeys(context).some(contextKey => sameKey(requestKey, contextKey)));
+  }
+  function isTechnicalRequestLinkedToInvoice(request = {}, context = {}) {
+    return getInvoiceKeys(request).some(requestKey => getInvoiceKeys(context).some(contextKey => sameKey(requestKey, contextKey)));
+  }
+  function hasOnboardingOrInvoiceIdentifier(request = {}) {
+    return getTechnicalRequestOnboardingKeys(request).length > 0 || getInvoiceKeys(request).length > 0;
+  }
+  function isTechnicalRequestLinkedToAgreementOnly(request = {}, context = {}) {
+    if (isInvoiceScopedOnboarding(context)) return false;
+    if (hasOnboardingOrInvoiceIdentifier(request)) return false;
+    return getAgreementKeys(request).some(requestKey => getAgreementKeys(context).some(contextKey => sameKey(requestKey, contextKey)));
+  }
   function isTechnicalRequestForContext(request = {}, context = {}) {
-    const requestOnboardingId = String(request.operations_onboarding_id || request.onboarding_id || request.source_onboarding_id || '').trim();
-    const contextOnboardingId = String(context.operations_onboarding_id || context.onboarding_id || context.source_onboarding_id || context.id || '').trim();
-    if (contextOnboardingId && requestOnboardingId && requestOnboardingId === contextOnboardingId) return true;
-    const requestAgreementId = String(request.agreement_id || request.source_agreement_id || '').trim();
-    const contextAgreementId = String(context.agreement_id || context.source_agreement_id || '').trim();
-    const requestProposalId = String(request.proposal_id || request.source_proposal_id || '').trim();
-    const contextProposalId = String(context.proposal_id || context.source_proposal_id || '').trim();
-    const requestLocation = normalizeLocationKey(request.location_name || '');
-    const contextLocation = normalizeLocationKey(context.location_name || '');
-    if (contextAgreementId && requestAgreementId && requestAgreementId === contextAgreementId) return (!contextLocation || !requestLocation) ? true : requestLocation === contextLocation;
-    if (contextProposalId && requestProposalId && requestProposalId === contextProposalId) return (!contextLocation || !requestLocation) ? true : requestLocation === contextLocation;
-    return false;
+    return isTechnicalRequestLinkedToOnboarding(request, context)
+      || isTechnicalRequestLinkedToInvoice(request, context)
+      || isTechnicalRequestLinkedToAgreementOnly(request, context);
   }
 
   function isProposalDiscountApprovalPayload(payload = {}) {
@@ -985,7 +1040,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     receipts: new Set(['invoice_id', 'agreement_uuid', 'client_id', 'created_by', 'updated_by']),
     receipt_items: new Set(['receipt_id', 'invoice_item_id']),
     operations_onboarding: new Set(['agreement_id', 'client_id', 'source_id', 'proposal_id', 'technical_admin_request_id', 'source_invoice_id', 'invoice_id', 'created_by', 'updated_by']),
-    technical_admin_requests: new Set(['agreement_id', 'onboarding_id', 'client_id', 'source_id', 'proposal_id', 'source_invoice_id', 'invoice_id', 'requested_by', 'updated_by']),
+    technical_admin_requests: new Set(['agreement_id', 'operations_onboarding_id', 'onboarding_id', 'client_id', 'source_id', 'proposal_id', 'source_invoice_id', 'invoice_id', 'requested_by', 'updated_by']),
     notifications: new Set(['recipient_user_id', 'actor_user_id']),
     leads: new Set([
       'id',
@@ -4195,6 +4250,16 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     Object.entries(dbFilters || {}).forEach(([key, value]) => {
       if (value === undefined || value === null || value === '') return;
       if (allowedColumns && !allowedColumns.has(key)) return;
+      const table = TABLE_BY_RESOURCE[resource] || resource;
+      if (shouldTreatColumnAsUuid(table, key) && !isUuid(String(value || '').trim())) {
+        const displayColumn = key === 'agreement_id' ? 'agreement_number' : key === 'invoice_id' ? 'invoice_number' : '';
+        if (displayColumn && (!allowedColumns || allowedColumns.has(displayColumn))) {
+          query = query.eq(displayColumn, value);
+        } else {
+          console.warn('[supabase filter] skipped non-UUID value for UUID column', { resource, key, value: String(value || '').trim() });
+        }
+        return;
+      }
       query = query.eq(key, value);
     });
     const searchTerm = String(controls.search ?? controls.q ?? '').trim();
@@ -7158,12 +7223,28 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       ).trim();
       const agreementId = String(dbFilters.agreement_id ?? controls.agreement_id ?? '').trim();
       const onboardingId = String(dbFilters.onboarding_id ?? controls.onboarding_id ?? '').trim();
+      const invoiceId = String(dbFilters.invoice_id ?? dbFilters.source_invoice_id ?? controls.invoice_id ?? controls.source_invoice_id ?? '').trim();
+      const invoiceNumber = String(dbFilters.invoice_number ?? dbFilters.source_invoice_number ?? controls.invoice_number ?? controls.source_invoice_number ?? '').trim();
       const requestType = String(dbFilters.request_type ?? dbFilters.technical_request_type ?? controls.request_type ?? controls.technical_request_type ?? '').trim();
 
       const applyTechnicalFilters = queryBase => {
         let query = queryBase;
-        if (agreementId) query = query.eq('agreement_id', agreementId);
-        if (onboardingId) query = query.eq('onboarding_id', onboardingId);
+        if (agreementId) {
+          query = isUuid(agreementId)
+            ? query.eq('agreement_id', agreementId)
+            : query.eq('agreement_number', agreementId);
+        }
+        if (onboardingId) {
+          query = isUuid(onboardingId)
+            ? query.or(`onboarding_id.eq.${onboardingId},operations_onboarding_id.eq.${onboardingId},source_onboarding_id.eq.${onboardingId}`)
+            : query.eq('source_onboarding_id', onboardingId);
+        }
+        if (invoiceId) {
+          query = isUuid(invoiceId)
+            ? query.or(`invoice_id.eq.${invoiceId},source_invoice_id.eq.${invoiceId}`)
+            : query.or(`invoice_number.eq.${invoiceId},source_invoice_number.eq.${invoiceId}`);
+        }
+        if (invoiceNumber) query = query.or(`invoice_number.eq.${invoiceNumber},source_invoice_number.eq.${invoiceNumber}`);
         if (requestType) query = query.or(`request_type.ilike.%${requestType.replace(/[%]/g, '')}%,technical_request_type.ilike.%${requestType.replace(/[%]/g, '')}%`);
         if (statusValue) {
           const normalizedStatus = statusValue.toLowerCase().replace(/[\s-]+/g, '_');
@@ -7216,8 +7297,12 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
           .from('operations_onboarding')
           .select('*', { count: 'exact' })
           .or('technical_request_type.not.is.null,technical_request_status.not.is.null,request_message.not.is.null,technical_request_details.not.is.null');
-        if (agreementId) fallbackQuery = fallbackQuery.eq('agreement_id', agreementId);
-        if (onboardingId) fallbackQuery = fallbackQuery.eq('id', onboardingId);
+        if (agreementId) {
+          fallbackQuery = isUuid(agreementId) ? fallbackQuery.eq('agreement_id', agreementId) : fallbackQuery.eq('agreement_number', agreementId);
+        }
+        if (onboardingId) {
+          fallbackQuery = isUuid(onboardingId) ? fallbackQuery.eq('id', onboardingId) : fallbackQuery.eq('onboarding_id', onboardingId);
+        }
         if (requestType) fallbackQuery = fallbackQuery.or(`request_type.ilike.%${requestType.replace(/[%]/g, '')}%,technical_request_type.ilike.%${requestType.replace(/[%]/g, '')}%`);
         if (statusValue) {
           const normalizedStatus = statusValue.toLowerCase().replace(/[\s-]+/g, '_');
@@ -7711,7 +7796,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         const existingStatuses = ['open', 'pending', 'in_progress', 'assigned', 'completed', 'done', 'resolved', 'closed'];
         const { data: existingRequests, error: existingError } = await client
           .from('technical_admin_requests')
-          .select('id,operations_onboarding_id,onboarding_id,source_onboarding_id,agreement_id,source_agreement_id,proposal_id,source_proposal_id,location_name,request_status');
+          .select('*');
         if (existingError) throw friendlyError('Unable to validate technical request duplicates', existingError);
         const duplicate = (Array.isArray(existingRequests) ? existingRequests : []).find(request => {
           const status = String(request.request_status || '').trim().toLowerCase();
