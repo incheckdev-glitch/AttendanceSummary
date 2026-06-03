@@ -1582,26 +1582,83 @@ const Api = {
     const total = Number.isFinite(Number(count)) ? Number(count) : (Array.isArray(data) ? data.length : 0);
     return { rows: data || [], total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
   },
+  isUuidValue(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(String(value || '').trim());
+  },
+  firstUuidValue_(...values) {
+    return values
+      .flatMap(value => Array.isArray(value) ? value : [value])
+      .map(value => String(value || '').trim())
+      .find(value => this.isUuidValue(value)) || '';
+  },
+  firstDisplayValue_(...values) {
+    return values
+      .flatMap(value => Array.isArray(value) ? value : [value])
+      .map(value => String(value || '').trim())
+      .find(value => value && !this.isUuidValue(value)) || '';
+  },
+  sanitizePostgrestText_(value = '') {
+    return String(value || '').trim().replace(/[%,()*]/g, ' ').replace(/\s+/g, ' ').trim();
+  },
   getClientFilterValues(clientOrId = {}) {
     const source = clientOrId && typeof clientOrId === 'object' ? clientOrId : { client_id: clientOrId };
-    const companyId = String(source?.company_id || source?.company_uuid || source?.id || '').trim();
-    const clientId = String(source?.client_id || source?.client_uuid || source?.id || '').trim();
+    const sourceClientIds = Array.isArray(source?.source_client_ids) ? source.source_client_ids : [];
+    const companyId = this.firstUuidValue_(
+      source?.company_id,
+      source?.companyId,
+      source?.company_uuid,
+      source?.companyUuid,
+      source?.customer_company_id,
+      source?.customerCompanyId,
+      source?.client_company_id,
+      source?.clientCompanyId
+    );
+    const clientUuid = this.firstUuidValue_(
+      source?.client_uuid,
+      source?.clientUuid,
+      source?.id,
+      source?.uuid,
+      source?.client_id,
+      source?.clientId,
+      sourceClientIds
+    );
+    const displayClientId = this.firstDisplayValue_(source?.client_id, source?.clientId, sourceClientIds);
     const clientName = String(source?.legal_name || source?.company_name || source?.customer_legal_name || source?.customer_name || source?.client_name || source?.name || '').trim();
-    return { companyId, clientId, clientName };
+    return { companyId, clientId: clientUuid, clientUuid, displayClientId, clientName };
   },
-  applyClientQueryFilters(query, clientOrId = {}) {
-    const { companyId, clientId, clientName } = this.getClientFilterValues(clientOrId);
+  getClientTextFilterColumns_(table = '') {
+    const byTable = {
+      agreements: ['customer_legal_name', 'customer_name', 'company_name', 'client_name'],
+      invoices: ['customer_legal_name', 'customer_name', 'company_name', 'client_name'],
+      receipts: ['customer_legal_name', 'customer_name', 'company_name', 'client_name'],
+      client_scheduled_payments: ['client_name'],
+      onboarding_requests: ['client_name', 'company_name'],
+      technical_requests: ['client_name', 'company_name'],
+      csm_activities: ['client_name', 'company_name']
+    };
+    return byTable[String(table || '').trim()] || [];
+  },
+  applyClientQueryFilters(query, clientOrId = {}, table = '') {
+    const { companyId, clientUuid, clientName } = this.getClientFilterValues(clientOrId);
     const parts = [];
     if (companyId) parts.push(`company_id.eq.${companyId}`);
-    if (clientId) parts.push(`client_id.eq.${clientId}`);
+    if (clientUuid) parts.push(`client_id.eq.${clientUuid}`);
+    const safeName = this.sanitizePostgrestText_(clientName);
+    if (!parts.length && safeName) {
+      this.getClientTextFilterColumns_(table).forEach(column => parts.push(`${column}.ilike.%${safeName}%`));
+    }
     return parts.length ? query.or(parts.join(',')) : query;
   },
   async fetchPaged(table, clientOrId = {}, options = {}, configure = null) {
     const { page, pageSize, from, to } = this.normalizePagedOptions(options);
+    const filterValues = this.getClientFilterValues(clientOrId);
+    const hasUuidFilter = Boolean(filterValues.companyId || filterValues.clientUuid);
+    const hasNameFilter = Boolean(this.sanitizePostgrestText_(filterValues.clientName) && this.getClientTextFilterColumns_(table).length);
+    if (!hasUuidFilter && !hasNameFilter) return this.pagedResult([], 0, page, pageSize);
     const supabaseClient = window.SupabaseClient?.getClient?.() || window.supabase || null;
     if (!supabaseClient?.from) return this.pagedResult([], 0, page, pageSize);
     let query = supabaseClient.from(table).select('*', { count: 'exact' });
-    query = this.applyClientQueryFilters(query, clientOrId);
+    query = this.applyClientQueryFilters(query, clientOrId, table);
     if (typeof configure === 'function') query = configure(query) || query;
     const { data, error, count } = await query.range(from, to);
     if (error) throw error;
@@ -1650,17 +1707,8 @@ const Api = {
   async getClientScheduledPayments(client = {}, options = {}) {
     const sourceClient = client && typeof client === 'object' ? client : { client_id: client };
     const { page, pageSize, from, to } = this.normalizePagedOptions(options);
-    const companyId = String(sourceClient?.company_id || sourceClient?.company_uuid || sourceClient?.id || '').trim();
-    const clientId = String(sourceClient?.client_id || sourceClient?.client_uuid || sourceClient?.id || '').trim();
-    const clientName = String(
-      sourceClient?.legal_name ||
-      sourceClient?.company_name ||
-      sourceClient?.customer_legal_name ||
-      sourceClient?.customer_name ||
-      sourceClient?.client_name ||
-      sourceClient?.name ||
-      ''
-    ).trim();
+    const { companyId, clientUuid, clientName } = this.getClientFilterValues(sourceClient);
+    const safeClientName = this.sanitizePostgrestText_(clientName);
     const supabaseClient = window.SupabaseClient?.getClient?.() || window.supabase || null;
     if (!supabaseClient?.from) return options.returnArray === true ? [] : this.pagedResult([], 0, page, pageSize);
 
@@ -1684,8 +1732,8 @@ const Api = {
     try {
       const filters = [];
       if (companyId) filters.push(`company_id.eq.${companyId}`);
-      if (clientId) filters.push(`client_id.eq.${clientId}`);
-      if (clientName) filters.push(`client_name.ilike.%${clientName}%`);
+      if (clientUuid) filters.push(`client_id.eq.${clientUuid}`);
+      if (!filters.length && safeClientName) filters.push(`client_name.ilike.%${safeClientName}%`);
       if (filters.length) {
         const { data, error, count } = await supabaseClient
           .from('client_scheduled_payments')
@@ -1716,11 +1764,11 @@ const Api = {
         invoiceSets.push(data || []);
       };
       if (companyId) await pushInvoices(supabaseClient.from('invoices').select(invoiceSelect).eq('company_id', companyId));
-      if (clientId) await pushInvoices(supabaseClient.from('invoices').select(invoiceSelect).eq('client_id', clientId));
-      if (clientName) {
-        await pushInvoices(supabaseClient.from('invoices').select(invoiceSelect).ilike('customer_name', `%${clientName}%`));
-        await pushInvoices(supabaseClient.from('invoices').select(invoiceSelect).ilike('customer_legal_name', `%${clientName}%`));
-        await pushInvoices(supabaseClient.from('invoices').select(invoiceSelect).ilike('company_name', `%${clientName}%`));
+      if (clientUuid) await pushInvoices(supabaseClient.from('invoices').select(invoiceSelect).eq('client_id', clientUuid));
+      if (safeClientName) {
+        await pushInvoices(supabaseClient.from('invoices').select(invoiceSelect).ilike('customer_name', `%${safeClientName}%`));
+        await pushInvoices(supabaseClient.from('invoices').select(invoiceSelect).ilike('customer_legal_name', `%${safeClientName}%`));
+        await pushInvoices(supabaseClient.from('invoices').select(invoiceSelect).ilike('company_name', `%${safeClientName}%`));
       }
       const invoices = mergeRows(...invoiceSets);
       const invoiceIds = [...new Set(invoices.map(inv => String(inv.id || inv.invoice_uuid || '').trim()).filter(Boolean))];
