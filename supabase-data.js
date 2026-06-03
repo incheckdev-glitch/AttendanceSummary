@@ -250,7 +250,8 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       .select('*')
       .eq('invoice_id', id)
       .order('schedule_no', { ascending: true, nullsFirst: false })
-      .order('due_date', { ascending: true, nullsFirst: false });
+      .order('due_date', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: true, nullsFirst: false });
     if (error) throw friendlyError('Unable to load invoice payment schedule', error);
     return Array.isArray(data) ? data : [];
   }
