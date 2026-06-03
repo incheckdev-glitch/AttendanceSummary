@@ -148,22 +148,120 @@ const OperationsOnboarding = {
 
     return map;
   },
+  normalizeKey(value) {
+    if (value === undefined || value === null) return '';
+    if (typeof value === 'object') {
+      if (value.id !== undefined || value.value !== undefined || value.label !== undefined || value.name !== undefined) {
+        value = value.id ?? value.value ?? value.label ?? value.name;
+      } else {
+        try {
+          value = JSON.stringify(value);
+        } catch {
+          value = String(value);
+        }
+      }
+    }
+    return String(value || '').trim().toLowerCase();
+  },
+  isUuid(value) {
+    return typeof value === 'string'
+      && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
+  },
+  sameKey(a, b) {
+    const left = this.normalizeKey(a);
+    const right = this.normalizeKey(b);
+    return Boolean(left && right && left === right);
+  },
+  uniqueKeys(values = []) {
+    const seen = new Set();
+    const keys = [];
+    (Array.isArray(values) ? values : []).forEach(value => {
+      const normalized = this.normalizeKey(value);
+      if (!normalized || seen.has(normalized)) return;
+      seen.add(normalized);
+      keys.push(String(value && typeof value === 'object' ? normalized : value).trim());
+    });
+    return keys;
+  },
+  getOnboardingKeys(row = {}) {
+    return this.uniqueKeys([row.id, row.operations_onboarding_id, row.source_onboarding_id, row.onboarding_id]);
+  },
+  getTechnicalRequestOnboardingKeys(request = {}) {
+    return this.uniqueKeys([request.operations_onboarding_id, request.source_onboarding_id, request.onboarding_id]);
+  },
+  getInvoiceKeys(row = {}) {
+    return this.uniqueKeys([
+      row.invoice_id,
+      row.source_invoice_id,
+      String(row.source_type || '').trim().toLowerCase() === 'invoice' ? row.source_id : '',
+      row.invoice_number,
+      row.source_invoice_number,
+      row.invoice_no,
+      row.invoice_reference
+    ]);
+  },
+  getAgreementKeys(row = {}) {
+    return this.uniqueKeys([row.agreement_id, row.agreement_number, row.agreement_no, row.agreement_reference, row.source_agreement_id]);
+  },
+  isInvoiceScopedOnboarding(row = {}) {
+    return String(row.source_type || '').trim().toLowerCase() === 'invoice'
+      || Boolean(this.normalizeKey(row.invoice_id))
+      || Boolean(this.normalizeKey(row.invoice_number))
+      || Boolean(this.normalizeKey(row.source_invoice_id))
+      || Boolean(this.normalizeKey(row.source_invoice_number));
+  },
+  isTechnicalRequestLinkedToOnboarding(request = {}, onboardingRow = {}) {
+    const requestKeys = this.getTechnicalRequestOnboardingKeys(request);
+    const onboardingKeys = this.getOnboardingKeys(onboardingRow);
+    return requestKeys.some(requestKey => onboardingKeys.some(rowKey => this.sameKey(requestKey, rowKey)));
+  },
+  isTechnicalRequestLinkedToInvoice(request = {}, onboardingRow = {}) {
+    const requestKeys = this.getInvoiceKeys(request);
+    const invoiceKeys = this.getInvoiceKeys(onboardingRow);
+    return requestKeys.some(requestKey => invoiceKeys.some(rowKey => this.sameKey(requestKey, rowKey)));
+  },
+  requestHasOnboardingOrInvoiceIdentifier(request = {}) {
+    return this.getTechnicalRequestOnboardingKeys(request).length > 0 || this.getInvoiceKeys(request).length > 0;
+  },
+  isTechnicalRequestLinkedToAgreementOnly(request = {}, onboardingRow = {}) {
+    if (this.isInvoiceScopedOnboarding(onboardingRow)) return false;
+    if (this.requestHasOnboardingOrInvoiceIdentifier(request)) return false;
+    const requestKeys = this.getAgreementKeys(request);
+    const agreementKeys = this.getAgreementKeys(onboardingRow);
+    return requestKeys.some(requestKey => agreementKeys.some(rowKey => this.sameKey(requestKey, rowKey)));
+  },
+  getExistingTechnicalRequest(context = {}, technicalRequests = []) {
+    const requests = Array.isArray(technicalRequests) ? technicalRequests : [];
+    const onboardingMatch = requests.find(request => this.isTechnicalRequestLinkedToOnboarding(request, context));
+    if (onboardingMatch) return { request: onboardingMatch, matchedBy: 'onboarding' };
+    const invoiceMatch = requests.find(request => this.isTechnicalRequestLinkedToInvoice(request, context));
+    if (invoiceMatch) return { request: invoiceMatch, matchedBy: 'invoice' };
+    const agreementOnlyMatch = requests.find(request => this.isTechnicalRequestLinkedToAgreementOnly(request, context));
+    if (agreementOnlyMatch) return { request: agreementOnlyMatch, matchedBy: 'agreement-only' };
+    return { request: null, matchedBy: '' };
+  },
   isTechnicalRequestForContext(request = {}, context = {}) {
-    const requestOnboardingId = String(request.operations_onboarding_id || request.onboarding_id || request.source_onboarding_id || '').trim();
-    const contextOnboardingId = String(context.operations_onboarding_id || context.onboarding_id || context.source_onboarding_id || context.id || '').trim();
-    if (contextOnboardingId && requestOnboardingId && requestOnboardingId === contextOnboardingId) return true;
-    const requestAgreementId = String(request.agreement_id || request.source_agreement_id || '').trim();
-    const contextAgreementId = String(context.agreement_id || context.source_agreement_id || context.agreementId || '').trim();
-    const requestProposalId = String(request.proposal_id || request.source_proposal_id || '').trim();
-    const contextProposalId = String(context.proposal_id || context.source_proposal_id || context.proposalId || '').trim();
-    const requestLocation = this.normalizeLocationKey(request.location_name || request.locationName || request.location || '');
-    const contextLocation = this.normalizeLocationKey(context.location_name || context.locationName || context.location || '');
-    if (contextAgreementId && requestAgreementId && requestAgreementId === contextAgreementId) return (!contextLocation || !requestLocation) ? true : requestLocation === contextLocation;
-    if (contextProposalId && requestProposalId && requestProposalId === contextProposalId) return (!contextLocation || !requestLocation) ? true : requestLocation === contextLocation;
-    return false;
+    return Boolean(this.getExistingTechnicalRequest(context, [request]).request);
   },
   hasExistingTechnicalRequest(context = {}, technicalRequests = []) {
-    return (Array.isArray(technicalRequests) ? technicalRequests : []).some(request => this.isTechnicalRequestForContext(request, context));
+    return Boolean(this.getExistingTechnicalRequest(context, technicalRequests).request);
+  },
+  debugRequestTechnicalBlocked(row = {}, reason = '', match = {}) {
+    const isDev = typeof window !== 'undefined' && (
+      window.location?.hostname === 'localhost'
+      || window.location?.hostname === '127.0.0.1'
+      || window.__DEV__ === true
+      || String(window.RUNTIME_ENV || window.NODE_ENV || '').trim().toLowerCase() === 'development'
+    );
+    if (!isDev || !reason) return;
+    console.debug('[Operations Onboarding] Request Technical blocked', {
+      onboarding_id: row.id || row.onboarding_id || row.operations_onboarding_id || '',
+      invoice_number: row.invoice_number || row.source_invoice_number || row.invoice_no || row.invoice_reference || '',
+      agreement_key: row.agreement_number || row.agreement_id || row.agreement_no || row.agreement_reference || '',
+      reason_disabled: reason,
+      matched_technical_request_id: match?.request?.id || match?.request?.technical_request_id || match?.request?.request_id || '',
+      matched_by: match?.matchedBy || reason
+    });
   },
   pick(...values) {
     for (const value of values) {
@@ -1354,14 +1452,24 @@ const OperationsOnboarding = {
       const serviceEnd = isPocRow ? (displayRow.poc_end_date || displayRow.service_end_date) : this.getRowServiceEnd(displayRow, agreement, agreementItems);
       const billingFrequency = displayRow.billing_frequency || agreement.billing_frequency;
       const paymentTerm = displayRow.payment_term || agreement.payment_term;
-      const technicalRequestExists = this.hasExistingTechnicalRequest({
-        operations_onboarding_id: row.id,
-        onboarding_id: row.id,
-        agreement_id: row.agreement_id,
-        proposal_id: row.proposal_id,
+      const technicalRequestContext = {
+        ...row,
+        ...displayRow,
+        operations_onboarding_id: row.id || row.operations_onboarding_id || row.db_id || row.onboarding_id,
+        onboarding_id: row.onboarding_id || row.id || row.db_id,
+        agreement_id: row.agreement_id || displayRow.agreement_id,
+        agreement_number: row.agreement_number || displayRow.agreement_number,
+        proposal_id: row.proposal_id || displayRow.proposal_id,
         location_name: row.location_name || row.invoiced_location_names || row.invoiced_locations || row.location_names,
         company_id: row.company_id || row.client_company_id || row.customer_company_id
-      }, this.state.technicalAdminRequests || []);
+      };
+      const technicalRequestMatch = this.getExistingTechnicalRequest(technicalRequestContext, this.state.technicalAdminRequests || []);
+      const technicalRequestExists = Boolean(technicalRequestMatch.request);
+      const missingTechnicalData = !hasAgreementId && !isPocRow;
+      const technicalBlockedReason = technicalRequestExists
+        ? technicalRequestMatch.matchedBy
+        : (!canCreateTechnicalRequest ? 'permission' : (missingTechnicalData ? 'missing-critical-data' : ''));
+      if (technicalBlockedReason) this.debugRequestTechnicalBlocked(technicalRequestContext, technicalBlockedReason, technicalRequestMatch);
       return `<tr>
           <td>${onboardingLabel}</td><td>${text(displayRow.agreement_id)}</td><td>${text(isPocRow ? (displayRow.proposal_reference || displayRow.proposal_id || 'POC') : displayRow.agreement_number)}</td><td>${text(displayRow.client_name)}</td><td>${text(this.formatDate(displayRow.signed_date))}</td><td>${text(displayRow.onboarding_status)}</td>
           <td>${text(displayRow.request_type || displayRow.technical_request_type)}</td><td>${text(displayRow.requested_by)}</td><td>${text(this.formatDate(displayRow.requested_at))}</td><td>${text(displayRow.technical_request_status || displayRow.technical_admin_request)}</td><td>${text(displayRow.request_message || displayRow.technical_request_details || displayRow.technical_admin_request_message)}</td><td><strong>${text(assignedCsmName || 'Unassigned')}</strong>${displayRow.assigned_csm_email ? `<div class="muted">${U.escapeHtml(displayRow.assigned_csm_email)}</div>` : ''}</td><td>${text(locationCount)}</td><td>${text(this.formatDate(serviceStart))}</td><td>${text(this.formatDate(serviceEnd))}</td><td>${text(billingFrequency)}</td><td>${text(paymentTerm)}</td><td>${text(this.formatDate(displayRow.updated_at))}</td>
@@ -1369,7 +1477,7 @@ const OperationsOnboarding = {
             ${isPocRow ? `<button class="btn ghost sm" type="button" data-permission-resource="proposals" data-permission-action="view" data-op-open-proposal="${U.escapeAttr(proposalId)}" ${hasProposalId ? '' : 'disabled title="Proposal is not linked to this POC onboarding row."'}>Open Proposal</button>` : `<button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-open-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Open Agreement</button>
             <button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-preview-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Preview Agreement</button>`}
             <button class="btn ghost sm" type="button" data-op-open-details="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Open Onboarding Details</button>
-            ${canCreateTechnicalRequest ? `<button class="btn ghost sm action-btn technical-request-btn ${technicalRequestExists ? 'is-disabled is-blocked' : ''}" type="button" data-op-technical-admin="${agreementId}" data-op-technical-onboarding="${rowDbId}" ${technicalRequestExists ? 'disabled aria-disabled="true"' : ((!hasAgreementId && !isPocRow) ? 'disabled title="Agreement ID not available"' : '')} title="${U.escapeAttr(technicalRequestExists ? 'Technical request has already been created for this location.' : 'Request technical support')}">${technicalRequestExists ? 'Technical Requested' : 'Request Technical'}</button>` : ''}
+            ${canCreateTechnicalRequest ? `<button class="btn ghost sm action-btn technical-request-btn ${technicalRequestExists ? 'is-disabled is-blocked' : ''}" type="button" data-op-technical-admin="${agreementId}" data-op-technical-onboarding="${rowDbId}" ${technicalRequestExists ? 'disabled aria-disabled="true"' : (missingTechnicalData ? 'disabled title="Agreement ID not available"' : '')} title="${U.escapeAttr(technicalRequestExists ? `Technical request already exists for this ${technicalRequestMatch.matchedBy === 'invoice' ? 'invoice' : technicalRequestMatch.matchedBy === 'onboarding' ? 'onboarding row' : 'agreement'}.` : 'Request technical support')}">${technicalRequestExists ? 'Technical Requested' : 'Request Technical'}</button>` : ''}
             ${showAssignCsmButton ? `<button class="btn ghost sm" type="button" data-op-assign-csm="${rowDbId}" data-op-agreement-id="${agreementId}" data-op-proposal-id="${U.escapeAttr(row.proposal_id || '')}">${assignCsmButtonLabel}</button>` : ''}
             ${canWrite ? `<button class="btn ghost sm action-btn onboarding-progress-btn ${inProgressBlocked ? 'is-disabled is-blocked' : ''}" type="button" data-op-mark-progress="${rowDbId}" data-op-agreement-id="${agreementId}" ${(inProgressBlocked || !hasRowDbId) ? 'disabled aria-disabled="true"' : ''} title="${U.escapeAttr(!hasRowDbId ? 'Onboarding row ID not available' : (inProgressBlocked ? 'This onboarding has already been marked in progress or completed.' : 'Mark as in progress'))}">${inProgressBlocked ? 'In Progress Marked' : 'Mark In Progress'}</button>
             <button class="btn ghost sm action-btn onboarding-complete-btn ${completedBlocked ? 'is-disabled is-blocked' : ''}" type="button" data-op-mark-completed="${rowDbId}" data-op-agreement-id="${agreementId}" ${(completedBlocked || !hasRowDbId) ? 'disabled aria-disabled="true"' : ''} title="${U.escapeAttr(!hasRowDbId ? 'Onboarding row ID not available' : (completedBlocked ? 'This onboarding has already been completed.' : 'Mark as completed'))}">${completedBlocked ? 'Completed' : 'Mark Completed'}</button>` : ''}
