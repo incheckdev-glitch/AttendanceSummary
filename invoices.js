@@ -46,6 +46,7 @@ const Invoices = {
     'provider_address',
     'support_email',
     'payment_term',
+    'payment_terms',
     'payment_terms_custom',
     'payment_schedule_mode',
     'is_poc',
@@ -627,6 +628,8 @@ const Invoices = {
   },
   buildInvoiceSavePayload(invoice = {}) {
     const source = this.normalizeInvoice(invoice);
+    const paymentTerm = this.resolveInvoicePaymentTerm(source, this.state.selectedAgreement || {}, { mode: source.id ? 'existing' : 'new' });
+    const paymentScheduleMode = this.normalizePaymentScheduleMode(source.payment_schedule_mode, paymentTerm);
     const customerLegalName = U.getCustomerLegalName(
       { legal_name: source.customer_legal_name, company_name: source.company_name },
       source
@@ -659,9 +662,10 @@ const Invoices = {
       provider_legal_name: String(source.provider_legal_name || '').trim() || null,
       provider_address: String(source.provider_address || '').trim() || null,
       support_email: String(source.support_email || '').trim() || null,
-      payment_term: this.resolveInvoicePaymentTerm(source, this.state.selectedAgreement || {}, { mode: source.id ? 'existing' : 'new' }),
+      payment_term: paymentTerm,
+      payment_terms: paymentTerm,
       payment_terms_custom: String(source.payment_terms_custom || '').trim() || null,
-      payment_schedule_mode: this.normalizePaymentScheduleMode(source.payment_schedule_mode, source.payment_term),
+      payment_schedule_mode: paymentTerm === 'Custom' ? 'manual' : paymentScheduleMode,
       is_poc: this.normalizeTruthy(source.is_poc),
       poc_location_count: this.normalizeTruthy(source.is_poc) ? this.toNullableNumber(source.poc_location_count) : null,
       poc_license_count: this.normalizeTruthy(source.is_poc) ? this.toNullableNumber(source.poc_license_count) : null,
@@ -774,6 +778,7 @@ const Invoices = {
     return this.addMonthsDateOnly(dateValue, monthsToAdd);
   },
   buildPreviewPaymentSchedule(invoice = {}, items = [], agreement = {}) {
+    if (this.normalizePaymentScheduleMode(invoice.payment_schedule_mode, invoice.payment_term || invoice.payment_terms) === 'manual') return [];
     const paymentTerm = this.normalizePaymentTerm(
       invoice.payment_term ||
       invoice.payment_terms ||
@@ -783,6 +788,8 @@ const Invoices = {
       agreement.paymentTerm ||
       'Net 30'
     );
+
+    if (paymentTerm === 'Custom') return [];
 
     const config = this.getInvoicePaymentScheduleConfig(paymentTerm);
     const startDate = this.getInvoiceScheduleStartDate(invoice, { includeFormValue: false });
@@ -823,6 +830,7 @@ const Invoices = {
     });
   },
   buildInvoicePaymentSchedule(invoice = {}, items = [], agreement = {}) {
+    if (this.normalizePaymentScheduleMode(invoice.payment_schedule_mode, invoice.payment_term || invoice.payment_terms || agreement.payment_term || agreement.payment_terms) === 'manual' || this.normalizePaymentTerm(invoice.payment_term || invoice.payment_terms || agreement.payment_term || agreement.payment_terms) === 'Custom') return [];
     const startDate = this.getInvoiceScheduleStartDate(invoice);
 
     if (!startDate) return [];
@@ -877,6 +885,7 @@ const Invoices = {
     return rebuiltRows.map(row => this.normalizeInvoiceScheduleRow(row));
   },
   shouldCalculateInvoiceSchedule(invoice = {}) {
+    if (this.normalizePaymentScheduleMode(invoice?.payment_schedule_mode, invoice?.payment_term || invoice?.payment_terms) === 'manual' || this.normalizePaymentTerm(invoice?.payment_term || invoice?.payment_terms) === 'Custom') return false;
     const status = this.normalizeText(invoice?.status || invoice?.payment_status || invoice?.payment_state);
     return !String(invoice?.id || '').trim() || !status || status === 'draft';
   },
@@ -898,6 +907,17 @@ const Invoices = {
     return this.toNumberSafe(selected.invoice_total || selected.grand_total || selected.total_amount || selected.total);
   },
   getManualPaymentScheduleDraftRows() {
+    const parseIdArray = value => {
+      const raw = String(value || '').trim();
+      if (!raw) return [];
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed.map(id => String(id || '').trim()).filter(Boolean);
+      } catch (_error) {
+        // Fall back to comma-separated IDs below.
+      }
+      return raw.split(',').map(id => id.trim()).filter(Boolean);
+    };
     const rows = [...(E.invoicePaymentScheduleTbody?.querySelectorAll?.('tr[data-manual-schedule-row]') || [])];
     return rows.map((tr, index) => this.normalizeInvoiceScheduleRow({
       id: tr.getAttribute('data-schedule-id') || '',
@@ -909,7 +929,7 @@ const Invoices = {
       paid_amount: this.toNumberSafe(tr.querySelector('[data-schedule-field="paid_amount"]')?.value),
       status: tr.querySelector('[data-schedule-field="status"]')?.value || 'scheduled',
       schedule_label: this.normalizePaymentTerm(E.invoiceFormPaymentTerm?.value) === 'Custom' ? 'Custom' : undefined,
-      receipt_ids: []
+      receipt_ids: parseIdArray(tr.getAttribute('data-receipt-ids') || '')
     })).filter(row => row.due_date || row.payment_percent || row.scheduled_amount);
   },
   seedManualPaymentScheduleRows(rows = []) {
@@ -1002,6 +1022,20 @@ const Invoices = {
     }
   },
   normalizeInvoiceScheduleRow(row = {}) {
+    const parseIdArray = value => {
+      if (Array.isArray(value)) return value.map(id => String(id || '').trim()).filter(Boolean);
+      const raw = String(value || '').trim();
+      if (!raw) return [];
+      if (raw.startsWith('[')) {
+        try {
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed.map(id => String(id || '').trim()).filter(Boolean) : [];
+        } catch (_error) {
+          return [];
+        }
+      }
+      return raw.split(',').map(id => id.trim()).filter(Boolean);
+    };
     const scheduled = this.toNumberSafe(row.scheduled_amount);
     const paid = this.toNumberSafe(row.paid_amount ?? row.amount_paid);
     const scheduleNo = Number(row.schedule_no || row.no || 0) || 0;
@@ -1018,7 +1052,7 @@ const Invoices = {
       balance_due: this.toNumberSafe(row.balance_due ?? Math.max(0, scheduled - paid)),
       status: String(row.status || '').trim() || 'unpaid',
       schedule_label: label,
-      receipt_ids: Array.isArray(row.receipt_ids) ? row.receipt_ids : [],
+      receipt_ids: parseIdArray(row.receipt_ids),
       reminder_enabled: row.reminder_enabled === true || String(row.reminder_enabled || '').trim().toLowerCase() === 'true',
       reminder_days: this.normalizeReminderDays(row.reminder_days),
       reminder_user_ids: this.normalizeReminderUserIds(row.reminder_user_ids),
@@ -1163,7 +1197,7 @@ const Invoices = {
       .map(row => {
         const receipts = row.receipt_ids.length ? row.receipt_ids.map(id => U.escapeHtml(String(id))).join('<br>') : '—';
         if (manualMode) {
-          return `<tr data-manual-schedule-row data-schedule-id="${U.escapeHtml(row.id)}">
+          return `<tr data-manual-schedule-row data-schedule-id="${U.escapeHtml(row.id)}" data-receipt-ids="${U.escapeAttr(JSON.stringify(row.receipt_ids || []))}">
             <td>${U.escapeHtml(String(row.schedule_no || ''))}</td>
             <td><input class="input" type="date" data-schedule-field="due_date" value="${U.escapeAttr(row.due_date || '')}"></td>
             <td><input class="input" type="number" step="0.01" min="0" max="100" data-schedule-field="payment_percent" value="${U.escapeAttr(String(this.toNumberSafe(row.payment_percent)))}"></td>
@@ -1216,6 +1250,8 @@ const Invoices = {
   async recalculateInvoicePaymentSchedule(invoiceId) {
     const id = String(invoiceId || '').trim();
     if (!id) return [];
+    const invoice = this.state.selectedInvoice || this.state.rows.find(row => this.invoiceDbId(row.id) === id) || {};
+    if (this.normalizePaymentScheduleMode(invoice.payment_schedule_mode, invoice.payment_term || invoice.payment_terms) === 'manual') return this.getInvoicePaymentScheduleRows(id);
     try {
       this.clearInvoiceScheduleCache(id);
       const response = await Api.recalculateInvoicePaymentSchedule(id);
@@ -1231,16 +1267,24 @@ const Invoices = {
   async saveManualInvoicePaymentSchedule(invoiceId, invoice = {}) {
     const id = String(invoiceId || '').trim();
     if (!id || this.normalizePaymentScheduleMode(invoice.payment_schedule_mode, invoice.payment_term) !== 'manual') return [];
-    const rows = this.getManualPaymentScheduleDraftRows().map((row, index) => ({
-      ...row,
-      invoice_id: id,
-      schedule_no: index + 1,
-      schedule_label: this.normalizePaymentTerm(invoice.payment_term) === 'Custom' ? 'Custom' : (row.schedule_label || `Payment ${index + 1}`),
-      paid_amount: 0,
-      status: this.isDateBeforeToday?.(row.due_date) ? 'overdue' : 'scheduled',
-      receipt_ids: []
-    }));
-    const saved = await Api.saveInvoicePaymentSchedule(id, rows, { payment_term: invoice.payment_term, payment_schedule_mode: 'manual' });
+    const savedRowsById = new Map(this.getInvoicePaymentScheduleRows(id).map(row => [String(row.id || '').trim(), row]));
+    const savedRowsByNo = new Map(this.getInvoicePaymentScheduleRows(id).map(row => [String(row.schedule_no || '').trim(), row]));
+    const rows = this.getManualPaymentScheduleDraftRows().map((row, index) => {
+      const existing = savedRowsById.get(String(row.id || '').trim()) || savedRowsByNo.get(String(row.schedule_no || index + 1).trim()) || {};
+      const receiptIds = Array.isArray(existing.receipt_ids) && existing.receipt_ids.length ? existing.receipt_ids : (Array.isArray(row.receipt_ids) ? row.receipt_ids : []);
+      const paidAmount = receiptIds.length ? this.toNumberSafe(existing.paid_amount ?? row.paid_amount) : 0;
+      const scheduledAmount = this.toNumberSafe(row.scheduled_amount);
+      return {
+        ...row,
+        invoice_id: id,
+        schedule_no: index + 1,
+        schedule_label: this.normalizePaymentTerm(invoice.payment_term || invoice.payment_terms) === 'Custom' ? 'Custom' : (row.schedule_label || `Payment ${index + 1}`),
+        paid_amount: paidAmount,
+        status: receiptIds.length && paidAmount >= scheduledAmount && scheduledAmount > 0 ? 'paid' : (this.isDateBeforeToday?.(row.due_date) ? 'overdue' : 'scheduled'),
+        receipt_ids: receiptIds
+      };
+    });
+    const saved = await Api.saveInvoicePaymentSchedule(id, rows, { payment_term: invoice.payment_term || invoice.payment_terms, payment_terms: invoice.payment_terms || invoice.payment_term, payment_terms_custom: invoice.payment_terms_custom || '', payment_schedule_mode: 'manual' });
     const normalized = this.extractRows(saved).map(row => this.normalizeInvoiceScheduleRow(row));
     this.setInvoicePaymentScheduleRows(id, normalized);
     return normalized;
@@ -1301,8 +1345,9 @@ const Invoices = {
     normalized.status = String(normalized.status || '').trim() || 'Draft';
     normalized.currency = String(normalized.currency || '').trim() || 'USD';
     normalized.payment_term = this.normalizePaymentTerm(
-      normalized.payment_term || source.payment_term || source.payment_terms || source.paymentTerm || source.paymentTerms || 'Net 30'
+      normalized.payment_term || normalized.payment_terms || source.payment_term || source.payment_terms || source.paymentTerm || source.paymentTerms || 'Net 30'
     );
+    normalized.payment_terms = normalized.payment_term;
     normalized.payment_terms_custom = String(source.payment_terms_custom ?? source.paymentTermsCustom ?? normalized.payment_terms_custom ?? '').trim();
     normalized.payment_schedule_mode = this.normalizePaymentScheduleMode(source.payment_schedule_mode ?? source.paymentScheduleMode ?? normalized.payment_schedule_mode, normalized.payment_term);
     normalized.issue_date = this.normalizeDateInputValue(normalized.issue_date || source.issue_date || source.issueDate || source.invoice_date || source.invoiceDate);
@@ -3003,6 +3048,8 @@ const Invoices = {
     );
     invoice.payment_terms_custom = get('invoiceFormPaymentTermsCustom') || String(existingInvoice.payment_terms_custom || '').trim();
     invoice.payment_schedule_mode = this.normalizePaymentScheduleMode(get('invoiceFormPaymentScheduleMode') || existingInvoice.payment_schedule_mode, invoice.payment_term);
+    if (invoice.payment_term === 'Custom') invoice.payment_schedule_mode = 'manual';
+    invoice.payment_terms = invoice.payment_term;
     const items = this.collectItems();
     invoice.old_paid_total = this.toNumberSafe(E.invoiceFormOldPaidTotal?.value);
     invoice.paid_now = this.toNumberSafe(E.invoiceFormPaidNow?.value);
@@ -4138,11 +4185,17 @@ const Invoices = {
     const status = String(E.invoiceFormStatus?.value || this.state.selectedInvoice?.status || '').trim();
     const issueDate = this.normalizeDateInputValue(E.invoiceFormInvoiceDate?.value || this.state.selectedInvoice?.issue_date || this.state.selectedInvoice?.invoice_date);
     const dueDate = this.normalizeDateInputValue(E.invoiceFormDueDate?.value || this.state.selectedInvoice?.due_date);
+    const paymentTerm = this.normalizePaymentTerm(E.invoiceFormPaymentTerm?.value || this.state.selectedInvoice?.payment_term || this.state.selectedInvoice?.payment_terms || 'Net 30');
+    const paymentScheduleMode = paymentTerm === 'Custom' ? 'manual' : this.normalizePaymentScheduleMode(E.invoiceFormPaymentScheduleMode?.value || this.state.selectedInvoice?.payment_schedule_mode, paymentTerm);
     return {
       status: status || 'Draft',
       payment_status: status || null,
       issue_date: issueDate || null,
-      due_date: dueDate || null
+      due_date: dueDate || null,
+      payment_term: paymentTerm,
+      payment_terms: paymentTerm,
+      payment_terms_custom: String(E.invoiceFormPaymentTermsCustom?.value || this.state.selectedInvoice?.payment_terms_custom || '').trim() || null,
+      payment_schedule_mode: paymentScheduleMode
     };
   },
   isInvoiceWorkflowUnavailableResult(result) {
@@ -4212,6 +4265,7 @@ const Invoices = {
       UI.toast(window.WorkflowEngine.composeDeniedMessage(workflowCheck, 'Invoice save blocked.'));
       return;
     }
+    if (!this.validateManualPaymentSchedule(payloadInvoice)) return;
     this.state.saveInFlight = true;
     this.setFormBusy(true);
     console.time('entity-save');
@@ -4232,17 +4286,18 @@ const Invoices = {
       const normalized = this.upsertLocalRow(persisted);
       if (id && this.canUseAdminOverride()) this.logAdminOverride('invoice_metadata_update_override', currentRecord || null, normalized || persisted);
       const updatedInvoiceId = this.invoiceDbId(normalized?.id || persisted?.id || id);
+      const isManualScheduleSave = this.normalizePaymentScheduleMode(payloadInvoice.payment_schedule_mode, payloadInvoice.payment_term) === 'manual';
       if (updatedInvoiceId) {
-        if (this.normalizePaymentScheduleMode(payloadInvoice.payment_schedule_mode, payloadInvoice.payment_term) === 'manual') {
+        if (isManualScheduleSave) {
           await this.saveManualInvoicePaymentSchedule(updatedInvoiceId, payloadInvoice);
         } else {
           await Api.recalculateInvoicePaymentSchedule(updatedInvoiceId).catch(error => {
             console.warn('[invoices] payment schedule recalculation failed after invoice metadata update', error);
           });
+          this.clearInvoiceScheduleCache(updatedInvoiceId);
         }
-        this.clearInvoiceScheduleCache(updatedInvoiceId);
       }
-      this.clearInvoiceScheduleCache(normalized?.id || id);
+      if (!isManualScheduleSave) this.clearInvoiceScheduleCache(normalized?.id || id);
       this.setCachedDetail(normalized?.id || id, persisted, persistedItems);
       this.state.selectedInvoice = normalized || persisted;
       this.state.items = persistedItems;
@@ -4318,6 +4373,7 @@ const Invoices = {
       UI.toast(window.WorkflowEngine.composeDeniedMessage(workflowCheck, 'Invoice save blocked.'));
       return;
     }
+    if (!this.validateManualPaymentSchedule(payloadInvoice)) return;
     this.state.saveInFlight = true;
     this.setFormBusy(true);
     console.time('entity-save');
@@ -4359,7 +4415,7 @@ const Invoices = {
         });
 
         if (createdInvoiceId) {
-          this.clearInvoiceScheduleCache(createdInvoiceId);
+          if (this.normalizePaymentScheduleMode(payloadInvoice.payment_schedule_mode, payloadInvoice.payment_term) !== 'manual') this.clearInvoiceScheduleCache(createdInvoiceId);
           if (this.normalizePaymentScheduleMode(payloadInvoice.payment_schedule_mode, payloadInvoice.payment_term) === 'manual') {
             await this.saveManualInvoicePaymentSchedule(createdInvoiceId, payloadInvoice);
           } else {
@@ -4379,7 +4435,7 @@ const Invoices = {
           UI.toast('Invoice created.');
         }
       }
-      this.clearInvoiceScheduleCache(normalized?.id || id);
+      if (this.normalizePaymentScheduleMode(payloadInvoice.payment_schedule_mode, payloadInvoice.payment_term) !== 'manual') this.clearInvoiceScheduleCache(normalized?.id || id);
       this.setCachedDetail(normalized?.id || id, persisted, persistedItems);
       if (normalized?.id && this.state.selectedInvoice?.id === normalized.id) {
         this.state.selectedInvoice = normalized;

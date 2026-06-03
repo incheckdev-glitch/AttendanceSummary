@@ -3289,9 +3289,7 @@ const Clients = {
     const scheduleNo = row.schedule_no ?? row.payment_no ?? row.installment_no ?? '';
     const invoiceContext = row.raw && typeof row.raw === 'object' ? row.raw : {};
     const invoiceDueDate = String(invoiceContext.due_date || invoiceContext.payment_due_date || invoiceContext.invoice_due_date || '').trim();
-    const resolvedDueDate = Number(scheduleNo || 0) === 1 && invoiceDueDate
-      ? invoiceDueDate
-      : String(row.due_date || row.payment_due_date || '').trim();
+    const resolvedDueDate = String(row.due_date || row.payment_due_date || '').trim() || invoiceDueDate;
     return {
       schedule_id: String(row.schedule_id || row.id || row.invoice_payment_schedule_id || `${row.invoice_id || ''}:${scheduleNo}:${resolvedDueDate || ''}`).trim(),
       invoice_id: String(row.invoice_id || row.invoice_uuid || '').trim(),
