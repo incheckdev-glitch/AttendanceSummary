@@ -1530,6 +1530,28 @@ const Api = {
     if (!id) throw new Error('Invoice ID is required to recalculate payment schedule.');
     return this.requestWithSession('invoices', 'recalculate_payment_schedule', { id, invoice_id: id });
   },
+  async saveInvoicePaymentSchedule(invoiceId, rows = [], invoice = {}) {
+    const id = String(invoiceId || '').trim();
+    if (!id) throw new Error('Invoice ID is required to save payment schedule.');
+    const scheduleRows = (Array.isArray(rows) ? rows : []).map((row, index) => ({
+      invoice_id: id,
+      schedule_no: Number(row.schedule_no || index + 1),
+      due_date: String(row.due_date || '').trim().slice(0, 10),
+      payment_percent: Number(row.payment_percent || 0),
+      scheduled_amount: Number(row.scheduled_amount || 0),
+      paid_amount: 0,
+      status: String(row.status || 'scheduled').trim() || 'scheduled',
+      schedule_label: String(row.schedule_label || (invoice.payment_term === 'Custom' ? 'Custom' : `Payment ${index + 1}`)).trim(),
+      receipt_ids: []
+    }));
+    return this.requestWithSession('invoices', 'save_payment_schedule', {
+      id,
+      invoice_id: id,
+      payment_term: invoice.payment_term || '',
+      payment_schedule_mode: invoice.payment_schedule_mode || 'manual',
+      rows: scheduleRows
+    });
+  },
   async updateInvoicePaymentScheduleReminder(payload = {}) {
     const scheduleId = String(payload?.schedule_id || payload?.id || '').trim();
     if (!scheduleId) throw new Error('Schedule row ID is required to save reminder settings.');

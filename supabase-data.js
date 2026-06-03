@@ -246,6 +246,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         invoice_id: invoiceId,
         schedule_no: index + 1,
         due_date: dueDate,
+        payment_percent: totalCents ? Number(((cents / totalCents) * 100).toFixed(2)) : 0,
         scheduled_amount: Number((cents / 100).toFixed(2)),
         paid_amount: 0,
         status: dueDate < today ? 'overdue' : 'scheduled',
@@ -278,15 +279,57 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     }
     const { data: invoice, error: invoiceError } = await client.from('invoices').select('*').eq('id', id).maybeSingle();
     if (invoiceError || !invoice) throw friendlyError('Unable to load invoice for payment schedule', invoiceError || new Error('Missing invoice row'));
+    if (String(invoice.payment_schedule_mode || '').trim().toLowerCase() === 'manual') return existing;
     const rows = buildInvoicePaymentScheduleRows(invoice);
     if (!rows.length) return [];
     const { data, error } = await client.from('invoice_payment_schedule').insert(rows).select('*');
     if (error) throw friendlyError('Unable to create invoice payment schedule', error);
     return Array.isArray(data) ? data : rows;
   }
+  function normalizeManualInvoicePaymentScheduleRows(invoiceId = '', rows = [], invoice = {}) {
+    const id = String(invoiceId || '').trim();
+    const today = todayDateString();
+    return (Array.isArray(rows) ? rows : []).map((row, index) => {
+      const dueDate = String(row?.due_date || '').trim().slice(0, 10);
+      const scheduledAmount = Number(Number(row?.scheduled_amount || 0).toFixed(2));
+      return {
+        invoice_id: id,
+        schedule_no: Number(row?.schedule_no || index + 1),
+        due_date: dueDate,
+        payment_percent: Number(Number(row?.payment_percent || 0).toFixed(2)),
+        scheduled_amount: scheduledAmount,
+        paid_amount: 0,
+        status: dueDate && dueDate < today ? 'overdue' : 'scheduled',
+        schedule_label: String(row?.schedule_label || (String(invoice?.payment_term || '').trim() === 'Custom' ? 'Custom' : `Payment ${index + 1}`)).trim(),
+        receipt_ids: []
+      };
+    }).filter(row => row.due_date && row.scheduled_amount >= 0);
+  }
+  async function saveManualInvoicePaymentScheduleRows(client, invoiceId, rows = [], invoice = {}) {
+    const id = String(invoiceId || '').trim();
+    if (!isUuid(id)) throw new Error('Valid invoice UUID is required to save payment schedule.');
+    const normalizedRows = normalizeManualInvoicePaymentScheduleRows(id, rows, invoice);
+    const { data: invoiceRow, error: invoiceError } = await client.from('invoices').select('invoice_total,payment_term').eq('id', id).maybeSingle();
+    if (invoiceError) throw friendlyError('Unable to load invoice for payment schedule', invoiceError);
+    const total = getInvoiceTotalForSchedule(invoiceRow || {});
+    const percentTotal = normalizedRows.reduce((sum, row) => sum + Number(row.payment_percent || 0), 0);
+    const amountTotal = normalizedRows.reduce((sum, row) => sum + Number(row.scheduled_amount || 0), 0);
+    if (!normalizedRows.length || Math.abs(percentTotal - 100) > 0.01 || Math.abs(amountTotal - total) > 0.01) {
+      throw new Error('Scheduled payments must total 100% and match the invoice total.');
+    }
+    const { error: deleteError } = await client.from('invoice_payment_schedule').delete().eq('invoice_id', id);
+    if (deleteError) throw friendlyError('Unable to replace invoice payment schedule', deleteError);
+    const { data, error } = await client.from('invoice_payment_schedule').insert(normalizedRows).select('*');
+    if (error) throw friendlyError('Unable to save invoice payment schedule', error);
+    await updateSelectSingleWithSchemaRetry(client, 'invoices', { payment_schedule_mode: 'manual', payment_term: invoice.payment_term || invoiceRow?.payment_term || null, updated_at: new Date().toISOString() }, 'id', id, 'Unable to update invoice payment schedule mode').catch(() => null);
+    return Array.isArray(data) ? data : normalizedRows;
+  }
   async function recalculateInvoicePaymentScheduleRows(client, invoiceId) {
     const id = String(invoiceId || '').trim();
     if (!isUuid(id)) throw new Error('Valid invoice UUID is required to recalculate payment schedule.');
+    const { data: modeInvoice, error: modeError } = await client.from('invoices').select('payment_schedule_mode').eq('id', id).maybeSingle();
+    if (modeError) throw friendlyError('Unable to load invoice payment schedule mode', modeError);
+    if (String(modeInvoice?.payment_schedule_mode || '').trim().toLowerCase() === 'manual') return await listInvoicePaymentScheduleRows(client, id);
     // Rebuild the schedule locally so Net 7/14/21/30 does not shift the first date.
     // Row 1 must equal invoices.due_date exactly; the payment term only controls later intervals.
     const schedule = await createInvoicePaymentScheduleRows(client, id, true);
@@ -772,7 +815,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
   ]);
   const INVOICE_COLUMNS = new Set([
     'invoice_id','invoice_number','client_id','agreement_uuid','agreement_id','agreement_number','proposal_id','issue_date','due_date','billing_frequency',
-    'payment_term','company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile',
+    'payment_term','payment_terms_custom','payment_schedule_mode','company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile',
     'customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_email',
     'provider_legal_name','provider_address','support_email','subtotal_locations','subtotal_one_time','invoice_total',
     'is_poc','poc_location_count','poc_license_count','poc_license_months','poc_service_start_date','poc_service_end_date','poc_success_kpis','poc_conversion_commitment',
@@ -888,7 +931,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     ]),
     invoices: new Set([
       'id','invoice_id','invoice_number','client_id','agreement_uuid','agreement_id','agreement_number','proposal_id','issue_date','due_date','billing_frequency',
-      'payment_term','customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_email',
+      'payment_term','payment_terms_custom','payment_schedule_mode','customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_email',
       'provider_legal_name','provider_address','support_email','subtotal_locations','subtotal_one_time','invoice_total',
       'is_poc','poc_location_count','poc_license_count','poc_license_months','poc_service_start_date','poc_service_end_date','poc_success_kpis','poc_conversion_commitment',
       'old_paid_total','paid_now','amount_paid','received_amount','pending_amount','payment_state','payment_conclusion','amount_in_words',
@@ -2057,6 +2100,8 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       due_date: trimOrNull(firstDefined(record, ['due_date', 'dueDate'])),
       billing_frequency: trimOrNull(firstDefined(record, ['billing_frequency', 'billingFrequency'])),
       payment_term: trimOrNull(firstDefined(record, ['payment_term', 'paymentTerm'])),
+      payment_terms_custom: trimOrNull(firstDefined(record, ['payment_terms_custom', 'paymentTermsCustom'])),
+      payment_schedule_mode: trimOrNull(firstDefined(record, ['payment_schedule_mode', 'paymentScheduleMode'])),
       agreement_number: trimOrNull(firstDefined(record, ['agreement_number', 'agreementNumber'])),
       company_id: trimOrNull(firstDefined(record, ['company_id', 'companyId'])),
       company_name: trimOrNull(firstDefined(record, ['company_name', 'companyName'])),
@@ -6576,6 +6621,11 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       assertAllowed('invoices', 'update');
       const invoiceUuid = await resolveResourceUuid('invoices', payload, client);
       return await recalculateInvoicePaymentScheduleRows(client, invoiceUuid);
+    }
+    if (resource === 'invoices' && action === 'save_payment_schedule') {
+      assertAllowed('invoices', 'update');
+      const invoiceUuid = await resolveResourceUuid('invoices', payload, client);
+      return await saveManualInvoicePaymentScheduleRows(client, invoiceUuid, payload.rows || [], payload);
     }
     if (resource === 'invoices' && action === 'update_payment_schedule_reminder') {
       assertAllowed('invoices', 'update');
