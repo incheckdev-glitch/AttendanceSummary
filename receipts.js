@@ -1163,11 +1163,23 @@ const Receipts = {
     ]);
     if (invoiceError) throw new Error(invoiceError.message || 'Unable to load invoice before creating receipt.');
     if (!invoiceRow) throw new Error('Linked invoice was not found before creating receipt.');
-    const receiptRows = await this.fetchInvoiceReceiptsLedger({
-      invoiceId,
-      invoiceNumber: invoiceRow?.invoice_number
-    });
-    const normalizedInvoice = this.normalizeInvoiceFinancials(invoiceRow);
+    const [receiptRows, scheduleRows] = await Promise.all([
+      this.fetchInvoiceReceiptsLedger({
+        invoiceId,
+        invoiceNumber: invoiceRow?.invoice_number
+      }),
+      this.fetchInvoicePaymentScheduleRows(invoiceId)
+    ]);
+    const scheduleSummary = this.summarizeInvoicePaymentScheduleRows(scheduleRows);
+    const normalizedInvoice = this.normalizeInvoiceFinancials(scheduleRows.length
+      ? {
+        ...invoiceRow,
+        amount_paid: scheduleSummary.paid_amount,
+        received_amount: scheduleSummary.paid_amount,
+        pending_amount: scheduleSummary.balance_due,
+        balance_due: scheduleSummary.balance_due
+      }
+      : invoiceRow);
     const invoiceTotal = this.toNumberSafe(normalizedInvoice.invoice_total);
     const paidNow = this.toNumberSafe(paidNowInput);
     return this.calculateReceiptSnapshot({
@@ -1185,6 +1197,50 @@ const Receipts = {
     const invoiceId = String(invoice?.id || invoice?.invoice_id || '').trim();
     const invoiceNumber = String(invoice?.invoice_number || '').trim();
     return this.fetchInvoiceReceiptsLedger({ invoiceId, invoiceNumber });
+  },
+  normalizeInvoiceScheduleRow(row = {}) {
+    const scheduled = this.toNumberSafe(row.scheduled_amount);
+    const paid = this.toNumberSafe(row.paid_amount ?? row.amount_paid);
+    const scheduleNo = Number(row.schedule_no || row.no || 0) || 0;
+    return {
+      id: String(row.id || '').trim(),
+      invoice_id: String(row.invoice_id || '').trim(),
+      schedule_no: scheduleNo,
+      label: String(row.schedule_label || row.label || `Payment ${scheduleNo || ''}`.trim()).trim(),
+      due_date: this.normalizeDateValue(row.due_date || row.dueDate),
+      scheduled_amount: scheduled,
+      paid_amount: paid,
+      balance_due: this.toNumberSafe(row.balance_due ?? Math.max(0, scheduled - paid)),
+      status: String(row.status || '').trim() || 'unpaid'
+    };
+  },
+  async fetchInvoicePaymentScheduleRows(invoiceId) {
+    const id = String(invoiceId || '').trim();
+    if (!id) return [];
+    try {
+      const response = await Api.getInvoicePaymentSchedule(id);
+      return (Array.isArray(response) ? response : [])
+        .map(row => this.normalizeInvoiceScheduleRow(row))
+        .filter(row => row.scheduled_amount || row.balance_due || row.schedule_no || row.due_date);
+    } catch (error) {
+      console.warn('[receipts] unable to load invoice payment schedule', error);
+      return [];
+    }
+  },
+  summarizeInvoicePaymentScheduleRows(rows = []) {
+    const normalizedRows = (Array.isArray(rows) ? rows : []).map(row => this.normalizeInvoiceScheduleRow(row));
+    const balanceDue = normalizedRows.reduce((sum, row) => sum + this.toNumberSafe(row.balance_due), 0);
+    const scheduledAmount = normalizedRows.reduce((sum, row) => sum + this.toNumberSafe(row.scheduled_amount), 0);
+    const paidAmount = normalizedRows.reduce((sum, row) => sum + this.toNumberSafe(row.paid_amount), 0);
+    const nextDue = normalizedRows.find(row => this.toNumberSafe(row.balance_due) > 0) || normalizedRows[0] || null;
+    return {
+      rows: normalizedRows,
+      scheduled_amount: scheduledAmount,
+      paid_amount: paidAmount,
+      balance_due: balanceDue,
+      next_due_amount: nextDue ? this.toNumberSafe(nextDue.balance_due || nextDue.scheduled_amount) : 0,
+      next_due_date: nextDue?.due_date || ''
+    };
   },
   normalizeReceiptWithLedger(receipt = {}, invoice = {}, invoiceReceipts = null) {
     const normalizedReceipt = this.normalizeReceipt(receipt);
@@ -1256,12 +1312,27 @@ const Receipts = {
     }
     const hydrated = await this.hydrateInvoiceReceiptDraft(invoice);
     const sourceInvoice = { ...(invoice || {}), ...(hydrated.invoice || {}) };
-    const financials = this.normalizeInvoiceFinancials(sourceInvoice);
+    const [invoiceReceipts, scheduleRows] = await Promise.all([
+      this.fetchReceiptsForInvoice({ id: invoiceUuid }).catch(() => []),
+      this.fetchInvoicePaymentScheduleRows(invoiceUuid)
+    ]);
+    const scheduleSummary = this.summarizeInvoicePaymentScheduleRows(scheduleRows);
+    const financials = this.normalizeInvoiceFinancials(scheduleRows.length
+      ? {
+        ...sourceInvoice,
+        amount_paid: scheduleSummary.paid_amount,
+        received_amount: scheduleSummary.paid_amount,
+        pending_amount: scheduleSummary.balance_due,
+        balance_due: scheduleSummary.balance_due
+      }
+      : sourceInvoice);
     const invoiceTotal = this.toNumberSafe(financials.invoice_total);
     const pendingAmount = this.toNumberSafe(financials.pending_amount);
     const suggestedPaidNow = this.toNumberSafe(sourceInvoice?.paid_now);
-    const paidNow = suggestedPaidNow > 0 ? Math.min(suggestedPaidNow, pendingAmount || suggestedPaidNow) : (pendingAmount > 0 ? pendingAmount : 0);
-    const invoiceReceipts = await this.fetchReceiptsForInvoice({ id: invoiceUuid }).catch(() => []);
+    const scheduledPaidNow = scheduleRows.length ? scheduleSummary.next_due_amount : 0;
+    const paidNow = suggestedPaidNow > 0
+      ? Math.min(suggestedPaidNow, pendingAmount || suggestedPaidNow)
+      : (scheduledPaidNow > 0 ? Math.min(scheduledPaidNow, pendingAmount || scheduledPaidNow) : (pendingAmount > 0 ? pendingAmount : 0));
     const snapshot = this.calculateReceiptSnapshot({
       id: '',
       receipt_id: '',
@@ -1306,7 +1377,7 @@ const Receipts = {
       pending_amount: snapshot.pending_amount,
       payment_state: this.receiptPaymentStateFromSnapshot(snapshot, sourceInvoice),
       payment_conclusion: snapshot.payment_conclusion,
-      payment_notes: String(sourceInvoice?.notes || '').trim(),
+      payment_notes: String(sourceInvoice?.notes || (scheduleRows.length ? `Next scheduled payment due${scheduleSummary.next_due_date ? ` on ${scheduleSummary.next_due_date}` : ''}.` : '') || '').trim(),
       amount_received: snapshot.received_amount,
       invoice_total: snapshot.invoice_total
     };

@@ -846,26 +846,31 @@ const Invoices = {
     });
   },
   rebuildInvoicePaymentScheduleWithPayments(invoiceData = {}, invoiceItems = [], linkedAgreement = {}, oldRows = []) {
+    const savedRows = (Array.isArray(oldRows) ? oldRows : []).map(row => this.normalizeInvoiceScheduleRow(row));
+    if (savedRows.length) return savedRows;
+
     const rebuiltRows = this.buildInvoicePaymentSchedule(invoiceData, invoiceItems, linkedAgreement);
-    const safeOldRows = Array.isArray(oldRows) ? oldRows : [];
-    return rebuiltRows.map((row, index) => {
-      const old = this.normalizeScheduleRow(safeOldRows[index] || {});
-      const paidAmount = this.toNumberSafe(old.paid_amount || old.paidAmount || 0);
-      return this.normalizeScheduleRow({
-        ...row,
-        paid_amount: paidAmount,
-        receipt_ids: Array.isArray(old.receipt_ids) ? old.receipt_ids : [],
-        balance_due: Math.max(0, this.toNumberSafe(row.scheduled_amount) - paidAmount),
-        status: paidAmount > 0 && paidAmount >= this.toNumberSafe(row.scheduled_amount) ? 'paid' : row.status
-      });
-    });
+    return rebuiltRows.map(row => this.normalizeInvoiceScheduleRow(row));
+  },
+  shouldCalculateInvoiceSchedule(invoice = {}) {
+    const status = this.normalizeText(invoice?.status || invoice?.payment_status || invoice?.payment_state);
+    return !String(invoice?.id || '').trim() || !status || status === 'draft';
   },
   refreshPaymentSchedule() {
-    const invoiceData = this.collectFormValues().invoice || this.state.selectedInvoice || {};
+    const selectedInvoice = this.state.selectedInvoice || {};
+    const savedRows = this.getInvoicePaymentScheduleRows(selectedInvoice?.id);
+    if (savedRows.length) {
+      this.renderInvoicePaymentSchedule(savedRows);
+      return;
+    }
+    if (!this.shouldCalculateInvoiceSchedule(selectedInvoice)) {
+      this.renderInvoicePaymentSchedule([]);
+      return;
+    }
+    const invoiceData = this.collectFormValues().invoice || selectedInvoice;
     const invoiceItems = this.collectItems();
     const linkedAgreement = this.state.selectedAgreement || {};
-    const oldRows = this.getInvoicePaymentScheduleRows(this.state.selectedInvoice?.id);
-    const scheduleRows = this.rebuildInvoicePaymentScheduleWithPayments(invoiceData, invoiceItems, linkedAgreement, oldRows);
+    const scheduleRows = this.buildInvoicePaymentSchedule(invoiceData, invoiceItems, linkedAgreement);
     this.renderInvoicePaymentSchedule(scheduleRows);
   },
   getInvoiceScheduleCacheKey(invoiceId) {
@@ -880,37 +885,63 @@ const Invoices = {
     if (!key) return;
     this.state.paymentScheduleByInvoiceId[key] = Array.isArray(rows) ? rows : [];
   },
-  normalizeScheduleRow(row = {}) {
-    const scheduled = this.toNumberSafe(row.scheduled_amount ?? row.amount ?? row.total);
+  clearInvoiceScheduleCache(invoiceId) {
+    const id = String(invoiceId || '').trim();
+    if (!id) return;
+    delete this.state.detailCacheById[id];
+    delete this.state.paymentScheduleByInvoiceId[id];
+    try {
+      localStorage.removeItem(`invoice_${id}`);
+      localStorage.removeItem(`invoice_schedule_${id}`);
+    } catch (_error) {
+      // Ignore storage sandbox/quota failures.
+    }
+  },
+  normalizeInvoiceScheduleRow(row = {}) {
+    const scheduled = this.toNumberSafe(row.scheduled_amount);
     const paid = this.toNumberSafe(row.paid_amount ?? row.amount_paid);
+    const scheduleNo = Number(row.schedule_no || row.no || 0) || 0;
+    const label = String(row.schedule_label || row.label || `Payment ${scheduleNo || ''}`.trim()).trim();
     return {
       id: String(row.id || '').trim(),
       invoice_id: String(row.invoice_id || '').trim(),
-      schedule_no: Number(row.schedule_no || row.no || 0) || 0,
+      schedule_no: scheduleNo,
+      label,
       due_date: this.normalizeDateInputValue(row.due_date || row.dueDate),
       scheduled_amount: scheduled,
       paid_amount: paid,
       balance_due: this.toNumberSafe(row.balance_due ?? Math.max(0, scheduled - paid)),
-      status: String(row.status || '').trim() || 'scheduled',
-      schedule_label: String(row.schedule_label || row.label || '').trim(),
+      status: String(row.status || '').trim() || 'unpaid',
+      schedule_label: label,
       receipt_ids: Array.isArray(row.receipt_ids) ? row.receipt_ids : []
     };
+  },
+  normalizeScheduleRow(row = {}) {
+    return this.normalizeInvoiceScheduleRow(row);
   },
   async loadInvoicePaymentSchedule(invoiceId, { forceCreate = false } = {}) {
     const id = String(invoiceId || '').trim();
     if (!id) return [];
     try {
-      let response = await Api.listInvoicePaymentSchedule(id);
-      let rows = this.extractRows(response).map(row => this.normalizeScheduleRow(row));
-      if (!rows.length && forceCreate) {
-        response = await Api.createInvoicePaymentSchedule(id, false);
-        rows = this.extractRows(response).map(row => this.normalizeScheduleRow(row));
-      }
+      let response = await Api.getInvoicePaymentSchedule(id);
+      let rows = this.extractRows(response).map(row => this.normalizeInvoiceScheduleRow(row));
       const invoiceData = this.state.selectedInvoice || {};
-      const mergedRows = this.rebuildInvoicePaymentScheduleWithPayments(invoiceData, this.state.items || [], this.state.selectedAgreement || {}, rows);
-      this.setInvoicePaymentScheduleRows(id, mergedRows);
-      this.renderInvoicePaymentSchedule(mergedRows);
-      return mergedRows;
+      if (!rows.length && forceCreate && this.shouldCalculateInvoiceSchedule(invoiceData)) {
+        response = await Api.createInvoicePaymentSchedule(id, false);
+        rows = this.extractRows(response).map(row => this.normalizeInvoiceScheduleRow(row));
+      }
+      const displayRows = rows.length
+        ? rows
+        : (this.shouldCalculateInvoiceSchedule(invoiceData)
+          ? this.buildInvoicePaymentSchedule(invoiceData, this.state.items || [], this.state.selectedAgreement || {})
+          : []);
+      if (this.state.selectedInvoice && String(this.state.selectedInvoice.id || '').trim() === id) {
+        this.state.selectedInvoice.payment_schedule_rows = rows;
+        this.state.selectedInvoice.payment_schedule = rows.length ? rows : displayRows;
+      }
+      this.setInvoicePaymentScheduleRows(id, displayRows);
+      this.renderInvoicePaymentSchedule(displayRows);
+      return displayRows;
     } catch (error) {
       console.warn('[invoices] unable to load payment schedule', error);
       this.renderInvoicePaymentSchedule([]);
@@ -950,13 +981,12 @@ const Invoices = {
     const id = String(invoiceId || '').trim();
     if (!id) return [];
     try {
+      this.clearInvoiceScheduleCache(id);
       const response = await Api.recalculateInvoicePaymentSchedule(id);
-      const rows = this.extractRows(response).map(row => this.normalizeScheduleRow(row));
-      const invoiceData = this.state.selectedInvoice || {};
-      const mergedRows = this.rebuildInvoicePaymentScheduleWithPayments(invoiceData, this.state.items || [], this.state.selectedAgreement || {}, rows);
-      this.setInvoicePaymentScheduleRows(id, mergedRows);
-      if (String(E.invoiceForm?.dataset.id || '').trim() === id) this.renderInvoicePaymentSchedule(mergedRows);
-      return mergedRows;
+      const rows = this.extractRows(response).map(row => this.normalizeInvoiceScheduleRow(row));
+      this.setInvoicePaymentScheduleRows(id, rows);
+      if (String(E.invoiceForm?.dataset.id || '').trim() === id) this.renderInvoicePaymentSchedule(rows);
+      return rows;
     } catch (error) {
       console.warn('[invoices] unable to recalculate payment schedule', error);
       return [];
@@ -1162,12 +1192,17 @@ const Invoices = {
     const [byId, byNumber, scheduleResult] = await Promise.all([
       receiptQuery({ invoice_id: invoiceUuid }),
       invoiceNumber ? receiptQuery({ invoice_number: invoiceNumber }) : Promise.resolve({ data: [], error: null }),
-      Api.listInvoicePaymentSchedule(invoiceUuid).catch(() => [])
+      Api.getInvoicePaymentSchedule(invoiceUuid).catch(() => [])
     ]);
     const receiptsError = byId?.error || byNumber?.error;
     if (receiptsError) throw new Error(`Unable to load linked receipts: ${receiptsError.message || 'Unknown error'}`);
     const receiptRows = [...(Array.isArray(byId?.data) ? byId.data : []), ...(Array.isArray(byNumber?.data) ? byNumber.data : [])];
     const normalizedInvoice = this.normalizeInvoice(invoiceRow);
+    const normalizedSchedule = this.extractRows(scheduleResult).map(row => this.normalizeInvoiceScheduleRow(row));
+    normalizedInvoice.payment_schedule_rows = normalizedSchedule;
+    normalizedInvoice.payment_schedule = normalizedSchedule.length
+      ? normalizedSchedule
+      : (Array.isArray(normalizedInvoice.payment_schedule) ? normalizedInvoice.payment_schedule : []);
     const paymentSummary = this.summarizeReceiptPayments(normalizedInvoice.invoice_total || normalizedInvoice.grand_total, receiptRows || [], {
       baselinePaid: normalizedInvoice.amount_paid ?? normalizedInvoice.received_amount ?? normalizedInvoice.old_paid_total
     });
@@ -1176,7 +1211,7 @@ const Invoices = {
       invoice: normalizedInvoice,
       items: Array.isArray(itemRows) ? itemRows.map(item => this.normalizeItem(item)) : [],
       receipts: paymentSummary.normalizedReceipts,
-      paymentSchedule: this.extractRows(scheduleResult).map(row => this.normalizeScheduleRow(row))
+      paymentSchedule: normalizedSchedule
     };
   },
   getItemDescription(item = {}) {
@@ -1293,7 +1328,14 @@ const Invoices = {
           .join('')
       : '<tr><td colspan="6" class="cell-center muted">No one-time fee items found.</td></tr>';
     const linkedAgreement = this.state.selectedAgreement || {};
-    const scheduleRows = this.buildPreviewPaymentSchedule(invoiceData, normalizedItems, linkedAgreement);
+    const savedScheduleRows = (Array.isArray(paymentScheduleRows) ? paymentScheduleRows : [])
+      .map(row => this.normalizeInvoiceScheduleRow(row))
+      .filter(row => row.scheduled_amount || row.balance_due || row.schedule_no || row.due_date);
+    const scheduleRows = savedScheduleRows.length
+      ? savedScheduleRows
+      : (this.shouldCalculateInvoiceSchedule(invoiceData)
+        ? this.buildPreviewPaymentSchedule(invoiceData, normalizedItems, linkedAgreement)
+        : []);
     const paymentScheduleHtml = scheduleRows.length
       ? scheduleRows
           .sort((a, b) => Number(a.schedule_no || 0) - Number(b.schedule_no || 0))
@@ -2849,7 +2891,7 @@ const Invoices = {
     this.refreshPaymentSchedule();
     if (this.state.selectedInvoice.id) {
       this.refreshInvoiceReceipts(this.state.selectedInvoice.id, { force: true });
-      this.loadInvoicePaymentSchedule(this.state.selectedInvoice.id, { forceCreate: true });
+      this.loadInvoicePaymentSchedule(this.state.selectedInvoice.id, { forceCreate: this.shouldCalculateInvoiceSchedule(this.state.selectedInvoice) });
     }
     E.invoiceForm.dataset.id = this.state.selectedInvoice.id || '';
     if (E.invoiceFormTitle) {
@@ -3915,6 +3957,7 @@ const Invoices = {
         : null;
       const normalized = this.upsertLocalRow(persisted);
       if (id && this.canUseAdminOverride()) this.logAdminOverride('invoice_metadata_update_override', currentRecord || null, normalized || persisted);
+      this.clearInvoiceScheduleCache(normalized?.id || id);
       this.setCachedDetail(normalized?.id || id, persisted, persistedItems);
       this.state.selectedInvoice = normalized || persisted;
       this.state.items = persistedItems;
@@ -4031,6 +4074,7 @@ const Invoices = {
         });
 
         if (createdInvoiceId) {
+          this.clearInvoiceScheduleCache(createdInvoiceId);
           await Api.createInvoicePaymentSchedule(createdInvoiceId, false).catch(error => {
             console.warn('[invoices] payment schedule creation failed', error);
           });
@@ -4046,6 +4090,7 @@ const Invoices = {
           UI.toast('Invoice created.');
         }
       }
+      this.clearInvoiceScheduleCache(normalized?.id || id);
       this.setCachedDetail(normalized?.id || id, persisted, persistedItems);
       if (normalized?.id && this.state.selectedInvoice?.id === normalized.id) {
         this.state.selectedInvoice = normalized;

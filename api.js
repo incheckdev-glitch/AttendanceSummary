@@ -1487,10 +1487,38 @@ const Api = {
   async generateInvoiceHtml(invoiceId) {
     return this.requestWithSession('invoices', 'generate_invoice_html', { invoice_id: invoiceId });
   },
+  async getInvoicePaymentSchedule(invoiceId) {
+    const id = String(invoiceId || '').trim();
+    if (!id) return [];
+    const client = window.SupabaseClient?.getClient?.() || window.supabase || null;
+    if (client?.from) {
+      const { data, error } = await client
+        .from('invoice_payment_schedule')
+        .select('*')
+        .eq('invoice_id', id)
+        .order('schedule_no', { ascending: true, nullsFirst: false })
+        .order('due_date', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: true, nullsFirst: false });
+
+      if (error) {
+        console.warn('[Invoice] unable to load payment schedule', error);
+        return [];
+      }
+
+      return data || [];
+    }
+    try {
+      const response = await this.requestWithSession('invoices', 'list_payment_schedule', { id, invoice_id: id });
+      return Array.isArray(response) ? response : (Array.isArray(response?.data) ? response.data : []);
+    } catch (error) {
+      console.warn('[Invoice] unable to load payment schedule', error);
+      return [];
+    }
+  },
   async listInvoicePaymentSchedule(invoiceId) {
     const id = String(invoiceId || '').trim();
     if (!id) throw new Error('Invoice ID is required to load payment schedule.');
-    return this.requestWithSession('invoices', 'list_payment_schedule', { id, invoice_id: id });
+    return this.getInvoicePaymentSchedule(id);
   },
   async createInvoicePaymentSchedule(invoiceId, force = false) {
     const id = String(invoiceId || '').trim();
