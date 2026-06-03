@@ -925,16 +925,15 @@ const ClientsService = {
     const safeLimit = Math.max(1, Math.min(200, Number(limit) || 50));
     const safePage = Math.max(1, Number(page) || 1);
     const from = Math.max(0, (safePage - 1) * safeLimit);
-    const to = from + safeLimit;
-    let query = db.from('clients').select('*').order('updated_at', { ascending: false }).range(from, to);
+    const to = from + safeLimit - 1;
+    let query = db.from('clients').select('*', { count: 'exact' }).order('updated_at', { ascending: false }).range(from, to);
     if (search) query = query.or(`client_id.ilike.%${search}%,client_name.ilike.%${search}%,company_name.ilike.%${search}%,primary_email.ilike.%${search}%`);
     if (status && status !== 'All') query = query.eq('status', status);
-    const { data, error } = await query;
+    const { data, error, count } = await query;
     if (error) throw this.friendlyError('Unable to load clients', error);
-    const fetchedRows = Array.isArray(data) ? data : [];
-    const hasMore = fetchedRows.length > safeLimit;
-    const rows = fetchedRows.slice(0, safeLimit).map(row => this.mapDbClientToUi(row));
-    return { rows, total: from + rows.length + (hasMore ? 1 : 0), returned: rows.length, page: safePage, limit: safeLimit, offset: from, hasMore };
+    const rows = (Array.isArray(data) ? data : []).map(row => this.mapDbClientToUi(row));
+    const total = Number.isFinite(Number(count)) ? Number(count) : from + rows.length;
+    return { rows, total, returned: rows.length, page: safePage, limit: safeLimit, offset: from, hasMore: from + rows.length < total };
   },
   async getClient(clientIdOrUuid) {
     const id = String(clientIdOrUuid || '').trim();
@@ -1422,6 +1421,10 @@ const ClientsService = {
   },
   async getDashboardData(options = {}) {
     const db = this.getDb();
+    if (options.summaryOnly === true) {
+      const clientsList = await this.listClients(options);
+      return { ...clientsList, agreements: [], agreement_items: [], invoices: [], invoice_items: [], receipts: [], receipt_items: [] };
+    }
     const analyticsLimit = Math.max(1000, Math.min(5000, Number(options.analyticsLimit) || 5000));
     const canViewRenewals = Boolean(window.Permissions?.canViewClientRenewals?.());
     // temporary analytics fallback - replace with SQL view/RPC aggregation

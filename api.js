@@ -1571,8 +1571,85 @@ const Api = {
     return this.requestWithSession('invoices', 'process_payment_schedule_reminders', payload);
   },
 
-  async getClientScheduledPayments(client = {}) {
-    const sourceClient = client && typeof client === 'object' ? client : {};
+  normalizePagedOptions(options = {}) {
+    const page = Math.max(Number(options.page || 1), 1);
+    const pageSize = Math.max(Number(options.pageSize || options.limit || 25), 1);
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+    return { page, pageSize, from, to };
+  },
+  pagedResult(data = [], count = 0, page = 1, pageSize = 25) {
+    const total = Number.isFinite(Number(count)) ? Number(count) : (Array.isArray(data) ? data.length : 0);
+    return { rows: data || [], total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
+  },
+  getClientFilterValues(clientOrId = {}) {
+    const source = clientOrId && typeof clientOrId === 'object' ? clientOrId : { client_id: clientOrId };
+    const companyId = String(source?.company_id || source?.company_uuid || source?.id || '').trim();
+    const clientId = String(source?.client_id || source?.client_uuid || source?.id || '').trim();
+    const clientName = String(source?.legal_name || source?.company_name || source?.customer_legal_name || source?.customer_name || source?.client_name || source?.name || '').trim();
+    return { companyId, clientId, clientName };
+  },
+  applyClientQueryFilters(query, clientOrId = {}) {
+    const { companyId, clientId, clientName } = this.getClientFilterValues(clientOrId);
+    const parts = [];
+    if (companyId) parts.push(`company_id.eq.${companyId}`);
+    if (clientId) parts.push(`client_id.eq.${clientId}`);
+    return parts.length ? query.or(parts.join(',')) : query;
+  },
+  async fetchPaged(table, clientOrId = {}, options = {}, configure = null) {
+    const { page, pageSize, from, to } = this.normalizePagedOptions(options);
+    const supabaseClient = window.SupabaseClient?.getClient?.() || window.supabase || null;
+    if (!supabaseClient?.from) return this.pagedResult([], 0, page, pageSize);
+    let query = supabaseClient.from(table).select('*', { count: 'exact' });
+    query = this.applyClientQueryFilters(query, clientOrId);
+    if (typeof configure === 'function') query = configure(query) || query;
+    const { data, error, count } = await query.range(from, to);
+    if (error) throw error;
+    return this.pagedResult(data || [], count || 0, page, pageSize);
+  },
+  async getClientOverview(clientOrId = {}) {
+    const source = clientOrId && typeof clientOrId === 'object' ? clientOrId : {};
+    return { rows: source?.client_id || source?.id ? [source] : [], total: source?.client_id || source?.id ? 1 : 0, page: 1, pageSize: 25, totalPages: 1, detail: source };
+  },
+  async getClientAgreements(clientOrId = {}, options = {}) {
+    return this.fetchPaged('agreements', clientOrId, options, query => query.order('updated_at', { ascending: false, nullsFirst: false }));
+  },
+  async getClientInvoices(clientOrId = {}, options = {}) {
+    return this.fetchPaged('invoices', clientOrId, options, query => query.order('updated_at', { ascending: false, nullsFirst: false }));
+  },
+  async getClientReceipts(clientOrId = {}, options = {}) {
+    return this.fetchPaged('receipts', clientOrId, options, query => query.order('updated_at', { ascending: false, nullsFirst: false }));
+  },
+  async getClientRenewalsPayments(clientOrId = {}, options = {}) {
+    return this.getClientInvoices(clientOrId, options);
+  },
+  async getClientStatementOfAccount(clientOrId = {}, options = {}) {
+    const [invoices, receipts] = await Promise.all([
+      this.getClientInvoices(clientOrId, options),
+      this.getClientReceipts(clientOrId, options)
+    ]);
+    const rows = [
+      ...(invoices.rows || []).map(inv => ({ ...inv, type: 'Invoice', date: inv.invoice_date || inv.created_at, document_no: inv.invoice_number || inv.invoice_id || inv.id, debit: inv.grand_total || inv.invoice_total || inv.total_amount || 0, credit: 0, due_date: inv.due_date, status: inv.status || inv.payment_state })),
+      ...(receipts.rows || []).map(rec => ({ ...rec, type: 'Receipt', date: rec.receipt_date || rec.payment_date || rec.created_at, document_no: rec.receipt_number || rec.receipt_id || rec.id, debit: 0, credit: rec.received_amount || rec.amount_paid || rec.paid_amount || rec.amount || 0, due_date: '', status: rec.status || rec.payment_state }))
+    ].sort((a, b) => new Date(a.date || 0).getTime() - new Date(b.date || 0).getTime());
+    let running = 0;
+    rows.forEach(row => { running += Number(row.debit || 0) - Number(row.credit || 0); row.running_balance = running; });
+    const total = (invoices.total || 0) + (receipts.total || 0);
+    return { rows, statementRows: rows, total, page: invoices.page || 1, pageSize: invoices.pageSize || 25, totalPages: Math.ceil(total / (invoices.pageSize || 25)) };
+  },
+  async getClientOnboarding(clientOrId = {}, options = {}) {
+    return this.fetchPaged('onboarding_requests', clientOrId, options, query => query.order('created_at', { ascending: false, nullsFirst: false }));
+  },
+  async getClientTechnicalRequests(clientOrId = {}, options = {}) {
+    return this.fetchPaged('technical_requests', clientOrId, options, query => query.order('created_at', { ascending: false, nullsFirst: false }));
+  },
+  async getClientCsmActivity(clientOrId = {}, options = {}) {
+    return this.fetchPaged('csm_activities', clientOrId, options, query => query.order('created_at', { ascending: false, nullsFirst: false }));
+  },
+
+  async getClientScheduledPayments(client = {}, options = {}) {
+    const sourceClient = client && typeof client === 'object' ? client : { client_id: client };
+    const { page, pageSize, from, to } = this.normalizePagedOptions(options);
     const companyId = String(sourceClient?.company_id || sourceClient?.company_uuid || sourceClient?.id || '').trim();
     const clientId = String(sourceClient?.client_id || sourceClient?.client_uuid || sourceClient?.id || '').trim();
     const clientName = String(
@@ -1585,7 +1662,7 @@ const Api = {
       ''
     ).trim();
     const supabaseClient = window.SupabaseClient?.getClient?.() || window.supabase || null;
-    if (!supabaseClient?.from) return [];
+    if (!supabaseClient?.from) return options.returnArray === true ? [] : this.pagedResult([], 0, page, pageSize);
 
     const mergeRows = (...sets) => {
       const byKey = new Map();
@@ -1604,26 +1681,25 @@ const Api = {
       });
     };
 
-    const queryViewBy = async (column, value, operator = 'eq') => {
-      if (!value) return [];
-      let query = supabaseClient
-        .from('client_scheduled_payments')
-        .select('*')
-        .order('due_date', { ascending: true, nullsFirst: false })
-        .order('schedule_no', { ascending: true, nullsFirst: false });
-      query = operator === 'ilike' ? query.ilike(column, `%${value}%`) : query.eq(column, value);
-      const { data, error } = await query;
-      if (error) throw error;
-      return data || [];
-    };
-
     try {
-      const viewRows = mergeRows(
-        await queryViewBy('company_id', companyId),
-        await queryViewBy('client_id', clientId),
-        await queryViewBy('client_name', clientName, 'ilike')
-      );
-      if (viewRows.length) return viewRows;
+      const filters = [];
+      if (companyId) filters.push(`company_id.eq.${companyId}`);
+      if (clientId) filters.push(`client_id.eq.${clientId}`);
+      if (clientName) filters.push(`client_name.ilike.%${clientName}%`);
+      if (filters.length) {
+        const { data, error, count } = await supabaseClient
+          .from('client_scheduled_payments')
+          .select('*', { count: 'exact' })
+          .or(filters.join(','))
+          .order('due_date', { ascending: true, nullsFirst: false })
+          .order('schedule_no', { ascending: true, nullsFirst: false })
+          .range(from, to);
+        if (error) throw error;
+        if ((data || []).length || count) {
+          const result = this.pagedResult(data || [], count || 0, page, pageSize);
+          return options.returnArray === true ? result.rows : result;
+        }
+      }
     } catch (error) {
       console.warn('[Client Scheduled Payments] failed to load from view; falling back to invoice tables', error);
     }
@@ -1648,7 +1724,7 @@ const Api = {
       }
       const invoices = mergeRows(...invoiceSets);
       const invoiceIds = [...new Set(invoices.map(inv => String(inv.id || inv.invoice_uuid || '').trim()).filter(Boolean))];
-      if (!invoiceIds.length) return [];
+      if (!invoiceIds.length) return options.returnArray === true ? [] : this.pagedResult([], 0, page, pageSize);
       const invoiceById = new Map();
       invoices.forEach(inv => {
         [inv.id, inv.invoice_uuid, inv.invoice_id].map(value => String(value || '').trim()).filter(Boolean).forEach(id => invoiceById.set(id, inv));
@@ -1665,7 +1741,7 @@ const Api = {
         if (error) throw error;
         scheduleSets.push(data || []);
       }
-      return mergeRows(...scheduleSets).map(schedule => {
+      const fallbackRows = mergeRows(...scheduleSets).map(schedule => {
         const invoice = invoiceById.get(String(schedule.invoice_id || '').trim()) || {};
         return {
           ...schedule,
@@ -1680,9 +1756,11 @@ const Api = {
           currency: schedule.currency || invoice.currency || 'USD'
         };
       });
+      const pageRows = fallbackRows.slice(from, to + 1);
+      return options.returnArray === true ? pageRows : this.pagedResult(pageRows, fallbackRows.length, page, pageSize);
     } catch (error) {
       console.warn('[Client Scheduled Payments] failed to load fallback invoice payment schedule', error);
-      return [];
+      return options.returnArray === true ? [] : this.pagedResult([], 0, page, pageSize);
     }
   },
   async listReceipts(filters = {}, options = {}) {
