@@ -3503,7 +3503,7 @@ const Invoices = {
     if (!locationNames.length) return null;
 
     const firstLocationItem = locationItems.find(item => item && typeof item === 'object') || {};
-    const agreementUuid = String(this.pickFirstOperationValue(
+    const agreementUuidRaw = String(this.pickFirstOperationValue(
       sourceInvoice.agreement_uuid,
       sourceInvoice.agreementUuid,
       sourceInvoice.source_agreement_id,
@@ -3522,6 +3522,7 @@ const Invoices = {
       firstLocationItem.parentId,
       this.state.form?.agreementUuid
     )).trim();
+    const agreementUuid = this.isUuid(agreementUuidRaw) ? agreementUuidRaw : '';
     const agreementNumber = String(this.pickFirstOperationValue(
       sourceInvoice.agreement_number,
       sourceInvoice.agreementNumber,
@@ -3535,9 +3536,11 @@ const Invoices = {
       firstLocationItem.parentNumber,
       sourceInvoice.agreement_id,
       selectedAgreement.agreement_id,
-      selectedAgreement.agreementId
+      selectedAgreement.agreementId,
+      agreementUuidRaw
     )).trim();
-    const invoiceUuid = String(sourceInvoice.id || sourceInvoice.invoice_uuid || '').trim();
+    const invoiceUuidRaw = String(sourceInvoice.id || sourceInvoice.invoice_uuid || sourceInvoice.invoiceUuid || '').trim();
+    const invoiceUuid = this.isUuid(invoiceUuidRaw) ? invoiceUuidRaw : '';
     const invoiceDisplay = String(this.pickFirstOperationValue(
       sourceInvoice.invoice_number,
       sourceInvoice.invoice_id,
@@ -3631,11 +3634,12 @@ const Invoices = {
     }
     if (!this.isIssuedInvoice(normalizedInvoice)) return null;
 
-    const invoiceId = this.invoiceDbId(normalizedInvoice.id) || String(normalizedInvoice.id || normalizedInvoice.invoice_id || '').trim();
+    const invoiceIdCandidate = this.invoiceDbId(normalizedInvoice.id) || String(normalizedInvoice.id || '').trim();
+    const invoiceId = this.isUuid(invoiceIdCandidate) ? invoiceIdCandidate : '';
     const invoiceNumber = String(normalizedInvoice.invoice_number || normalizedInvoice.invoice_id || '').trim();
 
-    if (!invoiceId && !invoiceNumber) {
-      console.warn('[Invoice] Cannot create Operations onboarding for issued invoice because invoice id/number is missing.');
+    if (!invoiceId) {
+      console.warn('[Invoice] Cannot create Operations onboarding for issued invoice because the internal invoice UUID is missing.', { invoiceNumber, invoiceIdCandidate });
       return null;
     }
 
@@ -3647,13 +3651,7 @@ const Invoices = {
           .select('id,onboarding_id,invoice_id,source_invoice_id,invoice_number,source_invoice_number')
           .limit(1);
 
-        if (invoiceId && invoiceNumber) {
-          existingQuery = existingQuery.or(`invoice_id.eq.${invoiceId},source_invoice_id.eq.${invoiceId},invoice_number.eq.${invoiceNumber},source_invoice_number.eq.${invoiceNumber}`);
-        } else if (invoiceId) {
-          existingQuery = existingQuery.or(`invoice_id.eq.${invoiceId},source_invoice_id.eq.${invoiceId}`);
-        } else if (invoiceNumber) {
-          existingQuery = existingQuery.or(`invoice_number.eq.${invoiceNumber},source_invoice_number.eq.${invoiceNumber}`);
-        }
+        existingQuery = existingQuery.or(`invoice_id.eq.${invoiceId},source_invoice_id.eq.${invoiceId}`);
 
         const { data: existingRows, error: existingError } = await existingQuery;
         if (!existingError && Array.isArray(existingRows) && existingRows.length) {

@@ -929,8 +929,8 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     invoice_items: new Set(['id', 'invoice_id', 'proposal_id', 'agreement_id', 'client_id', 'company_id', 'contact_id', 'location_id', 'source_invoice_id', 'source_agreement_id', 'source_proposal_id', 'previous_invoice_id', 'renewed_from_invoice_id']),
     receipts: new Set(['invoice_id', 'agreement_uuid', 'client_id', 'created_by', 'updated_by']),
     receipt_items: new Set(['receipt_id', 'invoice_item_id']),
-    operations_onboarding: new Set(['agreement_id', 'client_id', 'source_id', 'proposal_id', 'technical_admin_request_id', 'created_by', 'updated_by']),
-    technical_admin_requests: new Set(['agreement_id', 'onboarding_id', 'client_id', 'source_id', 'proposal_id', 'requested_by', 'updated_by']),
+    operations_onboarding: new Set(['agreement_id', 'client_id', 'source_id', 'proposal_id', 'technical_admin_request_id', 'source_invoice_id', 'invoice_id', 'created_by', 'updated_by']),
+    technical_admin_requests: new Set(['agreement_id', 'onboarding_id', 'client_id', 'source_id', 'proposal_id', 'source_invoice_id', 'invoice_id', 'requested_by', 'updated_by']),
     notifications: new Set(['recipient_user_id', 'actor_user_id']),
     leads: new Set([
       'id',
@@ -989,8 +989,32 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString().slice(0, 10);
   }
 
+  function copyBusinessReferenceFromUuidField(out, uuidColumn, referenceColumn) {
+    const raw = String(out?.[uuidColumn] || '').trim();
+    if (!raw || isUuid(raw)) return;
+    if (!String(out?.[referenceColumn] || '').trim()) out[referenceColumn] = raw;
+    delete out[uuidColumn];
+  }
+
+  function normalizeInvoiceBatchUuidReferences(out = {}) {
+    copyBusinessReferenceFromUuidField(out, 'agreement_id', 'agreement_number');
+    copyBusinessReferenceFromUuidField(out, 'source_invoice_id', 'source_invoice_number');
+    copyBusinessReferenceFromUuidField(out, 'invoice_id', 'invoice_number');
+
+    const invoiceUuid = String(out.invoice_id || out.source_invoice_id || '').trim();
+    if (isUuid(invoiceUuid)) {
+      out.invoice_id = invoiceUuid;
+      out.source_invoice_id = String(out.source_invoice_id || invoiceUuid).trim();
+    } else {
+      delete out.invoice_id;
+      delete out.source_invoice_id;
+    }
+  }
+
   function sanitizeOperationsInvoiceBatchRecord(record = {}) {
     const out = record && typeof record === 'object' ? { ...record } : {};
+
+    normalizeInvoiceBatchUuidReferences(out);
 
     // operations_onboarding.client_id points to public.clients. Invoice/company rows may carry
     // a company UUID or a legacy customer reference under client_id, which violates the FK and
@@ -1039,6 +1063,22 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     out.notes = String(out.notes || out.request_message || '').trim() || null;
 
     return out;
+  }
+
+  async function findExistingOperationsOnboardingForInvoice(client, record = {}) {
+    const invoiceUuid = String(record.invoice_id || record.source_invoice_id || '').trim();
+    if (!isUuid(invoiceUuid)) return null;
+
+    const selectColumns = 'id,onboarding_id,invoice_id,source_invoice_id,invoice_number,source_invoice_number,agreement_id,agreement_number';
+    const filters = `invoice_id.eq.${invoiceUuid},source_invoice_id.eq.${invoiceUuid}`;
+    const { data, error } = await client
+      .from('operations_onboarding')
+      .select(selectColumns)
+      .or(filters)
+      .order('created_at', { ascending: false, nullsFirst: false })
+      .limit(1);
+    if (error) throw friendlyError('Unable to check existing Operations onboarding row for invoice', error);
+    return Array.isArray(data) && data.length ? data[0] : null;
   }
 
 
@@ -6481,12 +6521,17 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       delete record.resource;
       delete record.action;
       if (!Object.keys(record).length) throw new Error('operations_onboarding create payload is empty.');
-      const hasInvoiceScope = Boolean(String(record.source_invoice_id || record.invoice_id || record.source_invoice_number || record.invoice_number || '').trim());
-      if (!hasInvoiceScope) throw new Error('Operations onboarding must be created from an invoice batch. Agreement signed alone must not create onboarding.');
+      const hasInvoiceScope = Boolean(String(record.invoice_id || record.source_invoice_id || '').trim());
+      if (!hasInvoiceScope) throw new Error('Operations onboarding must be created from an invoice batch with an internal invoice UUID. Agreement signed alone must not create onboarding.');
+      const existing = await findExistingOperationsOnboardingForInvoice(client, record);
+      if (existing?.id) {
+        return { handled: true, data: normalizeRow('operations_onboarding', existing), duplicatePrevented: true };
+      }
+      const finalRecord = sanitizeUuidColumnsForMutation('operations_onboarding', record);
       const { data, error } = await insertSelectSingleWithSchemaRetry(
         client,
         'operations_onboarding',
-        record,
+        finalRecord,
         'Unable to create operations_onboarding record from invoice batch'
       );
       if (error) throw friendlyError('Unable to create operations_onboarding record from invoice batch', error);
@@ -7409,8 +7454,8 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       }
       if (resource === 'operations_onboarding') {
         Object.assign(record, sanitizeOperationsInvoiceBatchRecord(record));
-        const hasInvoiceScope = Boolean(String(record.source_invoice_id || record.invoice_id || record.source_invoice_number || record.invoice_number || '').trim());
-        if (!hasInvoiceScope) throw new Error('Operations onboarding must be created from an invoice batch. Agreement signed alone must not create onboarding.');
+        const hasInvoiceScope = Boolean(String(record.invoice_id || record.source_invoice_id || '').trim());
+        if (!hasInvoiceScope) throw new Error('Operations onboarding must be created from an invoice batch with an internal invoice UUID. Agreement signed alone must not create onboarding.');
       }
       if (resource === 'technical_admin_requests') {
         // Avoid the same client FK problem when the manual Technical request copies the Operations row.
@@ -7591,6 +7636,12 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
           );
           if (updateError) throw friendlyError('Unable to update existing client', updateError);
           return { handled: true, data: normalizeRow(resource, updatedClient || existingClient) };
+        }
+      }
+      if (resource === 'operations_onboarding') {
+        const existing = await findExistingOperationsOnboardingForInvoice(client, finalCreateRecord);
+        if (existing?.id) {
+          return { handled: true, data: await withItems(resource, normalizeRow(resource, existing)), duplicatePrevented: true };
         }
       }
       const requestedItems = Array.isArray(payload.items) ? payload.items : [];
