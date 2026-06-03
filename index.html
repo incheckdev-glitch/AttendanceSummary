@@ -1518,8 +1518,9 @@ Sample:
             <div id="clientDetailOverview" class="muted" style="margin:10px 0 14px;"></div>
             <div id="clientDetailTabButtons" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
               <button class="btn ghost sm" type="button" data-client-detail-tab="overview">Overview</button>
+              <button class="btn ghost sm" type="button" data-permission-resource="clients" data-permission-action="view_renewals" data-client-detail-tab="renewals">Renewals &amp; Payments</button>
+              <button class="btn ghost sm" type="button" data-client-detail-tab="scheduledPayments">Scheduled Payments</button>
               <button class="btn ghost sm" type="button" data-permission-resource="clients" data-permission-action="view_statement" data-client-detail-tab="statement">Statement of Account</button>
-              <button class="btn ghost sm" type="button" data-permission-resource="clients" data-permission-action="view_renewals" data-client-detail-tab="renewals">Payment &amp; Renewals</button>
             </div>
             <section id="clientOverviewSection">
               <details open>
@@ -1577,6 +1578,26 @@ Sample:
                 <table>
                   <thead><tr><th>Date</th><th>Type</th><th>Document No</th><th>Reference</th><th>Currency</th><th>Debit</th><th>Credit</th><th>Running Balance</th><th>Due Date</th><th>Status</th><th>Notes</th></tr></thead>
                   <tbody id="clientStatementTbody"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section id="clientScheduledPaymentsSection" style="display:none;">
+              <div id="clientScheduledPaymentCards" class="grid cols-5" style="gap:8px;"></div>
+              <div id="clientScheduledPaymentFilters" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;" aria-label="Scheduled payment filters">
+                <button class="btn primary sm" type="button" data-scheduled-payment-filter="all">All</button>
+                <button class="btn ghost sm" type="button" data-scheduled-payment-filter="upcoming">Upcoming</button>
+                <button class="btn ghost sm" type="button" data-scheduled-payment-filter="due7">Due in 7 Days</button>
+                <button class="btn ghost sm" type="button" data-scheduled-payment-filter="due14">Due in 14 Days</button>
+                <button class="btn ghost sm" type="button" data-scheduled-payment-filter="due30">Due in 30 Days</button>
+                <button class="btn ghost sm" type="button" data-scheduled-payment-filter="overdue">Overdue</button>
+                <button class="btn ghost sm" type="button" data-scheduled-payment-filter="paid">Paid</button>
+                <button class="btn ghost sm" type="button" data-scheduled-payment-filter="open">Unpaid / Open Balance</button>
+              </div>
+              <div class="table-wrap" style="margin-top:8px;">
+                <table>
+                  <thead><tr><th>Invoice</th><th>Payment</th><th>Due Date</th><th>Scheduled</th><th>Paid</th><th>Balance</th><th>Status</th><th>Reminders</th><th>Invoice Status</th><th>Actions</th></tr></thead>
+                  <tbody id="clientScheduledPaymentsTbody"></tbody>
                 </table>
               </div>
             </section>

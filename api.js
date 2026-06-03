@@ -1570,6 +1570,121 @@ const Api = {
   async processPaymentScheduleReminders(payload = {}) {
     return this.requestWithSession('invoices', 'process_payment_schedule_reminders', payload);
   },
+
+  async getClientScheduledPayments(client = {}) {
+    const sourceClient = client && typeof client === 'object' ? client : {};
+    const companyId = String(sourceClient?.company_id || sourceClient?.company_uuid || sourceClient?.id || '').trim();
+    const clientId = String(sourceClient?.client_id || sourceClient?.client_uuid || sourceClient?.id || '').trim();
+    const clientName = String(
+      sourceClient?.legal_name ||
+      sourceClient?.company_name ||
+      sourceClient?.customer_legal_name ||
+      sourceClient?.customer_name ||
+      sourceClient?.client_name ||
+      sourceClient?.name ||
+      ''
+    ).trim();
+    const supabaseClient = window.SupabaseClient?.getClient?.() || window.supabase || null;
+    if (!supabaseClient?.from) return [];
+
+    const mergeRows = (...sets) => {
+      const byKey = new Map();
+      sets.flat().filter(Boolean).forEach(row => {
+        const key = String(row.schedule_id || row.id || row.invoice_payment_schedule_id || `${row.invoice_id || ''}:${row.schedule_no || ''}:${row.due_date || ''}`).trim();
+        if (!key) return;
+        if (!byKey.has(key)) byKey.set(key, row);
+      });
+      return [...byKey.values()].sort((a, b) => {
+        const dateA = String(a.due_date || '').trim();
+        const dateB = String(b.due_date || '').trim();
+        const timeA = dateA ? new Date(dateA).getTime() : Number.POSITIVE_INFINITY;
+        const timeB = dateB ? new Date(dateB).getTime() : Number.POSITIVE_INFINITY;
+        if (timeA !== timeB) return timeA - timeB;
+        return Number(a.schedule_no || 0) - Number(b.schedule_no || 0);
+      });
+    };
+
+    const queryViewBy = async (column, value, operator = 'eq') => {
+      if (!value) return [];
+      let query = supabaseClient
+        .from('client_scheduled_payments')
+        .select('*')
+        .order('due_date', { ascending: true, nullsFirst: false })
+        .order('schedule_no', { ascending: true, nullsFirst: false });
+      query = operator === 'ilike' ? query.ilike(column, `%${value}%`) : query.eq(column, value);
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    };
+
+    try {
+      const viewRows = mergeRows(
+        await queryViewBy('company_id', companyId),
+        await queryViewBy('client_id', clientId),
+        await queryViewBy('client_name', clientName, 'ilike')
+      );
+      if (viewRows.length) return viewRows;
+    } catch (error) {
+      console.warn('[Client Scheduled Payments] failed to load from view; falling back to invoice tables', error);
+    }
+
+    try {
+      const invoiceSets = [];
+      const invoiceSelect = '*';
+      const pushInvoices = async query => {
+        const { data, error } = await query;
+        if (error) {
+          console.warn('[Client Scheduled Payments] invoice fallback query skipped', error);
+          return;
+        }
+        invoiceSets.push(data || []);
+      };
+      if (companyId) await pushInvoices(supabaseClient.from('invoices').select(invoiceSelect).eq('company_id', companyId));
+      if (clientId) await pushInvoices(supabaseClient.from('invoices').select(invoiceSelect).eq('client_id', clientId));
+      if (clientName) {
+        await pushInvoices(supabaseClient.from('invoices').select(invoiceSelect).ilike('customer_name', `%${clientName}%`));
+        await pushInvoices(supabaseClient.from('invoices').select(invoiceSelect).ilike('customer_legal_name', `%${clientName}%`));
+        await pushInvoices(supabaseClient.from('invoices').select(invoiceSelect).ilike('company_name', `%${clientName}%`));
+      }
+      const invoices = mergeRows(...invoiceSets);
+      const invoiceIds = [...new Set(invoices.map(inv => String(inv.id || inv.invoice_uuid || '').trim()).filter(Boolean))];
+      if (!invoiceIds.length) return [];
+      const invoiceById = new Map();
+      invoices.forEach(inv => {
+        [inv.id, inv.invoice_uuid, inv.invoice_id].map(value => String(value || '').trim()).filter(Boolean).forEach(id => invoiceById.set(id, inv));
+      });
+      const scheduleSets = [];
+      for (let i = 0; i < invoiceIds.length; i += 100) {
+        const chunk = invoiceIds.slice(i, i + 100);
+        const { data, error } = await supabaseClient
+          .from('invoice_payment_schedule')
+          .select('*')
+          .in('invoice_id', chunk)
+          .order('due_date', { ascending: true, nullsFirst: false })
+          .order('schedule_no', { ascending: true, nullsFirst: false });
+        if (error) throw error;
+        scheduleSets.push(data || []);
+      }
+      return mergeRows(...scheduleSets).map(schedule => {
+        const invoice = invoiceById.get(String(schedule.invoice_id || '').trim()) || {};
+        return {
+          ...schedule,
+          schedule_id: schedule.schedule_id || schedule.id,
+          invoice_id: schedule.invoice_id,
+          invoice_number: invoice.invoice_number || schedule.invoice_number || '',
+          invoice_reference_fallback: invoice.invoice_id || invoice.display_id || '',
+          invoice_status: invoice.status || invoice.invoice_status || '',
+          client_id: invoice.client_id || schedule.client_id || '',
+          company_id: invoice.company_id || schedule.company_id || '',
+          client_name: invoice.customer_legal_name || invoice.customer_name || invoice.company_name || schedule.client_name || '',
+          currency: schedule.currency || invoice.currency || 'USD'
+        };
+      });
+    } catch (error) {
+      console.warn('[Client Scheduled Payments] failed to load fallback invoice payment schedule', error);
+      return [];
+    }
+  },
   async listReceipts(filters = {}, options = {}) {
     const listPayload = this.buildSummaryListPayload(options);
     const payload = {
