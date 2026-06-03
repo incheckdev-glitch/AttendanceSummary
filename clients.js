@@ -42,7 +42,6 @@ const Clients = {
   state: {
     rows: [],
     filteredRows: [],
-    selectedClientId: '',
     agreements: [],
     agreementItems: [],
     invoices: [],
@@ -72,7 +71,13 @@ const Clients = {
     detailCache: {},
     detailCacheTtlMs: 90 * 1000,
     detailLoading: false,
-    activeDetailTab: 'overview',
+    activeDetailTab: 'intelligence_hub',
+    initialized: false,
+    selectedClientId: null,
+    loadedTabsByClient: new Map(),
+    tabCache: new Map(),
+    pagination: new Map(),
+    clientPanelLoading: false,
     statementFilters: { status: 'all', dateFrom: '', dateTo: '', searchDoc: '' },
     renewalsFilters: { dateFrom: '', dateTo: '' },
     scheduledPaymentsFilter: 'all',
@@ -2340,7 +2345,8 @@ const Clients = {
         ? 'A draft renewal invoice already exists for this client and renewal period. The existing draft has been opened for update.'
         : 'Renewal invoice draft created. Operations onboarding and Technical Admin were not created.');
       this.closeRenewalModal_();
-      await this.loadClientDetailData_(this.state.selectedClientId, { force: true }).catch(() => {});
+      this.invalidateClientTabCache(this.state.selectedClientId, ['overview', 'renewals', 'statement', 'scheduledPayments', 'invoices']);
+      if (this.state.selectedClientId) await this.loadClientSubTab(this.state.selectedClientId, this.state.activeDetailTab || 'overview', { force: true }).catch(() => {});
       this.render();
     } catch (error) {
       console.warn('[Renewal] Unable to create renewal invoice draft.', error);
@@ -2434,7 +2440,8 @@ const Clients = {
       await this.persistRenewalHistory_(selectedBatchId, renewalPath, status, response).catch(error => console.warn('[Renewal] Optional renewal history save failed.', error));
       UI.toast(path === 'proposal' ? 'Renewal proposal created for selected locations only.' : 'Renewal agreement draft created for selected locations only.');
       this.closeRenewalModal_();
-      await this.loadClientDetailData_(this.state.selectedClientId, { force: true }).catch(() => {});
+      this.invalidateClientTabCache(this.state.selectedClientId, ['overview', 'renewals', 'statement', 'agreements']);
+      if (this.state.selectedClientId) await this.loadClientSubTab(this.state.selectedClientId, this.state.activeDetailTab || 'overview', { force: true }).catch(() => {});
       this.render();
     } catch (error) {
       console.warn('[Renewal] Unable to create commercial renewal path.', error);
@@ -2869,10 +2876,28 @@ const Clients = {
     if (paid > 0 && due > 0) return 'offline';
     return '';
   },
-  setDetailTab(tab = 'overview') {
-    if (tab === 'statement' && !this.canViewClientStatement()) tab = 'overview';
-    if (tab === 'renewals' && !this.canViewClientRenewals()) tab = 'overview';
-    this.state.activeDetailTab = ['overview', 'statement', 'renewals', 'scheduledPayments'].includes(tab) ? tab : 'overview';
+  getClientTabCacheKey(clientId, tabKey, page = 1, pageSize = 25) {
+    return `${clientId || 'none'}:${tabKey}:p${page}:s${pageSize}`;
+  },
+  getClientTabPageState(tabKey) {
+    const key = `${this.state.selectedClientId || 'none'}:${tabKey}`;
+    return this.state.pagination.get(key) || { page: 1, pageSize: 25 };
+  },
+  setClientTabPageState(tabKey, page = 1, pageSize = 25) {
+    const key = `${this.state.selectedClientId || 'none'}:${tabKey}`;
+    this.state.pagination.set(key, { page: Math.max(Number(page || 1), 1), pageSize: Math.max(Number(pageSize || 25), 1) });
+  },
+  normalizeClientTabKey(tab = 'overview') {
+    const key = String(tab || 'overview').trim();
+    const aliases = { scheduled_payments: 'scheduledPayments', statement_of_account: 'statement', renewals_payments: 'renewals' };
+    return aliases[key] || key;
+  },
+  setDetailTab(tab = 'overview', options = {}) {
+    const normalizedTab = this.normalizeClientTabKey(tab);
+    let nextTab = normalizedTab;
+    if (nextTab === 'statement' && !this.canViewClientStatement()) nextTab = 'overview';
+    if (nextTab === 'renewals' && !this.canViewClientRenewals()) nextTab = 'overview';
+    this.state.activeDetailTab = ['overview', 'statement', 'renewals', 'scheduledPayments', 'intelligence_hub'].includes(nextTab) ? nextTab : 'overview';
     if (E.clientOverviewSection) E.clientOverviewSection.style.display = this.state.activeDetailTab === 'overview' ? '' : 'none';
     if (E.clientStatementSection) E.clientStatementSection.style.display = this.state.activeDetailTab === 'statement' && this.canViewClientStatement() ? '' : 'none';
     if (E.clientRenewalsSection) E.clientRenewalsSection.style.display = this.state.activeDetailTab === 'renewals' && this.canViewClientRenewals() ? '' : 'none';
@@ -2882,81 +2907,132 @@ const Clients = {
         const tabName = btn.getAttribute('data-client-detail-tab');
         if (tabName === 'statement') btn.style.display = this.canViewClientStatement() ? '' : 'none';
         if (tabName === 'renewals') btn.style.display = this.canViewClientRenewals() ? '' : 'none';
-        const selected = btn.getAttribute('data-client-detail-tab') === this.state.activeDetailTab;
+        const selected = tabName === this.state.activeDetailTab;
         btn.classList.toggle('primary', selected);
         btn.classList.toggle('ghost', !selected);
       });
     }
+    if (!options.skipLoad && this.state.selectedClientId && this.state.activeDetailTab !== 'overview') {
+      const { page, pageSize } = this.getClientTabPageState(this.state.activeDetailTab);
+      this.loadClientSubTab(this.state.selectedClientId, this.state.activeDetailTab, { page, pageSize, force: false }).catch(error => {
+        console.warn('[Clients] lazy sub-tab load failed', error);
+        UI.toast(error?.message || 'Unable to load client tab.');
+      });
+    }
   },
-  async loadClientDetailData_(clientId, { force = false } = {}) {
-    const cache = this.state.detailCache[clientId];
-    if (!force && cache && Date.now() - cache.loadedAt <= this.state.detailCacheTtlMs) return cache;
-    const client = this.state.rows.find(row => row.client_id === clientId);
-    console.log('[ClientStatement] selected client', {
-      client_id: client?.client_id,
-      id: client?.id,
-      client_name: client?.client_name || client?.customer_name,
-      company_name: client?.company_name || client?.customer_legal_name,
-      email: client?.primary_contact_email || client?.email,
-      phone: client?.phone
-    });
-    const agreements = this.listClientRelatedAgreements_(clientId);
-    const invoices = this.listClientRelatedInvoices_(clientId);
-    const receipts = this.listClientRelatedReceipts_(clientId);
-    const agreementItems = this.listClientAgreementLocationItems_(clientId);
-    const invoiceItems = this.listClientRelatedInvoiceItems_(clientId);
-    const receiptItems = this.listClientRelatedReceiptItems_(clientId);
-    const agreementsLoaded = this.state.agreements.length;
-    const invoicesLoaded = this.state.invoices.length;
-    const receiptsLoaded = this.state.receipts.length;
-    const agreementItemsLoaded = this.state.agreementItems.length;
-    const invoiceItemsLoaded = this.state.invoiceItems.length;
-    const receiptItemsLoaded = this.state.receiptItems.length;
-    const normalizedStatement = [];
-    const normalizedRenewals = [];
-    const normalizedTimeline = [];
-    const fallbackTimeline = this.canViewClientRenewals() ? this.buildTimeline_(clientId) : [];
-    const statementRows = this.canViewClientStatement()
-      ? (normalizedStatement.length ? this.computeRunningBalance(normalizedStatement) : this.buildClientStatementRows(client))
-      : [];
-    const renewalRows = this.canViewClientRenewals() ? (normalizedRenewals.length ? normalizedRenewals : this.buildClientRenewalRows(client)) : [];
-    const scheduledPayments = client ? await Api.getClientScheduledPayments(client) : [];
-    console.log('[ClientsDetail] related counts', {
-      client: client?.client_name || client?.company_name || client?.name || client?.customer_name,
-      agreementsLoaded,
-      invoicesLoaded,
-      receiptsLoaded,
-      agreementItemsLoaded,
-      invoiceItemsLoaded,
-      receiptItemsLoaded,
-      relatedAgreements: agreements.length,
-      relatedInvoices: invoices.length,
-      relatedReceipts: receipts.length,
-      statementRows: statementRows.length,
-      timelineRows: renewalRows.length
-    });
-    const relationAttempts = Boolean(client && (this.state.agreements.length || this.state.invoices.length || this.state.receipts.length));
-    const loadSuccess = !this.state.loadError;
-    const noLinkedRows = relationAttempts && loadSuccess && !agreements.length && !invoices.length && !receipts.length;
-    const computedAnalytics = this.computeClientAnalytics_(client || {});
-    const detailBundle = {
-      detail: client || {},
-      analytics: { ...(client?.analytics || {}), ...computedAnalytics },
-      timeline: this.canViewClientRenewals() ? (normalizedTimeline.length ? normalizedTimeline : fallbackTimeline) : [],
-      statementRows,
-      renewalRows,
-      scheduledPayments,
-      statementError: loadSuccess ? '' : 'Unable to load statement data.',
-      noLinkedRows,
-      loadedAt: Date.now()
-    };
-    console.debug('[Clients] detail timeline source', {
-      clientId,
-      timelineEvents: detailBundle.timeline.length,
-      renewalRows: detailBundle.renewalRows.length
-    });
-    this.state.detailCache[clientId] = detailBundle;
-    return detailBundle;
+  renderSubTabLoading(tabKey) {
+    const skeleton = '<tr><td colspan="12"><div class="skeleton" style="height:30px;"></div></td></tr>';
+    if (tabKey === 'statement' && E.clientStatementTbody) E.clientStatementTbody.innerHTML = skeleton;
+    if (tabKey === 'renewals' && E.clientRenewalsTbody) E.clientRenewalsTbody.innerHTML = skeleton;
+    if (tabKey === 'scheduledPayments' && E.clientScheduledPaymentsTbody) E.clientScheduledPaymentsTbody.innerHTML = skeleton;
+    if (tabKey === 'overview') {
+      if (E.clientRelatedAgreementsTbody) E.clientRelatedAgreementsTbody.innerHTML = skeleton;
+      if (E.clientRelatedInvoicesTbody) E.clientRelatedInvoicesTbody.innerHTML = skeleton;
+      if (E.clientRelatedReceiptsTbody) E.clientRelatedReceiptsTbody.innerHTML = skeleton;
+    }
+  },
+  invalidateClientTabCache(clientId, tabKeys = []) {
+    for (const key of this.state.tabCache.keys()) {
+      const shouldDelete = key.startsWith(`${clientId}:`) && (!tabKeys.length || tabKeys.some(tab => key.includes(`:${this.normalizeClientTabKey(tab)}:`)));
+      if (shouldDelete) this.state.tabCache.delete(key);
+    }
+    if (!tabKeys.length) delete this.state.detailCache[clientId];
+  },
+  renderClientPagination_(tabKey, result = {}) {
+    const total = Number(result.total || 0);
+    const page = Math.max(Number(result.page || 1), 1);
+    const pageSize = Math.max(Number(result.pageSize || 25), 1);
+    const totalPages = Math.max(Number(result.totalPages || Math.ceil(total / pageSize) || 1), 1);
+    const start = total ? ((page - 1) * pageSize) + 1 : 0;
+    const end = Math.min(page * pageSize, total);
+    const sectionByTab = { statement: E.clientStatementSection, renewals: E.clientRenewalsSection, scheduledPayments: E.clientScheduledPaymentsSection, overview: E.clientOverviewSection };
+    const section = sectionByTab[tabKey];
+    if (!section) return;
+    let mount = section.querySelector(`[data-client-pagination="${CSS.escape(tabKey)}"]`);
+    if (!mount) {
+      mount = document.createElement('div');
+      mount.setAttribute('data-client-pagination', tabKey);
+      mount.style.cssText = 'display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap;margin-top:8px;';
+      section.appendChild(mount);
+    }
+    mount.innerHTML = `<span class="muted">Showing ${U.escapeHtml(String(start))}–${U.escapeHtml(String(end))} of ${U.escapeHtml(String(total))} · Page ${U.escapeHtml(String(page))} of ${U.escapeHtml(String(totalPages))}</span><button class="btn ghost sm" type="button" data-client-tab-page="${U.escapeAttr(tabKey)}" data-page="${page - 1}" ${page <= 1 ? 'disabled' : ''}>Previous</button><button class="btn ghost sm" type="button" data-client-tab-page="${U.escapeAttr(tabKey)}" data-page="${page + 1}" ${page >= totalPages ? 'disabled' : ''}>Next</button><select class="select" data-client-tab-page-size="${U.escapeAttr(tabKey)}">${[25, 50, 100].map(size => `<option value="${size}" ${size === pageSize ? 'selected' : ''}>${size}</option>`).join('')}</select><button class="btn ghost sm" type="button" data-client-tab-refresh="${U.escapeAttr(tabKey)}">Refresh</button>`;
+  },
+  mergeClientTabResult_(clientId, tabKey, result = {}) {
+    const current = this.state.detailCache[clientId] || { detail: this.state.rows.find(row => row.client_id === clientId) || {}, loadedAt: Date.now() };
+    if (tabKey === 'overview') {
+      this.state.detailCache[clientId] = { ...current, ...(result.detail ? { detail: result.detail } : {}), analytics: current.analytics || (current.detail || {}).analytics || {}, loadedAt: Date.now() };
+      return;
+    }
+    if (tabKey === 'scheduledPayments') current.scheduledPayments = result.rows || [];
+    if (tabKey === 'statement') current.statementRows = result.statementRows || result.rows || [];
+    if (tabKey === 'renewals') current.renewalRows = result.rows || [];
+    this.state.detailCache[clientId] = { ...current, loadedAt: Date.now() };
+  },
+  renderClientSubTab(tabKey, result = {}) {
+    const clientId = this.state.selectedClientId;
+    const client = this.state.rows.find(row => row.client_id === clientId) || {};
+    this.mergeClientTabResult_(clientId, tabKey, result);
+    const detailData = this.state.detailCache[clientId] || {};
+    if (tabKey === 'overview') this.renderDetail();
+    if (tabKey === 'scheduledPayments') this.renderScheduledPaymentsSection_(detailData, client);
+    if (tabKey === 'statement') this.renderStatementSection_(detailData);
+    if (tabKey === 'renewals') this.renderRenewalsSection_(detailData, client);
+    this.renderClientPagination_(tabKey, result);
+    this.setDetailTab(tabKey, { skipLoad: true });
+  },
+  async loadClientSubTab(clientId, tabKey, options = {}) {
+    const normalizedTab = this.normalizeClientTabKey(tabKey);
+    const client = this.state.rows.find(row => row.client_id === clientId) || {};
+    const page = Math.max(Number(options.page || 1), 1);
+    const pageSize = Math.max(Number(options.pageSize || 25), 1);
+    const force = options.force === true;
+    const cacheKey = this.getClientTabCacheKey(clientId, normalizedTab, page, pageSize);
+    this.setClientTabPageState(normalizedTab, page, pageSize);
+    if (!force && this.state.tabCache.has(cacheKey)) {
+      this.renderClientSubTab(normalizedTab, this.state.tabCache.get(cacheKey));
+      return this.state.tabCache.get(cacheKey);
+    }
+    this.renderSubTabLoading(normalizedTab);
+    this.state.clientPanelLoading = true;
+    let result;
+    try {
+      switch (normalizedTab) {
+        case 'overview':
+          result = await Api.getClientOverview(client);
+          break;
+        case 'renewals':
+          result = await Api.getClientRenewalsPayments(client, { page, pageSize });
+          break;
+        case 'scheduledPayments':
+          result = await Api.getClientScheduledPayments(client, { page, pageSize });
+          break;
+        case 'statement':
+          result = await Api.getClientStatementOfAccount(client, { page, pageSize });
+          break;
+        case 'agreements':
+          result = await Api.getClientAgreements(client, { page, pageSize });
+          break;
+        case 'invoices':
+          result = await Api.getClientInvoices(client, { page, pageSize });
+          break;
+        case 'receipts':
+          result = await Api.getClientReceipts(client, { page, pageSize });
+          break;
+        default:
+          result = { rows: [], total: 0, page, pageSize, totalPages: 0 };
+      }
+      this.state.tabCache.set(cacheKey, result);
+      const loaded = this.state.loadedTabsByClient.get(clientId) || new Set();
+      loaded.add(normalizedTab);
+      this.state.loadedTabsByClient.set(clientId, loaded);
+      this.renderClientSubTab(normalizedTab, result);
+      return result;
+    } finally {
+      this.state.clientPanelLoading = false;
+    }
+  },
+  async loadClientDetailData_(clientId, { force = false, tabKey = 'overview', page = 1, pageSize = 25 } = {}) {
+    return this.loadClientSubTab(clientId, tabKey, { force, page, pageSize });
   },
   getFilteredStatementRows_(rows = []) {
     const { status, dateFrom, dateTo, searchDoc } = this.state.statementFilters;
@@ -3397,7 +3473,11 @@ const Clients = {
         reminder_days: String(daysInput || '').split(',').map(value => Number(value.trim())).filter(Number.isFinite),
         reminder_user_ids: String(usersInput || '').split(',').map(value => value.trim()).filter(Boolean)
       });
-      if (this.state.selectedClientId) await this.loadClientDetailData_(this.state.selectedClientId, { force: true });
+      if (this.state.selectedClientId) {
+        this.invalidateClientTabCache(this.state.selectedClientId, ['scheduledPayments']);
+        const { page, pageSize } = this.getClientTabPageState('scheduledPayments');
+        await this.loadClientSubTab(this.state.selectedClientId, 'scheduledPayments', { page, pageSize, force: true });
+      }
       this.render();
       UI.toast('Reminder settings saved.');
     } catch (error) {
@@ -3431,6 +3511,10 @@ const Clients = {
     if (!E.clientsTbody) return;
     if (this.state.loadError) {
       E.clientsTbody.innerHTML = `<tr><td colspan="9" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(this.state.loadError)}</td></tr>`;
+      return;
+    }
+    if (this.state.loading && !this.state.filteredRows.length) {
+      E.clientsTbody.innerHTML = '<tr><td colspan="9"><div class="skeleton" style="height:34px;"></div></td></tr>';
       return;
     }
     if (!this.state.filteredRows.length) {
@@ -3563,10 +3647,11 @@ const Clients = {
             .join('')
         : '<li class="muted">No timeline activity yet.</li>';
     }
-    this.renderStatementSection_(detailData);
-    this.renderRenewalsSection_(detailData, client);
-    this.renderScheduledPaymentsSection_(detailData, client);
-    this.setDetailTab(this.state.activeDetailTab);
+    const loadedTabs = this.state.loadedTabsByClient.get(client.client_id) || new Set(['overview']);
+    if (this.state.activeDetailTab === 'statement' || loadedTabs.has('statement')) this.renderStatementSection_(detailData);
+    if (this.state.activeDetailTab === 'renewals' || loadedTabs.has('renewals')) this.renderRenewalsSection_(detailData, client);
+    if (this.state.activeDetailTab === 'scheduledPayments' || loadedTabs.has('scheduledPayments')) this.renderScheduledPaymentsSection_(detailData, client);
+    this.setDetailTab(this.state.activeDetailTab === 'intelligence_hub' ? 'overview' : this.state.activeDetailTab, { skipLoad: true });
   },
   render() {
     this.applyFilters();
@@ -3604,14 +3689,22 @@ const Clients = {
     }
   },
   async selectClient(clientId, options = {}) {
-    this.state.selectedClientId = String(clientId || '').trim();
+    const nextClientId = String(clientId || '').trim();
+    const clientChanged = this.state.selectedClientId !== nextClientId;
+    this.state.selectedClientId = nextClientId;
+    this.state.activeDetailTab = 'overview';
+    this.state.selectedRenewalRowIds = new Set();
+    this.state.scheduledPaymentRowsById = new Map();
+    if (clientChanged && nextClientId) {
+      this.state.pagination.forEach((_, key) => { if (key.startsWith(`${nextClientId}:`)) this.state.pagination.delete(key); });
+    }
     if (window.setAppHashRoute) setAppHashRoute(this.state.selectedClientId ? `#clients?id=${encodeURIComponent(this.state.selectedClientId)}` : "#clients");
     this.render();
     if (!this.state.selectedClientId) return;
     this.state.detailLoading = true;
-    this.renderDetailSkeletons_();
+    this.renderSubTabLoading('overview');
     try {
-      await this.loadClientDetailData_(this.state.selectedClientId, options);
+      await this.loadClientSubTab(this.state.selectedClientId, 'overview', { page: 1, pageSize: 25, force: options.force === true });
     } finally {
       this.state.detailLoading = false;
       this.render();
@@ -3634,7 +3727,8 @@ const Clients = {
         page: this.state.page,
         search: this.state.search || '',
         status: this.state.status,
-        allowClientMutations: this.canEditClient()
+        allowClientMutations: this.canEditClient(),
+        summaryOnly: true
       });
       const clientsList = this.extractListResult(clientsRes);
       this.state.rows = clientsList.rows.map(item => {
@@ -3648,52 +3742,29 @@ const Clients = {
       this.state.page = clientsList.page;
       this.state.limit = clientsList.limit;
       this.state.offset = clientsList.offset;
-      this.state.agreements = this.extractListResult(clientsRes.agreements || []).rows.map(item => this.normalizeAgreement(item));
-      this.state.agreementItems = this.extractListResult(clientsRes.agreement_items || []).rows.map(item => this.normalizeAgreementItem(item));
-      this.state.invoices = this.extractListResult(clientsRes.invoices || []).rows.map(item => this.normalizeInvoice(item));
-      this.state.invoiceItems = this.extractListResult(clientsRes.invoice_items || []).rows.map(item => this.normalizeInvoiceItem(item));
-      this.state.receipts = this.extractListResult(clientsRes.receipts || []).rows.map(item => this.normalizeReceipt(item));
-      this.state.receiptItems = this.extractListResult(clientsRes.receipt_items || []).rows;
-      const [companiesRes, contactsRes, agreementsRes, invoicesRes, receiptsRes] = await Promise.allSettled([
-        Api.requestWithSession('companies', 'list', { limit: 10000 }, { requireAuth: true }),
-        Api.requestWithSession('contacts', 'list', { limit: 10000 }, { requireAuth: true }),
-        this.canViewClientRenewals() ? Api.requestWithSession('agreements', 'list', { limit: 10000 }, { requireAuth: true }) : Promise.resolve({ rows: [] }),
-        this.canViewClientRenewals() ? Api.requestWithSession('invoices', 'list', { limit: 10000 }, { requireAuth: true }) : Promise.resolve({ rows: [] }),
-        this.canViewClientRenewals() ? Api.requestWithSession('receipts', 'list', { limit: 10000 }, { requireAuth: true }) : Promise.resolve({ rows: [] })
-      ]);
-      this.state.companies = companiesRes.status === 'fulfilled' ? this.extractListResult(companiesRes.value).rows : [];
-      this.state.contacts = contactsRes.status === 'fulfilled' ? this.extractListResult(contactsRes.value).rows : [];
-      if (agreementsRes.status === 'fulfilled') this.state.agreements = this.extractListResult(agreementsRes.value).rows.map(item => this.normalizeAgreement(item));
-      if (invoicesRes.status === 'fulfilled') this.state.invoices = this.extractListResult(invoicesRes.value).rows.map(item => this.normalizeInvoice(item));
-      if (receiptsRes.status === 'fulfilled') this.state.receipts = this.extractListResult(receiptsRes.value).rows.map(item => this.normalizeReceipt(item));
-      if (companiesRes.status === 'rejected') console.warn('[Clients] companies optional load failed; continuing without company lookup data', companiesRes.reason);
-      this.rebuildCompanyLookupMaps(this.state.companies);
+      this.state.agreements = [];
+      this.state.agreementItems = [];
+      this.state.invoices = [];
+      this.state.invoiceItems = [];
+      this.state.receipts = [];
+      this.state.receiptItems = [];
+      this.state.companies = [];
+      this.state.contacts = [];
+      this.rebuildCompanyLookupMaps([]);
       this.state.contactsById = new Map();
-      this.state.contacts.forEach(contact => {
-        const contactId = String(contact.contact_id || contact.contactId || contact.id || '').trim();
-        if (contactId) this.state.contactsById.set(contactId, contact);
-      });
-
-      this.state.agreements.forEach(agreement => {
-        this.findOrCreateClientFromSignedAgreement_(agreement);
-      });
-      this.state.rows = this.groupClientIntelligenceRows(this.state.rows, { log: true });
-      this.state.rows.forEach(client => {
-        client.analytics = this.computeClientAnalytics_(client);
-      });
       this.state.rows = this.groupClientIntelligenceRows(this.state.rows, { log: false });
       if (this.state.selectedClientId && !this.state.rows.some(row => row.client_id === this.state.selectedClientId)) {
         const selectedGroup = this.state.rows.find(row => Array.isArray(row.source_client_ids) && row.source_client_ids.includes(this.state.selectedClientId));
         if (selectedGroup?.client_id) this.state.selectedClientId = selectedGroup.client_id;
       }
-      this.state.total = this.state.rows.length;
-      this.state.returned = this.state.rows.length;
-      this.state.hasMore = false;
-      if (!this.state.selectedClientId && this.state.rows[0]?.client_id) this.state.selectedClientId = this.state.rows[0].client_id;
+      this.state.initialized = true;
+      if (this.state.selectedClientId && !this.state.rows.some(row => row.client_id === this.state.selectedClientId)) {
+        this.state.selectedClientId = '';
+        this.state.activeDetailTab = 'intelligence_hub';
+      }
       this.state.loaded = true;
       this.state.lastLoadedAt = Date.now();
       this.render();
-      if (this.state.selectedClientId) await this.selectClient(this.state.selectedClientId, { force: options.force });
     } catch (error) {
       this.state.rows = [];
       this.state.loadError = error?.message || 'Failed to load clients.';
@@ -3703,9 +3774,13 @@ const Clients = {
     }
   },
   triggerLinkedDataRefresh_(reason = 'linked-data-change') {
-    if (this.state.loading) return;
-    console.debug('[Clients] linked data refresh requested', reason);
-    this.loadAndRefresh({ force: true });
+    console.debug('[Clients] linked data cache invalidation requested', reason);
+    const clientId = this.state.selectedClientId;
+    if (!clientId) return;
+    this.invalidateClientTabCache(clientId, ['overview', 'statement', 'renewals', 'scheduledPayments', 'agreements', 'invoices', 'receipts']);
+    const activeTab = this.state.activeDetailTab === 'intelligence_hub' ? 'overview' : this.state.activeDetailTab;
+    const { page, pageSize } = this.getClientTabPageState(activeTab);
+    this.loadClientSubTab(clientId, activeTab, { page, pageSize, force: true }).catch(error => console.warn('[Clients] active tab refresh after linked data change failed', error));
   },
   collectNewClientFormData() {
     if (!E.newClientForm) return null;
@@ -3933,6 +4008,31 @@ const Clients = {
         this.setDetailTab(tab);
       });
     }
+    if (E.clientsDetailPanel) {
+      E.clientsDetailPanel.addEventListener('click', event => {
+        const pageBtn = event.target?.closest?.('[data-client-tab-page]');
+        if (pageBtn) {
+          const tabKey = this.normalizeClientTabKey(pageBtn.getAttribute('data-client-tab-page'));
+          const page = Math.max(Number(pageBtn.getAttribute('data-page') || 1), 1);
+          const { pageSize } = this.getClientTabPageState(tabKey);
+          if (this.state.selectedClientId) this.loadClientSubTab(this.state.selectedClientId, tabKey, { page, pageSize, force: true });
+          return;
+        }
+        const refreshBtn = event.target?.closest?.('[data-client-tab-refresh]');
+        if (refreshBtn) {
+          const tabKey = this.normalizeClientTabKey(refreshBtn.getAttribute('data-client-tab-refresh'));
+          const { page, pageSize } = this.getClientTabPageState(tabKey);
+          if (this.state.selectedClientId) this.loadClientSubTab(this.state.selectedClientId, tabKey, { page, pageSize, force: true });
+        }
+      });
+      E.clientsDetailPanel.addEventListener('change', event => {
+        const sizeSelect = event.target?.closest?.('[data-client-tab-page-size]');
+        if (!sizeSelect) return;
+        const tabKey = this.normalizeClientTabKey(sizeSelect.getAttribute('data-client-tab-page-size'));
+        const pageSize = Math.max(Number(sizeSelect.value || 25), 1);
+        if (this.state.selectedClientId) this.loadClientSubTab(this.state.selectedClientId, tabKey, { page: 1, pageSize, force: true });
+      });
+    }
     if (E.clientScheduledPaymentFilters) {
       E.clientScheduledPaymentFilters.addEventListener('click', event => {
         const trigger = event.target?.closest?.('[data-scheduled-payment-filter]');
@@ -3949,7 +4049,10 @@ const Clients = {
           dateTo: E.clientStatementDateTo?.value || '',
           searchDoc: E.clientStatementSearchDoc?.value || ''
         };
-        if (this.state.selectedClientId) await this.loadClientDetailData_(this.state.selectedClientId, { force: true });
+        if (this.state.selectedClientId) {
+          const { pageSize } = this.getClientTabPageState('statement');
+          await this.loadClientSubTab(this.state.selectedClientId, 'statement', { page: 1, pageSize, force: true });
+        }
         this.render();
       });
     }
@@ -3960,7 +4063,10 @@ const Clients = {
         if (E.clientStatementDateFrom) E.clientStatementDateFrom.value = '';
         if (E.clientStatementDateTo) E.clientStatementDateTo.value = '';
         if (E.clientStatementSearchDoc) E.clientStatementSearchDoc.value = '';
-        if (this.state.selectedClientId) await this.loadClientDetailData_(this.state.selectedClientId, { force: true });
+        if (this.state.selectedClientId) {
+          const { pageSize } = this.getClientTabPageState('statement');
+          await this.loadClientSubTab(this.state.selectedClientId, 'statement', { page: 1, pageSize, force: true });
+        }
         this.render();
       });
     }
@@ -3992,7 +4098,10 @@ const Clients = {
     if (E.clientRenewalsApplyFiltersBtn) {
       E.clientRenewalsApplyFiltersBtn.addEventListener('click', async () => {
         this.state.renewalsFilters = { dateFrom: E.clientRenewalsDateFrom?.value || '', dateTo: E.clientRenewalsDateTo?.value || '' };
-        if (this.state.selectedClientId) await this.loadClientDetailData_(this.state.selectedClientId, { force: true });
+        if (this.state.selectedClientId) {
+          const { pageSize } = this.getClientTabPageState('renewals');
+          await this.loadClientSubTab(this.state.selectedClientId, 'renewals', { page: 1, pageSize, force: true });
+        }
         this.render();
       });
     }
@@ -4001,7 +4110,10 @@ const Clients = {
         this.state.renewalsFilters = { dateFrom: '', dateTo: '' };
         if (E.clientRenewalsDateFrom) E.clientRenewalsDateFrom.value = '';
         if (E.clientRenewalsDateTo) E.clientRenewalsDateTo.value = '';
-        if (this.state.selectedClientId) await this.loadClientDetailData_(this.state.selectedClientId, { force: true });
+        if (this.state.selectedClientId) {
+          const { pageSize } = this.getClientTabPageState('renewals');
+          await this.loadClientSubTab(this.state.selectedClientId, 'renewals', { page: 1, pageSize, force: true });
+        }
         this.render();
       });
     }
