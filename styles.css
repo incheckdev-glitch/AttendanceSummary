@@ -3202,3 +3202,9 @@ body.permissions-loading [data-permission-resource][data-permission-action]{disp
 .payment-reminder-settings select[multiple] {
   min-height: 74px;
 }
+
+/* Client scheduled payments status badges */
+.chip.ok{border-color:var(--ok);color:var(--ok);background:rgba(34,197,94,.12)}
+.chip.warn{border-color:var(--warn);color:#b45309;background:rgba(245,158,11,.14)}
+.chip.danger{border-color:var(--danger);color:var(--danger);background:rgba(239,68,68,.12)}
+.chip.info{border-color:var(--accent);color:var(--accent);background:rgba(59,130,246,.12)}

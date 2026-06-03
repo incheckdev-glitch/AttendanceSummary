@@ -75,6 +75,8 @@ const Clients = {
     activeDetailTab: 'overview',
     statementFilters: { status: 'all', dateFrom: '', dateTo: '', searchDoc: '' },
     renewalsFilters: { dateFrom: '', dateTo: '' },
+    scheduledPaymentsFilter: 'all',
+    scheduledPaymentRowsById: new Map(),
     selectedRenewalRowIds: new Set(),
     activeRenewalRows: [],
     renewalRowsById: new Map()
@@ -2870,10 +2872,11 @@ const Clients = {
   setDetailTab(tab = 'overview') {
     if (tab === 'statement' && !this.canViewClientStatement()) tab = 'overview';
     if (tab === 'renewals' && !this.canViewClientRenewals()) tab = 'overview';
-    this.state.activeDetailTab = ['overview', 'statement', 'renewals'].includes(tab) ? tab : 'overview';
+    this.state.activeDetailTab = ['overview', 'statement', 'renewals', 'scheduledPayments'].includes(tab) ? tab : 'overview';
     if (E.clientOverviewSection) E.clientOverviewSection.style.display = this.state.activeDetailTab === 'overview' ? '' : 'none';
     if (E.clientStatementSection) E.clientStatementSection.style.display = this.state.activeDetailTab === 'statement' && this.canViewClientStatement() ? '' : 'none';
     if (E.clientRenewalsSection) E.clientRenewalsSection.style.display = this.state.activeDetailTab === 'renewals' && this.canViewClientRenewals() ? '' : 'none';
+    if (E.clientScheduledPaymentsSection) E.clientScheduledPaymentsSection.style.display = this.state.activeDetailTab === 'scheduledPayments' ? '' : 'none';
     if (E.clientDetailTabButtons) {
       E.clientDetailTabButtons.querySelectorAll('[data-client-detail-tab]').forEach(btn => {
         const tabName = btn.getAttribute('data-client-detail-tab');
@@ -2917,6 +2920,7 @@ const Clients = {
       ? (normalizedStatement.length ? this.computeRunningBalance(normalizedStatement) : this.buildClientStatementRows(client))
       : [];
     const renewalRows = this.canViewClientRenewals() ? (normalizedRenewals.length ? normalizedRenewals : this.buildClientRenewalRows(client)) : [];
+    const scheduledPayments = client ? await Api.getClientScheduledPayments(client) : [];
     console.log('[ClientsDetail] related counts', {
       client: client?.client_name || client?.company_name || client?.name || client?.customer_name,
       agreementsLoaded,
@@ -2941,6 +2945,7 @@ const Clients = {
       timeline: this.canViewClientRenewals() ? (normalizedTimeline.length ? normalizedTimeline : fallbackTimeline) : [],
       statementRows,
       renewalRows,
+      scheduledPayments,
       statementError: loadSuccess ? '' : 'Unable to load statement data.',
       noLinkedRows,
       loadedAt: Date.now()
@@ -2978,6 +2983,137 @@ const Clients = {
       if (dateTo && parsedDate && new Date(parsedDate).getTime() > new Date(dateTo).getTime()) return false;
       return true;
     });
+  },
+  normalizeScheduledPayment_(row = {}) {
+    const rawReference = String(row.invoice_number || row.invoice_reference || row.invoice_reference_fallback || row.invoice_id || '').trim();
+    const displayReference = rawReference && !this.isUuid(rawReference) ? rawReference : (String(row.invoice_number || '').trim() || 'Invoice');
+    const scheduleNo = row.schedule_no ?? row.payment_no ?? row.installment_no ?? '';
+    return {
+      schedule_id: String(row.schedule_id || row.id || row.invoice_payment_schedule_id || `${row.invoice_id || ''}:${scheduleNo}:${row.due_date || ''}`).trim(),
+      invoice_id: String(row.invoice_id || row.invoice_uuid || '').trim(),
+      invoice_reference: displayReference,
+      schedule_no: scheduleNo,
+      schedule_label: String(row.schedule_label || row.label || `Payment ${scheduleNo || ''}`.trim() || 'Payment').trim(),
+      due_date: String(row.due_date || row.payment_due_date || '').trim(),
+      scheduled_amount: Number(row.scheduled_amount ?? row.amount ?? row.payment_amount ?? 0),
+      paid_amount: Number(row.paid_amount ?? row.amount_paid ?? row.received_amount ?? 0),
+      balance_due: Number(row.balance_due ?? row.pending_amount ?? Math.max(0, Number(row.scheduled_amount ?? 0) - Number(row.paid_amount ?? 0))),
+      status: String(row.status || row.payment_status || row.payment_state || 'unpaid').trim().toLowerCase(),
+      reminder_enabled: row.reminder_enabled !== false,
+      reminder_days: Array.isArray(row.reminder_days) ? row.reminder_days : (String(row.reminder_days || '').split(',').map(day => day.trim()).filter(Boolean)),
+      reminder_user_ids: Array.isArray(row.reminder_user_ids) ? row.reminder_user_ids : (String(row.reminder_user_ids || '').split(',').map(id => id.trim()).filter(Boolean)),
+      currency: String(row.currency || 'USD').trim() || 'USD',
+      invoice_status: String(row.invoice_status || row.invoice_state || '').trim(),
+      raw: row
+    };
+  },
+  getScheduledPaymentBadge_(row = {}) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dueDate = row.due_date ? new Date(row.due_date) : null;
+    const balance = this.toNumberSafe(row.balance_due);
+    const paid = this.toNumberSafe(row.paid_amount);
+    const status = String(row.status || '').toLowerCase();
+    if (status === 'paid' || (balance <= 0 && paid > 0)) return { label: 'Paid', className: 'ok' };
+    if (status === 'partial' || (paid > 0 && balance > 0)) return { label: 'Partial', className: 'warn' };
+    if (dueDate && dueDate < today && balance > 0) return { label: 'Overdue', className: 'danger' };
+    if (dueDate && dueDate > today && balance > 0) return { label: 'Upcoming', className: 'info' };
+    return { label: status ? status.replace(/_/g, ' ') : 'Unpaid', className: '' };
+  },
+  getFilteredScheduledPaymentRows_(rows = []) {
+    const filter = this.state.scheduledPaymentsFilter || 'all';
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const daysUntil = row => {
+      if (!row.due_date) return null;
+      const due = new Date(row.due_date);
+      due.setHours(0, 0, 0, 0);
+      return Math.ceil((due.getTime() - today.getTime()) / 86400000);
+    };
+    return rows.filter(row => {
+      const badge = this.getScheduledPaymentBadge_(row).label.toLowerCase();
+      const days = daysUntil(row);
+      const balance = this.toNumberSafe(row.balance_due);
+      if (filter === 'upcoming') return days !== null && days > 0 && balance > 0;
+      if (filter === 'due7') return days !== null && days >= 0 && days <= 7 && balance > 0;
+      if (filter === 'due14') return days !== null && days >= 0 && days <= 14 && balance > 0;
+      if (filter === 'due30') return days !== null && days >= 0 && days <= 30 && balance > 0;
+      if (filter === 'overdue') return badge === 'overdue';
+      if (filter === 'paid') return badge === 'paid';
+      if (filter === 'open') return balance > 0;
+      return true;
+    });
+  },
+  renderScheduledPaymentsSection_(detailData = {}, client = {}) {
+    const currency = this.normalizeCurrencyCode_(this.getClientCurrency_(client.client_id || this.state.selectedClientId));
+    const rows = (Array.isArray(detailData.scheduledPayments) ? detailData.scheduledPayments : [])
+      .map(row => this.normalizeScheduledPayment_(row))
+      .sort((a, b) => {
+        const timeA = a.due_date ? new Date(a.due_date).getTime() : Number.POSITIVE_INFINITY;
+        const timeB = b.due_date ? new Date(b.due_date).getTime() : Number.POSITIVE_INFINITY;
+        if (timeA !== timeB) return timeA - timeB;
+        return Number(a.schedule_no || 0) - Number(b.schedule_no || 0);
+      });
+    const filteredRows = this.getFilteredScheduledPaymentRows_(rows);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const totalScheduled = rows.reduce((sum, row) => sum + this.toNumberSafe(row.scheduled_amount), 0);
+    const totalPaid = rows.reduce((sum, row) => sum + this.toNumberSafe(row.paid_amount), 0);
+    const totalBalance = rows.reduce((sum, row) => sum + this.toNumberSafe(row.balance_due), 0);
+    const overdueBalance = rows.reduce((sum, row) => {
+      const due = row.due_date ? new Date(row.due_date) : null;
+      return due && due < today ? sum + this.toNumberSafe(row.balance_due) : sum;
+    }, 0);
+    const nextDueDate = rows.find(row => {
+      const due = row.due_date ? new Date(row.due_date) : null;
+      return due && due >= today && this.toNumberSafe(row.balance_due) > 0;
+    })?.due_date || '';
+    if (E.clientScheduledPaymentCards) {
+      E.clientScheduledPaymentCards.innerHTML = [
+        ['Total Scheduled', this.formatMoneyWithCurrency_(totalScheduled, rows[0]?.currency || currency)],
+        ['Total Paid', this.formatMoneyWithCurrency_(totalPaid, rows[0]?.currency || currency)],
+        ['Total Balance Due', this.formatMoneyWithCurrency_(totalBalance, rows[0]?.currency || currency)],
+        ['Overdue Balance', this.formatMoneyWithCurrency_(overdueBalance, rows[0]?.currency || currency)],
+        ['Next Due Date', U.fmtDisplayDate(nextDueDate) || '—']
+      ].map(([label, value]) => `<div class="card kpi"><div class="label">${U.escapeHtml(label)}</div><div class="value">${U.escapeHtml(String(value))}</div></div>`).join('');
+    }
+    if (E.clientScheduledPaymentFilters) {
+      E.clientScheduledPaymentFilters.querySelectorAll('[data-scheduled-payment-filter]').forEach(btn => {
+        const selected = btn.getAttribute('data-scheduled-payment-filter') === (this.state.scheduledPaymentsFilter || 'all');
+        btn.classList.toggle('primary', selected);
+        btn.classList.toggle('ghost', !selected);
+      });
+    }
+    if (E.clientScheduledPaymentsTbody) {
+      this.state.scheduledPaymentRowsById = new Map();
+      rows.forEach(row => { if (row.schedule_id) this.state.scheduledPaymentRowsById.set(row.schedule_id, row); });
+      E.clientScheduledPaymentsTbody.innerHTML = filteredRows.length
+        ? filteredRows.map(row => {
+          const badge = this.getScheduledPaymentBadge_(row);
+          const reminders = row.reminder_enabled
+            ? `Enabled · ${row.reminder_days.length ? row.reminder_days.join(', ') + ' days' : 'default days'}${row.reminder_user_ids.length ? ` · ${row.reminder_user_ids.length} user(s)` : ''}`
+            : 'Disabled';
+          const canReminder = Permissions.canPerformAction('invoice_payment_schedule', 'update') || Permissions.canPerformAction('invoices', 'update') || Permissions.canPerformAction('invoices', 'manage');
+          const canReceipt = Permissions.canCreateReceiptFromInvoice() && this.toNumberSafe(row.balance_due) > 0;
+          return `<tr>
+            <td>${U.escapeHtml(row.invoice_reference || 'Invoice')}</td>
+            <td>${U.escapeHtml(row.schedule_label || 'Payment')}</td>
+            <td>${U.escapeHtml(U.fmtDisplayDate(row.due_date) || '—')}</td>
+            <td>${U.escapeHtml(this.formatMoneyWithCurrency_(row.scheduled_amount, row.currency || currency))}</td>
+            <td>${U.escapeHtml(this.formatMoneyWithCurrency_(row.paid_amount, row.currency || currency))}</td>
+            <td>${U.escapeHtml(this.formatMoneyWithCurrency_(row.balance_due, row.currency || currency))}</td>
+            <td><span class="chip ${U.escapeAttr(badge.className)}">${U.escapeHtml(badge.label)}</span></td>
+            <td>${U.escapeHtml(reminders)}</td>
+            <td>${U.escapeHtml(row.invoice_status || '—')}</td>
+            <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
+              ${row.invoice_id && Permissions.canView('invoices') ? `<button class="btn ghost sm" type="button" data-invoice-view="${U.escapeAttr(row.invoice_id)}">Open Invoice</button>` : ''}
+              ${canReminder ? `<button class="btn ghost sm" type="button" data-scheduled-payment-reminder="${U.escapeAttr(row.schedule_id)}">Configure Reminder</button>` : ''}
+              ${canReceipt ? `<button class="btn ghost sm" type="button" data-scheduled-payment-receipt="${U.escapeAttr(row.schedule_id)}">Create Receipt</button>` : ''}
+            </div></td>
+          </tr>`;
+        }).join('')
+        : '<tr><td colspan="10" class="muted" style="text-align:center;">No scheduled payments found for this client.</td></tr>';
+    }
   },
   renderStatementSection_(detailData = {}) {
     const fallbackClient = this.state.rows.find(row => row.client_id === this.state.selectedClientId) || {};
@@ -3244,6 +3380,53 @@ const Clients = {
         .join('');
     }
   },
+  async configureScheduledPaymentReminder_(row = {}) {
+    if (!(Permissions.canPerformAction('invoice_payment_schedule', 'update') || Permissions.canPerformAction('invoices', 'update') || Permissions.canPerformAction('invoices', 'manage'))) {
+      return UI.toast('You do not have permission to configure scheduled payment reminders.');
+    }
+    const currentDays = Array.isArray(row.reminder_days) && row.reminder_days.length ? row.reminder_days.join(',') : '30,14,7';
+    const daysInput = window.prompt('Reminder days before due date (comma separated):', currentDays);
+    if (daysInput === null) return;
+    const usersInput = window.prompt('Reminder user IDs (comma separated, optional):', (row.reminder_user_ids || []).join(','));
+    if (usersInput === null) return;
+    const enabledInput = window.confirm('Enable reminders for this scheduled payment? Press Cancel to disable reminders.');
+    try {
+      await Api.updateInvoicePaymentScheduleReminder({
+        schedule_id: row.schedule_id,
+        reminder_enabled: enabledInput,
+        reminder_days: String(daysInput || '').split(',').map(value => Number(value.trim())).filter(Number.isFinite),
+        reminder_user_ids: String(usersInput || '').split(',').map(value => value.trim()).filter(Boolean)
+      });
+      if (this.state.selectedClientId) await this.loadClientDetailData_(this.state.selectedClientId, { force: true });
+      this.render();
+      UI.toast('Reminder settings saved.');
+    } catch (error) {
+      console.error('[Client Scheduled Payments] reminder save failed', error);
+      UI.toast(error?.message || 'Unable to save reminder settings.');
+    }
+  },
+  async createReceiptFromScheduledPayment_(row = {}) {
+    if (!Permissions.canCreateReceiptFromInvoice()) return UI.toast('You do not have permission to create receipts.');
+    if (this.toNumberSafe(row.balance_due) <= 0) return UI.toast('This scheduled payment has no open balance.');
+    if (!window.Receipts?.openCreateFromInvoice) return UI.toast('Receipt form is not available right now. Please refresh and try again.');
+    const invoice = this.state.invoices.find(item => String(item.id || item.invoice_id || '').trim() === String(row.invoice_id || '').trim()) || row.raw || {};
+    await window.Receipts.openCreateFromInvoice({
+      id: row.invoice_id,
+      invoice_uuid: row.invoice_id,
+      invoice_id: invoice.invoice_id || row.invoice_id,
+      invoice_number: row.invoice_reference,
+      company_id: invoice.company_id || '',
+      company_name: invoice.company_name || invoice.client_name || '',
+      client_id: invoice.client_id || '',
+      customer_name: invoice.customer_name || invoice.client_name || '',
+      customer_legal_name: invoice.customer_legal_name || invoice.client_name || '',
+      currency: row.currency || invoice.currency || 'USD',
+      invoice_total: invoice.invoice_total ?? invoice.grand_total ?? row.scheduled_amount,
+      amount_paid: invoice.amount_paid ?? invoice.received_amount ?? row.paid_amount,
+      balance_due: row.balance_due,
+      payment_status: row.status || invoice.payment_status || invoice.payment_state || ''
+    });
+  },
   renderList() {
     if (!E.clientsTbody) return;
     if (this.state.loadError) {
@@ -3382,6 +3565,7 @@ const Clients = {
     }
     this.renderStatementSection_(detailData);
     this.renderRenewalsSection_(detailData, client);
+    this.renderScheduledPaymentsSection_(detailData, client);
     this.setDetailTab(this.state.activeDetailTab);
   },
   render() {
@@ -3414,6 +3598,9 @@ const Clients = {
     }
     if (E.clientRenewalsTbody) {
       E.clientRenewalsTbody.innerHTML = '<tr><td colspan="7"><div class="skeleton" style="height:30px;"></div></td></tr>';
+    }
+    if (E.clientScheduledPaymentsTbody) {
+      E.clientScheduledPaymentsTbody.innerHTML = '<tr><td colspan="10"><div class="skeleton" style="height:30px;"></div></td></tr>';
     }
   },
   async selectClient(clientId, options = {}) {
@@ -3746,6 +3933,14 @@ const Clients = {
         this.setDetailTab(tab);
       });
     }
+    if (E.clientScheduledPaymentFilters) {
+      E.clientScheduledPaymentFilters.addEventListener('click', event => {
+        const trigger = event.target?.closest?.('[data-scheduled-payment-filter]');
+        if (!trigger) return;
+        this.state.scheduledPaymentsFilter = trigger.getAttribute('data-scheduled-payment-filter') || 'all';
+        this.render();
+      });
+    }
     if (E.clientStatementApplyFiltersBtn) {
       E.clientStatementApplyFiltersBtn.addEventListener('click', async () => {
         this.state.statementFilters = {
@@ -3975,6 +4170,20 @@ const Clients = {
           console.debug('[Clients] open invoice', { invoiceUuid: id });
           if (id && window.Invoices?.openInvoiceById) window.Invoices.openInvoiceById(id, { readOnly: true });
           return;
+        }
+        const reminderBtn = event.target?.closest?.('[data-scheduled-payment-reminder]');
+        if (reminderBtn) {
+          const rowId = reminderBtn.getAttribute('data-scheduled-payment-reminder');
+          const row = this.state.scheduledPaymentRowsById?.get(rowId);
+          if (!row) return UI.toast('Scheduled payment row was not found.');
+          return this.configureScheduledPaymentReminder_(row);
+        }
+        const receiptFromScheduleBtn = event.target?.closest?.('[data-scheduled-payment-receipt]');
+        if (receiptFromScheduleBtn) {
+          const rowId = receiptFromScheduleBtn.getAttribute('data-scheduled-payment-receipt');
+          const row = this.state.scheduledPaymentRowsById?.get(rowId);
+          if (!row) return UI.toast('Scheduled payment row was not found.');
+          return this.createReceiptFromScheduledPayment_(row);
         }
         const receiptBtn = event.target?.closest?.('[data-receipt-view]');
         if (receiptBtn) {
