@@ -1901,21 +1901,11 @@ const Api = {
     const sourceClient = client && typeof client === 'object' ? client : { client_id: client };
     const { page, pageSize, from, to } = this.normalizePagedOptions(options);
 
-    const viewRows = await this.fetchPaged('client_scheduled_payments', sourceClient, { page: 1, pageSize: Math.max(to + 1, 100) }, query => query.order('due_date', { ascending: true, nullsFirst: false }).order('schedule_no', { ascending: true, nullsFirst: false })).catch(error => {
-      console.info('[Client Scheduled Payments] view unavailable; falling back to invoice_payment_schedule', error?.message || error);
-      return this.pagedResult([], 0, 1, Math.max(to + 1, 100));
-    });
-    if ((viewRows.rows || []).length) {
-      const rows = this.sortClientRowsForTable_('client_scheduled_payments', viewRows.rows || []);
-      return options.returnArray === true ? rows.slice(from, to + 1) : this.pagedResult(rows.slice(from, to + 1), rows.length, page, pageSize);
-    }
-
+    // Use the real invoice_payment_schedule rows as the source of truth.
+    // The legacy client_scheduled_payments view can calculate/display dates from invoice data,
+    // which caused cases like SA/2026/53 to show the wrong first payment date.
     const invoiceOverview = await this.getClientOverview(sourceClient).catch(() => ({ invoices: { rows: [] } }));
     const invoices = invoiceOverview.invoices?.rows || [];
-    const scheduleRows = await this.fetchLinkedRowsByColumns_('invoice_payment_schedule', {
-      invoice_id: this.extractUuidKeys_(invoices, ['id', 'invoice_uuid', 'invoice_id']),
-      invoice_number: this.extractTextKeys_(invoices, ['invoice_number', 'invoice_id', 'invoice_no'])
-    }, query => query.order('due_date', { ascending: true, nullsFirst: false }).order('schedule_no', { ascending: true, nullsFirst: false }));
 
     const invoiceByKey = new Map();
     invoices.forEach(invoice => {
@@ -1924,23 +1914,41 @@ const Api = {
         .filter(Boolean)
         .forEach(key => invoiceByKey.set(key, invoice));
     });
-    const enrichedRows = scheduleRows.map(schedule => {
-      const invoice = invoiceByKey.get(String(schedule.invoice_id || '').trim()) || invoiceByKey.get(String(schedule.invoice_number || '').trim()) || {};
-      return {
-        ...schedule,
-        schedule_id: schedule.schedule_id || schedule.id,
-        invoice_id: schedule.invoice_id || invoice.id || invoice.invoice_id || '',
-        invoice_number: invoice.invoice_number || schedule.invoice_number || '',
-        invoice_reference_fallback: invoice.invoice_id || invoice.display_id || '',
-        invoice_status: invoice.status || invoice.invoice_status || '',
-        client_id: invoice.client_id || schedule.client_id || '',
-        company_id: invoice.company_id || schedule.company_id || '',
-        client_name: invoice.customer_legal_name || invoice.customer_name || invoice.company_name || schedule.client_name || '',
-        currency: schedule.currency || invoice.currency || 'USD',
-        raw: invoice
-      };
+
+    const scheduleRows = await this.fetchLinkedRowsByColumns_('invoice_payment_schedule', {
+      invoice_id: this.extractUuidKeys_(invoices, ['id', 'invoice_uuid', 'invoice_id']),
+      invoice_number: this.extractTextKeys_(invoices, ['invoice_number', 'invoice_id', 'invoice_no'])
+    }, query => query.order('due_date', { ascending: true, nullsFirst: false }).order('schedule_no', { ascending: true, nullsFirst: false })).catch(error => {
+      console.info('[Client Scheduled Payments] invoice_payment_schedule unavailable; trying client_scheduled_payments view', error?.message || error);
+      return [];
     });
-    const rows = this.sortClientRowsForTable_('invoice_payment_schedule', enrichedRows);
+
+    if (scheduleRows.length) {
+      const enrichedRows = scheduleRows.map(schedule => {
+        const invoice = invoiceByKey.get(String(schedule.invoice_id || '').trim()) || invoiceByKey.get(String(schedule.invoice_number || '').trim()) || {};
+        return {
+          ...schedule,
+          schedule_id: schedule.schedule_id || schedule.id,
+          invoice_id: schedule.invoice_id || invoice.id || invoice.invoice_id || '',
+          invoice_number: invoice.invoice_number || schedule.invoice_number || '',
+          invoice_reference_fallback: invoice.invoice_id || invoice.display_id || '',
+          invoice_status: invoice.status || invoice.invoice_status || '',
+          client_id: invoice.client_id || schedule.client_id || '',
+          company_id: invoice.company_id || schedule.company_id || '',
+          client_name: invoice.customer_legal_name || invoice.customer_name || invoice.company_name || schedule.client_name || '',
+          currency: schedule.currency || invoice.currency || 'USD',
+          raw: invoice
+        };
+      });
+      const rows = this.sortClientRowsForTable_('invoice_payment_schedule', enrichedRows);
+      return options.returnArray === true ? rows.slice(from, to + 1) : this.pagedResult(rows.slice(from, to + 1), rows.length, page, pageSize);
+    }
+
+    const viewRows = await this.fetchPaged('client_scheduled_payments', sourceClient, { page: 1, pageSize: Math.max(to + 1, 100) }, query => query.order('due_date', { ascending: true, nullsFirst: false }).order('schedule_no', { ascending: true, nullsFirst: false })).catch(error => {
+      console.info('[Client Scheduled Payments] fallback view unavailable', error?.message || error);
+      return this.pagedResult([], 0, 1, Math.max(to + 1, 100));
+    });
+    const rows = this.sortClientRowsForTable_('client_scheduled_payments', viewRows.rows || []);
     return options.returnArray === true ? rows.slice(from, to + 1) : this.pagedResult(rows.slice(from, to + 1), rows.length, page, pageSize);
   },
 

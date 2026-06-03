@@ -219,7 +219,19 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const invoiceId = String(invoice?.id || invoice?.invoice_uuid || '').trim();
     if (!invoiceId) throw new Error('Invoice UUID is required to build payment schedule.');
     const plan = getPaymentScheduleConfig(invoice.payment_term || invoice.payment_terms);
-    const firstDueDate = String(invoice.due_date || invoice.dueDate || invoice.initial_due_date || invoice.initialDueDate || '').trim().slice(0, 10);
+    // The first scheduled payment must always be the invoice Due Date.
+    // Extra aliases are accepted only as compatibility fallbacks for old/imported rows.
+    const firstDueDate = String(
+      invoice.due_date ||
+      invoice.dueDate ||
+      invoice.invoice_due_date ||
+      invoice.invoiceDueDate ||
+      invoice.payment_due_date ||
+      invoice.paymentDueDate ||
+      invoice.initial_due_date ||
+      invoice.initialDueDate ||
+      ''
+    ).trim().slice(0, 10);
     if (!firstDueDate) return [];
     const totalCents = Math.round(getInvoiceTotalForSchedule(invoice) * 100);
     const baseCents = plan.count > 0 ? Math.floor(totalCents / plan.count) : totalCents;
@@ -8352,6 +8364,14 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         if (isUuid(invoiceUuid)) {
           await recalculateInvoicePaymentScheduleRows(client, invoiceUuid).catch(scheduleError => {
             console.warn('[invoice_payment_schedule] receipt update recalculation failed', scheduleError);
+          });
+        }
+      }
+      if (resource === 'invoices') {
+        const invoiceUuid = String(data?.id || id || '').trim();
+        if (isUuid(invoiceUuid)) {
+          await recalculateInvoicePaymentScheduleRows(client, invoiceUuid).catch(scheduleError => {
+            console.warn('[invoice_payment_schedule] invoice update recalculation failed', scheduleError);
           });
         }
       }

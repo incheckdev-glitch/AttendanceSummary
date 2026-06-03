@@ -679,10 +679,18 @@ const Invoices = {
   },
   getInvoiceScheduleStartDate(invoice = {}, options = {}) {
     const includeFormValue = options?.includeFormValue !== false;
+    // First scheduled payment date is the invoice Due Date.
+    // Other aliases are only compatibility fallbacks for old/imported data.
     return String(
       (includeFormValue ? E.invoiceFormDueDate?.value : '') ||
       invoice.due_date ||
       invoice.dueDate ||
+      invoice.invoice_due_date ||
+      invoice.invoiceDueDate ||
+      invoice.payment_due_date ||
+      invoice.paymentDueDate ||
+      invoice.initial_due_date ||
+      invoice.initialDueDate ||
       ''
     ).trim();
   },
@@ -4068,6 +4076,13 @@ const Invoices = {
         : null;
       const normalized = this.upsertLocalRow(persisted);
       if (id && this.canUseAdminOverride()) this.logAdminOverride('invoice_metadata_update_override', currentRecord || null, normalized || persisted);
+      const updatedInvoiceId = this.invoiceDbId(normalized?.id || persisted?.id || id);
+      if (updatedInvoiceId) {
+        await Api.recalculateInvoicePaymentSchedule(updatedInvoiceId).catch(error => {
+          console.warn('[invoices] payment schedule recalculation failed after invoice metadata update', error);
+        });
+        this.clearInvoiceScheduleCache(updatedInvoiceId);
+      }
       this.clearInvoiceScheduleCache(normalized?.id || id);
       this.setCachedDetail(normalized?.id || id, persisted, persistedItems);
       this.state.selectedInvoice = normalized || persisted;
@@ -4186,8 +4201,8 @@ const Invoices = {
 
         if (createdInvoiceId) {
           this.clearInvoiceScheduleCache(createdInvoiceId);
-          await Api.createInvoicePaymentSchedule(createdInvoiceId, false).catch(error => {
-            console.warn('[invoices] payment schedule creation failed', error);
+          await Api.recalculateInvoicePaymentSchedule(createdInvoiceId).catch(error => {
+            console.warn('[invoices] payment schedule recalculation failed after invoice creation', error);
           });
         }
 
