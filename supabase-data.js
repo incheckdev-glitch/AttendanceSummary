@@ -4533,8 +4533,13 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       if (normalizedResource === 'receipts' && id) return `/#finance?tab=receipts&id=${encodeURIComponent(id)}`;
       return String(fallback || '').trim() || '/#notifications';
     }
-    function getRecordRef(resource, record = {}) {
+    function getRecordRef(resource, record = {}, fallback = '') {
       const safeRecord = record && typeof record === 'object' ? record : {};
+      const fallbackRef = String(fallback || '').trim();
+      const helper = typeof global.getRecordRef === 'function'
+        ? global.getRecordRef
+        : global.NotificationTemplateHelpers?.getRecordRef;
+      const sharedRef = typeof helper === 'function' ? helper(safeRecord, fallbackRef) : fallbackRef;
       const valueByResource = {
         tickets: safeRecord.ticket_number || safeRecord.ticket_id || safeRecord.ticket_ref || safeRecord.reference,
         agreements: safeRecord.agreement_number || safeRecord.agreement_reference || safeRecord.agreement_ref || safeRecord.agreement_id,
@@ -4545,11 +4550,16 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         deals: safeRecord.deal_number || safeRecord.deal_reference || safeRecord.deal_ref || safeRecord.deal_id,
         operations_onboarding: safeRecord.onboarding_number || safeRecord.onboarding_ref || safeRecord.onboarding_id || safeRecord.reference,
         technical_admin_requests: safeRecord.request_number || safeRecord.technical_request_number || safeRecord.technical_request_id || safeRecord.request_ref || safeRecord.reference,
+        communication_centre: safeRecord.conversation_number || safeRecord.conversation_no || safeRecord.reference,
         events: safeRecord.event_number || safeRecord.event_ref || safeRecord.event_id || safeRecord.reference
       };
+      const isUuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
       const direct = String(valueByResource[String(resource || '').trim().toLowerCase()] || '').trim();
-      if (direct && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(direct)) return direct;
-      return String(safeRecord.reference || safeRecord.number || safeRecord.code || '').trim();
+      if (direct && !isUuid(direct)) return direct;
+      if (sharedRef && !isUuid(sharedRef)) return sharedRef;
+      const generic = String(safeRecord.record_ref || safeRecord.record_reference || safeRecord.reference || safeRecord.number || safeRecord.code || '').trim();
+      if (generic && !isUuid(generic)) return generic;
+      return fallbackRef;
     }
     function getRecordDeepLink(resource, record = {}) {
       const ref = encodeURIComponent(getRecordRef(resource, record) || '');
@@ -4569,16 +4579,18 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     }
     function renderNotificationTemplate(template = '', context = {}) {
       const safeContext = context && typeof context === 'object' ? context : {};
+      const recordRef = getRecordRef(safeContext.resource, safeContext, String(safeContext.record_ref || safeContext.reference || safeContext.display_ref || '').trim());
       const directMap = {
-        record_ref: safeContext.record_ref || '',
-        display_ref: safeContext.display_ref || safeContext.record_ref || '',
-        ticket_number: safeContext.ticket_number || safeContext.record_ref || '',
-        agreement_number: safeContext.agreement_number || safeContext.record_ref || '',
-        invoice_number: safeContext.invoice_number || safeContext.record_ref || '',
-        receipt_number: safeContext.receipt_number || safeContext.record_ref || '',
-        lead_number: safeContext.lead_number || safeContext.record_ref || '',
-        deal_number: safeContext.deal_number || safeContext.record_ref || '',
-        request_number: safeContext.request_number || safeContext.record_ref || ''
+        record_ref: recordRef || '',
+        reference: recordRef || safeContext.reference || '',
+        display_ref: safeContext.display_ref || recordRef || '',
+        ticket_number: safeContext.ticket_number || recordRef || '',
+        agreement_number: safeContext.agreement_number || recordRef || '',
+        invoice_number: safeContext.invoice_number || recordRef || '',
+        receipt_number: safeContext.receipt_number || recordRef || '',
+        lead_number: safeContext.lead_number || recordRef || '',
+        deal_number: safeContext.deal_number || recordRef || '',
+        request_number: safeContext.request_number || safeContext.technical_request_number || recordRef || ''
       };
       return String(template || '').replace(/\{([a-z0-9_]+)\}/gi, (_, key) => {
         const value = directMap[key] ?? safeContext[key] ?? '';
@@ -6154,8 +6166,8 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       ...assignedEmails
     ]);
     const record = normalizedPayload?.record && typeof normalizedPayload.record === 'object' ? normalizedPayload.record : normalizedPayload;
-    const recordRef = getRecordRef(resource, record);
-    const deepLink = getRecordDeepLink(resource, record);
+    const recordRef = getRecordRef(resource, record, String(normalizedPayload?.record_ref || normalizedPayload?.reference || normalizedPayload?.display_ref || '').trim());
+    const deepLink = getRecordDeepLink(resource, { ...record, record_ref: recordRef || record?.record_ref });
     const dynamicRecipientEmails = [];
     assignedEmails.forEach(value => {
       dynamicRecipientEmails.push(value);
@@ -6171,7 +6183,10 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const primaryRule = enabledRulesForRecipients[0] || matchingRules[0] || null;
     const templateContext = {
       ...(record && typeof record === 'object' ? record : {}),
+      resource,
+      action,
       record_ref: recordRef || String(normalizedPayload?.record_ref || normalizedPayload?.display_ref || '').trim(),
+      reference: recordRef || String(normalizedPayload?.reference || normalizedPayload?.record_ref || '').trim(),
       display_ref: recordRef || String(normalizedPayload?.display_ref || normalizedPayload?.record_ref || '').trim(),
       ticket_number: record?.ticket_number || recordRef,
       agreement_number: record?.agreement_number || recordRef,
@@ -7278,19 +7293,57 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     if (resource === 'notification_settings' && action === 'test_notification') {
       assertAllowed('notification_settings', 'test_notification');
       const input = payload?.rule && typeof payload.rule === 'object' ? payload.rule : payload;
+      const selectedRule = input && typeof input === 'object' ? input : {};
       const currentUserId = await getCurrentUserId(client);
-      const result = await createNotificationAndPush({
-        ...input,
-        resource: String(input?.resource || '').trim().toLowerCase(),
-        action: String(input?.action || '').trim().toLowerCase(),
+      let currentUser = null;
+      if (currentUserId) {
+        const { data: profile } = await client
+          .from('profiles')
+          .select('name,email,username')
+          .eq('id', currentUserId)
+          .maybeSingle();
+        currentUser = profile || null;
+      }
+      const testRecord = {
+        record_ref: 'TEST-NOTIFICATION',
+        reference: 'TEST-NOTIFICATION',
         title: 'Test Notification',
-        message: 'This is a test notification from InCheck360.',
+        resource: selectedRule?.resource || 'notification_hub',
+        action: selectedRule?.action || 'test'
+      };
+      const recordRef = getRecordRef(selectedRule?.resource || 'notification_hub', testRecord, 'TEST-NOTIFICATION') || 'TEST-NOTIFICATION';
+      const userName = currentUser?.name || currentUser?.email || currentUser?.username || 'User';
+      const templateData = {
+        record_ref: recordRef,
+        reference: recordRef,
+        resource: selectedRule?.resource || 'notification_hub',
+        action: selectedRule?.action || 'test',
+        title: 'Test Notification',
+        user_name: userName,
+        actor_name: userName,
+        created_by_name: userName,
+        date: new Date().toLocaleDateString(),
+        datetime: new Date().toLocaleString()
+      };
+      const result = await createNotificationAndPush({
+        ...selectedRule,
+        ...templateData,
+        record: { ...testRecord, ...templateData },
+        metadata: templateData,
+        meta: templateData,
+        resource: String(selectedRule?.resource || 'notification_hub').trim().toLowerCase(),
+        action: String(selectedRule?.action || 'test').trim().toLowerCase(),
+        title: 'Test Notification',
+        message: `This is a test notification from InCheck360 for ${recordRef}.`,
+        body: `This is a test notification from InCheck360 for ${recordRef}.`,
         actor_user_id: currentUserId || null,
-        record_id: String(input?.record_id || 'Test').trim() || 'Test',
-        record_number: 'Test',
+        record_id: recordRef,
+        record_ref: recordRef,
+        reference: recordRef,
+        record_number: recordRef,
         email_resource: 'notification_settings',
         email_action: 'test_notification',
-        email_record_number: 'Test'
+        email_record_number: recordRef
       }, 'notification_settings:test_notification');
       return { handled: true, data: result };
     }
