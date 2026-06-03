@@ -7,6 +7,7 @@ const NotificationSetup = {
     ['proposals',['proposal_created','proposal_updated','proposal_requires_approval','proposal_approved','proposal_rejected','proposal_created_from_deal']],
     ['agreements',['agreement_created','agreement_created_from_proposal','agreement_requires_signature','agreement_signed','agreement_customer_signed','agreement_financial_controller_signed','agreement_fully_signed']],
     ['invoices',['invoice_created','invoice_created_from_agreement','invoice_payment_state_changed','invoice_fully_paid']],
+    ['invoice_payment_schedule',['payment_due_reminder']],
     ['receipts',['receipt_created','receipt_created_from_invoice','receipt_updated']],
     ['operations_onboarding',['onboarding_created','operations_onboarding_created','onboarding_status_changed','onboarding_request_submitted','assigned_csm']],
     ['technical_admin_requests',['technical_request_submitted','technical_request_status_changed']],
@@ -37,6 +38,9 @@ const NotificationSetup = {
   getNotificationDescription(resource, action) {
     if (resource === 'operations_onboarding' && action === 'assigned_csm') {
       return 'Notify the selected CSM when a new client or location is assigned to them in Operations Onboarding.';
+    }
+    if (resource === 'invoice_payment_schedule' && action === 'payment_due_reminder') {
+      return 'Notify selected users 30, 14, or 7 days before an invoice payment schedule due date.';
     }
     return '';
   },

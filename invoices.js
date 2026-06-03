@@ -105,6 +105,8 @@ const Invoices = {
     detailCacheTtlMs: 90 * 1000,
     receiptsByInvoiceId: {},
     paymentScheduleByInvoiceId: {},
+    paymentScheduleReminderUsers: [],
+    paymentScheduleReminderUsersLoaded: false,
     openingInvoiceIds: new Set(),
     loadingInvoiceReceiptIds: new Set(),
     rowActionInFlight: new Set(),
@@ -913,11 +915,97 @@ const Invoices = {
       balance_due: this.toNumberSafe(row.balance_due ?? Math.max(0, scheduled - paid)),
       status: String(row.status || '').trim() || 'unpaid',
       schedule_label: label,
-      receipt_ids: Array.isArray(row.receipt_ids) ? row.receipt_ids : []
+      receipt_ids: Array.isArray(row.receipt_ids) ? row.receipt_ids : [],
+      reminder_enabled: row.reminder_enabled === true || String(row.reminder_enabled || '').trim().toLowerCase() === 'true',
+      reminder_days: this.normalizeReminderDays(row.reminder_days),
+      reminder_user_ids: this.normalizeReminderUserIds(row.reminder_user_ids),
+      reminder_note: String(row.reminder_note || '').trim(),
+      reminder_updated_at: row.reminder_updated_at || null,
+      reminder_updated_by: row.reminder_updated_by || null
     };
   },
   normalizeScheduleRow(row = {}) {
     return this.normalizeInvoiceScheduleRow(row);
+  },
+  normalizeReminderDays(value) {
+    const allowed = new Set([30, 14, 7]);
+    const source = Array.isArray(value) ? value : String(value || '').split(',');
+    const days = [...new Set(source.map(day => Number(day)).filter(day => allowed.has(day)))];
+    return days.length ? days : [30, 14, 7];
+  },
+  normalizeReminderUserIds(value) {
+    const source = Array.isArray(value) ? value : String(value || '').split(',');
+    return [...new Set(source.map(id => String(id || '').trim()).filter(Boolean))];
+  },
+  async ensurePaymentScheduleReminderUsers() {
+    if (this.state.paymentScheduleReminderUsersLoaded) return this.state.paymentScheduleReminderUsers;
+    const normalizeUser = row => {
+      const id = String(row?.id || row?.user_id || row?.profile_id || '').trim();
+      if (!id) return null;
+      const name = String(row?.name || row?.full_name || row?.display_name || row?.username || row?.email || id).trim();
+      const email = String(row?.email || '').trim();
+      const active = row?.is_active !== false && row?.active !== false;
+      return active ? { id, name, email } : null;
+    };
+    try {
+      const client = window.SupabaseClient?.getClient?.() || window.supabase || null;
+      if (client?.from) {
+        const { data, error } = await client
+          .from('profiles')
+          .select('id,name,full_name,display_name,username,email,is_active,active')
+          .order('name', { ascending: true, nullsFirst: false })
+          .limit(1000);
+        if (error) throw error;
+        this.state.paymentScheduleReminderUsers = (Array.isArray(data) ? data : []).map(normalizeUser).filter(Boolean);
+      } else {
+        const response = await Api.requestWithSession('users', 'list', { limit: 1000 });
+        const rows = this.extractRows(response);
+        this.state.paymentScheduleReminderUsers = rows.map(normalizeUser).filter(Boolean);
+      }
+      this.state.paymentScheduleReminderUsersLoaded = true;
+    } catch (error) {
+      console.warn('[invoices] unable to load reminder users', error);
+      this.state.paymentScheduleReminderUsers = [];
+      this.state.paymentScheduleReminderUsersLoaded = true;
+    }
+    return this.state.paymentScheduleReminderUsers;
+  },
+  renderReminderUserOptions(selected = []) {
+    const selectedSet = new Set(this.normalizeReminderUserIds(selected));
+    return (this.state.paymentScheduleReminderUsers || []).map(user => {
+      const label = user.email ? `${user.name} (${user.email})` : user.name;
+      return `<option value="${U.escapeHtml(user.id)}" ${selectedSet.has(user.id) ? 'selected' : ''}>${U.escapeHtml(label)}</option>`;
+    }).join('');
+  },
+  collectScheduleReminderPayload(rowEl) {
+    const scheduleId = String(rowEl?.dataset?.scheduleId || '').trim();
+    const selectedDays = [...rowEl.querySelectorAll('[data-reminder-day]:checked')].map(input => Number(input.value)).filter(Boolean);
+    return {
+      schedule_id: scheduleId,
+      reminder_enabled: rowEl.querySelector('[data-reminder-enabled]')?.checked === true,
+      reminder_days: this.normalizeReminderDays(selectedDays),
+      reminder_user_ids: [...rowEl.querySelectorAll('[data-reminder-users] option:checked')].map(option => String(option.value || '').trim()).filter(Boolean)
+    };
+  },
+  async savePaymentScheduleReminder(rowEl) {
+    const payload = this.collectScheduleReminderPayload(rowEl);
+    if (!payload.schedule_id) return UI.toast('Save the invoice payment schedule before configuring reminders.');
+    try {
+      const response = await Api.updateInvoicePaymentScheduleReminder(payload);
+      const updated = this.normalizeInvoiceScheduleRow(response?.data || response || payload);
+      const invoiceId = String(updated.invoice_id || this.state.selectedInvoice?.id || '').trim();
+      const rows = this.getInvoicePaymentScheduleRows(invoiceId).map(row => String(row.id || '').trim() === payload.schedule_id ? { ...row, ...updated } : row);
+      this.setInvoicePaymentScheduleRows(invoiceId, rows);
+      if (this.state.selectedInvoice) {
+        this.state.selectedInvoice.payment_schedule_rows = rows;
+        this.state.selectedInvoice.payment_schedule = rows;
+      }
+      this.renderInvoicePaymentSchedule(rows);
+      UI.toast('Payment reminder settings saved.');
+    } catch (error) {
+      console.warn('[invoices] unable to save payment reminder settings', error);
+      UI.toast(String(error?.message || 'Unable to save payment reminder settings.'));
+    }
   },
   async loadInvoicePaymentSchedule(invoiceId, { forceCreate = false } = {}) {
     const id = String(invoiceId || '').trim();
@@ -956,16 +1044,24 @@ const Invoices = {
       E.invoicePaymentScheduleState.textContent = safeRows.length ? `${safeRows.length} scheduled payment${safeRows.length === 1 ? '' : 's'}.` : 'No payment schedule found yet.';
     }
     if (!safeRows.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="muted" style="text-align:center;">No payment schedule found.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="muted" style="text-align:center;">No payment schedule found.</td></tr>';
       return;
     }
     const currency = String(this.state.selectedInvoice?.currency || E.invoiceFormCurrency?.value || 'USD').trim().toUpperCase();
     const money = value => `${currency} ${this.toNumberSafe(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    if (!this.state.paymentScheduleReminderUsersLoaded) {
+      this.ensurePaymentScheduleReminderUsers().then(() => {
+        if (E.invoicePaymentScheduleTbody === tbody) this.renderInvoicePaymentSchedule(this.getInvoicePaymentScheduleRows(this.state.selectedInvoice?.id));
+      });
+    }
     tbody.innerHTML = safeRows
       .sort((a, b) => Number(a.schedule_no || 0) - Number(b.schedule_no || 0))
       .map(row => {
         const receipts = row.receipt_ids.length ? row.receipt_ids.map(id => U.escapeHtml(String(id))).join('<br>') : '—';
-        return `<tr>
+        const reminderDays = this.normalizeReminderDays(row.reminder_days);
+        const reminderDisabled = row.id ? '' : 'disabled';
+        const userOptions = this.renderReminderUserOptions(row.reminder_user_ids);
+        return `<tr data-schedule-id="${U.escapeHtml(row.id)}">
           <td>${U.escapeHtml(String(row.schedule_no || ''))}</td>
           <td>${U.escapeHtml(this.formatDateOnlyDisplay(row.due_date))}</td>
           <td>${U.escapeHtml(money(row.scheduled_amount))}</td>
@@ -973,9 +1069,22 @@ const Invoices = {
           <td>${U.escapeHtml(money(row.balance_due))}</td>
           <td>${U.escapeHtml(row.status || 'scheduled')}</td>
           <td>${receipts}</td>
+          <td>
+            <div class="payment-reminder-settings">
+              <label class="checkline"><input type="checkbox" data-reminder-enabled ${row.reminder_enabled ? 'checked' : ''} ${reminderDisabled}> Reminder Enabled</label>
+              <div class="payment-reminder-days">
+                ${[30, 14, 7].map(day => `<label class="checkline"><input type="checkbox" value="${day}" data-reminder-day ${reminderDays.includes(day) ? 'checked' : ''} ${reminderDisabled}> ${day} days before</label>`).join('')}
+              </div>
+              <select class="select" data-reminder-users multiple size="3" ${reminderDisabled}>${userOptions || '<option disabled>Loading users…</option>'}</select>
+              <button type="button" class="btn sm ghost" data-save-schedule-reminder ${reminderDisabled}>Save Reminder</button>
+            </div>
+          </td>
         </tr>`;
       })
       .join('');
+    tbody.querySelectorAll('[data-save-schedule-reminder]').forEach(button => {
+      button.addEventListener('click', event => this.savePaymentScheduleReminder(event.target.closest('tr')));
+    });
   },
   async recalculateInvoicePaymentSchedule(invoiceId) {
     const id = String(invoiceId || '').trim();

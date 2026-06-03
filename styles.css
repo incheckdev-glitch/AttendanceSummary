@@ -3181,3 +3181,24 @@ body.permissions-loading [data-permission-resource][data-permission-action]{disp
   color:#1d4ed8;
   text-decoration:underline;
 }
+
+.payment-reminder-settings {
+  display: grid;
+  gap: 6px;
+  min-width: 220px;
+}
+.payment-reminder-settings .checkline {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.payment-reminder-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+.payment-reminder-settings select[multiple] {
+  min-height: 74px;
+}

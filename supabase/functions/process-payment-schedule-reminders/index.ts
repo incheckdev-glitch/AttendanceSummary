@@ -1,0 +1,229 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const TZ = Deno.env.get('BUSINESS_TIMEZONE') || 'Asia/Beirut';
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
+const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+const APP_BASE_URL = (Deno.env.get('APP_BASE_URL') || Deno.env.get('PUBLIC_APP_URL') || 'https://monitor.app.incheck360.nl').replace(/\/+$/, '');
+
+const sb = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+
+function toYmd(date: Date) {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+}
+
+function todayInTimezone() {
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' })
+    .formatToParts(new Date())
+    .reduce((acc, part) => ({ ...acc, [part.type]: part.value }), {} as Record<string, string>);
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function parseDateOnly(value: unknown) {
+  const raw = String(value || '').trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+  const [year, month, day] = raw.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function differenceInCalendarDays(dueDate: unknown, today: string) {
+  const due = parseDateOnly(dueDate);
+  const base = parseDateOnly(today);
+  if (!due || !base) return null;
+  return Math.round((due.getTime() - base.getTime()) / 86400000);
+}
+
+function normalizeDays(value: unknown) {
+  const allowed = new Set([30, 14, 7]);
+  const source = Array.isArray(value) ? value : String(value || '').split(',');
+  const days = [...new Set(source.map(day => Number(day)).filter(day => allowed.has(day)))];
+  return days.length ? days : [30, 14, 7];
+}
+
+function normalizeIds(value: unknown) {
+  const source = Array.isArray(value) ? value : String(value || '').split(',');
+  return [...new Set(source.map(id => String(id || '').trim()).filter(Boolean))];
+}
+
+function money(value: unknown) {
+  const amount = Number(value || 0);
+  return Number.isFinite(amount) ? amount.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '0';
+}
+
+async function loadRule() {
+  const { data, error } = await sb
+    .from('notification_rules')
+    .select('*')
+    .eq('resource', 'invoice_payment_schedule')
+    .eq('action', 'payment_due_reminder')
+    .maybeSingle();
+  if (error) console.warn('[payment-schedule-reminders] unable to load notification rule', error);
+  return data || null;
+}
+
+function channelEnabled(rule: Record<string, unknown> | null, channel: 'in_app' | 'pwa' | 'email') {
+  if (rule && (rule.is_enabled === false || String(rule.is_enabled).toLowerCase() === 'false')) return false;
+  const value = channel === 'pwa'
+    ? (rule?.pwa_enabled ?? rule?.push_enabled ?? true)
+    : channel === 'email'
+      ? (rule?.email_enabled ?? false)
+      : (rule?.in_app_enabled ?? true);
+  return value === true || String(value).toLowerCase() === 'true' || String(value) === '1';
+}
+
+async function sendPwa(payload: Record<string, unknown>, recipientUserId: string) {
+  const { data, error } = await sb.functions.invoke('send-web-push-v2', {
+    body: {
+      title: payload.title,
+      body: payload.body,
+      url: payload.deep_link,
+      tag: payload.dedupe_key,
+      resource: payload.resource,
+      action: payload.action,
+      record_id: payload.record_id,
+      user_ids: [recipientUserId],
+      data: {
+        resource: payload.resource,
+        action: payload.action,
+        record_id: payload.record_id,
+        invoice_id: payload.invoice_id,
+        url: payload.deep_link
+      }
+    }
+  });
+  if (error) throw error;
+  return data || null;
+}
+
+async function sendEmail(payload: Record<string, unknown>, recipientUserId: string) {
+  const { data: profile } = await sb.from('profiles').select('email,name,full_name').eq('id', recipientUserId).maybeSingle();
+  const email = String(profile?.email || '').trim().toLowerCase();
+  if (!email) return { skipped: true, reason: 'missing-recipient-email' };
+  const html = `<p>${String(payload.title || '')}</p><p>${String(payload.body || '')}</p><p><a href="${APP_BASE_URL}/${String(payload.deep_link || '').replace(/^\/+/, '')}">Open in InCheck360</a></p>`;
+  const { data, error } = await sb.functions.invoke('send-workflow-approval-email', {
+    body: {
+      to: email,
+      subject: payload.title,
+      html,
+      text: `${payload.title}\n\n${payload.body}\n\nOpen in InCheck360: ${APP_BASE_URL}/${String(payload.deep_link || '').replace(/^\/+/, '')}`
+    }
+  });
+  if (error) throw error;
+  return data || null;
+}
+
+async function processReminders(today: string, dryRun = false) {
+  const summary = { ok: true, date: today, scanned: 0, matched: 0, sent: 0, skipped: 0, errors: [] as unknown[] };
+  const rule = await loadRule();
+  if (rule && channelEnabled(rule, 'in_app') === false && channelEnabled(rule, 'pwa') === false && channelEnabled(rule, 'email') === false) {
+    return { ...summary, skipped: 'notification_rule_disabled' };
+  }
+
+  const { data: schedules, error } = await sb
+    .from('invoice_payment_schedule')
+    .select('*, invoices:invoice_id ( id, invoice_number, invoice_id, currency, company_name, customer_name )')
+    .eq('reminder_enabled', true)
+    .not('due_date', 'is', null);
+  if (error) throw error;
+
+  for (const schedule of schedules || []) {
+    summary.scanned += 1;
+    try {
+      const status = String(schedule.status || '').trim().toLowerCase();
+      const balance = Number(schedule.balance_due ?? schedule.scheduled_amount ?? 0);
+      const recipients = normalizeIds(schedule.reminder_user_ids);
+      const daysUntilDue = differenceInCalendarDays(schedule.due_date, today);
+      if (status === 'paid' || (Number.isFinite(balance) && balance <= 0) || !recipients.length || !normalizeDays(schedule.reminder_days).includes(Number(daysUntilDue))) {
+        summary.skipped += 1;
+        continue;
+      }
+      summary.matched += 1;
+      const invoice = schedule.invoices || {};
+      const invoiceRef = String(invoice.invoice_number || invoice.invoice_id || schedule.invoice_id || '').trim();
+      const currency = String(invoice.currency || schedule.currency || 'USD').trim().toUpperCase();
+      const scheduleLabel = String(schedule.schedule_label || (schedule.schedule_no ? `Payment ${schedule.schedule_no}` : 'Payment')).trim();
+      const dueDate = String(schedule.due_date || '').slice(0, 10);
+      const title = `Scheduled Payment Due in ${daysUntilDue} Days · ${invoiceRef}`;
+      const body = `Payment ${scheduleLabel} for invoice ${invoiceRef} is due on ${dueDate}. Scheduled amount: ${money(schedule.scheduled_amount)} ${currency}. Balance due: ${money(schedule.balance_due ?? schedule.scheduled_amount)} ${currency}.`;
+
+      for (const recipientUserId of recipients) {
+        try {
+          const { data: existing, error: logError } = await sb
+            .from('invoice_payment_schedule_reminder_log')
+            .select('id')
+            .eq('schedule_id', schedule.id)
+            .eq('reminder_day', daysUntilDue)
+            .eq('recipient_user_id', recipientUserId)
+            .limit(1);
+          if (logError) throw logError;
+          if (existing?.length) { summary.skipped += 1; continue; }
+
+          const deepLink = `#invoices?invoice_id=${schedule.invoice_id}`;
+          const dedupeKey = `invoice_payment_schedule:${schedule.id}:${daysUntilDue}:${recipientUserId}`;
+          let notificationId = null;
+          let pushResult = null;
+          let emailResult = null;
+          if (!dryRun) {
+            if (channelEnabled(rule, 'in_app')) {
+              const { data: inserted, error: insertError } = await sb.from('notifications').insert({
+                recipient_user_id: recipientUserId,
+                title,
+                message: body,
+                type: 'payment_due_reminder',
+                resource: 'invoice_payment_schedule',
+                resource_id: schedule.id,
+                priority: Number(daysUntilDue) <= 7 ? 'high' : 'normal',
+                status: 'unread',
+                is_read: false,
+                link_target: deepLink,
+                meta: { dedupe_key: dedupeKey, invoice_id: schedule.invoice_id, invoice_number: invoiceRef, days_until_due: daysUntilDue },
+                push_status: channelEnabled(rule, 'pwa') ? 'pending' : 'skipped'
+              }).select('notification_id').maybeSingle();
+              if (insertError) throw insertError;
+              notificationId = inserted?.notification_id || null;
+            }
+            if (channelEnabled(rule, 'pwa')) {
+              try { pushResult = await sendPwa({ title, body, deep_link: deepLink, dedupe_key: dedupeKey, resource: 'invoice_payment_schedule', action: 'payment_due_reminder', record_id: schedule.id, invoice_id: schedule.invoice_id }, recipientUserId); }
+              catch (pushError) { console.warn('[payment-schedule-reminders] PWA failed', pushError); pushResult = { error: String(pushError?.message || pushError) }; }
+            }
+            if (channelEnabled(rule, 'email')) {
+              try { emailResult = await sendEmail({ title, body, deep_link: deepLink }, recipientUserId); }
+              catch (emailError) { console.warn('[payment-schedule-reminders] email failed', emailError); emailResult = { error: String(emailError?.message || emailError) }; }
+            }
+            const { error: insertLogError } = await sb.from('invoice_payment_schedule_reminder_log').insert({
+              schedule_id: schedule.id,
+              reminder_day: daysUntilDue,
+              recipient_user_id: recipientUserId,
+              notification_id: notificationId,
+              sent_at: new Date().toISOString(),
+              status: 'processed',
+              error_message: [pushResult?.error, emailResult?.error].filter(Boolean).join('; ') || null
+            });
+            if (insertLogError) throw insertLogError;
+          }
+          summary.sent += 1;
+        } catch (recipientError) {
+          summary.errors.push({ schedule_id: schedule.id, reminder_day: daysUntilDue, recipient_user_id: recipientUserId, error: String(recipientError?.message || recipientError) });
+          console.warn('[payment-schedule-reminders] recipient failed', recipientError);
+        }
+      }
+    } catch (scheduleError) {
+      summary.errors.push({ schedule_id: schedule?.id || null, error: String(scheduleError?.message || scheduleError) });
+      console.warn('[payment-schedule-reminders] schedule failed', scheduleError);
+    }
+  }
+  return summary;
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok');
+  const url = new URL(req.url);
+  const force = url.searchParams.get('force') === 'true';
+  const body = await req.json().catch(() => ({}));
+  const localHour = Number(new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hour12: false, timeZone: TZ }).format(new Date()));
+  if (!force && body?.force !== true && localHour !== 8) {
+    return new Response(JSON.stringify({ ok: true, skipped: 'not_8am_local', timezone: TZ }), { headers: { 'content-type': 'application/json' } });
+  }
+  const today = String(body?.today || todayInTimezone() || toYmd(new Date())).slice(0, 10);
+  const result = await processReminders(today, body?.dry_run === true);
+  return new Response(JSON.stringify({ ...result, timezone: TZ }), { headers: { 'content-type': 'application/json' } });
+});

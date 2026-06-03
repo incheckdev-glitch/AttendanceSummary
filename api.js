@@ -1530,6 +1530,46 @@ const Api = {
     if (!id) throw new Error('Invoice ID is required to recalculate payment schedule.');
     return this.requestWithSession('invoices', 'recalculate_payment_schedule', { id, invoice_id: id });
   },
+  async updateInvoicePaymentScheduleReminder(payload = {}) {
+    const scheduleId = String(payload?.schedule_id || payload?.id || '').trim();
+    if (!scheduleId) throw new Error('Schedule row ID is required to save reminder settings.');
+    const reminderDays = Array.isArray(payload.reminder_days) ? payload.reminder_days.map(day => Number(day)).filter(day => [30, 14, 7].includes(day)) : [30, 14, 7];
+    const reminderUserIds = Array.isArray(payload.reminder_user_ids) ? payload.reminder_user_ids.map(id => String(id || '').trim()).filter(Boolean) : [];
+    const body = {
+      schedule_id: scheduleId,
+      id: scheduleId,
+      reminder_enabled: payload.reminder_enabled === true,
+      reminder_days: reminderDays.length ? reminderDays : [30, 14, 7],
+      reminder_user_ids: reminderUserIds
+    };
+    const client = window.SupabaseClient?.getClient?.() || window.supabase || null;
+    if (client?.from) {
+      let currentUserId = '';
+      try {
+        const { data } = await client.auth.getUser();
+        currentUserId = String(data?.user?.id || '').trim();
+      } catch {}
+      const updates = {
+        reminder_enabled: body.reminder_enabled,
+        reminder_days: body.reminder_days,
+        reminder_user_ids: body.reminder_user_ids,
+        reminder_updated_at: new Date().toISOString(),
+        reminder_updated_by: currentUserId || null
+      };
+      const { data, error } = await client
+        .from('invoice_payment_schedule')
+        .update(updates)
+        .eq('id', scheduleId)
+        .select('*')
+        .maybeSingle();
+      if (error) throw error;
+      return data || { id: scheduleId, ...updates };
+    }
+    return this.requestWithSession('invoices', 'update_payment_schedule_reminder', body);
+  },
+  async processPaymentScheduleReminders(payload = {}) {
+    return this.requestWithSession('invoices', 'process_payment_schedule_reminders', payload);
+  },
   async listReceipts(filters = {}, options = {}) {
     const listPayload = this.buildSummaryListPayload(options);
     const payload = {
