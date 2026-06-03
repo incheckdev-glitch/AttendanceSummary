@@ -108,6 +108,40 @@
     return `${base}/${input.replace(/^\/+/, '')}`;
   }
 
+  function resolveTemplateRecordRef(record = {}, fallback = 'TEST-NOTIFICATION') {
+    const safeRecord = record && typeof record === 'object' ? record : {};
+    const helper = typeof global.getRecordRef === 'function'
+      ? global.getRecordRef
+      : global.NotificationTemplateHelpers?.getRecordRef;
+    if (typeof helper === 'function') return helper(safeRecord, fallback);
+    return String(
+      safeRecord.record_ref ||
+      safeRecord.record_reference ||
+      safeRecord.reference ||
+      safeRecord.ref ||
+      safeRecord.ticket_number ||
+      safeRecord.ticket_id ||
+      safeRecord.event_number ||
+      safeRecord.event_id ||
+      safeRecord.lead_number ||
+      safeRecord.lead_id ||
+      safeRecord.deal_number ||
+      safeRecord.deal_id ||
+      safeRecord.proposal_number ||
+      safeRecord.proposal_id ||
+      safeRecord.agreement_number ||
+      safeRecord.agreement_id ||
+      safeRecord.invoice_number ||
+      safeRecord.invoice_id ||
+      safeRecord.receipt_number ||
+      safeRecord.receipt_id ||
+      safeRecord.onboarding_number ||
+      safeRecord.technical_request_number ||
+      safeRecord.conversation_number ||
+      fallback
+    ).trim() || fallback;
+  }
+
   function buildEmailTemplate({ title = '', body = '', resource = '', action = '', recordId = '', recordNumber = '', url = '', actorName = '', recipientName = '', metadata = {} } = {}) {
     if (global.NotificationEmailTemplate?.buildNotificationEmailHtml) {
       return global.NotificationEmailTemplate.buildNotificationEmailHtml({
@@ -284,15 +318,36 @@
   }
 
   function renderNotificationTemplate(template = '', context = {}) {
+    const safeContext = context && typeof context === 'object' ? context : {};
+    const metadata = safeContext.metadata && typeof safeContext.metadata === 'object' ? safeContext.metadata : {};
+    const fallbackRef = String(
+      safeContext.record_ref ||
+      metadata.record_ref ||
+      safeContext.recordNumber ||
+      metadata.record_number ||
+      safeContext.recordId ||
+      metadata.record_id ||
+      'TEST-NOTIFICATION'
+    ).trim() || 'TEST-NOTIFICATION';
+    const recordRef = resolveTemplateRecordRef(
+      { ...metadata, ...safeContext, record_ref: safeContext.record_ref || metadata.record_ref || safeContext.recordNumber || metadata.record_number || fallbackRef },
+      fallbackRef
+    );
     return String(template || '').replace(/\{([a-zA-Z0-9_]+)\}/g, (_match, key) => {
       const candidates = [
-        context?.[key],
-        context?.metadata?.[key],
-        key === 'conversation_id' ? context?.recordId : undefined,
-        key === 'record_id' ? context?.recordId : undefined,
-        key === 'actor_name' ? (context?.metadata?.actor_name || global.Session?.displayName?.()) : undefined,
-        key === 'conversation_title' ? context?.metadata?.conversation_title : undefined,
-        key === 'conversation_no' ? context?.metadata?.conversation_no : undefined
+        key === 'record_ref' ? recordRef : undefined,
+        key === 'reference' ? recordRef : undefined,
+        key === 'display_ref' ? (safeContext.display_ref || metadata.display_ref || recordRef) : undefined,
+        safeContext?.[key],
+        metadata?.[key],
+        key === 'conversation_id' ? safeContext?.recordId : undefined,
+        key === 'record_id' ? safeContext?.recordId : undefined,
+        key === 'actor_name' ? (metadata?.actor_name || global.Session?.displayName?.()) : undefined,
+        key === 'created_by_name' ? (metadata?.created_by_name || metadata?.actor_name || global.Session?.displayName?.()) : undefined,
+        key === 'user_name' ? (metadata?.user_name || global.Session?.displayName?.()) : undefined,
+        key === 'conversation_title' ? metadata?.conversation_title : undefined,
+        key === 'conversation_no' ? metadata?.conversation_no : undefined,
+        key.endsWith('_number') ? recordRef : undefined
       ];
       const value = candidates.find(item => item !== undefined && item !== null && String(item).trim() !== '');
       return value === undefined || value === null ? '' : String(value);
@@ -651,16 +706,16 @@
           : buildNotificationRoute(normalizedResource, normalizedRecordId)
       );
       if (rule?.deep_link_template && !String(url || '').trim()) {
-        const renderedLink = renderNotificationTemplate(rule.deep_link_template, { resource: normalizedResource, action: normalizedAction, recordId: normalizedRecordId, metadata });
+        const renderedLink = renderNotificationTemplate(rule.deep_link_template, { resource: normalizedResource, action: normalizedAction, recordId: normalizedRecordId, recordNumber, metadata });
         if (renderedLink) finalUrl = renderedLink.startsWith('/') || renderedLink.startsWith('#') || /^https?:\/\//i.test(renderedLink)
           ? (renderedLink.startsWith('#') ? `/${renderedLink}` : renderedLink)
           : `/${renderedLink}`;
       }
       const renderedTitle = rule?.title_template
-        ? renderNotificationTemplate(rule.title_template, { resource: normalizedResource, action: normalizedAction, recordId: normalizedRecordId, metadata })
+        ? renderNotificationTemplate(rule.title_template, { resource: normalizedResource, action: normalizedAction, recordId: normalizedRecordId, recordNumber, metadata })
         : title;
       const renderedBody = rule?.body_template
-        ? renderNotificationTemplate(rule.body_template, { resource: normalizedResource, action: normalizedAction, recordId: normalizedRecordId, metadata })
+        ? renderNotificationTemplate(rule.body_template, { resource: normalizedResource, action: normalizedAction, recordId: normalizedRecordId, recordNumber, metadata })
         : body;
       if (normalizedResource === 'communication_centre') {
         console.info('[Communication Centre notification]', {
