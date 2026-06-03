@@ -322,6 +322,153 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     return updates;
   }
 
+  function normalizeInvoiceReminderDays(value) {
+    const allowed = new Set([30, 14, 7]);
+    const source = Array.isArray(value) ? value : String(value || '').split(',');
+    const days = [...new Set(source.map(day => Number(day)).filter(day => allowed.has(day)))];
+    return days.length ? days : [30, 14, 7];
+  }
+
+  function normalizeInvoiceReminderUserIds(value) {
+    const source = Array.isArray(value) ? value : String(value || '').split(',');
+    return [...new Set(source.map(id => String(id || '').trim()).filter(Boolean))];
+  }
+
+  function parseLocalDateOnly(value) {
+    const raw = String(value || '').trim().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return null;
+    const [year, month, day] = raw.split('-').map(Number);
+    return new Date(Date.UTC(year, month - 1, day));
+  }
+
+  function differenceInCalendarDays(dueDateValue, todayValue) {
+    const due = parseLocalDateOnly(dueDateValue);
+    const today = parseLocalDateOnly(todayValue);
+    if (!due || !today) return null;
+    return Math.round((due.getTime() - today.getTime()) / 86400000);
+  }
+
+  async function updateInvoicePaymentScheduleReminderRow(client, payload = {}) {
+    const scheduleId = String(payload?.schedule_id || payload?.id || '').trim();
+    if (!isUuid(scheduleId)) throw new Error('Valid payment schedule row UUID is required.');
+    const userId = await getCurrentUserId(client).catch(() => null);
+    const updates = {
+      reminder_enabled: payload.reminder_enabled === true,
+      reminder_days: normalizeInvoiceReminderDays(payload.reminder_days),
+      reminder_user_ids: normalizeInvoiceReminderUserIds(payload.reminder_user_ids),
+      reminder_updated_at: new Date().toISOString(),
+      reminder_updated_by: userId || null
+    };
+    const { data, error } = await client
+      .from('invoice_payment_schedule')
+      .update(updates)
+      .eq('id', scheduleId)
+      .select('*')
+      .maybeSingle();
+    if (error) throw friendlyError('Unable to update payment schedule reminder settings', error);
+    return data || { id: scheduleId, ...updates };
+  }
+
+  function formatReminderAmount(value) {
+    const amount = Number(value || 0);
+    return Number.isFinite(amount) ? amount.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '0';
+  }
+
+  async function processInvoicePaymentScheduleReminders(client, options = {}) {
+    const todayDate = String(options?.today || todayDateString()).slice(0, 10);
+    const dryRun = options?.dry_run === true;
+    const summary = { ok: true, date: todayDate, scanned: 0, matched: 0, sent: 0, skipped: 0, errors: [] };
+    const { data: schedules, error } = await client
+      .from('invoice_payment_schedule')
+      .select(`*, invoices:invoice_id ( id, invoice_number, invoice_id, currency, company_name, customer_name )`)
+      .eq('reminder_enabled', true)
+      .not('due_date', 'is', null);
+    if (error) throw friendlyError('Unable to load payment schedule reminders', error);
+    for (const schedule of (Array.isArray(schedules) ? schedules : [])) {
+      summary.scanned += 1;
+      try {
+        const status = String(schedule.status || '').trim().toLowerCase();
+        if (status === 'paid') { summary.skipped += 1; continue; }
+        const balance = Number(schedule.balance_due ?? schedule.scheduled_amount ?? 0);
+        if (Number.isFinite(balance) && balance <= 0) { summary.skipped += 1; continue; }
+        const recipients = normalizeInvoiceReminderUserIds(schedule.reminder_user_ids);
+        if (!recipients.length) { summary.skipped += 1; continue; }
+        const daysUntilDue = differenceInCalendarDays(schedule.due_date, todayDate);
+        const reminderDays = normalizeInvoiceReminderDays(schedule.reminder_days);
+        if (!reminderDays.includes(daysUntilDue)) { summary.skipped += 1; continue; }
+        summary.matched += 1;
+        const invoice = schedule.invoices || {};
+        const invoiceRef = String(invoice.invoice_number || invoice.invoice_id || schedule.invoice_id || '').trim();
+        const currency = String(invoice.currency || schedule.currency || 'USD').trim().toUpperCase();
+        const scheduleLabel = String(schedule.schedule_label || (schedule.schedule_no ? `Payment ${schedule.schedule_no}` : 'Payment')).trim();
+        const title = `Scheduled Payment Due in ${daysUntilDue} Days · ${invoiceRef}`;
+        const body = `Payment ${scheduleLabel} for invoice ${invoiceRef} is due on ${String(schedule.due_date || '').slice(0, 10)}. Scheduled amount: ${formatReminderAmount(schedule.scheduled_amount)} ${currency}. Balance due: ${formatReminderAmount(schedule.balance_due ?? schedule.scheduled_amount)} ${currency}.`;
+        for (const recipientUserId of recipients) {
+          try {
+            const { data: existing, error: logReadError } = await client
+              .from('invoice_payment_schedule_reminder_log')
+              .select('id')
+              .eq('schedule_id', schedule.id)
+              .eq('reminder_day', daysUntilDue)
+              .eq('recipient_user_id', recipientUserId)
+              .limit(1);
+            if (logReadError) throw logReadError;
+            if (Array.isArray(existing) && existing.length) { summary.skipped += 1; continue; }
+            if (!dryRun) {
+              const result = await createNotificationAndPush({
+                resource: 'invoice_payment_schedule',
+                action: 'payment_due_reminder',
+                title,
+                body,
+                message: body,
+                recipient_user_id: recipientUserId,
+                recipient_user_ids: [recipientUserId],
+                record_id: schedule.id,
+                invoice_id: schedule.invoice_id,
+                record_ref: invoiceRef,
+                record_number: invoiceRef,
+                email_record_number: invoiceRef,
+                deep_link: `#invoices?invoice_id=${schedule.invoice_id}`,
+                url: `#invoices?invoice_id=${schedule.invoice_id}`,
+                priority: Number(daysUntilDue) <= 7 ? 'high' : 'normal',
+                meta: {
+                  invoice_id: schedule.invoice_id,
+                  invoice_number: invoiceRef,
+                  due_date: String(schedule.due_date || '').slice(0, 10),
+                  schedule_label: scheduleLabel,
+                  scheduled_amount: schedule.scheduled_amount,
+                  balance_due: schedule.balance_due ?? schedule.scheduled_amount,
+                  currency,
+                  days_until_due: daysUntilDue
+                },
+                dedupe_key: `invoice_payment_schedule:${schedule.id}:${daysUntilDue}:${recipientUserId}`
+              }, 'invoice_payment_schedule:payment_due_reminder');
+              const { error: logInsertError } = await client.from('invoice_payment_schedule_reminder_log').insert({
+                schedule_id: schedule.id,
+                reminder_day: daysUntilDue,
+                recipient_user_id: recipientUserId,
+                notification_id: result?.notification_id || null,
+                sent_at: new Date().toISOString(),
+                status: result?.created || result?.push?.sent ? 'sent' : 'processed',
+                error_message: result?.error || result?.push?.error || null
+              });
+              if (logInsertError) throw logInsertError;
+            }
+            summary.sent += 1;
+          } catch (recipientError) {
+            summary.errors.push({ schedule_id: schedule.id, reminder_day: daysUntilDue, recipient_user_id: recipientUserId, error: String(recipientError?.message || recipientError) });
+            console.warn('[invoice_payment_schedule_reminders] recipient failed', recipientError);
+          }
+        }
+      } catch (scheduleError) {
+        summary.errors.push({ schedule_id: schedule?.id || null, error: String(scheduleError?.message || scheduleError) });
+        console.warn('[invoice_payment_schedule_reminders] schedule failed', scheduleError);
+      }
+    }
+    return summary;
+  }
+
+
   function normalizeTicketFilterValue(value) {
     return String(value || '')
       .trim()
@@ -5570,6 +5717,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     { resource: 'deals', action: 'deal_important_stage', recipient_roles: ['admin'], users_from_record: ['owner_email'] },
     { resource: 'proposals', action: 'proposal_requires_approval', recipient_roles: ['financial_controller', 'gm'] },
     { resource: 'agreements', action: 'agreement_signed', recipient_roles: ['admin', 'accounting', 'hoo'] },
+    { resource: 'invoice_payment_schedule', action: 'payment_due_reminder', recipient_user_ids: [], in_app_enabled: true, pwa_enabled: true, email_enabled: false, title_template: 'Scheduled Payment Due in {{days_until_due}} Days · {{invoice_number}}', body_template: 'Payment {{schedule_label}} for invoice {{invoice_number}} is due on {{due_date}}. Scheduled amount: {{scheduled_amount}} {{currency}}. Balance due: {{balance_due}} {{currency}}.', deep_link_template: '#invoices?invoice_id={{invoice_id}}' },
     { resource: 'agreements', action: 'agreement_customer_signed', recipient_roles: ['financial_controller'], users_from_record: ['financial_controller_email'] },
     { resource: 'agreements', action: 'agreement_financial_controller_signed', recipient_roles: ['gm'] },
     { resource: 'agreements', action: 'agreement_fully_signed', recipient_roles: ['head_of_sales', 'sales_executive'], users_from_record: ['head_of_sales_email','sales_executive_email','owner_email','assigned_sales_email','created_by_email'] },
@@ -5985,8 +6133,22 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const { data: activeProfiles } = await getClient().from('profiles').select('id,email,role_key,role,user_role,app_role,is_active,active').limit(2000);
     const profileRows = Array.isArray(activeProfiles) ? activeProfiles : [];
     const resolvedRuleRecipients = resolveRecipientsFromMatchingRules(enabledRulesForRecipients, normalizedPayload);
-    const assignedUsers = [...new Set(resolvedRuleRecipients.users.map(v => String(v || '').trim()).filter(Boolean))];
-    const assignedEmails = [...new Set(resolvedRuleRecipients.emails)];
+    const directPayloadUsers = normalizeNotificationList([
+      normalizedPayload?.recipient_user_id,
+      normalizedPayload?.recipient_user_ids,
+      normalizedPayload?.target_user_id,
+      normalizedPayload?.target_user_ids,
+      normalizedPayload?.user_ids
+    ]);
+    const directPayloadEmails = normalizeNotificationList([
+      normalizedPayload?.recipient_email,
+      normalizedPayload?.recipient_emails,
+      normalizedPayload?.target_email,
+      normalizedPayload?.target_emails,
+      normalizedPayload?.emails
+    ]).map(value => String(value || '').trim().toLowerCase()).filter(value => !isPlaceholderRecipientToken(value));
+    const assignedUsers = [...new Set([...resolvedRuleRecipients.users, ...directPayloadUsers].map(v => String(v || '').trim()).filter(Boolean))];
+    const assignedEmails = [...new Set([...resolvedRuleRecipients.emails, ...directPayloadEmails])];
     const recipientUserIds = new Set(assignedUsers);
     const recipientEmails = new Set([
       ...assignedEmails
@@ -6342,6 +6504,14 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       assertAllowed('invoices', 'update');
       const invoiceUuid = await resolveResourceUuid('invoices', payload, client);
       return await recalculateInvoicePaymentScheduleRows(client, invoiceUuid);
+    }
+    if (resource === 'invoices' && action === 'update_payment_schedule_reminder') {
+      assertAllowed('invoices', 'update');
+      return await updateInvoicePaymentScheduleReminderRow(client, payload);
+    }
+    if (resource === 'invoices' && action === 'process_payment_schedule_reminders') {
+      assertAllowed('invoices', 'update');
+      return await processInvoicePaymentScheduleReminders(client, payload);
     }
     if (resource === 'invoices' && action === 'create_from_agreement') {
       assertAllowed('invoices', 'create_from_agreement');
