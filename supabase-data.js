@@ -261,6 +261,11 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const n = Number(value);
     return Number.isFinite(n) && n > 0 ? n : 12;
   }
+  function isManualInvoiceSchedule(invoice = {}) {
+    const mode = String(invoice?.payment_schedule_mode || invoice?.paymentScheduleMode || '').trim().toLowerCase();
+    const term = String(invoice?.payment_term || invoice?.payment_terms || invoice?.paymentTerm || invoice?.paymentTerms || '').trim().toLowerCase();
+    return mode === 'manual' || term === 'custom';
+  }
   function getInvoiceTotalForSchedule(invoice = {}) {
     const candidates = [invoice.grand_total, invoice.invoice_total, invoice.total_amount, invoice.amount_due, invoice.total, invoice.pending_amount];
     for (const value of candidates) {
@@ -271,6 +276,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     return 0;
   }
   function buildInvoicePaymentScheduleRows(invoice = {}) {
+    if (isManualInvoiceSchedule(invoice)) return [];
     const invoiceId = String(invoice?.id || invoice?.invoice_uuid || '').trim();
     if (!invoiceId) throw new Error('Invoice UUID is required to build payment schedule.');
     const plan = getPaymentScheduleConfig(invoice.payment_term || invoice.payment_terms);
@@ -327,14 +333,14 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const id = String(invoiceId || '').trim();
     if (!isUuid(id)) throw new Error('Valid invoice UUID is required to create payment schedule.');
     const existing = await listInvoicePaymentScheduleRows(client, id).catch(() => []);
+    const { data: invoice, error: invoiceError } = await client.from('invoices').select('*').eq('id', id).maybeSingle();
+    if (invoiceError || !invoice) throw friendlyError('Unable to load invoice for payment schedule', invoiceError || new Error('Missing invoice row'));
+    if (isManualInvoiceSchedule(invoice)) return existing;
     if (existing.length && !force) return existing;
     if (existing.length) {
       const { error: deleteError } = await client.from('invoice_payment_schedule').delete().eq('invoice_id', id);
       if (deleteError) throw friendlyError('Unable to replace invoice payment schedule', deleteError);
     }
-    const { data: invoice, error: invoiceError } = await client.from('invoices').select('*').eq('id', id).maybeSingle();
-    if (invoiceError || !invoice) throw friendlyError('Unable to load invoice for payment schedule', invoiceError || new Error('Missing invoice row'));
-    if (String(invoice.payment_schedule_mode || '').trim().toLowerCase() === 'manual') return existing;
     const rows = buildInvoicePaymentScheduleRows(invoice);
     if (!rows.length) return [];
     const { data, error } = await client.from('invoice_payment_schedule').insert(rows).select('*');
@@ -344,19 +350,35 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
   function normalizeManualInvoicePaymentScheduleRows(invoiceId = '', rows = [], invoice = {}) {
     const id = String(invoiceId || '').trim();
     const today = todayDateString();
+    const parseIdArray = value => {
+      if (Array.isArray(value)) return value.map(item => String(item || '').trim()).filter(Boolean);
+      const raw = String(value || '').trim();
+      if (!raw) return [];
+      if (raw.startsWith('[')) {
+        try {
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed.map(item => String(item || '').trim()).filter(Boolean) : [];
+        } catch (_error) {
+          return [];
+        }
+      }
+      return raw.split(',').map(item => item.trim()).filter(Boolean);
+    };
     return (Array.isArray(rows) ? rows : []).map((row, index) => {
       const dueDate = String(row?.due_date || '').trim().slice(0, 10);
       const scheduledAmount = Number(Number(row?.scheduled_amount || 0).toFixed(2));
+      const receiptIds = parseIdArray(row?.receipt_ids);
+      const paidAmount = receiptIds.length ? Number(Number(row?.paid_amount || 0).toFixed(2)) : 0;
       return {
         invoice_id: id,
         schedule_no: Number(row?.schedule_no || index + 1),
         due_date: dueDate,
         payment_percent: Number(Number(row?.payment_percent || 0).toFixed(2)),
         scheduled_amount: scheduledAmount,
-        paid_amount: 0,
-        status: dueDate && dueDate < today ? 'overdue' : 'scheduled',
-        schedule_label: String(row?.schedule_label || (String(invoice?.payment_term || '').trim() === 'Custom' ? 'Custom' : `Payment ${index + 1}`)).trim(),
-        receipt_ids: []
+        paid_amount: paidAmount,
+        status: receiptIds.length && paidAmount >= scheduledAmount && scheduledAmount > 0 ? 'paid' : (dueDate && dueDate < today ? 'overdue' : 'scheduled'),
+        schedule_label: String(row?.schedule_label || (String(invoice?.payment_term || invoice?.payment_terms || '').trim() === 'Custom' ? 'Custom' : `Payment ${index + 1}`)).trim(),
+        receipt_ids: receiptIds
       };
     }).filter(row => row.due_date && row.scheduled_amount >= 0);
   }
@@ -364,7 +386,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const id = String(invoiceId || '').trim();
     if (!isUuid(id)) throw new Error('Valid invoice UUID is required to save payment schedule.');
     const normalizedRows = normalizeManualInvoicePaymentScheduleRows(id, rows, invoice);
-    const { data: invoiceRow, error: invoiceError } = await client.from('invoices').select('invoice_total,payment_term').eq('id', id).maybeSingle();
+    const { data: invoiceRow, error: invoiceError } = await client.from('invoices').select('invoice_total,payment_term,payment_terms,payment_terms_custom,payment_schedule_mode').eq('id', id).maybeSingle();
     if (invoiceError) throw friendlyError('Unable to load invoice for payment schedule', invoiceError);
     const total = getInvoiceTotalForSchedule(invoiceRow || {});
     const percentTotal = normalizedRows.reduce((sum, row) => sum + Number(row.payment_percent || 0), 0);
@@ -376,18 +398,22 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     if (deleteError) throw friendlyError('Unable to replace invoice payment schedule', deleteError);
     const { data, error } = await client.from('invoice_payment_schedule').insert(normalizedRows).select('*');
     if (error) throw friendlyError('Unable to save invoice payment schedule', error);
-    await updateSelectSingleWithSchemaRetry(client, 'invoices', { payment_schedule_mode: 'manual', payment_term: invoice.payment_term || invoiceRow?.payment_term || null, updated_at: new Date().toISOString() }, 'id', id, 'Unable to update invoice payment schedule mode').catch(() => null);
+    const manualTerm = invoice.payment_term || invoice.payment_terms || invoiceRow?.payment_term || invoiceRow?.payment_terms || null;
+    await updateSelectSingleWithSchemaRetry(client, 'invoices', { payment_schedule_mode: 'manual', payment_term: manualTerm, payment_terms: manualTerm, payment_terms_custom: invoice.payment_terms_custom || invoiceRow?.payment_terms_custom || null, updated_at: new Date().toISOString() }, 'id', id, 'Unable to update invoice payment schedule mode').catch(() => null);
     return Array.isArray(data) ? data : normalizedRows;
   }
   async function recalculateInvoicePaymentScheduleRows(client, invoiceId) {
     const id = String(invoiceId || '').trim();
     if (!isUuid(id)) throw new Error('Valid invoice UUID is required to recalculate payment schedule.');
-    const { data: modeInvoice, error: modeError } = await client.from('invoices').select('payment_schedule_mode').eq('id', id).maybeSingle();
+    const { data: modeInvoice, error: modeError } = await client.from('invoices').select('payment_schedule_mode,payment_term,payment_terms').eq('id', id).maybeSingle();
     if (modeError) throw friendlyError('Unable to load invoice payment schedule mode', modeError);
-    if (String(modeInvoice?.payment_schedule_mode || '').trim().toLowerCase() === 'manual') return await listInvoicePaymentScheduleRows(client, id);
-    // Rebuild the schedule locally so Net 7/14/21/30 does not shift the first date.
-    // Row 1 must equal invoices.due_date exactly; the payment term only controls later intervals.
-    const schedule = await createInvoicePaymentScheduleRows(client, id, true);
+    const manualSchedule = isManualInvoiceSchedule(modeInvoice);
+    // Rebuild only automatic schedules. Manual schedules keep their saved rows and only receive payment/status updates.
+    // Row 1 must equal invoices.due_date exactly for automatic schedules; the payment term only controls later intervals.
+    const schedule = manualSchedule
+      ? await listInvoicePaymentScheduleRows(client, id)
+      : await createInvoicePaymentScheduleRows(client, id, true);
+    if (!schedule.length) return [];
     const { data: receipts, error: receiptsError } = await client
       .from('receipts')
       .select('id,receipt_id,amount_received,received_amount,paid_now,amount_paid,status,receipt_status,payment_state')
@@ -870,7 +896,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
   ]);
   const INVOICE_COLUMNS = new Set([
     'invoice_id','invoice_number','client_id','agreement_uuid','agreement_id','agreement_number','proposal_id','issue_date','due_date','billing_frequency',
-    'payment_term','payment_terms_custom','payment_schedule_mode','company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile',
+    'payment_term','payment_terms','payment_terms_custom','payment_schedule_mode','company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile',
     'customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_email',
     'provider_legal_name','provider_address','support_email','subtotal_locations','subtotal_one_time','invoice_total',
     'is_poc','poc_location_count','poc_license_count','poc_license_months','poc_service_start_date','poc_service_end_date','poc_success_kpis','poc_conversion_commitment',
@@ -986,7 +1012,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     ]),
     invoices: new Set([
       'id','invoice_id','invoice_number','client_id','agreement_uuid','agreement_id','agreement_number','proposal_id','issue_date','due_date','billing_frequency',
-      'payment_term','payment_terms_custom','payment_schedule_mode','customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_email',
+      'payment_term','payment_terms','payment_terms_custom','payment_schedule_mode','customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_email',
       'provider_legal_name','provider_address','support_email','subtotal_locations','subtotal_one_time','invoice_total',
       'is_poc','poc_location_count','poc_license_count','poc_license_months','poc_service_start_date','poc_service_end_date','poc_success_kpis','poc_conversion_commitment',
       'old_paid_total','paid_now','amount_paid','received_amount','pending_amount','payment_state','payment_conclusion','amount_in_words',
@@ -2154,7 +2180,8 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       issue_date: trimOrNull(firstDefined(record, ['issue_date', 'issueDate', 'invoice_date'])),
       due_date: trimOrNull(firstDefined(record, ['due_date', 'dueDate'])),
       billing_frequency: trimOrNull(firstDefined(record, ['billing_frequency', 'billingFrequency'])),
-      payment_term: trimOrNull(firstDefined(record, ['payment_term', 'paymentTerm'])),
+      payment_term: trimOrNull(firstDefined(record, ['payment_term', 'payment_terms', 'paymentTerm', 'paymentTerms'])),
+      payment_terms: trimOrNull(firstDefined(record, ['payment_terms', 'payment_term', 'paymentTerms', 'paymentTerm'])),
       payment_terms_custom: trimOrNull(firstDefined(record, ['payment_terms_custom', 'paymentTermsCustom'])),
       payment_schedule_mode: trimOrNull(firstDefined(record, ['payment_schedule_mode', 'paymentScheduleMode'])),
       agreement_number: trimOrNull(firstDefined(record, ['agreement_number', 'agreementNumber'])),
@@ -2212,6 +2239,13 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       updated_at: trimOrNull(firstDefined(record, ['updated_at', 'updatedAt']))
     });
     Object.keys(sanitized).forEach(key => { if (!INVOICE_COLUMNS.has(key)) delete sanitized[key]; });
+    if (String(sanitized.payment_term || sanitized.payment_terms || '').trim().toLowerCase() === 'custom') {
+      sanitized.payment_term = 'Custom';
+      sanitized.payment_terms = 'Custom';
+      sanitized.payment_schedule_mode = 'manual';
+    } else if (sanitized.payment_schedule_mode && !['auto', 'manual'].includes(String(sanitized.payment_schedule_mode).trim().toLowerCase())) {
+      sanitized.payment_schedule_mode = 'auto';
+    }
     if (includeCreatedBy && userId) sanitized.created_by = userId;
     if (userId) sanitized.updated_by = userId;
     return sanitized;

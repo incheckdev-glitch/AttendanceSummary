@@ -1562,16 +1562,18 @@ const Api = {
       due_date: String(row.due_date || '').trim().slice(0, 10),
       payment_percent: Number(row.payment_percent || 0),
       scheduled_amount: Number(row.scheduled_amount || 0),
-      paid_amount: 0,
+      paid_amount: Number(row.paid_amount || 0),
       status: String(row.status || 'scheduled').trim() || 'scheduled',
-      schedule_label: String(row.schedule_label || (invoice.payment_term === 'Custom' ? 'Custom' : `Payment ${index + 1}`)).trim(),
-      receipt_ids: []
+      schedule_label: String(row.schedule_label || ((invoice.payment_term || invoice.payment_terms) === 'Custom' ? 'Custom' : `Payment ${index + 1}`)).trim(),
+      receipt_ids: Array.isArray(row.receipt_ids) ? row.receipt_ids : []
     }));
     return this.requestWithSession('invoices', 'save_payment_schedule', {
       id,
       invoice_id: id,
-      payment_term: invoice.payment_term || '',
-      payment_schedule_mode: invoice.payment_schedule_mode || 'manual',
+      payment_term: invoice.payment_term || invoice.payment_terms || '',
+      payment_terms: invoice.payment_terms || invoice.payment_term || '',
+      payment_terms_custom: invoice.payment_terms_custom || '',
+      payment_schedule_mode: (invoice.payment_term || invoice.payment_terms) === 'Custom' ? 'manual' : (invoice.payment_schedule_mode || 'manual'),
       rows: scheduleRows
     });
   },
