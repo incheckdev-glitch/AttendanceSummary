@@ -3300,6 +3300,7 @@ const Clients = {
       schedule_label: String(row.schedule_label || row.label || `Payment ${scheduleNo || ''}`.trim() || 'Payment').trim(),
       due_date: resolvedDueDate,
       scheduled_amount: Number(row.scheduled_amount ?? row.amount ?? row.payment_amount ?? 0),
+      payment_percent: Number(row.payment_percent ?? row.percent ?? row.paymentPercent ?? 0),
       paid_amount: Number(row.paid_amount ?? row.amount_paid ?? row.received_amount ?? 0),
       balance_due: Number(row.balance_due ?? row.pending_amount ?? Math.max(0, Number(row.scheduled_amount ?? 0) - Number(row.paid_amount ?? 0))),
       status: String(row.status || row.payment_status || row.payment_state || 'unpaid').trim().toLowerCase(),
@@ -3462,6 +3463,7 @@ const Clients = {
             <td>${U.escapeHtml(row.schedule_label || 'Payment')}</td>
             <td>${U.escapeHtml(U.fmtDisplayDate(row.due_date) || '—')}</td>
             <td>${U.escapeHtml(this.formatMoneyWithCurrency_(row.scheduled_amount, row.currency || currency))}</td>
+            <td>${U.escapeHtml(row.payment_percent ? `${row.payment_percent}%` : '—')}</td>
             <td>${U.escapeHtml(this.formatMoneyWithCurrency_(row.paid_amount, row.currency || currency))}</td>
             <td>${U.escapeHtml(this.formatMoneyWithCurrency_(row.balance_due, row.currency || currency))}</td>
             <td><span class="chip ${U.escapeAttr(badge.className)}">${U.escapeHtml(badge.label)}</span></td>
@@ -3474,7 +3476,7 @@ const Clients = {
             </div></td>
           </tr>`;
         }).join('')
-        : '<tr><td colspan="10" class="muted" style="text-align:center;">No scheduled payments found for this client.</td></tr>';
+        : '<tr><td colspan="11" class="muted" style="text-align:center;">No scheduled payments found for this client.</td></tr>';
     }
   },
   renderStatementSection_(detailData = {}) {

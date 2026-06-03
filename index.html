@@ -1596,7 +1596,7 @@ Sample:
               </div>
               <div class="table-wrap" style="margin-top:8px;">
                 <table>
-                  <thead><tr><th>Invoice</th><th>Payment</th><th>Due Date</th><th>Scheduled</th><th>Paid</th><th>Balance</th><th>Status</th><th>Reminders</th><th>Invoice Status</th><th>Actions</th></tr></thead>
+                  <thead><tr><th>Invoice</th><th>Payment</th><th>Due Date</th><th>Scheduled</th><th>%</th><th>Paid</th><th>Balance</th><th>Status</th><th>Reminders</th><th>Invoice Status</th><th>Actions</th></tr></thead>
                   <tbody id="clientScheduledPaymentsTbody"></tbody>
                 </table>
               </div>
@@ -3749,7 +3749,8 @@ Sample:
           <div class="filter-row"><label class="muted" for="invoiceFormInvoiceDate">Invoice Date</label><input id="invoiceFormInvoiceDate" class="input" type="date" /></div>
           <div class="filter-row"><label class="muted" for="invoiceFormDueDate">Due Date</label><input id="invoiceFormDueDate" class="input" type="date" /></div>
           <div class="filter-row"><label class="muted" for="invoiceFormCurrency">Currency</label><input id="invoiceFormCurrency" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="invoiceFormPaymentTerm">Payment Term</label><select id="invoiceFormPaymentTerm" class="select readonly-field locked-field" aria-readonly="true" title="Payment Term is copied from the approved proposal/agreement and locked on the invoice."><option value="Net 7">Monthly</option><option value="Net 14">Quarterly</option><option value="Net 21">Semi-Annually</option><option value="Net 30">Annually</option></select></div>
+          <div class="filter-row"><label class="muted" for="invoiceFormPaymentTerm">Payment Term</label><select id="invoiceFormPaymentTerm" class="select"><option value="Net 7">Monthly</option><option value="Net 14">Quarterly</option><option value="Net 21">Semi-Annually</option><option value="Net 30">Annually</option><option value="Custom">Custom</option></select></div>
+          <div id="invoiceFormPaymentTermsCustomWrap" class="filter-row" style="grid-column:1 / -1;display:none;"><label class="muted" for="invoiceFormPaymentTermsCustom">Custom Payment Terms</label><input id="invoiceFormPaymentTermsCustom" class="input" type="text" placeholder="e.g. 2 scheduled payments, first 60%, second 40%" /></div>
         </div>
         <div class="divider" style="margin:12px 0;"></div>
         <strong style="display:block;margin-bottom:8px;">Customer</strong>
@@ -3807,6 +3808,10 @@ Sample:
         </div>
         <div class="divider" style="margin:12px 0;"></div>
         <strong style="display:block;margin-bottom:8px;">Payment Schedule</strong>
+        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:8px;">
+          <div class="filter-row"><label class="muted" for="invoiceFormPaymentScheduleMode">Schedule Mode</label><select id="invoiceFormPaymentScheduleMode" class="select"><option value="auto">Auto</option><option value="manual">Manual</option></select></div>
+          <div class="filter-row" style="justify-content:end;"><label class="muted">Manual Rows</label><button id="invoicePaymentScheduleAddRowBtn" class="btn ghost sm" type="button" style="display:none;align-self:start;">Add Scheduled Payment</button></div>
+        </div>
         <div id="invoicePaymentScheduleState" class="muted" style="margin-bottom:8px;">No payment schedule found yet.</div>
         <div class="table-wrap">
           <table>
@@ -3814,6 +3819,7 @@ Sample:
               <tr>
                 <th>#</th>
                 <th>Due Date</th>
+                <th>%</th>
                 <th>Scheduled Amount</th>
                 <th>Paid Amount</th>
                 <th>Balance Due</th>
