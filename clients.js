@@ -993,6 +993,8 @@ const Clients = {
   listClientRelatedAgreements_(clientId) {
     const client = this.state.rows.find(row => row.client_id === clientId);
     if (!client) return [];
+    const cachedAgreements = this.getCachedClientDetailRows_(clientId, 'agreements');
+    if (cachedAgreements.length) return cachedAgreements;
     const matchedAgreements = (Array.isArray(this.state.agreements) ? this.state.agreements : []).filter(Boolean).filter(item => this.matchesClientAgreement_(item, client));
     console.log('[AgreementMapping] matched agreements for client', {
       clientName: client?.client_name || client?.company_name || client?.name || client?.customer_name,
@@ -1031,7 +1033,9 @@ const Clients = {
   listClientAgreementLocationItems_(clientId) {
     const linkedAgreements = this.listClientRelatedAgreements_(clientId);
     const linkedAgreementKeys = linkedAgreements.flatMap(item => this.getAgreementMatchKeys_(item));
-    return (Array.isArray(this.state.agreementItems) ? this.state.agreementItems : [])
+    const cachedAgreementItems = this.getCachedClientDetailRows_(clientId, 'agreementItems');
+    const sourceAgreementItems = cachedAgreementItems.length ? cachedAgreementItems : (Array.isArray(this.state.agreementItems) ? this.state.agreementItems : []);
+    return sourceAgreementItems
       .filter(Boolean)
       .filter(item => {
         const itemKeys = this.getAgreementItemMatchKeys_(item);
@@ -1042,6 +1046,8 @@ const Clients = {
   listClientRelatedInvoices_(clientId) {
     const client = this.state.rows.find(row => row.client_id === clientId);
     if (!client) return [];
+    const cachedInvoices = this.getCachedClientDetailRows_(clientId, 'invoices');
+    if (cachedInvoices.length) return cachedInvoices;
     const linkedAgreements = this.listClientRelatedAgreements_(clientId);
     const relatedInvoices = (Array.isArray(this.state.invoices) ? this.state.invoices : []).filter(Boolean).filter(item => this.invoiceBelongsToClient(item, client, linkedAgreements));
     if (this.isDebugMode_()) {
@@ -1053,6 +1059,8 @@ const Clients = {
   listClientRelatedReceipts_(clientId) {
     const client = this.state.rows.find(row => row.client_id === clientId);
     if (!client) return [];
+    const cachedReceipts = this.getCachedClientDetailRows_(clientId, 'receipts');
+    if (cachedReceipts.length) return cachedReceipts;
     const linkedAgreements = this.listClientRelatedAgreements_(clientId);
     const linkedInvoices = this.listClientRelatedInvoices_(clientId);
     const relatedReceipts = (Array.isArray(this.state.receipts) ? this.state.receipts : []).filter(Boolean).filter(item => this.receiptBelongsToClient(item, client, linkedAgreements, linkedInvoices));
@@ -1202,6 +1210,8 @@ const Clients = {
   listClientRelatedInvoiceItems_(clientId) {
     const invoices = this.listClientRelatedInvoices_(clientId);
     const invoiceIds = new Set(invoices.flatMap(item => this.getInvoiceMatchKeys_(item)));
+    const cachedInvoiceItems = this.getCachedClientDetailRows_(clientId, 'invoiceItems');
+    const sourceInvoiceItems = cachedInvoiceItems.length ? cachedInvoiceItems : (Array.isArray(this.state.invoiceItems) ? this.state.invoiceItems : []);
     const seen = new Set();
     const rows = [];
 
@@ -1222,7 +1232,7 @@ const Clients = {
       nested.forEach(pushItem);
     });
 
-    (Array.isArray(this.state.invoiceItems) ? this.state.invoiceItems : [])
+    sourceInvoiceItems
       .filter(Boolean)
       .filter(item => {
         const links = this.getInvoiceItemMatchKeys_(item);
@@ -1235,7 +1245,9 @@ const Clients = {
   listClientRelatedReceiptItems_(clientId) {
     const receipts = this.listClientRelatedReceipts_(clientId);
     const receiptIds = new Set(receipts.flatMap(item => [item.id, item.receipt_id, item.receipt_number]).map(v => String(v || '').trim()).filter(Boolean));
-    return this.state.receiptItems.filter(item => {
+    const cachedReceiptItems = this.getCachedClientDetailRows_(clientId, 'receiptItems');
+    const sourceReceiptItems = cachedReceiptItems.length ? cachedReceiptItems : (Array.isArray(this.state.receiptItems) ? this.state.receiptItems : []);
+    return sourceReceiptItems.filter(item => {
       const links = [item.receipt_id, item.receipt_number, item.parent_receipt_id].map(v => String(v || '').trim()).filter(Boolean);
       return links.some(link => receiptIds.has(link));
     });
@@ -2957,15 +2969,99 @@ const Clients = {
     }
     mount.innerHTML = `<span class="muted">Showing ${U.escapeHtml(String(start))}–${U.escapeHtml(String(end))} of ${U.escapeHtml(String(total))} · Page ${U.escapeHtml(String(page))} of ${U.escapeHtml(String(totalPages))}</span><button class="btn ghost sm" type="button" data-client-tab-page="${U.escapeAttr(tabKey)}" data-page="${page - 1}" ${page <= 1 ? 'disabled' : ''}>Previous</button><button class="btn ghost sm" type="button" data-client-tab-page="${U.escapeAttr(tabKey)}" data-page="${page + 1}" ${page >= totalPages ? 'disabled' : ''}>Next</button><select class="select" data-client-tab-page-size="${U.escapeAttr(tabKey)}">${[25, 50, 100].map(size => `<option value="${size}" ${size === pageSize ? 'selected' : ''}>${size}</option>`).join('')}</select><button class="btn ghost sm" type="button" data-client-tab-refresh="${U.escapeAttr(tabKey)}">Refresh</button>`;
   },
+  getClientDetailResultRows_(value = null) {
+    if (Array.isArray(value)) return value;
+    if (value && typeof value === 'object' && Array.isArray(value.rows)) return value.rows;
+    return [];
+  },
+  getCachedClientDetailRows_(clientId = '', key = '') {
+    const detail = this.state.detailCache?.[clientId] || {};
+    const aliases = {
+      agreements: ['agreements', 'agreementRows'],
+      agreementItems: ['agreementItems', 'agreement_items'],
+      invoices: ['invoices', 'invoiceRows'],
+      invoiceItems: ['invoiceItems', 'invoice_items'],
+      receipts: ['receipts', 'receiptRows'],
+      receiptItems: ['receiptItems', 'receipt_items']
+    };
+    const keys = aliases[key] || [key];
+    for (const candidateKey of keys) {
+      const rows = this.getClientDetailResultRows_(detail[candidateKey]);
+      if (rows.length) return rows;
+    }
+    return [];
+  },
+  getClientLinkedRowKey_(row = {}) {
+    return String(
+      row?.id || row?.uuid || row?.agreement_uuid || row?.invoice_uuid || row?.receipt_uuid ||
+      row?.agreement_id || row?.invoice_id || row?.receipt_id || row?.agreement_number || row?.invoice_number || row?.receipt_number ||
+      row?.schedule_id || row?.row_id || JSON.stringify(row || {})
+    ).trim();
+  },
+  mergeClientLinkedRows_(existing = [], incoming = []) {
+    const byKey = new Map();
+    [...(Array.isArray(existing) ? existing : []), ...(Array.isArray(incoming) ? incoming : [])]
+      .filter(Boolean)
+      .forEach(row => {
+        const key = this.getClientLinkedRowKey_(row);
+        if (!key) return;
+        if (!byKey.has(key)) byKey.set(key, row);
+        else byKey.set(key, { ...byKey.get(key), ...row });
+      });
+    return [...byKey.values()];
+  },
+  mergeRowsIntoStateCollection_(stateKey = '', rows = []) {
+    if (!stateKey || !Array.isArray(rows) || !rows.length) return;
+    const current = Array.isArray(this.state[stateKey]) ? this.state[stateKey] : [];
+    this.state[stateKey] = this.mergeClientLinkedRows_(current, rows);
+  },
+  mergeLinkedClientRowsFromResult_(current = {}, result = {}) {
+    const linked = {
+      agreements: this.getClientDetailResultRows_(result.agreements),
+      agreementItems: this.getClientDetailResultRows_(result.agreementItems || result.agreement_items),
+      invoices: this.getClientDetailResultRows_(result.invoices),
+      invoiceItems: this.getClientDetailResultRows_(result.invoiceItems || result.invoice_items),
+      receipts: this.getClientDetailResultRows_(result.receipts),
+      receiptItems: this.getClientDetailResultRows_(result.receiptItems || result.receipt_items)
+    };
+
+    if (linked.agreements.length) {
+      current.agreements = this.mergeClientLinkedRows_(current.agreements, linked.agreements);
+      this.mergeRowsIntoStateCollection_('agreements', linked.agreements);
+    }
+    if (linked.agreementItems.length) {
+      current.agreementItems = this.mergeClientLinkedRows_(current.agreementItems, linked.agreementItems);
+      this.mergeRowsIntoStateCollection_('agreementItems', linked.agreementItems);
+    }
+    if (linked.invoices.length) {
+      current.invoices = this.mergeClientLinkedRows_(current.invoices, linked.invoices);
+      this.mergeRowsIntoStateCollection_('invoices', linked.invoices);
+    }
+    if (linked.invoiceItems.length) {
+      current.invoiceItems = this.mergeClientLinkedRows_(current.invoiceItems, linked.invoiceItems);
+      this.mergeRowsIntoStateCollection_('invoiceItems', linked.invoiceItems);
+    }
+    if (linked.receipts.length) {
+      current.receipts = this.mergeClientLinkedRows_(current.receipts, linked.receipts);
+      this.mergeRowsIntoStateCollection_('receipts', linked.receipts);
+    }
+    if (linked.receiptItems.length) {
+      current.receiptItems = this.mergeClientLinkedRows_(current.receiptItems, linked.receiptItems);
+      this.mergeRowsIntoStateCollection_('receiptItems', linked.receiptItems);
+    }
+    return current;
+  },
   mergeClientTabResult_(clientId, tabKey, result = {}) {
-    const current = this.state.detailCache[clientId] || { detail: this.state.rows.find(row => row.client_id === clientId) || {}, loadedAt: Date.now() };
+    let current = this.state.detailCache[clientId] || { detail: this.state.rows.find(row => row.client_id === clientId) || {}, loadedAt: Date.now() };
+    current = this.mergeLinkedClientRowsFromResult_(current, result);
+    if (result.detail) current.detail = { ...(current.detail || {}), ...result.detail };
     if (tabKey === 'overview') {
-      this.state.detailCache[clientId] = { ...current, ...(result.detail ? { detail: result.detail } : {}), analytics: current.analytics || (current.detail || {}).analytics || {}, loadedAt: Date.now() };
+      this.state.detailCache[clientId] = { ...current, analytics: current.analytics || (current.detail || {}).analytics || {}, loadedAt: Date.now() };
       return;
     }
     if (tabKey === 'scheduledPayments') current.scheduledPayments = result.rows || [];
     if (tabKey === 'statement') current.statementRows = result.statementRows || result.rows || [];
-    if (tabKey === 'renewals') current.renewalRows = result.rows || [];
+    if (tabKey === 'renewals') current.renewalRows = result.renewalRows || result.renewal_rows || [];
     this.state.detailCache[clientId] = { ...current, loadedAt: Date.now() };
   },
   renderClientSubTab(tabKey, result = {}) {

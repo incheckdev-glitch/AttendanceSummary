@@ -1580,7 +1580,7 @@ const Api = {
   },
   pagedResult(data = [], count = 0, page = 1, pageSize = 25) {
     const total = Number.isFinite(Number(count)) ? Number(count) : (Array.isArray(data) ? data.length : 0);
-    return { rows: data || [], total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
+    return { rows: data || [], total, page, pageSize, totalPages: Math.max(Math.ceil(total / pageSize), 1) };
   },
   isUuidValue(value) {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(String(value || '').trim());
@@ -1604,10 +1604,8 @@ const Api = {
     const source = clientOrId && typeof clientOrId === 'object' ? clientOrId : { client_id: clientOrId };
     const sourceClientIds = Array.isArray(source?.source_client_ids) ? source.source_client_ids : [];
 
-    // Important: display values like Client#00055, Invoice#00012, or Agreement#00017
-    // are NOT valid UUIDs. Only pass real UUID values to UUID columns.
-    // Do not use source.id as company_id because, in the client panel, source.id is usually
-    // the clients table UUID, not the linked companies.id UUID.
+    // Client#00055 / Invoice#00012 / Agreement#00017 are display references, not UUIDs.
+    // Only real UUIDs are allowed to touch UUID columns such as invoices.client_id.
     const companyId = this.firstUuidValue_(
       source?.company_id,
       source?.companyId,
@@ -1628,76 +1626,231 @@ const Api = {
       sourceClientIds
     );
     const displayClientId = this.firstDisplayValue_(source?.client_id, source?.clientId, sourceClientIds);
-    const clientName = String(source?.legal_name || source?.company_name || source?.customer_legal_name || source?.customer_name || source?.client_name || source?.name || '').trim();
+    const clientName = String(
+      source?.legal_name ||
+      source?.legalName ||
+      source?.company_name ||
+      source?.companyName ||
+      source?.customer_legal_name ||
+      source?.customerLegalName ||
+      source?.customer_name ||
+      source?.customerName ||
+      source?.client_name ||
+      source?.clientName ||
+      source?.name ||
+      ''
+    ).trim();
     return { companyId, clientId: clientUuid, clientUuid, displayClientId, clientName };
   },
   getClientFilterConfig_(table = '') {
     const configs = {
       agreements: {
-        uuid: { company_id: 'companyId' },
-        text: ['customer_legal_name', 'customer_name', 'company_name']
+        uuid: { company_id: 'companyId', client_id: 'clientUuid' },
+        text: ['customer_legal_name', 'customer_name', 'company_name', 'client_name']
       },
       invoices: {
         uuid: { company_id: 'companyId', client_id: 'clientUuid' },
+        // invoices.client_name does not exist in this schema, so do not use it here.
         text: ['customer_legal_name', 'customer_name', 'company_name']
       },
       receipts: {
         uuid: { company_id: 'companyId', client_id: 'clientUuid' },
+        // receipts.client_name may not exist; use the customer/company fields only.
         text: ['customer_legal_name', 'customer_name', 'company_name']
       },
       client_scheduled_payments: {
         uuid: { company_id: 'companyId', client_id: 'clientUuid' },
-        text: ['client_name']
+        text: ['client_name', 'customer_legal_name', 'customer_name', 'company_name']
       },
       onboarding_requests: {
         uuid: { company_id: 'companyId', client_id: 'clientUuid' },
-        text: ['client_name', 'company_name']
+        text: ['client_name', 'company_name', 'customer_name', 'customer_legal_name']
       },
       technical_requests: {
         uuid: { company_id: 'companyId', client_id: 'clientUuid' },
-        text: ['client_name', 'company_name']
+        text: ['client_name', 'company_name', 'customer_name', 'customer_legal_name']
       },
       csm_activities: {
         uuid: { company_id: 'companyId', client_id: 'clientUuid' },
-        text: ['client_name', 'company_name']
+        text: ['client_name', 'company_name', 'customer_name', 'customer_legal_name']
       }
     };
     return configs[String(table || '').trim()] || { uuid: {}, text: [] };
   },
-  applyClientQueryFilters(query, clientOrId = {}, table = '') {
-    const filterValues = this.getClientFilterValues(clientOrId);
-    const config = this.getClientFilterConfig_(table);
-    const parts = [];
-
-    Object.entries(config.uuid || {}).forEach(([column, key]) => {
-      const value = String(filterValues[key] || '').trim();
-      if (value && this.isUuidValue(value)) parts.push(`${column}.eq.${value}`);
+  getClientRowKey_(row = {}) {
+    return String(
+      row?.id || row?.uuid || row?.invoice_uuid || row?.agreement_uuid || row?.receipt_uuid ||
+      row?.invoice_id || row?.agreement_id || row?.receipt_id || row?.schedule_id ||
+      row?.invoice_number || row?.agreement_number || row?.receipt_number ||
+      JSON.stringify(row || {})
+    ).trim();
+  },
+  mergeUniqueClientRows_(...sets) {
+    const byKey = new Map();
+    sets.flat().filter(Boolean).forEach(row => {
+      const key = this.getClientRowKey_(row);
+      if (!key) return;
+      if (!byKey.has(key)) byKey.set(key, row);
+      else byKey.set(key, { ...byKey.get(key), ...row });
     });
-
-    // Name fallback is only used when no UUID relationship exists. This prevents broad OR
-    // queries and avoids using columns that do not exist, such as invoices.client_name.
-    const safeName = this.sanitizePostgrestText_(filterValues.clientName);
-    if (!parts.length && safeName) {
-      (config.text || []).forEach(column => parts.push(`${column}.ilike.%${safeName}%`));
+    return [...byKey.values()];
+  },
+  sortClientRowsForTable_(table = '', rows = []) {
+    const tableName = String(table || '').trim();
+    const dateValue = row => new Date(row?.updated_at || row?.created_at || row?.issue_date || row?.invoice_date || row?.receipt_date || row?.due_date || 0).getTime() || 0;
+    const sorted = [...(Array.isArray(rows) ? rows : [])];
+    if (tableName === 'client_scheduled_payments' || tableName === 'invoice_payment_schedule') {
+      return sorted.sort((a, b) => {
+        const ad = new Date(a?.due_date || 0).getTime() || Number.POSITIVE_INFINITY;
+        const bd = new Date(b?.due_date || 0).getTime() || Number.POSITIVE_INFINITY;
+        if (ad !== bd) return ad - bd;
+        return Number(a?.schedule_no || 0) - Number(b?.schedule_no || 0);
+      });
     }
-
-    return parts.length ? query.or(parts.join(',')) : null;
+    return sorted.sort((a, b) => dateValue(b) - dateValue(a));
+  },
+  async runClientTableQuery_(table, buildQuery, configure = null, limit = 250) {
+    const supabaseClient = window.SupabaseClient?.getClient?.() || window.supabase || null;
+    if (!supabaseClient?.from) return [];
+    try {
+      let query = supabaseClient.from(table).select('*');
+      query = buildQuery(query);
+      if (!query) return [];
+      if (typeof configure === 'function') query = configure(query) || query;
+      const { data, error } = await query.limit(Math.max(Number(limit) || 250, 1));
+      if (error) throw error;
+      return Array.isArray(data) ? data : [];
+    } catch (error) {
+      // Some older/customer environments do not have every optional column/view.
+      // Skip only that candidate query instead of breaking the whole client panel.
+      console.info(`[Client Panel] ${table} filter candidate skipped`, error?.message || error);
+      return [];
+    }
   },
   async fetchPaged(table, clientOrId = {}, options = {}, configure = null) {
     const { page, pageSize, from, to } = this.normalizePagedOptions(options);
     const supabaseClient = window.SupabaseClient?.getClient?.() || window.supabase || null;
     if (!supabaseClient?.from) return this.pagedResult([], 0, page, pageSize);
-    let query = supabaseClient.from(table).select('*', { count: 'exact' });
-    query = this.applyClientQueryFilters(query, clientOrId, table);
-    if (!query) return this.pagedResult([], 0, page, pageSize);
-    if (typeof configure === 'function') query = configure(query) || query;
-    const { data, error, count } = await query.range(from, to);
-    if (error) throw error;
-    return this.pagedResult(data || [], count || 0, page, pageSize);
+
+    const filterValues = this.getClientFilterValues(clientOrId);
+    const config = this.getClientFilterConfig_(table);
+    const fetchLimit = Math.max(to + 1, 100);
+    const uuidRows = [];
+
+    for (const [column, key] of Object.entries(config.uuid || {})) {
+      const value = String(filterValues[key] || '').trim();
+      if (!value || !this.isUuidValue(value)) continue;
+      const rows = await this.runClientTableQuery_(table, query => query.eq(column, value), configure, fetchLimit);
+      uuidRows.push(...rows);
+    }
+
+    let rows = this.mergeUniqueClientRows_(uuidRows);
+
+    // Always add the safe name fallback too. Many old/imported client rows have totals
+    // but no company/client UUID link, so UUID-only filtering can show incomplete details.
+    const safeName = this.sanitizePostgrestText_(filterValues.clientName);
+    if (safeName) {
+      const textRows = [];
+      for (const column of config.text || []) {
+        const candidateRows = await this.runClientTableQuery_(table, query => query.ilike(column, `%${safeName}%`), configure, fetchLimit);
+        textRows.push(...candidateRows);
+      }
+      rows = this.mergeUniqueClientRows_(rows, textRows);
+    }
+
+    rows = this.sortClientRowsForTable_(table, rows);
+    const pageRows = rows.slice(from, to + 1);
+    return this.pagedResult(pageRows, rows.length, page, pageSize);
+  },
+  extractUuidKeys_(rows = [], fields = []) {
+    return [...new Set((Array.isArray(rows) ? rows : [])
+      .flatMap(row => fields.map(field => row?.[field]))
+      .map(value => String(value || '').trim())
+      .filter(value => this.isUuidValue(value)))];
+  },
+  extractTextKeys_(rows = [], fields = []) {
+    return [...new Set((Array.isArray(rows) ? rows : [])
+      .flatMap(row => fields.map(field => row?.[field]))
+      .map(value => String(value || '').trim())
+      .filter(value => value && !this.isUuidValue(value)))];
+  },
+  async fetchLinkedRowsByColumns_(table, columnKeys = {}, configure = null) {
+    const output = [];
+    for (const [column, rawKeys] of Object.entries(columnKeys || {})) {
+      const keys = [...new Set((Array.isArray(rawKeys) ? rawKeys : [])
+        .map(value => String(value || '').trim())
+        .filter(Boolean))];
+      for (let i = 0; i < keys.length; i += 100) {
+        const chunk = keys.slice(i, i + 100);
+        const rows = await this.runClientTableQuery_(table, query => query.in(column, chunk), configure, 500);
+        output.push(...rows);
+      }
+    }
+    return this.mergeUniqueClientRows_(output);
   },
   async getClientOverview(clientOrId = {}) {
-    const source = clientOrId && typeof clientOrId === 'object' ? clientOrId : {};
-    return { rows: source?.client_id || source?.id ? [source] : [], total: source?.client_id || source?.id ? 1 : 0, page: 1, pageSize: 25, totalPages: 1, detail: source };
+    const source = clientOrId && typeof clientOrId === 'object' ? clientOrId : { client_id: clientOrId };
+    const [agreements, directInvoices, directReceipts] = await Promise.all([
+      this.getClientAgreements(source, { page: 1, pageSize: 250 }),
+      this.getClientInvoices(source, { page: 1, pageSize: 250 }),
+      this.getClientReceipts(source, { page: 1, pageSize: 250 })
+    ]);
+
+    const agreementRows = agreements.rows || [];
+
+    const agreementLinkedInvoices = await this.fetchLinkedRowsByColumns_('invoices', {
+      agreement_id: this.extractUuidKeys_(agreementRows, ['id', 'agreement_uuid', 'agreement_id']),
+      source_agreement_id: this.extractUuidKeys_(agreementRows, ['id', 'agreement_uuid', 'agreement_id']),
+      agreement_number: this.extractTextKeys_(agreementRows, ['agreement_number', 'agreement_id', 'agreement_no']),
+      source_agreement_number: this.extractTextKeys_(agreementRows, ['agreement_number', 'agreement_id', 'agreement_no'])
+    }, query => query.order('updated_at', { ascending: false, nullsFirst: false }));
+
+    const invoiceRows = this.sortClientRowsForTable_('invoices', this.mergeUniqueClientRows_(directInvoices.rows || [], agreementLinkedInvoices));
+
+    const invoiceLinkedReceipts = await this.fetchLinkedRowsByColumns_('receipts', {
+      invoice_id: this.extractUuidKeys_(invoiceRows, ['id', 'invoice_uuid', 'invoice_id']),
+      invoice_number: this.extractTextKeys_(invoiceRows, ['invoice_number', 'invoice_id', 'invoice_no'])
+    }, query => query.order('updated_at', { ascending: false, nullsFirst: false }));
+
+    const agreementLinkedReceipts = await this.fetchLinkedRowsByColumns_('receipts', {
+      agreement_id: this.extractUuidKeys_(agreementRows, ['id', 'agreement_uuid', 'agreement_id']),
+      agreement_number: this.extractTextKeys_(agreementRows, ['agreement_number', 'agreement_id', 'agreement_no'])
+    }, query => query.order('updated_at', { ascending: false, nullsFirst: false }));
+
+    const receiptRows = this.sortClientRowsForTable_('receipts', this.mergeUniqueClientRows_(directReceipts.rows || [], invoiceLinkedReceipts, agreementLinkedReceipts));
+
+    const invoices = { ...directInvoices, rows: invoiceRows, total: invoiceRows.length, totalPages: Math.max(Math.ceil(invoiceRows.length / Math.max(Number(directInvoices.pageSize || 250), 1)), 1) };
+    const receipts = { ...directReceipts, rows: receiptRows, total: receiptRows.length, totalPages: Math.max(Math.ceil(receiptRows.length / Math.max(Number(directReceipts.pageSize || 250), 1)), 1) };
+
+    const agreementItems = await this.fetchLinkedRowsByColumns_('agreement_items', {
+      agreement_id: this.extractUuidKeys_(agreementRows, ['id', 'agreement_uuid', 'agreement_id']),
+      agreement_number: this.extractTextKeys_(agreementRows, ['agreement_number', 'agreement_id', 'agreement_no'])
+    });
+
+    const invoiceItems = await this.fetchLinkedRowsByColumns_('invoice_items', {
+      invoice_id: this.extractUuidKeys_(invoiceRows, ['id', 'invoice_uuid', 'invoice_id']),
+      invoice_number: this.extractTextKeys_(invoiceRows, ['invoice_number', 'invoice_id', 'invoice_no'])
+    });
+
+    const receiptItems = await this.fetchLinkedRowsByColumns_('receipt_items', {
+      receipt_id: this.extractUuidKeys_(receiptRows, ['id', 'receipt_uuid', 'receipt_id']),
+      receipt_number: this.extractTextKeys_(receiptRows, ['receipt_number', 'receipt_id', 'receipt_no'])
+    });
+
+    return {
+      rows: source?.client_id || source?.id ? [source] : [],
+      total: source?.client_id || source?.id ? 1 : 0,
+      page: 1,
+      pageSize: 25,
+      totalPages: 1,
+      detail: source,
+      agreements,
+      invoices,
+      receipts,
+      agreementItems: { rows: agreementItems, total: agreementItems.length, page: 1, pageSize: agreementItems.length || 25, totalPages: 1 },
+      invoiceItems: { rows: invoiceItems, total: invoiceItems.length, page: 1, pageSize: invoiceItems.length || 25, totalPages: 1 },
+      receiptItems: { rows: receiptItems, total: receiptItems.length, page: 1, pageSize: receiptItems.length || 25, totalPages: 1 }
+    };
   },
   async getClientAgreements(clientOrId = {}, options = {}) {
     return this.fetchPaged('agreements', clientOrId, options, query => query.order('updated_at', { ascending: false, nullsFirst: false }));
@@ -1709,21 +1862,30 @@ const Api = {
     return this.fetchPaged('receipts', clientOrId, options, query => query.order('updated_at', { ascending: false, nullsFirst: false }));
   },
   async getClientRenewalsPayments(clientOrId = {}, options = {}) {
-    return this.getClientInvoices(clientOrId, options);
+    const overview = await this.getClientOverview(clientOrId);
+    return {
+      ...overview,
+      rows: [],
+      renewalRows: [],
+      total: overview.invoiceItems?.total || overview.invoices?.total || 0,
+      page: Math.max(Number(options.page || 1), 1),
+      pageSize: Math.max(Number(options.pageSize || options.limit || 25), 1),
+      totalPages: 1
+    };
   },
   async getClientStatementOfAccount(clientOrId = {}, options = {}) {
-    const [invoices, receipts] = await Promise.all([
-      this.getClientInvoices(clientOrId, options),
-      this.getClientReceipts(clientOrId, options)
-    ]);
+    const overview = await this.getClientOverview(clientOrId);
+    const invoices = overview.invoices || { rows: [] };
+    const receipts = overview.receipts || { rows: [] };
     const rows = [
-      ...(invoices.rows || []).map(inv => ({ ...inv, type: 'Invoice', date: inv.invoice_date || inv.created_at, document_no: inv.invoice_number || inv.invoice_id || inv.id, debit: inv.grand_total || inv.invoice_total || inv.total_amount || 0, credit: 0, due_date: inv.due_date, status: inv.status || inv.payment_state })),
-      ...(receipts.rows || []).map(rec => ({ ...rec, type: 'Receipt', date: rec.receipt_date || rec.payment_date || rec.created_at, document_no: rec.receipt_number || rec.receipt_id || rec.id, debit: 0, credit: rec.received_amount || rec.amount_paid || rec.paid_amount || rec.amount || 0, due_date: '', status: rec.status || rec.payment_state }))
+      ...(invoices.rows || []).map(inv => ({ ...inv, type: 'Invoice', date: inv.invoice_date || inv.issue_date || inv.created_at, document_no: inv.invoice_number || inv.invoice_id || inv.id, debit: inv.grand_total || inv.invoice_total || inv.total_amount || 0, credit: 0, due_date: inv.due_date, status: inv.status || inv.payment_state })),
+      ...(receipts.rows || []).map(rec => ({ ...rec, type: 'Receipt', date: rec.receipt_date || rec.payment_date || rec.created_at, document_no: rec.receipt_number || rec.receipt_id || rec.id, debit: 0, credit: rec.received_amount || rec.amount_received || rec.amount_paid || rec.paid_amount || rec.amount || 0, due_date: '', status: rec.status || rec.payment_state }))
     ].sort((a, b) => new Date(a.date || 0).getTime() - new Date(b.date || 0).getTime());
     let running = 0;
     rows.forEach(row => { running += Number(row.debit || 0) - Number(row.credit || 0); row.running_balance = running; });
-    const total = (invoices.total || 0) + (receipts.total || 0);
-    return { rows, statementRows: rows, total, page: invoices.page || 1, pageSize: invoices.pageSize || 25, totalPages: Math.ceil(total / (invoices.pageSize || 25)) };
+    const total = rows.length;
+    const { page, pageSize, from, to } = this.normalizePagedOptions(options);
+    return { ...overview, rows: rows.slice(from, to + 1), statementRows: rows, invoices, receipts, total, page, pageSize, totalPages: Math.max(Math.ceil(total / pageSize), 1) };
   },
   async getClientOnboarding(clientOrId = {}, options = {}) {
     return this.fetchPaged('onboarding_requests', clientOrId, options, query => query.order('created_at', { ascending: false, nullsFirst: false }));
@@ -1738,110 +1900,50 @@ const Api = {
   async getClientScheduledPayments(client = {}, options = {}) {
     const sourceClient = client && typeof client === 'object' ? client : { client_id: client };
     const { page, pageSize, from, to } = this.normalizePagedOptions(options);
-    const { companyId, clientUuid, clientName } = this.getClientFilterValues(sourceClient);
-    const safeClientName = this.sanitizePostgrestText_(clientName);
-    const supabaseClient = window.SupabaseClient?.getClient?.() || window.supabase || null;
-    if (!supabaseClient?.from) return options.returnArray === true ? [] : this.pagedResult([], 0, page, pageSize);
 
-    const mergeRows = (...sets) => {
-      const byKey = new Map();
-      sets.flat().filter(Boolean).forEach(row => {
-        const key = String(row.schedule_id || row.id || row.invoice_payment_schedule_id || `${row.invoice_id || ''}:${row.schedule_no || ''}:${row.due_date || ''}`).trim();
-        if (!key) return;
-        if (!byKey.has(key)) byKey.set(key, row);
-      });
-      return [...byKey.values()].sort((a, b) => {
-        const dateA = String(a.due_date || '').trim();
-        const dateB = String(b.due_date || '').trim();
-        const timeA = dateA ? new Date(dateA).getTime() : Number.POSITIVE_INFINITY;
-        const timeB = dateB ? new Date(dateB).getTime() : Number.POSITIVE_INFINITY;
-        if (timeA !== timeB) return timeA - timeB;
-        return Number(a.schedule_no || 0) - Number(b.schedule_no || 0);
-      });
-    };
-
-    try {
-      const filters = [];
-      if (companyId) filters.push(`company_id.eq.${companyId}`);
-      if (clientUuid) filters.push(`client_id.eq.${clientUuid}`);
-      if (!filters.length && safeClientName) filters.push(`client_name.ilike.%${safeClientName}%`);
-      if (filters.length) {
-        const { data, error, count } = await supabaseClient
-          .from('client_scheduled_payments')
-          .select('*', { count: 'exact' })
-          .or(filters.join(','))
-          .order('due_date', { ascending: true, nullsFirst: false })
-          .order('schedule_no', { ascending: true, nullsFirst: false })
-          .range(from, to);
-        if (error) throw error;
-        if ((data || []).length || count) {
-          const result = this.pagedResult(data || [], count || 0, page, pageSize);
-          return options.returnArray === true ? result.rows : result;
-        }
-      }
-    } catch (error) {
-      console.warn('[Client Scheduled Payments] failed to load from view; falling back to invoice tables', error);
+    const viewRows = await this.fetchPaged('client_scheduled_payments', sourceClient, { page: 1, pageSize: Math.max(to + 1, 100) }, query => query.order('due_date', { ascending: true, nullsFirst: false }).order('schedule_no', { ascending: true, nullsFirst: false })).catch(error => {
+      console.info('[Client Scheduled Payments] view unavailable; falling back to invoice_payment_schedule', error?.message || error);
+      return this.pagedResult([], 0, 1, Math.max(to + 1, 100));
+    });
+    if ((viewRows.rows || []).length) {
+      const rows = this.sortClientRowsForTable_('client_scheduled_payments', viewRows.rows || []);
+      return options.returnArray === true ? rows.slice(from, to + 1) : this.pagedResult(rows.slice(from, to + 1), rows.length, page, pageSize);
     }
 
-    try {
-      const invoiceSets = [];
-      const invoiceSelect = '*';
-      const pushInvoices = async query => {
-        const { data, error } = await query;
-        if (error) {
-          console.warn('[Client Scheduled Payments] invoice fallback query skipped', error);
-          return;
-        }
-        invoiceSets.push(data || []);
+    const invoiceOverview = await this.getClientOverview(sourceClient).catch(() => ({ invoices: { rows: [] } }));
+    const invoices = invoiceOverview.invoices?.rows || [];
+    const scheduleRows = await this.fetchLinkedRowsByColumns_('invoice_payment_schedule', {
+      invoice_id: this.extractUuidKeys_(invoices, ['id', 'invoice_uuid', 'invoice_id']),
+      invoice_number: this.extractTextKeys_(invoices, ['invoice_number', 'invoice_id', 'invoice_no'])
+    }, query => query.order('due_date', { ascending: true, nullsFirst: false }).order('schedule_no', { ascending: true, nullsFirst: false }));
+
+    const invoiceByKey = new Map();
+    invoices.forEach(invoice => {
+      [invoice.id, invoice.invoice_uuid, invoice.invoice_id, invoice.invoice_number, invoice.invoice_no]
+        .map(value => String(value || '').trim())
+        .filter(Boolean)
+        .forEach(key => invoiceByKey.set(key, invoice));
+    });
+    const enrichedRows = scheduleRows.map(schedule => {
+      const invoice = invoiceByKey.get(String(schedule.invoice_id || '').trim()) || invoiceByKey.get(String(schedule.invoice_number || '').trim()) || {};
+      return {
+        ...schedule,
+        schedule_id: schedule.schedule_id || schedule.id,
+        invoice_id: schedule.invoice_id || invoice.id || invoice.invoice_id || '',
+        invoice_number: invoice.invoice_number || schedule.invoice_number || '',
+        invoice_reference_fallback: invoice.invoice_id || invoice.display_id || '',
+        invoice_status: invoice.status || invoice.invoice_status || '',
+        client_id: invoice.client_id || schedule.client_id || '',
+        company_id: invoice.company_id || schedule.company_id || '',
+        client_name: invoice.customer_legal_name || invoice.customer_name || invoice.company_name || schedule.client_name || '',
+        currency: schedule.currency || invoice.currency || 'USD',
+        raw: invoice
       };
-      if (companyId) await pushInvoices(supabaseClient.from('invoices').select(invoiceSelect).eq('company_id', companyId));
-      if (clientUuid) await pushInvoices(supabaseClient.from('invoices').select(invoiceSelect).eq('client_id', clientUuid));
-      if (safeClientName) {
-        await pushInvoices(supabaseClient.from('invoices').select(invoiceSelect).ilike('customer_name', `%${safeClientName}%`));
-        await pushInvoices(supabaseClient.from('invoices').select(invoiceSelect).ilike('customer_legal_name', `%${safeClientName}%`));
-        await pushInvoices(supabaseClient.from('invoices').select(invoiceSelect).ilike('company_name', `%${safeClientName}%`));
-      }
-      const invoices = mergeRows(...invoiceSets);
-      const invoiceIds = [...new Set(invoices.map(inv => String(inv.id || inv.invoice_uuid || '').trim()).filter(Boolean))];
-      if (!invoiceIds.length) return options.returnArray === true ? [] : this.pagedResult([], 0, page, pageSize);
-      const invoiceById = new Map();
-      invoices.forEach(inv => {
-        [inv.id, inv.invoice_uuid, inv.invoice_id].map(value => String(value || '').trim()).filter(Boolean).forEach(id => invoiceById.set(id, inv));
-      });
-      const scheduleSets = [];
-      for (let i = 0; i < invoiceIds.length; i += 100) {
-        const chunk = invoiceIds.slice(i, i + 100);
-        const { data, error } = await supabaseClient
-          .from('invoice_payment_schedule')
-          .select('*')
-          .in('invoice_id', chunk)
-          .order('due_date', { ascending: true, nullsFirst: false })
-          .order('schedule_no', { ascending: true, nullsFirst: false });
-        if (error) throw error;
-        scheduleSets.push(data || []);
-      }
-      const fallbackRows = mergeRows(...scheduleSets).map(schedule => {
-        const invoice = invoiceById.get(String(schedule.invoice_id || '').trim()) || {};
-        return {
-          ...schedule,
-          schedule_id: schedule.schedule_id || schedule.id,
-          invoice_id: schedule.invoice_id,
-          invoice_number: invoice.invoice_number || schedule.invoice_number || '',
-          invoice_reference_fallback: invoice.invoice_id || invoice.display_id || '',
-          invoice_status: invoice.status || invoice.invoice_status || '',
-          client_id: invoice.client_id || schedule.client_id || '',
-          company_id: invoice.company_id || schedule.company_id || '',
-          client_name: invoice.customer_legal_name || invoice.customer_name || invoice.company_name || schedule.client_name || '',
-          currency: schedule.currency || invoice.currency || 'USD'
-        };
-      });
-      const pageRows = fallbackRows.slice(from, to + 1);
-      return options.returnArray === true ? pageRows : this.pagedResult(pageRows, fallbackRows.length, page, pageSize);
-    } catch (error) {
-      console.warn('[Client Scheduled Payments] failed to load fallback invoice payment schedule', error);
-      return options.returnArray === true ? [] : this.pagedResult([], 0, page, pageSize);
-    }
+    });
+    const rows = this.sortClientRowsForTable_('invoice_payment_schedule', enrichedRows);
+    return options.returnArray === true ? rows.slice(from, to + 1) : this.pagedResult(rows.slice(from, to + 1), rows.length, page, pageSize);
   },
+
   async listReceipts(filters = {}, options = {}) {
     const listPayload = this.buildSummaryListPayload(options);
     const payload = {
