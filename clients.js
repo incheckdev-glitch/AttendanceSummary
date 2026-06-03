@@ -187,9 +187,15 @@ const Clients = {
       if (text) keys.add(text);
     };
 
-    add(client.id);
+    // Do not use the client table UUID as a company key.
+    // If the client is not linked to a company yet, using client.id here prevents
+    // safe exact-name fallback against invoices/receipts that do have company_id.
     add(client.company_id);
     add(client.companyId);
+    add(client.customer_company_id);
+    add(client.customerCompanyId);
+    add(client.client_company_id);
+    add(client.clientCompanyId);
 
     const selectedName = this.normalizeClientName(
       client.legal_name ||
@@ -422,16 +428,13 @@ const Clients = {
     this.getExpandedCompanyIdKeys_(client).forEach(key => clientCompanyKeys.add(key));
     const agreementCompanyKeys = this.getExpandedCompanyIdKeys_(agreement);
 
-    if (clientCompanyKeys.size || agreementCompanyKeys.size) {
-      return Boolean(
-        clientCompanyKeys.size &&
-        agreementCompanyKeys.size &&
-        this.companyKeySetsIntersect_(clientCompanyKeys, agreementCompanyKeys)
-      );
+    if (clientCompanyKeys.size && agreementCompanyKeys.size) {
+      return this.companyKeySetsIntersect_(clientCompanyKeys, agreementCompanyKeys);
     }
 
-    // Historical/imported records can fallback to strict exact legal/company name matching
-    // only when both sides are missing company_id. Never use email or partial includes.
+    // Historical/imported/client-panel records can have the client row missing company_id
+    // while the invoice/agreement/receipt has company_id. In that case exact normalized
+    // legal/company name matching is the safest fallback. Never use partial includes.
     const agreementName = this.normalizeCompanyKey(this.getAgreementLegalName(agreement));
     const clientName = this.normalizeCompanyKey(this.getClientLegalName(client));
     return Boolean(agreementName && clientName && agreementName === clientName);
@@ -1492,6 +1495,50 @@ const Clients = {
     }
     return Array.from(map.values());
   },
+  buildUniqueAnnualSaasLocationRows_(items = []) {
+    const map = new Map();
+    for (const item of Array.isArray(items) ? items : []) {
+      if (!this.isAnnualSaasClientLocationItem(item)) continue;
+      if (this.isSupersededItem(item)) continue;
+      const locationKey = this.normalizeLocationKey(item?.location_name || item?.locationName || item?.location || item?.site || item?.site_name || item?.branch || item?.branch_name || '');
+      if (!locationKey) continue;
+      const itemKey = this.normalizeLocationKey(item?.item_name || item?.itemName || item?.license || item?.module_name || item?.moduleName || item?.product_name || item?.service_name || 'annual_saas');
+      const key = `${locationKey}::${itemKey || 'annual_saas'}`;
+      const existing = map.get(key);
+      if (!existing) {
+        map.set(key, item);
+        continue;
+      }
+      const existingRank = this.getLocationRowRankTime_(existing);
+      const itemRank = this.getLocationRowRankTime_(item);
+      if (itemRank.serviceEndAt > existingRank.serviceEndAt || (itemRank.serviceEndAt === existingRank.serviceEndAt && itemRank.updatedAt >= existingRank.updatedAt)) {
+        map.set(key, item);
+      }
+    }
+    return Array.from(map.values());
+  },
+  isInvoiceActiveForClientLocation_(invoice = {}) {
+    const status = String(invoice?.status || invoice?.invoice_status || invoice?.payment_state || invoice?.payment_status || '').trim().toLowerCase().replace(/\s+/g, '_');
+    return !['draft', 'void', 'voided', 'cancelled', 'canceled', 'failed', 'error', 'deleted'].includes(status);
+  },
+  buildUniqueInvoicedAnnualSaasLocationRows_(clientId = '') {
+    const invoices = this.listClientRelatedInvoices_(clientId).filter(invoice => this.isInvoiceActiveForClientLocation_(invoice));
+    const invoiceItems = this.listClientRelatedInvoiceItems_(clientId).filter(item => {
+      const invoice = this.findInvoiceForItem_(item, invoices);
+      return invoice && this.isInvoiceActiveForClientLocation_(invoice);
+    });
+    const fromInvoiceItems = this.buildUniqueAnnualSaasLocationRows_(invoiceItems);
+    if (fromInvoiceItems.length) return fromInvoiceItems;
+
+    // Fallback for older/imported data where invoice_items are missing, but agreement_items
+    // carry invoice_id / invoice_number / invoice_status metadata.
+    const invoicedAgreementItems = this.listClientAgreementLocationItems_(clientId).filter(item => {
+      if (!this.isAgreementItemInvoiced_(item)) return false;
+      const invoice = this.findInvoiceForAgreementItem_(item, invoices);
+      return !invoice || this.isInvoiceActiveForClientLocation_(invoice);
+    });
+    return this.buildUniqueAnnualSaasLocationRows_(invoicedAgreementItems);
+  },
   normalizeCurrencyCode_(value) {
     return String(value || '').trim().toUpperCase() || 'USD';
   },
@@ -1581,13 +1628,15 @@ const Clients = {
         ).length
       };
     }));
-    // Total locations are current/non-superseded rows. Active locations are based on service dates
-    // across all Annual SaaS rows, then deduped by location/item so renewed overlaps count once.
-    const activeLocationItems = this.buildUniqueActiveServiceLocationRows(locationItems);
+    // Total locations are all current/non-superseded Annual SaaS rows from the agreement.
+    // Active locations in the Client Panel means invoiced Annual SaaS locations, not merely
+    // locations present on the agreement and not merely rows whose service dates include today.
+    const activeLocationItems = this.buildUniqueInvoicedAnnualSaasLocationRows_(clientId);
+    const serviceDateActiveLocationItems = this.buildUniqueActiveServiceLocationRows(locationItems);
     const today = this.getTodayDateOnly_();
 
     const totalLocations = currentLocationRows.length;
-    const activeLocations = activeLocationItems.length;
+    const activeLocations = activeLocationItems.length || serviceDateActiveLocationItems.length;
 
     const totalAgreementValue = agreements.reduce((sum, item) => sum + this.toNumberSafe(item.grand_total), 0);
     const totalInvoicedValue = invoices.reduce((sum, item) => sum + this.toNumberSafe(item.grand_total), 0);
@@ -3055,13 +3104,13 @@ const Clients = {
     let current = this.state.detailCache[clientId] || { detail: this.state.rows.find(row => row.client_id === clientId) || {}, loadedAt: Date.now() };
     current = this.mergeLinkedClientRowsFromResult_(current, result);
     if (result.detail) current.detail = { ...(current.detail || {}), ...result.detail };
-    if (tabKey === 'overview') {
-      this.state.detailCache[clientId] = { ...current, analytics: current.analytics || (current.detail || {}).analytics || {}, loadedAt: Date.now() };
-      return;
-    }
     if (tabKey === 'scheduledPayments') current.scheduledPayments = result.rows || [];
     if (tabKey === 'statement') current.statementRows = result.statementRows || result.rows || [];
     if (tabKey === 'renewals') current.renewalRows = result.renewalRows || result.renewal_rows || [];
+
+    const rowClient = this.state.rows.find(row => row.client_id === clientId) || current.detail || {};
+    const computedAnalytics = this.computeClientAnalytics_({ ...rowClient, ...(current.detail || {}) });
+    current.analytics = { ...(rowClient.analytics || {}), ...(current.analytics || {}), ...computedAnalytics };
     this.state.detailCache[clientId] = { ...current, loadedAt: Date.now() };
   },
   renderClientSubTab(tabKey, result = {}) {
@@ -3075,6 +3124,70 @@ const Clients = {
     if (tabKey === 'renewals') this.renderRenewalsSection_(detailData, client);
     this.renderClientPagination_(tabKey, result);
     this.setDetailTab(tabKey, { skipLoad: true });
+  },
+  normalizeDashboardLinkedRows_(dashboard = {}) {
+    const mapRows = (rows, mapper) => (Array.isArray(rows) ? rows : []).map(row => {
+      try { return typeof mapper === 'function' ? mapper.call(this, row) : row; }
+      catch (_) { return row; }
+    });
+    return {
+      agreements: mapRows(dashboard.agreements, this.normalizeAgreement),
+      agreementItems: mapRows(dashboard.agreement_items || dashboard.agreementItems, this.normalizeAgreementItem),
+      invoices: mapRows(dashboard.invoices, this.normalizeInvoice),
+      invoiceItems: mapRows(dashboard.invoice_items || dashboard.invoiceItems, this.normalizeInvoiceItem),
+      receipts: mapRows(dashboard.receipts, this.normalizeReceipt),
+      receiptItems: Array.isArray(dashboard.receipt_items || dashboard.receiptItems) ? (dashboard.receipt_items || dashboard.receiptItems) : [],
+      companies: Array.isArray(dashboard.companies) ? dashboard.companies : [],
+      contacts: Array.isArray(dashboard.contacts) ? dashboard.contacts : []
+    };
+  },
+  mergeDashboardLinkedRowsIntoState_(dashboard = {}) {
+    const linked = this.normalizeDashboardLinkedRows_(dashboard);
+    this.mergeRowsIntoStateCollection_('agreements', linked.agreements);
+    this.mergeRowsIntoStateCollection_('agreementItems', linked.agreementItems);
+    this.mergeRowsIntoStateCollection_('invoices', linked.invoices);
+    this.mergeRowsIntoStateCollection_('invoiceItems', linked.invoiceItems);
+    this.mergeRowsIntoStateCollection_('receipts', linked.receipts);
+    this.mergeRowsIntoStateCollection_('receiptItems', linked.receiptItems);
+    if (linked.companies.length) {
+      this.state.companies = this.mergeClientLinkedRows_(this.state.companies || [], linked.companies);
+      this.rebuildCompanyLookupMaps(this.state.companies);
+    }
+    if (linked.contacts.length) {
+      this.state.contacts = this.mergeClientLinkedRows_(this.state.contacts || [], linked.contacts);
+      this.state.contactsById = new Map((this.state.contacts || []).map(contact => [String(contact.id || contact.contact_id || '').trim(), contact]).filter(([id]) => id));
+    }
+    return linked;
+  },
+  clientTabResultLooksIncomplete_(clientId = '', tabKey = '', result = {}) {
+    const client = this.state.rows.find(row => row.client_id === clientId) || {};
+    const analytics = client.analytics || {};
+    const resultRows = this.getClientDetailResultRows_(result.rows);
+    const resultInvoices = this.getClientDetailResultRows_(result.invoices);
+    const resultReceipts = this.getClientDetailResultRows_(result.receipts);
+    const resultAgreements = this.getClientDetailResultRows_(result.agreements);
+    const hasExpectedMoney = this.toNumberSafe(analytics.total_invoiced_value || client.total_value || client.total_due || client.total_paid) > 0;
+    const hasExpectedLocations = this.toNumberSafe(analytics.total_locations || client.total_locations) > 0;
+    if (tabKey === 'overview') return (hasExpectedMoney || hasExpectedLocations) && !resultInvoices.length && !resultAgreements.length && !resultReceipts.length;
+    if (tabKey === 'statement') return hasExpectedMoney && !(result.statementRows || resultRows || []).length;
+    if (tabKey === 'renewals') return hasExpectedLocations && !(result.renewalRows || resultRows || []).length && !this.listClientRelatedInvoiceItems_(clientId).length;
+    if (tabKey === 'scheduledPayments') return hasExpectedMoney && !resultRows.length;
+    return false;
+  },
+  async ensureFullClientLinkedSnapshot_(clientId = '') {
+    if (!window.ClientsService?.getDashboardData) return null;
+    const now = Date.now();
+    if (this.state.fullLinkedSnapshotLoadedAt && now - this.state.fullLinkedSnapshotLoadedAt < 60000) return null;
+    const dashboard = await window.ClientsService.getDashboardData({
+      limit: Math.max(this.state.limit || 50, 50),
+      page: this.state.page || 1,
+      search: this.state.search || '',
+      status: this.state.status,
+      allowClientMutations: false,
+      summaryOnly: false
+    });
+    this.state.fullLinkedSnapshotLoadedAt = now;
+    return this.mergeDashboardLinkedRowsIntoState_(dashboard);
   },
   async loadClientSubTab(clientId, tabKey, options = {}) {
     const normalizedTab = this.normalizeClientTabKey(tabKey);
@@ -3116,6 +3229,20 @@ const Clients = {
           break;
         default:
           result = { rows: [], total: 0, page, pageSize, totalPages: 0 };
+      }
+      if (this.clientTabResultLooksIncomplete_(clientId, normalizedTab, result)) {
+        await this.ensureFullClientLinkedSnapshot_(clientId).catch(error => console.warn('[Clients] full linked snapshot fallback failed', error));
+        if (normalizedTab === 'overview') {
+          result = { ...(result || {}), agreements: { rows: this.listClientRelatedAgreements_(clientId) }, invoices: { rows: this.listClientRelatedInvoices_(clientId) }, receipts: { rows: this.listClientRelatedReceipts_(clientId) }, agreementItems: { rows: this.listClientAgreementLocationItems_(clientId) }, invoiceItems: { rows: this.listClientRelatedInvoiceItems_(clientId) }, receiptItems: { rows: this.listClientRelatedReceiptItems_(clientId) } };
+        } else if (normalizedTab === 'statement') {
+          result = { ...(result || {}), rows: this.buildClientStatementRows(client), statementRows: this.buildClientStatementRows(client), invoices: { rows: this.listClientRelatedInvoices_(clientId) }, receipts: { rows: this.listClientRelatedReceipts_(clientId) } };
+        } else if (normalizedTab === 'renewals') {
+          const renewalRows = this.buildClientRenewalRows({ ...client, invoices: this.listClientRelatedInvoices_(clientId), invoice_items: this.listClientRelatedInvoiceItems_(clientId) });
+          result = { ...(result || {}), rows: renewalRows, renewalRows, invoices: { rows: this.listClientRelatedInvoices_(clientId) }, invoiceItems: { rows: this.listClientRelatedInvoiceItems_(clientId) } };
+        } else if (normalizedTab === 'scheduledPayments') {
+          const scheduledRows = this.buildClientScheduledPaymentRowsFromInvoices_(clientId);
+          result = { ...(result || {}), rows: scheduledRows, scheduledPayments: scheduledRows, invoices: { rows: this.listClientRelatedInvoices_(clientId) } };
+        }
       }
       this.state.tabCache.set(cacheKey, result);
       const loaded = this.state.loadedTabsByClient.get(clientId) || new Set();
@@ -3160,13 +3287,18 @@ const Clients = {
     const rawReference = String(row.invoice_number || row.invoice_reference || row.invoice_reference_fallback || row.invoice_id || '').trim();
     const displayReference = rawReference && !this.isUuid(rawReference) ? rawReference : (String(row.invoice_number || '').trim() || 'Invoice');
     const scheduleNo = row.schedule_no ?? row.payment_no ?? row.installment_no ?? '';
+    const invoiceContext = row.raw && typeof row.raw === 'object' ? row.raw : {};
+    const invoiceDueDate = String(invoiceContext.due_date || invoiceContext.payment_due_date || invoiceContext.invoice_due_date || '').trim();
+    const resolvedDueDate = Number(scheduleNo || 0) === 1 && invoiceDueDate
+      ? invoiceDueDate
+      : String(row.due_date || row.payment_due_date || '').trim();
     return {
-      schedule_id: String(row.schedule_id || row.id || row.invoice_payment_schedule_id || `${row.invoice_id || ''}:${scheduleNo}:${row.due_date || ''}`).trim(),
+      schedule_id: String(row.schedule_id || row.id || row.invoice_payment_schedule_id || `${row.invoice_id || ''}:${scheduleNo}:${resolvedDueDate || ''}`).trim(),
       invoice_id: String(row.invoice_id || row.invoice_uuid || '').trim(),
       invoice_reference: displayReference,
       schedule_no: scheduleNo,
       schedule_label: String(row.schedule_label || row.label || `Payment ${scheduleNo || ''}`.trim() || 'Payment').trim(),
-      due_date: String(row.due_date || row.payment_due_date || '').trim(),
+      due_date: resolvedDueDate,
       scheduled_amount: Number(row.scheduled_amount ?? row.amount ?? row.payment_amount ?? 0),
       paid_amount: Number(row.paid_amount ?? row.amount_paid ?? row.received_amount ?? 0),
       balance_due: Number(row.balance_due ?? row.pending_amount ?? Math.max(0, Number(row.scheduled_amount ?? 0) - Number(row.paid_amount ?? 0))),
@@ -3216,9 +3348,67 @@ const Clients = {
       return true;
     });
   },
+  getClientPaymentScheduleConfig_(paymentTerm = '') {
+    const text = String(paymentTerm || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    if (text.includes('net 7') || text === '7') return { count: 12, monthsStep: 1 };
+    if (text.includes('net 14') || text === '14') return { count: 4, monthsStep: 3 };
+    if (text.includes('net 21') || text === '21') return { count: 2, monthsStep: 6 };
+    return { count: 1, monthsStep: 12 };
+  },
+  addMonthsToDateString_(dateValue = '', months = 0) {
+    const parsed = this.parseDateOnly_(dateValue);
+    if (!parsed) return '';
+    const date = new Date(Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), parsed.getUTCDate()));
+    date.setUTCMonth(date.getUTCMonth() + Number(months || 0));
+    return date.toISOString().slice(0, 10);
+  },
+  buildClientScheduledPaymentRowsFromInvoices_(clientId = '') {
+    const invoices = this.listClientRelatedInvoices_(clientId).filter(invoice => this.isInvoiceActiveForClientLocation_(invoice));
+    const rows = [];
+    invoices.forEach(invoice => {
+      const total = this.pickAmount_(invoice, ['grand_total', 'invoice_total', 'total_amount', 'amount']);
+      if (total <= 0) return;
+      const dueDate = String(invoice.due_date || invoice.payment_due_date || invoice.invoice_due_date || invoice.issue_date || invoice.invoice_date || invoice.created_at || '').trim();
+      if (!dueDate) return;
+      const paidTotal = this.pickAmount_(invoice, ['amount_paid', 'paid_amount', 'received_amount']);
+      const config = this.getClientPaymentScheduleConfig_(invoice.payment_term || invoice.payment_terms || invoice.paymentTerm || invoice.paymentTerms);
+      const count = Math.max(Number(config.count || 1), 1);
+      const baseAmount = Math.floor((total / count) * 100) / 100;
+      let remainder = Math.round((total - (baseAmount * count)) * 100) / 100;
+      let paidRemaining = paidTotal;
+      for (let i = 0; i < count; i += 1) {
+        const scheduledAmount = Math.round((baseAmount + (i === count - 1 ? remainder : 0)) * 100) / 100;
+        const paidAmount = Math.max(0, Math.min(scheduledAmount, paidRemaining));
+        paidRemaining = Math.max(0, paidRemaining - paidAmount);
+        const balanceDue = Math.max(0, Math.round((scheduledAmount - paidAmount) * 100) / 100);
+        rows.push({
+          schedule_id: `fallback:${invoice.id || invoice.invoice_id || invoice.invoice_number}:${i + 1}`,
+          invoice_id: invoice.id || invoice.invoice_id || '',
+          invoice_number: invoice.invoice_number || invoice.invoice_id || '',
+          invoice_reference: invoice.invoice_number || invoice.invoice_id || 'Invoice',
+          schedule_no: i + 1,
+          schedule_label: `Payment ${i + 1}`,
+          due_date: i === 0 ? dueDate : this.addMonthsToDateString_(dueDate, i * Number(config.monthsStep || 1)),
+          scheduled_amount: scheduledAmount,
+          paid_amount: paidAmount,
+          balance_due: balanceDue,
+          status: balanceDue <= 0 && paidAmount > 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid',
+          currency: invoice.currency || 'USD',
+          invoice_status: invoice.status || invoice.payment_state || '',
+          reminder_enabled: false,
+          raw: invoice
+        });
+      }
+    });
+    return rows;
+  },
   renderScheduledPaymentsSection_(detailData = {}, client = {}) {
     const currency = this.normalizeCurrencyCode_(this.getClientCurrency_(client.client_id || this.state.selectedClientId));
-    const rows = (Array.isArray(detailData.scheduledPayments) ? detailData.scheduledPayments : [])
+    const clientId = client.client_id || this.state.selectedClientId;
+    const scheduledSourceRows = Array.isArray(detailData.scheduledPayments) && detailData.scheduledPayments.length
+      ? detailData.scheduledPayments
+      : this.buildClientScheduledPaymentRowsFromInvoices_(clientId);
+    const rows = scheduledSourceRows
       .map(row => this.normalizeScheduledPayment_(row))
       .sort((a, b) => {
         const timeA = a.due_date ? new Date(a.due_date).getTime() : Number.POSITIVE_INFINITY;
@@ -3824,7 +4014,7 @@ const Clients = {
         search: this.state.search || '',
         status: this.state.status,
         allowClientMutations: this.canEditClient(),
-        summaryOnly: true
+        summaryOnly: false
       });
       const clientsList = this.extractListResult(clientsRes);
       this.state.rows = clientsList.rows.map(item => {
@@ -3838,17 +4028,19 @@ const Clients = {
       this.state.page = clientsList.page;
       this.state.limit = clientsList.limit;
       this.state.offset = clientsList.offset;
-      this.state.agreements = [];
-      this.state.agreementItems = [];
-      this.state.invoices = [];
-      this.state.invoiceItems = [];
-      this.state.receipts = [];
-      this.state.receiptItems = [];
-      this.state.companies = [];
-      this.state.contacts = [];
-      this.rebuildCompanyLookupMaps([]);
-      this.state.contactsById = new Map();
+      const linkedRows = this.mergeDashboardLinkedRowsIntoState_(clientsRes);
+      this.state.agreements = linkedRows.agreements;
+      this.state.agreementItems = linkedRows.agreementItems;
+      this.state.invoices = linkedRows.invoices;
+      this.state.invoiceItems = linkedRows.invoiceItems;
+      this.state.receipts = linkedRows.receipts;
+      this.state.receiptItems = linkedRows.receiptItems;
+      this.state.companies = linkedRows.companies;
+      this.state.contacts = linkedRows.contacts;
+      this.rebuildCompanyLookupMaps(this.state.companies || []);
+      this.state.contactsById = new Map((this.state.contacts || []).map(contact => [String(contact.id || contact.contact_id || '').trim(), contact]).filter(([id]) => id));
       this.state.rows = this.groupClientIntelligenceRows(this.state.rows, { log: false });
+      this.state.rows = this.state.rows.map(row => ({ ...row, analytics: this.computeClientAnalytics_(row) }));
       if (this.state.selectedClientId && !this.state.rows.some(row => row.client_id === this.state.selectedClientId)) {
         const selectedGroup = this.state.rows.find(row => Array.isArray(row.source_client_ids) && row.source_client_ids.includes(this.state.selectedClientId));
         if (selectedGroup?.client_id) this.state.selectedClientId = selectedGroup.client_id;

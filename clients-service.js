@@ -283,11 +283,15 @@ const ClientsService = {
       if (text) keys.add(text);
     };
 
-    add(client.id);
+    // Do not use the client table UUID as a company key.
+    // If the client is not linked to a company yet, using client.id here prevents
+    // safe exact-name fallback against invoices/receipts that do have company_id.
     add(client.company_id);
     add(client.companyId);
     add(client.customer_company_id);
+    add(client.customerCompanyId);
     add(client.client_company_id);
+    add(client.clientCompanyId);
 
     const selectedNameKey = this.normalizeClientName(this.getCompanyDisplayName(client));
 
@@ -328,13 +332,13 @@ const ClientsService = {
     const clientCompanyKeys = this.getCompanyKeySetForClient(client, this.state?.companies || this.companies || []);
     this.getExpandedCompanyIdKeys_(client).forEach(key => clientCompanyKeys.add(key));
     const agreementCompanyKeys = this.getExpandedCompanyIdKeys_(agreement);
-    if (clientCompanyKeys.size || agreementCompanyKeys.size) {
-      return Boolean(clientCompanyKeys.size && agreementCompanyKeys.size && this.companyKeySetsIntersect_(clientCompanyKeys, agreementCompanyKeys));
+    if (clientCompanyKeys.size && agreementCompanyKeys.size) {
+      return this.companyKeySetsIntersect_(clientCompanyKeys, agreementCompanyKeys);
     }
 
-    // Some imported/historical agreements still do not have company_id.
-    // In that case only allow an exact normalized legal/company name match.
-    // Never use email or partial text includes for client ownership.
+    // Some imported/historical client rows are not linked to companies yet, while
+    // invoices/agreements/receipts do have a company_id. In that case only allow
+    // exact normalized legal/company name matching. Never use partial includes.
     const agreementName = this.normalizeCompanyKey(this.getAgreementLegalName(agreement));
     const clientName = this.normalizeCompanyKey(this.getClientLegalName(client));
     return Boolean(agreementName && clientName && agreementName === clientName);
