@@ -127,13 +127,13 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     generate_receipt_html: ['admin', 'dev', 'viewer', 'hoo']
   }),
   credit_notes: Object.freeze({
-    view: ['admin', 'dev', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm', 'viewer', 'hoo', 'csm', 'customer_success', 'customer_success_manager', 'sales_executive', 'head_of_sales'],
-    list: ['admin', 'dev', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm', 'viewer', 'hoo', 'csm', 'customer_success', 'customer_success_manager', 'sales_executive', 'head_of_sales'],
-    get: ['admin', 'dev', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm', 'viewer', 'hoo', 'csm', 'customer_success', 'customer_success_manager', 'sales_executive', 'head_of_sales'],
-    create: ['admin', 'dev', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm'],
-    cancel: ['admin', 'dev', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm'],
-    print: ['admin', 'dev', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm', 'viewer', 'hoo', 'csm', 'customer_success', 'customer_success_manager', 'sales_executive', 'head_of_sales'],
-    export: ['admin', 'dev', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm']
+    view: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm'],
+    list: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm'],
+    get: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm'],
+    create: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm'],
+    cancel: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm'],
+    print: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm'],
+    export: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm']
   }),
   clients: Object.freeze({
     list: ['admin', 'dev', 'viewer', 'hoo'],

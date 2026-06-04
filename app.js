@@ -2891,6 +2891,7 @@ window.canAccessAiInsights = canAccessAiInsights;
 function normalizeViewKey(view) {
   const key = String(view || '').trim();
   if (['communication_centre', 'communication-centre', 'communication_center', 'communicationCentre'].includes(key)) return 'communicationCentre';
+  if (['credit_notes', 'credit-notes', 'creditnotes', 'Credit Notes', 'creditNotes'].includes(key)) return 'creditNotes';
   return key;
 }
 
@@ -2922,7 +2923,7 @@ window.shouldShowTicketFilters = shouldShowTicketFilters;
 
 function setActiveView(view) {
  view = normalizeViewKey(view);
- const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
+ const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'creditNotes', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
  const requestedView = view;
  const firstAllowedView = names.find(name => Permissions.canAccessTab(name)) || '';
  if (!Permissions.canAccessTab(view)) {
@@ -5807,6 +5808,7 @@ function buildRecordHashRoute(resource = '', record = {}) {
   if (normalizedResource === 'agreements') { const id = getRecordValue(record, ['agreement_id', 'agreementId', 'agreement_number', 'agreementNumber', 'id']); return id ? `#crm?tab=agreements&id=${safeEncodeRouteId(id)}` : '#crm?tab=agreements'; }
   if (normalizedResource === 'invoices') { const id = getRecordValue(record, ['invoice_id', 'invoiceId', 'invoice_number', 'invoiceNumber', 'id']); return id ? `#finance?tab=invoices&id=${safeEncodeRouteId(id)}` : '#finance?tab=invoices'; }
   if (normalizedResource === 'receipts') { const id = getRecordValue(record, ['receipt_id', 'receiptId', 'receipt_number', 'receiptNumber', 'id']); return id ? `#finance?tab=receipts&id=${safeEncodeRouteId(id)}` : '#finance?tab=receipts'; }
+  if (normalizedResource === 'credit_notes') { const id = getRecordValue(record, ['credit_note_id', 'creditNoteId', 'credit_note_number', 'creditNoteNumber', 'id']); return id ? `#finance?tab=credit_notes&id=${safeEncodeRouteId(id)}` : '#finance?tab=credit_notes'; }
   if (normalizedResource === 'clients') { const id = getRecordValue(record, ['client_id', 'clientId', 'company_id', 'companyId', 'id']); return id ? `#clients?id=${safeEncodeRouteId(id)}` : '#clients'; }
   if (normalizedResource === 'events') { const id = getRecordValue(record, ['event_id', 'eventId', 'event_code', 'eventCode', 'id']); return id ? `#events?id=${safeEncodeRouteId(id)}` : '#events'; }
   if (normalizedResource === 'operations_onboarding') { const id = getRecordValue(record, ['onboarding_id', 'onboardingId', 'agreement_id', 'agreementId', 'id']); return id ? `#operations-onboarding?onboarding_id=${safeEncodeRouteId(id)}` : '#operations-onboarding'; }
@@ -5830,6 +5832,8 @@ function getAppHashForView(view = '') {
     agreements: '#crm?tab=agreements',
     invoices: '#finance?tab=invoices',
     receipts: '#finance?tab=receipts',
+    creditNotes: '#finance?tab=credit_notes',
+    credit_notes: '#finance?tab=credit_notes',
     clients: '#clients',
     insights: '#analytics',
     notificationSetup: '#notification-settings',
@@ -5844,7 +5848,7 @@ function getAppHashForView(view = '') {
 function isNotificationDeepLinkHash(hash = '') {
   const value = String(hash || '').trim();
   if (!value || value === '#loginSection') return false;
-  return /^#(tickets|workflow|operations-onboarding|technical-admin|crm|finance|leads|deals|proposals|agreements|invoices|receipts|communication_centre|communication-centre|communication_center)/i.test(value);
+  return /^#(tickets|workflow|operations-onboarding|technical-admin|crm|finance|leads|deals|proposals|agreements|invoices|receipts|credit_notes|credit-notes|communication_centre|communication-centre|communication_center)/i.test(value);
 }
 
 function capturePendingDeepLink() {
@@ -5958,7 +5962,7 @@ function wireDashboardGate() {
     return 'issues';
   };
   const getFirstAllowedView = preferredView => {
-    const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
+    const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'creditNotes', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
     const preferred = String(preferredView || '').trim();
     if (preferred && Permissions.canAccessTab(preferred)) return preferred;
     return names.find(name => Permissions.canAccessTab(name)) || 'issues';
@@ -8248,6 +8252,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         view === 'agreements' ||
         view === 'invoices' ||
         view === 'receipts' ||
+        view === 'creditNotes' ||
         view === 'proposalCatalog' ||
         view === 'notifications' ||
         view === 'notificationSetup' ||
