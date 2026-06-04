@@ -3239,3 +3239,17 @@ body.permissions-loading [data-permission-resource][data-permission-action]{disp
 .chip.warn{border-color:var(--warn);color:#b45309;background:rgba(245,158,11,.14)}
 .chip.danger{border-color:var(--danger);color:var(--danger);background:rgba(239,68,68,.12)}
 .chip.info{border-color:var(--accent);color:var(--accent);background:rgba(59,130,246,.12)}
+
+/* Payment Forecast */
+.payment-forecast-analytics { margin: 12px 0; }
+.pf-analytics-card { min-height: 150px; }
+.pf-analytics-card strong { display:block; margin-bottom:8px; }
+.pf-mini-row { display:flex; justify-content:space-between; gap:12px; padding:6px 0; border-bottom:1px solid var(--border, #e5e7eb); font-size:13px; }
+.pf-mini-row:last-child { border-bottom:0; }
+.pf-mini-row span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pf-mini-row strong { white-space:nowrap; margin:0; }
+.status-badge.bad { background:#fee2e2; color:#991b1b; border-color:#fecaca; }
+.status-badge.warn { background:#fef3c7; color:#92400e; border-color:#fde68a; }
+.status-badge.ok { background:#dcfce7; color:#166534; border-color:#bbf7d0; }
+#paymentForecastTable .num { text-align:right; white-space:nowrap; }
+#paymentForecastTable .actions-cell { white-space:nowrap; }

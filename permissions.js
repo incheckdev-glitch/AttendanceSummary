@@ -135,6 +135,14 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     print: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm'],
     export: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm']
   }),
+  payment_forecast: Object.freeze({
+    view: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm'],
+    list: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm'],
+    get: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm'],
+    export: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm'],
+    create_receipt: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm'],
+    manage: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm']
+  }),
   clients: Object.freeze({
     list: ['admin', 'dev', 'viewer', 'hoo'],
     get: ['admin', 'dev', 'viewer', 'hoo'],
@@ -211,6 +219,7 @@ const Permissions = {
     invoices: [{ resource: 'invoices', action: 'list' }],
     receipts: [{ resource: 'receipts', action: 'list' }],
     creditNotes: [{ resource: 'credit_notes', action: 'view' }],
+    paymentForecast: [{ resource: 'payment_forecast', action: 'view' }],
     lifecycleAnalytics: [{ resource: 'analytics', action: 'list' }],
     clients: [{ resource: 'clients', action: 'list' }],
     proposalCatalog: [{ resource: 'proposal_catalog', action: 'list' }],
@@ -239,6 +248,7 @@ const Permissions = {
     invoices: 'invoices',
     receipts: 'receipts',
     creditNotes: 'credit_notes',
+    paymentForecast: 'payment_forecast',
     lifecycleAnalytics: 'analytics',
     clients: 'clients',
     proposalCatalog: 'proposal_catalog',
@@ -994,6 +1004,15 @@ const Permissions = {
   canPreviewCreditNote() {
     return this.canPrintCreditNote();
   },
+  canViewPaymentForecast() {
+    return this.canPerformAction('payment_forecast', 'view') || this.canView('payment_forecast') || this.hasAdminOverride();
+  },
+  canExportPaymentForecast() {
+    return this.canPerformAction('payment_forecast', 'export') || this.canPerformAction('payment_forecast', 'manage') || this.hasAdminOverride();
+  },
+  canCreateReceiptFromPaymentForecast() {
+    return this.canPerformAction('payment_forecast', 'create_receipt') || this.canPerformAction('payment_forecast', 'manage') || this.hasAdminOverride();
+  },
   canCreateProposalCatalogItem() {
     return this.canCreate('proposal_catalog') || this.canPerformAction('proposal_catalog_items', 'create');
   },
@@ -1120,8 +1139,8 @@ async function handleExpiredSession(message = 'Session expired. Please log in ag
 
 
 const PermissionAudit = {
-  resources: ['tickets','events','ai_insights','companies','contacts','leads','deals','proposals','agreements','operations_onboarding','technical_admin_requests','invoices','receipts','credit_notes','clients','analytics','notifications','notification_settings','workflow','users','role_permissions'],
-  actions: ['list','get','create','update','delete','export','manage','approve','reject','convert_to_deal','create_from_deal','create_from_proposal','create_from_agreement','create_from_invoice','cancel','print','export','assign_csm','update_status','view_renewals','view_statement','statement_view','statement_export'],
+  resources: ['tickets','events','ai_insights','companies','contacts','leads','deals','proposals','agreements','operations_onboarding','technical_admin_requests','invoices','receipts','credit_notes','payment_forecast','clients','analytics','notifications','notification_settings','workflow','users','role_permissions'],
+  actions: ['list','get','create','update','delete','export','manage','approve','reject','convert_to_deal','create_from_deal','create_from_proposal','create_from_agreement','create_from_invoice','cancel','print','export','assign_csm','update_status','view_renewals','view_statement','statement_view','statement_export','create_receipt'],
   inspect(resource, action) {
     const role = Permissions.normalizeRole(Session.role());
     const matchedRows = Permissions.getMatchedRows(resource, action, role, { includeDenied: true });

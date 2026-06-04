@@ -1080,6 +1080,8 @@ const Notifications = {
       agreements: 'agreements',
       invoices: 'invoices',
       receipts: 'receipts',
+      credit_notes: 'creditNotes',
+      payment_forecast: 'paymentForecast',
       operations_onboarding: 'operationsOnboarding',
       technical_admin: 'technicalAdmin',
       clients: 'clients',
@@ -1288,6 +1290,20 @@ async routeToResourceTarget(resource, targetId, notification) {
       if (targetId) this.setRouteHash(`#finance?tab=receipts&id=${encodeURIComponent(String(targetId).trim())}`);
       if (targetId && window.Receipts?.openReceiptById) await Receipts.openReceiptById(targetId, { readOnly: true });
       return targetId ? this.highlightRowById(targetId) || true : true;
+    }
+    if (normalizedResource === 'credit_notes') {
+      const opened = await this.openModuleTab('credit_notes');
+      if (!opened) return false;
+      if (targetId) this.setRouteHash(`#finance?tab=credit_notes&id=${encodeURIComponent(String(targetId).trim())}`);
+      if (targetId && window.CreditNotes?.preview) await CreditNotes.preview(targetId);
+      return targetId ? this.highlightRowById(targetId) || true : true;
+    }
+    if (normalizedResource === 'payment_forecast') {
+      const opened = await this.openModuleTab('payment_forecast');
+      if (!opened) return false;
+      this.setRouteHash('#finance?tab=payment_forecast');
+      if (window.PaymentForecast?.refresh) await PaymentForecast.refresh(true);
+      return true;
     }
     if (normalizedResource === 'operations_onboarding') {
       const opened = await this.openModuleTab('operations_onboarding');

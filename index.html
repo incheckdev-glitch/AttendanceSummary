@@ -321,6 +321,10 @@
                     role="tab" aria-selected="false" aria-controls="creditNotesView">
               <span class="icon" aria-hidden="true">↩️</span> Credit Notes
             </button>
+            <button id="paymentForecastTab" class="view-tab" data-view="paymentForecast" data-permission-resource="payment_forecast" data-permission-action="view"
+                    role="tab" aria-selected="false" aria-controls="paymentForecastView">
+              <span class="icon" aria-hidden="true">📈</span> Payment Forecast
+            </button>
             <button id="lifecycleAnalyticsTab" class="view-tab" data-view="lifecycleAnalytics"
                     role="tab" aria-selected="false" aria-controls="lifecycleAnalyticsView">
               <span class="icon" aria-hidden="true">🧭</span> Lifecycle Analytics
@@ -2053,6 +2057,40 @@ Sample:
             <table id="creditNotesTable">
               <thead><tr><th>Credit Note #</th><th>Date</th><th>Client / Customer</th><th>Invoice #</th><th>Description</th><th>Currency</th><th>Credit Amount</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody id="creditNotesTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section id="paymentForecastView" class="view" role="tabpanel" aria-labelledby="paymentForecastTab">
+        <div class="grid cols-4" id="paymentForecastSummary" aria-live="polite"></div>
+        <div class="grid cols-3 payment-forecast-analytics" id="paymentForecastAnalytics" aria-live="polite"></div>
+        <div class="card" aria-label="Payment forecast list">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+            <div>
+              <strong>Payment Forecast</strong>
+              <div class="muted">Global scheduled payments across all clients with overdue, upcoming, credit-adjusted, and client distribution analytics.</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <input id="paymentForecastSearchInput" class="input" type="search" placeholder="Client, invoice, agreement..." aria-label="Search payment forecast" />
+              <select id="paymentForecastStatusFilter" class="select" aria-label="Filter forecast status"><option value="all">All Statuses</option></select>
+              <select id="paymentForecastClientFilter" class="select" aria-label="Filter forecast client"><option value="all">All Clients</option></select>
+              <input id="paymentForecastDateFrom" class="input" type="date" aria-label="Payment forecast from date" />
+              <input id="paymentForecastDateTo" class="input" type="date" aria-label="Payment forecast to date" />
+              <label class="checkbox-line" style="display:flex;gap:6px;align-items:center;"><input id="paymentForecastOnlyUnpaid" type="checkbox" /> Only unpaid</label>
+              <button id="paymentForecastRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
+              <button id="paymentForecastExportBtn" class="btn sm" type="button" data-permission-resource="payment_forecast" data-permission-action="export">Export</button>
+            </div>
+          </div>
+          <div id="paymentForecastState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
+          <div class="table-wrap" role="region" aria-label="Payment forecast table">
+            <table id="paymentForecastTable">
+              <thead>
+                <tr>
+                  <th>Client</th><th>Invoice #</th><th>Agreement #</th><th>Payment #</th><th>Due Date</th><th>Payment Term</th><th>Scheduled</th><th>Paid</th><th>Credit Adj.</th><th>Remaining</th><th>Status</th><th>Due / Overdue</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="paymentForecastTbody"></tbody>
             </table>
           </div>
         </div>
@@ -4020,7 +4058,7 @@ Sample:
   <script src="api.js?v=20260430-email-final2"></script>
   <script src="notification-service.js?v=20260430-email-final2"></script>
   <script src="session.js?v=20260427-allpwa1"></script>
-  <script src="permissions.js?v=20260504-cc-final-actions1"></script>
+  <script src="permissions.js?v=20260604-payment-forecast1"></script>
   <script src="admin-override.js?v=20260519-admin-override"></script>
   <script src="utils.js?v=20260510-grand-total-words"></script>
   <script src="tickets.js?v=20260427-allpwa1"></script>
@@ -4040,6 +4078,7 @@ Sample:
   <script src="invoices.js?v=20260512-final-isPoc-click-fix"></script>
   <script src="receipts.js?v=20260427-allpwa1"></script>
   <script src="credit-notes.js?v=20260604-credit-notes1"></script>
+  <script src="payment-forecast.js?v=20260604-payment-forecast1"></script>
   <script src="lifecycle-analytics.js?v=20260427-allpwa1"></script>
   <script src="clients.js?v=20260427-allpwa1"></script>
   <script src="proposal-catalog.js?v=20260427-allpwa1"></script>
@@ -4054,6 +4093,6 @@ Sample:
   <script src="csm-service.js?v=20260427-allpwa1"></script>
   <script src="ai-insights-service.js?v=20260427-allpwa1"></script>
   <script src="ai-assistant.js?v=20260526-ai-assistant-v1"></script>
-  <script src="app.js?v=v17-agreement-today-helper"></script>
+  <script src="app.js?v=20260604-payment-forecast1"></script>
 </body>
 </html>
