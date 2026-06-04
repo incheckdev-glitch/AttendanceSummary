@@ -1031,6 +1031,11 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       'amount_in_words','invoice_total','old_paid_total','paid_now','received_amount','new_paid_total','pending_amount','payment_state','payment_conclusion','payment_notes',
       'created_by','updated_by','created_at','updated_at'
     ]),
+    credit_notes: new Set([
+      'id','credit_note_id','credit_note_number','invoice_id','invoice_number','agreement_uuid','agreement_id','agreement_number','client_id','company_id','company_name',
+      'customer_name','client_name','customer_legal_name','credit_note_date','description','currency','credit_amount','status',
+      'created_by','created_by_email','updated_by','cancelled_by','cancelled_at','cancel_reason','created_at','updated_at'
+    ]),
     technical_admin_requests: new Set([
       'id','request_id','technical_request_id',
       'agreement_id','agreement_number','onboarding_id','client_id','client_name',
@@ -1058,7 +1063,8 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
   const LIST_SEARCH_COLUMNS_BY_RESOURCE = {
     agreements: ['agreement_id', 'agreement_number', 'agreement_title', 'customer_name', 'customer_legal_name', 'customer_contact_name', 'status'],
     operations_onboarding: ['onboarding_id', 'agreement_id', 'agreement_number', 'client_name', 'request_type', 'request_status', 'technical_request_status', 'invoice_number', 'source_invoice_number', 'proposal_reference', 'onboarding_type', 'source_type', 'invoiced_location_names', 'csm_assigned_to', 'go_live_target_date'],
-    technical_admin_requests: ['request_id', 'technical_request_id', 'agreement_id', 'agreement_number', 'client_name', 'request_status', 'request_message', 'request_details', 'proposal_reference', 'request_type', 'onboarding_type']
+    technical_admin_requests: ['request_id', 'technical_request_id', 'agreement_id', 'agreement_number', 'client_name', 'request_status', 'request_message', 'request_details', 'proposal_reference', 'request_type', 'onboarding_type'],
+    credit_notes: ['credit_note_id', 'credit_note_number', 'invoice_number', 'customer_name', 'client_name', 'company_name', 'customer_legal_name', 'description', 'currency', 'status']
   };
   const UUID_COLUMNS_BY_TABLE = {
     deals: new Set(['lead_id', 'source_lead_uuid', 'created_by', 'updated_by']),
@@ -2466,13 +2472,13 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const sanitized = compactObject({
       credit_note_id: trimOrNull(firstDefined(record, ['credit_note_id', 'creditNoteId'])),
       credit_note_number: trimOrNull(firstDefined(record, ['credit_note_number', 'creditNoteNumber'])),
-      invoice_id: trimOrNull(firstDefined(record, ['invoice_id', 'invoiceId'])),
+      invoice_id: isUuid(trimOrNull(firstDefined(record, ['invoice_id', 'invoiceId']))) ? trimOrNull(firstDefined(record, ['invoice_id', 'invoiceId'])) : null,
       invoice_number: trimOrNull(firstDefined(record, ['invoice_number', 'invoiceNumber'])),
-      agreement_uuid: trimOrNull(firstDefined(record, ['agreement_uuid', 'agreementUuid'])),
+      agreement_uuid: isUuid(trimOrNull(firstDefined(record, ['agreement_uuid', 'agreementUuid']))) ? trimOrNull(firstDefined(record, ['agreement_uuid', 'agreementUuid'])) : null,
       agreement_id: trimOrNull(firstDefined(record, ['agreement_id', 'agreementId'])),
       agreement_number: trimOrNull(firstDefined(record, ['agreement_number', 'agreementNumber'])),
-      client_id: trimOrNull(firstDefined(record, ['client_id', 'clientId'])),
-      company_id: trimOrNull(firstDefined(record, ['company_id', 'companyId'])),
+      client_id: isUuid(trimOrNull(firstDefined(record, ['client_id', 'clientId']))) ? trimOrNull(firstDefined(record, ['client_id', 'clientId'])) : null,
+      company_id: isUuid(trimOrNull(firstDefined(record, ['company_id', 'companyId']))) ? trimOrNull(firstDefined(record, ['company_id', 'companyId'])) : null,
       company_name: trimOrNull(firstDefined(record, ['company_name', 'companyName'])),
       customer_name: trimOrNull(firstDefined(record, ['customer_name', 'customerName', 'client_name', 'clientName'])),
       client_name: trimOrNull(firstDefined(record, ['client_name', 'clientName', 'customer_name', 'customerName'])),
@@ -2481,7 +2487,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       description: trimOrNull(firstDefined(record, ['description', 'notes'])),
       currency: trimOrNull(firstDefined(record, ['currency'])),
       credit_amount: numberOrNull(firstDefined(record, ['credit_amount', 'creditAmount', 'amount'])),
-      status: trimOrNull(firstDefined(record, ['status'])) || 'issued',
+      status: String(trimOrNull(firstDefined(record, ['status'])) || 'issued').trim().toLowerCase() === 'canceled' ? 'cancelled' : String(trimOrNull(firstDefined(record, ['status'])) || 'issued').trim().toLowerCase(),
       created_by_email: trimOrNull(firstDefined(record, ['created_by_email', 'createdByEmail'])) || (userEmail || null),
       created_at: trimOrNull(firstDefined(record, ['created_at', 'createdAt'])),
       updated_at: trimOrNull(firstDefined(record, ['updated_at', 'updatedAt']))
@@ -4363,6 +4369,12 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const allowedColumns = LIST_COLUMNS_BY_RESOURCE[resource];
     Object.entries(dbFilters || {}).forEach(([key, value]) => {
       if (value === undefined || value === null || value === '') return;
+      if (resource === 'credit_notes' && (key === 'status' || key === 'credit_note_status')) {
+        const status = String(value || '').trim().toLowerCase();
+        if (!status || status === 'all') return;
+        query = query.eq('status', status === 'canceled' ? 'cancelled' : status);
+        return;
+      }
       if (allowedColumns && !allowedColumns.has(key)) return;
       const table = TABLE_BY_RESOURCE[resource] || resource;
       if (shouldTreatColumnAsUuid(table, key) && !isUuid(String(value || '').trim())) {
