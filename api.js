@@ -1717,8 +1717,8 @@ const Api = {
         text: ['client_name', 'company_name', 'customer_name', 'customer_legal_name']
       },
       csm_activities: {
-        uuid: { company_id: 'companyId', client_id: 'clientUuid' },
-        text: ['client_name', 'company_name', 'customer_name', 'customer_legal_name']
+        uuid: { company_id: 'companyId', client_id: 'clientUuid', agreement_id: 'agreementId', invoice_id: 'invoiceId', location_id: 'locationId' },
+        text: ['client_name', 'company_name', 'customer_name', 'customer_legal_name', 'manual_client_name', 'manual_location_name', 'location_name']
       }
     };
     return configs[String(table || '').trim()] || { uuid: {}, text: [] };
