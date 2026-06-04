@@ -1478,8 +1478,8 @@ const Leads = {
   },
   collectFormData() {
     const estimatedValueRaw = String(E.leadFormEstimatedValue?.value || '').trim();
-    const selectedCompany = this.state.selectedCompany || {};
-    const selectedContact = this.state.selectedContact || {};
+    const selectedCompany = this.getCurrentLeadCompanySync();
+    const selectedContact = this.getCurrentLeadContactSync();
     const companyUuid = this.cleanUuidOrUndefined(selectedCompany.id ?? selectedCompany.company_uuid ?? selectedCompany.companyUuid ?? selectedCompany.company_id);
     const contactUuid = this.cleanUuidOrUndefined(selectedContact.id ?? selectedContact.contact_uuid ?? selectedContact.contactUuid ?? selectedContact.contact_id);
     const companyId = companyUuid || '';
@@ -1587,8 +1587,14 @@ const Leads = {
     const lead = this.collectFormData();
     if (!this.validateLeadWorkflow(lead)) return;
     if (!this.validateLeadNewNote(lead, mode)) return;
-    if (!this.isUuid(lead.company_id) || !this.isUuid(lead.contact_id)) {
-      UI.toast('Please select a company and contact from the list before saving.');
+    if (!this.isUuid(lead.company_id)) {
+      UI.toast('Please select a company from the list before saving.');
+      E.leadFormCompanyName?.focus?.();
+      return;
+    }
+    if (!this.isUuid(lead.contact_id)) {
+      UI.toast('Please select a contact from the list before saving.');
+      E.leadFormContactName?.focus?.();
       return;
     }
     if (mode === 'edit' && !this.isUuid(leadId)) {
@@ -1693,23 +1699,74 @@ const Leads = {
     const label = this.getContactDisplayName(contact);
     this.setControlValue(node, this.isSelectControl(node) ? uuid : label);
   },
+  dedupeLeadRows(rows = [], type = 'company') {
+    const seen = new Set();
+    return (Array.isArray(rows) ? rows : [])
+      .filter(Boolean)
+      .map(row => type === 'contact' ? this.normalizeContact(row) : this.normalizeCompany(row))
+      .filter(row => {
+        const uuid = this.getRecordUuid(row, type);
+        if (!uuid || seen.has(uuid)) return false;
+        seen.add(uuid);
+        return true;
+      });
+  },
+  ensureSelectedCompanyInOptions(companies = []) {
+    const rows = Array.isArray(companies) ? [...companies] : [];
+    const selected = this.state.selectedCompany;
+    const selectedId = this.getRecordUuid(selected || {}, 'company');
+    if (selectedId && !rows.some(c => this.sameIdentifier(this.getRecordUuid(c, 'company'), selectedId))) {
+      rows.unshift(selected);
+    }
+    return this.dedupeLeadRows(rows, 'company');
+  },
+  ensureSelectedContactInOptions(contacts = []) {
+    const rows = Array.isArray(contacts) ? [...contacts] : [];
+    const selected = this.state.selectedContact;
+    const selectedId = this.getRecordUuid(selected || {}, 'contact');
+    if (selectedId && !rows.some(c => this.sameIdentifier(this.getRecordUuid(c, 'contact'), selectedId))) {
+      rows.unshift(selected);
+    }
+    return this.dedupeLeadRows(rows, 'contact');
+  },
+  getCurrentLeadCompanySync() {
+    const stateCompanyId = this.getRecordUuid(this.state.selectedCompany || {}, 'company');
+    if (stateCompanyId) return this.state.selectedCompany;
+    const fieldId = String(E.leadFormCompanyId?.value || E.leadFormCompanyName?.value || '').trim();
+    if (!fieldId) return {};
+    return (this.state.companyPickerRows || []).find(c => this.sameIdentifier(this.getRecordUuid(c, 'company'), fieldId)) || { id: this.cleanUuidOrUndefined(fieldId) || '' };
+  },
+  getCurrentLeadContactSync() {
+    const stateContactId = this.getRecordUuid(this.state.selectedContact || {}, 'contact');
+    if (stateContactId) return this.state.selectedContact;
+    const fieldId = String(E.leadFormContactId?.value || E.leadFormContactName?.value || '').trim();
+    if (!fieldId) return {};
+    return (this.state.contactPickerRows || []).find(c => this.sameIdentifier(this.getRecordUuid(c, 'contact'), fieldId)) || { id: this.cleanUuidOrUndefined(fieldId) || '' };
+  },
+  applyLeadSelectionControlValues() {
+    if (this.state.selectedCompany) this.hydrateLeadFromCompany(this.state.selectedCompany);
+    else this.setLeadCompanyControlValue({});
+    if (this.state.selectedContact) this.hydrateLeadFromContact(this.state.selectedContact);
+    else this.setLeadContactControlValue({});
+  },
   renderLeadCompanyOptions(companies = []) {
     const node = E.leadFormCompanyName;
-    const selectedId = this.getRecordUuid(this.state.selectedCompany || {}, 'company');
+    const rows = this.ensureSelectedCompanyInOptions(companies);
+    const selectedId = this.getRecordUuid(this.state.selectedCompany || {}, 'company') || String(E.leadFormCompanyId?.value || '').trim();
     if (this.isSelectControl(node)) {
       node.removeAttribute('list');
-      node.innerHTML = '<option value="">Select company…</option>' + companies.map(c => {
+      node.innerHTML = '<option value="">Select company…</option>' + rows.map(c => {
         const uuid = this.getRecordUuid(c, 'company');
         const name = this.getCompanyDisplayName(c) || uuid;
         return `<option value="${U.escapeAttr(uuid)}">${U.escapeHtml(name)}</option>`;
       }).join('');
-      if (selectedId && companies.some(c => this.sameIdentifier(this.getRecordUuid(c, 'company'), selectedId))) node.value = selectedId;
-      else if (!selectedId) node.value = '';
+      node.value = selectedId && rows.some(c => this.sameIdentifier(this.getRecordUuid(c, 'company'), selectedId)) ? selectedId : '';
+      if (E.leadFormCompanyId) E.leadFormCompanyId.value = node.value || '';
       return;
     }
     if (node) node.setAttribute('list', 'leadCompanyPicker');
     const companyList = document.getElementById('leadCompanyPicker');
-    if (companyList) companyList.innerHTML = companies.map(c => {
+    if (companyList) companyList.innerHTML = rows.map(c => {
       const uuid = this.getRecordUuid(c, 'company');
       const name = this.getCompanyDisplayName(c);
       return `<option value="${U.escapeAttr(uuid)}" label="${U.escapeAttr(name)}" data-company-id="${U.escapeAttr(uuid)}"></option>`;
@@ -1717,36 +1774,59 @@ const Leads = {
   },
   renderLeadContactOptions(contacts = []) {
     const node = E.leadFormContactName;
-    const selectedId = this.getRecordUuid(this.state.selectedContact || {}, 'contact');
+    const rows = this.ensureSelectedContactInOptions(contacts);
+    const selectedId = this.getRecordUuid(this.state.selectedContact || {}, 'contact') || String(E.leadFormContactId?.value || '').trim();
     if (this.isSelectControl(node)) {
       node.removeAttribute('list');
-      node.innerHTML = '<option value="">Select contact…</option>' + contacts.map(c => {
+      node.innerHTML = '<option value="">Select contact…</option>' + rows.map(c => {
         const uuid = this.getRecordUuid(c, 'contact');
         const name = this.getContactDisplayName(c) || uuid;
         return `<option value="${U.escapeAttr(uuid)}">${U.escapeHtml(name)}</option>`;
       }).join('');
-      if (selectedId && contacts.some(c => this.sameIdentifier(this.getRecordUuid(c, 'contact'), selectedId))) node.value = selectedId;
-      else if (!selectedId) node.value = '';
+      node.value = selectedId && rows.some(c => this.sameIdentifier(this.getRecordUuid(c, 'contact'), selectedId)) ? selectedId : '';
+      if (E.leadFormContactId) E.leadFormContactId.value = node.value || '';
       return;
     }
     if (node) node.setAttribute('list', 'leadContactPicker');
     const contactList = document.getElementById('leadContactPicker');
-    if (contactList) contactList.innerHTML = contacts.map(c => {
+    if (contactList) contactList.innerHTML = rows.map(c => {
       const uuid = this.getRecordUuid(c, 'contact');
       const name = this.getContactDisplayName(c);
       return `<option value="${U.escapeAttr(uuid)}" label="${U.escapeAttr(name)}" data-contact-id="${U.escapeAttr(uuid)}" data-company-id="${U.escapeAttr(c.company_id || c.company_uuid || '')}"></option>`;
     }).join('');
   },
   async loadLeadPickerOptions(companyId = '') {
-    const normalizedCompanyId = this.cleanUuidOrUndefined(companyId) || '';
+    const normalizedCompanyId = this.cleanUuidOrUndefined(companyId) || this.getRecordUuid(this.state.selectedCompany || {}, 'company') || '';
     const rowsFrom = res => Array.isArray(res?.rows) ? res.rows : (Array.isArray(res?.items) ? res.items : (Array.isArray(res?.data) ? res.data : []));
-    const companiesRes = await Api.requestWithSession('companies', 'list', { page: 1, limit: 5000, sortBy: 'company_name', sortDir: 'asc' }, { requireAuth: true });
-    const companies = rowsFrom(companiesRes)
-      .map(c => this.normalizeCompany(c))
-      .filter(c => this.getRecordUuid(c, 'company'));
+    let companies = [];
+    try {
+      const companiesRes = await Api.requestWithSession('companies', 'list', { page: 1, limit: 5000, sortBy: 'company_name', sortDir: 'asc' }, { requireAuth: true });
+      companies = rowsFrom(companiesRes)
+        .map(c => this.normalizeCompany(c))
+        .filter(c => this.getRecordUuid(c, 'company'));
+    } catch (error) {
+      console.warn('[leads] unable to load company picker rows', error);
+    }
+
+    // Newly created companies may not be present in the cached/list endpoint yet.
+    // Keep the already-resolved selected company in the options so the required select remains valid.
+    if (this.state.selectedCompany) companies.unshift(this.state.selectedCompany);
+    if (normalizedCompanyId && !companies.some(c => this.sameIdentifier(this.getRecordUuid(c, 'company'), normalizedCompanyId))) {
+      try {
+        const fetchedCompany = await this.getFullCompanyRecord(normalizedCompanyId);
+        if (fetchedCompany) companies.unshift(fetchedCompany);
+      } catch (error) {
+        console.warn('[leads] selected company injection lookup failed', error);
+      }
+    }
+    companies = this.dedupeLeadRows(companies, 'company');
+
     let contacts = [];
     if (normalizedCompanyId) {
-      const selectedCompany = companies.find(c => String(this.getRecordUuid(c, 'company')) === String(normalizedCompanyId)) || this.state.selectedCompany || {};
+      const selectedCompany = companies.find(c => this.sameIdentifier(this.getRecordUuid(c, 'company'), normalizedCompanyId)) || this.state.selectedCompany || {};
+      if (selectedCompany && this.getRecordUuid(selectedCompany, 'company') && !this.state.selectedCompany) {
+        this.state.selectedCompany = selectedCompany;
+      }
       const contactRowsById = new Map();
       const appendContacts = rows => {
         (rows || []).map(c => this.normalizeContact(c)).forEach(c => {
@@ -1779,10 +1859,24 @@ const Leads = {
       }
       contacts = Array.from(contactRowsById.values());
     }
+
+    // Newly created or just-clicked contacts can be absent from the list endpoint immediately.
+    if (this.state.selectedContact) {
+      const selectedContactId = this.getRecordUuid(this.state.selectedContact, 'contact');
+      const canInjectContact = selectedContactId && (!this.state.selectedCompany || this.contactBelongsToCompany(this.state.selectedContact, this.state.selectedCompany));
+      if (canInjectContact) contacts.unshift(this.state.selectedContact);
+    }
+    contacts = this.dedupeLeadRows(contacts, 'contact');
+
     this.state.companyPickerRows = companies;
     this.state.contactPickerRows = contacts;
     this.renderLeadCompanyOptions(companies);
     this.renderLeadContactOptions(contacts);
+
+    // Re-apply the selected values after async option rendering; this prevents "Select company…" after prefill.
+    if (this.state.selectedCompany) this.hydrateLeadFromCompany(this.state.selectedCompany);
+    if (this.state.selectedContact) this.hydrateLeadFromContact(this.state.selectedContact);
+
     const noContactsHint = document.getElementById('leadNoContactsHint');
     if (noContactsHint) {
       noContactsHint.style.display = normalizedCompanyId && contacts.length === 0 ? '' : 'none';
@@ -1949,6 +2043,7 @@ const Leads = {
     if (linkedCompany) {
       this.hydrateLeadFromCompany(linkedCompany);
       await this.loadLeadPickerOptions(this.getRecordUuid(linkedCompany, 'company'));
+      this.hydrateLeadFromCompany(linkedCompany);
     } else {
       this.hydrateLeadFromCompany({});
       await this.loadLeadPickerOptions('');
@@ -2146,6 +2241,7 @@ const Leads = {
     if (company) {
       this.hydrateLeadFromCompany(company);
       await this.loadLeadPickerOptions(this.getRecordUuid(company, 'company'));
+      this.hydrateLeadFromCompany(company);
     } else {
       await this.loadLeadPickerOptions('');
       this.hydrateLeadFromCompany({});
@@ -2158,6 +2254,7 @@ const Leads = {
         if (company) {
           this.hydrateLeadFromCompany(company);
           await this.loadLeadPickerOptions(this.getRecordUuid(company, 'company'));
+          this.hydrateLeadFromCompany(company);
         }
       }
 
@@ -2179,6 +2276,7 @@ const Leads = {
       this.hydrateLeadFromContact({});
     }
 
+    this.applyLeadSelectionControlValues();
     this.lockCompanyContactDisplayFields();
   },
   async deleteLeadById(leadUuid) {
