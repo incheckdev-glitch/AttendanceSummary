@@ -1052,7 +1052,8 @@ const Receipts = {
     const invoiceAmountPaid = this.normalizeAmountInput(
       pickDefined(invoice.received_amount, invoice.amount_paid, invoice.amount_received)
     );
-    const invoicePendingAmount = this.normalizeAmountInput(invoice.pending_amount);
+    const invoicePendingAmount = this.normalizeAmountInput(invoice.pending_amount ?? invoice.balance_due);
+    const invoiceCreditNoteAmount = this.toNumberSafe(invoice.credit_note_amount ?? invoice.credit_amount ?? invoice.credited_amount);
     const currentInvoiceId = String(receipt?.invoice_id || invoice?.id || invoice?.invoice_id || '').trim();
     const currentInvoiceNumber = String(receipt?.invoice_number || invoice?.invoice_number || '').trim();
     const currentUniqueKey = this.getReceiptUniqueKey(receipt);
@@ -1097,7 +1098,7 @@ const Receipts = {
     const pendingAmount = this.toNumberSafe(
       invoiceAlreadyIncludesReceipt && invoicePendingAmount !== null
         ? invoicePendingAmount
-        : Math.max(invoiceTotal - newPaidTotal, 0)
+        : Math.max(invoiceTotal - newPaidTotal - invoiceCreditNoteAmount, 0)
     );
     let paymentState = 'Received';
     if (paidNow > 0 && pendingAmount > 0) paymentState = 'Partial Payment';
@@ -1157,7 +1158,7 @@ const Receipts = {
     const [{ data: invoiceRow, error: invoiceError }] = await Promise.all([
       client
         .from('invoices')
-        .select('id,invoice_id,invoice_number,subtotal_locations,subtotal_one_time,invoice_total,amount_paid,received_amount,paid_now,pending_amount,balance_due,payment_state,payment_status,status')
+        .select('id,invoice_id,invoice_number,subtotal_locations,subtotal_one_time,invoice_total,amount_paid,received_amount,paid_now,credit_note_amount,pending_amount,balance_due,payment_state,payment_status,status')
         .eq('id', invoiceId)
         .maybeSingle()
     ]);
@@ -1554,6 +1555,8 @@ const Receipts = {
       amount_received: normalizedPaidNow ?? this.getReceiptAmountValue(existing)
     };
     const paymentSnapshot = this.resolveReceiptPaymentSnapshot(mergedReceipt, linkedInvoice || {}, invoiceReceipts);
+    const currentBalanceDue = this.toNumberSafe((linkedInvoice || {}).balance_due ?? (linkedInvoice || {}).pending_amount ?? Math.max(this.toNumberSafe((linkedInvoice || {}).invoice_total ?? (linkedInvoice || {}).grand_total) - this.toNumberSafe((linkedInvoice || {}).amount_paid ?? (linkedInvoice || {}).received_amount) - this.toNumberSafe((linkedInvoice || {}).credit_note_amount), 0));
+    if (normalizedPaidNow > currentBalanceDue + 0.0001) throw new Error(`Receipt amount cannot exceed remaining invoice balance after credit notes (${U.fmtNumber(currentBalanceDue)}).`);
     const normalizedNewPaidTotal = paymentSnapshot.new_paid_total;
     const normalizedPendingAmount = paymentSnapshot.pending_amount;
     const normalizedPaymentState = this.receiptPaymentStateFromSnapshot(paymentSnapshot, linkedInvoice || {});

@@ -444,10 +444,17 @@ const LifecycleAnalytics = {
   invoicePendingAmount(row = {}) {
     const explicit = this.firstValue(row, ['pending_amount', 'balance_due']);
     if (explicit !== '') return this.toMoneyNumber(explicit);
-    return Math.max(this.invoiceGrandTotal(row) - this.invoicePaidAmount(row), 0);
+    return Math.max(this.invoiceGrandTotal(row) - this.invoicePaidAmount(row) - this.creditNoteAmount(row), 0);
   },
   receiptPaidAmount(row = {}) {
     return this.toMoneyNumber(this.firstValue(row, ['amount_received', 'received_amount', 'paid_now', 'payment_amount', 'amount']));
+  },
+  creditNoteAmount(row = {}) {
+    return this.toMoneyNumber(this.firstValue(row, ['credit_amount', 'amount']));
+  },
+  isValidCreditNote(row = {}) {
+    const status = this.norm(row.status);
+    return !['cancelled', 'canceled', 'void', 'voided', 'deleted', 'rejected'].some(token => status.includes(token));
   },
   isValidReceipt(row = {}) {
     const status = this.norm(row.status || row.payment_state || row.payment_status);
@@ -585,6 +592,7 @@ const LifecycleAnalytics = {
       invoices: this.safeFetchTable(db, 'invoices', '*'),
       invoiceItems: this.safeFetchTable(db, 'invoice_items', '*'),
       receipts: this.safeFetchTable(db, 'receipts', '*'),
+      creditNotes: this.safeFetchTable(db, 'credit_notes', '*'),
       receiptItems: this.safeFetchTable(db, 'receipt_items', '*'),
       paymentSchedule: this.safeFetchTable(db, 'invoice_payment_schedule', '*'),
       clients: this.safeFetchTable(db, 'clients', '*'),
@@ -618,6 +626,7 @@ const LifecycleAnalytics = {
       invoices: data.invoices.length,
       invoiceItems: data.invoiceItems.length,
       receipts: data.receipts.length,
+        creditNotes: data.creditNotes.length,
       receiptItems: data.receiptItems.length,
       paymentSchedule: data.paymentSchedule.length,
       clients: data.clients.length,
@@ -685,7 +694,7 @@ const LifecycleAnalytics = {
           legalName: this.getLifecycleClientLegalName({ ...record, company_name: preferredCompanyName }, linkedCompany),
           primaryEmail: this.text(email),
           currency: 'USD',
-          leads: [], deals: [], proposals: [], agreements: [], invoices: [], receipts: [],
+          leads: [], deals: [], proposals: [], agreements: [], invoices: [], receipts: [], creditNotes: [],
           proposalItems: [], invoiceItems: [], receiptItems: [], paymentSchedule: [],
           onboarding: [], technical: [], locationItems: [], contacts: [],
           stages: {},
@@ -809,6 +818,17 @@ const LifecycleAnalytics = {
       account.receipts.push(row);
       rememberCompanyAliases(account, row);
       if (!account.stages.receipt) account.stages.receipt = row.receipt_date || row.payment_date || row.created_at || row.updated_at;
+    });
+
+
+    (data.creditNotes || []).forEach(row => {
+      const invoiceUuid = this.text(row.invoice_id);
+      const parentAccountKey = (this.isUuid(invoiceUuid) ? accountByInvoiceUuid.get(invoiceUuid) : '') || findAccountKeyForRecord(row, '');
+      const account = parentAccountKey
+        ? accounts.get(parentAccountKey)
+        : ensureAccount({ key: row.id ? `credit-note:${this.text(row.id)}` : '', clientUuid: this.text(row.client_id), company: row.customer_name || row.company_name || row.client_name, companyId: row.company_id || row.company_uuid || row.companyId || row.client_id, record: row });
+      account.creditNotes.push(row);
+      rememberCompanyAliases(account, row);
     });
 
     (data.receiptItems || []).forEach(item => {
@@ -968,8 +988,9 @@ const LifecycleAnalytics = {
     const totalInvoiced = account.invoices.reduce((sum, row) => sum + this.invoiceGrandTotal(row), 0);
     const invoicePaid = account.invoices.reduce((sum, row) => sum + this.invoicePaidAmount(row), 0);
     const receiptCollected = account.receipts.filter(row => this.isValidReceipt(row)).reduce((sum, row) => sum + this.receiptPaidAmount(row), 0);
+    const totalCredited = account.creditNotes.filter(row => this.isValidCreditNote(row)).reduce((sum, row) => sum + this.creditNoteAmount(row), 0);
     const totalPaid = account.invoices.length ? invoicePaid : receiptCollected;
-    const totalDue = Math.max(account.invoices.reduce((sum, row) => sum + this.invoicePendingAmount(row), 0) || totalInvoiced - totalPaid, 0);
+    const totalDue = Math.max(account.invoices.reduce((sum, row) => sum + this.invoicePendingAmount(row), 0) || totalInvoiced - totalPaid - totalCredited, 0);
     const scheduleRows = account.paymentSchedule.filter(row => !this.norm(row.status).includes('cancel'));
     const scheduledAmount = scheduleRows.reduce((sum, row) => sum + this.scheduleAmount(row), 0);
     const schedulePaidAmount = scheduleRows.reduce((sum, row) => sum + this.schedulePaidAmount(row), 0);
@@ -1021,11 +1042,13 @@ const LifecycleAnalytics = {
       agreementsCount: account.agreements.length,
       invoicesCount: account.invoices.length,
       receiptsCount: account.receipts.length,
+      creditNotesCount: account.creditNotes.length,
       agreementValue,
       proposalValue,
       acceptedProposalValue,
       totalInvoiced,
       totalPaid,
+      totalCredited,
       totalDue,
       receiptCollected,
       scheduledAmount,
@@ -1079,6 +1102,7 @@ const LifecycleAnalytics = {
     const totalLocations = rows.reduce((sum, row) => sum + row.locationsCount, 0);
     const totalInvoiced = rows.reduce((sum, row) => sum + row.totalInvoiced, 0);
     const totalPaid = rows.reduce((sum, row) => sum + row.totalPaid, 0);
+    const totalCredited = rows.reduce((sum, row) => sum + (row.totalCredited || 0), 0);
     const receiptCollected = (raw.receipts || []).filter(row => this.isValidReceipt(row)).reduce((sum, row) => sum + this.receiptPaidAmount(row), 0);
     const totalDue = rows.reduce((sum, row) => sum + row.totalDue, 0);
     const scheduledAmount = rows.reduce((sum, row) => sum + row.scheduledAmount, 0);
@@ -1174,6 +1198,7 @@ const LifecycleAnalytics = {
       partiallyPaidInvoices: invoicePaymentStates.filter(value => value === 'Partially Paid').length,
       unpaidInvoices: invoicePaymentStates.filter(value => value === 'Not Paid' || value === 'Overdue').length,
       totalReceipts: raw.receipts?.length || 0,
+      totalCreditNotes: raw.creditNotes?.length || 0,
       receiptCollected,
       receiptsLinkedToInvoice,
       invalidReceipts,
@@ -1181,6 +1206,7 @@ const LifecycleAnalytics = {
       totalLocations,
       totalInvoiced,
       totalPaid,
+      totalCredited,
       totalDue,
       scheduledAmount,
       schedulePaidAmount,
@@ -1322,8 +1348,10 @@ const LifecycleAnalytics = {
       ['Unpaid / Not Paid', o.unpaidInvoices],
       ['Invoice Grand Total', this.fmtMoney(o.totalInvoiced)],
       ['Amount Received', this.fmtMoney(o.totalPaid)],
+      ['Credit Notes', this.fmtMoney(o.totalCredited || 0)],
       ['Pending Amount', this.fmtMoney(o.totalDue)],
       ['Total Receipts', o.totalReceipts],
+      ['Total Credit Notes', o.totalCreditNotes || 0],
       ['Receipt Collections', this.fmtMoney(o.receiptCollected)],
       ['Linked Receipts', o.receiptsLinkedToInvoice],
       ['Unlinked / Invalid Receipts', o.invalidReceipts],

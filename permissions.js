@@ -126,6 +126,15 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     create_from_invoice: ['admin', 'dev'],
     generate_receipt_html: ['admin', 'dev', 'viewer', 'hoo']
   }),
+  credit_notes: Object.freeze({
+    view: ['admin', 'dev', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm', 'viewer', 'hoo', 'csm', 'customer_success', 'customer_success_manager', 'sales_executive', 'head_of_sales'],
+    list: ['admin', 'dev', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm', 'viewer', 'hoo', 'csm', 'customer_success', 'customer_success_manager', 'sales_executive', 'head_of_sales'],
+    get: ['admin', 'dev', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm', 'viewer', 'hoo', 'csm', 'customer_success', 'customer_success_manager', 'sales_executive', 'head_of_sales'],
+    create: ['admin', 'dev', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm'],
+    cancel: ['admin', 'dev', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm'],
+    print: ['admin', 'dev', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm', 'viewer', 'hoo', 'csm', 'customer_success', 'customer_success_manager', 'sales_executive', 'head_of_sales'],
+    export: ['admin', 'dev', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm']
+  }),
   clients: Object.freeze({
     list: ['admin', 'dev', 'viewer', 'hoo'],
     get: ['admin', 'dev', 'viewer', 'hoo'],
@@ -201,6 +210,7 @@ const Permissions = {
     technicalAdmin: [{ resource: 'technical_admin_requests', action: 'list' }],
     invoices: [{ resource: 'invoices', action: 'list' }],
     receipts: [{ resource: 'receipts', action: 'list' }],
+    creditNotes: [{ resource: 'credit_notes', action: 'view' }],
     lifecycleAnalytics: [{ resource: 'analytics', action: 'list' }],
     clients: [{ resource: 'clients', action: 'list' }],
     proposalCatalog: [{ resource: 'proposal_catalog', action: 'list' }],
@@ -228,6 +238,7 @@ const Permissions = {
     technicalAdmin: 'technical_admin_requests',
     invoices: 'invoices',
     receipts: 'receipts',
+    creditNotes: 'credit_notes',
     lifecycleAnalytics: 'analytics',
     clients: 'clients',
     proposalCatalog: 'proposal_catalog',
@@ -671,7 +682,7 @@ const Permissions = {
     const normalizedRole = this.normalizeRole(role);
     const normalizedResource = String(resource || '').trim().toLowerCase();
     const normalizedAction = String(action || '').trim().toLowerCase();
-    if (normalizedRole === ROLES.ADMIN) return true;
+    if (normalizedRole === ROLES.ADMIN || Boolean(window.AdminOverride?.canOverride?.())) return true;
     return this.decidePermission(resource, action, role, options);
   },
   canView(resource, role = Session.role()) {
@@ -705,8 +716,11 @@ const Permissions = {
   isViewer() {
     return this.normalizeRole(Session.role()) === ROLES.VIEWER;
   },
+  hasAdminOverride() {
+    return this.isAdmin() || Boolean(window.AdminOverride?.canOverride?.());
+  },
   isAdminLike() {
-    return this.isAdmin();
+    return this.hasAdminOverride();
   },
   canCreateTicket() {
     return this.canPerformAction('tickets', 'create') || this.canPerformAction('tickets', 'manage');
@@ -962,6 +976,24 @@ const Permissions = {
   canPreviewReceipt() {
     return this.canPerformAction('receipts', 'generate_receipt_html') || this.canView('receipts');
   },
+  canViewCreditNotes() {
+    return this.canPerformAction('credit_notes', 'view') || this.canView('credit_notes') || this.hasAdminOverride();
+  },
+  canCreateCreditNote() {
+    return this.canPerformAction('credit_notes', 'create') || this.hasAdminOverride();
+  },
+  canCancelCreditNote() {
+    return this.canPerformAction('credit_notes', 'cancel') || this.hasAdminOverride();
+  },
+  canPrintCreditNote() {
+    return this.canPerformAction('credit_notes', 'print') || this.canViewCreditNotes() || this.hasAdminOverride();
+  },
+  canExportCreditNote() {
+    return this.canPerformAction('credit_notes', 'export') || this.hasAdminOverride();
+  },
+  canPreviewCreditNote() {
+    return this.canPrintCreditNote();
+  },
   canCreateProposalCatalogItem() {
     return this.canCreate('proposal_catalog') || this.canPerformAction('proposal_catalog_items', 'create');
   },
@@ -1088,8 +1120,8 @@ async function handleExpiredSession(message = 'Session expired. Please log in ag
 
 
 const PermissionAudit = {
-  resources: ['tickets','events','ai_insights','companies','contacts','leads','deals','proposals','agreements','operations_onboarding','technical_admin_requests','invoices','receipts','clients','analytics','notifications','notification_settings','workflow','users','role_permissions'],
-  actions: ['list','get','create','update','delete','export','manage','approve','reject','convert_to_deal','create_from_deal','create_from_proposal','create_from_agreement','create_from_invoice','assign_csm','update_status','view_renewals','view_statement','statement_view','statement_export'],
+  resources: ['tickets','events','ai_insights','companies','contacts','leads','deals','proposals','agreements','operations_onboarding','technical_admin_requests','invoices','receipts','credit_notes','clients','analytics','notifications','notification_settings','workflow','users','role_permissions'],
+  actions: ['list','get','create','update','delete','export','manage','approve','reject','convert_to_deal','create_from_deal','create_from_proposal','create_from_agreement','create_from_invoice','cancel','print','export','assign_csm','update_status','view_renewals','view_statement','statement_view','statement_export'],
   inspect(resource, action) {
     const role = Permissions.normalizeRole(Session.role());
     const matchedRows = Permissions.getMatchedRows(resource, action, role, { includeDenied: true });

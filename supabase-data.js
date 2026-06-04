@@ -1,13 +1,13 @@
 (function initSupabaseData(global) {
   const MIGRATED_RESOURCES = new Set([
-    'auth','users','roles','role_permissions','tickets','events','csm','leads','lead_note_logs','deal_note_logs','deals','proposal_catalog','proposals','agreements','workflow','clients','invoices','receipts','operations_onboarding','technical_admin_requests','notifications','notification_settings','companies','contacts','company_type_options','company_industry_options'
+    'auth','users','roles','role_permissions','tickets','events','csm','leads','lead_note_logs','deal_note_logs','deals','proposal_catalog','proposals','agreements','workflow','clients','invoices','receipts','credit_notes','operations_onboarding','technical_admin_requests','notifications','notification_settings','companies','contacts','company_type_options','company_industry_options'
   ]);
 
   const TABLE_BY_RESOURCE = {
     users: 'profiles', roles: 'roles', role_permissions: 'role_permissions', tickets: 'tickets',
     events: 'events', csm: 'csm_activities', leads: 'leads', lead_note_logs: 'lead_note_logs', deal_note_logs: 'deal_note_logs', deals: 'deals',
     proposal_catalog: 'proposal_catalog_items', proposals: 'proposals', agreements: 'agreements',
-    clients: 'clients', invoices: 'invoices', receipts: 'receipts', operations_onboarding: 'operations_onboarding',
+    clients: 'clients', invoices: 'invoices', receipts: 'receipts', credit_notes: 'credit_notes', operations_onboarding: 'operations_onboarding',
     technical_admin_requests: 'technical_admin_requests', companies: 'companies', contacts: 'contacts', company_type_options: 'company_type_options', company_industry_options: 'company_industry_options'
     ,notifications: 'notifications'
     ,notification_settings: 'notification_rules'
@@ -30,6 +30,7 @@
     clients: 'id',
     invoices: 'id',
     receipts: 'id',
+    credit_notes: 'id',
     operations_onboarding: 'id',
     technical_admin_requests: 'id',
     companies: 'id',
@@ -54,6 +55,7 @@
     clients: ['client_id'],
     invoices: ['invoice_id'],
     receipts: ['receipt_id'],
+    credit_notes: ['credit_note_id', 'credit_note_number'],
     operations_onboarding: ['onboarding_id', 'agreement_id'],
     technical_admin_requests: ['request_id', 'technical_request_id'],
     companies: ['company_id'],
@@ -900,7 +902,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     'customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_email',
     'provider_legal_name','provider_address','support_email','subtotal_locations','subtotal_one_time','invoice_total',
     'is_poc','poc_location_count','poc_license_count','poc_license_months','poc_service_start_date','poc_service_end_date','poc_success_kpis','poc_conversion_commitment',
-    'old_paid_total','paid_now','amount_paid','received_amount','pending_amount','balance_due','payment_state','payment_status','payment_conclusion','amount_in_words','status','notes','account_setup_billing_mode','is_renewal','invoice_type','source_type','renewal_status','renewal_due_date','renewed_from_agreement_id','renewed_from_invoice_id','renewed_from_invoice_item_id','renewed_from_location_name','renewal_batch_id','renewal_notes','paid_at',
+    'old_paid_total','paid_now','amount_paid','received_amount','credit_note_amount','pending_amount','balance_due','payment_state','payment_status','payment_conclusion','amount_in_words','status','notes','account_setup_billing_mode','is_renewal','invoice_type','source_type','renewal_status','renewal_due_date','renewed_from_agreement_id','renewed_from_invoice_id','renewed_from_invoice_item_id','renewed_from_location_name','renewal_batch_id','renewal_notes','paid_at',
     'created_by','updated_by','currency','created_at','updated_at'
   ]);
   const INVOICE_ITEM_COLUMNS = new Set([
@@ -908,6 +910,9 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     'discounted_unit_price','quantity','license_quantity','line_total','capability_name','capability_value','notes',
     'service_start_date','service_end_date','source_agreement_item_id','source_agreement_id','source_agreement_reference','agreement_id','agreement_reference','agreement_display_id','reference_no','display_id','related_reference',
     'proposal_id','client_id','company_id','contact_id','location_id','source_invoice_id','source_proposal_id','previous_invoice_id','renewal_batch_id','renewed_from_invoice_id','renewed_from_invoice_item_id','renewed_from_location_name'
+  ]);
+  const CREDIT_NOTE_COLUMNS = new Set([
+    'credit_note_id','credit_note_number','invoice_id','invoice_number','agreement_uuid','agreement_id','agreement_number','client_id','company_id','company_name','customer_name','client_name','customer_legal_name','credit_note_date','description','currency','credit_amount','status','created_by','created_by_email','updated_by','cancelled_by','cancelled_at','cancel_reason','created_at','updated_at'
   ]);
   const RECEIPT_COLUMNS = new Set([
     'receipt_id','receipt_number','invoice_id','invoice_number','agreement_uuid','agreement_id','agreement_number','client_id','company_id','company_name','customer_name','customer_legal_name','customer_address','contact_id','contact_name','contact_email','contact_phone','contact_mobile','receipt_status','amount_paid','payment_date','payment_method',
@@ -1065,6 +1070,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     invoices: new Set(['client_id', 'agreement_uuid', 'proposal_id', 'created_by', 'updated_by']),
     invoice_items: new Set(['id', 'invoice_id', 'proposal_id', 'agreement_id', 'client_id', 'company_id', 'contact_id', 'location_id', 'source_invoice_id', 'source_agreement_id', 'source_proposal_id', 'previous_invoice_id', 'renewed_from_invoice_id']),
     receipts: new Set(['invoice_id', 'agreement_uuid', 'client_id', 'created_by', 'updated_by']),
+    credit_notes: new Set(['invoice_id', 'agreement_uuid', 'client_id', 'company_id', 'created_by', 'updated_by', 'cancelled_by']),
     receipt_items: new Set(['receipt_id', 'invoice_item_id']),
     operations_onboarding: new Set(['agreement_id', 'client_id', 'source_id', 'proposal_id', 'technical_admin_request_id', 'source_invoice_id', 'invoice_id', 'created_by', 'updated_by']),
     technical_admin_requests: new Set(['agreement_id', 'operations_onboarding_id', 'onboarding_id', 'client_id', 'source_id', 'proposal_id', 'source_invoice_id', 'invoice_id', 'requested_by', 'updated_by']),
@@ -1536,6 +1542,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const authenticated = hasRole && hasUser && hasSession;
     if (!authenticated) return false;
     if (!normalizedResource || !normalizedAction) return false;
+    if (global.AdminOverride?.canOverride?.()) return true;
     if (global.AppPermissions?.canPerformAction) {
       return Boolean(global.AppPermissions.canPerformAction(normalizedResource, normalizedAction, auth.role));
     }
@@ -2453,6 +2460,78 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const childResp = await insertSelectRowsWithSchemaRetry(client, 'invoice_items', insertRows, context);
     if (childResp.error) throw friendlyError(context, childResp.error);
     return { rows: childResp.data || [], total: sumItems };
+  }
+
+  function sanitizeCreditNotesRecord(record = {}, { includeCreatedBy = false, userId = '', userEmail = '' } = {}) {
+    const sanitized = compactObject({
+      credit_note_id: trimOrNull(firstDefined(record, ['credit_note_id', 'creditNoteId'])),
+      credit_note_number: trimOrNull(firstDefined(record, ['credit_note_number', 'creditNoteNumber'])),
+      invoice_id: trimOrNull(firstDefined(record, ['invoice_id', 'invoiceId'])),
+      invoice_number: trimOrNull(firstDefined(record, ['invoice_number', 'invoiceNumber'])),
+      agreement_uuid: trimOrNull(firstDefined(record, ['agreement_uuid', 'agreementUuid'])),
+      agreement_id: trimOrNull(firstDefined(record, ['agreement_id', 'agreementId'])),
+      agreement_number: trimOrNull(firstDefined(record, ['agreement_number', 'agreementNumber'])),
+      client_id: trimOrNull(firstDefined(record, ['client_id', 'clientId'])),
+      company_id: trimOrNull(firstDefined(record, ['company_id', 'companyId'])),
+      company_name: trimOrNull(firstDefined(record, ['company_name', 'companyName'])),
+      customer_name: trimOrNull(firstDefined(record, ['customer_name', 'customerName', 'client_name', 'clientName'])),
+      client_name: trimOrNull(firstDefined(record, ['client_name', 'clientName', 'customer_name', 'customerName'])),
+      customer_legal_name: trimOrNull(firstDefined(record, ['customer_legal_name', 'customerLegalName'])),
+      credit_note_date: trimOrNull(firstDefined(record, ['credit_note_date', 'creditNoteDate', 'date'])),
+      description: trimOrNull(firstDefined(record, ['description', 'notes'])),
+      currency: trimOrNull(firstDefined(record, ['currency'])),
+      credit_amount: numberOrNull(firstDefined(record, ['credit_amount', 'creditAmount', 'amount'])),
+      status: trimOrNull(firstDefined(record, ['status'])) || 'issued',
+      created_by_email: trimOrNull(firstDefined(record, ['created_by_email', 'createdByEmail'])) || (userEmail || null),
+      created_at: trimOrNull(firstDefined(record, ['created_at', 'createdAt'])),
+      updated_at: trimOrNull(firstDefined(record, ['updated_at', 'updatedAt']))
+    });
+    Object.keys(sanitized).forEach(key => { if (!CREDIT_NOTE_COLUMNS.has(key)) delete sanitized[key]; });
+    if (includeCreatedBy && userId) sanitized.created_by = userId;
+    if (userId) sanitized.updated_by = userId;
+    return sanitized;
+  }
+
+  async function recalculateInvoiceCreditNoteTotals(client, invoiceId) {
+    const id = String(invoiceId || '').trim();
+    if (!isUuid(id)) throw new Error('Valid invoice UUID is required to recalculate invoice totals.');
+    const { data: invoice, error: invoiceError } = await client.from('invoices').select('*').eq('id', id).maybeSingle();
+    if (invoiceError) throw friendlyError('Unable to load invoice for credit-note recalculation', invoiceError);
+    if (!invoice) throw new Error('Invoice was not found for credit-note recalculation.');
+    const { data: creditRows, error: creditError } = await client
+      .from('credit_notes')
+      .select('credit_amount,status')
+      .eq('invoice_id', id);
+    if (creditError) throw friendlyError('Unable to load credit notes for invoice recalculation', creditError);
+    const invalidStatuses = new Set(['cancelled', 'canceled', 'void', 'voided', 'deleted', 'rejected']);
+    const creditTotal = (Array.isArray(creditRows) ? creditRows : [])
+      .filter(row => !invalidStatuses.has(String(row.status || '').trim().toLowerCase()))
+      .reduce((sum, row) => sum + (numberOrNull(row.credit_amount) || 0), 0);
+    const grossTotal = numberOrNull(firstDefined(invoice, ['grand_total', 'invoice_total', 'total_amount', 'amount_due', 'total'])) || 0;
+    const paid = numberOrNull(firstDefined(invoice, ['amount_paid', 'received_amount', 'paid_amount'])) || 0;
+    const balanceDue = Math.max(0, Number((grossTotal - paid - creditTotal).toFixed(2)));
+    let paymentStatus = 'Unpaid';
+    if (balanceDue <= 0 && paid > 0 && paid >= Math.max(0, grossTotal - 0.005)) paymentStatus = 'Paid';
+    else if (balanceDue <= 0 && creditTotal > 0) paymentStatus = 'Credited';
+    else if (paid > 0 || creditTotal > 0) paymentStatus = 'Partially Paid';
+    const updates = {
+      credit_note_amount: Number(creditTotal.toFixed(2)),
+      balance_due: balanceDue,
+      pending_amount: balanceDue,
+      payment_status: paymentStatus,
+      payment_state: paymentStatus,
+      updated_at: new Date().toISOString()
+    };
+    const { data, error } = await updateSelectSingleWithSchemaRetry(client, 'invoices', updates, 'id', id, 'Unable to update invoice credit-note totals');
+    if (error && String(error.message || '').toLowerCase().includes('payment_status')) {
+      const fallbackUpdates = { ...updates, payment_status: paymentStatus === 'Credited' ? 'Paid' : paymentStatus };
+      const retry = await updateSelectSingleWithSchemaRetry(client, 'invoices', fallbackUpdates, 'id', id, 'Unable to update invoice credit-note totals');
+      if (retry.error) throw friendlyError('Unable to update invoice credit-note totals', retry.error);
+      return normalizeRow('invoices', retry.data);
+    }
+    if (error) throw friendlyError('Unable to update invoice credit-note totals', error);
+    await recalculateInvoicePaymentScheduleRows(client, id).catch(scheduleError => console.warn('[invoice_payment_schedule] credit-note recalculation failed', scheduleError));
+    return normalizeRow('invoices', data || { ...invoice, ...updates });
   }
 
   function normalizeReceiptPaymentStateForSave(record = {}) {
@@ -6816,6 +6895,27 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       });
       return data;
     }
+    if (resource === 'credit_notes' && action === 'recalculate_invoice_totals') {
+      if (!isAllowed('credit_notes', 'create') && !isAllowed('credit_notes', 'cancel')) assertAllowed('credit_notes', 'cancel');
+      const invoiceUuid = String(payload.invoice_id || payload.id || '').trim();
+      const invoice = await recalculateInvoiceCreditNoteTotals(client, invoiceUuid);
+      return { handled: true, data: invoice };
+    }
+
+    if (resource === 'credit_notes' && action === 'cancel') {
+      assertAllowed('credit_notes', 'cancel');
+      const id = String(payload.id || payload.credit_note_id || '').trim();
+      if (!isUuid(id)) throw new Error('Valid credit note UUID is required.');
+      const { data: existing, error: existingError } = await client.from('credit_notes').select('*').eq('id', id).maybeSingle();
+      if (existingError) throw friendlyError('Unable to load credit note for cancel', existingError);
+      if (!existing) throw new Error('Credit note was not found.');
+      const userId = await getCurrentUserId(client);
+      const { data, error } = await updateSelectSingleWithSchemaRetry(client, 'credit_notes', { status: 'cancelled', cancelled_at: new Date().toISOString(), cancelled_by: userId || null, updated_by: userId || null, updated_at: new Date().toISOString() }, 'id', id, 'Unable to cancel credit note');
+      if (error) throw friendlyError('Unable to cancel credit note', error);
+      if (isUuid(String(existing.invoice_id || '').trim())) await recalculateInvoiceCreditNoteTotals(client, existing.invoice_id);
+      return { handled: true, data: normalizeRow('credit_notes', data) };
+    }
+
     if (resource === 'receipts' && action === 'create_from_invoice') {
       assertAllowed('receipts', 'create_from_invoice');
       const invoiceUuid = await resolveResourceUuid('invoices', { ...payload, id: payload.invoice_uuid || payload.id, invoice_id: payload.invoice_id }, client);
@@ -7597,7 +7697,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         ? await resolveOperationsOnboardingId(payload, client)
         : resource === 'technical_admin_requests'
         ? await resolveTechnicalAdminRequestUuid(payload, client)
-        : ['clients', 'invoices', 'receipts'].includes(resource)
+        : ['clients', 'invoices', 'receipts', 'credit_notes'].includes(resource)
         ? await resolveResourceUuid(resource, payload, client)
         : requireResourceIdentifier(resource, payload, 'get');
       const key = resource === 'operations_onboarding' ? 'id' : getPrimaryKeyForResource(resource);
@@ -7720,7 +7820,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       }
      
       if (resource === 'tickets') devLog('[tickets/create] raw form data', record);
-      const currentUserId = ['tickets', 'events', 'leads', 'deals', 'proposal_catalog', 'proposals', 'agreements', 'clients', 'invoices', 'receipts'].includes(resource)
+      const currentUserId = ['tickets', 'events', 'leads', 'deals', 'proposal_catalog', 'proposals', 'agreements', 'clients', 'invoices', 'receipts', 'credit_notes'].includes(resource)
         ? await getCurrentUserId(client)
         : '';
       if (['leads', 'deals'].includes(resource) && !currentUserId) {
@@ -7747,6 +7847,8 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
               ? sanitizeInvoicesRecord(record, { includeCreatedBy: true, userId: currentUserId })
             : resource === 'receipts'
               ? sanitizeReceiptsRecord(record, { includeCreatedBy: true, userId: currentUserId })
+            : resource === 'credit_notes'
+              ? sanitizeCreditNotesRecord(record, { includeCreatedBy: true, userId: currentUserId, userEmail: global.Session?.authContext?.()?.user?.email || '' })
             : resource === 'companies'
               ? sanitizeCompanyRecord(record, { mode: 'create' })
             : resource === 'contacts'
@@ -7785,7 +7887,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       if (['leads', 'deals'].includes(resource) && !Object.keys(createRecord).length) {
         throw new Error(`${resource} create payload is empty after normalization.`);
       }
-      if (['proposal_catalog', 'proposals', 'agreements', 'clients', 'invoices', 'receipts', 'operations_onboarding', 'technical_admin_requests'].includes(resource) && !Object.keys(createRecord).length) {
+      if (['proposal_catalog', 'proposals', 'agreements', 'clients', 'invoices', 'receipts', 'credit_notes', 'operations_onboarding', 'technical_admin_requests'].includes(resource) && !Object.keys(createRecord).length) {
         throw new Error(`${resource} create payload is empty after normalization.`);
       }
       if (resource === 'role_permissions') {
@@ -8034,6 +8136,21 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
           console.warn('[notifications:pwa] receipts:create failed', error);
         });
       }
+      if (resource === 'credit_notes') {
+        const invoiceUuid = String(created.invoice_id || '').trim();
+        if (isUuid(invoiceUuid)) await recalculateInvoiceCreditNoteTotals(client, invoiceUuid);
+        await createNotificationAndPush({
+          title: 'Credit note issued',
+          message: `${String(created.credit_note_number || created.credit_note_id || created.id || '').trim() || 'Credit note'} was issued.`,
+          resource: 'credit_notes',
+          action: 'credit_note_created',
+          record_id: String(created.credit_note_id || created.id || '').trim(),
+          target_roles: ['accounting', 'admin'],
+          dedupe_key: `credit-notes-created-${String(created.credit_note_id || created.id || '').trim()}`
+        }, 'credit_notes:create').catch(error => {
+          console.warn('[notifications:pwa] credit_notes:create failed', error);
+        });
+      }
       if (resource === 'proposals') {
         const createdBusinessId = String(created.proposal_id || '').trim();
         const createdRefNumber = String(created.ref_number || '').trim();
@@ -8117,7 +8234,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         ? await resolveOperationsOnboardingId(payload, client)
         : resource === 'technical_admin_requests'
         ? await resolveTechnicalAdminRequestUuid(payload, client)
-        : ['clients', 'invoices', 'receipts'].includes(resource)
+        : ['clients', 'invoices', 'receipts', 'credit_notes'].includes(resource)
         ? await resolveResourceUuid(resource, payload, client)
         : requireResourceIdentifier(resource, payload, 'update');
       const id = resource === 'tickets'
@@ -8280,6 +8397,8 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
               ? sanitizeInvoicesRecord(safeUpdates, { includeCreatedBy: false, userId: await getCurrentUserId(client) })
             : resource === 'receipts'
               ? sanitizeReceiptsRecord(safeUpdates, { includeCreatedBy: false, userId: await getCurrentUserId(client) })
+            : resource === 'credit_notes'
+              ? sanitizeCreditNotesRecord(safeUpdates, { includeCreatedBy: false, userId: await getCurrentUserId(client) })
             : resource === 'companies'
               ? sanitizeCompanyUpdateRecord(safeUpdates)
             : resource === 'contacts'
@@ -8322,7 +8441,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       if (['leads', 'deals'].includes(resource) && !Object.keys(publicUpdates).length) {
         throw new Error(`${resource} update payload is empty after normalization.`);
       }
-      if (['proposal_catalog', 'proposals', 'agreements', 'clients', 'invoices', 'receipts'].includes(resource) && !Object.keys(publicUpdates).length) {
+      if (['proposal_catalog', 'proposals', 'agreements', 'clients', 'invoices', 'receipts', 'credit_notes'].includes(resource) && !Object.keys(publicUpdates).length) {
         throw new Error(`${resource} update payload is empty after normalization.`);
       }
       if (resource === 'operations_onboarding') {
@@ -8640,7 +8759,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       assertAllowed(resource, 'delete');
       const pickedId = resource === 'operations_onboarding'
         ? await resolveOperationsOnboardingId(payload, client)
-        : ['clients', 'invoices', 'receipts'].includes(resource)
+        : ['clients', 'invoices', 'receipts', 'credit_notes'].includes(resource)
         ? await resolveResourceUuid(resource, payload, client)
         : requireResourceIdentifier(resource, payload, 'delete');
       const id = resource === 'tickets'
