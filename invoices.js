@@ -46,8 +46,7 @@ const Invoices = {
     'provider_address',
     'support_email',
     'payment_term',
-    'payment_terms',
-    'payment_terms_custom',
+    'payment_term_custom',
     'payment_schedule_mode',
     'is_poc',
     'poc_location_count',
@@ -182,14 +181,12 @@ const Invoices = {
     const priority = isExisting
       ? [
         invoice?.payment_term,
-        invoice?.payment_terms,
         agreement?.payment_term,
         agreement?.payment_terms,
         'Net 30'
       ]
       : [
         invoice?.payment_term,
-        invoice?.payment_terms,
         agreement?.payment_term,
         agreement?.payment_terms,
         'Net 30'
@@ -663,8 +660,7 @@ const Invoices = {
       provider_address: String(source.provider_address || '').trim() || null,
       support_email: String(source.support_email || '').trim() || null,
       payment_term: paymentTerm,
-      payment_terms: paymentTerm,
-      payment_terms_custom: String(source.payment_terms_custom || '').trim() || null,
+      payment_term_custom: String(source.payment_term_custom ?? source.payment_terms_custom ?? '').trim() || null,
       payment_schedule_mode: paymentTerm === 'Custom' ? 'manual' : paymentScheduleMode,
       is_poc: this.normalizeTruthy(source.is_poc),
       poc_location_count: this.normalizeTruthy(source.is_poc) ? this.toNullableNumber(source.poc_location_count) : null,
@@ -778,10 +774,9 @@ const Invoices = {
     return this.addMonthsDateOnly(dateValue, monthsToAdd);
   },
   buildPreviewPaymentSchedule(invoice = {}, items = [], agreement = {}) {
-    if (this.normalizePaymentScheduleMode(invoice.payment_schedule_mode, invoice.payment_term || invoice.payment_terms) === 'manual') return [];
+    if (this.normalizePaymentScheduleMode(invoice.payment_schedule_mode, invoice.payment_term) === 'manual') return [];
     const paymentTerm = this.normalizePaymentTerm(
       invoice.payment_term ||
-      invoice.payment_terms ||
       invoice.paymentTerm ||
       agreement.payment_term ||
       agreement.payment_terms ||
@@ -830,7 +825,7 @@ const Invoices = {
     });
   },
   buildInvoicePaymentSchedule(invoice = {}, items = [], agreement = {}) {
-    if (this.normalizePaymentScheduleMode(invoice.payment_schedule_mode, invoice.payment_term || invoice.payment_terms || agreement.payment_term || agreement.payment_terms) === 'manual' || this.normalizePaymentTerm(invoice.payment_term || invoice.payment_terms || agreement.payment_term || agreement.payment_terms) === 'Custom') return [];
+    if (this.normalizePaymentScheduleMode(invoice.payment_schedule_mode, invoice.payment_term || agreement.payment_term) === 'manual' || this.normalizePaymentTerm(invoice.payment_term || agreement.payment_term) === 'Custom') return [];
     const startDate = this.getInvoiceScheduleStartDate(invoice);
 
     if (!startDate) return [];
@@ -838,7 +833,6 @@ const Invoices = {
     const config = this.getInvoicePaymentScheduleConfig(
       E.invoiceFormPaymentTerm?.value ||
       invoice.payment_term ||
-      invoice.payment_terms ||
       agreement.payment_term ||
       agreement.payment_terms ||
       'Net 30'
@@ -885,7 +879,7 @@ const Invoices = {
     return rebuiltRows.map(row => this.normalizeInvoiceScheduleRow(row));
   },
   shouldCalculateInvoiceSchedule(invoice = {}) {
-    if (this.normalizePaymentScheduleMode(invoice?.payment_schedule_mode, invoice?.payment_term || invoice?.payment_terms) === 'manual' || this.normalizePaymentTerm(invoice?.payment_term || invoice?.payment_terms) === 'Custom') return false;
+    if (this.normalizePaymentScheduleMode(invoice?.payment_schedule_mode, invoice?.payment_term) === 'manual' || this.normalizePaymentTerm(invoice?.payment_term) === 'Custom') return false;
     const status = this.normalizeText(invoice?.status || invoice?.payment_status || invoice?.payment_state);
     return !String(invoice?.id || '').trim() || !status || status === 'draft';
   },
@@ -1251,7 +1245,7 @@ const Invoices = {
     const id = String(invoiceId || '').trim();
     if (!id) return [];
     const invoice = this.state.selectedInvoice || this.state.rows.find(row => this.invoiceDbId(row.id) === id) || {};
-    if (this.normalizePaymentScheduleMode(invoice.payment_schedule_mode, invoice.payment_term || invoice.payment_terms) === 'manual') return this.getInvoicePaymentScheduleRows(id);
+    if (this.normalizePaymentScheduleMode(invoice.payment_schedule_mode, invoice.payment_term) === 'manual') return this.getInvoicePaymentScheduleRows(id);
     try {
       this.clearInvoiceScheduleCache(id);
       const response = await Api.recalculateInvoicePaymentSchedule(id);
@@ -1278,13 +1272,13 @@ const Invoices = {
         ...row,
         invoice_id: id,
         schedule_no: index + 1,
-        schedule_label: this.normalizePaymentTerm(invoice.payment_term || invoice.payment_terms) === 'Custom' ? 'Custom' : (row.schedule_label || `Payment ${index + 1}`),
+        schedule_label: this.normalizePaymentTerm(invoice.payment_term) === 'Custom' ? 'Custom' : (row.schedule_label || `Payment ${index + 1}`),
         paid_amount: paidAmount,
         status: receiptIds.length && paidAmount >= scheduledAmount && scheduledAmount > 0 ? 'paid' : (this.isDateBeforeToday?.(row.due_date) ? 'overdue' : 'scheduled'),
         receipt_ids: receiptIds
       };
     });
-    const saved = await Api.saveInvoicePaymentSchedule(id, rows, { payment_term: invoice.payment_term || invoice.payment_terms, payment_terms: invoice.payment_terms || invoice.payment_term, payment_terms_custom: invoice.payment_terms_custom || '', payment_schedule_mode: 'manual' });
+    const saved = await Api.saveInvoicePaymentSchedule(id, rows, { payment_term: invoice.payment_term, payment_term_custom: invoice.payment_term_custom || '', payment_schedule_mode: 'manual' });
     const normalized = this.extractRows(saved).map(row => this.normalizeInvoiceScheduleRow(row));
     this.setInvoicePaymentScheduleRows(id, normalized);
     return normalized;
@@ -1345,10 +1339,10 @@ const Invoices = {
     normalized.status = String(normalized.status || '').trim() || 'Draft';
     normalized.currency = String(normalized.currency || '').trim() || 'USD';
     normalized.payment_term = this.normalizePaymentTerm(
-      normalized.payment_term || normalized.payment_terms || source.payment_term || source.payment_terms || source.paymentTerm || source.paymentTerms || 'Net 30'
+      normalized.payment_term || source.payment_term || source.paymentTerm || 'Net 30'
     );
-    normalized.payment_terms = normalized.payment_term;
-    normalized.payment_terms_custom = String(source.payment_terms_custom ?? source.paymentTermsCustom ?? normalized.payment_terms_custom ?? '').trim();
+    normalized.payment_term_custom = String(source.payment_term_custom ?? source.paymentTermCustom ?? source.payment_terms_custom ?? source.paymentTermsCustom ?? normalized.payment_term_custom ?? '').trim();
+    normalized.payment_terms_custom = normalized.payment_term_custom;
     normalized.payment_schedule_mode = this.normalizePaymentScheduleMode(source.payment_schedule_mode ?? source.paymentScheduleMode ?? normalized.payment_schedule_mode, normalized.payment_term);
     normalized.issue_date = this.normalizeDateInputValue(normalized.issue_date || source.issue_date || source.issueDate || source.invoice_date || source.invoiceDate);
     normalized.due_date = this.normalizeDateInputValue(normalized.due_date || source.due_date || source.dueDate);
@@ -1636,10 +1630,11 @@ const Invoices = {
     const savedScheduleRows = (Array.isArray(paymentScheduleRows) ? paymentScheduleRows : [])
       .map(row => this.normalizeInvoiceScheduleRow(row))
       .filter(row => row.scheduled_amount || row.balance_due || row.schedule_no || row.due_date);
-    const scheduleMode = this.normalizePaymentScheduleMode(invoiceData.payment_schedule_mode, invoiceData.payment_term);
+    const paymentTermForSchedule = this.normalizePaymentTerm(invoiceData.payment_term);
+    const scheduleMode = this.normalizePaymentScheduleMode(invoiceData.payment_schedule_mode, paymentTermForSchedule);
     const scheduleRows = savedScheduleRows.length
       ? savedScheduleRows
-      : (scheduleMode !== 'manual' && this.shouldCalculateInvoiceSchedule(invoiceData)
+      : (scheduleMode !== 'manual' && paymentTermForSchedule !== 'Custom' && this.shouldCalculateInvoiceSchedule(invoiceData)
         ? this.buildPreviewPaymentSchedule(invoiceData, normalizedItems, linkedAgreement)
         : []);
     const paymentScheduleHtml = scheduleRows.length
@@ -1650,18 +1645,23 @@ const Invoices = {
               <td class="cell-center">${dateValue(row.due_date)}</td>
               <td class="cell-center">${textValue(row.payment_percent ? `${row.payment_percent}%` : '—')}</td>
               <td class="cell-right">${money(row.scheduled_amount)}</td>
+              <td class="cell-right">${money(row.paid_amount)}</td>
+              <td class="cell-right">${money(row.balance_due)}</td>
               <td>${textValue(row.status)}</td>
             </tr>`)
           .join('')
-      : '<tr><td colspan="5" class="cell-center muted">No payment schedule found.</td></tr>';
+      : '<tr><td colspan="7" class="cell-center muted">No payment schedule found.</td></tr>';
 
     const isDraftInvoice = this.normalizeText(invoiceData.status) === 'draft';
     const customerName = String(invoiceData.customer_legal_name || invoiceData.customer_name || invoiceData.client_name || '').trim();
     const customerAddress = String(invoiceData.customer_address || '').trim();
     const bank = this.getInCheckBankDetails();
     const paymentReference = invoiceData.invoice_number || invoiceData.invoiceNumber || invoiceData.invoice_id || invoiceData.id || '—';
-    const paymentTermValue = this.normalizePaymentTerm(invoiceData.payment_term || this.state.selectedAgreement?.payment_term || this.state.selectedAgreement?.payment_terms);
-    const customPaymentTerms = String(invoiceData.payment_terms_custom || '').trim();
+    const paymentTermValue = this.normalizePaymentTerm(invoiceData.payment_term || this.state.selectedAgreement?.payment_term);
+    const customPaymentTerms = String(invoiceData.payment_term_custom ?? invoiceData.payment_terms_custom ?? '').trim();
+    const customPaymentTermsHtml = paymentTermValue === 'Custom' && customPaymentTerms
+      ? `<section class="document-note-box custom-payment-terms-box"><h2>Custom Payment Terms</h2><div>${textValue(customPaymentTerms)}</div></section>`
+      : '';
     const bankRows = [
       ['Bank Name', textValue(bank.bank_name)],
       ['Account Name', textValue(bank.account_name)],
@@ -1698,7 +1698,7 @@ const Invoices = {
       .invoice-document-page > :not(.draft-watermark) { position: relative; z-index: 1; }
       .draft-watermark { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 0; font-size: 92px; font-weight: 800; letter-spacing: 0.16em; color: #0f172a; opacity: 0.055; transform: rotate(-28deg); text-transform: uppercase; user-select: none; }
       .doc-header { border-bottom: 1px solid #d8e1ec; padding-bottom: 7mm; margin-bottom: 8mm; }
-      .invoice-document-header { display: grid; grid-template-columns: 44mm 1fr 68mm; align-items: center; gap: 8mm; width: 100%; max-width: 100%; margin: 0; }
+      .invoice-document-header { display: grid; grid-template-columns: 44mm minmax(0, 1fr) 62mm; align-items: center; gap: 6mm; width: 100%; max-width: 100%; margin: 0; }
       .invoice-document-logo { display: flex; align-items: center; justify-content: flex-start; height: 28mm; min-width: 0; margin: 0; padding: 0; position: static; }
       .invoice-document-logo .incheck360-doc-logo-wrap { float: none; display: flex; align-items: center; justify-content: flex-start; margin: 0; padding: 0; width: 40mm; max-width: 40mm; height: 24mm; max-height: 24mm; text-align: left; position: static; transform: none; }
       .invoice-document-logo img,
@@ -1706,26 +1706,26 @@ const Invoices = {
       .invoice-document-title-wrap { display: flex; align-items: center; justify-content: center; height: 28mm; min-width: 0; margin: 0; padding: 0; text-align: center; }
       .invoice-document-title { margin: 0; font-size: 22px; line-height: 1; font-weight: 800; text-align: center; letter-spacing: 0.01em; color: #0b214a; }
       .invoice-document-summary { display: flex; align-items: center; justify-content: flex-end; height: 28mm; min-width: 0; margin: 0; padding: 0; position: static; }
-      .invoice-document-summary .meta-box { width: 100%; }
-      .meta-box { border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; background: #fbfdff; min-width: 0; width: 100%; }
-      .meta-row { display: grid; grid-template-columns: 26mm minmax(0, 1fr); border-bottom: 1px solid #e3eaf3; }
+      .invoice-document-summary .meta-box { width: 100%; max-width: 62mm; }
+      .meta-box { border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; background: #fbfdff; min-width: 0; width: 100%; max-width: 62mm; }
+      .meta-row { display: grid; grid-template-columns: 25mm minmax(0, 1fr); border-bottom: 1px solid #e3eaf3; }
       .meta-row:last-child { border-bottom: 0; }
-      .meta-row > div { padding: 2mm 2.4mm; font-size: 11px; min-width: 0; overflow-wrap: anywhere; }
+      .meta-row > div { padding: 1.6mm 2mm; font-size: 10.5px; min-width: 0; overflow-wrap: break-word; }
       .meta-row .meta-key { background: #f5f8fc; font-weight: 700; color: #334155; border-right: 1px solid #e3eaf3; }
       .info-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 5mm; margin-top: 5mm; width: 100%; }
       .info-grid.info-grid-single { grid-template-columns: minmax(0, 1fr); }
-      .info-box { border: 1px solid #d7e1ed; min-height: 32mm; border-radius: 6px; overflow: hidden; background: #fff; min-width: 0; }
+      .info-box { border: 1px solid #d7e1ed; min-height: 28mm; border-radius: 6px; overflow: hidden; background: #fff; min-width: 0; page-break-inside: avoid; break-inside: avoid; }
       .info-head { background: #f8fbff; border-bottom: 1px solid #e3eaf3; padding: 9px 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: #1e3a5f; }
       .info-body { padding: 12px; font-size: 12.5px; line-height: 1.55; }
       .info-body strong { font-weight: 700; color: #0f172a; }
       .muted { color: #6b7280; }
-      .section { margin-top: 22px; }
+      .section { margin-top: 18px; page-break-inside: avoid; break-inside: avoid; }
       .section h2 { margin: 0; font-size: 16px; font-weight: 700; color: #0f172a; border-bottom: 1px solid #d8e1ec; padding-bottom: 7px; }
       .section .subhead { font-size: 12px; margin: 6px 0 8px; color: #4b5563; text-transform: uppercase; letter-spacing: 0.04em; }
       table { width: 100%; max-width: 100%; border-collapse: collapse; table-layout: fixed; overflow-wrap: anywhere; page-break-inside: auto; }
       thead { display: table-header-group; }
       tr { page-break-inside: avoid; page-break-after: auto; }
-      th, td { border: 1px solid #dde5ef; padding: 6px; font-size: 10.5px; vertical-align: middle; overflow-wrap: anywhere; }
+      th, td { border: 1px solid #dde5ef; padding: 5px; font-size: 10px; vertical-align: middle; overflow-wrap: anywhere; word-break: break-word; }
       th { text-align: center; background: #f5f8fc; color: #0f172a; font-weight: 700; }
       .cell-center { text-align: center; vertical-align: middle; }
       .cell-right { text-align: right; vertical-align: middle; white-space: nowrap; }
@@ -1739,7 +1739,10 @@ const Invoices = {
       .totals-row span { min-width: 0; }
       .totals-row strong { text-align: right; overflow-wrap: anywhere; }
       .totals-row.grand { font-size: 15px; font-weight: 700; background: #edf4ff; color: #0b214a; }
-      .terms { margin-top: 16px; font-size: 12.5px; line-height: 1.6; border: 1px solid #d7e1ed; border-radius: 6px; padding: 12px; background: #fbfdff; }
+      .document-note-box { width: 100%; max-width: 100%; margin-top: 12px; padding: 10px 12px; border: 1px solid #d7e1ed; border-radius: 6px; background: #fbfdff; color: #334155; page-break-inside: avoid; break-inside: avoid; }
+      .document-note-box h2 { margin: 0 0 6px; padding: 0; border: 0; font-size: 13px; line-height: 1.25; font-weight: 800; color: #0b214a; letter-spacing: 0.02em; }
+      .document-note-box div { font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
+      .terms { margin-top: 16px; font-size: 12.5px; line-height: 1.6; border: 1px solid #d7e1ed; border-radius: 6px; padding: 12px; background: #fbfdff; overflow-wrap: anywhere; }
       .terms .strong { font-weight: 700; color: #0f172a; }
       .bank { margin-top: 18px; }
       .bank h3 { margin: 0 0 8px; font-size: 15px; letter-spacing: 0.04em; }
@@ -1758,11 +1761,11 @@ const Invoices = {
         background: #f8fafc;
       }
       .footer-note { margin-top: 16px; font-size: 11px; color: #64748b; border-top: 1px solid #e3eaf3; padding-top: 10px; text-align: center; }
-      @page { size: A4; margin: 0; }
+      @page { size: A4; margin: 12mm; }
       @media print {
         body { margin: 0; padding: 0; background: #fff; overflow: visible; }
         .invoice-preview-page,
-        .invoice-document-page { width: 210mm; min-height: 297mm; margin: 0; box-shadow: none; page-break-after: always; border: 0; }
+        .invoice-document-page { width: auto; min-height: auto; margin: 0; padding: 0; box-shadow: none; page-break-after: always; border: 0; overflow: visible; }
       }
     </style>
   </head>
@@ -1779,7 +1782,6 @@ const Invoices = {
               <div class="meta-row"><div class="meta-key">Invoice Date</div><div>${dateValue(invoiceData.issue_date || invoiceData.invoice_date)}</div></div>
               <div class="meta-row"><div class="meta-key">Due Date</div><div>${dateValue(invoiceData.due_date)}</div></div>
               <div class="meta-row"><div class="meta-key">Payment Terms</div><div>${textValue(paymentTermValue)}</div></div>
-              ${paymentTermValue === 'Custom' && customPaymentTerms ? `<div class="meta-row"><div class="meta-key">Custom Payment Terms</div><div>${textValue(customPaymentTerms)}</div></div>` : ''}
             </div>
           </div>
         </section>
@@ -1794,6 +1796,8 @@ const Invoices = {
           </div>
         </div>
       </section>
+
+      ${customPaymentTermsHtml}
 
       ${pocDetailsHtml}
 
@@ -1864,11 +1868,13 @@ const Invoices = {
         <table>
           <thead>
             <tr>
-              <th style="width:12%">Payment #</th>
-              <th style="width:22%">Due Date</th>
-              <th style="width:12%">%</th>
-              <th style="width:24%">Amount</th>
-              <th>Status</th>
+              <th style="width:11%">Payment #</th>
+              <th style="width:16%">Due Date</th>
+              <th style="width:9%">%</th>
+              <th style="width:18%">Amount</th>
+              <th style="width:16%">Paid</th>
+              <th style="width:16%">Balance</th>
+              <th style="width:14%">Status</th>
             </tr>
           </thead>
           <tbody>${paymentScheduleHtml}</tbody>
@@ -2646,7 +2652,7 @@ const Invoices = {
       provider_address: '',
       support_email: '',
       payment_term: 'Net 30',
-      payment_terms_custom: '',
+      payment_term_custom: '',
       payment_schedule_mode: 'auto',
       currency: 'USD',
       status: 'Draft',
@@ -2958,7 +2964,7 @@ const Invoices = {
     this.invoiceFields.forEach(field => {
       const id = `invoiceForm${field.replace(/(^|_)([a-z])/g, (_, __, ch) => ch.toUpperCase())}`;
       if (field === 'payment_term') {
-        set(id, this.normalizePaymentTerm(invoice[field] || invoice.payment_terms || invoice.paymentTerm || invoice.paymentTerms || 'Net 30'));
+        set(id, this.normalizePaymentTerm(invoice[field] || invoice.paymentTerm || 'Net 30'));
       } else if (field === 'payment_schedule_mode') {
         set(id, this.normalizePaymentScheduleMode(invoice[field] || invoice.paymentScheduleMode, invoice.payment_term));
       } else {
@@ -2966,7 +2972,7 @@ const Invoices = {
       }
     });
     set('invoiceFormInvoiceDate', invoice.issue_date || invoice.invoice_date || '');
-    if (E.invoiceFormPaymentTermsCustom) E.invoiceFormPaymentTermsCustom.value = String(invoice.payment_terms_custom || invoice.paymentTermsCustom || '');
+    if (E.invoiceFormPaymentTermsCustom) E.invoiceFormPaymentTermsCustom.value = String(invoice.payment_term_custom ?? invoice.paymentTermCustom ?? invoice.payment_terms_custom ?? invoice.paymentTermsCustom ?? '');
     if (E.invoiceFormPaymentScheduleMode) E.invoiceFormPaymentScheduleMode.value = this.normalizePaymentScheduleMode(invoice.payment_schedule_mode || invoice.paymentScheduleMode, invoice.payment_term);
     this.lockInvoicePaymentTermField();
     this.syncPaymentTermsControls();
@@ -3046,10 +3052,9 @@ const Invoices = {
       selectedAgreement,
       { mode: isExistingInvoice ? 'existing' : 'new' }
     );
-    invoice.payment_terms_custom = get('invoiceFormPaymentTermsCustom') || String(existingInvoice.payment_terms_custom || '').trim();
+    invoice.payment_term_custom = get('invoiceFormPaymentTermsCustom') || String(existingInvoice.payment_term_custom ?? existingInvoice.payment_terms_custom ?? '').trim();
     invoice.payment_schedule_mode = this.normalizePaymentScheduleMode(get('invoiceFormPaymentScheduleMode') || existingInvoice.payment_schedule_mode, invoice.payment_term);
     if (invoice.payment_term === 'Custom') invoice.payment_schedule_mode = 'manual';
-    invoice.payment_terms = invoice.payment_term;
     const items = this.collectItems();
     invoice.old_paid_total = this.toNumberSafe(E.invoiceFormOldPaidTotal?.value);
     invoice.paid_now = this.toNumberSafe(E.invoiceFormPaidNow?.value);
@@ -3169,7 +3174,7 @@ const Invoices = {
       E.invoiceFormPaidNow?.focus();
       return false;
     }
-    if (this.normalizePaymentTerm(invoice.payment_term) === 'Custom' && !String(invoice.payment_terms_custom || '').trim()) {
+    if (this.normalizePaymentTerm(invoice.payment_term) === 'Custom' && !String(invoice.payment_term_custom ?? invoice.payment_terms_custom ?? '').trim()) {
       UI.toast('Please enter custom payment terms.');
       E.invoiceFormPaymentTermsCustom?.focus();
       return false;
@@ -4185,7 +4190,7 @@ const Invoices = {
     const status = String(E.invoiceFormStatus?.value || this.state.selectedInvoice?.status || '').trim();
     const issueDate = this.normalizeDateInputValue(E.invoiceFormInvoiceDate?.value || this.state.selectedInvoice?.issue_date || this.state.selectedInvoice?.invoice_date);
     const dueDate = this.normalizeDateInputValue(E.invoiceFormDueDate?.value || this.state.selectedInvoice?.due_date);
-    const paymentTerm = this.normalizePaymentTerm(E.invoiceFormPaymentTerm?.value || this.state.selectedInvoice?.payment_term || this.state.selectedInvoice?.payment_terms || 'Net 30');
+    const paymentTerm = this.normalizePaymentTerm(E.invoiceFormPaymentTerm?.value || this.state.selectedInvoice?.payment_term || 'Net 30');
     const paymentScheduleMode = paymentTerm === 'Custom' ? 'manual' : this.normalizePaymentScheduleMode(E.invoiceFormPaymentScheduleMode?.value || this.state.selectedInvoice?.payment_schedule_mode, paymentTerm);
     return {
       status: status || 'Draft',
@@ -4193,8 +4198,7 @@ const Invoices = {
       issue_date: issueDate || null,
       due_date: dueDate || null,
       payment_term: paymentTerm,
-      payment_terms: paymentTerm,
-      payment_terms_custom: String(E.invoiceFormPaymentTermsCustom?.value || this.state.selectedInvoice?.payment_terms_custom || '').trim() || null,
+      payment_term_custom: String(E.invoiceFormPaymentTermsCustom?.value || this.state.selectedInvoice?.payment_term_custom || this.state.selectedInvoice?.payment_terms_custom || '').trim() || null,
       payment_schedule_mode: paymentScheduleMode
     };
   },
