@@ -860,12 +860,16 @@ const RolesAdmin = {
 
   selectedCrudActions() {
     const actions = [
+      ['view', E.tabPermissionActionView],
       ['get', E.tabPermissionActionGet],
       ['list', E.tabPermissionActionList],
       ['create', E.tabPermissionActionCreate],
       ['save', E.tabPermissionActionSave],
       ['update', E.tabPermissionActionUpdate],
-      ['delete', E.tabPermissionActionDelete]
+      ['delete', E.tabPermissionActionDelete],
+      ['cancel', E.tabPermissionActionCancel],
+      ['print', E.tabPermissionActionPrint],
+      ['export', E.tabPermissionActionExport]
     ]
       .filter(([, input]) => Boolean(input?.checked))
       .map(([action]) => action);
