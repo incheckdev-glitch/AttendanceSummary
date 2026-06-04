@@ -1960,9 +1960,9 @@
     return $('communicationCentreMessages') || document.querySelector('[data-communication-messages]');
   }
 
-  function isNearBottom(container, threshold = 120) {
+  function isNearBottom(container, threshold = 80) {
     if (!container) return true;
-    return (container.scrollHeight - container.scrollTop - container.clientHeight) <= threshold;
+    return (container.scrollHeight - container.scrollTop - container.clientHeight) < threshold;
   }
 
   function preserveScrollPosition(container, renderFn) {
@@ -1980,6 +1980,45 @@
     const heightDiff = newScrollHeight - previousScrollHeight;
 
     container.scrollTop = previousScrollTop + heightDiff;
+  }
+
+  function preserveCurrentMessageScroll(renderFn) {
+    const container = getCommunicationMessagesContainer();
+    if (!container) {
+      renderFn();
+      return;
+    }
+    const previousScrollTop = container.scrollTop;
+    renderFn();
+    container.scrollTop = previousScrollTop;
+  }
+
+  function focusComposerWithoutScroll(textarea) {
+    if (!textarea) return;
+    try {
+      textarea.focus({ preventScroll: true });
+    } catch (_error) {
+      const container = getCommunicationMessagesContainer();
+      const previousScrollTop = container?.scrollTop;
+      textarea.focus();
+      if (container && typeof previousScrollTop === 'number') container.scrollTop = previousScrollTop;
+    }
+  }
+
+
+  function containMessageWheelScroll(event) {
+    const container = event.currentTarget;
+    if (!container || Math.abs(event.deltaY || 0) <= Math.abs(event.deltaX || 0)) return;
+
+    const atTop = container.scrollTop <= 0;
+    const atBottom = Math.ceil(container.scrollTop + container.clientHeight) >= container.scrollHeight;
+    const scrollingUp = event.deltaY < 0;
+    const scrollingDown = event.deltaY > 0;
+
+    if ((scrollingUp && atTop) || (scrollingDown && atBottom)) return;
+
+    event.preventDefault();
+    container.scrollTop += event.deltaY;
   }
 
   function scrollMessagesToBottom(container) {
@@ -2000,11 +2039,8 @@
     }
     requestAnimationFrame(() => {
       scrollMessagesToBottom(el);
-      setTimeout(() => {
-        scrollMessagesToBottom(el);
-      }, 80);
+      hideNewMessagesButton();
     });
-    hideNewMessagesButton();
   }
 
   function renderConversationMessages(conversationId, options = {}) {
@@ -2021,7 +2057,10 @@
 
     if (shouldAutoScroll) {
       renderDrawer({ skipAutoScroll: true, preserveDetailsPanel: options.preserveDetailsPanel === true });
-      requestAnimationFrame(() => scrollCommunicationCentreToBottom(true));
+      requestAnimationFrame(() => {
+        scrollMessagesToBottom(getCommunicationMessagesContainer());
+        hideNewMessagesButton();
+      });
     } else {
       preserveScrollPosition(container, () => {
         renderDrawer({ skipAutoScroll: true, preserveDetailsPanel: options.preserveDetailsPanel === true });
@@ -2705,8 +2744,8 @@
       if (!conversation?.id) return;
       if (replyBtnEl) {
         M.state.replyToMessage = M.state.messages.find(m => String(m.id) === String(replyBtnEl.getAttribute('data-cc-reply-message'))) || null;
-        renderReplyTargetPreview();
-        $('communicationCentreReplyInput')?.focus();
+        preserveCurrentMessageScroll(() => renderReplyTargetPreview());
+        focusComposerWithoutScroll($('communicationCentreReplyInput'));
         showFriendlySuccess('Reply target selected.');
       } else if (editBtnEl) {
         const id = editBtnEl.getAttribute('data-cc-edit-message');
@@ -2717,8 +2756,8 @@
         M.state.editingMessageOriginal = row;
         M.state.replyToMessage = null;
         input.value = normalizeText(row.message_body || row.body || '');
-        renderReplyTargetPreview();
-        input.focus();
+        preserveCurrentMessageScroll(() => renderReplyTargetPreview());
+        focusComposerWithoutScroll(input);
       } else if (deleteBtnEl) {
         const id = deleteBtnEl.getAttribute('data-cc-delete-message');
         try {
@@ -2752,6 +2791,7 @@
         if (activeId) M.userScrolledUpByConversation.set(String(activeId), !nearBottom);
         if (nearBottom) hideNewMessagesButton();
       }, { passive: true });
+      messagesEl.addEventListener('wheel', containMessageWheelScroll, { passive: false });
     }
     bindOnce($('communicationCentreNewMessagesBtn'), 'NewMessages', () => scrollCommunicationCentreToBottom(true));
     bindOnce($('communicationCentreDrawerClose'), 'DrawerClose', () => {
@@ -2770,17 +2810,27 @@
         }
         if (e.target?.id === 'communicationCentreBackToList') setMobileView('list');
         if (e.target?.id === 'communicationCentreBackToChat') setMobileView('chat');
-        if (e.target?.id === 'communicationCentreCancelReplyTarget') { M.state.replyToMessage = null; M.state.editingMessageId = null; M.state.editingMessageOriginal = null; if ($('communicationCentreReplyInput')) $('communicationCentreReplyInput').value = ''; renderReplyTargetPreview(); }
+        if (e.target?.id === 'communicationCentreCancelReplyTarget') { M.state.replyToMessage = null; M.state.editingMessageId = null; M.state.editingMessageOriginal = null; if ($('communicationCentreReplyInput')) $('communicationCentreReplyInput').value = ''; preserveCurrentMessageScroll(() => renderReplyTargetPreview()); }
       });
     }
     const replyBtn = $('communicationCentreReplyBtn');
     if (replyBtn) replyBtn.style.display = can('reply') ? '' : 'none';
     const replyError = $('communicationCentreReplyError');
     const replyInput = $('communicationCentreReplyInput');
-    replyInput?.addEventListener('keydown', (event) => {
-      if (isMobileViewport()) return;
-      if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); replyBtn?.click(); }
-    });
+    if (replyInput && replyInput.dataset.ccComposerEventsBound !== 'true') {
+      replyInput.dataset.ccComposerEventsBound = 'true';
+      replyInput.addEventListener('keydown', (event) => {
+        if (isMobileViewport()) return;
+        if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); replyBtn?.click(); }
+      });
+      replyInput.addEventListener('input', () => {
+        const container = getCommunicationMessagesContainer();
+        const previousScrollTop = container?.scrollTop;
+        requestAnimationFrame(() => {
+          if (container && typeof previousScrollTop === 'number') container.scrollTop = previousScrollTop;
+        });
+      });
+    }
     bindOnce(replyBtn, 'Reply', async () => {
       const conversation = M.state.active;
       const input = $('communicationCentreReplyInput');
