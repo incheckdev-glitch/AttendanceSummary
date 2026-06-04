@@ -11,6 +11,15 @@
     'client_id',
     'client_name',
     'company_name',
+    'company_id',
+    'agreement_id',
+    'agreement_number',
+    'invoice_id',
+    'location_id',
+    'location_name',
+    'activity_context',
+    'manual_client_name',
+    'manual_location_name',
     'time_spent_minutes',
     'type_of_support',
     'effort_requirement',
@@ -159,6 +168,19 @@
     return cleanString(value).replace(/\s+/g, ' ').trim();
   }
 
+  function isUuid(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cleanString(value));
+  }
+
+  function nullableUuid(value) {
+    const raw = cleanString(value);
+    return isUuid(raw) ? raw : null;
+  }
+
+  function normalizeActivityContext(value) {
+    return cleanString(value) === 'manual_client' ? 'manual_client' : 'agreement_client';
+  }
+
   function parseDateValue(value) {
     const raw = cleanString(value);
     if (!raw) return '';
@@ -178,6 +200,15 @@
     const activityCode = cleanString(raw.activity_code || raw.activityCode);
     const displayCode = activityCode || id;
     const timestamp = parseDateValue(raw.timestamp || raw.date || raw.created_at);
+    const activityContext = normalizeActivityContext(raw.activity_context || raw.activityContext);
+    const manualClientName = cleanString(raw.manual_client_name || raw.manualClientName);
+    const manualLocationName = cleanString(raw.manual_location_name || raw.manualLocationName || raw.location_name || raw.locationName);
+    const displayClientName = activityContext === 'manual_client'
+      ? manualClientName
+      : cleanString(raw.client_name || raw.clientName || raw.client || raw.company_name || raw.companyName);
+    const displayCompanyName = activityContext === 'manual_client'
+      ? manualClientName
+      : cleanString(raw.company_name || raw.companyName || raw.client_name || raw.client || raw.clientName);
 
     return {
       ...raw,
@@ -194,13 +225,29 @@
       csmName: cleanString(raw.csm_name || raw.csmName),
       client_id: cleanString(raw.client_id || raw.clientId),
       clientId: cleanString(raw.client_id || raw.clientId),
-      client: cleanString(raw.client || raw.client_name || raw.clientName || raw.company_name || raw.companyName),
-      client_name: cleanString(raw.client_name || raw.clientName || raw.client || raw.company_name || raw.companyName),
-      clientName: cleanString(raw.client_name || raw.clientName || raw.client || raw.company_name || raw.companyName),
-      company_name: cleanString(raw.company_name || raw.companyName || raw.client_name || raw.client || raw.clientName),
-      companyName: cleanString(raw.company_name || raw.companyName || raw.client_name || raw.client || raw.clientName),
+      client: displayClientName,
+      client_name: displayClientName,
+      clientName: displayClientName,
+      company_id: cleanString(raw.company_id || raw.companyId),
+      companyId: cleanString(raw.company_id || raw.companyId),
+      company_name: displayCompanyName,
+      companyName: displayCompanyName,
       agreement_id: cleanString(raw.agreement_id || raw.agreementId),
       agreementId: cleanString(raw.agreement_id || raw.agreementId),
+      agreement_number: cleanString(raw.agreement_number || raw.agreementNumber),
+      agreementNumber: cleanString(raw.agreement_number || raw.agreementNumber),
+      invoice_id: cleanString(raw.invoice_id || raw.invoiceId),
+      invoiceId: cleanString(raw.invoice_id || raw.invoiceId),
+      location_id: cleanString(raw.location_id || raw.locationId),
+      locationId: cleanString(raw.location_id || raw.locationId),
+      location_name: manualLocationName || cleanString(raw.location_name || raw.locationName),
+      locationName: manualLocationName || cleanString(raw.location_name || raw.locationName),
+      activity_context: activityContext,
+      activityContext,
+      manual_client_name: manualClientName,
+      manualClientName,
+      manual_location_name: manualLocationName,
+      manualLocationName,
       onboarding_id: cleanString(raw.onboarding_id || raw.onboardingId),
       onboardingId: cleanString(raw.onboarding_id || raw.onboardingId),
       time_spent_minutes: Number.parseFloat(raw.time_spent_minutes ?? raw.timeSpentMinutes ?? 0) || 0,
@@ -250,17 +297,29 @@
     const client = getClient();
     const userId = await getCurrentUserId(client);
     const identity = getCurrentUserIdentity();
-    const selectedClientName = cleanString(
-      input.client_name ?? input.clientName ?? input.company_name ?? input.companyName ?? input.client
-    );
+    const activityContext = normalizeActivityContext(input.activity_context ?? input.activityContext);
+    const manualClientName = toReadableClientName(input.manual_client_name ?? input.manualClientName);
+    const manualLocationName = toReadableClientName(input.manual_location_name ?? input.manualLocationName ?? input.location_name ?? input.locationName);
+    const selectedClientName = activityContext === 'manual_client'
+      ? manualClientName
+      : cleanString(input.client_name ?? input.clientName ?? input.company_name ?? input.companyName ?? input.client);
     const mapped = {
       csm_user_id: (input.csm_user_id ?? input.csmUserId ?? identity.csm_user_id) || undefined,
       csm_email: (input.csm_email ?? input.csmEmail ?? identity.csm_email) || undefined,
       csm_name: input.csm_name ?? input.csmName ?? identity.csm_name,
+      activity_context: activityContext,
+      manual_client_name: activityContext === 'manual_client' ? manualClientName : null,
+      manual_location_name: activityContext === 'manual_client' ? manualLocationName || null : null,
       client: selectedClientName,
-      client_id: input.client_id ?? input.clientId,
+      client_id: activityContext === 'manual_client' ? null : nullableUuid(input.client_id ?? input.clientId),
       client_name: selectedClientName,
+      company_id: activityContext === 'manual_client' ? null : nullableUuid(input.company_id ?? input.companyId),
       company_name: input.company_name ?? input.companyName ?? selectedClientName,
+      agreement_id: activityContext === 'manual_client' ? null : nullableUuid(input.agreement_id ?? input.agreementId),
+      agreement_number: activityContext === 'manual_client' ? null : (input.agreement_number ?? input.agreementNumber ?? null),
+      invoice_id: activityContext === 'manual_client' ? null : nullableUuid(input.invoice_id ?? input.invoiceId),
+      location_id: activityContext === 'manual_client' ? null : nullableUuid(input.location_id ?? input.locationId),
+      location_name: activityContext === 'manual_client' ? manualLocationName || null : (input.location_name ?? input.locationName ?? null),
       time_spent_minutes: input.time_spent_minutes ?? input.timeSpentMinutes,
       type_of_support: input.type_of_support ?? input.supportType,
       effort_requirement: input.effort_requirement ?? input.effortRequirement,
@@ -276,17 +335,29 @@
     const client = getClient();
     const userId = await getCurrentUserId(client);
     const identity = getCurrentUserIdentity();
-    const selectedClientName = cleanString(
-      input.client_name ?? input.clientName ?? input.company_name ?? input.companyName ?? input.client
-    );
+    const activityContext = normalizeActivityContext(input.activity_context ?? input.activityContext);
+    const manualClientName = toReadableClientName(input.manual_client_name ?? input.manualClientName);
+    const manualLocationName = toReadableClientName(input.manual_location_name ?? input.manualLocationName ?? input.location_name ?? input.locationName);
+    const selectedClientName = activityContext === 'manual_client'
+      ? manualClientName
+      : cleanString(input.client_name ?? input.clientName ?? input.company_name ?? input.companyName ?? input.client);
     const mapped = {
       csm_user_id: (input.csm_user_id ?? input.csmUserId ?? identity.csm_user_id) || undefined,
       csm_email: (input.csm_email ?? input.csmEmail ?? identity.csm_email) || undefined,
       csm_name: input.csm_name ?? input.csmName ?? identity.csm_name,
+      activity_context: activityContext,
+      manual_client_name: activityContext === 'manual_client' ? manualClientName : null,
+      manual_location_name: activityContext === 'manual_client' ? manualLocationName || null : null,
       client: selectedClientName || undefined,
-      client_id: input.client_id ?? input.clientId,
+      client_id: activityContext === 'manual_client' ? null : nullableUuid(input.client_id ?? input.clientId),
       client_name: selectedClientName || undefined,
+      company_id: activityContext === 'manual_client' ? null : nullableUuid(input.company_id ?? input.companyId),
       company_name: (input.company_name ?? input.companyName ?? selectedClientName) || undefined,
+      agreement_id: activityContext === 'manual_client' ? null : nullableUuid(input.agreement_id ?? input.agreementId),
+      agreement_number: activityContext === 'manual_client' ? null : (input.agreement_number ?? input.agreementNumber ?? null),
+      invoice_id: activityContext === 'manual_client' ? null : nullableUuid(input.invoice_id ?? input.invoiceId),
+      location_id: activityContext === 'manual_client' ? null : nullableUuid(input.location_id ?? input.locationId),
+      location_name: activityContext === 'manual_client' ? manualLocationName || null : (input.location_name ?? input.locationName ?? null),
       time_spent_minutes: input.time_spent_minutes ?? input.timeSpentMinutes,
       type_of_support: input.type_of_support ?? input.supportType,
       effort_requirement: input.effort_requirement ?? input.effortRequirement,
@@ -314,7 +385,7 @@
 
   async function withColumnFallback(operation, payload = {}) {
     const working = { ...payload };
-    for (let attempt = 0; attempt < 6; attempt += 1) {
+    for (let attempt = 0; attempt < 16; attempt += 1) {
       const result = await operation(working);
       const unsupportedColumn = getUnsupportedColumn(result?.error?.message || '');
       if (!unsupportedColumn || !(unsupportedColumn in working)) return result;
@@ -387,7 +458,7 @@
     const clientsModuleRows = Array.isArray(global.Clients?.state?.rows) ? global.Clients.state.rows : [];
     clientsModuleRows.forEach(row => {
       mergeClientOption(optionMap, {
-        client_id: row.client_id || row.clientId,
+        client_id: isUuid(row.client_id || row.clientId) ? (row.client_id || row.clientId) : row.id,
         client_name: row.client_name || row.clientName,
         company_name: row.company_name || row.companyName,
         agreement_id: row.source_agreement_id || row.agreement_id || row.agreementId,
@@ -401,7 +472,7 @@
         .order('client_name', { ascending: true });
       (Array.isArray(data) ? data : []).forEach(row => {
         mergeClientOption(optionMap, {
-          client_id: row.client_id || row.id,
+          client_id: isUuid(row.client_id) ? row.client_id : row.id,
           client_name: row.client_name || row.company_name,
           company_name: row.company_name || row.client_name,
           agreement_id: row.source_agreement_id,
@@ -425,11 +496,11 @@
       });
     } catch {}
     try {
-      const { data } = await client.from(TABLE).select('client,client_name,company_name,client_id').order('updated_at', { ascending: false }).limit(500);
+      const { data } = await client.from(TABLE).select('client,client_name,company_name,client_id,manual_client_name,activity_context').order('updated_at', { ascending: false }).limit(500);
       (Array.isArray(data) ? data : []).forEach(row => {
         mergeClientOption(optionMap, {
           client_id: row.client_id,
-          client_name: row.client_name || row.company_name || row.client,
+          client_name: row.activity_context === 'manual_client' ? row.manual_client_name : row.client_name || row.company_name || row.client,
           company_name: row.company_name || row.client_name || row.client,
           source: 'csm_activities'
         });

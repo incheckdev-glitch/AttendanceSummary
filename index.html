@@ -1073,6 +1073,9 @@ Sample:
                 <button id="csmAddActivityBtn" class="btn sm" type="button" aria-label="Add CSM activity">
                   <span class="icon" aria-hidden="true">➕</span> Add Activity
                 </button>
+                <button id="csmAddActivityWithoutAgreementBtn" class="btn ghost sm" type="button" aria-label="Add CSM activity without agreement">
+                  <span class="icon" aria-hidden="true">➕</span> Add Activity Without Agreement
+                </button>
                 <span id="csmRowCount" class="chip">0 rows</span>
               </div>
             </div>
@@ -1188,6 +1191,8 @@ Sample:
                       <th>Timestamp</th>
                       <th>CSM Name</th>
                       <th>Client</th>
+                      <th>Agreement</th>
+                      <th>Location</th>
                       <th>Time Spent (Minutes)</th>
                       <th>Type of Support</th>
                       <th>Effort Requirement</th>
@@ -2770,20 +2775,32 @@ Sample:
             <label class="muted" for="csmFormCsmName">CSM Name *</label>
             <input id="csmFormCsmName" class="input" type="text" required readonly />
           </div>
-          <div class="filter-row">
-            <label class="muted" for="csmFormClientSearch">Search Client</label>
-            <input id="csmFormClientSearch" class="input" type="text" placeholder="Search by client, company, ID, agreement" autocomplete="off" />
+          <div id="csmFormAgreementClientFields" class="grid cols-2" style="display:contents;">
+            <div class="filter-row">
+              <label class="muted" for="csmFormClientSearch">Search Client</label>
+              <input id="csmFormClientSearch" class="input" type="text" placeholder="Search by client, company, ID, agreement" autocomplete="off" />
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="csmFormClient">Client *</label>
+              <select id="csmFormClient" class="select" required>
+                <option value="">Select Client</option>
+              </select>
+              <div id="csmFormClientState" class="muted" style="font-size:12px;margin-top:4px;"></div>
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="csmFormCompanyName">Company Name *</label>
+              <input id="csmFormCompanyName" class="input" type="text" readonly required />
+            </div>
           </div>
-          <div class="filter-row">
-            <label class="muted" for="csmFormClient">Client *</label>
-            <select id="csmFormClient" class="select" required>
-              <option value="">Select Client</option>
-            </select>
-            <div id="csmFormClientState" class="muted" style="font-size:12px;margin-top:4px;"></div>
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="csmFormCompanyName">Company Name *</label>
-            <input id="csmFormCompanyName" class="input" type="text" readonly required />
+          <div id="csmFormManualClientFields" class="grid cols-2" style="display:none;grid-column:1 / -1;">
+            <div class="filter-row">
+              <label class="muted" for="csmFormManualClientName">Manual Client Name *</label>
+              <input id="csmFormManualClientName" class="input" type="text" placeholder="Enter client name" autocomplete="off" />
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="csmFormManualLocationName">Manual Location Name</label>
+              <input id="csmFormManualLocationName" class="input" type="text" placeholder="Optional location" autocomplete="off" />
+            </div>
           </div>
           <div class="filter-row">
             <label class="muted" for="csmFormSupportType">Type of Support *</label>
