@@ -47,6 +47,7 @@ const Clients = {
     invoices: [],
     invoiceItems: [],
     receipts: [],
+    creditNotes: [],
     receiptItems: [],
     companies: [],
     contacts: [],
@@ -716,7 +717,8 @@ const Clients = {
       grand_total: this.toNumberSafe(raw.invoice_total ?? raw.invoiceTotal ?? raw.grand_total ?? raw.grandTotal),
       currency: String(raw.currency || raw.currency_code || raw.currencyCode || '').trim() || 'USD',
       amount_paid: this.toNumberSafe(raw.received_amount ?? raw.receivedAmount ?? raw.amount_paid ?? raw.amountPaid),
-      pending_amount: this.toNumberSafe(raw.pending_amount ?? raw.pendingAmount),
+      credit_note_amount: this.toNumberSafe(raw.credit_note_amount ?? raw.creditNoteAmount),
+      pending_amount: this.toNumberSafe(raw.pending_amount ?? raw.pendingAmount ?? raw.balance_due ?? raw.balanceDue),
       updated_at: String(raw.updated_at || raw.updatedAt || '').trim(),
       issued_date: String(raw.issued_date || raw.issue_date || raw.invoice_date || '').trim(),
       due_date: String(raw.due_date || raw.dueDate || '').trim(),
@@ -724,6 +726,31 @@ const Clients = {
       notes: String(raw.notes || '').trim(),
       location_name: String(raw.location_name || raw.locationName || '').trim(),
       created_at: String(raw.created_at || raw.createdAt || '').trim()
+    };
+  },
+  normalizeCreditNote(raw = {}) {
+    return {
+      ...raw,
+      id: String(raw.id || '').trim(),
+      credit_note_id: String(raw.credit_note_id || raw.creditNoteId || '').trim(),
+      credit_note_number: String(raw.credit_note_number || raw.creditNoteNumber || raw.credit_note_id || raw.id || '').trim(),
+      invoice_id: String(raw.invoice_id || raw.invoiceId || '').trim(),
+      invoice_number: String(raw.invoice_number || raw.invoiceNumber || '').trim(),
+      agreement_id: String(raw.agreement_id || raw.agreementId || '').trim(),
+      agreement_number: String(raw.agreement_number || raw.agreementNumber || '').trim(),
+      client_id: String(raw.client_id || raw.clientId || '').trim(),
+      company_id: String(raw.company_id || raw.companyId || '').trim(),
+      client_name: String(raw.client_name || raw.clientName || raw.customer_name || '').trim(),
+      company_name: String(raw.company_name || raw.companyName || '').trim(),
+      customer_name: String(raw.customer_name || raw.customerName || raw.client_name || '').trim(),
+      customer_legal_name: String(raw.customer_legal_name || raw.customerLegalName || '').trim(),
+      credit_note_date: String(raw.credit_note_date || raw.creditNoteDate || raw.date || '').trim(),
+      description: String(raw.description || raw.notes || '').trim(),
+      credit_amount: this.toNumberSafe(raw.credit_amount ?? raw.creditAmount ?? raw.amount),
+      currency: String(raw.currency || '').trim() || 'USD',
+      status: String(raw.status || 'issued').trim(),
+      created_at: String(raw.created_at || raw.createdAt || '').trim(),
+      updated_at: String(raw.updated_at || raw.updatedAt || '').trim()
     };
   },
   normalizeReceipt(raw = {}) {
@@ -1058,6 +1085,17 @@ const Clients = {
       if (unmatched.length) console.debug('[ClientsDetail] unmatched invoices', unmatched);
     }
     return relatedInvoices;
+  },
+  listClientRelatedCreditNotes_(clientId) {
+    const client = this.state.rows.find(row => row.client_id === clientId);
+    if (!client) return [];
+    const cached = this.getCachedClientDetailRows_(clientId, 'creditNotes');
+    if (cached.length) return cached;
+    const linkedAgreements = this.listClientRelatedAgreements_(clientId);
+    const linkedInvoices = this.listClientRelatedInvoices_(clientId);
+    return (Array.isArray(this.state.creditNotes) ? this.state.creditNotes : [])
+      .filter(Boolean)
+      .filter(item => this.receiptBelongsToClient(item, client, linkedAgreements, linkedInvoices));
   },
   listClientRelatedReceipts_(clientId) {
     const client = this.state.rows.find(row => row.client_id === clientId);
@@ -1546,10 +1584,12 @@ const Clients = {
     const agreements = this.listClientRelatedAgreements_(clientId);
     const invoices = this.listClientRelatedInvoices_(clientId);
     const receipts = this.listClientRelatedReceipts_(clientId);
+    const creditNotes = this.listClientRelatedCreditNotes_(clientId);
     return this.normalizeCurrencyCode_(
       agreements.find(item => String(item.currency || '').trim())?.currency ||
         invoices.find(item => String(item.currency || '').trim())?.currency ||
         receipts.find(item => String(item.currency || '').trim())?.currency ||
+        creditNotes.find(item => String(item.currency || '').trim())?.currency ||
         'USD'
     );
   },
@@ -1581,6 +1621,7 @@ const Clients = {
     const agreements = this.listClientRelatedAgreements_(clientId);
     const invoices = this.listClientRelatedInvoices_(clientId);
     const invoiceUuidSet = new Set(invoices.map(item => String(item.id || '').trim()).filter(Boolean));
+    const creditNotes = this.listClientRelatedCreditNotes_(clientId).filter(note => String(note.status || '').trim().toLowerCase() !== 'cancelled');
     const receipts = this.listClientRelatedReceipts_(clientId).filter(receipt => {
       const invoiceUuid = String(receipt.invoice_id || '').trim();
       if (invoiceUuid && invoiceUuidSet.has(invoiceUuid)) return true;
@@ -1645,7 +1686,8 @@ const Clients = {
       ? 0
       : invoices.reduce((sum, item) => sum + this.toNumberSafe(item.amount_paid ?? item.received_amount ?? item.paid_amount), 0);
     const totalPaidAmount = totalPaidFromReceipts + fallbackInvoicePaid;
-    const totalDueAmount = Math.max(totalInvoicedValue - totalPaidAmount, 0);
+    const totalCreditedAmount = creditNotes.reduce((sum, item) => sum + this.toNumberSafe(item.credit_amount), 0);
+    const totalDueAmount = Math.max(totalInvoicedValue - totalPaidAmount - totalCreditedAmount, 0);
 
     const latestAgreementDate = this.maxDate(...agreements.map(item => item.signed_date || item.customer_sign_date || item.updated_at));
     const latestInvoiceDate = this.maxDate(...invoices.map(item => item.issued_date || item.created_at || item.updated_at));
@@ -1663,8 +1705,8 @@ const Clients = {
 
     const paymentBucket = invoices.reduce(
       (bucket, invoice) => {
-        const due = this.toNumberSafe(invoice.pending_amount);
-        const paid = this.toNumberSafe(invoice.amount_paid);
+        const due = this.toNumberSafe(invoice.pending_amount ?? invoice.balance_due);
+        const paid = this.toNumberSafe(invoice.amount_paid) + this.toNumberSafe(invoice.credit_note_amount);
         if (due <= 0 && paid > 0) bucket.paid += 1;
         else if (paid > 0 && due > 0) bucket.partial += 1;
         else bucket.unpaid += 1;
@@ -1681,9 +1723,11 @@ const Clients = {
       total_agreement_value: totalAgreementValue,
       total_invoiced_value: totalInvoicedValue,
       total_paid_amount: totalPaidAmount,
+      total_credited_amount: totalCreditedAmount,
       total_due_amount: totalDueAmount,
       total_receipts_value: receipts.length,
       total_receipts_count: receipts.length,
+      total_credit_notes_count: creditNotes.length,
       total_invoices_count: invoices.length,
       unpaid_invoices_count: paymentBucket.unpaid,
       partially_paid_invoices_count: paymentBucket.partial,
@@ -1903,12 +1947,22 @@ const Clients = {
     const documentNo = String(row.document_no || row.documentNo || row.document_number || row.receipt_number || '').toLowerCase();
     return rowType === 'receipt' || Boolean(row.receipt_id) || documentNo.includes('receipt');
   },
+  isStatementCreditNoteRow_(row = {}) {
+    const rowType = String(row.type || row.document_type || row.entry_type || '').trim().toLowerCase();
+    const documentNo = String(row.document_no || row.documentNo || row.document_number || row.credit_note_number || '').toLowerCase();
+    return rowType === 'credit note' || rowType === 'credit_note' || Boolean(row.credit_note_id) || documentNo.startsWith('cn/');
+  },
   getStatementRowStatus(row = {}) {
     const rawStatus = String(row.status || row.payment_status || row.payment_state || '').trim();
     if (this.isStatementReceiptRow_(row)) {
       const normalized = rawStatus.toLowerCase();
       if (['void', 'voided', 'cancelled', 'canceled', 'reversed'].includes(normalized)) return rawStatus;
       return 'Received';
+    }
+    if (this.isStatementCreditNoteRow_(row)) {
+      const normalized = rawStatus.toLowerCase();
+      if (['cancelled', 'canceled', 'void', 'voided'].includes(normalized)) return rawStatus;
+      return 'Credited';
     }
     return rawStatus || this.getPaymentStatus(row) || 'Not Paid';
   },
@@ -2585,6 +2639,7 @@ const Clients = {
     const clientId = String(client?.client_id || '').trim();
     const invoices = this.listClientRelatedInvoices_(clientId);
     const receipts = this.listClientRelatedReceipts_(clientId);
+    const creditNotes = this.listClientRelatedCreditNotes_(clientId).filter(item => String(item.status || '').trim().toLowerCase() !== 'cancelled');
     const invoiceRows = invoices.map(item => ({
       date: item.invoice_date || item.issued_date || item.issue_date || item.created_at || item.updated_at,
       type: 'Invoice',
@@ -2611,7 +2666,20 @@ const Clients = {
       notes: item.notes || item.payment_method || '',
       currency: String(item.currency || '').trim() || 'USD'
     }));
-    return this.computeRunningBalance([...invoiceRows, ...receiptRows]);
+    const creditNoteRows = creditNotes.map(item => ({
+      date: item.credit_note_date || item.created_at || item.updated_at,
+      type: 'Credit Note',
+      document_no: item.credit_note_number || item.credit_note_id || item.id || '—',
+      document_id: item.credit_note_id || item.id,
+      reference: item.invoice_number || item.invoice_id || item.agreement_number || '',
+      debit: 0,
+      credit: this.pickAmount_(item, ['credit_amount', 'amount']),
+      due_date: '',
+      status: this.getStatementRowStatus({ ...item, type: 'Credit Note' }),
+      notes: item.description || item.status || '',
+      currency: String(item.currency || '').trim() || 'USD'
+    }));
+    return this.computeRunningBalance([...invoiceRows, ...receiptRows, ...creditNoteRows]);
   },
 
   getAnnualSaasServiceDates_(item = {}) {
@@ -3136,6 +3204,7 @@ const Clients = {
       invoices: mapRows(dashboard.invoices, this.normalizeInvoice),
       invoiceItems: mapRows(dashboard.invoice_items || dashboard.invoiceItems, this.normalizeInvoiceItem),
       receipts: mapRows(dashboard.receipts, this.normalizeReceipt),
+      creditNotes: mapRows(dashboard.credit_notes || dashboard.creditNotes, this.normalizeCreditNote),
       receiptItems: Array.isArray(dashboard.receipt_items || dashboard.receiptItems) ? (dashboard.receipt_items || dashboard.receiptItems) : [],
       companies: Array.isArray(dashboard.companies) ? dashboard.companies : [],
       contacts: Array.isArray(dashboard.contacts) ? dashboard.contacts : []
@@ -3148,6 +3217,7 @@ const Clients = {
     this.mergeRowsIntoStateCollection_('invoices', linked.invoices);
     this.mergeRowsIntoStateCollection_('invoiceItems', linked.invoiceItems);
     this.mergeRowsIntoStateCollection_('receipts', linked.receipts);
+    this.mergeRowsIntoStateCollection_('creditNotes', linked.creditNotes);
     this.mergeRowsIntoStateCollection_('receiptItems', linked.receiptItems);
     if (linked.companies.length) {
       this.state.companies = this.mergeClientLinkedRows_(this.state.companies || [], linked.companies);
@@ -3369,7 +3439,7 @@ const Clients = {
       if (total <= 0) return;
       const dueDate = String(invoice.due_date || invoice.payment_due_date || invoice.invoice_due_date || invoice.issue_date || invoice.invoice_date || invoice.created_at || '').trim();
       if (!dueDate) return;
-      const paidTotal = this.pickAmount_(invoice, ['amount_paid', 'paid_amount', 'received_amount']);
+      const paidTotal = this.pickAmount_(invoice, ['amount_paid', 'paid_amount', 'received_amount']) + this.pickAmount_(invoice, ['credit_note_amount']);
       const config = this.getClientPaymentScheduleConfig_(invoice.payment_term || invoice.payment_terms || invoice.paymentTerm || invoice.paymentTerms);
       const count = Math.max(Number(config.count || 1), 1);
       const baseAmount = Math.floor((total / count) * 100) / 100;
@@ -3870,8 +3940,9 @@ const Clients = {
       ['Agreement Value', this.formatMoneyWithCurrency_(analytics.total_agreement_value || 0, displayCurrency)],
       ['Total Invoiced', this.formatMoneyWithCurrency_(analytics.total_invoiced_value || 0, displayCurrency)],
       ['Total Paid', this.formatMoneyWithCurrency_(analytics.total_paid_amount || 0, displayCurrency)],
+      ['Total Credited', this.formatMoneyWithCurrency_(analytics.total_credited_amount || 0, displayCurrency)],
       ['Total Due', this.formatMoneyWithCurrency_(analytics.total_due_amount || 0, displayCurrency)],
-      ['Invoices / Receipts', `${analytics.total_invoices_count || 0} / ${analytics.total_receipts_count || 0}`],
+      ['Invoices / Receipts / Credit Notes', `${analytics.total_invoices_count || 0} / ${analytics.total_receipts_count || 0} / ${analytics.total_credit_notes_count || 0}`],
       ['Next Renewal', U.fmtDisplayDate(analytics.next_renewal_date) || '—']
     ];
     if (E.clientAnalyticsCards) {
@@ -4034,7 +4105,12 @@ const Clients = {
       this.state.invoices = linkedRows.invoices;
       this.state.invoiceItems = linkedRows.invoiceItems;
       this.state.receipts = linkedRows.receipts;
+      this.state.creditNotes = linkedRows.creditNotes;
       this.state.receiptItems = linkedRows.receiptItems;
+      if (!this.state.creditNotes.length && window.Api?.getCreditNotes) {
+        const creditRes = await Api.getCreditNotes({}, { limit: 1000, forceRefresh: options.force === true, summary_only: false }).catch(() => ({ rows: [] }));
+        this.state.creditNotes = this.extractListResult(creditRes).rows.map(row => this.normalizeCreditNote(row));
+      }
       this.state.companies = linkedRows.companies;
       this.state.contacts = linkedRows.contacts;
       this.rebuildCompanyLookupMaps(this.state.companies || []);
@@ -4065,7 +4141,7 @@ const Clients = {
     console.debug('[Clients] linked data cache invalidation requested', reason);
     const clientId = this.state.selectedClientId;
     if (!clientId) return;
-    this.invalidateClientTabCache(clientId, ['overview', 'statement', 'renewals', 'scheduledPayments', 'agreements', 'invoices', 'receipts']);
+    this.invalidateClientTabCache(clientId, ['overview', 'statement', 'renewals', 'scheduledPayments', 'agreements', 'invoices', 'receipts', 'creditNotes']);
     const activeTab = this.state.activeDetailTab === 'intelligence_hub' ? 'overview' : this.state.activeDetailTab;
     const { page, pageSize } = this.getClientTabPageState(activeTab);
     this.loadClientSubTab(clientId, activeTab, { page, pageSize, force: true }).catch(error => console.warn('[Clients] active tab refresh after linked data change failed', error));

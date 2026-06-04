@@ -317,6 +317,10 @@
                     role="tab" aria-selected="false" aria-controls="receiptsView">
               <span class="icon" aria-hidden="true">🧾</span> Receipts
             </button>
+            <button id="creditNotesTab" class="view-tab" data-view="creditNotes"
+                    role="tab" aria-selected="false" aria-controls="creditNotesView">
+              <span class="icon" aria-hidden="true">↩️</span> Credit Notes
+            </button>
             <button id="lifecycleAnalyticsTab" class="view-tab" data-view="lifecycleAnalytics"
                     role="tab" aria-selected="false" aria-controls="lifecycleAnalyticsView">
               <span class="icon" aria-hidden="true">🧭</span> Lifecycle Analytics
@@ -2019,6 +2023,32 @@ Sample:
             <table id="receiptsTable">
               <thead><tr><th>Receipt #</th><th>Invoice #</th><th>Customer</th><th>Receipt Date</th><th>Currency</th><th>Received</th><th>Payment State</th><th>Status</th><th>Updated At</th><th>Actions</th></tr></thead>
               <tbody id="receiptsTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+
+      <section id="creditNotesView" class="view" role="tabpanel" aria-labelledby="creditNotesTab">
+        <div class="grid cols-4" id="creditNotesSummary" aria-live="polite"></div>
+        <div class="card" aria-label="Credit notes list">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+            <div>
+              <strong>Credit Notes</strong>
+              <div class="muted">Credit adjustments against issued invoices. Credit notes reduce invoice balance without increasing receipts.</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <input id="creditNotesSearchInput" class="input" type="search" placeholder="Credit note #, invoice #, customer..." aria-label="Search credit notes" />
+              <select id="creditNotesStatusFilter" class="select" aria-label="Filter credit note status"><option>All</option></select>
+              <button id="creditNotesRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
+              <button id="creditNotesCreateBtn" class="btn sm" type="button">New Credit Note</button>
+            </div>
+          </div>
+          <div id="creditNotesState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
+          <div class="table-wrap" role="region" aria-label="Credit notes table">
+            <table id="creditNotesTable">
+              <thead><tr><th>Credit Note #</th><th>Date</th><th>Client / Customer</th><th>Invoice #</th><th>Description</th><th>Currency</th><th>Credit Amount</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody id="creditNotesTbody"></tbody>
             </table>
           </div>
         </div>
@@ -3910,6 +3940,31 @@ Sample:
       <iframe id="receiptPreviewFrame" title="Receipt preview content" style="width:100%;min-height:70vh;border:1px solid var(--border);border-radius:10px;background:#fff;"></iframe>
     </div>
   </div>
+
+  <div id="creditNoteFormModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="creditNoteFormTitle" aria-hidden="true">
+    <div class="modal-content" style="max-width:980px;">
+      <div class="header"><h2 id="creditNoteFormTitle" style="margin:0;font-size:20px">Credit Note</h2><div class="actions"><button class="modal-close" id="creditNoteFormCloseBtn" aria-label="Close credit note form">✕</button></div></div>
+      <form id="creditNoteForm">
+        <input id="creditNoteFormId" type="hidden" />
+        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+          <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="creditNoteFormInvoiceSelect">Unsettled Invoice *</label><select id="creditNoteFormInvoiceSelect" class="select" required><option value="">Select unsettled invoice</option></select></div>
+          <div class="filter-row"><label class="muted" for="creditNoteFormDate">Credit Note Date *</label><input id="creditNoteFormDate" class="input" type="date" required /></div>
+          <div class="filter-row"><label class="muted" for="creditNoteFormAmount">Credit Amount *</label><input id="creditNoteFormAmount" class="input" type="number" min="0.01" step="0.01" required /></div>
+          <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="creditNoteFormDescription">Description *</label><textarea id="creditNoteFormDescription" class="input" rows="3" required></textarea></div>
+        </div>
+        <div class="divider" style="margin:12px 0;"></div>
+        <strong style="display:block;margin-bottom:8px;">Selected Invoice</strong>
+        <div id="creditNoteInvoiceInfo" class="grid cols-4" aria-live="polite"></div>
+        <div class="actions" style="justify-content:flex-end;gap:8px;margin-top:12px;"><button id="creditNoteFormPreviewBtn" type="button" class="btn ghost" style="display:none;">View / Print</button><button id="creditNoteFormCancelBtn" type="button" class="btn ghost">Cancel</button><button id="creditNoteFormSaveBtn" type="submit" class="btn">Save</button></div>
+      </form>
+    </div>
+  </div>
+  <div id="creditNotePreviewModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="creditNotePreviewTitle" aria-hidden="true">
+    <div class="modal-content" style="max-width:1100px;"><div class="header"><h2 id="creditNotePreviewTitle" style="margin:0;font-size:20px">Credit Note Preview</h2><div class="actions"><button class="btn ghost sm" id="creditNotePreviewExportPdfBtn" type="button">Extract PDF</button><button class="modal-close" id="creditNotePreviewCloseBtn" aria-label="Close credit note preview">✕</button></div></div>
+      <iframe id="creditNotePreviewFrame" title="Credit note preview content" style="width:100%;min-height:70vh;border:1px solid var(--border);border-radius:10px;background:#fff;"></iframe>
+    </div>
+  </div>
+
   <div id="clientStatementPreviewModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="clientStatementPreviewTitle" aria-hidden="true">
     <div class="modal-content" style="max-width:1100px;"><div class="header"><h2 id="clientStatementPreviewTitle" style="margin:0;font-size:20px">Statement of Account Preview</h2><div class="actions"><button class="btn ghost sm" id="clientStatementPreviewExportPdfBtn" type="button" data-permission-resource="clients" data-permission-action="statement_export">Extract PDF</button><button class="modal-close" id="clientStatementPreviewCloseBtn" aria-label="Close statement preview">✕</button></div></div>
       <iframe id="clientStatementPreviewFrame" title="Statement of account preview content" style="width:100%;min-height:70vh;border:1px solid var(--border);border-radius:10px;background:#fff;"></iframe>
@@ -3980,6 +4035,7 @@ Sample:
   <script src="technical-admin.js?v=20260427-allpwa1"></script>
   <script src="invoices.js?v=20260512-final-isPoc-click-fix"></script>
   <script src="receipts.js?v=20260427-allpwa1"></script>
+  <script src="credit-notes.js?v=20260604-credit-notes1"></script>
   <script src="lifecycle-analytics.js?v=20260427-allpwa1"></script>
   <script src="clients.js?v=20260427-allpwa1"></script>
   <script src="proposal-catalog.js?v=20260427-allpwa1"></script>

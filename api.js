@@ -7,6 +7,7 @@ const RESOURCE_PRIMARY_KEY = {
   clients: 'id',
   invoices: 'id',
   receipts: 'id',
+  credit_notes: 'id',
   proposals: 'id',
   agreements: 'id',
   deals: 'id',
@@ -34,6 +35,7 @@ const BACKEND_MANAGED_PWA_ACTIONS = new Set([
   'invoices:invoice_payment_state_changed',
   'receipts:receipt_created',
   'receipts:receipt_created_from_invoice',
+  'credit_notes:credit_note_created',
   'operations_onboarding:onboarding_created',
   'operations_onboarding:onboarding_status_changed',
   'operations_onboarding:operations_onboarding_created',
@@ -1463,6 +1465,36 @@ const Api = {
   },
   async deleteInvoice(invoiceId) {
     return this.requestWithSession('invoices', 'delete', { id: invoiceId, invoice_id: invoiceId });
+  },
+  async getCreditNotes(filters = {}, options = {}) {
+    const listPayload = this.buildSummaryListPayload(options);
+    const payload = { filters: { ...(filters && typeof filters === 'object' ? filters : {}), ...listPayload } };
+    const response = await this.requestCached('credit_notes', 'list', payload, { forceRefresh: options?.forceRefresh === true });
+    return this.normalizeListResponse(response);
+  },
+  async getCreditNotesByInvoice(invoiceId) {
+    const response = await this.requestWithSession('credit_notes', 'list', { filters: { invoice_id: invoiceId, limit: 200, summary_only: false } });
+    return this.normalizeListResponse(response).rows || [];
+  },
+  async createCreditNote(payload = {}) {
+    const response = await this.requestWithSession('credit_notes', 'create', { credit_note: payload });
+    const recordId = this.extractBusinessRecordId(response, payload?.credit_note_number || '');
+    await this.safeSendBusinessPwaPush({
+      resource: 'credit_notes',
+      action: 'credit_note_created',
+      recordId,
+      title: 'Credit note issued',
+      body: 'Credit note ' + (payload?.credit_note_number || recordId || '') + ' was issued.',
+      roles: ['admin', 'accounting'],
+      url: recordId ? '/#creditNotes?id=' + encodeURIComponent(recordId) : '/#creditNotes'
+    });
+    return response;
+  },
+  async cancelCreditNote(id) {
+    return this.requestWithSession('credit_notes', 'cancel', { id, credit_note_id: id });
+  },
+  async recalculateInvoiceTotals(invoiceId) {
+    return this.requestWithSession('credit_notes', 'recalculate_invoice_totals', { invoice_id: invoiceId, id: invoiceId });
   },
   async createInvoiceFromAgreement(agreementId) {
     const normalizeAgreementStatusForInvoice = value => String(value || '').trim().toLowerCase().replace(/\s+/g, '_');

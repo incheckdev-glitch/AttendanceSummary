@@ -126,6 +126,15 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     create_from_invoice: ['admin', 'dev'],
     generate_receipt_html: ['admin', 'dev', 'viewer', 'hoo']
   }),
+  credit_notes: Object.freeze({
+    list: ['admin', 'dev', 'viewer', 'hoo'],
+    get: ['admin', 'dev', 'viewer', 'hoo'],
+    create: ['admin', 'dev'],
+    update: ['admin', 'dev'],
+    delete: ['admin', 'dev'],
+    cancel: ['admin', 'dev'],
+    generate_credit_note_html: ['admin', 'dev', 'viewer', 'hoo']
+  }),
   clients: Object.freeze({
     list: ['admin', 'dev', 'viewer', 'hoo'],
     get: ['admin', 'dev', 'viewer', 'hoo'],
@@ -201,6 +210,7 @@ const Permissions = {
     technicalAdmin: [{ resource: 'technical_admin_requests', action: 'list' }],
     invoices: [{ resource: 'invoices', action: 'list' }],
     receipts: [{ resource: 'receipts', action: 'list' }],
+    creditNotes: [{ resource: 'credit_notes', action: 'list' }],
     lifecycleAnalytics: [{ resource: 'analytics', action: 'list' }],
     clients: [{ resource: 'clients', action: 'list' }],
     proposalCatalog: [{ resource: 'proposal_catalog', action: 'list' }],
@@ -228,6 +238,7 @@ const Permissions = {
     technicalAdmin: 'technical_admin_requests',
     invoices: 'invoices',
     receipts: 'receipts',
+    creditNotes: 'credit_notes',
     lifecycleAnalytics: 'analytics',
     clients: 'clients',
     proposalCatalog: 'proposal_catalog',
@@ -962,6 +973,21 @@ const Permissions = {
   canPreviewReceipt() {
     return this.canPerformAction('receipts', 'generate_receipt_html') || this.canView('receipts');
   },
+  canViewCreditNotes() {
+    return this.canView('credit_notes') || this.canView('receipts');
+  },
+  canCreateCreditNote() {
+    return this.canCreate('credit_notes') || this.canCreate('receipts');
+  },
+  canUpdateCreditNote() {
+    return this.canEdit('credit_notes') || this.canEdit('receipts');
+  },
+  canCancelCreditNote() {
+    return this.canPerformAction('credit_notes', 'cancel') || this.canUpdateCreditNote();
+  },
+  canPreviewCreditNote() {
+    return this.canPerformAction('credit_notes', 'generate_credit_note_html') || this.canViewCreditNotes();
+  },
   canCreateProposalCatalogItem() {
     return this.canCreate('proposal_catalog') || this.canPerformAction('proposal_catalog_items', 'create');
   },
@@ -1088,8 +1114,8 @@ async function handleExpiredSession(message = 'Session expired. Please log in ag
 
 
 const PermissionAudit = {
-  resources: ['tickets','events','ai_insights','companies','contacts','leads','deals','proposals','agreements','operations_onboarding','technical_admin_requests','invoices','receipts','clients','analytics','notifications','notification_settings','workflow','users','role_permissions'],
-  actions: ['list','get','create','update','delete','export','manage','approve','reject','convert_to_deal','create_from_deal','create_from_proposal','create_from_agreement','create_from_invoice','assign_csm','update_status','view_renewals','view_statement','statement_view','statement_export'],
+  resources: ['tickets','events','ai_insights','companies','contacts','leads','deals','proposals','agreements','operations_onboarding','technical_admin_requests','invoices','receipts','credit_notes','clients','analytics','notifications','notification_settings','workflow','users','role_permissions'],
+  actions: ['list','get','create','update','delete','export','manage','approve','reject','convert_to_deal','create_from_deal','create_from_proposal','create_from_agreement','create_from_invoice','cancel','generate_credit_note_html','assign_csm','update_status','view_renewals','view_statement','statement_view','statement_export'],
   inspect(resource, action) {
     const role = Permissions.normalizeRole(Session.role());
     const matchedRows = Permissions.getMatchedRows(resource, action, role, { includeDenied: true });

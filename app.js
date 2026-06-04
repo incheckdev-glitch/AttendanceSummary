@@ -2960,6 +2960,8 @@ function setActiveView(view) {
         ? E.invoicesTab
         : name === 'receipts'
         ? E.receiptsTab
+        : name === 'creditNotes' || name === 'credit_notes'
+        ? E.creditNotesTab
         : name === 'lifecycleAnalytics'
         ? E.lifecycleAnalyticsTab
         : name === 'clients'
@@ -3008,6 +3010,8 @@ function setActiveView(view) {
         ? E.invoicesView
         : name === 'receipts'
         ? E.receiptsView
+        : name === 'creditNotes' || name === 'credit_notes'
+        ? E.creditNotesView
         : name === 'lifecycleAnalytics'
         ? E.lifecycleAnalyticsView
         : name === 'clients'
@@ -3116,6 +3120,7 @@ function setActiveView(view) {
   if (view === 'technicalAdmin' && window.TechnicalAdmin?.loadAndRefresh) runViewLoader('technical admin', () => TechnicalAdmin.loadAndRefresh());
   if (view === 'invoices' && window.Invoices?.refresh) runViewLoader('invoices', () => Invoices.refresh());
   if (view === 'receipts' && window.Receipts?.refresh) runViewLoader('receipts', () => Receipts.refresh());
+  if ((view === 'creditNotes' || view === 'credit_notes') && window.CreditNotes?.refresh) runViewLoader('credit notes', () => CreditNotes.refresh());
   if (view === 'lifecycleAnalytics' && window.LifecycleAnalytics?.init) runViewLoader('lifecycle analytics', () => LifecycleAnalytics.init());
   if (view === 'clients' && window.Clients?.loadAndRefresh) runViewLoader('clients', () => Clients.loadAndRefresh());
   if (view === 'proposalCatalog' && window.ProposalCatalog?.loadAndRefresh) runViewLoader('proposal catalog', () => ProposalCatalog.loadAndRefresh());
@@ -3155,6 +3160,7 @@ function getGlobalCreateConfig(activeView) {
     agreements: { resource: 'agreements', action: 'create', label: 'Create Agreement', aria: 'Create agreement' },
     invoices: { resource: 'invoices', action: 'create', label: 'Create Invoice', aria: 'Create invoice' },
     receipts: { resource: 'receipts', action: 'create', label: 'Create Receipt', aria: 'Create receipt' },
+    creditNotes: { resource: 'credit_notes', action: 'create', label: 'New Credit Note', aria: 'Create credit note' },
     csm: { resource: 'csm_activities', action: 'create', label: 'Add Activity', aria: 'Add activity' },
     users: { resource: 'users', action: 'create', label: 'Create User', aria: 'Create user' }
   };
@@ -5333,6 +5339,7 @@ function wireCore() {
     E.technicalAdminTab,
     E.invoicesTab,
     E.receiptsTab,
+    E.creditNotesTab,
     E.lifecycleAnalyticsTab,
     E.clientsTab,
     E.proposalCatalogTab,
@@ -5455,6 +5462,8 @@ function wireCore() {
         Invoices.refresh(true);
       if (E.receiptsView?.classList.contains('active') && window.Receipts?.refresh)
         Receipts.refresh(true);
+      if (E.creditNotesView?.classList.contains('active') && window.CreditNotes?.refresh)
+        CreditNotes.refresh(true);
       if (E.clientsView?.classList.contains('active') && window.Clients?.loadAndRefresh)
         Clients.loadAndRefresh({ force: true });
       if (E.proposalCatalogView?.classList.contains('active') && window.ProposalCatalog?.loadAndRefresh)
@@ -5484,6 +5493,7 @@ function wireCore() {
       if (activeView === 'deals' && window.Deals?.openForm) return Deals.openForm();
       if (activeView === 'proposals' && window.Proposals?.openProposalForm) return Proposals.openProposalForm();
       if (activeView === 'agreements' && window.Agreements?.openAgreementForm) return window.Agreements.openAgreementForm();
+      if (activeView === 'creditNotes' && window.CreditNotes?.openCreate) return CreditNotes.openCreate();
       if (activeView === 'invoices' && window.Invoices?.openInvoice) return Invoices.openInvoice(Invoices.emptyInvoice(), [], { readOnly: false });
       if (activeView === 'csm' && window.CSMActivity?.openForm) return CSMActivity.openForm();
       if (activeView === 'calendar' && window.UI?.Modals?.openEvent) return UI.Modals.openEvent({ start: new Date(), end: new Date(Date.now()+3600000), allDay:false, env:'Prod', status:'Planned' });
