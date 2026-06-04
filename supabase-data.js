@@ -2498,6 +2498,40 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     return sanitized;
   }
 
+  async function getCreditNotesByInvoice(invoice) {
+    const client = getClient();
+    const invoiceUuid = typeof invoice === 'string'
+      ? String(invoice || '').trim()
+      : String(invoice?.id || invoice?.invoice_id || '').trim();
+    const invoiceNumber = typeof invoice === 'object'
+      ? String(invoice?.invoice_number || invoice?.invoiceNumber || '').trim()
+      : (!isUuid(String(invoice || '').trim()) ? String(invoice || '').trim() : '');
+
+    if (isUuid(invoiceUuid)) {
+      const { data, error } = await client
+        .from('credit_notes')
+        .select('*')
+        .eq('invoice_id', invoiceUuid)
+        .neq('status', 'cancelled')
+        .order('credit_note_date', { ascending: true });
+      if (error) throw error;
+      return Array.isArray(data) ? data : [];
+    }
+
+    if (invoiceNumber) {
+      const { data, error } = await client
+        .from('credit_notes')
+        .select('*')
+        .eq('invoice_number', invoiceNumber)
+        .neq('status', 'cancelled')
+        .order('credit_note_date', { ascending: true });
+      if (error) throw error;
+      return Array.isArray(data) ? data : [];
+    }
+
+    return [];
+  }
+
   async function recalculateInvoiceCreditNoteTotals(client, invoiceId) {
     const id = String(invoiceId || '').trim();
     if (!isUuid(id)) throw new Error('Valid invoice UUID is required to recalculate invoice totals.');
@@ -8906,7 +8940,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     throw new Error(`Unsupported action ${action} for resource ${resource}.`);
   }
 
-  global.SupabaseData = { dispatch, isMigratedResource: resource => MIGRATED_RESOURCES.has(String(resource || '').trim()) };
+  global.SupabaseData = { dispatch, getCreditNotesByInvoice, isMigratedResource: resource => MIGRATED_RESOURCES.has(String(resource || '').trim()) };
   global.testNonWorkflowPwaPush = async function testNonWorkflowPwaPush() {
     return createNotificationAndPush({
       title: 'Ticket PWA Test',
