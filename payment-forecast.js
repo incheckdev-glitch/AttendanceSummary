@@ -169,17 +169,23 @@ const PaymentForecast = {
     if (!el) return;
     const s = this.calcSummary(rows);
     const currency = rows.find(row => row.currency)?.currency || 'USD';
-    const card = (label, value, hint = '') => `<div class="kpi-card"><span>${U.escapeHtml(label)}</span><strong>${U.escapeHtml(value)}</strong>${hint ? `<small>${U.escapeHtml(hint)}</small>` : ''}</div>`;
-    el.innerHTML = [
+    el.classList.add('payment-forecast-summary');
+    const card = (label, value, subtitle, emphasis = '') => `
+      <article class="payment-forecast-summary-card${emphasis ? ` ${U.escapeAttr(emphasis)}` : ''}">
+        <div class="summary-label">${U.escapeHtml(label)}</div>
+        <div class="summary-value">${U.escapeHtml(value)}</div>
+        <div class="summary-subtitle">${U.escapeHtml(subtitle)}</div>
+      </article>`;
+    el.innerHTML = `<div class="payment-forecast-summary-grid">${[
       card('Scheduled Rows', U.fmtNumber(s.rows), 'All clients'),
-      card('Gross Scheduled', this.money(s.totalScheduledGross, currency), 'Before payments/credits'),
-      card('Remaining Forecast', this.money(s.totalRemaining, currency), 'Net expected'),
-      card('Overdue Amount', this.money(s.overdue, currency), 'Needs follow-up'),
-      card('Due This Week', this.money(s.dueThisWeek, currency)),
-      card('Due This Month', this.money(s.dueThisMonth, currency)),
-      card('Next 30 Days', this.money(s.next30, currency)),
-      card('Next 90 Days', this.money(s.next90, currency))
-    ].join('');
+      card('Gross Scheduled', this.money(s.totalScheduledGross, currency), 'Before payments/credits', 'is-highlighted'),
+      card('Remaining Forecast', this.money(s.totalRemaining, currency), 'Net expected', 'is-highlighted'),
+      card('Overdue Amount', this.money(s.overdue, currency), 'Needs follow-up', 'is-overdue'),
+      card('Due This Week', this.money(s.dueThisWeek, currency), 'Next 7 days'),
+      card('Due This Month', this.money(s.dueThisMonth, currency), 'Current month'),
+      card('Next 30 Days', this.money(s.next30, currency), 'Upcoming receivables'),
+      card('Next 90 Days', this.money(s.next90, currency), 'Longer horizon')
+    ].join('')}</div>`;
   },
   renderAnalytics(rows) {
     const el = E.paymentForecastAnalytics || document.getElementById('paymentForecastAnalytics');
