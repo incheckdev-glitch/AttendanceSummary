@@ -6912,7 +6912,11 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       const userId = await getCurrentUserId(client);
       const { data, error } = await updateSelectSingleWithSchemaRetry(client, 'credit_notes', { status: 'cancelled', cancelled_at: new Date().toISOString(), cancelled_by: userId || null, updated_by: userId || null, updated_at: new Date().toISOString() }, 'id', id, 'Unable to cancel credit note');
       if (error) throw friendlyError('Unable to cancel credit note', error);
-      if (isUuid(String(existing.invoice_id || '').trim())) await recalculateInvoiceCreditNoteTotals(client, existing.invoice_id);
+      if (isUuid(String(existing.invoice_id || '').trim())) {
+        await recalculateInvoiceCreditNoteTotals(client, existing.invoice_id).catch(error => {
+          console.warn('[credit_notes:cancel] invoice balance recalculation failed after cancel', error);
+        });
+      }
       return { handled: true, data: normalizeRow('credit_notes', data) };
     }
 
@@ -8138,7 +8142,14 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       }
       if (resource === 'credit_notes') {
         const invoiceUuid = String(created.invoice_id || '').trim();
-        if (isUuid(invoiceUuid)) await recalculateInvoiceCreditNoteTotals(client, invoiceUuid);
+        if (isUuid(invoiceUuid)) {
+          await recalculateInvoiceCreditNoteTotals(client, invoiceUuid).catch(error => {
+            // Do not fail the saved credit note if an older issued-invoice lock trigger still blocks
+            // financial adjustment fields. The CREDIT_NOTES_FINAL_SETUP.sql migration updates that
+            // trigger and the credit-note database trigger will keep balances synced afterwards.
+            console.warn('[credit_notes:create] invoice balance recalculation failed after create', error);
+          });
+        }
         await createNotificationAndPush({
           title: 'Credit note issued',
           message: `${String(created.credit_note_number || created.credit_note_id || created.id || '').trim() || 'Credit note'} was issued.`,

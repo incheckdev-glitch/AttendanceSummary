@@ -1897,8 +1897,32 @@ const Api = {
 
     const receiptRows = this.sortClientRowsForTable_('receipts', this.mergeUniqueClientRows_(directReceipts.rows || [], invoiceLinkedReceipts, agreementLinkedReceipts));
 
+    const directCreditNotes = await this.fetchPaged('credit_notes', source, { page: 1, pageSize: 500 }, query => query.order('credit_note_date', { ascending: false, nullsFirst: false })).catch(error => {
+      console.info('[Client Overview] direct credit notes unavailable', error?.message || error);
+      return { rows: [] };
+    });
+
+    const invoiceLinkedCreditNotes = await this.fetchLinkedRowsByColumns_('credit_notes', {
+      invoice_id: this.extractUuidKeys_(invoiceRows, ['id', 'invoice_uuid', 'invoice_id']),
+      invoice_number: this.extractTextKeys_(invoiceRows, ['invoice_number', 'invoice_id', 'invoice_no'])
+    }, query => query.order('credit_note_date', { ascending: false, nullsFirst: false })).catch(error => {
+      console.info('[Client Overview] invoice-linked credit notes unavailable', error?.message || error);
+      return [];
+    });
+
+    const agreementLinkedCreditNotes = await this.fetchLinkedRowsByColumns_('credit_notes', {
+      agreement_id: this.extractUuidKeys_(agreementRows, ['id', 'agreement_uuid', 'agreement_id']),
+      agreement_number: this.extractTextKeys_(agreementRows, ['agreement_number', 'agreement_id', 'agreement_no'])
+    }, query => query.order('credit_note_date', { ascending: false, nullsFirst: false })).catch(error => {
+      console.info('[Client Overview] agreement-linked credit notes unavailable', error?.message || error);
+      return [];
+    });
+
+    const creditNoteRows = this.sortClientRowsForTable_('credit_notes', this.mergeUniqueClientRows_(directCreditNotes.rows || [], invoiceLinkedCreditNotes, agreementLinkedCreditNotes));
+
     const invoices = { ...directInvoices, rows: invoiceRows, total: invoiceRows.length, totalPages: Math.max(Math.ceil(invoiceRows.length / Math.max(Number(directInvoices.pageSize || 250), 1)), 1) };
     const receipts = { ...directReceipts, rows: receiptRows, total: receiptRows.length, totalPages: Math.max(Math.ceil(receiptRows.length / Math.max(Number(directReceipts.pageSize || 250), 1)), 1) };
+    const creditNotes = { ...directCreditNotes, rows: creditNoteRows, total: creditNoteRows.length, totalPages: Math.max(Math.ceil(creditNoteRows.length / Math.max(Number(directCreditNotes.pageSize || 250), 1)), 1) };
 
     const agreementItems = await this.fetchLinkedRowsByColumns_('agreement_items', {
       agreement_id: this.extractUuidKeys_(agreementRows, ['id', 'agreement_uuid', 'agreement_id']),
@@ -1925,6 +1949,8 @@ const Api = {
       agreements,
       invoices,
       receipts,
+      creditNotes,
+      credit_notes: creditNotes,
       agreementItems: { rows: agreementItems, total: agreementItems.length, page: 1, pageSize: agreementItems.length || 25, totalPages: 1 },
       invoiceItems: { rows: invoiceItems, total: invoiceItems.length, page: 1, pageSize: invoiceItems.length || 25, totalPages: 1 },
       receiptItems: { rows: receiptItems, total: receiptItems.length, page: 1, pageSize: receiptItems.length || 25, totalPages: 1 }
@@ -1955,15 +1981,17 @@ const Api = {
     const overview = await this.getClientOverview(clientOrId);
     const invoices = overview.invoices || { rows: [] };
     const receipts = overview.receipts || { rows: [] };
+    const creditNotes = overview.creditNotes || overview.credit_notes || { rows: [] };
     const rows = [
       ...(invoices.rows || []).map(inv => ({ ...inv, type: 'Invoice', date: inv.invoice_date || inv.issue_date || inv.created_at, document_no: inv.invoice_number || inv.invoice_id || inv.id, debit: inv.grand_total || inv.invoice_total || inv.total_amount || 0, credit: 0, due_date: inv.due_date, status: inv.status || inv.payment_state })),
-      ...(receipts.rows || []).map(rec => ({ ...rec, type: 'Receipt', date: rec.receipt_date || rec.payment_date || rec.created_at, document_no: rec.receipt_number || rec.receipt_id || rec.id, debit: 0, credit: rec.received_amount || rec.amount_received || rec.amount_paid || rec.paid_amount || rec.amount || 0, due_date: '', status: rec.status || rec.payment_state }))
+      ...(receipts.rows || []).map(rec => ({ ...rec, type: 'Receipt', date: rec.receipt_date || rec.payment_date || rec.created_at, document_no: rec.receipt_number || rec.receipt_id || rec.id, debit: 0, credit: rec.received_amount || rec.amount_received || rec.amount_paid || rec.paid_amount || rec.amount || 0, due_date: '', status: rec.status || rec.payment_state })),
+      ...(creditNotes.rows || []).filter(note => !['cancelled','canceled','void','voided','deleted','rejected'].includes(String(note.status || '').trim().toLowerCase())).map(note => ({ ...note, type: 'Credit Note', date: note.credit_note_date || note.created_at, document_no: note.credit_note_number || note.credit_note_id || note.id, debit: 0, credit: note.credit_amount || note.amount || 0, due_date: '', status: note.status || 'issued', reference: note.invoice_number || note.invoice_id || '' }))
     ].sort((a, b) => new Date(a.date || 0).getTime() - new Date(b.date || 0).getTime());
     let running = 0;
     rows.forEach(row => { running += Number(row.debit || 0) - Number(row.credit || 0); row.running_balance = running; });
     const total = rows.length;
     const { page, pageSize, from, to } = this.normalizePagedOptions(options);
-    return { ...overview, rows: rows.slice(from, to + 1), statementRows: rows, invoices, receipts, total, page, pageSize, totalPages: Math.max(Math.ceil(total / pageSize), 1) };
+    return { ...overview, rows: rows.slice(from, to + 1), statementRows: rows, invoices, receipts, creditNotes, credit_notes: creditNotes, total, page, pageSize, totalPages: Math.max(Math.ceil(total / pageSize), 1) };
   },
   async getClientOnboarding(clientOrId = {}, options = {}) {
     return this.fetchPaged('onboarding_requests', clientOrId, options, query => query.order('created_at', { ascending: false, nullsFirst: false }));
