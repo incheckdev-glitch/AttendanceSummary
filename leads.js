@@ -2075,48 +2075,108 @@ const Leads = {
       }
     });
   },
+  getFirstArrayValue(value) {
+    if (Array.isArray(value)) return String(value[0] || '').trim();
+    const text = String(value || '').trim();
+    if (!text) return '';
+    if (text.startsWith('{') && text.endsWith('}')) return text.slice(1, -1).split(',').map(v => v.replace(/^"|"$/g, '').trim()).filter(Boolean)[0] || '';
+    if (text.startsWith('[') && text.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed)) return String(parsed[0] || '').trim();
+      } catch {}
+    }
+    return text.split(',').map(v => v.trim()).filter(Boolean)[0] || text;
+  },
+  async resolveCompanyForLeadPrefill(companySeed = {}, contactSeed = {}, fullContact = null) {
+    const normalizedCompanySeed = companySeed && Object.keys(companySeed || {}).length ? this.normalizeCompany(companySeed) : null;
+    if (normalizedCompanySeed && this.getRecordUuid(normalizedCompanySeed, 'company')) return normalizedCompanySeed;
+
+    const contact = fullContact ? this.normalizeContact(fullContact) : this.normalizeContact(contactSeed || {});
+    const candidates = [];
+    const push = value => {
+      const text = String(value || '').trim();
+      if (text && !candidates.some(item => this.sameIdentifier(item, text))) candidates.push(text);
+    };
+
+    push(companySeed?.id);
+    push(companySeed?.company_uuid || companySeed?.companyUuid);
+    push(companySeed?.company_id || companySeed?.companyId);
+    push(this.getFirstArrayValue(companySeed?.company_ids || companySeed?.companyIds));
+
+    push(contact.company_uuid || contact.companyUuid);
+    push(contact.company_id || contact.companyId);
+    push(this.getFirstArrayValue(contact.company_ids || contact.companyIds));
+
+    for (const candidate of candidates) {
+      const resolved = await this.getFullCompanyRecord(candidate);
+      if (resolved && this.getRecordUuid(resolved, 'company')) return resolved;
+    }
+
+    const names = [];
+    const pushName = value => {
+      const text = String(value || '').trim();
+      if (text && !names.some(item => this.sameIdentifier(item, text))) names.push(text);
+    };
+    pushName(companySeed?.legal_name || companySeed?.legalName);
+    pushName(companySeed?.company_name || companySeed?.companyName || companySeed?.name);
+    pushName(contact.company_name || contact.companyName);
+    pushName(this.getFirstArrayValue(contact.company_names || contact.companyNames));
+
+    for (const name of names) {
+      const resolved = this.resolveUniqueCompanyByName(name);
+      if (resolved && this.getRecordUuid(resolved, 'company')) return resolved;
+    }
+
+    return null;
+  },
   async openLeadCreateFormWithPrefill(prefill = {}) {
     await this.openForm(null);
 
-    const companySeed = prefill.company || prefill;
+    const explicitCompanySeed = prefill.company || null;
     const contactSeed = prefill.contact || prefill;
 
-    let company = null;
     let contact = null;
+    const contactId = this.getRecordUuid(contactSeed, 'contact') || this.cleanUuidOrUndefined(contactSeed?.id || contactSeed?.contact_uuid || contactSeed?.contactUuid) || '';
+    if (contactId) contact = await this.getFullContactRecord(contactId);
+    if (!contact && prefill.contact) contact = this.normalizeContact(prefill.contact);
 
-    const companyId = this.getRecordUuid(companySeed, 'company') || this.cleanUuidOrUndefined(contactSeed.company_id || contactSeed.companyId || contactSeed.company_uuid || contactSeed.companyUuid) || '';
-
-    const contactId = this.getRecordUuid(contactSeed, 'contact') || '';
-
-    if (companyId) {
-      company = await this.getFullCompanyRecord(companyId);
-    }
-
-    if (!company && prefill.company) {
-      company = this.normalizeCompany(prefill.company);
-    }
+    let company = await this.resolveCompanyForLeadPrefill(explicitCompanySeed || {}, contactSeed || {}, contact);
 
     if (company) {
       this.hydrateLeadFromCompany(company);
-    }
-
-    await this.loadLeadPickerOptions(this.getRecordUuid(company || {}, 'company') || companyId || '');
-
-    if (contactId) {
-      contact = await this.getFullContactRecord(contactId);
-    }
-
-    if (!contact && prefill.contact) {
-      contact = this.normalizeContact(prefill.contact);
+      await this.loadLeadPickerOptions(this.getRecordUuid(company, 'company'));
+    } else {
+      await this.loadLeadPickerOptions('');
+      this.hydrateLeadFromCompany({});
     }
 
     if (contact) {
-      this.hydrateLeadFromContact(contact);
-
-      if (!company && this.cleanUuidOrUndefined(contact.company_id || contact.company_uuid)) {
-        const linkedCompany = await this.getFullCompanyRecord(this.cleanUuidOrUndefined(contact.company_id || contact.company_uuid));
-        if (linkedCompany) this.hydrateLeadFromCompany(linkedCompany);
+      // If the contact gave us a company but the first resolution failed, try once more after the full contact is loaded.
+      if (!company) {
+        company = await this.resolveCompanyForLeadPrefill({}, contact, contact);
+        if (company) {
+          this.hydrateLeadFromCompany(company);
+          await this.loadLeadPickerOptions(this.getRecordUuid(company, 'company'));
+        }
       }
+
+      const contactUuid = this.getRecordUuid(contact, 'contact');
+      const pickerHasContact = (this.state.contactPickerRows || []).some(row => this.sameIdentifier(this.getRecordUuid(row, 'contact'), contactUuid));
+      if (contactUuid && !pickerHasContact && (!this.state.selectedCompany || this.contactBelongsToCompany(contact, this.state.selectedCompany))) {
+        this.state.contactPickerRows = [this.normalizeContact(contact), ...(this.state.contactPickerRows || [])]
+          .filter((row, index, arr) => arr.findIndex(item => this.sameIdentifier(this.getRecordUuid(item, 'contact'), this.getRecordUuid(row, 'contact'))) === index);
+        this.renderLeadContactOptions(this.state.contactPickerRows);
+      }
+
+      if (!this.state.selectedCompany || this.contactBelongsToCompany(contact, this.state.selectedCompany)) {
+        this.hydrateLeadFromContact(contact);
+      } else {
+        this.hydrateLeadFromContact({});
+        UI?.toast?.('The selected contact is not linked to the resolved company. Please select the company/contact manually.', 'warning');
+      }
+    } else {
+      this.hydrateLeadFromContact({});
     }
 
     this.lockCompanyContactDisplayFields();
