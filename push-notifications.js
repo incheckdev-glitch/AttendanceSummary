@@ -449,9 +449,7 @@
     formatDateTime(value = '') {
       const text = String(value || '').trim();
       if (!text) return '—';
-      const dt = new Date(text);
-      if (Number.isNaN(dt.getTime())) return text;
-      return dt.toLocaleString();
+      return global.U?.formatAppDateTime ? global.U.formatAppDateTime(text, { fallback: text }) : text;
     },
 
     async getPushDbStatusByEndpoint(endpoint = '') {

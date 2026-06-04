@@ -42,9 +42,24 @@
   }
 
   function dateToLocalStorageValue(date) {
+    if (global.U?.datetimeLocalToUtcIso) return global.U.datetimeLocalToUtcIso(date) || '';
     const d = date instanceof Date ? date : new Date(date);
     if (Number.isNaN(d.getTime())) return '';
-    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:00`;
+    return d.toISOString();
+  }
+
+  function hasExplicitTimeZone(value) {
+    return /(?:Z|[+-]\d{2}:?\d{2})$/i.test(String(value || '').trim());
+  }
+
+  function datetimeLocalToUtcIso(value) {
+    if (global.U?.datetimeLocalToUtcIso) return global.U.datetimeLocalToUtcIso(value) || '';
+    if (!value) return '';
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? '' : value.toISOString();
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString();
   }
 
   function parseDisplayDateTimeToLocalStorage(value) {
@@ -64,14 +79,14 @@
     const suffix = String(ampm || '').toUpperCase();
     if (suffix === 'PM' && hour < 12) hour += 12;
     if (suffix === 'AM' && hour === 12) hour = 0;
-    return `${yyyy}-${month}-${pad2(dd)}T${pad2(hour)}:${mm}:00`;
+    return datetimeLocalToUtcIso(`${yyyy}-${month}-${pad2(dd)}T${pad2(hour)}:${mm}`);
   }
 
   function parseDateValue(value, allDay = false) {
     if (value === undefined || value === null) return '';
     if (value instanceof Date) {
-      const local = dateToLocalStorageValue(value);
-      return allDay ? local.slice(0, 10) : local;
+      const utcIso = dateToLocalStorageValue(value);
+      return allDay ? (global.U?.storageValueToLocalDateInput?.(utcIso) || utcIso.slice(0, 10)) : utcIso;
     }
     const raw = String(value).trim();
     if (!raw) return '';
@@ -79,8 +94,11 @@
       const dateOnly = raw.match(/^(\d{4}-\d{2}-\d{2})/);
       if (dateOnly) return dateOnly[1];
     }
-    const localDateTime = raw.match(/^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2})(?::(\d{2}))?/);
-    if (localDateTime) return `${localDateTime[1]}T${localDateTime[2]}:${localDateTime[3] || '00'}`;
+    const localDateTime = raw.match(/^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2})(?::(\d{2})(?:\.\d{1,6})?)?/);
+    if (localDateTime) {
+      if (hasExplicitTimeZone(raw)) return datetimeLocalToUtcIso(raw);
+      return datetimeLocalToUtcIso(`${localDateTime[1]}T${localDateTime[2]}:${localDateTime[3] || '00'}`);
+    }
     return parseDisplayDateTimeToLocalStorage(raw) || raw;
   }
 
@@ -202,7 +220,18 @@
 
   function eventPwaBody(event = {}, fallbackRecordId = '', suffix = 'was updated') {
     const label = String(event?.title || eventPwaRecordId(event, fallbackRecordId) || 'Event').trim();
-    return `Event ${label} ${suffix}.`;
+    const status = String(event?.status || '').trim();
+    const start = event?.start || event?.start_at || '';
+    const formattedStart = start && global.U?.formatAppDateTime ? global.U.formatAppDateTime(start) : '';
+    const verb = String(suffix || 'was updated').replace(/^was\s+/i, '').replace(/\.$/, '');
+    const lead = verb === 'created'
+      ? `New event has been created: ${label}`
+      : `Event ${label} was ${verb}.`;
+    return [
+      lead,
+      status ? `Status: ${status}` : '',
+      formattedStart ? `Date/Time: ${formattedStart}` : ''
+    ].filter(Boolean).join('\n');
   }
 
   async function safeSendEventPwaPush(args = {}) {

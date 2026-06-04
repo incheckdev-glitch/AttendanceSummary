@@ -2653,13 +2653,19 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
 
   function parseEventDateValue(value, allDay = false) {
     if (value === undefined || value === null) return undefined;
+    const toUtcIso = input => {
+      if (window.U?.datetimeLocalToUtcIso) return window.U.datetimeLocalToUtcIso(input) || '';
+      const date = input instanceof Date ? input : new Date(input);
+      return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+    };
     if (value instanceof Date) {
-      const yyyy = String(value.getFullYear());
-      const mm = String(value.getMonth() + 1).padStart(2, '0');
-      const dd = String(value.getDate()).padStart(2, '0');
-      const hh = String(value.getHours()).padStart(2, '0');
-      const min = String(value.getMinutes()).padStart(2, '0');
-      return allDay ? `${yyyy}-${mm}-${dd}` : `${yyyy}-${mm}-${dd}T${hh}:${min}:00`;
+      if (allDay) {
+        const yyyy = String(value.getFullYear());
+        const mm = String(value.getMonth() + 1).padStart(2, '0');
+        const dd = String(value.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+      }
+      return toUtcIso(value);
     }
     const raw = String(value).trim();
     if (!raw) return '';
@@ -2667,8 +2673,8 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       const dateOnly = raw.match(/^(\d{4}-\d{2}-\d{2})/);
       if (dateOnly) return dateOnly[1];
     }
-    const localDateTime = raw.match(/^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2})(?::(\d{2}))?/);
-    if (localDateTime) return `${localDateTime[1]}T${localDateTime[2]}:${localDateTime[3] || '00'}`;
+    const localDateTime = raw.match(/^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2})(?::(\d{2})(?:\.\d{1,6})?)?/);
+    if (localDateTime) return toUtcIso(raw);
     const displayDateTime = raw.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
     if (displayDateTime) {
       const [, day, mon, yyyy, hourText, minuteText, suffixText] = displayDateTime;
@@ -2682,7 +2688,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         const suffix = String(suffixText || '').toUpperCase();
         if (suffix === 'PM' && hour < 12) hour += 12;
         if (suffix === 'AM' && hour === 12) hour = 0;
-        return `${yyyy}-${month}-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${minuteText}:00`;
+        return toUtcIso(`${yyyy}-${month}-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${minuteText}`);
       }
     }
     return raw;
