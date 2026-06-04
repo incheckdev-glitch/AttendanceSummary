@@ -80,41 +80,97 @@ const INCHECK360_DOCUMENT_LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAA
 const U = {
   _didLogDateTimeFormatDebug: false,
   BUSINESS_TIMEZONE: 'Asia/Beirut',
+  APP_DATE_TIME_LOCALE: 'en-GB',
   pad2: value => String(value).padStart(2, '0'),
-  toLocalDateTimeInputValue: value => {
-    if (!value) return '';
-    const date = value instanceof Date ? value : new Date(value);
-    if (Number.isNaN(date.getTime())) return '';
-    return `${date.getFullYear()}-${U.pad2(date.getMonth() + 1)}-${U.pad2(date.getDate())}T${U.pad2(date.getHours())}:${U.pad2(date.getMinutes())}`;
+  getUserTimeZone: () => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    } catch {
+      return 'UTC';
+    }
   },
-  localDateTimeToStorageValue: value => {
+  hasExplicitTimeZone: value => /(?:Z|[+-]\d{2}:?\d{2})$/i.test(String(value || '').trim()),
+  parseAppDateTime: value => {
     if (!value) return null;
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+    const raw = String(value).trim();
+    if (!raw) return null;
+    const dateOnly = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (dateOnly) {
+      const [, yyyy, mm, dd] = dateOnly;
+      const date = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+    const localDateTime = raw.match(/^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2})(?::(\d{2})(?:\.\d{1,6})?)?$/);
+    if (localDateTime) {
+      const date = new Date(`${localDateTime[1]}T${localDateTime[2]}:${localDateTime[3] || '00'}`);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+    const date = new Date(raw);
+    return Number.isNaN(date.getTime()) ? null : date;
+  },
+  formatDateParts: (value, options = {}) => {
+    const date = U.parseAppDateTime(value);
+    if (!date) return null;
+    const formatter = new Intl.DateTimeFormat(U.APP_DATE_TIME_LOCALE, {
+      timeZone: options.timeZone || U.getUserTimeZone(),
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: options.dateOnly ? undefined : '2-digit',
+      minute: options.dateOnly ? undefined : '2-digit',
+      hourCycle: 'h23'
+    });
+    const parts = Object.fromEntries(formatter.formatToParts(date).map(part => [part.type, part.value]));
+    return parts;
+  },
+  formatAppDateTime: (value, options = {}) => {
+    if (!value) return options.fallback || '—';
+    const parts = U.formatDateParts(value, options);
+    if (!parts) return options.fallback || String(value);
+    return `${parts.day}/${parts.month}/${parts.year} ${parts.hour}:${parts.minute}`;
+  },
+  formatAppDate: (value, options = {}) => {
+    if (!value) return options.fallback || '—';
+    const parts = U.formatDateParts(value, { ...options, dateOnly: true });
+    if (!parts) return options.fallback || String(value);
+    return `${parts.day}/${parts.month}/${parts.year}`;
+  },
+  formatAppTime: (value, options = {}) => {
+    if (!value) return options.fallback || '—';
+    const parts = U.formatDateParts(value, options);
+    if (!parts) return options.fallback || String(value);
+    return `${parts.hour}:${parts.minute}`;
+  },
+  datetimeLocalToUtcIso: value => {
+    if (!value) return null;
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
     const clean = String(value).trim();
     if (!clean) return null;
-    const localDateTimeMatch = clean.match(/^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2})(?::(\d{2}))?/);
-    if (localDateTimeMatch) {
-      return `${localDateTimeMatch[1]}T${localDateTimeMatch[2]}:${localDateTimeMatch[3] || '00'}`;
+    const localDateTimeMatch = clean.match(/^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2})(?::(\d{2})(?:\.\d{1,6})?)?/);
+    if (localDateTimeMatch && !U.hasExplicitTimeZone(clean)) {
+      const localDate = new Date(`${localDateTimeMatch[1]}T${localDateTimeMatch[2]}:${localDateTimeMatch[3] || '00'}`);
+      return Number.isNaN(localDate.getTime()) ? null : localDate.toISOString();
     }
-    return clean;
+    const parsed = U.parseAppDateTime(clean);
+    return parsed ? parsed.toISOString() : null;
   },
-  storageValueToLocalDateTimeInput: value => {
-    if (!value) return '';
-    const raw = String(value).trim();
-    if (!raw) return '';
-    const match = raw.match(/^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2})/);
-    if (match) return `${match[1]}T${match[2]}`;
-    const date = new Date(raw);
-    if (Number.isNaN(date.getTime())) return '';
-    return U.toLocalDateTimeInputValue(date);
+  utcIsoToDatetimeLocal: value => {
+    const date = U.parseAppDateTime(value);
+    if (!date) return '';
+    return `${date.getFullYear()}-${U.pad2(date.getMonth() + 1)}-${U.pad2(date.getDate())}T${U.pad2(date.getHours())}:${U.pad2(date.getMinutes())}`;
   },
+  toLocalDateTimeInputValue: value => U.utcIsoToDatetimeLocal(value),
+  localDateTimeToStorageValue: value => U.datetimeLocalToUtcIso(value),
+  storageValueToLocalDateTimeInput: value => U.utcIsoToDatetimeLocal(value),
   storageValueToLocalDateInput: value => {
     if (!value) return '';
     const raw = String(value).trim();
     if (!raw) return '';
-    const match = raw.match(/^(\d{4}-\d{2}-\d{2})/);
-    if (match) return match[1];
-    const date = new Date(raw);
-    if (Number.isNaN(date.getTime())) return '';
+    const dateOnly = raw.match(/^(\d{4}-\d{2}-\d{2})$/);
+    if (dateOnly) return dateOnly[1];
+    const date = U.parseAppDateTime(raw);
+    if (!date) return '';
     return `${date.getFullYear()}-${U.pad2(date.getMonth() + 1)}-${U.pad2(date.getDate())}`;
   },
   parseDisplayDateTimeToLocalStorage: value => {
@@ -122,7 +178,7 @@ const U = {
     const raw = String(value).trim();
     if (!raw) return null;
     if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw)) {
-      return U.localDateTimeToStorageValue(raw.slice(0, 16));
+      return U.datetimeLocalToUtcIso(raw);
     }
     const match = raw.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
     if (!match) return null;
@@ -138,30 +194,12 @@ const U = {
     const suffix = String(ampm || '').toUpperCase();
     if (suffix === 'PM' && hour < 12) hour += 12;
     if (suffix === 'AM' && hour === 12) hour = 0;
-    return `${yyyy}-${month}-${U.pad2(dd)}T${U.pad2(hour)}:${mm}:00`;
+    return U.datetimeLocalToUtcIso(`${yyyy}-${month}-${U.pad2(dd)}T${U.pad2(hour)}:${mm}`);
   },
   q: (s, r = document) => r.querySelector(s),
   qAll: (s, r = document) => Array.from(r.querySelectorAll(s)),
   now: () => Date.now(),
-  formatDateTimeMMDDYYYYHHMM: value => {
-    if (!value) return '—';
-    const raw = String(value).trim();
-    const localMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})/);
-    const formattedFromLocal = localMatch
-      ? `${localMatch[2]}/${localMatch[3]}/${localMatch[1]} ${localMatch[4]}:${localMatch[5]}`
-      : '';
-    const date = value instanceof Date ? value : new Date(value);
-    if (!formattedFromLocal && Number.isNaN(date.getTime())) return String(value);
-    const formatted = formattedFromLocal || `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}/${String(date.getFullYear())} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-    if (!U._didLogDateTimeFormatDebug) {
-      const host = String(window.location?.hostname || '').toLowerCase();
-      if (window.RUNTIME_CONFIG?.DEBUG_API || host === 'localhost' || host === '127.0.0.1') {
-        console.log('[datetime format test]', value, formatted);
-        U._didLogDateTimeFormatDebug = true;
-      }
-    }
-    return formatted;
-  },
+  formatDateTimeMMDDYYYYHHMM: value => U.formatAppDateTime(value),
   fmtTS: value => {
     return U.formatDateTimeMMDDYYYYHHMM(value);
   },
@@ -616,6 +654,8 @@ const U = {
     }
   }
 };
+
+if (typeof window !== 'undefined') window.U = U;
 
 /** Filters persisted */
 const Filters = {

@@ -3513,8 +3513,8 @@ const readiness = ext.readiness || ext.checklist || {};
     status: ev.status || '',
     env: ev.env || '',
     owner: ev.owner || '',
-    start: ev.start || '',
-    end: ev.end || '',
+    start: ev.allDay ? U.formatAppDate(ev.start || '') : U.formatAppDateTime(ev.start || ''),
+    end: ev.end ? (ev.allDay ? U.formatAppDate(ev.end) : U.formatAppDateTime(ev.end)) : '',
     allDay: ev.allDay ? 'Yes' : 'No',
     modules: Array.isArray(ev.modules) ? ev.modules.join(', ') : (ev.modules || ''),
     issueId: ev.issueId || '',
@@ -4815,11 +4815,8 @@ function renderPlannerResults(result, context) {
   const htmlSlots = slots
     .map((slot, idx) => {
       const d = slot.start;
-      const dateStr = U.fmtDisplayDate(d);
-      const timeStr = d.toLocaleTimeString(undefined, {
-        hour: '2-digit',
-        minute: '2-digit'
-      });
+      const dateStr = U.formatAppDate(d);
+      const timeStr = U.formatAppTime(d);
 
       const bucket = ReleasePlanner.riskBucket(slot.totalRisk);
       const rushLabel = ReleasePlanner.rushLabel(slot.rushRisk);
@@ -5083,7 +5080,7 @@ function refreshPlannerReleasePlans(context) {
       const d = ev.start ? new Date(ev.start) : null;
       const when =
         d && !isNaN(d)
-          ? U.fmtDisplayDate(d)
+          ? U.formatAppDateTime(d)
           : '(no date)';
       const label = `[${when}] ${ev.title || 'Release'} (${ev.env || 'Prod'})`;
       return `<option value="${U.escapeAttr(ev.id)}">${U.escapeHtml(label)}</option>`;
