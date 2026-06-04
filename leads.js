@@ -1652,12 +1652,15 @@ const Leads = {
   contactBelongsToCompany(contact = {}, company = {}) {
     const companyUuid = this.getRecordUuid(company, 'company');
     const companyBusinessId = String(company.company_id || company.companyId || '').trim();
+    const companyName = this.getCompanyDisplayName(company);
     const contactCompanyUuid = this.cleanUuidOrUndefined(contact.company_uuid ?? contact.companyUuid ?? contact.company_id ?? contact.companyId) || '';
     const contactCompanyId = String(contact.company_id || contact.companyId || '').trim();
+    const contactCompanyName = String(contact.company_name || contact.companyName || '').trim();
     if (contactCompanyUuid) return this.sameIdentifier(contactCompanyUuid, companyUuid);
     if (this.isUuid(contactCompanyId)) return this.sameIdentifier(contactCompanyId, companyUuid);
     if (contactCompanyId && companyBusinessId) return this.sameIdentifier(contactCompanyId, companyBusinessId);
-    return !contactCompanyId;
+    if (contactCompanyName && companyName) return this.sameIdentifier(contactCompanyName, companyName);
+    return false;
   },
   debugLeadSelection(label, details = {}, level = 'debug') {
     try {
@@ -1671,37 +1674,115 @@ const Leads = {
   logInvalidLeadSelection(type, value) {
     this.debugLeadSelection('Lead form selection bug: dropdown value is not a company/contact UUID', { type, value }, 'error');
   },
-  async loadLeadPickerOptions(companyId = '') {
-    const normalizedCompanyId = this.cleanUuidOrUndefined(companyId) || '';
-    const companiesRes = await Api.requestWithSession('companies', 'list', { page: 1, limit: 200, sortBy: 'company_name', sortDir: 'asc' }, { requireAuth: true });
-    const companies = (Array.isArray(companiesRes?.rows) ? companiesRes.rows : [])
-      .map(c => this.normalizeCompany(c))
-      .filter(c => this.getRecordUuid(c, 'company'));
-    let contacts = [];
-    if (normalizedCompanyId) {
-      const selectedCompany = companies.find(c => String(this.getRecordUuid(c, 'company')) === String(normalizedCompanyId)) || this.state.selectedCompany || {};
-      const contactsRes = await Api.requestWithSession('contacts', 'list', { page: 1, limit: 200, filters: { company_id: normalizedCompanyId }, sortBy: 'full_name', sortDir: 'asc' }, { requireAuth: true });
-      contacts = (Array.isArray(contactsRes?.rows) ? contactsRes.rows : [])
-        .map(c => this.normalizeContact(c))
-        .filter(c => this.getRecordUuid(c, 'contact'))
-        .filter(c => this.contactBelongsToCompany(c, selectedCompany));
+  isSelectControl(node) {
+    return Boolean(node && String(node.tagName || '').toUpperCase() === 'SELECT');
+  },
+  setControlValue(node, value = '') {
+    if (!node) return;
+    node.value = value || '';
+  },
+  setLeadCompanyControlValue(company = {}) {
+    const node = E.leadFormCompanyName;
+    const uuid = this.getRecordUuid(company, 'company');
+    const label = this.getCompanyDisplayName(company);
+    this.setControlValue(node, this.isSelectControl(node) ? uuid : label);
+  },
+  setLeadContactControlValue(contact = {}) {
+    const node = E.leadFormContactName;
+    const uuid = this.getRecordUuid(contact, 'contact');
+    const label = this.getContactDisplayName(contact);
+    this.setControlValue(node, this.isSelectControl(node) ? uuid : label);
+  },
+  renderLeadCompanyOptions(companies = []) {
+    const node = E.leadFormCompanyName;
+    const selectedId = this.getRecordUuid(this.state.selectedCompany || {}, 'company');
+    if (this.isSelectControl(node)) {
+      node.removeAttribute('list');
+      node.innerHTML = '<option value="">Select company…</option>' + companies.map(c => {
+        const uuid = this.getRecordUuid(c, 'company');
+        const name = this.getCompanyDisplayName(c) || uuid;
+        return `<option value="${U.escapeAttr(uuid)}">${U.escapeHtml(name)}</option>`;
+      }).join('');
+      if (selectedId && companies.some(c => this.sameIdentifier(this.getRecordUuid(c, 'company'), selectedId))) node.value = selectedId;
+      else if (!selectedId) node.value = '';
+      return;
     }
-    if (E.leadFormCompanyName) E.leadFormCompanyName.setAttribute('list', 'leadCompanyPicker');
-    if (E.leadFormContactName) E.leadFormContactName.setAttribute('list', 'leadContactPicker');
+    if (node) node.setAttribute('list', 'leadCompanyPicker');
     const companyList = document.getElementById('leadCompanyPicker');
-    const contactList = document.getElementById('leadContactPicker');
     if (companyList) companyList.innerHTML = companies.map(c => {
       const uuid = this.getRecordUuid(c, 'company');
       const name = this.getCompanyDisplayName(c);
       return `<option value="${U.escapeAttr(uuid)}" label="${U.escapeAttr(name)}" data-company-id="${U.escapeAttr(uuid)}"></option>`;
     }).join('');
+  },
+  renderLeadContactOptions(contacts = []) {
+    const node = E.leadFormContactName;
+    const selectedId = this.getRecordUuid(this.state.selectedContact || {}, 'contact');
+    if (this.isSelectControl(node)) {
+      node.removeAttribute('list');
+      node.innerHTML = '<option value="">Select contact…</option>' + contacts.map(c => {
+        const uuid = this.getRecordUuid(c, 'contact');
+        const name = this.getContactDisplayName(c) || uuid;
+        return `<option value="${U.escapeAttr(uuid)}">${U.escapeHtml(name)}</option>`;
+      }).join('');
+      if (selectedId && contacts.some(c => this.sameIdentifier(this.getRecordUuid(c, 'contact'), selectedId))) node.value = selectedId;
+      else if (!selectedId) node.value = '';
+      return;
+    }
+    if (node) node.setAttribute('list', 'leadContactPicker');
+    const contactList = document.getElementById('leadContactPicker');
     if (contactList) contactList.innerHTML = contacts.map(c => {
       const uuid = this.getRecordUuid(c, 'contact');
       const name = this.getContactDisplayName(c);
       return `<option value="${U.escapeAttr(uuid)}" label="${U.escapeAttr(name)}" data-contact-id="${U.escapeAttr(uuid)}" data-company-id="${U.escapeAttr(c.company_id || c.company_uuid || '')}"></option>`;
     }).join('');
+  },
+  async loadLeadPickerOptions(companyId = '') {
+    const normalizedCompanyId = this.cleanUuidOrUndefined(companyId) || '';
+    const rowsFrom = res => Array.isArray(res?.rows) ? res.rows : (Array.isArray(res?.items) ? res.items : (Array.isArray(res?.data) ? res.data : []));
+    const companiesRes = await Api.requestWithSession('companies', 'list', { page: 1, limit: 5000, sortBy: 'company_name', sortDir: 'asc' }, { requireAuth: true });
+    const companies = rowsFrom(companiesRes)
+      .map(c => this.normalizeCompany(c))
+      .filter(c => this.getRecordUuid(c, 'company'));
+    let contacts = [];
+    if (normalizedCompanyId) {
+      const selectedCompany = companies.find(c => String(this.getRecordUuid(c, 'company')) === String(normalizedCompanyId)) || this.state.selectedCompany || {};
+      const contactRowsById = new Map();
+      const appendContacts = rows => {
+        (rows || []).map(c => this.normalizeContact(c)).forEach(c => {
+          const uuid = this.getRecordUuid(c, 'contact');
+          if (uuid && this.contactBelongsToCompany(c, selectedCompany)) contactRowsById.set(uuid, c);
+        });
+      };
+      try {
+        const contactsRes = await Api.requestWithSession('contacts', 'list', { page: 1, limit: 5000, filters: { company_id: normalizedCompanyId }, sortBy: 'full_name', sortDir: 'asc' }, { requireAuth: true });
+        appendContacts(rowsFrom(contactsRes));
+      } catch (error) {
+        console.warn('[leads] contact lookup by company UUID failed', error);
+      }
+      const companyBusinessId = String(selectedCompany.company_id || selectedCompany.companyId || '').trim();
+      if (companyBusinessId && !this.isUuid(companyBusinessId)) {
+        try {
+          const contactsRes = await Api.requestWithSession('contacts', 'list', { page: 1, limit: 5000, filters: { company_id: companyBusinessId }, sortBy: 'full_name', sortDir: 'asc' }, { requireAuth: true });
+          appendContacts(rowsFrom(contactsRes));
+        } catch (error) {
+          console.warn('[leads] contact lookup by company business id failed', error);
+        }
+      }
+      if (contactRowsById.size === 0) {
+        try {
+          const allContactsRes = await Api.requestWithSession('contacts', 'list', { page: 1, limit: 5000, sortBy: 'full_name', sortDir: 'asc' }, { requireAuth: true });
+          appendContacts(rowsFrom(allContactsRes));
+        } catch (error) {
+          console.warn('[leads] contact fallback lookup failed', error);
+        }
+      }
+      contacts = Array.from(contactRowsById.values());
+    }
     this.state.companyPickerRows = companies;
     this.state.contactPickerRows = contacts;
+    this.renderLeadCompanyOptions(companies);
+    this.renderLeadContactOptions(contacts);
     const noContactsHint = document.getElementById('leadNoContactsHint');
     if (noContactsHint) {
       noContactsHint.style.display = normalizedCompanyId && contacts.length === 0 ? '' : 'none';
@@ -1719,7 +1800,7 @@ const Leads = {
     };
 
     set('leadFormCompanyId', uuid);
-    set('leadFormCompanyName', uuid ? this.getCompanyDisplayName(c) : '');
+    this.setLeadCompanyControlValue(uuid ? c : {});
     set('leadCompanyLegalName', uuid ? c.legal_name : '');
     set('leadCompanyType', uuid ? (window.Companies?.formatCompanyType?.(c.company_type) || c.company_type) : '');
     set('leadCompanyIndustry', uuid ? (window.Companies?.formatCompanyIndustry?.(c.industry) || c.industry) : '');
@@ -1743,7 +1824,7 @@ const Leads = {
     };
 
     set('leadFormContactId', uuid);
-    set('leadFormContactName', uuid ? this.getContactDisplayName(c) : '');
+    this.setLeadContactControlValue(uuid ? c : {});
     set('leadFormContactEmail', uuid ? c.email : '');
     set('leadFormContactPhone', uuid ? (c.phone || c.mobile) : '');
     set('leadContactFirstName', uuid ? c.first_name : '');
@@ -1759,17 +1840,38 @@ const Leads = {
     if (!companyIdOrRecord) return null;
     if (typeof companyIdOrRecord === 'object') {
       const normalized = this.normalizeCompany(companyIdOrRecord);
-      if (this.getRecordUuid(normalized, 'company') || normalized.company_id || this.getCompanyDisplayName(normalized)) return normalized;
+      if (this.getRecordUuid(normalized, 'company')) return normalized;
     }
     const id = String(companyIdOrRecord || '').trim();
     if (!id) return null;
+
+    const localExact = (this.state.companyPickerRows || [])
+      .map(c => this.normalizeCompany(c))
+      .find(c => this.sameIdentifier(this.getRecordUuid(c, 'company'), id) || this.sameIdentifier(c.company_id, id));
+    if (localExact) return localExact;
+
     const rowsFrom = res => Array.isArray(res?.rows) ? res.rows : (Array.isArray(res?.items) ? res.items : (Array.isArray(res?.data) ? res.data : []));
-    const filtersToTry = this.isUuid(id) ? [{ id }, { company_uuid: id }, { company_id: id }] : [{ company_id: id }];
+    if (this.isUuid(id)) {
+      try {
+        const client = this.getClient?.();
+        if (client?.from) {
+          const { data, error } = await client.from('companies').select('*').eq('id', id).maybeSingle();
+          if (!error && data) return this.normalizeCompany(data);
+        }
+      } catch (error) {
+        console.warn('[leads] direct company lookup failed', error);
+      }
+    }
+
+    const filtersToTry = this.isUuid(id) ? [{ id }, { company_uuid: id }] : [{ company_id: id }];
     for (const filters of filtersToTry) {
       try {
-        const res = await Api.requestWithSession('companies', 'list', { page: 1, limit: 10, filters }, { requireAuth: true });
-        const row = rowsFrom(res).find(c => this.sameIdentifier(c.id, id) || this.sameIdentifier(c.company_uuid, id) || this.sameIdentifier(c.company_id, id)) || rowsFrom(res)[0];
-        if (row) return this.normalizeCompany(row);
+        const res = await Api.requestWithSession('companies', 'list', { page: 1, limit: 50, filters }, { requireAuth: true });
+        const row = rowsFrom(res).map(c => this.normalizeCompany(c)).find(c => (
+          this.sameIdentifier(this.getRecordUuid(c, 'company'), id)
+          || this.sameIdentifier(c.company_id, id)
+        ));
+        if (row) return row;
       } catch (error) {
         console.warn('[leads] company lookup failed', filters, error);
       }
@@ -1780,17 +1882,38 @@ const Leads = {
     if (!contactIdOrRecord) return null;
     if (typeof contactIdOrRecord === 'object') {
       const normalized = this.normalizeContact(contactIdOrRecord);
-      if (this.getRecordUuid(normalized, 'contact') || normalized.contact_id || this.getContactDisplayName(normalized)) return normalized;
+      if (this.getRecordUuid(normalized, 'contact')) return normalized;
     }
     const id = String(contactIdOrRecord || '').trim();
     if (!id) return null;
+
+    const localExact = (this.state.contactPickerRows || [])
+      .map(c => this.normalizeContact(c))
+      .find(c => this.sameIdentifier(this.getRecordUuid(c, 'contact'), id) || this.sameIdentifier(c.contact_id, id));
+    if (localExact) return localExact;
+
     const rowsFrom = res => Array.isArray(res?.rows) ? res.rows : (Array.isArray(res?.items) ? res.items : (Array.isArray(res?.data) ? res.data : []));
-    const filtersToTry = this.isUuid(id) ? [{ id }, { contact_uuid: id }, { contact_id: id }] : [{ contact_id: id }];
+    if (this.isUuid(id)) {
+      try {
+        const client = this.getClient?.();
+        if (client?.from) {
+          const { data, error } = await client.from('contacts').select('*').eq('id', id).maybeSingle();
+          if (!error && data) return this.normalizeContact(data);
+        }
+      } catch (error) {
+        console.warn('[leads] direct contact lookup failed', error);
+      }
+    }
+
+    const filtersToTry = this.isUuid(id) ? [{ id }, { contact_uuid: id }] : [{ contact_id: id }];
     for (const filters of filtersToTry) {
       try {
-        const res = await Api.requestWithSession('contacts', 'list', { page: 1, limit: 10, filters }, { requireAuth: true });
-        const row = rowsFrom(res).find(c => this.sameIdentifier(c.id, id) || this.sameIdentifier(c.contact_uuid, id) || this.sameIdentifier(c.contact_id, id)) || rowsFrom(res)[0];
-        if (row) return this.normalizeContact(row);
+        const res = await Api.requestWithSession('contacts', 'list', { page: 1, limit: 50, filters }, { requireAuth: true });
+        const row = rowsFrom(res).map(c => this.normalizeContact(c)).find(c => (
+          this.sameIdentifier(this.getRecordUuid(c, 'contact'), id)
+          || this.sameIdentifier(c.contact_id, id)
+        ));
+        if (row) return row;
       } catch (error) {
         console.warn('[leads] contact lookup failed', filters, error);
       }
@@ -1861,6 +1984,7 @@ const Leads = {
     this.hydrateLeadFromContact({});
   },
   handleLeadCompanyInput(event) {
+    if (this.isSelectControl(event?.target)) return;
     const value = String(event?.target?.value || '').trim();
     const selectedName = this.getCompanyDisplayName(this.state.selectedCompany || {});
     const selectedId = this.getRecordUuid(this.state.selectedCompany || {}, 'company');
@@ -1874,6 +1998,7 @@ const Leads = {
     }
   },
   handleLeadContactInput(event) {
+    if (this.isSelectControl(event?.target)) return;
     const value = String(event?.target?.value || '').trim();
     const selectedName = this.getContactDisplayName(this.state.selectedContact || {});
     const selectedId = this.getRecordUuid(this.state.selectedContact || {}, 'contact');

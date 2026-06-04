@@ -2937,13 +2937,17 @@ Sample:
           <div class="filter-row">
             <label class="muted" for="leadFormCompanyName">Company *</label>
             <input id="leadFormCompanyId" type="hidden" />
-            <input id="leadFormCompanyName" class="input" type="text" list="leadCompanyPicker" required />
+            <select id="leadFormCompanyName" class="input" required>
+              <option value="">Select company…</option>
+            </select>
           </div>
           <datalist id="leadCompanyPicker"></datalist>
           <div class="filter-row">
             <label class="muted" for="leadFormContactName">Contact *</label>
             <input id="leadFormContactId" type="hidden" />
-            <input id="leadFormContactName" class="input" type="text" list="leadContactPicker" required />
+            <select id="leadFormContactName" class="input" required>
+              <option value="">Select contact…</option>
+            </select>
           </div>
           <datalist id="leadContactPicker"></datalist>
           <div id="leadNoContactsHint" class="filter-row muted" style="display:none;grid-column:1 / -1;">No contacts found for this company. Add contacts from the Contacts module.</div>
