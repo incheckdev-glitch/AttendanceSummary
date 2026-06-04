@@ -1972,6 +1972,11 @@ const Receipts = {
     const customerName = r.customer_legal_name || r.customer_name || invoice?.customer_legal_name || invoice?.customer_name;
     const customerAddress = r.customer_address || invoice?.customer_address;
     const invoiceDisplay = r.invoice_number || r.invoice_id || invoice?.invoice_number || invoice?.invoice_id;
+    const linkedPaymentTerm = String(invoice?.payment_term || '').trim();
+    const linkedCustomPaymentTerms = String(invoice?.payment_term_custom ?? invoice?.payment_terms_custom ?? '').trim();
+    const customPaymentTermsHtml = linkedPaymentTerm === 'Custom' && linkedCustomPaymentTerms
+      ? `<section class="document-note-box custom-payment-terms-box"><h2>Custom Payment Terms</h2><div>${text(linkedCustomPaymentTerms)}</div></section>`
+      : '';
     const html = `<!doctype html>
 <html>
   <head>
@@ -1995,7 +2000,7 @@ const Receipts = {
       .receipt-preview-page,
       .receipt-document-page { border: 1px solid #dbe3ed; box-shadow: 0 14px 34px rgba(15, 23, 42, 0.13); }
       .doc-header { border-bottom: 1px solid #d8e1ec; padding-bottom: 7mm; margin-bottom: 8mm; }
-      .receipt-document-header { display: grid; grid-template-columns: 44mm 1fr 68mm; align-items: center; gap: 8mm; width: 100%; max-width: 100%; margin: 0; }
+      .receipt-document-header { display: grid; grid-template-columns: 44mm minmax(0, 1fr) 62mm; align-items: center; gap: 6mm; width: 100%; max-width: 100%; margin: 0; }
       .receipt-document-logo { display: flex; align-items: center; justify-content: flex-start; height: 28mm; min-width: 0; margin: 0; padding: 0; position: static; }
       .receipt-document-logo .incheck360-doc-logo-wrap { float: none; display: flex; align-items: center; justify-content: flex-start; margin: 0; padding: 0; width: 40mm; max-width: 40mm; height: 24mm; max-height: 24mm; text-align: left; position: static; transform: none; }
       .receipt-document-logo img,
@@ -2003,32 +2008,35 @@ const Receipts = {
       .receipt-document-title-wrap { display: flex; align-items: center; justify-content: center; height: 28mm; min-width: 0; margin: 0; padding: 0; text-align: center; }
       .receipt-document-title { margin: 0; font-size: 22px; line-height: 1; font-weight: 800; text-align: center; letter-spacing: 0.01em; color: #0b214a; }
       .receipt-document-summary { display: flex; align-items: center; justify-content: flex-end; height: 28mm; min-width: 0; margin: 0; padding: 0; position: static; }
-      .receipt-document-summary .meta-box { width: 100%; }
-      .meta-box { border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; background: #fbfdff; min-width: 0; width: 100%; }
-      .meta-row { display: grid; grid-template-columns: 28mm minmax(0, 1fr); border-bottom: 1px solid #e3eaf3; }
+      .receipt-document-summary .meta-box { width: 100%; max-width: 62mm; }
+      .meta-box { border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; background: #fbfdff; min-width: 0; width: 100%; max-width: 62mm; }
+      .meta-row { display: grid; grid-template-columns: 27mm minmax(0, 1fr); border-bottom: 1px solid #e3eaf3; }
       .meta-row:last-child { border-bottom: 0; }
-      .meta-row > div { padding: 2mm 2.4mm; font-size: 11px; min-width: 0; overflow-wrap: anywhere; }
+      .meta-row > div { padding: 1.6mm 2mm; font-size: 10.5px; min-width: 0; overflow-wrap: break-word; }
       .meta-row .meta-key { background: #f5f8fc; font-weight: 700; color: #334155; border-right: 1px solid #e3eaf3; }
       .info-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 5mm; margin-top: 5mm; width: 100%; }
-      .info-box { border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; background: #fff; min-width: 0; }
+      .info-box { border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; background: #fff; min-width: 0; page-break-inside: avoid; break-inside: avoid; }
       .info-head { background: #f8fbff; border-bottom: 1px solid #e3eaf3; padding: 9px 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: #1e3a5f; }
       .info-body { padding: 12px; font-size: 12.5px; line-height: 1.55; }
       .info-body strong { font-weight: 700; color: #0f172a; }
       .muted { color: #6b7280; }
-      .section { margin-top: 22px; }
+      .section { margin-top: 18px; page-break-inside: avoid; break-inside: avoid; }
       .section h2 { margin: 0; font-size: 16px; font-weight: 700; color: #0f172a; border-bottom: 1px solid #d8e1ec; padding-bottom: 7px; }
       .section .subhead { font-size: 12px; margin: 6px 0 8px; color: #4b5563; text-transform: uppercase; letter-spacing: 0.04em; }
       table { width: 100%; max-width: 100%; border-collapse: collapse; table-layout: fixed; overflow-wrap: anywhere; page-break-inside: auto; }
       thead { display: table-header-group; }
       tr { page-break-inside: avoid; page-break-after: auto; }
-      th, td { border: 1px solid #dde5ef; padding: 6px; font-size: 10.5px; vertical-align: middle; overflow-wrap: anywhere; }
+      th, td { border: 1px solid #dde5ef; padding: 5px; font-size: 10px; vertical-align: middle; overflow-wrap: anywhere; word-break: break-word; }
       th { text-align: center; background: #f5f8fc; color: #0f172a; font-weight: 700; }
       .cell-center { text-align: center; vertical-align: middle; }
       .cell-right { text-align: right; vertical-align: middle; white-space: nowrap; }
       .doc-item-name { font-weight: 600; }
       .doc-item-description { margin-top: 3px; font-size: 10px; line-height: 1.35; color: #555; font-weight: 400; }
       .total-row td { font-weight: 700; background: #f7faff; }
-      .receipt-narrative { margin: 16px 0 0; font-size: 12.5px; line-height: 1.6; border: 1px solid #d7e1ed; border-radius: 6px; padding: 12px; background: #fbfdff; }
+      .document-note-box { width: 100%; max-width: 100%; margin-top: 12px; padding: 10px 12px; border: 1px solid #d7e1ed; border-radius: 6px; background: #fbfdff; color: #334155; page-break-inside: avoid; break-inside: avoid; }
+      .document-note-box h2 { margin: 0 0 6px; padding: 0; border: 0; font-size: 13px; line-height: 1.25; font-weight: 800; color: #0b214a; letter-spacing: 0.02em; }
+      .document-note-box div { font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
+      .receipt-narrative { margin: 16px 0 0; font-size: 12.5px; line-height: 1.6; border: 1px solid #d7e1ed; border-radius: 6px; padding: 12px; background: #fbfdff; overflow-wrap: anywhere; page-break-inside: avoid; break-inside: avoid; }
       .totals-wrap { display: flex; justify-content: flex-end; margin-top: 16px; }
       .totals-box { width: 96mm; max-width: 100%; border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; }
       .totals-row { display: flex; justify-content: space-between; gap: 10px; padding: 10px 12px; border-bottom: 1px solid #e3eaf3; font-size: 13px; }
@@ -2037,11 +2045,11 @@ const Receipts = {
       .totals-row span { min-width: 0; }
       .totals-row strong { flex: 1 1 auto; min-width: 0; text-align: right; overflow-wrap: anywhere; }
       .footer-note { margin-top: 16px; font-size: 11px; color: #64748b; border-top: 1px solid #e3eaf3; padding-top: 10px; text-align: center; }
-      @page { size: A4; margin: 0; }
+      @page { size: A4; margin: 12mm; }
       @media print {
         body { margin: 0; padding: 0; background: #fff; overflow: visible; }
         .receipt-preview-page,
-        .receipt-document-page { width: 210mm; min-height: 297mm; margin: 0; box-shadow: none; page-break-after: always; border: 0; }
+        .receipt-document-page { width: auto; min-height: auto; margin: 0; padding: 0; box-shadow: none; page-break-after: always; border: 0; overflow: visible; }
       }
     </style>
   </head>
@@ -2056,6 +2064,7 @@ const Receipts = {
               <div class="meta-row"><div class="meta-key">Receipt No.</div><div>${text(r.receipt_number || r.receipt_id)}</div></div>
               <div class="meta-row"><div class="meta-key">Receipt Date</div><div>${date(r.receipt_date)}</div></div>
               <div class="meta-row"><div class="meta-key">Invoice No.</div><div>${text(invoiceDisplay)}</div></div>
+              ${linkedPaymentTerm === 'Custom' ? `<div class="meta-row"><div class="meta-key">Payment Terms</div><div>Custom</div></div>` : ''}
             </div>
           </div>
         </section>
@@ -2070,6 +2079,8 @@ const Receipts = {
           </div>
         </div>
       </section>
+
+      ${customPaymentTermsHtml}
 
       <section class="section">
         <h2>Annual SaaS</h2>
