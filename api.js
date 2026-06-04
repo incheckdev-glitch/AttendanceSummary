@@ -179,6 +179,7 @@ const Api = {
         payload?.agreements,
         payload?.invoices,
         payload?.receipts,
+        payload?.credit_notes,
         payload?.clients,
         payload?.roles,
         payload?.permissions,
@@ -1467,9 +1468,20 @@ const Api = {
     return this.requestWithSession('invoices', 'delete', { id: invoiceId, invoice_id: invoiceId });
   },
   async getCreditNotes(filters = {}, options = {}) {
-    const listPayload = this.buildSummaryListPayload(options);
-    const payload = { filters: { ...(filters && typeof filters === 'object' ? filters : {}), ...listPayload } };
-    const response = await this.requestCached('credit_notes', 'list', payload, { forceRefresh: options?.forceRefresh === true });
+    const listPayload = this.buildSummaryListPayload({
+      ...options,
+      sort_by: options?.sort_by || 'credit_note_date',
+      sort_dir: options?.sort_dir || 'desc'
+    });
+    const safeFilters = filters && typeof filters === 'object' ? { ...filters } : {};
+    const rawStatus = String(safeFilters.status ?? safeFilters.credit_note_status ?? '').trim().toLowerCase();
+    delete safeFilters.credit_note_status;
+    if (!rawStatus || rawStatus === 'all') delete safeFilters.status;
+    else safeFilters.status = rawStatus === 'canceled' ? 'cancelled' : rawStatus;
+    const payload = { filters: { ...safeFilters, ...listPayload } };
+    const response = options?.forceRefresh === true
+      ? await this.requestWithSession('credit_notes', 'list', payload)
+      : await this.requestCached('credit_notes', 'list', payload);
     return this.normalizeListResponse(response);
   },
   async getCreditNotesByInvoice(invoiceId) {
@@ -1478,20 +1490,35 @@ const Api = {
   },
   async createCreditNote(payload = {}) {
     const response = await this.requestWithSession('credit_notes', 'create', { credit_note: payload });
-    const recordId = this.extractBusinessRecordId(response, payload?.credit_note_number || '');
+    this.clearApiCache?.('credit_notes:list');
+    const saved = this.unwrapApiPayload(response) || response || {};
+    const savedRecord = {
+      ...saved,
+      id: saved.id || saved.credit_note_uuid || saved.uuid || '',
+      credit_note_number: saved.credit_note_number || saved.credit_note_id || payload?.credit_note_number || '',
+      invoice_number: saved.invoice_number || payload?.invoice_number || '',
+      client_name: saved.client_name || saved.customer_name || payload?.client_name || payload?.customer_name || '',
+      customer_name: saved.customer_name || saved.client_name || payload?.customer_name || payload?.client_name || '',
+      credit_note_date: saved.credit_note_date || payload?.credit_note_date || '',
+      credit_amount: saved.credit_amount ?? payload?.credit_amount ?? 0,
+      status: String(saved.status || payload?.status || 'issued').trim().toLowerCase()
+    };
+    const recordId = this.extractBusinessRecordId(savedRecord, payload?.credit_note_number || '');
     await this.safeSendBusinessPwaPush({
       resource: 'credit_notes',
       action: 'credit_note_created',
       recordId,
       title: 'Credit note issued',
-      body: 'Credit note ' + (payload?.credit_note_number || recordId || '') + ' was issued.',
+      body: 'Credit note ' + (savedRecord.credit_note_number || recordId || '') + ' was issued.',
       roles: ['admin', 'accounting'],
       url: recordId ? '/#creditNotes?id=' + encodeURIComponent(recordId) : '/#creditNotes'
     });
-    return response;
+    return savedRecord;
   },
   async cancelCreditNote(id) {
-    return this.requestWithSession('credit_notes', 'cancel', { id, credit_note_id: id });
+    const response = await this.requestWithSession('credit_notes', 'cancel', { id, credit_note_id: id });
+    this.clearApiCache?.('credit_notes:list');
+    return response;
   },
   async recalculateInvoiceTotals(invoiceId) {
     return this.requestWithSession('credit_notes', 'recalculate_invoice_totals', { invoice_id: invoiceId, id: invoiceId });
