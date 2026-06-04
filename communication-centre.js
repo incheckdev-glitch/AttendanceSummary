@@ -1321,6 +1321,112 @@
     return participantsByConversation;
   }
 
+  function isUuid(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+  }
+
+  function normalizeUnreadTimestamp(value) {
+    const time = value ? new Date(value).getTime() : 0;
+    return Number.isFinite(time) ? time : 0;
+  }
+
+  async function getConversationUnreadCounts(conversationIds, currentUserId) {
+    const client = db();
+    const ids = [...new Set((conversationIds || []).map(value => String(value || '').trim()).filter(Boolean))];
+    const counts = new Map(ids.map(id => [id, 0]));
+    if (!client?.from || !ids.length) return counts;
+
+    if (client.rpc && ids.every(isUuid)) {
+      try {
+        const { data, error } = await client.rpc('get_communication_centre_unread_counts', { p_conversation_ids: ids });
+        if (error) throw error;
+        (data || []).forEach(row => {
+          const conversationId = String(row.conversation_id || '').trim();
+          if (conversationId) counts.set(conversationId, Number(row.unread_count || 0));
+        });
+        return counts;
+      } catch (error) {
+        console.warn('[Communication Centre] unread count RPC failed; using direct bulk query fallback', error);
+      }
+    }
+
+    const normalizedUserId = String(currentUserId || '').trim();
+    if (!isUuid(normalizedUserId)) return counts;
+
+    for (let i = 0; i < ids.length; i += 100) {
+      const chunk = ids.slice(i, i + 100);
+      let readByConversation = new Map();
+
+      try {
+        const { data: receipts, error: receiptError } = await client
+          .from('communication_centre_read_receipts')
+          .select('conversation_id,user_id,last_read_at')
+          .in('conversation_id', chunk)
+          .eq('user_id', normalizedUserId);
+        if (receiptError) throw receiptError;
+        readByConversation = (receipts || []).reduce((acc, row) => {
+          const conversationId = String(row.conversation_id || '').trim();
+          if (conversationId) acc.set(conversationId, normalizeUnreadTimestamp(row.last_read_at));
+          return acc;
+        }, new Map());
+      } catch (error) {
+        console.warn('[Communication Centre] unread receipt load failed; treating conversations as unread until opened', error);
+      }
+
+      try {
+        const { data: messages, error: messageError } = await client
+          .from('communication_centre_messages')
+          .select('id,conversation_id,sender_id,sender_name,created_at,is_system_message')
+          .in('conversation_id', chunk)
+          .order('created_at', { ascending: true });
+        if (messageError) throw messageError;
+
+        (messages || []).forEach(message => {
+          const conversationId = String(message.conversation_id || '').trim();
+          if (!conversationId || message.is_system_message || isMessageMine(message)) return;
+          const messageCreatedAt = normalizeUnreadTimestamp(message.created_at);
+          const lastReadAt = readByConversation.get(conversationId) || 0;
+          if (!lastReadAt || messageCreatedAt > lastReadAt) {
+            counts.set(conversationId, (counts.get(conversationId) || 0) + 1);
+          }
+        });
+      } catch (error) {
+        console.warn('[Communication Centre] unread message count load failed', error);
+      }
+    }
+
+    return counts;
+  }
+
+  async function markCommunicationConversationRead(conversationId) {
+    const client = db();
+    const normalizedConversationId = String(conversationId || '').trim();
+    if (!client || !normalizedConversationId) return;
+
+    try {
+      if (client.rpc) {
+        const { error } = await client.rpc('mark_communication_centre_read', { p_conversation_id: normalizedConversationId });
+        if (!error) return;
+        console.warn('[Communication Centre] mark read RPC failed; using direct read receipt upsert fallback', error);
+      }
+
+      const currentUserId = getCurrentUserId(getCurrentUser());
+      if (!client.from || !isUuid(currentUserId)) return;
+      const nowIso = new Date().toISOString();
+      const { error } = await client
+        .from('communication_centre_read_receipts')
+        .upsert({
+          conversation_id: normalizedConversationId,
+          user_id: currentUserId,
+          last_read_at: nowIso,
+          updated_at: nowIso
+        }, { onConflict: 'conversation_id,user_id' });
+      if (error) throw error;
+    } catch (error) {
+      console.warn('[Communication Centre] mark read failed', error);
+    }
+  }
+
   async function list() {
     const client = db();
     if (!client) throw new Error('Supabase client is not available.');
@@ -1340,6 +1446,7 @@
     if (error) throw error;
 
     const currentUser = getCurrentUser();
+    const currentUserId = getCurrentUserId(currentUser);
     const allConversations = data || [];
     const participantsByConversation = await loadConversationParticipantsForRows(client, allConversations.map(row => row.id));
     const enrichedConversations = allConversations.map(row => {
@@ -1351,10 +1458,32 @@
       };
     });
     const visibleConversations = filterVisibleCommunicationConversations(enrichedConversations, currentUser);
-    M.state.count = visibleConversations.length;
+    const unreadCounts = await getConversationUnreadCounts(visibleConversations.map(row => row.id), currentUserId);
+    const activeId = getActiveConversationId();
+    const conversationsWithUnread = visibleConversations.map(row => {
+      const conversationId = String(row.id || '').trim();
+      return {
+        ...row,
+        unread_count: activeId && conversationId === activeId ? 0 : Number(unreadCounts.get(conversationId) || 0)
+      };
+    });
+    const quick = M.state.filters.quick || 'all';
+    const filteredConversations = conversationsWithUnread.filter(row => {
+      const archived = Boolean(row.is_archived);
+      if (quick === 'archived') return archived;
+      if (archived) return false;
+      if (quick === 'open') return row.status !== 'Closed';
+      if (quick === 'closed') return row.status === 'Closed';
+      if (quick === 'unread') return Number(row.unread_count || 0) > 0;
+      if (quick === 'pinned') return Boolean(row.is_pinned);
+      if (quick === 'mine') return String(row.created_by || '') === String(currentUserId || '');
+      if (quick === 'assigned') return Number(row.is_assigned_to_me || 0) === 1;
+      return true;
+    });
+    M.state.count = filteredConversations.length;
     const from = (M.state.page - 1) * M.state.limit;
     const to = from + M.state.limit;
-    M.state.rows = visibleConversations.slice(from, to);
+    M.state.rows = filteredConversations.slice(from, to);
   }
 
   async function openDetail(id, options = {}) {
@@ -1441,13 +1570,9 @@
         preserveDetailsPanel
       });
       if (conversationId) M.openedConversationIds.add(conversationId);
-      try {
-        if (options.markRead !== false) await client.rpc('mark_communication_centre_read', { p_conversation_id: id });
-        M.state.rows = (M.state.rows || []).map(row => String(row.id) === String(id) ? { ...row, unread_count: 0 } : row);
-        render();
-      } catch (errorMarkRead) {
-        console.warn('[Communication Centre] mark read failed', errorMarkRead);
-      }
+      if (options.markRead !== false) await markCommunicationConversationRead(id);
+      M.state.rows = (M.state.rows || []).map(row => String(row.id) === String(id) ? { ...row, unread_count: 0 } : row);
+      render();
     } catch (error) {
       console.error('[Communication Centre] open detail failed', error);
       showFriendlyError('Unable to open conversation. Please refresh and try again.');
@@ -1941,7 +2066,11 @@
       if (unreadDiff) return unreadDiff;
       return new Date(b.updated_at || b.last_message_at || 0).getTime() - new Date(a.updated_at || a.last_message_at || 0).getTime();
     });
-    listEl.innerHTML = rows.map(row => `<button class="cc-item communication-conversation-card ${activeId===row.id?'active':''} ${Number(row.unread_count||0)>0?'unread':''}" data-cc-open="${escapeAttr(row.id)}" type="button"><div class="cc-item-main"><small>${escapeHtml(row.conversation_no||'')}</small><strong>${escapeHtml(row.title||'Untitled')}</strong><p>${escapeHtml(row.last_message_preview||'No messages yet')}</p><div class="cc-item-submeta">${row.is_pinned?'<span class="chip">📌 Pinned</span>':''}${M.state.filters.quick==='archived'&&row.is_archived?'<span class="chip">Archived</span>':''}${row.participant_count?`<span class="chip">${escapeHtml(String(row.participant_count))} participants</span>`:''}</div></div><div class="cc-item-meta"><span class="cc-time">${escapeHtml(relTime(row.updated_at||row.last_message_at))}</span><span class="chip cc-status-chip">${escapeHtml(row.status||'Open')}</span>${row.priority?`<span class="chip cc-priority-chip">${escapeHtml(row.priority)}</span>`:''}${Number(row.unread_count||0)>0?`<span class="chip cc-unread-chip">● ${escapeHtml(String(row.unread_count))}</span>`:''}</div></button>`).join('') || '<div class="muted communication-centre-empty-state" style="padding:16px;">No conversations found for this filter.</div>';
+    listEl.innerHTML = rows.map(row => {
+      const unreadCount = Number(row.unread_count || 0);
+      const hasUnread = unreadCount > 0;
+      return `<button class="cc-item communication-conversation-card ${activeId===row.id?'active':''} ${hasUnread?'unread has-unread':''}" data-cc-open="${escapeAttr(row.id)}" type="button"><div class="cc-item-main"><div class="cc-item-header"><div class="cc-item-title-wrap"><small>${escapeHtml(row.conversation_no||'')}</small><strong>${escapeHtml(row.title||'Untitled')}</strong></div>${hasUnread?`<span class="conversation-unread-badge" aria-label="${escapeAttr(String(unreadCount))} unread messages">${escapeHtml(String(unreadCount))}</span>`:''}</div><p>${escapeHtml(row.last_message_preview||'No messages yet')}</p><div class="cc-item-submeta">${row.is_pinned?'<span class="chip">📌 Pinned</span>':''}${M.state.filters.quick==='archived'&&row.is_archived?'<span class="chip">Archived</span>':''}${row.participant_count?`<span class="chip">${escapeHtml(String(row.participant_count))} participants</span>`:''}</div></div><div class="cc-item-meta"><span class="cc-time">${escapeHtml(relTime(row.updated_at||row.last_message_at))}</span><span class="chip cc-status-chip">${escapeHtml(row.status||'Open')}</span>${row.priority?`<span class="chip cc-priority-chip">${escapeHtml(row.priority)}</span>`:''}</div></button>`;
+    }).join('') || '<div class="muted communication-centre-empty-state" style="padding:16px;">No conversations found for this filter.</div>';
     const pageInfo = $('communicationCentrePageInfo');
     if (pageInfo) pageInfo.textContent = `Page ${M.state.page} • ${M.state.count} total`;
   }
