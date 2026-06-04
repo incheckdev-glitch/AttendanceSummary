@@ -1484,9 +1484,20 @@ const Api = {
       : await this.requestCached('credit_notes', 'list', payload);
     return this.normalizeListResponse(response);
   },
-  async getCreditNotesByInvoice(invoiceId) {
-    const response = await this.requestWithSession('credit_notes', 'list', { filters: { invoice_id: invoiceId, limit: 200, summary_only: false } });
-    return this.normalizeListResponse(response).rows || [];
+  async getCreditNotesByInvoice(invoice) {
+    const invoiceUuid = typeof invoice === 'string'
+      ? String(invoice || '').trim()
+      : String(invoice?.id || invoice?.invoice_id || '').trim();
+    const invoiceNumber = typeof invoice === 'object'
+      ? String(invoice?.invoice_number || invoice?.invoiceNumber || '').trim()
+      : (!isUuid(String(invoice || '').trim()) ? String(invoice || '').trim() : '');
+    const filters = { limit: 200, summary_only: false };
+    if (isUuid(invoiceUuid)) filters.invoice_id = invoiceUuid;
+    else if (invoiceNumber) filters.invoice_number = invoiceNumber;
+    else return [];
+    const response = await this.requestWithSession('credit_notes', 'list', { filters });
+    const rows = this.normalizeListResponse(response).rows;
+    return (Array.isArray(rows) ? rows : []).filter(row => !['cancelled','canceled','void','voided'].includes(String(row?.status || '').trim().toLowerCase()));
   },
   async createCreditNote(payload = {}) {
     const response = await this.requestWithSession('credit_notes', 'create', { credit_note: payload });

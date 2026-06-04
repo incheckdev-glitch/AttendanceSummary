@@ -1463,6 +1463,36 @@ const Invoices = {
     if (resolvedId && this.isUuid(resolvedId)) return resolvedId;
     throw new Error('Invoice UUID could not be resolved from the selected record.');
   },
+  isMissingCreditNotesTableError(error) {
+    const message = String(error?.message || error?.details || error?.hint || '').toLowerCase();
+    const code = String(error?.code || '').trim().toUpperCase();
+    return code === '42P01' || code === 'PGRST205' || (message.includes('credit_notes') && (message.includes('does not exist') || message.includes('could not find')));
+  },
+  async loadCreditNotesForInvoicePreview(invoice = {}) {
+    const invoiceData = invoice && typeof invoice === 'object' ? invoice : {};
+    const client = this.requireSupabaseClient();
+    const invoiceUuid = this.isUuid(invoiceData.id) ? String(invoiceData.id).trim() : (this.isUuid(invoiceData.invoice_id) ? String(invoiceData.invoice_id).trim() : '');
+    const invoiceNumber = String(invoiceData.invoice_number || invoiceData.invoiceNumber || '').trim();
+    const selectColumns = 'id,credit_note_id,credit_note_number,credit_note_date,description,credit_amount,currency,status,created_at,invoice_id,invoice_number';
+    const loadByColumn = async (column, value) => {
+      if (!value) return [];
+      const { data, error } = await client
+        .from('credit_notes')
+        .select(selectColumns)
+        .eq(column, value)
+        .neq('status', 'cancelled')
+        .order('credit_note_date', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: true, nullsFirst: false });
+      if (error) throw error;
+      return Array.isArray(data) ? data : [];
+    };
+    const rows = [];
+    if (invoiceUuid) rows.push(...await loadByColumn('invoice_id', invoiceUuid));
+    if (invoiceNumber) rows.push(...await loadByColumn('invoice_number', invoiceNumber));
+    return rows
+      .filter((row, index, all) => all.findIndex(item => String(item.id || item.credit_note_number) === String(row.id || row.credit_note_number)) === index)
+      .filter(row => !['cancelled','canceled','void','voided'].includes(String(row.status || '').trim().toLowerCase()));
+  },
   async loadInvoicePreviewData(invoiceRef) {
     const invoiceUuid = this.resolveInvoiceUuidForPreview(invoiceRef);
     const client = this.requireSupabaseClient();
@@ -1486,25 +1516,23 @@ const Invoices = {
       .order('receipt_date', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: true, nullsFirst: false });
     const canViewCreditNoteDetails = !window.Permissions || Permissions.canViewCreditNotes?.();
-    const creditQuery = filter => client
-      .from('credit_notes')
-      .select('id,credit_note_id,credit_note_number,credit_note_date,description,credit_amount,currency,status,created_at,invoice_id,invoice_number')
-      .match(filter)
-      .order('credit_note_date', { ascending: true, nullsFirst: false })
-      .order('created_at', { ascending: true, nullsFirst: false });
-    const [byId, byNumber, creditById, creditByNumber, scheduleResult] = await Promise.all([
+    const [byId, byNumber, scheduleResult] = await Promise.all([
       receiptQuery({ invoice_id: invoiceUuid }),
       invoiceNumber ? receiptQuery({ invoice_number: invoiceNumber }) : Promise.resolve({ data: [], error: null }),
-      canViewCreditNoteDetails ? creditQuery({ invoice_id: invoiceUuid }).catch(error => ({ data: [], error })) : Promise.resolve({ data: [], error: null }),
-      canViewCreditNoteDetails && invoiceNumber ? creditQuery({ invoice_number: invoiceNumber }).catch(error => ({ data: [], error })) : Promise.resolve({ data: [], error: null }),
       Api.getInvoicePaymentSchedule(invoiceUuid).catch(() => [])
     ]);
     const receiptsError = byId?.error || byNumber?.error;
     if (receiptsError) throw new Error(`Unable to load linked receipts: ${receiptsError.message || 'Unknown error'}`);
     const receiptRows = [...(Array.isArray(byId?.data) ? byId.data : []), ...(Array.isArray(byNumber?.data) ? byNumber.data : [])];
-    const creditNotes = [...(Array.isArray(creditById?.data) ? creditById.data : []), ...(Array.isArray(creditByNumber?.data) ? creditByNumber.data : [])]
-      .filter((row, index, all) => all.findIndex(item => String(item.id || item.credit_note_number) === String(row.id || row.credit_note_number)) === index)
-      .filter(row => !['cancelled','canceled','void','voided'].includes(String(row.status || '').trim().toLowerCase()));
+    let creditNotes = [];
+    if (canViewCreditNoteDetails) {
+      try {
+        creditNotes = await this.loadCreditNotesForInvoicePreview(invoiceRow);
+      } catch (error) {
+        if (!this.isMissingCreditNotesTableError(error)) console.warn('Unable to load invoice credit notes', error);
+        creditNotes = [];
+      }
+    }
     const creditNoteTotal = creditNotes.reduce((sum, row) => sum + this.toNumberSafe(row.credit_amount), 0);
     const normalizedInvoice = this.normalizeInvoice(invoiceRow);
     const normalizedSchedule = this.extractRows(scheduleResult).map(row => this.normalizeInvoiceScheduleRow(row));
@@ -1512,10 +1540,13 @@ const Invoices = {
     normalizedInvoice.payment_schedule = normalizedSchedule.length
       ? normalizedSchedule
       : (Array.isArray(normalizedInvoice.payment_schedule) ? normalizedInvoice.payment_schedule : []);
-    normalizedInvoice.credit_note_amount = this.toNumberSafe(normalizedInvoice.credit_note_amount || creditNoteTotal);
+    normalizedInvoice.credit_note_amount = this.toNumberSafe(creditNoteTotal);
     const paymentSummary = this.summarizeReceiptPayments(normalizedInvoice.invoice_total || normalizedInvoice.grand_total, receiptRows || [], {
       baselinePaid: normalizedInvoice.amount_paid ?? normalizedInvoice.received_amount ?? normalizedInvoice.old_paid_total
     });
+    normalizedInvoice.amount_paid = paymentSummary.amount_paid;
+    normalizedInvoice.received_amount = paymentSummary.received_amount;
+    normalizedInvoice.pending_amount = Math.max(0, this.toNumberSafe(normalizedInvoice.invoice_total || normalizedInvoice.grand_total) - paymentSummary.amount_paid - creditNoteTotal);
     return {
       invoiceUuid,
       invoice: normalizedInvoice,
@@ -1586,12 +1617,12 @@ const Invoices = {
       ? itemTotals.invoice_total
       : pickDefined(invoiceData.grand_total, invoiceData.total_amount, invoiceData.total, invoiceData.amount_due, invoiceData.invoice_total, 0));
     const grandAmountInWords = U.formatAmountInWords(invoiceTotal, currency);
-    const paidAmount = this.toNumberSafe(invoiceData.received_amount ?? invoiceData.amount_paid ?? invoiceData.old_paid_total);
+    const receiptPaidAmount = Array.isArray(receipts) && receipts.length
+      ? receipts.reduce((sum, receipt) => sum + this.toNumberSafe(receipt.amount_received ?? receipt.received_amount ?? receipt.paid_now), 0)
+      : this.toNumberSafe(invoiceData.received_amount ?? invoiceData.amount_paid ?? invoiceData.old_paid_total);
+    const paidAmount = this.toNumberSafe(receiptPaidAmount);
     const creditNoteAmount = this.toNumberSafe(invoiceData.credit_note_amount) || (Array.isArray(creditNotes) ? creditNotes.filter(row => !['cancelled','canceled','void','voided'].includes(String(row.status || '').trim().toLowerCase())).reduce((sum, row) => sum + this.toNumberSafe(row.credit_amount), 0) : 0);
-    const pendingInput = invoiceData.pending_amount ?? invoiceData.balance_due ?? invoiceData.balance_amount;
-    const pendingAmount = pendingInput !== undefined && pendingInput !== null && String(pendingInput).trim() !== ''
-      ? this.toNumberSafe(pendingInput)
-      : Math.max(0, invoiceTotal - paidAmount - creditNoteAmount);
+    const pendingAmount = Math.max(0, invoiceTotal - paidAmount - creditNoteAmount);
     const paymentState = String(invoiceData.payment_state || '').trim() || U.calculatePaymentState(invoiceTotal, paidAmount);
     const isPoc = this.normalizeTruthy(invoiceData.is_poc ?? invoiceData.isPoc);
     const pocDetailsHtml = isPoc ? `
