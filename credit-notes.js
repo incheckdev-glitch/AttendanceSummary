@@ -368,23 +368,30 @@ const CreditNotes = {
   exportPreviewPdf() { if (!this.canExport()) return UI.toast('You do not have permission to export credit notes.'); const frame = E.creditNotePreviewFrame; if (!frame?.contentWindow) return; frame.contentWindow.focus(); frame.contentWindow.print(); },
   bind() {
     if (this._bound) return;
+    if (typeof cacheEls === 'function') cacheEls();
+    const byId = id => (typeof E !== 'undefined' && E[id]) || document.getElementById(id);
+    const createBtn = byId('creditNotesCreateBtn');
+    if (!createBtn) {
+      console.warn('[credit-notes] Create button not found during bind.');
+      return;
+    }
     this._bound = true;
-    E.creditNotesRefreshBtn?.addEventListener('click', () => this.refresh(true));
-    E.creditNotesCreateBtn?.addEventListener('click', () => this.openCreate());
-    E.creditNotesSearchInput?.addEventListener('input', e => { this.state.search = e.target.value || ''; this.render(); });
-    E.creditNotesStatusFilter?.addEventListener('change', e => { this.state.status = e.target.value || 'All'; this.render(); });
-    E.creditNotesTbody?.addEventListener('click', e => {
+    byId('creditNotesRefreshBtn')?.addEventListener('click', () => this.refresh(true));
+    createBtn.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); this.openCreate(); });
+    byId('creditNotesSearchInput')?.addEventListener('input', e => { this.state.search = e.target.value || ''; this.render(); });
+    byId('creditNotesStatusFilter')?.addEventListener('change', e => { this.state.status = e.target.value || 'All'; this.render(); });
+    byId('creditNotesTbody')?.addEventListener('click', e => {
       const preview = e.target.closest('[data-credit-note-preview]')?.dataset.creditNotePreview;
       const cancel = e.target.closest('[data-credit-note-cancel]')?.dataset.creditNoteCancel;
       if (preview) this.preview(preview);
       if (cancel) this.cancelCreditNote(cancel);
     });
-    E.creditNoteFormInvoiceSelect?.addEventListener('change', () => this.onInvoiceSelected());
-    E.creditNoteForm?.addEventListener('submit', e => this.save(e));
-    E.creditNoteFormCloseBtn?.addEventListener('click', () => this.closeForm());
-    E.creditNoteFormCancelBtn?.addEventListener('click', () => this.closeForm());
-    E.creditNotePreviewCloseBtn?.addEventListener('click', () => this.closePreview());
-    E.creditNotePreviewExportPdfBtn?.addEventListener('click', () => this.exportPreviewPdf());
+    byId('creditNoteFormInvoiceSelect')?.addEventListener('change', () => this.onInvoiceSelected());
+    byId('creditNoteForm')?.addEventListener('submit', e => this.save(e));
+    byId('creditNoteFormCloseBtn')?.addEventListener('click', () => this.closeForm());
+    byId('creditNoteFormCancelBtn')?.addEventListener('click', () => this.closeForm());
+    byId('creditNotePreviewCloseBtn')?.addEventListener('click', () => this.closePreview());
+    byId('creditNotePreviewExportPdfBtn')?.addEventListener('click', () => this.exportPreviewPdf());
   },
   init() { this.bind(); this.render(); }
 };
