@@ -6655,9 +6655,14 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         monthly_summary: 'get_payment_forecast_monthly_summary'
       };
       const rpcName = rpcNames[action];
+      const filterKeys = [
+        'p_client', 'p_currency', 'p_date_from', 'p_date_to', 'p_due_this_month', 'p_due_this_week',
+        'p_follow_up_status', 'p_only_unpaid', 'p_overdue_only', 'p_payment_term', 'p_search', 'p_status', 'p_view'
+      ];
+      const allowedKeys = new Set(action === 'page' ? [...filterKeys, 'p_page', 'p_page_size'] : filterKeys);
       const params = Object.fromEntries(
         Object.entries(payload || {}).filter(([key, value]) =>
-          key.startsWith('p_') && value !== undefined && value !== ''
+          allowedKeys.has(key) && value !== undefined && value !== ''
         )
       );
       const { data, error } = await client.rpc(rpcName, params);

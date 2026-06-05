@@ -562,17 +562,25 @@ const Api = {
       throw error;
     }
   },
+  paymentForecastRpcParams(params = {}, includePagination = false) {
+    const filterKeys = [
+      'p_client', 'p_currency', 'p_date_from', 'p_date_to', 'p_due_this_month', 'p_due_this_week',
+      'p_follow_up_status', 'p_only_unpaid', 'p_overdue_only', 'p_payment_term', 'p_search', 'p_status', 'p_view'
+    ];
+    const keys = includePagination ? [...filterKeys, 'p_page', 'p_page_size'] : filterKeys;
+    return Object.fromEntries(keys.filter(key => params[key] !== undefined).map(key => [key, params[key]]));
+  },
   async getPaymentForecastPage(params = {}) {
-    return this.requestWithSession('payment_forecast', 'page', params);
+    return this.requestWithSession('payment_forecast', 'page', this.paymentForecastRpcParams(params, true));
   },
   async getPaymentForecastSummary(filters = {}) {
-    return this.requestWithSession('payment_forecast', 'summary', filters);
+    return this.requestWithSession('payment_forecast', 'summary', this.paymentForecastRpcParams(filters));
   },
   async getPaymentForecastClientDistribution(filters = {}) {
-    return this.requestWithSession('payment_forecast', 'client_distribution', filters);
+    return this.requestWithSession('payment_forecast', 'client_distribution', this.paymentForecastRpcParams(filters));
   },
   async getPaymentForecastMonthlySummary(filters = {}) {
-    return this.requestWithSession('payment_forecast', 'monthly_summary', filters);
+    return this.requestWithSession('payment_forecast', 'monthly_summary', this.paymentForecastRpcParams(filters));
   },
   async listProposalCatalogItems(options = {}) {
     const payload = this.buildSummaryListPayload(options);
