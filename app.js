@@ -3148,7 +3148,7 @@ function setActiveView(view) {
   if (view === 'receipts' && window.Receipts?.refresh) runViewLoader('receipts', () => Receipts.refresh());
   if ((view === 'creditNotes' || view === 'credit_notes') && window.CreditNotes?.refresh) runViewLoader('credit notes', () => CreditNotes.refresh());
   if ((view === 'paymentForecast' || view === 'payment_forecast') && window.PaymentForecast?.refresh) runViewLoader('payment forecast', () => PaymentForecast.refresh());
-  if (view === 'biners' && window.Biners?.refresh) runViewLoader('biners', () => Biners.refresh());
+  if (view === 'biners' && window.Biners?.refresh) runViewLoader('biners', () => { Biners.init?.(); return Biners.refresh(); });
   if (view === 'lifecycleAnalytics' && window.LifecycleAnalytics?.init) runViewLoader('lifecycle analytics', () => LifecycleAnalytics.init());
   if (view === 'clients' && window.Clients?.loadAndRefresh) runViewLoader('clients', () => Clients.loadAndRefresh());
   if (view === 'proposalCatalog' && window.ProposalCatalog?.loadAndRefresh) runViewLoader('proposal catalog', () => ProposalCatalog.loadAndRefresh());
@@ -5496,8 +5496,10 @@ function wireCore() {
         CreditNotes.refresh(true);
       if (E.paymentForecastView?.classList.contains('active') && window.PaymentForecast?.refresh)
         PaymentForecast.refresh(true);
-      if (E.binersView?.classList.contains('active') && window.Biners?.refresh)
+      if (E.binersView?.classList.contains('active') && window.Biners?.refresh) {
+        Biners.init?.();
         Biners.refresh(true);
+      }
       if (E.clientsView?.classList.contains('active') && window.Clients?.loadAndRefresh)
         Clients.loadAndRefresh({ force: true });
       if (E.proposalCatalogView?.classList.contains('active') && window.ProposalCatalog?.loadAndRefresh)

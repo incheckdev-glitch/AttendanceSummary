@@ -28,10 +28,22 @@
     pages: {}
   };
 
-  const request = (action, payload = {}) => {
-    if (global.Api?.requestWithSession) return global.Api.requestWithSession('biners', action, payload);
-    return global.SupabaseData.dispatch({ resource: 'biners', action, ...payload });
-  };
+  async function request(action, payload = {}) {
+    const cleanPayload = payload && typeof payload === 'object' ? payload : {};
+    if (global.Api?.requestWithSession) {
+      try {
+        return await global.Api.requestWithSession('biners', action, cleanPayload);
+      } catch (error) {
+        console.warn('[Biners] Api request failed, trying direct Supabase dispatch fallback', action, error);
+        if (!global.SupabaseData?.dispatch) throw error;
+      }
+    }
+    if (global.SupabaseData?.dispatch) {
+      const dispatched = await global.SupabaseData.dispatch({ resource: 'biners', action, ...cleanPayload });
+      return dispatched?.handled ? dispatched.data : dispatched;
+    }
+    throw new Error('Biners data layer is not available.');
+  }
   const can = action => Boolean(global.Permissions?.canPerformAction?.('biners', action) || global.Permissions?.canPerformAction?.('biners', 'manage') || global.Permissions?.hasAdminOverride?.());
   const entryId = row => row?.biners_entry_id || row?.entry_id || row?.binersEntryId || row?.id;
   const scheduleId = row => row?.schedule_id || row?.biners_schedule_id || row?.scheduleId || row?.id;
@@ -485,17 +497,33 @@
     return value ? [value] : [];
   }
 
+  function ensureInitialized() {
+    if (state.initialized) return;
+    state.initialized = true;
+    bind();
+  }
+
+  async function safeLoad(label, promise, fallback) {
+    try {
+      return await promise;
+    } catch (error) {
+      console.warn(`[Biners] Unable to load ${label}`, error);
+      return fallback;
+    }
+  }
+
   async function refresh() {
+    ensureInitialized();
     setState('Loading Biners payable data…');
     try {
       const [entries, schedules, forecast, payments, summary, monthly, companies] = await Promise.all([
-        request('list'),
-        request('list_schedules'),
-        request('list_forecast'),
-        request('list_payments'),
-        request('summary').catch(() => null),
-        (global.Api?.getBinersMonthlyForecast?.() || request('monthly_forecast')).catch(() => []),
-        (global.Api?.requestWithSession?.('companies', 'list', { limit: 1000 }).catch(() => []) || Promise.resolve([]))
+        safeLoad('entries', request('list'), []),
+        safeLoad('scheduled payments', request('list_schedules'), []),
+        safeLoad('forecast rows', request('list_forecast'), []),
+        safeLoad('payment history', request('list_payments'), []),
+        safeLoad('summary', request('summary'), null),
+        safeLoad('monthly forecast', (global.Api?.getBinersMonthlyForecast?.() || request('monthly_forecast')), []),
+        safeLoad('companies', (global.Api?.requestWithSession?.('companies', 'list', { limit: 1000 }) || Promise.resolve([])), [])
       ]);
       Object.assign(state, {
         entries: normalizeList(entries),
@@ -604,6 +632,14 @@
     });
   }
 
-  function init() { if (state.initialized) return; state.initialized = true; bind(); }
+  function init() { ensureInitialized(); }
   global.Biners = { init, refresh, setActiveTab, openCreate: openEntryModal };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      if ($('binersView')) init();
+    }, { once: true });
+  } else if ($('binersView')) {
+    setTimeout(init, 0);
+  }
 })(window);
