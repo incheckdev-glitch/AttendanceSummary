@@ -568,6 +568,12 @@ const Api = {
   async getPaymentForecastSummary(filters = {}) {
     return this.requestWithSession('payment_forecast', 'summary', filters);
   },
+  async getPaymentForecastClientDistribution(filters = {}) {
+    return this.requestWithSession('payment_forecast', 'client_distribution', filters);
+  },
+  async getPaymentForecastMonthlySummary(filters = {}) {
+    return this.requestWithSession('payment_forecast', 'monthly_summary', filters);
+  },
   async listProposalCatalogItems(options = {}) {
     const payload = this.buildSummaryListPayload(options);
     ['section', 'is_active', 'category'].forEach(key => {

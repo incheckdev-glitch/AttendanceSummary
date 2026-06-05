@@ -6646,9 +6646,15 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
 
   async function handleRpcResource(resource, action, payload) {
     const client = getClient();
-    if (resource === 'payment_forecast' && ['page', 'summary'].includes(action)) {
+    if (resource === 'payment_forecast' && ['page', 'summary', 'client_distribution', 'monthly_summary'].includes(action)) {
       assertAllowed('payment_forecast', 'view');
-      const rpcName = action === 'page' ? 'get_payment_forecast_page' : 'get_payment_forecast_summary';
+      const rpcNames = {
+        page: 'get_payment_forecast_page',
+        summary: 'get_payment_forecast_summary',
+        client_distribution: 'get_payment_forecast_client_distribution',
+        monthly_summary: 'get_payment_forecast_monthly_summary'
+      };
+      const rpcName = rpcNames[action];
       const params = Object.fromEntries(
         Object.entries(payload || {}).filter(([key, value]) =>
           key.startsWith('p_') && value !== undefined && value !== ''

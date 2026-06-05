@@ -3,7 +3,7 @@ const PaymentForecast = {
   followUpStatuses: ['not_started', 'contacted', 'promised_to_pay', 'disputed', 'escalated', 'closed'],
   pageSizes: [10, 25, 50, 100],
   state: {
-    rows: [], followups: [], summary: {}, activeTab: 'overview', loadingPage: false, loadingSummary: false, error: '',
+    rows: [], groupedRows: [], followups: [], summary: {}, activeTab: 'overview', loadingPage: false, loadingSummary: false, error: '',
     page: 1, pageSize: 25, totalCount: 0,
     search: '', status: 'all', client: 'all', paymentTerm: 'all', currency: 'all',
     dateFrom: '', dateTo: '', overdueOnly: false, dueThisWeek: false, dueThisMonth: false,
@@ -78,18 +78,50 @@ const PaymentForecast = {
       this.state.error = error.message || 'Unable to load payment forecast.'; UI.toast(this.state.error);
     } finally { if (requestId === this._pageRequestId) { this.state.loadingPage = false; this.render(); } }
   },
+  rpcRows(data) {
+    return (Array.isArray(data) ? data : []).map(item => item?.row_data || item).filter(Boolean);
+  },
+  summaryMetric(summary, key) {
+    const value = summary?.[key];
+    if (value === undefined || value === null || value === '') return undefined;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : undefined;
+  },
   normalizeSummary(data) {
-    const first = Array.isArray(data) ? (data[0] || {}) : (data || {});
-    const summary = first.summary_data || first.row_data || first;
-    const read = (...keys) => this.n(keys.map(key => summary?.[key]).find(value => value !== undefined));
-    const net = read('net', 'net_remaining', 'total_remaining', 'remaining_amount');
-    const overdue = read('overdue', 'overdue_amount', 'total_overdue');
+    const summary = data?.[0] || {};
+    const values = summary.summary_data || summary.row_data || summary;
     return {
-      gross: read('gross', 'gross_scheduled', 'scheduled_amount', 'total_scheduled'), paid: read('paid', 'paid_amount', 'total_paid'),
-      credit: read('credit', 'credit_adjusted', 'allocated_credit_amount', 'total_credit'), net, overdue,
-      week: read('week', 'due_this_week'), month: read('month', 'due_this_month'), next30: read('next30', 'next_30_days'),
-      next90: read('next90', 'next_90_days'), risk: read('risk', 'collection_risk', 'collection_risk_percent') || (net ? overdue / net * 100 : 0),
-      currency: this.text(summary.currency || summary.display_currency || 'USD') || 'USD'
+      scheduled_rows: this.summaryMetric(values, 'scheduled_rows'),
+      gross_scheduled: this.summaryMetric(values, 'gross_scheduled'),
+      paid_amount: this.summaryMetric(values, 'paid_amount'),
+      credit_adjusted: this.summaryMetric(values, 'credit_adjusted'),
+      remaining_forecast: this.summaryMetric(values, 'remaining_forecast'),
+      overdue_amount: this.summaryMetric(values, 'overdue_amount'),
+      due_this_week: this.summaryMetric(values, 'due_this_week'),
+      due_this_month: this.summaryMetric(values, 'due_this_month'),
+      next_30_days: this.summaryMetric(values, 'next_30_days'),
+      next_90_days: this.summaryMetric(values, 'next_90_days'),
+      collection_risk_percent: this.summaryMetric(values, 'collection_risk_percent'),
+      currency: this.text(values.currency || values.display_currency || 'USD') || 'USD'
+    };
+  },
+  normalizeGroupedRow(row = {}, type) {
+    const source = row.row_data || row;
+    return {
+      ...source,
+      client_name: this.text(source.client_name || source.client || source.customer_name || 'Unknown Client'),
+      month: this.text(source.month || source.month_start || source.forecast_month || source.due_month),
+      currency: this.text(source.currency || 'USD') || 'USD',
+      scheduled_payment_count: this.n(source.scheduled_payment_count ?? source.scheduled_rows ?? source.payment_count),
+      invoice_count: this.n(source.invoice_count),
+      gross_scheduled: this.n(source.gross_scheduled),
+      paid_amount: this.n(source.paid_amount),
+      credit_adjusted: this.n(source.credit_adjusted),
+      net_expected: this.n(source.net_expected ?? source.remaining_forecast),
+      overdue_amount: this.n(source.overdue_amount),
+      due_soon: this.n(source.due_soon),
+      next_due_date: this.date(source.next_due_date),
+      group_type: type
     };
   },
   async loadSummary() {
@@ -98,16 +130,41 @@ const PaymentForecast = {
       const data = await Api.getPaymentForecastSummary(this.rpcFilters());
       if (requestId === this._summaryRequestId) this.state.summary = this.normalizeSummary(data);
     } catch (error) {
-      if (requestId === this._summaryRequestId) { console.error('[payment-forecast] summary load failed', error); UI.toast(error.message || 'Unable to load payment forecast summary.'); }
+      if (requestId === this._summaryRequestId) { console.error('[payment-forecast] summary load failed', error); this.state.summary = {}; UI.toast(error.message || 'Unable to load payment forecast summary.'); }
     } finally { if (requestId === this._summaryRequestId) { this.state.loadingSummary = false; this.renderSummary(); } }
+  },
+  async loadGrouped(type) {
+    const requestId = (this._pageRequestId || 0) + 1; this._pageRequestId = requestId;
+    this.state.loadingPage = true; this.state.error = ''; this.render();
+    try {
+      const data = type === 'clients'
+        ? await Api.getPaymentForecastClientDistribution(this.rpcFilters())
+        : await Api.getPaymentForecastMonthlySummary(this.rpcFilters());
+      if (requestId !== this._pageRequestId) return;
+      this.state.groupedRows = this.rpcRows(data).map(row => this.normalizeGroupedRow(row, type));
+      this.state.totalCount = this.state.groupedRows.length;
+    } catch (error) {
+      if (requestId !== this._pageRequestId) return;
+      console.error(`[payment-forecast] ${type} load failed`, error); this.state.groupedRows = []; this.state.totalCount = 0;
+      this.state.error = error.message || `Unable to load payment forecast ${type}.`; UI.toast(this.state.error);
+    } finally { if (requestId === this._pageRequestId) { this.state.loadingPage = false; this.render(); } }
+  },
+  async loadActiveTab() {
+    if (this.state.activeTab === 'overview') {
+      this._pageRequestId = (this._pageRequestId || 0) + 1; this.state.loadingPage = false;
+      this.state.rows = []; this.state.groupedRows = []; this.state.totalCount = 0; this.state.error = ''; this.render();
+      return this.loadSummary();
+    }
+    if (this.state.activeTab === 'clients' || this.state.activeTab === 'monthly') return this.loadGrouped(this.state.activeTab);
+    return this.loadPage();
   },
   async refresh(force = false) {
     if ((this.state.loadingPage || this.state.loadingSummary) && !force) return;
     if (!this.canView()) { this.state.error = 'You do not have permission to view Payment Forecast.'; this.render(); return; }
     this.state.followups = await this.fetchTable('payment_forecast_followups', 'updated_at', false, 3000).catch(() => []);
-    await Promise.all([this.loadSummary(), this.loadPage()]);
+    await this.loadActiveTab();
   },
-  async filtersChanged() { this.state.page = 1; await Promise.all([this.loadSummary(), this.loadPage()]); },
+  async filtersChanged() { this.state.page = 1; await this.loadActiveTab(); },
   label(value = '') { const key = this.text(value).toLowerCase(); return ({ due_soon: 'Due Soon', not_started: 'Not Started', promised_to_pay: 'Promised to Pay' })[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || 'Scheduled'; },
   statusClass(status = '') { const key = this.text(status).toLowerCase(); if (['overdue', 'escalated', 'disputed'].includes(key)) return 'status-badge bad'; if (['due_soon', 'promised_to_pay'].includes(key)) return 'status-badge warn'; if (['paid', 'closed', 'contacted'].includes(key)) return 'status-badge ok'; if (key === 'credited') return 'status-badge info'; return 'status-badge'; },
   populateFilters() {
@@ -122,8 +179,23 @@ const PaymentForecast = {
     const el = document.getElementById('paymentForecastSummary'); if (!el) return;
     if (this.state.loadingSummary && !Object.keys(this.state.summary).length) { el.innerHTML = '<div class="muted">Loading summary…</div>'; return; }
     const s = this.state.summary, currency = s.currency || 'USD';
-    const cards = [['Gross Scheduled', s.gross, 'Before payments and credits', ''], ['Paid Amount', s.paid, 'Receipts allocated', 'is-positive'], ['Credit Adjusted', s.credit, 'Credits allocated', 'is-info'], ['Net Remaining', s.net, 'Receivables outstanding', 'is-highlighted'], ['Overdue Amount', s.overdue, 'Immediate collection attention', 'is-overdue'], ['Due This Week', s.week, 'Next 7 days', 'is-warning'], ['Due This Month', s.month, 'Current calendar month', ''], ['Next 30 Days', s.next30, 'Near-term forecast', ''], ['Next 90 Days', s.next90, 'Quarter forecast', ''], ['Collection Risk %', `${this.n(s.risk).toFixed(1)}%`, 'Overdue ÷ net remaining', this.n(s.risk) > 25 ? 'is-overdue' : '']];
-    el.innerHTML = cards.map(([label, value, subtitle, cls]) => `<article class="payment-forecast-summary-card ${cls}"><div class="summary-label">${label}</div><div class="summary-value">${typeof value === 'string' ? value : U.escapeHtml(this.money(value, currency))}</div><div class="summary-subtitle">${subtitle}</div></article>`).join('');
+    const moneyMetric = value => value === undefined ? '—' : U.escapeHtml(this.money(value, currency));
+    const countMetric = value => value === undefined ? '—' : U.escapeHtml(U.fmtNumber(value));
+    const percentMetric = value => value === undefined ? '—' : `${value.toFixed(1)}%`;
+    const cards = [
+      ['Scheduled Payments', countMetric(s.scheduled_rows), 'Scheduled payment rows', ''],
+      ['Gross Scheduled', moneyMetric(s.gross_scheduled), 'Before payments and credits', ''],
+      ['Paid Amount', moneyMetric(s.paid_amount), 'Receipts allocated', 'is-positive'],
+      ['Credit Adjusted', moneyMetric(s.credit_adjusted), 'Credits allocated', 'is-info'],
+      ['Net Expected', moneyMetric(s.remaining_forecast), 'Receivables outstanding', 'is-highlighted'],
+      ['Overdue Amount', moneyMetric(s.overdue_amount), 'Immediate collection attention', 'is-overdue'],
+      ['Due This Week', moneyMetric(s.due_this_week), 'Next 7 days', 'is-warning'],
+      ['Due This Month', moneyMetric(s.due_this_month), 'Current calendar month', ''],
+      ['Next 30 Days', moneyMetric(s.next_30_days), 'Near-term forecast', ''],
+      ['Next 90 Days', moneyMetric(s.next_90_days), 'Quarter forecast', ''],
+      ['Collection Risk %', percentMetric(s.collection_risk_percent), 'Backend collection risk', (s.collection_risk_percent ?? 0) > 25 ? 'is-overdue' : '']
+    ];
+    el.innerHTML = cards.map(([label, value, subtitle, cls]) => `<article class="payment-forecast-summary-card ${cls}"><div class="summary-label">${label}</div><div class="summary-value">${value}</div><div class="summary-subtitle">${subtitle}</div></article>`).join('');
   },
   actionButtons(row, followup = false) { const id = U.escapeAttr(row.forecast_row_id), client = U.escapeAttr(row.client_id), invoice = U.escapeAttr(row.invoice_id || row.invoice_number); return `<div class="pf-actions"><button class="btn ghost xs" data-pf-action="invoice" data-value="${invoice}">Open Invoice</button>${this.canCreateReceipt() && row.remaining_amount > 0 ? `<button class="btn xs" data-pf-action="receipt" data-value="${id}">Create Receipt</button>` : ''}<button class="btn ghost xs" data-pf-action="client" data-value="${client}">Open Client</button><button class="btn ghost xs" data-pf-action="statement" data-value="${client}">Open Statement</button>${this.canManage() ? `<button class="btn ghost xs" data-pf-action="note" data-value="${id}">Add Follow-up Note</button><button class="btn ghost xs" data-pf-action="followed" data-value="${id}">Mark as Followed Up</button>` : ''}</div>`; },
   table(headers, body, colspan) { return `<div class="table-scroll"><table><thead><tr>${headers.map(header => `<th>${header}</th>`).join('')}</tr></thead><tbody>${body || `<tr><td colspan="${colspan}" class="muted pf-empty">No payment forecast rows match these filters.</td></tr>`}</tbody></table></div>`; },
@@ -132,7 +204,22 @@ const PaymentForecast = {
     const body = rows.map(row => { const days = row.scheduled_due_date ? Math.ceil((new Date(`${row.scheduled_due_date}T00:00:00Z`) - new Date(`${this.today()}T00:00:00Z`)) / 86400000) : 0; return `<tr class="${row.forecast_status === 'overdue' ? 'pf-overdue-row' : row.forecast_status === 'due_soon' ? 'pf-due-soon-row' : ''}"><td><strong>${U.escapeHtml(row.client_name)}</strong></td><td>${U.escapeHtml(row.invoice_number || '—')}</td><td>${U.escapeHtml(row.agreement_number || '—')}</td><td>${U.escapeHtml(row.payment_no || '—')}</td><td>${U.escapeHtml(row.scheduled_due_date || '—')}</td><td>${U.escapeHtml(row.payment_term || '—')}</td>${['scheduled_amount','paid_amount','allocated_credit_amount','remaining_amount'].map(field => `<td class="num">${U.escapeHtml(this.money(row[field], row.currency))}</td>`).join('')}<td><span class="${this.statusClass(row.forecast_status)}">${U.escapeHtml(this.label(row.forecast_status))}</span></td><td>${days < 0 ? `${Math.abs(days)} days overdue` : `${days} days until due`}</td><td><span class="${this.statusClass(row.follow_up_status)}">${U.escapeHtml(this.label(row.follow_up_status))}</span></td><td class="actions-cell">${this.actionButtons(row)}</td></tr>`; }).join('');
     return this.table(head, body, head.length);
   },
-  renderContent() { return this.renderMainTable(this.state.rows); },
+  renderClientDistribution() {
+    const head = ['Client','Currency','Scheduled Payment Count','Invoice Count','Gross Scheduled','Paid','Credit Adjusted','Net Expected','Overdue','Next Due Date'];
+    const body = this.state.groupedRows.map(row => `<tr><td><strong>${U.escapeHtml(row.client_name)}</strong></td><td>${U.escapeHtml(row.currency)}</td><td class="num">${U.escapeHtml(U.fmtNumber(row.scheduled_payment_count))}</td><td class="num">${U.escapeHtml(U.fmtNumber(row.invoice_count))}</td>${['gross_scheduled','paid_amount','credit_adjusted','net_expected','overdue_amount'].map(field => `<td class="num">${U.escapeHtml(this.money(row[field], row.currency))}</td>`).join('')}<td>${U.escapeHtml(row.next_due_date || '—')}</td></tr>`).join('');
+    return this.table(head, body, head.length);
+  },
+  renderMonthlyForecast() {
+    const head = ['Month','Currency','Scheduled Payment Count','Gross Scheduled','Paid','Credit Adjusted','Net Expected','Overdue','Due Soon'];
+    const body = this.state.groupedRows.map(row => `<tr><td><strong>${U.escapeHtml(row.month || '—')}</strong></td><td>${U.escapeHtml(row.currency)}</td><td class="num">${U.escapeHtml(U.fmtNumber(row.scheduled_payment_count))}</td>${['gross_scheduled','paid_amount','credit_adjusted','net_expected','overdue_amount','due_soon'].map(field => `<td class="num">${U.escapeHtml(this.money(row[field], row.currency))}</td>`).join('')}</tr>`).join('');
+    return this.table(head, body, head.length);
+  },
+  renderContent() {
+    if (this.state.activeTab === 'overview') return '<div class="muted pf-empty">Use the overview cards above to review the filtered payment forecast totals.</div>';
+    if (this.state.activeTab === 'clients') return this.renderClientDistribution();
+    if (this.state.activeTab === 'monthly') return this.renderMonthlyForecast();
+    return this.renderMainTable(this.state.rows);
+  },
   renderPagination() {
     const total = this.state.totalCount, start = total ? (this.state.page - 1) * this.state.pageSize + 1 : 0, end = Math.min(this.state.page * this.state.pageSize, total), pages = Math.max(1, Math.ceil(total / this.state.pageSize));
     return `<div class="pf-pagination" aria-label="Payment forecast pagination"><div class="pf-pagination-showing">Showing ${start}–${end} of ${total}</div><label>Page size <select class="select" data-pf-page-size>${this.pageSizes.map(size => `<option value="${size}" ${size === this.state.pageSize ? 'selected' : ''}>${size}</option>`).join('')}</select></label><button class="btn ghost sm" data-pf-page="previous" ${this.state.page <= 1 ? 'disabled' : ''}>Previous</button><span>Page ${this.state.page} of ${pages}</span><button class="btn ghost sm" data-pf-page="next" ${this.state.page >= pages ? 'disabled' : ''}>Next</button></div>`;
@@ -141,9 +228,12 @@ const PaymentForecast = {
     const summary = document.getElementById('paymentForecastSummary'), content = document.getElementById('paymentForecastContent'), state = document.getElementById('paymentForecastState'); if (!content || !state) return;
     document.querySelectorAll('[data-pf-tab]').forEach(button => { const active = button.dataset.pfTab === this.state.activeTab; button.classList.toggle('active', active); button.setAttribute('aria-selected', String(active)); });
     this.renderSummary(); summary?.classList.toggle('is-hidden', this.state.activeTab !== 'overview');
-    if (this.state.loadingPage) { state.textContent = 'Loading payment forecast page…'; content.innerHTML = '<div class="muted pf-empty">Loading payment forecast page…</div>'; return; }
+    if (this.state.loadingPage) { state.textContent = 'Loading payment forecast…'; content.innerHTML = '<div class="muted pf-empty">Loading payment forecast…</div>'; return; }
     if (this.state.error) { state.textContent = this.state.error; content.innerHTML = `<div class="muted pf-empty">${U.escapeHtml(this.state.error)}</div>`; return; }
-    state.textContent = `${this.state.totalCount} filtered payment schedule row${this.state.totalCount === 1 ? '' : 's'}.`; content.innerHTML = `${this.renderContent()}${this.renderPagination()}`;
+    if (this.state.activeTab === 'overview') { state.textContent = this.state.loadingSummary ? 'Loading payment forecast summary…' : 'Overview totals loaded from the payment forecast summary.'; content.innerHTML = this.renderContent(); return; }
+    const grouped = ['clients', 'monthly'].includes(this.state.activeTab);
+    state.textContent = `${this.state.totalCount} filtered ${grouped ? 'grouped forecast' : 'payment schedule'} row${this.state.totalCount === 1 ? '' : 's'}.`;
+    content.innerHTML = `${this.renderContent()}${grouped ? '' : this.renderPagination()}`;
   },
   async openInvoice(value) { if (window.Invoices?.openInvoiceById) return Invoices.openInvoiceById(value, { readOnly: true }).catch(error => UI.toast(error.message)); UI.toast('Invoice module is not ready.'); },
   async createReceiptForRow(id) { const row = this.state.rows.find(item => item.forecast_row_id === id); if (!row || !this.canCreateReceipt()) return UI.toast('Receipt creation is not available for this row.'); return Receipts?.openCreateFromInvoice?.({ id: row.invoice_id, invoice_uuid: row.invoice_id, invoice_id: row.invoice_number, invoice_number: row.invoice_number, customer_name: row.client_name, client_id: row.client_id, agreement_number: row.agreement_number, due_date: row.scheduled_due_date, payment_term: row.payment_term, currency: row.currency, balance_due: row.remaining_amount, paid_now: row.remaining_amount, payment_notes: `Payment Forecast schedule #${row.payment_no} due ${row.scheduled_due_date}` }); },
