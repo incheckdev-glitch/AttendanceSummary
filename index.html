@@ -1213,6 +1213,7 @@ Sample:
                       <th>Type of Support</th>
                       <th>Effort Requirement</th>
                       <th>Support Channel</th>
+                      <th>Status</th>
                       <th>Notes</th>
                       <th>Actions</th>
                     </tr>
@@ -3002,6 +3003,16 @@ Sample:
   <!-- Freeze Windows Modal -->
 
 
+  <div id="csmDetailsModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="csmDetailsTitle">
+    <div class="modal-content" style="max-width:760px;">
+      <div class="modal-header">
+        <h2 id="csmDetailsTitle" style="margin:0;font-size:20px">CSM Daily Activity Details</h2>
+        <button class="modal-close" id="csmDetailsCloseBtn" aria-label="Close CSM activity details">✕</button>
+      </div>
+      <div id="csmDetailsBody" class="grid cols-2" style="margin-top:12px;"></div>
+    </div>
+  </div>
+
   <div id="csmFormModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="csmFormTitle">
     <div class="modal-content">
       <div class="modal-header">
@@ -4207,7 +4218,7 @@ Sample:
   <script src="calendar.js?v=20260427-allpwa1"></script>
   <script src="planner.js?v=20260427-allpwa1"></script>
   <script src="crm-form-selectors.js?v=v18-contact-multi-company"></script>
-  <script src="ui.js?v=20260427-allpwa1"></script>
+  <script src="ui.js?v=20260605-csm-notes"></script>
   <script src="leads.js?v=20260604-lead-prefill-final"></script>
   <script src="companies.js?v=20260429-crm"></script>
   <script src="contacts.js?v=v18-contact-multi-company"></script>
@@ -4233,9 +4244,9 @@ Sample:
   <script src="notification-settings.js?v=20260428-notification-setup1"></script>
   <script src="users.js?v=20260427-allpwa1"></script>
   <script src="events-service.js?v=20260427-events-pwa1"></script>
-  <script src="csm-service.js?v=20260427-allpwa1"></script>
+  <script src="csm-service.js?v=20260605-csm-notes"></script>
   <script src="ai-insights-service.js?v=20260427-allpwa1"></script>
   <script src="ai-assistant.js?v=20260526-ai-assistant-v1"></script>
-  <script src="app.js?v=20260605-biners-init-safe-final"></script>
+  <script src="app.js?v=20260605-csm-notes"></script>
 </body>
 </html>

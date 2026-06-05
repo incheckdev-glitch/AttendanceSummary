@@ -4,7 +4,7 @@
   "description": "InCheck360 MonitorCore - Internal operations workspace",
   "main": "index.html",
   "scripts": {
-    "test": "node tests/proposal-approval-logic.test.js && node tests/payment-forecast-rpc.test.js && node tests/payment-forecast-footer.test.js && node tests/credit-notes-idempotency-preview.test.js && node tests/statement-of-account-preview.test.js && node tests/payment-forecast-drilldown.test.js"
+    "test": "node tests/proposal-approval-logic.test.js && node tests/payment-forecast-rpc.test.js && node tests/payment-forecast-footer.test.js && node tests/credit-notes-idempotency-preview.test.js && node tests/statement-of-account-preview.test.js && node tests/payment-forecast-drilldown.test.js && node tests/csm-activity-notes.test.js"
   },
   "keywords": [
     "ticketing",

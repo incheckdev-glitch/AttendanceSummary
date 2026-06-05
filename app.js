@@ -6950,7 +6950,8 @@ const CSMActivity = {
       supportType: String(raw.type_of_support || raw.supportType || '').trim(),
       effortRequirement: String(raw.effort_requirement || raw.effortRequirement || '').trim(),
       supportChannel: String(raw.support_channel || raw.supportChannel || '').trim(),
-      notes: String(raw.notes_optional || raw.notes || '').trim(),
+      status: String(raw.status || raw.activity_status || '').trim(),
+      notes: String(raw.notes || raw.note || raw.activity_notes || raw.activity_note || raw.notes_optional || raw.description || raw.remarks || raw.comments || raw.comment || '').trim(),
       createdAt: String(raw.created_at || '').trim(),
       updatedAt: String(raw.updated_at || '').trim()
     };
@@ -7269,6 +7270,7 @@ const CSMActivity = {
       'Type of Support',
       'Effort Requirement',
       'Support Channel',
+      'Status',
       'Notes'
     ];
     const csvLines = [
@@ -7285,6 +7287,7 @@ const CSMActivity = {
           row.supportType || '',
           row.effortRequirement || '',
           row.supportChannel || '',
+          row.status || '',
           row.notes || ''
         ]
           .map(value => this.csvEscape(value))
@@ -7478,12 +7481,12 @@ const CSMActivity = {
   renderTable(list) {
     if (!E.csmTableBody) return;
     if (this.isLoading) {
-      E.csmTableBody.innerHTML = '<tr><td colspan="11" class="muted" style="text-align:center;">Loading CSM activity…</td></tr>';
+      E.csmTableBody.innerHTML = '<tr><td colspan="12" class="muted" style="text-align:center;">Loading CSM activity…</td></tr>';
       if (E.csmRowCount) E.csmRowCount.textContent = 'Loading…';
       return;
     }
     if (this.loadError) {
-      E.csmTableBody.innerHTML = `<tr><td colspan="11" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(this.loadError)}</td></tr>`;
+      E.csmTableBody.innerHTML = `<tr><td colspan="12" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(this.loadError)}</td></tr>`;
       if (E.csmRowCount) E.csmRowCount.textContent = 'Error';
       return;
     }
@@ -7491,7 +7494,7 @@ const CSMActivity = {
       const msg = this.rows.length
         ? 'No activity rows match the current filters.'
         : 'No CSM activities found in backend yet.';
-      E.csmTableBody.innerHTML = `<tr><td colspan="11" class="muted" style="text-align:center;">${U.escapeHtml(msg)}</td></tr>`;
+      E.csmTableBody.innerHTML = `<tr><td colspan="12" class="muted" style="text-align:center;">${U.escapeHtml(msg)}</td></tr>`;
       if (E.csmRowCount) {
         const totalCount = Array.isArray(this.allRows) ? this.allRows.length : 0;
         E.csmRowCount.textContent = totalCount ? `0 filtered / ${totalCount} total` : '0 rows';
@@ -7510,8 +7513,9 @@ const CSMActivity = {
           <td>${U.escapeHtml(row.supportType || '—')}</td>
           <td>${U.escapeHtml(row.effortRequirement || '—')}</td>
           <td>${U.escapeHtml(row.supportChannel || '—')}</td>
+          <td>${U.escapeHtml(row.status || '—')}</td>
           <td>${U.escapeHtml(row.notes || '—')}</td>
-          <td>${[Permissions.canUpdateCsmActivity() ? `<button class="btn ghost sm" type="button" data-csm-edit="${U.escapeAttr(row.id)}" data-permission-resource="csm_activities" data-permission-action="update">Edit</button>` : '', Permissions.canDeleteCsmActivity() ? `<button class="btn ghost sm" type="button" data-csm-delete="${U.escapeAttr(row.id)}" data-permission-resource="csm_activities" data-permission-action="delete">Delete</button>` : ''].filter(Boolean).join(' ') || '<span class="muted">—</span>'}</td>
+          <td>${[`<button class="btn ghost sm" type="button" data-csm-view="${U.escapeAttr(row.id)}">View</button>`, Permissions.canUpdateCsmActivity() ? `<button class="btn ghost sm" type="button" data-csm-edit="${U.escapeAttr(row.id)}" data-permission-resource="csm_activities" data-permission-action="update">Edit</button>` : '', Permissions.canDeleteCsmActivity() ? `<button class="btn ghost sm" type="button" data-csm-delete="${U.escapeAttr(row.id)}" data-permission-resource="csm_activities" data-permission-action="delete">Delete</button>` : ''].filter(Boolean).join(' ')}</td>
         </tr>`
       )
       .join('');
@@ -7698,6 +7702,29 @@ const CSMActivity = {
       }
     });
   },
+  openDetails(row = null) {
+    if (!row || !E.csmDetailsModal || !E.csmDetailsBody) return;
+    const detailRows = [
+      ['Date', this.formatTimestampForDisplay(row)],
+      ['CSM / User', row.csmName || '—'],
+      ['Client / Company', this.getClientDisplayName(row) || '—'],
+      ['Related Agreement', this.getAgreementDisplayName(row)],
+      ['Location', this.getLocationDisplayName(row)],
+      ['Activity Type', row.supportType || '—'],
+      ['Effort Requirement', row.effortRequirement || '—'],
+      ['Support Channel', row.supportChannel || '—'],
+      ['Status', row.status || '—'],
+      ['Time Spent (Minutes)', Math.round(Number(row.timeSpentMinutes) || 0)]
+    ];
+    E.csmDetailsBody.innerHTML = `${detailRows.map(([label, value]) => `<div class="filter-row"><div class="muted">${U.escapeHtml(label)}</div><strong>${U.escapeHtml(String(value || '—'))}</strong></div>`).join('')}<div class="filter-row" style="grid-column:1 / -1;"><div class="muted">Notes</div><div style="white-space:pre-wrap;overflow-wrap:anywhere;">${U.escapeHtml(row.notes || '—')}</div></div>`;
+    E.csmDetailsModal.style.display = 'flex';
+    E.csmDetailsModal.setAttribute('aria-hidden', 'false');
+  },
+  closeDetails() {
+    if (!E.csmDetailsModal) return;
+    E.csmDetailsModal.style.display = 'none';
+    E.csmDetailsModal.setAttribute('aria-hidden', 'true');
+  },
   async openForm(row = null, options = {}) {
     if (!E.csmFormModal || !E.csmForm) return;
     const identity = this.getCurrentCsmIdentity();
@@ -7784,7 +7811,7 @@ const CSMActivity = {
         ).trim();
     console.log('[csm activity] selected client name', selectedClientName);
     const syncedCompanyName = selectedClientName;
-    return {
+    const activity = {
       csmName: String(E.csmFormCsmName?.value || '').trim(),
       csmUserId: String(E.csmForm?.dataset.csmUserId || '').trim(),
       csmEmail: String(E.csmForm?.dataset.csmEmail || '').trim(),
@@ -7798,12 +7825,13 @@ const CSMActivity = {
       timeSpentMinutes: Number(E.csmFormMinutes?.value || 0),
       supportType: String(E.csmFormSupportType?.value || '').trim(),
       effortRequirement: String(E.csmFormEffort?.value || '').trim(),
-      supportChannel: String(E.csmFormChannel?.value || '').trim(),
-      notes: String(E.csmFormNotes?.value || '').trim()
+      supportChannel: String(E.csmFormChannel?.value || '').trim()
     };
+    if (E.csmFormNotes) activity.notes = String(E.csmFormNotes.value || '').trim();
+    return activity;
   },
   readInlineFormValues() {
-    return {
+    const activity = {
       timestamp: String(E.csmInlineTimestamp?.value || '').trim(),
       csmName: String(E.csmInlineCsmName?.value || '').trim(),
       activityContext: 'agreement_client',
@@ -7811,9 +7839,10 @@ const CSMActivity = {
       timeSpentMinutes: Number(E.csmInlineMinutes?.value || 0),
       supportType: String(E.csmInlineSupportType?.value || '').trim(),
       effortRequirement: String(E.csmInlineEffort?.value || '').trim(),
-      supportChannel: String(E.csmInlineChannel?.value || '').trim(),
-      notes: String(E.csmInlineNotes?.value || '').trim()
+      supportChannel: String(E.csmInlineChannel?.value || '').trim()
     };
+    if (E.csmInlineNotes) activity.notes = String(E.csmInlineNotes.value || '').trim();
+    return activity;
   },
   clearInlineForm() {
     if (E.csmInlineCreateForm && typeof E.csmInlineCreateForm.reset === 'function') {
@@ -7975,6 +8004,12 @@ function wireCSMActivity() {
 
   if (E.csmTableBody) {
     E.csmTableBody.addEventListener('click', event => {
+      const viewId = event.target?.getAttribute('data-csm-view');
+      if (viewId) {
+        const row = CSMActivity.rows.find(item => item.id === viewId);
+        if (row) CSMActivity.openDetails(row);
+        return;
+      }
       const editId = event.target?.getAttribute('data-csm-edit');
       if (editId) {
         const row = CSMActivity.rows.find(item => item.id === editId);
@@ -7988,6 +8023,12 @@ function wireCSMActivity() {
     });
   }
 
+  if (E.csmDetailsCloseBtn) E.csmDetailsCloseBtn.addEventListener('click', () => CSMActivity.closeDetails());
+  if (E.csmDetailsModal) {
+    E.csmDetailsModal.addEventListener('click', event => {
+      if (event.target === E.csmDetailsModal) CSMActivity.closeDetails();
+    });
+  }
   if (E.csmFormCloseBtn) E.csmFormCloseBtn.addEventListener('click', () => CSMActivity.closeForm());
   if (E.csmFormCancelBtn) E.csmFormCancelBtn.addEventListener('click', () => CSMActivity.closeForm());
   if (E.csmFormModal) {
