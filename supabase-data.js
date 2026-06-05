@@ -1,6 +1,6 @@
 (function initSupabaseData(global) {
   const MIGRATED_RESOURCES = new Set([
-    'auth','users','roles','role_permissions','tickets','events','csm','leads','lead_note_logs','deal_note_logs','deals','proposal_catalog','proposals','agreements','workflow','clients','invoices','receipts','credit_notes','operations_onboarding','technical_admin_requests','notifications','notification_settings','companies','contacts','company_type_options','company_industry_options','payment_forecast','biners','lifecycle_status_logs'
+    'auth','users','roles','role_permissions','tickets','events','csm','leads','lead_note_logs','deal_note_logs','deals','proposal_catalog','proposals','agreements','workflow','clients','invoices','receipts','credit_notes','operations_onboarding','technical_admin_requests','notifications','notification_settings','companies','contacts','company_type_options','company_industry_options','payment_forecast','biners','lifecycle_status_logs','communication_centre_messages'
   ]);
 
   const TABLE_BY_RESOURCE = {
@@ -11,7 +11,8 @@
     technical_admin_requests: 'technical_admin_requests', companies: 'companies', contacts: 'contacts', company_type_options: 'company_type_options', company_industry_options: 'company_industry_options'
     ,notifications: 'notifications'
     ,notification_settings: 'notification_rules',
-    biners: 'biners_entries'
+    biners: 'biners_entries',
+    communication_centre_messages: 'communication_centre_messages'
   };
 
   const PK_BY_RESOURCE = {
@@ -40,7 +41,8 @@
     company_industry_options: 'id'
     ,notifications: 'notification_id'
     ,notification_settings: 'id',
-    biners: 'id'
+    biners: 'id',
+    communication_centre_messages: 'id'
   };
   const LEGACY_IDENTIFIER_KEYS = {
     users: [],
@@ -7640,6 +7642,30 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
 
     const table = TABLE_BY_RESOURCE[resource];
     const client = getClient();
+
+    if (resource === 'communication_centre_messages' && ['update_message', 'soft_delete_message'].includes(action)) {
+      const id = String(payload.id || '').trim();
+      if (!id) throw new Error('Message ID is required.');
+      const allowedTextFields = ['message', 'message_body', 'body', 'content', 'text'];
+      const requestedUpdates = payload.updates && typeof payload.updates === 'object' ? payload.updates : {};
+      let updates;
+      if (action === 'update_message') {
+        const textField = allowedTextFields.find(field => Object.prototype.hasOwnProperty.call(requestedUpdates, field));
+        if (!textField || !String(requestedUpdates[textField] ?? '').trim()) throw new Error('Updated message cannot be empty.');
+        updates = { [textField]: String(requestedUpdates[textField]).trim(), edited_at: new Date().toISOString() };
+      } else {
+        const { data: authData } = await client.auth.getUser();
+        updates = {
+          is_deleted: true,
+          deleted_at: new Date().toISOString(),
+          deleted_by: authData?.user?.id || null,
+          deleted_by_email: authData?.user?.email || null
+        };
+      }
+      const { data, error } = await client.from('communication_centre_messages').update(updates).eq('id', id).select('*').single();
+      if (error) throw friendlyError(action === 'update_message' ? 'Unable to edit message' : 'Unable to delete message', error);
+      return { handled: true, data };
+    }
 
     if (resource === 'companies' && ['verify', 'verify_company'].includes(action)) {
       assertCanVerifyCompanies();

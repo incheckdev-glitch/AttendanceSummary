@@ -35,6 +35,7 @@
     realtimeStatus: 'idle',
     realtimeRefreshTimer: null,
     activeRefreshTimer: null,
+    messageEditWindowTimer: null,
     pollingTimer: null,
     readPollingTimer: null,
     lastRealtimeAt: null,
@@ -81,6 +82,50 @@
   const showFriendlyError = message => ccNotify(message, 'error');
   const showFriendlySuccess = message => ccNotify(message, 'success');
   const db = () => global.SupabaseClient?.getClient?.();
+  const MESSAGE_EDIT_WINDOW_MS = 5 * 60 * 1000;
+  const MESSAGE_TEXT_FIELDS = ['message', 'message_body', 'body', 'content', 'text'];
+
+  function getMessageText(message = {}) {
+    if (message.is_deleted) return 'This message was deleted.';
+    const field = MESSAGE_TEXT_FIELDS.find(key => message[key] !== undefined && message[key] !== null);
+    return field ? String(message[field]) : '';
+  }
+
+  function getMessageTextField(message = {}) {
+    return MESSAGE_TEXT_FIELDS.find(key => Object.prototype.hasOwnProperty.call(message, key)) || 'message_body';
+  }
+
+  function isWithinMessageEditWindow(message = {}, now = Date.now()) {
+    const sentAt = new Date(message.created_at || message.sent_at || '').getTime();
+    return Number.isFinite(sentAt) && now >= sentAt && (now - sentAt) < MESSAGE_EDIT_WINDOW_MS;
+  }
+
+  function canModifyOwnMessage(message = {}, now = Date.now()) {
+    return isMessageMine(message) && !message.is_deleted && !message.deleted_at && !message.is_system_message && isWithinMessageEditWindow(message, now);
+  }
+
+  function getCurrentMessageActor() {
+    const user = global.Session?.user?.() || global.Session?.currentUser?.() || {};
+    return { id: user.id || user.user_id || user.auth_user_id || null, email: user.email || null };
+  }
+
+  async function updateCommunicationMessage(message, updates) {
+    if (global.Api?.updateCommunicationCentreMessage) {
+      return global.Api.updateCommunicationCentreMessage(message.id, updates);
+    }
+    const result = await db().from('communication_centre_messages').update(updates).eq('id', message.id).select('*').single();
+    if (result.error) throw result.error;
+    return result.data;
+  }
+
+  async function softDeleteCommunicationMessage(message) {
+    const actor = getCurrentMessageActor();
+    const updates = { is_deleted: true, deleted_at: new Date().toISOString(), deleted_by: actor.id, deleted_by_email: actor.email };
+    if (global.Api?.softDeleteCommunicationCentreMessage) {
+      return global.Api.softDeleteCommunicationCentreMessage(message.id, updates);
+    }
+    return updateCommunicationMessage(message, updates);
+  }
   function isAuthenticated() {
     try {
       if (typeof global.Session?.isAuthenticated === 'function') return Boolean(global.Session.isAuthenticated());
@@ -509,7 +554,7 @@
 
   function getCommunicationMessageBody(message = {}) {
     if (message.is_deleted) return 'This message was deleted.';
-    return firstNonEmpty(message.message_body, message.body, message.content, message.decrypted_body, message.decrypted_message);
+    return firstNonEmpty(getMessageText(message), message.decrypted_body, message.decrypted_message);
   }
 
   function buildCommunicationConversationExportHtml({ conversation, messages, participants, actionItems, exportedBy, exportedAt }) {
@@ -539,7 +584,7 @@
         }).join('')}</div>
       ` : '';
       const markerParts = [];
-      if (message.edited_at || message.is_edited) markerParts.push(`Edited${message.edited_at ? ` ${formatCommunicationExportDate(message.edited_at)}` : ''}`);
+      if (message.edited_at) markerParts.push(`Edited ${formatCommunicationExportDate(message.edited_at)}`);
       if (message.is_deleted || message.deleted_at) markerParts.push(`Deleted${message.deleted_at ? ` ${formatCommunicationExportDate(message.deleted_at)}` : ''}`);
       return `
         <article class="message-card ${message.is_deleted ? 'deleted' : ''}">
@@ -875,7 +920,7 @@
     const identity = getCurrentIdentity();
     const messageIds = [message?.sender_id, message?.sender_user_id, message?.user_id, message?.created_by].map(normalizeIdentityValue);
     if (messageIds.some(id => id && identity.ids.has(id))) return true;
-    const senderNames = [message?.sender_name, message?.created_by_name, message?.user_name].map(normalizeIdentityValue);
+    const senderNames = [message?.sender_name, message?.created_by_name, message?.user_name, message?.sender_email, message?.created_by_email, message?.email].map(normalizeIdentityValue);
     return senderNames.some(name => name && identity.names.has(name));
   }
   function renderMessageDeliveryStatus(message, isMine) {
@@ -904,7 +949,7 @@
     const replyBtn = $('communicationCentreReplyBtn');
     if (!target) return;
     if (M.state.editingMessageId) {
-      const body = normalizeText(M.state.editingMessageOriginal?.message_body || M.state.editingMessageOriginal?.body || 'Message');
+      const body = normalizeText(getMessageText(M.state.editingMessageOriginal) || 'Message');
       target.style.display = '';
       target.innerHTML = `<div><strong>Editing message</strong><span>${escapeHtml(body.slice(0, 120))}${body.length > 120 ? '…' : ''}</span></div><button type="button" class="btn ghost sm" id="communicationCentreCancelReplyTarget">Cancel</button>`;
       if (replyBtn) replyBtn.textContent = 'Save Edit';
@@ -917,7 +962,7 @@
       target.innerHTML = '';
       return;
     }
-    const body = normalizeText(message.message_body || message.body || 'Message');
+    const body = normalizeText(getMessageText(message) || 'Message');
     target.style.display = '';
     target.innerHTML = `<div><strong>Replying to ${escapeHtml(message.sender_name || 'user')}</strong><span>${escapeHtml(body.slice(0, 120))}${body.length > 120 ? '…' : ''}</span></div><button type="button" class="btn ghost sm" id="communicationCentreCancelReplyTarget">Cancel</button>`;
   }
@@ -2203,6 +2248,20 @@
     M.lastMessageCountByConversation.set(String(conversationId || ''), currentMessageCount);
   }
 
+  function scheduleMessageEditWindowRefresh(messages = M.state.messages) {
+    clearTimeout(M.messageEditWindowTimer);
+    const now = Date.now();
+    const nextExpiry = (messages || [])
+      .filter(message => canModifyOwnMessage(message, now))
+      .map(message => new Date(message.created_at || message.sent_at).getTime() + MESSAGE_EDIT_WINDOW_MS)
+      .filter(expiry => Number.isFinite(expiry) && expiry > now)
+      .sort((a, b) => a - b)[0];
+    if (!nextExpiry) return;
+    M.messageEditWindowTimer = setTimeout(() => {
+      if (M.state.active?.id) renderConversationMessages(M.state.active.id, { autoScrollReason: 'background_refresh', preserveDetailsPanel: true });
+    }, Math.max(0, nextExpiry - now + 50));
+  }
+
   function renderDrawer(options = {}) {
     const preserveDetailsPanel = options.preserveDetailsPanel === true;
     const drawer = $('communicationCentreDrawer');
@@ -2234,7 +2293,7 @@
         const muted = message.is_system_message ? 'opacity:.72;' : '';
         if (message.is_system_message) {
           return `
-            <div class="cc-system-message">${escapeHtml(message.message_body || message.body || 'System update')}</div>
+            <div class="cc-system-message">${escapeHtml(getMessageText(message) || 'System update')}</div>
           `;
         }
         const senderName = escapeHtml(message.sender_name || message.created_by_name || 'System');
@@ -2243,10 +2302,10 @@
           <div class="cc-message-row ${isMine ? 'mine' : 'incoming'}" style="${muted}">
             ${isMine ? '' : `<div class="cc-avatar">${initials}</div>`}
             <div class="cc-bubble communication-message-bubble ${isMine ? 'outgoing' : 'incoming'}">
-              <div class="cc-message-meta"><span class="cc-sender">${senderName}</span><span class="cc-sep">•</span><span>${message.created_at ? escapeHtml(new Date(message.created_at).toLocaleString()) : ''}</span>${message.edited_at ? '<span class="cc-sep">•</span><span>edited</span>' : ''}</div>
-              <div class="cc-message-body">${message.is_deleted ? 'This message was deleted.' : escapeHtml(message.message_body || message.body || '')}</div>
+              <div class="cc-message-meta"><span class="cc-sender">${senderName}</span><span class="cc-sep">•</span><span>${message.created_at ? escapeHtml(new Date(message.created_at).toLocaleString()) : ''}</span>${message.edited_at ? '<span class="cc-sep">•</span><span class="cc-edited-label">Edited</span>' : ''}</div>
+              <div class="cc-message-body">${escapeHtml(getMessageText(message))}</div>
               ${renderMessageDeliveryStatus(message, isMine)}
-              ${!message.is_deleted ? `<div class="cc-message-actions"><button class="btn ghost sm" data-cc-reply-message="${escapeAttr(message.id)}" type="button">Reply</button>${isMine ? `<button class="btn ghost sm" data-cc-edit-message="${escapeAttr(message.id)}" type="button">Edit</button><button class="btn ghost sm" data-cc-delete-message="${escapeAttr(message.id)}" type="button">Delete message</button>` : ''}</div>` : ''}
+              ${!message.is_deleted ? `<div class="cc-message-actions"><button class="btn ghost sm" data-cc-reply-message="${escapeAttr(message.id)}" type="button">Reply</button>${canModifyOwnMessage(message) ? `<button class="btn ghost sm" data-cc-edit-message="${escapeAttr(message.id)}" type="button">Edit</button><button class="btn ghost sm cc-delete-message-btn" data-cc-delete-message="${escapeAttr(message.id)}" type="button">Delete message</button>` : ''}</div>` : ''}
               ${renderMessageReactions(message.id)}
             </div>
             ${isMine ? `<div class="cc-avatar mine">${initials}</div>` : ''}
@@ -2254,6 +2313,7 @@
         `;
       }).join('') : '<div class="muted communication-centre-empty-state" style="padding:20px;text-align:center;">Select a conversation to view messages.</div>';
     }
+    scheduleMessageEditWindowRefresh();
     if (replyWrap) replyWrap.style.display = (conversation.status !== 'Closed' && can('reply')) ? '' : 'none';
     if (closedMsg) closedMsg.style.display = conversation.status === 'Closed' ? '' : 'none';
     renderReplyTargetPreview();
@@ -2884,19 +2944,22 @@
         const row = M.state.messages.find(m => String(m.id) === String(id));
         const input = $('communicationCentreReplyInput');
         if (!row || !input) { showFriendlyError('Unable to edit message. Please try again.'); return; }
+        if (!canModifyOwnMessage(row)) { showFriendlyError('Messages can only be edited within 5 minutes of sending.'); return; }
         M.state.editingMessageId = id;
         M.state.editingMessageOriginal = row;
         M.state.replyToMessage = null;
-        input.value = normalizeText(row.message_body || row.body || '');
+        input.value = normalizeText(getMessageText(row));
         preserveCurrentMessageScroll(() => renderReplyTargetPreview());
         focusComposerWithoutScroll(input);
       } else if (deleteBtnEl) {
         const id = deleteBtnEl.getAttribute('data-cc-delete-message');
+        const row = M.state.messages.find(message => String(message.id) === String(id));
+        if (!row || !canModifyOwnMessage(row)) { showFriendlyError('Messages can only be deleted within 5 minutes of sending.'); return; }
         try {
-          const { error } = await db().rpc('soft_delete_communication_centre_message', { p_message_id: id });
-          if (error) throw error;
+          await softDeleteCommunicationMessage(row);
           await openDetail(conversation.id, { autoScrollReason: 'background_refresh', reason: 'delete_message' });
-        } catch (error) { console.error(error); showFriendlyError('Unable to delete message. Please try again.'); return; }
+          showFriendlySuccess('Message deleted.');
+        } catch (error) { console.error(error); showFriendlyError('Unable to delete message. It may be more than 5 minutes old.'); return; }
       } else if (reactBtnEl) {
         const messageId = reactBtnEl.getAttribute('data-cc-react');
         const reaction = reactBtnEl.getAttribute('data-reaction');
@@ -2969,12 +3032,19 @@
       const body = normalizeText(input?.value);
       if (!conversation?.id) return showFriendlyError('Open a conversation first.');
       if (!body) return showFriendlyError(M.state.editingMessageId ? 'Updated message cannot be empty.' : 'Please enter a reply message.');
+      const editingAtSubmit = Boolean(M.state.editingMessageId);
       try {
         if (replyBtn) { replyBtn.disabled = true; replyBtn.textContent = M.state.editingMessageId ? 'Saving...' : 'Sending...'; }
         const msgType = $('communicationCentreReplyType')?.value || 'message';
         if (M.state.editingMessageId) {
-          const { error } = await db().rpc('edit_communication_centre_message_secure', { p_message_id: M.state.editingMessageId, p_message_body: body });
-          if (error) throw error;
+          const editingMessage = M.state.messages.find(message => String(message.id) === String(M.state.editingMessageId));
+          if (!editingMessage || !canModifyOwnMessage(editingMessage)) {
+            M.state.editingMessageId = null;
+            M.state.editingMessageOriginal = null;
+            renderReplyTargetPreview();
+            throw new Error('Messages can only be edited within 5 minutes of sending.');
+          }
+          await updateCommunicationMessage(editingMessage, { [getMessageTextField(editingMessage)]: body, edited_at: new Date().toISOString() });
           M.state.editingMessageId = null;
           M.state.editingMessageOriginal = null;
           if (input) input.value = '';
@@ -3036,10 +3106,13 @@
           conversationId: conversation.id
         });
       } catch (error) {
+        const friendlyMessage = editingAtSubmit
+          ? 'Unable to update message. Messages can only be edited within 5 minutes of sending.'
+          : 'Unable to send reply. Please try again.';
         if (replyBtn) { replyBtn.disabled = false; replyBtn.textContent = M.state.editingMessageId ? 'Save Edit' : 'Send'; }
         console.error('[Communication Centre] send reply/edit failed', error);
-        if (replyError) { replyError.textContent='Unable to send reply. Please try again.'; replyError.style.display='block'; }
-        showFriendlyError('Unable to send reply. Please try again.');
+        if (replyError) { replyError.textContent=friendlyMessage; replyError.style.display='block'; }
+        showFriendlyError(friendlyMessage);
       }
     });
     const hashConversationId = (() => {

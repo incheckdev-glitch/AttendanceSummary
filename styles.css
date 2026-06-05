@@ -3438,3 +3438,5 @@ body.pf-modal-open{overflow:hidden}.pf-activity-modal[hidden],.pf-note-modal[hid
 .lifecycle-history-entry__date { color: var(--muted); font-size: 12px; margin-bottom: 5px; }
 .lifecycle-history-empty { padding: 24px; text-align: center; border: 1px dashed var(--border); border-radius: 12px; }
 @media (max-width: 720px) { .lifecycle-history-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .lifecycle-history-drawer { border-radius: 0; } }
+.cc-edited-label{font-size:11px;font-weight:700;color:#64748b}
+.cc-delete-message-btn{color:#b42318;border-color:#fecaca}.cc-delete-message-btn:hover{background:#fef2f2;border-color:#fca5a5;color:#991b1b}
