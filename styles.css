@@ -102,8 +102,7 @@ body.drawer-open{
 
 body.auth-locked #appHeader,
 body.auth-locked #features,
-body.auth-locked #app,
-body.auth-locked #appFooter{
+body.auth-locked #app{
   display:none;
 }
 
@@ -664,27 +663,10 @@ body.auth-locked .login-hint{
 .testimonial strong{
   font-size:.95rem;
 }
-.footer{
-  padding:40px 0 60px;
-}
-.footer-grid{
-  display:grid;
-  grid-template-columns:2fr 1fr 1fr;
-  gap:24px;
-  align-items:start;
-}
-.footer a{
-  color:var(--muted);
-  text-decoration:none;
-}
-.footer a:hover{
-  color:var(--text);
-}
 @media(max-width:980px){
   .hero-grid{grid-template-columns:1fr}
   .feature-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .testimonial-grid{grid-template-columns:1fr}
-  .footer-grid{grid-template-columns:1fr}
 }
 @media(max-width:640px){
   .hero-metrics{grid-template-columns:1fr}
@@ -3249,6 +3231,20 @@ body.permissions-loading [data-permission-resource][data-permission-action]{disp
 .chip.warn{border-color:var(--warn);color:#b45309;background:rgba(245,158,11,.14)}
 .chip.danger{border-color:var(--danger);color:var(--danger);background:rgba(239,68,68,.12)}
 .chip.info{border-color:var(--accent);color:var(--accent);background:rgba(59,130,246,.12)}
+
+/* Document footers belong to isolated preview/print documents, never app modules. */
+#app .document-footer,
+#app .app-footer,
+#app .preview-footer,
+#app .invoice-footer,
+#app .receipt-footer,
+#app .credit-note-footer,
+#app .a4-footer,
+#paymentForecastView footer,
+.payment-forecast-module footer,
+.payment-forecast-table footer {
+  display:none !important;
+}
 
 /* Payment Forecast */
 .payment-forecast-summary {
