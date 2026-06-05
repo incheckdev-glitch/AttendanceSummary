@@ -1,6 +1,10 @@
 (function initCsmService(global) {
   const TABLE = 'csm_activities';
   const CSM_ADMIN_ROLE_KEYS = new Set(['admin']);
+  // The deployed csm_activities table stores the note in notes_optional. Keep
+  // activity.notes as the frontend canonical field and only translate at the DB boundary.
+  const DB_NOTE_COLUMN = 'notes_optional';
+  const NOTE_COLUMN_CANDIDATES = [DB_NOTE_COLUMN, 'notes', 'note', 'activity_notes', 'activity_note', 'remarks', 'comments', 'comment', 'description'];
   const CSM_ACTIVITY_COLUMNS = new Set([
     'id',
     'activity_id',
@@ -24,7 +28,7 @@
     'type_of_support',
     'effort_requirement',
     'support_channel',
-    'notes',
+    ...NOTE_COLUMN_CANDIDATES,
     'created_by',
     'updated_by',
     'created_at',
@@ -347,7 +351,7 @@
       type_of_support: input.type_of_support ?? input.supportType,
       effort_requirement: input.effort_requirement ?? input.effortRequirement,
       support_channel: input.support_channel ?? input.supportChannel,
-      notes: getSuppliedActivityNotes(input),
+      [DB_NOTE_COLUMN]: getSuppliedActivityNotes(input),
       created_by: input.created_by || input.createdBy || userId || undefined,
       updated_by: input.updated_by || input.updatedBy || userId || undefined
     };
@@ -385,7 +389,7 @@
       type_of_support: input.type_of_support ?? input.supportType,
       effort_requirement: input.effort_requirement ?? input.effortRequirement,
       support_channel: input.support_channel ?? input.supportChannel,
-      notes: getSuppliedActivityNotes(input),
+      [DB_NOTE_COLUMN]: getSuppliedActivityNotes(input),
       updated_by: input.updated_by || input.updatedBy || userId || undefined
     };
     return filterCsmActivityRecord(mapped);
@@ -408,11 +412,25 @@
 
   async function withColumnFallback(operation, payload = {}) {
     const working = { ...payload };
-    for (let attempt = 0; attempt < 16; attempt += 1) {
+    const attemptedNoteColumns = new Set(NOTE_COLUMN_CANDIDATES.filter(column => column in working));
+    for (let attempt = 0; attempt < 32; attempt += 1) {
       const result = await operation(working);
       const unsupportedColumn = getUnsupportedColumn(result?.error?.message || '');
       if (!unsupportedColumn || !(unsupportedColumn in working)) return result;
+
+      const unsupportedValue = working[unsupportedColumn];
       delete working[unsupportedColumn];
+
+      // Some environments still expose a legacy note column. If the known
+      // notes_optional column is unavailable, retry the same value against the
+      // next supported note alias rather than silently saving without a note.
+      if (NOTE_COLUMN_CANDIDATES.includes(unsupportedColumn)) {
+        const fallbackNoteColumn = NOTE_COLUMN_CANDIDATES.find(column => !attemptedNoteColumns.has(column));
+        if (fallbackNoteColumn) {
+          attemptedNoteColumns.add(fallbackNoteColumn);
+          working[fallbackNoteColumn] = unsupportedValue;
+        }
+      }
     }
     return operation(working);
   }
@@ -570,7 +588,9 @@
       if (error) throw readableError('Unable to load CSM activities', error);
 
       const batch = Array.isArray(data) ? data : [];
-      allRows.push(...batch.map(normalizeCsmRow));
+      const normalizedBatch = batch.map(normalizeCsmRow);
+      normalizedBatch.forEach(activity => console.log('[CSM Activity] loaded note:', activity.notes || ''));
+      allRows.push(...normalizedBatch);
 
       if (batch.length < fetchSize) break;
       from += fetchSize;
@@ -599,7 +619,7 @@
   async function createActivity(input = {}) {
     if (!canCreateCsmActivity(getCurrentUserForPermission())) throw new Error('You do not have permission to create CSM activities.');
     const payload = await toInsertPayload(input);
-    console.log('[csm activity] save payload', payload);
+    console.log('[CSM Activity] save payload:', payload);
     const client = getClient();
     const { data, error } = await withColumnFallback(
       nextPayload => client.from(TABLE).insert(nextPayload).select('*').single(),
@@ -614,7 +634,7 @@
     const activityId = cleanString(id || updates.id);
     if (!activityId) throw new Error('CSM activity id is required.');
     const payload = await toUpdatePayload(updates);
-    console.log('[csm activity] save payload', payload);
+    console.log('[CSM Activity] save payload:', payload);
     const client = getClient();
     const { data, error } = await withColumnFallback(
       nextPayload => client.from(TABLE).update(nextPayload).eq('id', activityId).select('*').single(),
