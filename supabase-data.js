@@ -1,6 +1,6 @@
 (function initSupabaseData(global) {
   const MIGRATED_RESOURCES = new Set([
-    'auth','users','roles','role_permissions','tickets','events','csm','leads','lead_note_logs','deal_note_logs','deals','proposal_catalog','proposals','agreements','workflow','clients','invoices','receipts','credit_notes','operations_onboarding','technical_admin_requests','notifications','notification_settings','companies','contacts','company_type_options','company_industry_options','payment_forecast','biners'
+    'auth','users','roles','role_permissions','tickets','events','csm','leads','lead_note_logs','deal_note_logs','deals','proposal_catalog','proposals','agreements','workflow','clients','invoices','receipts','credit_notes','operations_onboarding','technical_admin_requests','notifications','notification_settings','companies','contacts','company_type_options','company_industry_options','payment_forecast','biners','lifecycle_status_logs'
   ]);
 
   const TABLE_BY_RESOURCE = {
@@ -3818,6 +3818,68 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
   }
 
 
+  const LIFECYCLE_STATUS_CONFIG = Object.freeze({
+    leads: { type: 'lead', fields: ['status'], numbers: ['lead_id', 'lead_number'], titles: ['company_name', 'title', 'full_name'] },
+    deals: { type: 'deal', fields: ['stage', 'status'], numbers: ['deal_id', 'deal_number'], titles: ['title', 'deal_name', 'company_name'] },
+    proposals: { type: 'proposal', fields: ['status'], numbers: ['proposal_id', 'proposal_number', 'ref_number'], titles: ['title', 'proposal_title', 'company_name'] },
+    agreements: { type: 'agreement', fields: ['status', 'agreement_status'], numbers: ['agreement_number', 'agreement_id'], titles: ['title', 'agreement_title', 'customer_name'] },
+    invoices: { type: 'invoice', fields: ['status', 'payment_status', 'payment_state'], numbers: ['invoice_number', 'invoice_id'], titles: ['title', 'customer_name', 'client_name'] },
+    receipts: { type: 'receipt', fields: ['status', 'receipt_status'], numbers: ['receipt_number', 'receipt_id'], titles: ['title', 'customer_name', 'client_name'] },
+    credit_notes: { type: 'credit_note', fields: ['status'], numbers: ['credit_note_number', 'credit_note_id'], titles: ['title', 'customer_name', 'reason'] },
+    operations_onboarding: { type: 'operations_onboarding', fields: ['onboarding_status', 'status'], numbers: ['onboarding_id', 'agreement_id'], titles: ['title', 'client_name', 'company_name'] },
+    technical_admin_requests: { type: 'technical_admin_request', fields: ['request_status', 'technical_request_status', 'status'], numbers: ['request_id', 'technical_request_id'], titles: ['title', 'request_title', 'company_name'] },
+    tickets: { type: 'ticket', fields: ['status'], numbers: ['ticket_id'], titles: ['title', 'subject'] },
+    events: { type: 'event', fields: ['status'], numbers: ['event_id'], titles: ['title', 'event_title', 'subject'] },
+    biners: { type: 'biners_entry', fields: ['status', 'schedule_status'], numbers: ['biners_id', 'entry_number', 'schedule_number'], titles: ['title', 'client_name', 'description'] },
+    payment_forecast: { type: 'payment_forecast_follow_up', fields: ['follow_up_status', 'status'], numbers: ['followup_id', 'invoice_number'], titles: ['title', 'client_name'] }
+  });
+
+  function lifecycleText(value) { return String(value ?? '').trim(); }
+  function firstLifecycleValue(row = {}, keys = []) {
+    for (const key of keys) { const value = lifecycleText(row?.[key]); if (value) return value; }
+    return '';
+  }
+  async function callLifecycleRpc(client, name, args, prefixedArgs) {
+    let response = await client.rpc(name, args);
+    if (response.error && prefixedArgs) response = await client.rpc(name, prefixedArgs);
+    return response;
+  }
+  async function addLifecycleStatusLog(client, entry = {}) {
+    const oldStatus = lifecycleText(entry.old_status);
+    const newStatus = lifecycleText(entry.new_status);
+    if (!newStatus || oldStatus.toLowerCase() === newStatus.toLowerCase()) return null;
+    const authUser = global.Session?.authContext?.()?.user || {};
+    const args = {
+      entity_type: lifecycleText(entry.entity_type), entity_id: lifecycleText(entry.entity_id) || null,
+      entity_number: lifecycleText(entry.entity_number) || null, title: lifecycleText(entry.title) || null,
+      old_status: oldStatus || null, new_status: newStatus, status_field: lifecycleText(entry.status_field) || 'status',
+      change_reason: lifecycleText(entry.change_reason) || null, notes: lifecycleText(entry.notes) || null,
+      changed_by: lifecycleText(entry.changed_by || global.Session?.userId?.() || authUser.id) || null,
+      changed_by_email: lifecycleText(entry.changed_by_email || authUser.email) || null
+    };
+    const prefixed = Object.fromEntries(Object.entries(args).map(([key, value]) => [`p_${key}`, value]));
+    const { data, error } = await callLifecycleRpc(client, 'add_lifecycle_status_log', args, prefixed);
+    if (error) throw friendlyError('Unable to write lifecycle status log', error);
+    return data;
+  }
+  async function recordLifecycleStatusChanges(client, resource, previous = {}, current = {}, options = {}) {
+    const config = LIFECYCLE_STATUS_CONFIG[resource];
+    if (!config || !current || typeof current !== 'object') return;
+    if (!options.snapshot && (!previous || !Object.keys(previous).length)) return;
+    const entityId = lifecycleText(current.id || current.uuid || previous?.id || previous?.uuid);
+    const entityNumber = firstLifecycleValue(current, config.numbers) || firstLifecycleValue(previous, config.numbers) || entityId;
+    const title = firstLifecycleValue(current, config.titles) || firstLifecycleValue(previous, config.titles) || entityNumber;
+    const seenTransitions = new Set();
+    for (const field of config.fields) {
+      const oldStatus = options.snapshot ? '' : lifecycleText(previous?.[field]);
+      const newStatus = lifecycleText(current?.[field]);
+      const transitionKey = `${oldStatus.toLowerCase()}→${newStatus.toLowerCase()}`;
+      if (!newStatus || oldStatus.toLowerCase() === newStatus.toLowerCase() || seenTransitions.has(transitionKey)) continue;
+      seenTransitions.add(transitionKey);
+      await addLifecycleStatusLog(client, { entity_type: config.type, entity_id: entityId, entity_number: entityNumber, title, old_status: oldStatus, new_status: newStatus, status_field: field });
+    }
+  }
+
   async function getCurrentUserId(client) {
     try {
       const { data, error } = await client.auth.getUser();
@@ -6649,6 +6711,38 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
 
   async function handleRpcResource(resource, action, payload) {
     const client = getClient();
+    if (resource === 'lifecycle_status_logs' && action === 'add') {
+      return addLifecycleStatusLog(client, payload);
+    }
+    if (resource === 'lifecycle_status_logs' && action === 'history') {
+      const args = { entity_type: lifecycleText(payload?.entity_type), entity_id: lifecycleText(payload?.entity_id) || null, entity_number: lifecycleText(payload?.entity_number) || null };
+      const prefixed = Object.fromEntries(Object.entries(args).map(([key, value]) => [`p_${key}`, value]));
+      let { data, error } = await callLifecycleRpc(client, 'get_lifecycle_status_history', args, prefixed);
+      if (error) throw friendlyError('Unable to load lifecycle status history', error);
+      let rows = Array.isArray(data) ? data : (data == null ? [] : [data]);
+      if (!rows.length) {
+        const configEntry = Object.entries(LIFECYCLE_STATUS_CONFIG).find(([, config]) => config.type === args.entity_type);
+        const [sourceResource, config] = configEntry || [];
+        const sourceTable = TABLE_BY_RESOURCE[sourceResource];
+        let current = null;
+        if (sourceTable && args.entity_id) {
+          const response = await client.from(sourceTable).select('*').eq('id', args.entity_id).maybeSingle();
+          if (!response.error) current = response.data || null;
+        }
+        if (!current && sourceTable && args.entity_number && config) {
+          for (const numberField of config.numbers) {
+            const response = await client.from(sourceTable).select('*').eq(numberField, args.entity_number).maybeSingle();
+            if (!response.error && response.data) { current = response.data; break; }
+          }
+        }
+        if (current && sourceResource) {
+          await recordLifecycleStatusChanges(client, sourceResource, {}, current, { snapshot: true }).catch(backfillError => console.warn('[lifecycle status] current-status backfill failed', backfillError));
+          const refreshed = await callLifecycleRpc(client, 'get_lifecycle_status_history', args, prefixed);
+          if (!refreshed.error) rows = Array.isArray(refreshed.data) ? refreshed.data : (refreshed.data == null ? [] : [refreshed.data]);
+        }
+      }
+      return rows;
+    }
     if (resource === 'payment_forecast' && action === 'drilldown') {
       assertAllowed('payment_forecast', 'view');
       const text = value => String(value ?? '').trim();
@@ -8593,6 +8687,9 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
           throw friendlyError(`Unable to create ${itemTable}`, childResp.error);
         }
       }
+      await recordLifecycleStatusChanges(client, resource, {}, created, { snapshot: true }).catch(error => {
+        console.warn(`[lifecycle status] ${resource} create snapshot failed`, error);
+      });
       return { handled: true, data: await withItems(resource, created) };
     }
 
@@ -8622,6 +8719,12 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         : pickedId;
       const key = resource === 'operations_onboarding' ? 'id' : getPrimaryKeyForResource(resource);
       if (!id) throw new Error(`Missing ${key} for ${resource} update`);
+      let previousLifecycleRow = null;
+      if (LIFECYCLE_STATUS_CONFIG[resource]) {
+        const { data: lifecycleRow, error: lifecycleRowError } = await client.from(table).select('*').eq(key, id).maybeSingle();
+        if (lifecycleRowError) console.warn(`[lifecycle status] unable to load previous ${resource} status`, lifecycleRowError);
+        previousLifecycleRow = lifecycleRow || null;
+      }
       console.log('[CRUD] resource, pk, value', resource, key, id);
       const updates = requestedUpdates;
       const safeUpdates = { ...updates };
@@ -8888,6 +8991,9 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
           data = singleRow;
         }
       }
+      await recordLifecycleStatusChanges(client, resource, previousLifecycleRow || {}, data || {}).catch(error => {
+        console.warn(`[lifecycle status] ${resource} update log failed`, error);
+      });
       if (resource === 'tickets' && isAdminDev()) {
         const internalUpdates = toTicketInternalRecord(safeUpdates);
         internalUpdates.ticket_id = ticketRowId({ id });

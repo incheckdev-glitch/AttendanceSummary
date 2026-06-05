@@ -3422,3 +3422,19 @@ body.pf-modal-open{overflow:hidden}.pf-activity-modal[hidden],.pf-note-modal[hid
 .biners-bulk-toolbar .muted { margin-left: 6px; }
 .biners-table input[type="checkbox"] { width: 16px; height: 16px; }
 .biners-drawer-section .biners-table-wrap { max-height: 360px; }
+
+
+/* Lifecycle status history drawer */
+.lifecycle-history-btn { margin-top: 8px; align-self: flex-start; }
+.lifecycle-history-modal { justify-content: flex-end; align-items: stretch; }
+.lifecycle-history-drawer { width: min(720px, 96vw); max-width: none; height: 100vh; max-height: none; margin: 0; border-radius: 16px 0 0 16px; overflow-y: auto; }
+.lifecycle-history-body { padding-top: 14px; }
+.lifecycle-history-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 18px; }
+.lifecycle-history-cards .value { font-size: 16px; overflow-wrap: anywhere; }
+.lifecycle-history-list { position: relative; display: grid; gap: 12px; padding-left: 18px; }
+.lifecycle-history-list::before { content: ''; position: absolute; inset: 6px auto 6px 5px; width: 2px; background: var(--border); }
+.lifecycle-history-entry { position: relative; border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: var(--card); }
+.lifecycle-history-entry::before { content: ''; position: absolute; left: -19px; top: 17px; width: 10px; height: 10px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 0 3px var(--bg); }
+.lifecycle-history-entry__date { color: var(--muted); font-size: 12px; margin-bottom: 5px; }
+.lifecycle-history-empty { padding: 24px; text-align: center; border: 1px dashed var(--border); border-radius: 12px; }
+@media (max-width: 720px) { .lifecycle-history-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .lifecycle-history-drawer { border-radius: 0; } }

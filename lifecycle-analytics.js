@@ -270,7 +270,11 @@ const LifecycleAnalytics = {
         config.noteBuilder ? this.text(config.noteBuilder(item)) : ''
       ].filter(Boolean);
 
-      events.push({ type: config.type, title: config.title, sortTimestamp, displayDate, metadata });
+      const statusFields = config.statusFields || ['status'];
+      const currentStatus = statusFields.map(field => this.text(item?.[field])).find(Boolean) || '';
+      const entityId = this.text(item.id || item.uuid || '');
+      const entityNumber = (config.numberFields || [config.codeField]).map(field => this.text(item?.[field])).find(Boolean) || entityId;
+      events.push({ type: config.type, entityType: config.entityType || String(config.type || '').replace(/_(created|signed)$/, ''), entityId, entityNumber, currentStatus, title: config.title, sortTimestamp, displayDate, metadata });
     };
 
     const leads = (account.leads || []).slice();
@@ -280,13 +284,27 @@ const LifecycleAnalytics = {
     const invoices = (account.invoices || []).slice();
     const receipts = (account.receipts || []).slice();
 
-    if (leads[0]) pushEvent(leads[0], { type:'lead_created', title:'Lead created', codeLabel:'Lead', codeField:'lead_id', userLabel:'Assigned to', userField:'assigned_to', candidates:['created_at','createdAt','lead_created_at','created_date','date','updated_at'], displayField:'created_at' });
-    if (deals[0]) pushEvent(deals[0], { type:'deal_created', title:'Deal created', codeLabel:'Deal', codeField:'deal_id', userLabel:'Assigned to', userField:'assigned_to', candidates:['created_at','createdAt','converted_at','deal_created_at','created_date','updated_at'], displayField:'created_at', noteBuilder:item=>item.stage?`Stage: ${item.stage}`:'' });
-    if (proposals[0]) pushEvent(proposals[0], { type:'proposal_created', title:'Proposal created', codeLabel:'Proposal', codeField:'proposal_id', candidates:['created_at','createdAt','proposal_created_at','created_date','proposal_date'], displayField:'created_at', noteBuilder:item=>item.ref_number?`Ref: ${item.ref_number}`:'' });
-    if (agreements[0]) pushEvent(agreements[0], { type:'agreement_signed', title:'Agreement signed', codeLabel:'Agreement', codeField:'agreement_id', candidates:['signed_at','signedAt','agreement_signed_at','updated_at','created_at','agreement_date'], displayField:'signed_at', noteBuilder:item=>item.agreement_number?`Agreement No: ${item.agreement_number}`:'' });
-    if (invoices[0]) pushEvent(invoices[0], { type:'invoice_created', title:'Invoice created', codeLabel:'Invoice', codeField:'invoice_id', candidates:['created_at','createdAt','invoice_created_at','issued_at','invoice_date'], displayField:'created_at', noteBuilder:item=>item.invoice_number?`Invoice No: ${item.invoice_number}`:'' });
+    if (leads[0]) pushEvent(leads[0], { type:'lead_created', entityType:'lead', title:'Lead created', numberFields:['lead_id','lead_number'], statusFields:['status'], codeLabel:'Lead', codeField:'lead_id', userLabel:'Assigned to', userField:'assigned_to', candidates:['created_at','createdAt','lead_created_at','created_date','date','updated_at'], displayField:'created_at' });
+    if (deals[0]) pushEvent(deals[0], { type:'deal_created', entityType:'deal', title:'Deal created', numberFields:['deal_id','deal_number'], statusFields:['stage','status'], codeLabel:'Deal', codeField:'deal_id', userLabel:'Assigned to', userField:'assigned_to', candidates:['created_at','createdAt','converted_at','deal_created_at','created_date','updated_at'], displayField:'created_at', noteBuilder:item=>item.stage?`Stage: ${item.stage}`:'' });
+    if (proposals[0]) pushEvent(proposals[0], { type:'proposal_created', entityType:'proposal', title:'Proposal created', numberFields:['proposal_id','proposal_number','ref_number'], statusFields:['status'], codeLabel:'Proposal', codeField:'proposal_id', candidates:['created_at','createdAt','proposal_created_at','created_date','proposal_date'], displayField:'created_at', noteBuilder:item=>item.ref_number?`Ref: ${item.ref_number}`:'' });
+    if (agreements[0]) pushEvent(agreements[0], { type:'agreement_signed', entityType:'agreement', title:'Agreement signed', numberFields:['agreement_number','agreement_id'], statusFields:['status','agreement_status'], codeLabel:'Agreement', codeField:'agreement_id', candidates:['signed_at','signedAt','agreement_signed_at','updated_at','created_at','agreement_date'], displayField:'signed_at', noteBuilder:item=>item.agreement_number?`Agreement No: ${item.agreement_number}`:'' });
+    if (invoices[0]) pushEvent(invoices[0], { type:'invoice_created', entityType:'invoice', title:'Invoice created', numberFields:['invoice_number','invoice_id'], statusFields:['status','payment_status','payment_state'], codeLabel:'Invoice', codeField:'invoice_id', candidates:['created_at','createdAt','invoice_created_at','issued_at','invoice_date'], displayField:'created_at', noteBuilder:item=>item.invoice_number?`Invoice No: ${item.invoice_number}`:'' });
 
-    receipts.forEach((receipt, idx) => pushEvent(receipt, { type: idx===0?'receipt_created':'additional_receipt_created', title: idx===0?'Receipt created':'Additional receipt created', codeLabel:'Receipt', codeField:'receipt_id', candidates:['created_at','createdAt','receipt_created_at','issued_at','payment_date','receipt_date'], displayField:'created_at', noteBuilder:item=>item.receipt_number?`Receipt No: ${item.receipt_number}`:'' }));
+    receipts.forEach((receipt, idx) => pushEvent(receipt, { type: idx===0?'receipt_created':'additional_receipt_created', entityType:'receipt', title: idx===0?'Receipt created':'Additional receipt created', numberFields:['receipt_number','receipt_id'], statusFields:['status','receipt_status'], codeLabel:'Receipt', codeField:'receipt_id', candidates:['created_at','createdAt','receipt_created_at','issued_at','payment_date','receipt_date'], displayField:'created_at', noteBuilder:item=>item.receipt_number?`Receipt No: ${item.receipt_number}`:'' }));
+
+    const additionalEntities = [
+      ['creditNotes', 'credit_note', 'Credit note created', ['credit_note_number','credit_note_id'], ['status']],
+      ['onboarding', 'operations_onboarding', 'Operations onboarding created', ['onboarding_id','agreement_id'], ['onboarding_status','status']],
+      ['technical', 'technical_admin_request', 'Technical admin request created', ['request_id','technical_request_id'], ['request_status','technical_request_status','status']],
+      ['tickets', 'ticket', 'Ticket created', ['ticket_id'], ['status']],
+      ['events', 'event', 'Event created', ['event_id'], ['status']],
+      ['binersEntries', 'biners_entry', 'Biners entry created', ['entry_number','schedule_number'], ['status','schedule_status']],
+      ['binersSchedules', 'biners_schedule', 'Biners schedule created', ['schedule_number'], ['status','schedule_status']],
+      ['paymentForecastFollowups', 'payment_forecast_follow_up', 'Payment forecast follow-up created', ['invoice_number','followup_id'], ['follow_up_status','status']]
+    ];
+    additionalEntities.forEach(([collection, entityType, title, numberFields, statusFields]) => {
+      (account[collection] || []).forEach(item => pushEvent(item, { type: `${entityType}_created`, entityType, title, numberFields, statusFields, codeLabel: 'Entity', codeField: numberFields[0], candidates: ['created_at','createdAt','updated_at','updatedAt','date','scheduled_date'], displayField: 'created_at' }));
+    });
 
     return events.sort((a,b)=>{ const ta=Number(a.sortTimestamp||0); const tb=Number(b.sortTimestamp||0); if(ta!==tb) return ta-tb; return this.getLifecycleStageOrder(a.type)-this.getLifecycleStageOrder(b.type); });
   },
@@ -314,6 +332,7 @@ const LifecycleAnalytics = {
                     <span class="muted">${this.escape(this.formatTimelineDate(item.displayDate))}</span>
                   </div>
                   ${item.metadata.map(line => `<div class="muted">${this.escape(line)}</div>`).join('')}
+                  <button type="button" class="btn ghost sm lifecycle-history-btn" data-lifecycle-history data-entity-type="${this.escape(item.entityType)}" data-entity-id="${this.escape(item.entityId)}" data-entity-number="${this.escape(item.entityNumber)}" data-current-status="${this.escape(item.currentStatus)}">View History</button>
                 </div>
               </article>`
             )
@@ -321,6 +340,44 @@ const LifecycleAnalytics = {
         </div>
       </section>
     `;
+  },
+  closeStatusHistory() {
+    const modal = document.getElementById('lifecycleStatusHistoryModal');
+    if (!modal) return;
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+  },
+  async openStatusHistory(trigger) {
+    const modal = document.getElementById('lifecycleStatusHistoryModal');
+    const body = document.getElementById('lifecycleStatusHistoryBody');
+    if (!modal || !body) return;
+    const entityType = this.text(trigger?.dataset?.entityType);
+    const entityId = this.text(trigger?.dataset?.entityId);
+    const entityNumber = this.text(trigger?.dataset?.entityNumber);
+    const currentStatus = this.text(trigger?.dataset?.currentStatus) || '—';
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+    body.innerHTML = '<div class="muted lifecycle-history-empty">Loading status history…</div>';
+    try {
+      const response = await Api.getLifecycleStatusHistory(entityType, entityId, entityNumber);
+      const logs = Array.isArray(response) ? response : (Array.isArray(response?.rows) ? response.rows : []);
+      const cards = `<div class="lifecycle-history-cards">
+        ${[['Entity Type', entityType || '—'], ['Entity #', entityNumber || entityId || '—'], ['Current Status', currentStatus], ['Total Changes', String(logs.length)]].map(([label, value]) => `<div class="card"><div class="label">${this.escape(label)}</div><div class="value">${this.escape(value)}</div></div>`).join('')}
+      </div>`;
+      if (!logs.length) {
+        body.innerHTML = `${cards}<div class="muted lifecycle-history-empty">No status history found. Only current lifecycle event is available.</div>`;
+        return;
+      }
+      body.innerHTML = `${cards}<div class="lifecycle-history-list">${logs.map(log => {
+        const oldStatus = this.text(log.old_status) || 'Initial snapshot';
+        const newStatus = this.text(log.new_status) || '—';
+        const actor = this.text(log.changed_by_email || log.changed_by_name || log.changed_by) || '—';
+        const note = this.text(log.notes || log.change_reason);
+        return `<article class="lifecycle-history-entry"><div class="lifecycle-history-entry__date">${this.escape(this.formatTimelineDate(log.changed_at || log.created_at))}</div><strong>${this.escape(oldStatus)} → ${this.escape(newStatus)}</strong><div class="muted">Changed By: ${this.escape(actor)}</div>${note ? `<div class="muted">Notes / Reason: ${this.escape(note)}</div>` : ''}</article>`;
+      }).join('')}</div>`;
+    } catch (error) {
+      body.innerHTML = `<div class="muted lifecycle-history-empty">Unable to load status history: ${this.escape(error?.message || 'Unknown error')}</div>`;
+    }
   },
   toDate(value) {
     const raw = this.text(value);
@@ -597,7 +654,12 @@ const LifecycleAnalytics = {
       paymentSchedule: this.safeFetchTable(db, 'invoice_payment_schedule', '*'),
       clients: this.safeFetchTable(db, 'clients', '*'),
       onboarding: this.fetchOnboardingRows(db),
-      technical: this.safeFetchTable(db, 'technical_admin_requests', '*')
+      technical: this.safeFetchTable(db, 'technical_admin_requests', '*'),
+      tickets: this.safeFetchTable(db, 'tickets', '*'),
+      events: this.safeFetchTable(db, 'events', '*'),
+      binersEntries: this.safeFetchTable(db, 'biners_entries', '*'),
+      binersSchedules: this.safeFetchTable(db, 'biners_schedules', '*'),
+      paymentForecastFollowups: this.safeFetchTable(db, 'payment_forecast_followups', '*')
     };
 
     const entries = Object.entries(requests);
@@ -696,7 +758,7 @@ const LifecycleAnalytics = {
           currency: 'USD',
           leads: [], deals: [], proposals: [], agreements: [], invoices: [], receipts: [], creditNotes: [],
           proposalItems: [], invoiceItems: [], receiptItems: [], paymentSchedule: [],
-          onboarding: [], technical: [], locationItems: [], contacts: [],
+          onboarding: [], technical: [], tickets: [], events: [], binersEntries: [], binersSchedules: [], paymentForecastFollowups: [], locationItems: [], contacts: [],
           stages: {},
           lifecycleChain: {},
           metrics: {}
@@ -847,6 +909,11 @@ const LifecycleAnalytics = {
     };
     attachOperational(data.onboarding, 'onboarding');
     attachOperational(data.technical, 'technical');
+    attachOperational(data.tickets, 'tickets');
+    attachOperational(data.events, 'events');
+    attachOperational(data.binersEntries, 'binersEntries');
+    attachOperational(data.binersSchedules, 'binersSchedules');
+    attachOperational(data.paymentForecastFollowups, 'paymentForecastFollowups');
 
     return { accounts: [...accounts.values()], today, companiesById, companiesByName };
   },
@@ -1565,6 +1632,16 @@ const LifecycleAnalytics = {
 
     const exportBtn = document.getElementById('lifecycleExportBtn');
     if (exportBtn) { exportBtn.setAttribute('data-permission-resource','analytics'); exportBtn.setAttribute('data-permission-action','export'); exportBtn.addEventListener('click', () => this.exportRows()); const canExport = Permissions.can('analytics','export') || Permissions.can('lifecycle_analytics','export'); exportBtn.style.display = canExport ? '' : 'none'; exportBtn.disabled = !canExport; }
+
+    const detailRoot = document.getElementById('lifecycleDetailPanel');
+    if (detailRoot) detailRoot.addEventListener('click', event => {
+      const trigger = event.target.closest('[data-lifecycle-history]');
+      if (trigger) this.openStatusHistory(trigger);
+    });
+    document.getElementById('lifecycleStatusHistoryCloseBtn')?.addEventListener('click', () => this.closeStatusHistory());
+    document.getElementById('lifecycleStatusHistoryModal')?.addEventListener('click', event => {
+      if (event.target?.id === 'lifecycleStatusHistoryModal') this.closeStatusHistory();
+    });
 
     const tbody = document.getElementById('lifecycleRecordsTbody');
     if (tbody) {

@@ -2283,6 +2283,14 @@ const Api = {
   async getClientAnalytics(clientId) {
     return this.requestWithSession('clients', 'get_analytics', { client_id: clientId });
   },
+  async addLifecycleStatusLog(entry = {}) {
+    return this.requestWithSession('lifecycle_status_logs', 'add', entry);
+  },
+  async getLifecycleStatusHistory(entityType, entityId = '', entityNumber = '') {
+    return this.requestWithSession('lifecycle_status_logs', 'history', {
+      entity_type: entityType, entity_id: entityId, entity_number: entityNumber
+    });
+  },
   async analyticsSearchEntity(query, filters = {}) {
     return this.requestWithSession('analytics', 'search_entity', { query, filters });
   },
