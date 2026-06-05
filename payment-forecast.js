@@ -2,7 +2,8 @@ const PaymentForecast = {
   tabs: ['overview', 'upcoming', 'overdue', 'client_distribution', 'monthly_forecast', 'collection_follow_up'],
   tabAliases: { clients: 'client_distribution', monthly: 'monthly_forecast', followup: 'collection_follow_up' },
   followUpStatuses: ['not_started', 'contacted', 'promised_to_pay', 'disputed', 'escalated', 'closed'],
-  pageSizes: [10, 25, 50, 100],
+  pageSizes: [10],
+  fixedPageSize: 10,
   state: {
     activeTab: 'overview',
     summary: null,
@@ -14,14 +15,13 @@ const PaymentForecast = {
       collection_follow_up: []
     },
     pagination: {
-      upcoming: { page: 1, pageSize: 25, total: 0 },
-      overdue: { page: 1, pageSize: 25, total: 0 },
-      client_distribution: { page: 1, pageSize: 25, total: 0 },
-      monthly_forecast: { page: 1, pageSize: 25, total: 0 },
-      collection_follow_up: { page: 1, pageSize: 25, total: 0 }
+      upcoming: { page: 1, pageSize: 10, total: 0 },
+      overdue: { page: 1, pageSize: 10, total: 0 },
+      client_distribution: { page: 1, pageSize: 10, total: 0 },
+      monthly_forecast: { page: 1, pageSize: 10, total: 0 },
+      collection_follow_up: { page: 1, pageSize: 10, total: 0 }
     },
     loading: { summary: false, rows: false },
-    serverPagedTabs: { upcoming: true, overdue: true, client_distribution: false, monthly_forecast: false, collection_follow_up: false },
     filters: {
       search: '', status: 'all', client: 'all', paymentTerm: 'all', currency: 'all',
       dateFrom: '', dateTo: '', overdueOnly: false, dueThisWeek: false, dueThisMonth: false,
@@ -37,7 +37,7 @@ const PaymentForecast = {
   money(value, currency = 'USD') { return `${this.text(currency || 'USD').toUpperCase()} ${U.fmtNumber(this.n(value))}`; },
   canonicalTab(tab = this.state.activeTab) { return this.tabAliases[tab] || tab; },
   activePagination() { return this.state.pagination[this.canonicalTab()] || null; },
-  resetPages() { Object.values(this.state.pagination).forEach(pagination => { pagination.page = 1; }); },
+  resetPages() { Object.values(this.state.pagination).forEach(pagination => { pagination.page = 1; pagination.pageSize = this.fixedPageSize; }); },
   canView() { return !window.Permissions || Permissions.can('payment_forecast', 'view') || Permissions.can('payment_forecast', 'manage') || Permissions.hasAdminOverride?.(); },
   canManage() { return !window.Permissions || Permissions.can('payment_forecast', 'manage') || Permissions.hasAdminOverride?.(); },
   canExport() { return this.canManage() || !window.Permissions || Permissions.can('payment_forecast', 'export'); },
@@ -105,7 +105,8 @@ const PaymentForecast = {
     console.log('[PaymentForecast] loading source', 'get_payment_forecast_page');
     if (renderLoading) this.renderActiveTab();
     try {
-      const data = await Api.getPaymentForecastPage({ ...this.rpcFilters(tab), p_page: pagination.page, p_page_size: pagination.pageSize });
+      pagination.pageSize = this.fixedPageSize;
+      const data = await Api.getPaymentForecastPage({ ...this.rpcFilters(tab), p_page: pagination.page, p_page_size: this.fixedPageSize });
       if (requestId !== this._rowsRequestId || tab !== this.canonicalTab()) return;
       const items = Array.isArray(data) ? data : [];
       const rows = items.map(item => item?.row_data).filter(Boolean).map(row => this.normalizeRow(row));
@@ -295,49 +296,31 @@ const PaymentForecast = {
     this._rowsRequestId = requestId;
     this.state.loading.rows = true;
     this.clearTabRows(tab);
-    this.state.serverPagedTabs[tab] = false;
     const sourceName = tab === 'client_distribution' ? 'get_payment_forecast_client_distribution' : 'get_payment_forecast_monthly_summary';
-    console.log('[PaymentForecast] loading source', sourceName, 'page', pagination.page, 'pageSize', pagination.pageSize);
+    console.log('[PaymentForecast] loading source', sourceName);
     this.renderActiveTab();
     try {
-      const params = { ...this.rpcFilters(tab), p_page: pagination.page, p_page_size: pagination.pageSize };
+      pagination.pageSize = this.fixedPageSize;
+      const groupedRequest = { ...this.rpcFilters(tab), p_page: pagination.page, p_page_size: this.fixedPageSize };
       const data = tab === 'client_distribution'
-        ? await Api.getPaymentForecastClientDistribution(params)
-        : await Api.getPaymentForecastMonthlySummary(params);
+        ? await Api.getPaymentForecastClientDistribution(groupedRequest)
+        : await Api.getPaymentForecastMonthlySummary(groupedRequest);
       if (requestId !== this._rowsRequestId || tab !== this.canonicalTab()) return;
       const items = Array.isArray(data) ? data : [];
       let groupedRows = items.map(item => item?.row_data || item).filter(Boolean);
-      const totalFromServer = this.n(items[0]?.total_count);
-      const looksServerPaged = items.some(item => Object.prototype.hasOwnProperty.call(item || {}, 'row_data')) || totalFromServer > groupedRows.length;
-
-      if (groupedRows.length) {
-        this.state.rowsByTab[tab] = groupedRows.map(row => this.normalizeGroupedRow(row, tab));
-        this.state.serverPagedTabs[tab] = looksServerPaged;
-        pagination.total = looksServerPaged ? totalFromServer : this.state.rowsByTab[tab].length;
-        const maxPage = Math.max(1, Math.ceil(pagination.total / pagination.pageSize));
-        if (!this.state.rowsByTab[tab].length && pagination.total > 0 && pagination.page > 1) {
-          pagination.page = 1;
-          return this.loadGrouped(tab);
-        }
-        if (pagination.page > maxPage) {
-          pagination.page = 1;
-          return this.loadGrouped(tab);
-        }
-        this.state.rowsError = '';
-        console.log('[PaymentForecast] grouped rows', this.state.rowsByTab[tab].length, 'total', pagination.total, 'serverPaged', this.state.serverPagedTabs[tab]);
-        return;
+      let total = this.n(items[0]?.total_count);
+      if (!groupedRows.length) {
+        console.log('[PaymentForecast] loading source', `${sourceName} fallback get_payment_forecast_page`);
+        const rawRows = await this.fetchAllForecastRows(this.rpcFilters(tab));
+        if (requestId !== this._rowsRequestId || tab !== this.canonicalTab()) return;
+        const allGroupedRows = tab === 'client_distribution' ? this.groupClientRows(rawRows) : this.groupMonthlyRows(rawRows);
+        total = allGroupedRows.length;
+        groupedRows = allGroupedRows.slice((pagination.page - 1) * this.fixedPageSize, pagination.page * this.fixedPageSize);
       }
-
-      console.log('[PaymentForecast] loading source', `${sourceName} fallback get_payment_forecast_page`);
-      const rawRows = await this.fetchAllForecastRows(this.rpcFilters(tab));
-      if (requestId !== this._rowsRequestId || tab !== this.canonicalTab()) return;
-      groupedRows = tab === 'client_distribution' ? this.groupClientRows(rawRows) : this.groupMonthlyRows(rawRows);
       this.state.rowsByTab[tab] = groupedRows.map(row => this.normalizeGroupedRow(row, tab));
-      this.state.serverPagedTabs[tab] = false;
-      pagination.total = this.state.rowsByTab[tab].length;
-      if (pagination.page > Math.max(1, Math.ceil(pagination.total / pagination.pageSize))) pagination.page = 1;
-      this.state.rowsError = '';
-      console.log('[PaymentForecast] fallback grouped rows', this.state.rowsByTab[tab].length, 'total', pagination.total);
+      pagination.total = total || this.state.rowsByTab[tab].length;
+      if (!this.state.rowsByTab[tab].length && pagination.total > 0 && pagination.page > 1) { pagination.page = 1; return this.loadGrouped(tab); }
+      console.log('[PaymentForecast] rows', this.state.rowsByTab[tab].length, 'total', pagination.total);
     } catch (error) {
       if (requestId !== this._rowsRequestId) return;
       console.error(`[PaymentForecast] ${sourceName} failed`, error);
@@ -345,27 +328,23 @@ const PaymentForecast = {
         console.log('[PaymentForecast] loading source', `${sourceName} fallback get_payment_forecast_page`);
         const rawRows = await this.fetchAllForecastRows(this.rpcFilters(tab));
         if (requestId !== this._rowsRequestId || tab !== this.canonicalTab()) return;
-        const groupedRows = tab === 'client_distribution' ? this.groupClientRows(rawRows) : this.groupMonthlyRows(rawRows);
+        const allGroupedRows = tab === 'client_distribution' ? this.groupClientRows(rawRows) : this.groupMonthlyRows(rawRows);
+        pagination.total = allGroupedRows.length;
+        if (pagination.page > Math.max(1, Math.ceil(pagination.total / this.fixedPageSize))) pagination.page = 1;
+        const groupedRows = allGroupedRows.slice((pagination.page - 1) * this.fixedPageSize, pagination.page * this.fixedPageSize);
         this.state.rowsByTab[tab] = groupedRows.map(row => this.normalizeGroupedRow(row, tab));
-        this.state.serverPagedTabs[tab] = false;
-        pagination.total = this.state.rowsByTab[tab].length;
-        pagination.page = Math.min(pagination.page, Math.max(1, Math.ceil(pagination.total / pagination.pageSize)));
         this.state.rowsError = '';
-        console.log('[PaymentForecast] fallback grouped rows', this.state.rowsByTab[tab].length, 'total', pagination.total);
+        console.log('[PaymentForecast] rows', this.state.rowsByTab[tab].length, 'total', pagination.total);
       } catch (fallbackError) {
         if (requestId !== this._rowsRequestId) return;
         console.error(`[PaymentForecast] ${tab} fallback failed`, fallbackError);
         this.state.rowsByTab[tab] = [];
-        this.state.serverPagedTabs[tab] = false;
         pagination.total = 0;
         this.state.rowsError = fallbackError.message || error.message || `Unable to load payment forecast ${this.label(tab)}.`;
         UI.toast(this.state.rowsError);
       }
     } finally {
-      if (requestId === this._rowsRequestId) {
-        this.state.loading.rows = false;
-        this.renderActiveTab();
-      }
+      if (requestId === this._rowsRequestId) { this.state.loading.rows = false; this.renderActiveTab(); }
     }
   },
   async loadActiveTab() {
@@ -433,19 +412,8 @@ const PaymentForecast = {
     const body = rows.map(row => { const days = row.scheduled_due_date ? Math.ceil((new Date(`${row.scheduled_due_date}T00:00:00Z`) - new Date(`${this.today()}T00:00:00Z`)) / 86400000) : 0; return `<tr class="${row.forecast_status === 'overdue' ? 'pf-overdue-row' : row.forecast_status === 'due_soon' ? 'pf-due-soon-row' : ''}"><td><strong>${U.escapeHtml(row.client_name)}</strong></td><td>${U.escapeHtml(row.invoice_number || '—')}</td><td>${U.escapeHtml(row.agreement_number || '—')}</td><td>${U.escapeHtml(row.payment_no || '—')}</td><td>${U.escapeHtml(row.scheduled_due_date || '—')}</td><td>${U.escapeHtml(row.payment_term || '—')}</td>${['scheduled_amount','paid_amount','allocated_credit_amount','remaining_amount'].map(field => `<td class="num">${U.escapeHtml(this.money(row[field], row.currency))}</td>`).join('')}<td><span class="${this.statusClass(row.forecast_status)}">${U.escapeHtml(this.label(row.forecast_status))}</span></td><td>${days < 0 ? `${Math.abs(days)} days overdue` : `${days} days until due`}</td><td><span class="${this.statusClass(row.follow_up_status)}">${U.escapeHtml(this.label(row.follow_up_status))}</span></td><td class="actions-cell">${this.actionButtons(row)}</td></tr>`; }).join('');
     return this.table(head, body, head.length);
   },
-  groupedPageRows(tab) {
-    const rows = this.state.rowsByTab[tab] || [];
-    if (this.state.serverPagedTabs?.[tab]) return rows;
-    const pagination = this.state.pagination[tab];
-    const start = (pagination.page - 1) * pagination.pageSize;
-    return rows.slice(start, start + pagination.pageSize);
-  },
-  renderPaymentForecastOverview() {
-    const body = document.getElementById('paymentForecastTabBody');
-    if (!body) return;
-    const s = this.state.summary || {};
-    body.innerHTML = `<section class="pf-overview-helper"><strong>Receivables forecast overview</strong><span>Showing ${U.escapeHtml(U.fmtNumber(s.scheduled_rows || 0))} scheduled payment rows across all filtered clients. Use the tabs above for detailed upcoming, overdue, client distribution, and monthly forecast views.</span></section>`;
-  },
+  groupedPageRows(tab) { return this.state.rowsByTab[tab] || []; },
+  renderPaymentForecastOverview() { const body = document.getElementById('paymentForecastTabBody'); if (body) body.innerHTML = '<section class="pf-overview-helper"><strong>Receivables forecast overview</strong><span>Use the summary cards to monitor expected collections, overdue exposure, and near-term cash flow.</span></section>'; },
   renderPaymentForecastUpcoming() { const body = document.getElementById('paymentForecastTabBody'); if (body) body.innerHTML = this.renderPaymentRowsTable(this.state.rowsByTab.upcoming); },
   renderPaymentForecastOverdue() { const body = document.getElementById('paymentForecastTabBody'); if (body) body.innerHTML = this.renderPaymentRowsTable(this.state.rowsByTab.overdue); },
   renderPaymentForecastClientDistribution() {
@@ -464,11 +432,13 @@ const PaymentForecast = {
   renderPagination() {
     const tab = this.canonicalTab(), pagination = this.state.pagination[tab];
     if (!pagination || tab === 'overview' || (tab === 'collection_follow_up' && pagination.total === 0)) return '';
-    const { page, pageSize, total } = pagination;
+    pagination.pageSize = this.fixedPageSize;
+    const { page, total } = pagination;
+    const pageSize = this.fixedPageSize;
     const start = total === 0 ? 0 : ((page - 1) * pageSize) + 1;
     const end = Math.min(page * pageSize, total);
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
-    return `<div class="pf-pagination" aria-label="Payment forecast pagination"><div class="pf-pagination-showing">Showing ${start}–${end} of ${total}</div><label>Rows per page <select class="select" data-pf-page-size>${this.pageSizes.map(size => `<option value="${size}" ${size === pageSize ? 'selected' : ''}>${size}</option>`).join('')}</select></label><button class="btn ghost sm" data-pf-page="previous" ${page <= 1 ? 'disabled' : ''}>Previous</button><span>Page ${page} of ${totalPages}</span><button class="btn ghost sm" data-pf-page="next" ${page >= Math.ceil(total / pageSize) ? 'disabled' : ''}>Next</button></div>`;
+    return `<div class="pf-pagination" aria-label="Payment forecast pagination"><div class="pf-pagination-showing">Showing ${start}–${end} of ${total}</div><span class="pf-pagination-size">10 rows per page</span><button class="btn ghost sm" data-pf-page="previous" ${page <= 1 ? 'disabled' : ''}>Previous</button><span>Page ${page} of ${totalPages}</span><button class="btn ghost sm" data-pf-page="next" ${page >= totalPages ? 'disabled' : ''}>Next</button></div>`;
   },
   renderActiveTab() {
     const summary = document.getElementById('paymentForecastSummary'), body = document.getElementById('paymentForecastTabBody'), paginationEl = document.getElementById('paymentForecastPagination'), state = document.getElementById('paymentForecastState');
@@ -488,8 +458,7 @@ const PaymentForecast = {
     const pagination = this.state.pagination[tab], grouped = ['client_distribution', 'monthly_forecast'].includes(tab);
     state.textContent = `${pagination.total} filtered ${grouped ? 'grouped forecast' : 'payment schedule'} row${pagination.total === 1 ? '' : 's'}.`;
     const renderers = { upcoming: 'renderPaymentForecastUpcoming', overdue: 'renderPaymentForecastOverdue', client_distribution: 'renderPaymentForecastClientDistribution', monthly_forecast: 'renderPaymentForecastMonthlyForecast' };
-    if (renderers[tab] && typeof this[renderers[tab]] === 'function') this[renderers[tab]]();
-    else body.innerHTML = '<div class="muted pf-empty">This Payment Forecast tab is not configured yet.</div>';
+    this[renderers[tab]]();
     if (paginationEl) { paginationEl.innerHTML = this.renderPagination(); paginationEl.style.display = ''; }
   },
   render() { this.renderActiveTab(); },
@@ -506,8 +475,8 @@ const PaymentForecast = {
     const map = { paymentForecastSearchInput: 'search', paymentForecastStatusFilter: 'status', paymentForecastClientFilter: 'client', paymentForecastTermFilter: 'paymentTerm', paymentForecastCurrencyFilter: 'currency', paymentForecastDateFrom: 'dateFrom', paymentForecastDateTo: 'dateTo', paymentForecastFollowupFilter: 'followUpStatus', paymentForecastOverdueOnly: 'overdueOnly', paymentForecastDueWeek: 'dueThisWeek', paymentForecastDueMonth: 'dueThisMonth', paymentForecastOnlyUnpaid: 'onlyUnpaid' };
     Object.entries(map).forEach(([id, key]) => document.getElementById(id)?.addEventListener(id.includes('Search') ? 'input' : 'change', event => { this.state.filters[key] = event.target.type === 'checkbox' ? event.target.checked : event.target.value; clearTimeout(this._filterTimer); this._filterTimer = setTimeout(() => this.filtersChanged(), id.includes('Search') ? 300 : 0); }));
     document.getElementById('paymentForecastRefreshBtn')?.addEventListener('click', () => this.refresh(true)); document.getElementById('paymentForecastExportBtn')?.addEventListener('click', () => this.exportCsv()); document.getElementById('paymentForecastClearBtn')?.addEventListener('click', () => this.clearFilters());
-    document.getElementById('paymentForecastView')?.addEventListener('change', event => { const size = event.target.closest('[data-pf-page-size]'); if (!size) return; const pagination = this.activePagination(); if (!pagination) return; pagination.pageSize = Number(size.value); pagination.page = 1; this.loadActiveTab(); });
-    document.getElementById('paymentForecastView')?.addEventListener('click', event => { const rawTab = event.target.closest('[data-pf-tab]')?.dataset.pfTab; if (rawTab) { const tab = this.canonicalTab(rawTab); if (tab === this.canonicalTab()) return; this.state.activeTab = tab; this.clearTabBody(); this.loadActiveTab(); return; } const direction = event.target.closest('[data-pf-page]')?.dataset.pfPage; if (direction) { const pagination = this.activePagination(); if (!pagination) return; const totalPages = Math.max(1, Math.ceil(pagination.total / pagination.pageSize)); pagination.page = direction === 'next' ? Math.min(totalPages, pagination.page + 1) : Math.max(1, pagination.page - 1); this.loadActiveTab(); return; } const target = event.target.closest('[data-pf-action]'); if (!target) return; const { pfAction: action, value } = target.dataset; if (action === 'invoice') this.openInvoice(value); if (action === 'receipt') this.createReceiptForRow(value); if (action === 'client') this.openClient(value); if (action === 'statement') this.openClient(value, true); if (action === 'note') this.addFollowupNote(value); if (action === 'followed') { const row = (this.state.rowsByTab[this.canonicalTab()] || []).find(item => item.forecast_row_id === value); if (row) this.saveFollowup(row, { follow_up_status: 'contacted', last_follow_up_at: new Date().toISOString() }).catch(error => UI.toast(error.message)); } });
+    document.getElementById('paymentForecastView')?.addEventListener('change', event => { const size = event.target.closest('[data-pf-page-size]'); if (!size) return; const pagination = this.activePagination(); if (!pagination) return; pagination.pageSize = this.fixedPageSize; pagination.page = 1; this.loadActiveTab(); });
+    document.getElementById('paymentForecastView')?.addEventListener('click', event => { const rawTab = event.target.closest('[data-pf-tab]')?.dataset.pfTab; if (rawTab) { const tab = this.canonicalTab(rawTab); if (tab === this.canonicalTab()) return; this.state.activeTab = tab; this.clearTabBody(); this.loadActiveTab(); return; } const direction = event.target.closest('[data-pf-page]')?.dataset.pfPage; if (direction) { const pagination = this.activePagination(); if (!pagination) return; pagination.pageSize = this.fixedPageSize; const totalPages = Math.max(1, Math.ceil(pagination.total / this.fixedPageSize)); pagination.page = direction === 'next' ? Math.min(totalPages, pagination.page + 1) : Math.max(1, pagination.page - 1); this.loadActiveTab(); return; } const target = event.target.closest('[data-pf-action]'); if (!target) return; const { pfAction: action, value } = target.dataset; if (action === 'invoice') this.openInvoice(value); if (action === 'receipt') this.createReceiptForRow(value); if (action === 'client') this.openClient(value); if (action === 'statement') this.openClient(value, true); if (action === 'note') this.addFollowupNote(value); if (action === 'followed') { const row = (this.state.rowsByTab[this.canonicalTab()] || []).find(item => item.forecast_row_id === value); if (row) this.saveFollowup(row, { follow_up_status: 'contacted', last_follow_up_at: new Date().toISOString() }).catch(error => UI.toast(error.message)); } });
   },
   init() { this.bind(); this.renderActiveTab(); }
 };
