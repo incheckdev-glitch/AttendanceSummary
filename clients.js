@@ -3353,6 +3353,24 @@ const Clients = {
   async loadClientDetailData_(clientId, { force = false, tabKey = 'overview', page = 1, pageSize = 25 } = {}) {
     return this.loadClientSubTab(clientId, tabKey, { force, page, pageSize });
   },
+  formatStatementPeriodDate_(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const isoDate = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoDate) return `${isoDate[3]}/${isoDate[2]}/${isoDate[1]}`;
+    const parsedDate = this.parseFlexibleDate_(raw);
+    if (!parsedDate || Number.isNaN(new Date(parsedDate).getTime())) return raw;
+    const date = new Date(parsedDate);
+    return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
+  },
+  getStatementPeriodLabel_(filters = this.state.statementFilters || {}) {
+    const from = this.formatStatementPeriodDate_(filters.dateFrom);
+    const to = this.formatStatementPeriodDate_(filters.dateTo);
+    if (from && to) return `From ${from} to ${to}`;
+    if (from) return `From ${from}`;
+    if (to) return `Until ${to}`;
+    return 'All dates';
+  },
   getFilteredStatementRows_(rows = []) {
     const { status, dateFrom, dateTo, searchDoc } = this.state.statementFilters;
     return rows.filter(row => {
@@ -3611,17 +3629,15 @@ const Clients = {
               <td>${U.escapeHtml(U.fmtDisplayDate(row.date) || '—')}</td>
               <td>${U.escapeHtml(row.type || '—')}</td>
               <td>${U.escapeHtml(this.getStatementDisplayDocumentNo_(row))}</td>
-              <td>${U.escapeHtml(this.getStatementDisplayReference_(row))}</td>
               <td>${U.escapeHtml(row.currency || 'USD')}</td>
               <td>${U.escapeHtml(this.formatMoneyWithCurrency_(row.debit || 0, row.currency || clientCurrency))}</td>
               <td>${U.escapeHtml(this.formatMoneyWithCurrency_(row.credit || 0, row.currency || clientCurrency))}</td>
               <td>${U.escapeHtml(this.formatMoneyWithCurrency_(row.running_balance || 0, row.currency || clientCurrency))}</td>
               <td>${U.escapeHtml(U.fmtDisplayDate(row.due_date) || '—')}</td>
               <td>${U.escapeHtml(this.getStatementRowStatus(row))}</td>
-              <td>${U.escapeHtml(row.notes || '—')}</td>
             </tr>`)
             .join('')
-        : `<tr><td colspan="11" class="muted" style="text-align:center;">${U.escapeHtml(emptyMessage)}</td></tr>`;
+        : `<tr><td colspan="9" class="muted" style="text-align:center;">${U.escapeHtml(emptyMessage)}</td></tr>`;
     }
   },
   buildStatementExportHtml_(client = {}, rows = []) {
@@ -3635,21 +3651,22 @@ const Clients = {
             <td>${U.escapeHtml(U.fmtDisplayDate(row.date) || '—')}</td>
             <td>${U.escapeHtml(row.type || '—')}</td>
             <td>${U.escapeHtml(this.getStatementDisplayDocumentNo_(row))}</td>
-            <td>${U.escapeHtml(this.getStatementDisplayReference_(row))}</td>
             <td>${U.escapeHtml(row.currency || 'USD')}</td>
             <td style="text-align:right;">${U.escapeHtml(U.fmtNumber(row.debit || 0))}</td>
             <td style="text-align:right;">${U.escapeHtml(U.fmtNumber(row.credit || 0))}</td>
             <td style="text-align:right;">${U.escapeHtml(U.fmtNumber(row.running_balance || 0))}</td>
             <td>${U.escapeHtml(U.fmtDisplayDate(row.due_date) || '—')}</td>
             <td>${U.escapeHtml(this.getStatementRowStatus(row))}</td>
-            <td>${U.escapeHtml(row.notes || '—')}</td>
           </tr>`)
           .join('')
-      : '<tr><td colspan="11" style="text-align:center;">No statement rows found.</td></tr>';
+      : '<tr><td colspan="9" style="text-align:center;">No statement rows found.</td></tr>';
     const totalDebit = rows.reduce((sum, item) => sum + this.toNumberSafe(item.debit), 0);
+    const totalPaid = rows.reduce((sum, item) => sum + (this.isStatementReceiptRow_(item) ? this.toNumberSafe(item.credit) : 0), 0);
+    const totalCredited = rows.reduce((sum, item) => sum + (this.isStatementCreditNoteRow_(item) ? this.toNumberSafe(item.credit) : 0), 0);
     const totalCredit = rows.reduce((sum, item) => sum + this.toNumberSafe(item.credit), 0);
     const balance = Math.max(totalDebit - totalCredit, 0);
     const clientCurrency = this.getClientCurrency_(client.client_id);
+    const statementPeriod = this.getStatementPeriodLabel_(this.state.statementFilters);
     const html = `
       <!doctype html>
       <html>
@@ -3659,13 +3676,15 @@ const Clients = {
           <base href="${baseHref}" />
           <link rel="stylesheet" href="styles.css" />
           <style>
+            @page { size: A4 portrait; margin: 10mm; }
             body { margin: 20px; background: #fff; color: #111; font-family: Inter, system-ui, -apple-system, sans-serif; }
             .meta { display:flex; gap:8px; flex-wrap:wrap; margin-bottom: 10px; }
             .meta span { padding: 4px 8px; border: 1px solid #ddd; border-radius: 999px; font-size: 12px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-            th, td { border: 1px solid #ddd; padding: 6px; font-size: 12px; vertical-align: top; }
+            table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 8px; }
+            th, td { border: 1px solid #ddd; padding: 5px 4px; font-size: 10px; line-height: 1.25; overflow-wrap: anywhere; vertical-align: top; }
             th { background: #f5f5f5; text-align: left; }
-            .totals { margin-top: 12px; display: grid; grid-template-columns: repeat(3, minmax(160px, 1fr)); gap: 8px; }
+            th:nth-child(5), th:nth-child(6), th:nth-child(7), td:nth-child(5), td:nth-child(6), td:nth-child(7) { text-align: right; }
+            .totals { margin-top: 12px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; break-inside: avoid; }
             .totals .item { border:1px solid #ddd; border-radius:8px; padding:8px; }
             .totals .label { font-size: 11px; color:#666; }
             .totals .value { font-weight: 700; }
@@ -3678,17 +3697,21 @@ const Clients = {
           <div class="meta">
             <span>Generated: ${U.escapeHtml(U.fmtDisplayDate(generatedOn.toISOString().slice(0, 10)) || '—')}</span>
             <span>Client ID: ${U.escapeHtml(client.client_id || '—')}</span>
-            <span>Rows: ${U.escapeHtml(String(rows.length))}</span>
+            <span>Period: ${U.escapeHtml(statementPeriod)}</span>
           </div>
           <table>
+            <colgroup>
+              <col style="width:10%"><col style="width:10%"><col style="width:14%"><col style="width:8%"><col style="width:11%"><col style="width:11%"><col style="width:13%"><col style="width:10%"><col style="width:13%">
+            </colgroup>
             <thead>
-              <tr><th>Date</th><th>Type</th><th>Document No</th><th>Reference</th><th>Currency</th><th>Debit</th><th>Credit</th><th>Running Balance</th><th>Due Date</th><th>Status</th><th>Notes</th></tr>
+              <tr><th>Date</th><th>Type</th><th>Document No</th><th>Currency</th><th>Debit</th><th>Credit</th><th>Running Balance</th><th>Due Date</th><th>Status</th></tr>
             </thead>
             <tbody>${bodyRows}</tbody>
           </table>
           <div class="totals">
             <div class="item"><div class="label">Total Invoiced</div><div class="value">${U.escapeHtml(this.formatMoneyWithCurrency_(totalDebit, clientCurrency))}</div></div>
-            <div class="item"><div class="label">Total Paid</div><div class="value">${U.escapeHtml(this.formatMoneyWithCurrency_(totalCredit, clientCurrency))}</div></div>
+            <div class="item"><div class="label">Total Paid</div><div class="value">${U.escapeHtml(this.formatMoneyWithCurrency_(totalPaid, clientCurrency))}</div></div>
+            <div class="item"><div class="label">Total Credited</div><div class="value">${U.escapeHtml(this.formatMoneyWithCurrency_(totalCredited, clientCurrency))}</div></div>
             <div class="item"><div class="label">Balance Due</div><div class="value">${U.escapeHtml(this.formatMoneyWithCurrency_(balance, clientCurrency))}</div></div>
           </div>
         </body>
@@ -4062,7 +4085,7 @@ const Clients = {
   },
   renderDetailSkeletons_() {
     if (E.clientStatementTbody) {
-      E.clientStatementTbody.innerHTML = '<tr><td colspan="10"><div class="skeleton" style="height:30px;"></div></td></tr>';
+      E.clientStatementTbody.innerHTML = '<tr><td colspan="9"><div class="skeleton" style="height:30px;"></div></td></tr>';
     }
     if (E.clientRenewalsTbody) {
       E.clientRenewalsTbody.innerHTML = '<tr><td colspan="7"><div class="skeleton" style="height:30px;"></div></td></tr>';
