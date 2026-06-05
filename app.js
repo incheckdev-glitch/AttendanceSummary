@@ -7828,6 +7828,7 @@ const CSMActivity = {
       supportChannel: String(E.csmFormChannel?.value || '').trim()
     };
     if (E.csmFormNotes) activity.notes = String(E.csmFormNotes.value || '').trim();
+    console.log('[CSM Activity] note input value:', activity.notes ?? '');
     return activity;
   },
   readInlineFormValues() {
@@ -7842,6 +7843,7 @@ const CSMActivity = {
       supportChannel: String(E.csmInlineChannel?.value || '').trim()
     };
     if (E.csmInlineNotes) activity.notes = String(E.csmInlineNotes.value || '').trim();
+    console.log('[CSM Activity] note input value:', activity.notes ?? '');
     return activity;
   },
   clearInlineForm() {
