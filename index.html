@@ -26,7 +26,7 @@
   <link rel="mask-icon" href="/icons/maskable-icon.svg" color="#020617" />
 
   <!-- Your app styles -->
-  <link rel="stylesheet" href="styles.css?v=20260605-payment-forecast-followup-activity2" />
+  <link rel="stylesheet" href="styles.css?v=20260605-biners1" />
 
   <!-- Vercel Web Analytics -->
   <script>
@@ -324,6 +324,10 @@
             <button id="paymentForecastTab" class="view-tab" data-view="paymentForecast" data-permission-resource="payment_forecast" data-permission-action="view"
                     role="tab" aria-selected="false" aria-controls="paymentForecastView">
               <span class="icon" aria-hidden="true">📈</span> Payment Forecast
+            </button>
+            <button id="binersTab" class="view-tab" data-view="biners" data-permission-resource="biners" data-permission-action="view"
+                    role="tab" aria-selected="false" aria-controls="binersView">
+              <span class="icon" aria-hidden="true">🏗️</span> Biners
             </button>
             <button id="lifecycleAnalyticsTab" class="view-tab" data-view="lifecycleAnalytics"
                     role="tab" aria-selected="false" aria-controls="lifecycleAnalyticsView">
@@ -2116,6 +2120,124 @@ Sample:
           <label for="paymentForecastAddNoteText">Note</label>
           <textarea id="paymentForecastAddNoteText" class="input" rows="5" required placeholder="Enter a follow-up note"></textarea>
           <div class="pf-note-actions"><button class="btn ghost" type="button" data-pf-close-note>Cancel</button><button id="paymentForecastAddNoteSave" class="btn primary" type="submit">Save Note</button></div>
+        </form>
+      </div>
+
+
+      <section id="binersView" class="view biners-module" role="tabpanel" aria-labelledby="binersTab">
+        <div class="biners-page-header">
+          <div>
+            <span class="pf-eyebrow">Payables · Outsourcing</span>
+            <h2>Biners Control Center</h2>
+            <p class="muted">Track external outsourcing payable amounts by client, location, module, license length, and scheduled payments.</p>
+          </div>
+          <div class="biners-header-actions">
+            <button id="binersRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
+            <button id="binersExportBtn" class="btn ghost sm" type="button" data-permission-resource="biners" data-permission-action="export">Export CSV</button>
+            <button id="binersCreateBtn" class="btn sm" type="button" data-permission-resource="biners" data-permission-action="create">New Biners Entry</button>
+          </div>
+        </div>
+        <nav id="binersTabs" class="pf-tabs" aria-label="Biners module sections">
+          <button class="active" type="button" data-biners-tab="overview">Overview</button>
+          <button type="button" data-biners-tab="entries">Entries</button>
+          <button type="button" data-biners-tab="scheduled_payments">Scheduled Payments</button>
+          <button type="button" data-biners-tab="forecast">Forecast</button>
+          <button type="button" data-biners-tab="payments_history">Payments History</button>
+        </nav>
+        <div id="binersSummary" class="payment-forecast-summary-grid" aria-live="polite"></div>
+        <section class="card pf-filter-panel" aria-label="Biners filters">
+          <div class="pf-filter-grid">
+            <input id="binersSearchInput" class="input" type="search" placeholder="Client, entry #, module, location..." aria-label="Search Biners" />
+            <select id="binersStatusFilter" class="select" aria-label="Filter Biners status">
+              <option value="all">All statuses</option>
+              <option value="draft">Draft</option>
+              <option value="active">Active</option>
+              <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+            <select id="binersPaymentStatusFilter" class="select" aria-label="Filter Biners payment status">
+              <option value="all">All payment statuses</option>
+              <option value="unpaid">Unpaid</option>
+              <option value="partially_paid">Partially paid</option>
+              <option value="paid">Paid</option>
+              <option value="overdue">Overdue</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+            <select id="binersCurrencyFilter" class="select" aria-label="Filter Biners currency"><option value="all">All currencies</option></select>
+          </div>
+          <div class="pf-quick-filters">
+            <button id="binersClearFiltersBtn" class="btn ghost xs" type="button">Clear filters</button>
+          </div>
+        </section>
+        <div id="binersState" class="muted pf-state" aria-live="polite">No data loaded.</div>
+        <div id="binersTabBody" class="pf-content"></div>
+        <div id="binersPagination"></div>
+      </section>
+
+      <div id="binersEntryModal" class="biners-modal" role="dialog" aria-modal="true" aria-labelledby="binersEntryModalTitle" hidden>
+        <button class="biners-modal-backdrop" type="button" data-biners-close-entry aria-label="Close Biners entry"></button>
+        <form id="binersEntryForm" class="biners-dialog">
+          <header class="biners-dialog-header">
+            <div><span class="pf-eyebrow">Biners</span><h2 id="binersEntryModalTitle">New Biners Entry</h2></div>
+            <button class="btn ghost sm" type="button" data-biners-close-entry>Close</button>
+          </header>
+          <div class="biners-form-grid">
+            <label>Entry Type *<select id="binersEntryType" class="select" required><option value="existing_client_new_location">Existing Client - New Location</option><option value="new_client_with_location">New Client with Location</option></select></label>
+            <label>Existing Company / Client<select id="binersExistingClient" class="select"><option value="">Select existing client...</option></select></label>
+            <label>Manual Client Name *<input id="binersClientName" class="input" type="text" required /></label>
+            <label>Client Legal Name<input id="binersClientLegalName" class="input" type="text" /></label>
+            <label>Country<input id="binersClientCountry" class="input" type="text" /></label>
+            <label>City<input id="binersClientCity" class="input" type="text" /></label>
+            <label>Address<input id="binersClientAddress" class="input" type="text" /></label>
+            <label>Contact Name<input id="binersContactName" class="input" type="text" /></label>
+            <label>Contact Email<input id="binersContactEmail" class="input" type="email" /></label>
+            <label>Contact Phone<input id="binersContactPhone" class="input" type="text" /></label>
+            <label>Module Name *<input id="binersModuleName" class="input" type="text" placeholder="InCheck Basic / Module..." required /></label>
+            <label>License Type<input id="binersLicenseType" class="input" type="text" placeholder="SaaS / Lite / Full" /></label>
+            <label>License Length Months *<input id="binersLicenseLength" class="input" type="number" min="1" value="12" required /></label>
+            <label>Number of Locations *<input id="binersLocationCount" class="input" type="number" min="1" value="1" required /></label>
+            <label>Service Start<input id="binersServiceStart" class="input" type="date" /></label>
+            <label>Service End<input id="binersServiceEnd" class="input" type="date" /></label>
+            <label>Currency<input id="binersCurrency" class="input" type="text" value="USD" /></label>
+            <label>Cost Per Location *<input id="binersCostPerLocation" class="input" type="number" min="0" step="0.01" value="0" required /></label>
+            <label>Total Payable<input id="binersTotalPayable" class="input" type="number" readonly /></label>
+            <label class="biners-full">Description<textarea id="binersDescription" class="input" rows="2"></textarea></label>
+            <label class="biners-full">Internal Notes<textarea id="binersInternalNotes" class="input" rows="2"></textarea></label>
+          </div>
+          <section class="biners-schedule-builder">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+              <strong>Scheduled Payments to Biners</strong>
+              <button id="binersAddScheduleRowBtn" class="btn ghost xs" type="button">Add Scheduled Payment</button>
+            </div>
+            <div id="binersScheduleRows" class="biners-schedule-rows"></div>
+          </section>
+          <footer class="biners-dialog-actions">
+            <button class="btn ghost" type="button" data-biners-close-entry>Cancel</button>
+            <button id="binersSaveEntryBtn" class="btn" type="submit">Save Entry</button>
+          </footer>
+        </form>
+      </div>
+
+      <div id="binersPaymentModal" class="biners-modal" role="dialog" aria-modal="true" aria-labelledby="binersPaymentModalTitle" hidden>
+        <button class="biners-modal-backdrop" type="button" data-biners-close-payment aria-label="Close Biners payment"></button>
+        <form id="binersPaymentForm" class="biners-dialog biners-payment-dialog">
+          <header class="biners-dialog-header">
+            <div><span class="pf-eyebrow">Biners</span><h2 id="binersPaymentModalTitle">Record Biners Payment</h2><p id="binersPaymentContext" class="muted"></p></div>
+            <button class="btn ghost sm" type="button" data-biners-close-payment>Close</button>
+          </header>
+          <input id="binersPaymentScheduleId" type="hidden" />
+          <input id="binersPaymentEntryId" type="hidden" />
+          <div class="biners-form-grid">
+            <label>Payment Date *<input id="binersPaymentDate" class="input" type="date" required /></label>
+            <label>Payment Amount *<input id="binersPaymentAmount" class="input" type="number" step="0.01" min="0" required /></label>
+            <label>Method<input id="binersPaymentMethod" class="input" type="text" /></label>
+            <label>Reference<input id="binersPaymentReference" class="input" type="text" /></label>
+            <label class="biners-full">Notes<textarea id="binersPaymentNotes" class="input" rows="2"></textarea></label>
+          </div>
+          <footer class="biners-dialog-actions">
+            <button class="btn ghost" type="button" data-biners-close-payment>Cancel</button>
+            <button id="binersSavePaymentBtn" class="btn" type="submit">Save Payment</button>
+          </footer>
         </form>
       </div>
 
@@ -4076,6 +4198,7 @@ Sample:
   <script src="receipts.js?v=20260427-allpwa1"></script>
   <script src="credit-notes.js?v=20260604-credit-notes1"></script>
   <script src="payment-forecast.js?v=20260605-followup-activity2"></script>
+  <script src="biners.js?v=20260605-biners1"></script>
   <script src="lifecycle-analytics.js?v=20260427-allpwa1"></script>
   <script src="clients.js?v=20260427-allpwa1"></script>
   <script src="proposal-catalog.js?v=20260427-allpwa1"></script>

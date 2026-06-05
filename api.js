@@ -13,7 +13,8 @@ const RESOURCE_PRIMARY_KEY = {
   deals: 'id',
   leads: 'id',
   events: 'id',
-  csm: 'id'
+  csm: 'id',
+  biners: 'id'
 };
 const WEB_PUSH_FUNCTION_NAME = 'send-web-push-v2';
 const BACKEND_MANAGED_PWA_ACTIONS = new Set([

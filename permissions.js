@@ -143,6 +143,20 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     create_receipt: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm'],
     manage: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm']
   }),
+  biners: Object.freeze({
+    view: ['admin', 'dev', 'developer', 'general_manager', 'gm', 'senior_financial_controller', 'senior_fc', 'sfc', 'accountant', 'accounting', 'hod', 'head_of_department'],
+    list: ['admin', 'dev', 'developer', 'general_manager', 'gm', 'senior_financial_controller', 'senior_fc', 'sfc', 'accountant', 'accounting', 'hod', 'head_of_department'],
+    get: ['admin', 'dev', 'developer', 'general_manager', 'gm', 'senior_financial_controller', 'senior_fc', 'sfc', 'accountant', 'accounting', 'hod', 'head_of_department'],
+    create: ['admin', 'dev', 'developer', 'general_manager', 'gm', 'senior_financial_controller', 'senior_fc', 'sfc', 'accountant', 'accounting', 'hod', 'head_of_department'],
+    edit: ['admin', 'dev', 'developer', 'general_manager', 'gm', 'senior_financial_controller', 'senior_fc', 'sfc', 'accountant', 'accounting', 'hod', 'head_of_department'],
+    update: ['admin', 'dev', 'developer', 'general_manager', 'gm', 'senior_financial_controller', 'senior_fc', 'sfc', 'accountant', 'accounting', 'hod', 'head_of_department'],
+    delete: ['admin', 'general_manager', 'gm'],
+    schedule_payment: ['admin', 'dev', 'developer', 'general_manager', 'gm', 'senior_financial_controller', 'senior_fc', 'sfc', 'accountant', 'accounting', 'hod', 'head_of_department'],
+    record_payment: ['admin', 'dev', 'developer', 'general_manager', 'gm', 'senior_financial_controller', 'senior_fc', 'sfc', 'accountant', 'accounting', 'hod', 'head_of_department'],
+    forecast: ['admin', 'dev', 'developer', 'general_manager', 'gm', 'senior_financial_controller', 'senior_fc', 'sfc', 'accountant', 'accounting', 'hod', 'head_of_department'],
+    export: ['admin', 'dev', 'developer', 'general_manager', 'gm', 'senior_financial_controller', 'senior_fc', 'sfc', 'accountant', 'accounting', 'hod', 'head_of_department'],
+    manage: ['admin', 'dev', 'developer', 'general_manager', 'gm', 'senior_financial_controller', 'senior_fc', 'sfc', 'accountant', 'accounting', 'hod', 'head_of_department']
+  }),
   clients: Object.freeze({
     list: ['admin', 'dev', 'viewer', 'hoo'],
     get: ['admin', 'dev', 'viewer', 'hoo'],
@@ -220,6 +234,7 @@ const Permissions = {
     receipts: [{ resource: 'receipts', action: 'list' }],
     creditNotes: [{ resource: 'credit_notes', action: 'view' }],
     paymentForecast: [{ resource: 'payment_forecast', action: 'view' }],
+    biners: [{ resource: 'biners', action: 'view' }],
     lifecycleAnalytics: [{ resource: 'analytics', action: 'list' }],
     clients: [{ resource: 'clients', action: 'list' }],
     proposalCatalog: [{ resource: 'proposal_catalog', action: 'list' }],
@@ -249,6 +264,7 @@ const Permissions = {
     receipts: 'receipts',
     creditNotes: 'credit_notes',
     paymentForecast: 'payment_forecast',
+    biners: 'biners',
     lifecycleAnalytics: 'analytics',
     clients: 'clients',
     proposalCatalog: 'proposal_catalog',
@@ -1013,6 +1029,18 @@ const Permissions = {
   canCreateReceiptFromPaymentForecast() {
     return this.canPerformAction('payment_forecast', 'create_receipt') || this.canPerformAction('payment_forecast', 'manage') || this.hasAdminOverride();
   },
+  canViewBiners() {
+    return this.canPerformAction('biners', 'view') || this.canView('biners') || this.hasAdminOverride();
+  },
+  canCreateBiners() {
+    return this.canPerformAction('biners', 'create') || this.canPerformAction('biners', 'manage') || this.hasAdminOverride();
+  },
+  canEditBiners() {
+    return this.canPerformAction('biners', 'edit') || this.canPerformAction('biners', 'update') || this.canPerformAction('biners', 'manage') || this.hasAdminOverride();
+  },
+  canRecordBinersPayment() {
+    return this.canPerformAction('biners', 'record_payment') || this.canPerformAction('biners', 'manage') || this.hasAdminOverride();
+  },
   canCreateProposalCatalogItem() {
     return this.canCreate('proposal_catalog') || this.canPerformAction('proposal_catalog_items', 'create');
   },
@@ -1139,8 +1167,8 @@ async function handleExpiredSession(message = 'Session expired. Please log in ag
 
 
 const PermissionAudit = {
-  resources: ['tickets','events','ai_insights','companies','contacts','leads','deals','proposals','agreements','operations_onboarding','technical_admin_requests','invoices','receipts','credit_notes','payment_forecast','clients','analytics','notifications','notification_settings','workflow','users','role_permissions'],
-  actions: ['list','get','create','update','delete','export','manage','approve','reject','convert_to_deal','create_from_deal','create_from_proposal','create_from_agreement','create_from_invoice','cancel','print','export','assign_csm','update_status','view_renewals','view_statement','statement_view','statement_export','create_receipt'],
+  resources: ['tickets','events','ai_insights','companies','contacts','leads','deals','proposals','agreements','operations_onboarding','technical_admin_requests','invoices','receipts','credit_notes','payment_forecast','biners','clients','analytics','notifications','notification_settings','workflow','users','role_permissions'],
+  actions: ['list','get','create','update','delete','export','manage','approve','reject','convert_to_deal','create_from_deal','create_from_proposal','create_from_agreement','create_from_invoice','cancel','print','export','assign_csm','update_status','view_renewals','view_statement','statement_view','statement_export','create_receipt','schedule_payment','record_payment'],
   inspect(resource, action) {
     const role = Permissions.normalizeRole(Session.role());
     const matchedRows = Permissions.getMatchedRows(resource, action, role, { includeDenied: true });

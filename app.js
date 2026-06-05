@@ -2908,6 +2908,7 @@ function normalizeViewKey(view) {
   if (['communication_centre', 'communication-centre', 'communication_center', 'communicationCentre'].includes(key)) return 'communicationCentre';
   if (['credit_notes', 'credit-notes', 'creditnotes', 'Credit Notes', 'creditNotes'].includes(key)) return 'creditNotes';
   if (['payment_forecast', 'payment-forecast', 'paymentforecast', 'Payment Forecast', 'Receivables Forecast', 'receivables_forecast', 'paymentForecast'].includes(key)) return 'paymentForecast';
+  if (['biners', 'Biners', 'biners_module', 'biners-module', 'outsourcing', 'payables'].includes(key)) return 'biners';
   return key;
 }
 
@@ -2939,7 +2940,7 @@ window.shouldShowTicketFilters = shouldShowTicketFilters;
 
 function setActiveView(view) {
  view = normalizeViewKey(view);
- const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
+ const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'biners', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
  const requestedView = view;
  const firstAllowedView = names.find(name => Permissions.canAccessTab(name)) || '';
  if (!Permissions.canAccessTab(view)) {
@@ -2981,6 +2982,8 @@ function setActiveView(view) {
         ? E.creditNotesTab
         : name === 'paymentForecast' || name === 'payment_forecast'
         ? E.paymentForecastTab
+        : name === 'biners'
+        ? E.binersTab
         : name === 'lifecycleAnalytics'
         ? E.lifecycleAnalyticsTab
         : name === 'clients'
@@ -3033,6 +3036,8 @@ function setActiveView(view) {
         ? E.creditNotesView
         : name === 'paymentForecast' || name === 'payment_forecast'
         ? E.paymentForecastView
+        : name === 'biners'
+        ? E.binersView
         : name === 'lifecycleAnalytics'
         ? E.lifecycleAnalyticsView
         : name === 'clients'
@@ -3143,6 +3148,7 @@ function setActiveView(view) {
   if (view === 'receipts' && window.Receipts?.refresh) runViewLoader('receipts', () => Receipts.refresh());
   if ((view === 'creditNotes' || view === 'credit_notes') && window.CreditNotes?.refresh) runViewLoader('credit notes', () => CreditNotes.refresh());
   if ((view === 'paymentForecast' || view === 'payment_forecast') && window.PaymentForecast?.refresh) runViewLoader('payment forecast', () => PaymentForecast.refresh());
+  if (view === 'biners' && window.Biners?.refresh) runViewLoader('biners', () => Biners.refresh());
   if (view === 'lifecycleAnalytics' && window.LifecycleAnalytics?.init) runViewLoader('lifecycle analytics', () => LifecycleAnalytics.init());
   if (view === 'clients' && window.Clients?.loadAndRefresh) runViewLoader('clients', () => Clients.loadAndRefresh());
   if (view === 'proposalCatalog' && window.ProposalCatalog?.loadAndRefresh) runViewLoader('proposal catalog', () => ProposalCatalog.loadAndRefresh());
@@ -5363,6 +5369,7 @@ function wireCore() {
     E.receiptsTab,
     E.creditNotesTab,
     E.paymentForecastTab,
+    E.binersTab,
     E.lifecycleAnalyticsTab,
     E.clientsTab,
     E.proposalCatalogTab,
@@ -5489,6 +5496,8 @@ function wireCore() {
         CreditNotes.refresh(true);
       if (E.paymentForecastView?.classList.contains('active') && window.PaymentForecast?.refresh)
         PaymentForecast.refresh(true);
+      if (E.binersView?.classList.contains('active') && window.Biners?.refresh)
+        Biners.refresh(true);
       if (E.clientsView?.classList.contains('active') && window.Clients?.loadAndRefresh)
         Clients.loadAndRefresh({ force: true });
       if (E.proposalCatalogView?.classList.contains('active') && window.ProposalCatalog?.loadAndRefresh)
@@ -5860,6 +5869,7 @@ function getAppHashForView(view = '') {
     credit_notes: '#finance?tab=credit_notes',
     paymentForecast: '#finance?tab=payment_forecast',
     payment_forecast: '#finance?tab=payment_forecast',
+    biners: '#biners',
     clients: '#clients',
     insights: '#analytics',
     notificationSetup: '#notification-settings',
@@ -5874,7 +5884,7 @@ function getAppHashForView(view = '') {
 function isNotificationDeepLinkHash(hash = '') {
   const value = String(hash || '').trim();
   if (!value || value === '#loginSection') return false;
-  return /^#(tickets|workflow|operations-onboarding|technical-admin|crm|finance|leads|deals|proposals|agreements|invoices|receipts|credit_notes|credit-notes|payment_forecast|payment-forecast|communication_centre|communication-centre|communication_center)/i.test(value);
+  return /^#(tickets|workflow|operations-onboarding|technical-admin|crm|finance|leads|deals|proposals|agreements|invoices|receipts|credit_notes|credit-notes|payment_forecast|payment-forecast|biners|communication_centre|communication-centre|communication_center)/i.test(value);
 }
 
 function capturePendingDeepLink() {
@@ -5988,7 +5998,7 @@ function wireDashboardGate() {
     return 'issues';
   };
   const getFirstAllowedView = preferredView => {
-    const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
+    const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'biners', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
     const preferred = String(preferredView || '').trim();
     if (preferred && Permissions.canAccessTab(preferred)) return preferred;
     return names.find(name => Permissions.canAccessTab(name)) || 'issues';
@@ -8295,6 +8305,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         view === 'receipts' ||
         view === 'creditNotes' ||
         view === 'paymentForecast' ||
+        view === 'biners' ||
         view === 'proposalCatalog' ||
         view === 'notifications' ||
         view === 'notificationSetup' ||

@@ -1,6 +1,6 @@
 (function initSupabaseData(global) {
   const MIGRATED_RESOURCES = new Set([
-    'auth','users','roles','role_permissions','tickets','events','csm','leads','lead_note_logs','deal_note_logs','deals','proposal_catalog','proposals','agreements','workflow','clients','invoices','receipts','credit_notes','operations_onboarding','technical_admin_requests','notifications','notification_settings','companies','contacts','company_type_options','company_industry_options','payment_forecast'
+    'auth','users','roles','role_permissions','tickets','events','csm','leads','lead_note_logs','deal_note_logs','deals','proposal_catalog','proposals','agreements','workflow','clients','invoices','receipts','credit_notes','operations_onboarding','technical_admin_requests','notifications','notification_settings','companies','contacts','company_type_options','company_industry_options','payment_forecast','biners'
   ]);
 
   const TABLE_BY_RESOURCE = {
@@ -10,7 +10,8 @@
     clients: 'clients', invoices: 'invoices', receipts: 'receipts', credit_notes: 'credit_notes', operations_onboarding: 'operations_onboarding',
     technical_admin_requests: 'technical_admin_requests', companies: 'companies', contacts: 'contacts', company_type_options: 'company_type_options', company_industry_options: 'company_industry_options'
     ,notifications: 'notifications'
-    ,notification_settings: 'notification_rules'
+    ,notification_settings: 'notification_rules',
+    biners: 'biners_entries'
   };
 
   const PK_BY_RESOURCE = {
@@ -38,7 +39,8 @@
     company_type_options: 'id',
     company_industry_options: 'id'
     ,notifications: 'notification_id'
-    ,notification_settings: 'id'
+    ,notification_settings: 'id',
+    biners: 'id'
   };
   const LEGACY_IDENTIFIER_KEYS = {
     users: [],
@@ -6820,6 +6822,93 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       if (error) throw friendlyError(`Unable to load payment forecast ${action}`, error);
       return Array.isArray(data) ? data : (data == null ? [] : [data]);
     }
+
+    if (resource === 'biners') {
+      const binersAction = String(action || '').trim();
+      const mapActionPermission = {
+        list: 'view', get: 'view', create: 'create', update: 'edit', delete: 'delete',
+        list_schedules: 'view', list_payments: 'view', list_forecast: 'forecast', summary: 'forecast',
+        create_schedule: 'schedule_payment', update_schedule: 'schedule_payment', record_payment: 'record_payment'
+      };
+      assertAllowed('biners', mapActionPermission[binersAction] || 'view');
+      if (binersAction === 'list') {
+        const { data, error } = await client.from('biners_entries').select('*').order('created_at', { ascending: false }).limit(Number(payload?.limit || 1000));
+        if (error) throw friendlyError('Unable to load Biners entries', error);
+        return data || [];
+      }
+      if (binersAction === 'list_schedules') {
+        const { data, error } = await client.from('biners_payment_schedules').select('*').order('due_date', { ascending: true }).limit(Number(payload?.limit || 1000));
+        if (error) throw friendlyError('Unable to load Biners schedules', error);
+        return data || [];
+      }
+      if (binersAction === 'list_payments') {
+        const { data, error } = await client.from('biners_payments').select('*').order('payment_date', { ascending: false }).limit(Number(payload?.limit || 1000));
+        if (error) throw friendlyError('Unable to load Biners payments', error);
+        return data || [];
+      }
+      if (binersAction === 'list_forecast') {
+        const { data, error } = await client.from('biners_forecast_rows').select('*').order('due_date', { ascending: true }).limit(Number(payload?.limit || 1000));
+        if (error) throw friendlyError('Unable to load Biners forecast', error);
+        return data || [];
+      }
+      if (binersAction === 'summary') {
+        const { data, error } = await client.rpc('get_biners_forecast_summary');
+        if (error) throw friendlyError('Unable to load Biners summary', error);
+        return Array.isArray(data) ? data[0] : data;
+      }
+      if (binersAction === 'create') {
+        const entryPayload = payload?.entry && typeof payload.entry === 'object' ? payload.entry : payload;
+        const schedules = Array.isArray(payload?.schedules) ? payload.schedules : [];
+        const locations = Array.isArray(payload?.locations) ? payload.locations : [];
+        const allowedEntry = ['entry_type','company_id','client_id','agreement_id','invoice_id','company_name','client_name','client_reference','client_legal_name','client_country','client_city','client_address','client_phone','client_email','client_contact_name','client_contact_email','client_contact_phone','module_name','license_type','license_length_months','number_of_locations','service_start_date','service_end_date','currency','cost_per_location','total_payable_amount','entry_status','payment_status','description','internal_notes','created_by','created_by_email'];
+        const cleanEntry = Object.fromEntries(allowedEntry.filter(k => entryPayload[k] !== undefined).map(k => [k, entryPayload[k]]));
+        const { data: entry, error: entryError } = await client.from('biners_entries').insert(cleanEntry).select('*').single();
+        if (entryError) throw friendlyError('Unable to create Biners entry', entryError);
+        if (locations.length) {
+          const locRows = locations.map(loc => ({ ...loc, biners_entry_id: entry.id }));
+          const { error } = await client.from('biners_locations').insert(locRows);
+          if (error) throw friendlyError('Biners entry created, but locations could not be saved', error);
+        }
+        if (schedules.length) {
+          const rows = schedules.map((schedule, idx) => ({ ...schedule, biners_entry_id: entry.id, schedule_no: schedule.schedule_no || idx + 1 }));
+          const { error } = await client.from('biners_payment_schedules').insert(rows);
+          if (error) throw friendlyError('Biners entry created, but schedules could not be saved', error);
+        }
+        return entry;
+      }
+      if (binersAction === 'record_payment') {
+        const scheduleId = String(payload?.schedule_id || '').trim() || null;
+        const entryId = String(payload?.biners_entry_id || '').trim();
+        if (!entryId) throw new Error('Biners entry id is required to record payment.');
+        const amount = Number(payload?.payment_amount || 0);
+        const paymentPayload = {
+          biners_entry_id: entryId,
+          schedule_id: scheduleId,
+          payment_date: payload?.payment_date || todayDateString(),
+          currency: payload?.currency || 'USD',
+          payment_amount: amount,
+          payment_method: payload?.payment_method || '',
+          payment_reference: payload?.payment_reference || '',
+          notes: payload?.notes || '',
+          created_by: payload?.created_by || null,
+          created_by_email: payload?.created_by_email || ''
+        };
+        const { data: payment, error: paymentError } = await client.from('biners_payments').insert(paymentPayload).select('*').single();
+        if (paymentError) throw friendlyError('Unable to record Biners payment', paymentError);
+        if (scheduleId) {
+          const { data: schedule, error: loadScheduleError } = await client.from('biners_payment_schedules').select('*').eq('id', scheduleId).single();
+          if (!loadScheduleError && schedule) {
+            const newPaid = Number(schedule.paid_amount || 0) + amount;
+            const status = newPaid >= Number(schedule.scheduled_amount || 0) ? 'paid' : (newPaid > 0 ? 'partially_paid' : schedule.payment_status || 'scheduled');
+            const { error: updateError } = await client.from('biners_payment_schedules').update({ paid_amount: newPaid, payment_status: status, payment_date: paymentPayload.payment_date, payment_reference: paymentPayload.payment_reference, payment_notes: paymentPayload.notes }).eq('id', scheduleId);
+            if (updateError) throw friendlyError('Payment recorded, but Biners schedule could not be updated', updateError);
+          }
+        }
+        return payment;
+      }
+      throw new Error(`Unsupported Biners action ${binersAction}.`);
+    }
+
     if (resource === 'leads' && ['convert_to_deal','convert'].includes(action)) {
       assertAllowed('leads', 'convert_to_deal');
       const leadUuid = await resolveResourceUuid('leads', payload, client);
