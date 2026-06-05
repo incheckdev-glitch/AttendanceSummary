@@ -8,12 +8,19 @@ const CreditNotes = {
     status: 'All',
     search: '',
     error: '',
-    invoiceError: ''
+    invoiceError: '',
+    saving: false,
+    requestKey: ''
   },
   money(value, currency = 'USD') { return `${String(currency || 'USD').toUpperCase()} ${U.fmtNumber(Number(value || 0))}`; },
   n(value) { const num = Number(value); return Number.isFinite(num) ? num : 0; },
   text(value) { return String(value ?? '').trim(); },
   today() { return new Date().toISOString().slice(0, 10); },
+  newRequestKey() {
+    if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+    return `credit-note-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  },
+  isCancelledCreditNote(note = {}) { return ['cancelled', 'canceled'].includes(this.text(note.status).toLowerCase()); },
   isUuid(value) { return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim()); },
   invalidStatus(row = {}) { return ['cancelled','canceled','void','voided','deleted','rejected'].includes(this.text(row.status || row.invoice_status || row.payment_status || row.payment_state).toLowerCase()); },
   invoiceTotal(row = {}) { return this.n(row.grand_total ?? row.invoice_total ?? row.total_amount ?? row.amount_due ?? row.total); },
@@ -273,6 +280,8 @@ const CreditNotes = {
     if (!this.state.invoices.length) await this.refresh(true);
     this.state.selectedCreditNote = null;
     this.state.selectedInvoice = null;
+    this.state.requestKey = this.newRequestKey();
+    this.setSaving(false);
     this.populateInvoiceDropdown();
     if (E.creditNoteForm) E.creditNoteForm.reset();
     if (E.creditNoteFormDate) E.creditNoteFormDate.value = this.today();
@@ -281,7 +290,20 @@ const CreditNotes = {
     E.creditNoteFormModal?.classList.add('open');
     E.creditNoteFormModal?.setAttribute('aria-hidden','false');
   },
-  closeForm() { E.creditNoteFormModal?.classList.remove('open'); E.creditNoteFormModal?.setAttribute('aria-hidden','true'); },
+  closeForm() {
+    if (this.state.saving) return;
+    this.state.requestKey = '';
+    E.creditNoteFormModal?.classList.remove('open');
+    E.creditNoteFormModal?.setAttribute('aria-hidden','true');
+  },
+  setSaving(saving) {
+    this.state.saving = Boolean(saving);
+    const button = E.creditNoteFormSaveBtn;
+    if (!button) return;
+    button.disabled = this.state.saving;
+    button.textContent = this.state.saving ? 'Saving...' : 'Save';
+    button.setAttribute('aria-busy', String(this.state.saving));
+  },
   onInvoiceSelected() {
     const id = this.text(E.creditNoteFormInvoiceSelect?.value);
     this.state.selectedInvoice = this.state.invoices.find(inv => String(inv.id) === id) || null;
@@ -322,31 +344,31 @@ const CreditNotes = {
       description,
       currency: invoice.currency || 'USD',
       credit_amount: amount,
-      status: 'issued'
+      status: 'issued',
+      credit_note_request_key: this.state.requestKey
     };
   },
   async save(event) {
     event?.preventDefault?.();
+    if (this.state.saving) return;
+    this.setSaving(true);
     try {
       const { invoice, amount, description, date } = this.validateForm();
+      if (!this.state.requestKey) this.state.requestKey = this.newRequestKey();
       const response = await Api.createCreditNote(this.buildPayload(invoice, amount, description, date));
+      const row = this.normalize(Api.unwrapApiPayload?.(response) || response?.data || response);
       UI.toast('Credit note saved.');
+      this.state.saving = false;
       this.closeForm();
       if (E.creditNotesSearchInput) E.creditNotesSearchInput.value = '';
       this.state.search = '';
       await this.refresh(true);
-      const row = this.normalize(Api.unwrapApiPayload?.(response) || response?.data || response);
-      if (row?.id && !this.state.rows.some(existing => existing.id === row.id)) {
-        this.state.rows = [row, ...this.state.rows];
-        this.populateStatusFilter();
-        this.render();
-      }
-      const id = row?.id;
-      if (id) this.preview(id);
+      if (row?.id) await this.preview(row.id);
       if (window.Clients?.loadAndRefresh) window.Clients.loadAndRefresh({ force: true }).catch(() => {});
     } catch (error) {
       console.error('[credit-notes] save failed', error);
       UI.toast(error.message || 'Unable to save credit note.');
+      this.setSaving(false);
     }
   },
   async cancelCreditNote(id) {
@@ -376,10 +398,11 @@ const CreditNotes = {
     const amountWords = window.Invoices?.amountToWords?.(amount, currency) || `${U.fmtNumber(amount)} ${currency}`;
     const text = v => U.escapeHtml(String(v || '—'));
     const money = v => U.escapeHtml(this.money(v, currency));
+    const cancelledWatermark = this.isCancelledCreditNote(note) ? '<div class="cancelled-watermark" aria-label="Cancelled credit note">CANCELLED</div>' : '';
     return `<!doctype html><html><head><meta charset="utf-8"><title>Credit Note</title><style>
-      @page{size:A4;margin:10mm}body{margin:0;background:#eef2f7;font-family:Arial,sans-serif;color:#172033}.doc-sheet{width:190mm;min-height:277mm;margin:0 auto;background:#fff;padding:10mm;box-sizing:border-box;display:flex;flex-direction:column}.document-body{flex:1 0 auto;min-width:0}.doc-header{display:grid;grid-template-columns:44mm 1fr 62mm;align-items:start;gap:6mm}.logo{height:24mm}.logo img{max-width:40mm;max-height:24mm}.title{text-align:center;font-size:22px;font-weight:800;color:#0b214a;padding-top:7mm}.meta{border:1px solid #d7e1ed;border-radius:6px;overflow:hidden;font-size:11px}.row{display:grid;grid-template-columns:28mm 1fr;border-bottom:1px solid #e5edf5}.row:last-child{border-bottom:0}.key{background:#f5f8fc;font-weight:700}.row div{padding:5px;overflow-wrap:anywhere}.box{border:1px solid #d7e1ed;border-radius:7px;padding:10px;margin-top:14px;page-break-inside:avoid}.box h2{font-size:13px;color:#0b214a;margin:0 0 8px}table{width:100%;border-collapse:collapse;margin-top:14px;font-size:12px;page-break-inside:auto}tr{page-break-inside:avoid;break-inside:avoid}th,td{border:1px solid #d7e1ed;padding:8px;text-align:left;overflow-wrap:anywhere}th{background:#f5f8fc;color:#0b214a}.right{text-align:right}.total{font-size:16px;font-weight:800}.footer{position:static!important;margin-top:auto;padding-top:10px;border-top:1px solid #e5edf5;text-align:center;color:#64748b;font-size:11px;flex-shrink:0;page-break-inside:avoid;break-inside:avoid}@media print{body{background:#fff}.doc-sheet{width:auto;min-height:277mm;padding:0}}
-    </style></head><body><div class="doc-sheet"><main class="document-body"><header class="doc-header"><div class="logo"><div data-incheck360-doc-logo-slot></div></div><div class="title">Credit Note</div><div class="meta">
-      <div class="row"><div class="key">Credit Note #</div><div>${text(note.credit_note_number)}</div></div><div class="row"><div class="key">Credit Note Date</div><div>${text(String(note.credit_note_date||'').slice(0,10))}</div></div><div class="row"><div class="key">Invoice #</div><div>${text(note.invoice_number)}</div></div><div class="row"><div class="key">Currency</div><div>${text(currency)}</div></div><div class="row"><div class="key">Status</div><div>${text(note.status)}</div></div>
+      @page{size:A4;margin:10mm}body{margin:0;background:#eef2f7;font-family:Arial,sans-serif;color:#172033}.doc-sheet{width:190mm;min-height:277mm;margin:0 auto;background:#fff;padding:10mm;box-sizing:border-box;display:flex;flex-direction:column}.document-body{flex:1 0 auto;min-width:0}.doc-header{display:grid;grid-template-columns:44mm 1fr 62mm;align-items:start;gap:6mm}.logo{height:24mm}.logo img{max-width:40mm;max-height:24mm}.title{text-align:center;font-size:22px;font-weight:800;color:#0b214a;padding-top:7mm}.meta{border:1px solid #d7e1ed;border-radius:6px;overflow:hidden;font-size:11px}.row{display:grid;grid-template-columns:28mm 1fr;border-bottom:1px solid #e5edf5}.row:last-child{border-bottom:0}.key{background:#f5f8fc;font-weight:700}.row div{padding:5px;overflow-wrap:anywhere}.box{border:1px solid #d7e1ed;border-radius:7px;padding:10px;margin-top:14px;page-break-inside:avoid}.box h2{font-size:13px;color:#0b214a;margin:0 0 8px}table{width:100%;border-collapse:collapse;margin-top:14px;font-size:12px;page-break-inside:auto}tr{page-break-inside:avoid;break-inside:avoid}th,td{border:1px solid #d7e1ed;padding:8px;text-align:left;overflow-wrap:anywhere}th{background:#f5f8fc;color:#0b214a}.right{text-align:right}.total{font-size:16px;font-weight:800}.footer{position:static!important;margin-top:auto;padding-top:10px;border-top:1px solid #e5edf5;text-align:center;color:#64748b;font-size:11px;flex-shrink:0;page-break-inside:avoid;break-inside:avoid}.doc-sheet{position:relative}.cancelled-watermark{position:absolute;z-index:10;left:50%;top:48%;transform:translate(-50%,-50%) rotate(-32deg);font-size:58px;font-weight:900;letter-spacing:8px;color:rgba(185,28,28,.2);border:8px solid rgba(185,28,28,.18);padding:8px 20px;pointer-events:none}@media print{body{background:#fff}.doc-sheet{width:auto;min-height:277mm;padding:0}.cancelled-watermark{position:fixed;color:rgba(185,28,28,.2);border-color:rgba(185,28,28,.18)}}
+    </style></head><body><div class="doc-sheet">${cancelledWatermark}<main class="document-body"><header class="doc-header"><div class="logo"><div data-incheck360-doc-logo-slot></div></div><div class="title">Credit Note</div><div class="meta">
+      <div class="row"><div class="key">Credit Note #</div><div>${text(note.credit_note_number)}</div></div><div class="row"><div class="key">Credit Note Date</div><div>${text(String(note.credit_note_date||'').slice(0,10))}</div></div>
     </div></header><section class="box"><h2>Bill To / Customer</h2><strong>${text(note.customer_legal_name || note.customer_name || note.client_name)}</strong></section><section class="box"><h2>Related Invoice Details</h2><div>Invoice: <strong>${text(note.invoice_number)}</strong></div><div>Invoice Date: ${text(invoice?.issue_date || invoice?.invoice_date)}</div><div>Due Date: ${text(invoice?.due_date)}</div><div>Current Balance Due: ${money(this.balanceDue(invoice || {}))}</div></section><table><thead><tr><th>Description</th><th class="right">Amount Credited</th></tr></thead><tbody><tr><td>${text(note.description)}</td><td class="right total">${money(amount)}</td></tr></tbody></table><section class="box"><h2>Amount in Words</h2><div>${text(amountWords)}</div></section></main><footer class="footer document-footer">This credit note is computer generated and reduces the related invoice balance. It is not a payment receipt.</footer></div></body></html>`;
   },
   async preview(id) {
@@ -397,7 +420,6 @@ const CreditNotes = {
     E.creditNotePreviewModal?.classList.remove('open');
     E.creditNotePreviewModal?.setAttribute('aria-hidden','true');
     if (E.creditNotePreviewFrame) E.creditNotePreviewFrame.srcdoc = '';
-    this.refresh(true).catch(error => console.warn('[credit-notes] refresh after preview close failed', error));
   },
   exportPreviewPdf() { if (!this.canExport()) return UI.toast('You do not have permission to export credit notes.'); const frame = E.creditNotePreviewFrame; if (!frame?.contentWindow) return; frame.contentWindow.focus(); frame.contentWindow.print(); },
   bind() {
@@ -421,7 +443,10 @@ const CreditNotes = {
       if (cancel) this.cancelCreditNote(cancel);
     });
     byId('creditNoteFormInvoiceSelect')?.addEventListener('change', () => this.onInvoiceSelected());
-    byId('creditNoteForm')?.addEventListener('submit', e => this.save(e));
+    const creditNoteForm = byId('creditNoteForm');
+    this._saveSubmitHandler ||= event => this.save(event);
+    creditNoteForm?.removeEventListener('submit', this._saveSubmitHandler);
+    creditNoteForm?.addEventListener('submit', this._saveSubmitHandler);
     byId('creditNoteFormCloseBtn')?.addEventListener('click', () => this.closeForm());
     byId('creditNoteFormCancelBtn')?.addEventListener('click', () => this.closeForm());
     byId('creditNotePreviewCloseBtn')?.addEventListener('click', () => this.closePreview());

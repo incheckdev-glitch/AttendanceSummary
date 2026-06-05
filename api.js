@@ -1523,31 +1523,42 @@ const Api = {
     return (Array.isArray(rows) ? rows : []).filter(row => !['cancelled','canceled','void','voided'].includes(String(row?.status || '').trim().toLowerCase()));
   },
   async createCreditNote(payload = {}) {
-    const response = await this.requestWithSession('credit_notes', 'create', { credit_note: payload });
-    this.clearApiCache?.('credit_notes:list');
-    const saved = this.unwrapApiPayload(response) || response || {};
-    const savedRecord = {
-      ...saved,
-      id: saved.id || saved.credit_note_uuid || saved.uuid || '',
-      credit_note_number: saved.credit_note_number || saved.credit_note_id || payload?.credit_note_number || '',
-      invoice_number: saved.invoice_number || payload?.invoice_number || '',
-      client_name: saved.client_name || saved.customer_name || payload?.client_name || payload?.customer_name || '',
-      customer_name: saved.customer_name || saved.client_name || payload?.customer_name || payload?.client_name || '',
-      credit_note_date: saved.credit_note_date || payload?.credit_note_date || '',
-      credit_amount: saved.credit_amount ?? payload?.credit_amount ?? 0,
-      status: String(saved.status || payload?.status || 'issued').trim().toLowerCase()
-    };
-    const recordId = this.extractBusinessRecordId(savedRecord, payload?.credit_note_number || '');
-    await this.safeSendBusinessPwaPush({
-      resource: 'credit_notes',
-      action: 'credit_note_created',
-      recordId,
-      title: 'Credit note issued',
-      body: 'Credit note ' + (savedRecord.credit_note_number || recordId || '') + ' was issued.',
-      roles: ['admin', 'accounting'],
-      url: recordId ? '/#creditNotes?id=' + encodeURIComponent(recordId) : '/#creditNotes'
-    });
-    return savedRecord;
+    const requestKey = String(payload?.credit_note_request_key || '').trim();
+    this._creditNoteCreateRequests ||= new Map();
+    if (requestKey && this._creditNoteCreateRequests.has(requestKey)) return this._creditNoteCreateRequests.get(requestKey);
+    const request = (async () => {
+      const response = await this.requestWithSession('credit_notes', 'create', { credit_note: payload });
+      this.clearApiCache?.('credit_notes:list');
+      const saved = this.unwrapApiPayload(response) || response || {};
+      const savedRecord = {
+        ...saved,
+        id: saved.id || saved.credit_note_uuid || saved.uuid || '',
+        credit_note_number: saved.credit_note_number || saved.credit_note_id || payload?.credit_note_number || '',
+        invoice_number: saved.invoice_number || payload?.invoice_number || '',
+        client_name: saved.client_name || saved.customer_name || payload?.client_name || payload?.customer_name || '',
+        customer_name: saved.customer_name || saved.client_name || payload?.customer_name || payload?.client_name || '',
+        credit_note_date: saved.credit_note_date || payload?.credit_note_date || '',
+        credit_amount: saved.credit_amount ?? payload?.credit_amount ?? 0,
+        status: String(saved.status || payload?.status || 'issued').trim().toLowerCase()
+      };
+      const recordId = this.extractBusinessRecordId(savedRecord, payload?.credit_note_number || '');
+      await this.safeSendBusinessPwaPush({
+        resource: 'credit_notes',
+        action: 'credit_note_created',
+        recordId,
+        title: 'Credit note issued',
+        body: 'Credit note ' + (savedRecord.credit_note_number || recordId || '') + ' was issued.',
+        roles: ['admin', 'accounting'],
+        url: recordId ? '/#creditNotes?id=' + encodeURIComponent(recordId) : '/#creditNotes'
+      });
+      return savedRecord;
+    })();
+    if (requestKey) this._creditNoteCreateRequests.set(requestKey, request);
+    try {
+      return await request;
+    } finally {
+      if (requestKey && this._creditNoteCreateRequests.get(requestKey) === request) this._creditNoteCreateRequests.delete(requestKey);
+    }
   },
   async cancelCreditNote(id) {
     const response = await this.requestWithSession('credit_notes', 'cancel', { id, credit_note_id: id });
