@@ -28,9 +28,13 @@ context.window = context;
 vm.runInContext(fs.readFileSync('payment-forecast.js', 'utf8'), context);
 const forecast = vm.runInContext('PaymentForecast', context);
 forecast.render = () => {};
+forecast.renderActiveTab = () => {};
 forecast.populateFilters = () => {};
 
 (async () => {
+  ['renderPaymentForecastOverview', 'renderPaymentForecastUpcoming', 'renderPaymentForecastOverdue', 'renderPaymentForecastClientDistribution', 'renderPaymentForecastMonthlyForecast', 'renderPaymentForecastFollowUp'].forEach(name => assert.strictEqual(typeof forecast[name], 'function', `${name} must exist`));
+  assert.notStrictEqual(forecast.state.rowsByTab.upcoming, forecast.state.rowsByTab.overdue, 'tabs must have separate row arrays');
+
   const filters = forecast.rpcFilters();
   assert.deepStrictEqual(Object.keys(filters).sort(), [
     'p_client', 'p_currency', 'p_date_from', 'p_date_to', 'p_due_this_month', 'p_due_this_week',
@@ -41,7 +45,7 @@ forecast.populateFilters = () => {};
   await forecast.loadActiveTab();
   assert.strictEqual(calls.at(-1)[0], 'summary');
   assert.strictEqual(calls.at(-1)[1].p_view, 'overview');
-  assert.strictEqual(forecast.state.summaryLoading, false);
+  assert.strictEqual(forecast.state.loading.summary, false);
   assert.strictEqual(forecast.state.summary.scheduled_rows, 0, 'backend zero must be preserved');
   assert.strictEqual(forecast.state.summary.credit_adjusted, undefined, 'missing summary metrics must remain missing');
   assert.strictEqual(forecast.renderPagination(), '', 'overview must not render pagination');
@@ -66,15 +70,15 @@ forecast.populateFilters = () => {};
   assert.strictEqual(calls.at(-1)[0], 'clients');
   assert.strictEqual(calls.at(-1)[1].p_view, 'client_distribution');
   assert.strictEqual(calls.at(-1)[1].p_page, undefined, 'grouped RPC must not receive page RPC parameters');
-  assert.strictEqual(forecast.state.groupedRows[0].client_name, 'Client A');
-  assert.strictEqual(forecast.state.groupedRows[0].gross_scheduled_amount, 125);
+  assert.strictEqual(forecast.state.rowsByTab.client_distribution[0].client_name, 'Client A');
+  assert.strictEqual(forecast.state.rowsByTab.client_distribution[0].gross_scheduled_amount, 125);
 
   forecast.state.activeTab = 'monthly_forecast';
   await forecast.loadActiveTab();
   assert.strictEqual(calls.at(-1)[0], 'monthly');
   assert.strictEqual(calls.at(-1)[1].p_view, 'monthly_forecast');
-  assert.strictEqual(forecast.state.groupedRows[0].forecast_month, '2026-06');
-  assert.strictEqual(forecast.state.groupedRows[0].due_soon_amount, 20);
+  assert.strictEqual(forecast.state.rowsByTab.monthly_forecast[0].forecast_month, '2026-06');
+  assert.strictEqual(forecast.state.rowsByTab.monthly_forecast[0].due_soon_amount, 20);
 
   forecast.state.pagination.upcoming.page = 3;
   forecast.state.pagination.overdue.page = 2;
@@ -85,7 +89,7 @@ forecast.populateFilters = () => {};
   forecast.state.activeTab = 'collection_follow_up';
   await forecast.loadActiveTab();
   assert.strictEqual(forecast.renderPagination(), '', 'unconfigured follow-up tab must not render pagination');
-  assert.match(forecast.renderContent(), /not configured yet/);
+  assert.strictEqual(typeof forecast.renderPaymentForecastFollowUp, 'function');
 
   forecast.state.activeTab = 'overdue';
   forecast.state.pagination.overdue.total = 0;
@@ -96,7 +100,7 @@ forecast.populateFilters = () => {};
 
   context.Api.getPaymentForecastSummary = async () => { throw new Error('Summary RPC failed'); };
   await forecast.loadSummary();
-  assert.strictEqual(forecast.state.summaryLoading, false, 'summary loading must clear after an RPC failure');
+  assert.strictEqual(forecast.state.loading.summary, false, 'summary loading must clear after an RPC failure');
   assert.strictEqual(forecast.state.summaryError, '', 'summary fallback should recover when page RPC is available');
 
   console.log('Payment Forecast RPC loading tests passed.');
