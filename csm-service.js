@@ -148,6 +148,28 @@
     return String(value).trim();
   }
 
+  function getActivityNotes(record = {}) {
+    return cleanString(
+      record.notes ||
+      record.note ||
+      record.activity_notes ||
+      record.activity_note ||
+      record.notes_optional ||
+      record.description ||
+      record.remarks ||
+      record.comments ||
+      record.comment
+    );
+  }
+
+  function getSuppliedActivityNotes(record = {}) {
+    const aliases = ['notes', 'note', 'activity_notes', 'activity_note', 'notes_optional', 'description', 'remarks', 'comments', 'comment'];
+    const suppliedKeys = aliases.filter(key => Object.prototype.hasOwnProperty.call(record, key));
+    if (!suppliedKeys.length) return undefined;
+    const populatedKey = suppliedKeys.find(key => cleanString(record[key]));
+    return populatedKey ? record[populatedKey] : record[suppliedKeys[0]];
+  }
+
   function normalizeNameKey(value) {
     return cleanString(value)
       .toLowerCase()
@@ -258,7 +280,8 @@
       effortRequirement: cleanString(raw.effort_requirement || raw.effortRequirement),
       support_channel: cleanString(raw.support_channel || raw.supportChannel),
       supportChannel: cleanString(raw.support_channel || raw.supportChannel),
-      notes: cleanString(raw.notes || raw.notes_optional),
+      status: cleanString(raw.status || raw.activity_status),
+      notes: getActivityNotes(raw),
       created_by: cleanString(raw.created_by || raw.createdBy),
       updated_by: cleanString(raw.updated_by || raw.updatedBy),
       created_at: cleanString(raw.created_at),
@@ -324,7 +347,7 @@
       type_of_support: input.type_of_support ?? input.supportType,
       effort_requirement: input.effort_requirement ?? input.effortRequirement,
       support_channel: input.support_channel ?? input.supportChannel,
-      notes: input.notes ?? input.notes_optional,
+      notes: getSuppliedActivityNotes(input),
       created_by: input.created_by || input.createdBy || userId || undefined,
       updated_by: input.updated_by || input.updatedBy || userId || undefined
     };
@@ -362,7 +385,7 @@
       type_of_support: input.type_of_support ?? input.supportType,
       effort_requirement: input.effort_requirement ?? input.effortRequirement,
       support_channel: input.support_channel ?? input.supportChannel,
-      notes: input.notes ?? input.notes_optional,
+      notes: getSuppliedActivityNotes(input),
       updated_by: input.updated_by || input.updatedBy || userId || undefined
     };
     return filterCsmActivityRecord(mapped);
