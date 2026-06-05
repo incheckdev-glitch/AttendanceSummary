@@ -136,12 +136,12 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     export: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm']
   }),
   payment_forecast: Object.freeze({
-    view: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm'],
-    list: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm'],
-    get: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm'],
-    export: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm'],
-    create_receipt: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm'],
-    manage: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm']
+    view: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm'],
+    list: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm'],
+    get: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm'],
+    export: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm'],
+    create_receipt: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm'],
+    manage: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm']
   }),
   clients: Object.freeze({
     list: ['admin', 'dev', 'viewer', 'hoo'],
