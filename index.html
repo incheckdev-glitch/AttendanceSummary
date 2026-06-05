@@ -2679,7 +2679,10 @@ Sample:
        aria-labelledby="eventModalTitle" aria-describedby="eventModalBody">
     <div class="modal-content">
       <div class="header">
-        <h2 id="eventModalTitle" style="margin:0;font-size:20px">Event Details</h2>
+        <div>
+          <h2 id="eventModalTitle" style="margin:0;font-size:20px">Event Details</h2>
+          <div id="eventDetailTitle" class="event-detail-title" hidden></div>
+        </div>
         <div class="actions">
           <button class="modal-close" id="eventModalClose" aria-label="Close event dialog">✕</button>
         </div>
@@ -2721,6 +2724,7 @@ Sample:
                 <option value="In Progress">In Progress</option>
                 <option value="Completed">Completed</option>
                 <option value="Cancelled">Cancelled</option>
+                <option value="Canceled">Canceled</option>
               </select>
             </div>
             <div class="filter-row">
@@ -4083,7 +4087,8 @@ Sample:
   <script src="clients.js?v=20260427-allpwa1"></script>
   <script src="proposal-catalog.js?v=20260427-allpwa1"></script>
   <script src="communication-centre.js?v=20260505-cc-whatsapp-notify-map1"></script>
-  <script src="notifications.js?v=20260427-allpwa1"></script>
+  <script src="events.js?v=20260605-cancelled-title1"></script>
+  <script src="notifications.js?v=20260605-cancelled-title1"></script>
   <script src="push-notifications.js?v=20260427-allpwa1"></script>
   <script src="workflow.js?v=20260427-allpwa1"></script>
   <script src="roles-admin.js?v=20260504-cc-final-actions1"></script>

@@ -173,6 +173,7 @@ function cacheEls() {
     'eventsExportBtn',
     'eventModal',
     'eventModalTitle',
+    'eventDetailTitle',
     'eventModalClose',
     'eventForm',
     'eventTitle',

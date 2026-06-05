@@ -175,6 +175,7 @@ const Notifications = {
       }
       return {};
     };
+    const meta = parseMeta(firstValue(source.meta, source.meta_json));
     const statusValue = String(firstValue(source.status, source.notification_status)).trim().toLowerCase();
     const isRead = parseBoolean(firstValue(source.is_read, source.isRead, source.read)) || statusValue === 'read';
     return {
@@ -193,7 +194,8 @@ const Notifications = {
       is_read: isRead,
       read_at: String(firstValue(source.read_at, source.readAt)).trim(),
       link_target: String(firstValue(source.link_target, source.link, source.target_link)).trim(),
-      meta: parseMeta(firstValue(source.meta, source.meta_json))
+      event_status: String(firstValue(source.event_status, source.eventStatus, meta.event_status, meta.eventStatus)).trim(),
+      meta
     };
   },
   extractRows(payload) {
@@ -269,6 +271,18 @@ const Notifications = {
     const r = String(item.resource || '');
     return t.includes('ticket') || r.includes('ticket') || r.includes('issues');
   },
+  isEvent(item = {}) {
+    const t = String(item.type || '').toLowerCase();
+    const r = String(item.resource || '').toLowerCase();
+    return t.includes('event') || r.includes('event');
+  },
+  eventTitleMarkup(item = {}, fallback = '—') {
+    const title = U.escapeHtml(item.title || fallback);
+    const titleClass = this.isEvent(item) && globalThis.isCancelledEvent?.({ status: item.event_status })
+      ? 'cancelled-event-title'
+      : '';
+    return titleClass ? `<span class="${titleClass}">${title}</span>` : title;
+  },
   isAssignment(item = {}) {
     const t = String(item.type || '');
     return t.includes('assignment') || t.includes('assigned');
@@ -316,20 +330,18 @@ const Notifications = {
   },
   toFallbackView(item = {}) {
     const source = item && typeof item === 'object' ? item : {};
-    const firstValue = (...values) => {
-      for (const value of values) {
-        if (value !== undefined && value !== null && value !== '') return value;
-      }
-      return '';
-    };
+    const normalized = this.normalize(source);
     return {
-      notification_id: String(firstValue(source.notification_id, source.id)).trim(),
-      title: String(firstValue(source.title, source.notification_title, 'Untitled notification')).trim(),
-      message: String(firstValue(source.message, source.notification_message, source.details)).trim(),
-      type: String(firstValue(source.type, source.notification_type)).trim(),
-      created_at: String(firstValue(source.created_at, source.createdAt, source.timestamp, source.date)).trim(),
-      status: String(firstValue(source.status, source.notification_status)).trim(),
-      action_label: String(firstValue(source.action_label, source.actionLabel)).trim()
+      notification_id: normalized.notification_id,
+      title: normalized.title,
+      message: normalized.message,
+      type: String(source.type || source.notification_type || '').trim(),
+      resource: normalized.resource,
+      created_at: normalized.created_at,
+      status: normalized.status,
+      event_status: normalized.event_status,
+      action_label: normalized.action_label,
+      meta: normalized.meta
     };
   },
   messageFromError(error) {
@@ -1426,7 +1438,7 @@ async routeToResourceTarget(resource, targetId, notification) {
         const cls = item.is_read ? 'notification-item' : 'notification-item unread';
         return `<button type="button" class="${cls}" data-notification-id="${U.escapeAttr(item.notification_id)}">
           <div class="notification-item-head">
-            <span>${this.iconForType(item.type)} ${U.escapeHtml(item.title)}</span>
+            <span>${this.iconForType(item.type)} ${this.eventTitleMarkup(item)}</span>
             <span class="muted">${U.escapeHtml(this.formatDate(item.created_at))}</span>
           </div>
           <div class="notification-item-body">${U.escapeHtml(item.message || '—')}</div>
@@ -1512,7 +1524,7 @@ async routeToResourceTarget(resource, targetId, notification) {
             const item = this.toFallbackView(rawItem);
             const idAttr = U.escapeAttr(item.notification_id);
             return `<tr>
-              <td>${U.escapeHtml(item.title || '—')}</td>
+              <td>${this.eventTitleMarkup(item)}</td>
               <td>${U.escapeHtml(item.message || '—')}</td>
               <td>${U.escapeHtml(item.type || '—')}</td>
               <td>${U.escapeHtml(this.formatDate(item.created_at))}</td>
@@ -1544,7 +1556,7 @@ async routeToResourceTarget(resource, targetId, notification) {
         const rowClass = item.is_read ? '' : ' class="notification-row-unread"';
         const priorityClass = this.isHighPriority(item) ? 'chip high-priority' : 'chip';
         return `<tr${rowClass}>
-          <td>${this.iconForType(item.type)} ${U.escapeHtml(item.title)}</td>
+          <td>${this.iconForType(item.type)} ${this.eventTitleMarkup(item)}</td>
           <td>${U.escapeHtml(item.message || '—')}</td>
           <td>${U.escapeHtml(item.type || '—')}</td>
           <td><span class="${priorityClass}">${U.escapeHtml(item.priority || 'normal')}</span></td>
