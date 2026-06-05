@@ -595,13 +595,15 @@ const Api = {
     return this.requestWithSession('payment_forecast', 'save_followup', payload);
   },
   async createPaymentForecastFollowupLog(payload = {}) {
-    return this.requestWithSession('payment_forecast', 'create_followup_log', payload);
+    const statusAtTime = payload.status_at_time || payload.new_status || payload.old_status || payload.follow_up_status;
+    return this.requestWithSession('payment_forecast', 'create_followup_log', statusAtTime ? { ...payload, status_at_time: statusAtTime } : payload);
   },
   async addPaymentForecastFollowupNote(payload = {}) {
     return this.createPaymentForecastFollowupLog({ ...payload, action_type: 'note', note: payload.note || payload.log_note || payload.follow_up_notes });
   },
   async markPaymentForecastFollowedUp(payload = {}) {
-    return this.requestWithSession('payment_forecast', 'mark_followed_up', payload);
+    const currentStatus = payload.status_at_time || payload.follow_up_status || payload.new_status;
+    return this.requestWithSession('payment_forecast', 'mark_followed_up', currentStatus ? { ...payload, status_at_time: currentStatus, new_status: currentStatus } : payload);
   },
   async getPaymentForecastSummary(filters = {}) {
     return this.requestWithSession('payment_forecast', 'summary', this.paymentForecastRpcParams(filters));

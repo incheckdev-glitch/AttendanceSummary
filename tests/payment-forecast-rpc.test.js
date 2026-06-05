@@ -20,6 +20,7 @@ const context = vm.createContext({
       calls.push(['clients', filters]);
       return [{ row_data: { client_name: 'Client A', currency: 'USD', scheduled_payment_count: 2, gross_scheduled_amount: 125 }, total_count: 1 }];
     },
+    async createPaymentForecastFollowupLog(payload) { calls.push(['create-log', payload]); return payload; },
     async getPaymentForecastMonthlySummary(filters) {
       calls.push(['monthly', filters]);
       return [{ forecast_month: '2026-06', currency: 'USD', scheduled_payment_count: 3, due_soon_amount: 20 }];
@@ -118,10 +119,19 @@ forecast.populateFilters = () => {};
   assert.match(forecast.renderPagination(), /Showing 11–12 of 12/);
   assert.strictEqual(typeof forecast.renderPaymentForecastFollowUp, 'function');
   forecast.state.activityRow = { client_name: 'Client Follow-up', invoice_number: 'INV-1', follow_up_status: 'contacted' };
-  forecast.state.activityLogs = [{ action_type: 'note', note: 'Called client', old_status: 'not_started', new_status: 'contacted', created_by_email: 'collector@example.com' }];
+  forecast.state.activityLogs = [{ action_type: 'note', note: 'Called client', status_at_time: 'contacted', new_status: 'contacted', created_by_email: 'collector@example.com' }];
   ['openPaymentForecastFollowupActivity', 'loadPaymentForecastFollowupLogs', 'renderPaymentForecastFollowupLogs', 'openPaymentForecastAddFollowupNote', 'savePaymentForecastFollowupNote'].forEach(name => assert.strictEqual(typeof forecast[name], 'function', `${name} must exist`));
   assert.strictEqual(typeof forecast.renderActivityModal, 'function');
-  assert.match(forecast.renderPaymentForecastFollowupLogs(forecast.state.activityLogs), /Note[\s\S]*collector@example\.com[\s\S]*not_started → contacted[\s\S]*Called client/);
+  const noteLogHtml = forecast.renderPaymentForecastFollowupLogs(forecast.state.activityLogs);
+  assert.match(noteLogHtml, /Note[\s\S]*collector@example\.com[\s\S]*Status at time of activity[\s\S]*Contacted[\s\S]*Called client/);
+  assert.doesNotMatch(noteLogHtml, /→/, 'note logs must not be presented as status changes');
+  forecast.state.activityLogs = [{ action_type: 'status_changed', old_status: 'not_started', new_status: 'contacted' }];
+  assert.match(forecast.renderPaymentForecastFollowupLogs(forecast.state.activityLogs), /Not Started[\s\S]*→[\s\S]*Contacted/);
+  forecast.state.activityLogs = [{ action_type: 'activity' }];
+  assert.match(forecast.renderPaymentForecastFollowupLogs(forecast.state.activityLogs), /Contacted/, 'legacy logs must fall back to the row status');
+  forecast.currentUser = () => ({});
+  await forecast.savePaymentForecastFollowupNote({ followup_id: 'followup-1', follow_up_status: 'promised_to_pay' }, 'Payment promised');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(calls.at(-1)[1])), { followup_id: 'followup-1', invoice_id: null, invoice_number: '', client_name: '', created_by: null, created_by_email: '', action_type: 'note', note: 'Payment promised', status_at_time: 'promised_to_pay', new_status: 'promised_to_pay' });
   assert.match(forecast.renderPaymentForecastFollowupLogs([]), /No activity logs yet\./);
 
   forecast.state.activeTab = 'overdue';
