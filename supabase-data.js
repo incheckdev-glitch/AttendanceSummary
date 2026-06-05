@@ -6728,13 +6728,21 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       if (!followupId) throw new Error('Follow-up ID is required to create activity.');
       const note = String(payload?.note || payload?.log_note || payload?.follow_up_notes || '').trim();
       if (!note && String(payload?.action_type || 'note').trim().toLowerCase() === 'note') throw new Error('A note is required.');
-      const allowedLogFields = ['followup_id', 'invoice_id', 'invoice_number', 'client_name', 'action_type', 'note', 'created_by', 'created_by_email', 'old_status', 'new_status'];
+      const allowedLogFields = ['followup_id', 'invoice_id', 'invoice_number', 'client_name', 'action_type', 'note', 'created_by', 'created_by_email', 'old_status', 'new_status', 'status_at_time'];
       const logPayload = Object.fromEntries(allowedLogFields
         .filter(key => payload?.[key] !== undefined)
         .map(key => [key, payload[key]]));
       logPayload.followup_id = followupId;
       logPayload.action_type = String(payload?.action_type || 'note').trim().toLowerCase() || 'note';
       logPayload.note = note;
+      let statusAtTime = payload?.status_at_time || payload?.new_status || payload?.old_status || payload?.follow_up_status || null;
+      if (!statusAtTime) {
+        const { data: followup, error: followupError } = await client.from('payment_forecast_followups').select('follow_up_status').eq('id', followupId).single();
+        if (followupError) throw friendlyError('Unable to load the current follow-up status before creating activity', followupError);
+        statusAtTime = followup?.follow_up_status || null;
+      }
+      logPayload.status_at_time = statusAtTime;
+      if (logPayload.action_type === 'note' && !logPayload.new_status) logPayload.new_status = statusAtTime;
       const { data: log, error: logError } = await client.from('payment_forecast_followup_logs').insert(logPayload).select('*').single();
       if (logError) throw friendlyError('Unable to create payment forecast follow-up activity', logError);
       return log;
@@ -6778,9 +6786,10 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         created_by_email: payload?.created_by_email || ''
       };
       const activityLogs = [];
-      if (action === 'mark_followed_up') activityLogs.push({ ...commonLogPayload, action_type: 'marked_followed_up', note: 'Marked as followed up.' });
-      if (action === 'save_followup' && payload?.follow_up_status !== undefined && String(existingFollowup?.follow_up_status || '') !== String(followup.follow_up_status || '')) activityLogs.push({ ...commonLogPayload, action_type: 'status_changed', old_status: existingFollowup?.follow_up_status || null, new_status: followup.follow_up_status || null, note: '' });
-      if (action === 'save_followup' && payload?.follow_up_notes !== undefined && String(existingFollowup?.follow_up_notes || '').trim() !== String(followup.follow_up_notes || '').trim()) activityLogs.push({ ...commonLogPayload, action_type: 'note', note: String(followup.follow_up_notes || '').trim() });
+      const currentStatus = followup.follow_up_status || payload?.status_at_time || payload?.new_status || existingFollowup?.follow_up_status || null;
+      if (action === 'mark_followed_up') activityLogs.push({ ...commonLogPayload, action_type: 'marked_followed_up', status_at_time: currentStatus, new_status: currentStatus, note: 'Marked as followed up.' });
+      if (action === 'save_followup' && payload?.follow_up_status !== undefined && String(existingFollowup?.follow_up_status || '') !== String(followup.follow_up_status || '')) activityLogs.push({ ...commonLogPayload, action_type: 'status_changed', old_status: existingFollowup?.follow_up_status || null, new_status: followup.follow_up_status || null, status_at_time: followup.follow_up_status || null, note: '' });
+      if (action === 'save_followup' && payload?.follow_up_notes !== undefined && String(existingFollowup?.follow_up_notes || '').trim() !== String(followup.follow_up_notes || '').trim()) activityLogs.push({ ...commonLogPayload, action_type: 'note', status_at_time: currentStatus, new_status: currentStatus, note: String(followup.follow_up_notes || '').trim() });
       if (activityLogs.length) {
         const { error: logError } = await client.from('payment_forecast_followup_logs').insert(activityLogs);
         if (logError) throw friendlyError('Follow-up saved, but its activity log could not be created', logError);
