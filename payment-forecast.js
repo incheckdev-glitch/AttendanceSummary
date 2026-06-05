@@ -118,7 +118,7 @@ const PaymentForecast = {
     return Number.isFinite(number) ? number : undefined;
   },
   normalizeSummary(data) {
-    const summary = data?.[0] || {};
+    const summary = Array.isArray(data) ? (data?.[0] || {}) : (data || {});
     const values = summary.summary_data || summary.row_data || summary;
     return {
       scheduled_rows: this.summaryMetric(values, 'scheduled_rows'),
@@ -155,6 +155,86 @@ const PaymentForecast = {
       group_type: type
     };
   },
+  hasSummaryData() {
+    const summary = this.state.summary || {};
+    return ['scheduled_rows','gross_scheduled','paid_amount','credit_adjusted','remaining_forecast','overdue_amount','due_this_week','due_this_month','next_30_days','next_90_days','collection_risk_percent']
+      .some(key => summary[key] !== undefined && summary[key] !== null && summary[key] !== '');
+  },
+  async fetchAllForecastRows(filters = {}, maxPages = 50) {
+    const rows = [];
+    let page = 1;
+    let total = Infinity;
+    const baseFilters = { ...filters, p_view: 'all' };
+    while (rows.length < total && page <= maxPages) {
+      const data = await Api.getPaymentForecastPage({ ...baseFilters, p_page: page, p_page_size: 100 });
+      const items = Array.isArray(data) ? data : [];
+      if (!items.length) break;
+      total = this.n(items[0]?.total_count);
+      rows.push(...items.map(item => item?.row_data || item).filter(Boolean).map(row => this.normalizeRow(row)));
+      if (total === 0 || rows.length >= total) break;
+      page += 1;
+    }
+    return rows;
+  },
+  buildSummaryFromRows(rows = []) {
+    const currency = rows.find(row => row.currency)?.currency || 'USD';
+    const sum = field => rows.reduce((total, row) => total + this.n(row[field]), 0);
+    const today = this.today();
+    const next7 = this.addDays(7);
+    const next30 = this.addDays(30);
+    const next90 = this.addDays(90);
+    const month = today.slice(0, 7);
+    const remaining = sum('remaining_amount');
+    const overdue = rows.reduce((total, row) => total + (row.forecast_status === 'overdue' ? this.n(row.remaining_amount) : 0), 0);
+    return {
+      scheduled_rows: rows.length,
+      gross_scheduled: sum('scheduled_amount'),
+      paid_amount: sum('paid_amount'),
+      credit_adjusted: sum('allocated_credit_amount'),
+      remaining_forecast: remaining,
+      overdue_amount: overdue,
+      due_this_week: rows.reduce((total, row) => total + (row.remaining_amount > 0 && row.scheduled_due_date >= today && row.scheduled_due_date <= next7 ? this.n(row.remaining_amount) : 0), 0),
+      due_this_month: rows.reduce((total, row) => total + (row.remaining_amount > 0 && row.scheduled_due_date?.slice(0, 7) === month ? this.n(row.remaining_amount) : 0), 0),
+      next_30_days: rows.reduce((total, row) => total + (row.remaining_amount > 0 && row.scheduled_due_date >= today && row.scheduled_due_date <= next30 ? this.n(row.remaining_amount) : 0), 0),
+      next_90_days: rows.reduce((total, row) => total + (row.remaining_amount > 0 && row.scheduled_due_date >= today && row.scheduled_due_date <= next90 ? this.n(row.remaining_amount) : 0), 0),
+      collection_risk_percent: remaining > 0 ? Number(((overdue / remaining) * 100).toFixed(2)) : 0,
+      currency
+    };
+  },
+  groupClientRows(rows = []) {
+    const map = new Map();
+    rows.forEach(row => {
+      const key = `${row.client_id || row.client_name}::${row.currency}`;
+      const current = map.get(key) || { client_name: row.client_name || 'Unknown Client', client_id: row.client_id || '', company_id: row.company_id || row.client_id || '', currency: row.currency || 'USD', scheduled_payment_count: 0, invoice_ids: new Set(), gross_scheduled_amount: 0, paid_amount: 0, credit_adjustment_amount: 0, net_expected_amount: 0, overdue_amount: 0, next_due_date: '' };
+      current.scheduled_payment_count += 1;
+      if (row.invoice_id || row.invoice_number) current.invoice_ids.add(row.invoice_id || row.invoice_number);
+      current.gross_scheduled_amount += this.n(row.scheduled_amount);
+      current.paid_amount += this.n(row.paid_amount);
+      current.credit_adjustment_amount += this.n(row.allocated_credit_amount);
+      current.net_expected_amount += this.n(row.remaining_amount);
+      if (row.forecast_status === 'overdue') current.overdue_amount += this.n(row.remaining_amount);
+      if (row.remaining_amount > 0 && row.scheduled_due_date && (!current.next_due_date || row.scheduled_due_date < current.next_due_date)) current.next_due_date = row.scheduled_due_date;
+      map.set(key, current);
+    });
+    return [...map.values()].map(row => ({ ...row, invoice_count: row.invoice_ids.size })).sort((a, b) => this.n(b.net_expected_amount) - this.n(a.net_expected_amount) || this.n(b.overdue_amount) - this.n(a.overdue_amount) || a.client_name.localeCompare(b.client_name));
+  },
+  groupMonthlyRows(rows = []) {
+    const map = new Map();
+    rows.forEach(row => {
+      const month = row.scheduled_due_date?.slice(0, 7) || 'Unknown';
+      const key = `${month}::${row.currency}`;
+      const current = map.get(key) || { forecast_month: month, currency: row.currency || 'USD', scheduled_payment_count: 0, gross_scheduled_amount: 0, paid_amount: 0, credit_adjustment_amount: 0, net_expected_amount: 0, overdue_amount: 0, due_soon_amount: 0 };
+      current.scheduled_payment_count += 1;
+      current.gross_scheduled_amount += this.n(row.scheduled_amount);
+      current.paid_amount += this.n(row.paid_amount);
+      current.credit_adjustment_amount += this.n(row.allocated_credit_amount);
+      current.net_expected_amount += this.n(row.remaining_amount);
+      if (row.forecast_status === 'overdue') current.overdue_amount += this.n(row.remaining_amount);
+      if (row.forecast_status === 'due_soon') current.due_soon_amount += this.n(row.remaining_amount);
+      map.set(key, current);
+    });
+    return [...map.values()].sort((a, b) => String(a.forecast_month).localeCompare(String(b.forecast_month)) || String(a.currency).localeCompare(String(b.currency)));
+  },
   async loadSummary() {
     const requestId = (this._summaryRequestId || 0) + 1;
     this._summaryRequestId = requestId;
@@ -162,16 +242,31 @@ const PaymentForecast = {
     this.state.summaryError = '';
     this.render();
     try {
-      const data = await Api.getPaymentForecastSummary(this.rpcFilters());
+      const data = await Api.getPaymentForecastSummary(this.rpcFilters('overview'));
       if (requestId !== this._summaryRequestId) return;
-      this.state.summary = this.normalizeSummary(data);
+      const summary = this.normalizeSummary(data);
+      this.state.summary = summary;
       this.state.summaryError = '';
+      if (!this.hasSummaryData()) {
+        const fallbackRows = await this.fetchAllForecastRows(this.rpcFilters('overview'));
+        if (requestId !== this._summaryRequestId) return;
+        this.state.summary = this.buildSummaryFromRows(fallbackRows);
+      }
     } catch (error) {
       if (requestId !== this._summaryRequestId) return;
       console.error('[payment-forecast] summary load failed', error);
-      this.state.summary = {};
-      this.state.summaryError = error.message || 'Unable to load payment forecast summary.';
-      UI.toast(this.state.summaryError);
+      try {
+        const fallbackRows = await this.fetchAllForecastRows(this.rpcFilters('overview'));
+        if (requestId !== this._summaryRequestId) return;
+        this.state.summary = this.buildSummaryFromRows(fallbackRows);
+        this.state.summaryError = '';
+      } catch (fallbackError) {
+        if (requestId !== this._summaryRequestId) return;
+        console.error('[payment-forecast] summary fallback failed', fallbackError);
+        this.state.summary = {};
+        this.state.summaryError = fallbackError.message || error.message || 'Unable to load payment forecast summary.';
+        UI.toast(this.state.summaryError);
+      }
     } finally {
       if (requestId === this._summaryRequestId) { this.state.summaryLoading = false; this.render(); }
     }
@@ -192,8 +287,14 @@ const PaymentForecast = {
       if (requestId !== this._rowsRequestId || tab !== this.canonicalTab()) return;
       const items = Array.isArray(data) ? data : [];
       const hasWrappedRows = items.some(item => Object.prototype.hasOwnProperty.call(item || {}, 'row_data'));
-      const allRows = items.map(item => hasWrappedRows ? item?.row_data : item).filter(Boolean);
-      const total = hasWrappedRows ? this.n(items[0]?.total_count) : allRows.length;
+      let allRows = items.map(item => hasWrappedRows ? item?.row_data : item).filter(Boolean);
+      let total = hasWrappedRows ? this.n(items[0]?.total_count) : allRows.length;
+      if (!allRows.length) {
+        const rawRows = await this.fetchAllForecastRows(this.rpcFilters(tab));
+        if (requestId !== this._rowsRequestId || tab !== this.canonicalTab()) return;
+        allRows = tab === 'client_distribution' ? this.groupClientRows(rawRows) : this.groupMonthlyRows(rawRows);
+        total = allRows.length;
+      }
       pagination.total = total;
       const start = (pagination.page - 1) * pagination.pageSize;
       const pageRows = allRows.slice(start, start + pagination.pageSize);
@@ -205,10 +306,27 @@ const PaymentForecast = {
     } catch (error) {
       if (requestId !== this._rowsRequestId) return;
       console.error(`[payment-forecast] ${tab} load failed`, error);
-      this.state.groupedRows = [];
-      pagination.total = 0;
-      this.state.rowsError = error.message || `Unable to load payment forecast ${this.label(tab)}.`;
-      UI.toast(this.state.rowsError);
+      try {
+        const rawRows = await this.fetchAllForecastRows(this.rpcFilters(tab));
+        if (requestId !== this._rowsRequestId || tab !== this.canonicalTab()) return;
+        const groupedRows = tab === 'client_distribution' ? this.groupClientRows(rawRows) : this.groupMonthlyRows(rawRows);
+        pagination.total = groupedRows.length;
+        const start = (pagination.page - 1) * pagination.pageSize;
+        const pageRows = groupedRows.slice(start, start + pagination.pageSize);
+        if (!pageRows.length && groupedRows.length > 0 && pagination.page > 1) {
+          pagination.page = 1;
+          return this.loadGrouped(tab);
+        }
+        this.state.groupedRows = pageRows.map(row => this.normalizeGroupedRow(row, tab));
+        this.state.rowsError = '';
+      } catch (fallbackError) {
+        if (requestId !== this._rowsRequestId) return;
+        console.error(`[payment-forecast] ${tab} fallback failed`, fallbackError);
+        this.state.groupedRows = [];
+        pagination.total = 0;
+        this.state.rowsError = fallbackError.message || error.message || `Unable to load payment forecast ${this.label(tab)}.`;
+        UI.toast(this.state.rowsError);
+      }
     } finally {
       if (requestId === this._rowsRequestId) { this.state.rowsLoading = false; this.render(); }
     }
@@ -258,8 +376,8 @@ const PaymentForecast = {
   },
   renderSummary() {
     const el = document.getElementById('paymentForecastSummary'); if (!el) return;
-    if (this.state.summaryLoading && !Object.keys(this.state.summary).length) { el.innerHTML = '<div class="muted pf-summary-message">Loading payment forecast summary…</div>'; return; }
-    if (this.state.summaryError && !Object.keys(this.state.summary).length) { el.innerHTML = `<div class="pf-error pf-summary-message">${U.escapeHtml(this.state.summaryError)}</div>`; return; }
+    if (this.state.summaryLoading && !this.hasSummaryData()) { el.innerHTML = '<div class="muted pf-summary-message">Loading payment forecast summary…</div>'; return; }
+    if (this.state.summaryError && !this.hasSummaryData()) { el.innerHTML = `<div class="pf-error pf-summary-message">${U.escapeHtml(this.state.summaryError)}</div>`; return; }
     const s = this.state.summary, currency = s.currency || 'USD';
     const moneyMetric = value => value === undefined ? '—' : U.escapeHtml(this.money(value, currency));
     const countMetric = value => value === undefined ? '—' : U.escapeHtml(U.fmtNumber(value));
@@ -314,7 +432,10 @@ const PaymentForecast = {
     document.querySelectorAll('[data-pf-tab]').forEach(button => { const active = this.canonicalTab(button.dataset.pfTab) === tab; button.classList.toggle('active', active); button.setAttribute('aria-selected', String(active)); });
     this.renderSummary(); summary?.classList.toggle('is-hidden', tab !== 'overview');
     if (tab === 'overview') {
-      state.textContent = this.state.summaryLoading ? 'Loading payment forecast summary…' : this.state.summaryError || 'Overview totals loaded from the payment forecast summary.';
+      if (this.state.summaryError && !this.hasSummaryData()) state.textContent = this.state.summaryError;
+      else if (this.state.summaryLoading && !this.hasSummaryData()) state.textContent = 'Loading payment forecast summary…';
+      else if (this.state.summaryLoading) state.textContent = 'Refreshing overview totals…';
+      else state.textContent = 'Overview totals loaded from the payment forecast summary.';
       content.innerHTML = this.renderContent();
       return;
     }

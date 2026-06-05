@@ -97,7 +97,7 @@ forecast.populateFilters = () => {};
   context.Api.getPaymentForecastSummary = async () => { throw new Error('Summary RPC failed'); };
   await forecast.loadSummary();
   assert.strictEqual(forecast.state.summaryLoading, false, 'summary loading must clear after an RPC failure');
-  assert.strictEqual(forecast.state.summaryError, 'Summary RPC failed');
+  assert.strictEqual(forecast.state.summaryError, '', 'summary fallback should recover when page RPC is available');
 
   console.log('Payment Forecast RPC loading tests passed.');
 })().catch(error => {
