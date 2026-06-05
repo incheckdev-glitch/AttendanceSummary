@@ -382,37 +382,47 @@ const LifecycleAnalytics = {
       body.innerHTML = `<div class="muted lifecycle-history-empty">Unable to load status history: ${this.escape(error?.message || 'Unknown error')}</div>`;
     }
   },
-  toDate(value) {
+  parseDateSafe(value) {
+    if (value instanceof Date) return Number.isFinite(value.getTime()) ? new Date(value.getTime()) : null;
     const raw = this.text(value);
     if (!raw) return null;
     const parsed = new Date(raw);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
+    return Number.isFinite(parsed.getTime()) ? parsed : null;
+  },
+  toDate(value) {
+    return this.parseDateSafe(value);
+  },
+  diffDays(startValue, endValue = new Date()) {
+    const start = this.parseDateSafe(startValue);
+    const end = this.parseDateSafe(endValue);
+    if (!start || !end || end.getTime() < start.getTime()) return null;
+    return (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
   },
   calculateDecimalDays(startValue, endValue = new Date()) {
-    if (!startValue || !endValue) return null;
-    const start = this.toDate(startValue);
-    const end = this.toDate(endValue);
-    if (!start || !end) return null;
-
-    const startMs = start.getTime();
-    const endMs = end.getTime();
-
-    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return null;
-
-    const diffMs = Math.max(0, endMs - startMs);
-    return diffMs / (1000 * 60 * 60 * 24);
+    return this.diffDays(startValue, endValue);
+  },
+  getEarliestDate(...values) {
+    const dates = values.flat(Infinity).map(value => this.parseDateSafe(value)).filter(Boolean);
+    return dates.length ? new Date(Math.min(...dates.map(date => date.getTime()))) : null;
+  },
+  getLatestDate(...values) {
+    const dates = values.flat(Infinity).map(value => this.parseDateSafe(value)).filter(Boolean);
+    return dates.length ? new Date(Math.max(...dates.map(date => date.getTime()))) : null;
   },
   formatDays(value) {
+    if (value === null || value === undefined || value === '') return '—';
     const num = Number(value);
     if (!Number.isFinite(num)) return '—';
     return `${num.toFixed(2)} days`;
   },
   formatDecimal(value) {
+    if (value === null || value === undefined || value === '') return '—';
     const num = Number(value);
     if (!Number.isFinite(num)) return '—';
     return num.toFixed(2);
   },
   formatPercent(value) {
+    if (value === null || value === undefined || value === '') return '—';
     const num = Number(value);
     if (!Number.isFinite(num)) return '—';
     return `${num.toFixed(2)}%`;
@@ -662,7 +672,9 @@ const LifecycleAnalytics = {
       events: this.safeFetchTable(db, 'events', '*'),
       binersEntries: this.safeFetchTable(db, 'biners_entries', '*'),
       binersSchedules: this.safeFetchTable(db, 'biners_schedules', '*'),
-      paymentForecastFollowups: this.safeFetchTable(db, 'payment_forecast_followups', '*')
+      paymentForecastFollowups: this.safeFetchTable(db, 'payment_forecast_followups', '*'),
+      lifecycleStatusLogs: this.safeFetchTable(db, 'lifecycle_status_logs', '*'),
+      workflowApprovals: this.safeFetchTable(db, 'workflow_approvals', '*')
     };
 
     const entries = Object.entries(requests);
@@ -696,7 +708,9 @@ const LifecycleAnalytics = {
       paymentSchedule: data.paymentSchedule.length,
       clients: data.clients.length,
       onboarding: data.onboarding.length,
-      technical: data.technical.length
+      technical: data.technical.length,
+      lifecycleStatusLogs: data.lifecycleStatusLogs.length,
+      workflowApprovals: data.workflowApprovals.length
     });
 
     return data;
@@ -760,8 +774,9 @@ const LifecycleAnalytics = {
           primaryEmail: this.text(email),
           currency: 'USD',
           leads: [], deals: [], proposals: [], agreements: [], invoices: [], receipts: [], creditNotes: [],
-          proposalItems: [], invoiceItems: [], receiptItems: [], paymentSchedule: [],
+          proposalItems: [], agreementItems: [], invoiceItems: [], receiptItems: [], paymentSchedule: [],
           onboarding: [], technical: [], tickets: [], events: [], binersEntries: [], binersSchedules: [], paymentForecastFollowups: [], locationItems: [], contacts: [],
+          lifecycleStatusLogs: [], workflowApprovals: [],
           stages: {},
           lifecycleChain: {},
           metrics: {}
@@ -837,6 +852,7 @@ const LifecycleAnalytics = {
       const accountKey = (agreementUuid ? accountByAgreementUuid.get(agreementUuid) : '') || findAccountKeyForRecord(item, '');
       if (!accountKey || !accounts.has(accountKey)) return;
       accounts.get(accountKey).locationItems.push(item);
+      accounts.get(accountKey).agreementItems.push(item);
     });
 
     (data.proposalItems || []).forEach(item => {
@@ -918,64 +934,165 @@ const LifecycleAnalytics = {
     attachOperational(data.binersSchedules, 'binersSchedules');
     attachOperational(data.paymentForecastFollowups, 'paymentForecastFollowups');
 
-    return { accounts: [...accounts.values()], today, companiesById, companiesByName };
-  },
-  buildLifecycleMetrics(account = {}, today = new Date()) {
-    const stageDate = stage => this.toDate(account.stages?.[stage]);
-    const stageNames = ['lead', 'deal', 'proposal', 'agreement', 'invoice'];
-    const stageDurations = {};
-    stageNames.forEach((stage, idx) => {
-      const start = stageDate(stage);
-      if (!start) return;
-      const nextStage = stageNames[idx + 1] || 'receipt';
-      const next = stageDate(nextStage) || today;
-      stageDurations[stage] = this.calculateDecimalDays(start, next);
+    const lifecycleRecordKeys = record => [
+      record?.id, record?.uuid, record?.lead_id, record?.lead_number, record?.deal_id, record?.deal_number,
+      record?.proposal_id, record?.proposal_number, record?.ref_number, record?.agreement_id, record?.agreement_number,
+      record?.invoice_id, record?.invoice_number, record?.receipt_id, record?.receipt_number, record?.onboarding_id
+    ].map(value => this.text(value)).filter(Boolean);
+    const lifecycleCollections = ['leads', 'deals', 'proposals', 'agreements', 'invoices', 'receipts', 'creditNotes', 'onboarding'];
+    const findAccountForLifecycleReference = value => {
+      const reference = this.text(value);
+      if (!reference) return null;
+      return [...accounts.values()].find(candidate => lifecycleCollections.some(key => candidate[key].some(record => lifecycleRecordKeys(record).includes(reference)))) || null;
+    };
+    (data.lifecycleStatusLogs || []).forEach(log => {
+      const account = findAccountForLifecycleReference(log.entity_id) || findAccountForLifecycleReference(log.entity_number);
+      if (account) account.lifecycleStatusLogs.push(log);
+    });
+    (data.workflowApprovals || []).forEach(approval => {
+      const requestedChanges = approval.requested_changes && typeof approval.requested_changes === 'object' ? approval.requested_changes : {};
+      const account = findAccountForLifecycleReference(approval.record_id || approval.resource_id || approval.target_id || requestedChanges.resource_id || requestedChanges.target_id);
+      if (account) account.workflowApprovals.push(approval);
     });
 
-    const allActivityDates = [
-      ...account.leads.map(item => item.updated_at || item.created_at),
-      ...account.deals.map(item => item.updated_at || item.created_at),
-      ...account.proposals.map(item => item.created_at || item.updated_at || item.proposal_date),
-      ...account.agreements.map(item => item.created_at || item.signed_at || item.signed_date || item.updated_at),
-      ...account.invoices.map(item => item.created_at || item.issued_at || item.updated_at || item.issue_date),
-      ...account.receipts.map(item => item.created_at || item.updated_at || item.payment_date || item.receipt_date),
-      ...account.onboarding.map(item => item.updated_at || item.go_live_date || item.go_live_at || item.completed_at),
-      ...account.technical.map(item => item.completed_at || item.requested_at)
-    ].filter(Boolean);
 
-    const firstDate = allActivityDates.map(value => this.toDate(value)).filter(Boolean).sort((a, b) => a.getTime() - b.getTime())[0] || null;
-    const lastDate = allActivityDates.map(value => this.toDate(value)).filter(Boolean).sort((a, b) => b.getTime() - a.getTime())[0] || null;
-
-    const proposalSent = account.proposals.map(item => this.toDate(item.created_at || item.updated_at || item.proposal_date)).filter(Boolean).sort((a, b) => a.getTime() - b.getTime())[0] || null;
-    const agreementSigned = account.agreements.map(item => this.toDate(item.signed_at || item.created_at || item.signed_date || item.updated_at)).filter(Boolean).sort((a, b) => a.getTime() - b.getTime())[0] || null;
-
-    const discounts = account.proposals.map(item => {
-      const base = this.num(item.subtotal_locations) + this.num(item.subtotal_one_time);
-      const discount = this.num(item.total_discount);
-      if (base <= 0 || discount <= 0) return 0;
-      return Number(((discount / base) * 100).toFixed(2));
-    }).filter(value => value > 0);
-    const averageDiscount = discounts.length ? Number((discounts.reduce((sum, value) => sum + value, 0) / discounts.length).toFixed(2)) : 0;
-
-    const biggestStage = Object.entries(stageDurations)
-      .filter(([, value]) => value !== null)
-      .sort((a, b) => (b[1] || 0) - (a[1] || 0))[0] || null;
-
-    return {
-      daysInLead: stageDurations.lead ?? null,
-      daysInDeal: stageDurations.deal ?? null,
-      daysInProposal: stageDurations.proposal ?? null,
-      daysInAgreement: stageDurations.agreement ?? null,
-      daysInInvoice: stageDurations.invoice ?? null,
-      totalCycleDuration: stageDate('lead') && lastDate ? this.calculateDecimalDays(stageDate('lead'), lastDate) : null,
-      stageChanges: ['lead', 'deal', 'proposal', 'agreement', 'invoice', 'receipt'].filter(stage => stageDate(stage)).length,
-      approvalDelay: proposalSent && agreementSigned ? this.calculateDecimalDays(proposalSent, agreementSigned) : null,
-      lastActivityAge: lastDate ? this.calculateDecimalDays(lastDate, today) : null,
-      averageDiscount,
-      stuckStage: biggestStage && biggestStage[1] >= 10 ? biggestStage[0] : 'None',
-      bottleneckWarning: biggestStage && biggestStage[1] >= 14 ? `${biggestStage[0]} delayed ${biggestStage[1]} days` : '',
-      lastActivityDate: lastDate ? lastDate.toISOString() : ''
+    return { accounts: [...accounts.values()], today, companiesById, companiesByName };
+  },
+  calculateLifecycleMetrics(lifecycleContext = {}, todayValue = new Date()) {
+    const context = lifecycleContext || {};
+    let today = this.parseDateSafe(todayValue) || new Date();
+    const now = new Date();
+    if (today.toDateString() === now.toDateString() && today.getTime() < now.getTime()) today = now;
+    const rows = key => Array.isArray(context[key]) ? context[key] : [];
+    const firstRecordDate = (key, fields) => this.getEarliestDate(rows(key).map(row => fields.map(field => row?.[field])));
+    const statusText = value => this.norm(value).replace(/[\s-]+/g, '_');
+    const statusLogs = rows('lifecycleStatusLogs');
+    const logDate = log => this.parseDateSafe(log.changed_at || log.created_at);
+    const transitionDate = (entityTypes, acceptedStatuses, fields = []) => this.getEarliestDate(statusLogs
+      .filter(log => entityTypes.includes(statusText(log.entity_type)) && acceptedStatuses.some(status => statusText(log.new_status).includes(statusText(status))) && (!fields.length || fields.some(field => statusText(log.status_field).includes(statusText(field)))))
+      .map(logDate));
+    const endOrToday = (start, ...ends) => {
+      if (!start) return null;
+      const validEnds = ends.flat(Infinity).map(value => this.parseDateSafe(value)).filter(date => date && date.getTime() >= start.getTime());
+      return this.getEarliestDate(validEnds) || today;
     };
+
+    const leadStart = firstRecordDate('leads', ['created_at', 'lead_date']);
+    const dealStart = firstRecordDate('deals', ['created_at', 'deal_date']);
+    const proposalStart = firstRecordDate('proposals', ['created_at', 'proposal_date']);
+    const agreementStart = firstRecordDate('agreements', ['created_at', 'agreement_date', 'effective_date']);
+    const invoiceStart = firstRecordDate('invoices', ['created_at', 'issued_at', 'issue_date', 'invoice_date']);
+    const receiptStart = firstRecordDate('receipts', ['created_at', 'receipt_date', 'payment_date']);
+
+    const leadConverted = this.getEarliestDate(
+      rows('leads').map(row => row.converted_at),
+      transitionDate(['lead', 'leads'], ['qualified', 'converted']),
+      rows('leads').filter(row => ['qualified', 'converted'].includes(statusText(row.status))).map(row => row.updated_at)
+    );
+    const proposalAccepted = this.getEarliestDate(
+      transitionDate(['proposal', 'proposals'], ['accepted']),
+      rows('proposals').map(row => row.accepted_at),
+      rows('proposals').filter(row => statusText(row.status).includes('accepted')).map(row => row.updated_at)
+    );
+    const agreementSigned = this.getEarliestDate(
+      rows('agreements').map(row => [row.signed_at, row.signed_date, row.provider_signed_at, row.provider_sign_date, row.customer_signed_at, row.customer_sign_date]),
+      transitionDate(['agreement', 'agreements'], ['signed'])
+    );
+    const invoicePaid = this.getEarliestDate(
+      rows('invoices').map(row => [row.paid_at, row.payment_date, row.settled_at]),
+      rows('invoices').filter(row => statusText(row.payment_status || row.payment_state || row.status).includes('paid')).map(row => row.updated_at),
+      transitionDate(['invoice', 'invoices'], ['paid'], ['payment', 'status'])
+    );
+
+    const daysInLead = this.diffDays(leadStart, endOrToday(leadStart, dealStart, proposalStart, leadConverted));
+    const daysInDeal = this.diffDays(dealStart, endOrToday(dealStart, proposalStart));
+    const daysInProposal = this.diffDays(proposalStart, endOrToday(proposalStart, proposalAccepted, agreementStart, agreementSigned));
+    const daysInAgreement = this.diffDays(agreementStart, endOrToday(agreementStart, agreementSigned, invoiceStart));
+    const daysInInvoice = this.diffDays(invoiceStart, endOrToday(invoiceStart, receiptStart, invoicePaid));
+
+    const realTransitions = [];
+    const seenTransitions = new Set();
+    statusLogs.forEach(log => {
+      const oldStatus = this.text(log.old_status);
+      const newStatus = this.text(log.new_status);
+      const changedAt = logDate(log);
+      if (!oldStatus || !newStatus || statusText(oldStatus) === statusText(newStatus) || !changedAt) return;
+      const key = [statusText(log.entity_type), this.text(log.entity_id || log.entity_number), statusText(log.status_field), statusText(oldStatus), statusText(newStatus), changedAt.toISOString().slice(0, 19)].join('|');
+      if (!seenTransitions.has(key)) { seenTransitions.add(key); realTransitions.push(log); }
+    });
+    const fallbackStageChanges = ['leads', 'deals', 'proposals', 'agreements', 'invoices', 'receipts'].filter(key => rows(key).length).length;
+    const numberOfStageChanges = statusLogs.length ? realTransitions.length : fallbackStageChanges;
+
+    const approvalEvents = rows('workflowApprovals');
+    const requestedAt = this.getEarliestDate(
+      approvalEvents.map(row => [row.requested_at, row.created_at, row.submitted_at]),
+      transitionDate(['proposal', 'proposals', 'workflow_approval'], ['pending_approval', 'pending approval', 'awaiting_approval'], ['approval', 'status'])
+    );
+    const decidedAt = this.getEarliestDate(
+      approvalEvents.filter(row => ['approved', 'rejected'].some(value => statusText(row.status || row.approval_status).includes(value))).map(row => [row.approved_at, row.rejected_at, row.decided_at, row.reviewed_at, row.updated_at]),
+      transitionDate(['proposal', 'proposals', 'workflow_approval'], ['approved', 'rejected'], ['approval', 'status'])
+    );
+    const approvalDelay = requestedAt && decidedAt ? this.diffDays(requestedAt, decidedAt) : null;
+
+    const itemCollections = rows('proposalItems').length ? rows('proposalItems') : (rows('agreementItems').length ? rows('agreementItems') : rows('invoiceItems'));
+    const validItems = itemCollections.filter(item => {
+      const state = statusText(item.status || item.item_status || item.row_type || item.type);
+      const value = this.num(item.line_total ?? item.total ?? item.amount ?? item.subtotal ?? item.unit_price);
+      const discount = this.num(item.discount_percent ?? item.discount_percentage ?? item.discount);
+      return !state.includes('cancel') && !state.includes('information') && !state.includes('header') && (value !== 0 || discount === 100);
+    });
+    const discountPercents = validItems.map(item => Number(item.discount_percent ?? item.discount_percentage ?? item.discount)).filter(Number.isFinite);
+    const proposalSubtotal = rows('proposals').reduce((sum, row) => sum + this.num(row.subtotal_before_discount || row.subtotal_locations) + this.num(row.subtotal_one_time), 0);
+    const proposalDiscount = rows('proposals').reduce((sum, row) => sum + this.num(row.total_discount_amount || row.total_discount), 0);
+    const averageDiscount = discountPercents.length
+      ? discountPercents.reduce((sum, value) => sum + value, 0) / discountPercents.length
+      : (proposalSubtotal > 0 ? (proposalDiscount / proposalSubtotal) * 100 : null);
+
+    const activityDates = [
+      ...rows('leads').map(row => row.updated_at || row.created_at), ...rows('deals').map(row => row.updated_at || row.created_at),
+      ...rows('proposals').map(row => row.updated_at || row.created_at || row.proposal_date), ...rows('agreements').map(row => row.updated_at || row.signed_at || row.created_at),
+      ...rows('invoices').map(row => row.updated_at || row.issued_at || row.created_at), ...rows('receipts').map(row => row.updated_at || row.receipt_date || row.created_at),
+      ...rows('creditNotes').map(row => row.updated_at || row.created_at), ...rows('onboarding').map(row => row.updated_at || row.completed_at || row.created_at),
+      ...statusLogs.map(log => log.changed_at || log.created_at)
+    ];
+    const lastActivityDate = this.getLatestDate(activityDates);
+    const cycleStart = this.getEarliestDate(leadStart, dealStart, proposalStart, agreementStart);
+    const onboardingCompleted = this.getLatestDate(rows('onboarding').map(row => [row.completed_at, row.go_live_at, row.go_live_date]));
+    const meaningfulEnd = this.getLatestDate(receiptStart, rows('receipts').map(row => [row.updated_at, row.receipt_date, row.payment_date]), rows('invoices').map(row => row.updated_at), onboardingCompleted, statusLogs.map(logDate));
+
+    const onboardingOpen = rows('onboarding').some(row => ['progress', 'pending', 'active', 'block'].some(value => statusText(row.onboarding_status || row.status).includes(value)));
+    const unpaidInvoice = rows('invoices').find(row => !['paid', 'cancelled', 'void'].some(value => statusText(row.payment_status || row.payment_state || row.status).includes(value)));
+    const openAgreement = agreementStart && !invoiceStart;
+    const openProposal = proposalStart && !agreementStart;
+    let currentStage = null;
+    let stageStart = null;
+    let threshold = null;
+    let warning = '';
+    if (onboardingOpen) { currentStage = 'Onboarding'; stageStart = firstRecordDate('onboarding', ['created_at', 'requested_at', 'updated_at']); threshold = 30; warning = 'Onboarding delayed'; }
+    else if (unpaidInvoice && invoiceStart) { currentStage = 'Invoice'; stageStart = invoiceStart; const due = this.getEarliestDate(unpaidInvoice.due_date, unpaidInvoice.payment_due_date); threshold = due ? this.diffDays(invoiceStart, due) : 30; warning = 'Invoice overdue'; }
+    else if (openAgreement) { currentStage = 'Agreement'; stageStart = agreementStart; threshold = 30; warning = 'Agreement not signed within expected period'; }
+    else if (openProposal) { currentStage = 'Proposal'; stageStart = proposalStart; threshold = 14; warning = 'Proposal pending too long'; }
+    else if (dealStart && !proposalStart) { currentStage = 'Deal'; stageStart = dealStart; threshold = 21; warning = 'Deal stage delayed'; }
+    else if (leadStart && !dealStart && !proposalStart) { currentStage = 'Lead'; stageStart = leadStart; threshold = 14; warning = 'Lead stage delayed'; }
+    const currentStageAge = stageStart ? this.diffDays(stageStart, today) : null;
+    const isStuck = currentStageAge !== null && threshold !== null && currentStageAge > Math.max(0, threshold);
+    const stillActive = Boolean(currentStage);
+    const cycleEnd = cycleStart ? (stillActive ? today : meaningfulEnd) : null;
+
+    const metrics = {
+      daysInLead, daysInDeal, daysInProposal, daysInAgreement, daysInInvoice,
+      totalCycleDuration: cycleStart && cycleEnd ? this.diffDays(cycleStart, cycleEnd) : null,
+      numberOfStageChanges, stageChanges: numberOfStageChanges, approvalDelay,
+      lastActivityAge: lastActivityDate ? this.diffDays(lastActivityDate, today) : null,
+      averageDiscount, stuckStage: isStuck ? currentStage : 'None', bottleneckWarning: isStuck ? warning : '',
+      lastActivityDate: lastActivityDate ? lastActivityDate.toISOString() : '', stageChangesEstimated: statusLogs.length === 0
+    };
+    console.log('[Lifecycle Metrics] context:', lifecycleContext);
+    console.log('[Lifecycle Metrics] result:', metrics);
+    return metrics;
+  },
+  buildLifecycleMetrics(account = {}, today = new Date()) {
+    return this.calculateLifecycleMetrics(account, today);
   },
   normalizeText(value) {
     return String(value || '').trim().toLowerCase();
@@ -1487,13 +1604,27 @@ const LifecycleAnalytics = {
       ['Days in Agreement', selected.lifecycle.daysInAgreement],
       ['Days in Invoice', selected.lifecycle.daysInInvoice],
       ['Total Cycle Duration', selected.lifecycle.totalCycleDuration],
-      ['Number of Stage Changes', selected.lifecycle.stageChanges],
+      ['Number of Stage Changes', selected.lifecycle.numberOfStageChanges],
       ['Approval Delay', selected.lifecycle.approvalDelay],
       ['Last Activity Age', selected.lifecycle.lastActivityAge],
       ['Average Discount', this.formatPercent(selected.lifecycle.averageDiscount)],
       ['Stuck Stage', selected.lifecycle.stuckStage],
       ['Bottleneck Warning', selected.lifecycle.bottleneckWarning || '—']
     ];
+    const lifecycleMetricHelp = {
+      'Days in Lead': 'Lead created date to the earliest deal, proposal, or conversion milestone; open leads run through today.',
+      'Days in Deal': 'Deal created date to the earliest linked proposal; open deals run through today.',
+      'Days in Proposal': 'Proposal created/proposal date to acceptance or the earliest agreement milestone.',
+      'Days in Agreement': 'Agreement created/agreement date to signing or the earliest invoice milestone.',
+      'Days in Invoice': 'Invoice created/issued date to the first receipt or paid milestone; unpaid invoices run through today.',
+      'Total Cycle Duration': 'First available lifecycle start through the latest meaningful completed date, or today while active.',
+      'Number of Stage Changes': 'Unique real transitions from lifecycle status logs; estimated from lifecycle objects only when logs are unavailable.',
+      'Approval Delay': 'Earliest approval request to its approval or rejection decision.',
+      'Last Activity Age': 'Time since the latest update or lifecycle status event across related records.',
+      'Average Discount': 'Average line-item discount, with proposal totals used only when item discounts are unavailable.',
+      'Stuck Stage': 'Current open stage when its age exceeds the configured stage threshold.',
+      'Bottleneck Warning': 'Warning for the current stage when it exceeds the configured stage threshold.'
+    };
 
     detailRoot.innerHTML = `
       <div class="grid cols-4">
@@ -1543,7 +1674,7 @@ const LifecycleAnalytics = {
                 if (typeof value === 'number') return this.formatDecimal(value);
                 return String(value);
               })();
-              return `<div class="card"><div class="label">${this.escape(label)}</div><div class="value">${this.escape(formattedValue)}</div></div>`;
+              return `<div class="card" title="${this.escape(lifecycleMetricHelp[label] || '')}"><div class="label">${this.escape(label)} <span aria-label="Metric calculation help" style="cursor:help">ⓘ</span></div><div class="value">${this.escape(formattedValue)}</div></div>`;
             })
             .join('')}
         </div>
