@@ -26,7 +26,7 @@
   <link rel="mask-icon" href="/icons/maskable-icon.svg" color="#020617" />
 
   <!-- Your app styles -->
-  <link rel="stylesheet" href="styles.css?v=20260605-biners1" />
+  <link rel="stylesheet" href="styles.css?v=20260605-biners2" />
 
   <!-- Vercel Web Analytics -->
   <script>
@@ -2183,33 +2183,40 @@ Sample:
           </header>
           <div class="biners-form-grid">
             <label>Entry Type *<select id="binersEntryType" class="select" required><option value="existing_client_new_location">Existing Client - New Location</option><option value="new_client_with_location">New Client with Location</option></select></label>
-            <label>Existing Company / Client<select id="binersExistingClient" class="select"><option value="">Select existing client...</option></select></label>
+            <label>Existing Company / Client<select id="binersExistingClientId" class="select"><option value="">Select existing client...</option></select></label>
             <label>Manual Client Name *<input id="binersClientName" class="input" type="text" required /></label>
             <label>Client Legal Name<input id="binersClientLegalName" class="input" type="text" /></label>
             <label>Country<input id="binersClientCountry" class="input" type="text" /></label>
             <label>City<input id="binersClientCity" class="input" type="text" /></label>
             <label>Address<input id="binersClientAddress" class="input" type="text" /></label>
-            <label>Contact Name<input id="binersContactName" class="input" type="text" /></label>
-            <label>Contact Email<input id="binersContactEmail" class="input" type="email" /></label>
-            <label>Contact Phone<input id="binersContactPhone" class="input" type="text" /></label>
+            <label>Contact Name<input id="binersClientContactName" class="input" type="text" /></label>
+            <label>Contact Email<input id="binersClientContactEmail" class="input" type="email" /></label>
+            <label>Contact Phone<input id="binersClientContactPhone" class="input" type="text" /></label>
             <label>Module Name *<input id="binersModuleName" class="input" type="text" placeholder="InCheck Basic / Module..." required /></label>
             <label>License Type<input id="binersLicenseType" class="input" type="text" placeholder="SaaS / Lite / Full" /></label>
-            <label>License Length Months *<input id="binersLicenseLength" class="input" type="number" min="1" value="12" required /></label>
-            <label>Number of Locations *<input id="binersLocationCount" class="input" type="number" min="1" value="1" required /></label>
-            <label>Service Start<input id="binersServiceStart" class="input" type="date" /></label>
-            <label>Service End<input id="binersServiceEnd" class="input" type="date" /></label>
+            <label>License Length Months *<input id="binersLicenseLengthMonths" class="input" type="number" min="1" value="12" required /></label>
+            <label>Number of Locations *<input id="binersNumberOfLocations" class="input" type="number" min="1" value="1" required /></label>
+            <label>Service Start<input id="binersServiceStartDate" class="input" type="date" /></label>
+            <label>Service End<input id="binersServiceEndDate" class="input" type="date" /></label>
             <label>Currency<input id="binersCurrency" class="input" type="text" value="USD" /></label>
             <label>Cost Per Location *<input id="binersCostPerLocation" class="input" type="number" min="0" step="0.01" value="0" required /></label>
-            <label>Total Payable<input id="binersTotalPayable" class="input" type="number" readonly /></label>
+            <label>Total Payable<input id="binersTotalPayableAmount" class="input" type="number" readonly /></label>
             <label class="biners-full">Description<textarea id="binersDescription" class="input" rows="2"></textarea></label>
             <label class="biners-full">Internal Notes<textarea id="binersInternalNotes" class="input" rows="2"></textarea></label>
           </div>
           <section class="biners-schedule-builder">
             <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+              <strong>Related Locations</strong>
+              <button id="binersAddLocationRowBtn" class="btn ghost xs" type="button">Add Location</button>
+            </div>
+            <div id="binersLocationRowsContainer" class="biners-location-rows"></div>
+          </section>
+          <section class="biners-schedule-builder">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
               <strong>Scheduled Payments to Biners</strong>
               <button id="binersAddScheduleRowBtn" class="btn ghost xs" type="button">Add Scheduled Payment</button>
             </div>
-            <div id="binersScheduleRows" class="biners-schedule-rows"></div>
+            <div id="binersScheduleRowsContainer" class="biners-schedule-rows"></div>
           </section>
           <footer class="biners-dialog-actions">
             <button class="btn ghost" type="button" data-biners-close-entry>Cancel</button>
@@ -2218,21 +2225,26 @@ Sample:
         </form>
       </div>
 
-      <div id="binersPaymentModal" class="biners-modal" role="dialog" aria-modal="true" aria-labelledby="binersPaymentModalTitle" hidden>
+      <div id="binersRecordPaymentModal" class="biners-modal" role="dialog" aria-modal="true" aria-labelledby="binersRecordPaymentModalTitle" hidden>
         <button class="biners-modal-backdrop" type="button" data-biners-close-payment aria-label="Close Biners payment"></button>
-        <form id="binersPaymentForm" class="biners-dialog biners-payment-dialog">
+        <form id="binersRecordPaymentForm" class="biners-dialog biners-payment-dialog">
           <header class="biners-dialog-header">
-            <div><span class="pf-eyebrow">Biners</span><h2 id="binersPaymentModalTitle">Record Biners Payment</h2><p id="binersPaymentContext" class="muted"></p></div>
+            <div><span class="pf-eyebrow">Biners</span><h2 id="binersRecordPaymentModalTitle">Record Biners Payment</h2><p id="binersPaymentContext" class="muted"></p></div>
             <button class="btn ghost sm" type="button" data-biners-close-payment>Close</button>
           </header>
           <input id="binersPaymentScheduleId" type="hidden" />
-          <input id="binersPaymentEntryId" type="hidden" />
           <div class="biners-form-grid">
+            <label>Client<input id="binersPaymentClient" class="input" type="text" readonly /></label>
+            <label>Entry #<input id="binersPaymentEntryNumber" class="input" type="text" readonly /></label>
+            <label>Schedule #<input id="binersPaymentScheduleNo" class="input" type="text" readonly /></label>
+            <label>Scheduled Amount<input id="binersPaymentScheduledAmount" class="input" type="number" readonly /></label>
+            <label>Already Paid<input id="binersPaymentAlreadyPaid" class="input" type="number" readonly /></label>
+            <label>Remaining Amount<input id="binersPaymentRemainingAmount" class="input" type="number" readonly /></label>
+            <label>Payment Amount *<input id="binersPaymentAmount" class="input" type="number" step="0.01" min="0.01" required /></label>
             <label>Payment Date *<input id="binersPaymentDate" class="input" type="date" required /></label>
-            <label>Payment Amount *<input id="binersPaymentAmount" class="input" type="number" step="0.01" min="0" required /></label>
-            <label>Method<input id="binersPaymentMethod" class="input" type="text" /></label>
-            <label>Reference<input id="binersPaymentReference" class="input" type="text" /></label>
-            <label class="biners-full">Notes<textarea id="binersPaymentNotes" class="input" rows="2"></textarea></label>
+            <label>Payment Method<input id="binersPaymentMethod" class="input" type="text" /></label>
+            <label>Payment Reference<input id="binersPaymentReference" class="input" type="text" /></label>
+            <label class="biners-full">Notes<textarea id="binersPaymentNotes" class="input" rows="3"></textarea></label>
           </div>
           <footer class="biners-dialog-actions">
             <button class="btn ghost" type="button" data-biners-close-payment>Cancel</button>
@@ -2240,6 +2252,16 @@ Sample:
           </footer>
         </form>
       </div>
+
+      <aside id="binersDetailsDrawer" class="biners-details-drawer" aria-label="Biners details" hidden>
+        <button class="biners-drawer-backdrop" type="button" data-biners-close-drawer aria-label="Close details"></button>
+        <section class="biners-drawer-panel">
+          <header class="biners-dialog-header"><div><span class="pf-eyebrow">Biners drill-down</span><h2>Payable Details</h2></div><button class="btn ghost sm" type="button" data-biners-close-drawer>Close</button></header>
+          <div id="binersDetailsContent" class="biners-details-content"></div>
+        </section>
+      </aside>
+
+
 
       <section id="lifecycleAnalyticsView" class="view" role="tabpanel" aria-labelledby="lifecycleAnalyticsTab">
         <section class="analytics-page card" aria-label="Lifecycle analytics search">
@@ -4198,7 +4220,7 @@ Sample:
   <script src="receipts.js?v=20260427-allpwa1"></script>
   <script src="credit-notes.js?v=20260604-credit-notes1"></script>
   <script src="payment-forecast.js?v=20260605-followup-activity2"></script>
-  <script src="biners.js?v=20260605-biners1"></script>
+  <script src="biners.js?v=20260605-biners2"></script>
   <script src="lifecycle-analytics.js?v=20260427-allpwa1"></script>
   <script src="clients.js?v=20260427-allpwa1"></script>
   <script src="proposal-catalog.js?v=20260427-allpwa1"></script>

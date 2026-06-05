@@ -1,612 +1,66 @@
 (function initBinersModule(global) {
   'use strict';
-
   const PAGE_SIZE = 10;
-  const state = {
-    initialized: false,
-    activeTab: 'overview',
-    entries: [],
-    schedules: [],
-    forecast: [],
-    payments: [],
-    companies: [],
-    summary: null,
-    filters: { search: '', status: 'all', paymentStatus: 'all', currency: 'all' },
-    pagination: {
-      overview: { page: 1, total: 0 },
-      entries: { page: 1, total: 0 },
-      scheduled_payments: { page: 1, total: 0 },
-      forecast: { page: 1, total: 0 },
-      payments_history: { page: 1, total: 0 }
-    }
-  };
-
   const $ = id => document.getElementById(id);
-  const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
+  const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;' }[ch]));
   const norm = value => String(value ?? '').trim().toLowerCase();
-  const num = value => {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : 0;
-  };
-  const money = (value, currency = 'USD') => `${String(currency || 'USD').toUpperCase()} ${num(value).toLocaleString(undefined, { minimumFractionDigits: num(value) % 1 ? 2 : 0, maximumFractionDigits: 2 })}`;
-  const date = value => {
-    if (!value) return '—';
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return esc(value);
-    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' });
-  };
-  const today = () => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  };
-  const auth = () => (global.Session?.authContext?.() || {});
-  const can = (action = 'view') => Boolean(global.Permissions?.canPerformAction?.('biners', action) || global.Permissions?.canPerformAction?.('biners', 'manage') || global.Permissions?.hasAdminOverride?.());
+  const num = value => Number.isFinite(Number(value)) ? Number(value) : 0;
+  const today = () => new Date().toISOString().slice(0, 10);
+  const money = (value, currency='USD') => `${String(currency || 'USD').toUpperCase()} ${num(value).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  const date = value => value ? new Date(`${String(value).slice(0,10)}T00:00:00`).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'2-digit'}) : '—';
+  const auth = () => global.Session?.authContext?.() || {};
+  const state = { initialized:false, activeTab:'overview', forecastView:'rows', entries:[], schedules:[], forecast:[], monthly:[], payments:[], companies:[], summary:null, drawer:null, filters:{search:'',status:'all',paymentStatus:'all',currency:'all'}, pages:{} };
+  const request = (action,payload={}) => global.Api?.requestWithSession ? global.Api.requestWithSession('biners',action,payload) : global.SupabaseData.dispatch({resource:'biners',action,...payload});
+  const can = action => Boolean(global.Permissions?.canPerformAction?.('biners',action) || global.Permissions?.canPerformAction?.('biners','manage') || global.Permissions?.hasAdminOverride?.());
+  const entryId = row => row?.biners_entry_id || row?.entry_id || row?.id;
+  const scheduleId = row => row?.schedule_id || row?.biners_schedule_id || row?.id;
+  const getEntry = row => state.entries.find(item => String(item.id) === String(entryId(row))) || row || {};
+  const remaining = row => row?.remaining_amount ?? Math.max(0, num(row?.scheduled_amount) - num(row?.paid_amount));
+  const badge = value => `<span class="pf-status-badge pf-status-${esc(norm(value || 'scheduled').replace(/_/g,'-'))}">${esc(String(value || 'scheduled').replace(/_/g,' '))}</span>`;
+  const stopAction = html => `<span class="biners-row-actions">${html}</span>`;
 
-  async function request(action, payload = {}) {
-    if (global.Api?.requestWithSession) return global.Api.requestWithSession('biners', action, payload);
-    if (global.SupabaseData?.dispatch) return global.SupabaseData.dispatch({ resource: 'biners', action, ...payload });
-    throw new Error('Biners data API is not available.');
-  }
+  function setState(message='',cls='muted'){ const el=$('binersState'); if(el){el.className=`${cls} pf-state`;el.textContent=message;} }
+  function daysUntil(value){ if(!value)return null; const due=new Date(`${String(value).slice(0,10)}T00:00:00`); const now=new Date(); return Math.round((due-new Date(now.getFullYear(),now.getMonth(),now.getDate()))/86400000); }
+  function statusFor(row){ if(num(remaining(row))<=0)return 'paid'; if(num(row.paid_amount)>0)return 'partially_paid'; const days=daysUntil(row.due_date); return days<0?'overdue':days<=7?'due_soon':'scheduled'; }
+  function rowContext(row){ const entry=getEntry(row); return {...entry,...row, client_name:row.client_name||entry.client_name||entry.client_legal_name, biners_entry_number:row.biners_entry_number||entry.biners_entry_number, module_name:row.module_name||entry.module_name, currency:row.currency||entry.currency||'USD'}; }
+  function table(headers,body,empty='No data found.'){return `<div class="table-wrap biners-table-wrap"><table class="biners-table"><thead><tr>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${body||`<tr><td colspan="${headers.length}" class="muted">${esc(empty)}</td></tr>`}</tbody></table></div>`;}
+  function action(row){ return can('record_payment') && num(remaining(row))>0 ? `<button class="btn ghost xs" type="button" data-biners-record-payment="${esc(scheduleId(row))}">Record Payment</button>` : ''; }
+  function clickable(attrs, cells){return `<tr class="biners-clickable-row" tabindex="0" ${attrs}>${cells}</tr>`;}
 
-  function setState(message = '', cls = 'muted') {
-    const el = $('binersState');
-    if (!el) return;
-    el.className = `${cls} pf-state`;
-    el.textContent = message || '';
-  }
+  function calculateSummary(){ const rows=state.forecast; return {total_entries:state.entries.length,active_entries:state.entries.filter(x=>norm(x.entry_status)==='active').length,total_locations:state.entries.reduce((s,x)=>s+num(x.number_of_locations),0),gross_payable:rows.reduce((s,x)=>s+num(x.scheduled_amount),0),paid_amount:rows.reduce((s,x)=>s+num(x.paid_amount),0),remaining_payable:rows.reduce((s,x)=>s+num(remaining(x)),0),overdue_amount:rows.filter(x=>statusFor(x)==='overdue').reduce((s,x)=>s+num(remaining(x)),0),due_this_week:rows.filter(x=>daysUntil(x.due_date)>=0&&daysUntil(x.due_date)<=7).reduce((s,x)=>s+num(remaining(x)),0),currency:rows[0]?.currency||'USD'}; }
+  function renderSummary(){ const el=$('binersSummary'); if(!el)return; const s=state.summary||calculateSummary(), c=s.currency||'USD'; const cards=[['Total Entries',s.total_entries],['Active Entries',s.active_entries],['Total Locations',s.total_locations],['Gross Payable',money(s.gross_payable,c)],['Paid Amount',money(s.paid_amount,c)],['Remaining Payable',money(s.remaining_payable,c)],['Overdue Amount',money(s.overdue_amount,c)],['Due This Week',money(s.due_this_week,c)]]; el.innerHTML=cards.map(([a,b])=>`<article class="payment-forecast-summary-card biners-summary-card"><div class="summary-label">${esc(a)}</div><div class="summary-value">${esc(b)}</div></article>`).join(''); }
+  function filtered(rows){ const f=state.filters,q=norm(f.search); return rows.filter(row=>(!q||norm(JSON.stringify(row)).includes(q))&&(f.status==='all'||norm(row.entry_status||row.status||row.forecast_status)===f.status)&&(f.paymentStatus==='all'||norm(row.payment_status||statusFor(row))===f.paymentStatus)&&(f.currency==='all'||norm(row.currency)===f.currency)); }
+  function paged(key,rows){ const page=state.pages[key]||1,max=Math.max(1,Math.ceil(rows.length/PAGE_SIZE)); state.pages[key]=Math.min(page,max); return rows.slice((state.pages[key]-1)*PAGE_SIZE,state.pages[key]*PAGE_SIZE); }
+  function renderPagination(key,total){ const el=$('binersPagination'), page=state.pages[key]||1,max=Math.max(1,Math.ceil(total/PAGE_SIZE)); el.innerHTML=`<div class="pf-pagination"><span>10 rows per page · ${total} total</span><button class="btn ghost sm" data-biners-page="prev" ${page<=1?'disabled':''}>Previous</button><span>Page ${page} of ${max}</span><button class="btn ghost sm" data-biners-page="next" ${page>=max?'disabled':''}>Next</button></div>`; }
 
-  function setActiveTab(tab) {
-    state.activeTab = tab || 'overview';
-    document.querySelectorAll('[data-biners-tab]').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.binersTab === state.activeTab);
-    });
-    renderActiveTab();
-  }
+  function entriesTable(rows){ return table(['Entry #','Client','Module','Locations','License','Gross Payable','Payment','Status','Actions'],rows.map(r=>clickable(`data-biners-open-entry="${esc(r.id)}"`,`<td><strong>${esc(r.biners_entry_number||'Auto')}</strong></td><td>${esc(r.client_name||r.client_legal_name||'—')}</td><td>${esc(r.module_name||'—')}</td><td>${esc(r.number_of_locations||0)}</td><td>${esc(r.license_type||'—')} · ${esc(r.license_length_months||'—')} mo</td><td>${money(r.total_payable_amount,r.currency)}</td><td>${badge(r.payment_status)}</td><td>${badge(r.entry_status)}</td><td>${stopAction('<button class="btn ghost xs" type="button" data-biners-open-entry="'+esc(r.id)+'">View</button>')}</td>`)).join(''),'No Biners entries found.'); }
+  function scheduleTable(rows,kind='schedule'){ return table(['Entry #','Client','Location','Module','Schedule #','Due Date','Scheduled','Paid','Remaining','Status','Actions'],rows.map(raw=>{const r=rowContext(raw); return clickable(`data-biners-open-${kind}="${esc(scheduleId(raw))}"`,`<td><strong>${esc(r.biners_entry_number||'—')}</strong></td><td>${esc(r.client_name||'—')}</td><td>${esc(r.location_name||r.location||'—')}</td><td>${esc(r.module_name||'—')}</td><td>${esc(r.schedule_no||'—')}</td><td>${date(r.due_date)}</td><td>${money(r.scheduled_amount,r.currency)}</td><td>${money(r.paid_amount,r.currency)}</td><td>${money(remaining(r),r.currency)}</td><td>${badge(statusFor(r))}</td><td>${stopAction(action(r))}</td>`)}).join('')); }
+  function paymentsTable(rows){ return table(['Date','Entry #','Client','Schedule #','Amount','Method','Reference'],rows.map(raw=>{const r=rowContext(raw);return clickable(`data-biners-open-payment="${esc(raw.id)}"`,`<td>${date(r.payment_date)}</td><td>${esc(r.biners_entry_number||'—')}</td><td>${esc(r.client_name||'—')}</td><td>${esc(r.schedule_no||'—')}</td><td>${money(r.payment_amount,r.currency)}</td><td>${esc(r.payment_method||'—')}</td><td>${esc(r.payment_reference||'—')}</td>`)}).join('')); }
+  function monthlyTable(rows){ return table(['Month','Currency','Scheduled Rows','Clients','Entries','Locations','Gross Payable','Paid Amount','Remaining Payable','Overdue Amount','Due Soon Amount','Actions'],rows.map(r=>clickable(`data-biners-open-month="${esc(r.forecast_month||r.month)}" data-biners-currency="${esc(r.currency)}"`,`<td><strong>${date(r.forecast_month||r.month)}</strong></td><td>${esc(r.currency||'USD')}</td><td>${esc(r.scheduled_rows||r.schedule_count||0)}</td><td>${esc(r.client_count||r.clients||0)}</td><td>${esc(r.entry_count||r.entries||0)}</td><td>${esc(r.location_count||r.locations||0)}</td><td>${money(r.gross_payable,r.currency)}</td><td>${money(r.paid_amount,r.currency)}</td><td>${money(r.remaining_payable,r.currency)}</td><td>${money(r.overdue_amount,r.currency)}</td><td>${money(r.due_soon_amount,r.currency)}</td><td>${stopAction('<button class="btn ghost xs" type="button" data-biners-open-month="'+esc(r.forecast_month||r.month)+'" data-biners-currency="'+esc(r.currency)+'">View</button>')}</td>`)).join('')); }
+  function render(){ renderSummary(); const body=$('binersTabBody'); if(!body)return; let key=state.activeTab,rows=[]; if(key==='overview'||key==='entries')rows=filtered(state.entries); else if(key==='scheduled_payments')rows=filtered(state.schedules); else if(key==='payments_history')rows=filtered(state.payments); else rows=filtered(state.forecastView==='monthly'?state.monthly:state.forecast); const visible=paged(key+(key==='forecast'?state.forecastView:''),rows); if(key==='overview')body.innerHTML=`<div class="card biners-overview-card"><strong>Biners payable overview</strong><p class="muted">Outgoing payments to Biners only. Invoices, receipts, and client statements are not affected.</p></div>${entriesTable(visible)}`; else if(key==='entries')body.innerHTML=entriesTable(visible); else if(key==='scheduled_payments')body.innerHTML=scheduleTable(visible,'schedule'); else if(key==='payments_history')body.innerHTML=paymentsTable(visible); else body.innerHTML=`<nav class="biners-forecast-tabs"><button class="btn ${state.forecastView==='rows'?'':'ghost'} sm" data-biners-forecast-view="rows">Forecast Rows</button><button class="btn ${state.forecastView==='monthly'?'':'ghost'} sm" data-biners-forecast-view="monthly">Monthly Forecast</button></nav>${state.forecastView==='monthly'?monthlyTable(visible):scheduleTable(visible,'forecast')}`; renderPagination(key+(key==='forecast'?state.forecastView:''),rows.length); setState(`${rows.length} ${key.replace(/_/g,' ')} row(s) loaded.`); }
 
-  function getClientName(row = {}) {
-    return row.client_name || row.client_legal_name || row.company_name || '—';
-  }
+  function normalizeDetail(data){ if(Array.isArray(data))return {rows:data}; return data&&typeof data==='object'?data:{}; }
+  function detailRowsFor(row){ const id=entryId(row), sid=scheduleId(row); return {entry:getEntry(row),schedules:state.schedules.filter(x=>String(entryId(x))===String(id)),payments:state.payments.filter(x=>String(entryId(x))===String(id)||(sid&&String(x.schedule_id)===String(sid)))}; }
+  function miniTable(title,rows,columns){ return `<section class="biners-drawer-section"><h3>${esc(title)}</h3>${table(columns.map(x=>x[0]),rows.map(r=>`<tr>${columns.map(x=>`<td>${esc(x[1](r)??'—')}</td>`).join('')}</tr>`).join(''))}</section>`; }
+  function openDrawer(row,type='entry',remote={}){ const drawer=$('binersDetailsDrawer'), content=$('binersDetailsContent'); if(!drawer||!content)return; const r=rowContext(row||{}), local=detailRowsFor(r), detail=normalizeDetail(remote); const schedules=detail.scheduled_payments||detail.schedules||detail.rows||local.schedules, payments=detail.payment_history||detail.payments||local.payments, entries=detail.entries||[local.entry], locations=detail.locations||detail.related_locations||[]; state.drawer={row,type,remote}; const stats=[['Gross Payable',r.gross_payable??r.total_payable_amount??r.scheduled_amount],['Paid Amount',r.paid_amount],['Remaining',r.remaining_payable??remaining(r)],['Overdue',r.overdue_amount],['Clients',r.client_count],['Entries',r.entry_count],['Locations',r.location_count??r.number_of_locations]].filter(x=>x[1]!==undefined); content.innerHTML=`<div class="biners-drawer-summary">${stats.map(([a,b])=>`<article><span>${esc(a)}</span><strong>${typeof b==='number'?money(b,r.currency):esc(b)}</strong></article>`).join('')}</div><section class="biners-drawer-section"><h3>Client & entry details</h3><dl class="biners-detail-list"><div><dt>Client</dt><dd>${esc(r.client_name||'—')}</dd></div><div><dt>Entry #</dt><dd>${esc(r.biners_entry_number||'—')}</dd></div><div><dt>Location</dt><dd>${esc(r.location_name||r.location||'—')}</dd></div><div><dt>Module</dt><dd>${esc(r.module_name||'—')}</dd></div><div><dt>License</dt><dd>${esc(r.license_type||'—')} · ${esc(r.license_length_months||'—')} months</dd></div><div><dt>Schedule / Due</dt><dd>#${esc(r.schedule_no||'—')} · ${date(r.due_date)}</dd></div><div><dt>Status</dt><dd>${badge(statusFor(r))}</dd></div><div><dt>Timing</dt><dd>${daysUntil(r.due_date)==null?'—':daysUntil(r.due_date)<0?`${Math.abs(daysUntil(r.due_date))} days overdue`:`${daysUntil(r.due_date)} days until due`}</dd></div></dl>${action(r)?`<div class="biners-drawer-actions">${action(r)}</div>`:''}</section>${miniTable('Scheduled payments',schedules,[['#',x=>x.schedule_no],['Due',x=>date(x.due_date)],['Scheduled',x=>money(x.scheduled_amount,x.currency||r.currency)],['Paid',x=>money(x.paid_amount,x.currency||r.currency)],['Status',x=>statusFor(x)]])}${miniTable('Payment history',payments,[['Date',x=>date(x.payment_date)],['Amount',x=>money(x.payment_amount,x.currency||r.currency)],['Method',x=>x.payment_method],['Reference',x=>x.payment_reference]])}${locations.length?miniTable('Related clients / locations',locations,[['Client',x=>x.client_name],['Location',x=>x.location_name||x.location],['Module',x=>x.module_name]]):''}${entries.length>1?miniTable('Related entries',entries,[['Entry #',x=>x.biners_entry_number],['Client',x=>x.client_name],['Module',x=>x.module_name]]):''}`; drawer.hidden=false; }
+  async function openMonthly(month,currency){ setState('Loading monthly forecast details…'); try{const detail=await (global.Api?.getBinersMonthlyForecastDetails?.(month,currency)||request('monthly_forecast_details',{forecast_month:month,currency})); const base=state.monthly.find(x=>String(x.forecast_month||x.month)===String(month)&&String(x.currency)===String(currency))||{forecast_month:month,currency}; openDrawer({...base,due_date:month},'month',detail);}catch(e){setState(e.message,'error');} }
+  function closeDrawer(){ $('binersDetailsDrawer').hidden=true; state.drawer=null; }
 
-  function calculateSummary() {
-    const forecastRows = state.forecast || [];
-    const entries = state.entries || [];
-    const remaining = forecastRows.reduce((sum, row) => sum + num(row.remaining_amount), 0);
-    const gross = forecastRows.reduce((sum, row) => sum + num(row.scheduled_amount), 0) || entries.reduce((sum, row) => sum + num(row.total_payable_amount), 0);
-    const paid = forecastRows.reduce((sum, row) => sum + num(row.paid_amount), 0);
-    const overdue = forecastRows.filter(row => norm(row.forecast_status) === 'overdue').reduce((sum, row) => sum + num(row.remaining_amount), 0);
-    const dueWeek = forecastRows.filter(row => daysUntil(row.due_date) >= 0 && daysUntil(row.due_date) <= 7 && num(row.remaining_amount) > 0).reduce((sum, row) => sum + num(row.remaining_amount), 0);
-    const dueMonth = forecastRows.filter(row => {
-      const d = new Date(row.due_date);
-      const now = new Date();
-      return !Number.isNaN(d.getTime()) && d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && num(row.remaining_amount) > 0;
-    }).reduce((sum, row) => sum + num(row.remaining_amount), 0);
-    const next30 = forecastRows.filter(row => daysUntil(row.due_date) >= 0 && daysUntil(row.due_date) <= 30 && num(row.remaining_amount) > 0).reduce((sum, row) => sum + num(row.remaining_amount), 0);
-    const next90 = forecastRows.filter(row => daysUntil(row.due_date) >= 0 && daysUntil(row.due_date) <= 90 && num(row.remaining_amount) > 0).reduce((sum, row) => sum + num(row.remaining_amount), 0);
-    return {
-      total_entries: entries.length,
-      active_entries: entries.filter(row => norm(row.entry_status) === 'active').length,
-      total_locations: entries.reduce((sum, row) => sum + Math.max(0, Number(row.number_of_locations || 0)), 0),
-      scheduled_rows: forecastRows.length,
-      gross_payable: gross,
-      paid_amount: paid,
-      remaining_payable: remaining,
-      overdue_amount: overdue,
-      due_this_week: dueWeek,
-      due_this_month: dueMonth,
-      next_30_days: next30,
-      next_90_days: next90,
-      currency: forecastRows[0]?.currency || entries[0]?.currency || 'USD'
-    };
-  }
+  function populateCompanies(){ const select=$('binersExistingClientId'); if(select)select.innerHTML='<option value="">Select existing client...</option>'+state.companies.map(c=>`<option value="${esc(c.id)}">${esc(c.legal_name||c.company_name||c.name||'Client')}</option>`).join(''); }
+  function addScheduleRow(data={}){ const el=document.createElement('div'); el.className='biners-schedule-row'; el.innerHTML=`<label>#<input class="input" type="number" min="1" data-biners-schedule-no value="${esc(data.schedule_no||$('binersScheduleRowsContainer').children.length+1)}"></label><label>Due Date<input class="input" type="date" data-biners-schedule-due value="${esc(data.due_date||today())}"></label><label>Amount<input class="input" type="number" min="0" step="0.01" data-biners-schedule-amount value="${esc(data.scheduled_amount||0)}"></label><label>Status<select class="select" data-biners-schedule-status><option>scheduled</option><option>due_soon</option><option>overdue</option></select></label><button class="btn ghost xs" type="button" data-biners-remove-row>Remove</button>`; $('binersScheduleRowsContainer').append(el); }
+  function addLocationRow(data={}){ const el=document.createElement('div'); el.className='biners-location-row'; el.innerHTML=`<input class="input" data-biners-location-name placeholder="Location name" value="${esc(data.location_name||'')}"><input class="input" data-biners-location-code placeholder="Location code" value="${esc(data.location_code||'')}"><button class="btn ghost xs" type="button" data-biners-remove-row>Remove</button>`; $('binersLocationRowsContainer').append(el); }
+  function openEntryModal(){ const form=$('binersEntryForm'); form.reset(); $('binersCurrency').value='USD'; $('binersLicenseLengthMonths').value=12; $('binersNumberOfLocations').value=1; $('binersLocationRowsContainer').innerHTML=''; $('binersScheduleRowsContainer').innerHTML=''; addLocationRow(); addScheduleRow(); $('binersEntryModal').hidden=false; }
+  function openPaymentModal(id){ const row=[...state.schedules,...state.forecast].find(x=>String(scheduleId(x))===String(id)); if(!row)return; const r=rowContext(row), rem=num(remaining(r)); $('binersRecordPaymentForm').reset(); $('binersPaymentScheduleId').value=scheduleId(r); $('binersPaymentClient').value=r.client_name||''; $('binersPaymentEntryNumber').value=r.biners_entry_number||''; $('binersPaymentScheduleNo').value=r.schedule_no||''; $('binersPaymentScheduledAmount').value=num(r.scheduled_amount).toFixed(2); $('binersPaymentAlreadyPaid').value=num(r.paid_amount).toFixed(2); $('binersPaymentRemainingAmount').value=rem.toFixed(2); $('binersPaymentAmount').value=rem.toFixed(2); $('binersPaymentAmount').max=rem; $('binersPaymentDate').value=today(); $('binersRecordPaymentModal').hidden=false; }
+  function closeEntry(){ $('binersEntryModal').hidden=true; } function closePayment(){ $('binersRecordPaymentModal').hidden=true; }
+  const values = selector => [...document.querySelectorAll(selector)];
+  async function saveEntry(e){ e.preventDefault(); const company=state.companies.find(c=>String(c.id)===String($('binersExistingClientId').value)); const payload={entry:{entry_type:$('binersEntryType').value,company_id:company?.id||null,client_name:$('binersClientName').value||company?.company_name||company?.legal_name,client_legal_name:$('binersClientLegalName').value,client_country:$('binersClientCountry').value,client_city:$('binersClientCity').value,client_address:$('binersClientAddress').value,client_contact_name:$('binersClientContactName').value,client_contact_email:$('binersClientContactEmail').value,client_contact_phone:$('binersClientContactPhone').value,module_name:$('binersModuleName').value,license_type:$('binersLicenseType').value,license_length_months:num($('binersLicenseLengthMonths').value),number_of_locations:num($('binersNumberOfLocations').value),service_start_date:$('binersServiceStartDate').value||null,service_end_date:$('binersServiceEndDate').value||null,currency:$('binersCurrency').value,total_payable_amount:num($('binersTotalPayableAmount').value),cost_per_location:num($('binersCostPerLocation').value),description:$('binersDescription').value,internal_notes:$('binersInternalNotes').value,entry_status:'active',payment_status:'unpaid',created_by:auth().id,created_by_email:auth().email},locations:values('.biners-location-row').map(x=>({location_name:x.querySelector('[data-biners-location-name]').value,location_code:x.querySelector('[data-biners-location-code]').value})),schedules:values('.biners-schedule-row').map(x=>({schedule_no:num(x.querySelector('[data-biners-schedule-no]').value),due_date:x.querySelector('[data-biners-schedule-due]').value,scheduled_amount:num(x.querySelector('[data-biners-schedule-amount]').value),payment_status:x.querySelector('[data-biners-schedule-status]').value,currency:$('binersCurrency').value}))}; await request('create',payload); closeEntry(); await refresh(); global.UI?.toast?.('Biners entry created.'); }
+  async function savePayment(e){ e.preventDefault(); const amount=num($('binersPaymentAmount').value), max=num($('binersPaymentRemainingAmount').value); if(amount<=0||amount>max){setState(`Payment amount must be greater than 0 and no more than ${max.toFixed(2)}.`,'error');return;} if(!$('binersPaymentDate').value){setState('Payment date is required.','error');return;} const payload={schedule_id:$('binersPaymentScheduleId').value,payment_amount:amount,payment_date:$('binersPaymentDate').value,payment_method:$('binersPaymentMethod').value,payment_reference:$('binersPaymentReference').value,notes:$('binersPaymentNotes').value,created_by:auth().id||null,created_by_email:auth().email||''}; await (global.Api?.recordBinersScheduledPayment?.(payload)||request('record_scheduled_payment',payload)); closePayment(); const drawer=state.drawer; await refresh(); if(drawer){ const id=scheduleId(drawer.row); if(drawer.type==='month')await openMonthly(drawer.row.forecast_month||drawer.row.month,drawer.row.currency); else openDrawer([...state.schedules,...state.forecast,...state.entries,...state.payments].find(x=>String(scheduleId(x))===String(id)||String(x.id)===String(drawer.row.id))||drawer.row,drawer.type); } global.UI?.toast?.('Scheduled payment recorded.'); }
+  function updateTotal(){ $('binersTotalPayableAmount').value=(num($('binersNumberOfLocations').value)*num($('binersCostPerLocation').value)).toFixed(2); }
 
-  function daysUntil(value) {
-    if (!value) return 999999;
-    const d = new Date(`${String(value).slice(0, 10)}T00:00:00`);
-    if (Number.isNaN(d.getTime())) return 999999;
-    const now = new Date();
-    const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    return Math.round((d.getTime() - todayDate.getTime()) / 86400000);
-  }
-
-  function renderSummary() {
-    const el = $('binersSummary');
-    if (!el) return;
-    const s = state.summary || calculateSummary();
-    const currency = s.currency || 'USD';
-    const cards = [
-      ['Total Entries', s.total_entries ?? state.entries.length, 'Biners records'],
-      ['Active Entries', s.active_entries ?? state.entries.filter(r => norm(r.entry_status) === 'active').length, 'Currently active'],
-      ['Total Locations', s.total_locations ?? state.entries.reduce((sum, r) => sum + num(r.number_of_locations), 0), 'Tracked locations'],
-      ['Gross Payable', money(s.gross_payable, currency), 'Before payments'],
-      ['Paid Amount', money(s.paid_amount, currency), 'Paid to Biners'],
-      ['Remaining Payable', money(s.remaining_payable, currency), 'Outstanding payable'],
-      ['Overdue Amount', money(s.overdue_amount, currency), 'Needs follow-up'],
-      ['Due This Week', money(s.due_this_week, currency), 'Next 7 days'],
-      ['Due This Month', money(s.due_this_month, currency), 'Current month'],
-      ['Next 30 Days', money(s.next_30_days, currency), 'Near-term payable'],
-      ['Next 90 Days', money(s.next_90_days, currency), 'Quarter forecast']
-    ];
-    el.innerHTML = cards.map(([label, value, hint]) => `
-      <article class="payment-forecast-summary-card biners-summary-card">
-        <div class="summary-label">${esc(label)}</div>
-        <div class="summary-value">${esc(value)}</div>
-        <div class="summary-subtitle">${esc(hint)}</div>
-      </article>
-    `).join('');
-  }
-
-  function currentRows() {
-    const tab = state.activeTab;
-    let rows = tab === 'entries' || tab === 'overview'
-      ? state.entries
-      : tab === 'scheduled_payments'
-        ? state.schedules
-        : tab === 'payments_history'
-          ? state.payments
-          : state.forecast;
-    rows = Array.isArray(rows) ? [...rows] : [];
-    const f = state.filters;
-    const search = norm(f.search);
-    if (search) {
-      rows = rows.filter(row => norm(JSON.stringify(row)).includes(search));
-    }
-    if (f.status !== 'all') rows = rows.filter(row => norm(row.entry_status || row.status || row.forecast_status) === f.status);
-    if (f.paymentStatus !== 'all') rows = rows.filter(row => norm(row.payment_status || row.entry_payment_status) === f.paymentStatus);
-    if (f.currency !== 'all') rows = rows.filter(row => norm(row.currency) === f.currency);
-    return rows;
-  }
-
-  function paginate(rows) {
-    const pageState = state.pagination[state.activeTab] || { page: 1, total: 0 };
-    const total = rows.length;
-    pageState.total = total;
-    const maxPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
-    if (pageState.page > maxPage) pageState.page = 1;
-    const start = (pageState.page - 1) * PAGE_SIZE;
-    return rows.slice(start, start + PAGE_SIZE);
-  }
-
-  function renderPagination() {
-    const el = $('binersPagination');
-    if (!el) return;
-    const pageState = state.pagination[state.activeTab] || { page: 1, total: 0 };
-    const total = pageState.total || 0;
-    const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-    const start = total ? ((pageState.page - 1) * PAGE_SIZE) + 1 : 0;
-    const end = Math.min(pageState.page * PAGE_SIZE, total);
-    el.innerHTML = `
-      <div class="pf-pagination">
-        <span>Showing ${start}–${end} of ${total}</span>
-        <span>10 rows per page</span>
-        <button class="btn ghost sm" type="button" data-biners-page="prev" ${pageState.page <= 1 ? 'disabled' : ''}>Previous</button>
-        <span>Page ${pageState.page} of ${totalPages}</span>
-        <button class="btn ghost sm" type="button" data-biners-page="next" ${pageState.page >= totalPages ? 'disabled' : ''}>Next</button>
-      </div>`;
-  }
-
-  function badge(value) {
-    const label = String(value || 'scheduled').replace(/_/g, ' ');
-    return `<span class="pf-status-badge pf-status-${esc(norm(value).replace(/_/g, '-'))}">${esc(label)}</span>`;
-  }
-
-  function renderActiveTab() {
-    renderSummary();
-    const body = $('binersTabBody');
-    if (!body) return;
-    const rows = currentRows();
-    const visible = paginate(rows);
-    if (state.activeTab === 'overview') renderOverview(body, visible, rows.length);
-    else if (state.activeTab === 'entries') renderEntries(body, visible);
-    else if (state.activeTab === 'scheduled_payments') renderSchedules(body, visible);
-    else if (state.activeTab === 'forecast') renderForecast(body, visible);
-    else renderPayments(body, visible);
-    renderPagination();
-    setState(`${rows.length} ${state.activeTab.replace(/_/g, ' ')} row(s) loaded.`);
-  }
-
-  function table(headers, rowsHtml, emptyText = 'No data found.') {
-    return `<div class="table-wrap biners-table-wrap"><table class="biners-table"><thead><tr>${headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rowsHtml || `<tr><td colspan="${headers.length}" class="muted">${esc(emptyText)}</td></tr>`}</tbody></table></div>`;
-  }
-
-  function renderOverview(body, visible, total) {
-    body.innerHTML = `
-      <div class="card biners-overview-card">
-        <strong>Biners payable overview</strong>
-        <p class="muted">Showing ${total} entry row(s). Use the sub-tabs for scheduled payments, forecast, and payment history.</p>
-      </div>
-      ${renderEntriesTable(visible)}
-    `;
-  }
-
-  function renderEntries(body, rows) { body.innerHTML = renderEntriesTable(rows); }
-  function renderEntriesTable(rows) {
-    const html = rows.map(row => `
-      <tr data-biners-entry-id="${esc(row.id)}">
-        <td><strong>${esc(row.biners_entry_number || 'Auto')}</strong></td>
-        <td>${esc(String(row.entry_type || '').replace(/_/g, ' '))}</td>
-        <td>${esc(getClientName(row))}</td>
-        <td>${esc(row.module_name || '—')}</td>
-        <td>${esc(row.number_of_locations || 0)}</td>
-        <td>${esc(row.license_length_months || '—')} mo</td>
-        <td>${date(row.service_start_date)}</td>
-        <td>${date(row.service_end_date)}</td>
-        <td>${money(row.total_payable_amount, row.currency)}</td>
-        <td>${badge(row.payment_status)}</td>
-        <td>${badge(row.entry_status)}</td>
-        <td><button class="btn ghost xs" type="button" data-biners-view-entry="${esc(row.id)}">View</button></td>
-      </tr>`).join('');
-    return table(['Entry #','Type','Client','Module','Locations','License','Start','End','Gross Payable','Payment','Entry Status','Actions'], html, 'No Biners entries found.');
-  }
-
-  function renderSchedules(body, rows) {
-    const html = rows.map(row => `
-      <tr>
-        <td>${esc(getEntry(row.biners_entry_id)?.client_name || row.client_name || '—')}</td>
-        <td>${esc(getEntry(row.biners_entry_id)?.biners_entry_number || row.biners_entry_id || '—')}</td>
-        <td>${esc(row.schedule_no || '—')}</td>
-        <td>${date(row.due_date)}</td>
-        <td>${money(row.scheduled_amount, row.currency)}</td>
-        <td>${money(row.paid_amount, row.currency)}</td>
-        <td>${money(row.remaining_amount, row.currency)}</td>
-        <td>${badge(row.payment_status)}</td>
-        <td><button class="btn ghost xs" type="button" data-biners-record-payment="${esc(row.id)}">Record Payment</button></td>
-      </tr>`).join('');
-    body.innerHTML = table(['Client','Entry #','Schedule #','Due Date','Scheduled','Paid','Remaining','Status','Actions'], html, 'No scheduled payments found.');
-  }
-
-  function renderForecast(body, rows) {
-    const html = rows.map(row => `
-      <tr>
-        <td>${esc(row.client_name || '—')}</td>
-        <td>${esc(row.biners_entry_number || '—')}</td>
-        <td>${esc(row.location_name || '—')}</td>
-        <td>${esc(row.module_name || '—')}</td>
-        <td>${esc(row.license_type || '—')}</td>
-        <td>${esc(row.schedule_no || '—')}</td>
-        <td>${date(row.due_date)}</td>
-        <td>${money(row.scheduled_amount, row.currency)}</td>
-        <td>${money(row.paid_amount, row.currency)}</td>
-        <td>${money(row.remaining_amount, row.currency)}</td>
-        <td>${badge(row.forecast_status)}</td>
-        <td>${row.forecast_status === 'overdue' ? `${esc(row.days_overdue || 0)} days overdue` : `${esc(row.days_until_due || 0)} days`}</td>
-      </tr>`).join('');
-    body.innerHTML = table(['Client','Entry #','Location','Module','License','Schedule #','Due Date','Scheduled','Paid','Remaining','Forecast','Days'], html, 'No forecast rows found.');
-  }
-
-  function renderPayments(body, rows) {
-    const html = rows.map(row => `
-      <tr>
-        <td><strong>${esc(row.payment_number || 'Auto')}</strong></td>
-        <td>${date(row.payment_date)}</td>
-        <td>${esc(getEntry(row.biners_entry_id)?.client_name || '—')}</td>
-        <td>${esc(getEntry(row.biners_entry_id)?.biners_entry_number || row.biners_entry_id || '—')}</td>
-        <td>${money(row.payment_amount, row.currency)}</td>
-        <td>${esc(row.payment_method || '—')}</td>
-        <td>${esc(row.payment_reference || '—')}</td>
-        <td>${esc(row.notes || '—')}</td>
-      </tr>`).join('');
-    body.innerHTML = table(['Payment #','Date','Client','Entry #','Amount','Method','Reference','Notes'], html, 'No Biners payment history found.');
-  }
-
-  function getEntry(id) { return state.entries.find(row => String(row.id) === String(id)) || null; }
-
-  async function refresh() {
-    if (!can('view')) {
-      setState('You do not have permission to view Biners.', 'error');
-      return;
-    }
-    init();
-    setState('Loading Biners data...');
-    try {
-      const [entries, schedules, forecast, payments, summary] = await Promise.all([
-        request('list', { limit: 2000 }).catch(() => []),
-        request('list_schedules', { limit: 2000 }).catch(() => []),
-        request('list_forecast', { limit: 2000 }).catch(() => []),
-        request('list_payments', { limit: 2000 }).catch(() => []),
-        request('summary', {}).catch(() => null)
-      ]);
-      state.entries = Array.isArray(entries) ? entries : [];
-      state.schedules = Array.isArray(schedules) ? schedules : [];
-      state.forecast = Array.isArray(forecast) ? forecast : [];
-      state.payments = Array.isArray(payments) ? payments : [];
-      state.summary = summary || null;
-      populateCurrencies();
-      await loadCompanies();
-      renderActiveTab();
-    } catch (error) {
-      console.error('[Biners] refresh failed', error);
-      setState(`Unable to load Biners: ${error.message || error}`, 'error');
-    }
-  }
-
-  async function loadCompanies() {
-    try {
-      const client = global.SupabaseClient?.getClient?.();
-      if (!client) return;
-      const { data } = await client.from('companies').select('id,company_id,legal_name,company_name,name,country,city,address,main_email,main_phone').order('created_at', { ascending: false }).limit(1000);
-      state.companies = Array.isArray(data) ? data : [];
-      const select = $('binersExistingClient');
-      if (select) {
-        select.innerHTML = '<option value="">Select existing client...</option>' + state.companies.map(c => `<option value="${esc(c.id)}">${esc(c.legal_name || c.company_name || c.name || c.company_id || c.id)}</option>`).join('');
-      }
-    } catch (error) {
-      console.warn('[Biners] companies load skipped', error);
-    }
-  }
-
-  function populateCurrencies() {
-    const select = $('binersCurrencyFilter');
-    if (!select) return;
-    const currencies = [...new Set([...state.entries, ...state.forecast, ...state.schedules, ...state.payments].map(row => row.currency).filter(Boolean))].sort();
-    const current = select.value || 'all';
-    select.innerHTML = '<option value="all">All currencies</option>' + currencies.map(c => `<option value="${esc(norm(c))}">${esc(c)}</option>`).join('');
-    select.value = currencies.map(norm).includes(current) ? current : 'all';
-  }
-
-  function applyFiltersFromInputs() {
-    state.filters.search = $('binersSearchInput')?.value || '';
-    state.filters.status = norm($('binersStatusFilter')?.value || 'all') || 'all';
-    state.filters.paymentStatus = norm($('binersPaymentStatusFilter')?.value || 'all') || 'all';
-    state.filters.currency = norm($('binersCurrencyFilter')?.value || 'all') || 'all';
-    Object.values(state.pagination).forEach(p => { p.page = 1; });
-    renderActiveTab();
-  }
-
-  function openEntryModal() {
-    if (!can('create')) { setState('You do not have permission to create Biners entries.', 'error'); return; }
-    const modal = $('binersEntryModal');
-    const form = $('binersEntryForm');
-    if (!modal || !form) return;
-    form.reset();
-    $('binersLicenseLength').value = '12';
-    $('binersLocationCount').value = '1';
-    $('binersCurrency').value = 'USD';
-    $('binersCostPerLocation').value = '0';
-    $('binersTotalPayable').value = '0';
-    $('binersScheduleRows').innerHTML = '';
-    addScheduleRow({ schedule_no: 1, due_date: today(), scheduled_amount: 0 });
-    modal.hidden = false;
-    updateEntryTypeVisibility();
-    updateTotalPayable();
-  }
-
-  function closeEntryModal() { const modal = $('binersEntryModal'); if (modal) modal.hidden = true; }
-  function closePaymentModal() { const modal = $('binersPaymentModal'); if (modal) modal.hidden = true; }
-
-  function updateEntryTypeVisibility() {
-    const type = $('binersEntryType')?.value || 'existing_client_new_location';
-    const existing = $('binersExistingClient');
-    if (existing) existing.closest('label').style.display = type === 'existing_client_new_location' ? '' : 'none';
-  }
-
-  function updateTotalPayable() {
-    const locations = Math.max(1, Number($('binersLocationCount')?.value || 1));
-    const cost = num($('binersCostPerLocation')?.value || 0);
-    const total = locations * cost;
-    if ($('binersTotalPayable')) $('binersTotalPayable').value = total.toFixed(2);
-    const rows = document.querySelectorAll('.biners-schedule-row');
-    if (rows.length === 1) {
-      const amount = rows[0].querySelector('[data-biners-schedule-amount]');
-      if (amount && (!amount.value || Number(amount.value) === 0)) amount.value = total.toFixed(2);
-    }
-  }
-
-  function addScheduleRow(data = {}) {
-    const wrap = $('binersScheduleRows');
-    if (!wrap) return;
-    const index = wrap.querySelectorAll('.biners-schedule-row').length + 1;
-    const div = document.createElement('div');
-    div.className = 'biners-schedule-row';
-    div.innerHTML = `
-      <label>#<input class="input" type="number" min="1" data-biners-schedule-no value="${esc(data.schedule_no || index)}"></label>
-      <label>Due Date<input class="input" type="date" data-biners-schedule-due value="${esc(data.due_date || '')}"></label>
-      <label>Amount<input class="input" type="number" min="0" step="0.01" data-biners-schedule-amount value="${esc(data.scheduled_amount || 0)}"></label>
-      <label>Status<select class="select" data-biners-schedule-status><option value="scheduled">Scheduled</option><option value="due_soon">Due soon</option><option value="overdue">Overdue</option><option value="paid">Paid</option></select></label>
-      <button class="btn ghost xs" type="button" data-biners-remove-schedule>Remove</button>
-    `;
-    wrap.appendChild(div);
-    const status = div.querySelector('[data-biners-schedule-status]');
-    if (status) status.value = data.payment_status || 'scheduled';
-  }
-
-  function scheduleRowsPayload(currency) {
-    return [...document.querySelectorAll('.biners-schedule-row')].map((row, idx) => ({
-      schedule_no: Number(row.querySelector('[data-biners-schedule-no]')?.value || idx + 1),
-      due_date: row.querySelector('[data-biners-schedule-due]')?.value || today(),
-      currency,
-      scheduled_amount: num(row.querySelector('[data-biners-schedule-amount]')?.value),
-      payment_status: row.querySelector('[data-biners-schedule-status]')?.value || 'scheduled',
-      created_by: auth().id || null,
-      created_by_email: auth().email || ''
-    })).filter(row => row.scheduled_amount > 0 || row.due_date);
-  }
-
-  async function saveEntry(event) {
-    event.preventDefault();
-    const btn = $('binersSaveEntryBtn');
-    if (btn?.disabled) return;
-    try {
-      if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
-      const type = $('binersEntryType')?.value || 'existing_client_new_location';
-      const company = state.companies.find(c => String(c.id) === String($('binersExistingClient')?.value || '')) || null;
-      const currency = String($('binersCurrency')?.value || 'USD').trim().toUpperCase() || 'USD';
-      const locations = Math.max(1, Number($('binersLocationCount')?.value || 1));
-      const costPerLocation = num($('binersCostPerLocation')?.value);
-      const clientName = String($('binersClientName')?.value || company?.legal_name || company?.company_name || company?.name || '').trim();
-      if (!clientName) throw new Error('Client name is required.');
-      const entry = {
-        entry_type: type,
-        company_id: company?.id || null,
-        company_name: company?.legal_name || company?.company_name || company?.name || '',
-        client_name: clientName,
-        client_legal_name: $('binersClientLegalName')?.value || clientName,
-        client_country: $('binersClientCountry')?.value || company?.country || '',
-        client_city: $('binersClientCity')?.value || company?.city || '',
-        client_address: $('binersClientAddress')?.value || company?.address || '',
-        client_contact_name: $('binersContactName')?.value || '',
-        client_contact_email: $('binersContactEmail')?.value || company?.main_email || '',
-        client_contact_phone: $('binersContactPhone')?.value || company?.main_phone || '',
-        module_name: $('binersModuleName')?.value || '',
-        license_type: $('binersLicenseType')?.value || '',
-        license_length_months: Number($('binersLicenseLength')?.value || 12),
-        number_of_locations: locations,
-        service_start_date: $('binersServiceStart')?.value || null,
-        service_end_date: $('binersServiceEnd')?.value || null,
-        currency,
-        cost_per_location: costPerLocation,
-        total_payable_amount: locations * costPerLocation,
-        entry_status: 'active',
-        payment_status: 'unpaid',
-        description: $('binersDescription')?.value || '',
-        internal_notes: $('binersInternalNotes')?.value || '',
-        created_by: auth().id || null,
-        created_by_email: auth().email || ''
-      };
-      const locationRows = Array.from({ length: locations }).map((_, i) => ({
-        location_name: `${clientName} Location ${i + 1}`,
-        module_name: entry.module_name,
-        license_type: entry.license_type,
-        license_length_months: entry.license_length_months,
-        service_start_date: entry.service_start_date,
-        service_end_date: entry.service_end_date,
-        currency,
-        cost_amount: costPerLocation,
-        status: 'active'
-      }));
-      await request('create', { entry, locations: locationRows, schedules: scheduleRowsPayload(currency) });
-      closeEntryModal();
-      await refresh();
-      global.UI?.toast?.('Biners entry created.');
-    } catch (error) {
-      console.error('[Biners] save failed', error);
-      setState(error.message || String(error), 'error');
-      global.UI?.toast?.(error.message || 'Unable to save Biners entry.');
-    } finally {
-      if (btn) { btn.disabled = false; btn.textContent = 'Save Entry'; }
-    }
-  }
-
-  function openPaymentModal(scheduleId) {
-    if (!can('record_payment')) { setState('You do not have permission to record Biners payments.', 'error'); return; }
-    const schedule = state.schedules.find(row => String(row.id) === String(scheduleId)) || state.forecast.find(row => String(row.schedule_id) === String(scheduleId));
-    if (!schedule) return;
-    const entry = getEntry(schedule.biners_entry_id);
-    $('binersPaymentScheduleId').value = schedule.id || schedule.schedule_id || '';
-    $('binersPaymentEntryId').value = schedule.biners_entry_id || '';
-    $('binersPaymentDate').value = today();
-    $('binersPaymentAmount').value = num(schedule.remaining_amount || schedule.scheduled_amount).toFixed(2);
-    $('binersPaymentMethod').value = '';
-    $('binersPaymentReference').value = '';
-    $('binersPaymentNotes').value = '';
-    $('binersPaymentContext').textContent = `${entry?.biners_entry_number || ''} · ${entry?.client_name || schedule.client_name || ''} · Schedule #${schedule.schedule_no || ''}`;
-    $('binersPaymentModal').hidden = false;
-  }
-
-  async function savePayment(event) {
-    event.preventDefault();
-    const btn = $('binersSavePaymentBtn');
-    try {
-      if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
-      await request('record_payment', {
-        schedule_id: $('binersPaymentScheduleId')?.value,
-        biners_entry_id: $('binersPaymentEntryId')?.value,
-        payment_date: $('binersPaymentDate')?.value || today(),
-        payment_amount: num($('binersPaymentAmount')?.value),
-        payment_method: $('binersPaymentMethod')?.value || '',
-        payment_reference: $('binersPaymentReference')?.value || '',
-        notes: $('binersPaymentNotes')?.value || '',
-        created_by: auth().id || null,
-        created_by_email: auth().email || ''
-      });
-      closePaymentModal();
-      await refresh();
-      global.UI?.toast?.('Biners payment recorded.');
-    } catch (error) {
-      console.error('[Biners] payment failed', error);
-      setState(error.message || String(error), 'error');
-    } finally {
-      if (btn) { btn.disabled = false; btn.textContent = 'Save Payment'; }
-    }
-  }
-
-  function viewEntry(id) {
-    const entry = getEntry(id);
-    if (!entry) return;
-    const schedules = state.schedules.filter(row => String(row.biners_entry_id) === String(id));
-    const details = [
-      `Entry: ${entry.biners_entry_number || ''}`,
-      `Client: ${entry.client_name || ''}`,
-      `Module: ${entry.module_name || ''}`,
-      `Locations: ${entry.number_of_locations || 0}`,
-      `Total: ${money(entry.total_payable_amount, entry.currency)}`,
-      `Schedules: ${schedules.length}`
-    ].join('\n');
-    alert(details);
-  }
-
-  function exportCsv() {
-    const rows = currentRows();
-    const csv = rows.map(row => Object.values(row).map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
-    const headers = rows[0] ? Object.keys(rows[0]).join(',') : '';
-    const blob = new Blob([headers, '\n', csv], { type: 'text/csv;charset=utf-8' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `biners-${state.activeTab}-${today()}.csv`;
-    link.click();
-    URL.revokeObjectURL(link.href);
-  }
-
-  function bind() {
-    $('binersRefreshBtn')?.addEventListener('click', () => refresh());
-    $('binersCreateBtn')?.addEventListener('click', () => openEntryModal());
-    $('binersExportBtn')?.addEventListener('click', () => exportCsv());
-    document.querySelectorAll('[data-biners-tab]').forEach(btn => btn.addEventListener('click', () => setActiveTab(btn.dataset.binersTab)));
-    ['binersSearchInput','binersStatusFilter','binersPaymentStatusFilter','binersCurrencyFilter'].forEach(id => $(id)?.addEventListener(id === 'binersSearchInput' ? 'input' : 'change', applyFiltersFromInputs));
-    $('binersClearFiltersBtn')?.addEventListener('click', () => {
-      ['binersSearchInput'].forEach(id => { if ($(id)) $(id).value = ''; });
-      ['binersStatusFilter','binersPaymentStatusFilter','binersCurrencyFilter'].forEach(id => { if ($(id)) $(id).value = 'all'; });
-      applyFiltersFromInputs();
-    });
-    document.querySelectorAll('[data-biners-close-entry]').forEach(btn => btn.addEventListener('click', closeEntryModal));
-    document.querySelectorAll('[data-biners-close-payment]').forEach(btn => btn.addEventListener('click', closePaymentModal));
-    $('binersEntryForm')?.addEventListener('submit', saveEntry);
-    $('binersPaymentForm')?.addEventListener('submit', savePayment);
-    $('binersEntryType')?.addEventListener('change', updateEntryTypeVisibility);
-    $('binersExistingClient')?.addEventListener('change', () => {
-      const company = state.companies.find(c => String(c.id) === String($('binersExistingClient').value));
-      if (!company) return;
-      $('binersClientName').value = company.legal_name || company.company_name || company.name || '';
-      $('binersClientLegalName').value = company.legal_name || company.company_name || company.name || '';
-      $('binersClientCountry').value = company.country || '';
-      $('binersClientCity').value = company.city || '';
-      $('binersClientAddress').value = company.address || '';
-      $('binersContactEmail').value = company.main_email || '';
-      $('binersContactPhone').value = company.main_phone || '';
-    });
-    ['binersLocationCount','binersCostPerLocation'].forEach(id => $(id)?.addEventListener('input', updateTotalPayable));
-    $('binersAddScheduleRowBtn')?.addEventListener('click', () => addScheduleRow({ due_date: today(), scheduled_amount: 0 }));
-    document.addEventListener('click', event => {
-      const removeBtn = event.target.closest('[data-biners-remove-schedule]');
-      if (removeBtn) removeBtn.closest('.biners-schedule-row')?.remove();
-      const pageBtn = event.target.closest('[data-biners-page]');
-      if (pageBtn) {
-        const p = state.pagination[state.activeTab];
-        if (pageBtn.dataset.binersPage === 'prev') p.page = Math.max(1, p.page - 1);
-        if (pageBtn.dataset.binersPage === 'next') p.page += 1;
-        renderActiveTab();
-      }
-      const recordBtn = event.target.closest('[data-biners-record-payment]');
-      if (recordBtn) openPaymentModal(recordBtn.dataset.binersRecordPayment);
-      const viewBtn = event.target.closest('[data-biners-view-entry]');
-      if (viewBtn) viewEntry(viewBtn.dataset.binersViewEntry);
-    });
-  }
-
-  function init() {
-    if (state.initialized) return;
-    state.initialized = true;
-    bind();
-  }
-
-  global.Biners = { init, refresh, setActiveTab, openCreate: openEntryModal };
+  async function refresh(){ setState('Loading Biners payable data…'); try{const [entries,schedules,forecast,payments,summary,monthly,companies]=await Promise.all([request('list'),request('list_schedules'),request('list_forecast'),request('list_payments'),request('summary').catch(()=>null),(global.Api?.getBinersMonthlyForecast?.()||request('monthly_forecast')).catch(()=>[]),global.Api?.requestWithSession?.('companies','list',{limit:1000}).catch(()=>[]) || Promise.resolve([])]); Object.assign(state,{entries:entries||[],schedules:schedules||[],forecast:forecast||[],payments:payments||[],summary,monthly:monthly||[],companies:Array.isArray(companies)?companies:(companies?.rows||[])}); populateCompanies(); const currencies=[...new Set([...state.entries,...state.forecast,...state.monthly].map(x=>x.currency).filter(Boolean))]; $('binersCurrencyFilter').innerHTML='<option value="all">All currencies</option>'+currencies.map(x=>`<option>${esc(x)}</option>`).join(''); render();}catch(e){console.error('[Biners]',e);setState(e.message||String(e),'error');} }
+  function setActiveTab(tab){state.activeTab=tab;document.querySelectorAll('[data-biners-tab]').forEach(x=>x.classList.toggle('active',x.dataset.binersTab===tab));render();}
+  function exportCsv(){ const source=state.activeTab==='payments_history'?state.payments:state.activeTab==='scheduled_payments'?state.schedules:state.activeTab==='forecast'?(state.forecastView==='monthly'?state.monthly:state.forecast):state.entries; const rows=filtered(source); const keys=[...new Set(rows.flatMap(row=>Object.keys(row)))]; const csv=[keys.join(','),...rows.map(row=>keys.map(key=>'"'+String(row[key]??'').replace(/"/g,'""')+'"').join(','))].join('\n'); const link=document.createElement('a'); link.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); link.download=`biners-${state.activeTab}-${today()}.csv`; link.click(); URL.revokeObjectURL(link.href); }
+  function bind(){ $('binersRefreshBtn')?.addEventListener('click',refresh); $('binersCreateBtn')?.addEventListener('click',openEntryModal); $('binersExportBtn')?.addEventListener('click',exportCsv); $('binersClearFiltersBtn')?.addEventListener('click',()=>{ $('binersSearchInput').value=''; $('binersStatusFilter').value='all'; $('binersPaymentStatusFilter').value='all'; $('binersCurrencyFilter').value='all'; state.filters={search:'',status:'all',paymentStatus:'all',currency:'all'}; render(); }); $('binersExistingClientId')?.addEventListener('change',()=>{ const c=state.companies.find(x=>String(x.id)===String($('binersExistingClientId').value)); if(!c)return; $('binersClientName').value=c.company_name||c.legal_name||c.name||''; $('binersClientLegalName').value=c.legal_name||c.company_name||c.name||''; $('binersClientCountry').value=c.country||''; $('binersClientCity').value=c.city||''; $('binersClientAddress').value=c.address||''; $('binersClientContactEmail').value=c.main_email||''; $('binersClientContactPhone').value=c.main_phone||''; }); document.querySelectorAll('[data-biners-tab]').forEach(x=>x.addEventListener('click',()=>setActiveTab(x.dataset.binersTab))); document.querySelectorAll('[data-biners-close-entry]').forEach(x=>x.addEventListener('click',closeEntry)); document.querySelectorAll('[data-biners-close-payment]').forEach(x=>x.addEventListener('click',closePayment)); document.querySelectorAll('[data-biners-close-drawer]').forEach(x=>x.addEventListener('click',closeDrawer)); $('binersEntryForm')?.addEventListener('submit',e=>saveEntry(e).catch(err=>setState(err.message,'error'))); $('binersRecordPaymentForm')?.addEventListener('submit',e=>savePayment(e).catch(err=>setState(err.message,'error'))); $('binersAddScheduleRowBtn')?.addEventListener('click',()=>addScheduleRow()); $('binersAddLocationRowBtn')?.addEventListener('click',()=>addLocationRow()); ['binersNumberOfLocations','binersCostPerLocation'].forEach(id=>$(id)?.addEventListener('input',updateTotal)); ['binersSearchInput','binersStatusFilter','binersPaymentStatusFilter','binersCurrencyFilter'].forEach(id=>$(id)?.addEventListener(id==='binersSearchInput'?'input':'change',()=>{state.filters={search:$('binersSearchInput').value,status:$('binersStatusFilter').value,paymentStatus:$('binersPaymentStatusFilter').value,currency:$('binersCurrencyFilter').value};render();})); document.addEventListener('click',e=>{const actionEl=e.target.closest('button,a'); if(actionEl?.closest('.biners-row-actions')||actionEl?.matches('[data-biners-record-payment]'))e.stopPropagation(); const remove=e.target.closest('[data-biners-remove-row]'); if(remove)remove.parentElement.remove(); const pay=e.target.closest('[data-biners-record-payment]'); if(pay){openPaymentModal(pay.dataset.binersRecordPayment);return;} const month=e.target.closest('[data-biners-open-month]'); if(month)openMonthly(month.dataset.binersOpenMonth,month.dataset.binersCurrency); const entry=e.target.closest('[data-biners-open-entry]'); if(entry&&!month)openDrawer(state.entries.find(x=>String(x.id)===String(entry.dataset.binersOpenEntry)),'entry'); const schedule=e.target.closest('[data-biners-open-schedule]'); if(schedule)openDrawer(state.schedules.find(x=>String(scheduleId(x))===String(schedule.dataset.binersOpenSchedule)),'schedule'); const forecast=e.target.closest('[data-biners-open-forecast]'); if(forecast)openDrawer(state.forecast.find(x=>String(scheduleId(x))===String(forecast.dataset.binersOpenForecast)),'forecast'); const payment=e.target.closest('[data-biners-open-payment]'); if(payment)openDrawer(state.payments.find(x=>String(x.id)===String(payment.dataset.binersOpenPayment)),'payment'); const view=e.target.closest('[data-biners-forecast-view]'); if(view){state.forecastView=view.dataset.binersForecastView;render();} const page=e.target.closest('[data-biners-page]'); if(page){const key=state.activeTab+(state.activeTab==='forecast'?state.forecastView:'');state.pages[key]=Math.max(1,(state.pages[key]||1)+(page.dataset.binersPage==='next'?1:-1));render();}}); }
+  function init(){if(state.initialized)return;state.initialized=true;bind();}
+  global.Biners={init,refresh,setActiveTab,openCreate:openEntryModal};
 })(window);

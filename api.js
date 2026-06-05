@@ -615,6 +615,15 @@ const Api = {
   async getPaymentForecastMonthlySummary(filters = {}) {
     return this.requestWithSession('payment_forecast', 'monthly_summary', this.paymentForecastRpcParams(filters, true));
   },
+  async getBinersMonthlyForecast() {
+    return this.requestWithSession('biners', 'monthly_forecast');
+  },
+  async getBinersMonthlyForecastDetails(month, currency) {
+    return this.requestWithSession('biners', 'monthly_forecast_details', { forecast_month: month, currency });
+  },
+  async recordBinersScheduledPayment(payload = {}) {
+    return this.requestWithSession('biners', 'record_scheduled_payment', payload);
+  },
   async listProposalCatalogItems(options = {}) {
     const payload = this.buildSummaryListPayload(options);
     ['section', 'is_active', 'category'].forEach(key => {

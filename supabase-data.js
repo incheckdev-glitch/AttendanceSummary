@@ -6827,8 +6827,8 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       const binersAction = String(action || '').trim();
       const mapActionPermission = {
         list: 'view', get: 'view', create: 'create', update: 'edit', delete: 'delete',
-        list_schedules: 'view', list_payments: 'view', list_forecast: 'forecast', summary: 'forecast',
-        create_schedule: 'schedule_payment', update_schedule: 'schedule_payment', record_payment: 'record_payment'
+        list_schedules: 'view', list_payments: 'view', list_forecast: 'forecast', summary: 'forecast', monthly_forecast: 'forecast', monthly_forecast_details: 'forecast',
+        create_schedule: 'schedule_payment', update_schedule: 'schedule_payment', record_payment: 'record_payment', record_scheduled_payment: 'record_payment'
       };
       assertAllowed('biners', mapActionPermission[binersAction] || 'view');
       if (binersAction === 'list') {
@@ -6855,6 +6855,33 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         const { data, error } = await client.rpc('get_biners_forecast_summary');
         if (error) throw friendlyError('Unable to load Biners summary', error);
         return Array.isArray(data) ? data[0] : data;
+      }
+      if (binersAction === 'monthly_forecast') {
+        const { data, error } = await client.rpc('get_biners_monthly_forecast');
+        if (error) throw friendlyError('Unable to load Biners monthly forecast', error);
+        return data || [];
+      }
+      if (binersAction === 'monthly_forecast_details') {
+        const { data, error } = await client.rpc('get_biners_monthly_forecast_details', {
+          p_forecast_month: payload?.forecast_month,
+          p_currency: payload?.currency
+        });
+        if (error) throw friendlyError('Unable to load Biners monthly forecast details', error);
+        return data || [];
+      }
+      if (binersAction === 'record_scheduled_payment') {
+        const { data, error } = await client.rpc('record_biners_scheduled_payment', {
+          p_schedule_id: payload?.schedule_id,
+          p_payment_amount: Number(payload?.payment_amount || 0),
+          p_payment_date: payload?.payment_date,
+          p_payment_method: payload?.payment_method || '',
+          p_payment_reference: payload?.payment_reference || '',
+          p_notes: payload?.notes || '',
+          p_created_by: payload?.created_by || null,
+          p_created_by_email: payload?.created_by_email || ''
+        });
+        if (error) throw friendlyError('Unable to record Biners scheduled payment', error);
+        return Array.isArray(data) && data.length === 1 ? data[0] : data;
       }
       if (binersAction === 'create') {
         const entryPayload = payload?.entry && typeof payload.entry === 'object' ? payload.entry : payload;

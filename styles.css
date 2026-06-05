@@ -3382,3 +3382,27 @@ body.pf-modal-open{overflow:hidden}.pf-activity-modal[hidden],.pf-note-modal[hid
   .biners-form-grid { grid-template-columns:1fr; }
   .biners-schedule-row { grid-template-columns:1fr; }
 }
+
+/* Biners monthly forecast and drill-down */
+.biners-clickable-row { cursor:pointer; transition:background .15s ease; }
+.biners-clickable-row:hover, .biners-clickable-row:focus { background:#f1f5f9; outline:none; }
+.biners-row-actions { display:flex; gap:6px; }
+.biners-forecast-tabs { display:flex; gap:8px; margin-bottom:12px; }
+.biners-location-rows { display:flex; flex-direction:column; gap:8px; margin-top:12px; }
+.biners-location-row { display:grid; grid-template-columns:1fr 1fr auto; gap:8px; }
+.biners-details-drawer[hidden] { display:none !important; }
+.biners-details-drawer { position:fixed; inset:0; z-index:10000; display:flex; justify-content:flex-end; }
+.biners-drawer-backdrop { position:absolute; inset:0; border:0; background:rgba(15,23,42,.45); }
+.biners-drawer-panel { position:relative; width:min(760px,96vw); height:100%; overflow:auto; background:#f8fafc; padding:20px; box-shadow:-18px 0 50px rgba(15,23,42,.22); }
+.biners-details-content { display:flex; flex-direction:column; gap:14px; }
+.biners-drawer-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+.biners-drawer-summary article, .biners-drawer-section { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:14px; }
+.biners-drawer-summary span { display:block; color:#64748b; font-size:11px; font-weight:700; text-transform:uppercase; }
+.biners-drawer-summary strong { display:block; margin-top:6px; font-size:17px; }
+.biners-drawer-section h3 { margin:0 0 12px; }
+.biners-detail-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin:0; }
+.biners-detail-list div { padding:10px; border-radius:10px; background:#f8fafc; }
+.biners-detail-list dt { color:#64748b; font-size:11px; font-weight:700; text-transform:uppercase; }
+.biners-detail-list dd { margin:4px 0 0; }
+.biners-drawer-actions { margin-top:12px; display:flex; justify-content:flex-end; }
+@media (max-width:700px) { .biners-drawer-summary,.biners-detail-list { grid-template-columns:1fr; } .biners-location-row { grid-template-columns:1fr; } }
