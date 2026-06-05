@@ -6655,8 +6655,25 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       if (error) throw friendlyError('Unable to load payment forecast follow-up activity', error);
       return Array.isArray(data) ? data : (data == null ? [] : [data]);
     }
-    if (resource === 'payment_forecast' && ['save_followup', 'add_followup_note', 'mark_followed_up'].includes(action)) {
-      assertAllowed('payment_forecast', action === 'add_followup_note' ? 'view' : 'manage');
+    if (resource === 'payment_forecast' && ['create_followup_log', 'add_followup_note'].includes(action)) {
+      assertAllowed('payment_forecast', 'view');
+      const followupId = String(payload?.followup_id || '').trim();
+      if (!followupId) throw new Error('Follow-up ID is required to create activity.');
+      const note = String(payload?.note || payload?.log_note || payload?.follow_up_notes || '').trim();
+      if (!note && String(payload?.action_type || 'note').trim().toLowerCase() === 'note') throw new Error('A note is required.');
+      const allowedLogFields = ['followup_id', 'invoice_id', 'invoice_number', 'client_name', 'action_type', 'note', 'created_by', 'created_by_email', 'old_status', 'new_status'];
+      const logPayload = Object.fromEntries(allowedLogFields
+        .filter(key => payload?.[key] !== undefined)
+        .map(key => [key, payload[key]]));
+      logPayload.followup_id = followupId;
+      logPayload.action_type = String(payload?.action_type || 'note').trim().toLowerCase() || 'note';
+      logPayload.note = note;
+      const { data: log, error: logError } = await client.from('payment_forecast_followup_logs').insert(logPayload).select('*').single();
+      if (logError) throw friendlyError('Unable to create payment forecast follow-up activity', logError);
+      return log;
+    }
+    if (resource === 'payment_forecast' && ['save_followup', 'mark_followed_up'].includes(action)) {
+      assertAllowed('payment_forecast', 'manage');
       const allowedFollowupFields = [
         'invoice_id', 'invoice_number', 'schedule_no', 'client_name', 'assigned_to', 'assigned_to_email',
         'created_by', 'created_by_email', 'follow_up_notes', 'follow_up_status', 'last_follow_up_at',
@@ -6674,24 +6691,31 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         if (lookupError) throw friendlyError('Unable to locate payment forecast follow-up', lookupError);
         existingId = String(existingRows?.[0]?.id || '').trim();
       }
+      let existingFollowup = null;
+      if (existingId) {
+        const { data, error } = await client.from('payment_forecast_followups').select('*').eq('id', existingId).single();
+        if (error) throw friendlyError('Unable to load payment forecast follow-up before saving', error);
+        existingFollowup = data;
+      }
       const mutation = existingId
         ? client.from('payment_forecast_followups').update(followupPayload).eq('id', existingId).select('*').single()
         : client.from('payment_forecast_followups').insert(followupPayload).select('*').single();
       const { data: followup, error: followupError } = await mutation;
       if (followupError) throw friendlyError('Unable to save payment forecast follow-up', followupError);
-      if (action === 'add_followup_note' || action === 'mark_followed_up') {
-        const note = action === 'mark_followed_up' ? 'Marked as followed up.' : String(payload?.log_note || payload?.follow_up_notes || '').trim();
-        const logPayload = {
-          action_type: action === 'mark_followed_up' ? 'marked_followed_up' : 'note',
-          note,
-          followup_id: followup.id,
-          invoice_id: followup.invoice_id || payload?.invoice_id || null,
-          invoice_number: followup.invoice_number || payload?.invoice_number || '',
-          client_name: followup.client_name || payload?.client_name || '',
-          created_by: payload?.created_by || null,
-          created_by_email: payload?.created_by_email || ''
-        };
-        const { error: logError } = await client.from('payment_forecast_followup_logs').insert(logPayload);
+      const commonLogPayload = {
+        followup_id: followup.id,
+        invoice_id: followup.invoice_id || payload?.invoice_id || null,
+        invoice_number: followup.invoice_number || payload?.invoice_number || '',
+        client_name: followup.client_name || payload?.client_name || '',
+        created_by: payload?.created_by || null,
+        created_by_email: payload?.created_by_email || ''
+      };
+      const activityLogs = [];
+      if (action === 'mark_followed_up') activityLogs.push({ ...commonLogPayload, action_type: 'marked_followed_up', note: 'Marked as followed up.' });
+      if (action === 'save_followup' && payload?.follow_up_status !== undefined && String(existingFollowup?.follow_up_status || '') !== String(followup.follow_up_status || '')) activityLogs.push({ ...commonLogPayload, action_type: 'status_changed', old_status: existingFollowup?.follow_up_status || null, new_status: followup.follow_up_status || null, note: '' });
+      if (action === 'save_followup' && payload?.follow_up_notes !== undefined && String(existingFollowup?.follow_up_notes || '').trim() !== String(followup.follow_up_notes || '').trim()) activityLogs.push({ ...commonLogPayload, action_type: 'note', note: String(followup.follow_up_notes || '').trim() });
+      if (activityLogs.length) {
+        const { error: logError } = await client.from('payment_forecast_followup_logs').insert(activityLogs);
         if (logError) throw friendlyError('Follow-up saved, but its activity log could not be created', logError);
       }
       return followup;

@@ -582,8 +582,11 @@ const Api = {
   async savePaymentForecastFollowup(payload = {}) {
     return this.requestWithSession('payment_forecast', 'save_followup', payload);
   },
+  async createPaymentForecastFollowupLog(payload = {}) {
+    return this.requestWithSession('payment_forecast', 'create_followup_log', payload);
+  },
   async addPaymentForecastFollowupNote(payload = {}) {
-    return this.requestWithSession('payment_forecast', 'add_followup_note', payload);
+    return this.createPaymentForecastFollowupLog({ ...payload, action_type: 'note', note: payload.note || payload.log_note || payload.follow_up_notes });
   },
   async markPaymentForecastFollowedUp(payload = {}) {
     return this.requestWithSession('payment_forecast', 'mark_followed_up', payload);
