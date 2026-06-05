@@ -6647,6 +6647,55 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
 
   async function handleRpcResource(resource, action, payload) {
     const client = getClient();
+    if (resource === 'payment_forecast' && action === 'followup_logs') {
+      assertAllowed('payment_forecast', 'view');
+      const followupId = String(payload?.followup_id || '').trim();
+      if (!followupId) throw new Error('Follow-up ID is required to load activity.');
+      const { data, error } = await client.rpc('get_payment_forecast_followup_logs', { followup_id: followupId });
+      if (error) throw friendlyError('Unable to load payment forecast follow-up activity', error);
+      return Array.isArray(data) ? data : (data == null ? [] : [data]);
+    }
+    if (resource === 'payment_forecast' && ['save_followup', 'add_followup_note', 'mark_followed_up'].includes(action)) {
+      assertAllowed('payment_forecast', action === 'add_followup_note' ? 'view' : 'manage');
+      const allowedFollowupFields = [
+        'invoice_id', 'invoice_number', 'schedule_no', 'client_name', 'assigned_to', 'assigned_to_email',
+        'created_by', 'created_by_email', 'follow_up_notes', 'follow_up_status', 'last_follow_up_at',
+        'next_follow_up_at', 'updated_at'
+      ];
+      const followupPayload = Object.fromEntries(allowedFollowupFields
+        .filter(key => payload?.[key] !== undefined)
+        .map(key => [key, payload[key]]));
+      const followupId = String(payload?.followup_id || '').trim();
+      let existingId = followupId;
+      if (!existingId && payload?.invoice_id) {
+        let lookup = client.from('payment_forecast_followups').select('id').eq('invoice_id', payload.invoice_id);
+        lookup = payload?.schedule_no == null ? lookup.is('schedule_no', null) : lookup.eq('schedule_no', payload.schedule_no);
+        const { data: existingRows, error: lookupError } = await lookup.limit(1);
+        if (lookupError) throw friendlyError('Unable to locate payment forecast follow-up', lookupError);
+        existingId = String(existingRows?.[0]?.id || '').trim();
+      }
+      const mutation = existingId
+        ? client.from('payment_forecast_followups').update(followupPayload).eq('id', existingId).select('*').single()
+        : client.from('payment_forecast_followups').insert(followupPayload).select('*').single();
+      const { data: followup, error: followupError } = await mutation;
+      if (followupError) throw friendlyError('Unable to save payment forecast follow-up', followupError);
+      if (action === 'add_followup_note' || action === 'mark_followed_up') {
+        const note = action === 'mark_followed_up' ? 'Marked as followed up.' : String(payload?.log_note || payload?.follow_up_notes || '').trim();
+        const logPayload = {
+          action_type: action === 'mark_followed_up' ? 'marked_followed_up' : 'note',
+          note,
+          followup_id: followup.id,
+          invoice_id: followup.invoice_id || payload?.invoice_id || null,
+          invoice_number: followup.invoice_number || payload?.invoice_number || '',
+          client_name: followup.client_name || payload?.client_name || '',
+          created_by: payload?.created_by || null,
+          created_by_email: payload?.created_by_email || ''
+        };
+        const { error: logError } = await client.from('payment_forecast_followup_logs').insert(logPayload);
+        if (logError) throw friendlyError('Follow-up saved, but its activity log could not be created', logError);
+      }
+      return followup;
+    }
     if (resource === 'payment_forecast' && ['page', 'followups_page', 'summary', 'client_distribution', 'monthly_summary'].includes(action)) {
       assertAllowed('payment_forecast', 'view');
       const rpcNames = {
