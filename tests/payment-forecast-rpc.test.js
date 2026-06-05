@@ -3,6 +3,9 @@ const fs = require('fs');
 const vm = require('vm');
 
 const calls = [];
+const paymentForecastSource = fs.readFileSync('payment-forecast.js', 'utf8');
+const apiSource = fs.readFileSync('api.js', 'utf8');
+const supabaseDataSource = fs.readFileSync('supabase-data.js', 'utf8');
 const context = vm.createContext({
   console,
   setTimeout,
@@ -12,6 +15,7 @@ const context = vm.createContext({
   Api: {
     async getPaymentForecastSummary(filters) { calls.push(['summary', filters]); return [{ scheduled_rows: 0, gross_scheduled: 125, paid_amount: 25 }]; },
     async getPaymentForecastPage(filters) { calls.push(['page', filters]); return [{ row_data: { invoice_id: 'invoice-1', remaining_amount: 100 }, total_count: 44 }]; },
+    async getPaymentForecastFollowupsPage(filters) { calls.push(['followups', filters]); return [{ row_data: { invoice_id: 'invoice-followup', client_name: 'Client Follow-up', follow_up_status: 'contacted', follow_up_notes: 'Called client' }, total_count: 12 }]; },
     async getPaymentForecastClientDistribution(filters) {
       calls.push(['clients', filters]);
       return [{ row_data: { client_name: 'Client A', currency: 'USD', scheduled_payment_count: 2, gross_scheduled_amount: 125 }, total_count: 1 }];
@@ -25,7 +29,7 @@ const context = vm.createContext({
   UI: { toast() {} }
 });
 context.window = context;
-vm.runInContext(fs.readFileSync('payment-forecast.js', 'utf8'), context);
+vm.runInContext(paymentForecastSource, context);
 const forecast = vm.runInContext('PaymentForecast', context);
 forecast.render = () => {};
 forecast.renderActiveTab = () => {};
@@ -33,6 +37,11 @@ forecast.populateFilters = () => {};
 
 (async () => {
   ['renderPaymentForecastOverview', 'renderPaymentForecastUpcoming', 'renderPaymentForecastOverdue', 'renderPaymentForecastClientDistribution', 'renderPaymentForecastMonthlyForecast', 'renderPaymentForecastFollowUp'].forEach(name => assert.strictEqual(typeof forecast[name], 'function', `${name} must exist`));
+  assert.doesNotMatch(paymentForecastSource, /Collection follow-up tracking is not configured yet\./);
+  assert.match(apiSource, /getPaymentForecastFollowupsPage[\s\S]*followups_page/);
+  assert.match(supabaseDataSource, /followups_page:\s*'get_payment_forecast_followups_page'/);
+  const followupActions = forecast.followupActionButtons({ forecast_row_id: 'row-1', invoice_id: 'invoice-1', client_id: 'client-1' });
+  ['Open Invoice', 'Open Client', 'Open Statement', 'Edit Follow-up', 'Mark as Followed Up'].forEach(label => assert.match(followupActions, new RegExp(label)));
   assert.notStrictEqual(forecast.state.rowsByTab.upcoming, forecast.state.rowsByTab.overdue, 'tabs must have separate row arrays');
 
   const filters = forecast.rpcFilters();
@@ -93,8 +102,15 @@ forecast.populateFilters = () => {};
   Object.values(forecast.state.pagination).forEach(pagination => assert.strictEqual(pagination.page, 1));
 
   forecast.state.activeTab = 'collection_follow_up';
+  forecast.state.pagination.collection_follow_up.page = 2;
   await forecast.loadActiveTab();
-  assert.strictEqual(forecast.renderPagination(), '', 'unconfigured follow-up tab must not render pagination');
+  assert.strictEqual(calls.at(-1)[0], 'followups');
+  assert.strictEqual(calls.at(-1)[1].p_view, 'collection_follow_up');
+  assert.strictEqual(calls.at(-1)[1].p_page, 2, 'follow-up pagination must be independent');
+  assert.strictEqual(calls.at(-1)[1].p_page_size, 10);
+  assert.strictEqual(forecast.state.pagination.collection_follow_up.total, 12);
+  assert.strictEqual(forecast.state.rowsByTab.collection_follow_up[0].follow_up_notes, 'Called client');
+  assert.match(forecast.renderPagination(), /Showing 11–12 of 12/);
   assert.strictEqual(typeof forecast.renderPaymentForecastFollowUp, 'function');
 
   forecast.state.activeTab = 'overdue';

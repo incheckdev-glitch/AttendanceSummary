@@ -573,6 +573,9 @@ const Api = {
   async getPaymentForecastPage(params = {}) {
     return this.requestWithSession('payment_forecast', 'page', this.paymentForecastRpcParams(params, true));
   },
+  async getPaymentForecastFollowupsPage(params = {}) {
+    return this.requestWithSession('payment_forecast', 'followups_page', this.paymentForecastRpcParams(params, true));
+  },
   async getPaymentForecastSummary(filters = {}) {
     return this.requestWithSession('payment_forecast', 'summary', this.paymentForecastRpcParams(filters));
   },

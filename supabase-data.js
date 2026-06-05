@@ -6646,10 +6646,11 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
 
   async function handleRpcResource(resource, action, payload) {
     const client = getClient();
-    if (resource === 'payment_forecast' && ['page', 'summary', 'client_distribution', 'monthly_summary'].includes(action)) {
+    if (resource === 'payment_forecast' && ['page', 'followups_page', 'summary', 'client_distribution', 'monthly_summary'].includes(action)) {
       assertAllowed('payment_forecast', 'view');
       const rpcNames = {
         page: 'get_payment_forecast_page',
+        followups_page: 'get_payment_forecast_followups_page',
         summary: 'get_payment_forecast_summary',
         client_distribution: 'get_payment_forecast_client_distribution',
         monthly_summary: 'get_payment_forecast_monthly_summary'
@@ -6659,7 +6660,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         'p_client', 'p_currency', 'p_date_from', 'p_date_to', 'p_due_this_month', 'p_due_this_week',
         'p_follow_up_status', 'p_only_unpaid', 'p_overdue_only', 'p_payment_term', 'p_search', 'p_status', 'p_view'
       ];
-      const allowedKeys = new Set(['page', 'client_distribution', 'monthly_summary'].includes(action) ? [...filterKeys, 'p_page', 'p_page_size'] : filterKeys);
+      const allowedKeys = new Set(['page', 'followups_page', 'client_distribution', 'monthly_summary'].includes(action) ? [...filterKeys, 'p_page', 'p_page_size'] : filterKeys);
       const params = Object.fromEntries(
         Object.entries(payload || {}).filter(([key, value]) =>
           allowedKeys.has(key) && value !== undefined && value !== ''
