@@ -71,7 +71,11 @@ const PaymentForecast = {
       scheduled_due_date: due, payment_no: this.text(row.payment_no || row.schedule_no), payment_term: this.text(row.payment_term || row.schedule_label),
       currency: this.text(row.currency || 'USD') || 'USD', scheduled_amount: this.n(row.scheduled_amount), paid_amount: this.n(row.paid_amount),
       allocated_credit_amount: this.n(row.allocated_credit_amount), remaining_amount: remaining, forecast_status: status,
-      follow_up_status: this.text(followup.follow_up_status || row.follow_up_status || 'not_started') || 'not_started'
+      follow_up_status: this.text(followup.follow_up_status || row.follow_up_status || 'not_started') || 'not_started',
+      follow_up_notes: this.text(followup.follow_up_notes || followup.notes || row.follow_up_notes || row.notes),
+      last_follow_up_at: followup.last_follow_up_at || row.last_follow_up_at || '',
+      next_follow_up_at: followup.next_follow_up_at || row.next_follow_up_at || '',
+      assigned_to: this.text(followup.assigned_to_name || followup.assigned_to_email || followup.assigned_to || row.assigned_to_name || row.assigned_to_email || row.assigned_to)
     };
   },
   rpcFilters(tab = this.state.activeTab) {
@@ -351,6 +355,36 @@ const PaymentForecast = {
       if (requestId === this._rowsRequestId) { this.state.loading.rows = false; this.renderActiveTab(); }
     }
   },
+  async loadFollowupsPage({ renderLoading = true } = {}) {
+    const tab = 'collection_follow_up';
+    const pagination = this.state.pagination[tab];
+    const requestId = (this._rowsRequestId || 0) + 1;
+    this._rowsRequestId = requestId;
+    this.state.loading.rows = true;
+    this.clearTabRows(tab);
+    console.log('[PaymentForecast] loading source', 'get_payment_forecast_followups_page');
+    if (renderLoading) this.renderActiveTab();
+    try {
+      const data = await Api.getPaymentForecastFollowupsPage({ ...this.rpcFilters(tab), p_page: pagination.page, p_page_size: this.fixedPageSize });
+      if (requestId !== this._rowsRequestId || tab !== this.canonicalTab()) return;
+      const rows = data.map(item => item.row_data);
+      const total = data?.[0]?.total_count || 0;
+      pagination.total = this.n(total);
+      if (!rows.length && total > 0 && pagination.page > 1) { pagination.page = 1; return this.loadFollowupsPage({ renderLoading: false }); }
+      this.state.rowsByTab[tab] = rows.map(row => this.normalizeRow(row));
+      this.populateFilters(this.state.rowsByTab[tab]);
+      console.log('[PaymentForecast] rows', this.state.rowsByTab[tab].length, 'total', total);
+    } catch (error) {
+      if (requestId !== this._rowsRequestId) return;
+      console.error('[PaymentForecast] follow-up page load failed', error);
+      this.state.rowsByTab[tab] = [];
+      pagination.total = 0;
+      this.state.rowsError = error.message || 'Unable to load collection follow-ups.';
+      UI.toast(this.state.rowsError);
+    } finally {
+      if (requestId === this._rowsRequestId) { this.state.loading.rows = false; this.renderActiveTab(); }
+    }
+  },
   async loadActiveTab() {
     const tab = this.canonicalTab();
     console.log('[PaymentForecast] activeTab', tab);
@@ -358,13 +392,7 @@ const PaymentForecast = {
     this.clearTabBody();
     this.renderActiveTab();
     if (tab === 'overview') return this.loadPage();
-    if (tab === 'collection_follow_up') {
-      this._rowsRequestId = (this._rowsRequestId || 0) + 1;
-      this.state.loading.rows = false;
-      this.state.rowsByTab.collection_follow_up = [];
-      this.state.pagination.collection_follow_up.total = 0;
-      return this.renderPaymentForecastFollowUp();
-    }
+    if (tab === 'collection_follow_up') return this.loadFollowupsPage();
     if (tab === 'client_distribution' || tab === 'monthly_forecast') return this.loadGrouped(tab);
     return this.loadPage();
   },
@@ -430,10 +458,16 @@ const PaymentForecast = {
     const tableBody = rows.map(row => `<tr><td><strong>${U.escapeHtml(row.forecast_month || '—')}</strong></td><td>${U.escapeHtml(row.currency)}</td><td class="num">${U.escapeHtml(U.fmtNumber(row.scheduled_payment_count))}</td>${['gross_scheduled_amount','paid_amount','credit_adjustment_amount','net_expected_amount','overdue_amount','due_soon_amount'].map(field => `<td class="num">${U.escapeHtml(this.money(row[field], row.currency))}</td>`).join('')}</tr>`).join('');
     const body = document.getElementById('paymentForecastTabBody'); if (body) body.innerHTML = this.table(head, tableBody, head.length);
   },
-  renderPaymentForecastFollowUp() { const body = document.getElementById('paymentForecastTabBody'); if (body) body.innerHTML = '<div class="muted pf-empty">Collection follow-up tracking is not configured yet.</div>'; },
+  followupActionButtons(row) { const id = U.escapeAttr(row.forecast_row_id), client = U.escapeAttr(row.client_id), invoice = U.escapeAttr(row.invoice_id || row.invoice_number); return `<div class="pf-actions"><button class="btn ghost xs" data-pf-action="invoice" data-value="${invoice}">Open Invoice</button><button class="btn ghost xs" data-pf-action="client" data-value="${client}">Open Client</button><button class="btn ghost xs" data-pf-action="statement" data-value="${client}">Open Statement</button>${this.canManage() ? `<button class="btn ghost xs" data-pf-action="note" data-value="${id}">Edit Follow-up</button><button class="btn ghost xs" data-pf-action="followed" data-value="${id}">Mark as Followed Up</button>` : ''}</div>`; },
+  renderPaymentForecastFollowUp() {
+    const head = ['Client','Invoice #','Agreement #','Payment #','Scheduled Due Date','Scheduled Amount','Remaining Amount','Follow-up Status','Last Follow-up','Next Follow-up','Notes','Assigned To','Actions'];
+    const rows = this.state.rowsByTab.collection_follow_up || [];
+    const tableBody = rows.map(row => `<tr><td><strong>${U.escapeHtml(row.client_name)}</strong></td><td>${U.escapeHtml(row.invoice_number || '—')}</td><td>${U.escapeHtml(row.agreement_number || '—')}</td><td>${U.escapeHtml(row.payment_no || '—')}</td><td>${U.escapeHtml(row.scheduled_due_date || '—')}</td><td class="num">${U.escapeHtml(this.money(row.scheduled_amount, row.currency))}</td><td class="num">${U.escapeHtml(this.money(row.remaining_amount, row.currency))}</td><td><span class="${this.statusClass(row.follow_up_status)}">${U.escapeHtml(this.label(row.follow_up_status))}</span></td><td>${U.escapeHtml(this.date(row.last_follow_up_at) || '—')}</td><td>${U.escapeHtml(this.date(row.next_follow_up_at) || '—')}</td><td>${U.escapeHtml(row.follow_up_notes || '—')}</td><td>${U.escapeHtml(row.assigned_to || '—')}</td><td class="actions-cell">${this.followupActionButtons(row)}</td></tr>`).join('');
+    const body = document.getElementById('paymentForecastTabBody'); if (body) body.innerHTML = this.table(head, tableBody, head.length);
+  },
   renderPagination() {
     const tab = this.canonicalTab(), pagination = this.state.pagination[tab];
-    if (!pagination || (tab === 'collection_follow_up' && pagination.total === 0)) return '';
+    if (!pagination) return '';
     const pageSize = this.fixedPageSize;
     const total = this.n(pagination.total);
     const page = Math.max(1, this.n(pagination.page) || 1);
@@ -467,12 +501,11 @@ const PaymentForecast = {
       if (paginationEl) { paginationEl.innerHTML = this.renderPagination(); paginationEl.style.display = ''; }
       return;
     }
-    if (tab === 'collection_follow_up') { state.textContent = 'Collection follow-up tracking is not configured yet.'; this.renderPaymentForecastFollowUp(); return; }
-    if (this.state.loading.rows) { state.textContent = 'Loading payment forecast rows…'; body.innerHTML = '<div class="muted pf-empty">Loading payment forecast rows…</div>'; return; }
+    if (this.state.loading.rows) { const label = tab === 'collection_follow_up' ? 'collection follow-ups' : 'payment forecast rows'; state.textContent = `Loading ${label}…`; body.innerHTML = `<div class="muted pf-empty">Loading ${label}…</div>`; return; }
     if (this.state.rowsError) { state.textContent = this.state.rowsError; body.innerHTML = `<div class="pf-error pf-empty">${U.escapeHtml(this.state.rowsError)}</div>`; return; }
-    const pagination = this.state.pagination[tab], grouped = ['client_distribution', 'monthly_forecast'].includes(tab);
-    state.textContent = `${pagination.total} filtered ${grouped ? 'grouped forecast' : 'payment schedule'} row${pagination.total === 1 ? '' : 's'}.`;
-    const renderers = { upcoming: 'renderPaymentForecastUpcoming', overdue: 'renderPaymentForecastOverdue', client_distribution: 'renderPaymentForecastClientDistribution', monthly_forecast: 'renderPaymentForecastMonthlyForecast' };
+    const pagination = this.state.pagination[tab], grouped = ['client_distribution', 'monthly_forecast'].includes(tab), followups = tab === 'collection_follow_up';
+    state.textContent = `${pagination.total} filtered ${followups ? 'collection follow-up' : grouped ? 'grouped forecast' : 'payment schedule'} row${pagination.total === 1 ? '' : 's'}.`;
+    const renderers = { upcoming: 'renderPaymentForecastUpcoming', overdue: 'renderPaymentForecastOverdue', client_distribution: 'renderPaymentForecastClientDistribution', monthly_forecast: 'renderPaymentForecastMonthlyForecast', collection_follow_up: 'renderPaymentForecastFollowUp' };
     this[renderers[tab]]();
     if (paginationEl) { paginationEl.innerHTML = this.renderPagination(); paginationEl.style.display = ''; }
   },
