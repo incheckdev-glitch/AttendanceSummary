@@ -6647,6 +6647,73 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
 
   async function handleRpcResource(resource, action, payload) {
     const client = getClient();
+    if (resource === 'payment_forecast' && action === 'drilldown') {
+      assertAllowed('payment_forecast', 'view');
+      const text = value => String(value ?? '').trim();
+      const number = value => Number.isFinite(Number(value)) ? Number(value) : 0;
+      const date = value => text(value).slice(0, 10);
+      const type = text(payload?.type || 'metric');
+      const sourceRow = payload?.row || {};
+      const today = new Date().toISOString().slice(0, 10);
+      const addDays = days => { const value = new Date(`${today}T00:00:00Z`); value.setUTCDate(value.getUTCDate() + days); return value.toISOString().slice(0, 10); };
+      const monthStart = value => /^\d{4}-\d{2}/.test(text(value)) ? `${text(value).slice(0, 7)}-01` : '';
+      const nextMonth = value => { const start = monthStart(value); if (!start) return ''; const result = new Date(`${start}T00:00:00Z`); result.setUTCMonth(result.getUTCMonth() + 1); return result.toISOString().slice(0, 10); };
+      const { data: forecastData, error: forecastError } = await client.from('payment_forecast_rows').select('*').limit(5000);
+      if (forecastError) throw friendlyError('Unable to load payment forecast drill-down rows', forecastError);
+      const allRows = Array.isArray(forecastData) ? forecastData : [];
+      const rowInvoiceId = isUuid(text(sourceRow.invoice_id)) ? text(sourceRow.invoice_id) : '';
+      const rowSchedule = text(sourceRow.payment_no || sourceRow.schedule_no);
+      const selectedMonth = monthStart(payload?.month || sourceRow.forecast_month);
+      const selectedCurrency = text(payload?.currency || sourceRow.currency).toUpperCase();
+      const selectedClientValues = [payload?.client_id, payload?.company_id, payload?.client_name, sourceRow.client_id, sourceRow.company_id, sourceRow.client_name].map(text).filter(Boolean);
+      const metric = text(payload?.metric);
+      const matchesMetric = row => {
+        const due = date(row.scheduled_due_date || row.due_date);
+        const remaining = number(row.remaining_amount);
+        if (metric === 'overdue_amount' || metric === 'collection_risk_percent') return text(row.forecast_status).toLowerCase() === 'overdue' || (remaining > 0 && due && due < today);
+        if (metric === 'due_this_week') return remaining > 0 && due >= today && due <= addDays(7);
+        if (metric === 'due_this_month') return remaining > 0 && due >= monthStart(today) && due < nextMonth(today);
+        if (metric === 'next_30_days') return remaining > 0 && due >= today && due <= addDays(30);
+        if (metric === 'next_90_days') return remaining > 0 && due >= today && due <= addDays(90);
+        if (metric === 'paid_amount') return number(row.paid_amount) > 0;
+        if (metric === 'credit_adjusted') return number(row.allocated_credit_amount) > 0;
+        if (metric === 'net_expected') return remaining > 0;
+        return true;
+      };
+      const rows = allRows.filter(row => {
+        if (type === 'row' && rowInvoiceId && text(row.invoice_id) !== rowInvoiceId) return false;
+        if (type === 'row' && !rowInvoiceId && text(sourceRow.invoice_number) && text(row.invoice_number) !== text(sourceRow.invoice_number)) return false;
+        if (type === 'row' && rowSchedule && text(row.payment_no || row.schedule_no) !== rowSchedule) return false;
+        if (type === 'client' && selectedClientValues.length && ![row.client_id, row.company_id, row.client_name].map(text).some(value => selectedClientValues.includes(value))) return false;
+        if (type === 'month' && selectedMonth && !(date(row.scheduled_due_date || row.due_date) >= selectedMonth && date(row.scheduled_due_date || row.due_date) < nextMonth(selectedMonth))) return false;
+        if (type === 'month' && selectedCurrency && text(row.currency).toUpperCase() !== selectedCurrency) return false;
+        if (type === 'followup') {
+          const invoiceMatch = rowInvoiceId && text(row.invoice_id) === rowInvoiceId;
+          const referenceMatch = text(sourceRow.invoice_number) && text(row.invoice_number) === text(sourceRow.invoice_number);
+          if (!invoiceMatch && !referenceMatch) return false;
+          if (rowSchedule && text(row.payment_no || row.schedule_no) !== rowSchedule) return false;
+        }
+        return type !== 'metric' || matchesMetric(row);
+      });
+      const invoiceIds = [...new Set(rows.map(row => text(row.invoice_id)).filter(isUuid))];
+      const followupIds = [];
+      const safeRelatedQuery = async (table, column, values) => {
+        if (!values.length) return [];
+        const { data, error } = await client.from(table).select('*').in(column, values).limit(5000);
+        if (error) { console.warn(`[payment_forecast] drill-down ${table} load failed`, error); return []; }
+        return Array.isArray(data) ? data : [];
+      };
+      const [invoices, receipts, creditNotes, followups] = await Promise.all([
+        safeRelatedQuery('invoices', 'id', invoiceIds),
+        safeRelatedQuery('receipts', 'invoice_id', invoiceIds),
+        safeRelatedQuery('credit_notes', 'invoice_id', invoiceIds),
+        safeRelatedQuery('payment_forecast_followups', 'invoice_id', invoiceIds)
+      ]);
+      followups.forEach(item => { if (isUuid(text(item.id))) followupIds.push(text(item.id)); });
+      if (type === 'followup' && isUuid(text(payload?.followup_id || sourceRow.followup_id))) followupIds.push(text(payload?.followup_id || sourceRow.followup_id));
+      const logs = await safeRelatedQuery('payment_forecast_followup_logs', 'followup_id', [...new Set(followupIds)]);
+      return { rows, invoices, receipts, credit_notes: creditNotes, followups, logs };
+    }
     if (resource === 'payment_forecast' && action === 'followup_logs') {
       assertAllowed('payment_forecast', 'view');
       const followupId = String(payload?.followup_id || '').trim();
