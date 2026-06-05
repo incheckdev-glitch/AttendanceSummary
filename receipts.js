@@ -1998,10 +1998,13 @@ const Receipts = {
         box-sizing: border-box;
         padding: 14mm 14mm 12mm;
         position: relative;
-        overflow: hidden;
+        overflow: visible;
+        display: flex;
+        flex-direction: column;
       }
       .receipt-preview-page,
       .receipt-document-page { border: 1px solid #dbe3ed; box-shadow: 0 14px 34px rgba(15, 23, 42, 0.13); }
+      .document-body { flex: 1 0 auto; min-width: 0; }
       .doc-header { border-bottom: 1px solid #d8e1ec; padding-bottom: 7mm; margin-bottom: 8mm; }
       .receipt-document-header { display: grid; grid-template-columns: 44mm minmax(0, 1fr) 62mm; align-items: center; gap: 6mm; width: 100%; max-width: 100%; margin: 0; }
       .receipt-document-logo { display: flex; align-items: center; justify-content: flex-start; height: 28mm; min-width: 0; margin: 0; padding: 0; position: static; }
@@ -2040,24 +2043,25 @@ const Receipts = {
       .document-note-box h2 { margin: 0 0 6px; padding: 0; border: 0; font-size: 13px; line-height: 1.25; font-weight: 800; color: #0b214a; letter-spacing: 0.02em; }
       .document-note-box div { font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
       .receipt-narrative { margin: 16px 0 0; font-size: 12.5px; line-height: 1.6; border: 1px solid #d7e1ed; border-radius: 6px; padding: 12px; background: #fbfdff; overflow-wrap: anywhere; page-break-inside: avoid; break-inside: avoid; }
-      .totals-wrap { display: flex; justify-content: flex-end; margin-top: 16px; }
+      .totals-wrap { display: flex; justify-content: flex-end; margin-top: 16px; page-break-inside: avoid; break-inside: avoid; }
       .totals-box { width: 96mm; max-width: 100%; border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; }
       .totals-row { display: flex; justify-content: space-between; gap: 10px; padding: 10px 12px; border-bottom: 1px solid #e3eaf3; font-size: 13px; }
       .totals-row:last-child { border-bottom: 0; }
       .totals-row.grand { font-size: 15px; font-weight: 700; background: #edf4ff; color: #0b214a; }
       .totals-row span { min-width: 0; }
       .totals-row strong { flex: 1 1 auto; min-width: 0; text-align: right; overflow-wrap: anywhere; }
-      .footer-note { margin-top: 16px; font-size: 11px; color: #64748b; border-top: 1px solid #e3eaf3; padding-top: 10px; text-align: center; }
+      .footer-note { position: static !important; margin-top: auto; padding-top: 10px; font-size: 11px; color: #64748b; border-top: 1px solid #e3eaf3; text-align: center; flex-shrink: 0; page-break-inside: avoid; break-inside: avoid; }
       @page { size: A4; margin: 12mm; }
       @media print {
         body { margin: 0; padding: 0; background: #fff; overflow: visible; }
         .receipt-preview-page,
-        .receipt-document-page { width: auto; min-height: auto; margin: 0; padding: 0; box-shadow: none; page-break-after: always; border: 0; overflow: visible; }
+        .receipt-document-page { width: auto; min-height: 273mm; margin: 0; padding: 0; box-shadow: none; page-break-after: auto; border: 0; overflow: visible; }
       }
     </style>
   </head>
   <body>
     <div class="receipt-preview-page receipt-document-page doc-sheet">
+      <main class="document-body">
       <header class="doc-header">
         <section class="receipt-document-header">
           <div class="receipt-document-logo"><div data-incheck360-doc-logo-slot></div></div>
@@ -2149,7 +2153,8 @@ const Receipts = {
         </div>
       </section>
 
-      <footer class="footer-note">This document is computer generated and does not require a signature.</footer>
+      </main>
+      <footer class="footer-note document-footer">This document is computer generated and does not require a signature.</footer>
     </div>
   </body>
 </html>`;
