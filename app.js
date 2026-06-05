@@ -8256,6 +8256,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (window.Clients?.wire) Clients.wire();
   if (window.ProposalCatalog?.wire) ProposalCatalog.wire();
   if (window.Workflow?.wire) Workflow.wire();
+  if (window.Biners?.init) Biners.init();
   wireKeyboardShortcuts();
   if (window.Notifications?.wire) Notifications.wire();
   if (window.PushNotifications?.wire) PushNotifications.wire();
