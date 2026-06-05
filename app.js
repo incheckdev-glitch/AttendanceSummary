@@ -7733,6 +7733,7 @@ const CSMActivity = {
     if (activityContext !== 'manual_client') await this.ensureClientOptions();
     E.csmForm.dataset.mode = row ? 'edit' : 'create';
     E.csmForm.dataset.id = row?.id || '';
+    E.csmForm.dataset.csmActivityUuid = row?.id || '';
     E.csmForm.dataset.timestamp = row?.timestamp || '';
     E.csmForm.dataset.activityContext = activityContext;
     if (E.csmFormTitle) E.csmFormTitle.textContent = row ? 'Edit CSM Daily Activity Tracker' : (activityContext === 'manual_client' ? 'Add Activity Without Agreement' : 'CSM Daily Activity Tracker');
@@ -7864,7 +7865,7 @@ const CSMActivity = {
   },
   async submitForm() {
     const mode = E.csmForm?.dataset.mode === 'edit' ? 'edit' : 'create';
-    const id = String(E.csmForm?.dataset.id || '').trim();
+    const realUuid = String(E.csmForm?.dataset.csmActivityUuid || '').trim();
     const activity = this.readFormValues();
     const validationError = this.validateForm(activity);
     if (validationError) {
@@ -7875,8 +7876,9 @@ const CSMActivity = {
     try {
       if (mode === 'edit') {
         if (!Permissions.canUpdateCsmActivity()) throw new Error('You do not have permission to update CSM activity.');
+        if (!realUuid) throw new Error('Missing CSM activity UUID. Please reload and try again.');
         const existingTimestamp = String(E.csmForm?.dataset.timestamp || '').trim();
-        await window.CsmActivityService.updateActivity(id, {
+        await window.CsmActivityService.updateActivity(realUuid, {
           ...this.viewToBackendActivity(activity),
           timestamp: existingTimestamp || undefined
         });

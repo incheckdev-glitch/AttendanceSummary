@@ -222,9 +222,12 @@
 
   function normalizeCsmRow(row = {}) {
     const raw = row && typeof row === 'object' ? row : {};
-    const id = cleanString(raw.id || raw.activity_id);
+    // Keep the database UUID separate from the display/business activity_id.
+    // Mutations must never fall back to activity_id because it is not guaranteed unique.
+    const id = isUuid(raw.id) ? cleanString(raw.id) : '';
+    const activityId = cleanString(raw.activity_id || raw.activityId);
     const activityCode = cleanString(raw.activity_code || raw.activityCode);
-    const displayCode = activityCode || id;
+    const displayCode = activityCode || activityId || id;
     const timestamp = parseDateValue(raw.timestamp || raw.date || raw.created_at);
     const activityContext = normalizeActivityContext(raw.activity_context || raw.activityContext);
     const manualClientName = cleanString(raw.manual_client_name || raw.manualClientName);
@@ -239,6 +242,8 @@
     return {
       ...raw,
       id,
+      activity_id: activityId,
+      activityId,
       activity_code: activityCode,
       activityCode,
       displayCode,
@@ -631,16 +636,18 @@
 
   async function updateActivity(id, updates = {}) {
     if (!canUpdateCsmActivity(getCurrentUserForPermission())) throw new Error('You do not have permission to update CSM activities.');
-    const activityId = cleanString(id || updates.id);
-    if (!activityId) throw new Error('CSM activity id is required.');
+    const realUuid = cleanString(id || updates.id);
+    if (!isUuid(realUuid)) throw new Error('Missing CSM activity UUID. Please reload and try again.');
     const payload = await toUpdatePayload(updates);
-    console.log('[CSM Activity] save payload:', payload);
+    console.log('[CSM update] real uuid:', realUuid);
+    console.log('[CSM update] payload:', payload);
     const client = getClient();
     const { data, error } = await withColumnFallback(
-      nextPayload => client.from(TABLE).update(nextPayload).eq('id', activityId).select('*').single(),
+      nextPayload => client.from(TABLE).update(nextPayload).eq('id', realUuid).select('*').maybeSingle(),
       payload
     );
     if (error) throw readableError('Unable to update CSM activity', error);
+    if (!data) throw new Error('CSM activity was not found or you do not have permission to update it.');
     return normalizeCsmRow(data);
   }
 
