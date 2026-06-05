@@ -2068,7 +2068,7 @@ Sample:
           <div class="pf-header-actions"><button id="paymentForecastRefreshBtn" class="btn ghost sm" type="button">Refresh</button><button id="paymentForecastExportBtn" class="btn sm" type="button" data-permission-resource="payment_forecast" data-permission-action="export">Export CSV</button></div>
         </div>
         <nav class="pf-tabs" aria-label="Receivables dashboard sections">
-          <button class="active" type="button" data-pf-tab="overview">Overview</button><button type="button" data-pf-tab="upcoming">Upcoming Payments</button><button type="button" data-pf-tab="overdue">Overdue Payments</button><button type="button" data-pf-tab="clients">Client Distribution</button><button type="button" data-pf-tab="monthly">Monthly Forecast</button><button type="button" data-pf-tab="followup">Collection Follow-up</button>
+          <button class="active" type="button" data-pf-tab="overview">Overview</button><button type="button" data-pf-tab="upcoming">Upcoming Payments</button><button type="button" data-pf-tab="overdue">Overdue Payments</button><button type="button" data-pf-tab="client_distribution">Client Distribution</button><button type="button" data-pf-tab="monthly_forecast">Monthly Forecast</button><button type="button" data-pf-tab="collection_follow_up">Collection Follow-up</button>
         </nav>
         <div id="paymentForecastSummary" class="payment-forecast-summary-grid" aria-live="polite"></div>
         <section id="paymentForecastFilters" class="card pf-filter-panel" aria-label="Receivables filters">
@@ -2076,7 +2076,8 @@ Sample:
           <div class="pf-quick-filters"><label><input id="paymentForecastOverdueOnly" type="checkbox"> Overdue only</label><label><input id="paymentForecastDueWeek" type="checkbox"> Due this week</label><label><input id="paymentForecastDueMonth" type="checkbox"> Due this month</label><label><input id="paymentForecastOnlyUnpaid" type="checkbox"> Unpaid only</label><button id="paymentForecastClearBtn" class="btn ghost xs" type="button">Clear filters</button></div>
         </section>
         <div id="paymentForecastState" class="muted pf-state" aria-live="polite">No data loaded.</div>
-        <div id="paymentForecastContent" class="pf-content"></div>
+        <div id="paymentForecastTabBody" class="pf-content"></div>
+        <div id="paymentForecastPagination"></div>
       </section>
 
       <section id="lifecycleAnalyticsView" class="view" role="tabpanel" aria-labelledby="lifecycleAnalyticsTab">
