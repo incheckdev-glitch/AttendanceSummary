@@ -3406,3 +3406,19 @@ body.pf-modal-open{overflow:hidden}.pf-activity-modal[hidden],.pf-note-modal[hid
 .biners-detail-list dd { margin:4px 0 0; }
 .biners-drawer-actions { margin-top:12px; display:flex; justify-content:flex-end; }
 @media (max-width:700px) { .biners-drawer-summary,.biners-detail-list { grid-template-columns:1fr; } .biners-location-row { grid-template-columns:1fr; } }
+
+/* Biners bulk payment and enhanced drawer helpers */
+.biners-bulk-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  margin: 0 0 10px;
+  border: 1px solid #dbeafe;
+  border-radius: 14px;
+  background: #eff6ff;
+}
+.biners-bulk-toolbar .muted { margin-left: 6px; }
+.biners-table input[type="checkbox"] { width: 16px; height: 16px; }
+.biners-drawer-section .biners-table-wrap { max-height: 360px; }
