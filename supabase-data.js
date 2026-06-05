@@ -1,6 +1,6 @@
 (function initSupabaseData(global) {
   const MIGRATED_RESOURCES = new Set([
-    'auth','users','roles','role_permissions','tickets','events','csm','leads','lead_note_logs','deal_note_logs','deals','proposal_catalog','proposals','agreements','workflow','clients','invoices','receipts','credit_notes','operations_onboarding','technical_admin_requests','notifications','notification_settings','companies','contacts','company_type_options','company_industry_options'
+    'auth','users','roles','role_permissions','tickets','events','csm','leads','lead_note_logs','deal_note_logs','deals','proposal_catalog','proposals','agreements','workflow','clients','invoices','receipts','credit_notes','operations_onboarding','technical_admin_requests','notifications','notification_settings','companies','contacts','company_type_options','company_industry_options','payment_forecast'
   ]);
 
   const TABLE_BY_RESOURCE = {
@@ -6646,6 +6646,18 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
 
   async function handleRpcResource(resource, action, payload) {
     const client = getClient();
+    if (resource === 'payment_forecast' && ['page', 'summary'].includes(action)) {
+      assertAllowed('payment_forecast', 'view');
+      const rpcName = action === 'page' ? 'get_payment_forecast_page' : 'get_payment_forecast_summary';
+      const params = Object.fromEntries(
+        Object.entries(payload || {}).filter(([key, value]) =>
+          key.startsWith('p_') && value !== undefined && value !== ''
+        )
+      );
+      const { data, error } = await client.rpc(rpcName, params);
+      if (error) throw friendlyError(`Unable to load payment forecast ${action}`, error);
+      return Array.isArray(data) ? data : (data == null ? [] : [data]);
+    }
     if (resource === 'leads' && ['convert_to_deal','convert'].includes(action)) {
       assertAllowed('leads', 'convert_to_deal');
       const leadUuid = await resolveResourceUuid('leads', payload, client);

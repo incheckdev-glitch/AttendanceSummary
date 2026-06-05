@@ -562,6 +562,12 @@ const Api = {
       throw error;
     }
   },
+  async getPaymentForecastPage(params = {}) {
+    return this.requestWithSession('payment_forecast', 'page', params);
+  },
+  async getPaymentForecastSummary(filters = {}) {
+    return this.requestWithSession('payment_forecast', 'summary', filters);
+  },
   async listProposalCatalogItems(options = {}) {
     const payload = this.buildSummaryListPayload(options);
     ['section', 'is_active', 'category'].forEach(key => {
