@@ -359,13 +359,15 @@ const LifecycleAnalytics = {
     modal.setAttribute('aria-hidden', 'false');
     body.innerHTML = '<div class="muted lifecycle-history-empty">Loading status history…</div>';
     try {
-      const response = await Api.getLifecycleStatusHistory(entityType, entityId, entityNumber);
-      const logs = Array.isArray(response) ? response : (Array.isArray(response?.rows) ? response.rows : []);
+      const response = await Api.getLifecycleStatusHistory({ entity_type: entityType, entity_id: entityId, entity_number: entityNumber });
+      const logs = (Array.isArray(response) ? response : (Array.isArray(response?.rows) ? response.rows : []))
+        .slice()
+        .sort((a, b) => (this.parseEventTimestamp(b?.changed_at || b?.created_at) || 0) - (this.parseEventTimestamp(a?.changed_at || a?.created_at) || 0));
       const cards = `<div class="lifecycle-history-cards">
         ${[['Entity Type', entityType || '—'], ['Entity #', entityNumber || entityId || '—'], ['Current Status', currentStatus], ['Total Changes', String(logs.length)]].map(([label, value]) => `<div class="card"><div class="label">${this.escape(label)}</div><div class="value">${this.escape(value)}</div></div>`).join('')}
       </div>`;
       if (!logs.length) {
-        body.innerHTML = `${cards}<div class="muted lifecycle-history-empty">No status history found. Only current lifecycle event is available.</div>`;
+        body.innerHTML = `${cards}<div class="muted lifecycle-history-empty">No status history found. Future status changes will appear here.</div>`;
         return;
       }
       body.innerHTML = `${cards}<div class="lifecycle-history-list">${logs.map(log => {
@@ -373,7 +375,8 @@ const LifecycleAnalytics = {
         const newStatus = this.text(log.new_status) || '—';
         const actor = this.text(log.changed_by_email || log.changed_by_name || log.changed_by) || '—';
         const note = this.text(log.notes || log.change_reason);
-        return `<article class="lifecycle-history-entry"><div class="lifecycle-history-entry__date">${this.escape(this.formatTimelineDate(log.changed_at || log.created_at))}</div><strong>${this.escape(oldStatus)} → ${this.escape(newStatus)}</strong><div class="muted">Changed By: ${this.escape(actor)}</div>${note ? `<div class="muted">Notes / Reason: ${this.escape(note)}</div>` : ''}</article>`;
+        const statusField = this.text(log.status_field);
+        return `<article class="lifecycle-history-entry"><div class="lifecycle-history-entry__date">${this.escape(this.formatTimelineDate(log.changed_at || log.created_at))}</div><strong>${this.escape(oldStatus)} → ${this.escape(newStatus)}</strong><div class="muted">Changed by: ${this.escape(actor)}</div>${statusField ? `<div class="muted">Status field: ${this.escape(statusField)}</div>` : ''}${note ? `<div class="muted">Notes / Reason: ${this.escape(note)}</div>` : ''}</article>`;
       }).join('')}</div>`;
     } catch (error) {
       body.innerHTML = `<div class="muted lifecycle-history-empty">Unable to load status history: ${this.escape(error?.message || 'Unknown error')}</div>`;

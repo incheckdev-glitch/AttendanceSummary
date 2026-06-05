@@ -3830,7 +3830,8 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     technical_admin_requests: { type: 'technical_admin_request', fields: ['request_status', 'technical_request_status', 'status'], numbers: ['request_id', 'technical_request_id'], titles: ['title', 'request_title', 'company_name'] },
     tickets: { type: 'ticket', fields: ['status'], numbers: ['ticket_id'], titles: ['title', 'subject'] },
     events: { type: 'event', fields: ['status'], numbers: ['event_id'], titles: ['title', 'event_title', 'subject'] },
-    biners: { type: 'biners_entry', fields: ['status', 'schedule_status'], numbers: ['biners_id', 'entry_number', 'schedule_number'], titles: ['title', 'client_name', 'description'] },
+    biners: { type: 'biners_entry', fields: ['status', 'entry_status', 'payment_status'], numbers: ['biners_id', 'entry_number', 'schedule_number'], titles: ['title', 'client_name', 'description'] },
+    biners_schedules: { type: 'biners_schedule', fields: ['status', 'schedule_status', 'payment_status'], numbers: ['schedule_number', 'schedule_no'], titles: ['title', 'client_name', 'description'] },
     payment_forecast: { type: 'payment_forecast_follow_up', fields: ['follow_up_status', 'status'], numbers: ['followup_id', 'invoice_number'], titles: ['title', 'client_name'] }
   });
 
@@ -3840,8 +3841,8 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     return '';
   }
   async function callLifecycleRpc(client, name, args, prefixedArgs) {
-    let response = await client.rpc(name, args);
-    if (response.error && prefixedArgs) response = await client.rpc(name, prefixedArgs);
+    let response = await client.rpc(name, prefixedArgs || args);
+    if (response.error && prefixedArgs) response = await client.rpc(name, args);
     return response;
   }
   async function addLifecycleStatusLog(client, entry = {}) {
@@ -6741,7 +6742,11 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
           if (!refreshed.error) rows = Array.isArray(refreshed.data) ? refreshed.data : (refreshed.data == null ? [] : [refreshed.data]);
         }
       }
-      return rows;
+      return rows.slice().sort((a, b) => {
+        const aTime = Date.parse(a?.changed_at || a?.created_at || '') || 0;
+        const bTime = Date.parse(b?.changed_at || b?.created_at || '') || 0;
+        return bTime - aTime;
+      });
     }
     if (resource === 'payment_forecast' && action === 'drilldown') {
       assertAllowed('payment_forecast', 'view');
@@ -6890,6 +6895,9 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         const { error: logError } = await client.from('payment_forecast_followup_logs').insert(activityLogs);
         if (logError) throw friendlyError('Follow-up saved, but its activity log could not be created', logError);
       }
+      await recordLifecycleStatusChanges(client, 'payment_forecast', existingFollowup || {}, followup || {}, { snapshot: !existingFollowup }).catch(error => {
+        console.warn('[lifecycle status] payment forecast follow-up log failed', error);
+      });
       return followup;
     }
     if (resource === 'payment_forecast' && ['page', 'followups_page', 'summary', 'client_distribution', 'monthly_summary'].includes(action)) {
@@ -7019,8 +7027,11 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
           if (!loadScheduleError && schedule) {
             const newPaid = Number(schedule.paid_amount || 0) + amount;
             const status = newPaid >= Number(schedule.scheduled_amount || 0) ? 'paid' : (newPaid > 0 ? 'partially_paid' : schedule.payment_status || 'scheduled');
-            const { error: updateError } = await client.from('biners_payment_schedules').update({ paid_amount: newPaid, payment_status: status, payment_date: paymentPayload.payment_date, payment_reference: paymentPayload.payment_reference, payment_notes: paymentPayload.notes }).eq('id', scheduleId);
+            const { data: updatedSchedule, error: updateError } = await client.from('biners_payment_schedules').update({ paid_amount: newPaid, payment_status: status, payment_date: paymentPayload.payment_date, payment_reference: paymentPayload.payment_reference, payment_notes: paymentPayload.notes }).eq('id', scheduleId).select('*').single();
             if (updateError) throw friendlyError('Payment recorded, but Biners schedule could not be updated', updateError);
+            await recordLifecycleStatusChanges(client, 'biners_schedules', schedule, updatedSchedule || {}).catch(error => {
+              console.warn('[lifecycle status] Biners schedule payment log failed', error);
+            });
           }
         }
         return payment;
@@ -9196,6 +9207,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       const id = await resolveTechnicalAdminRequestUuid(payload, client);
       if (!id) throw new Error('Technical request id is required.');
       const status = trimOrNull(firstDefined(payload, ['request_status', 'status'])) || 'Requested';
+      const { data: previousTechnicalRequest } = await client.from('technical_admin_requests').select('*').eq('id', id).maybeSingle();
       const safeUpdates = {
         request_status: status
       };
@@ -9219,6 +9231,9 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       );
       if (error) throw friendlyError('Unable to update technical admin request status', error);
       const technicalRequest = normalizeRow('technical_admin_requests', data);
+      await recordLifecycleStatusChanges(client, 'technical_admin_requests', previousTechnicalRequest || {}, technicalRequest || {}).catch(error => {
+        console.warn('[lifecycle status] technical admin request status log failed', error);
+      });
       await createNotificationAndPush({
         title: 'Technical request status changed',
         message: `${String(technicalRequest.request_id || technicalRequest.technical_request_id || id || '').trim()} is now ${status}.`,

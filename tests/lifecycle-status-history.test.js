@@ -35,9 +35,22 @@ assert.match(context.lifecycle.renderLifecycleTimeline(account), /data-lifecycle
 assert.match(context.lifecycle.renderLifecycleTimeline(account), /View History/);
 
 assert.match(apiSource, /getLifecycleStatusHistory/);
+assert.match(apiSource, /typeof entityType === 'object'/, 'history API should accept the entity payload form');
 assert.match(dataSource, /add_lifecycle_status_log/);
 assert.match(dataSource, /get_lifecycle_status_history/);
 assert.match(dataSource, /oldStatus\.toLowerCase\(\) === newStatus\.toLowerCase\(\)/);
+assert.match(dataSource, /return bTime - aTime/, 'history response should be sorted newest first');
+assert.match(analyticsSource, /\.sort\(\(a, b\).*changed_at/s, 'drawer should sort the full returned array');
+assert.match(analyticsSource, /logs\.map\(log =>/, 'drawer should render every returned log');
+assert.doesNotMatch(analyticsSource, /logs\[0\]|data\[0\]|limit\(1\)/, 'drawer must not render only one history row');
+assert.match(analyticsSource, /Future status changes will appear here/);
 assert.match(html, /id="lifecycleStatusHistoryModal"/);
+
+const sql = fs.readFileSync('LIFECYCLE_STATUS_HISTORY_FUTURE_LOGGING.sql', 'utf8');
+assert.match(sql, /create or replace function public\.get_lifecycle_status_history/);
+assert.match(sql, /order by l\.changed_at desc/);
+assert.match(sql, /create or replace function public\.log_lifecycle_status_change/);
+assert.match(sql, /payment_forecast_followups/);
+assert.match(sql, /biners_payment_schedules/);
 
 console.log('Lifecycle status history checks passed.');

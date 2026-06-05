@@ -2287,8 +2287,11 @@ const Api = {
     return this.requestWithSession('lifecycle_status_logs', 'add', entry);
   },
   async getLifecycleStatusHistory(entityType, entityId = '', entityNumber = '') {
+    const request = entityType && typeof entityType === 'object'
+      ? entityType
+      : { entity_type: entityType, entity_id: entityId, entity_number: entityNumber };
     return this.requestWithSession('lifecycle_status_logs', 'history', {
-      entity_type: entityType, entity_id: entityId, entity_number: entityNumber
+      entity_type: request.entity_type || '', entity_id: request.entity_id || '', entity_number: request.entity_number || ''
     });
   },
   async analyticsSearchEntity(query, filters = {}) {
