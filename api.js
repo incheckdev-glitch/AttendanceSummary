@@ -615,6 +615,12 @@ const Api = {
   async getPaymentForecastMonthlySummary(filters = {}) {
     return this.requestWithSession('payment_forecast', 'monthly_summary', this.paymentForecastRpcParams(filters, true));
   },
+  async getBinersForecastRows(filters = {}) {
+    return this.requestWithSession('biners', 'list_forecast', filters);
+  },
+  async getBinersScheduleRows(filters = {}) {
+    return this.requestWithSession('biners', 'list_schedules', filters);
+  },
   async getBinersMonthlyForecast() {
     return this.requestWithSession('biners', 'monthly_forecast');
   },
