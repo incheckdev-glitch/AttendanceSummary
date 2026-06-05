@@ -14,7 +14,8 @@ const RESOURCE_PRIMARY_KEY = {
   leads: 'id',
   events: 'id',
   csm: 'id',
-  biners: 'id'
+  biners: 'id',
+  communication_centre_messages: 'id'
 };
 const WEB_PUSH_FUNCTION_NAME = 'send-web-push-v2';
 const BACKEND_MANAGED_PWA_ACTIONS = new Set([
@@ -257,6 +258,12 @@ const Api = {
       throw new Error('Your session expired. Please log in again.');
     }
     return this.request(resource, action, { ...payload, authToken: token || undefined });
+  },
+  async updateCommunicationCentreMessage(messageId, updates = {}) {
+    return this.requestWithSession('communication_centre_messages', 'update_message', { id: messageId, updates });
+  },
+  async softDeleteCommunicationCentreMessage(messageId, updates = {}) {
+    return this.requestWithSession('communication_centre_messages', 'soft_delete_message', { id: messageId, updates });
   },
   async getCurrentAccessToken() {
     if (window.SupabaseClient?.getClient) {
