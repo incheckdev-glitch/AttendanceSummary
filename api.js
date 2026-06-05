@@ -567,7 +567,7 @@ const Api = {
       'p_client', 'p_currency', 'p_date_from', 'p_date_to', 'p_due_this_month', 'p_due_this_week',
       'p_follow_up_status', 'p_only_unpaid', 'p_overdue_only', 'p_payment_term', 'p_search', 'p_status', 'p_view'
     ];
-    const keys = includePagination ? [...filterKeys, 'p_page', 'p_page_size'] : filterKeys;
+    const keys = includePagination || params.p_page !== undefined || params.p_page_size !== undefined ? [...filterKeys, 'p_page', 'p_page_size'] : filterKeys;
     return Object.fromEntries(keys.filter(key => params[key] !== undefined).map(key => [key, params[key]]));
   },
   async getPaymentForecastPage(params = {}) {

@@ -6659,7 +6659,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         'p_client', 'p_currency', 'p_date_from', 'p_date_to', 'p_due_this_month', 'p_due_this_week',
         'p_follow_up_status', 'p_only_unpaid', 'p_overdue_only', 'p_payment_term', 'p_search', 'p_status', 'p_view'
       ];
-      const allowedKeys = new Set(action === 'page' ? [...filterKeys, 'p_page', 'p_page_size'] : filterKeys);
+      const allowedKeys = new Set(['page', 'client_distribution', 'monthly_summary'].includes(action) ? [...filterKeys, 'p_page', 'p_page_size'] : filterKeys);
       const params = Object.fromEntries(
         Object.entries(payload || {}).filter(([key, value]) =>
           allowedKeys.has(key) && value !== undefined && value !== ''
