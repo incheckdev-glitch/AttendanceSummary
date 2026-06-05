@@ -576,6 +576,18 @@ const Api = {
   async getPaymentForecastFollowupsPage(params = {}) {
     return this.requestWithSession('payment_forecast', 'followups_page', this.paymentForecastRpcParams(params, true));
   },
+  async getPaymentForecastFollowupLogs(followupId) {
+    return this.requestWithSession('payment_forecast', 'followup_logs', { followup_id: followupId });
+  },
+  async savePaymentForecastFollowup(payload = {}) {
+    return this.requestWithSession('payment_forecast', 'save_followup', payload);
+  },
+  async addPaymentForecastFollowupNote(payload = {}) {
+    return this.requestWithSession('payment_forecast', 'add_followup_note', payload);
+  },
+  async markPaymentForecastFollowedUp(payload = {}) {
+    return this.requestWithSession('payment_forecast', 'mark_followed_up', payload);
+  },
   async getPaymentForecastSummary(filters = {}) {
     return this.requestWithSession('payment_forecast', 'summary', this.paymentForecastRpcParams(filters));
   },

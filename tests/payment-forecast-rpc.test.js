@@ -40,8 +40,11 @@ forecast.populateFilters = () => {};
   assert.doesNotMatch(paymentForecastSource, /Collection follow-up tracking is not configured yet\./);
   assert.match(apiSource, /getPaymentForecastFollowupsPage[\s\S]*followups_page/);
   assert.match(supabaseDataSource, /followups_page:\s*'get_payment_forecast_followups_page'/);
+  assert.match(apiSource, /getPaymentForecastFollowupLogs[\s\S]*followup_logs/);
+  assert.match(supabaseDataSource, /get_payment_forecast_followup_logs/);
+  assert.match(supabaseDataSource, /payment_forecast_followup_logs/);
   const followupActions = forecast.followupActionButtons({ forecast_row_id: 'row-1', invoice_id: 'invoice-1', client_id: 'client-1' });
-  ['Open Invoice', 'Open Client', 'Open Statement', 'Edit Follow-up', 'Mark as Followed Up'].forEach(label => assert.match(followupActions, new RegExp(label)));
+  ['Open Invoice', 'Open Client', 'Open Statement', 'Activity', 'Add Note', 'Edit Follow-up', 'Mark as Followed Up'].forEach(label => assert.match(followupActions, new RegExp(label)));
   assert.notStrictEqual(forecast.state.rowsByTab.upcoming, forecast.state.rowsByTab.overdue, 'tabs must have separate row arrays');
 
   const filters = forecast.rpcFilters();
@@ -112,6 +115,10 @@ forecast.populateFilters = () => {};
   assert.strictEqual(forecast.state.rowsByTab.collection_follow_up[0].follow_up_notes, 'Called client');
   assert.match(forecast.renderPagination(), /Showing 11–12 of 12/);
   assert.strictEqual(typeof forecast.renderPaymentForecastFollowUp, 'function');
+  forecast.state.activityRow = { client_name: 'Client Follow-up', invoice_number: 'INV-1', follow_up_status: 'contacted' };
+  forecast.state.activityLogs = [{ action_type: 'note', note: 'Called client', old_status: 'not_started', new_status: 'contacted', created_by_email: 'collector@example.com' }];
+  assert.strictEqual(typeof forecast.renderActivityModal, 'function');
+  assert.match(paymentForecastSource, /Date\/time[\s\S]*Action Type[\s\S]*Old Status[\s\S]*New Status[\s\S]*Note[\s\S]*Created By/);
 
   forecast.state.activeTab = 'overdue';
   forecast.state.pagination.overdue.total = 0;
