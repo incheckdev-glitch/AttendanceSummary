@@ -1838,10 +1838,25 @@ UI.Modals = {
     const allDay = !!ev.allDay;
     if (E.eventAllDay) E.eventAllDay.checked = allDay;
 
-    if (E.eventTitle) E.eventTitle.value = ev.title || '';
+    const titleClass = isCancelledEvent(ev) ? 'cancelled-event-title' : '';
+    if (E.eventTitle) {
+      E.eventTitle.value = ev.title || '';
+      E.eventTitle.classList.toggle('cancelled-event-title', !!titleClass);
+    }
+    if (E.eventDetailTitle) {
+      E.eventDetailTitle.textContent = ev.title || '';
+      E.eventDetailTitle.classList.toggle('cancelled-event-title', !!titleClass);
+      E.eventDetailTitle.hidden = !isEdit || !ev.title;
+    }
     if (E.eventType) E.eventType.value = ev.type || 'Deployment';
     if (E.eventEnv) E.eventEnv.value = ev.env || 'Prod';
-    if (E.eventStatus) E.eventStatus.value = ev.status || 'Planned';
+    if (E.eventStatus) {
+      const status = String(ev.status || ev.event_status || 'Planned').trim();
+      const matchingOption = Array.from(E.eventStatus.options).find(
+        option => option.value.toLowerCase() === status.toLowerCase()
+      );
+      E.eventStatus.value = matchingOption?.value || 'Planned';
+    }
     if (E.eventOwner) E.eventOwner.value = ev.owner || '';
     if (E.eventModules) {
       const val = Array.isArray(ev.modules)
@@ -3442,12 +3457,15 @@ function ensureCalendar() {
     },
     eventDidMount(info) {
       const ext = info.event.extendedProps || {};
+      const titleClass = isCancelledEvent(ext) ? 'cancelled-event-title' : '';
+      const titleEl = info.el.querySelector('.fc-event-title');
+      if (titleEl && titleClass) titleEl.classList.add(titleClass);
+
       const riskSum = ext.risk || 0;
       if (riskSum) {
         const span = document.createElement('span');
         span.className = 'event-risk-badge ' + CalendarLink.riskBadgeClass(riskSum);
         span.textContent = `RISK ${riskSum}`;
-        const titleEl = info.el.querySelector('.fc-event-title');
         if (titleEl) titleEl.appendChild(span);
       }
 
@@ -6527,6 +6545,21 @@ function wireModals() {
     });
   });
   
+  if (E.eventTitle) {
+    E.eventTitle.addEventListener('input', () => {
+      if (E.eventDetailTitle) E.eventDetailTitle.textContent = E.eventTitle.value;
+    });
+  }
+
+  if (E.eventStatus) {
+    E.eventStatus.addEventListener('change', () => {
+      const event = { status: E.eventStatus.value };
+      const titleClass = isCancelledEvent(event) ? 'cancelled-event-title' : '';
+      E.eventTitle?.classList.toggle('cancelled-event-title', !!titleClass);
+      E.eventDetailTitle?.classList.toggle('cancelled-event-title', !!titleClass);
+    });
+  }
+
   if (E.eventForm) {
     E.eventForm.addEventListener('submit', async e => {
       e.preventDefault();

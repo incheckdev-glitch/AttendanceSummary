@@ -1645,6 +1645,16 @@ th.sorted-desc::after{
   box-shadow:var(--shadow);display:none;font-size:12px;
 }
 
+.cancelled-event-title {
+  text-decoration: line-through;
+  opacity: 0.65;
+}
+.event-detail-title {
+  margin-top:4px;
+  font-size:14px;
+  font-weight:600;
+}
+
 /* Calendar */
 #calendar{margin-top:6px;min-height:500px}
 .fc{font-size:13px}
