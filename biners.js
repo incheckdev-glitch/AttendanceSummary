@@ -48,6 +48,7 @@
   const entryId = row => row?.biners_entry_id || row?.entry_id || row?.binersEntryId || row?.id;
   const scheduleId = row => row?.schedule_id || row?.biners_schedule_id || row?.scheduleId || row?.id;
   const getEntry = row => state.entries.find(item => String(item.id) === String(entryId(row))) || row || {};
+  const getForecastRow = row => state.forecast.find(item => String(scheduleId(item)) === String(scheduleId(row))) || {};
   const remaining = row => row?.remaining_amount ?? Math.max(0, num(row?.scheduled_amount) - num(row?.paid_amount));
   const currencyOf = row => row?.currency || getEntry(row)?.currency || 'USD';
   const badge = value => `<span class="pf-status-badge pf-status-${esc(norm(value || 'scheduled').replace(/_/g, '-'))}">${esc(String(value || 'scheduled').replace(/_/g, ' '))}</span>`;
@@ -81,18 +82,33 @@
 
   function rowContext(row) {
     const entry = getEntry(row);
+    const forecast = getForecastRow(row);
     return {
       ...entry,
+      ...forecast,
       ...row,
-      client_name: row?.client_name || entry?.client_name || entry?.client_legal_name || entry?.company_name,
-      biners_entry_number: row?.biners_entry_number || entry?.biners_entry_number,
-      module_name: row?.module_name || entry?.module_name,
-      license_type: row?.license_type || entry?.license_type,
-      license_length_months: row?.license_length_months || entry?.license_length_months,
+      client_name: row?.client_name || forecast?.client_name || entry?.client_name || entry?.client_legal_name || entry?.company_name,
+      biners_entry_number: row?.biners_entry_number || forecast?.biners_entry_number || entry?.biners_entry_number,
+      location_name: row?.location_name || forecast?.location_name,
+      location_reference: row?.location_reference || forecast?.location_reference,
+      module_name: row?.module_name || forecast?.module_name || entry?.module_name,
+      license_type: row?.license_type || forecast?.license_type || entry?.license_type,
+      license_length_months: row?.license_length_months || forecast?.license_length_months || entry?.license_length_months,
       number_of_locations: row?.number_of_locations || entry?.number_of_locations,
       currency: row?.currency || entry?.currency || 'USD'
     };
   }
+
+  const clientLabel = row => row?.client_name || '—';
+  const locationLabel = row => row?.location_name || 'Entry level / All locations';
+  const moduleLabel = row => row?.module_name || '—';
+  const licenseLabel = row => row?.license_type ? `${row.license_type} · ${row.license_length_months ?? '—'} months` : '—';
+  const timingLabel = row => {
+    if (row?.days_overdue != null && num(row.days_overdue) > 0) return `${num(row.days_overdue)} days overdue`;
+    if (row?.days_until_due != null) return `${num(row.days_until_due)} days until due`;
+    const days = daysUntil(row?.due_date);
+    return days == null ? '—' : days < 0 ? `${Math.abs(days)} days overdue` : `${days} days until due`;
+  };
 
   function table(headers, body, empty = 'No data found.') {
     return `<div class="table-wrap biners-table-wrap"><table class="biners-table"><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${body || `<tr><td colspan="${headers.length}" class="muted">${esc(empty)}</td></tr>`}</tbody></table></div>`;
@@ -204,20 +220,19 @@
 
   function scheduleTable(rows, kind = 'schedule') {
     const showSelect = ['scheduled_payments', 'forecast'].includes(state.activeTab) && can('record_payment');
-    const headers = [showSelect ? '<input type="checkbox" data-biners-select-all-schedules aria-label="Select all visible schedules">' : null, 'Entry #', 'Client', 'Location', 'Module', 'License', 'Schedule #', 'Due Date', 'Scheduled', 'Paid', 'Remaining', 'Status', 'Timing', 'Actions'].filter(Boolean);
+    const headers = [showSelect ? '<input type="checkbox" data-biners-select-all-schedules aria-label="Select all visible schedules">' : null, 'Entry #', 'Client', 'Location', 'Location Reference', 'Module', 'License', 'Schedule #', 'Due Date', 'Scheduled', 'Paid', 'Remaining', 'Status', 'Timing', 'Actions'].filter(Boolean);
     const body = rows.map(raw => {
       const r = rowContext(raw);
-      const timing = daysUntil(r.due_date) == null ? '—' : daysUntil(r.due_date) < 0 ? `${Math.abs(daysUntil(r.due_date))} days overdue` : `${daysUntil(r.due_date)} days until due`;
       const attrs = `data-biners-open-${kind}="${esc(scheduleId(raw))}"`;
-      return clickable(attrs, `${showSelect ? `<td>${selectCell(raw)}</td>` : ''}<td><strong>${esc(r.biners_entry_number || '—')}</strong></td><td>${esc(r.client_name || '—')}</td><td>${esc(r.location_name || r.location_reference || r.location || '—')}</td><td>${esc(r.module_name || '—')}</td><td>${esc(r.license_type || '—')} · ${esc(r.license_length_months || '—')} mo</td><td>${esc(r.schedule_no || '—')}</td><td>${date(r.due_date)}</td><td>${money(r.scheduled_amount, r.currency)}</td><td>${money(r.paid_amount, r.currency)}</td><td>${money(remaining(r), r.currency)}</td><td>${badge(statusFor(r))}</td><td>${esc(timing)}</td><td>${stopAction(paymentButton(r))}</td>`);
+      return clickable(attrs, `${showSelect ? `<td>${selectCell(raw)}</td>` : ''}<td><strong>${esc(r.biners_entry_number || '—')}</strong></td><td>${esc(clientLabel(r))}</td><td>${esc(locationLabel(r))}</td><td>${esc(r.location_reference || '—')}</td><td>${esc(moduleLabel(r))}</td><td>${esc(licenseLabel(r))}</td><td>${esc(r.schedule_no || '—')}</td><td>${date(r.due_date)}</td><td>${money(r.scheduled_amount, r.currency)}</td><td>${money(r.paid_amount, r.currency)}</td><td>${money(remaining(r), r.currency)}</td><td>${badge(r.forecast_status || statusFor(r))}</td><td>${esc(timingLabel(r))}</td><td>${stopAction(paymentButton(r))}</td>`);
     }).join('');
     return `${bulkToolbar(kind, rows)}${table(headers, body)}`;
   }
 
   function paymentsTable(rows) {
-    return table(['Date', 'Entry #', 'Client', 'Schedule #', 'Amount', 'Method', 'Reference', 'Notes'], rows.map(raw => {
+    return table(['Payment Date', 'Entry #', 'Client', 'Location', 'Location Reference', 'Module', 'License', 'Schedule #', 'Due Date', 'Scheduled', 'Paid', 'Remaining', 'Status', 'Payment Amount', 'Method', 'Reference', 'Notes'], rows.map(raw => {
       const r = rowContext(raw);
-      return clickable(`data-biners-open-payment="${esc(raw.id)}"`, `<td>${date(r.payment_date)}</td><td>${esc(r.biners_entry_number || '—')}</td><td>${esc(r.client_name || '—')}</td><td>${esc(r.schedule_no || '—')}</td><td>${money(r.payment_amount, r.currency)}</td><td>${esc(r.payment_method || '—')}</td><td>${esc(r.payment_reference || '—')}</td><td>${esc(r.notes || '—')}</td>`);
+      return clickable(`data-biners-open-payment="${esc(raw.id)}"`, `<td>${date(r.payment_date)}</td><td>${esc(r.biners_entry_number || '—')}</td><td>${esc(clientLabel(r))}</td><td>${esc(locationLabel(r))}</td><td>${esc(r.location_reference || '—')}</td><td>${esc(moduleLabel(r))}</td><td>${esc(licenseLabel(r))}</td><td>${esc(r.schedule_no || '—')}</td><td>${date(r.due_date)}</td><td>${money(r.scheduled_amount, r.currency)}</td><td>${money(r.paid_amount, r.currency)}</td><td>${money(remaining(r), r.currency)}</td><td>${badge(r.forecast_status || statusFor(r))}</td><td>${money(r.payment_amount, r.currency)}</td><td>${esc(r.payment_method || '—')}</td><td>${esc(r.payment_reference || '—')}</td><td>${esc(r.notes || '—')}</td>`);
     }).join(''));
   }
 
@@ -261,7 +276,7 @@
     const id = entryId(row), sid = scheduleId(row);
     return {
       entry: getEntry(row),
-      schedules: state.schedules.filter(x => String(entryId(x)) === String(id) || (sid && String(scheduleId(x)) === String(sid))),
+      schedules: state.forecast.filter(x => String(entryId(x)) === String(id) || (sid && String(scheduleId(x)) === String(sid))),
       payments: state.payments.filter(x => String(entryId(x)) === String(id) || (sid && String(x.schedule_id) === String(sid)))
     };
   }
@@ -272,8 +287,10 @@
 
   function formatDrawerValue(label, value, currency) {
     const countLabels = ['clients', 'entries', 'locations', 'scheduled rows', 'schedules'];
+    const moneyLabels = ['gross payable', 'paid amount', 'remaining', 'overdue'];
     if (countLabels.includes(norm(label))) return esc(num(value).toLocaleString());
-    return money(value, currency);
+    if (moneyLabels.includes(norm(label))) return money(value, currency);
+    return esc(value ?? '—');
   }
 
   function aggregateRows(rows, currency = 'USD') {
@@ -304,15 +321,29 @@
 
     const stats = type === 'month'
       ? [['Gross Payable', aggregate.gross_payable], ['Paid Amount', aggregate.paid_amount], ['Remaining', aggregate.remaining_payable], ['Overdue', aggregate.overdue_amount], ['Clients', aggregate.clients], ['Entries', aggregate.entries], ['Locations', aggregate.locations], ['Scheduled Rows', aggregate.scheduled_rows]]
-      : [['Gross Payable', r.gross_payable ?? r.total_payable_amount ?? r.scheduled_amount], ['Paid Amount', r.paid_amount], ['Remaining', r.remaining_payable ?? remaining(r)], ['Overdue', r.overdue_amount], ['Clients', r.client_count], ['Entries', r.entry_count], ['Locations', r.location_count ?? r.number_of_locations]].filter(x => x[1] !== undefined && x[1] !== null);
+      : [['Client', clientLabel(r)], ['Entry #', r.biners_entry_number || '—'], ['Location', locationLabel(r)], ['Module', moduleLabel(r)], ['Gross Payable', r.gross_payable ?? r.total_payable_amount ?? r.scheduled_amount], ['Paid Amount', r.paid_amount], ['Remaining', r.remaining_payable ?? remaining(r)], ['Overdue', r.overdue_amount]].filter(x => x[1] !== undefined && x[1] !== null);
 
     const detailsTitle = type === 'month' ? 'Monthly forecast details' : 'Client & entry details';
     const detailsHtml = type === 'month'
       ? `<dl class="biners-detail-list"><div><dt>Month</dt><dd>${esc(monthLabel(r.forecast_month || r.month || r.due_date))}</dd></div><div><dt>Currency</dt><dd>${esc(r.currency || 'USD')}</dd></div><div><dt>Clients</dt><dd>${esc(aggregate.clients)}</dd></div><div><dt>Entries</dt><dd>${esc(aggregate.entries)}</dd></div><div><dt>Locations</dt><dd>${esc(aggregate.locations)}</dd></div><div><dt>Scheduled Rows</dt><dd>${esc(aggregate.scheduled_rows)}</dd></div></dl>`
-      : `<dl class="biners-detail-list"><div><dt>Client</dt><dd>${esc(r.client_name || '—')}</dd></div><div><dt>Entry #</dt><dd>${esc(r.biners_entry_number || '—')}</dd></div><div><dt>Location</dt><dd>${esc(r.location_name || r.location_reference || r.location || '—')}</dd></div><div><dt>Module</dt><dd>${esc(r.module_name || '—')}</dd></div><div><dt>License</dt><dd>${esc(r.license_type || '—')} · ${esc(r.license_length_months || '—')} months</dd></div><div><dt>Schedule / Due</dt><dd>#${esc(r.schedule_no || '—')} · ${date(r.due_date)}</dd></div><div><dt>Status</dt><dd>${badge(statusFor(r))}</dd></div><div><dt>Timing</dt><dd>${daysUntil(r.due_date) == null ? '—' : daysUntil(r.due_date) < 0 ? `${Math.abs(daysUntil(r.due_date))} days overdue` : `${daysUntil(r.due_date)} days until due`}</dd></div></dl>${paymentButton(r) ? `<div class="biners-drawer-actions">${paymentButton(r)}</div>` : ''}`;
+      : `<dl class="biners-detail-list"><div><dt>Client</dt><dd>${esc(r.client_name || '—')}</dd></div><div><dt>Entry #</dt><dd>${esc(r.biners_entry_number || '—')}</dd></div><div><dt>Location</dt><dd>${esc(locationLabel(r))}</dd></div><div><dt>Location Reference</dt><dd>${esc(r.location_reference || '—')}</dd></div><div><dt>Module</dt><dd>${esc(moduleLabel(r))}</dd></div><div><dt>License</dt><dd>${esc(licenseLabel(r))}</dd></div><div><dt>Schedule / Due</dt><dd>#${esc(r.schedule_no || '—')} · ${date(r.due_date)}</dd></div><div><dt>Status</dt><dd>${badge(statusFor(r))}</dd></div><div><dt>Timing</dt><dd>${esc(timingLabel(r))}</dd></div></dl>${paymentButton(r) ? `<div class="biners-drawer-actions">${paymentButton(r)}</div>` : ''}`;
 
-    content.innerHTML = `<div class="biners-drawer-summary">${stats.map(([a, b]) => `<article><span>${esc(a)}</span><strong>${formatDrawerValue(a, b, r.currency)}</strong></article>`).join('')}</div><section class="biners-drawer-section"><h3>${esc(detailsTitle)}</h3>${detailsHtml}</section>${miniTable('Scheduled payments', schedules, [['#', x => x.schedule_no], ['Client', x => x.client_name], ['Location', x => x.location_name || x.location_reference], ['Module', x => x.module_name], ['Due', x => date(x.due_date)], ['Scheduled', x => money(x.scheduled_amount, x.currency || r.currency)], ['Paid', x => money(x.paid_amount, x.currency || r.currency)], ['Remaining', x => money(remaining(x), x.currency || r.currency)], ['Status', x => badge(statusFor(x)), 'html']])}${miniTable('Payment history', payments, [['Date', x => date(x.payment_date)], ['Amount', x => money(x.payment_amount, x.currency || r.currency)], ['Method', x => x.payment_method], ['Reference', x => x.payment_reference], ['Notes', x => x.notes]])}${locations.length ? miniTable('Related clients / locations', locations, [['Client', x => x.client_name], ['Location', x => x.location_name || x.location], ['Module', x => x.module_name]]) : ''}${entries.length > 1 ? miniTable('Related entries', entries, [['Entry #', x => x.biners_entry_number], ['Client', x => x.client_name], ['Module', x => x.module_name]]) : ''}`;
+    content.innerHTML = `<div class="biners-drawer-summary">${stats.map(([a, b]) => `<article><span>${esc(a)}</span><strong>${formatDrawerValue(a, b, r.currency)}</strong></article>`).join('')}</div><section class="biners-drawer-section"><h3>${esc(detailsTitle)}</h3>${detailsHtml}</section>${miniTable('Scheduled payments', schedules, [['#', x => x.schedule_no], ['Client', x => clientLabel(x)], ['Entry #', x => x.biners_entry_number], ['Location', x => locationLabel(x)], ['Location Reference', x => x.location_reference || '—'], ['Module', x => moduleLabel(x)], ['License', x => licenseLabel(x)], ['Due', x => date(x.due_date)], ['Scheduled', x => money(x.scheduled_amount, x.currency || r.currency)], ['Paid', x => money(x.paid_amount, x.currency || r.currency)], ['Remaining', x => money(remaining(x), x.currency || r.currency)], ['Status', x => badge(x.forecast_status || statusFor(x)), 'html']])}${miniTable('Payment history', payments, [['Date', x => date(x.payment_date)], ['Amount', x => money(x.payment_amount, x.currency || r.currency)], ['Method', x => x.payment_method], ['Reference', x => x.payment_reference], ['Notes', x => x.notes]])}${locations.length ? miniTable('Related clients / locations', locations, [['Client', x => x.client_name], ['Location', x => x.location_name || x.location], ['Module', x => x.module_name]]) : ''}${entries.length > 1 ? miniTable('Related entries', entries, [['Entry #', x => x.biners_entry_number], ['Client', x => x.client_name], ['Module', x => x.module_name]]) : ''}`;
     drawer.hidden = false;
+  }
+
+  async function loadDrawer(row, type) {
+    let selected = row || {};
+    const sid = scheduleId(selected);
+    if (sid && ['schedule', 'forecast', 'payment'].includes(type)) {
+      const matches = normalizeList(await safeLoad('selected forecast row', (global.Api?.getBinersForecastRows?.({ schedule_id: sid }) || request('list_forecast', { schedule_id: sid })), []));
+      selected = matches[0] ? { ...selected, ...matches[0] } : selected;
+    }
+    const id = entryId(selected);
+    const schedules = id
+      ? normalizeList(await safeLoad('related forecast rows', (global.Api?.getBinersForecastRows?.({ biners_entry_id: id }) || request('list_forecast', { biners_entry_id: id })), []))
+      : [];
+    openDrawer(selected, type, schedules.length ? { scheduled_payments: schedules } : {});
   }
 
   async function openMonthly(month, currency) {
@@ -379,7 +410,10 @@
     $('binersRecordPaymentForm').reset();
     $('binersPaymentScheduleId').value = idList.join(',');
     $('binersPaymentClient').value = rows.length === 1 ? (first.client_name || '') : `${rows.length} schedules selected`;
-    $('binersPaymentEntryNumber').value = rows.length === 1 ? (first.biners_entry_number || '') : 'Bulk payment';
+    $('binersPaymentEntryNumber').value = rows.length === 1 ? (first.biners_entry_number || '—') : 'Bulk payment';
+    $('binersPaymentLocation').value = rows.length === 1 ? locationLabel(first) : 'Multiple';
+    $('binersPaymentModule').value = rows.length === 1 ? moduleLabel(first) : 'Multiple';
+    $('binersPaymentDueDate').value = rows.length === 1 ? date(first.due_date) : 'Multiple';
     $('binersPaymentScheduleNo').value = rows.length === 1 ? (first.schedule_no || '') : 'Multiple';
     $('binersPaymentScheduledAmount').value = rows.reduce((s, r) => s + num(r.scheduled_amount), 0).toFixed(2);
     $('binersPaymentAlreadyPaid').value = rows.reduce((s, r) => s + num(r.paid_amount), 0).toFixed(2);
@@ -518,8 +552,8 @@
     try {
       const [entries, schedules, forecast, payments, summary, monthly, companies] = await Promise.all([
         safeLoad('entries', request('list'), []),
-        safeLoad('scheduled payments', request('list_schedules'), []),
-        safeLoad('forecast rows', request('list_forecast'), []),
+        safeLoad('scheduled payments', (global.Api?.getBinersScheduleRows?.() || request('list_schedules')), []),
+        safeLoad('forecast rows', (global.Api?.getBinersForecastRows?.() || request('list_forecast')), []),
         safeLoad('payment history', request('list_payments'), []),
         safeLoad('summary', request('summary'), null),
         safeLoad('monthly forecast', (global.Api?.getBinersMonthlyForecast?.() || request('monthly_forecast')), []),
@@ -620,13 +654,13 @@
       const month = e.target.closest('[data-biners-open-month]');
       if (month) { openMonthly(month.dataset.binersOpenMonth, month.dataset.binersCurrency); return; }
       const entry = e.target.closest('[data-biners-open-entry]');
-      if (entry) { openDrawer(state.entries.find(x => String(x.id) === String(entry.dataset.binersOpenEntry)), 'entry'); return; }
+      if (entry) { loadDrawer(state.entries.find(x => String(x.id) === String(entry.dataset.binersOpenEntry)), 'entry'); return; }
       const schedule = e.target.closest('[data-biners-open-schedule]');
-      if (schedule) { openDrawer(state.schedules.find(x => String(scheduleId(x)) === String(schedule.dataset.binersOpenSchedule)), 'schedule'); return; }
+      if (schedule) { loadDrawer(state.schedules.find(x => String(scheduleId(x)) === String(schedule.dataset.binersOpenSchedule)), 'schedule'); return; }
       const forecast = e.target.closest('[data-biners-open-forecast]');
-      if (forecast) { openDrawer(state.forecast.find(x => String(scheduleId(x)) === String(forecast.dataset.binersOpenForecast)), 'forecast'); return; }
+      if (forecast) { loadDrawer(state.forecast.find(x => String(scheduleId(x)) === String(forecast.dataset.binersOpenForecast)), 'forecast'); return; }
       const payment = e.target.closest('[data-biners-open-payment]');
-      if (payment) { openDrawer(state.payments.find(x => String(x.id) === String(payment.dataset.binersOpenPayment)), 'payment'); return; }
+      if (payment) { loadDrawer(state.payments.find(x => String(x.id) === String(payment.dataset.binersOpenPayment)), 'payment'); return; }
       const page = e.target.closest('[data-biners-page]');
       if (page) { const key = pageKey(); state.pages[key] = Math.max(1, (state.pages[key] || 1) + (page.dataset.binersPage === 'next' ? 1 : -1)); render(); }
     });

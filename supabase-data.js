@@ -6836,19 +6836,17 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         if (error) throw friendlyError('Unable to load Biners entries', error);
         return data || [];
       }
-      if (binersAction === 'list_schedules') {
-        const { data, error } = await client.from('biners_payment_schedules').select('*').order('due_date', { ascending: true }).limit(Number(payload?.limit || 1000));
-        if (error) throw friendlyError('Unable to load Biners schedules', error);
+      if (binersAction === 'list_schedules' || binersAction === 'list_forecast') {
+        let query = client.from('biners_forecast_rows').select('*');
+        if (payload?.schedule_id) query = query.eq('schedule_id', payload.schedule_id);
+        if (payload?.biners_entry_id) query = query.eq('biners_entry_id', payload.biners_entry_id);
+        const { data, error } = await query.order('due_date', { ascending: true }).limit(Number(payload?.limit || 1000));
+        if (error) throw friendlyError(binersAction === 'list_schedules' ? 'Unable to load Biners schedules' : 'Unable to load Biners forecast', error);
         return data || [];
       }
       if (binersAction === 'list_payments') {
         const { data, error } = await client.from('biners_payments').select('*').order('payment_date', { ascending: false }).limit(Number(payload?.limit || 1000));
         if (error) throw friendlyError('Unable to load Biners payments', error);
-        return data || [];
-      }
-      if (binersAction === 'list_forecast') {
-        const { data, error } = await client.from('biners_forecast_rows').select('*').order('due_date', { ascending: true }).limit(Number(payload?.limit || 1000));
-        if (error) throw friendlyError('Unable to load Biners forecast', error);
         return data || [];
       }
       if (binersAction === 'summary') {
