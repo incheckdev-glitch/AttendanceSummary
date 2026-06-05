@@ -912,7 +912,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     'proposal_id','client_id','company_id','contact_id','location_id','source_invoice_id','source_proposal_id','previous_invoice_id','renewal_batch_id','renewed_from_invoice_id','renewed_from_invoice_item_id','renewed_from_location_name'
   ]);
   const CREDIT_NOTE_COLUMNS = new Set([
-    'credit_note_id','credit_note_number','invoice_id','invoice_number','agreement_uuid','agreement_id','agreement_number','client_id','company_id','company_name','customer_name','client_name','customer_legal_name','credit_note_date','description','currency','credit_amount','status','created_by','created_by_email','updated_by','cancelled_by','cancelled_at','cancel_reason','created_at','updated_at'
+    'credit_note_id','credit_note_number','credit_note_request_key','invoice_id','invoice_number','agreement_uuid','agreement_id','agreement_number','client_id','company_id','company_name','customer_name','client_name','customer_legal_name','credit_note_date','description','currency','credit_amount','status','created_by','created_by_email','updated_by','cancelled_by','cancelled_at','cancel_reason','created_at','updated_at'
   ]);
   const RECEIPT_COLUMNS = new Set([
     'receipt_id','receipt_number','invoice_id','invoice_number','agreement_uuid','agreement_id','agreement_number','client_id','company_id','company_name','customer_name','customer_legal_name','customer_address','contact_id','contact_name','contact_email','contact_phone','contact_mobile','receipt_status','amount_paid','payment_date','payment_method',
@@ -2472,6 +2472,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const sanitized = compactObject({
       credit_note_id: trimOrNull(firstDefined(record, ['credit_note_id', 'creditNoteId'])),
       credit_note_number: trimOrNull(firstDefined(record, ['credit_note_number', 'creditNoteNumber'])),
+      credit_note_request_key: trimOrNull(firstDefined(record, ['credit_note_request_key', 'creditNoteRequestKey'])),
       invoice_id: isUuid(trimOrNull(firstDefined(record, ['invoice_id', 'invoiceId']))) ? trimOrNull(firstDefined(record, ['invoice_id', 'invoiceId'])) : null,
       invoice_number: trimOrNull(firstDefined(record, ['invoice_number', 'invoiceNumber'])),
       agreement_uuid: isUuid(trimOrNull(firstDefined(record, ['agreement_uuid', 'agreementUuid']))) ? trimOrNull(firstDefined(record, ['agreement_uuid', 'agreementUuid'])) : null,
@@ -7984,6 +7985,17 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         return { handled: true, data: await withItems(resource, normalizedRow) };
       }
       const finalCreateRecord = sanitizeUuidColumnsForMutation(table, createRecord);
+      if (resource === 'credit_notes' && finalCreateRecord.credit_note_request_key) {
+        const { data: existingCreditNote, error: existingCreditNoteError } = await client
+          .from('credit_notes')
+          .select('*')
+          .eq('credit_note_request_key', finalCreateRecord.credit_note_request_key)
+          .maybeSingle();
+        if (existingCreditNoteError) throw friendlyError('Unable to validate credit note request key', existingCreditNoteError);
+        if (existingCreditNote?.id) {
+          return { handled: true, data: normalizeRow(resource, existingCreditNote), duplicatePrevented: true };
+        }
+      }
       if (resource === 'clients') {
         const existingClient = await findExistingClientForCreate(client, finalCreateRecord);
         if (existingClient?.id) {
@@ -8062,8 +8074,18 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
           finalCreateRecord,
           `Unable to create ${resource} record`
         );
-        if (error) throw friendlyError(`Unable to create ${resource} record`, error);
-        data = inserted;
+        if (error && resource === 'credit_notes' && finalCreateRecord.credit_note_request_key && String(error.code || '') === '23505') {
+          const { data: existingCreditNote, error: existingCreditNoteError } = await client
+            .from('credit_notes')
+            .select('*')
+            .eq('credit_note_request_key', finalCreateRecord.credit_note_request_key)
+            .maybeSingle();
+          if (existingCreditNoteError) throw friendlyError('Unable to load existing credit note', existingCreditNoteError);
+          data = existingCreditNote;
+        } else {
+          if (error) throw friendlyError(`Unable to create ${resource} record`, error);
+          data = inserted;
+        }
       }
       if (!data) throw new Error(`Unable to create ${resource} record: Supabase returned no row.`);
       const created = normalizeRow(resource, data);
