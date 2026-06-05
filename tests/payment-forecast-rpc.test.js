@@ -42,13 +42,18 @@ forecast.populateFilters = () => {};
   ].sort());
 
   forecast.state.activeTab = 'overview';
-  await forecast.loadActiveTab();
+  await forecast.loadSummary();
   assert.strictEqual(calls.at(-1)[0], 'summary');
   assert.strictEqual(calls.at(-1)[1].p_view, 'overview');
   assert.strictEqual(forecast.state.loading.summary, false);
   assert.strictEqual(forecast.state.summary.scheduled_rows, 0, 'backend zero must be preserved');
   assert.strictEqual(forecast.state.summary.credit_adjusted, undefined, 'missing summary metrics must remain missing');
-  assert.strictEqual(forecast.renderPagination(), '', 'overview must not render pagination');
+
+  await forecast.loadActiveTab();
+  assert.strictEqual(calls.at(-1)[0], 'page');
+  assert.strictEqual(calls.at(-1)[1].p_view, 'all', 'overview row RPC must request all scheduled payments');
+  assert.strictEqual(calls.at(-1)[1].p_page_size, 10, 'overview must request the fixed 10-row page size');
+  assert.match(forecast.renderPagination(), /Showing 1–10 of 44/, 'overview must paginate its scheduled payment rows');
 
   forecast.state.activeTab = 'upcoming';
   forecast.state.pagination.upcoming.page = 2;
@@ -69,7 +74,8 @@ forecast.populateFilters = () => {};
   await forecast.loadActiveTab();
   assert.strictEqual(calls.at(-1)[0], 'clients');
   assert.strictEqual(calls.at(-1)[1].p_view, 'client_distribution');
-  assert.strictEqual(calls.at(-1)[1].p_page, undefined, 'grouped RPC must not receive page RPC parameters');
+  assert.strictEqual(calls.at(-1)[1].p_page, 1, 'grouped RPC must receive its current page');
+  assert.strictEqual(calls.at(-1)[1].p_page_size, 10, 'grouped RPC must receive the fixed 10-row page size');
   assert.strictEqual(forecast.state.rowsByTab.client_distribution[0].client_name, 'Client A');
   assert.strictEqual(forecast.state.rowsByTab.client_distribution[0].gross_scheduled_amount, 125);
 
