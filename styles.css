@@ -3340,3 +3340,4 @@ body.permissions-loading [data-permission-resource][data-permission-action]{disp
 .pf-notes-cell{min-width:220px;max-width:340px;white-space:normal;line-height:1.45}
 
 .pf-pagination{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:10px;padding:12px 2px 4px;color:#475569;font-size:13px}.pf-pagination label{display:flex;align-items:center;gap:7px}.pf-pagination .select{width:auto;min-width:72px;padding-block:7px}.pf-pagination-showing{margin-right:auto;font-weight:700}@media(max-width:600px){.pf-pagination{justify-content:center}.pf-pagination-showing{width:100%;margin-right:0;text-align:center}}
+.pf-summary-message{grid-column:1/-1;padding:18px;border:1px solid var(--border,#e2e8f0);border-radius:12px;background:#fff}.pf-error{color:#b91c1c;background:#fef2f2;border-color:#fecaca}.pf-overview-helper{padding:18px;text-align:center;border:1px dashed var(--border,#cbd5e1);border-radius:12px;background:#f8fafc}
