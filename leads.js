@@ -1584,6 +1584,16 @@ const Leads = {
       return;
     }
     const leadId = String(E.leadForm?.dataset.id || '').trim();
+    const selectedCompanyId = this.getRecordUuid(this.state.selectedCompany || {}, 'company') || String(E.leadFormCompanyId?.value || '').trim();
+    if (selectedCompanyId) {
+      const freshCompanyRaw = await window.CrmCompanyContactSelectors?.loadCompanyByUuid?.(selectedCompanyId);
+      const freshCompany = freshCompanyRaw ? this.normalizeCompany(freshCompanyRaw) : null;
+      if (!freshCompany || this.getRecordUuid(freshCompany, 'company') !== selectedCompanyId) {
+        UI.toast('Selected company data mismatch. Please reselect the company.');
+        return;
+      }
+      this.hydrateLeadFromCompany(freshCompany);
+    }
     const lead = this.collectFormData();
     if (!this.validateLeadWorkflow(lead)) return;
     if (!this.validateLeadNewNote(lead, mode)) return;
@@ -1800,12 +1810,16 @@ const Leads = {
     const rowsFrom = res => Array.isArray(res?.rows) ? res.rows : (Array.isArray(res?.items) ? res.items : (Array.isArray(res?.data) ? res.data : []));
     let companies = [];
     try {
-      const companiesRes = await Api.requestWithSession('companies', 'list', { page: 1, limit: 5000, sortBy: 'company_name', sortDir: 'asc' }, { requireAuth: true });
-      companies = rowsFrom(companiesRes)
+      const companyRows = await window.CrmCompanyContactSelectors?.loadCompanyOptions?.('', normalizedCompanyId);
+      if (!companyRows) throw new Error('Shared company option loader is unavailable.');
+      companies = companyRows
         .map(c => this.normalizeCompany(c))
         .filter(c => this.getRecordUuid(c, 'company'));
     } catch (error) {
-      console.warn('[leads] unable to load company picker rows', error);
+      console.error('[leads] fresh company picker query failed', error);
+      const companyControl = E.leadFormCompanyName;
+      if (this.isSelectControl(companyControl)) companyControl.innerHTML = '<option value="">Unable to load companies — retry</option>';
+      UI?.toast?.('Unable to load companies. Please retry.', 'error');
     }
 
     // Newly created companies may not be present in the cached/list endpoint yet.
@@ -2491,6 +2505,7 @@ const Leads = {
     }
     this.lockCompanyContactDisplayFields();
     if (E.leadFormCompanyName) {
+      E.leadFormCompanyName.addEventListener('focus', () => this.loadLeadPickerOptions(this.getRecordUuid(this.state.selectedCompany || {}, 'company')).catch(error => console.error('[leads] company picker refresh on open failed', error)));
       E.leadFormCompanyName.addEventListener('input', event => this.handleLeadCompanyInput(event));
       E.leadFormCompanyName.addEventListener('change', event => this.handleLeadCompanyChange(event));
     }
@@ -2504,6 +2519,14 @@ const Leads = {
         if (id) this.deleteLeadById(id);
       });
     }
+
+    window.addEventListener('crm:company-saved', async event => {
+      if (E.leadFormModal?.getAttribute('aria-hidden') === 'true') return;
+      const companyId = String(event?.detail?.companyId || event?.detail?.company?.id || '').trim();
+      await this.loadLeadPickerOptions(companyId);
+      const company = companyId ? await this.getFullCompanyRecord(companyId) : null;
+      if (company) this.hydrateLeadFromCompany(company);
+    });
 
     this.state.initialized = true;
   }

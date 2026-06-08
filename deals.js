@@ -74,8 +74,9 @@ const Deals = {
   normalizeCompany(company = {}) {
     const c = company && typeof company === 'object' ? company : {};
     return {
-      id: c.id || '',
-      company_id: String(c.company_id || c.companyId || '').trim(),
+      id: String(c.id || c.company_uuid || c.companyUuid || '').trim(),
+      company_id: String(c.id || c.company_uuid || c.companyUuid || c.company_id || c.companyId || '').trim(),
+      company_business_id: String(c.company_business_id || c.companyBusinessId || ((!c.id && !c.company_uuid && !c.companyUuid) ? '' : (c.company_id || c.companyId || ''))).trim(),
       company_name: String(c.company_name || c.companyName || '').trim(),
       legal_name: String(c.legal_name || c.legalName || '').trim(),
       company_type: String(c.company_type || c.companyType || '').trim(),
@@ -1220,11 +1221,9 @@ const Deals = {
       const has = companyIdOrRecord.company_type || companyIdOrRecord.companyType || companyIdOrRecord.industry || companyIdOrRecord.website || companyIdOrRecord.main_email || companyIdOrRecord.mainEmail || companyIdOrRecord.main_phone || companyIdOrRecord.mainPhone || companyIdOrRecord.country || companyIdOrRecord.city || companyIdOrRecord.address || companyIdOrRecord.company_status || companyIdOrRecord.companyStatus;
       if (has) return this.normalizeCompany(companyIdOrRecord);
     }
-    const companyId = typeof companyIdOrRecord === 'object' ? (companyIdOrRecord.company_id || companyIdOrRecord.companyId) : companyIdOrRecord;
+    const companyId = typeof companyIdOrRecord === 'object' ? (companyIdOrRecord.id || companyIdOrRecord.company_uuid || companyIdOrRecord.companyUuid || companyIdOrRecord.company_id || companyIdOrRecord.companyId) : companyIdOrRecord;
     if (!companyId) return null;
-    const response = await Api.requestWithSession('companies','list',{ filters:{ company_id: companyId }, limit:1 },{ requireAuth:true });
-    const rows = response?.rows || response?.items || response?.data || [];
-    const row = Array.isArray(rows) ? (rows[0] || null) : (rows || null);
+    const row = await window.CrmCompanyContactSelectors?.loadCompanyByUuid?.(companyId);
     return row ? this.normalizeCompany(row) : null;
   },
   async getFullContactRecord(contactIdOrRecord) {
@@ -1583,7 +1582,7 @@ const Deals = {
   async ensureCompanyContactHydratedBeforeSave() {
     const companyId = this.state.form.selectedCompany?.company_id || this.state.form.companyId || E.dealFormCompanyId?.value || E.dealFormCompanySelector?.value || '';
     const contactId = this.state.form.selectedContact?.contact_id || this.state.form.contactId || E.dealFormContactId?.value || E.dealFormContactSelector?.value || '';
-    if (companyId && !this.state.form.selectedCompany?.company_name) {
+    if (companyId) {
       const company = await this.getFullCompanyRecord(companyId);
       if (company) this.hydrateDealFromCompany(company);
     }

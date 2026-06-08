@@ -6,6 +6,7 @@
     companies: [],
     contactsByCompany: new Map(),
     loadingCompanies: null,
+    companyLoadError: null,
     initialized: false
   };
 
@@ -260,7 +261,10 @@
       company_id: canonicalId,
       company_uuid: uuid,
       company_business_id: businessId,
+      company_number: str(c.company_number || c.companyNumber),
+      company_code: str(c.company_code || c.companyCode),
       company_name: str(c.company_name || c.companyName || c.name),
+      name: str(c.name),
       legal_name: str(c.legal_name || c.legalName),
       company_type: str(c.company_type || c.companyType),
       industry: str(c.industry),
@@ -271,7 +275,14 @@
       city: str(c.city),
       address: str(c.address),
       tax_number: str(c.tax_number || c.taxNumber),
-      company_status: str(c.company_status || c.companyStatus),
+      company_status: str(c.company_status || c.companyStatus || c.status),
+      status: str(c.status || c.company_status || c.companyStatus),
+      created_at: str(c.created_at || c.createdAt),
+      updated_at: str(c.updated_at || c.updatedAt),
+      is_archived: c.is_archived === true || c.isArchived === true,
+      is_deleted: c.is_deleted === true || c.isDeleted === true,
+      archived_at: str(c.archived_at || c.archivedAt),
+      deleted_at: str(c.deleted_at || c.deletedAt),
       currency: str(c.currency),
       payment_term: str(c.payment_term || c.paymentTerm || c.payment_terms || c.paymentTerms),
       authorized_signatory_full_name: str(c.authorized_signatory_full_name || c.authorizedSignatoryFullName),
@@ -356,7 +367,8 @@
     return state.companies.find(company => companyMatchesId(company, key)) || null;
   }
   function getCompanyOptionValue(company = {}) {
-    return str(company.company_id || company.company_uuid || company.id || company.company_business_id);
+    // CRM relations must always use the companies.id UUID, never a display/business code.
+    return str(company.id || company.company_uuid);
   }
   function contactPhone(contact = {}) {
     return str(contact.mobile || contact.phone);
@@ -388,38 +400,95 @@
     return message.includes('cannot list companies') || message.includes('Forbidden');
   }
 
-  async function fetchCompanies() {
-    if (state.companies.length) return state.companies;
-    if (state.loadingCompanies) return state.loadingCompanies;
-    state.loadingCompanies = (async () => {
-      try {
-        if (global.Api?.requestWithSession) {
-          const response = await global.Api.requestWithSession('companies', 'list', { limit: 200, page: 1, sort_by: 'company_name', sort_dir: 'asc' }, { requireAuth: true });
-          state.companies = rowsFrom(response).map(normalizeCompany).filter(c => getCompanyOptionValue(c));
-          return state.companies;
-        }
-      } catch (error) {
-        console.warn('[crm selectors] company API load failed', error);
-        if (isCompanyListUnavailableError(error)) {
-          state.companies = [];
-          return state.companies;
-        }
-      }
-      try {
-        const client = global.supabaseClient || global.supabase;
-        if (client?.from) {
-          const { data, error } = await client.from('companies').select('*').order('company_name', { ascending: true }).limit(200);
-          if (error) throw error;
-          state.companies = (data || []).map(normalizeCompany).filter(c => getCompanyOptionValue(c));
-        }
-      } catch (error) {
-        console.warn('[crm selectors] company Supabase load failed', error);
-      }
-      return state.companies;
-    })().finally(() => {
-      state.loadingCompanies = null;
+  function isSelectableCompany(company = {}) {
+    return company.is_archived !== true && company.is_deleted !== true && !str(company.archived_at) && !str(company.deleted_at);
+  }
+
+  function mergeCompanyRows(rows = [], selected = null) {
+    const byId = new Map();
+    [...rows, selected].filter(Boolean).map(normalizeCompany).filter(isSelectableCompany).forEach(company => {
+      const id = getCompanyOptionValue(company);
+      if (id) byId.set(id, company);
     });
-    return state.loadingCompanies;
+    return Array.from(byId.values());
+  }
+
+  async function fetchCompanyByUuid(companyId) {
+    const id = str(companyId);
+    if (!id) return null;
+    const client = global.supabaseClient || global.supabase;
+    if (client?.from) {
+      const { data, error } = await client.from('companies').select('*').eq('id', id).maybeSingle();
+      if (error) {
+        console.error('[crm selectors] selected company UUID query failed', error);
+        throw error;
+      }
+      return data ? normalizeCompany(data) : null;
+    }
+    if (global.Api?.requestWithSession) {
+      const response = await global.Api.requestWithSession('companies', 'get', { id }, { requireAuth: true });
+      const row = response?.row || response?.data || response?.company || response;
+      return row && typeof row === 'object' ? normalizeCompany(row) : null;
+    }
+    return null;
+  }
+
+  async function loadCompanyOptions(searchText = '', includeSelectedId = null) {
+    const search = str(searchText);
+    const selectedId = str(includeSelectedId);
+    const client = global.supabaseClient || global.supabase;
+    state.companyLoadError = null;
+    let rows = [];
+
+    try {
+      if (client?.from) {
+        const buildQuery = fields => {
+          let query = client.from('companies').select('*');
+          if (search) {
+            const escaped = search.replace(/[,%()]/g, ' ').trim();
+            query = query.or(fields.map(field => `${field}.ilike.%${escaped}%`).join(','));
+          }
+          return query
+            .order('updated_at', { ascending: false, nullsFirst: false })
+            .order('created_at', { ascending: false, nullsFirst: false })
+            .order('legal_name', { ascending: true, nullsFirst: false })
+            .order('company_name', { ascending: true, nullsFirst: false })
+            .limit(200);
+        };
+        let result = await buildQuery(['legal_name', 'company_name', 'name', 'company_id', 'company_number', 'company_code']);
+        // Deployments do not all have the optional alias/code columns yet.
+        if (result.error && search) result = await buildQuery(['legal_name', 'company_name', 'company_id']);
+        if (result.error) throw result.error;
+        rows = (result.data || []).map(normalizeCompany).filter(company => getCompanyOptionValue(company) && isSelectableCompany(company));
+      } else if (global.Api?.requestWithSession) {
+        const response = await global.Api.requestWithSession('companies', 'list', {
+          limit: 200,
+          page: 1,
+          search,
+          sortBy: 'updated_at',
+          sortDir: 'desc'
+        }, { requireAuth: true });
+        rows = rowsFrom(response).map(normalizeCompany).filter(company => getCompanyOptionValue(company) && isSelectableCompany(company));
+      } else {
+        throw new Error('No Supabase or company API client is available.');
+      }
+
+      const selected = selectedId && !rows.some(company => getCompanyOptionValue(company) === selectedId)
+        ? await fetchCompanyByUuid(selectedId)
+        : null;
+      state.companies = mergeCompanyRows(rows, selected);
+      return state.companies;
+    } catch (error) {
+      state.companies = [];
+      state.companyLoadError = error;
+      console.error('[crm selectors] fresh company options query failed', error);
+      throw error;
+    }
+  }
+
+  async function fetchCompanies(searchText = '', includeSelectedId = null) {
+    // Deliberately do not reuse state.companies: dropdowns must see newly-created rows immediately.
+    return loadCompanyOptions(searchText, includeSelectedId);
   }
 
   async function fetchContacts(companyId) {
@@ -526,20 +595,25 @@
     return !cfg.directSourceIds.some(id => str(byId(id)?.value || byId(id)?.dataset?.leadUuid));
   }
 
-  async function loadCompanyOptionsSafe() {
-    try {
-      return await fetchCompanies();
-    } catch (error) {
-      console.warn('[crm selectors] company API load failed', error);
-      return [];
-    }
+  async function loadCompanyOptionsSafe(searchText = '', includeSelectedId = null) {
+    return fetchCompanies(searchText, includeSelectedId);
   }
 
-  async function populateCompanySelect(cfg) {
+  async function populateCompanySelect(cfg, searchText = '') {
     const select = byId(cfg.companySelectId);
     if (!select) return;
-    const companies = await loadCompanyOptionsSafe();
-    setSelectOptions(select, companies, 'Select company', 'company');
+    const selectedId = str(select.value || byId(cfg.companyHiddenId)?.value);
+    select.dataset.companyLoadState = 'loading';
+    try {
+      const companies = await loadCompanyOptionsSafe(searchText, selectedId);
+      setSelectOptions(select, companies, 'Select company', 'company');
+      select.dataset.companyLoadState = 'ready';
+    } catch (error) {
+      select.innerHTML = '<option value="">Unable to load companies — retry</option>';
+      select.dataset.companyLoadState = 'error';
+      select.title = String(error?.message || 'Unable to load companies');
+      throw error;
+    }
   }
 
   async function loadContactsForConfig(cfg, companyId, selectedContactId = '') {
@@ -684,6 +758,7 @@
     companySelect.dataset.crmSelectorBound = 'true';
     contactSelect.dataset.crmSelectorBound = 'true';
 
+    companySelect.addEventListener('focus', () => populateCompanySelect(cfg).catch(() => {}));
     companySelect.addEventListener('change', async () => {
       const companyId = str(companySelect.value);
       const company = findCompanyByAnyId(companyId) || null;
@@ -742,8 +817,44 @@
     });
   }
 
+
+  async function refreshAfterCompanySave(savedCompany = {}) {
+    const company = normalizeCompany(savedCompany);
+    const companyId = getCompanyOptionValue(company);
+    state.companies = [];
+    state.loadingCompanies = null;
+    let freshRows = [];
+    try {
+      freshRows = await loadCompanyOptions('', companyId);
+    } catch (error) {
+      // The visible error is rendered below; keep only the just-created response, never stale options.
+      console.error('[crm selectors] company refresh after save failed', error);
+    }
+    state.companies = mergeCompanyRows(freshRows, companyId ? company : null);
+    Object.values(FORM_CONFIG).forEach(cfg => {
+      const select = byId(cfg.companySelectId);
+      if (!select) return;
+      if (!state.companies.length) {
+        select.innerHTML = '<option value="">Unable to load companies — retry</option>';
+        select.dataset.companyLoadState = 'error';
+        return;
+      }
+      setSelectOptions(select, state.companies, 'Select company', 'company');
+      const form = byId(cfg.formId);
+      const modal = byId(cfg.formId.replace('Form', 'FormModal'));
+      const isVisible = form && (!modal || modal.getAttribute('aria-hidden') !== 'true');
+      if (companyId && isVisible && [...select.options].some(option => option.value === companyId)) {
+        select.value = companyId;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    });
+    return state.companies;
+  }
+
   async function refreshAll() {
     state.companies = [];
+    state.loadingCompanies = null;
+    state.companyLoadError = null;
     state.contactsByCompany.clear();
     await Promise.all(Object.values(FORM_CONFIG).map(cfg => populateCompanySelect(cfg)));
     Object.values(FORM_CONFIG).forEach(cfg => {
@@ -785,6 +896,10 @@
     initializeCompanyContactSelectorsForInvoice: () => initializeCompanyContactSelectorsForForm('invoice'),
     initializeCompanyContactSelectorsForReceipt: () => initializeCompanyContactSelectorsForForm('receipt'),
     loadCompanies: loadCompanyOptionsSafe,
+    loadCompanyOptions,
+    loadCompanyByUuid: fetchCompanyByUuid,
+    invalidateCompanies() { state.companies = []; state.loadingCompanies = null; state.companyLoadError = null; },
+    refreshAfterCompanySave,
     loadContactsForCompany: fetchContacts,
     applyCompanyToForm(formKey, company) { const cfg = FORM_CONFIG[formKey]; if (cfg) applyCompany(cfg, company); },
     applyContactToForm(formKey, contact) { const cfg = FORM_CONFIG[formKey]; if (cfg) applyContact(cfg, contact); }
