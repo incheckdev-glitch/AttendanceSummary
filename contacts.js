@@ -153,12 +153,17 @@ const Contacts = {
     this.bindFormEvents();
   },
 
-  async loadCompanyOptionsSafe() {
+  companyRelationId(company = {}) {
+    return String(company.id || company.company_uuid || company.companyUuid || '').trim();
+  },
+
+  async loadCompanyOptionsSafe(searchText = '', includeSelectedId = null) {
     try {
-      const res = await Api.requestWithSession('companies', 'list', { page: 1, limit: 200, search: '', filters: {}, sortBy: 'company_name', sortDir: 'asc' }, { requireAuth: true });
-      return { rows: Array.isArray(res?.rows) ? res.rows : Array.isArray(res) ? res : [], unavailable: false };
+      const rows = await window.CrmCompanyContactSelectors?.loadCompanyOptions?.(searchText, includeSelectedId);
+      if (!rows) throw new Error('Shared company option loader is unavailable.');
+      return { rows, unavailable: false };
     } catch (error) {
-      console.warn('[contacts] company API load failed', error);
+      console.error('[contacts] fresh company options query failed', error);
       return { rows: [], unavailable: true, error };
     }
   },
@@ -193,7 +198,7 @@ const Contacts = {
     const select = document.getElementById('contactsCompanyFilter');
     if (!select) return;
     const { rows } = await this.loadCompanyOptionsSafe();
-    select.innerHTML = `<option value=''>All Companies</option>${rows.map(r => `<option value="${U.escapeAttr(r.company_id || '')}">${U.escapeHtml(r.company_name || r.company_id || '')}</option>`).join('')}`;
+    select.innerHTML = `<option value=''>All Companies</option>${rows.map(r => `<option value="${U.escapeAttr(this.companyRelationId(r))}">${U.escapeHtml(r.legal_name || r.company_name || r.name || this.companyRelationId(r))}</option>`).join('')}`;
     if (this.state.companyId) {
       select.value = this.state.companyId;
       this.state.filters.company_id = this.state.companyId;
@@ -204,6 +209,14 @@ const Contacts = {
     if (this._formBound) return;
     this._formBound = true;
     document.getElementById('contactForm')?.addEventListener('submit', e => this.submitForm(e));
+    document.getElementById('contactCompanyInput')?.addEventListener('focus', () => this.ensureCompanyOptions(this.state.currentContact || {}).catch(error => console.error('[contacts] company picker refresh on open failed', error)));
+    window.addEventListener('crm:company-saved', event => {
+      if (document.getElementById('contactModal')?.getAttribute('aria-hidden') === 'true') return;
+      const companyId = String(event?.detail?.companyId || event?.detail?.company?.id || '').trim();
+      this.ensureCompanyOptions({ id: this.state.currentContact?.id || '', company_ids: companyId ? [companyId] : [] })
+        .then(() => { if (companyId) this.setSelectedCompanies([companyId]); })
+        .catch(error => console.error('[contacts] company picker refresh after save failed', error));
+    });
     ['contactCancelBtn', 'contactCloseBtn'].forEach(id => document.getElementById(id)?.addEventListener('click', () => this.closeForm()));
     document.getElementById('contactModal')?.addEventListener('click', e => {
       if (e.target?.id === 'contactModal') this.closeForm();
@@ -220,15 +233,15 @@ const Contacts = {
     const { rows, unavailable, error } = await this.loadCompanyOptionsSafe();
     const normalizedExisting = this.normalize(existing || {});
     const existingIds = normalizedExisting.company_ids.length ? normalizedExisting.company_ids : [normalizedExisting.company_id || this.state.companyId].filter(Boolean);
-    const rowIds = new Set(rows.map(r => String(r.company_id || '').trim()).filter(Boolean));
+    const rowIds = new Set(rows.map(r => this.companyRelationId(r)).filter(Boolean));
     const mergedRows = [...rows];
     existingIds.forEach(companyId => {
       if (!companyId || rowIds.has(companyId)) return;
-      mergedRows.push({ company_id: companyId, company_name: normalizedExisting.company_name || this.state.companyName || normalizedExisting.company_names || companyId });
+      mergedRows.push({ id: companyId, company_uuid: companyId, company_id: companyId, company_name: normalizedExisting.company_name || this.state.companyName || normalizedExisting.company_names || companyId });
       rowIds.add(companyId);
     });
 
-    select.innerHTML = mergedRows.map(r => `<option value="${U.escapeAttr(r.company_id || '')}">${U.escapeHtml(r.company_name || r.company_id || '')}</option>`).join('');
+    select.innerHTML = mergedRows.map(r => `<option value="${U.escapeAttr(this.companyRelationId(r))}">${U.escapeHtml(r.legal_name || r.company_name || r.name || this.companyRelationId(r))}</option>`).join('');
     const companyListDenied = unavailable && this.isCompanyListPermissionError(error);
     if (!mergedRows.length || companyListDenied) {
       select.disabled = true;
