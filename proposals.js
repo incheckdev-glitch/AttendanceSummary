@@ -134,7 +134,12 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     detailCacheTtlMs: 90 * 1000,
     currentProposal: null,
     openingProposalIds: new Set(),
-    rowActionInFlight: new Set()
+    rowActionInFlight: new Set(),
+    selectedCompanyId: '',
+    selectedContactId: '',
+    loadedCompany: null,
+    loadedContact: null,
+    createLoadToken: 0
   },
   toNumberSafe(value) {
     if (value === null || value === undefined || value === '') return 0;
@@ -842,9 +847,13 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     return `PR-${stamp}-${suffix}`;
   },
 
+  isUuid(value = '') {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+  },
   normalizeCompany(company = {}) {
     const c = company && typeof company === 'object' ? company : {};
     return {
+      id: String(c.id || c.company_uuid || c.companyUuid || '').trim(),
       company_id: String(c.company_id || c.companyId || '').trim(),
       company_name: String(c.company_name || c.companyName || '').trim(),
       legal_name: String(c.legal_name || c.legalName || '').trim(),
@@ -857,12 +866,14 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       company_type: String(c.company_type || c.companyType || '').trim(),
       industry: String(c.industry || '').trim(),
       website: String(c.website || '').trim(),
-      company_status: String(c.company_status || c.companyStatus || '').trim()
+      company_status: String(c.company_status || c.companyStatus || '').trim(),
+      authorized_signatory_full_name: String(c.authorized_signatory_full_name || c.authorizedSignatoryFullName || '').trim(),
+      authorized_signatory_title: String(c.authorized_signatory_title || c.authorizedSignatoryTitle || '').trim()
     };
   },
   normalizeContact(contact = {}) {
     const c = contact && typeof contact === 'object' ? contact : {};
-    return { contact_id:String(c.contact_id||c.contactId||'').trim(), company_id:String(c.company_id||c.companyId||'').trim(), first_name:String(c.first_name||c.firstName||'').trim(), last_name:String(c.last_name||c.lastName||'').trim(), full_name:String(c.full_name||c.fullName||'').trim(), name:String(c.name||'').trim(), contact_name:String(c.contact_name||c.contactName||'').trim(), position:String(c.position||'').trim(), job_title:String(c.job_title||c.jobTitle||'').trim(), title:String(c.title||'').trim(), department:String(c.department||'').trim(), email:String(c.email||'').trim(), phone:String(c.phone||'').trim(), mobile:String(c.mobile||'').trim(), decision_role:String(c.decision_role||c.decisionRole||'').trim(), contact_status:String(c.contact_status||c.contactStatus||'').trim() };
+    return { id:String(c.id||c.contact_uuid||c.contactUuid||'').trim(), contact_id:String(c.contact_id||c.contactId||'').trim(), company_id:String(c.company_id||c.companyId||'').trim(), company_uuid:String(c.company_uuid||c.companyUuid||'').trim(), first_name:String(c.first_name||c.firstName||'').trim(), last_name:String(c.last_name||c.lastName||'').trim(), full_name:String(c.full_name||c.fullName||'').trim(), name:String(c.name||'').trim(), contact_name:String(c.contact_name||c.contactName||'').trim(), position:String(c.position||'').trim(), job_title:String(c.job_title||c.jobTitle||'').trim(), title:String(c.title||'').trim(), department:String(c.department||'').trim(), email:String(c.email||'').trim(), phone:String(c.phone||'').trim(), mobile:String(c.mobile||'').trim(), decision_role:String(c.decision_role||c.decisionRole||'').trim(), contact_status:String(c.contact_status||c.contactStatus||'').trim() };
   },
   getContactDisplayName(contact) {
     if (!contact) return '';
@@ -1435,8 +1446,105 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       customer_authorized_signatory_title: signatorySnapshot.title || ''
     });
   },
-  async getFullCompanyRecord(companyIdOrRecord) { const seed = typeof companyIdOrRecord === 'object' ? companyIdOrRecord : {}; const companyId = typeof companyIdOrRecord === 'object' ? (seed.company_id || seed.companyId) : companyIdOrRecord; const hasFullFields = seed.legal_name || seed.legalName || seed.company_type || seed.companyType || seed.industry || seed.website || seed.main_email || seed.mainEmail || seed.main_phone || seed.mainPhone || seed.country || seed.city || seed.address || seed.company_status || seed.companyStatus; if (hasFullFields) return this.normalizeCompany(seed); if (!companyId) return null; const response = await Api.requestWithSession('companies','list',{ filters:{ company_id: companyId }, limit:1 },{ requireAuth:true }); const rows = response?.rows || response?.items || response?.data || []; const row = Array.isArray(rows) ? rows[0] : rows; return row ? this.normalizeCompany(row) : null; },
-  async getFullContactRecord(contactIdOrRecord) { const seed = typeof contactIdOrRecord === 'object' ? contactIdOrRecord : {}; const contactId = typeof contactIdOrRecord === 'object' ? (seed.contact_id || seed.contactId) : contactIdOrRecord; const hasFullFields = seed.first_name || seed.firstName || seed.last_name || seed.lastName || seed.job_title || seed.jobTitle || seed.position || seed.title || seed.department || seed.email || seed.phone || seed.mobile || seed.decision_role || seed.decisionRole || seed.contact_status || seed.contactStatus; if (hasFullFields) return this.normalizeContact(seed); if (!contactId) return null; const response = await Api.requestWithSession('contacts','list',{ filters:{ contact_id: contactId }, limit:1 },{ requireAuth:true }); const rows = response?.rows || response?.items || response?.data || []; const row = Array.isArray(rows) ? rows[0] : rows; return row ? this.normalizeContact(row) : null; },
+  async loadCompanyByUuid(companyUuid) {
+    const id = String(companyUuid || '').trim();
+    if (!this.isUuid(id)) return null;
+    const client = window.supabaseClient || window.supabase;
+    if (client?.from) {
+      const { data, error } = await client.from('companies').select('*').eq('id', id).maybeSingle();
+      if (error) throw error;
+      return data ? this.normalizeCompany(data) : null;
+    }
+    const response = await Api.requestWithSession('companies', 'get', { id }, { requireAuth: true });
+    const row = response?.row || response?.data || response?.company || response;
+    return row && typeof row === 'object' ? this.normalizeCompany(row) : null;
+  },
+  async loadContactByUuid(contactUuid) {
+    const id = String(contactUuid || '').trim();
+    if (!this.isUuid(id)) return null;
+    const client = window.supabaseClient || window.supabase;
+    if (client?.from) {
+      const { data, error } = await client.from('contacts').select('*').eq('id', id).maybeSingle();
+      if (error) throw error;
+      return data ? this.normalizeContact(data) : null;
+    }
+    const response = await Api.requestWithSession('contacts', 'get', { id }, { requireAuth: true });
+    const row = response?.row || response?.data || response?.contact || response;
+    return row && typeof row === 'object' ? this.normalizeContact(row) : null;
+  },
+  async getFullCompanyRecord(companyIdOrRecord) {
+    const id = typeof companyIdOrRecord === 'object' ? (companyIdOrRecord.id || companyIdOrRecord.company_uuid || companyIdOrRecord.companyUuid) : companyIdOrRecord;
+    return this.loadCompanyByUuid(id);
+  },
+  async getFullContactRecord(contactIdOrRecord) {
+    const id = typeof contactIdOrRecord === 'object' ? (contactIdOrRecord.id || contactIdOrRecord.contact_uuid || contactIdOrRecord.contactUuid) : contactIdOrRecord;
+    return this.loadContactByUuid(id);
+  },
+  applyLoadedCustomerToForm(company, contact = null) {
+    if (!E.proposalForm || !company || company.id !== this.state.selectedCompanyId) return false;
+    const companyName = String(company.company_name || company.legal_name || '').trim();
+    const legalName = String(company.legal_name || company.company_name || '').trim();
+    E.proposalForm.dataset.companyId = company.id;
+    E.proposalForm.dataset.companyName = companyName;
+    E.proposalForm.dataset.companyLegalName = legalName;
+    E.proposalForm.dataset.companyAddress = String(company.address || '').trim();
+    if (E.proposalFormCompanyId) E.proposalFormCompanyId.value = company.id;
+    if (E.proposalFormCustomerName) E.proposalFormCustomerName.value = legalName;
+    if (E.proposalFormCustomerAddress) E.proposalFormCustomerAddress.value = String(company.address || '').trim();
+    if (contact) {
+      E.proposalForm.dataset.contactId = contact.id;
+      E.proposalForm.dataset.contactName = this.buildContactDisplayName(contact);
+      E.proposalForm.dataset.contactJobTitle = this.getContactTitle(contact);
+      E.proposalForm.dataset.contactEmail = String(contact.email || '').trim();
+      E.proposalForm.dataset.contactPhone = String(contact.phone || '').trim();
+      E.proposalForm.dataset.contactMobile = String(contact.mobile || '').trim();
+      if (E.proposalFormContactId) E.proposalFormContactId.value = contact.id;
+      if (E.proposalFormCustomerContactName) E.proposalFormCustomerContactName.value = this.buildContactDisplayName(contact);
+      if (E.proposalFormCustomerContactMobile) E.proposalFormCustomerContactMobile.value = String(contact.mobile || contact.phone || '').trim();
+      if (E.proposalFormCustomerContactEmail) E.proposalFormCustomerContactEmail.value = String(contact.email || '').trim();
+      this.applyProposalContactSignatory(contact, { contactChanged: true });
+    } else {
+      E.proposalForm.dataset.contactId = '';
+      if (E.proposalFormCustomerContactName) E.proposalFormCustomerContactName.value = '';
+      if (E.proposalFormCustomerContactMobile) E.proposalFormCustomerContactMobile.value = '';
+      if (E.proposalFormCustomerContactEmail) E.proposalFormCustomerContactEmail.value = '';
+      if (E.proposalFormCustomerSignatoryName) E.proposalFormCustomerSignatoryName.value = String(company.authorized_signatory_full_name || '').trim();
+      if (E.proposalFormCustomerSignatoryTitle) E.proposalFormCustomerSignatoryTitle.value = String(company.authorized_signatory_title || '').trim();
+    }
+    return true;
+  },
+  async hydrateCreateCustomerByUuid(companyId, contactId = '', source = 'direct') {
+    const token = ++this.state.createLoadToken;
+    this.state.selectedCompanyId = String(companyId || '').trim();
+    this.state.selectedContactId = String(contactId || '').trim();
+    if (!this.state.selectedCompanyId) {
+      this.state.loadedCompany = null;
+      this.state.loadedContact = null;
+      if (E.proposalForm) {
+        E.proposalForm.dataset.companyId = '';
+        E.proposalForm.dataset.contactId = '';
+      }
+      return true;
+    }
+    console.log('[Proposal Create] source:', source);
+    console.log('[Proposal Create] selectedCompanyId:', this.state.selectedCompanyId);
+    const loadedCompany = await this.loadCompanyByUuid(this.state.selectedCompanyId);
+    console.log('[Proposal Create] loadedCompany:', loadedCompany);
+    if (token !== this.state.createLoadToken) return false;
+    if (!loadedCompany || loadedCompany.id !== this.state.selectedCompanyId) throw new Error('Selected company data mismatch. Please reselect the company.');
+    let loadedContact = null;
+    if (this.state.selectedContactId) {
+      loadedContact = await this.loadContactByUuid(this.state.selectedContactId);
+      if (!loadedContact || loadedContact.id !== this.state.selectedContactId) throw new Error('Selected contact data mismatch. Please reselect the contact.');
+      const contactCompanyId = String(loadedContact.company_uuid || loadedContact.company_id || '').trim();
+      if (this.isUuid(contactCompanyId) && contactCompanyId !== loadedCompany.id) throw new Error('Selected contact does not belong to the selected company.');
+    }
+    console.log('[Proposal Create] selectedContactId:', this.state.selectedContactId);
+    console.log('[Proposal Create] loadedContact:', loadedContact);
+    this.state.loadedCompany = loadedCompany;
+    this.state.loadedContact = loadedContact;
+    return this.applyLoadedCustomerToForm(loadedCompany, loadedContact);
+  },
   ensureProposalId(value = '') {
     const trimmed = String(value ?? '').trim();
     return trimmed || this.generateProposalId();
@@ -1655,9 +1763,9 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       contact_email: String(deal.contact_email || deal.contactEmail || deal.email || '').trim(),
       contact_phone: String(deal.contact_phone || deal.contactPhone || deal.phone || '').trim(),
       currency: String(deal.currency || '').trim(),
-      company_id: String(selectedCompany?.company_id || deal.company_id || deal.companyId || '').trim(),
+      company_id: String(selectedCompany?.id || deal.company_id || deal.companyId || '').trim(),
       company_name: String(selectedCompany?.company_name || deal.company_name || deal.companyName || '').trim(),
-      contact_id: String(selectedContact?.contact_id || deal.contact_id || deal.contactId || '').trim(),
+      contact_id: String(selectedContact?.id || deal.contact_id || deal.contactId || '').trim(),
       contact_name: this.buildContactDisplayName(selectedContact || {}) || fullName,
       contact_email: String(selectedContact?.email || deal.contact_email || deal.contactEmail || deal.email || '').trim(),
       contact_phone: String(selectedContact?.mobile || selectedContact?.phone || deal.contact_phone || deal.contactPhone || deal.phone || '').trim(),
@@ -3224,10 +3332,18 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     if (!E.proposalForm) return;
     E.proposalForm.reset();
     if (E.proposalFormProposalId) E.proposalFormProposalId.value = '';
-    E.proposalForm.dataset.refNumber = '';
+    ['id', 'refNumber', 'companyId', 'companyName', 'companyLegalName', 'companyAddress', 'contactId', 'contactName', 'contactFirstName', 'contactLastName', 'contactJobTitle', 'contactEmail', 'contactPhone', 'contactMobile', 'source', 'sourceCompanyId', 'sourceContactId'].forEach(key => { delete E.proposalForm.dataset[key]; });
+    ['proposalFormCompanyId', 'proposalFormContactId', 'proposalFormCompanyNameHidden', 'proposalFormContactNameHidden'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    ['proposalFormCompanySelector', 'proposalFormContactSelector'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    ['proposalDraft', 'cachedProposal', 'currentProposalDraft', 'proposalFormState'].forEach(key => { try { localStorage.removeItem(key); sessionStorage.removeItem(key); } catch {} });
     this.state.currentProposalId = '';
     this.state.currentProposal = null;
     this.state.currentItems = [];
+    this.state.selectedCompanyId = '';
+    this.state.selectedContactId = '';
+    this.state.loadedCompany = null;
+    this.state.loadedContact = null;
+    this.state.createLoadToken += 1;
     if (E.proposalFormDeleteBtn) E.proposalFormDeleteBtn.style.display = 'none';
     if (E.proposalFormSaveBtn) E.proposalFormSaveBtn.disabled = false;
     if (E.proposalFormPreviewBtn) E.proposalFormPreviewBtn.disabled = false;
@@ -4009,6 +4125,54 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       contact_mobile: String(selectedContact.mobile || '').trim()
     };
   },
+  async validateAndRefreshProposalCustomer(proposal = {}) {
+    const companyId = String(proposal.company_id || '').trim();
+    const selectedCompanyId = String(this.state.selectedCompanyId || E.proposalForm?.dataset.companyId || '').trim();
+    const sourceCompanyId = String(E.proposalForm?.dataset.sourceCompanyId || '').trim();
+    const sourceContactId = String(E.proposalForm?.dataset.sourceContactId || '').trim();
+    if (!this.isUuid(companyId)) throw new Error('Please select a company by UUID.');
+    if (selectedCompanyId && selectedCompanyId !== companyId) throw new Error('Selected company data mismatch. Please reselect the company.');
+    if (sourceCompanyId && sourceCompanyId !== companyId) throw new Error('Source company does not match the selected company. Save blocked.');
+    const loadedCompany = await this.loadCompanyByUuid(companyId);
+    if (!loadedCompany || loadedCompany.id !== companyId) throw new Error('Selected company data mismatch. Please reselect the company.');
+    const contactId = String(proposal.contact_id || '').trim();
+    if (sourceContactId && sourceContactId !== contactId) throw new Error('Source contact does not match the selected contact. Save blocked.');
+    let loadedContact = null;
+    if (contactId) {
+      if (!this.isUuid(contactId)) throw new Error('Please select a contact by UUID.');
+      loadedContact = await this.loadContactByUuid(contactId);
+      if (!loadedContact || loadedContact.id !== contactId) throw new Error('Selected contact data mismatch. Please reselect the contact.');
+      const contactCompanyId = String(loadedContact.company_uuid || loadedContact.company_id || '').trim();
+      if (this.isUuid(contactCompanyId) && contactCompanyId !== companyId) throw new Error('Selected contact does not belong to the selected company.');
+    }
+    const legalName = String(loadedCompany.legal_name || loadedCompany.company_name || '').trim();
+    proposal.company_id = loadedCompany.id;
+    proposal.company_name = String(loadedCompany.company_name || legalName).trim();
+    proposal.customer_name = legalName;
+    proposal.customer_legal_name = legalName;
+    proposal.customer_address = String(loadedCompany.address || '').trim();
+    const signatory = loadedContact ? { name: this.buildContactDisplayName(loadedContact), title: this.getContactTitle(loadedContact) } : this.resolveCompanyAuthorizedSignatory(loadedCompany);
+    proposal.customer_signatory_name = signatory.name || '';
+    proposal.customer_signatory_title = signatory.title || '';
+    proposal.customer_authorized_signatory_name = signatory.name || '';
+    proposal.customer_authorized_signatory_title = signatory.title || '';
+    if (loadedContact) {
+      proposal.contact_id = loadedContact.id;
+      proposal.contact_name = this.buildContactDisplayName(loadedContact);
+      proposal.contact_email = String(loadedContact.email || '').trim();
+      proposal.contact_phone = String(loadedContact.mobile || loadedContact.phone || '').trim();
+      proposal.contact_mobile = String(loadedContact.mobile || '').trim();
+      proposal.customer_contact_name = proposal.contact_name;
+      proposal.customer_contact_email = proposal.contact_email;
+      proposal.customer_contact_mobile = proposal.contact_phone;
+    }
+    this.state.selectedCompanyId = loadedCompany.id;
+    this.state.selectedContactId = loadedContact?.id || '';
+    this.state.loadedCompany = loadedCompany;
+    this.state.loadedContact = loadedContact;
+    console.log('[Proposal Create] proposal payload:', proposal);
+    return proposal;
+  },
   calculateTotalsFromItems(items = []) {
     return this.calculateProposalTotals(items);
   },
@@ -4077,8 +4241,17 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
   },
   openProposalForm(proposal = null, items = [], { readOnly = false } = {}) {
     if (!E.proposalFormModal || !E.proposalForm) return;
-    const base = proposal ? this.normalizeProposal(proposal) : this.emptyProposal();
-    const mode = base.id ? 'edit' : 'create';
+    const incoming = proposal ? this.normalizeProposal(proposal) : this.emptyProposal();
+    const mode = incoming.id ? 'edit' : 'create';
+    const sourceCompanyId = mode === 'create' ? String(incoming.company_id || '').trim() : '';
+    const sourceContactId = mode === 'create' ? String(incoming.contact_id || '').trim() : '';
+    const source = mode === 'create' ? (incoming.deal_id ? 'deal' : incoming.lead_id ? 'lead' : incoming.client_id ? 'client' : sourceCompanyId ? 'company/contact' : 'direct') : 'edit';
+    const base = mode === 'create' && sourceCompanyId ? {
+      ...incoming,
+      customer_name: '', customer_legal_name: '', customer_address: '', company_name: '',
+      customer_contact_name: '', customer_contact_mobile: '', customer_contact_email: '',
+      contact_name: '', contact_email: '', contact_phone: '', contact_mobile: ''
+    } : incoming;
     const acceptedLocked = this.isProposalAccepted(base);
     const expiredLocked = this.isProposalExpired(base);
     const adminOverride = this.canUseAdminOverride();
@@ -4092,6 +4265,9 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
 
     E.proposalForm.dataset.mode = mode;
     E.proposalForm.dataset.id = base.id || '';
+    E.proposalForm.dataset.source = source;
+    E.proposalForm.dataset.sourceCompanyId = sourceCompanyId;
+    E.proposalForm.dataset.sourceContactId = sourceContactId;
     E.proposalForm.dataset.refNumber = base.ref_number || '';
     E.proposalForm.dataset.signedDocumentPath = base.signed_document_path || '';
     E.proposalForm.dataset.signedDocumentName = base.signed_document_name || '';
@@ -4159,6 +4335,13 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
 
     E.proposalFormModal.style.display = 'flex';
     E.proposalFormModal.setAttribute('aria-hidden', 'false');
+    if (mode === 'create' && sourceCompanyId) {
+      if (!this.isUuid(sourceCompanyId) || (sourceContactId && !this.isUuid(sourceContactId))) {
+        UI.toast('Proposal source is missing a valid company/contact UUID. Please reselect the company.');
+      } else {
+        this.hydrateCreateCustomerByUuid(sourceCompanyId, sourceContactId, source).catch(error => UI.toast(error?.message || 'Unable to load selected company.'));
+      }
+    }
     window.setTimeout(() => window.CrmCompanyContactSelectors?.initializeCompanyContactSelectorsForProposal?.(), 0);
     if (window.setAppHashRoute && window.buildRecordHashRoute) setAppHashRoute(buildRecordHashRoute('proposals', base || {}));
   },
@@ -4393,6 +4576,12 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const proposalId = String(E.proposalForm?.dataset.id || '').trim();
     this.syncValidUntilFromProposalDate({ forceDefault: true });
     const proposal = this.collectProposalFormData();
+    try {
+      await this.validateAndRefreshProposalCustomer(proposal);
+    } catch (error) {
+      UI.toast(error?.message || 'Selected company data mismatch. Please reselect the company.');
+      return;
+    }
     if (mode === 'edit' && this.isProposalExpired({ ...(this.state.currentProposal || {}), ...proposal }) && !this.canUseAdminOverride()) {
       UI.toast('This proposal has expired and cannot be edited.');
       return;
@@ -4698,7 +4887,24 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     }
     try {
       const { proposal, items } = await this.loadProposalPreviewData(proposalId);
-      const html = this.buildProposalDocumentHtml(proposal, items, { mode: 'preview' });
+      const companyId = String(proposal?.company_id || '').trim();
+      const loadedCompany = await this.loadCompanyByUuid(companyId);
+      if (!loadedCompany || loadedCompany.id !== companyId) {
+        UI.toast('Selected company data mismatch. Please reselect the company.');
+        return;
+      }
+      const loadedContact = proposal?.contact_id ? await this.loadContactByUuid(proposal.contact_id) : null;
+      if (proposal?.contact_id && (!loadedContact || loadedContact.id !== proposal.contact_id)) {
+        UI.toast('Selected company data mismatch. Please reselect the company.');
+        return;
+      }
+      const contactCompanyId = String(loadedContact?.company_uuid || loadedContact?.company_id || '').trim();
+      if (this.isUuid(contactCompanyId) && contactCompanyId !== loadedCompany.id) {
+        UI.toast('Selected company data mismatch. Please reselect the company.');
+        return;
+      }
+      const previewProposal = { ...proposal, company_id: loadedCompany.id, company_name: loadedCompany.company_name, customer_name: loadedCompany.legal_name || loadedCompany.company_name, customer_legal_name: loadedCompany.legal_name || loadedCompany.company_name, customer_address: loadedCompany.address || '', contact_id: loadedContact?.id || '', contact_name: loadedContact ? this.buildContactDisplayName(loadedContact) : '', contact_email: loadedContact?.email || '', contact_phone: loadedContact?.mobile || loadedContact?.phone || '', customer_contact_name: loadedContact ? this.buildContactDisplayName(loadedContact) : '', customer_contact_email: loadedContact?.email || '', customer_contact_mobile: loadedContact?.mobile || loadedContact?.phone || '' };
+      const html = this.buildProposalDocumentHtml(previewProposal, items, { mode: 'preview' });
       if (!html) {
         UI.toast('Unable to build proposal preview.');
         return;
