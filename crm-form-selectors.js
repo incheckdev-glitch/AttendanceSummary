@@ -65,6 +65,7 @@
       companyHiddenId: 'proposalFormCompanyId',
       contactHiddenId: 'proposalFormContactId',
       directSourceIds: ['proposalFormDealId'],
+      uuidSourceOfTruth: true,
       companyFields: {
         name: ['proposalFormCustomerName', 'proposalFormCompanyNameHidden'],
         legalName: ['proposalFormCustomerLegalName'],
@@ -253,7 +254,7 @@
     const c = raw && typeof raw === 'object' ? raw : {};
     const uuid = str(c.id);
     const businessId = str(c.company_id || c.companyId);
-    const canonicalId = businessId || uuid;
+    const canonicalId = uuid || businessId;
     return {
       id: uuid,
       company_id: canonicalId,
@@ -286,7 +287,7 @@
     const full = str(c.full_name || c.fullName || c.contact_name || c.contactName || `${first} ${last}`);
     return {
       id: str(c.id),
-      contact_id: str(c.contact_id || c.contactId),
+      contact_id: str(c.id || c.contact_id || c.contactId),
       company_id: str(c.company_id || c.companyId),
       company_uuid: str(c.company_uuid || c.companyUuid),
       company_name: str(c.company_name || c.companyName),
@@ -479,10 +480,10 @@
       (selectedName && contactCompanyNames.includes(selectedName));
   }
 
-  async function resolveContactsForCompany(selectedCompany) {
+  async function resolveContactsForCompany(selectedCompany, { strictUuid = false } = {}) {
     const selectedCompanyId = str(selectedCompany?.company_id || selectedCompany?.id);
     const idContacts = await fetchContacts(selectedCompanyId);
-    if (idContacts.length) return idContacts;
+    if (idContacts.length || strictUuid) return idContacts;
     let allContacts = [];
     try {
       if (global.Api?.requestWithSession) {
@@ -552,7 +553,7 @@
     contactSelect.disabled = true;
     contactSelect.innerHTML = '<option value="">Loading contacts…</option>';
     const selectedCompany = findCompanyByAnyId(companyId) || { company_id: str(companyId), id: str(companyId), company_uuid: str(companyId) };
-    const contacts = await resolveContactsForCompany(selectedCompany);
+    const contacts = await resolveContactsForCompany(selectedCompany, { strictUuid: cfg.uuidSourceOfTruth === true });
     if (!contacts.length) {
       contactSelect.innerHTML = '<option value="">No contacts found for this company</option>';
       contactSelect.disabled = false;
@@ -686,9 +687,18 @@
     companySelect.addEventListener('change', async () => {
       const companyId = str(companySelect.value);
       const company = findCompanyByAnyId(companyId) || null;
-      if (company) applyCompany(cfg, company);
+      if (cfg.uuidSourceOfTruth === true) {
+        try {
+          await global.Proposals?.hydrateCreateCustomerByUuid?.(companyId, '', 'dropdown');
+        } catch (error) {
+          companySelect.value = '';
+          global.UI?.toast?.(error?.message || 'Selected company data mismatch. Please reselect the company.');
+          return;
+        }
+      } else if (company) applyCompany(cfg, company);
       setValue(cfg.contactHiddenId, '', { readonly: false });
       ['ContactName', 'ContactEmail', 'ContactPhone', 'ContactMobile', 'CustomerContactName', 'CustomerContactEmail', 'CustomerContactPhone', 'CustomerContactMobile', 'CustomerSignatoryName', 'CustomerSignatoryTitle', 'CustomerSignatoryEmail', 'CustomerSignatoryPhone']
+        .filter(suffix => cfg.formId !== 'proposalForm' || !['CustomerSignatoryName', 'CustomerSignatoryTitle'].includes(suffix))
         .forEach(suffix => setText(`${cfg.formId.replace('Form', 'Form')}${suffix}`, ''));
       cfg.updateModule?.(null, { contact_id: '' });
       contactSelect.value = '';
@@ -703,9 +713,17 @@
       const companyId = str(companySelect.value);
       const contactId = str(contactSelect.value);
       const company = findCompanyByAnyId(companyId) || { company_id: companyId, id: companyId, company_uuid: companyId };
-      const contacts = await resolveContactsForCompany(company);
+      const contacts = await resolveContactsForCompany(company, { strictUuid: cfg.uuidSourceOfTruth === true });
       const contact = contacts.find(c => c.contact_id === contactId) || null;
-      if (contact) applyContact(cfg, contact);
+      if (cfg.uuidSourceOfTruth === true) {
+        try {
+          await global.Proposals?.hydrateCreateCustomerByUuid?.(companyId, contactId, 'dropdown');
+        } catch (error) {
+          contactSelect.value = '';
+          global.UI?.toast?.(error?.message || 'Selected contact data mismatch. Please reselect the contact.');
+          return;
+        }
+      } else if (contact) applyContact(cfg, contact);
       if (isDirectCreate(cfg)) {
         companySelect.disabled = false;
         contactSelect.disabled = !companyId;
@@ -725,6 +743,8 @@
   }
 
   async function refreshAll() {
+    state.companies = [];
+    state.contactsByCompany.clear();
     await Promise.all(Object.values(FORM_CONFIG).map(cfg => populateCompanySelect(cfg)));
     Object.values(FORM_CONFIG).forEach(cfg => {
       bindConfig(cfg);

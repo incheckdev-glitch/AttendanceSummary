@@ -368,6 +368,7 @@ const Contacts = {
       this.closeForm();
       this.state.page = recordId ? this.state.page : 1;
       await this.loadAndRefresh();
+      await window.CrmCompanyContactSelectors?.refresh?.();
     } catch (err) {
       UI?.toast?.('Unable to save contact', 'error');
       console.error(err);

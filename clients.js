@@ -894,6 +894,8 @@ const Clients = {
     return {
       ...base,
       client_id: prefill.clientId,
+      company_id: String(client.company_id || client.company_uuid || client.companyId || client.companyUuid || '').trim(),
+      contact_id: String(client.contact_id || client.contact_uuid || client.contactId || client.contactUuid || '').trim(),
       customer_name: prefill.customerName,
       customer_address: prefill.address,
       customer_contact_name: prefill.contactName,
