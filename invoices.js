@@ -3549,11 +3549,20 @@ const Invoices = {
     return this.normalizeText(item?.invoice_status || item?.invoiceStatus || '')
       .replace(/[\s-]+/g, '_');
   },
+  isTruthyInvoiceFlag(value) {
+    const normalized = String(value ?? '').trim().toLowerCase();
+    return ['true', '1', 'yes'].includes(normalized);
+  },
+  isInvoicedStatus(value) {
+    const normalized = String(value ?? '').trim().toLowerCase();
+    if (['', 'null', 'undefined', 'false', '0', 'not_invoiced', 'not invoiced', 'uninvoiced', 'not_billed', 'unbilled', 'pending_invoice', 'pending', 'draft', 'open', 'none'].includes(normalized)) return false;
+    return ['invoiced', 'invoice_created', 'issued', 'paid', 'partially_paid', 'partially paid', 'overdue'].includes(normalized);
+  },
   isAgreementItemInvoiced(item = {}) {
-    const status = String(item.invoice_status || item.invoiceStatus || '').trim().toLowerCase();
-    return ['invoiced', 'issued'].includes(status)
-      || Boolean(item.invoiced_invoice_id || item.invoicedInvoiceId)
-      || Boolean(item.invoiced_at || item.invoicedAt);
+    if (['invoice_created', 'is_invoiced', 'has_invoice', 'invoiced'].some(field => this.isTruthyInvoiceFlag(item[field]))) return true;
+    if (item.invoice_id || item.invoice_uuid || item.linked_invoice_id || item.created_invoice_id || item.invoiced_invoice_id || item.invoicedInvoiceId) return true;
+    if (item.invoice_number || item.invoice_no || item.linked_invoice_number || item.created_invoice_number) return true;
+    return this.isInvoicedStatus(item.invoice_status) || this.isInvoicedStatus(item.billing_status) || Boolean(item.invoiced_at || item.invoicedAt);
   },
   getUninvoicedAnnualSaasItems(agreement = {}, agreementItems = []) {
     const agreementId = String(agreement.id || agreement.agreement_id || '').trim();
@@ -4039,16 +4048,15 @@ const Invoices = {
       .in('id', ids);
     if (error) throw new Error(`Invoice saved, but agreement item invoice status update failed: ${error.message || 'Unknown error'}`);
   },
-  async hydrateFromAgreement(agreementId) {
+  async hydrateFromAgreement(agreementId, { freshGate = null } = {}) {
     const id = String(agreementId || '').trim();
-    if (!id) return;
+    if (!id) return false;
     try {
-      const response = await Api.getAgreement(id);
-      let { agreement, items } = this.extractAgreementAndItems(response, id);
-      if (!Array.isArray(items) || !items.length) {
-        const directItems = await this.loadAgreementItemsDirectForInvoice(agreement, id);
-        if (directItems.length) items = directItems;
-      }
+      // Hydration must use the same fresh rows used by the global gate so invoice items cannot come from an API cache.
+      const gate = await this.requireFreshAgreementInvoiceGate(id, freshGate);
+      if (!gate) return false;
+      const agreement = gate.agreement;
+      const items = Array.isArray(gate.agreementItems) ? gate.agreementItems : [];
       const currentFormInvoice = this.collectFormValues().invoice;
       const pickAgreementValue = (...values) => {
         for (const value of values) {
@@ -4207,8 +4215,10 @@ const Invoices = {
       this.applyTotalsToForm(summary);
       this.syncPaymentFieldsInForm();
       this.syncPaymentConclusion(summary);
+      return true;
     } catch (error) {
       UI.toast('Unable to auto-fill from agreement: ' + (error?.message || 'Unknown error'));
+      return false;
     }
   },
   async openInvoiceById(invoiceId, { readOnly = false, trigger = null } = {}) {
@@ -4373,6 +4383,9 @@ const Invoices = {
       UI.toast(operationsResult?.onboardingRecord ? 'Invoice issued and Operations onboarding created.' : 'Invoice updated.');
       this.closeForm();
       window.dispatchEvent(new CustomEvent('clients:refresh-totals', { detail: { reason: 'invoice-saved' } }));
+      Api.clearApiCache?.('invoices');
+      Api.clearApiCache?.('agreements');
+      window.Agreements?.loadAndRefresh?.({ force: true })?.catch?.(error => console.warn('[Invoice] Agreement invoice gate refresh failed.', error));
     } catch (error) {
       UI.toast('Unable to save invoice: ' + (error?.message || 'Unknown error'));
     } finally {
@@ -4407,6 +4420,16 @@ const Invoices = {
       const hasInvoiceable = (this.state.agreementInvoiceSelection?.invoiceableItems || []).length > 0;
       UI.toast(hasInvoiceable ? 'Please select at least one agreement location to invoice.' : 'Invoice cannot be created because all Annual SaaS locations are already invoiced.');
       return;
+    }
+    if (agreementSelectionActive) {
+      const agreementUuid = String(this.state.agreementInvoiceSelection?.agreementUuid || invoice.agreement_uuid || '').trim();
+      try {
+        const freshGate = await this.requireFreshAgreementInvoiceGate(agreementUuid);
+        if (!freshGate) return;
+      } catch (error) {
+        UI.toast('Unable to verify invoice creation eligibility: ' + (error?.message || 'Unknown error'));
+        return;
+      }
     }
     let loadedSelection;
     try {
@@ -4521,6 +4544,9 @@ const Invoices = {
       }
       this.closeForm();
       window.dispatchEvent(new CustomEvent('clients:refresh-totals', { detail: { reason: 'invoice-saved' } }));
+      Api.clearApiCache?.('invoices');
+      Api.clearApiCache?.('agreements');
+      window.Agreements?.loadAndRefresh?.({ force: true })?.catch?.(error => console.warn('[Invoice] Agreement invoice gate refresh failed.', error));
     } catch (error) {
       UI.toast('Unable to save invoice: ' + (error?.message || 'Unknown error'));
     } finally {
@@ -4529,19 +4555,62 @@ const Invoices = {
       this.setFormBusy(false);
     }
   },
+  clearInvoiceCachesAfterDelete(deletedInvoiceId = '') {
+    const id = String(deletedInvoiceId || '').trim();
+    delete this.state.detailCacheById[id];
+    delete this.state.receiptsByInvoiceId[id];
+    delete this.state.paymentScheduleByInvoiceId[id];
+    this.state.rows = this.state.rows.filter(invoice => this.invoiceDbId(invoice?.id) !== id);
+    this.state.filteredRows = this.state.filteredRows.filter(invoice => this.invoiceDbId(invoice?.id) !== id);
+    if (this.invoiceDbId(this.state.selectedInvoice?.id) === id) this.state.selectedInvoice = null;
+    this.state.selectedAgreement = null;
+    this.state.form = { ...(this.state.form || {}), selectedAgreement: null };
+    Api.clearApiCache?.('invoices');
+    Api.clearApiCache?.('agreements');
+    try {
+      const storageKeys = [];
+      [window.localStorage, window.sessionStorage].forEach(storage => {
+        if (!storage) return;
+        for (let index = 0; index < storage.length; index += 1) {
+          const key = storage.key(index);
+          if (key && /(invoice|agreement)/i.test(key)) storageKeys.push([storage, key]);
+        }
+      });
+      storageKeys.forEach(([storage, key]) => storage.removeItem(key));
+    } catch (_error) {
+      // Ignore storage sandbox/quota failures.
+    }
+    const agreements = window.Agreements;
+    if (agreements?.state) {
+      agreements.state.detailCacheById = {};
+      agreements.state.currentAgreement = null;
+      agreements.state.currentAgreementId = '';
+    }
+    if (window.Clients?.state) window.Clients.state.detailCache = {};
+    this.rerenderVisibleTable();
+  },
   async deleteInvoice(invoiceId) {
     if (!Permissions.canDeleteInvoice()) return UI.toast('Insufficient permissions to delete invoices.');
     const id = String(invoiceId || '').trim();
-    const displayInvoice =
-      this.invoiceDisplayId(this.state.rows.find(row => this.invoiceDbId(row.id) === id)) || id;
+    const invoice = this.state.rows.find(row => this.invoiceDbId(row.id) === id) || this.state.selectedInvoice || {};
+    const agreementId = String(invoice.agreement_id || invoice.agreementId || '').trim();
+    const agreementUuid = String(invoice.agreement_uuid || invoice.agreementUuid ||
+      window.Agreements?.state?.rows?.find?.(agreement => String(agreement?.agreement_id || '').trim() === agreementId)?.id || '').trim();
+    const displayInvoice = this.invoiceDisplayId(invoice) || id;
     if (!id || !window.confirm(`Delete invoice ${displayInvoice}?`)) return;
     this.setFormBusy(true);
     try {
       await Api.deleteInvoice(id);
-      delete this.state.detailCacheById[id];
-      this.removeLocalRow(id);
-      UI.toast('Invoice deleted.');
+      this.clearInvoiceCachesAfterDelete(id);
       this.closeForm();
+      if (agreementUuid && window.Agreements?.reloadAgreementInvoiceGateData) {
+        await window.Agreements.reloadAgreementInvoiceGateData(agreementUuid).catch(error => console.warn('[Invoice] Fresh agreement gate reload failed after delete.', error));
+      }
+      await Promise.all([
+        this.refresh(true).catch(error => console.warn('[Invoice] Invoice list refresh failed after delete.', error)),
+        window.Agreements?.loadAndRefresh?.({ force: true })?.catch?.(error => console.warn('[Invoice] Agreement list refresh failed after delete.', error))
+      ]);
+      UI.toast('Invoice deleted.');
     } catch (error) {
       UI.toast('Unable to delete invoice: ' + (error?.message || 'Unknown error'));
     } finally {
@@ -4680,15 +4749,42 @@ const Invoices = {
       await this.openInvoiceById(normalized.id, { readOnly: false });
     }
   },
-  async openCreateFromAgreementTemplate(agreementId) {
+  async requireFreshAgreementInvoiceGate(agreementId, providedGate = null) {
     const id = String(agreementId || '').trim();
-    if (!id) return;
-    this.openInvoice(this.normalizeInvoice({ ...this.emptyInvoice(), agreement_uuid: id, agreement_id: '', agreement_number: '' }), [], { readOnly: false });
-    await this.hydrateFromAgreement(id);
-    const selection = this.state.agreementInvoiceSelection || {};
-    if (selection.active && !(selection.invoiceableItems || []).length) {
-      UI.toast('Invoice cannot be created because all Annual SaaS locations are already invoiced.');
-      this.closeForm();
+    if (!id) throw new Error('Agreement ID is required.');
+    const gate = providedGate && String(providedGate?.agreement?.id || '').trim() === id
+      ? providedGate
+      : await window.Agreements?.reloadAgreementInvoiceGateData?.(id);
+    if (!gate || !gate.agreement) throw new Error('Unable to verify the agreement invoice gate from fresh data.');
+    if (!gate.canCreateInvoice) {
+      UI.toast('Invoice cannot be created because a real invoice link or active invoice still exists.');
+      return null;
+    }
+    return gate;
+  },
+  async openCreateFromAgreementTemplate(agreementId, { freshGate = null } = {}) {
+    const id = String(agreementId || '').trim();
+    if (!id) return false;
+    try {
+      // Every agreement-backed invoice entry point, including client actions, must pass this fresh global gate.
+      const gate = await this.requireFreshAgreementInvoiceGate(id, freshGate);
+      if (!gate) return false;
+      this.openInvoice(this.normalizeInvoice({ ...this.emptyInvoice(), agreement_uuid: id, agreement_id: '', agreement_number: '' }), [], { readOnly: false });
+      const hydrated = await this.hydrateFromAgreement(id, { freshGate: gate });
+      if (!hydrated) {
+        this.closeForm();
+        return false;
+      }
+      const selection = this.state.agreementInvoiceSelection || {};
+      if (selection.active && !(selection.invoiceableItems || []).length) {
+        UI.toast('Invoice cannot be created because all Annual SaaS locations are already invoiced.');
+        this.closeForm();
+        return false;
+      }
+      return true;
+    } catch (error) {
+      UI.toast('Unable to verify invoice creation eligibility: ' + (error?.message || 'Unknown error'));
+      return false;
     }
   },
   async refresh(force = false) {
