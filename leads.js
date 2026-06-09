@@ -1831,14 +1831,14 @@ const Leads = {
       return `<option value="${U.escapeAttr(uuid)}" label="${U.escapeAttr(name)}" data-contact-id="${U.escapeAttr(uuid)}" data-company-id="${U.escapeAttr(c.company_id || c.company_uuid || '')}"></option>`;
     }).join('');
   },
-  async loadLeadPickerOptions(companyId = '') {
+  async loadLeadPickerOptions(companyId = '', searchText = '') {
     const requestId = (this._leadPickerLoadRequestId || 0) + 1;
     this._leadPickerLoadRequestId = requestId;
     const normalizedCompanyId = this.cleanUuidOrUndefined(companyId) || this.getRecordUuid(this.state.selectedCompany || {}, 'company') || '';
     const rowsFrom = res => Array.isArray(res?.rows) ? res.rows : (Array.isArray(res?.items) ? res.items : (Array.isArray(res?.data) ? res.data : []));
     let companies = [];
     try {
-      const companyRows = await window.CrmCompanyContactSelectors?.loadCompanyOptions?.('', normalizedCompanyId);
+      const companyRows = await window.CrmCompanyContactSelectors?.loadCompanyOptions?.(searchText || '', normalizedCompanyId);
       if (!companyRows) throw new Error('Shared company option loader is unavailable.');
       companies = companyRows
         .map(c => this.normalizeCompany(c))
@@ -2520,7 +2520,8 @@ const Leads = {
     }
     this.lockCompanyContactDisplayFields();
     if (E.leadFormCompanyName) {
-      E.leadFormCompanyName.addEventListener('focus', () => this.loadLeadPickerOptions(this.getRecordUuid(this.state.selectedCompany || {}, 'company')).catch(error => console.error('[leads] company picker refresh on open failed', error)));
+      E.leadFormCompanyName.addEventListener('focus', () => this.loadLeadPickerOptions(this.getRecordUuid(this.state.selectedCompany || {}, 'company'), '').catch(error => console.error('[leads] company picker refresh on open failed', error)));
+      window.CrmCompanyContactSelectors?.bindCompanyRemoteSearch?.(E.leadFormCompanyName, searchText => this.loadLeadPickerOptions(this.getRecordUuid(this.state.selectedCompany || {}, 'company'), searchText));
       E.leadFormCompanyName.addEventListener('input', event => this.handleLeadCompanyInput(event));
       E.leadFormCompanyName.addEventListener('change', event => this.handleLeadCompanyChange(event));
     }

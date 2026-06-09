@@ -254,7 +254,7 @@
   function normalizeCompany(raw = {}) {
     const c = raw && typeof raw === 'object' ? raw : {};
     const rawCompanyId = str(c.company_id || c.companyId);
-    const uuid = str(c.id || c.company_uuid || c.companyUuid || c.company_uuid_id || c.companyUuidId || c.company_uuid_value);
+    const uuid = [c.company_uuid, c.companyUuid, c.id, c.company_uuid_id, c.companyUuidId, c.company_uuid_value, rawCompanyId].map(str).find(isUuid) || '';
     const businessId = str(c.company_ref || c.companyRef || c.company_business_id || c.companyBusinessId || c.company_number || c.companyNumber || c.company_code || c.companyCode || c.reference || c.code || (isUuid(rawCompanyId) ? '' : rawCompanyId));
     const canonicalId = uuid || (isUuid(rawCompanyId) ? rawCompanyId : '');
     return {
@@ -266,8 +266,10 @@
       company_ref: businessId,
       company_number: str(c.company_number || c.companyNumber || businessId),
       company_code: str(c.company_code || c.companyCode),
-      company_name: str(c.company_name || c.companyName || c.companyNameText || c.name),
-      name: str(c.name || c.company_name || c.companyName),
+      display_label: str(c.display_label || c.displayLabel || c.company_name || c.companyName || c.name || c.legal_name || c.legalName),
+      secondary: str(c.secondary || c.email || c.main_email || c.mainEmail || c.phone || c.main_phone || c.mainPhone || c.city || c.country),
+      company_name: str(c.company_name || c.companyName || c.companyNameText || c.name || c.display_label || c.displayLabel),
+      name: str(c.name || c.company_name || c.companyName || c.display_label || c.displayLabel),
       legal_name: str(c.legal_name || c.legalName),
       company_type: str(c.company_type || c.companyType),
       industry: str(c.industry),
@@ -334,7 +336,10 @@
     };
   }
   function displayCompany(company = {}) {
-    return str(company.legal_name || company.company_name || company.company_id || 'Unnamed company');
+    return str(company.display_label || company.company_name || company.legal_name || company.name || company.company_uuid || 'Unnamed company');
+  }
+  function companySecondary(company = {}) {
+    return str(company.secondary || company.email || company.main_email || company.phone || company.main_phone || company.city || company.country);
   }
   function displayContact(contact = {}, { includeEmail = false } = {}) {
     const c = contact && typeof contact === 'object' ? contact : {};
@@ -385,7 +390,7 @@
   }
   function getCompanyOptionValue(company = {}) {
     // CRM relations must always use the companies.id UUID, never a display/business code.
-    return str(company.id || company.company_uuid);
+    return str(company.company_uuid);
   }
   function getContactOptionValue(contact = {}) {
     // CRM relations must always use the contacts.id UUID, never Contact# refs or display values.
@@ -407,7 +412,7 @@
         : getContactOptionValue(row);
       if (!value) return;
       const label = type === 'company'
-        ? displayCompany(row)
+        ? [displayCompany(row), companySecondary(row)].filter(Boolean).join(' — ')
         : [displayContact(row, { includeEmail: false }), contactSecondary(row)].filter(Boolean).join(' — ');
       options.push(`<option value="${escapeAttr(value)}">${escapeHtml(label)}</option>`);
     });
@@ -503,41 +508,17 @@
     const selectedId = str(includeSelectedId);
     const client = global.SupabaseClient?.getClient?.() || global.supabaseClient || global.supabase;
     state.companyLoadError = null;
-    let rows = [];
 
     try {
-      if (client?.from) {
-        const buildQuery = fields => {
-          let query = client.from('companies').select('*');
-          if (search) {
-            const escaped = search.replace(/[,%()]/g, ' ').trim();
-            query = query.or(fields.map(field => `${field}.ilike.%${escaped}%`).join(','));
-          }
-          return query
-            .order('updated_at', { ascending: false, nullsFirst: false })
-            .order('created_at', { ascending: false, nullsFirst: false })
-            .order('legal_name', { ascending: true, nullsFirst: false })
-            .order('company_name', { ascending: true, nullsFirst: false })
-            .limit(200);
-        };
-        let result = await buildQuery(['legal_name', 'company_name', 'name', 'company_id', 'company_number', 'company_code']);
-        // Deployments do not all have the optional alias/code columns yet.
-        if (result.error && search) result = await buildQuery(['legal_name', 'company_name', 'company_id']);
-        if (result.error) throw result.error;
-        rows = (result.data || []).map(normalizeCompany).filter(company => getCompanyOptionValue(company) && isSelectableCompany(company));
-      } else if (global.Api?.requestWithSession) {
-        const response = await global.Api.requestWithSession('companies', 'list', {
-          limit: 200,
-          page: 1,
-          search,
-          sortBy: 'updated_at',
-          sortDir: 'desc'
-        }, { requireAuth: true });
-        rows = rowsFrom(response).map(normalizeCompany).filter(company => getCompanyOptionValue(company) && isSelectableCompany(company));
-      } else {
-        throw new Error('No Supabase or company API client is available.');
-      }
-
+      if (!client?.rpc) throw new Error('Supabase company search RPC client is unavailable.');
+      const { data, error } = await client.rpc('crm_search_companies_for_select', {
+        p_search: search || '',
+        p_limit: 100
+      });
+      if (error) throw error;
+      const rows = (Array.isArray(data) ? data : [])
+        .map(normalizeCompany)
+        .filter(company => getCompanyOptionValue(company) && isSelectableCompany(company));
       const selected = selectedId && !rows.some(company => getCompanyOptionValue(company) === selectedId)
         ? await loadCompanySafe(selectedId)
         : null;
@@ -546,7 +527,7 @@
     } catch (error) {
       state.companies = [];
       state.companyLoadError = error;
-      console.error('[crm selectors] fresh company options query failed', error);
+      console.error('[crm selectors] fresh company options RPC failed', error);
       throw error;
     }
   }
@@ -734,13 +715,55 @@
     return fetchCompanies(searchText, includeSelectedId);
   }
 
+  function bindCompanyRemoteSearch(select, loadSearchResults) {
+    if (!select || typeof loadSearchResults !== 'function' || select.dataset.crmCompanyRemoteSearchBound === 'true') return;
+    select.dataset.crmCompanyRemoteSearchBound = 'true';
+    let typedSearch = '';
+    let resetTimer = null;
+    let requestId = 0;
+    const search = searchText => {
+      const currentRequestId = ++requestId;
+      Promise.resolve(loadSearchResults(searchText)).catch(error => {
+        if (currentRequestId === requestId) console.error('[crm selectors] remote company search failed', error);
+      });
+    };
+    select.addEventListener('keydown', event => {
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.key === 'Escape') {
+        typedSearch = '';
+        return;
+      }
+      if (event.key === 'Backspace') {
+        typedSearch = typedSearch.slice(0, -1);
+      } else if (event.key.length === 1) {
+        typedSearch += event.key;
+      } else {
+        return;
+      }
+      event.preventDefault();
+      global.clearTimeout(resetTimer);
+      resetTimer = global.setTimeout(() => { typedSearch = ''; }, 3000);
+      search(typedSearch);
+    });
+    select.addEventListener('paste', event => {
+      const pastedSearch = str(event.clipboardData?.getData?.('text'));
+      if (!pastedSearch) return;
+      event.preventDefault();
+      typedSearch = pastedSearch;
+      search(typedSearch);
+    });
+  }
+
   async function populateCompanySelect(cfg, searchText = '') {
     const select = byId(cfg.companySelectId);
     if (!select) return;
     const selectedId = str(select.value || byId(cfg.companyHiddenId)?.value);
+    const requestId = String(Number(select.dataset.companySearchRequestId || 0) + 1);
+    select.dataset.companySearchRequestId = requestId;
     select.dataset.companyLoadState = 'loading';
     try {
       const companies = await loadCompanyOptionsSafe(searchText, selectedId);
+      if (select.dataset.companySearchRequestId !== requestId) return;
       setSelectOptions(select, companies, 'Select company', 'company');
       select.dataset.companyLoadState = 'ready';
     } catch (error) {
@@ -896,7 +919,8 @@
     companySelect.dataset.crmSelectorBound = 'true';
     contactSelect.dataset.crmSelectorBound = 'true';
 
-    companySelect.addEventListener('focus', () => populateCompanySelect(cfg).catch(() => {}));
+    companySelect.addEventListener('focus', () => populateCompanySelect(cfg, '').catch(() => {}));
+    bindCompanyRemoteSearch(companySelect, searchText => populateCompanySelect(cfg, searchText));
     companySelect.addEventListener('change', async () => {
       const selectedCompanyId = str(companySelect.value);
       console.log('[CompanySelect] selected company id:', selectedCompanyId);
@@ -965,7 +989,7 @@
     state.loadingCompanies = null;
     let freshRows = [];
     try {
-      freshRows = await loadCompanyOptions('', companyId);
+      freshRows = await loadCompanyOptions(company.display_label || company.company_name || company.legal_name || company.name || '', companyId);
     } catch (error) {
       // The visible error is rendered below; keep only the just-created response, never stale options.
       console.error('[crm selectors] company refresh after save failed', error);
@@ -1130,6 +1154,7 @@
     initializeCompanyContactSelectorsForReceipt: () => initializeCompanyContactSelectorsForForm('receipt'),
     loadCompanies: loadCompanyOptionsSafe,
     loadCompanyOptions,
+    bindCompanyRemoteSearch,
     resolveCompanyUuid,
     loadCompanySafe,
     loadCompanyByUuid: fetchCompanyByUuid,

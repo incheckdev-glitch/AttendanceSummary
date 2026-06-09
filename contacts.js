@@ -209,7 +209,8 @@ const Contacts = {
     if (this._formBound) return;
     this._formBound = true;
     document.getElementById('contactForm')?.addEventListener('submit', e => this.submitForm(e));
-    document.getElementById('contactCompanyInput')?.addEventListener('focus', () => this.ensureCompanyOptions(this.state.currentContact || {}).catch(error => console.error('[contacts] company picker refresh on open failed', error)));
+    document.getElementById('contactCompanyInput')?.addEventListener('focus', () => this.ensureCompanyOptions(this.state.currentContact || {}, '').catch(error => console.error('[contacts] company picker refresh on open failed', error)));
+    window.CrmCompanyContactSelectors?.bindCompanyRemoteSearch?.(document.getElementById('contactCompanyInput'), searchText => this.ensureCompanyOptions(this.state.currentContact || {}, searchText));
     window.addEventListener('crm:company-saved', event => {
       if (document.getElementById('contactModal')?.getAttribute('aria-hidden') === 'true') return;
       const companyId = String(event?.detail?.companyId || event?.detail?.company?.id || '').trim();
@@ -223,14 +224,14 @@ const Contacts = {
     });
   },
 
-  async ensureCompanyOptions(existing = {}) {
+  async ensureCompanyOptions(existing = {}, searchText = '') {
     const select = document.getElementById('contactCompanyInput');
     if (!select) return [];
     select.disabled = true;
     select.innerHTML = '<option value="">Loading companies…</option>';
     this.setCompanyFallbackMessage('');
 
-    const { rows, unavailable, error } = await this.loadCompanyOptionsSafe();
+    const { rows, unavailable, error } = await this.loadCompanyOptionsSafe(searchText || '');
     const normalizedExisting = this.normalize(existing || {});
     const existingIds = normalizedExisting.company_ids.length ? normalizedExisting.company_ids : [normalizedExisting.company_id || this.state.companyId].filter(Boolean);
     const resolvedExistingIds = (await Promise.all(existingIds.map(companyId => window.CrmCompanyContactSelectors?.resolveCompanyUuid?.(companyId)))).filter(Boolean);
