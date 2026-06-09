@@ -1604,8 +1604,18 @@ const Deals = {
     }
 
     const dealId = String(E.dealForm?.dataset.id || '').trim();
-    await this.ensureCompanyContactHydratedBeforeSave();
-    const deal = this.collectFormData();
+    const selectedCompanyId = String(E.dealFormCompanyId?.value || E.dealFormCompanySelector?.value || '').trim();
+    const selectedContactId = String(E.dealFormContactId?.value || E.dealFormContactSelector?.value || '').trim();
+    let loadedSelection;
+    try {
+      loadedSelection = await window.CrmCompanyContactSelectors.validateCompanyContactSelection({ companyId: selectedCompanyId, contactId: selectedContactId, moduleName: 'deal' });
+    } catch (error) {
+      UI.toast(error?.message || 'Selected company data mismatch. Please reselect the company.');
+      return;
+    }
+    let deal = this.collectFormData();
+    deal = window.CrmCompanyContactSelectors.applyLoadedCompanySnapshot(deal, loadedSelection.loadedCompany, loadedSelection.loadedContact);
+    console.log('[SAVE CHECK] final payload:', deal);
     const isDirectCreate = mode !== 'edit' && !String(deal.lead_id || '').trim();
     if (isDirectCreate && !String(deal.company_id || '').trim()) {
       UI.toast('Please select a company.');
@@ -1628,13 +1638,16 @@ const Deals = {
     try {
       if (mode === 'edit') {
         console.log('[deal edit] save payload', deal);
-        const response = await this.updateDeal(dealId, deal);
-        this.upsertLocalRow(response || { ...deal, id: dealId });
+        await this.updateDeal(dealId, deal);
+        const savedDeal = await this.getDeal(dealId);
+        this.upsertLocalRow(savedDeal);
         UI.toast('Deal updated.');
       } else {
         console.log('[deal edit] save payload', deal);
         const response = await this.createDeal(deal);
-        this.upsertLocalRow(response || deal);
+        const createdId = String(response?.id || response?.row?.id || response?.data?.id || '').trim();
+        const savedDeal = createdId ? await this.getDeal(createdId) : response;
+        this.upsertLocalRow(savedDeal || deal);
         UI.toast('Deal created.');
       }
       this.closeForm();

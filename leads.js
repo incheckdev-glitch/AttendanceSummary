@@ -1584,17 +1584,19 @@ const Leads = {
       return;
     }
     const leadId = String(E.leadForm?.dataset.id || '').trim();
-    const selectedCompanyId = this.getRecordUuid(this.state.selectedCompany || {}, 'company') || String(E.leadFormCompanyId?.value || '').trim();
-    if (selectedCompanyId) {
-      const freshCompanyRaw = await window.CrmCompanyContactSelectors?.loadCompanyByUuid?.(selectedCompanyId);
-      const freshCompany = freshCompanyRaw ? this.normalizeCompany(freshCompanyRaw) : null;
-      if (!freshCompany || this.getRecordUuid(freshCompany, 'company') !== selectedCompanyId) {
-        UI.toast('Selected company data mismatch. Please reselect the company.');
-        return;
-      }
-      this.hydrateLeadFromCompany(freshCompany);
+    const selectedCompanyId = String(E.leadFormCompanyId?.value || '').trim();
+    const selectedContactId = String(E.leadFormContactId?.value || '').trim();
+    let loadedSelection;
+    try {
+      loadedSelection = await window.CrmCompanyContactSelectors.validateCompanyContactSelection({ companyId: selectedCompanyId, contactId: selectedContactId, moduleName: 'lead' });
+    } catch (error) {
+      UI.toast(error?.message || 'Selected company data mismatch. Please reselect the company.');
+      return;
     }
-    const lead = this.collectFormData();
+    this.hydrateLeadFromCompany(this.normalizeCompany(loadedSelection.loadedCompany));
+    let lead = this.collectFormData();
+    lead = window.CrmCompanyContactSelectors.applyLoadedCompanySnapshot(lead, loadedSelection.loadedCompany, loadedSelection.loadedContact);
+    console.log('[SAVE CHECK] final payload:', lead);
     if (!this.validateLeadWorkflow(lead)) return;
     if (!this.validateLeadNewNote(lead, mode)) return;
     if (!this.isUuid(lead.company_id)) {
@@ -1630,7 +1632,9 @@ const Leads = {
         const tempLeadId = this.generateLeadId();
         if (E.leadFormLeadId) E.leadFormLeadId.value = tempLeadId;
         const created = await this.createLead(lead);
-        this.upsertLocalRow(created);
+        const createdId = String(created?.id || created?.row?.id || created?.data?.id || '').trim();
+        const savedLead = createdId ? await this.getLead(createdId) : created;
+        this.upsertLocalRow(savedLead);
         UI.toast('Lead created.');
       }
       this.closeForm();

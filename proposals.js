@@ -4151,7 +4151,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     proposal.customer_name = legalName;
     proposal.customer_legal_name = legalName;
     proposal.customer_address = String(loadedCompany.address || '').trim();
-    const signatory = loadedContact ? { name: this.buildContactDisplayName(loadedContact), title: this.getContactTitle(loadedContact) } : this.resolveCompanyAuthorizedSignatory(loadedCompany);
+    const signatory = this.resolveCompanyAuthorizedSignatory(loadedCompany);
     proposal.customer_signatory_name = signatory.name || '';
     proposal.customer_signatory_title = signatory.title || '';
     proposal.customer_authorized_signatory_name = signatory.name || '';
@@ -4578,6 +4578,11 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const proposal = this.collectProposalFormData();
     try {
       await this.validateAndRefreshProposalCustomer(proposal);
+      console.log('[SAVE CHECK] module:', 'proposal');
+      console.log('[SAVE CHECK] form.company_id:', proposal.company_id);
+      console.log('[SAVE CHECK] selectedCompanyId:', this.state.selectedCompanyId);
+      console.log('[SAVE CHECK] form.contact_id:', proposal.contact_id);
+      console.log('[SAVE CHECK] final payload:', proposal);
     } catch (error) {
       UI.toast(error?.message || 'Selected company data mismatch. Please reselect the company.');
       return;
@@ -4750,7 +4755,11 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         response = await this.createProposal(proposal, items);
       }
 
-      const parsed = this.extractProposalAndItems(response, proposalId);
+      let parsed = this.extractProposalAndItems(response, proposalId);
+      const responseSavedUuid = String(parsed?.proposal?.id || proposalId || '').trim();
+      if (responseSavedUuid) {
+        parsed = this.extractProposalAndItems(await this.getProposal(responseSavedUuid), responseSavedUuid);
+      }
       const savedProposal = parsed?.proposal && typeof parsed.proposal === 'object' ? parsed.proposal : null;
       if (!savedProposal) throw new Error('Proposal save returned no proposal record.');
       const savedBusinessId = String(savedProposal.proposal_id || '').trim();
@@ -4888,6 +4897,8 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     try {
       const { proposal, items } = await this.loadProposalPreviewData(proposalId);
       const companyId = String(proposal?.company_id || '').trim();
+      const selectedCompanyId = String(this.state.selectedCompanyId || '').trim();
+      if (selectedCompanyId && companyId !== selectedCompanyId) throw new Error('Selected company data mismatch. Please reselect the company.');
       const loadedCompany = await this.loadCompanyByUuid(companyId);
       if (!loadedCompany || loadedCompany.id !== companyId) {
         UI.toast('Selected company data mismatch. Please reselect the company.');
