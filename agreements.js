@@ -1134,6 +1134,9 @@ const Agreements = {
     if (hasFullFields) return seed;
     if (!requestedId) return null;
 
+    const safelyLoaded = await window.CrmCompanyContactSelectors?.loadCompanySafe?.(requestedId);
+    if (safelyLoaded) return safelyLoaded;
+
     const rowsFromResponse = response => {
       const rows = response?.rows || response?.items || response?.data || response?.result || response;
       return Array.isArray(rows) ? rows : (rows && typeof rows === 'object' ? [rows] : []);
@@ -1166,11 +1169,11 @@ const Agreements = {
     try {
       const client = window.supabaseClient || window.supabase;
       if (client?.from) {
-        const { data, error } = await client
-          .from('companies')
-          .select('*')
-          .or(`id.eq.${requestedId},company_id.eq.${requestedId}`)
-          .limit(5);
+        let query = client.from('companies').select('*');
+        query = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestedId)
+          ? query.eq('id', requestedId)
+          : query.eq('company_id', requestedId);
+        const { data, error } = await query.limit(5);
         if (error) throw error;
         const matched = findMatch(data || []);
         if (matched) return matched;
@@ -4555,9 +4558,9 @@ const Agreements = {
       const proposalCompanyId = String(proposal.company_id || '').trim();
       const proposalContactId = String(proposal.contact_id || '').trim();
       const loadedSelection = await window.CrmCompanyContactSelectors.validateCompanyContactSelection({ companyId: proposalCompanyId, contactId: proposalContactId, moduleName: 'proposal-to-agreement' });
-      if (loadedSelection.loadedCompany.id !== proposalCompanyId) throw new Error('Selected company data mismatch. Please reselect the company.');
+      if (!loadedSelection.resolvedCompanyId || loadedSelection.loadedCompany.id !== loadedSelection.resolvedCompanyId) throw new Error('Selected company could not be resolved. Please reselect the company.');
       draft.agreement = window.CrmCompanyContactSelectors.applyLoadedCompanySnapshot(draft.agreement, loadedSelection.loadedCompany, loadedSelection.loadedContact);
-      draft.agreement.company_id = proposalCompanyId;
+      draft.agreement.company_id = loadedSelection.resolvedCompanyId;
       draft.agreement.contact_id = loadedSelection.loadedContact?.id || '';
       console.log('[SAVE CHECK] final payload:', draft.agreement);
       if (typeof setActiveView === 'function') setActiveView('agreements');

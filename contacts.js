@@ -233,10 +233,11 @@ const Contacts = {
     const { rows, unavailable, error } = await this.loadCompanyOptionsSafe();
     const normalizedExisting = this.normalize(existing || {});
     const existingIds = normalizedExisting.company_ids.length ? normalizedExisting.company_ids : [normalizedExisting.company_id || this.state.companyId].filter(Boolean);
+    const resolvedExistingIds = (await Promise.all(existingIds.map(companyId => window.CrmCompanyContactSelectors?.resolveCompanyUuid?.(companyId)))).filter(Boolean);
     const rowIds = new Set(rows.map(r => this.companyRelationId(r)).filter(Boolean));
     const mergedRows = [...rows];
-    existingIds.forEach(companyId => {
-      if (!companyId || rowIds.has(companyId)) return;
+    resolvedExistingIds.forEach(companyId => {
+      if (rowIds.has(companyId)) return;
       mergedRows.push({ id: companyId, company_uuid: companyId, company_id: companyId, company_name: normalizedExisting.company_name || this.state.companyName || normalizedExisting.company_names || companyId });
       rowIds.add(companyId);
     });
@@ -346,6 +347,12 @@ const Contacts = {
       UI?.toast?.('At least one company is required', 'error');
       return;
     }
+    const resolvedCompanyIds = await Promise.all(selectedCompanies.map(company => window.CrmCompanyContactSelectors?.resolveCompanyUuid?.(company.company_id)));
+    if (resolvedCompanyIds.some(companyId => !companyId)) {
+      UI?.toast?.('Selected company could not be resolved. Please reselect the company.', 'error');
+      return;
+    }
+    selectedCompanies.forEach((company, index) => { company.company_id = resolvedCompanyIds[index]; });
     const first_name = document.getElementById('contactFirstNameInput').value.trim();
     const last_name = document.getElementById('contactLastNameInput').value.trim();
     if (!first_name && !last_name) {

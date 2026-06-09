@@ -4242,7 +4242,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
 
   async function queryCompanyForAgreementConversion(client, column, value) {
     const lookupValue = String(value || '').trim();
-    if (!lookupValue) return null;
+    if (!lookupValue || (column === 'id' && !isUuid(lookupValue))) return null;
     let query = client.from('companies').select('*').limit(1);
     query = (column === 'legal_name' || column === 'company_name')
       ? query.ilike(column, lookupValue)

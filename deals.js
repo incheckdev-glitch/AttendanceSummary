@@ -1223,7 +1223,7 @@ const Deals = {
     }
     const companyId = typeof companyIdOrRecord === 'object' ? (companyIdOrRecord.id || companyIdOrRecord.company_uuid || companyIdOrRecord.companyUuid || companyIdOrRecord.company_id || companyIdOrRecord.companyId) : companyIdOrRecord;
     if (!companyId) return null;
-    const row = await window.CrmCompanyContactSelectors?.loadCompanyByUuid?.(companyId);
+    const row = await window.CrmCompanyContactSelectors?.loadCompanySafe?.(companyId);
     return row ? this.normalizeCompany(row) : null;
   },
   async getFullContactRecord(contactIdOrRecord) {
