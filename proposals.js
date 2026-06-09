@@ -1558,7 +1558,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       const resolvedContactId = await this.resolveContactUuid(this.state.selectedContactId);
       if (!resolvedContactId) throw new Error('Selected contact could not be resolved. Please reselect the contact.');
       const selectedContactFromOptions = this.getContactOptionForCompany(resolvedContactId, loadedCompany.id);
-      loadedContact = await this.loadContactByUuid(resolvedContactId) || selectedContactFromOptions;
+      loadedContact = selectedContactFromOptions || await this.loadContactByUuid(resolvedContactId);
       if (!loadedContact || String(loadedContact.id || loadedContact.contact_uuid || '').trim() !== resolvedContactId) throw new Error('Selected contact could not be resolved. Please reselect the contact.');
       console.log('[Save] selectedContactFromOptions:', selectedContactFromOptions);
       if (!selectedContactFromOptions) {
@@ -4181,7 +4181,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     let loadedContact = null;
     if (contactId) {
       const selectedContactFromOptions = this.getContactOptionForCompany(contactId, companyId);
-      loadedContact = await this.loadContactByUuid(contactId) || selectedContactFromOptions;
+      loadedContact = selectedContactFromOptions || await this.loadContactByUuid(contactId);
       if (!loadedContact || String(loadedContact.id || loadedContact.contact_uuid || '').trim() !== contactId) throw new Error('Selected contact could not be resolved. Please reselect the contact.');
       console.log('[Save] contactOptions:', this.getContactOptionsForCompany(companyId));
       console.log('[Save] selectedContactFromOptions:', selectedContactFromOptions);

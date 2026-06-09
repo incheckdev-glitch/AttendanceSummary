@@ -327,11 +327,8 @@ const Invoices = {
     }
     const contactId = String((typeof contactIdOrRecord === 'object' ? contactIdOrRecord.contact_id : contactIdOrRecord) || '').trim();
     if (!contactId) return null;
-    const client = this.getSupabaseClient();
-    if (!client) return typeof contactIdOrRecord === 'object' ? contactIdOrRecord : null;
     try {
-      const { data, error } = await client.from('contacts').select('*').eq('contact_id', contactId).limit(1).maybeSingle();
-      if (error) throw error;
+      const data = await window.CrmCompanyContactSelectors?.loadContactByUuid?.(contactId);
       return data || (typeof contactIdOrRecord === 'object' ? contactIdOrRecord : null);
     } catch (_error) {
       return typeof contactIdOrRecord === 'object' ? contactIdOrRecord : null;

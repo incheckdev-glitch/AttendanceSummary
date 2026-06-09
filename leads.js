@@ -1669,41 +1669,6 @@ const Leads = {
     const right = String(b || '').trim().toLowerCase();
     return Boolean(left && right && left === right);
   },
-  contactBelongsToCompany(contact = {}, company = {}) {
-    const companyUuid = this.getRecordUuid(company, 'company');
-    const rawCompanyId = String(company.company_id || company.companyId || '').trim();
-    const companyBusinessId = String(
-      company.company_business_id ||
-      company.companyBusinessId ||
-      company.company_ref ||
-      company.companyRef ||
-      company.company_number ||
-      company.companyNumber ||
-      company.company_code ||
-      company.companyCode ||
-      (!this.isUuid(rawCompanyId) ? rawCompanyId : '')
-    ).trim();
-    const companyName = this.getCompanyDisplayName(company);
-    const rawContactCompanyId = String(contact.company_id || contact.companyId || '').trim();
-    const contactCompanyUuid = this.cleanUuidOrUndefined(contact.company_uuid ?? contact.companyUuid ?? rawContactCompanyId) || '';
-    const contactCompanyId = String(
-      contact.company_business_id ||
-      contact.companyBusinessId ||
-      contact.company_ref ||
-      contact.companyRef ||
-      contact.company_number ||
-      contact.companyNumber ||
-      contact.company_code ||
-      contact.companyCode ||
-      (!this.isUuid(rawContactCompanyId) ? rawContactCompanyId : '')
-    ).trim();
-    const contactCompanyName = String(contact.company_name || contact.companyName || contact.selected_company_name || contact.selectedCompanyName || '').trim();
-    if (contactCompanyUuid && companyUuid && this.sameIdentifier(contactCompanyUuid, companyUuid)) return true;
-    if (this.isUuid(rawContactCompanyId) && companyUuid && this.sameIdentifier(rawContactCompanyId, companyUuid)) return true;
-    if (contactCompanyId && companyBusinessId && this.sameIdentifier(contactCompanyId, companyBusinessId)) return true;
-    if (contactCompanyName && companyName && this.sameIdentifier(contactCompanyName, companyName)) return true;
-    return false;
-  },
   debugLeadSelection(label, details = {}, level = 'debug') {
     try {
       const host = String(window.location.hostname || '').toLowerCase();
@@ -1883,12 +1848,7 @@ const Leads = {
       }
     }
 
-    // Newly created or just-clicked contacts can be absent from the list endpoint immediately.
-    if (this.state.selectedContact) {
-      const selectedContactId = this.getRecordUuid(this.state.selectedContact, 'contact');
-      const canInjectContact = selectedContactId && (!this.state.selectedCompany || this.contactBelongsToCompany(this.state.selectedContact, this.state.selectedCompany));
-      if (canInjectContact) contacts.unshift(this.state.selectedContact);
-    }
+    // Company-scoped RPC rows are the only contacts rendered by the picker.
     contacts = this.dedupeLeadRows(contacts, 'contact');
 
     // Ignore an older async response after the user has selected a different company.
@@ -2014,35 +1974,8 @@ const Leads = {
       .find(c => this.sameIdentifier(this.getRecordUuid(c, 'contact'), id) || this.sameIdentifier(c.contact_id, id));
     if (localExact) return localExact;
 
-    const rowsFrom = res => Array.isArray(res?.rows) ? res.rows : (Array.isArray(res?.items) ? res.items : (Array.isArray(res?.data) ? res.data : []));
-    const safelyLoaded = await window.CrmCompanyContactSelectors?.loadCompanySafe?.(id);
-    if (safelyLoaded) return this.normalizeCompany(safelyLoaded);
-    if (this.isUuid(id)) {
-      try {
-        const client = this.getClient?.();
-        if (client?.from) {
-          const { data, error } = await client.from('contacts').select('*').eq('id', id).maybeSingle();
-          if (!error && data) return this.normalizeContact(data);
-        }
-      } catch (error) {
-        console.warn('[leads] direct contact lookup failed', error);
-      }
-    }
-
-    const filtersToTry = this.isUuid(id) ? [{ id }, { contact_uuid: id }] : [{ contact_id: id }];
-    for (const filters of filtersToTry) {
-      try {
-        const res = await Api.requestWithSession('contacts', 'list', { page: 1, limit: 50, filters }, { requireAuth: true });
-        const row = rowsFrom(res).map(c => this.normalizeContact(c)).find(c => (
-          this.sameIdentifier(this.getRecordUuid(c, 'contact'), id)
-          || this.sameIdentifier(c.contact_id, id)
-        ));
-        if (row) return row;
-      } catch (error) {
-        console.warn('[leads] contact lookup failed', filters, error);
-      }
-    }
-    return null;
+    const safelyLoaded = await window.CrmCompanyContactSelectors?.loadContactByUuid?.(id);
+    return safelyLoaded ? this.normalizeContact(safelyLoaded) : null;
   },
   async fetchFullCompany(companyId = '') { return this.getFullCompanyRecord(companyId); },
   async fetchFullContact(contactId = '') { return this.getFullContactRecord(contactId); },
@@ -2081,9 +2014,10 @@ const Leads = {
 
     const contactId = this.cleanUuidOrUndefined(lead.contact_id || lead.contactId || lead.contact_uuid || lead.contactUuid) || '';
     const contactName = String(lead.contact_name || lead.contactName || lead.full_name || lead.fullName || '').trim();
-    let linkedContact = contactId ? await this.getFullContactRecord(contactId) : null;
+    let linkedContact = contactId
+      ? (this.state.contactPickerRows || []).find(row => this.sameIdentifier(this.getRecordUuid(row, 'contact'), contactId)) || null
+      : null;
     if (!linkedContact && !contactId && contactName) linkedContact = this.resolveUniqueContactByName(contactName);
-    if (linkedContact && this.state.selectedCompany && !this.contactBelongsToCompany(linkedContact, this.state.selectedCompany)) linkedContact = null;
     this.hydrateLeadFromContact(linkedContact || {});
   },
   findCompanyForInput(inputValue = '') {
@@ -2289,18 +2223,12 @@ const Leads = {
       }
 
       const contactUuid = this.getRecordUuid(contact, 'contact');
-      const pickerHasContact = (this.state.contactPickerRows || []).some(row => this.sameIdentifier(this.getRecordUuid(row, 'contact'), contactUuid));
-      if (contactUuid && !pickerHasContact && (!this.state.selectedCompany || this.contactBelongsToCompany(contact, this.state.selectedCompany))) {
-        this.state.contactPickerRows = [this.normalizeContact(contact), ...(this.state.contactPickerRows || [])]
-          .filter((row, index, arr) => arr.findIndex(item => this.sameIdentifier(this.getRecordUuid(item, 'contact'), this.getRecordUuid(row, 'contact'))) === index);
-        this.renderLeadContactOptions(this.state.contactPickerRows);
-      }
-
-      if (!this.state.selectedCompany || this.contactBelongsToCompany(contact, this.state.selectedCompany)) {
-        this.hydrateLeadFromContact(contact);
+      const pickerContact = (this.state.contactPickerRows || []).find(row => this.sameIdentifier(this.getRecordUuid(row, 'contact'), contactUuid)) || null;
+      if (pickerContact) {
+        this.hydrateLeadFromContact(pickerContact);
       } else {
         this.hydrateLeadFromContact({});
-        UI?.toast?.('The selected contact is not linked to the resolved company. Please select the company/contact manually.', 'warning');
+        UI?.toast?.('The selected contact is not available for the resolved company. Please select the company/contact manually.', 'warning');
       }
     } else {
       this.hydrateLeadFromContact({});

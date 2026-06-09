@@ -12,7 +12,7 @@ assert.ok(helperStart >= 0 && helperEnd > helperStart, 'shared contact loader mu
 const helper = selectors.slice(helperStart, helperEnd);
 
 assert.match(helper, /rpc\('crm_get_contacts_for_company', \{ p_company_id: selectedCompanyId \}\)/, 'contacts must be queried by the company UUID RPC');
-assert.match(helper, /id: row\.contact_uuid[\s\S]*?full_name: row\.contact_name[\s\S]*?contact_position: row\.contact_position/, 'RPC contact UUID, name, and position must be mapped explicitly');
+assert.match(helper, /value: row\.contact_uuid[\s\S]*?label: row\.contact_name[\s\S]*?secondary: row\.email \|\| row\.phone \|\| row\.contact_position \|\| row\.contact_ref/, 'RPC contact UUID, name, and secondary display fields must be mapped explicitly');
 assert.doesNotMatch(helper, /company_name|company_names|contact_status|verified|contactsByCompany|\.or\(/, 'contact loader must not use names, status, verification, alternate relations, or cached rows');
 assert.match(selectors, /return str\(company\.company_uuid\)/, 'company option values must use company UUIDs');
 assert.match(selectors, /contactSelect\.dataset\.loadingCompanyId !== requestCompanyId/, 'shared dropdown must ignore stale contact responses');
@@ -24,7 +24,7 @@ assert.match(contacts, /const companyId = this\.companyRelationId\(company\)/, '
 assert.match(companies, /company_id: companyUuid/, 'company module must pass a UUID when creating a contact');
 
 
-assert.match(selectors, /companySelect\.addEventListener\('change'[\s\S]*?setValue\(cfg\.contactHiddenId, '', \{ readonly: false \}\)[\s\S]*?loadContactsForConfig\(cfg, selectedCompanyId\)/, 'company changes must clear contact before loading the selected company contacts');
+assert.match(selectors, /companySelect\.addEventListener\('change'[\s\S]*?state\.contactOptionsByCompany\.clear\(\)[\s\S]*?setValue\(cfg\.contactHiddenId, '', \{ readonly: false \}\)[\s\S]*?loadContactsForConfig\(cfg, selectedCompanyId\)/, 'company changes must clear contact options and selected contact before loading the selected company contacts');
 assert.match(leads, /handleLeadCompanyChange[\s\S]*?resetLeadSelectionState\(\)[\s\S]*?loadLeadPickerOptions\(resolvedCompanyId\)/, 'lead company changes must clear old contact before loading contacts');
 
 console.log('contact company dropdown checks passed');

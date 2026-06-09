@@ -6,10 +6,13 @@ const leads = fs.readFileSync('leads.js', 'utf8');
 const deals = fs.readFileSync('deals.js', 'utf8');
 const proposals = fs.readFileSync('proposals.js', 'utf8');
 const agreements = fs.readFileSync('agreements.js', 'utf8');
+const invoices = fs.readFileSync('invoices.js', 'utf8');
 
 assert.match(selectors, /resolveContactUuid[\s\S]*?crm_resolve_contact_uuid[\s\S]*?p_contact_key: key/, 'shared resolver must resolve contact business keys through RPC');
 assert.match(selectors, /loadContactSafe[\s\S]*?resolveContactUuid\(contactKey\)[\s\S]*?crm_get_contact_by_key[\s\S]*?p_contact_key: id/, 'shared contact loader must resolve before loading by key');
-assert.match(selectors, /loadContactSafe[\s\S]*?\.eq\('id', id\)/, 'contact id query must only use the resolved id');
+assert.doesNotMatch(selectors, /from\(['"]contacts['"]\)/, 'shared selectors must never load public.contacts directly');
+assert.doesNotMatch(leads, /from\(['"]contacts['"]\)/, 'lead contact selector must never load public.contacts directly');
+assert.doesNotMatch(invoices, /from\(['"]contacts['"]\)/, 'invoice contact selector must never load public.contacts directly');
 assert.match(selectors, /getContactOptionValue[\s\S]*?find\(isUuid\)/, 'contact dropdown option helper must only return a UUID');
 assert.match(selectors, /setSelectOptions[\s\S]*?: getContactOptionValue\(row\)/, 'contact dropdowns must use the UUID-only option helper');
 assert.match(selectors, /crm_get_contacts_for_company', \{ p_company_id: selectedCompanyId \}/, 'company contact dropdown must keep using the company contacts RPC');
