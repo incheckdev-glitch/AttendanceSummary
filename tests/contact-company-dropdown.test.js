@@ -16,11 +16,15 @@ assert.match(helper, /id: row\.contact_uuid[\s\S]*?full_name: row\.contact_name[
 assert.doesNotMatch(helper, /company_name|company_names|contact_status|verified|contactsByCompany|\.or\(/, 'contact loader must not use names, status, verification, alternate relations, or cached rows');
 assert.match(selectors, /return str\(company\.company_uuid\)/, 'company option values must use company UUIDs');
 assert.match(selectors, /contactSelect\.dataset\.loadingCompanyId !== requestCompanyId/, 'shared dropdown must ignore stale contact responses');
-assert.match(selectors, /console\.log\('\[CompanySelect\] selected company id:', selectedCompanyId\)/, 'company selection log must be present');
-assert.match(helper, /console\.log\('\[ContactSelect\] contacts loaded:', contacts\)/, 'contact load log must be present');
+assert.match(selectors, /console\.log\('\[Company changed\] selectedCompanyId:', selectedCompanyId\)/, 'company selection log must be present');
+assert.match(helper, /console\.log\('\[Contacts loaded\]', contacts\)/, 'contact load log must be present');
 assert.match(leads, /loadContactsForCompany\?\.\(normalizedCompanyId\)/, 'lead create/edit must use the shared UUID contact loader');
 assert.match(leads, /requestId !== this\._leadPickerLoadRequestId/, 'lead picker must ignore stale contact responses');
 assert.match(contacts, /const companyId = this\.companyRelationId\(company\)/, 'create contact from company must store the company UUID');
 assert.match(companies, /company_id: companyUuid/, 'company module must pass a UUID when creating a contact');
+
+
+assert.match(selectors, /companySelect\.addEventListener\('change'[\s\S]*?setValue\(cfg\.contactHiddenId, '', \{ readonly: false \}\)[\s\S]*?loadContactsForConfig\(cfg, selectedCompanyId\)/, 'company changes must clear contact before loading the selected company contacts');
+assert.match(leads, /handleLeadCompanyChange[\s\S]*?resetLeadSelectionState\(\)[\s\S]*?loadLeadPickerOptions\(resolvedCompanyId\)/, 'lead company changes must clear old contact before loading contacts');
 
 console.log('contact company dropdown checks passed');

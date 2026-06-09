@@ -14,7 +14,8 @@ assert.match(selectors, /loadCompanySafe[\s\S]*?crm_get_company_by_key[\s\S]*?p_
 assert.match(selectors, /fetchCompanyByUuid[\s\S]*?if \(!isUuid\(id\)\) return null;[\s\S]*?\.eq\('id', id\)/, 'UUID loader must reject non-UUID keys before querying companies.id');
 assert.match(selectors, /validateCompanyContactSelection[\s\S]*?resolveCompanyUuid\(companyKey\)[\s\S]*?loadCompanySafe\(selectedCompanyId\)/, 'shared save guard must resolve before loading');
 assert.match(selectors, /Selected company could not be resolved\. Please reselect the company\./, 'shared save guard must show the required unresolved-company blocker');
-assert.match(selectors, /contactCompanyId !== selectedCompanyId/, 'shared guard must block cross-company contacts');
+assert.match(selectors, /contactBelongsToCompany[\s\S]*?crm_contact_belongs_to_company[\s\S]*?p_contact_key: String\(contactKey\)[\s\S]*?p_company_key: String\(companyKey\)/, 'shared guard must use the backend ownership RPC');
+assert.match(selectors, /if \(!belongs\) \{[\s\S]*?clearSelectedContactForCompany\(selectedCompanyId, moduleName\)[\s\S]*?Selected contact does not belong/, 'failed ownership checks must clear only the contact and block save');
 assert.match(supabaseData, /column === 'id' && !isUuid\(lookupValue\)/, 'agreement conversion lookup must never query companies.id with a business key');
 assert.match(selectors, /applyLoadedCompanySnapshot[\s\S]*?company_id: str\(loadedCompany\.id\)[\s\S]*?customer_name: companyName[\s\S]*?client_name: companyName/, 'snapshots must use the UUID-loaded company');
 for (const [name, source] of Object.entries({ lead: leads, deal: deals, agreement: agreements, invoice: invoices })) {

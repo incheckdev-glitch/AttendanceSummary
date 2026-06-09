@@ -1817,7 +1817,9 @@ const Leads = {
       node.innerHTML = '<option value="">Select contact…</option>' + rows.map(c => {
         const uuid = this.getRecordUuid(c, 'contact');
         const name = this.getContactDisplayName(c) || uuid;
-        return `<option value="${U.escapeAttr(uuid)}">${U.escapeHtml(name)}</option>`;
+        const secondary = String(c.email || c.phone || c.contact_position || c.contact_ref || '').trim();
+        const label = [name, secondary].filter(Boolean).join(' — ');
+        return `<option value="${U.escapeAttr(uuid)}">${U.escapeHtml(label)}</option>`;
       }).join('');
       node.value = selectedId && rows.some(c => this.sameIdentifier(this.getRecordUuid(c, 'contact'), selectedId)) ? selectedId : '';
       if (E.leadFormContactId) E.leadFormContactId.value = node.value || '';
@@ -1828,7 +1830,9 @@ const Leads = {
     if (contactList) contactList.innerHTML = rows.map(c => {
       const uuid = this.getRecordUuid(c, 'contact');
       const name = this.getContactDisplayName(c);
-      return `<option value="${U.escapeAttr(uuid)}" label="${U.escapeAttr(name)}" data-contact-id="${U.escapeAttr(uuid)}" data-company-id="${U.escapeAttr(c.company_id || c.company_uuid || '')}"></option>`;
+      const secondary = String(c.email || c.phone || c.contact_position || c.contact_ref || '').trim();
+      const label = [name, secondary].filter(Boolean).join(' — ');
+      return `<option value="${U.escapeAttr(uuid)}" label="${U.escapeAttr(label)}" data-contact-id="${U.escapeAttr(uuid)}" data-company-id="${U.escapeAttr(c.company_id || c.company_uuid || '')}"></option>`;
     }).join('');
   },
   async loadLeadPickerOptions(companyId = '', searchText = '') {
@@ -2130,7 +2134,8 @@ const Leads = {
   },
   async handleLeadCompanyChange(event) {
     const selectedCompanyId = String(event?.target?.value || E.leadFormCompanyId?.value || '').trim();
-    console.log('[CompanySelect] selected company id:', selectedCompanyId);
+    console.log('[Company changed] selectedCompanyId:', selectedCompanyId);
+    console.log('[Company changed] clearing contact');
     const availableCompanies = [...(this.state.companyPickerRows || [])];
     this.resetLeadSelectionState();
     this.state.companyPickerRows = availableCompanies;
@@ -2154,6 +2159,7 @@ const Leads = {
     this.hydrateLeadFromCompany(fullCompany);
     const resolvedCompanyId = this.getRecordUuid(this.state.selectedCompany || fullCompany, 'company');
     await this.loadLeadPickerOptions(resolvedCompanyId);
+    console.log('[Contacts loaded]', this.state.contactPickerRows || []);
     this.debugLeadSelection('[leads] company changed', {
       selectedDropdownValue: selectedCompanyId,
       resolvedCompanyId,
@@ -2176,9 +2182,11 @@ const Leads = {
     const fullContact = await this.fetchFullContact(this.getRecordUuid(selectedContact, 'contact')) || selectedContact;
     const selectedCompanyId = this.getRecordUuid(this.state.selectedCompany || {}, 'company');
     const contactCompanyId = String(fullContact.company_id || fullContact.company_uuid || '').trim();
-    if (this.state.selectedCompany && !this.contactBelongsToCompany(fullContact, this.state.selectedCompany)) {
+    const belongs = !this.state.selectedCompany || await window.CrmCompanyContactSelectors?.contactBelongsToCompany?.(this.getRecordUuid(fullContact, 'contact'), selectedCompanyId);
+    if (!belongs) {
       this.clearLeadContactSelection();
-      UI?.toast?.('Selected contact does not belong to the selected company.', 'warning');
+      await this.loadLeadPickerOptions(selectedCompanyId);
+      UI?.toast?.('Selected contact does not belong to the selected company. Please reselect the contact.', 'warning');
       this.debugLeadSelection('[leads] contact changed', { selectedDropdownValue: selectedContactId, resolvedContactId: this.getRecordUuid(fullContact, 'contact'), resolvedContactName: this.getContactDisplayName(fullContact), contactCompanyId, selectedCompanyId, rejected: true }, 'warn');
       return;
     }

@@ -9,7 +9,7 @@ const contacts = fs.readFileSync('contacts.js', 'utf8');
 const proposals = fs.readFileSync('proposals.js', 'utf8');
 
 assert.match(selectors, /async function loadCompanyOptions\(searchText = '', includeSelectedId = null\)/, 'shared loader must accept search and selected UUID');
-assert.match(selectors, /rpc\('crm_search_companies_for_select', \{[\s\S]*?p_search: search \|\| ''[\s\S]*?p_limit: 100/, 'shared loader must use the complete company search RPC with the required limit');
+assert.match(selectors, /rpc\('crm_search_companies_for_select', \{[\s\S]*?p_search: search \|\| ''[\s\S]*?p_limit: 300/, 'shared loader must use the complete company search RPC with the required limit');
 assert.doesNotMatch(selectors.slice(selectors.indexOf("async function loadCompanyOptions(searchText = '', includeSelectedId = null)"), selectors.indexOf('async function fetchCompanies')), /from\('companies'\)|requestWithSession\('companies', 'list'/, 'shared option loader must not use partial direct/API company lists');
 assert.match(selectors, /display_label: str\([\s\S]*?secondary: str\([\s\S]*?email[\s\S]*?phone[\s\S]*?city[\s\S]*?country/, 'RPC display label and secondary fields must be mapped');
 assert.match(selectors, /return str\(company\.company_uuid\)/, 'company option values must be company UUIDs');

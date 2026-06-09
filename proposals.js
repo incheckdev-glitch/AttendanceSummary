@@ -1473,6 +1473,16 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
   async resolveContactUuid(contactKey) {
     return window.CrmCompanyContactSelectors?.resolveContactUuid?.(contactKey) || null;
   },
+  async contactBelongsToCompany(contactKey, companyKey) {
+    return await window.CrmCompanyContactSelectors?.contactBelongsToCompany?.(contactKey, companyKey) === true;
+  },
+  async clearSelectedContactForCompany(companyId) {
+    this.state.selectedContactId = '';
+    this.state.loadedContact = null;
+    if (E.proposalForm) E.proposalForm.dataset.contactId = '';
+    if (E.proposalFormContactId) E.proposalFormContactId.value = '';
+    await window.CrmCompanyContactSelectors?.clearSelectedContactForCompany?.(companyId, 'proposal');
+  },
   async loadContactByUuid(contactKey) {
     const row = await window.CrmCompanyContactSelectors?.loadContactSafe?.(contactKey);
     return row ? this.normalizeContact(row) : null;
@@ -1543,8 +1553,12 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       if (!resolvedContactId) throw new Error('Selected contact could not be resolved. Please reselect the contact.');
       loadedContact = await this.loadContactByUuid(resolvedContactId);
       if (!loadedContact || loadedContact.id !== resolvedContactId) throw new Error('Selected contact could not be resolved. Please reselect the contact.');
-      const contactCompanyId = await this.resolveCompanyUuid(loadedContact.company_uuid || loadedContact.company_id);
-      if (contactCompanyId !== loadedCompany.id) throw new Error('Selected contact does not belong to the selected company.');
+      const belongs = await this.contactBelongsToCompany(resolvedContactId, loadedCompany.id);
+      console.log('[Save] contact belongs:', belongs);
+      if (!belongs) {
+        await this.clearSelectedContactForCompany(loadedCompany.id);
+        throw new Error('Selected contact does not belong to the selected company. Please reselect the contact.');
+      }
       this.state.selectedContactId = resolvedContactId;
     }
     console.log('[Proposal Create] selectedContactId:', this.state.selectedContactId);
@@ -4139,6 +4153,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const sourceCompanyKey = String(E.proposalForm?.dataset.sourceCompanyId || '').trim();
     const sourceContactId = String(E.proposalForm?.dataset.sourceContactId || '').trim();
     const companyId = await this.resolveCompanyUuid(companyKey);
+    console.log('[Save] resolvedCompanyId:', companyId);
     const selectedCompanyId = selectedCompanyKey ? await this.resolveCompanyUuid(selectedCompanyKey) : '';
     const sourceCompanyId = sourceCompanyKey ? await this.resolveCompanyUuid(sourceCompanyKey) : '';
     if (!companyId || (selectedCompanyKey && !selectedCompanyId) || (sourceCompanyKey && !sourceCompanyId)) throw new Error('Selected company could not be resolved. Please reselect the company.');
@@ -4148,6 +4163,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     if (!loadedCompany || loadedCompany.id !== companyId) throw new Error('Selected company could not be resolved. Please reselect the company.');
     const contactKey = String(proposal.contact_id || '').trim();
     const contactId = contactKey ? await this.resolveContactUuid(contactKey) : '';
+    console.log('[Save] resolvedContactId:', contactId);
     const resolvedSourceContactId = sourceContactId ? await this.resolveContactUuid(sourceContactId) : '';
     if (contactKey && !contactId) throw new Error('Selected contact could not be resolved. Please reselect the contact.');
     if (sourceContactId && !resolvedSourceContactId) throw new Error('Selected contact could not be resolved. Please reselect the contact.');
@@ -4156,8 +4172,12 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     if (contactId) {
       loadedContact = await this.loadContactByUuid(contactId);
       if (!loadedContact || loadedContact.id !== contactId) throw new Error('Selected contact could not be resolved. Please reselect the contact.');
-      const contactCompanyId = await this.resolveCompanyUuid(loadedContact.company_uuid || loadedContact.company_id);
-      if (contactCompanyId !== companyId) throw new Error('Selected contact does not belong to the selected company.');
+      const belongs = await this.contactBelongsToCompany(contactId, companyId);
+      console.log('[Save] contact belongs:', belongs);
+      if (!belongs) {
+        await this.clearSelectedContactForCompany(companyId);
+        throw new Error('Selected contact does not belong to the selected company. Please reselect the contact.');
+      }
     }
     const legalName = String(loadedCompany.legal_name || loadedCompany.company_name || '').trim();
     proposal.company_id = loadedCompany.id;
@@ -4928,9 +4948,10 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         UI.toast('Selected contact could not be resolved. Please reselect the contact.');
         return;
       }
-      const contactCompanyId = String(loadedContact?.company_uuid || loadedContact?.company_id || '').trim();
-      if (this.isUuid(contactCompanyId) && contactCompanyId !== loadedCompany.id) {
-        UI.toast('Selected company data mismatch. Please reselect the company.');
+      const belongs = resolvedContactId ? await this.contactBelongsToCompany(resolvedContactId, loadedCompany.id) : true;
+      if (!belongs) {
+        await this.clearSelectedContactForCompany(loadedCompany.id);
+        UI.toast('Selected contact does not belong to the selected company. Please reselect the contact.');
         return;
       }
       const previewProposal = { ...proposal, company_id: loadedCompany.id, company_name: loadedCompany.company_name, customer_name: loadedCompany.legal_name || loadedCompany.company_name, customer_legal_name: loadedCompany.legal_name || loadedCompany.company_name, customer_address: loadedCompany.address || '', contact_id: loadedContact?.id || '', contact_name: loadedContact ? this.buildContactDisplayName(loadedContact) : '', contact_email: loadedContact?.email || '', contact_phone: loadedContact?.mobile || loadedContact?.phone || '', customer_contact_name: loadedContact ? this.buildContactDisplayName(loadedContact) : '', customer_contact_email: loadedContact?.email || '', customer_contact_mobile: loadedContact?.mobile || loadedContact?.phone || '' };
