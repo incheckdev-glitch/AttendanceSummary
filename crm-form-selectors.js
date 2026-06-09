@@ -252,84 +252,85 @@
     return Array.isArray(rows) ? rows : [];
   }
   function normalizeCompany(raw = {}) {
-    const source = raw && typeof raw === 'object' ? raw : {};
-    const rawCompany = source.raw_company && typeof source.raw_company === 'object' ? source.raw_company : {};
-    const c = { ...rawCompany, ...source };
-    const uuid = str(c.id || c.company_uuid || c.companyUuid || c.companyIdUuid || c.company_uuid_id);
-    const businessId = str(c.company_business_id || c.companyBusinessId || c.company_ref || c.companyRef || c.company_id || c.companyId || c.company_number || c.companyNumber || c.company_code || c.companyCode || c.reference || c.code);
-    const canonicalId = uuid || businessId;
-    const companyName = str(c.company_name || c.companyName || c.name || c.company_display_name || c.companyNameDisplay);
-    const legalName = str(c.legal_name || c.legalName || c.company_legal_name || c.companyNameLegal || c.company_name || c.companyName || c.name);
+    const c = raw && typeof raw === 'object' ? raw : {};
+    const rawCompanyId = str(c.company_id || c.companyId);
+    const uuid = str(c.id || c.company_uuid || c.companyUuid || c.company_uuid_id || c.companyUuidId || c.company_uuid_value);
+    const businessId = str(c.company_ref || c.companyRef || c.company_business_id || c.companyBusinessId || c.company_number || c.companyNumber || c.company_code || c.companyCode || c.reference || c.code || (isUuid(rawCompanyId) ? '' : rawCompanyId));
+    const canonicalId = uuid || (isUuid(rawCompanyId) ? rawCompanyId : '');
     return {
-      ...rawCompany,
-      ...source,
-      id: uuid,
+      ...c,
+      id: canonicalId,
       company_id: canonicalId,
-      company_uuid: uuid,
+      company_uuid: canonicalId,
       company_business_id: businessId,
-      company_number: str(c.company_number || c.companyNumber),
+      company_ref: businessId,
+      company_number: str(c.company_number || c.companyNumber || businessId),
       company_code: str(c.company_code || c.companyCode),
-      company_ref: str(c.company_ref || c.companyRef || businessId),
-      company_name: companyName,
-      name: str(c.name || companyName || legalName),
-      legal_name: legalName,
+      company_name: str(c.company_name || c.companyName || c.companyNameText || c.name),
+      name: str(c.name || c.company_name || c.companyName),
+      legal_name: str(c.legal_name || c.legalName),
       company_type: str(c.company_type || c.companyType),
       industry: str(c.industry),
       website: str(c.website),
-      main_email: str(c.main_email || c.mainEmail || c.email || c.company_email || c.companyEmail || c.billing_email || c.billingEmail),
-      main_phone: str(c.main_phone || c.mainPhone || c.phone || c.phone_number || c.phoneNumber || c.mobile),
+      main_email: str(c.main_email || c.mainEmail || c.email),
+      main_phone: str(c.main_phone || c.mainPhone || c.phone),
       country: str(c.country),
       city: str(c.city),
-      address: str(c.address || c.company_address || c.companyAddress || c.customer_address || c.customerAddress),
-      tax_number: str(c.tax_number || c.taxNumber || c.registration_number || c.registrationNumber || c.company_registration_number || c.companyRegistrationNumber),
+      address: str(c.address),
+      tax_number: str(c.tax_number || c.taxNumber),
       company_status: str(c.company_status || c.companyStatus || c.status),
       status: str(c.status || c.company_status || c.companyStatus),
       created_at: str(c.created_at || c.createdAt),
       updated_at: str(c.updated_at || c.updatedAt),
-      is_archived: c.is_archived === true || c.isArchived === true || String(c.is_archived ?? c.isArchived ?? '').toLowerCase() === 'true',
-      is_deleted: c.is_deleted === true || c.isDeleted === true || String(c.is_deleted ?? c.isDeleted ?? '').toLowerCase() === 'true',
+      is_archived: c.is_archived === true || c.isArchived === true,
+      is_deleted: c.is_deleted === true || c.isDeleted === true,
       archived_at: str(c.archived_at || c.archivedAt),
       deleted_at: str(c.deleted_at || c.deletedAt),
       currency: str(c.currency),
       payment_term: str(c.payment_term || c.paymentTerm || c.payment_terms || c.paymentTerms),
-      authorized_signatory_full_name: str(c.authorized_signatory_full_name || c.authorizedSignatoryFullName || c.authorized_signatory_name || c.authorizedSignatoryName || c.signatory_name || c.signatoryName),
-      authorized_signatory_title: str(c.authorized_signatory_title || c.authorizedSignatoryTitle || c.signatory_title || c.signatoryTitle),
+      authorized_signatory_full_name: str(c.authorized_signatory_full_name || c.authorizedSignatoryFullName),
+      authorized_signatory_title: str(c.authorized_signatory_title || c.authorizedSignatoryTitle),
       documents_verified: c.documents_verified === true || c.documentsVerified === true || String(c.documents_verified ?? c.documentsVerified ?? '').toLowerCase() === 'true',
       documents_verification_status: str(c.documents_verification_status || c.documentsVerificationStatus)
     };
   }
   function normalizeContact(raw = {}) {
-    const source = raw && typeof raw === 'object' ? raw : {};
-    const rawContact = source.raw_contact && typeof source.raw_contact === 'object' ? source.raw_contact : {};
-    const c = { ...rawContact, ...source };
-    const uuid = str(c.id || c.contact_uuid || c.contactUuid || c.contact_id_uuid);
-    const businessId = str(c.contact_ref || c.contactRef || c.contact_id || c.contactId || c.contact_number || c.contactNumber || c.contact_code || c.contactCode || c.reference || c.code);
-    const companyUuid = str(c.company_uuid || c.companyUuid || c.selected_company_uuid || c.selectedCompanyUuid || (isUuid(c.company_id || c.companyId) ? (c.company_id || c.companyId) : ''));
-    const first = str(c.first_name || c.firstName);
-    const last = str(c.last_name || c.lastName);
-    const full = str(c.contact_name || c.contactName || c.full_name || c.fullName || c.name || `${first} ${last}`);
+    const c = raw && typeof raw === 'object' ? raw : {};
+    const rawContact = c.raw_contact && typeof c.raw_contact === 'object' ? c.raw_contact : {};
+    const contactUuid = str(c.id || c.contact_uuid || c.contactUuid || c.contact_id_uuid || c.contactIdUuid);
+    const contactBusinessId = str(c.contact_ref || c.contactRef || c.contact_number || c.contactNumber || c.contact_code || c.contactCode || rawContact.contact_id || rawContact.contact_number || rawContact.contact_code || (!isUuid(c.contact_id || c.contactId) ? (c.contact_id || c.contactId) : ''));
+    const rawCompanyId = str(c.company_id || c.companyId || rawContact.company_id || rawContact.companyId);
+    const companyUuid = str(c.selected_company_uuid || c.selectedCompanyUuid || c.company_uuid || c.companyUuid || (isUuid(rawCompanyId) ? rawCompanyId : ''));
+    const companyBusinessId = str(c.selected_company_ref || c.selectedCompanyRef || c.company_ref || c.companyRef || rawContact.company_id || rawContact.companyId || (isUuid(rawCompanyId) ? '' : rawCompanyId));
+    const first = str(c.first_name || c.firstName || rawContact.first_name || rawContact.firstName);
+    const last = str(c.last_name || c.lastName || rawContact.last_name || rawContact.lastName);
+    const full = str(c.contact_name || c.contactName || c.full_name || c.fullName || c.name || rawContact.full_name || rawContact.contact_name || rawContact.name || `${first} ${last}`);
     return {
       ...rawContact,
-      ...source,
-      id: uuid,
-      contact_id: uuid || businessId,
-      contact_business_id: businessId,
-      company_id: companyUuid || str(c.company_id || c.companyId),
+      ...c,
+      id: contactUuid,
+      contact_id: contactUuid,
+      contact_uuid: contactUuid,
+      contact_business_id: contactBusinessId,
+      contact_ref: contactBusinessId,
+      company_id: companyUuid,
       company_uuid: companyUuid,
-      company_name: str(c.company_name || c.companyName),
-      legal_company_name: str(c.legal_company_name || c.legalCompanyName),
+      company_business_id: companyBusinessId,
+      company_ref: companyBusinessId,
+      company_name: str(c.selected_company_name || c.company_name || c.companyName || rawContact.company_name || rawContact.companyName),
+      legal_company_name: str(c.legal_company_name || c.legalCompanyName || rawContact.legal_company_name),
       first_name: first,
       last_name: last,
       full_name: full,
-      contact_position: str(c.contact_position || c.contactPosition || c.position || c.job_title || c.jobTitle || c.title),
-      job_title: str(c.contact_position || c.contactPosition || c.position || c.job_title || c.jobTitle || c.title),
-      department: str(c.department),
-      email: str(c.email || c.contact_email || c.contactEmail),
-      phone: str(c.phone || c.phone_number || c.phoneNumber),
-      mobile: str(c.mobile),
-      decision_role: str(c.decision_role || c.decisionRole),
-      is_primary_contact: c.is_primary_contact === true || c.isPrimaryContact === true || c.is_primary === true || String(c.is_primary_contact || c.isPrimaryContact || c.is_primary || '').toLowerCase() === 'true',
-      contact_status: str(c.contact_status || c.contactStatus || c.status)
+      contact_position: str(c.contact_position || c.contactPosition || c.job_title || c.jobTitle || rawContact.position || rawContact.title || rawContact.job_title),
+      job_title: str(c.contact_position || c.contactPosition || c.job_title || c.jobTitle || rawContact.position || rawContact.title || rawContact.job_title),
+      department: str(c.department || rawContact.department),
+      email: str(c.email || rawContact.email || rawContact.contact_email),
+      phone: str(c.phone || rawContact.phone || rawContact.phone_number),
+      mobile: str(c.mobile || rawContact.mobile),
+      decision_role: str(c.decision_role || c.decisionRole || rawContact.decision_role),
+      is_primary_contact: c.is_primary === true || c.isPrimary === true || c.is_primary_contact === true || c.isPrimaryContact === true || String(c.is_primary || c.is_primary_contact || c.isPrimaryContact || rawContact.is_primary_contact || '').toLowerCase() === 'true',
+      contact_status: str(c.contact_status || c.contactStatus || rawContact.contact_status || rawContact.status)
     };
   }
   function displayCompany(company = {}) {
@@ -429,76 +430,22 @@
     return Array.from(byId.values());
   }
 
-  function normalizeResolverKey(value = '') {
-    return str(value).toLowerCase().replace(/[^a-z0-9]/gi, '');
-  }
-  function digitsResolverKey(value = '') {
-    const digits = str(value).replace(/[^0-9]/g, '').replace(/^0+/, '');
-    return digits || '';
-  }
-  function localCompanyMatch(company = {}, key = '') {
-    const normalizedCompany = normalizeCompany(company);
-    const rawKey = str(key);
-    if (!rawKey) return false;
-    const normKey = normalizeResolverKey(rawKey);
-    const digitsKey = digitsResolverKey(rawKey);
-    const candidates = [
-      normalizedCompany.id,
-      normalizedCompany.company_uuid,
-      normalizedCompany.company_id,
-      normalizedCompany.company_business_id,
-      normalizedCompany.company_ref,
-      normalizedCompany.company_number,
-      normalizedCompany.company_code,
-      normalizedCompany.legal_name,
-      normalizedCompany.company_name,
-      normalizedCompany.name
-    ].map(str).filter(Boolean);
-    if (candidates.some(candidate => candidate === rawKey)) return true;
-    const normalizedCandidates = candidates.map(normalizeResolverKey).filter(Boolean);
-    if (normalizedCandidates.some(candidate => candidate === normKey || (candidate && normKey.includes(candidate)))) return true;
-    if (digitsKey && candidates.some(candidate => digitsResolverKey(candidate) === digitsKey)) return true;
-    return false;
-  }
   async function resolveCompanyUuid(companyKey) {
     const key = str(companyKey);
     if (!key) return null;
     if (isUuid(key)) return key;
-
-    const localMatch = state.companies.map(normalizeCompany).find(company => localCompanyMatch(company, key));
-    if (localMatch?.id && isUuid(localMatch.id)) return localMatch.id;
-
     const client = global.supabaseClient || global.supabase;
-    if (client?.rpc) {
-      const { data, error } = await client.rpc('crm_resolve_company_uuid', { p_company_key: key });
-      if (!error) {
-        const resolvedId = str(Array.isArray(data) ? data[0] : data);
-        if (isUuid(resolvedId)) return resolvedId;
-      } else {
-        console.error('[Company Resolver] Failed:', key, error);
-      }
+    if (!client?.rpc) {
+      console.error('[Company Resolver] Failed:', key, new Error('Supabase RPC client is unavailable.'));
+      return null;
     }
-
-    if (client?.from) {
-      try {
-        const { data, error } = await client
-          .from('companies')
-          .select('*')
-          .order('updated_at', { ascending: false, nullsFirst: false })
-          .order('created_at', { ascending: false, nullsFirst: false })
-          .limit(2000);
-        if (!error) {
-          const match = (data || []).map(normalizeCompany).find(company => localCompanyMatch(company, key));
-          if (match?.id && isUuid(match.id)) return match.id;
-        } else {
-          console.error('[Company Resolver] Direct fallback failed:', key, error);
-        }
-      } catch (error) {
-        console.error('[Company Resolver] Direct fallback crashed:', key, error);
-      }
+    const { data, error } = await client.rpc('crm_resolve_company_uuid', { p_company_key: key });
+    if (error) {
+      console.error('[Company Resolver] Failed:', key, error);
+      return null;
     }
-
-    return null;
+    const resolvedId = str(Array.isArray(data) ? data[0] : data);
+    return isUuid(resolvedId) ? resolvedId : null;
   }
 
   async function loadCompanySafe(companyKey) {
@@ -509,31 +456,22 @@
       const { data, error } = await client.rpc('crm_get_company_by_key', { p_company_key: key });
       if (!error) {
         const row = Array.isArray(data) ? data[0] : data;
-        const normalized = row && typeof row === 'object' ? normalizeCompany(row) : null;
-        if (normalized?.id && isUuid(normalized.id)) return normalized;
+        if (row && typeof row === 'object') return normalizeCompany(row);
       } else {
         console.error('[Company Loader] RPC failed:', key, error);
       }
     }
-
     const id = await resolveCompanyUuid(key);
     if (!id) return null;
-
     if (client?.from) {
-      try {
-        const { data, error } = await client.from('companies').select('*').eq('id', id).maybeSingle();
-        if (!error && data) return normalizeCompany(data);
-        if (error) console.error('[Company Loader] UUID fallback failed:', id, error);
-      } catch (error) {
-        console.error('[Company Loader] UUID fallback crashed:', id, error);
-      }
+      const { data, error } = await client.from('companies').select('*').eq('id', id).maybeSingle();
+      if (!error && data) return normalizeCompany(data);
+      if (error) console.error('[Company Loader] direct UUID lookup failed:', id, error);
     }
-
     if (global.Api?.requestWithSession) {
       const response = await global.Api.requestWithSession('companies', 'get', { id }, { requireAuth: true });
       const row = response?.row || response?.data || response?.company || response;
-      const normalized = row && typeof row === 'object' ? normalizeCompany(row) : null;
-      return normalized?.id ? normalized : null;
+      return row && typeof row === 'object' ? normalizeCompany(row) : null;
     }
     return null;
   }
@@ -611,49 +549,88 @@
     return loadCompanyOptions(searchText, includeSelectedId);
   }
 
+  function dedupeContacts(rows = []) {
+    const byId = new Map();
+    rows.map(normalizeContact).forEach(contact => {
+      const id = str(contact.contact_id || contact.id);
+      if (id) byId.set(id, contact);
+    });
+    return Array.from(byId.values());
+  }
+
+  async function fallbackLoadContactsForCompany(selectedCompanyId, loadedCompany = null) {
+    const client = global.supabaseClient || global.supabase;
+    if (!client?.from) return [];
+    const company = loadedCompany || await loadCompanySafe(selectedCompanyId);
+    const companyUuid = str(selectedCompanyId);
+    const companyBusinessId = str(company?.company_business_id || company?.company_ref || company?.company_number || company?.company_code);
+    const companyName = str(company?.legal_name || company?.company_name || company?.name);
+    const queries = [];
+    const addQuery = (label, builder) => queries.push({ label, builder });
+
+    addQuery('company_id_uuid', () => client.from('contacts').select('*').eq('company_id', companyUuid).limit(500));
+    if (companyBusinessId) addQuery('company_id_business_ref', () => client.from('contacts').select('*').eq('company_id', companyBusinessId).limit(500));
+    if (companyBusinessId) addQuery('company_ids_contains_ref', () => client.from('contacts').select('*').ilike('company_ids', `%${companyBusinessId}%`).limit(500));
+    if (companyName) addQuery('company_name_exact', () => client.from('contacts').select('*').eq('company_name', companyName).limit(500));
+    if (companyName) addQuery('company_names_contains_name', () => client.from('contacts').select('*').ilike('company_names', `%${companyName}%`).limit(500));
+
+    const rows = [];
+    for (const item of queries) {
+      try {
+        const { data, error } = await item.builder();
+        if (error) {
+          console.warn('[Contacts] fallback contact query failed:', item.label, error);
+          continue;
+        }
+        (data || []).forEach(row => rows.push({
+          ...row,
+          selected_company_uuid: companyUuid,
+          selected_company_ref: companyBusinessId,
+          selected_company_name: companyName,
+          raw_contact: row
+        }));
+      } catch (error) {
+        console.warn('[Contacts] fallback contact query exception:', item.label, error);
+      }
+    }
+    return dedupeContacts(rows).filter(contact => contact.contact_id && contact.company_id === companyUuid);
+  }
+
   async function loadContactsForCompany(companyId) {
     const selectedCompanyId = await resolveCompanyUuid(companyId);
     if (!selectedCompanyId) return [];
 
+    const loadedCompany = await loadCompanySafe(selectedCompanyId);
     const client = global.supabaseClient || global.supabase;
-    let data = [];
+    let rows = [];
+
     if (client?.rpc) {
-      const response = await client.rpc('crm_get_contacts_for_company', { p_company_id: selectedCompanyId });
-      if (response.error) {
-        console.error('[Contacts] Failed to load contacts for company', selectedCompanyId, response.error);
-      } else {
-        data = response.data || [];
-      }
+      const { data, error } = await client.rpc('crm_get_contacts_for_company', { p_company_id: selectedCompanyId });
+      if (error) console.error('[Contacts] RPC failed for company', selectedCompanyId, error);
+      else rows = Array.isArray(data) ? data : [];
     } else {
-      console.error('[Contacts] Failed to load contacts for company', selectedCompanyId, new Error('Supabase RPC client is unavailable.'));
+      console.error('[Contacts] Supabase RPC client is unavailable; using direct fallback.');
     }
 
-    if ((!data || data.length === 0) && client?.from) {
-      try {
-        const { data: directRows, error } = await client
-          .from('contacts')
-          .select('*')
-          .eq('company_id', selectedCompanyId)
-          .order('updated_at', { ascending: false, nullsFirst: false })
-          .order('created_at', { ascending: false, nullsFirst: false })
-          .limit(500);
-        if (!error && Array.isArray(directRows) && directRows.length) data = directRows;
-        if (error) console.error('[Contacts] Direct UUID fallback failed:', selectedCompanyId, error);
-      } catch (error) {
-        console.error('[Contacts] Direct UUID fallback crashed:', selectedCompanyId, error);
-      }
-    }
-
-    const contacts = (data || []).map(row => normalizeContact({
+    let contacts = dedupeContacts(rows.map(row => ({
       ...row,
       id: row.contact_uuid || row.id,
-      contact_id: row.contact_uuid || row.id || row.contact_id,
-      company_id: selectedCompanyId,
-      company_uuid: selectedCompanyId,
-      full_name: row.contact_name || row.full_name || row.name,
-      contact_position: row.contact_position || row.position || row.job_title || row.title
-    })).filter(contact => contact.contact_id && contact.company_id === selectedCompanyId);
-    console.log('[ContactSelect] contacts loaded:', contacts);
+      contact_id: row.contact_uuid || row.contact_id,
+      company_id: row.selected_company_uuid || selectedCompanyId,
+      company_uuid: row.selected_company_uuid || selectedCompanyId,
+      company_ref: row.selected_company_ref || loadedCompany?.company_ref || loadedCompany?.company_business_id,
+      company_name: row.selected_company_name || loadedCompany?.legal_name || loadedCompany?.company_name,
+      full_name: row.contact_name || row.full_name,
+      contact_position: row.contact_position
+    }))).filter(contact => contact.contact_id && contact.company_id === selectedCompanyId);
+
+    // Critical safety net: some deployments may not have the newest RPC deployed yet, or old contacts may store Company# refs only.
+    // The direct fallback prevents the UI from showing "No contacts found" when the database contains linked contacts.
+    if (!contacts.length) {
+      contacts = await fallbackLoadContactsForCompany(selectedCompanyId, loadedCompany);
+    }
+
+    console.log('[ContactSelect] contacts loaded for company:', selectedCompanyId, contacts);
     return contacts;
   }
 
@@ -698,10 +675,11 @@
     }
     contactSelect.disabled = true;
     contactSelect.innerHTML = '<option value="">Loading contacts…</option>';
-    const requestCompanyId = str(companyId);
+    const requestCompanyId = await resolveCompanyUuid(companyId) || str(companyId);
     contactSelect.dataset.loadingCompanyId = requestCompanyId;
     const contacts = await loadContactsForCompany(requestCompanyId);
-    if (contactSelect.dataset.loadingCompanyId !== requestCompanyId || str(byId(cfg.companySelectId)?.value) !== requestCompanyId) return [];
+    const currentCompanyId = await resolveCompanyUuid(byId(cfg.companySelectId)?.value || byId(cfg.companyHiddenId)?.value) || str(byId(cfg.companySelectId)?.value || byId(cfg.companyHiddenId)?.value);
+    if (contactSelect.dataset.loadingCompanyId !== requestCompanyId || currentCompanyId !== requestCompanyId) return [];
     if (!contacts.length) {
       contactSelect.innerHTML = '<option value="">No contacts found for this company</option>';
       contactSelect.disabled = false;
@@ -929,7 +907,7 @@
 
   async function loadContactByUuid(contactUuid) {
     const id = str(contactUuid);
-    if (!id || !isUuid(id)) return null;
+    if (!id) return null;
     const client = global.supabaseClient || global.supabase;
     if (!client?.from) throw new Error('Supabase client is unavailable.');
     const { data, error } = await client.from('contacts').select('*').eq('id', id).maybeSingle();
