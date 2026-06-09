@@ -175,11 +175,14 @@ const Companies = {
         return;
       }
 
+      const companyUuid = String(row.id || row.company_uuid || row.companyUuid || '').trim();
       const contactCompany = {
-        company_id: row.company_id || '',
-        company_name: row.company_name || '',
-        company_ids: row.company_id ? [row.company_id] : [],
-        company_names: row.company_name || row.company_id || ''
+        id: companyUuid,
+        company_uuid: companyUuid,
+        company_id: companyUuid,
+        company_name: row.company_name || row.legal_name || '',
+        company_ids: companyUuid ? [companyUuid] : [],
+        company_names: row.company_name || row.legal_name || companyUuid || ''
       };
 
       try {

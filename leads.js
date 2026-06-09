@@ -1806,6 +1806,8 @@ const Leads = {
     }).join('');
   },
   async loadLeadPickerOptions(companyId = '') {
+    const requestId = (this._leadPickerLoadRequestId || 0) + 1;
+    this._leadPickerLoadRequestId = requestId;
     const normalizedCompanyId = this.cleanUuidOrUndefined(companyId) || this.getRecordUuid(this.state.selectedCompany || {}, 'company') || '';
     const rowsFrom = res => Array.isArray(res?.rows) ? res.rows : (Array.isArray(res?.items) ? res.items : (Array.isArray(res?.data) ? res.data : []));
     let companies = [];
@@ -1841,37 +1843,14 @@ const Leads = {
       if (selectedCompany && this.getRecordUuid(selectedCompany, 'company') && !this.state.selectedCompany) {
         this.state.selectedCompany = selectedCompany;
       }
-      const contactRowsById = new Map();
-      const appendContacts = rows => {
-        (rows || []).map(c => this.normalizeContact(c)).forEach(c => {
-          const uuid = this.getRecordUuid(c, 'contact');
-          if (uuid && this.contactBelongsToCompany(c, selectedCompany)) contactRowsById.set(uuid, c);
-        });
-      };
       try {
-        const contactsRes = await Api.requestWithSession('contacts', 'list', { page: 1, limit: 5000, filters: { company_id: normalizedCompanyId }, sortBy: 'full_name', sortDir: 'asc' }, { requireAuth: true });
-        appendContacts(rowsFrom(contactsRes));
+        const contactRows = await window.CrmCompanyContactSelectors?.loadContactsForCompany?.(normalizedCompanyId);
+        if (!contactRows) throw new Error('Shared contact loader is unavailable.');
+        contacts = contactRows.map(c => this.normalizeContact(c));
       } catch (error) {
-        console.warn('[leads] contact lookup by company UUID failed', error);
+        console.error('[leads] contact lookup by company UUID failed', error);
+        contacts = [];
       }
-      const companyBusinessId = String(selectedCompany.company_id || selectedCompany.companyId || '').trim();
-      if (companyBusinessId && !this.isUuid(companyBusinessId)) {
-        try {
-          const contactsRes = await Api.requestWithSession('contacts', 'list', { page: 1, limit: 5000, filters: { company_id: companyBusinessId }, sortBy: 'full_name', sortDir: 'asc' }, { requireAuth: true });
-          appendContacts(rowsFrom(contactsRes));
-        } catch (error) {
-          console.warn('[leads] contact lookup by company business id failed', error);
-        }
-      }
-      if (contactRowsById.size === 0) {
-        try {
-          const allContactsRes = await Api.requestWithSession('contacts', 'list', { page: 1, limit: 5000, sortBy: 'full_name', sortDir: 'asc' }, { requireAuth: true });
-          appendContacts(rowsFrom(allContactsRes));
-        } catch (error) {
-          console.warn('[leads] contact fallback lookup failed', error);
-        }
-      }
-      contacts = Array.from(contactRowsById.values());
     }
 
     // Newly created or just-clicked contacts can be absent from the list endpoint immediately.
@@ -1881,6 +1860,9 @@ const Leads = {
       if (canInjectContact) contacts.unshift(this.state.selectedContact);
     }
     contacts = this.dedupeLeadRows(contacts, 'contact');
+
+    // Ignore an older async response after the user has selected a different company.
+    if (requestId !== this._leadPickerLoadRequestId) return;
 
     this.state.companyPickerRows = companies;
     this.state.contactPickerRows = contacts;
@@ -2118,9 +2100,12 @@ const Leads = {
   },
   async handleLeadCompanyChange(event) {
     const selectedCompanyId = String(event?.target?.value || E.leadFormCompanyId?.value || '').trim();
+    console.log('[CompanySelect] selected company id:', selectedCompanyId);
     const availableCompanies = [...(this.state.companyPickerRows || [])];
     this.resetLeadSelectionState();
     this.state.companyPickerRows = availableCompanies;
+    this.state.contactPickerRows = [];
+    this.renderLeadContactOptions([]);
     if (E.leadFormCompanyName) E.leadFormCompanyName.value = selectedCompanyId;
     if (!selectedCompanyId) {
       this.hydrateLeadFromCompany({});

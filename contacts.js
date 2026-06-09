@@ -37,7 +37,7 @@ const Contacts = {
       UI?.toast?.('You do not have permission to create contacts.', 'warning');
       return;
     }
-    const companyId = company.company_id || '';
+    const companyId = this.companyRelationId(company);
     const companyName = company.company_name || '';
     return this.openForm({
       company_id: companyId,
