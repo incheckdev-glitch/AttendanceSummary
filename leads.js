@@ -2181,15 +2181,8 @@ const Leads = {
     }
     const fullContact = await this.fetchFullContact(this.getRecordUuid(selectedContact, 'contact')) || selectedContact;
     const selectedCompanyId = this.getRecordUuid(this.state.selectedCompany || {}, 'company');
-    const contactCompanyId = String(fullContact.company_id || fullContact.company_uuid || '').trim();
-    const belongs = !this.state.selectedCompany || await window.CrmCompanyContactSelectors?.contactBelongsToCompany?.(this.getRecordUuid(fullContact, 'contact'), selectedCompanyId);
-    if (!belongs) {
-      this.clearLeadContactSelection();
-      await this.loadLeadPickerOptions(selectedCompanyId);
-      UI?.toast?.('Selected contact does not belong to the selected company. Please reselect the contact.', 'warning');
-      this.debugLeadSelection('[leads] contact changed', { selectedDropdownValue: selectedContactId, resolvedContactId: this.getRecordUuid(fullContact, 'contact'), resolvedContactName: this.getContactDisplayName(fullContact), contactCompanyId, selectedCompanyId, rejected: true }, 'warn');
-      return;
-    }
+    const contactCompanyId = String(fullContact.selected_company_uuid || fullContact.company_uuid || fullContact.company_id || '').trim();
+    // This contact came from the company-scoped picker RPC, so do not reject it using legacy contact company fields.
     this.hydrateLeadFromContact(fullContact);
     this.debugLeadSelection('[leads] contact changed', {
       selectedDropdownValue: selectedContactId,
