@@ -297,7 +297,7 @@
   function normalizeContact(raw = {}) {
     const c = raw && typeof raw === 'object' ? raw : {};
     const rawContact = c.raw_contact && typeof c.raw_contact === 'object' ? c.raw_contact : {};
-    const contactUuid = str(c.id || c.contact_uuid || c.contactUuid || c.contact_id_uuid || c.contactIdUuid);
+    const contactUuid = [c.id, c.contact_uuid, c.contactUuid, c.contact_id_uuid, c.contactIdUuid, c.contact_id, c.contactId].map(str).find(isUuid) || '';
     const contactBusinessId = str(c.contact_ref || c.contactRef || c.contact_number || c.contactNumber || c.contact_code || c.contactCode || rawContact.contact_id || rawContact.contact_number || rawContact.contact_code || (!isUuid(c.contact_id || c.contactId) ? (c.contact_id || c.contactId) : ''));
     const rawCompanyId = str(c.company_id || c.companyId || rawContact.company_id || rawContact.companyId);
     const companyUuid = str(c.selected_company_uuid || c.selectedCompanyUuid || c.company_uuid || c.companyUuid || (isUuid(rawCompanyId) ? rawCompanyId : ''));
@@ -387,8 +387,15 @@
     // CRM relations must always use the companies.id UUID, never a display/business code.
     return str(company.id || company.company_uuid);
   }
+  function getContactOptionValue(contact = {}) {
+    // CRM relations must always use the contacts.id UUID, never Contact# refs or display values.
+    return [contact.id, contact.contact_uuid, contact.contactUuid, contact.contact_id].map(str).find(isUuid) || '';
+  }
   function contactPhone(contact = {}) {
     return str(contact.mobile || contact.phone);
+  }
+  function contactSecondary(contact = {}) {
+    return str(contact.email || contact.phone || contact.contact_position || contact.job_title || contact.contact_ref);
   }
   function setSelectOptions(select, rows, placeholder, type) {
     if (!select) return;
@@ -397,11 +404,11 @@
     rows.forEach(row => {
       const value = type === 'company'
         ? getCompanyOptionValue(row)
-        : (row.contact_id || row.id || '');
+        : getContactOptionValue(row);
       if (!value) return;
       const label = type === 'company'
         ? displayCompany(row)
-        : displayContact(row, { includeEmail: false });
+        : [displayContact(row, { includeEmail: false }), contactSecondary(row)].filter(Boolean).join(' — ');
       options.push(`<option value="${escapeAttr(value)}">${escapeHtml(label)}</option>`);
     });
     select.innerHTML = options.join('');
@@ -682,37 +689,34 @@
     const selectedCompanyId = await resolveCompanyUuid(companyId);
     if (!selectedCompanyId) return [];
 
-    const loadedCompany = await loadCompanySafe(selectedCompanyId);
     const client = global.SupabaseClient?.getClient?.() || global.supabaseClient || global.supabase;
-    let rows = [];
-
-    if (client?.rpc) {
-      const { data, error } = await client.rpc('crm_get_contacts_for_company', { p_company_id: selectedCompanyId });
-      if (error) console.error('[Contacts] RPC failed for company', selectedCompanyId, error);
-      else rows = Array.isArray(data) ? data : [];
-    } else {
-      console.error('[Contacts] Supabase RPC client is unavailable; using direct fallback.');
+    if (!client?.rpc) {
+      console.error('[Contacts] Supabase RPC client is unavailable.');
+      return [];
     }
 
-    let contacts = dedupeContacts(rows.map(row => ({
+    const { data, error } = await client.rpc('crm_get_contacts_for_company', { p_company_id: selectedCompanyId });
+    if (error) {
+      console.error('[Contacts] RPC failed for company', selectedCompanyId, error);
+      return [];
+    }
+
+    const contacts = dedupeContacts((Array.isArray(data) ? data : []).map(row => ({
       ...row,
-      id: row.contact_uuid || row.id,
-      contact_id: row.contact_uuid || row.contact_id,
-      company_id: row.selected_company_uuid || selectedCompanyId,
-      company_uuid: row.selected_company_uuid || selectedCompanyId,
-      company_ref: row.selected_company_ref || loadedCompany?.company_ref || loadedCompany?.company_business_id,
-      company_name: row.selected_company_name || loadedCompany?.legal_name || loadedCompany?.company_name,
-      full_name: row.contact_name || row.full_name,
-      contact_position: row.contact_position
-    }))).filter(contact => contact.contact_id && contact.company_id === selectedCompanyId);
+      id: row.contact_uuid,
+      contact_id: row.contact_uuid,
+      contact_uuid: row.contact_uuid,
+      company_id: selectedCompanyId,
+      company_uuid: selectedCompanyId,
+      full_name: row.contact_name,
+      contact_name: row.contact_name,
+      email: row.email,
+      phone: row.phone,
+      contact_position: row.contact_position,
+      contact_ref: row.contact_ref
+    }))).filter(contact => isUuid(contact.contact_id) && contact.company_id === selectedCompanyId);
 
-    // Critical safety net: some deployments may not have the newest RPC deployed yet, or old contacts may store Company# refs only.
-    // The direct fallback prevents the UI from showing "No contacts found" when the database contains linked contacts.
-    if (!contacts.length) {
-      contacts = await fallbackLoadContactsForCompany(selectedCompanyId, loadedCompany);
-    }
-
-    console.log('[ContactSelect] contacts loaded for company:', selectedCompanyId, contacts);
+    console.log('[ContactSelect] contacts loaded:', contacts);
     return contacts;
   }
 
@@ -987,19 +991,50 @@
     return state.companies;
   }
 
-  async function loadContactByUuid(contactUuid) {
-    const id = str(contactUuid);
+  async function resolveContactUuid(contactKey) {
+    const key = str(contactKey);
+    if (!key) return null;
+    if (isUuid(key)) return key;
+    const client = global.SupabaseClient?.getClient?.() || global.supabaseClient || global.supabase;
+    if (!client?.rpc) {
+      console.error('[Contact Resolver] Failed:', key, new Error('Supabase RPC client is unavailable.'));
+      return null;
+    }
+    const { data, error } = await client.rpc('crm_resolve_contact_uuid', { p_contact_key: key });
+    if (error) {
+      console.error('[Contact Resolver] Failed:', key, error);
+      return null;
+    }
+    const resolvedId = str(Array.isArray(data) ? data[0] : data);
+    return isUuid(resolvedId) ? resolvedId : null;
+  }
+
+  async function loadContactSafe(contactKey) {
+    const id = await resolveContactUuid(contactKey);
     if (!id) return null;
     const client = global.SupabaseClient?.getClient?.() || global.supabaseClient || global.supabase;
+    if (client?.rpc) {
+      const { data, error } = await client.rpc('crm_get_contact_by_key', { p_contact_key: id });
+      if (!error) {
+        const row = Array.isArray(data) ? data[0] : data;
+        if (row && typeof row === 'object') return normalizeContact(row);
+      } else {
+        console.error('[Contact Loader] RPC failed:', id, error);
+      }
+    }
     if (!client?.from) throw new Error('Supabase client is unavailable.');
     const { data, error } = await client.from('contacts').select('*').eq('id', id).maybeSingle();
     if (error) throw error;
     return data ? normalizeContact(data) : null;
   }
 
+  async function loadContactByUuid(contactUuid) {
+    return loadContactSafe(contactUuid);
+  }
+
   async function validateCompanyContactSelection({ companyId, contactId = '', moduleName = 'record' } = {}) {
     const companyKey = str(companyId);
-    const selectedContactId = str(contactId);
+    const selectedContactKey = str(contactId);
     if (!companyKey) throw new Error('Please select a company.');
     const selectedCompanyId = await resolveCompanyUuid(companyKey);
     if (!selectedCompanyId) throw new Error('Selected company could not be resolved. Please reselect the company.');
@@ -1008,21 +1043,25 @@
       throw new Error('Selected company could not be resolved. Please reselect the company.');
     }
     let loadedContact = null;
-    if (selectedContactId) {
-      loadedContact = await loadContactByUuid(selectedContactId);
-      const contactCompanyId = loadedContact ? await resolveCompanyUuid(loadedContact.company_id || loadedContact.company_uuid) : null;
-      if (!loadedContact || loadedContact.id !== selectedContactId || contactCompanyId !== selectedCompanyId) {
-        throw new Error('Selected contact does not belong to the selected company.');
+    let resolvedContactId = null;
+    if (selectedContactKey) {
+      resolvedContactId = await resolveContactUuid(selectedContactKey);
+      if (!resolvedContactId) throw new Error('Selected contact could not be resolved. Please reselect the contact.');
+      loadedContact = await loadContactSafe(resolvedContactId);
+      if (!loadedContact || loadedContact.id !== resolvedContactId) {
+        throw new Error('Selected contact could not be resolved. Please reselect the contact.');
       }
+      const contactCompanyId = await resolveCompanyUuid(loadedContact.company_id || loadedContact.company_uuid);
+      if (contactCompanyId !== selectedCompanyId) throw new Error('Selected contact does not belong to the selected company.');
       loadedContact.company_id = selectedCompanyId;
     }
     console.log('[SAVE CHECK] module:', moduleName);
     console.log('[SAVE CHECK] form.company_id:', selectedCompanyId);
     console.log('[SAVE CHECK] selectedCompanyId:', selectedCompanyId);
     console.log('[SAVE CHECK] loadedCompany:', loadedCompany);
-    console.log('[SAVE CHECK] form.contact_id:', selectedContactId);
+    console.log('[SAVE CHECK] form.contact_id:', resolvedContactId || '');
     console.log('[SAVE CHECK] loadedContact:', loadedContact);
-    return { resolvedCompanyId: selectedCompanyId, loadedCompany, loadedContact };
+    return { resolvedCompanyId: selectedCompanyId, resolvedContactId, loadedCompany, loadedContact };
   }
 
   function applyLoadedCompanySnapshot(payload = {}, loadedCompany = {}, loadedContact = null) {
@@ -1094,6 +1133,8 @@
     resolveCompanyUuid,
     loadCompanySafe,
     loadCompanyByUuid: fetchCompanyByUuid,
+    resolveContactUuid,
+    loadContactSafe,
     loadContactByUuid,
     validateCompanyContactSelection,
     applyLoadedCompanySnapshot,

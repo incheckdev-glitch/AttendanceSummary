@@ -880,7 +880,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
   normalizeContact(contact = {}) {
     const rawContact = contact?.raw_contact && typeof contact.raw_contact === 'object' ? contact.raw_contact : {};
     const c = { ...rawContact, ...(contact && typeof contact === 'object' ? contact : {}) };
-    const uuid = String(c.id || c.contact_uuid || c.contactUuid || '').trim();
+    const uuid = [c.id, c.contact_uuid, c.contactUuid, c.contact_id, c.contactId].map(value => String(value || '').trim()).find(value => this.isUuid(value)) || '';
     const companyCandidate = String(c.company_id || c.companyId || '').trim();
     const companyUuid = String(c.company_uuid || c.companyUuid || c.selected_company_uuid || c.selectedCompanyUuid || (this.isUuid(companyCandidate) ? companyCandidate : '')).trim();
     return { ...c, id: uuid, contact_id: uuid || String(c.contact_id || c.contactId || c.contact_ref || c.contactRef || '').trim(), company_id: companyUuid || companyCandidate, company_uuid: companyUuid, first_name:String(c.first_name||c.firstName||'').trim(), last_name:String(c.last_name||c.lastName||'').trim(), full_name:String(c.contact_name||c.contactName||c.full_name||c.fullName||c.name||'').trim(), name:String(c.name||'').trim(), contact_name:String(c.contact_name||c.contactName||'').trim(), position:String(c.contact_position||c.contactPosition||c.position||'').trim(), job_title:String(c.contact_position||c.contactPosition||c.position||c.job_title||c.jobTitle||c.title||'').trim(), title:String(c.title||'').trim(), department:String(c.department||'').trim(), email:String(c.email||c.contact_email||'').trim(), phone:String(c.phone||c.phone_number||'').trim(), mobile:String(c.mobile||'').trim(), decision_role:String(c.decision_role||c.decisionRole||'').trim(), contact_status:String(c.contact_status||c.contactStatus||c.status||'').trim() };
@@ -1470,18 +1470,12 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const row = await window.CrmCompanyContactSelectors?.loadCompanySafe?.(companyKey);
     return row ? this.normalizeCompany(row) : null;
   },
-  async loadContactByUuid(contactUuid) {
-    const id = String(contactUuid || '').trim();
-    if (!this.isUuid(id)) return null;
-    const client = window.supabaseClient || window.supabase;
-    if (client?.from) {
-      const { data, error } = await client.from('contacts').select('*').eq('id', id).maybeSingle();
-      if (error) throw error;
-      return data ? this.normalizeContact(data) : null;
-    }
-    const response = await Api.requestWithSession('contacts', 'get', { id }, { requireAuth: true });
-    const row = response?.row || response?.data || response?.contact || response;
-    return row && typeof row === 'object' ? this.normalizeContact(row) : null;
+  async resolveContactUuid(contactKey) {
+    return window.CrmCompanyContactSelectors?.resolveContactUuid?.(contactKey) || null;
+  },
+  async loadContactByUuid(contactKey) {
+    const row = await window.CrmCompanyContactSelectors?.loadContactSafe?.(contactKey);
+    return row ? this.normalizeContact(row) : null;
   },
   async getFullCompanyRecord(companyIdOrRecord) {
     const id = typeof companyIdOrRecord === 'object' ? (companyIdOrRecord.id || companyIdOrRecord.company_uuid || companyIdOrRecord.companyUuid) : companyIdOrRecord;
@@ -1545,10 +1539,13 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     if (!loadedCompany || loadedCompany.id !== this.state.selectedCompanyId) throw new Error('Selected company data mismatch. Please reselect the company.');
     let loadedContact = null;
     if (this.state.selectedContactId) {
-      loadedContact = await this.loadContactByUuid(this.state.selectedContactId);
-      if (!loadedContact || loadedContact.id !== this.state.selectedContactId) throw new Error('Selected contact data mismatch. Please reselect the contact.');
-      const contactCompanyId = String(loadedContact.company_uuid || loadedContact.company_id || '').trim();
-      if (this.isUuid(contactCompanyId) && contactCompanyId !== loadedCompany.id) throw new Error('Selected contact does not belong to the selected company.');
+      const resolvedContactId = await this.resolveContactUuid(this.state.selectedContactId);
+      if (!resolvedContactId) throw new Error('Selected contact could not be resolved. Please reselect the contact.');
+      loadedContact = await this.loadContactByUuid(resolvedContactId);
+      if (!loadedContact || loadedContact.id !== resolvedContactId) throw new Error('Selected contact could not be resolved. Please reselect the contact.');
+      const contactCompanyId = await this.resolveCompanyUuid(loadedContact.company_uuid || loadedContact.company_id);
+      if (contactCompanyId !== loadedCompany.id) throw new Error('Selected contact does not belong to the selected company.');
+      this.state.selectedContactId = resolvedContactId;
     }
     console.log('[Proposal Create] selectedContactId:', this.state.selectedContactId);
     console.log('[Proposal Create] loadedContact:', loadedContact);
@@ -4149,15 +4146,18 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     if (sourceCompanyId && sourceCompanyId !== companyId) throw new Error('Source company does not match the selected company. Save blocked.');
     const loadedCompany = await this.loadCompanySafe(companyId);
     if (!loadedCompany || loadedCompany.id !== companyId) throw new Error('Selected company could not be resolved. Please reselect the company.');
-    const contactId = String(proposal.contact_id || '').trim();
-    if (sourceContactId && sourceContactId !== contactId) throw new Error('Source contact does not match the selected contact. Save blocked.');
+    const contactKey = String(proposal.contact_id || '').trim();
+    const contactId = contactKey ? await this.resolveContactUuid(contactKey) : '';
+    const resolvedSourceContactId = sourceContactId ? await this.resolveContactUuid(sourceContactId) : '';
+    if (contactKey && !contactId) throw new Error('Selected contact could not be resolved. Please reselect the contact.');
+    if (sourceContactId && !resolvedSourceContactId) throw new Error('Selected contact could not be resolved. Please reselect the contact.');
+    if (resolvedSourceContactId && resolvedSourceContactId !== contactId) throw new Error('Source contact does not match the selected contact. Save blocked.');
     let loadedContact = null;
     if (contactId) {
-      if (!this.isUuid(contactId)) throw new Error('Please select a contact by UUID.');
       loadedContact = await this.loadContactByUuid(contactId);
-      if (!loadedContact || loadedContact.id !== contactId) throw new Error('Selected contact data mismatch. Please reselect the contact.');
-      const contactCompanyId = String(loadedContact.company_uuid || loadedContact.company_id || '').trim();
-      if (this.isUuid(contactCompanyId) && contactCompanyId !== companyId) throw new Error('Selected contact does not belong to the selected company.');
+      if (!loadedContact || loadedContact.id !== contactId) throw new Error('Selected contact could not be resolved. Please reselect the contact.');
+      const contactCompanyId = await this.resolveCompanyUuid(loadedContact.company_uuid || loadedContact.company_id);
+      if (contactCompanyId !== companyId) throw new Error('Selected contact does not belong to the selected company.');
     }
     const legalName = String(loadedCompany.legal_name || loadedCompany.company_name || '').trim();
     proposal.company_id = loadedCompany.id;
@@ -4918,9 +4918,14 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         UI.toast('Selected company data mismatch. Please reselect the company.');
         return;
       }
-      const loadedContact = proposal?.contact_id ? await this.loadContactByUuid(proposal.contact_id) : null;
-      if (proposal?.contact_id && (!loadedContact || loadedContact.id !== proposal.contact_id)) {
-        UI.toast('Selected company data mismatch. Please reselect the company.');
+      const resolvedContactId = proposal?.contact_id ? await this.resolveContactUuid(proposal.contact_id) : '';
+      if (proposal?.contact_id && !resolvedContactId) {
+        UI.toast('Selected contact could not be resolved. Please reselect the contact.');
+        return;
+      }
+      const loadedContact = resolvedContactId ? await this.loadContactByUuid(resolvedContactId) : null;
+      if (resolvedContactId && (!loadedContact || loadedContact.id !== resolvedContactId)) {
+        UI.toast('Selected contact could not be resolved. Please reselect the contact.');
         return;
       }
       const contactCompanyId = String(loadedContact?.company_uuid || loadedContact?.company_id || '').trim();
