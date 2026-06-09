@@ -322,6 +322,18 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       };
     });
   }
+  function automaticInvoiceScheduleMatchesInvoice(existingRows = [], invoice = {}) {
+    if (isManualInvoiceSchedule(invoice)) return true;
+    const expectedRows = buildInvoicePaymentScheduleRows(invoice);
+    const actualRows = [...(Array.isArray(existingRows) ? existingRows : [])]
+      .sort((a, b) => Number(a.schedule_no || 0) - Number(b.schedule_no || 0));
+    if (actualRows.length !== expectedRows.length) return false;
+    return expectedRows.every((expected, index) => {
+      const actual = actualRows[index] || {};
+      return Number(actual.schedule_no || 0) === Number(expected.schedule_no || 0)
+        && String(actual.due_date || '').trim().slice(0, 10) === expected.due_date;
+    });
+  }
   async function listInvoicePaymentScheduleRows(client, invoiceId) {
     const id = String(invoiceId || '').trim();
     if (!isUuid(id)) throw new Error('Valid invoice UUID is required to load payment schedule.');
@@ -342,7 +354,9 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const { data: invoice, error: invoiceError } = await client.from('invoices').select('*').eq('id', id).maybeSingle();
     if (invoiceError || !invoice) throw friendlyError('Unable to load invoice for payment schedule', invoiceError || new Error('Missing invoice row'));
     if (isManualInvoiceSchedule(invoice)) return existing;
-    if (existing.length && !force) return existing;
+    // Creation paths (including renewal and issued invoices) may encounter a stale schedule.
+    // Keep it only when every automatic installment is anchored to the current invoice due date.
+    if (existing.length && !force && automaticInvoiceScheduleMatchesInvoice(existing, invoice)) return existing;
     if (existing.length) {
       const { error: deleteError } = await client.from('invoice_payment_schedule').delete().eq('invoice_id', id);
       if (deleteError) throw friendlyError('Unable to replace invoice payment schedule', deleteError);
@@ -370,8 +384,9 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       }
       return raw.split(',').map(item => item.trim()).filter(Boolean);
     };
+    const invoiceDueDate = String(invoice?.due_date || invoice?.dueDate || '').trim().slice(0, 10);
     return (Array.isArray(rows) ? rows : []).map((row, index) => {
-      const dueDate = String(row?.due_date || '').trim().slice(0, 10);
+      const dueDate = index === 0 && invoiceDueDate ? invoiceDueDate : String(row?.due_date || '').trim().slice(0, 10);
       const scheduledAmount = Number(Number(row?.scheduled_amount || 0).toFixed(2));
       const receiptIds = parseIdArray(row?.receipt_ids);
       const paidAmount = receiptIds.length ? Number(Number(row?.paid_amount || 0).toFixed(2)) : 0;
@@ -391,9 +406,9 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
   async function saveManualInvoicePaymentScheduleRows(client, invoiceId, rows = [], invoice = {}) {
     const id = String(invoiceId || '').trim();
     if (!isUuid(id)) throw new Error('Valid invoice UUID is required to save payment schedule.');
-    const normalizedRows = normalizeManualInvoicePaymentScheduleRows(id, rows, invoice);
-    const { data: invoiceRow, error: invoiceError } = await client.from('invoices').select('invoice_total,payment_term,payment_terms,payment_terms_custom,payment_schedule_mode').eq('id', id).maybeSingle();
+    const { data: invoiceRow, error: invoiceError } = await client.from('invoices').select('invoice_total,due_date,payment_term,payment_terms,payment_terms_custom,payment_schedule_mode').eq('id', id).maybeSingle();
     if (invoiceError) throw friendlyError('Unable to load invoice for payment schedule', invoiceError);
+    const normalizedRows = normalizeManualInvoicePaymentScheduleRows(id, rows, { ...invoice, ...(invoiceRow || {}) });
     const total = getInvoiceTotalForSchedule(invoiceRow || {});
     const percentTotal = normalizedRows.reduce((sum, row) => sum + Number(row.payment_percent || 0), 0);
     const amountTotal = normalizedRows.reduce((sum, row) => sum + Number(row.scheduled_amount || 0), 0);

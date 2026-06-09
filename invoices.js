@@ -814,7 +814,6 @@ const Invoices = {
         schedule_no: index + 1,
         due_date: dueDate,
         payment_percent: total ? Number(((scheduledAmount / total) * 100).toFixed(2)) : 0,
-        payment_percent: total ? Number(((scheduledAmount / total) * 100).toFixed(2)) : 0,
         scheduled_amount: Number(scheduledAmount.toFixed(2)),
         paid_amount: 0,
         balance_due: Number(scheduledAmount.toFixed(2)),
@@ -861,7 +860,6 @@ const Invoices = {
         schedule_no: index + 1,
         due_date: dueDate,
         payment_percent: total ? Number(((scheduledAmount / total) * 100).toFixed(2)) : 0,
-        payment_percent: total ? Number(((scheduledAmount / total) * 100).toFixed(2)) : 0,
         scheduled_amount: Number(scheduledAmount.toFixed(2)),
         paid_amount: 0,
         balance_due: Number(scheduledAmount.toFixed(2)),
@@ -871,11 +869,25 @@ const Invoices = {
     });
   },
   rebuildInvoicePaymentScheduleWithPayments(invoiceData = {}, invoiceItems = [], linkedAgreement = {}, oldRows = []) {
-    const savedRows = (Array.isArray(oldRows) ? oldRows : []).map(row => this.normalizeInvoiceScheduleRow(row));
-    if (savedRows.length) return savedRows;
-
+    const savedRowsByNumber = new Map((Array.isArray(oldRows) ? oldRows : []).map(row => {
+      const normalized = this.normalizeInvoiceScheduleRow(row);
+      return [Number(normalized.schedule_no || 0), normalized];
+    }));
     const rebuiltRows = this.buildInvoicePaymentSchedule(invoiceData, invoiceItems, linkedAgreement);
-    return rebuiltRows.map(row => this.normalizeInvoiceScheduleRow(row));
+    return rebuiltRows.map(row => {
+      const rebuilt = this.normalizeInvoiceScheduleRow(row);
+      const saved = savedRowsByNumber.get(Number(rebuilt.schedule_no || 0)) || {};
+      return this.normalizeInvoiceScheduleRow({
+        ...rebuilt,
+        id: saved.id || rebuilt.id,
+        paid_amount: saved.paid_amount ?? rebuilt.paid_amount,
+        receipt_ids: saved.receipt_ids || rebuilt.receipt_ids,
+        receipts: saved.receipts || rebuilt.receipts,
+        reminder_enabled: saved.reminder_enabled ?? rebuilt.reminder_enabled,
+        reminder_days: saved.reminder_days || rebuilt.reminder_days,
+        reminder_user_ids: saved.reminder_user_ids || rebuilt.reminder_user_ids
+      });
+    });
   },
   shouldCalculateInvoiceSchedule(invoice = {}) {
     if (this.normalizePaymentScheduleMode(invoice?.payment_schedule_mode, invoice?.payment_term) === 'manual' || this.normalizePaymentTerm(invoice?.payment_term) === 'Custom') return false;
