@@ -6,7 +6,8 @@
     companies: [],
     loadingCompanies: null,
     companyLoadError: null,
-    initialized: false
+    initialized: false,
+    contactOptionsByCompany: new Map()
   };
 
   const FORM_CONFIG = {
@@ -50,11 +51,11 @@
         if (!Deals?.state?.form) return;
         if (company) {
           Deals.state.form.selectedCompany = company;
-          Deals.state.form.companyId = company.company_id || '';
+          Deals.state.form.companyId = company.company_uuid || company.id || '';
         }
         if (contact) {
-          Deals.state.form.selectedContact = contact;
-          Deals.state.form.contactId = contact.contact_id || '';
+          Deals.state.form.selectedContact = contact.contact_uuid ? contact : null;
+          Deals.state.form.contactId = contact.contact_uuid || '';
         }
       }
     },
@@ -413,7 +414,7 @@
       if (!value) return;
       const label = type === 'company'
         ? [displayCompany(row), companySecondary(row)].filter(Boolean).join(' — ')
-        : [displayContact(row, { includeEmail: false }), contactSecondary(row)].filter(Boolean).join(' — ');
+        : str(row.label || row.contact_name || displayContact(row, { includeEmail: false }));
       options.push(`<option value="${escapeAttr(value)}">${escapeHtml(label)}</option>`);
     });
     select.innerHTML = options.join('');
@@ -670,6 +671,7 @@
     const selectedCompanyId = await resolveCompanyUuid(companyId);
     if (!selectedCompanyId) return [];
 
+    state.contactOptionsByCompany.set(selectedCompanyId, []);
     const client = global.SupabaseClient?.getClient?.() || global.supabaseClient || global.supabase;
     if (!client?.rpc) {
       console.error('[Contacts] Supabase RPC client is unavailable.');
@@ -684,19 +686,23 @@
 
     const contacts = dedupeContacts((Array.isArray(data) ? data : []).map(row => ({
       ...row,
+      value: row.contact_uuid,
+      label: row.contact_name,
       id: row.contact_uuid,
       contact_id: row.contact_uuid,
       contact_uuid: row.contact_uuid,
-      company_id: selectedCompanyId,
-      company_uuid: selectedCompanyId,
+      selected_company_uuid: row.selected_company_uuid || selectedCompanyId,
+      company_id: row.selected_company_uuid || selectedCompanyId,
+      company_uuid: row.selected_company_uuid || selectedCompanyId,
       full_name: row.contact_name,
       contact_name: row.contact_name,
       email: row.email,
       phone: row.phone,
       contact_position: row.contact_position,
       contact_ref: row.contact_ref
-    }))).filter(contact => isUuid(contact.contact_id) && contact.company_id === selectedCompanyId);
+    }))).filter(contact => isUuid(contact.contact_uuid));
 
+    state.contactOptionsByCompany.set(selectedCompanyId, contacts);
     console.log('[Contacts loaded]', contacts);
     return contacts;
   }
@@ -1079,10 +1085,22 @@
       p_company_key: String(companyKey)
     });
     if (error) {
-      console.error('[Contact ownership check failed]', { contactKey, companyKey, error });
+      console.error('[Contact Company Validation] Failed', { contactKey, companyKey, error });
       return false;
     }
     return data === true;
+  }
+
+  function getContactOptionsForCompany(companyKey) {
+    return state.contactOptionsByCompany.get(str(companyKey)) || [];
+  }
+
+  function getContactOptionForCompany(contactKey, companyKey) {
+    const contactId = str(contactKey);
+    if (!contactId) return null;
+    return getContactOptionsForCompany(companyKey).find(contact =>
+      str(contact.contact_uuid) === contactId
+    ) || null;
   }
 
   function configForModule(moduleName = '') {
@@ -1116,8 +1134,13 @@
   async function validateCompanyContactSelection({ companyId, contactId = '', moduleName = 'record' } = {}) {
     const companyKey = str(companyId);
     const selectedContactKey = str(contactId);
+    console.log('[Save] selectedCompanyId:', companyKey);
+    console.log('[Save] form.company_id before resolve:', companyKey);
+    console.log('[Save] selectedContactId:', selectedContactKey);
+    console.log('[Save] form.contact_id before resolve:', selectedContactKey);
     if (!companyKey) throw new Error('Please select a company.');
     const selectedCompanyId = await resolveCompanyUuid(companyKey);
+    console.log('[Save] resolvedCompanyId:', selectedCompanyId);
     if (!selectedCompanyId) throw new Error('Selected company could not be resolved. Please reselect the company.');
     const loadedCompany = await loadCompanySafe(selectedCompanyId);
     if (!loadedCompany || loadedCompany.id !== selectedCompanyId) {
@@ -1125,31 +1148,37 @@
     }
     let loadedContact = null;
     let resolvedContactId = null;
+    let selectedContactFromOptions = null;
     if (selectedContactKey) {
       resolvedContactId = await resolveContactUuid(selectedContactKey);
+      console.log('[Save] resolvedContactId:', resolvedContactId);
       if (!resolvedContactId) throw new Error('Selected contact could not be resolved. Please reselect the contact.');
-      loadedContact = await loadContactSafe(resolvedContactId);
-      if (!loadedContact || loadedContact.id !== resolvedContactId) {
+      selectedContactFromOptions = getContactOptionForCompany(resolvedContactId, selectedCompanyId);
+      console.log('[Save] contactOptions:', state.contactOptionsByCompany.get(selectedCompanyId) || []);
+      console.log('[Save] selectedContactFromOptions:', selectedContactFromOptions);
+      loadedContact = await loadContactSafe(resolvedContactId) || selectedContactFromOptions;
+      if (!loadedContact || str(loadedContact.id || loadedContact.contact_uuid) !== resolvedContactId) {
         throw new Error('Selected contact could not be resolved. Please reselect the contact.');
       }
-      const belongs = await contactBelongsToCompany(resolvedContactId, selectedCompanyId);
-      console.log('[Save] contact belongs:', belongs);
-      if (!belongs) {
-        await clearSelectedContactForCompany(selectedCompanyId, moduleName);
-        throw new Error('Selected contact does not belong to the selected company. Please reselect the contact.');
+      if (!selectedContactFromOptions) {
+        const belongs = await contactBelongsToCompany(resolvedContactId, selectedCompanyId);
+        console.log('[Save] contact belongs:', belongs);
+        if (!belongs) {
+          await clearSelectedContactForCompany(selectedCompanyId, moduleName);
+          throw new Error('Selected contact does not belong to the selected company. Please reselect the contact.');
+        }
       }
       loadedContact.company_id = selectedCompanyId;
       loadedContact.company_uuid = selectedCompanyId;
+      loadedContact.selected_company_uuid = selectedCompanyId;
     }
     console.log('[SAVE CHECK] module:', moduleName);
-    console.log('[Save] resolvedCompanyId:', selectedCompanyId);
     console.log('[SAVE CHECK] form.company_id:', selectedCompanyId);
     console.log('[SAVE CHECK] selectedCompanyId:', selectedCompanyId);
     console.log('[SAVE CHECK] loadedCompany:', loadedCompany);
-    console.log('[Save] resolvedContactId:', resolvedContactId || '');
     console.log('[SAVE CHECK] form.contact_id:', resolvedContactId || '');
     console.log('[SAVE CHECK] loadedContact:', loadedContact);
-    return { resolvedCompanyId: selectedCompanyId, resolvedContactId, loadedCompany, loadedContact };
+    return { resolvedCompanyId: selectedCompanyId, resolvedContactId, loadedCompany, loadedContact, selectedContactFromOptions };
   }
 
   function applyLoadedCompanySnapshot(payload = {}, loadedCompany = {}, loadedContact = null) {
@@ -1226,6 +1255,8 @@
     loadContactSafe,
     loadContactByUuid,
     contactBelongsToCompany,
+    getContactOptionsForCompany,
+    getContactOptionForCompany,
     clearSelectedContactForCompany,
     validateCompanyContactSelection,
     applyLoadedCompanySnapshot,

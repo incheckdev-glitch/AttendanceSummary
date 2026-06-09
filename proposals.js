@@ -1476,6 +1476,12 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
   async contactBelongsToCompany(contactKey, companyKey) {
     return await window.CrmCompanyContactSelectors?.contactBelongsToCompany?.(contactKey, companyKey) === true;
   },
+  getContactOptionsForCompany(companyKey) {
+    return window.CrmCompanyContactSelectors?.getContactOptionsForCompany?.(companyKey) || [];
+  },
+  getContactOptionForCompany(contactKey, companyKey) {
+    return window.CrmCompanyContactSelectors?.getContactOptionForCompany?.(contactKey, companyKey) || null;
+  },
   async clearSelectedContactForCompany(companyId) {
     this.state.selectedContactId = '';
     this.state.loadedContact = null;
@@ -1551,13 +1557,17 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     if (this.state.selectedContactId) {
       const resolvedContactId = await this.resolveContactUuid(this.state.selectedContactId);
       if (!resolvedContactId) throw new Error('Selected contact could not be resolved. Please reselect the contact.');
-      loadedContact = await this.loadContactByUuid(resolvedContactId);
-      if (!loadedContact || loadedContact.id !== resolvedContactId) throw new Error('Selected contact could not be resolved. Please reselect the contact.');
-      const belongs = await this.contactBelongsToCompany(resolvedContactId, loadedCompany.id);
-      console.log('[Save] contact belongs:', belongs);
-      if (!belongs) {
-        await this.clearSelectedContactForCompany(loadedCompany.id);
-        throw new Error('Selected contact does not belong to the selected company. Please reselect the contact.');
+      const selectedContactFromOptions = this.getContactOptionForCompany(resolvedContactId, loadedCompany.id);
+      loadedContact = await this.loadContactByUuid(resolvedContactId) || selectedContactFromOptions;
+      if (!loadedContact || String(loadedContact.id || loadedContact.contact_uuid || '').trim() !== resolvedContactId) throw new Error('Selected contact could not be resolved. Please reselect the contact.');
+      console.log('[Save] selectedContactFromOptions:', selectedContactFromOptions);
+      if (!selectedContactFromOptions) {
+        const belongs = await this.contactBelongsToCompany(resolvedContactId, loadedCompany.id);
+        console.log('[Save] contact belongs:', belongs);
+        if (!belongs) {
+          await this.clearSelectedContactForCompany(loadedCompany.id);
+          throw new Error('Selected contact does not belong to the selected company. Please reselect the contact.');
+        }
       }
       this.state.selectedContactId = resolvedContactId;
     }
@@ -4170,13 +4180,18 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     if (resolvedSourceContactId && resolvedSourceContactId !== contactId) throw new Error('Source contact does not match the selected contact. Save blocked.');
     let loadedContact = null;
     if (contactId) {
-      loadedContact = await this.loadContactByUuid(contactId);
-      if (!loadedContact || loadedContact.id !== contactId) throw new Error('Selected contact could not be resolved. Please reselect the contact.');
-      const belongs = await this.contactBelongsToCompany(contactId, companyId);
-      console.log('[Save] contact belongs:', belongs);
-      if (!belongs) {
-        await this.clearSelectedContactForCompany(companyId);
-        throw new Error('Selected contact does not belong to the selected company. Please reselect the contact.');
+      const selectedContactFromOptions = this.getContactOptionForCompany(contactId, companyId);
+      loadedContact = await this.loadContactByUuid(contactId) || selectedContactFromOptions;
+      if (!loadedContact || String(loadedContact.id || loadedContact.contact_uuid || '').trim() !== contactId) throw new Error('Selected contact could not be resolved. Please reselect the contact.');
+      console.log('[Save] contactOptions:', this.getContactOptionsForCompany(companyId));
+      console.log('[Save] selectedContactFromOptions:', selectedContactFromOptions);
+      if (!selectedContactFromOptions) {
+        const belongs = await this.contactBelongsToCompany(contactId, companyId);
+        console.log('[Save] contact belongs:', belongs);
+        if (!belongs) {
+          await this.clearSelectedContactForCompany(companyId);
+          throw new Error('Selected contact does not belong to the selected company. Please reselect the contact.');
+        }
       }
     }
     const legalName = String(loadedCompany.legal_name || loadedCompany.company_name || '').trim();
