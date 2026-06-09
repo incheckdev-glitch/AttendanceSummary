@@ -21,4 +21,8 @@ for (const [name, source] of Object.entries({ lead: leads, deal: deals, agreemen
 assert.match(agreements, /moduleName: 'proposal-to-agreement'/, 'agreement conversion must use the shared contact resolver guard');
 assert.match(proposals, /validateAndRefreshProposalCustomer[\s\S]*?resolveContactUuid\(contactKey\)[\s\S]*?proposal\.contact_id = loadedContact\.id/, 'proposal save must resolve contact keys and save contacts.id');
 
+
+assert.match(selectors, /getContactOptionValue[\s\S]*?contact\.contact_uuid[\s\S]*?find\(isUuid\)/, 'contact dropdown values must prioritize contact_uuid');
+assert.match(proposals, /validateAndRefreshProposalCustomer[\s\S]*?contactBelongsToCompany\(contactId, companyId\)/, 'proposal saves must use backend contact ownership validation');
+
 console.log('Contact UUID resolution checks passed.');
