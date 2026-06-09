@@ -70,7 +70,30 @@ const Leads = {
   },
   normalizeContact(raw = {}) {
     const fullName = U.buildContactDisplayName(raw);
-    return { ...raw, contact_uuid: this.cleanUuidValue(raw.contact_uuid ?? raw.contactUuid ?? raw.id), company_uuid: this.cleanUuidValue(raw.company_uuid ?? raw.companyUuid), contact_id: String(this.pick(raw, 'contact_id', 'contactId')).trim(), company_id: String(this.pick(raw, 'company_id', 'companyId')).trim(), company_name: String(this.pick(raw, 'company_name', 'companyName')).trim(), first_name: String(this.pick(raw, 'first_name', 'firstName')).trim(), last_name: String(this.pick(raw, 'last_name', 'lastName')).trim(), full_name: fullName, job_title: String(this.pick(raw, 'job_title', 'jobTitle')).trim(), department: String(this.pick(raw, 'department')).trim(), email: String(this.pick(raw, 'email')).trim(), phone: String(this.pick(raw, 'phone')).trim(), mobile: String(this.pick(raw, 'mobile')).trim(), decision_role: String(this.pick(raw, 'decision_role', 'decisionRole')).trim(), is_primary_contact: Boolean(raw?.is_primary_contact ?? raw?.isPrimaryContact), contact_status: String(this.pick(raw, 'contact_status', 'contactStatus')).trim(), notes: String(this.pick(raw, 'notes')).trim() };
+    const contactUuid = this.cleanUuidValue(raw.contact_uuid ?? raw.contactUuid ?? raw.id ?? raw.contact_id ?? raw.contactId);
+    const selectedCompanyUuid = this.cleanUuidValue(raw.selected_company_uuid ?? raw.selectedCompanyUuid ?? raw.company_uuid ?? raw.companyUuid ?? raw.company_id ?? raw.companyId);
+    return {
+      ...raw,
+      contact_uuid: contactUuid,
+      contact_id: contactUuid || String(this.pick(raw, 'contact_id', 'contactId')).trim(),
+      contact_ref: String(raw.contact_ref || raw.contactRef || raw.contact_number || raw.contactNumber || raw.contact_code || raw.contactCode || '').trim(),
+      company_uuid: selectedCompanyUuid,
+      company_id: selectedCompanyUuid || String(this.pick(raw, 'company_id', 'companyId')).trim(),
+      company_ref: String(raw.selected_company_ref || raw.selectedCompanyRef || raw.company_ref || raw.companyRef || '').trim(),
+      company_name: String(raw.selected_company_name || raw.selectedCompanyName || this.pick(raw, 'company_name', 'companyName')).trim(),
+      first_name: String(this.pick(raw, 'first_name', 'firstName')).trim(),
+      last_name: String(this.pick(raw, 'last_name', 'lastName')).trim(),
+      full_name: fullName || String(raw.contact_name || raw.contactName || '').trim(),
+      job_title: String(raw.contact_position || raw.contactPosition || this.pick(raw, 'job_title', 'jobTitle')).trim(),
+      department: String(this.pick(raw, 'department')).trim(),
+      email: String(this.pick(raw, 'email')).trim(),
+      phone: String(this.pick(raw, 'phone')).trim(),
+      mobile: String(this.pick(raw, 'mobile')).trim(),
+      decision_role: String(this.pick(raw, 'decision_role', 'decisionRole')).trim(),
+      is_primary_contact: Boolean(raw?.is_primary_contact ?? raw?.isPrimaryContact ?? raw?.is_primary),
+      contact_status: String(this.pick(raw, 'contact_status', 'contactStatus')).trim(),
+      notes: String(this.pick(raw, 'notes')).trim()
+    };
   },
   normalizeBool(value) {
     const normalized = String(value ?? '')

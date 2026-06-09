@@ -154,7 +154,10 @@ const Contacts = {
   },
 
   companyRelationId(company = {}) {
-    return String(company.id || company.company_uuid || company.companyUuid || '').trim();
+    const raw = String(company.id || company.company_uuid || company.companyUuid || '').trim();
+    if (raw) return raw;
+    const maybeUuid = String(company.company_id || company.companyId || '').trim();
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(maybeUuid) ? maybeUuid : '';
   },
 
   async loadCompanyOptionsSafe(searchText = '', includeSelectedId = null) {
@@ -270,6 +273,29 @@ const Contacts = {
       .filter(row => row.company_id);
   },
 
+  async resolveSelectedCompanies(selectedCompanies = []) {
+    const resolved = [];
+    for (const company of selectedCompanies) {
+      const resolvedId = await window.CrmCompanyContactSelectors?.resolveCompanyUuid?.(company.company_id);
+      if (!resolvedId) return null;
+      const fkValue = await window.CrmCompanyContactSelectors?.getCompanyContactFkValue?.(resolvedId).catch(() => resolvedId) || resolvedId;
+      resolved.push({
+        ...company,
+        company_id: resolvedId,
+        company_uuid: resolvedId,
+        contact_company_fk_value: fkValue,
+        company_name: company.company_name || resolvedId
+      });
+    }
+    return resolved;
+  },
+
+  async linkSavedContactToCompanies(savedContactKey, resolvedCompanies = []) {
+    const companyIds = (resolvedCompanies || []).map(c => c.company_id).filter(Boolean);
+    if (!savedContactKey || !companyIds.length) return;
+    await window.CrmCompanyContactSelectors?.upsertContactCompanyLinks?.(savedContactKey, companyIds);
+  },
+
   async openForm(existing = {}, isEdit = true) {
     if (isEdit && !Permissions.canEdit('contacts')) {
       UI?.toast?.('You do not have permission for this action.', 'warning');
@@ -308,7 +334,10 @@ const Contacts = {
     modal.setAttribute('aria-hidden', 'false');
 
     this.ensureCompanyOptions(data)
-      .then(() => this.setSelectedCompanies(selectedCompanyIds))
+      .then(async () => {
+        const resolvedIds = (await Promise.all((selectedCompanyIds || []).map(id => window.CrmCompanyContactSelectors?.resolveCompanyUuid?.(id)))).filter(Boolean);
+        this.setSelectedCompanies(resolvedIds.length ? resolvedIds : selectedCompanyIds);
+      })
       .catch(error => {
         console.warn('[contacts] company selector load failed after modal open', error);
         this.setCompanyFallbackMessage('Company list is not available for your role. You can still create the contact if company is optional, or ask admin to grant companies list access.');
@@ -348,12 +377,12 @@ const Contacts = {
       UI?.toast?.('At least one company is required', 'error');
       return;
     }
-    const resolvedCompanyIds = await Promise.all(selectedCompanies.map(company => window.CrmCompanyContactSelectors?.resolveCompanyUuid?.(company.company_id)));
-    if (resolvedCompanyIds.some(companyId => !companyId)) {
+    const resolvedCompanies = await this.resolveSelectedCompanies(selectedCompanies);
+    if (!resolvedCompanies || resolvedCompanies.some(company => !company.company_id)) {
       UI?.toast?.('Selected company could not be resolved. Please reselect the company.', 'error');
       return;
     }
-    selectedCompanies.forEach((company, index) => { company.company_id = resolvedCompanyIds[index]; });
+    selectedCompanies.splice(0, selectedCompanies.length, ...resolvedCompanies);
     const first_name = document.getElementById('contactFirstNameInput').value.trim();
     const last_name = document.getElementById('contactLastNameInput').value.trim();
     if (!first_name && !last_name) {
@@ -363,7 +392,9 @@ const Contacts = {
     const full_name = U.buildContactDisplayName({ first_name, last_name });
     const primaryCompany = selectedCompanies[0];
     const payload = {
-      company_id: primaryCompany.company_id,
+      // contacts.company_id may be a FK to a company UUID column different from companies.id.
+      // Store that FK-safe value in company_id, while company_ids keeps the canonical companies.id UUIDs for multi-assignment and dropdown RPCs.
+      company_id: primaryCompany.contact_company_fk_value || primaryCompany.company_id,
       company_name: primaryCompany.company_name,
       company_ids: selectedCompanies.map(c => c.company_id),
       company_names: selectedCompanies.map(c => c.company_name || c.company_id).join(', '),
@@ -384,7 +415,10 @@ const Contacts = {
     try {
       const action = recordId ? 'update' : 'create';
       const body = recordId ? { id: recordId, updates: payload } : payload;
-      await Api.requestWithSession('contacts', action, body, { requireAuth: true });
+      const response = await Api.requestWithSession('contacts', action, body, { requireAuth: true });
+      const savedRow = response?.data || response?.row || response?.contact || response || {};
+      const savedContactKey = savedRow.id || savedRow.contact_uuid || savedRow.contact_id || recordId || payload.email || payload.full_name;
+      await this.linkSavedContactToCompanies(savedContactKey, selectedCompanies).catch(error => console.warn('[contacts] contact-company link sync failed', error));
       UI?.toast?.(recordId ? 'Contact updated' : 'Contact saved', 'success');
       this.closeForm();
       this.state.page = recordId ? this.state.page : 1;

@@ -3183,6 +3183,63 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     return output;
   }
 
+  async function resolveContactCompanyMutationFields(client, record = {}) {
+    const next = { ...(record || {}) };
+    if (!next || typeof next !== 'object') return next;
+    const rawCompanyKeys = normalizeContactCompanyIdsForWrite(next.company_ids, next.company_id);
+    const resolvedCompanyIds = [];
+    for (const rawKey of rawCompanyKeys) {
+      const key = String(rawKey || '').trim();
+      if (!key) continue;
+      let resolved = '';
+      try {
+        if (typeof client?.rpc === 'function') {
+          const { data, error } = await client.rpc('crm_resolve_company_uuid', { p_company_key: key });
+          if (!error) resolved = String(data || '').trim();
+          else console.warn('[contacts mutation] company resolver failed', { key, error });
+        }
+      } catch (error) {
+        console.warn('[contacts mutation] company resolver exception', { key, error });
+      }
+      if (!resolved && isUuid(key)) resolved = key;
+      if (resolved && !resolvedCompanyIds.includes(resolved)) resolvedCompanyIds.push(resolved);
+    }
+    if (!resolvedCompanyIds.length) return next;
+    next.company_ids = resolvedCompanyIds;
+    let fkValue = resolvedCompanyIds[0];
+    try {
+      if (typeof client?.rpc === 'function') {
+        const { data, error } = await client.rpc('crm_company_contact_fk_value', { p_company_id: resolvedCompanyIds[0] });
+        if (!error && data) fkValue = String(data || resolvedCompanyIds[0]).trim();
+        else if (error) console.warn('[contacts mutation] company FK value lookup failed', { companyId: resolvedCompanyIds[0], error });
+      }
+    } catch (error) {
+      console.warn('[contacts mutation] company FK value exception', error);
+    }
+    next.company_id = fkValue || resolvedCompanyIds[0];
+    return next;
+  }
+
+  async function syncContactCompanyBridge(client, contactRecord = {}, fallbackRecord = {}) {
+    if (!contactRecord && !fallbackRecord) return;
+    if (typeof client?.rpc !== 'function') return;
+    const contactKey = String(contactRecord?.id || contactRecord?.contact_uuid || contactRecord?.contact_id || fallbackRecord?.id || fallbackRecord?.contact_uuid || fallbackRecord?.contact_id || fallbackRecord?.email || fallbackRecord?.full_name || '').trim();
+    const companyKeys = normalizeContactCompanyIdsForWrite(
+      fallbackRecord?.company_ids ?? contactRecord?.company_ids,
+      fallbackRecord?.company_id ?? contactRecord?.company_id
+    );
+    if (!contactKey || !companyKeys.length) return;
+    try {
+      const { error } = await client.rpc('crm_upsert_contact_company_links', {
+        p_contact_key: contactKey,
+        p_company_keys: companyKeys.map(value => String(value || '').trim()).filter(Boolean)
+      });
+      if (error) console.warn('[contacts mutation] bridge sync failed', { contactKey, companyKeys, error });
+    } catch (error) {
+      console.warn('[contacts mutation] bridge sync exception', { contactKey, companyKeys, error });
+    }
+  }
+
   function normalizePermissionKey(value) {
     return String(value || '').trim().toLowerCase();
   }
@@ -8393,7 +8450,8 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         devLog('[role permissions] saved normalized row', JSON.stringify(normalizedRow, null, 2));
         return { handled: true, data: await withItems(resource, normalizedRow) };
       }
-      const finalCreateRecord = sanitizeUuidColumnsForMutation(table, createRecord);
+      let finalCreateRecord = sanitizeUuidColumnsForMutation(table, createRecord);
+      if (resource === 'contacts') finalCreateRecord = await resolveContactCompanyMutationFields(client, finalCreateRecord);
       if (resource === 'credit_notes' && finalCreateRecord.credit_note_request_key) {
         const { data: existingCreditNote, error: existingCreditNoteError } = await client
           .from('credit_notes')
@@ -8498,6 +8556,9 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       }
       if (!data) throw new Error(`Unable to create ${resource} record: Supabase returned no row.`);
       const created = normalizeRow(resource, data);
+      if (resource === 'contacts') {
+        await syncContactCompanyBridge(client, created, finalCreateRecord);
+      }
       if (resource === 'tickets') {
         await createNotificationAndPush({
           title: 'New ticket submitted',
@@ -8993,7 +9054,8 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
           delete publicUpdates.completed_at;
         }
       }
-      const finalPublicUpdates = sanitizeUuidColumnsForMutation(table, publicUpdates);
+      let finalPublicUpdates = sanitizeUuidColumnsForMutation(table, publicUpdates);
+      if (resource === 'contacts') finalPublicUpdates = await resolveContactCompanyMutationFields(client, finalPublicUpdates);
       let data;
       if (resource === 'operations_onboarding') {
         const { data: rows, error } = await updateSelectRowsWithSchemaRetry(
@@ -9042,6 +9104,9 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
           if (error) throw friendlyError(`Unable to update ${resource} record`, error);
           data = singleRow;
         }
+      }
+      if (resource === 'contacts') {
+        await syncContactCompanyBridge(client, data || { id }, finalPublicUpdates);
       }
       await recordLifecycleStatusChanges(client, resource, previousLifecycleRow || {}, data || {}).catch(error => {
         console.warn(`[lifecycle status] ${resource} update log failed`, error);
