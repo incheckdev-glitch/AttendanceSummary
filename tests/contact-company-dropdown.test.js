@@ -1,0 +1,25 @@
+const assert = require('assert');
+const fs = require('fs');
+
+const selectors = fs.readFileSync('crm-form-selectors.js', 'utf8');
+const leads = fs.readFileSync('leads.js', 'utf8');
+const contacts = fs.readFileSync('contacts.js', 'utf8');
+const companies = fs.readFileSync('companies.js', 'utf8');
+
+const helperStart = selectors.indexOf('async function loadContactsForCompany(companyId)');
+const helperEnd = selectors.indexOf('function isDirectCreate', helperStart);
+assert.ok(helperStart >= 0 && helperEnd > helperStart, 'shared contact loader must exist');
+const helper = selectors.slice(helperStart, helperEnd);
+
+assert.match(helper, /from\('contacts'\)[\s\S]*?select\('\*'\)[\s\S]*?eq\('company_id', selectedCompanyId\)[\s\S]*?order\('updated_at', \{ ascending: false \}\)/, 'contacts must be queried fresh by selected company UUID');
+assert.doesNotMatch(helper, /company_name|company_names|contact_status|verified|contactsByCompany|\.or\(/, 'contact loader must not use names, status, verification, alternate relations, or cached rows');
+assert.match(selectors, /return str\(company\.id \|\| company\.company_uuid\)/, 'company option values must use company UUIDs');
+assert.match(selectors, /contactSelect\.dataset\.loadingCompanyId !== requestCompanyId/, 'shared dropdown must ignore stale contact responses');
+assert.match(selectors, /console\.log\('\[CompanySelect\] selected company id:', selectedCompanyId\)/, 'company selection log must be present');
+assert.match(helper, /console\.log\('\[ContactSelect\] contacts loaded:', contacts\)/, 'contact load log must be present');
+assert.match(leads, /loadContactsForCompany\?\.\(normalizedCompanyId\)/, 'lead create/edit must use the shared UUID contact loader');
+assert.match(leads, /requestId !== this\._leadPickerLoadRequestId/, 'lead picker must ignore stale contact responses');
+assert.match(contacts, /const companyId = this\.companyRelationId\(company\)/, 'create contact from company must store the company UUID');
+assert.match(companies, /company_id: companyUuid/, 'company module must pass a UUID when creating a contact');
+
+console.log('contact company dropdown checks passed');

@@ -4,7 +4,6 @@
 
   const state = {
     companies: [],
-    contactsByCompany: new Map(),
     loadingCompanies: null,
     companyLoadError: null,
     initialized: false
@@ -295,7 +294,7 @@
     const c = raw && typeof raw === 'object' ? raw : {};
     const first = str(c.first_name || c.firstName);
     const last = str(c.last_name || c.lastName);
-    const full = str(c.full_name || c.fullName || c.contact_name || c.contactName || `${first} ${last}`);
+    const full = str(c.full_name || c.fullName || c.contact_name || c.contactName || c.name || `${first} ${last}`);
     return {
       id: str(c.id),
       contact_id: str(c.id || c.contact_id || c.contactId),
@@ -491,98 +490,30 @@
     return loadCompanyOptions(searchText, includeSelectedId);
   }
 
-  async function fetchContacts(companyId) {
-    const key = str(companyId);
-    if (!key) return [];
-    if (state.contactsByCompany.has(key)) return state.contactsByCompany.get(key);
-    let contacts = [];
-    try {
-      if (global.Api?.requestWithSession) {
-        const response = await global.Api.requestWithSession('contacts', 'list', { filters: { company_id: key }, limit: 200, page: 1, sort_by: 'first_name', sort_dir: 'asc' }, { requireAuth: true });
-        contacts = rowsFrom(response).map(normalizeContact).filter(c => c.contact_id);
-      }
-    } catch (error) {
-      console.warn('[crm selectors] contacts API load failed', error);
+  async function loadContactsForCompany(companyId) {
+    const selectedCompanyId = str(companyId);
+    if (!selectedCompanyId) return [];
+
+    const client = global.supabaseClient || global.supabase;
+    if (!client?.from) {
+      console.error('[Contacts] Failed to load contacts for company', selectedCompanyId, new Error('Supabase client is unavailable.'));
+      return [];
     }
-    if (!contacts.length) {
-      try {
-        const client = global.supabaseClient || global.supabase;
-        if (client?.from) {
-          const safeKey = String(key || '').replace(/[,{}]/g, '');
-          const { data, error } = await client.from('contacts').select('*').or(`company_id.eq.${safeKey},company_ids.cs.{${safeKey}}`).order('first_name', { ascending: true }).limit(200);
-          if (error) throw error;
-          contacts = (data || []).map(normalizeContact).filter(c => c.contact_id);
-        }
-      } catch (error) {
-        console.warn('[crm selectors] contacts Supabase load failed', error);
-      }
+
+    const { data, error } = await client
+      .from('contacts')
+      .select('*')
+      .eq('company_id', selectedCompanyId)
+      .order('updated_at', { ascending: false });
+
+    if (error) {
+      console.error('[Contacts] Failed to load contacts for company', selectedCompanyId, error);
+      return [];
     }
-    state.contactsByCompany.set(key, contacts);
+
+    const contacts = (data || []).map(normalizeContact).filter(contact => contact.contact_id);
+    console.log('[ContactSelect] contacts loaded:', contacts);
     return contacts;
-  }
-
-  function contactMatchesCompany(contact, company) {
-    const contactCompanyId = normalizeCompare(contact.company_id);
-    const contactCompanyIds = Array.isArray(contact.company_ids)
-      ? contact.company_ids.map(normalizeCompare).filter(Boolean)
-      : String(contact.company_ids || '').split(',').map(normalizeCompare).filter(Boolean);
-    const contactCompanyUuid = normalizeCompare(contact.company_uuid);
-    const selectedCompanyId = normalizeCompare(company.company_id || company.id);
-    const selectedEntityId = normalizeCompare(company.id);
-    if ((contactCompanyId && selectedCompanyId && contactCompanyId === selectedCompanyId) ||
-      (contactCompanyId && selectedEntityId && contactCompanyId === selectedEntityId) ||
-      (selectedCompanyId && contactCompanyIds.includes(selectedCompanyId)) ||
-      (selectedEntityId && contactCompanyIds.includes(selectedEntityId)) ||
-      (contactCompanyUuid && selectedEntityId && contactCompanyUuid === selectedEntityId)) {
-      return true;
-    }
-    const contactLegalCompanyName = normalizeCompare(contact.legal_company_name);
-    const contactCompanyName = normalizeCompare(contact.company_name);
-    const contactCompanyNames = String(contact.company_names || contact.companyNames || '').split(',').map(normalizeCompare).filter(Boolean);
-    const selectedLegalName = normalizeCompare(company.legal_name);
-    const selectedCompanyName = normalizeCompare(company.company_name);
-    const selectedName = normalizeCompare(company.name);
-    return (contactLegalCompanyName && selectedLegalName && contactLegalCompanyName === selectedLegalName) ||
-      (contactCompanyName && selectedCompanyName && contactCompanyName === selectedCompanyName) ||
-      (contactCompanyName && selectedName && contactCompanyName === selectedName) ||
-      (selectedCompanyName && contactCompanyNames.includes(selectedCompanyName)) ||
-      (selectedName && contactCompanyNames.includes(selectedName));
-  }
-
-  async function resolveContactsForCompany(selectedCompany, { strictUuid = false } = {}) {
-    const selectedCompanyId = str(selectedCompany?.company_id || selectedCompany?.id);
-    const idContacts = await fetchContacts(selectedCompanyId);
-    if (idContacts.length || strictUuid) return idContacts;
-    let allContacts = [];
-    try {
-      if (global.Api?.requestWithSession) {
-        const response = await global.Api.requestWithSession('contacts', 'list', { limit: 500, page: 1, sort_by: 'first_name', sort_dir: 'asc' }, { requireAuth: true });
-        allContacts = rowsFrom(response).map(normalizeContact).filter(c => c.contact_id);
-      }
-    } catch (error) {
-      console.warn('[crm selectors] contacts API fallback load failed', error);
-    }
-    if (!allContacts.length) {
-      try {
-        const client = global.supabaseClient || global.supabase;
-        if (client?.from) {
-          const { data, error } = await client.from('contacts').select('*').order('first_name', { ascending: true }).limit(500);
-          if (error) throw error;
-          allContacts = (data || []).map(normalizeContact).filter(c => c.contact_id);
-        }
-      } catch (error) {
-        console.warn('[crm selectors] contacts Supabase fallback load failed', error);
-      }
-    }
-    const matchedContacts = allContacts.filter(contact => contactMatchesCompany(contact, selectedCompany || {}));
-    console.log('[CompanyContactSelector] contacts matched', {
-      selectedCompany,
-      selectedCompanyId,
-      totalContacts: allContacts.length,
-      matchedCount: matchedContacts.length,
-      matchedContacts: matchedContacts.slice(0, 5)
-    });
-    return matchedContacts;
   }
 
   function isDirectCreate(cfg) {
@@ -626,8 +557,10 @@
     }
     contactSelect.disabled = true;
     contactSelect.innerHTML = '<option value="">Loading contacts…</option>';
-    const selectedCompany = findCompanyByAnyId(companyId) || { company_id: str(companyId), id: str(companyId), company_uuid: str(companyId) };
-    const contacts = await resolveContactsForCompany(selectedCompany, { strictUuid: cfg.uuidSourceOfTruth === true });
+    const requestCompanyId = str(companyId);
+    contactSelect.dataset.loadingCompanyId = requestCompanyId;
+    const contacts = await loadContactsForCompany(requestCompanyId);
+    if (contactSelect.dataset.loadingCompanyId !== requestCompanyId || str(byId(cfg.companySelectId)?.value) !== requestCompanyId) return [];
     if (!contacts.length) {
       contactSelect.innerHTML = '<option value="">No contacts found for this company</option>';
       contactSelect.disabled = false;
@@ -760,11 +693,12 @@
 
     companySelect.addEventListener('focus', () => populateCompanySelect(cfg).catch(() => {}));
     companySelect.addEventListener('change', async () => {
-      const companyId = str(companySelect.value);
-      const company = findCompanyByAnyId(companyId) || null;
+      const selectedCompanyId = str(companySelect.value);
+      console.log('[CompanySelect] selected company id:', selectedCompanyId);
+      const company = findCompanyByAnyId(selectedCompanyId) || null;
       if (cfg.uuidSourceOfTruth === true) {
         try {
-          await global.Proposals?.hydrateCreateCustomerByUuid?.(companyId, '', 'dropdown');
+          await global.Proposals?.hydrateCreateCustomerByUuid?.(selectedCompanyId, '', 'dropdown');
         } catch (error) {
           companySelect.value = '';
           global.UI?.toast?.(error?.message || 'Selected company data mismatch. Please reselect the company.');
@@ -777,18 +711,19 @@
         .forEach(suffix => setText(`${cfg.formId.replace('Form', 'Form')}${suffix}`, ''));
       cfg.updateModule?.(null, { contact_id: '' });
       contactSelect.value = '';
-      await loadContactsForConfig(cfg, companyId);
+      contactSelect.innerHTML = selectedCompanyId ? '<option value="">Loading contacts…</option>' : '<option value="">Select company first</option>';
+      await loadContactsForConfig(cfg, selectedCompanyId);
       if (isDirectCreate(cfg)) {
         companySelect.disabled = false;
-        contactSelect.disabled = !companyId;
+        contactSelect.disabled = !selectedCompanyId;
       }
     });
 
     contactSelect.addEventListener('change', async () => {
       const companyId = str(companySelect.value);
       const contactId = str(contactSelect.value);
-      const company = findCompanyByAnyId(companyId) || { company_id: companyId, id: companyId, company_uuid: companyId };
-      const contacts = await resolveContactsForCompany(company, { strictUuid: cfg.uuidSourceOfTruth === true });
+      const contacts = await loadContactsForCompany(companyId);
+      if (str(companySelect.value) !== companyId || str(contactSelect.value) !== contactId) return;
       const contact = contacts.find(c => c.contact_id === contactId) || null;
       if (cfg.uuidSourceOfTruth === true) {
         try {
@@ -855,7 +790,6 @@
     state.companies = [];
     state.loadingCompanies = null;
     state.companyLoadError = null;
-    state.contactsByCompany.clear();
     await Promise.all(Object.values(FORM_CONFIG).map(cfg => populateCompanySelect(cfg)));
     Object.values(FORM_CONFIG).forEach(cfg => {
       bindConfig(cfg);
@@ -900,7 +834,7 @@
     loadCompanyByUuid: fetchCompanyByUuid,
     invalidateCompanies() { state.companies = []; state.loadingCompanies = null; state.companyLoadError = null; },
     refreshAfterCompanySave,
-    loadContactsForCompany: fetchContacts,
+    loadContactsForCompany,
     applyCompanyToForm(formKey, company) { const cfg = FORM_CONFIG[formKey]; if (cfg) applyCompany(cfg, company); },
     applyContactToForm(formKey, contact) { const cfg = FORM_CONFIG[formKey]; if (cfg) applyContact(cfg, contact); }
   };
