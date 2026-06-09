@@ -313,11 +313,8 @@ const Invoices = {
     }
     const companyId = String((typeof companyIdOrRecord === 'object' ? companyIdOrRecord.company_id : companyIdOrRecord) || '').trim();
     if (!companyId) return null;
-    const client = this.getSupabaseClient();
-    if (!client) return typeof companyIdOrRecord === 'object' ? companyIdOrRecord : null;
     try {
-      const { data, error } = await client.from('companies').select('*').eq('company_id', companyId).limit(1).maybeSingle();
-      if (error) throw error;
+      const data = await window.CrmCompanyContactSelectors?.loadCompanySafe?.(companyId);
       return data || (typeof companyIdOrRecord === 'object' ? companyIdOrRecord : null);
     } catch (_error) {
       return typeof companyIdOrRecord === 'object' ? companyIdOrRecord : null;

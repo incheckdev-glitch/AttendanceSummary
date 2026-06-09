@@ -4,7 +4,7 @@ const fs = require('fs');
 const proposals = fs.readFileSync('proposals.js', 'utf8');
 const selectors = fs.readFileSync('crm-form-selectors.js', 'utf8');
 
-assert.match(proposals, /async loadCompanyByUuid\(companyUuid\)[\s\S]*?from\('companies'\)\.select\('\*'\)\.eq\('id', id\)\.maybeSingle\(\)/, 'proposal companies must be reloaded by UUID');
+assert.match(proposals, /async loadCompanyByUuid\(companyUuid\)[\s\S]*?loadCompanySafe\?\.\(id\)/, 'proposal companies must be safely reloaded after UUID validation');
 assert.match(proposals, /async loadContactByUuid\(contactUuid\)[\s\S]*?from\('contacts'\)\.select\('\*'\)\.eq\('id', id\)\.maybeSingle\(\)/, 'proposal contacts must be reloaded by UUID');
 assert.match(proposals, /sourceCompanyId && sourceCompanyId !== companyId/, 'save must reject a source/selected company mismatch');
 assert.match(proposals, /loadedCompany\.id !== companyId/, 'save and preview must reject loaded-company mismatches');

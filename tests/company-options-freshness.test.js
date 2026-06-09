@@ -17,7 +17,7 @@ assert.match(selectors, /Unable to load companies — retry/, 'dropdown must sho
 assert.match(companies, /await window\.CrmCompanyContactSelectors\?\.refreshAfterCompanySave/, 'company create/update must await selector refresh');
 assert.match(companies, /savedId = String\(saved\?\.id/, 'company save must capture the returned UUID');
 assert.match(leads, /loadCompanyOptions\?\.\('', normalizedCompanyId\)/, 'lead picker must use the shared fresh loader and include selected UUID');
-assert.match(deals, /loadCompanyByUuid\?\.\(companyId\)/, 'deal must reload company details by UUID');
+assert.match(deals, /loadCompanySafe\?\.\(companyId\)/, 'deal must safely reload company details by key');
 assert.match(contacts, /loadCompanyOptions\?\.\(searchText, includeSelectedId\)/, 'contact picker must use shared fresh loader');
 assert.match(proposals, /Selected company data mismatch\. Please reselect the company\./, 'proposal save must block company UUID/data mismatches');
 

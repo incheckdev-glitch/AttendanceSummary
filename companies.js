@@ -271,7 +271,7 @@ const Companies = {
     const id = String(companyIdOrRecord || '').trim(); if (!id) return null;
     const client = this.getSupabaseClient();
     let query = client.from('companies').select('*').limit(1);
-    query = id.includes('-') ? query.eq('id', id) : query.eq('company_id', id);
+    query = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) ? query.eq('id', id) : query.eq('company_id', id);
     const { data, error } = await query.maybeSingle();
     if (error) throw error;
     return data ? this.normalize(data) : null;
@@ -493,9 +493,8 @@ const Companies = {
   async refreshCompanyVerificationState(companyId) {
     if (!companyId) return null;
     try {
-      const client = this.getSupabaseClient();
-      const { data, error } = await client.from('companies').select('*').eq('id', companyId).single();
-      if (error) throw error;
+      const data = await window.CrmCompanyContactSelectors?.loadCompanySafe?.(companyId);
+      if (!data) throw new Error('Selected company could not be resolved. Please reselect the company.');
       const normalized = this.normalize(data || {}); this.state.currentCompany = normalized;
       this.state.rows = this.state.rows.map(row => String(row.id) === String(companyId) ? normalized : row);
       this.renderCompanyVerificationPanel(normalized); this.render();

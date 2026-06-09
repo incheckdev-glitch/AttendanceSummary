@@ -1945,6 +1945,8 @@ const Leads = {
     if (localExact) return localExact;
 
     const rowsFrom = res => Array.isArray(res?.rows) ? res.rows : (Array.isArray(res?.items) ? res.items : (Array.isArray(res?.data) ? res.data : []));
+    const safelyLoaded = await window.CrmCompanyContactSelectors?.loadCompanySafe?.(id);
+    if (safelyLoaded) return this.normalizeCompany(safelyLoaded);
     if (this.isUuid(id)) {
       try {
         const client = this.getClient?.();
@@ -1987,6 +1989,8 @@ const Leads = {
     if (localExact) return localExact;
 
     const rowsFrom = res => Array.isArray(res?.rows) ? res.rows : (Array.isArray(res?.items) ? res.items : (Array.isArray(res?.data) ? res.data : []));
+    const safelyLoaded = await window.CrmCompanyContactSelectors?.loadCompanySafe?.(id);
+    if (safelyLoaded) return this.normalizeCompany(safelyLoaded);
     if (this.isUuid(id)) {
       try {
         const client = this.getClient?.();
