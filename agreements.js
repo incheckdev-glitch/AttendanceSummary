@@ -1198,7 +1198,7 @@ const Agreements = {
     const selectedCompany = await this.getFullCompanyRecord(originalCompanyId || {});
     const customerLegalName = this.getCompanyLegalName(selectedCompany || {});
     if (selectedCompany) {
-      const resolvedCompanyId = originalCompanyId || String(selectedCompany.id || selectedCompany.company_id || selectedCompany.companyId || '').trim();
+      const resolvedCompanyId = String(selectedCompany.id || selectedCompany.company_uuid || selectedCompany.companyUuid || selectedCompany.company_id || selectedCompany.companyId || originalCompanyId || '').trim();
       next.company_id = resolvedCompanyId;
       next.companyId = resolvedCompanyId;
       next.company_name = String(selectedCompany.company_name || selectedCompany.companyName || selectedCompany.name || customerLegalName || '').trim();

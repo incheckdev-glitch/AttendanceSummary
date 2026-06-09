@@ -851,30 +851,41 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
   },
   normalizeCompany(company = {}) {
-    const c = company && typeof company === 'object' ? company : {};
+    const rawCompany = company?.raw_company && typeof company.raw_company === 'object' ? company.raw_company : {};
+    const c = { ...rawCompany, ...(company && typeof company === 'object' ? company : {}) };
+    const uuid = String(c.id || c.company_uuid || c.companyUuid || '').trim();
+    const businessId = String(c.company_business_id || c.companyBusinessId || c.company_ref || c.companyRef || c.company_id || c.companyId || c.company_number || c.companyNumber || c.company_code || c.companyCode || '').trim();
     return {
-      id: String(c.id || c.company_uuid || c.companyUuid || '').trim(),
-      company_id: String(c.company_id || c.companyId || '').trim(),
-      company_name: String(c.company_name || c.companyName || '').trim(),
-      legal_name: String(c.legal_name || c.legalName || '').trim(),
-      main_email: String(c.main_email || c.mainEmail || '').trim(),
-      main_phone: String(c.main_phone || c.mainPhone || '').trim(),
+      ...c,
+      id: uuid,
+      company_id: uuid || businessId,
+      company_uuid: uuid,
+      company_business_id: businessId,
+      company_name: String(c.company_name || c.companyName || c.name || '').trim(),
+      legal_name: String(c.legal_name || c.legalName || c.company_name || c.companyName || c.name || '').trim(),
+      main_email: String(c.main_email || c.mainEmail || c.email || c.company_email || c.billing_email || '').trim(),
+      main_phone: String(c.main_phone || c.mainPhone || c.phone || c.phone_number || c.mobile || '').trim(),
       country: String(c.country || '').trim(),
       city: String(c.city || '').trim(),
-      address: String(c.address || '').trim(),
-      tax_number: String(c.tax_number || c.taxNumber || '').trim(),
+      address: String(c.address || c.company_address || c.customer_address || '').trim(),
+      tax_number: String(c.tax_number || c.taxNumber || c.registration_number || c.company_registration_number || '').trim(),
       company_type: String(c.company_type || c.companyType || '').trim(),
       industry: String(c.industry || '').trim(),
       website: String(c.website || '').trim(),
-      company_status: String(c.company_status || c.companyStatus || '').trim(),
-      authorized_signatory_full_name: String(c.authorized_signatory_full_name || c.authorizedSignatoryFullName || '').trim(),
-      authorized_signatory_title: String(c.authorized_signatory_title || c.authorizedSignatoryTitle || '').trim()
+      company_status: String(c.company_status || c.companyStatus || c.status || '').trim(),
+      authorized_signatory_full_name: String(c.authorized_signatory_full_name || c.authorizedSignatoryFullName || c.authorized_signatory_name || c.authorizedSignatoryName || c.signatory_name || c.signatoryName || '').trim(),
+      authorized_signatory_title: String(c.authorized_signatory_title || c.authorizedSignatoryTitle || c.signatory_title || c.signatoryTitle || '').trim()
     };
   },
   normalizeContact(contact = {}) {
-    const c = contact && typeof contact === 'object' ? contact : {};
-    return { id:String(c.id||c.contact_uuid||c.contactUuid||'').trim(), contact_id:String(c.contact_id||c.contactId||'').trim(), company_id:String(c.company_id||c.companyId||'').trim(), company_uuid:String(c.company_uuid||c.companyUuid||'').trim(), first_name:String(c.first_name||c.firstName||'').trim(), last_name:String(c.last_name||c.lastName||'').trim(), full_name:String(c.full_name||c.fullName||'').trim(), name:String(c.name||'').trim(), contact_name:String(c.contact_name||c.contactName||'').trim(), position:String(c.position||'').trim(), job_title:String(c.job_title||c.jobTitle||'').trim(), title:String(c.title||'').trim(), department:String(c.department||'').trim(), email:String(c.email||'').trim(), phone:String(c.phone||'').trim(), mobile:String(c.mobile||'').trim(), decision_role:String(c.decision_role||c.decisionRole||'').trim(), contact_status:String(c.contact_status||c.contactStatus||'').trim() };
+    const rawContact = contact?.raw_contact && typeof contact.raw_contact === 'object' ? contact.raw_contact : {};
+    const c = { ...rawContact, ...(contact && typeof contact === 'object' ? contact : {}) };
+    const uuid = String(c.id || c.contact_uuid || c.contactUuid || '').trim();
+    const companyCandidate = String(c.company_id || c.companyId || '').trim();
+    const companyUuid = String(c.company_uuid || c.companyUuid || c.selected_company_uuid || c.selectedCompanyUuid || (this.isUuid(companyCandidate) ? companyCandidate : '')).trim();
+    return { ...c, id: uuid, contact_id: uuid || String(c.contact_id || c.contactId || c.contact_ref || c.contactRef || '').trim(), company_id: companyUuid || companyCandidate, company_uuid: companyUuid, first_name:String(c.first_name||c.firstName||'').trim(), last_name:String(c.last_name||c.lastName||'').trim(), full_name:String(c.contact_name||c.contactName||c.full_name||c.fullName||c.name||'').trim(), name:String(c.name||'').trim(), contact_name:String(c.contact_name||c.contactName||'').trim(), position:String(c.contact_position||c.contactPosition||c.position||'').trim(), job_title:String(c.contact_position||c.contactPosition||c.position||c.job_title||c.jobTitle||c.title||'').trim(), title:String(c.title||'').trim(), department:String(c.department||'').trim(), email:String(c.email||c.contact_email||'').trim(), phone:String(c.phone||c.phone_number||'').trim(), mobile:String(c.mobile||'').trim(), decision_role:String(c.decision_role||c.decisionRole||'').trim(), contact_status:String(c.contact_status||c.contactStatus||c.status||'').trim() };
   },
+
   getContactDisplayName(contact) {
     if (!contact) return '';
     const fullName = String(contact.full_name || contact.fullName || contact.name || '').trim();

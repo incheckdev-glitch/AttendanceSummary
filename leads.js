@@ -66,11 +66,21 @@ const Leads = {
     return this.isUuid(cleaned) ? cleaned : undefined;
   },
   normalizeCompany(raw = {}) {
-    return { ...raw, company_uuid: this.cleanUuidValue(raw.company_uuid ?? raw.companyUuid ?? raw.id), company_id: String(this.pick(raw, 'company_id', 'companyId')).trim(), company_name: String(this.pick(raw, 'company_name', 'companyName')).trim(), legal_name: String(this.pick(raw, 'legal_name', 'legalName')).trim(), company_type: String(this.pick(raw, 'company_type', 'companyType')).trim(), industry: String(this.pick(raw, 'industry')).trim(), website: String(this.pick(raw, 'website')).trim(), main_email: String(this.pick(raw, 'main_email', 'mainEmail')).trim(), main_phone: String(this.pick(raw, 'main_phone', 'mainPhone')).trim(), country: String(this.pick(raw, 'country')).trim(), city: String(this.pick(raw, 'city')).trim(), address: String(this.pick(raw, 'address')).trim(), tax_number: String(this.pick(raw, 'tax_number', 'taxNumber')).trim(), company_status: String(this.pick(raw, 'company_status', 'companyStatus')).trim(), source: String(this.pick(raw, 'source')).trim(), owner_name: String(this.pick(raw, 'owner_name', 'ownerName')).trim(), owner_email: String(this.pick(raw, 'owner_email', 'ownerEmail')).trim(), notes: String(this.pick(raw, 'notes')).trim() };
+    const rawCompany = raw?.raw_company && typeof raw.raw_company === 'object' ? raw.raw_company : {};
+    const source = { ...rawCompany, ...(raw || {}) };
+    const uuid = this.cleanUuidValue(source.company_uuid ?? source.companyUuid ?? source.id);
+    const businessId = String(this.pick(source, 'company_ref', 'companyRef', 'company_business_id', 'companyBusinessId', 'company_id', 'companyId', 'company_number', 'companyNumber', 'company_code', 'companyCode')).trim();
+    const companyName = String(this.pick(source, 'company_name', 'companyName', 'name')).trim();
+    const legalName = String(this.pick(source, 'legal_name', 'legalName', 'company_name', 'companyName', 'name')).trim();
+    return { ...source, id: uuid, company_uuid: uuid, company_id: uuid || businessId, company_business_id: businessId, company_name: companyName, legal_name: legalName, company_type: String(this.pick(source, 'company_type', 'companyType')).trim(), industry: String(this.pick(source, 'industry')).trim(), website: String(this.pick(source, 'website')).trim(), main_email: String(this.pick(source, 'main_email', 'mainEmail', 'email', 'company_email', 'billing_email')).trim(), main_phone: String(this.pick(source, 'main_phone', 'mainPhone', 'phone', 'phone_number', 'mobile')).trim(), country: String(this.pick(source, 'country')).trim(), city: String(this.pick(source, 'city')).trim(), address: String(this.pick(source, 'address', 'company_address', 'customer_address')).trim(), tax_number: String(this.pick(source, 'tax_number', 'taxNumber', 'registration_number', 'company_registration_number')).trim(), company_status: String(this.pick(source, 'company_status', 'companyStatus', 'status')).trim(), source: String(this.pick(source, 'source')).trim(), owner_name: String(this.pick(source, 'owner_name', 'ownerName')).trim(), owner_email: String(this.pick(source, 'owner_email', 'ownerEmail')).trim(), notes: String(this.pick(source, 'notes')).trim() };
   },
   normalizeContact(raw = {}) {
-    const fullName = U.buildContactDisplayName(raw);
-    return { ...raw, contact_uuid: this.cleanUuidValue(raw.contact_uuid ?? raw.contactUuid ?? raw.id), company_uuid: this.cleanUuidValue(raw.company_uuid ?? raw.companyUuid), contact_id: String(this.pick(raw, 'contact_id', 'contactId')).trim(), company_id: String(this.pick(raw, 'company_id', 'companyId')).trim(), company_name: String(this.pick(raw, 'company_name', 'companyName')).trim(), first_name: String(this.pick(raw, 'first_name', 'firstName')).trim(), last_name: String(this.pick(raw, 'last_name', 'lastName')).trim(), full_name: fullName, job_title: String(this.pick(raw, 'job_title', 'jobTitle')).trim(), department: String(this.pick(raw, 'department')).trim(), email: String(this.pick(raw, 'email')).trim(), phone: String(this.pick(raw, 'phone')).trim(), mobile: String(this.pick(raw, 'mobile')).trim(), decision_role: String(this.pick(raw, 'decision_role', 'decisionRole')).trim(), is_primary_contact: Boolean(raw?.is_primary_contact ?? raw?.isPrimaryContact), contact_status: String(this.pick(raw, 'contact_status', 'contactStatus')).trim(), notes: String(this.pick(raw, 'notes')).trim() };
+    const rawContact = raw?.raw_contact && typeof raw.raw_contact === 'object' ? raw.raw_contact : {};
+    const source = { ...rawContact, ...(raw || {}) };
+    const fullName = U.buildContactDisplayName(source);
+    const uuid = this.cleanUuidValue(source.contact_uuid ?? source.contactUuid ?? source.id);
+    const companyUuid = this.cleanUuidValue(source.company_uuid ?? source.companyUuid ?? source.selected_company_uuid ?? source.selectedCompanyUuid ?? (this.isUuid(source.company_id || source.companyId) ? (source.company_id || source.companyId) : ''));
+    return { ...source, id: uuid, contact_uuid: uuid, company_uuid: companyUuid, contact_id: uuid || String(this.pick(source, 'contact_id', 'contactId', 'contact_ref', 'contactRef')).trim(), company_id: companyUuid || String(this.pick(source, 'company_id', 'companyId')).trim(), company_name: String(this.pick(source, 'company_name', 'companyName')).trim(), first_name: String(this.pick(source, 'first_name', 'firstName')).trim(), last_name: String(this.pick(source, 'last_name', 'lastName')).trim(), full_name: fullName || String(this.pick(source, 'contact_name', 'contactName', 'name')).trim(), job_title: String(this.pick(source, 'contact_position', 'contactPosition', 'position', 'job_title', 'jobTitle', 'title')).trim(), department: String(this.pick(source, 'department')).trim(), email: String(this.pick(source, 'email', 'contact_email')).trim(), phone: String(this.pick(source, 'phone', 'phone_number')).trim(), mobile: String(this.pick(source, 'mobile')).trim(), decision_role: String(this.pick(source, 'decision_role', 'decisionRole')).trim(), is_primary_contact: Boolean(source?.is_primary_contact ?? source?.isPrimaryContact ?? source?.is_primary), contact_status: String(this.pick(source, 'contact_status', 'contactStatus', 'status')).trim(), notes: String(this.pick(source, 'notes')).trim() };
   },
   normalizeBool(value) {
     const normalized = String(value ?? '')
@@ -1812,7 +1822,14 @@ const Leads = {
   async loadLeadPickerOptions(companyId = '') {
     const requestId = (this._leadPickerLoadRequestId || 0) + 1;
     this._leadPickerLoadRequestId = requestId;
-    const normalizedCompanyId = this.cleanUuidOrUndefined(companyId) || this.getRecordUuid(this.state.selectedCompany || {}, 'company') || '';
+    let normalizedCompanyId = this.cleanUuidOrUndefined(companyId) || this.getRecordUuid(this.state.selectedCompany || {}, 'company') || '';
+    if (!normalizedCompanyId && companyId) {
+      try {
+        normalizedCompanyId = await window.CrmCompanyContactSelectors?.resolveCompanyUuid?.(companyId) || '';
+      } catch (error) {
+        console.warn('[leads] company key resolve failed for picker', companyId, error);
+      }
+    }
     const rowsFrom = res => Array.isArray(res?.rows) ? res.rows : (Array.isArray(res?.items) ? res.items : (Array.isArray(res?.data) ? res.data : []));
     let companies = [];
     try {
@@ -1944,9 +1961,12 @@ const Leads = {
       .find(c => this.sameIdentifier(this.getRecordUuid(c, 'company'), id) || this.sameIdentifier(c.company_id, id));
     if (localExact) return localExact;
 
-    const rowsFrom = res => Array.isArray(res?.rows) ? res.rows : (Array.isArray(res?.items) ? res.items : (Array.isArray(res?.data) ? res.data : []));
     const safelyLoaded = await window.CrmCompanyContactSelectors?.loadCompanySafe?.(id);
     if (safelyLoaded) return this.normalizeCompany(safelyLoaded);
+    const resolvedId = await window.CrmCompanyContactSelectors?.resolveCompanyUuid?.(id);
+    if (resolvedId && resolvedId !== id) return this.getFullCompanyRecord(resolvedId);
+
+    const rowsFrom = res => Array.isArray(res?.rows) ? res.rows : (Array.isArray(res?.items) ? res.items : (Array.isArray(res?.data) ? res.data : []));
     if (this.isUuid(id)) {
       try {
         const client = this.getClient?.();
@@ -1989,8 +2009,6 @@ const Leads = {
     if (localExact) return localExact;
 
     const rowsFrom = res => Array.isArray(res?.rows) ? res.rows : (Array.isArray(res?.items) ? res.items : (Array.isArray(res?.data) ? res.data : []));
-    const safelyLoaded = await window.CrmCompanyContactSelectors?.loadCompanySafe?.(id);
-    if (safelyLoaded) return this.normalizeCompany(safelyLoaded);
     if (this.isUuid(id)) {
       try {
         const client = this.getClient?.();
