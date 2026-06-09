@@ -248,11 +248,61 @@ const Agreements = {
   hasExistingTechnicalRequest(context = {}, technicalRequests = []) {
     return (Array.isArray(technicalRequests) ? technicalRequests : []).some(request => this.isTechnicalRequestForContext(request, context));
   },
-  isAgreementItemInvoiced(item = {}) {
-    const status = String(item.invoice_status || item.invoiceStatus || '').trim().toLowerCase();
-    return ['invoiced', 'issued'].includes(status)
+  isTruthyInvoiceFlag(value) {
+    const normalized = String(value ?? '').trim().toLowerCase();
+    return ['true', '1', 'yes'].includes(normalized);
+  },
+  isInvoicedStatus(value) {
+    const normalized = String(value ?? '').trim().toLowerCase();
+    const nonInvoiced = [
+      '', 'null', 'undefined', 'false', '0', 'not_invoiced', 'not invoiced', 'uninvoiced',
+      'not_billed', 'unbilled', 'pending_invoice', 'pending', 'draft', 'open', 'none'
+    ];
+    if (nonInvoiced.includes(normalized)) return false;
+    return ['invoiced', 'invoice_created', 'issued', 'paid', 'partially_paid', 'partially paid', 'overdue'].includes(normalized);
+  },
+  isActiveInvoice(invoice = {}) {
+    const status = String(invoice.status || invoice.invoice_status || '').trim().toLowerCase();
+    if (['deleted', 'cancelled', 'canceled', 'void', 'draft_deleted'].includes(status)) return false;
+    return Boolean(String(invoice.id || '').trim());
+  },
+  agreementItemBlocksInvoice(item = {}) {
+    if (['invoice_created', 'is_invoiced', 'has_invoice', 'invoiced'].some(field => this.isTruthyInvoiceFlag(item[field]))) return true;
+    if (item.invoice_id || item.invoice_uuid || item.linked_invoice_id || item.created_invoice_id) return true;
+    if (item.invoice_number || item.invoice_no || item.linked_invoice_number || item.created_invoice_number) return true;
+    return this.isInvoicedStatus(item.invoice_status) || this.isInvoicedStatus(item.billing_status)
       || Boolean(item.invoiced_invoice_id || item.invoicedInvoiceId)
       || Boolean(item.invoiced_at || item.invoicedAt);
+  },
+  isAgreementItemInvoiced(item = {}) {
+    return this.agreementItemBlocksInvoice(item);
+  },
+  canCreateInvoiceForAgreement(agreement = {}, agreementItems = [], invoices = []) {
+    const agreementStatus = String(agreement.status || agreement.agreement_status || '').trim().toLowerCase();
+    if (agreementStatus !== 'signed') return false;
+    const activeInvoices = (Array.isArray(invoices) ? invoices : []).filter(invoice => this.isActiveInvoice(invoice));
+    if (activeInvoices.length) return false;
+    const agreementHeaderHasInvoice = Boolean(
+      agreement.invoice_id || agreement.invoice_uuid || agreement.linked_invoice_id || agreement.created_invoice_id ||
+      agreement.invoice_number || agreement.invoice_no || agreement.linked_invoice_number || agreement.created_invoice_number ||
+      this.isTruthyInvoiceFlag(agreement.invoice_created) || this.isTruthyInvoiceFlag(agreement.is_invoiced) ||
+      this.isTruthyInvoiceFlag(agreement.has_invoice) || this.isTruthyInvoiceFlag(agreement.invoiced) ||
+      this.isInvoicedStatus(agreement.invoice_status)
+    );
+    if (agreementHeaderHasInvoice) return false;
+    return !(Array.isArray(agreementItems) ? agreementItems : []).some(item => this.agreementItemBlocksInvoice(item));
+  },
+  logCreateInvoiceGate(agreement = {}, agreementItems = [], invoices = []) {
+    const activeInvoices = (Array.isArray(invoices) ? invoices : []).filter(invoice => this.isActiveInvoice(invoice));
+    const itemBlocks = (Array.isArray(agreementItems) ? agreementItems : []).filter(item => this.agreementItemBlocksInvoice(item));
+    const canCreateInvoice = this.canCreateInvoiceForAgreement(agreement, agreementItems, invoices);
+    console.log('[Create Invoice Gate] agreement:', agreement);
+    console.log('[Create Invoice Gate] agreementItems:', agreementItems);
+    console.log('[Create Invoice Gate] invoices:', invoices);
+    console.log('[Create Invoice Gate] activeInvoices:', activeInvoices);
+    console.log('[Create Invoice Gate] itemBlocks:', itemBlocks);
+    console.log('[Create Invoice Gate] canCreateInvoice:', canCreateInvoice);
+    return canCreateInvoice;
   },
   isAnnualSaasItem(item = {}) {
     return String(item.section || '')
@@ -261,33 +311,71 @@ const Agreements = {
       .replace(/\s+/g, '_') === 'annual_saas';
   },
   async loadInvoiceBlockedAgreementIds(agreements = []) {
-    const agreementIds = (Array.isArray(agreements) ? agreements : [])
-      .map(row => String(row?.id || '').trim())
-      .filter(Boolean);
+    const safeAgreements = Array.isArray(agreements) ? agreements : [];
+    const agreementIds = safeAgreements.map(row => String(row?.id || '').trim()).filter(Boolean);
     if (!agreementIds.length) return new Set();
     const client = this.getSupabaseClient();
     if (!client) return new Set();
-    const { data, error } = await client
-      .from('agreement_items')
-      .select('agreement_id,section,invoice_status,invoiced_invoice_id,invoiced_at')
-      .in('agreement_id', agreementIds)
-      .eq('section', 'annual_saas');
-    if (error) throw error;
-    const grouped = new Map();
-    (Array.isArray(data) ? data : []).forEach(item => {
+    const businessIds = safeAgreements.map(row => String(row?.agreement_id || '').trim()).filter(Boolean);
+    const [itemsResult, invoicesByUuidResult, invoicesByBusinessIdResult] = await Promise.all([
+      client.from('agreement_items').select('*').in('agreement_id', agreementIds),
+      client.from('invoices').select('*').in('agreement_uuid', agreementIds),
+      businessIds.length ? client.from('invoices').select('*').in('agreement_id', businessIds) : Promise.resolve({ data: [], error: null })
+    ]);
+    if (itemsResult.error) throw itemsResult.error;
+    if (invoicesByUuidResult.error) throw invoicesByUuidResult.error;
+    if (invoicesByBusinessIdResult.error) throw invoicesByBusinessIdResult.error;
+    const itemsByAgreement = new Map();
+    (Array.isArray(itemsResult.data) ? itemsResult.data : []).forEach(item => {
       const key = String(item?.agreement_id || '').trim();
-      if (!key) return;
-      if (!grouped.has(key)) grouped.set(key, []);
-      grouped.get(key).push(item);
+      if (!itemsByAgreement.has(key)) itemsByAgreement.set(key, []);
+      itemsByAgreement.get(key).push(item);
     });
+    const invoices = [...(invoicesByUuidResult.data || []), ...(invoicesByBusinessIdResult.data || [])];
+    const uniqueInvoices = [...new Map(invoices.map(invoice => [String(invoice?.id || ''), invoice])).values()];
     const blockedIds = new Set();
-    agreementIds.forEach(id => {
-      const annualItems = grouped.get(id) || [];
-      if (!annualItems.length) return;
-      const hasUninvoiced = annualItems.some(item => this.isAnnualSaasItem(item) && !this.isAgreementItemInvoiced(item));
-      if (!hasUninvoiced) blockedIds.add(id);
+    safeAgreements.forEach(agreement => {
+      const id = String(agreement?.id || '').trim();
+      const businessId = String(agreement?.agreement_id || '').trim();
+      const linkedInvoices = uniqueInvoices.filter(invoice => String(invoice?.agreement_uuid || '').trim() === id || String(invoice?.agreement_id || '').trim() === businessId);
+      if (!this.canCreateInvoiceForAgreement(agreement, itemsByAgreement.get(id) || [], linkedInvoices)) blockedIds.add(id);
     });
     return blockedIds;
+  },
+
+  async reloadAgreementInvoiceGateData(agreementId) {
+    const id = String(agreementId || '').trim();
+    if (!id) throw new Error('Agreement ID is required.');
+    const client = this.getSupabaseClient();
+    if (!client) throw new Error('Supabase client is unavailable.');
+    const [{ data: agreement, error: agreementError }, { data: agreementItems, error: itemsError }, { data: invoicesByUuid, error: uuidInvoiceError }] = await Promise.all([
+      client.from('agreements').select('*').eq('id', id).maybeSingle(),
+      client.from('agreement_items').select('*').eq('agreement_id', id).order('created_at', { ascending: true }),
+      client.from('invoices').select('*').eq('agreement_uuid', id)
+    ]);
+    if (agreementError) throw agreementError;
+    if (!agreement) throw new Error('Agreement was not found.');
+    if (itemsError) throw itemsError;
+    if (uuidInvoiceError) throw uuidInvoiceError;
+    const businessId = String(agreement.agreement_id || '').trim();
+    let invoicesByBusinessId = [];
+    if (businessId) {
+      const { data, error } = await client.from('invoices').select('*').eq('agreement_id', businessId);
+      if (error) throw error;
+      invoicesByBusinessId = Array.isArray(data) ? data : [];
+    }
+    const invoices = [...new Map([...(invoicesByUuid || []), ...invoicesByBusinessId].map(invoice => [String(invoice?.id || ''), invoice])).values()];
+    const items = Array.isArray(agreementItems) ? agreementItems : [];
+    const normalizedAgreement = this.normalizeAgreement(agreement);
+    const normalizedItems = items.map(item => this.normalizeItem(item));
+    const canCreateInvoice = this.logCreateInvoiceGate(normalizedAgreement, normalizedItems, invoices);
+    if (canCreateInvoice) this.state.invoiceBlockedAgreementIds.delete(id);
+    else this.state.invoiceBlockedAgreementIds.add(id);
+    delete this.state.detailCacheById[id];
+    this.setCachedDetail(id, normalizedAgreement, normalizedItems);
+    const rowIndex = this.state.rows.findIndex(row => String(row?.id || '').trim() === id);
+    if (rowIndex >= 0) this.state.rows[rowIndex] = { ...this.state.rows[rowIndex], ...normalizedAgreement };
+    return { agreement: normalizedAgreement, agreementItems: normalizedItems, invoices, canCreateInvoice };
   },
 
   canUseAdminOverride() {
@@ -4122,22 +4210,16 @@ const Agreements = {
     );
     this.setFormDetailLoading(true);
     try {
-      const cached = this.getCachedDetail(id);
-      if (cached) {
-        this.openAgreementForm(cached.agreement, cached.items, { readOnly });
-        this.applyActualInvoiceStatusToFormItems().catch(error => console.warn('[Agreement] Invoice status verification failed.', error));
-        if (focusSignedDocument) window.setTimeout(() => this.focusSignedAgreementDocumentSection(), 150);
-        return;
-      }
-      const response = await this.getAgreement(id);
-      const { agreement: rawAgreement, items } = this.extractAgreementAndItems(response, id);
-      const agreement = await this.applyCompanyIdentityToAgreement(rawAgreement, { allowFallbackToAgreement: true });
-      this.setCachedDetail(id, agreement, items);
+      // Agreement details and the Create Invoice gate must always use fresh Supabase rows.
+      const fresh = await this.reloadAgreementInvoiceGateData(id);
+      const agreement = await this.applyCompanyIdentityToAgreement(fresh.agreement, { allowFallbackToAgreement: true });
+      this.setCachedDetail(id, agreement, fresh.agreementItems);
       if (String(E.agreementForm?.dataset.id || '').trim() === id) {
-        this.openAgreementForm(agreement, items, { readOnly });
+        this.openAgreementForm(agreement, fresh.agreementItems, { readOnly });
         this.applyActualInvoiceStatusToFormItems().catch(error => console.warn('[Agreement] Invoice status verification failed.', error));
         if (focusSignedDocument) window.setTimeout(() => this.focusSignedAgreementDocumentSection(), 150);
       }
+      this.safeRender('fresh-agreement-detail');
     } catch (error) {
       if (typeof isAuthError === 'function' && isAuthError(error)) {
         handleExpiredSession('Session expired. Please log in again.');
@@ -4586,7 +4668,8 @@ const Agreements = {
       return;
     }
     try {
-      const latestAgreement = await this.reloadLatestAgreementRow(id);
+      const fresh = await this.reloadAgreementInvoiceGateData(id);
+      const latestAgreement = fresh.agreement;
       if (!this.isAgreementSigned(latestAgreement)) {
         UI.toast('Only signed agreements can be invoiced.');
         return;
@@ -4595,24 +4678,8 @@ const Agreements = {
         UI.toast('You should upload the signed agreement document before creating an invoice.');
         return;
       }
-      const client = this.getSupabaseClient();
-      if (!client) throw new Error('Supabase client is unavailable.');
-      const { data: agreementItems, error: agreementItemsError } = await client
-        .from('agreement_items')
-        .select('id,agreement_id,section,invoice_status,invoiced_invoice_id,invoiced_at')
-        .eq('agreement_id', String(latestAgreement?.id || '').trim());
-      if (agreementItemsError) throw agreementItemsError;
-      const canCreateInvoice = (Array.isArray(agreementItems) ? agreementItems : []).some(item => {
-        const section = String(item.section || item.item_section || '').trim().toLowerCase().replace(/\s+/g, '_');
-        if (section !== 'annual_saas') return false;
-        const status = String(item.invoice_status || item.invoiceStatus || '').trim().toLowerCase();
-        const invoiced = ['invoiced', 'issued'].includes(status)
-          || Boolean(item.invoiced_invoice_id || item.invoicedInvoiceId)
-          || Boolean(item.invoiced_at || item.invoicedAt);
-        return !invoiced;
-      });
-      if (!canCreateInvoice) {
-        UI.toast('Invoice cannot be created because all Annual SaaS locations are already invoiced.');
+      if (!fresh.canCreateInvoice) {
+        UI.toast('Invoice cannot be created because a real invoice link or active invoice still exists.');
         return;
       }
       if (typeof setActiveView === 'function') setActiveView('invoices');
@@ -4785,9 +4852,6 @@ const Agreements = {
       if (previewId) { if (!Permissions.canGenerateAgreementHtml()) return UI.toast('You do not have permission to preview agreements.'); return this.runRowAction(`preview:${previewId}`, trigger, () => this.previewAgreementHtml(previewId)); }
       const createInvoiceId = trigger.getAttribute('data-agreement-create-invoice');
       if (createInvoiceId) {
-        const row = this.state.rows.find(entry => String(entry?.id || '').trim() === String(createInvoiceId || '').trim());
-        const invoiceBlocked = Boolean(row && this.state.invoiceBlockedAgreementIds.has(String(row?.id || '').trim()));
-        if (invoiceBlocked) return;
         return this.runRowAction(`create-invoice:${createInvoiceId}`, trigger, () => this.createInvoiceFromAgreementFlow(createInvoiceId));
       }
       const deleteId = trigger.getAttribute('data-agreement-delete');
