@@ -4356,8 +4356,8 @@ const Clients = {
         const agreementUuid = String(prefill.preferredAgreement?.id || '').trim();
         console.debug('[Clients] action invoice', { clientId, agreementUuid });
         if (agreementUuid && window.Invoices?.openCreateFromAgreementTemplate) {
-          await window.Invoices.openCreateFromAgreementTemplate(agreementUuid);
-          UI.toast('Invoice form opened from agreement template.');
+          const opened = await window.Invoices.openCreateFromAgreementTemplate(agreementUuid);
+          if (opened) UI.toast('Invoice form opened from agreement template.');
           return;
         }
         const invoiceDraft = this.buildInvoiceDraftFromClient_(client);

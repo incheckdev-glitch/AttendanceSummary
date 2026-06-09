@@ -4048,16 +4048,15 @@ const Invoices = {
       .in('id', ids);
     if (error) throw new Error(`Invoice saved, but agreement item invoice status update failed: ${error.message || 'Unknown error'}`);
   },
-  async hydrateFromAgreement(agreementId) {
+  async hydrateFromAgreement(agreementId, { freshGate = null } = {}) {
     const id = String(agreementId || '').trim();
-    if (!id) return;
+    if (!id) return false;
     try {
-      const response = await Api.getAgreement(id);
-      let { agreement, items } = this.extractAgreementAndItems(response, id);
-      if (!Array.isArray(items) || !items.length) {
-        const directItems = await this.loadAgreementItemsDirectForInvoice(agreement, id);
-        if (directItems.length) items = directItems;
-      }
+      // Hydration must use the same fresh rows used by the global gate so invoice items cannot come from an API cache.
+      const gate = await this.requireFreshAgreementInvoiceGate(id, freshGate);
+      if (!gate) return false;
+      const agreement = gate.agreement;
+      const items = Array.isArray(gate.agreementItems) ? gate.agreementItems : [];
       const currentFormInvoice = this.collectFormValues().invoice;
       const pickAgreementValue = (...values) => {
         for (const value of values) {
@@ -4216,8 +4215,10 @@ const Invoices = {
       this.applyTotalsToForm(summary);
       this.syncPaymentFieldsInForm();
       this.syncPaymentConclusion(summary);
+      return true;
     } catch (error) {
       UI.toast('Unable to auto-fill from agreement: ' + (error?.message || 'Unknown error'));
+      return false;
     }
   },
   async openInvoiceById(invoiceId, { readOnly = false, trigger = null } = {}) {
@@ -4419,6 +4420,16 @@ const Invoices = {
       const hasInvoiceable = (this.state.agreementInvoiceSelection?.invoiceableItems || []).length > 0;
       UI.toast(hasInvoiceable ? 'Please select at least one agreement location to invoice.' : 'Invoice cannot be created because all Annual SaaS locations are already invoiced.');
       return;
+    }
+    if (agreementSelectionActive) {
+      const agreementUuid = String(this.state.agreementInvoiceSelection?.agreementUuid || invoice.agreement_uuid || '').trim();
+      try {
+        const freshGate = await this.requireFreshAgreementInvoiceGate(agreementUuid);
+        if (!freshGate) return;
+      } catch (error) {
+        UI.toast('Unable to verify invoice creation eligibility: ' + (error?.message || 'Unknown error'));
+        return;
+      }
     }
     let loadedSelection;
     try {
@@ -4738,15 +4749,42 @@ const Invoices = {
       await this.openInvoiceById(normalized.id, { readOnly: false });
     }
   },
-  async openCreateFromAgreementTemplate(agreementId) {
+  async requireFreshAgreementInvoiceGate(agreementId, providedGate = null) {
     const id = String(agreementId || '').trim();
-    if (!id) return;
-    this.openInvoice(this.normalizeInvoice({ ...this.emptyInvoice(), agreement_uuid: id, agreement_id: '', agreement_number: '' }), [], { readOnly: false });
-    await this.hydrateFromAgreement(id);
-    const selection = this.state.agreementInvoiceSelection || {};
-    if (selection.active && !(selection.invoiceableItems || []).length) {
-      UI.toast('Invoice cannot be created because all Annual SaaS locations are already invoiced.');
-      this.closeForm();
+    if (!id) throw new Error('Agreement ID is required.');
+    const gate = providedGate && String(providedGate?.agreement?.id || '').trim() === id
+      ? providedGate
+      : await window.Agreements?.reloadAgreementInvoiceGateData?.(id);
+    if (!gate || !gate.agreement) throw new Error('Unable to verify the agreement invoice gate from fresh data.');
+    if (!gate.canCreateInvoice) {
+      UI.toast('Invoice cannot be created because a real invoice link or active invoice still exists.');
+      return null;
+    }
+    return gate;
+  },
+  async openCreateFromAgreementTemplate(agreementId, { freshGate = null } = {}) {
+    const id = String(agreementId || '').trim();
+    if (!id) return false;
+    try {
+      // Every agreement-backed invoice entry point, including client actions, must pass this fresh global gate.
+      const gate = await this.requireFreshAgreementInvoiceGate(id, freshGate);
+      if (!gate) return false;
+      this.openInvoice(this.normalizeInvoice({ ...this.emptyInvoice(), agreement_uuid: id, agreement_id: '', agreement_number: '' }), [], { readOnly: false });
+      const hydrated = await this.hydrateFromAgreement(id, { freshGate: gate });
+      if (!hydrated) {
+        this.closeForm();
+        return false;
+      }
+      const selection = this.state.agreementInvoiceSelection || {};
+      if (selection.active && !(selection.invoiceableItems || []).length) {
+        UI.toast('Invoice cannot be created because all Annual SaaS locations are already invoiced.');
+        this.closeForm();
+        return false;
+      }
+      return true;
+    } catch (error) {
+      UI.toast('Unable to verify invoice creation eligibility: ' + (error?.message || 'Unknown error'));
+      return false;
     }
   },
   async refresh(force = false) {

@@ -2435,7 +2435,11 @@ const Agreements = {
 </html>`;
     return U.stripInternalDocumentLinks(html);
   },
-  async createInvoiceFromAgreement(agreementId) { return Api.createInvoiceFromAgreement(agreementId); },
+  async createInvoiceFromAgreement(agreementId) {
+    const fresh = await this.reloadAgreementInvoiceGateData(agreementId);
+    if (!fresh.canCreateInvoice) throw new Error('Invoice creation is blocked because a real invoice link or active invoice still exists.');
+    return Api.createInvoiceFromAgreement(String(fresh.agreement?.id || agreementId || '').trim());
+  },
   extractTechnicalRequest(response) {
     const payload = Api.unwrapApiPayload(response);
     const candidates = [
@@ -4684,8 +4688,8 @@ const Agreements = {
       }
       if (typeof setActiveView === 'function') setActiveView('invoices');
       if (window.Invoices?.openCreateFromAgreementTemplate) {
-        await window.Invoices.openCreateFromAgreementTemplate(id);
-        UI.toast(`Invoice template opened from agreement ${id}. Verify details, then save to create the invoice.`);
+        const opened = await window.Invoices.openCreateFromAgreementTemplate(id, { freshGate: fresh });
+        if (opened) UI.toast(`Invoice template opened from agreement ${id}. Verify details, then save to create the invoice.`);
       }
     } catch (error) {
       if (typeof isAuthError === 'function' && isAuthError(error)) {
