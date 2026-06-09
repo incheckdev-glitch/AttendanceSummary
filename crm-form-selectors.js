@@ -109,7 +109,7 @@
           form.dataset.contactName = displayContact(contact, { includeEmail: false });
           form.dataset.contactFirstName = contact.first_name || '';
           form.dataset.contactLastName = contact.last_name || '';
-          form.dataset.contactJobTitle = contact.position || contact.job_title || contact.title || '';
+          form.dataset.contactJobTitle = contact.contact_position || contact.job_title || '';
           form.dataset.contactEmail = contact.email || '';
           form.dataset.contactPhone = contact.phone || '';
           form.dataset.contactMobile = contact.mobile || '';
@@ -160,7 +160,7 @@
           form.dataset.contactEmail = contact.email || '';
           form.dataset.contactPhone = contact.phone || '';
           form.dataset.contactMobile = contact.mobile || '';
-          form.dataset.contactJobTitle = contact.position || contact.job_title || contact.title || '';
+          form.dataset.contactJobTitle = contact.contact_position || contact.job_title || '';
         }
       }
     },
@@ -305,7 +305,8 @@
       first_name: first,
       last_name: last,
       full_name: full,
-      job_title: str(c.job_title || c.jobTitle || c.position || c.role),
+      contact_position: str(c.contact_position || c.contactPosition || c.job_title || c.jobTitle),
+      job_title: str(c.contact_position || c.contactPosition || c.job_title || c.jobTitle),
       department: str(c.department),
       email: str(c.email),
       phone: str(c.phone),
@@ -495,23 +496,25 @@
     if (!selectedCompanyId) return [];
 
     const client = global.supabaseClient || global.supabase;
-    if (!client?.from) {
-      console.error('[Contacts] Failed to load contacts for company', selectedCompanyId, new Error('Supabase client is unavailable.'));
+    if (!client?.rpc) {
+      console.error('[Contacts] Failed to load contacts for company', selectedCompanyId, new Error('Supabase RPC client is unavailable.'));
       return [];
     }
 
-    const { data, error } = await client
-      .from('contacts')
-      .select('*')
-      .eq('company_id', selectedCompanyId)
-      .order('updated_at', { ascending: false });
-
+    const { data, error } = await client.rpc('crm_get_contacts_for_company', { p_company_id: selectedCompanyId });
     if (error) {
       console.error('[Contacts] Failed to load contacts for company', selectedCompanyId, error);
       return [];
     }
 
-    const contacts = (data || []).map(normalizeContact).filter(contact => contact.contact_id);
+    const contacts = (data || []).map(row => normalizeContact({
+      ...row,
+      id: row.contact_uuid,
+      contact_id: row.contact_uuid,
+      company_id: row.company_id || selectedCompanyId,
+      full_name: row.contact_name,
+      contact_position: row.contact_position
+    })).filter(contact => contact.contact_id && contact.company_id === selectedCompanyId);
     console.log('[ContactSelect] contacts loaded:', contacts);
     return contacts;
   }
@@ -651,7 +654,7 @@
     ['CustomerContactEmail', 'CustomerSignatoryEmail'].forEach(suffix => setText(`${prefix}${suffix}`, c.email));
     ['CustomerContactPhone', 'CustomerSignatoryPhone'].forEach(suffix => setText(`${prefix}${suffix}`, phone));
     setText(`${prefix}CustomerContactMobile`, c.mobile || c.phone);
-    if (cfg.formId !== 'proposalForm') setText(`${prefix}CustomerSignatoryTitle`, c.position || c.job_title || c.title);
+    if (cfg.formId !== 'proposalForm') setText(`${prefix}CustomerSignatoryTitle`, c.contact_position || c.job_title);
     cfg.updateModule?.(null, c);
     if (cfg.formId === 'proposalForm') global.Proposals?.applyProposalContactSignatory?.(c, { contactChanged: true });
     byId(cfg.formId)?.dispatchEvent?.(new CustomEvent('crm-contact-selected', { bubbles: true, detail: { contact: c } }));
@@ -786,6 +789,61 @@
     return state.companies;
   }
 
+  async function loadContactByUuid(contactUuid) {
+    const id = str(contactUuid);
+    if (!id) return null;
+    const client = global.supabaseClient || global.supabase;
+    if (!client?.from) throw new Error('Supabase client is unavailable.');
+    const { data, error } = await client.from('contacts').select('*').eq('id', id).maybeSingle();
+    if (error) throw error;
+    return data ? normalizeContact(data) : null;
+  }
+
+  async function validateCompanyContactSelection({ companyId, contactId = '', moduleName = 'record' } = {}) {
+    const selectedCompanyId = str(companyId);
+    const selectedContactId = str(contactId);
+    if (!selectedCompanyId) throw new Error('Please select a company.');
+    const loadedCompany = await fetchCompanyByUuid(selectedCompanyId);
+    if (!loadedCompany || loadedCompany.id !== selectedCompanyId) {
+      throw new Error('Selected company data mismatch. Please reselect the company.');
+    }
+    let loadedContact = null;
+    if (selectedContactId) {
+      loadedContact = await loadContactByUuid(selectedContactId);
+      if (!loadedContact || loadedContact.id !== selectedContactId || loadedContact.company_id !== selectedCompanyId) {
+        throw new Error('Selected contact does not belong to the selected company.');
+      }
+    }
+    console.log('[SAVE CHECK] module:', moduleName);
+    console.log('[SAVE CHECK] form.company_id:', selectedCompanyId);
+    console.log('[SAVE CHECK] selectedCompanyId:', selectedCompanyId);
+    console.log('[SAVE CHECK] loadedCompany:', loadedCompany);
+    console.log('[SAVE CHECK] form.contact_id:', selectedContactId);
+    console.log('[SAVE CHECK] loadedContact:', loadedContact);
+    return { loadedCompany, loadedContact };
+  }
+
+  function applyLoadedCompanySnapshot(payload = {}, loadedCompany = {}, loadedContact = null) {
+    const companyName = str(loadedCompany.legal_name || loadedCompany.company_name || loadedCompany.name);
+    const address = str(loadedCompany.address);
+    const email = str(loadedCompany.main_email || loadedCompany.email);
+    const phone = str(loadedCompany.main_phone || loadedCompany.phone);
+    const next = {
+      ...payload,
+      company_id: str(loadedCompany.id),
+      customer_name: companyName,
+      client_name: companyName,
+      company_name: companyName,
+      customer_address: address,
+      customer_email: email,
+      customer_phone: phone,
+      customer_signatory_name: str(loadedCompany.authorized_signatory_full_name || loadedCompany.authorized_signatory_name),
+      customer_signatory_title: str(loadedCompany.authorized_signatory_title)
+    };
+    if (loadedContact) next.contact_id = str(loadedContact.id);
+    return next;
+  }
+
   async function refreshAll() {
     state.companies = [];
     state.loadingCompanies = null;
@@ -832,6 +890,9 @@
     loadCompanies: loadCompanyOptionsSafe,
     loadCompanyOptions,
     loadCompanyByUuid: fetchCompanyByUuid,
+    loadContactByUuid,
+    validateCompanyContactSelection,
+    applyLoadedCompanySnapshot,
     invalidateCompanies() { state.companies = []; state.loadingCompanies = null; state.companyLoadError = null; },
     refreshAfterCompanySave,
     loadContactsForCompany,

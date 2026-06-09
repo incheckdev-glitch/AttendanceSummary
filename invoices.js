@@ -4402,6 +4402,15 @@ const Invoices = {
       UI.toast(hasInvoiceable ? 'Please select at least one agreement location to invoice.' : 'Invoice cannot be created because all Annual SaaS locations are already invoiced.');
       return;
     }
+    let loadedSelection;
+    try {
+      loadedSelection = await window.CrmCompanyContactSelectors.validateCompanyContactSelection({ companyId: invoice.company_id, contactId: invoice.contact_id, moduleName: 'invoice' });
+      Object.assign(invoice, window.CrmCompanyContactSelectors.applyLoadedCompanySnapshot(invoice, loadedSelection.loadedCompany, loadedSelection.loadedContact));
+      console.log('[SAVE CHECK] final payload:', invoice);
+    } catch (error) {
+      UI.toast(error?.message || 'Selected company data mismatch. Please reselect the company.');
+      return;
+    }
     if (!this.validateInvoice(invoice)) return;
     const summary = this.deriveCalculatedSummary(invoice, items);
     const normalizedInvoice = this.normalizeInvoice({

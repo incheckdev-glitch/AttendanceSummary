@@ -4192,6 +4192,15 @@ const Agreements = {
     const source = String(E.agreementForm?.dataset.source || '').trim();
     const formProposalUuid = String(E.agreementForm?.dataset.proposalUuid || '').trim();
     const { agreement, items } = this.collectFormValues();
+    let loadedSelection;
+    try {
+      loadedSelection = await window.CrmCompanyContactSelectors.validateCompanyContactSelection({ companyId: agreement.company_id, contactId: agreement.contact_id, moduleName: 'agreement' });
+      Object.assign(agreement, window.CrmCompanyContactSelectors.applyLoadedCompanySnapshot(agreement, loadedSelection.loadedCompany, loadedSelection.loadedContact));
+      console.log('[SAVE CHECK] final payload:', agreement);
+    } catch (error) {
+      UI.toast(error?.message || 'Selected company data mismatch. Please reselect the company.');
+      return;
+    }
     let latestExistingAgreement = null;
     if (id) {
       try {
@@ -4366,8 +4375,11 @@ const Agreements = {
       const saveResponse = id
         ? await this.updateAgreement(id, agreementUpdatePayload, adminOverrideItems)
         : await this.createAgreement(agreement, preparedItems);
-      const persistedAgreement = this.extractAgreementAndItems(saveResponse, id).agreement;
+      let persistedAgreement = this.extractAgreementAndItems(saveResponse, id).agreement;
       const persistedAgreementUuid = String(persistedAgreement?.id || id || '').trim();
+      if (persistedAgreementUuid) {
+        persistedAgreement = this.extractAgreementAndItems(await this.getAgreement(persistedAgreementUuid), persistedAgreementUuid).agreement;
+      }
       this.refreshCompanyLifecycleStatus({ ...agreement, ...persistedAgreement });
       this.setCachedDetail(persistedAgreementUuid, persistedAgreement, preparedItems || items);
       try {
@@ -4540,7 +4552,14 @@ const Agreements = {
         { ...proposal, id: resolvedProposalUuid },
         proposalItems
       );
-      draft = { ...draft, agreement: await this.applyCompanyIdentityToAgreement(draft.agreement) };
+      const proposalCompanyId = String(proposal.company_id || '').trim();
+      const proposalContactId = String(proposal.contact_id || '').trim();
+      const loadedSelection = await window.CrmCompanyContactSelectors.validateCompanyContactSelection({ companyId: proposalCompanyId, contactId: proposalContactId, moduleName: 'proposal-to-agreement' });
+      if (loadedSelection.loadedCompany.id !== proposalCompanyId) throw new Error('Selected company data mismatch. Please reselect the company.');
+      draft.agreement = window.CrmCompanyContactSelectors.applyLoadedCompanySnapshot(draft.agreement, loadedSelection.loadedCompany, loadedSelection.loadedContact);
+      draft.agreement.company_id = proposalCompanyId;
+      draft.agreement.contact_id = loadedSelection.loadedContact?.id || '';
+      console.log('[SAVE CHECK] final payload:', draft.agreement);
       if (typeof setActiveView === 'function') setActiveView('agreements');
       this.openAgreementForm(draft.agreement, draft.items, { readOnly: false });
       UI.toast(`Agreement form prefilled from proposal ${String(proposal.proposal_id || proposalRef).trim()}. Save to create.`);

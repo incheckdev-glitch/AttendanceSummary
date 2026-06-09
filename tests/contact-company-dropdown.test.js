@@ -11,7 +11,8 @@ const helperEnd = selectors.indexOf('function isDirectCreate', helperStart);
 assert.ok(helperStart >= 0 && helperEnd > helperStart, 'shared contact loader must exist');
 const helper = selectors.slice(helperStart, helperEnd);
 
-assert.match(helper, /from\('contacts'\)[\s\S]*?select\('\*'\)[\s\S]*?eq\('company_id', selectedCompanyId\)[\s\S]*?order\('updated_at', \{ ascending: false \}\)/, 'contacts must be queried fresh by selected company UUID');
+assert.match(helper, /rpc\('crm_get_contacts_for_company', \{ p_company_id: selectedCompanyId \}\)/, 'contacts must be queried by the company UUID RPC');
+assert.match(helper, /id: row\.contact_uuid[\s\S]*?full_name: row\.contact_name[\s\S]*?contact_position: row\.contact_position/, 'RPC contact UUID, name, and position must be mapped explicitly');
 assert.doesNotMatch(helper, /company_name|company_names|contact_status|verified|contactsByCompany|\.or\(/, 'contact loader must not use names, status, verification, alternate relations, or cached rows');
 assert.match(selectors, /return str\(company\.id \|\| company\.company_uuid\)/, 'company option values must use company UUIDs');
 assert.match(selectors, /contactSelect\.dataset\.loadingCompanyId !== requestCompanyId/, 'shared dropdown must ignore stale contact responses');
