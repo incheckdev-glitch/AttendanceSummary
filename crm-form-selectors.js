@@ -434,7 +434,7 @@
     const key = str(companyKey);
     if (!key) return null;
     if (isUuid(key)) return key;
-    const client = global.supabaseClient || global.supabase;
+    const client = global.SupabaseClient?.getClient?.() || global.supabaseClient || global.supabase;
     if (!client?.rpc) {
       console.error('[Company Resolver] Failed:', key, new Error('Supabase RPC client is unavailable.'));
       return null;
@@ -451,7 +451,7 @@
   async function loadCompanySafe(companyKey) {
     const key = str(companyKey);
     if (!key) return null;
-    const client = global.supabaseClient || global.supabase;
+    const client = global.SupabaseClient?.getClient?.() || global.supabaseClient || global.supabase;
     if (client?.rpc) {
       const { data, error } = await client.rpc('crm_get_company_by_key', { p_company_key: key });
       if (!error) {
@@ -479,7 +479,7 @@
   async function fetchCompanyByUuid(companyId) {
     const id = str(companyId);
     if (!isUuid(id)) return null;
-    const client = global.supabaseClient || global.supabase;
+    const client = global.SupabaseClient?.getClient?.() || global.supabaseClient || global.supabase;
     if (client?.from) {
       const { data, error } = await client.from('companies').select('*').eq('id', id).maybeSingle();
       if (error) {
@@ -494,7 +494,7 @@
   async function loadCompanyOptions(searchText = '', includeSelectedId = null) {
     const search = str(searchText);
     const selectedId = str(includeSelectedId);
-    const client = global.supabaseClient || global.supabase;
+    const client = global.SupabaseClient?.getClient?.() || global.supabaseClient || global.supabase;
     state.companyLoadError = null;
     let rows = [];
 
@@ -558,12 +558,87 @@
     return Array.from(byId.values());
   }
 
-  async function fallbackLoadContactsForCompany(selectedCompanyId, loadedCompany = null) {
-    const client = global.supabaseClient || global.supabase;
+  function contactMatchesSelectedCompany(contact = {}, selectedCompanyId = '', loadedCompany = null) {
+    const c = normalizeContact(contact);
+    const company = loadedCompany ? normalizeCompany(loadedCompany) : {};
+    const selectedUuid = str(selectedCompanyId);
+    const companyRef = str(company.company_business_id || company.company_ref || company.company_number || company.company_code);
+    const companyName = normalizeCompare(company.legal_name || company.company_name || company.name);
+    const contactCompanyUuid = str(c.company_uuid || (isUuid(c.company_id) ? c.company_id : ''));
+    const contactCompanyRef = str(c.company_business_id || c.company_ref || (!isUuid(c.company_id) ? c.company_id : ''));
+    const contactCompanyName = normalizeCompare(c.company_name || c.legal_company_name);
+    if (selectedUuid && contactCompanyUuid && contactCompanyUuid === selectedUuid) return true;
+    if (companyRef && contactCompanyRef && normalizeCompare(companyRef) === normalizeCompare(contactCompanyRef)) return true;
+    if (companyName && contactCompanyName && companyName === contactCompanyName) return true;
+    // Rows returned by our loaders are explicitly stamped with selected_company_uuid.
+    if (selectedUuid && str(contact.selected_company_uuid || contact.selectedCompanyUuid) === selectedUuid) return true;
+    return false;
+  }
+
+  async function apiLoadContactsForCompany(selectedCompanyId, loadedCompany = null) {
+    const api = global.Api;
+    if (!api?.requestWithSession) return [];
+    const company = loadedCompany || await loadCompanySafe(selectedCompanyId);
+    const companyUuid = str(selectedCompanyId);
+    const companyBusinessId = str(company?.company_business_id || company?.company_ref || company?.company_number || company?.company_code || (!isUuid(company?.company_id) ? company?.company_id : ''));
+    const companyName = str(company?.legal_name || company?.company_name || company?.name);
+    const refKeys = Array.from(new Set([companyUuid, companyBusinessId, company?.company_number, company?.company_code, company?.company_ref]
+      .map(str).filter(Boolean)));
+    const nameKeys = Array.from(new Set([companyName, company?.legal_name, company?.company_name, company?.name]
+      .map(str).filter(Boolean)));
+    const rows = [];
+    const run = async (label, payload, localFilter = null) => {
+      try {
+        const response = await api.requestWithSession('contacts', 'list', payload, { requireAuth: true });
+        let resultRows = rowsFrom(response);
+        if (typeof localFilter === 'function') resultRows = resultRows.filter(localFilter);
+        resultRows.forEach(row => rows.push({
+          ...row,
+          selected_company_uuid: companyUuid,
+          selected_company_ref: companyBusinessId,
+          selected_company_name: companyName,
+          raw_contact: row
+        }));
+      } catch (error) {
+        console.warn('[Contacts] API fallback contact query failed:', label, error);
+      }
+    };
+
+    for (const key of refKeys) {
+      await run(`api_company_id_${key}`, {
+        page: 1,
+        limit: 500,
+        filters: { company_id: key },
+        sortBy: 'updated_at',
+        sortDir: 'desc'
+      });
+    }
+
+    for (const name of nameKeys) {
+      const normalizedName = normalizeCompare(name);
+      await run(`api_company_name_${name}`, {
+        page: 1,
+        limit: 500,
+        search: name,
+        sortBy: 'updated_at',
+        sortDir: 'desc'
+      }, row => {
+        const raw = row || {};
+        const candidateNames = [raw.company_name, raw.companyName, raw.company_names, raw.companyNames, raw.legal_company_name, raw.legalCompanyName]
+          .map(normalizeCompare).filter(Boolean);
+        return candidateNames.some(value => value === normalizedName || value.includes(normalizedName) || normalizedName.includes(value));
+      });
+    }
+
+    return dedupeContacts(rows).filter(contact => contact.contact_id && contactMatchesSelectedCompany(contact, companyUuid, company));
+  }
+
+  async function directSupabaseLoadContactsForCompany(selectedCompanyId, loadedCompany = null) {
+    const client = global.SupabaseClient?.getClient?.() || global.supabaseClient || global.supabase;
     if (!client?.from) return [];
     const company = loadedCompany || await loadCompanySafe(selectedCompanyId);
     const companyUuid = str(selectedCompanyId);
-    const companyBusinessId = str(company?.company_business_id || company?.company_ref || company?.company_number || company?.company_code);
+    const companyBusinessId = str(company?.company_business_id || company?.company_ref || company?.company_number || company?.company_code || (!isUuid(company?.company_id) ? company?.company_id : ''));
     const companyName = str(company?.legal_name || company?.company_name || company?.name);
     const queries = [];
     const addQuery = (label, builder) => queries.push({ label, builder });
@@ -579,7 +654,7 @@
       try {
         const { data, error } = await item.builder();
         if (error) {
-          console.warn('[Contacts] fallback contact query failed:', item.label, error);
+          console.warn('[Contacts] direct Supabase fallback query failed:', item.label, error);
           continue;
         }
         (data || []).forEach(row => rows.push({
@@ -590,10 +665,17 @@
           raw_contact: row
         }));
       } catch (error) {
-        console.warn('[Contacts] fallback contact query exception:', item.label, error);
+        console.warn('[Contacts] direct Supabase fallback query exception:', item.label, error);
       }
     }
-    return dedupeContacts(rows).filter(contact => contact.contact_id && contact.company_id === companyUuid);
+    return dedupeContacts(rows).filter(contact => contact.contact_id && contactMatchesSelectedCompany(contact, companyUuid, company));
+  }
+
+  async function fallbackLoadContactsForCompany(selectedCompanyId, loadedCompany = null) {
+    const company = loadedCompany || await loadCompanySafe(selectedCompanyId);
+    let contacts = await directSupabaseLoadContactsForCompany(selectedCompanyId, company);
+    if (!contacts.length) contacts = await apiLoadContactsForCompany(selectedCompanyId, company);
+    return contacts;
   }
 
   async function loadContactsForCompany(companyId) {
@@ -601,7 +683,7 @@
     if (!selectedCompanyId) return [];
 
     const loadedCompany = await loadCompanySafe(selectedCompanyId);
-    const client = global.supabaseClient || global.supabase;
+    const client = global.SupabaseClient?.getClient?.() || global.supabaseClient || global.supabase;
     let rows = [];
 
     if (client?.rpc) {
@@ -908,7 +990,7 @@
   async function loadContactByUuid(contactUuid) {
     const id = str(contactUuid);
     if (!id) return null;
-    const client = global.supabaseClient || global.supabase;
+    const client = global.SupabaseClient?.getClient?.() || global.supabaseClient || global.supabase;
     if (!client?.from) throw new Error('Supabase client is unavailable.');
     const { data, error } = await client.from('contacts').select('*').eq('id', id).maybeSingle();
     if (error) throw error;
