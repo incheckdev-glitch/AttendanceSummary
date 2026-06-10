@@ -2946,6 +2946,7 @@ function setActiveView(view) {
  const firstAllowedView = names.find(name => Permissions.canAccessTab(name)) || '';
  if (!Permissions.canAccessTab(view)) {
    if (requestedView === 'insights') UI.toast('You do not have permission to view AI Insights.');
+   else if (requestedView === 'renewalForecast') UI.toast('Access denied. This forecast is available for admin users only.');
    else UI.toast('You do not have permission to view that module.');
    view = firstAllowedView;
  }
@@ -5973,7 +5974,13 @@ async function routeAppHashAfterReady() {
   const target = parseAppHashRoute(hash);
   if (!target || !target.resource) return false;
   console.info('[router] parsed hash target', target);
-  if (target.resource === 'renewal_forecast' && Permissions.canAccessTab('renewalForecast')) { setActiveView('renewalForecast'); return true; }
+  if (target.resource === 'renewal_forecast') {
+    if (Permissions.canAccessTab('renewalForecast')) { setActiveView('renewalForecast'); return true; }
+    UI.toast?.('Access denied. This forecast is available for admin users only.');
+    const fallback = UI.tabRegistry?.().find(tab => Permissions.canAccessTab(tab.key))?.key || '';
+    if (fallback) setActiveView(fallback);
+    return false;
+  }
   if (!canRouteToHashTarget(target)) {
     console.warn('[router] blocked hash route for missing permission', {
       role: Session.role(),
