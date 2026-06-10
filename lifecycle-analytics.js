@@ -55,22 +55,63 @@ const LifecycleAnalytics = {
     if (!raw) return '—';
     return U.fmtTS(raw);
   },
-  getRelatedNote(record = {}) {
-    const noteFields = ['note', 'notes', 'comment', 'comments', 'remark', 'remarks', 'description', 'status_note', 'completion_note', 'action_note', 'change_reason'];
-    for (const field of noteFields) {
-      const value = record?.[field];
-      if (value === null || value === undefined || typeof value === 'object') continue;
+  extractLifecycleNote(record = {}) {
+    const noteFields = ['note', 'notes', 'comment', 'comments', 'remark', 'remarks', 'description', 'status_note', 'completion_note', 'action_note', 'admin_note', 'internal_note', 'reason', 'message', 'change_reason'];
+    const nestedFields = ['metadata', 'payload', 'details', 'changes', 'data', 'action'];
+    const invalidValues = new Set(['', 'null', 'undefined', '{}', '[]']);
+    const visited = new Set();
+    const realNote = value => {
+      if (value === null || value === undefined || typeof value === 'object') return '';
       const note = this.text(value);
-      if (note) return note;
-    }
-    return 'No note';
+      return invalidValues.has(note.toLowerCase()) ? '' : note;
+    };
+    const parseJson = value => {
+      if (typeof value !== 'string') return null;
+      const text = value.trim();
+      if (!text || !['{', '['].includes(text[0])) return null;
+      try { return JSON.parse(text); } catch (_) { return null; }
+    };
+    const inspect = value => {
+      const parsed = parseJson(value);
+      if (parsed !== null) return inspect(parsed);
+      if (!value || typeof value !== 'object' || visited.has(value)) return '';
+      visited.add(value);
+      if (Array.isArray(value)) {
+        for (const entry of value) {
+          const note = inspect(entry);
+          if (note) return note;
+        }
+        return '';
+      }
+      for (const field of noteFields) {
+        const fieldValue = value[field];
+        const note = realNote(fieldValue) || (parseJson(fieldValue) !== null ? inspect(fieldValue) : '');
+        if (note) return note;
+      }
+      for (const field of nestedFields) {
+        const note = inspect(value[field]);
+        if (note) return note;
+      }
+      // Some APIs wrap the raw log or JSON payload under an extra, module-specific key.
+      for (const fieldValue of Object.values(value)) {
+        if (typeof fieldValue === 'object' || parseJson(fieldValue) !== null) {
+          const note = inspect(fieldValue);
+          if (note) return note;
+        }
+      }
+      return '';
+    };
+    return inspect(record);
+  },
+  getRelatedNote(record = {}) {
+    return this.extractLifecycleNote(record) || 'No note';
   },
   getLatestRelatedRecordTimestamp(record = {}) {
-    const timestampFields = ['created_at', 'updated_at', 'action_at', 'requested_at', 'completed_at', 'changed_at'];
+    const timestampFields = ['created_at', 'updated_at', 'action_at', 'changed_at', 'status_changed_at', 'requested_at', 'completed_at'];
     return timestampFields.reduce((latest, field) => Math.max(latest, this.parseEventTimestamp(record?.[field]) || 0), 0);
   },
   getLatestRelatedRecordDate(record = {}) {
-    const timestampFields = ['created_at', 'updated_at', 'action_at', 'requested_at', 'completed_at', 'changed_at'];
+    const timestampFields = ['created_at', 'updated_at', 'action_at', 'changed_at', 'status_changed_at', 'requested_at', 'completed_at'];
     return timestampFields.reduce((latest, field) => {
       const timestamp = this.parseEventTimestamp(record?.[field]) || 0;
       return timestamp > latest.timestamp ? { timestamp, value: record?.[field] } : latest;
@@ -79,21 +120,50 @@ const LifecycleAnalytics = {
   normalizeLifecycleEntityType(value) {
     return this.norm(value).replace(/[^a-z0-9]/g, '').replace(/s$/, '');
   },
-  getLatestLifecycleNote(account = {}, item = {}, entityType = '', entityId = '', entityNumber = '') {
+  getRelatedLifecycleLogs(account = {}, item = {}, entityType = '', entityId = '', entityNumber = '') {
     const references = [entityId, entityNumber, item?.id, item?.uuid, item?.entity_id, item?.entity_number]
       .map(value => this.text(value))
       .filter(Boolean);
     const normalizedType = this.normalizeLifecycleEntityType(entityType);
-    const logs = (Array.isArray(account?.lifecycleStatusLogs) ? account.lifecycleStatusLogs : [])
+    const historyKeys = ['lifecycleStatusLogs', 'lifecycleLogs', 'lifecycleHistory', 'activityLogs', 'auditLogs', 'statusHistory', 'proposalLogs', 'agreementLogs', 'invoiceLogs', 'receiptLogs', 'creditNoteLogs', 'operationsOnboardingLogs', 'technicalAdminRequestLogs', 'lifecycle_logs', 'lifecycle_history', 'activity_logs', 'audit_logs', 'status_history', 'proposal_logs', 'agreement_logs', 'invoice_logs', 'receipt_logs', 'credit_note_logs', 'operations_onboarding_logs', 'technical_admin_request_logs'];
+    return historyKeys.flatMap(key => Array.isArray(account?.[key]) ? account[key] : [])
       .filter(log => {
-        const logReferences = [log?.entity_id, log?.entity_number].map(value => this.text(value)).filter(Boolean);
+        const logReferences = [log?.entity_id, log?.entity_number, log?.record_id, log?.resource_id, log?.source_id, log?.parent_id, log?.proposal_id, log?.agreement_id, log?.invoice_id, log?.receipt_id, log?.credit_note_id, log?.onboarding_id, log?.request_id, log?.technical_request_id]
+          .map(value => this.text(value)).filter(Boolean);
         const referenceMatches = references.length && logReferences.some(reference => references.includes(reference));
-        const logType = this.normalizeLifecycleEntityType(log?.entity_type);
+        const logType = this.normalizeLifecycleEntityType(log?.entity_type || log?.resource_type || log?.record_type || log?.module);
         return referenceMatches && (!normalizedType || !logType || logType === normalizedType || logType.includes(normalizedType) || normalizedType.includes(logType));
       })
       .slice()
       .sort((a, b) => this.getLatestRelatedRecordTimestamp(b) - this.getLatestRelatedRecordTimestamp(a));
-    return this.getRelatedNote(logs[0] || item);
+  },
+  getLatestLifecycleNote(account = {}, item = {}, entityType = '', entityId = '', entityNumber = '') {
+    const logs = this.getRelatedLifecycleLogs(account, item, entityType, entityId, entityNumber);
+    const newestLogWithNote = logs.find(log => this.extractLifecycleNote(log));
+    const note = this.extractLifecycleNote(newestLogWithNote) || this.extractLifecycleNote(item?.sourceRecord) || this.extractLifecycleNote(item?.raw) || this.extractLifecycleNote(item);
+    if (!note && this.isDevelopmentMode()) {
+      const latestLog = logs[0];
+      console.info('[Lifecycle Analytics] No lifecycle note found', {
+        stageType: entityType,
+        relatedRecordId: entityId || entityNumber,
+        historyLogCount: logs.length,
+        latestLogKeys: latestLog && typeof latestLog === 'object' ? Object.keys(latestLog) : [],
+        extractedNote: this.extractLifecycleNote(latestLog),
+        rawLatestLog: latestLog || null
+      });
+    }
+    return note || 'No note';
+  },
+  normalizeLifecycleHistoryRecord(rawLog = {}) {
+    return {
+      id: rawLog?.id || rawLog?.uuid || '',
+      status: this.text(rawLog?.new_status || rawLog?.status),
+      title: this.text(rawLog?.title),
+      date: this.getLatestRelatedRecordDate(rawLog),
+      actor: this.text(rawLog?.changed_by_email || rawLog?.changed_by_name || rawLog?.changed_by),
+      note: this.extractLifecycleNote(rawLog),
+      raw: rawLog
+    };
   },
   getLifecycleCompanyId(chain = {}) {
     return String(
@@ -316,7 +386,7 @@ const LifecycleAnalytics = {
       const entityId = this.text(item.id || item.uuid || '');
       const entityNumber = (config.numberFields || [config.codeField]).map(field => this.text(item?.[field])).find(Boolean) || entityId;
       const latestNote = this.getLatestLifecycleNote(account, item, entityType, entityId, entityNumber);
-      events.push({ type: config.type, entityType, entityId, entityNumber, currentStatus, latestNote, title: config.title, sortTimestamp, displayDate, metadata });
+      events.push({ type: config.type, entityType, entityId, entityNumber, currentStatus, latestNote, title: config.title, sortTimestamp, displayDate, metadata, sourceRecord: item, raw: item });
     };
 
     const leads = (account.leads || []).slice();
@@ -414,13 +484,15 @@ const LifecycleAnalytics = {
         body.innerHTML = `${cards}<div class="muted lifecycle-history-empty">No status history found. Future status changes will appear here.</div>`;
         return;
       }
-      body.innerHTML = `${cards}<div class="lifecycle-history-list">${logs.map(log => {
+      const history = logs.map(log => this.normalizeLifecycleHistoryRecord(log));
+      body.innerHTML = `${cards}<div class="lifecycle-history-list">${history.map(entry => {
+        const log = entry.raw;
         const oldStatus = this.text(log.old_status) || 'Initial snapshot';
-        const newStatus = this.text(log.new_status) || '—';
-        const actor = this.text(log.changed_by_email || log.changed_by_name || log.changed_by) || '—';
-        const note = this.getRelatedNote(log);
+        const newStatus = entry.status || '—';
+        const actor = entry.actor || '—';
+        const note = entry.note || 'No note';
         const statusField = this.text(log.status_field);
-        return `<article class="lifecycle-history-entry"><div class="lifecycle-history-entry__date">${this.escape(this.formatTimelineDate(this.getLatestRelatedRecordDate(log)))}</div><strong>${this.escape(oldStatus)} → ${this.escape(newStatus)}</strong><div class="muted">Changed by: ${this.escape(actor)}</div>${statusField ? `<div class="muted">Status field: ${this.escape(statusField)}</div>` : ''}<div class="muted lifecycle-note"><strong>Note:</strong> ${this.escape(note)}</div></article>`;
+        return `<article class="lifecycle-history-entry"><div class="lifecycle-history-entry__date">${this.escape(this.formatTimelineDate(entry.date))}</div><strong>${this.escape(oldStatus)} → ${this.escape(newStatus)}</strong><div class="muted">Changed by: ${this.escape(actor)}</div>${statusField ? `<div class="muted">Status field: ${this.escape(statusField)}</div>` : ''}<div class="muted lifecycle-note"><strong>Note:</strong> ${this.escape(note)}</div></article>`;
       }).join('')}</div>`;
     } catch (error) {
       body.innerHTML = `<div class="muted lifecycle-history-empty">Unable to load status history: ${this.escape(error?.message || 'Unknown error')}</div>`;
