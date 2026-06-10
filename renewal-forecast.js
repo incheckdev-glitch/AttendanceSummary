@@ -6,6 +6,8 @@ const RenewalForecast = {
     monthSummaries: [],
     detailsCache: {},
     manualRenewals: [],
+    noRenewalNeededOverrides: [],
+    noRenewalNeededRow: null,
     filters: {
       dateFrom: '',
       dateTo: '',
@@ -162,7 +164,8 @@ const RenewalForecast = {
       expected_renewal_value: this.n(row.expected_renewal_value),
       renewed_count: this.n(row.renewed_count),
       pending_count: this.n(row.pending_count),
-      overdue_count: this.n(row.overdue_count)
+      overdue_count: this.n(row.overdue_count),
+      no_renewal_needed_count: this.n(row.no_renewal_needed_count)
     };
   },
 
@@ -183,6 +186,7 @@ const RenewalForecast = {
       ...row,
       source_table: 'invoice_items',
       opportunity_id: this.text(row.opportunity_id || `renewal:${invoiceNumber}:${agreementNumber}:${clientName}:${saasItem}:${start}:${end}:${index}`),
+      invoice_item_id: this.text(row.invoice_item_id || row.id || row.item_id),
       client_id: this.text(row.client_id || row.company_id || row.company_uuid || clientName),
       client_name: clientName,
       invoice_number: invoiceNumber,
@@ -285,6 +289,99 @@ const RenewalForecast = {
     return rows.map(row => this.applyManualRenewal(row, manualRenewals));
   },
 
+  normalizeNoRenewalNeededOverride(row = {}) {
+    return {
+      ...row,
+      invoice_item_id: this.text(row.invoice_item_id),
+      reason: this.text(row.reason),
+      note: this.text(row.note),
+      marked_at: this.text(row.marked_at || row.updated_at || row.created_at),
+      marked_by_name: this.text(row.marked_by_name || row.marked_by || row.updated_by_name)
+    };
+  },
+
+  async fetchNoRenewalNeededOverrides() {
+    const { dateFrom, dateTo } = this.rpcRange();
+    const { data, error } = await this.getClient().rpc('crm_get_renewal_no_needed_overrides', {
+      p_start_date: dateFrom,
+      p_end_date: dateTo
+    });
+    if (error) throw error;
+    return Array.isArray(data) ? data.map(row => this.normalizeNoRenewalNeededOverride(row)).filter(row => row.invoice_item_id) : [];
+  },
+
+  applyNoRenewalNeededOverride(row, overrides = this.state.noRenewalNeededOverrides) {
+    const override = overrides.find(item => item.invoice_item_id === this.text(row.invoice_item_id));
+    if (!override) return row;
+    return {
+      ...row,
+      renewal_status: 'no_renewal_needed',
+      manual_no_renewal_needed: true,
+      no_renewal_needed_reason: override.reason,
+      no_renewal_needed_note: override.note,
+      no_renewal_needed_marked_at: override.marked_at,
+      no_renewal_needed_marked_by: override.marked_by_name,
+      renewal_method: 'manual_override'
+    };
+  },
+
+  mergeOverrides(rows, manualRenewals = this.state.manualRenewals, noRenewalNeededOverrides = this.state.noRenewalNeededOverrides) {
+    return rows.map(row => this.applyNoRenewalNeededOverride(this.applyManualRenewal(row, manualRenewals), noRenewalNeededOverrides));
+  },
+
+  openNoRenewalNeededModal(row) {
+    if (!this.requireAdmin() || !['upcoming', 'due_soon', 'overdue'].includes(row.renewal_status) || !row.invoice_item_id) return;
+    this.state.noRenewalNeededRow = row;
+    const modal = document.getElementById('renewalNoNeededModal');
+    const reason = document.getElementById('renewalNoNeededReason');
+    const note = document.getElementById('renewalNoNeededNote');
+    const context = document.getElementById('renewalNoNeededContext');
+    if (!modal || !reason || !note) return;
+    reason.value = '';
+    note.value = '';
+    if (context) context.textContent = `${row.client_name} · ${row.location_name} · ${row.invoice_number || 'No invoice number'}`;
+    modal.hidden = false;
+    document.body.classList.add('pf-modal-open');
+    reason.focus();
+  },
+
+  closeNoRenewalNeededModal() {
+    const modal = document.getElementById('renewalNoNeededModal');
+    if (modal) modal.hidden = true;
+    this.state.noRenewalNeededRow = null;
+    if (document.getElementById('renewalForecastDetailsDrawer')?.hidden !== false) document.body.classList.remove('pf-modal-open');
+  },
+
+  async confirmNoRenewalNeeded() {
+    if (!this.requireAdmin()) return;
+    const row = this.state.noRenewalNeededRow;
+    const reason = this.text(document.getElementById('renewalNoNeededReason')?.value);
+    const note = this.text(document.getElementById('renewalNoNeededNote')?.value);
+    if (!row || !reason) return UI.toast('Select a reason before confirming.');
+    const { error } = await this.getClient().rpc('crm_mark_renewal_no_needed', {
+      p_invoice_item_id: row.invoice_item_id,
+      p_invoice_number: row.invoice_number || null,
+      p_client_name: row.client_name || null,
+      p_location_name: row.location_name || null,
+      p_service_start_date: row.service_start_date || null,
+      p_service_end_date: row.service_end_date || null,
+      p_reason: reason,
+      p_note: note || null
+    });
+    if (error) throw error;
+    this.closeNoRenewalNeededModal();
+    UI.toast('Location marked as No Renewal Needed.');
+    await this.refresh();
+  },
+
+  async undoNoRenewalNeeded(row) {
+    if (!this.requireAdmin() || !row.invoice_item_id || !window.confirm?.('Undo the No Renewal Needed mark for this location?')) return;
+    const { error } = await this.getClient().rpc('crm_unmark_renewal_override', { p_invoice_item_id: row.invoice_item_id });
+    if (error) throw error;
+    UI.toast('No Renewal Needed mark removed.');
+    await this.refresh();
+  },
+
   async markManualRenewed(row) {
     const renewalAgreementRef = window.prompt?.('Enter the manual renewal agreement/reference already created for this location:', row.manual_renewal_agreement_ref || '') ?? null;
     if (renewalAgreementRef === null) return;
@@ -354,14 +451,16 @@ const RenewalForecast = {
     this.state.warning = '';
     this.state.detailsCache = {};
     this.state.manualRenewals = [];
+    this.state.noRenewalNeededOverrides = [];
     this.render();
 
     try {
       const monthSummaries = await this.fetchMonthSummaries();
       this.state.monthSummaries = monthSummaries;
-      const manualRenewals = await this.fetchManualRenewals();
+      const [manualRenewals, noRenewalNeededOverrides] = await Promise.all([this.fetchManualRenewals(), this.fetchNoRenewalNeededOverrides()]);
       this.state.manualRenewals = manualRenewals;
-      const detailRows = this.mergeManualRenewals(await this.fetchAllDetails(monthSummaries), manualRenewals);
+      this.state.noRenewalNeededOverrides = noRenewalNeededOverrides;
+      const detailRows = this.mergeOverrides(await this.fetchAllDetails(monthSummaries), manualRenewals, noRenewalNeededOverrides);
       this.state.rows = detailRows.length ? detailRows : this.refreshFallbackRowsFromSummaries(monthSummaries);
       this.populateFilters();
       this.applyFilters();
@@ -416,17 +515,19 @@ const RenewalForecast = {
 
   summary() {
     const rows = this.filtered().filter(row => !row._summaryOnly);
+    const actionableRows = rows.filter(row => row.renewal_status !== 'no_renewal_needed');
     const today = this.today();
     const month = this.monthKey(today);
     const d30 = this.addDays(30);
     const d90 = this.addDays(90);
     if (rows.length) {
       return {
-        month: rows.filter(row => this.monthKey(row.service_end_date) === month).length,
-        next30: rows.filter(row => row.service_end_date >= today && row.service_end_date <= d30).length,
-        next90: rows.filter(row => row.service_end_date >= today && row.service_end_date <= d90).length,
-        value: rows.reduce((sum, row) => sum + this.n(row.expected_renewal_amount), 0),
-        overdue: rows.filter(row => row.service_end_date < today && row.renewal_status !== 'renewed').length
+        month: actionableRows.filter(row => this.monthKey(row.service_end_date) === month).length,
+        next30: actionableRows.filter(row => row.service_end_date >= today && row.service_end_date <= d30).length,
+        next90: actionableRows.filter(row => row.service_end_date >= today && row.service_end_date <= d90).length,
+        value: actionableRows.reduce((sum, row) => sum + this.n(row.expected_renewal_amount), 0),
+        overdue: actionableRows.filter(row => row.service_end_date < today && row.renewal_status !== 'renewed').length,
+        noRenewalNeeded: rows.filter(row => row.renewal_status === 'no_renewal_needed').length
       };
     }
     const summaries = this.monthlyRows();
@@ -435,7 +536,8 @@ const RenewalForecast = {
       next30: 0,
       next90: 0,
       value: summaries.reduce((sum, row) => sum + this.n(row.value), 0),
-      overdue: summaries.reduce((sum, row) => sum + this.n(row.overdue), 0)
+      overdue: summaries.reduce((sum, row) => sum + this.n(row.overdue), 0),
+      noRenewalNeeded: summaries.reduce((sum, row) => sum + this.n(row.noRenewalNeeded), 0)
     };
   },
 
@@ -449,7 +551,8 @@ const RenewalForecast = {
         value: summary.expected_renewal_value,
         renewed: summary.renewed_count,
         pending: summary.pending_count,
-        overdue: summary.overdue_count
+        overdue: summary.overdue_count,
+        noRenewalNeeded: summary.no_renewal_needed_count
       })).sort((a, b) => a.month.localeCompare(b.month));
     }
 
@@ -457,14 +560,15 @@ const RenewalForecast = {
     rows.forEach(row => {
       const month = this.monthKey(row.renewal_month || row.service_end_date);
       if (!month) return;
-      if (!groups.has(month)) groups.set(month, { month, clients: new Set(), locations: 0, value: 0, renewed: 0, pending: 0, overdue: 0 });
+      if (!groups.has(month)) groups.set(month, { month, clients: new Set(), locations: 0, value: 0, renewed: 0, pending: 0, overdue: 0, noRenewalNeeded: 0 });
       const group = groups.get(month);
       group.clients.add(row.client_id || row.client_name);
       group.locations += this.n(row._summaryOnly ? row.location_count : 1) || 1;
-      group.value += this.n(row.expected_renewal_amount);
+      if (row.renewal_status !== 'no_renewal_needed') group.value += this.n(row.expected_renewal_amount);
       if (row.renewal_status === 'renewed') group.renewed++;
+      else if (row.renewal_status === 'no_renewal_needed') group.noRenewalNeeded++;
       else group.pending++;
-      if (row.service_end_date < this.today() && row.renewal_status !== 'renewed') group.overdue++;
+      if (row.service_end_date < this.today() && !['renewed', 'no_renewal_needed'].includes(row.renewal_status)) group.overdue++;
     });
     return [...groups.values()].sort((a, b) => a.month.localeCompare(b.month));
   },
@@ -490,7 +594,7 @@ const RenewalForecast = {
 
   statusBadge(status) {
     const normalized = this.statusKey(status);
-    const cls = ({ renewed: 'success', overdue: 'danger', due_soon: 'warning', upcoming: 'info', expired: 'muted' })[normalized] || 'muted';
+    const cls = ({ renewed: 'success', no_renewal_needed: 'muted', overdue: 'danger', due_soon: 'warning', upcoming: 'info', expired: 'muted' })[normalized] || 'muted';
     const label = normalized.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
     return `<span class="status-badge ${cls}">${U.escapeHtml(label || 'Upcoming')}</span>`;
   },
@@ -504,7 +608,8 @@ const RenewalForecast = {
       ['Upcoming 30 Days', s.next30, 'is-warning'],
       ['Upcoming 90 Days', s.next90, 'is-info'],
       ['Expected Renewal Value', this.money(s.value), 'is-positive'],
-      ['Overdue Renewals', s.overdue, 'is-warning']
+      ['Overdue Renewals', s.overdue, 'is-warning'],
+      ['No Renewal Needed', s.noRenewalNeeded || 0, 'is-info']
     ];
     el.innerHTML = cards.map(([label, value, cls]) => `<article class="card payment-forecast-summary-card ${cls}"><div class="label">${label}</div><div class="value">${value}</div></article>`).join('');
   },
@@ -530,7 +635,18 @@ const RenewalForecast = {
     const months = this.monthlyRows();
     const warning = this.state.warning ? ` · ${this.state.warning}` : '';
     state.textContent = `${this.filtered().length} renewal opportunities from invoice SaaS service end dates.${warning}`;
-    body.innerHTML = `<div class="table-scroll"><table><thead><tr><th>Month</th><th>Number of Clients</th><th>Number of SaaS Rows / Locations</th><th>Expected Renewal Value</th><th>Renewed Count</th><th>Pending Count</th><th>Overdue Count</th></tr></thead><tbody>${months.length ? months.map(group => `<tr data-rf-month="${U.escapeAttr(group.month)}" tabindex="0"><td><button class="btn ghost xs" data-rf-month="${U.escapeAttr(group.month)}">${U.escapeHtml(group.month)}</button></td><td>${group.clients.size}</td><td>${group.locations}</td><td>${this.money(group.value)}</td><td>${group.renewed}</td><td>${group.pending}</td><td>${group.overdue}</td></tr>`).join('') : `<tr><td colspan="7" class="pf-empty">${this.emptyState()}</td></tr>`}</tbody></table></div>`;
+    body.innerHTML = `<div class="table-scroll"><table><thead><tr><th>Month</th><th>Number of Clients</th><th>Number of SaaS Rows / Locations</th><th>Expected Renewal Value</th><th>Renewed Count</th><th>Pending Count</th><th>Overdue Count</th><th>No Renewal Needed</th></tr></thead><tbody>${months.length ? months.map(group => `<tr data-rf-month="${U.escapeAttr(group.month)}" tabindex="0"><td><button class="btn ghost xs" data-rf-month="${U.escapeAttr(group.month)}">${U.escapeHtml(group.month)}</button></td><td>${group.clients.size}</td><td>${group.locations}</td><td>${this.money(group.value)}</td><td>${group.renewed}</td><td>${group.pending}</td><td>${group.overdue}</td><td>${group.noRenewalNeeded || 0}</td></tr>`).join('') : `<tr><td colspan="8" class="pf-empty">${this.emptyState()}</td></tr>`}</tbody></table></div>`;
+  },
+
+  detailStatus(row) {
+    const manual = row.manual_renewal || row.manual_no_renewal_needed;
+    const context = row.manual_no_renewal_needed ? row.no_renewal_needed_reason : row.manual_renewal_agreement_ref;
+    return `${this.statusBadge(row.renewal_status)}${manual ? `<div><span class="status-badge muted">Manual</span>${context ? ` <span class="muted">· ${U.escapeHtml(context)}</span>` : ''}</div>` : ''}`;
+  },
+
+  detailActions(row) {
+    const canFollowUp = ['upcoming', 'due_soon', 'overdue'].includes(row.renewal_status);
+    return `<div class="pf-actions">${canFollowUp ? `<button class="btn primary xs" data-rf-action="renew" data-id="${U.escapeAttr(row.opportunity_id)}">Renew</button><button class="btn ghost xs" data-rf-action="manual-renewed" data-id="${U.escapeAttr(row.opportunity_id)}">Mark Renewed</button><button class="btn ghost xs" data-rf-action="no-renewal-needed" data-id="${U.escapeAttr(row.opportunity_id)}">Mark as No Renewal Needed</button>` : ''}${row.manual_renewal ? `<button class="btn ghost xs" data-rf-action="unmark-renewed" data-id="${U.escapeAttr(row.opportunity_id)}">Unmark Renewed</button>` : ''}${row.manual_no_renewal_needed ? `<button class="btn ghost xs" data-rf-action="undo-no-renewal-needed" data-id="${U.escapeAttr(row.opportunity_id)}">Undo No Renewal Needed</button>` : ''}<button class="btn ghost xs" data-rf-action="agreement" data-id="${U.escapeAttr(row.opportunity_id)}">View Agreement</button><button class="btn ghost xs" data-rf-action="client" data-id="${U.escapeAttr(row.opportunity_id)}">View Client</button>${canFollowUp && this.canCreateInvoice() ? `<button class="btn ghost xs" data-rf-action="invoice" data-id="${U.escapeAttr(row.opportunity_id)}">Create Renewal Invoice</button>` : ''}</div>${row.manual_renewal_note ? `<div class="muted">Note: ${U.escapeHtml(row.manual_renewal_note)}</div>` : ''}${row.no_renewal_needed_note ? `<div class="muted">Note: ${U.escapeHtml(row.no_renewal_needed_note)}</div>` : ''}`;
   },
 
   async openMonth(month) {
@@ -549,7 +665,7 @@ const RenewalForecast = {
     let rows = this.filtered().filter(row => this.monthKey(row.service_end_date || row.renewal_month) === month && !row._summaryOnly);
     if (!rows.length) {
       try {
-        rows = this.mergeManualRenewals(await this.fetchMonthDetails(`${month}-01`));
+        rows = this.mergeOverrides(await this.fetchMonthDetails(`${month}-01`));
       } catch (error) {
         content.innerHTML = `<div class="muted pf-empty">${U.escapeHtml(error.message || 'Unable to load renewal details.')}</div>`;
         return;
@@ -561,7 +677,7 @@ const RenewalForecast = {
       return;
     }
 
-    content.innerHTML = `<div class="table-scroll"><table class="payment-forecast-mini-table"><thead><tr><th>Client Name</th><th>Invoice Number</th><th>Agreement Number</th><th>SaaS Item / Location Name</th><th>Service Start Date</th><th>Service End Date</th><th>Days Until Renewal</th><th>Current Invoice SaaS Row Amount</th><th>Current Annual Price</th><th>Current Discount</th><th>Expected Renewal Amount</th><th>Renewal Status</th><th>Action</th></tr></thead><tbody>${rows.map(row => `<tr><td>${U.escapeHtml(row.client_name)}</td><td>${U.escapeHtml(row.invoice_number || '—')}</td><td>${U.escapeHtml(row.agreement_number || '—')}</td><td>${U.escapeHtml(row.location_name)}</td><td>${this.formatDate(row.service_start_date)}</td><td>${this.formatDate(row.service_end_date)}</td><td>${row.days_until_renewal}</td><td>${this.money(row.current_invoice_row_amount, row.currency)}</td><td>${this.money(row.current_annual_price, row.currency)}</td><td>${this.n(row.current_discount)}%</td><td>${this.money(row.expected_renewal_amount, row.currency)}</td><td>${this.statusBadge(row.renewal_status)}${row.manual_renewal ? `<div class="muted">Manual${row.manual_renewal_agreement_ref ? ` · ${U.escapeHtml(row.manual_renewal_agreement_ref)}` : ''}</div>` : ''}</td><td><div class="pf-actions">${row.renewal_status !== 'renewed' ? `<button class="btn primary xs" data-rf-action="renew" data-id="${U.escapeAttr(row.opportunity_id)}">Renew</button><button class="btn ghost xs" data-rf-action="manual-renewed" data-id="${U.escapeAttr(row.opportunity_id)}">Mark Renewed</button>` : ''}${row.manual_renewal ? `<button class="btn ghost xs" data-rf-action="unmark-renewed" data-id="${U.escapeAttr(row.opportunity_id)}">Unmark</button>` : ''}<button class="btn ghost xs" data-rf-action="agreement" data-id="${U.escapeAttr(row.opportunity_id)}">View Agreement</button><button class="btn ghost xs" data-rf-action="client" data-id="${U.escapeAttr(row.opportunity_id)}">View Client</button>${row.renewal_status !== 'renewed' && this.canCreateInvoice() ? `<button class="btn ghost xs" data-rf-action="invoice" data-id="${U.escapeAttr(row.opportunity_id)}">Create Renewal Invoice</button>` : ''}</div>${row.manual_renewal_note ? `<div class="muted">Note: ${U.escapeHtml(row.manual_renewal_note)}</div>` : ''}</td></tr>`).join('')}</tbody></table></div>`;
+    content.innerHTML = `<div class="table-scroll"><table class="payment-forecast-mini-table"><thead><tr><th>Client Name</th><th>Invoice Number</th><th>Agreement Number</th><th>SaaS Item / Location Name</th><th>Service Start Date</th><th>Service End Date</th><th>Days Until Renewal</th><th>Current Invoice SaaS Row Amount</th><th>Current Annual Price</th><th>Current Discount</th><th>Expected Renewal Amount</th><th>Renewal Status</th><th>Action</th></tr></thead><tbody>${rows.map(row => `<tr><td>${U.escapeHtml(row.client_name)}</td><td>${U.escapeHtml(row.invoice_number || '—')}</td><td>${U.escapeHtml(row.agreement_number || '—')}</td><td>${U.escapeHtml(row.location_name)}</td><td>${this.formatDate(row.service_start_date)}</td><td>${this.formatDate(row.service_end_date)}</td><td>${row.days_until_renewal}</td><td>${this.money(row.current_invoice_row_amount, row.currency)}</td><td>${this.money(row.current_annual_price, row.currency)}</td><td>${this.n(row.current_discount)}%</td><td>${this.money(row.expected_renewal_amount, row.currency)}</td><td>${this.detailStatus(row)}</td><td>${this.detailActions(row)}</td></tr>`).join('')}</tbody></table></div>`;
   },
 
   closeDrawer() {
@@ -576,6 +692,8 @@ const RenewalForecast = {
     if (!row) return;
     if (action === 'manual-renewed') return this.markManualRenewed(row);
     if (action === 'unmark-renewed') return this.unmarkManualRenewed(row);
+    if (action === 'no-renewal-needed') return this.openNoRenewalNeededModal(row);
+    if (action === 'undo-no-renewal-needed') return this.undoNoRenewalNeeded(row);
     if (action === 'agreement') return window.Agreements?.openAgreementFormById?.(row.agreement_uuid || row.agreement_number, { readOnly: true });
     if (action === 'client') { window.setActiveView?.('clients'); return UI.toast(`Client: ${row.client_name}`); }
     if (action === 'invoice' && !this.canCreateInvoice()) return UI.toast('You do not have permission to create renewal invoices.');
@@ -589,8 +707,8 @@ const RenewalForecast = {
 
   exportCsv() {
     if (!this.requireAdmin()) return;
-    const header = ['Client Name','Invoice Number','Agreement Number','SaaS Item / Location Name','Service Start Date','Service End Date','Days Until Renewal','Current Invoice SaaS Row Amount','Current Annual Price','Current Discount','Expected Renewal Amount','Renewal Status','Manual Renewal','Manual Renewal Agreement','Manual Renewal Invoice','Manual Renewal Note'];
-    const values = this.filtered().map(row => [row.client_name,row.invoice_number,row.agreement_number,row.location_name,row.service_start_date,row.service_end_date,row.days_until_renewal,row.current_invoice_row_amount,row.current_annual_price,row.current_discount,row.expected_renewal_amount,row.renewal_status,row.manual_renewal ? 'Yes' : 'No',row.manual_renewal_agreement_ref,row.manual_renewal_invoice_ref,row.manual_renewal_note]);
+    const header = ['Client Name','Invoice Number','Agreement Number','SaaS Item / Location Name','Service Start Date','Service End Date','Days Until Renewal','Current Invoice SaaS Row Amount','Current Annual Price','Current Discount','Expected Renewal Amount','Renewal Status','Manual Renewal','Manual Renewal Agreement','Manual Renewal Invoice','Manual Renewal Note','No Renewal Needed Reason','No Renewal Needed Note'];
+    const values = this.filtered().map(row => [row.client_name,row.invoice_number,row.agreement_number,row.location_name,row.service_start_date,row.service_end_date,row.days_until_renewal,row.current_invoice_row_amount,row.current_annual_price,row.current_discount,row.expected_renewal_amount,row.renewal_status,row.manual_renewal ? 'Yes' : 'No',row.manual_renewal_agreement_ref,row.manual_renewal_invoice_ref,row.manual_renewal_note,row.no_renewal_needed_reason,row.no_renewal_needed_note]);
     const csv = [header, ...values].map(cols => cols.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
     const link = document.createElement('a');
     link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -604,6 +722,7 @@ const RenewalForecast = {
     this._wired = true;
     document.getElementById('renewalForecastRefreshBtn')?.addEventListener('click', () => this.refresh());
     document.getElementById('renewalForecastExportBtn')?.addEventListener('click', () => this.exportCsv());
+    document.getElementById('renewalNoNeededConfirmBtn')?.addEventListener('click', () => this.confirmNoRenewalNeeded());
     document.getElementById('renewalForecastClearBtn')?.addEventListener('click', () => {
       const range = this.defaultDateRange();
       this.state.filters = { dateFrom: range.dateFrom, dateTo: range.dateTo, client: 'all', country: 'all', status: 'all', agreement: 'all', owner: 'all' };
@@ -620,6 +739,8 @@ const RenewalForecast = {
       this.applyFilters();
     }));
     document.addEventListener('click', event => {
+      const closeNoNeeded = event.target.closest('[data-rf-close-no-needed]');
+      if (closeNoNeeded) return this.closeNoRenewalNeededModal();
       const close = event.target.closest('[data-rf-close-details]');
       if (close) return this.closeDrawer();
       const month = event.target.closest('[data-rf-month]')?.dataset.rfMonth;
