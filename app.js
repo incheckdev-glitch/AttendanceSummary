@@ -2908,6 +2908,7 @@ function normalizeViewKey(view) {
   if (['communication_centre', 'communication-centre', 'communication_center', 'communicationCentre'].includes(key)) return 'communicationCentre';
   if (['credit_notes', 'credit-notes', 'creditnotes', 'Credit Notes', 'creditNotes'].includes(key)) return 'creditNotes';
   if (['payment_forecast', 'payment-forecast', 'paymentforecast', 'Payment Forecast', 'Receivables Forecast', 'receivables_forecast', 'paymentForecast'].includes(key)) return 'paymentForecast';
+  if (['renewal_forecast', 'renewal-forecast', 'renewalforecast', 'Monthly Renewal Forecast', 'renewalForecast'].includes(key)) return 'renewalForecast';
   if (['biners', 'Biners', 'biners_module', 'biners-module', 'outsourcing', 'payables'].includes(key)) return 'biners';
   return key;
 }
@@ -2940,7 +2941,7 @@ window.shouldShowTicketFilters = shouldShowTicketFilters;
 
 function setActiveView(view) {
  view = normalizeViewKey(view);
- const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'biners', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
+ const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'renewalForecast', 'biners', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
  const requestedView = view;
  const firstAllowedView = names.find(name => Permissions.canAccessTab(name)) || '';
  if (!Permissions.canAccessTab(view)) {
@@ -2982,6 +2983,8 @@ function setActiveView(view) {
         ? E.creditNotesTab
         : name === 'paymentForecast' || name === 'payment_forecast'
         ? E.paymentForecastTab
+        : name === 'renewalForecast'
+        ? E.renewalForecastTab
         : name === 'biners'
         ? E.binersTab
         : name === 'lifecycleAnalytics'
@@ -3036,6 +3039,8 @@ function setActiveView(view) {
         ? E.creditNotesView
         : name === 'paymentForecast' || name === 'payment_forecast'
         ? E.paymentForecastView
+        : name === 'renewalForecast'
+        ? E.renewalForecastView
         : name === 'biners'
         ? E.binersView
         : name === 'lifecycleAnalytics'
@@ -3148,6 +3153,7 @@ function setActiveView(view) {
   if (view === 'receipts' && window.Receipts?.refresh) runViewLoader('receipts', () => Receipts.refresh());
   if ((view === 'creditNotes' || view === 'credit_notes') && window.CreditNotes?.refresh) runViewLoader('credit notes', () => CreditNotes.refresh());
   if ((view === 'paymentForecast' || view === 'payment_forecast') && window.PaymentForecast?.refresh) runViewLoader('payment forecast', () => PaymentForecast.refresh());
+  if (view === 'renewalForecast' && window.RenewalForecast?.refresh) runViewLoader('monthly renewal forecast', () => RenewalForecast.refresh());
   if (view === 'biners' && window.Biners?.refresh) runViewLoader('biners', () => { Biners.init?.(); return Biners.refresh(); });
   if (view === 'lifecycleAnalytics' && window.LifecycleAnalytics?.init) runViewLoader('lifecycle analytics', () => LifecycleAnalytics.init());
   if (view === 'clients' && window.Clients?.loadAndRefresh) runViewLoader('clients', () => Clients.loadAndRefresh());
@@ -5369,6 +5375,7 @@ function wireCore() {
     E.receiptsTab,
     E.creditNotesTab,
     E.paymentForecastTab,
+    E.renewalForecastTab,
     E.binersTab,
     E.lifecycleAnalyticsTab,
     E.clientsTab,
@@ -5496,6 +5503,8 @@ function wireCore() {
         CreditNotes.refresh(true);
       if (E.paymentForecastView?.classList.contains('active') && window.PaymentForecast?.refresh)
         PaymentForecast.refresh(true);
+      if (E.renewalForecastView?.classList.contains('active') && window.RenewalForecast?.refresh)
+        RenewalForecast.refresh();
       if (E.binersView?.classList.contains('active') && window.Biners?.refresh) {
         Biners.init?.();
         Biners.refresh(true);
@@ -5870,6 +5879,7 @@ function getAppHashForView(view = '') {
     creditNotes: '#finance?tab=credit_notes',
     credit_notes: '#finance?tab=credit_notes',
     paymentForecast: '#finance?tab=payment_forecast',
+    renewalForecast: '#clients?tab=renewal_forecast',
     payment_forecast: '#finance?tab=payment_forecast',
     biners: '#biners',
     clients: '#clients',
@@ -5886,7 +5896,7 @@ function getAppHashForView(view = '') {
 function isNotificationDeepLinkHash(hash = '') {
   const value = String(hash || '').trim();
   if (!value || value === '#loginSection') return false;
-  return /^#(tickets|workflow|operations-onboarding|technical-admin|crm|finance|leads|deals|proposals|agreements|invoices|receipts|credit_notes|credit-notes|payment_forecast|payment-forecast|biners|communication_centre|communication-centre|communication_center)/i.test(value);
+  return /^#(tickets|workflow|operations-onboarding|technical-admin|crm|finance|leads|deals|proposals|agreements|invoices|receipts|credit_notes|credit-notes|payment_forecast|payment-forecast|renewal_forecast|renewal-forecast|biners|communication_centre|communication-centre|communication_center)/i.test(value);
 }
 
 function capturePendingDeepLink() {
@@ -5930,6 +5940,7 @@ function parseAppHashRoute(hash = '') {
   if (route === 'technical-admin') return { module: 'technical_admin_requests', resource: 'technical_admin_requests', id: params.get('request_id') || params.get('id') || '' };
   if (route === 'crm') return { module: 'crm', resource: params.get('tab') || '', id: params.get('id') || '' };
   if (route === 'finance') return { module: 'finance', resource: params.get('tab') || '', id: params.get('id') || '' };
+  if (route === 'clients' && params.get('tab') === 'renewal_forecast') return { module: 'clients', resource: 'renewal_forecast', id: '' };
   if (['communication_centre', 'communication-centre', 'communication_center', 'communicationCentre'].includes(route)) return { module: 'communication_centre', resource: 'communication_centre', id: params.get('conversation_id') || params.get('conversationId') || params.get('id') || '' };
   return { module: route, resource: route, id: params.get('id') || '' };
 }
@@ -5962,6 +5973,7 @@ async function routeAppHashAfterReady() {
   const target = parseAppHashRoute(hash);
   if (!target || !target.resource) return false;
   console.info('[router] parsed hash target', target);
+  if (target.resource === 'renewal_forecast' && Permissions.canAccessTab('renewalForecast')) { setActiveView('renewalForecast'); return true; }
   if (!canRouteToHashTarget(target)) {
     console.warn('[router] blocked hash route for missing permission', {
       role: Session.role(),
@@ -6000,7 +6012,7 @@ function wireDashboardGate() {
     return 'issues';
   };
   const getFirstAllowedView = preferredView => {
-    const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'biners', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
+    const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'technicalAdmin', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'renewalForecast', 'biners', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
     const preferred = String(preferredView || '').trim();
     if (preferred && Permissions.canAccessTab(preferred)) return preferred;
     return names.find(name => Permissions.canAccessTab(name)) || 'issues';
@@ -8300,6 +8312,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (window.TechnicalAdmin?.wire) TechnicalAdmin.wire();
   if (window.Invoices?.init) Invoices.init();
   if (window.Receipts?.init) Receipts.init();
+  if (window.RenewalForecast?.wire) RenewalForecast.wire();
   if (window.Clients?.wire) Clients.wire();
   if (window.ProposalCatalog?.wire) ProposalCatalog.wire();
   if (window.Workflow?.wire) Workflow.wire();
@@ -8352,6 +8365,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         view === 'receipts' ||
         view === 'creditNotes' ||
         view === 'paymentForecast' ||
+        view === 'renewalForecast' ||
         view === 'biners' ||
         view === 'proposalCatalog' ||
         view === 'notifications' ||
