@@ -940,7 +940,7 @@
       const name = normalizeIdentityValue(row.user_name || row.name || row.email);
       return (uid && !identity.ids.has(uid)) || (name && !identity.names.has(name));
     });
-    const label = hasRead ? '✓✓ Read' : (hasOtherParticipants ? '✓✓ Received' : '✓ Sent');
+    const label = hasRead ? 'Read' : (hasOtherParticipants ? 'Received' : 'Sent');
     return `<div class="cc-message-status ${hasRead ? 'read' : 'received'}">${escapeHtml(label)}</div>`;
   }
 
@@ -1636,12 +1636,18 @@
       acc[key].users.push(row.user_name || row.user_id);
       return acc;
     }, {});
-    const allowed = ['👍', '✅', '👀', '🙏', '🔥'];
-    return `<div class="cc-reactions">${allowed.map(r => {
-      const g = grouped[r];
+    const allowed = [
+      { value: '\u{1F44D}', label: 'Like' },
+      { value: '\u{2705}', label: 'Acknowledge' },
+      { value: '\u{1F440}', label: 'Review' },
+      { value: '\u{1F64F}', label: 'Thanks' },
+      { value: '\u{1F525}', label: 'Urgent' }
+    ];
+    return `<div class="cc-reactions">${allowed.map(({ value, label }) => {
+      const g = grouped[value];
       const count = g?.count || 0;
       const title = g?.users?.join(', ') || '';
-      return `<button type="button" class="btn ghost sm cc-reaction-btn" data-cc-react="${escapeAttr(String(messageId))}" data-reaction="${escapeAttr(r)}" title="${escapeAttr(title)}">${r}${count ? ` ${count}` : ''}</button>`;
+      return `<button type="button" class="btn ghost sm cc-reaction-btn" data-cc-react="${escapeAttr(String(messageId))}" data-reaction="${escapeAttr(value)}" title="${escapeAttr(title)}" aria-label="${escapeAttr(`${label}${count ? `, ${count}` : ''}`)}">${escapeHtml(label)}${count ? ` ${count}` : ''}</button>`;
     }).join('')}</div>`;
   }
 
@@ -2117,7 +2123,7 @@
     listEl.innerHTML = rows.map(row => {
       const unreadCount = Number(row.unread_count || 0);
       const hasUnread = unreadCount > 0;
-      return `<button class="cc-item communication-conversation-card ${activeId===row.id?'active':''} ${hasUnread?'unread has-unread':''}" data-cc-open="${escapeAttr(row.id)}" type="button"><div class="cc-item-main"><div class="cc-item-header"><div class="cc-item-title-wrap"><small>${escapeHtml(row.conversation_no||'')}</small><strong>${escapeHtml(row.title||'Untitled')}</strong></div>${hasUnread?`<span class="conversation-unread-badge" aria-label="${escapeAttr(String(unreadCount))} unread messages">${escapeHtml(String(unreadCount))}</span>`:''}</div><p>${escapeHtml(row.last_message_preview||'No messages yet')}</p><div class="cc-item-submeta">${row.is_pinned?'<span class="chip">📌 Pinned</span>':''}${M.state.filters.quick==='archived'&&row.is_archived?'<span class="chip">Archived</span>':''}${row.participant_count?`<span class="chip">${escapeHtml(String(row.participant_count))} participants</span>`:''}</div></div><div class="cc-item-meta"><span class="cc-time">${escapeHtml(relTime(row.updated_at||row.last_message_at))}</span><span class="chip cc-status-chip">${escapeHtml(row.status||'Open')}</span>${row.priority?`<span class="chip cc-priority-chip">${escapeHtml(row.priority)}</span>`:''}</div></button>`;
+      return `<button class="cc-item communication-conversation-card ${activeId===row.id?'active':''} ${hasUnread?'unread has-unread':''}" data-cc-open="${escapeAttr(row.id)}" type="button"><div class="cc-item-main"><div class="cc-item-header"><div class="cc-item-title-wrap"><small>${escapeHtml(row.conversation_no||'')}</small><strong>${escapeHtml(row.title||'Untitled')}</strong></div>${hasUnread?`<span class="conversation-unread-badge" aria-label="${escapeAttr(String(unreadCount))} unread messages">${escapeHtml(String(unreadCount))}</span>`:''}</div><p>${escapeHtml(row.last_message_preview||'No messages yet')}</p><div class="cc-item-submeta">${row.is_pinned?'<span class="chip">Pinned</span>':''}${M.state.filters.quick==='archived'&&row.is_archived?'<span class="chip">Archived</span>':''}${row.participant_count?`<span class="chip">${escapeHtml(String(row.participant_count))} participants</span>`:''}</div></div><div class="cc-item-meta"><span class="cc-time">${escapeHtml(relTime(row.updated_at||row.last_message_at))}</span><span class="chip cc-status-chip">${escapeHtml(row.status||'Open')}</span>${row.priority?`<span class="chip cc-priority-chip">${escapeHtml(row.priority)}</span>`:''}</div></button>`;
     }).join('') || '<div class="muted communication-centre-empty-state" style="padding:16px;">No conversations found for this filter.</div>';
     const pageInfo = $('communicationCentrePageInfo');
     if (pageInfo) pageInfo.textContent = `Page ${M.state.page} • ${M.state.count} total`;
@@ -2274,7 +2280,7 @@
     const messages = $('communicationCentreMessages');
     const replyWrap = $('communicationCentreReplyWrap');
     const closedMsg = $('communicationCentreClosedMsg');
-      const mobileBack = isMobileViewport() ? '<button id="communicationCentreBackToList" class="btn ghost sm" type="button">← Conversations</button>' : '';
+      const mobileBack = isMobileViewport() ? '<button id="communicationCentreBackToList" class="btn ghost sm" type="button">Back to conversations</button>' : '';
       const relatedLabel = conversation.related_module && conversation.related_record_id
         ? `Related: ${conversation._relatedRecordLabel || conversation.related_record_id}`
         : '';
@@ -2571,7 +2577,7 @@
       <div class="modal-content" style="max-width:920px;">
         <div class="header">
           <h2 id="communicationCentreCreateTitle" style="margin:0;font-size:20px;">New Communication Centre Conversation</h2>
-          <div class="actions"><button class="modal-close" id="communicationCentreCreateClose" type="button" aria-label="Close">✕</button></div>
+          <div class="actions"><button class="modal-close" id="communicationCentreCreateClose" type="button" aria-label="Close">Close</button></div>
         </div>
         <form id="communicationCentreCreateForm">
           <div id="communicationCentreCreateError" class="card danger communication-centre-error" style="display:none;margin-bottom:12px;padding:10px;border-left:4px solid #d73a49;"></div>
