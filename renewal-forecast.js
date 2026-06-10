@@ -1,92 +1,511 @@
 const RenewalForecast = {
-  state: { loading: false, rows: [], filteredRows: [], agreements: [], clients: [], filters: { dateFrom: '', dateTo: '', client: 'all', country: 'all', status: 'all', agreement: 'all', owner: 'all' }, selectedMonth: '', error: '' },
+  state: {
+    loading: false,
+    rows: [],
+    filteredRows: [],
+    monthSummaries: [],
+    detailsCache: {},
+    filters: {
+      dateFrom: '',
+      dateTo: '',
+      client: 'all',
+      country: 'all',
+      status: 'all',
+      agreement: 'all',
+      owner: 'all'
+    },
+    selectedMonth: '',
+    error: '',
+    warning: ''
+  },
+
   text(value) { return String(value ?? '').trim(); },
   n(value) { const number = Number(value); return Number.isFinite(number) ? number : 0; },
   date(value) { return this.text(value).slice(0, 10); },
   today() { return new Date().toISOString().slice(0, 10); },
-  addDays(days) { const date = new Date(`${this.today()}T00:00:00Z`); date.setUTCDate(date.getUTCDate() + days); return date.toISOString().slice(0, 10); },
-  addMonths(value, months) { const source = new Date(`${this.date(value)}T00:00:00Z`); const target = new Date(Date.UTC(source.getUTCFullYear(), source.getUTCMonth() + months, 1)); const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate(); target.setUTCDate(Math.min(source.getUTCDate(), lastDay)); return target.toISOString().slice(0, 10); },
-  defaultDateRange() { const monthStart = `${this.today().slice(0, 7)}-01`; return { dateFrom: this.addMonths(monthStart, -12), dateTo: this.addMonths(this.today(), 12) }; },
-  ensureDefaultDateRange() { if (this._defaultDateRangeSet) return; this._defaultDateRangeSet = true; const range = this.defaultDateRange(); if (!this.state.filters.dateFrom) this.state.filters.dateFrom = range.dateFrom; if (!this.state.filters.dateTo) this.state.filters.dateTo = range.dateTo; this.syncDateInputs(); },
-  syncDateInputs() { [['renewalForecastDateFrom', 'dateFrom'], ['renewalForecastDateTo', 'dateTo']].forEach(([id, key]) => { const input = document.getElementById?.(id); if (input) input.value = this.state.filters[key]; }); },
-  monthKey(value) { return this.date(value).slice(0, 7); },
-  key(value) { return this.text(value).toLowerCase().replace(/\s+/g, ' '); },
+  key(value) { return this.text(value).toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim(); },
+  statusKey(value) { return this.key(value).replace(/\s+/g, '_'); },
+  monthKey(value) { const date = this.date(value); return date ? date.slice(0, 7) : ''; },
+  monthDate(value) { const date = this.date(value); return date ? `${date.slice(0, 7)}-01` : ''; },
   pick(row, fields) { for (const field of fields) if (this.text(row?.[field])) return row[field]; return ''; },
-  money(value, currency = 'USD') { return `${this.text(currency || 'USD').toUpperCase()} ${U.fmtNumber(this.n(value))}`; },
-  formatDate(value) { const date = this.date(value); return date ? U.fmtDate(date) : '—'; },
-  getClient() { const client = window.SupabaseClient?.getClient?.(); if (!client) throw new Error('Supabase is not configured.'); return client; },
-  isAdmin() { return window.Permissions?.isAdmin?.() === true || window.Session?.isAdmin?.() === true; },
-  denyAccess() { this.state.rows = []; this.state.filteredRows = []; this.state.error = 'Access denied. This forecast is available for admin users only.'; this.closeDrawer(); UI.toast(this.state.error); return false; },
-  requireAdmin() { return this.isAdmin() || this.denyAccess(); },
-  async fetchForecastData() { const { data, error } = await this.getClient().rpc('crm_get_monthly_renewal_forecast'); if (error) throw error; return data && typeof data === 'object' ? data : {}; },
-  agreementKey(row = {}) { return this.key(this.pick(row, ['agreement_id', 'agreement_uuid', 'source_agreement_id', 'agreement_number', 'agreement_no'])); },
-  clientIdKey(row = {}) { return this.key(this.pick(row, ['company_id', 'company_uuid', 'client_id', 'client_uuid', 'customer_id'])); },
-  clientNameKey(row = {}) { return this.key(this.pick(row, ['client_name', 'customer_name', 'customer_legal_name', 'company_name'])); },
-  clientKey(row = {}) { return this.clientIdKey(row) || this.clientNameKey(row); },
-  locationIdKey(row = {}) { return this.key(this.pick(row, ['location_id', 'location_uuid'])); },
-  locationNameKey(row = {}) { return this.key(this.pick(row, ['location_name', 'location', 'item_name', 'itemName', 'product_name', 'name', 'description'])); },
-  locationKey(row = {}) { return this.locationIdKey(row) || this.locationNameKey(row); },
-  annualText(row = {}) { return ['section', 'category', 'item_type', 'type', 'description', 'name', 'product_name', 'item_name', 'location_name'].map(field => this.text(row[field])).join(' ').toLowerCase(); },
-  isExcluded(row = {}) { return /one[ -]?time|\bsetup\b|implementation|onboarding fee|\bpoc\b|proof[ -]of[ -]concept/.test(this.annualText(row)); },
-  isAnnualSaas(row = {}) {
-    const text = this.annualText(row);
-    if (this.isExcluded(row)) return false;
-    const explicitlySaas = ['annual', 'saas', 'subscription', 'license', 'licence', 'incheck'].some(term => text.includes(term));
-    return explicitlySaas || Boolean(this.serviceStart(row) && this.serviceEnd(row));
+
+  addDays(days) {
+    const date = new Date(`${this.today()}T00:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + days);
+    return date.toISOString().slice(0, 10);
   },
-  serviceStart(row = {}) { return this.date(this.pick(row, ['service_start_date', 'start_date', 'period_start', 'billing_start_date', 'service_start', 'start_service_date', 'subscription_start_date'])); },
-  serviceEnd(row = {}) { return this.date(this.pick(row, ['service_end_date', 'end_date', 'period_end', 'billing_end_date', 'service_end', 'end_service_date', 'subscription_end_date'])); },
-  agreementFor(row, agreements) { const key = this.agreementKey(row); return agreements.find(agreement => this.agreementKey(agreement) === key || this.key(agreement.id) === key || this.key(agreement.agreement_id) === key) || {}; },
-  clientFor(row, agreement, clients) { const keys = [this.clientKey(row), this.clientKey(agreement)].filter(Boolean); return clients.find(client => keys.includes(this.clientKey(client)) || keys.includes(this.key(client.id))) || {}; },
-  sameOpportunity(a, b) {
-    const aClientId = this.clientIdKey(a), bClientId = this.clientIdKey(b), aLocationId = this.locationIdKey(a), bLocationId = this.locationIdKey(b), aAgreement = this.agreementKey(a), bAgreement = this.agreementKey(b);
-    if ((aClientId && bClientId && aClientId !== bClientId) || (aLocationId && bLocationId && aLocationId !== bLocationId)) return false;
-    const clientMatch = aClientId && bClientId ? aClientId === bClientId : this.clientNameKey(a) && this.clientNameKey(a) === this.clientNameKey(b);
-    const locationMatch = aLocationId && bLocationId ? aLocationId === bLocationId : this.locationNameKey(a) && this.locationNameKey(a) === this.locationNameKey(b);
-    const agreementMatch = aAgreement && bAgreement && aAgreement === bAgreement;
-    return Boolean(locationMatch && (clientMatch || agreementMatch));
+
+  addMonths(value, months) {
+    const source = new Date(`${this.date(value)}T00:00:00Z`);
+    const target = new Date(Date.UTC(source.getUTCFullYear(), source.getUTCMonth() + months, 1));
+    const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+    target.setUTCDate(Math.min(source.getUTCDate(), lastDay));
+    return target.toISOString().slice(0, 10);
   },
-  hasRenewal(row, allSaasRows) { return allSaasRows.some(candidate => candidate.opportunity_id !== row.opportunity_id && this.sameOpportunity(candidate, row) && this.serviceStart(candidate) > row.service_end_date); },
-  expectedValue(row = {}) { const months = this.n(this.pick(row, ['renewal_months', 'renewal_term_months', 'term_months', 'license_months'])) || 12; const discount = this.n(this.pick(row, ['discount_percent', 'discount', 'current_discount'])); return this.n(row.unit_price) * months / 12 * (1 - discount / 100); },
-  normalizeSourceRows(invoiceItems) {
-    return invoiceItems.filter(row => this.serviceEnd(row) && this.isAnnualSaas(row)).map(row => ({ ...row, source_table: 'invoice_items' }));
+
+  defaultDateRange() {
+    const monthStart = `${this.today().slice(0, 7)}-01`;
+    return {
+      dateFrom: this.addMonths(monthStart, -12),
+      dateTo: this.addMonths(this.today(), 12)
+    };
   },
-  buildRows(sourceRows, agreements, clients) {
-    const seen = new Set();
-    const preliminary = sourceRows.map(source => {
-      const agreement = this.agreementFor(source, agreements); const client = this.clientFor(source, agreement, clients);
-      const end = this.serviceEnd(source); const start = this.serviceStart(source);
-      const opportunityId = `invoice_items:${this.text(source.id || source.item_id || `${this.pick(source, ['invoice_id', 'invoice_uuid', 'invoice_number'])}:${this.agreementKey(source)}:${this.locationKey(source)}:${start}:${end}`)}`;
-      return { ...agreement, ...source, source_table: 'invoice_items', opportunity_id: opportunityId, invoice_number: this.text(this.pick(source, ['invoice_number', 'invoice_no', 'number'])), agreement_uuid: this.text(agreement.id || source.agreement_uuid || source.agreement_id), agreement_number: this.text(this.pick(source, ['agreement_number', 'agreement_no']) || this.pick(agreement, ['agreement_number', 'agreement_id']) || this.pick(source, ['agreement_id', 'agreement_uuid'])), client_id: this.text(this.pick(source, ['company_id', 'company_uuid', 'client_id', 'client_uuid']) || client.id || this.pick(agreement, ['client_id', 'company_id'])), client_name: this.text(this.pick(source, ['client_name', 'customer_name', 'customer_legal_name', 'company_name']) || this.pick(client, ['client_name', 'company_name', 'customer_legal_name']) || this.pick(agreement, ['client_name', 'customer_name', 'customer_legal_name', 'company_name']) || 'Unknown Client'), country: this.text(this.pick(source, ['country', 'billing_country']) || this.pick(client, ['country', 'billing_country']) || this.pick(agreement, ['country', 'billing_country'])), owner: this.text(this.pick(source, ['csm_name', 'assigned_owner', 'owner_name', 'assigned_to']) || this.pick(client, ['csm_name', 'assigned_owner', 'owner_name', 'assigned_to']) || this.pick(agreement, ['csm_name', 'assigned_owner', 'owner_name', 'assigned_to'])), location_name: this.text(this.pick(source, ['location_name', 'location', 'item_name', 'product_name', 'name', 'description']) || 'Annual SaaS'), service_start_date: start, service_end_date: end, currency: this.text(this.pick(source, ['currency']) || this.pick(agreement, ['currency']) || 'USD'), current_invoice_row_amount: this.n(this.pick(source, ['amount', 'line_total', 'total_amount', 'subtotal', 'unit_price'])), current_discount: this.n(this.pick(source, ['discount_percent', 'discount', 'current_discount'])), expected_renewal_amount: this.expectedValue(source) };
-    });
-    return preliminary.filter(row => { if (seen.has(row.opportunity_id)) return false; seen.add(row.opportunity_id); return true; }).map(row => {
-      const renewed = this.hasRenewal(row, preliminary); let status = 'upcoming';
-      if (renewed) status = 'renewed'; else if (row.service_end_date < this.today()) status = 'overdue'; else if (row.service_end_date <= this.addDays(30)) status = 'due_soon';
-      return { ...row, renewal_status: status, days_until_renewal: Math.ceil((new Date(`${row.service_end_date}T00:00:00Z`) - new Date(`${this.today()}T00:00:00Z`)) / 86400000) };
+
+  ensureDefaultDateRange() {
+    if (this._defaultDateRangeSet) return;
+    this._defaultDateRangeSet = true;
+    const range = this.defaultDateRange();
+    if (!this.state.filters.dateFrom) this.state.filters.dateFrom = range.dateFrom;
+    if (!this.state.filters.dateTo) this.state.filters.dateTo = range.dateTo;
+    this.syncDateInputs();
+  },
+
+  syncDateInputs() {
+    [['renewalForecastDateFrom', 'dateFrom'], ['renewalForecastDateTo', 'dateTo']].forEach(([id, key]) => {
+      const input = document.getElementById?.(id);
+      if (input) input.value = this.state.filters[key];
     });
   },
+
+  monthsBetween(start, end) {
+    const startDate = new Date(`${this.date(start)}T00:00:00Z`);
+    const endDate = new Date(`${this.date(end)}T00:00:00Z`);
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return 12;
+    const months = (endDate.getUTCFullYear() - startDate.getUTCFullYear()) * 12 + (endDate.getUTCMonth() - startDate.getUTCMonth()) + 1;
+    return Math.min(Math.max(months, 1), 60);
+  },
+
+  money(value, currency = 'USD') {
+    return `${this.text(currency || 'USD').toUpperCase()} ${U.fmtNumber(this.n(value))}`;
+  },
+
+  formatDate(value) {
+    const date = this.date(value);
+    return date ? U.fmtDate(date) : '—';
+  },
+
+  getClient() {
+    const client = window.SupabaseClient?.getClient?.();
+    if (!client) throw new Error('Supabase is not configured.');
+    return client;
+  },
+
+  isAdmin() {
+    return window.Permissions?.isAdmin?.() === true || window.Session?.isAdmin?.() === true;
+  },
+
+  denyAccess() {
+    this.state.rows = [];
+    this.state.filteredRows = [];
+    this.state.monthSummaries = [];
+    this.state.error = 'Access denied. This forecast is available for admin users only.';
+    this.closeDrawer();
+    UI.toast(this.state.error);
+    return false;
+  },
+
+  requireAdmin() {
+    return this.isAdmin() || this.denyAccess();
+  },
+
+  rpcRange() {
+    this.ensureDefaultDateRange();
+    const dateFrom = this.state.filters.dateFrom || this.defaultDateRange().dateFrom;
+    const dateTo = this.state.filters.dateTo || this.defaultDateRange().dateTo;
+    return { dateFrom, dateTo, months: this.monthsBetween(dateFrom, dateTo) };
+  },
+
+  async fetchMonthSummaries() {
+    const { dateFrom, months } = this.rpcRange();
+    const { data, error } = await this.getClient().rpc('crm_get_monthly_renewal_forecast', {
+      p_start_date: dateFrom,
+      p_months: months
+    });
+    if (error) throw error;
+    return Array.isArray(data) ? data.map(row => this.normalizeMonthSummary(row)) : [];
+  },
+
+  async fetchMonthDetails(month) {
+    const monthDate = this.monthDate(month);
+    if (!monthDate) return [];
+    if (this.state.detailsCache[monthDate]) return this.state.detailsCache[monthDate];
+
+    const { data, error } = await this.getClient().rpc('crm_get_monthly_renewal_forecast_details', {
+      p_month: monthDate
+    });
+    if (error) throw error;
+
+    const rows = Array.isArray(data) ? data.map((row, index) => this.normalizeDetailRow(row, monthDate, index)) : [];
+    this.state.detailsCache[monthDate] = rows;
+    return rows;
+  },
+
+  async fetchAllDetails(monthSummaries) {
+    const months = [...new Set(monthSummaries.map(row => this.monthDate(row.renewal_month)).filter(Boolean))];
+    const batches = await Promise.all(months.map(async month => {
+      try { return await this.fetchMonthDetails(month); }
+      catch (error) {
+        console.warn('[renewal forecast] unable to load month details', month, error);
+        this.state.warning = error.message || 'Unable to load one or more renewal detail months.';
+        return [];
+      }
+    }));
+    return batches.flat();
+  },
+
+  normalizeMonthSummary(row = {}) {
+    return {
+      renewal_month: this.monthDate(row.renewal_month || row.month),
+      client_count: this.n(row.client_count),
+      location_count: this.n(row.location_count || row.locations),
+      expected_renewal_value: this.n(row.expected_renewal_value),
+      renewed_count: this.n(row.renewed_count),
+      pending_count: this.n(row.pending_count),
+      overdue_count: this.n(row.overdue_count)
+    };
+  },
+
+  normalizeDetailRow(row = {}, monthDate = '', index = 0) {
+    const end = this.date(row.service_end_date);
+    const start = this.date(row.service_start_date);
+    const status = this.statusKey(row.renewal_status || 'upcoming') || 'upcoming';
+    const invoiceNumber = this.text(row.invoice_number || row.invoice_ref);
+    const agreementNumber = this.text(row.agreement_number || row.agreement_ref);
+    const clientName = this.text(row.client_name || row.customer_name || row.company_name || 'Unknown Client');
+    const saasItem = this.text(row.saas_item || row.location_name || row.item_name || row.description || 'Annual SaaS');
+    const currentPeriodAmount = this.n(row.current_period_amount || row.current_invoice_row_amount || row.line_total || row.total_amount);
+    const currentAnnualPrice = this.n(row.current_annual_price || row.unit_price || row.license_price);
+    const expectedRenewalAmount = this.n(row.expected_renewal_amount) || currentAnnualPrice;
+    const days = this.text(row.days_until_renewal) ? this.n(row.days_until_renewal) : Math.ceil((new Date(`${end}T00:00:00Z`) - new Date(`${this.today()}T00:00:00Z`)) / 86400000);
+
+    return {
+      ...row,
+      source_table: 'invoice_items',
+      opportunity_id: this.text(row.opportunity_id || `renewal:${invoiceNumber}:${agreementNumber}:${clientName}:${saasItem}:${start}:${end}:${index}`),
+      client_id: this.text(row.client_id || row.company_id || row.company_uuid || clientName),
+      client_name: clientName,
+      invoice_number: invoiceNumber,
+      agreement_number: agreementNumber,
+      agreement_uuid: this.text(row.agreement_uuid || row.agreement_id || agreementNumber),
+      location_name: saasItem,
+      service_start_date: start,
+      service_end_date: end,
+      days_until_renewal: Number.isFinite(days) ? days : 0,
+      current_invoice_row_amount: currentPeriodAmount,
+      current_annual_price: currentAnnualPrice,
+      current_discount: this.n(row.current_discount || row.discount_percent || row.discount),
+      expected_renewal_amount: expectedRenewalAmount,
+      renewal_status: status,
+      currency: this.text(row.currency || 'USD'),
+      country: this.text(row.country || row.billing_country),
+      owner: this.text(row.owner || row.assigned_owner || row.csm_name),
+      renewal_month: monthDate || this.monthDate(end)
+    };
+  },
+
+  refreshFallbackRowsFromSummaries(monthSummaries) {
+    return monthSummaries.map((summary, index) => ({
+      opportunity_id: `summary:${summary.renewal_month}:${index}`,
+      source_table: 'monthly_summary',
+      client_id: `summary:${summary.renewal_month}`,
+      client_name: `${summary.client_count} client(s)`,
+      invoice_number: '—',
+      agreement_number: '—',
+      agreement_uuid: '',
+      location_name: `${summary.location_count} Annual SaaS row(s)`,
+      service_start_date: '',
+      service_end_date: summary.renewal_month,
+      renewal_month: summary.renewal_month,
+      days_until_renewal: 0,
+      current_invoice_row_amount: 0,
+      current_annual_price: 0,
+      current_discount: 0,
+      expected_renewal_amount: summary.expected_renewal_value,
+      renewal_status: summary.overdue_count > 0 ? 'overdue' : 'upcoming',
+      currency: 'USD',
+      country: '',
+      owner: '',
+      _summaryOnly: true
+    }));
+  },
+
   async refresh() {
-    if (!this.requireAdmin() || this.state.loading) return; this.ensureDefaultDateRange(); this.state.loading = true; this.state.error = ''; this.render();
-    try { const payload = await this.fetchForecastData(); const invoiceItems = Array.isArray(payload.invoice_items) ? payload.invoice_items : [], agreements = Array.isArray(payload.agreements) ? payload.agreements : [], clients = Array.isArray(payload.clients) ? payload.clients : []; const sourceRows = this.normalizeSourceRows(invoiceItems); this.state.agreements = agreements; this.state.clients = clients; this.state.rows = this.buildRows(sourceRows, agreements, clients); this.populateFilters(); this.applyFilters(); }
-    catch (error) { this.state.error = error.message || 'Unable to load renewal forecast.'; UI.toast(this.state.error); }
-    finally { this.state.loading = false; this.render(); }
+    if (!this.requireAdmin() || this.state.loading) return;
+    this.ensureDefaultDateRange();
+    this.state.loading = true;
+    this.state.error = '';
+    this.state.warning = '';
+    this.state.detailsCache = {};
+    this.render();
+
+    try {
+      const monthSummaries = await this.fetchMonthSummaries();
+      this.state.monthSummaries = monthSummaries;
+      const detailRows = await this.fetchAllDetails(monthSummaries);
+      this.state.rows = detailRows.length ? detailRows : this.refreshFallbackRowsFromSummaries(monthSummaries);
+      this.populateFilters();
+      this.applyFilters();
+    } catch (error) {
+      this.state.rows = [];
+      this.state.filteredRows = [];
+      this.state.monthSummaries = [];
+      this.state.error = error.message || 'Unable to load renewal forecast.';
+      UI.toast(this.state.error);
+    } finally {
+      this.state.loading = false;
+      this.render();
+    }
   },
+
   filtered() { return this.state.filteredRows; },
-  applyFilters() { const f = this.state.filters; this.state.filteredRows = this.state.rows.filter(row => (!f.dateFrom || row.service_end_date >= f.dateFrom) && (!f.dateTo || row.service_end_date <= f.dateTo) && (f.client === 'all' || row.client_id === f.client || row.client_name === f.client) && (f.country === 'all' || row.country === f.country) && (f.status === 'all' || row.renewal_status === f.status) && (f.agreement === 'all' || row.agreement_number === f.agreement) && (f.owner === 'all' || row.owner === f.owner)); this.render(); },
-  activeFilters() { const f = this.state.filters; return [['Service end from', f.dateFrom], ['Service end to', f.dateTo], ['Client', f.client], ['Country', f.country], ['Status', f.status], ['Agreement', f.agreement], ['Owner', f.owner]].filter(([, value]) => value && value !== 'all').map(([label, value]) => `${label}: ${value}`); },
-  emptyState() { const message = this.state.rows.length ? 'No renewal rows match the active filters.' : 'No renewal rows found from invoice SaaS service end dates. Check invoice item service dates or filters.'; const filters = this.activeFilters(); return `${message}${filters.length ? `<br><span class="muted">Active filters: ${filters.map(filter => U.escapeHtml(filter)).join(' · ')}</span>` : '<br><span class="muted">Active filters: none</span>'}`; },
-  summary() { const rows = this.filtered(); const today = this.today(), month = this.monthKey(today), d30 = this.addDays(30), d90 = this.addDays(90); return { month: rows.filter(row => this.monthKey(row.service_end_date) === month).length, next30: rows.filter(row => row.service_end_date >= today && row.service_end_date <= d30).length, next90: rows.filter(row => row.service_end_date >= today && row.service_end_date <= d90).length, value: rows.reduce((sum, row) => sum + row.expected_renewal_amount, 0), overdue: rows.filter(row => row.service_end_date < today && row.renewal_status !== 'renewed').length } },
-  monthlyRows() { const groups = new Map(); this.filtered().forEach(row => { const month = this.monthKey(row.service_end_date); if (!groups.has(month)) groups.set(month, { month, clients: new Set(), locations: 0, value: 0, renewed: 0, pending: 0, overdue: 0 }); const group = groups.get(month); group.clients.add(row.client_id || row.client_name); group.locations++; group.value += row.expected_renewal_amount; if (row.renewal_status === 'renewed') group.renewed++; else group.pending++; if (row.service_end_date < this.today() && row.renewal_status !== 'renewed') group.overdue++; }); return [...groups.values()].sort((a, b) => a.month.localeCompare(b.month)); },
-  populateSelect(id, values, current, label) { const select = document.getElementById(id); if (!select) return; const unique = [...new Set(values.filter(Boolean))].sort(); select.innerHTML = `<option value="all">All ${label}</option>` + unique.map(value => `<option value="${U.escapeAttr(value)}">${U.escapeHtml(value)}</option>`).join(''); select.value = unique.includes(current) ? current : 'all'; },
-  populateFilters() { this.populateSelect('renewalForecastClientFilter', this.state.rows.map(row => row.client_id || row.client_name), this.state.filters.client, 'clients'); this.populateSelect('renewalForecastCountryFilter', this.state.rows.map(row => row.country), this.state.filters.country, 'countries'); this.populateSelect('renewalForecastAgreementFilter', this.state.rows.map(row => row.agreement_number), this.state.filters.agreement, 'agreements'); this.populateSelect('renewalForecastOwnerFilter', this.state.rows.map(row => row.owner), this.state.filters.owner, 'owners'); },
-  canCreateInvoice() { return !window.Permissions || Permissions.can('invoices', 'create') || Permissions.can('invoices', 'manage') || Permissions.can('invoices', 'create_from_agreement') || Permissions.hasAdminOverride?.(); },
-  statusBadge(status) { const cls = ({ renewed: 'success', overdue: 'danger', due_soon: 'warning', upcoming: 'info', expired: 'muted' })[status] || 'muted'; return `<span class="status-badge ${cls}">${U.escapeHtml(status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))}</span>`; },
-  renderSummary() { const el = document.getElementById('renewalForecastSummary'); if (!el) return; const s = this.summary(); const cards = [['Renewals This Month', s.month, 'is-info'], ['Upcoming 30 Days', s.next30, 'is-warning'], ['Upcoming 90 Days', s.next90, 'is-info'], ['Expected Renewal Value', this.money(s.value), 'is-positive'], ['Overdue Renewals', s.overdue, 'is-warning']]; el.innerHTML = cards.map(([label, value, cls]) => `<article class="card payment-forecast-summary-card ${cls}"><div class="label">${label}</div><div class="value">${value}</div></article>`).join(''); },
-  render() { if (!this.isAdmin()) return; const state = document.getElementById('renewalForecastState'), body = document.getElementById('renewalForecastBody'); if (!state || !body) return; this.renderSummary(); if (this.state.loading) { state.textContent = 'Loading invoice SaaS service end dates…'; body.innerHTML = ''; return; } if (this.state.error) { state.textContent = this.state.error; body.innerHTML = ''; return; } const months = this.monthlyRows(); state.textContent = `${this.filtered().length} renewal opportunities from invoice SaaS service end dates.`; body.innerHTML = `<div class="table-scroll"><table><thead><tr><th>Month</th><th>Number of Clients</th><th>Number of SaaS Rows / Locations</th><th>Expected Renewal Value</th><th>Renewed Count</th><th>Pending Count</th><th>Overdue Count</th></tr></thead><tbody>${months.length ? months.map(group => `<tr data-rf-month="${group.month}" tabindex="0"><td><button class="btn ghost xs" data-rf-month="${group.month}">${U.escapeHtml(group.month)}</button></td><td>${group.clients.size}</td><td>${group.locations}</td><td>${this.money(group.value)}</td><td>${group.renewed}</td><td>${group.pending}</td><td>${group.overdue}</td></tr>`).join('') : `<tr><td colspan="7" class="pf-empty">${this.emptyState()}</td></tr>`}</tbody></table></div>`; },
-  openMonth(month) { if (!this.requireAdmin()) return; this.state.selectedMonth = month; const drawer = document.getElementById('renewalForecastDetailsDrawer'), title = document.getElementById('renewalForecastDetailsTitle'), content = document.getElementById('renewalForecastDetailsContent'); if (!drawer || !content) return; title.textContent = `${month} Upcoming Renewals`; const rows = this.filtered().filter(row => this.monthKey(row.service_end_date) === month); content.innerHTML = `<div class="table-scroll"><table class="payment-forecast-mini-table"><thead><tr><th>Client Name</th><th>Invoice Number</th><th>Agreement Number</th><th>SaaS Item / Location Name</th><th>Service Start Date</th><th>Service End Date</th><th>Days Until Renewal</th><th>Current Invoice SaaS Row Amount</th><th>Current Discount</th><th>Expected Renewal Amount</th><th>Renewal Status</th><th>Action</th></tr></thead><tbody>${rows.map(row => `<tr><td>${U.escapeHtml(row.client_name)}</td><td>${U.escapeHtml(row.invoice_number || '—')}</td><td>${U.escapeHtml(row.agreement_number || '—')}</td><td>${U.escapeHtml(row.location_name)}</td><td>${this.formatDate(row.service_start_date)}</td><td>${this.formatDate(row.service_end_date)}</td><td>${row.days_until_renewal}</td><td>${this.money(row.current_invoice_row_amount, row.currency)}</td><td>${row.current_discount}%</td><td>${this.money(row.expected_renewal_amount, row.currency)}</td><td>${this.statusBadge(row.renewal_status)}</td><td><div class="pf-actions">${row.renewal_status !== 'renewed' ? `<button class="btn primary xs" data-rf-action="renew" data-id="${U.escapeAttr(row.opportunity_id)}">Renew</button>` : ''}<button class="btn ghost xs" data-rf-action="agreement" data-id="${U.escapeAttr(row.opportunity_id)}">View Agreement</button><button class="btn ghost xs" data-rf-action="client" data-id="${U.escapeAttr(row.opportunity_id)}">View Client</button>${row.renewal_status !== 'renewed' && this.canCreateInvoice() ? `<button class="btn ghost xs" data-rf-action="invoice" data-id="${U.escapeAttr(row.opportunity_id)}">Create Renewal Invoice</button>` : ''}</div></td></tr>`).join('')}</tbody></table></div>`; drawer.hidden = false; document.body.classList.add('pf-modal-open'); },
-  closeDrawer() { const drawer = document.getElementById('renewalForecastDetailsDrawer'); if (drawer) drawer.hidden = true; document.body.classList.remove('pf-modal-open'); },
-  async action(action, id) { if (!this.requireAdmin()) return; const row = this.state.rows.find(item => item.opportunity_id === id); if (!row) return; if (action === 'agreement') return window.Agreements?.openAgreementFormById?.(row.agreement_uuid, { readOnly: true }); if (action === 'client') { window.setActiveView?.('clients'); return UI.toast(`Client: ${row.client_name}`); } if (action === 'invoice' && !this.canCreateInvoice()) return UI.toast('You do not have permission to create renewal invoices.'); if (['invoice', 'renew'].includes(action)) { if (window.Clients?.openRenewalFlow_) { Clients.state.agreements = [...(Clients.state.agreements || []), ...this.state.agreements]; return Clients.openRenewalFlow_([{ ...row, row_id: row.opportunity_id, agreement_id: row.agreement_uuid || row.agreement_number, annual_license_price: row.current_invoice_row_amount, discount_percent: row.current_discount }]); } return window.Agreements?.openAgreementFormById?.(row.agreement_uuid, { readOnly: false }); } },
-  exportCsv() { if (!this.requireAdmin()) return; const header = ['Client Name','Invoice Number','Agreement Number','SaaS Item / Location Name','Service Start Date','Service End Date','Days Until Renewal','Current Invoice SaaS Row Amount','Current Discount','Expected Renewal Amount','Renewal Status']; const values = this.filtered().map(row => [row.client_name,row.invoice_number,row.agreement_number,row.location_name,row.service_start_date,row.service_end_date,row.days_until_renewal,row.current_invoice_row_amount,row.current_discount,row.expected_renewal_amount,row.renewal_status]); const csv = [header, ...values].map(cols => cols.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\n'); const link = document.createElement('a'); link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); link.download = `monthly-renewal-forecast-${this.today()}.csv`; link.click(); URL.revokeObjectURL(link.href); },
-  wire() { if (this._wired) return; this._wired = true; document.getElementById('renewalForecastRefreshBtn')?.addEventListener('click', () => this.refresh()); document.getElementById('renewalForecastExportBtn')?.addEventListener('click', () => this.exportCsv()); document.getElementById('renewalForecastClearBtn')?.addEventListener('click', () => { this.state.filters = { dateFrom: '', dateTo: '', client: 'all', country: 'all', status: 'all', agreement: 'all', owner: 'all' }; ['renewalForecastDateFrom','renewalForecastDateTo'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; }); this.populateFilters(); document.getElementById('renewalForecastStatusFilter').value = 'all'; this.applyFilters(); }); [['renewalForecastDateFrom','dateFrom'],['renewalForecastDateTo','dateTo'],['renewalForecastClientFilter','client'],['renewalForecastCountryFilter','country'],['renewalForecastStatusFilter','status'],['renewalForecastAgreementFilter','agreement'],['renewalForecastOwnerFilter','owner']].forEach(([id,key]) => document.getElementById(id)?.addEventListener('change', event => { this.state.filters[key] = event.target.value; if (key === 'status' && ['poc','all'].includes(event.target.value)) return this.refresh(); this.applyFilters(); })); document.addEventListener('click', event => { const close = event.target.closest('[data-rf-close-details]'); if (close) return this.closeDrawer(); const month = event.target.closest('[data-rf-month]')?.dataset.rfMonth; if (month) return this.openMonth(month); const action = event.target.closest('[data-rf-action]'); if (action) return this.action(action.dataset.rfAction, action.dataset.id); }); }
+
+  applyFilters() {
+    const f = this.state.filters;
+    this.state.filteredRows = this.state.rows.filter(row =>
+      (!f.dateFrom || !row.service_end_date || row.service_end_date >= f.dateFrom) &&
+      (!f.dateTo || !row.service_end_date || row.service_end_date <= f.dateTo) &&
+      (f.client === 'all' || row.client_id === f.client || row.client_name === f.client) &&
+      (f.country === 'all' || row.country === f.country) &&
+      (f.status === 'all' || row.renewal_status === f.status) &&
+      (f.agreement === 'all' || row.agreement_number === f.agreement) &&
+      (f.owner === 'all' || row.owner === f.owner)
+    );
+    this.render();
+  },
+
+  activeFilters() {
+    const f = this.state.filters;
+    return [
+      ['Service end from', f.dateFrom],
+      ['Service end to', f.dateTo],
+      ['Client', f.client],
+      ['Country', f.country],
+      ['Status', f.status],
+      ['Agreement', f.agreement],
+      ['Owner', f.owner]
+    ].filter(([, value]) => value && value !== 'all').map(([label, value]) => `${label}: ${value}`);
+  },
+
+  emptyState() {
+    const message = this.state.rows.length
+      ? 'No renewal rows match the active filters.'
+      : 'No renewal rows found from invoice SaaS service end dates. Check invoice item service dates or filters.';
+    const filters = this.activeFilters();
+    return `${message}${filters.length ? `<br><span class="muted">Active filters: ${filters.map(filter => U.escapeHtml(filter)).join(' · ')}</span>` : '<br><span class="muted">Active filters: none</span>'}`;
+  },
+
+  summary() {
+    const rows = this.filtered().filter(row => !row._summaryOnly);
+    const today = this.today();
+    const month = this.monthKey(today);
+    const d30 = this.addDays(30);
+    const d90 = this.addDays(90);
+    if (rows.length) {
+      return {
+        month: rows.filter(row => this.monthKey(row.service_end_date) === month).length,
+        next30: rows.filter(row => row.service_end_date >= today && row.service_end_date <= d30).length,
+        next90: rows.filter(row => row.service_end_date >= today && row.service_end_date <= d90).length,
+        value: rows.reduce((sum, row) => sum + this.n(row.expected_renewal_amount), 0),
+        overdue: rows.filter(row => row.service_end_date < today && row.renewal_status !== 'renewed').length
+      };
+    }
+    const summaries = this.monthlyRows();
+    return {
+      month: summaries.find(row => this.monthKey(row.month) === month)?.locations || 0,
+      next30: 0,
+      next90: 0,
+      value: summaries.reduce((sum, row) => sum + this.n(row.value), 0),
+      overdue: summaries.reduce((sum, row) => sum + this.n(row.overdue), 0)
+    };
+  },
+
+  monthlyRows() {
+    const rows = this.filtered();
+    if (!rows.length && this.state.monthSummaries.length) {
+      return this.state.monthSummaries.map(summary => ({
+        month: this.monthKey(summary.renewal_month),
+        clients: { size: summary.client_count },
+        locations: summary.location_count,
+        value: summary.expected_renewal_value,
+        renewed: summary.renewed_count,
+        pending: summary.pending_count,
+        overdue: summary.overdue_count
+      })).sort((a, b) => a.month.localeCompare(b.month));
+    }
+
+    const groups = new Map();
+    rows.forEach(row => {
+      const month = this.monthKey(row.renewal_month || row.service_end_date);
+      if (!month) return;
+      if (!groups.has(month)) groups.set(month, { month, clients: new Set(), locations: 0, value: 0, renewed: 0, pending: 0, overdue: 0 });
+      const group = groups.get(month);
+      group.clients.add(row.client_id || row.client_name);
+      group.locations += this.n(row._summaryOnly ? row.location_count : 1) || 1;
+      group.value += this.n(row.expected_renewal_amount);
+      if (row.renewal_status === 'renewed') group.renewed++;
+      else group.pending++;
+      if (row.service_end_date < this.today() && row.renewal_status !== 'renewed') group.overdue++;
+    });
+    return [...groups.values()].sort((a, b) => a.month.localeCompare(b.month));
+  },
+
+  populateSelect(id, values, current, label) {
+    const select = document.getElementById(id);
+    if (!select) return;
+    const unique = [...new Set(values.filter(Boolean))].sort();
+    select.innerHTML = `<option value="all">All ${label}</option>` + unique.map(value => `<option value="${U.escapeAttr(value)}">${U.escapeHtml(value)}</option>`).join('');
+    select.value = unique.includes(current) ? current : 'all';
+  },
+
+  populateFilters() {
+    this.populateSelect('renewalForecastClientFilter', this.state.rows.map(row => row.client_id || row.client_name), this.state.filters.client, 'clients');
+    this.populateSelect('renewalForecastCountryFilter', this.state.rows.map(row => row.country), this.state.filters.country, 'countries');
+    this.populateSelect('renewalForecastAgreementFilter', this.state.rows.map(row => row.agreement_number), this.state.filters.agreement, 'agreements');
+    this.populateSelect('renewalForecastOwnerFilter', this.state.rows.map(row => row.owner), this.state.filters.owner, 'owners');
+  },
+
+  canCreateInvoice() {
+    return !window.Permissions || Permissions.can('invoices', 'create') || Permissions.can('invoices', 'manage') || Permissions.can('invoices', 'create_from_agreement') || Permissions.hasAdminOverride?.();
+  },
+
+  statusBadge(status) {
+    const normalized = this.statusKey(status);
+    const cls = ({ renewed: 'success', overdue: 'danger', due_soon: 'warning', upcoming: 'info', expired: 'muted' })[normalized] || 'muted';
+    const label = normalized.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    return `<span class="status-badge ${cls}">${U.escapeHtml(label || 'Upcoming')}</span>`;
+  },
+
+  renderSummary() {
+    const el = document.getElementById('renewalForecastSummary');
+    if (!el) return;
+    const s = this.summary();
+    const cards = [
+      ['Renewals This Month', s.month, 'is-info'],
+      ['Upcoming 30 Days', s.next30, 'is-warning'],
+      ['Upcoming 90 Days', s.next90, 'is-info'],
+      ['Expected Renewal Value', this.money(s.value), 'is-positive'],
+      ['Overdue Renewals', s.overdue, 'is-warning']
+    ];
+    el.innerHTML = cards.map(([label, value, cls]) => `<article class="card payment-forecast-summary-card ${cls}"><div class="label">${label}</div><div class="value">${value}</div></article>`).join('');
+  },
+
+  render() {
+    if (!this.isAdmin()) return;
+    const state = document.getElementById('renewalForecastState');
+    const body = document.getElementById('renewalForecastBody');
+    if (!state || !body) return;
+    this.renderSummary();
+
+    if (this.state.loading) {
+      state.textContent = 'Loading invoice SaaS service end dates…';
+      body.innerHTML = '';
+      return;
+    }
+    if (this.state.error) {
+      state.textContent = this.state.error;
+      body.innerHTML = '';
+      return;
+    }
+
+    const months = this.monthlyRows();
+    const warning = this.state.warning ? ` · ${this.state.warning}` : '';
+    state.textContent = `${this.filtered().length} renewal opportunities from invoice SaaS service end dates.${warning}`;
+    body.innerHTML = `<div class="table-scroll"><table><thead><tr><th>Month</th><th>Number of Clients</th><th>Number of SaaS Rows / Locations</th><th>Expected Renewal Value</th><th>Renewed Count</th><th>Pending Count</th><th>Overdue Count</th></tr></thead><tbody>${months.length ? months.map(group => `<tr data-rf-month="${U.escapeAttr(group.month)}" tabindex="0"><td><button class="btn ghost xs" data-rf-month="${U.escapeAttr(group.month)}">${U.escapeHtml(group.month)}</button></td><td>${group.clients.size}</td><td>${group.locations}</td><td>${this.money(group.value)}</td><td>${group.renewed}</td><td>${group.pending}</td><td>${group.overdue}</td></tr>`).join('') : `<tr><td colspan="7" class="pf-empty">${this.emptyState()}</td></tr>`}</tbody></table></div>`;
+  },
+
+  async openMonth(month) {
+    if (!this.requireAdmin()) return;
+    this.state.selectedMonth = month;
+    const drawer = document.getElementById('renewalForecastDetailsDrawer');
+    const title = document.getElementById('renewalForecastDetailsTitle');
+    const content = document.getElementById('renewalForecastDetailsContent');
+    if (!drawer || !content) return;
+
+    title.textContent = `${month} Upcoming Renewals`;
+    content.innerHTML = '<div class="muted pf-empty">Loading renewal details…</div>';
+    drawer.hidden = false;
+    document.body.classList.add('pf-modal-open');
+
+    let rows = this.filtered().filter(row => this.monthKey(row.service_end_date || row.renewal_month) === month && !row._summaryOnly);
+    if (!rows.length) {
+      try {
+        rows = await this.fetchMonthDetails(`${month}-01`);
+      } catch (error) {
+        content.innerHTML = `<div class="muted pf-empty">${U.escapeHtml(error.message || 'Unable to load renewal details.')}</div>`;
+        return;
+      }
+    }
+
+    if (!rows.length) {
+      content.innerHTML = '<div class="muted pf-empty">No detail rows found for this renewal month.</div>';
+      return;
+    }
+
+    content.innerHTML = `<div class="table-scroll"><table class="payment-forecast-mini-table"><thead><tr><th>Client Name</th><th>Invoice Number</th><th>Agreement Number</th><th>SaaS Item / Location Name</th><th>Service Start Date</th><th>Service End Date</th><th>Days Until Renewal</th><th>Current Invoice SaaS Row Amount</th><th>Current Annual Price</th><th>Current Discount</th><th>Expected Renewal Amount</th><th>Renewal Status</th><th>Action</th></tr></thead><tbody>${rows.map(row => `<tr><td>${U.escapeHtml(row.client_name)}</td><td>${U.escapeHtml(row.invoice_number || '—')}</td><td>${U.escapeHtml(row.agreement_number || '—')}</td><td>${U.escapeHtml(row.location_name)}</td><td>${this.formatDate(row.service_start_date)}</td><td>${this.formatDate(row.service_end_date)}</td><td>${row.days_until_renewal}</td><td>${this.money(row.current_invoice_row_amount, row.currency)}</td><td>${this.money(row.current_annual_price, row.currency)}</td><td>${this.n(row.current_discount)}%</td><td>${this.money(row.expected_renewal_amount, row.currency)}</td><td>${this.statusBadge(row.renewal_status)}</td><td><div class="pf-actions">${row.renewal_status !== 'renewed' ? `<button class="btn primary xs" data-rf-action="renew" data-id="${U.escapeAttr(row.opportunity_id)}">Renew</button>` : ''}<button class="btn ghost xs" data-rf-action="agreement" data-id="${U.escapeAttr(row.opportunity_id)}">View Agreement</button><button class="btn ghost xs" data-rf-action="client" data-id="${U.escapeAttr(row.opportunity_id)}">View Client</button>${row.renewal_status !== 'renewed' && this.canCreateInvoice() ? `<button class="btn ghost xs" data-rf-action="invoice" data-id="${U.escapeAttr(row.opportunity_id)}">Create Renewal Invoice</button>` : ''}</div></td></tr>`).join('')}</tbody></table></div>`;
+  },
+
+  closeDrawer() {
+    const drawer = document.getElementById('renewalForecastDetailsDrawer');
+    if (drawer) drawer.hidden = true;
+    document.body.classList.remove('pf-modal-open');
+  },
+
+  async action(action, id) {
+    if (!this.requireAdmin()) return;
+    const row = this.state.rows.find(item => item.opportunity_id === id) || Object.values(this.state.detailsCache).flat().find(item => item.opportunity_id === id);
+    if (!row) return;
+    if (action === 'agreement') return window.Agreements?.openAgreementFormById?.(row.agreement_uuid || row.agreement_number, { readOnly: true });
+    if (action === 'client') { window.setActiveView?.('clients'); return UI.toast(`Client: ${row.client_name}`); }
+    if (action === 'invoice' && !this.canCreateInvoice()) return UI.toast('You do not have permission to create renewal invoices.');
+    if (['invoice', 'renew'].includes(action)) {
+      if (window.Clients?.openRenewalFlow_) {
+        return Clients.openRenewalFlow_([{ ...row, row_id: row.opportunity_id, agreement_id: row.agreement_uuid || row.agreement_number, annual_license_price: row.current_annual_price || row.current_invoice_row_amount, discount_percent: row.current_discount }]);
+      }
+      return window.Agreements?.openAgreementFormById?.(row.agreement_uuid || row.agreement_number, { readOnly: false });
+    }
+  },
+
+  exportCsv() {
+    if (!this.requireAdmin()) return;
+    const header = ['Client Name','Invoice Number','Agreement Number','SaaS Item / Location Name','Service Start Date','Service End Date','Days Until Renewal','Current Invoice SaaS Row Amount','Current Annual Price','Current Discount','Expected Renewal Amount','Renewal Status'];
+    const values = this.filtered().map(row => [row.client_name,row.invoice_number,row.agreement_number,row.location_name,row.service_start_date,row.service_end_date,row.days_until_renewal,row.current_invoice_row_amount,row.current_annual_price,row.current_discount,row.expected_renewal_amount,row.renewal_status]);
+    const csv = [header, ...values].map(cols => cols.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    link.download = `monthly-renewal-forecast-${this.today()}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  },
+
+  wire() {
+    if (this._wired) return;
+    this._wired = true;
+    document.getElementById('renewalForecastRefreshBtn')?.addEventListener('click', () => this.refresh());
+    document.getElementById('renewalForecastExportBtn')?.addEventListener('click', () => this.exportCsv());
+    document.getElementById('renewalForecastClearBtn')?.addEventListener('click', () => {
+      const range = this.defaultDateRange();
+      this.state.filters = { dateFrom: range.dateFrom, dateTo: range.dateTo, client: 'all', country: 'all', status: 'all', agreement: 'all', owner: 'all' };
+      this.syncDateInputs();
+      ['renewalForecastClientFilter','renewalForecastCountryFilter','renewalForecastStatusFilter','renewalForecastAgreementFilter','renewalForecastOwnerFilter'].forEach(id => { const el = document.getElementById(id); if (el) el.value = 'all'; });
+      this.refresh();
+    });
+    [['renewalForecastDateFrom','dateFrom'],['renewalForecastDateTo','dateTo']].forEach(([id, key]) => document.getElementById(id)?.addEventListener('change', event => {
+      this.state.filters[key] = event.target.value;
+      this.refresh();
+    }));
+    [['renewalForecastClientFilter','client'],['renewalForecastCountryFilter','country'],['renewalForecastStatusFilter','status'],['renewalForecastAgreementFilter','agreement'],['renewalForecastOwnerFilter','owner']].forEach(([id, key]) => document.getElementById(id)?.addEventListener('change', event => {
+      this.state.filters[key] = event.target.value;
+      this.applyFilters();
+    }));
+    document.addEventListener('click', event => {
+      const close = event.target.closest('[data-rf-close-details]');
+      if (close) return this.closeDrawer();
+      const month = event.target.closest('[data-rf-month]')?.dataset.rfMonth;
+      if (month) return this.openMonth(month);
+      const action = event.target.closest('[data-rf-action]');
+      if (action) return this.action(action.dataset.rfAction, action.dataset.id);
+    });
+  }
 };
+
 window.RenewalForecast = RenewalForecast;
