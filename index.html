@@ -325,6 +325,10 @@
                     role="tab" aria-selected="false" aria-controls="paymentForecastView">
               <span class="icon" aria-hidden="true">📈</span> Payment Forecast
             </button>
+            <button id="renewalForecastTab" class="view-tab" data-view="renewalForecast" data-permission-resource="payment_forecast" data-permission-action="view"
+                    role="tab" aria-selected="false" aria-controls="renewalForecastView">
+              <span class="icon" aria-hidden="true">🔄</span> Monthly Renewal Forecast
+            </button>
             <button id="binersTab" class="view-tab" data-view="biners" data-permission-resource="biners" data-permission-action="view"
                     role="tab" aria-selected="false" aria-controls="binersView">
               <span class="icon" aria-hidden="true">🏗️</span> Biners
@@ -2084,6 +2088,28 @@ Sample:
         <div id="paymentForecastTabBody" class="pf-content payment-forecast-table"></div>
         <div id="paymentForecastPagination"></div>
       </section>
+
+      <section id="renewalForecastView" class="view payment-forecast-module" role="tabpanel" aria-labelledby="renewalForecastTab">
+        <div class="pf-page-header">
+          <div><span class="pf-eyebrow">Client · Forecast</span><h2>Monthly Renewal Forecast</h2><p class="muted">Forecast upcoming Annual SaaS renewals by service end date. Invoice dates, due dates, and payment schedules are never used.</p></div>
+          <div class="pf-header-actions"><button id="renewalForecastRefreshBtn" class="btn ghost sm" type="button">Refresh</button><button id="renewalForecastExportBtn" class="btn sm" type="button" data-permission-resource="payment_forecast" data-permission-action="export">Export CSV</button></div>
+        </div>
+        <div id="renewalForecastSummary" class="payment-forecast-summary-grid" aria-live="polite"></div>
+        <section class="card pf-filter-panel" aria-label="Renewal forecast filters">
+          <div class="pf-filter-grid"><input id="renewalForecastDateFrom" class="input" type="date" aria-label="Service end date from"><input id="renewalForecastDateTo" class="input" type="date" aria-label="Service end date to"><select id="renewalForecastClientFilter" class="select"><option value="all">All clients</option></select><select id="renewalForecastCountryFilter" class="select"><option value="all">All countries</option></select><select id="renewalForecastStatusFilter" class="select"><option value="all">All statuses</option><option value="renewed">Renewed</option><option value="due_soon">Due Soon</option><option value="upcoming">Upcoming</option><option value="overdue">Overdue</option><option value="expired">Expired</option><option value="poc">POC rows</option></select><select id="renewalForecastAgreementFilter" class="select"><option value="all">All agreements</option></select><select id="renewalForecastOwnerFilter" class="select"><option value="all">All owners</option></select></div>
+          <div class="pf-quick-filters"><button id="renewalForecastClearBtn" class="btn ghost xs" type="button">Clear filters</button></div>
+        </section>
+        <div id="renewalForecastState" class="muted pf-state" aria-live="polite">No data loaded.</div>
+        <div id="renewalForecastBody" class="pf-content payment-forecast-table"></div>
+      </section>
+
+      <div id="renewalForecastDetailsDrawer" class="payment-forecast-details-drawer" role="dialog" aria-modal="true" aria-labelledby="renewalForecastDetailsTitle" hidden>
+        <button class="payment-forecast-details-backdrop" type="button" aria-label="Close renewal forecast details" data-rf-close-details></button>
+        <section class="payment-forecast-details-panel">
+          <header class="payment-forecast-details-header"><div><span class="pf-eyebrow">Client · Forecast</span><h2 id="renewalForecastDetailsTitle">Upcoming Renewals</h2><p class="muted">One Annual SaaS row equals one renewal opportunity.</p></div><button class="btn ghost sm" type="button" data-rf-close-details>Close</button></header>
+          <div id="renewalForecastDetailsContent" class="payment-forecast-details-content" aria-live="polite"></div>
+        </section>
+      </div>
 
       <div id="paymentForecastDetailsDrawer" class="payment-forecast-details-drawer" role="dialog" aria-modal="true" aria-labelledby="paymentForecastDetailsTitle" hidden>
         <button class="payment-forecast-details-backdrop" type="button" aria-label="Close payment forecast details" data-pf-close-details></button>
@@ -4244,6 +4270,7 @@ Sample:
   <script src="receipts.js?v=20260427-allpwa1"></script>
   <script src="credit-notes.js?v=20260604-credit-notes1"></script>
   <script src="payment-forecast.js?v=20260605-followup-activity2"></script>
+  <script src="renewal-forecast.js?v=20260610-monthly-renewal-forecast1"></script>
   <script src="biners.js?v=20260605-biners-init-safe-final"></script>
   <script src="lifecycle-analytics.js?v=20260610-lifecycle-metrics-source-truth"></script>
   <script src="clients.js?v=20260427-allpwa1"></script>
