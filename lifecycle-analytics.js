@@ -7,6 +7,7 @@ const LifecycleAnalytics = {
     filteredRows: [],
     selectedAccountKey: '',
     overview: {},
+    rawData: {},
     filters: {
       search: '',
       stage: 'All',
@@ -438,14 +439,19 @@ const LifecycleAnalytics = {
       .replace(/\s+/g, ' ')
       .trim();
   },
+  lifecycleItemSearchText(item = {}) {
+    return ['section', 'category', 'item_type', 'type', 'description', 'name', 'product_name', 'item_name']
+      .map(field => this.normalizeLifecycleStatus(item?.[field])).filter(Boolean).join(' ');
+  },
+  isExcludedAnnualSaasItem(item = {}) {
+    const text = this.lifecycleItemSearchText(item);
+    return ['one time', 'account setup', 'setup fee', 'setup', 'implementation', 'poc', 'proof of concept']
+      .some(token => text.includes(token));
+  },
   isAnnualSaasLocationItem(item = {}) {
-    const section = this.norm(item.section);
-    const itemName = this.norm(item.item_name);
-    if (!section && !itemName) return false;
-    const oneTime = ['one_time_fee', 'one_time', 'one time', 'one-time', 'setup', 'implementation', 'onboarding'];
-    if (oneTime.some(token => section.includes(token) || itemName.includes(token))) return false;
-    return ['annual_saas', 'saas', 'subscription', 'recurring', 'annual', 'yearly', '12 month', '12-month']
-      .some(token => section.includes(token) || itemName.includes(token));
+    const text = this.lifecycleItemSearchText(item);
+    if (!text || this.isExcludedAnnualSaasItem(item)) return false;
+    return ['annual', 'saas', 'subscription', 'license', 'licence', 'incheck'].some(token => text.includes(token));
   },
   isActiveAnnualSaasLocationItem(item = {}) {
     if (!this.isAnnualSaasLocationItem(item)) return false;
@@ -1283,129 +1289,195 @@ const LifecycleAnalytics = {
     row.lifecycleChain.company_name = this.text(linkedCompany?.company_name || row.lifecycleChain.company_name);
     return row;
   },
-  buildOverview(rows = [], raw = {}) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const totalLocations = rows.reduce((sum, row) => sum + row.locationsCount, 0);
-    const totalInvoiced = rows.reduce((sum, row) => sum + row.totalInvoiced, 0);
-    const totalPaid = rows.reduce((sum, row) => sum + row.totalPaid, 0);
-    const totalCredited = rows.reduce((sum, row) => sum + (row.totalCredited || 0), 0);
-    const receiptCollected = (raw.receipts || []).filter(row => this.isValidReceipt(row)).reduce((sum, row) => sum + this.receiptPaidAmount(row), 0);
-    const totalDue = rows.reduce((sum, row) => sum + row.totalDue, 0);
-    const scheduledAmount = rows.reduce((sum, row) => sum + row.scheduledAmount, 0);
-    const schedulePaidAmount = rows.reduce((sum, row) => sum + row.schedulePaidAmount, 0);
-    const scheduleBalanceDue = rows.reduce((sum, row) => sum + row.scheduleBalanceDue, 0);
-    const dueRenewal = rows.reduce((sum, row) => sum + (row.locationItems || []).filter(item => {
+  normalizeLifecycleStatus(value = '') {
+    return this.text(value).toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  },
+  isLifecycleStatus(row = {}, fields = [], expected = '') {
+    const target = this.normalizeLifecycleStatus(expected);
+    return fields.some(field => this.normalizeLifecycleStatus(row?.[field]) === target);
+  },
+  lifecycleRecordId(row = {}, fields = []) {
+    return this.text(this.firstValue(row, fields));
+  },
+  sourceMoneyNumber(value) {
+    if (value === undefined || value === null || String(value).trim() === '') return null;
+    const normalized = String(value).replace(/[^0-9.-]/g, '');
+    if (!normalized || normalized === '-' || normalized === '.') return null;
+    const number = Number(normalized);
+    return Number.isFinite(number) ? number : null;
+  },
+  lifecycleItemAmount(item = {}) {
+    const explicit = this.sourceMoneyNumber(this.firstValue(item, ['line_total', 'total_amount', 'amount_total', 'item_total', 'total', 'net_total', 'amount']));
+    if (explicit !== null) return explicit;
+    const quantity = this.sourceMoneyNumber(this.firstValue(item, ['quantity', 'qty'])) ?? 1;
+    return quantity * (this.sourceMoneyNumber(this.firstValue(item, ['unit_price', 'price', 'rate', 'unit_amount'])) || 0);
+  },
+  invoiceSourceTotal(invoice = {}, invoiceItems = []) {
+    const header = this.firstValue(invoice, ['grand_total', 'total_amount', 'invoice_total', 'total', 'net_total', 'amount_total']);
+    if (header !== '') {
+      const value = this.sourceMoneyNumber(header);
+      if (value !== null && value >= 0) return value;
+    }
+    const invoiceIds = new Set(['id', 'invoice_id', 'invoice_uuid', 'uuid'].map(field => this.text(invoice?.[field])).filter(Boolean));
+    return invoiceItems
+      .filter(item => invoiceIds.has(this.lifecycleRecordId(item, ['invoice_id', 'invoice_uuid', 'parent_id'])))
+      .reduce((sum, item) => sum + this.lifecycleItemAmount(item), 0);
+  },
+  lifecycleDateInRange(row = {}, fields = [], filters = {}) {
+    const from = this.toDate(filters.dateFrom);
+    const to = this.toDate(filters.dateTo);
+    if (!from && !to) return true;
+    if (to) to.setHours(23, 59, 59, 999);
+    const date = this.toDate(this.firstValue(row, fields));
+    return Boolean(date && (!from || date >= from) && (!to || date <= to));
+  },
+  uniqueLifecycleRows(rows = [], idFields = []) {
+    const seen = new Set();
+    return rows.filter(row => {
+      const ids = idFields.map(field => this.text(row?.[field])).filter(Boolean);
+      if (ids.some(id => seen.has(id))) return false;
+      ids.forEach(id => seen.add(id));
+      return true;
+    });
+  },
+  lifecycleClientKey(row = {}, nameToId = new Map()) {
+    const id = this.lifecycleRecordId(row, ['company_id', 'company_uuid', 'companyId', 'companyUuid']);
+    if (id) return `id:${id.toLowerCase()}`;
+    const name = this.normalizeCompanyKey(this.firstValue(row, ['legal_company_name', 'legal_name', 'customer_name', 'client_name', 'company_name', 'name']));
+    if (!name) return '';
+    return nameToId.has(name) ? `id:${nameToId.get(name).toLowerCase()}` : `name:${name}`;
+  },
+  isDevelopmentMode() {
+    const hostname = this.text(globalThis?.location?.hostname).toLowerCase();
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.local');
+  },
+  logLifecycleMetricsAudit(audit = {}) {
+    if (this.isDevelopmentMode()) console.info('[Lifecycle Metrics Audit]', audit);
+  },
+  calculateLifecycleOverviewMetrics(raw = {}, filters = {}) {
+    const source = raw || {};
+    const list = key => Array.isArray(source[key]) ? source[key] : [];
+    const filterRows = (key, dateFields, ids) => this.uniqueLifecycleRows(list(key), ids)
+      .filter(row => this.lifecycleDateInRange(row, dateFields, filters));
+    const proposals = filterRows('proposals', ['created_at', 'proposal_date'], ['id', 'proposal_id', 'proposal_uuid', 'uuid']);
+    const agreements = filterRows('agreements', ['signed_at', 'signed_date', 'created_at', 'agreement_date'], ['id', 'agreement_id', 'agreement_uuid', 'uuid']);
+    const invoices = filterRows('invoices', ['invoice_date', 'issue_date', 'issued_at', 'created_at'], ['id', 'invoice_id', 'invoice_uuid', 'uuid']);
+    const receipts = filterRows('receipts', ['receipt_date', 'payment_date', 'created_at'], ['id', 'receipt_id', 'receipt_uuid', 'uuid']);
+    const creditNotes = filterRows('creditNotes', ['credit_note_date', 'issue_date', 'created_at'], ['id', 'credit_note_id', 'credit_note_uuid', 'uuid']);
+    const onboarding = filterRows('onboarding', ['requested_at', 'created_at', 'completed_at'], ['id', 'onboarding_id', 'request_id', 'uuid']);
+    const technical = filterRows('technical', ['requested_at', 'created_at', 'completed_at'], ['id', 'request_id', 'technical_request_id', 'uuid']);
+    const leads = filterRows('leads', ['created_at', 'lead_date'], ['id', 'lead_id', 'lead_uuid', 'uuid']);
+    const deals = filterRows('deals', ['created_at', 'deal_date'], ['id', 'deal_id', 'deal_uuid', 'uuid']);
+    const companies = filterRows('companies', ['created_at'], ['id', 'company_id', 'company_uuid', 'uuid']);
+    const paymentSchedule = filterRows('paymentSchedule', ['due_date', 'created_at'], ['id', 'schedule_id', 'uuid']);
+    const invoiceItems = this.uniqueLifecycleRows(list('invoiceItems'), ['id', 'invoice_item_id', 'uuid']);
+    const agreementItems = this.uniqueLifecycleRows(list('agreementItems'), ['id', 'agreement_item_id', 'uuid']);
+
+    const signedAgreements = agreements.filter(row => this.isLifecycleStatus(row, ['status', 'agreement_status'], 'signed'));
+    const issuedInvoices = invoices.filter(row => this.isLifecycleStatus(row, ['status', 'invoice_status'], 'issued'));
+    const draftInvoices = invoices.filter(row => this.isLifecycleStatus(row, ['status', 'invoice_status'], 'draft'));
+    const acceptedProposals = proposals.filter(row => this.isLifecycleStatus(row, ['status', 'proposal_status'], 'accepted'));
+    const validReceipts = receipts.filter(row => this.isValidReceipt(row));
+    const validCreditNotes = creditNotes.filter(row => this.isValidCreditNote(row));
+
+    const agreementsById = new Map(agreements.map(row => [this.lifecycleRecordId(row, ['id', 'agreement_id', 'agreement_uuid', 'uuid']), row]).filter(([id]) => id));
+    const invoicesById = new Map(invoices.map(row => [this.lifecycleRecordId(row, ['id', 'invoice_id', 'invoice_uuid', 'uuid']), row]).filter(([id]) => id));
+    const agreementIdsWithAnnualRows = new Set(agreementItems.filter(item => this.isAnnualSaasLocationItem(item))
+      .map(item => this.lifecycleRecordId(item, ['agreement_id', 'agreement_uuid', 'parent_id'])).filter(Boolean));
+    const annualAgreementItems = agreementItems.filter(item => {
       if (!this.isAnnualSaasLocationItem(item)) return false;
-      const end = this.toDate(item.service_end_date);
-      if (!end) return false;
-      const days = this.calculateDecimalDays(today, end);
-      return days !== null && days <= 30;
-    }).length, 0);
-    const activeOnboarding = rows.filter(row => row.onboardingStatus === 'Pending').length;
-    const openTechnical = rows.reduce((sum, row) => sum + (row.openTechnicalRequest ? 1 : 0), 0);
+      const parent = agreementsById.get(this.lifecycleRecordId(item, ['agreement_id', 'agreement_uuid', 'parent_id']));
+      return this.lifecycleDateInRange(parent || item, ['signed_at', 'signed_date', 'created_at', 'agreement_date', 'service_start_date'], filters);
+    });
+    const annualInvoiceItems = invoiceItems.filter(item => {
+      if (!this.isAnnualSaasLocationItem(item)) return false;
+      const invoice = invoicesById.get(this.lifecycleRecordId(item, ['invoice_id', 'invoice_uuid', 'parent_id']));
+      const agreementId = this.lifecycleRecordId(item, ['agreement_id', 'agreement_uuid']) || this.lifecycleRecordId(invoice || {}, ['agreement_id', 'agreement_uuid']);
+      if (agreementId && agreementIdsWithAnnualRows.has(agreementId)) return false;
+      return this.lifecycleDateInRange(invoice || item, ['invoice_date', 'issue_date', 'issued_at', 'created_at', 'service_start_date'], filters);
+    });
+    const annualSaasItems = [...annualAgreementItems, ...annualInvoiceItems];
+    const oneTimeItems = agreementItems.filter(item => !this.isAnnualSaasLocationItem(item) && this.isExcludedAnnualSaasItem(item));
 
-    const leadStatuses = (raw.leads || []).reduce((acc, row) => {
-      const key = this.normalizeLeadStatus(row.status);
-      acc[key] = (acc[key] || 0) + 1;
-      return acc;
-    }, {});
-    const dealStages = (raw.deals || []).reduce((acc, row) => {
-      const key = this.normalizeDealStage(row.stage || row.deal_stage || row.status);
-      acc[key] = (acc[key] || 0) + 1;
-      return acc;
-    }, {});
-    const proposalStatuses = (raw.proposals || []).reduce((acc, row) => {
-      const key = this.normalizeProposalStatus(row.status);
-      acc[key] = (acc[key] || 0) + 1;
-      return acc;
-    }, {});
-    const signedAgreements = (raw.agreements || []).filter(row => this.isSignedAgreement(row)).length;
-    const draftAgreements = (raw.agreements || []).filter(row => this.norm(row.status).includes('draft')).length;
-    const activeAgreements = (raw.agreements || []).filter(row => this.norm(row.status).includes('active') || this.isSignedAgreement(row)).length;
-    const annualSaasItems = (raw.agreementItems || []).filter(item => this.isAnnualSaasLocationItem(item)).length;
-    const oneTimeItems = (raw.agreementItems || []).filter(item => !this.isAnnualSaasLocationItem(item) && ['one_time_fee', 'one_time', 'one time', 'one-time', 'setup', 'implementation', 'onboarding'].some(token => this.norm(item.section || item.item_name).includes(token))).length;
-    const invoices = raw.invoices || [];
-    const invoicePaymentStates = invoices.map(row => this.derivePaymentStateFromInvoices([row], this.invoiceGrandTotal(row), this.invoicePaidAmount(row), this.invoicePendingAmount(row)));
-    const issuedInvoices = invoices.filter(row => !this.norm(row.status).includes('draft')).length;
-    const draftInvoices = invoices.filter(row => this.norm(row.status).includes('draft')).length;
-    const overdueInvoices = invoices.filter(row => {
-      const due = this.toDate(row.due_date);
-      const pending = this.invoicePendingAmount(row);
-      return due && due < today && pending > 0;
-    }).length;
-    const receiptsLinkedToInvoice = (raw.receipts || []).filter(row => this.text(row.invoice_id)).length;
-    const invalidReceipts = (raw.receipts || []).filter(row => !this.isValidReceipt(row) || !this.text(row.invoice_id)).length;
-    const schedules = (raw.paymentSchedule || []).filter(row => this.normalizeScheduleStatus(row) !== 'Cancelled');
-    const overdueSchedule = schedules.filter(row => {
-      const due = this.toDate(row.due_date);
-      const status = this.normalizeScheduleStatus(row);
-      return status === 'Overdue' || (due && due < today && status !== 'Paid');
-    }).length;
-    const upcomingSchedule = schedules.filter(row => {
-      const due = this.toDate(row.due_date);
-      return due && due >= today && this.normalizeScheduleStatus(row) !== 'Paid';
-    }).length;
+    const invoiceBalances = issuedInvoices.map(invoice => {
+      const ids = new Set(['id', 'invoice_id', 'invoice_uuid', 'uuid'].map(field => this.text(invoice?.[field])).filter(Boolean));
+      const total = this.invoiceSourceTotal(invoice, invoiceItems);
+      const paid = validReceipts.filter(receipt => ids.has(this.lifecycleRecordId(receipt, ['invoice_id', 'invoice_uuid']))).reduce((sum, receipt) => sum + this.receiptPaidAmount(receipt), 0);
+      const credited = validCreditNotes.filter(note => ids.has(this.lifecycleRecordId(note, ['invoice_id', 'invoice_uuid']))).reduce((sum, note) => sum + this.creditNoteAmount(note), 0);
+      return { invoice, total, paid, credited, outstanding: Math.max(total - paid - credited, 0) };
+    });
 
-    return {
-      totalCompanies: raw.companies?.length || 0,
-      totalLeads: raw.leads?.length || 0,
-      qualifiedLeads: leadStatuses.Qualified || 0,
-      lostLeads: leadStatuses.Lost || 0,
-      notContactedLeads: leadStatuses['Not Contacted Yet'] || 0,
-      negotiationLeads: leadStatuses.Negotiations || 0,
-      notAvailableLeads: leadStatuses['Not Available'] || 0,
-      leadUnknownOther: leadStatuses['Unknown / Other'] || 0,
-      totalDeals: raw.deals?.length || 0,
-      qualifiedDeals: dealStages.Qualified || 0,
-      wonDeals: dealStages.Won || 0,
-      lostDeals: dealStages.Lost || 0,
-      dealsConvertedToProposal: dealStages['Converted to Proposal'] || 0,
-      dealValue: (raw.deals || []).reduce((sum, row) => sum + this.dealValue(row), 0),
-      totalProposals: raw.proposals?.length || 0,
-      acceptedProposals: proposalStatuses.Accepted || 0,
-      pendingApprovalProposals: proposalStatuses['Pending Approval'] || 0,
-      sentProposals: proposalStatuses.Sent || 0,
-      draftProposals: proposalStatuses.Draft || 0,
+    const nameToId = new Map();
+    [...companies, ...proposals, ...agreements, ...invoices, ...receipts, ...onboarding, ...technical].forEach(row => {
+      const id = this.lifecycleRecordId(row, ['company_id', 'company_uuid', 'companyId', 'companyUuid', 'id']);
+      const name = this.normalizeCompanyKey(this.firstValue(row, ['legal_company_name', 'legal_name', 'customer_name', 'client_name', 'company_name', 'name']));
+      if (id && name && !nameToId.has(name)) nameToId.set(name, id);
+    });
+    const clientKeys = new Set(companies.map(row => {
+      const id = this.lifecycleRecordId(row, ['company_id', 'company_uuid', 'companyId', 'companyUuid', 'id', 'uuid']);
+      return id ? `id:${id.toLowerCase()}` : this.lifecycleClientKey(row, nameToId);
+    }).filter(Boolean));
+    [...proposals, ...agreements, ...invoices, ...receipts, ...onboarding, ...technical]
+      .map(row => this.lifecycleClientKey(row, nameToId)).filter(Boolean).forEach(key => clientKeys.add(key));
+
+    const leadStatuses = leads.reduce((acc, row) => { const key = this.normalizeLeadStatus(row.status); acc[key] = (acc[key] || 0) + 1; return acc; }, {});
+    const dealStages = deals.reduce((acc, row) => { const key = this.normalizeDealStage(row.stage || row.deal_stage || row.status); acc[key] = (acc[key] || 0) + 1; return acc; }, {});
+    const proposalStatuses = proposals.reduce((acc, row) => { const key = this.normalizeProposalStatus(row.status); acc[key] = (acc[key] || 0) + 1; return acc; }, {});
+    const schedules = paymentSchedule.filter(row => this.normalizeScheduleStatus(row) !== 'Cancelled');
+    const scheduledAmount = schedules.reduce((sum, row) => sum + this.scheduleAmount(row), 0);
+    const schedulePaidAmount = schedules.reduce((sum, row) => sum + this.schedulePaidAmount(row), 0);
+    const totalPaid = validReceipts.reduce((sum, row) => sum + this.receiptPaidAmount(row), 0);
+    const totalCredited = validCreditNotes.reduce((sum, row) => sum + this.creditNoteAmount(row), 0);
+    const totalInvoiced = invoiceBalances.reduce((sum, row) => sum + row.total, 0);
+    const totalDue = invoiceBalances.reduce((sum, row) => sum + row.outstanding, 0);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const metrics = {
+      totalCompanies: clientKeys.size, totalClients: clientKeys.size, totalLocations: annualSaasItems.length,
+      totalLeads: leads.length, qualifiedLeads: leadStatuses.Qualified || 0, lostLeads: leadStatuses.Lost || 0,
+      notContactedLeads: leadStatuses['Not Contacted Yet'] || 0, negotiationLeads: leadStatuses.Negotiations || 0,
+      notAvailableLeads: leadStatuses['Not Available'] || 0, leadUnknownOther: leadStatuses['Unknown / Other'] || 0,
+      totalDeals: deals.length, qualifiedDeals: dealStages.Qualified || 0, wonDeals: dealStages.Won || 0, lostDeals: dealStages.Lost || 0,
+      dealsConvertedToProposal: dealStages['Converted to Proposal'] || 0, dealValue: deals.reduce((sum, row) => sum + this.dealValue(row), 0),
+      totalProposals: proposals.length, acceptedProposals: acceptedProposals.length, pendingApprovalProposals: proposalStatuses['Pending Approval'] || 0,
+      sentProposals: proposalStatuses.Sent || 0, draftProposals: proposalStatuses.Draft || 0,
       rejectedExpiredProposals: (proposalStatuses.Rejected || 0) + (proposalStatuses.Expired || 0) + (proposalStatuses.Cancelled || 0),
-      totalProposalValue: (raw.proposals || []).reduce((sum, row) => sum + this.proposalValue(row), 0),
-      acceptedProposalValue: (raw.proposals || []).filter(row => this.normalizeProposalStatus(row.status) === 'Accepted').reduce((sum, row) => sum + this.proposalValue(row), 0),
-      totalAgreements: raw.agreements?.length || 0,
-      signedAgreements,
-      draftAgreements,
-      activeAgreements,
-      agreementValue: (raw.agreements || []).reduce((sum, row) => sum + this.agreementValue(row), 0),
-      annualSaasItems,
-      oneTimeItems,
-      totalInvoices: invoices.length,
-      issuedInvoices,
-      draftInvoices,
-      overdueInvoices,
-      fullyPaidInvoices: invoicePaymentStates.filter(value => value === 'Fully Paid').length,
-      partiallyPaidInvoices: invoicePaymentStates.filter(value => value === 'Partially Paid').length,
-      unpaidInvoices: invoicePaymentStates.filter(value => value === 'Not Paid' || value === 'Overdue').length,
-      totalReceipts: raw.receipts?.length || 0,
-      totalCreditNotes: raw.creditNotes?.length || 0,
-      receiptCollected,
-      receiptsLinkedToInvoice,
-      invalidReceipts,
-      totalClients: raw.clients?.length || 0,
-      totalLocations,
-      totalInvoiced,
-      totalPaid,
-      totalCredited,
-      totalDue,
-      scheduledAmount,
-      schedulePaidAmount,
-      scheduleBalanceDue,
-      overdueSchedule,
-      upcomingSchedule,
+      totalProposalValue: proposals.reduce((sum, row) => sum + this.proposalValue(row), 0), acceptedProposalValue: acceptedProposals.reduce((sum, row) => sum + this.proposalValue(row), 0),
+      totalAgreements: agreements.length, signedAgreements: signedAgreements.length,
+      draftAgreements: agreements.filter(row => this.isLifecycleStatus(row, ['status', 'agreement_status'], 'draft')).length,
+      activeAgreements: agreements.filter(row => this.isLifecycleStatus(row, ['status', 'agreement_status'], 'active') || this.isLifecycleStatus(row, ['status', 'agreement_status'], 'signed')).length,
+      agreementValue: agreements.reduce((sum, row) => sum + this.agreementValue(row), 0), annualSaasItems: annualSaasItems.length, oneTimeItems: oneTimeItems.length,
+      totalInvoices: invoices.length, issuedInvoices: issuedInvoices.length, draftInvoices: draftInvoices.length,
+      overdueInvoices: invoiceBalances.filter(row => Boolean(this.toDate(row.invoice.due_date) && this.toDate(row.invoice.due_date) < today && row.outstanding > 0)).length,
+      fullyPaidInvoices: invoiceBalances.filter(row => row.total > 0 && row.outstanding === 0 && row.paid > 0).length,
+      partiallyPaidInvoices: invoiceBalances.filter(row => row.paid > 0 && row.outstanding > 0).length,
+      unpaidInvoices: invoiceBalances.filter(row => row.paid <= 0 && row.outstanding > 0).length,
+      creditableInvoices: invoiceBalances.filter(row => row.total > 0 && row.outstanding > 0).length,
+      totalReceipts: receipts.length, totalCreditNotes: creditNotes.length, receiptCollected: totalPaid,
+      receiptsLinkedToInvoice: receipts.filter(row => this.text(row.invoice_id || row.invoice_uuid)).length,
+      invalidReceipts: receipts.filter(row => !this.isValidReceipt(row) || !this.text(row.invoice_id || row.invoice_uuid)).length,
+      totalInvoiced, totalPaid, totalCredited, totalDue,
+      scheduledAmount, schedulePaidAmount, scheduleBalanceDue: Math.max(scheduledAmount - schedulePaidAmount, 0),
+      overdueSchedule: schedules.filter(row => this.normalizeScheduleStatus(row) === 'Overdue' || (this.toDate(row.due_date) && this.toDate(row.due_date) < today && this.normalizeScheduleStatus(row) !== 'Paid')).length,
+      upcomingSchedule: schedules.filter(row => this.toDate(row.due_date) && this.toDate(row.due_date) >= today && this.normalizeScheduleStatus(row) !== 'Paid').length,
       paidScheduleRows: schedules.filter(row => this.normalizeScheduleStatus(row) === 'Paid').length,
       partiallyPaidScheduleRows: schedules.filter(row => this.normalizeScheduleStatus(row) === 'Partially Paid').length,
-      accountsDueForRenewal: dueRenewal,
-      activeOnboardingAccounts: activeOnboarding,
-      openTechnicalAdminRequests: openTechnical
+      accountsDueForRenewal: annualSaasItems.filter(item => { const end = this.toDate(item.service_end_date); const days = end ? this.calculateDecimalDays(today, end) : null; return days !== null && days <= 30; }).length,
+      activeOnboardingAccounts: onboarding.filter(row => !this.isLifecycleStatus(row, ['status', 'onboarding_status'], 'completed')).length,
+      openTechnicalAdminRequests: technical.filter(row => !this.isLifecycleStatus(row, ['status', 'request_status', 'technical_request_status'], 'completed')).length,
+      proposalCreated: proposals.length, proposalAccepted: acceptedProposals.length, agreementSigned: signedAgreements.length,
+      invoiceIssued: issuedInvoices.length, receiptCreated: receipts.length, creditNoteCreated: creditNotes.length,
+      operationsOnboardingCreated: onboarding.length, operationsCompleted: onboarding.filter(row => this.isLifecycleStatus(row, ['status', 'onboarding_status'], 'completed')).length,
+      technicalRequestCreated: technical.length, technicalRequestCompleted: technical.filter(row => this.isLifecycleStatus(row, ['status', 'request_status', 'technical_request_status'], 'completed')).length
     };
+    Object.keys(metrics).forEach(key => { if (typeof metrics[key] === 'number' && !Number.isFinite(metrics[key])) metrics[key] = 0; });
+    this.logLifecycleMetricsAudit({ rawProposals: proposals.length, rawAgreements: agreements.length, signedAgreements: signedAgreements.length, annualSaasRows: annualSaasItems.length, issuedInvoices: issuedInvoices.length, receiptsTotal: totalPaid, creditNotesTotal: totalCredited, outstandingTotal: totalDue, finalCardValues: metrics });
+    return metrics;
+  },
+  getLifecycleMetrics(raw = {}, filters = {}) {
+    return this.calculateLifecycleOverviewMetrics(raw, filters);
+  },
+  buildOverview(rows = [], raw = {}) {
+    return this.getLifecycleMetrics(raw, { dateFrom: this.state.filters.dateFrom, dateTo: this.state.filters.dateTo });
   },
   matchesDateRange(row) {
     const from = this.toDate(this.state.filters.dateFrom);
@@ -1418,6 +1490,7 @@ const LifecycleAnalytics = {
   },
   applyFilters() {
     const f = this.state.filters;
+    this.state.overview = this.getLifecycleMetrics(this.state.rawData, { dateFrom: f.dateFrom, dateTo: f.dateTo });
     const q = this.norm(f.search);
     this.state.filteredRows = this.state.rows.filter(row => {
       if (q) {
@@ -1499,6 +1572,8 @@ const LifecycleAnalytics = {
     const o = this.state.overview;
     const cards = [
       ['Companies / Customers', o.totalCompanies],
+      ['Total Clients', o.totalClients],
+      ['Total Locations', o.totalLocations],
       ['Total Leads', o.totalLeads],
       ['Qualified Leads', o.qualifiedLeads],
       ['Lost Leads', o.lostLeads],
@@ -1533,6 +1608,7 @@ const LifecycleAnalytics = {
       ['Fully Paid Invoices', o.fullyPaidInvoices],
       ['Partially Paid Invoices', o.partiallyPaidInvoices],
       ['Unpaid / Not Paid', o.unpaidInvoices],
+      ['Creditable Invoices', o.creditableInvoices],
       ['Invoice Grand Total', this.fmtMoney(o.totalInvoiced)],
       ['Amount Received', this.fmtMoney(o.totalPaid)],
       ['Credit Notes', this.fmtMoney(o.totalCredited || 0)],
@@ -1551,7 +1627,17 @@ const LifecycleAnalytics = {
       ['Partial Schedule Rows', o.partiallyPaidScheduleRows],
       ['Renewal / SaaS Ends', o.accountsDueForRenewal],
       ['Active Onboarding Accounts', o.activeOnboardingAccounts],
-      ['Open Technical Admin Requests', o.openTechnicalAdminRequests]
+      ['Open Technical Admin Requests', o.openTechnicalAdminRequests],
+      ['Proposal Created', o.proposalCreated],
+      ['Proposal Accepted', o.proposalAccepted],
+      ['Agreement Signed', o.agreementSigned],
+      ['Invoice Issued', o.invoiceIssued],
+      ['Receipt Created', o.receiptCreated],
+      ['Credit Note Created', o.creditNoteCreated],
+      ['Operations Onboarding Created', o.operationsOnboardingCreated],
+      ['Operations Completed', o.operationsCompleted],
+      ['Technical Request Created', o.technicalRequestCreated],
+      ['Technical Request Completed', o.technicalRequestCompleted]
     ];
     root.innerHTML = cards
       .map(([label, value]) => `<div class="card kpi"><div class="label">${this.escape(label)}</div><div class="value">${this.escape(String(value ?? 0))}</div></div>`)
@@ -1707,6 +1793,7 @@ const LifecycleAnalytics = {
     this.renderLoading();
     try {
       const raw = await this.loadData();
+      this.state.rawData = raw;
       const { accounts, today, companiesById, companiesByName } = this.buildAccountMap(raw);
       const rows = accounts
         .map(account => this.buildAccountAnalytics(account, today, { companiesById, companiesByName }))
