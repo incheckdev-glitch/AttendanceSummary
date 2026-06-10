@@ -22,14 +22,18 @@ const CreditNotes = {
   },
   isCancelledCreditNote(note = {}) { return ['cancelled', 'canceled'].includes(this.text(note.status).toLowerCase()); },
   isUuid(value) { return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim()); },
-  invalidStatus(row = {}) { return ['cancelled','canceled','void','voided','deleted','rejected'].includes(this.text(row.status || row.invoice_status || row.payment_status || row.payment_state).toLowerCase()); },
-  invoiceTotal(row = {}) { return this.n(row.grand_total ?? row.invoice_total ?? row.total_amount ?? row.amount_due ?? row.total); },
-  amountPaid(row = {}) { return this.n(row.amount_paid ?? row.received_amount ?? row.paid_amount ?? row.paid_now); },
-  creditAmount(row = {}) { return this.n(row.credit_note_amount ?? row.credit_amount ?? row.credited_amount); },
+  invoiceTotal(row = {}) { return this.n(row.invoice_total ?? row.grand_total ?? row.total_amount ?? row.amount_due ?? row.total); },
+  amountPaid(row = {}) { return this.n(row.paid_amount ?? row.amount_paid ?? row.received_amount ?? row.paid_now); },
+  creditAmount(row = {}) { return this.n(row.credited_amount ?? row.credit_note_amount ?? row.credit_amount); },
   balanceDue(row = {}) {
-    const explicit = row.balance_due ?? row.pending_amount;
+    const explicit = row.open_balance ?? row.balance_due ?? row.pending_amount;
     if (explicit !== undefined && explicit !== null && String(explicit).trim() !== '') return this.n(explicit);
     return Math.max(0, this.invoiceTotal(row) - this.amountPaid(row) - this.creditAmount(row));
+  },
+  creditableAmount(row = {}) {
+    const explicit = row.creditable_amount;
+    if (explicit !== undefined && explicit !== null && String(explicit).trim() !== '') return this.n(explicit);
+    return Math.max(0, this.invoiceTotal(row) - this.creditAmount(row));
   },
   canCreate() { return !window.Permissions || Permissions.canCreateCreditNote?.() || Permissions.can('credit_notes', 'create') || Permissions.hasAdminOverride?.(); },
   canView() { return !window.Permissions || Permissions.canViewCreditNotes?.() || Permissions.can('credit_notes', 'view') || Permissions.can('credit_notes', 'list') || Permissions.hasAdminOverride?.(); },
@@ -60,8 +64,10 @@ const CreditNotes = {
   normalizeInvoice(row = {}) {
     return {
       ...row,
-      id: this.text(row.id),
-      invoice_number: row.invoice_number || row.invoice_id || row.invoice_no || row.id || '',
+      id: this.text(row.invoice_uuid || row.id),
+      invoice_uuid: this.text(row.invoice_uuid || row.id),
+      invoice_number: row.invoice_ref || row.invoice_number || row.invoice_id || row.invoice_no || row.invoice_uuid || row.id || '',
+      invoice_ref: row.invoice_ref || row.invoice_number || row.invoice_id || row.invoice_no || '',
       customer_name: row.customer_legal_name || row.customer_name || row.client_name || row.company_name || '',
       client_name: row.client_name || row.customer_name || row.customer_legal_name || row.company_name || '',
       currency: row.currency || 'USD',
@@ -82,40 +88,6 @@ const CreditNotes = {
     if (error) throw error;
     return Array.isArray(data) ? data : [];
   },
-  async directListInvoices() {
-    const client = window.SupabaseClient?.getClient?.();
-    if (!client) return [];
-    const { data, error } = await client
-      .from('invoices')
-      .select('*')
-      .order('updated_at', { ascending: false, nullsFirst: false })
-      .limit(1000);
-    if (error) throw error;
-    const invoices = Array.isArray(data) ? data : [];
-    let creditsByInvoice = new Map();
-    try {
-      const { data: creditRows, error: creditError } = await client.from('credit_notes').select('invoice_id,credit_amount,status');
-      if (!creditError && Array.isArray(creditRows)) {
-        creditRows.forEach(row => {
-          const invoiceId = this.text(row.invoice_id);
-          const status = this.text(row.status).toLowerCase();
-          if (!invoiceId || ['cancelled','canceled','void','voided','deleted','rejected'].includes(status)) return;
-          creditsByInvoice.set(invoiceId, (creditsByInvoice.get(invoiceId) || 0) + this.n(row.credit_amount));
-        });
-      }
-    } catch {}
-    return invoices.map(invoice => {
-      const id = this.text(invoice.id);
-      const credit_note_amount = this.n(invoice.credit_note_amount) || this.n(creditsByInvoice.get(id));
-      const total = this.invoiceTotal(invoice);
-      const paid = this.amountPaid(invoice);
-      const explicitBalance = invoice.balance_due ?? invoice.pending_amount;
-      const balance_due = explicitBalance !== undefined && explicitBalance !== null && String(explicitBalance).trim() !== ''
-        ? this.n(explicitBalance)
-        : Math.max(0, total - paid - credit_note_amount);
-      return { ...invoice, credit_note_amount, balance_due };
-    });
-  },
   async loadCreditRows(force = false) {
     try {
       const response = await Api.getCreditNotes({}, { limit: 500, forceRefresh: force, summary_only: false });
@@ -129,27 +101,23 @@ const CreditNotes = {
       }
     }
   },
-  async loadInvoiceRows(force = false) {
-    const byId = new Map();
-    const push = rows => (Array.isArray(rows) ? rows : []).forEach(row => {
-      const normalized = this.normalizeInvoice(row);
-      const key = normalized.id || normalized.invoice_number;
-      if (key) byId.set(key, normalized);
+  async loadCreditNoteInvoiceOptions(searchText = '') {
+    const client = window.SupabaseClient?.getClient?.();
+    if (!client) {
+      this.state.invoiceError = 'Supabase client is not available.';
+      return [];
+    }
+    const { data, error } = await client.rpc('crm_get_credit_note_invoice_options', {
+      p_search: searchText || '',
+      p_limit: 300
     });
-    try {
-      const response = await Api.listInvoices({}, { limit: 1000, forceRefresh: force, summary_only: false });
-      push(this.extractRows(response));
-    } catch (apiError) {
-      console.warn('[credit-notes] invoice API list failed', apiError);
-      this.state.invoiceError = apiError.message || '';
+    if (error) {
+      console.error('[Credit Note Invoice Selector] Failed:', error);
+      this.state.invoiceError = error.message || 'Unable to load credit note invoice options.';
+      return [];
     }
-    if (!byId.size) {
-      try { push(await this.directListInvoices()); }
-      catch (directError) { this.state.invoiceError = directError.message || this.state.invoiceError || 'Unable to load invoices.'; }
-    }
-    const rows = Array.from(byId.values()).filter(row => this.isEligibleInvoice(row));
-    rows.sort((a, b) => String(b.updated_at || b.invoice_date || b.created_at || '').localeCompare(String(a.updated_at || a.invoice_date || a.created_at || '')));
-    return rows;
+    this.state.invoiceError = '';
+    return data || [];
   },
   async refresh(force = false) {
     if (this.state.loading && !force) return;
@@ -165,10 +133,10 @@ const CreditNotes = {
     try {
       const [notesResult, invoicesResult] = await Promise.allSettled([
         this.loadCreditRows(force),
-        this.loadInvoiceRows(force)
+        this.loadCreditNoteInvoiceOptions()
       ]);
       this.state.rows = notesResult.status === 'fulfilled' ? notesResult.value.map(row => this.normalize(row)) : [];
-      this.state.invoices = invoicesResult.status === 'fulfilled' ? invoicesResult.value.map(row => this.normalizeInvoice(row)).filter(row => this.isEligibleInvoice(row)) : [];
+      this.state.invoices = invoicesResult.status === 'fulfilled' ? invoicesResult.value.map(row => this.normalizeInvoice(row)) : [];
       if (notesResult.status === 'rejected') this.state.error = notesResult.reason?.message || 'Unable to load credit notes.';
       if (invoicesResult.status === 'rejected') this.state.invoiceError = invoicesResult.reason?.message || 'Unable to load unsettled invoices.';
       this.populateStatusFilter();
@@ -180,11 +148,6 @@ const CreditNotes = {
       this.state.loading = false;
       this.render();
     }
-  },
-  isEligibleInvoice(invoice = {}) {
-    const status = this.text(invoice.status || invoice.invoice_status || invoice.payment_status || invoice.payment_state).toLowerCase();
-    if (['cancelled','canceled','void','voided','draft','deleted','rejected'].includes(status)) return false;
-    return this.balanceDue(invoice) > 0;
   },
   filteredRows() {
     const q = this.state.search.toLowerCase().trim();
@@ -254,9 +217,10 @@ const CreditNotes = {
   },
   populateInvoiceDropdown() {
     if (!E.creditNoteFormInvoiceSelect) return;
-    E.creditNoteFormInvoiceSelect.innerHTML = '<option value="">Select unsettled invoice</option>' + this.state.invoices.map(inv => {
-      const label = `${inv.invoice_number || inv.invoice_id || inv.id} - ${inv.customer_legal_name || inv.customer_name || inv.client_name || inv.company_name || 'Client'} - Balance Due ${String(inv.currency || 'USD').toUpperCase()} ${U.fmtNumber(this.balanceDue(inv))}`;
-      return `<option value="${U.escapeAttr(inv.id)}">${U.escapeHtml(label)}</option>`;
+    E.creditNoteFormInvoiceSelect.innerHTML = '<option value="">Select unsettled invoice</option>' + this.state.invoices.map(invoice => {
+      const label = invoice.display_label || `${invoice.invoice_ref} · ${invoice.customer_name}`;
+      const secondary = `Open: ${invoice.open_balance} · Creditable: ${invoice.creditable_amount}`;
+      return `<option value="${U.escapeAttr(invoice.invoice_uuid)}">${U.escapeHtml(`${label} — ${secondary}`)}</option>`;
     }).join('');
   },
   renderInvoiceInfo() {
@@ -270,14 +234,16 @@ const CreditNotes = {
       ['Grand Total', this.money(this.invoiceTotal(inv), inv.currency)],
       ['Amount Paid', this.money(this.amountPaid(inv), inv.currency)],
       ['Existing Credit Notes', this.money(this.creditAmount(inv), inv.currency)],
-      ['Balance Due', this.money(this.balanceDue(inv), inv.currency)],
+      ['Open Balance', this.money(this.balanceDue(inv), inv.currency)],
+      ['Creditable Amount', this.money(this.creditableAmount(inv), inv.currency)],
       ['Currency', inv.currency || 'USD']
     ] : [['Select invoice', this.state.invoices.length ? 'Choose an unsettled invoice to show its current balance.' : 'No unsettled invoices were loaded. Confirm the SQL setup and invoice balances.']];
     E.creditNoteInvoiceInfo.innerHTML = rows.map(([label, value]) => `<div class="card"><div class="label">${U.escapeHtml(label)}</div><div class="value" style="font-size:15px;">${U.escapeHtml(String(value))}</div></div>`).join('');
   },
   async openCreate() {
     if (!this.canCreate()) return UI.toast('You do not have permission to create credit notes.');
-    if (!this.state.invoices.length) await this.refresh(true);
+    this.state.invoiceError = '';
+    this.state.invoices = (await this.loadCreditNoteInvoiceOptions()).map(row => this.normalizeInvoice(row));
     this.state.selectedCreditNote = null;
     this.state.selectedInvoice = null;
     this.state.requestKey = this.newRequestKey();
@@ -307,7 +273,7 @@ const CreditNotes = {
   onInvoiceSelected() {
     const id = this.text(E.creditNoteFormInvoiceSelect?.value);
     this.state.selectedInvoice = this.state.invoices.find(inv => String(inv.id) === id) || null;
-    if (E.creditNoteFormAmount && this.state.selectedInvoice) E.creditNoteFormAmount.max = String(this.balanceDue(this.state.selectedInvoice));
+    if (E.creditNoteFormAmount && this.state.selectedInvoice) E.creditNoteFormAmount.max = String(this.creditableAmount(this.state.selectedInvoice));
     this.renderInvoiceInfo();
   },
   validateForm() {
@@ -317,12 +283,11 @@ const CreditNotes = {
     const date = this.text(E.creditNoteFormDate?.value);
     if (!invoice?.id) throw new Error('Unsettled invoice is required.');
     if (!this.isUuid(invoice.id)) throw new Error('A valid invoice UUID is required to create a credit note.');
-    if (this.invalidStatus(invoice)) throw new Error('Credit notes are not allowed on cancelled/void invoices.');
     if (!date) throw new Error('Credit note date is required.');
     if (!description) throw new Error('Description is required.');
     if (amount <= 0) throw new Error('Credit amount must be greater than 0.');
-    const balance = this.balanceDue(invoice);
-    if (amount > balance + 0.0001) throw new Error(`Credit amount cannot exceed current balance due (${this.money(balance, invoice.currency)}).`);
+    const creditable = this.creditableAmount(invoice);
+    if (amount > creditable + 0.0001) throw new Error(`Credit amount cannot exceed the creditable amount (${this.money(creditable, invoice.currency)}).`);
     return { invoice, amount, description, date };
   },
   buildPayload(invoice, amount, description, date) {
