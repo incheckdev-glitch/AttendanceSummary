@@ -234,7 +234,7 @@ const Permissions = {
     receipts: [{ resource: 'receipts', action: 'list' }],
     creditNotes: [{ resource: 'credit_notes', action: 'view' }],
     paymentForecast: [{ resource: 'payment_forecast', action: 'view' }],
-    renewalForecast: [{ resource: 'payment_forecast', action: 'view' }],
+    renewalForecast: [],
     biners: [{ resource: 'biners', action: 'view' }],
     lifecycleAnalytics: [{ resource: 'analytics', action: 'list' }],
     clients: [{ resource: 'clients', action: 'list' }],
@@ -265,7 +265,7 @@ const Permissions = {
     receipts: 'receipts',
     creditNotes: 'credit_notes',
     paymentForecast: 'payment_forecast',
-    renewalForecast: 'payment_forecast',
+    renewalForecast: null,
     biners: 'biners',
     lifecycleAnalytics: 'analytics',
     clients: 'clients',
@@ -1126,6 +1126,7 @@ const Permissions = {
     if (!key) return false;
     if (!Session.isAuthenticated()) return false;
     if (key === 'aiAssistant') return this.canUseAiAssistant();
+    if (key === 'renewalForecast') return this.isAdmin();
 
     const requirements = this.getTabPermissionRequirements(key);
     if (!requirements.length) return true;
