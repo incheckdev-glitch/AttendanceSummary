@@ -1,4 +1,5 @@
 const RenewalForecast = {
+  PAGE_SIZE: 10,
   state: {
     loading: false,
     rows: [],
@@ -8,6 +9,9 @@ const RenewalForecast = {
     manualRenewals: [],
     noRenewalNeededOverrides: [],
     noRenewalNeededRow: null,
+    overviewPage: 1,
+    detailPage: 1,
+    detailRows: [],
     filters: {
       dateFrom: '',
       dateTo: '',
@@ -480,6 +484,8 @@ const RenewalForecast = {
 
   applyFilters() {
     const f = this.state.filters;
+    this.state.overviewPage = 1;
+    this.state.detailPage = 1;
     this.state.filteredRows = this.state.rows.filter(row =>
       (!f.dateFrom || !row.service_end_date || row.service_end_date >= f.dateFrom) &&
       (!f.dateTo || !row.service_end_date || row.service_end_date <= f.dateTo) &&
@@ -614,6 +620,25 @@ const RenewalForecast = {
     el.innerHTML = cards.map(([label, value, cls]) => `<article class="card payment-forecast-summary-card ${cls}"><div class="label">${label}</div><div class="value">${value}</div></article>`).join('');
   },
 
+  pagination(page, total) {
+    const totalPages = Math.max(1, Math.ceil(total / this.PAGE_SIZE));
+    const currentPage = Math.min(Math.max(1, this.n(page) || 1), totalPages);
+    const startIndex = (currentPage - 1) * this.PAGE_SIZE;
+    return {
+      currentPage,
+      totalPages,
+      start: total === 0 ? 0 : startIndex + 1,
+      end: Math.min(startIndex + this.PAGE_SIZE, total),
+      rowsStart: startIndex,
+      rowsEnd: startIndex + this.PAGE_SIZE
+    };
+  },
+
+  renderPagination(scope, page, total, noun = 'renewals') {
+    const pagination = this.pagination(page, total);
+    return `<div class="pf-pagination" aria-label="Monthly renewal forecast pagination"><div class="pf-pagination-showing">Showing ${pagination.start}–${pagination.end} of ${total} ${noun}</div><span>${this.PAGE_SIZE} rows per page</span><button class="btn ghost sm" type="button" data-rf-page="previous" data-rf-page-scope="${scope}" ${pagination.currentPage <= 1 ? 'disabled' : ''}>Previous</button><span>Page ${pagination.currentPage} of ${pagination.totalPages}</span><button class="btn ghost sm" type="button" data-rf-page="next" data-rf-page-scope="${scope}" ${pagination.currentPage >= pagination.totalPages ? 'disabled' : ''}>Next</button></div>`;
+  },
+
   render() {
     if (!this.isAdmin()) return;
     const state = document.getElementById('renewalForecastState');
@@ -633,9 +658,12 @@ const RenewalForecast = {
     }
 
     const months = this.monthlyRows();
+    const pagination = this.pagination(this.state.overviewPage, months.length);
+    this.state.overviewPage = pagination.currentPage;
+    const paginatedMonths = months.slice(pagination.rowsStart, pagination.rowsEnd);
     const warning = this.state.warning ? ` · ${this.state.warning}` : '';
     state.textContent = `${this.filtered().length} renewal opportunities from invoice SaaS service end dates.${warning}`;
-    body.innerHTML = `<div class="table-scroll"><table><thead><tr><th>Month</th><th>Number of Clients</th><th>Number of SaaS Rows / Locations</th><th>Expected Renewal Value</th><th>Renewed Count</th><th>Pending Count</th><th>Overdue Count</th><th>No Renewal Needed</th></tr></thead><tbody>${months.length ? months.map(group => `<tr data-rf-month="${U.escapeAttr(group.month)}" tabindex="0"><td><button class="btn ghost xs" data-rf-month="${U.escapeAttr(group.month)}">${U.escapeHtml(group.month)}</button></td><td>${group.clients.size}</td><td>${group.locations}</td><td>${this.money(group.value)}</td><td>${group.renewed}</td><td>${group.pending}</td><td>${group.overdue}</td><td>${group.noRenewalNeeded || 0}</td></tr>`).join('') : `<tr><td colspan="8" class="pf-empty">${this.emptyState()}</td></tr>`}</tbody></table></div>`;
+    body.innerHTML = `<div class="table-scroll"><table><thead><tr><th>Month</th><th>Number of Clients</th><th>Number of SaaS Rows / Locations</th><th>Expected Renewal Value</th><th>Renewed Count</th><th>Pending Count</th><th>Overdue Count</th><th>No Renewal Needed</th></tr></thead><tbody>${paginatedMonths.length ? paginatedMonths.map(group => `<tr data-rf-month="${U.escapeAttr(group.month)}" tabindex="0"><td><button class="btn ghost xs" data-rf-month="${U.escapeAttr(group.month)}">${U.escapeHtml(group.month)}</button></td><td>${group.clients.size}</td><td>${group.locations}</td><td>${this.money(group.value)}</td><td>${group.renewed}</td><td>${group.pending}</td><td>${group.overdue}</td><td>${group.noRenewalNeeded || 0}</td></tr>`).join('') : `<tr><td colspan="8" class="pf-empty">${this.emptyState()}</td></tr>`}</tbody></table></div>${this.renderPagination('overview', pagination.currentPage, months.length)}`;
   },
 
   detailStatus(row) {
@@ -649,9 +677,26 @@ const RenewalForecast = {
     return `<div class="pf-actions">${canFollowUp ? `<button class="btn primary xs" data-rf-action="renew" data-id="${U.escapeAttr(row.opportunity_id)}">Renew</button><button class="btn ghost xs" data-rf-action="manual-renewed" data-id="${U.escapeAttr(row.opportunity_id)}">Mark Renewed</button><button class="btn ghost xs" data-rf-action="no-renewal-needed" data-id="${U.escapeAttr(row.opportunity_id)}">Mark as No Renewal Needed</button>` : ''}${row.manual_renewal ? `<button class="btn ghost xs" data-rf-action="unmark-renewed" data-id="${U.escapeAttr(row.opportunity_id)}">Unmark Renewed</button>` : ''}${row.manual_no_renewal_needed ? `<button class="btn ghost xs" data-rf-action="undo-no-renewal-needed" data-id="${U.escapeAttr(row.opportunity_id)}">Undo No Renewal Needed</button>` : ''}<button class="btn ghost xs" data-rf-action="agreement" data-id="${U.escapeAttr(row.opportunity_id)}">View Agreement</button><button class="btn ghost xs" data-rf-action="client" data-id="${U.escapeAttr(row.opportunity_id)}">View Client</button>${canFollowUp && this.canCreateInvoice() ? `<button class="btn ghost xs" data-rf-action="invoice" data-id="${U.escapeAttr(row.opportunity_id)}">Create Renewal Invoice</button>` : ''}</div>${row.manual_renewal_note ? `<div class="muted">Note: ${U.escapeHtml(row.manual_renewal_note)}</div>` : ''}${row.no_renewal_needed_note ? `<div class="muted">Note: ${U.escapeHtml(row.no_renewal_needed_note)}</div>` : ''}`;
   },
 
+  renderMonthDetails() {
+    const content = document.getElementById('renewalForecastDetailsContent');
+    if (!content) return;
+    const rows = this.state.detailRows;
+    if (!rows.length) {
+      content.innerHTML = '<div class="muted pf-empty">No detail rows found for this renewal month.</div>';
+      return;
+    }
+
+    const pagination = this.pagination(this.state.detailPage, rows.length);
+    this.state.detailPage = pagination.currentPage;
+    const paginatedRows = rows.slice(pagination.rowsStart, pagination.rowsEnd);
+    content.innerHTML = `<div class="table-scroll"><table class="payment-forecast-mini-table"><thead><tr><th>Client Name</th><th>Invoice Number</th><th>Agreement Number</th><th>SaaS Item / Location Name</th><th>Service Start Date</th><th>Service End Date</th><th>Days Until Renewal</th><th>Current Invoice SaaS Row Amount</th><th>Current Annual Price</th><th>Current Discount</th><th>Expected Renewal Amount</th><th>Renewal Status</th><th>Action</th></tr></thead><tbody>${paginatedRows.map(row => `<tr><td>${U.escapeHtml(row.client_name)}</td><td>${U.escapeHtml(row.invoice_number || '—')}</td><td>${U.escapeHtml(row.agreement_number || '—')}</td><td>${U.escapeHtml(row.location_name)}</td><td>${this.formatDate(row.service_start_date)}</td><td>${this.formatDate(row.service_end_date)}</td><td>${row.days_until_renewal}</td><td>${this.money(row.current_invoice_row_amount, row.currency)}</td><td>${this.money(row.current_annual_price, row.currency)}</td><td>${this.n(row.current_discount)}%</td><td>${this.money(row.expected_renewal_amount, row.currency)}</td><td>${this.detailStatus(row)}</td><td>${this.detailActions(row)}</td></tr>`).join('')}</tbody></table></div>${this.renderPagination('details', pagination.currentPage, rows.length)}`;
+  },
+
   async openMonth(month) {
     if (!this.requireAdmin()) return;
     this.state.selectedMonth = month;
+    this.state.detailPage = 1;
+    this.state.detailRows = [];
     const drawer = document.getElementById('renewalForecastDetailsDrawer');
     const title = document.getElementById('renewalForecastDetailsTitle');
     const content = document.getElementById('renewalForecastDetailsContent');
@@ -672,15 +717,13 @@ const RenewalForecast = {
       }
     }
 
-    if (!rows.length) {
-      content.innerHTML = '<div class="muted pf-empty">No detail rows found for this renewal month.</div>';
-      return;
-    }
-
-    content.innerHTML = `<div class="table-scroll"><table class="payment-forecast-mini-table"><thead><tr><th>Client Name</th><th>Invoice Number</th><th>Agreement Number</th><th>SaaS Item / Location Name</th><th>Service Start Date</th><th>Service End Date</th><th>Days Until Renewal</th><th>Current Invoice SaaS Row Amount</th><th>Current Annual Price</th><th>Current Discount</th><th>Expected Renewal Amount</th><th>Renewal Status</th><th>Action</th></tr></thead><tbody>${rows.map(row => `<tr><td>${U.escapeHtml(row.client_name)}</td><td>${U.escapeHtml(row.invoice_number || '—')}</td><td>${U.escapeHtml(row.agreement_number || '—')}</td><td>${U.escapeHtml(row.location_name)}</td><td>${this.formatDate(row.service_start_date)}</td><td>${this.formatDate(row.service_end_date)}</td><td>${row.days_until_renewal}</td><td>${this.money(row.current_invoice_row_amount, row.currency)}</td><td>${this.money(row.current_annual_price, row.currency)}</td><td>${this.n(row.current_discount)}%</td><td>${this.money(row.expected_renewal_amount, row.currency)}</td><td>${this.detailStatus(row)}</td><td>${this.detailActions(row)}</td></tr>`).join('')}</tbody></table></div>`;
+    this.state.detailRows = rows;
+    this.renderMonthDetails();
   },
 
   closeDrawer() {
+    this.state.detailPage = 1;
+    this.state.detailRows = [];
     const drawer = document.getElementById('renewalForecastDetailsDrawer');
     if (drawer) drawer.hidden = true;
     document.body.classList.remove('pf-modal-open');
@@ -688,7 +731,7 @@ const RenewalForecast = {
 
   async action(action, id) {
     if (!this.requireAdmin()) return;
-    const row = this.state.rows.find(item => item.opportunity_id === id) || Object.values(this.state.detailsCache).flat().find(item => item.opportunity_id === id);
+    const row = this.state.detailRows.find(item => item.opportunity_id === id) || this.state.rows.find(item => item.opportunity_id === id) || Object.values(this.state.detailsCache).flat().find(item => item.opportunity_id === id);
     if (!row) return;
     if (action === 'manual-renewed') return this.markManualRenewed(row);
     if (action === 'unmark-renewed') return this.unmarkManualRenewed(row);
@@ -739,6 +782,17 @@ const RenewalForecast = {
       this.applyFilters();
     }));
     document.addEventListener('click', event => {
+      const pageButton = event.target.closest('[data-rf-page]');
+      if (pageButton) {
+        const scope = pageButton.dataset.rfPageScope;
+        const pageKey = scope === 'details' ? 'detailPage' : 'overviewPage';
+        const total = scope === 'details' ? this.state.detailRows.length : this.monthlyRows().length;
+        const pagination = this.pagination(this.state[pageKey], total);
+        this.state[pageKey] = pageButton.dataset.rfPage === 'previous'
+          ? Math.max(1, pagination.currentPage - 1)
+          : Math.min(pagination.totalPages, pagination.currentPage + 1);
+        return scope === 'details' ? this.renderMonthDetails() : this.render();
+      }
       const closeNoNeeded = event.target.closest('[data-rf-close-no-needed]');
       if (closeNoNeeded) return this.closeNoRenewalNeededModal();
       const close = event.target.closest('[data-rf-close-details]');
