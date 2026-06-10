@@ -5,6 +5,7 @@ const RenewalForecast = {
     filteredRows: [],
     monthSummaries: [],
     detailsCache: {},
+    manualRenewals: [],
     filters: {
       dateFrom: '',
       dateTo: '',
@@ -203,6 +204,122 @@ const RenewalForecast = {
     };
   },
 
+  manualKey(row = {}) {
+    const existing = this.text(row.opportunity_id || row.opportunity_key || row.manual_renewal_key);
+    if (existing) return existing;
+    return `renewal:${this.text(row.invoice_number || row.invoice_ref)}:${this.text(row.agreement_number || row.agreement_ref)}:${this.text(row.client_name)}:${this.text(row.location_name || row.saas_item)}:${this.date(row.service_start_date)}:${this.date(row.service_end_date)}`;
+  },
+
+  normalizeManualRenewal(row = {}) {
+    return {
+      ...row,
+      opportunity_key: this.text(row.opportunity_key || row.renewal_opportunity_key || row.opportunity_id),
+      source_invoice_number: this.text(row.source_invoice_number || row.invoice_number || row.invoice_ref),
+      source_agreement_number: this.text(row.source_agreement_number || row.agreement_number || row.agreement_ref),
+      client_name: this.text(row.client_name || row.customer_name || row.company_name),
+      location_name: this.text(row.location_name || row.saas_item || row.item_name),
+      service_start_date: this.date(row.service_start_date),
+      service_end_date: this.date(row.service_end_date),
+      renewal_agreement_ref: this.text(row.renewal_agreement_ref || row.manual_renewal_agreement_ref),
+      renewal_invoice_ref: this.text(row.renewal_invoice_ref || row.manual_renewal_invoice_ref),
+      note: this.text(row.note || row.notes || row.manual_renewal_note),
+      marked_at: this.text(row.marked_at || row.created_at),
+      marked_by_name: this.text(row.marked_by_name || row.marked_by || row.created_by_name)
+    };
+  },
+
+  async fetchManualRenewals() {
+    const { dateFrom, dateTo } = this.rpcRange();
+    try {
+      const { data, error } = await this.getClient().rpc('crm_get_manual_renewal_overrides', {
+        p_start_date: dateFrom,
+        p_end_date: dateTo
+      });
+      if (error) throw error;
+      return Array.isArray(data) ? data.map(row => this.normalizeManualRenewal(row)).filter(row => row.opportunity_key) : [];
+    } catch (error) {
+      const message = this.text(error?.message || error);
+      console.warn('[renewal forecast] manual renewal override RPC unavailable or failed', error);
+      if (!/function .*crm_get_manual_renewal_overrides|Could not find the function|schema cache/i.test(message)) {
+        this.state.warning = message || 'Unable to load manual renewal overrides.';
+      }
+      return [];
+    }
+  },
+
+  findManualRenewal(row, manualRenewals = this.state.manualRenewals) {
+    const key = this.manualKey(row);
+    const exact = manualRenewals.find(item => item.opportunity_key === key);
+    if (exact) return exact;
+    const end = this.date(row.service_end_date);
+    const start = this.date(row.service_start_date);
+    const client = this.key(row.client_name);
+    const location = this.key(row.location_name);
+    const invoice = this.key(row.invoice_number);
+    return manualRenewals.find(item =>
+      (!item.service_end_date || item.service_end_date === end) &&
+      (!item.service_start_date || item.service_start_date === start) &&
+      (!item.source_invoice_number || this.key(item.source_invoice_number) === invoice) &&
+      (!item.client_name || this.key(item.client_name) === client) &&
+      (!item.location_name || this.key(item.location_name) === location)
+    );
+  },
+
+  applyManualRenewal(row, manualRenewals = this.state.manualRenewals) {
+    const manual = this.findManualRenewal(row, manualRenewals);
+    if (!manual) return row;
+    return {
+      ...row,
+      renewal_status: 'renewed',
+      manual_renewal: true,
+      manual_renewal_note: manual.note,
+      manual_renewal_agreement_ref: manual.renewal_agreement_ref,
+      manual_renewal_invoice_ref: manual.renewal_invoice_ref,
+      manual_renewal_marked_at: manual.marked_at,
+      manual_renewal_marked_by: manual.marked_by_name,
+      renewal_method: 'manual'
+    };
+  },
+
+  mergeManualRenewals(rows, manualRenewals = this.state.manualRenewals) {
+    return rows.map(row => this.applyManualRenewal(row, manualRenewals));
+  },
+
+  async markManualRenewed(row) {
+    const renewalAgreementRef = window.prompt?.('Enter the manual renewal agreement/reference already created for this location:', row.manual_renewal_agreement_ref || '') ?? null;
+    if (renewalAgreementRef === null) return;
+    const renewalInvoiceRef = window.prompt?.('Optional: enter renewal invoice reference if available:', row.manual_renewal_invoice_ref || '') ?? '';
+    const note = window.prompt?.('Optional: add a note for this manual renewal mark:', row.manual_renewal_note || 'Manually marked as renewed because renewal was created before automation.') ?? '';
+
+    const payload = {
+      p_opportunity_key: this.manualKey(row),
+      p_source_invoice_number: row.invoice_number || null,
+      p_source_agreement_number: row.agreement_number || null,
+      p_client_name: row.client_name || null,
+      p_location_name: row.location_name || null,
+      p_service_start_date: row.service_start_date || null,
+      p_service_end_date: row.service_end_date || null,
+      p_renewal_agreement_ref: this.text(renewalAgreementRef) || null,
+      p_renewal_invoice_ref: this.text(renewalInvoiceRef) || null,
+      p_note: this.text(note) || null
+    };
+
+    const { error } = await this.getClient().rpc('crm_mark_manual_renewal', payload);
+    if (error) throw error;
+    UI.toast('Location marked as manually renewed.');
+    await this.refresh();
+  },
+
+  async unmarkManualRenewed(row) {
+    if (!window.confirm?.('Remove the manual renewed mark for this location?')) return;
+    const { error } = await this.getClient().rpc('crm_unmark_manual_renewal', {
+      p_opportunity_key: this.manualKey(row)
+    });
+    if (error) throw error;
+    UI.toast('Manual renewed mark removed.');
+    await this.refresh();
+  },
+
   refreshFallbackRowsFromSummaries(monthSummaries) {
     return monthSummaries.map((summary, index) => ({
       opportunity_id: `summary:${summary.renewal_month}:${index}`,
@@ -236,12 +353,15 @@ const RenewalForecast = {
     this.state.error = '';
     this.state.warning = '';
     this.state.detailsCache = {};
+    this.state.manualRenewals = [];
     this.render();
 
     try {
       const monthSummaries = await this.fetchMonthSummaries();
       this.state.monthSummaries = monthSummaries;
-      const detailRows = await this.fetchAllDetails(monthSummaries);
+      const manualRenewals = await this.fetchManualRenewals();
+      this.state.manualRenewals = manualRenewals;
+      const detailRows = this.mergeManualRenewals(await this.fetchAllDetails(monthSummaries), manualRenewals);
       this.state.rows = detailRows.length ? detailRows : this.refreshFallbackRowsFromSummaries(monthSummaries);
       this.populateFilters();
       this.applyFilters();
@@ -429,7 +549,7 @@ const RenewalForecast = {
     let rows = this.filtered().filter(row => this.monthKey(row.service_end_date || row.renewal_month) === month && !row._summaryOnly);
     if (!rows.length) {
       try {
-        rows = await this.fetchMonthDetails(`${month}-01`);
+        rows = this.mergeManualRenewals(await this.fetchMonthDetails(`${month}-01`));
       } catch (error) {
         content.innerHTML = `<div class="muted pf-empty">${U.escapeHtml(error.message || 'Unable to load renewal details.')}</div>`;
         return;
@@ -441,7 +561,7 @@ const RenewalForecast = {
       return;
     }
 
-    content.innerHTML = `<div class="table-scroll"><table class="payment-forecast-mini-table"><thead><tr><th>Client Name</th><th>Invoice Number</th><th>Agreement Number</th><th>SaaS Item / Location Name</th><th>Service Start Date</th><th>Service End Date</th><th>Days Until Renewal</th><th>Current Invoice SaaS Row Amount</th><th>Current Annual Price</th><th>Current Discount</th><th>Expected Renewal Amount</th><th>Renewal Status</th><th>Action</th></tr></thead><tbody>${rows.map(row => `<tr><td>${U.escapeHtml(row.client_name)}</td><td>${U.escapeHtml(row.invoice_number || '—')}</td><td>${U.escapeHtml(row.agreement_number || '—')}</td><td>${U.escapeHtml(row.location_name)}</td><td>${this.formatDate(row.service_start_date)}</td><td>${this.formatDate(row.service_end_date)}</td><td>${row.days_until_renewal}</td><td>${this.money(row.current_invoice_row_amount, row.currency)}</td><td>${this.money(row.current_annual_price, row.currency)}</td><td>${this.n(row.current_discount)}%</td><td>${this.money(row.expected_renewal_amount, row.currency)}</td><td>${this.statusBadge(row.renewal_status)}</td><td><div class="pf-actions">${row.renewal_status !== 'renewed' ? `<button class="btn primary xs" data-rf-action="renew" data-id="${U.escapeAttr(row.opportunity_id)}">Renew</button>` : ''}<button class="btn ghost xs" data-rf-action="agreement" data-id="${U.escapeAttr(row.opportunity_id)}">View Agreement</button><button class="btn ghost xs" data-rf-action="client" data-id="${U.escapeAttr(row.opportunity_id)}">View Client</button>${row.renewal_status !== 'renewed' && this.canCreateInvoice() ? `<button class="btn ghost xs" data-rf-action="invoice" data-id="${U.escapeAttr(row.opportunity_id)}">Create Renewal Invoice</button>` : ''}</div></td></tr>`).join('')}</tbody></table></div>`;
+    content.innerHTML = `<div class="table-scroll"><table class="payment-forecast-mini-table"><thead><tr><th>Client Name</th><th>Invoice Number</th><th>Agreement Number</th><th>SaaS Item / Location Name</th><th>Service Start Date</th><th>Service End Date</th><th>Days Until Renewal</th><th>Current Invoice SaaS Row Amount</th><th>Current Annual Price</th><th>Current Discount</th><th>Expected Renewal Amount</th><th>Renewal Status</th><th>Action</th></tr></thead><tbody>${rows.map(row => `<tr><td>${U.escapeHtml(row.client_name)}</td><td>${U.escapeHtml(row.invoice_number || '—')}</td><td>${U.escapeHtml(row.agreement_number || '—')}</td><td>${U.escapeHtml(row.location_name)}</td><td>${this.formatDate(row.service_start_date)}</td><td>${this.formatDate(row.service_end_date)}</td><td>${row.days_until_renewal}</td><td>${this.money(row.current_invoice_row_amount, row.currency)}</td><td>${this.money(row.current_annual_price, row.currency)}</td><td>${this.n(row.current_discount)}%</td><td>${this.money(row.expected_renewal_amount, row.currency)}</td><td>${this.statusBadge(row.renewal_status)}${row.manual_renewal ? `<div class="muted">Manual${row.manual_renewal_agreement_ref ? ` · ${U.escapeHtml(row.manual_renewal_agreement_ref)}` : ''}</div>` : ''}</td><td><div class="pf-actions">${row.renewal_status !== 'renewed' ? `<button class="btn primary xs" data-rf-action="renew" data-id="${U.escapeAttr(row.opportunity_id)}">Renew</button><button class="btn ghost xs" data-rf-action="manual-renewed" data-id="${U.escapeAttr(row.opportunity_id)}">Mark Renewed</button>` : ''}${row.manual_renewal ? `<button class="btn ghost xs" data-rf-action="unmark-renewed" data-id="${U.escapeAttr(row.opportunity_id)}">Unmark</button>` : ''}<button class="btn ghost xs" data-rf-action="agreement" data-id="${U.escapeAttr(row.opportunity_id)}">View Agreement</button><button class="btn ghost xs" data-rf-action="client" data-id="${U.escapeAttr(row.opportunity_id)}">View Client</button>${row.renewal_status !== 'renewed' && this.canCreateInvoice() ? `<button class="btn ghost xs" data-rf-action="invoice" data-id="${U.escapeAttr(row.opportunity_id)}">Create Renewal Invoice</button>` : ''}</div>${row.manual_renewal_note ? `<div class="muted">Note: ${U.escapeHtml(row.manual_renewal_note)}</div>` : ''}</td></tr>`).join('')}</tbody></table></div>`;
   },
 
   closeDrawer() {
@@ -454,6 +574,8 @@ const RenewalForecast = {
     if (!this.requireAdmin()) return;
     const row = this.state.rows.find(item => item.opportunity_id === id) || Object.values(this.state.detailsCache).flat().find(item => item.opportunity_id === id);
     if (!row) return;
+    if (action === 'manual-renewed') return this.markManualRenewed(row);
+    if (action === 'unmark-renewed') return this.unmarkManualRenewed(row);
     if (action === 'agreement') return window.Agreements?.openAgreementFormById?.(row.agreement_uuid || row.agreement_number, { readOnly: true });
     if (action === 'client') { window.setActiveView?.('clients'); return UI.toast(`Client: ${row.client_name}`); }
     if (action === 'invoice' && !this.canCreateInvoice()) return UI.toast('You do not have permission to create renewal invoices.');
@@ -467,8 +589,8 @@ const RenewalForecast = {
 
   exportCsv() {
     if (!this.requireAdmin()) return;
-    const header = ['Client Name','Invoice Number','Agreement Number','SaaS Item / Location Name','Service Start Date','Service End Date','Days Until Renewal','Current Invoice SaaS Row Amount','Current Annual Price','Current Discount','Expected Renewal Amount','Renewal Status'];
-    const values = this.filtered().map(row => [row.client_name,row.invoice_number,row.agreement_number,row.location_name,row.service_start_date,row.service_end_date,row.days_until_renewal,row.current_invoice_row_amount,row.current_annual_price,row.current_discount,row.expected_renewal_amount,row.renewal_status]);
+    const header = ['Client Name','Invoice Number','Agreement Number','SaaS Item / Location Name','Service Start Date','Service End Date','Days Until Renewal','Current Invoice SaaS Row Amount','Current Annual Price','Current Discount','Expected Renewal Amount','Renewal Status','Manual Renewal','Manual Renewal Agreement','Manual Renewal Invoice','Manual Renewal Note'];
+    const values = this.filtered().map(row => [row.client_name,row.invoice_number,row.agreement_number,row.location_name,row.service_start_date,row.service_end_date,row.days_until_renewal,row.current_invoice_row_amount,row.current_annual_price,row.current_discount,row.expected_renewal_amount,row.renewal_status,row.manual_renewal ? 'Yes' : 'No',row.manual_renewal_agreement_ref,row.manual_renewal_invoice_ref,row.manual_renewal_note]);
     const csv = [header, ...values].map(cols => cols.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
     const link = document.createElement('a');
     link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
