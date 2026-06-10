@@ -2096,7 +2096,7 @@ Sample:
         </div>
         <div id="renewalForecastSummary" class="payment-forecast-summary-grid" aria-live="polite"></div>
         <section class="card pf-filter-panel" aria-label="Renewal forecast filters">
-          <div class="pf-filter-grid"><input id="renewalForecastDateFrom" class="input" type="date" aria-label="Service end date from"><input id="renewalForecastDateTo" class="input" type="date" aria-label="Service end date to"><select id="renewalForecastClientFilter" class="select"><option value="all">All clients</option></select><select id="renewalForecastCountryFilter" class="select"><option value="all">All countries</option></select><select id="renewalForecastStatusFilter" class="select"><option value="all">All statuses</option><option value="renewed">Renewed</option><option value="due_soon">Due Soon</option><option value="upcoming">Upcoming</option><option value="overdue">Overdue</option></select><select id="renewalForecastAgreementFilter" class="select"><option value="all">All agreements</option></select><select id="renewalForecastOwnerFilter" class="select"><option value="all">All owners</option></select></div>
+          <div class="pf-filter-grid"><input id="renewalForecastDateFrom" class="input" type="date" aria-label="Service end date from"><input id="renewalForecastDateTo" class="input" type="date" aria-label="Service end date to"><select id="renewalForecastClientFilter" class="select"><option value="all">All clients</option></select><select id="renewalForecastCountryFilter" class="select"><option value="all">All countries</option></select><select id="renewalForecastStatusFilter" class="select"><option value="all">All statuses</option><option value="upcoming">Upcoming</option><option value="due_soon">Due Soon</option><option value="overdue">Overdue</option><option value="renewed">Renewed</option><option value="no_renewal_needed">No Renewal Needed</option></select><select id="renewalForecastAgreementFilter" class="select"><option value="all">All agreements</option></select><select id="renewalForecastOwnerFilter" class="select"><option value="all">All owners</option></select></div>
           <div class="pf-quick-filters"><button id="renewalForecastClearBtn" class="btn ghost xs" type="button">Clear filters</button></div>
         </section>
         <div id="renewalForecastState" class="muted pf-state" aria-live="polite">No data loaded.</div>
@@ -2108,6 +2108,18 @@ Sample:
         <section class="payment-forecast-details-panel">
           <header class="payment-forecast-details-header"><div><span class="pf-eyebrow">Client · Forecast</span><h2 id="renewalForecastDetailsTitle">Upcoming Renewals</h2><p class="muted">One Annual SaaS row equals one renewal opportunity.</p></div><button class="btn ghost sm" type="button" data-rf-close-details>Close</button></header>
           <div id="renewalForecastDetailsContent" class="payment-forecast-details-content" aria-live="polite"></div>
+        </section>
+      </div>
+
+      <div id="renewalNoNeededModal" class="pf-note-modal" role="dialog" aria-modal="true" aria-labelledby="renewalNoNeededTitle" hidden>
+        <button class="pf-note-backdrop" type="button" aria-label="Cancel No Renewal Needed action" data-rf-close-no-needed></button>
+        <section class="pf-note-dialog">
+          <header><div><span class="pf-eyebrow">Manual renewal override</span><h2 id="renewalNoNeededTitle">Mark as No Renewal Needed</h2><p id="renewalNoNeededContext" class="muted"></p></div><button class="btn ghost xs" type="button" data-rf-close-no-needed>Close</button></header>
+          <label for="renewalNoNeededReason">Reason</label>
+          <select id="renewalNoNeededReason" class="select" required><option value="">Select a reason</option><option value="Location cancelled">Location cancelled</option><option value="Client cancelled service">Client cancelled service</option><option value="Location closed">Location closed</option><option value="Duplicate / wrong renewal row">Duplicate / wrong renewal row</option><option value="Other">Other</option></select>
+          <label for="renewalNoNeededNote" style="margin-top:14px;">Note <span class="muted">(optional)</span></label>
+          <textarea id="renewalNoNeededNote" class="input" rows="5" placeholder="Add audit context"></textarea>
+          <div class="pf-note-actions"><button class="btn ghost" type="button" data-rf-close-no-needed>Cancel</button><button id="renewalNoNeededConfirmBtn" class="btn primary" type="button">Confirm</button></div>
         </section>
       </div>
 
