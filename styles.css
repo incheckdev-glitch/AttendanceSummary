@@ -2215,6 +2215,12 @@ input[style*="min-width"]{
   border-left: 1px dashed var(--border);
   padding-left: 12px;
   padding-bottom: 10px;
+  min-width: 0;
+}
+.lifecycle-note {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .lifecycle-timeline-title-row {
   display: flex;
