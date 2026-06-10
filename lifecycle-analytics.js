@@ -56,7 +56,7 @@ const LifecycleAnalytics = {
     return U.fmtTS(raw);
   },
   extractLifecycleNote(record = {}) {
-    const noteFields = ['note', 'notes', 'comment', 'comments', 'remark', 'remarks', 'description', 'status_note', 'completion_note', 'action_note', 'admin_note', 'internal_note', 'reason', 'message', 'change_reason'];
+    const noteFields = ['note', 'notes', 'comment', 'comments', 'remark', 'remarks', 'description', 'status_note', 'status_notes', 'completion_note', 'action_note', 'admin_note', 'internal_note', 'reason', 'message', 'change_reason'];
     const nestedFields = ['metadata', 'payload', 'details', 'changes', 'data', 'action'];
     const invalidValues = new Set(['', 'null', 'undefined', '{}', '[]']);
     const visited = new Set();
@@ -107,11 +107,11 @@ const LifecycleAnalytics = {
     return this.extractLifecycleNote(record) || 'No note';
   },
   getLatestRelatedRecordTimestamp(record = {}) {
-    const timestampFields = ['created_at', 'updated_at', 'action_at', 'changed_at', 'status_changed_at', 'requested_at', 'completed_at'];
+    const timestampFields = ['created_at', 'updated_at', 'action_at', 'changed_at', 'status_changed_at', 'requested_at', 'completed_at', 'occurred_at', 'event_at', 'timestamp', 'date'];
     return timestampFields.reduce((latest, field) => Math.max(latest, this.parseEventTimestamp(record?.[field]) || 0), 0);
   },
   getLatestRelatedRecordDate(record = {}) {
-    const timestampFields = ['created_at', 'updated_at', 'action_at', 'changed_at', 'status_changed_at', 'requested_at', 'completed_at'];
+    const timestampFields = ['created_at', 'updated_at', 'action_at', 'changed_at', 'status_changed_at', 'requested_at', 'completed_at', 'occurred_at', 'event_at', 'timestamp', 'date'];
     return timestampFields.reduce((latest, field) => {
       const timestamp = this.parseEventTimestamp(record?.[field]) || 0;
       return timestamp > latest.timestamp ? { timestamp, value: record?.[field] } : latest;
@@ -120,20 +120,63 @@ const LifecycleAnalytics = {
   normalizeLifecycleEntityType(value) {
     return this.norm(value).replace(/[^a-z0-9]/g, '').replace(/s$/, '');
   },
+  lifecycleReferenceFields() {
+    return [
+      'id', 'uuid', 'entity_id', 'record_id', 'resource_id', 'source_id', 'related_id', 'target_id', 'module_id', 'parent_id',
+      'lead_id', 'deal_id', 'proposal_id', 'agreement_id', 'invoice_id', 'receipt_id', 'credit_note_id',
+      'onboarding_id', 'technical_request_id', 'request_id',
+      'entity_number', 'record_number', 'resource_number', 'source_number', 'related_number', 'target_number', 'module_number', 'ref_number',
+      'lead_number', 'deal_number', 'proposal_number', 'agreement_number', 'invoice_number', 'receipt_number',
+      'credit_note_number', 'onboarding_number', 'technical_request_number'
+    ];
+  },
+  getLifecycleReferences(...records) {
+    const references = new Set();
+    records.filter(Boolean).forEach(record => {
+      if (typeof record !== 'object') {
+        const reference = this.norm(record);
+        if (reference) references.add(reference);
+        return;
+      }
+      this.lifecycleReferenceFields().forEach(field => {
+        const reference = this.norm(record?.[field]);
+        if (reference) references.add(reference);
+      });
+    });
+    return references;
+  },
+  lifecycleTypesMatch(expectedType = '', actualType = '') {
+    const expected = this.normalizeLifecycleEntityType(expectedType);
+    const actual = this.normalizeLifecycleEntityType(actualType);
+    if (!expected || !actual) return true;
+    const aliases = type => {
+      const values = new Set([type]);
+      if (type.includes('operationsonboarding') || type === 'onboarding') values.add('onboarding');
+      if (type.includes('technicaladminrequest') || type === 'technicalrequest' || type === 'technical') values.add('technicalrequest');
+      if (type === 'creditnote') values.add('creditnote');
+      return values;
+    };
+    const expectedAliases = aliases(expected);
+    const actualAliases = aliases(actual);
+    return [...expectedAliases].some(type => actualAliases.has(type) || type.includes(actual) || actual.includes(type));
+  },
   getRelatedLifecycleLogs(account = {}, item = {}, entityType = '', entityId = '', entityNumber = '') {
-    const references = [entityId, entityNumber, item?.id, item?.uuid, item?.entity_id, item?.entity_number]
-      .map(value => this.text(value))
-      .filter(Boolean);
-    const normalizedType = this.normalizeLifecycleEntityType(entityType);
-    const historyKeys = ['lifecycleStatusLogs', 'lifecycleLogs', 'lifecycleHistory', 'activityLogs', 'auditLogs', 'statusHistory', 'proposalLogs', 'agreementLogs', 'invoiceLogs', 'receiptLogs', 'creditNoteLogs', 'operationsOnboardingLogs', 'technicalAdminRequestLogs', 'lifecycle_logs', 'lifecycle_history', 'activity_logs', 'audit_logs', 'status_history', 'proposal_logs', 'agreement_logs', 'invoice_logs', 'receipt_logs', 'credit_note_logs', 'operations_onboarding_logs', 'technical_admin_request_logs'];
-    return historyKeys.flatMap(key => Array.isArray(account?.[key]) ? account[key] : [])
-      .filter(log => {
-        const logReferences = [log?.entity_id, log?.entity_number, log?.record_id, log?.resource_id, log?.source_id, log?.parent_id, log?.proposal_id, log?.agreement_id, log?.invoice_id, log?.receipt_id, log?.credit_note_id, log?.onboarding_id, log?.request_id, log?.technical_request_id]
-          .map(value => this.text(value)).filter(Boolean);
-        const referenceMatches = references.length && logReferences.some(reference => references.includes(reference));
-        const logType = this.normalizeLifecycleEntityType(log?.entity_type || log?.resource_type || log?.record_type || log?.module);
-        return referenceMatches && (!normalizedType || !logType || logType === normalizedType || logType.includes(normalizedType) || normalizedType.includes(logType));
+    const directReferences = this.getLifecycleReferences(entityId, entityNumber);
+    const references = directReferences.size ? directReferences : this.getLifecycleReferences(item);
+    if (!references.size) return [];
+    const historySources = [
+      ['lifecycleStatusLogs', ''], ['lifecycleLogs', ''], ['lifecycleHistory', ''], ['activityLogs', ''], ['auditLogs', ''], ['statusHistory', ''],
+      ['proposalLogs', 'proposal'], ['agreementLogs', 'agreement'], ['invoiceLogs', 'invoice'], ['receiptLogs', 'receipt'],
+      ['creditNoteLogs', 'credit_note'], ['operationsOnboardingLogs', 'operations_onboarding'], ['technicalAdminRequestLogs', 'technical_admin_request']
+    ];
+    return historySources.flatMap(([key, sourceType]) => (Array.isArray(account?.[key]) ? account[key] : []).map(log => ({ log, sourceType })))
+      .filter(({ log, sourceType }) => {
+        const logReferences = this.getLifecycleReferences(log);
+        const referenceMatches = [...logReferences].some(reference => references.has(reference));
+        const logType = log?.entity_type || log?.resource_type || log?.record_type || log?.module || log?.module_type || log?.table_name || sourceType;
+        return referenceMatches && this.lifecycleTypesMatch(entityType, logType);
       })
+      .map(({ log }) => log)
       .slice()
       .sort((a, b) => this.getLatestRelatedRecordTimestamp(b) - this.getLatestRelatedRecordTimestamp(a));
   },
@@ -154,16 +197,33 @@ const LifecycleAnalytics = {
     }
     return note || 'No note';
   },
+  getLifecycleActor(rawLog = {}) {
+    return this.text(rawLog?.changed_by_email || rawLog?.changed_by_name || rawLog?.changed_by || rawLog?.actor_name || rawLog?.actor || rawLog?.created_by_name || rawLog?.created_by_email || rawLog?.created_by || rawLog?.user_name || rawLog?.user_email || rawLog?.user_id);
+  },
+  buildLifecycleHistoryTitle(rawLog = {}) {
+    return this.text(rawLog?.title || rawLog?.action_title || rawLog?.action || rawLog?.event || rawLog?.event_type || rawLog?.activity_type || rawLog?.status_field) || 'Status change';
+  },
   normalizeLifecycleHistoryRecord(rawLog = {}) {
     return {
       id: rawLog?.id || rawLog?.uuid || '',
-      status: this.text(rawLog?.new_status || rawLog?.status),
-      title: this.text(rawLog?.title),
+      title: this.buildLifecycleHistoryTitle(rawLog),
+      status: this.normalizeStatus(rawLog?.status || rawLog?.new_status || rawLog?.to_status || rawLog?.new_value),
+      previousStatus: this.normalizeStatus(rawLog?.previous_status || rawLog?.old_status || rawLog?.from_status || rawLog?.old_value),
       date: this.getLatestRelatedRecordDate(rawLog),
-      actor: this.text(rawLog?.changed_by_email || rawLog?.changed_by_name || rawLog?.changed_by),
+      actor: this.getLifecycleActor(rawLog),
       note: this.extractLifecycleNote(rawLog),
       raw: rawLog
     };
+  },
+  mergeLifecycleHistoryLogs(...collections) {
+    const seen = new Set();
+    return collections.flatMap(collection => Array.isArray(collection) ? collection : []).filter(log => {
+      const id = this.text(log?.id || log?.uuid);
+      const key = id ? `id:${id}` : `raw:${JSON.stringify(log)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).sort((a, b) => this.getLatestRelatedRecordTimestamp(b) - this.getLatestRelatedRecordTimestamp(a));
   },
   getLifecycleCompanyId(chain = {}) {
     return String(
@@ -451,7 +511,7 @@ const LifecycleAnalytics = {
                   <div class="muted">Status: ${this.escape(item.currentStatus || '—')}</div>
                   <div class="muted lifecycle-note"><strong>Latest Note:</strong> ${this.escape(item.latestNote || 'No note')}</div>
                   ${item.metadata.map(line => `<div class="muted">${this.escape(line)}</div>`).join('')}
-                  <button type="button" class="btn ghost sm lifecycle-history-btn" data-lifecycle-history data-entity-type="${this.escape(item.entityType)}" data-entity-id="${this.escape(item.entityId)}" data-entity-number="${this.escape(item.entityNumber)}" data-current-status="${this.escape(item.currentStatus)}">View History</button>
+                  <button type="button" class="btn ghost sm lifecycle-history-btn" data-lifecycle-history data-stage-type="${this.escape(item.type)}" data-stage-title="${this.escape(item.title)}" data-source-id="${this.escape(item.entityId)}" data-source-ref="${this.escape(item.entityNumber)}" data-entity-type="${this.escape(item.entityType)}" data-entity-id="${this.escape(item.entityId)}" data-entity-number="${this.escape(item.entityNumber)}" data-current-status="${this.escape(item.currentStatus)}">View History</button>
                 </div>
               </article>`
             )
@@ -470,34 +530,51 @@ const LifecycleAnalytics = {
     const modal = document.getElementById('lifecycleStatusHistoryModal');
     const body = document.getElementById('lifecycleStatusHistoryBody');
     if (!modal || !body) return;
-    const entityType = this.text(trigger?.dataset?.entityType);
-    const entityId = this.text(trigger?.dataset?.entityId);
-    const entityNumber = this.text(trigger?.dataset?.entityNumber);
-    const currentStatus = this.text(trigger?.dataset?.currentStatus) || '—';
+    const selectedStage = {
+      type: this.text(trigger?.dataset?.stageType || trigger?.dataset?.entityType),
+      title: this.text(trigger?.dataset?.stageTitle) || 'Lifecycle stage',
+      sourceId: this.text(trigger?.dataset?.sourceId || trigger?.dataset?.entityId),
+      sourceRef: this.text(trigger?.dataset?.sourceRef || trigger?.dataset?.entityNumber),
+      entityType: this.text(trigger?.dataset?.entityType),
+      currentStatus: this.text(trigger?.dataset?.currentStatus) || '—'
+    };
     modal.classList.add('open');
     modal.setAttribute('aria-hidden', 'false');
     body.innerHTML = '<div class="muted lifecycle-history-empty">Loading status history…</div>';
     try {
-      const response = await Api.getLifecycleStatusHistory({ entity_type: entityType, entity_id: entityId, entity_number: entityNumber });
-      const logs = (Array.isArray(response) ? response : (Array.isArray(response?.rows) ? response.rows : []))
-        .slice()
-        .sort((a, b) => this.getLatestRelatedRecordTimestamp(b) - this.getLatestRelatedRecordTimestamp(a));
+      const response = await Api.getLifecycleStatusHistory({ entity_type: selectedStage.entityType, entity_id: selectedStage.sourceId, entity_number: selectedStage.sourceRef });
+      const fetchedLogs = Array.isArray(response) ? response : (Array.isArray(response?.rows) ? response.rows : []);
+      const selectedAccount = this.state.rows.find(row => row.accountKey === this.state.selectedAccountKey) || {};
+      const sourceRecord = this.buildLifecycleTimeline(selectedAccount).find(stage => stage.type === selectedStage.type && stage.entityId === selectedStage.sourceId && stage.entityNumber === selectedStage.sourceRef)?.sourceRecord || {};
+      const relatedLogs = this.getRelatedLifecycleLogs(selectedAccount, sourceRecord, selectedStage.entityType, selectedStage.sourceId, selectedStage.sourceRef);
+      const rawLogs = this.mergeLifecycleHistoryLogs(fetchedLogs, relatedLogs);
+      const normalizedHistory = rawLogs.map(log => this.normalizeLifecycleHistoryRecord(log));
+      if (this.isDevelopmentMode()) {
+        console.log('Lifecycle History Debug', {
+          stageType: selectedStage.type,
+          stageTitle: selectedStage.title,
+          sourceId: selectedStage.sourceId,
+          sourceRef: selectedStage.sourceRef,
+          rawLogsCount: rawLogs.length,
+          normalizedHistory: normalizedHistory.map(h => ({
+            id: h.id, status: h.status, date: h.date, note: h.note,
+            rawKeys: Object.keys(h.raw || {}),
+            rawNoteFields: { note: h.raw?.note, notes: h.raw?.notes, comment: h.raw?.comment, comments: h.raw?.comments, metadata: h.raw?.metadata, payload: h.raw?.payload, details: h.raw?.details, changes: h.raw?.changes, data: h.raw?.data }
+          }))
+        });
+      }
       const cards = `<div class="lifecycle-history-cards">
-        ${[['Entity Type', entityType || '—'], ['Entity #', entityNumber || entityId || '—'], ['Current Status', currentStatus], ['Total Changes', String(logs.length)]].map(([label, value]) => `<div class="card"><div class="label">${this.escape(label)}</div><div class="value">${this.escape(value)}</div></div>`).join('')}
+        ${[['Stage', selectedStage.title], ['Entity #', selectedStage.sourceRef || selectedStage.sourceId || '—'], ['Current Status', selectedStage.currentStatus], ['Total Changes', String(rawLogs.length)]].map(([label, value]) => `<div class="card"><div class="label">${this.escape(label)}</div><div class="value">${this.escape(value)}</div></div>`).join('')}
       </div>`;
-      if (!logs.length) {
+      if (!rawLogs.length) {
         body.innerHTML = `${cards}<div class="muted lifecycle-history-empty">No status history found. Future status changes will appear here.</div>`;
         return;
       }
-      const history = logs.map(log => this.normalizeLifecycleHistoryRecord(log));
-      body.innerHTML = `${cards}<div class="lifecycle-history-list">${history.map(entry => {
-        const log = entry.raw;
-        const oldStatus = this.text(log.old_status) || 'Initial snapshot';
-        const newStatus = entry.status || '—';
-        const actor = entry.actor || '—';
-        const note = entry.note || 'No note';
-        const statusField = this.text(log.status_field);
-        return `<article class="lifecycle-history-entry"><div class="lifecycle-history-entry__date">${this.escape(this.formatTimelineDate(entry.date))}</div><strong>${this.escape(oldStatus)} → ${this.escape(newStatus)}</strong><div class="muted">Changed by: ${this.escape(actor)}</div>${statusField ? `<div class="muted">Status field: ${this.escape(statusField)}</div>` : ''}<div class="muted lifecycle-note"><strong>Note:</strong> ${this.escape(note)}</div></article>`;
+      body.innerHTML = `${cards}<div class="lifecycle-history-list">${normalizedHistory.map(historyEntry => {
+        const statusTitle = historyEntry.previousStatus || historyEntry.status
+          ? `${historyEntry.previousStatus || 'Initial snapshot'} → ${historyEntry.status || '—'}`
+          : historyEntry.title;
+        return `<article class="lifecycle-history-entry"><strong>${this.escape(statusTitle)}</strong><div class="lifecycle-history-entry__date">${this.escape(this.formatTimelineDate(historyEntry.date))}</div>${historyEntry.actor ? `<div class="muted">By: ${this.escape(historyEntry.actor)}</div>` : ''}<div class="muted lifecycle-note"><strong>Note:</strong> ${this.escape(historyEntry.note || 'No note')}</div></article>`;
       }).join('')}</div>`;
     } catch (error) {
       body.innerHTML = `<div class="muted lifecycle-history-empty">Unable to load status history: ${this.escape(error?.message || 'Unknown error')}</div>`;
@@ -1148,7 +1225,7 @@ const LifecycleAnalytics = {
     };
     ['lifecycleStatusLogs', 'lifecycleLogs', 'lifecycleHistory', 'proposalLogs', 'agreementLogs', 'invoiceLogs', 'receiptLogs', 'creditNoteLogs', 'operationsOnboardingLogs', 'technicalAdminRequestLogs', 'activityLogs', 'auditLogs', 'statusHistory'].forEach(source => { const target = source;
       (data[source] || []).forEach(log => {
-        const account = findAccountForLifecycleReference(log.entity_id || log.record_id || log.resource_id || log.source_id || log.proposal_id || log.agreement_id || log.invoice_id || log.receipt_id || log.credit_note_id || log.onboarding_id || log.request_id || log.technical_request_id) || findAccountForLifecycleReference(log.entity_number || log.record_number || log.resource_number || log.proposal_number || log.agreement_number || log.invoice_number || log.receipt_number || log.credit_note_number);
+        const account = this.lifecycleReferenceFields().map(field => log?.[field]).map(findAccountForLifecycleReference).find(Boolean);
         if (account) account[target].push(log);
       });
     });
