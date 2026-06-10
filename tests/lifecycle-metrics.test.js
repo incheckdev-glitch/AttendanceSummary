@@ -20,7 +20,7 @@ const metrics = analytics.calculateLifecycleMetrics({
   leads: [{ id: 'lead-1', created_at: at(1), updated_at: at(3), status: 'Qualified' }],
   deals: [{ id: 'deal-1', lead_id: 'lead-1', created_at: at(3), updated_at: at(5) }],
   proposals: [{ id: 'proposal-1', deal_id: 'deal-1', created_at: at(5), updated_at: at(8), status: 'Accepted', subtotal_locations: 1000, total_discount: 100 }],
-  proposalItems: [{ proposal_id: 'proposal-1', total: 1000, discount_percent: 10 }],
+  proposalItems: [{ proposal_id: 'proposal-1', description: 'Annual SaaS subscription', unit_price: 1000, months: 12, discount_percent: 10 }],
   agreementItems: [], invoiceItems: [],
   agreements: [{ id: 'agreement-1', proposal_id: 'proposal-1', created_at: at(8), signed_at: at(10), updated_at: at(10) }],
   invoices: [{ id: 'invoice-1', agreement_id: 'agreement-1', issued_at: at(12), updated_at: at(15), payment_status: 'Paid', paid_at: at(15) }],
@@ -57,6 +57,83 @@ assert.strictEqual(snapshotOnly.stageChangesEstimated, false);
 
 assert.strictEqual(analytics.formatDays(null), '—');
 assert.strictEqual(analytics.formatDays(0), '0.00 days');
+
+
+const emptyContext = overrides => ({
+  leads: [], deals: [], proposals: [], agreements: [], invoices: [], receipts: [], creditNotes: [], onboarding: [], technical: [],
+  lifecycleStatusLogs: [], activityLogs: [], auditLogs: [], statusHistory: [], workflowApprovals: [], proposalItems: [], agreementItems: [], invoiceItems: [],
+  ...overrides
+});
+
+const minutesLater = analytics.calculateLifecycleMetrics(emptyContext({
+  leads: [{ id: 'lead-minutes', created_at: '2026-01-01T00:00:00Z', status: 'converted' }],
+  deals: [{ id: 'deal-minutes', created_at: '2026-01-01T00:30:00Z', status: 'open' }],
+  proposals: [{ id: 'proposal-same-day', created_at: '2026-01-01T06:30:00Z', status: 'draft' }]
+}), new Date(at(2)));
+assert.strictEqual(minutesLater.daysInLead, 0.5 / 24, 'lead duration preserves minute-level decimal accuracy');
+assert.strictEqual(minutesLater.daysInDeal, 6 / 24, 'deal duration preserves same-day decimal accuracy');
+
+const proposalAgreement = analytics.calculateLifecycleMetrics(emptyContext({
+  proposals: [{ id: 'proposal-accepted', created_at: at(1), status: 'accepted', accepted_at: at(3) }],
+  agreements: [{ id: 'agreement-sent', created_at: at(4), status: 'Sent' }]
+}), new Date(at(8)));
+assert.strictEqual(proposalAgreement.daysInProposal, 2, 'proposal acceptance is used before later agreement creation');
+assert.strictEqual(proposalAgreement.daysInAgreement, 0, 'sent agreement uses its latest source activity rather than pretending it is signed');
+const sentTimeline = analytics.buildLifecycleTimeline({ agreements: [{ id: 'agreement-sent', created_at: at(4), status: 'Sent' }] });
+assert.strictEqual(sentTimeline[0].title, 'Agreement sent');
+const signedTimeline = analytics.buildLifecycleTimeline({ agreements: [{ id: 'agreement-signed', created_at: at(4), status: 'Sent', customer_sign_date: at(5) }] });
+assert.strictEqual(signedTimeline[0].title, 'Agreement signed');
+
+const invoiceUnpaid = analytics.calculateLifecycleMetrics(emptyContext({ invoices: [{ id: 'invoice-unpaid', invoice_date: at(1), updated_at: at(4), payment_status: 'Unpaid' }] }), new Date(at(10)));
+assert.strictEqual(invoiceUnpaid.daysInInvoice, 3, 'unpaid invoice duration uses latest lifecycle activity');
+const invoiceReceipt = analytics.calculateLifecycleMetrics(emptyContext({
+  invoices: [{ id: 'invoice-paid', invoice_date: at(1), payment_status: 'Partially Paid' }],
+  receipts: [{ id: 'receipt-partial', invoice_id: 'invoice-paid', receipt_date: at(3) }, { id: 'receipt-later', invoice_id: 'invoice-paid', receipt_date: at(5) }],
+  creditNotes: [{ id: 'credit-note', invoice_id: 'invoice-paid', credit_note_date: at(7) }]
+}), new Date(at(10)));
+assert.strictEqual(invoiceReceipt.daysInInvoice, 2, 'invoice duration ends at the first receipt');
+assert.strictEqual(invoiceReceipt.totalCycleDuration, 6, 'credit note activity extends total cycle without extending invoice-to-first-receipt duration');
+assert.strictEqual(analytics.calculateLifecycleMetrics(emptyContext({
+  invoices: [{ id: 'invoice-first', invoice_date: at(1), payment_status: 'Paid' }, { id: 'invoice-second', invoice_date: at(4), payment_status: 'Paid' }],
+  receipts: [{ id: 'receipt-first', invoice_id: 'invoice-first', receipt_date: at(2) }, { id: 'receipt-second', invoice_id: 'invoice-second', receipt_date: at(6) }]
+})).daysInInvoice, 1, 'multiple invoices use the earliest issue and first related lifecycle receipt');
+
+const weightedDiscount = analytics.calculateLifecycleMetrics(emptyContext({
+  agreementItems: [
+    { id: 'annual-100', description: 'Annual SaaS license', unit_price: 100, months: 12, discount_percent: 100 },
+    { id: 'annual-9', name: 'InCheck subscription', unit_price: 900, months: 12, discount_percent: 9.09 },
+    { id: 'annual-15', category: 'Annual licence', unit_price: 1000, months: 12, discount_percent: 15 },
+    { id: 'setup-50', description: 'One-time account setup implementation', unit_price: 10000, months: 12, discount_percent: 50 }
+  ],
+  invoiceItems: [{ description: 'Annual SaaS', unit_price: 1, discount_percent: 99 }],
+  proposalItems: [{ description: 'Annual SaaS', unit_price: 1, discount_percent: 99 }]
+}));
+assert.ok(Math.abs(weightedDiscount.averageDiscount - 16.5905) < 0.000001, 'Annual SaaS discount is base-amount weighted and agreement items take precedence');
+const oneTimeOnly = analytics.calculateLifecycleMetrics(emptyContext({ agreementItems: [{ description: 'One time onboarding fee', unit_price: 100, discount_percent: 50 }] }));
+assert.strictEqual(oneTimeOnly.averageDiscount, null, 'one-time-only fees are excluded from discount');
+const zeroBaseFallback = analytics.calculateLifecycleMetrics(emptyContext({ agreementItems: [
+  { description: 'Annual SaaS', unit_price: 0, discount_percent: 9.09 },
+  { description: 'Subscription license', discount_percent: 15 }
+] }));
+assert.strictEqual(zeroBaseFallback.averageDiscount, 12.045, 'zero-base Annual SaaS rows fall back to a simple valid-percent average');
+
+const duplicateCrossLog = analytics.calculateLifecycleMetrics(emptyContext({
+  leads: [{ id: 'lead-log', created_at: at(1), status: 'qualified' }],
+  lifecycleStatusLogs: [{ entity_type: 'lead', entity_id: 'lead-log', old_status: 'New', new_status: 'Qualified', changed_at: at(2) }],
+  activityLogs: [{ entity_type: 'lead', entity_id: 'lead-log', old_status: 'New', new_status: 'Qualified', changed_at: at(2) }]
+}), new Date(at(5)));
+assert.strictEqual(duplicateCrossLog.numberOfStageChanges, 1, 'duplicate transitions across raw log sources count once');
+const receiptCreationLog = analytics.calculateLifecycleMetrics(emptyContext({ lifecycleStatusLogs: [
+  { entity_type: 'receipt', entity_id: 'receipt-log', old_status: null, new_status: 'Created', changed_at: at(2) },
+  { entity_type: 'lead', entity_id: 'lead-snapshot', old_status: null, new_status: 'New', changed_at: at(1) }
+] }));
+assert.strictEqual(receiptCreationLog.numberOfStageChanges, 1, 'real receipt creation milestone counts while a generic initial snapshot does not');
+assert.strictEqual(duplicateCrossLog.lastActivityAge, 3, 'last activity includes raw related logs');
+assert.strictEqual(analytics.normalizeStatus(' Pending_Approval '), 'pending approval');
+assert.strictEqual(analytics.diffDays(at(2), at(1)), 0, 'bad reverse dates clamp to zero');
+const stuckInvoice = analytics.calculateLifecycleMetrics(emptyContext({ invoices: [{ id: 'invoice-overdue', invoice_date: at(1), due_date: at(3), updated_at: at(5), payment_status: 'Unpaid' }] }), new Date(at(10)));
+assert.strictEqual(stuckInvoice.stuckStage, 'Invoice', 'invoice stuck threshold follows its due date/payment term');
+assert.ok(stuckInvoice.bottleneckWarning.includes('Invoice'), 'a detected bottleneck always supplies warning text');
 
 console.log('Lifecycle metrics checks passed.');
 
