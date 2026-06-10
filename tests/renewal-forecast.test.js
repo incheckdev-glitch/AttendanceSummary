@@ -12,6 +12,9 @@ vm.createContext(context);
 vm.runInContext(frontend, context);
 const forecast = context.window.RenewalForecast;
 forecast.today = () => '2026-06-10';
+forecast.ensureDefaultDateRange();
+assert.strictEqual(forecast.state.filters.dateFrom, '2025-06-01', 'default forecast must start at the first day of the current month minus 12 months');
+assert.strictEqual(forecast.state.filters.dateTo, '2027-06-10', 'default forecast must end at the current date plus 12 months');
 
 const agreementItems = [
   { id: 'agreement-only', agreement_id: 'AGR-1', section: 'Annual SaaS', item_name: 'Location A', service_end_date: '2026-06-30', unit_price: 9999 }
@@ -23,20 +26,25 @@ const invoiceItems = [
   { id: 'poc', agreement_id: 'AGR-2', company_id: 'C2', section: 'Annual SaaS POC', service_end_date: '2026-07-01', unit_price: 100 },
   { id: 'i2', agreement_id: 'AGR-3', company_id: 'C2', category: 'Subscription licence', location_name: 'Location B', service_start_date: '2025-08-01', billing_end_date: '2026-08-01', due_date: '2025-01-01', unit_price: 2400 },
   { id: 'old', agreement_id: 'AGR-OLD', company_id: 'C3', category: 'SaaS license', location_name: 'Location C', service_start_date: '2024-05-01', period_end: '2025-05-01', unit_price: 600 },
-  { id: 'renewal', agreement_id: 'AGR-NEW', company_id: 'C3', category: 'SaaS license', location_name: 'Location C', service_start_date: '2025-05-02', end_date: '2026-05-01', unit_price: 600 }
+  { id: 'renewal', agreement_id: 'AGR-NEW', company_id: 'C3', category: 'SaaS license', location_name: 'Location C', service_start_date: '2025-05-02', end_date: '2026-05-01', unit_price: 600 },
+  { id: 'dated-only', agreement_id: 'AGR-4', company_id: 'C4', description: 'Managed platform row', service_start: '2026-01-01', service_end: '2027-01-01', unit_price: 300 },
+  { id: 'location-match', agreement_id: 'AGR-5', company_id: 'C5', location_name: 'InCheck Site E', start_service_date: '2026-02-01', end_service_date: '2027-02-01', unit_price: 400 },
+  { id: 'subscription-aliases', agreement_id: 'AGR-6', company_id: 'C6', item_type: 'Recurring service', subscription_start_date: '2026-03-01', subscription_end_date: '2027-03-01', unit_price: 500 },
+  { id: 'one-time-dated', agreement_id: 'AGR-7', company_id: 'C7', description: 'One time migration', service_start_date: '2026-01-01', service_end_date: '2027-01-01', unit_price: 700 }
 ];
 let sources = forecast.normalizeSourceRows(invoiceItems);
 assert(!sources.some(row => row.id === agreementItems[0].id), 'agreement_items must never be renewal opportunities');
-assert.deepStrictEqual(JSON.parse(JSON.stringify(sources.map(row => row.id))), ['i1', 'i1', 'i2', 'old', 'renewal'], 'only qualifying invoice SaaS rows with service end dates are sources');
-forecast.state.filters.status = 'poc';
-sources = forecast.normalizeSourceRows(invoiceItems);
-assert(sources.some(row => row.id === 'poc'), 'POC rows must be available only when explicitly filtered');
-forecast.state.filters.status = 'all';
+assert.deepStrictEqual(JSON.parse(JSON.stringify(sources.map(row => row.id))), ['i1', 'i1', 'i2', 'old', 'renewal', 'dated-only', 'location-match', 'subscription-aliases'], 'invoice SaaS rows and non-excluded rows with supported service date pairs are sources');
+assert(!sources.some(row => ['setup', 'poc', 'one-time-dated'].includes(row.id)), 'setup, POC, and one-time rows must always be excluded');
+assert.strictEqual(forecast.serviceStart(invoiceItems.find(row => row.id === 'subscription-aliases')), '2026-03-01', 'subscription_start_date must be supported');
+assert.strictEqual(forecast.serviceEnd(invoiceItems.find(row => row.id === 'subscription-aliases')), '2027-03-01', 'subscription_end_date must be supported');
+['service_start_date', 'start_date', 'period_start', 'billing_start_date', 'service_start', 'start_service_date', 'subscription_start_date', 'service_end_date', 'end_date', 'period_end', 'billing_end_date', 'service_end', 'end_service_date', 'subscription_end_date'].forEach(field => assert(frontend.includes(`'${field}'`), `missing supported service date field ${field}`));
+assert.deepStrictEqual(JSON.parse(JSON.stringify(forecast.defaultDateRange())), { dateFrom: '2025-06-01', dateTo: '2027-06-10' }, 'default range must include the prior 12 months and next 12 months');
 
 const agreements = [{ id: 'uuid-1', agreement_id: 'AGR-1', agreement_number: 'AGR-1', client_id: 'C1' }, { id: 'uuid-3', agreement_id: 'AGR-3', agreement_number: 'AGR-3', client_id: 'C2' }];
 const clients = [{ id: 'C1', client_name: 'Client One' }, { id: 'C2', client_name: 'Client Two' }, { id: 'C3', client_name: 'Client Three' }];
 const rows = forecast.buildRows(forecast.normalizeSourceRows(invoiceItems), agreements, clients);
-assert.strictEqual(rows.length, 4, 'the same invoice item must not be counted twice');
+assert.strictEqual(rows.length, 7, 'the same invoice item must not be counted twice while dated invoice rows remain included');
 const first = rows.find(row => row.opportunity_id === 'invoice_items:i1');
 const second = rows.find(row => row.opportunity_id === 'invoice_items:i2');
 const old = rows.find(row => row.opportunity_id === 'invoice_items:old');
@@ -47,10 +55,20 @@ assert.strictEqual(first.renewal_status, 'due_soon');
 assert.strictEqual(second.service_end_date, '2026-08-01', 'billing_end_date is an allowed service end fallback');
 assert.strictEqual(second.renewal_status, 'upcoming', 'invoice due date must not drive renewal status');
 assert.strictEqual(old.renewal_status, 'renewed', 'a later SaaS invoice item for the same client/location must mark the old row renewed even when agreement changes');
-assert.strictEqual(forecast.summary.call({ ...forecast, filtered: () => rows }).value, 4680, 'expected renewal value must sum invoice SaaS rows');
+assert.strictEqual(forecast.summary.call({ ...forecast, filtered: () => rows }).value, 5880, 'expected renewal value must sum invoice SaaS rows');
+forecast.state.rows = rows;
+forecast.state.filters = { dateFrom: '2028-01-01', dateTo: '2028-12-31', client: 'all', country: 'all', status: 'all', agreement: 'all', owner: 'all' };
+forecast.applyFilters();
+assert.strictEqual(forecast.filtered().length, 0, 'active date filters may remove otherwise valid renewal rows');
+assert(forecast.emptyState().includes('No renewal rows match the active filters.'), 'filtered empty state must explain that active filters removed rows');
+assert(forecast.emptyState().includes('Service end from: 2028-01-01'), 'filtered empty state must show active filters');
+forecast.state.rows = [];
+assert(forecast.emptyState().includes('No renewal rows found from invoice SaaS service end dates. Check invoice item service dates or filters.'), 'source empty state must explain how invoice service dates drive the forecast');
 assert(!frontend.includes('scheduled_due_date'), 'renewal forecast must not use payment schedule dates');
 assert(!frontend.includes('normalizeSourceRows(agreementItems'), 'agreement_items must not be passed to source normalization');
 assert(!frontend.includes('renewalAgreement') && !frontend.includes('renewalInvoice'), 'header rows must not mark invoice items renewed');
+assert(!frontend.includes('No Annual SaaS renewals match the selected filters.'), 'misleading legacy empty state must be removed');
+assert(!html.includes('<option value="poc">POC rows</option>'), 'POC must not be exposed as an includable renewal filter');
 ['Renewals This Month','Upcoming 30 Days','Upcoming 90 Days','Expected Renewal Value','Overdue Renewals','Number of SaaS Rows / Locations','Invoice Number','Current Invoice SaaS Row Amount','Create Renewal Invoice'].forEach(label => assert(frontend.includes(label) || html.includes(label), `missing ${label}`));
 assert(html.includes('id="renewalForecastView"') && html.includes('renewal-forecast.js'));
 assert(app.includes("view === 'renewalForecast'") && permissions.includes('renewalForecast'));
