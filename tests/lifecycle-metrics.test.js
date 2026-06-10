@@ -59,3 +59,73 @@ assert.strictEqual(analytics.formatDays(null), '—');
 assert.strictEqual(analytics.formatDays(0), '0.00 days');
 
 console.log('Lifecycle metrics checks passed.');
+
+const overview = analytics.getLifecycleMetrics({
+  companies: [
+    { id: 'company-1', company_name: 'Acme LLC' },
+    { id: 'company-2', company_name: 'Other Inc' }
+  ],
+  leads: [], deals: [], clients: [], contacts: [], paymentSchedule: [],
+  proposals: [
+    { id: 'proposal-1', company_id: 'company-1', status: ' ACCEPTED ', created_at: at(1) },
+    { id: 'proposal-2', company_id: 'company-2', status: 'draft', created_at: at(2) }
+  ],
+  agreements: [
+    { id: 'agreement-1', company_id: 'company-1', status: 'SIGNED', signed_at: at(3) },
+    { id: 'agreement-2', company_id: 'company-1', status: 'signed', signed_at: at(4) },
+    { id: 'agreement-3', company_id: 'company-2', status: 'active', created_at: at(5) },
+    { id: 'agreement-4', company_id: 'company-2', status: 'signed', signed_at: at(5) }
+  ],
+  agreementItems: [
+    { id: 'agreement-item-1', agreement_id: 'agreement-1', category: 'Annual SaaS License' },
+    { id: 'agreement-item-2', agreement_id: 'agreement-1', product_name: 'InCheck Annual Subscription' },
+    { id: 'agreement-item-3', agreement_id: 'agreement-2', description: 'Implementation and account setup' },
+    { id: 'agreement-item-4', agreement_id: 'agreement-2', description: 'POC Annual SaaS' }
+  ],
+  invoices: [
+    { id: 'invoice-1', agreement_id: 'agreement-1', company_id: 'company-1', status: 'Issued', invoice_date: at(6), grand_total: 1000, balance_due: 9999 },
+    { id: 'invoice-2', agreement_id: 'agreement-2', company_id: 'company-1', invoice_status: 'ISSUED', invoice_date: at(7) },
+    { id: 'invoice-3', company_id: 'company-2', status: 'draft', invoice_date: at(8), grand_total: 500 },
+    { id: 'invoice-1', company_id: 'company-1', status: 'Issued', invoice_date: at(6), grand_total: 1000 }
+  ],
+  invoiceItems: [
+    { id: 'invoice-item-1', invoice_id: 'invoice-1', agreement_id: 'agreement-1', description: 'Annual SaaS License', total: 1000 },
+    { id: 'invoice-item-2', invoice_id: 'invoice-1', description: 'duplicate non-header item', total: 200 },
+    { id: 'invoice-item-3', invoice_id: 'invoice-2', description: 'Consulting', quantity: 2, unit_price: 100 }
+  ],
+  receipts: [
+    { id: 'receipt-1', invoice_id: 'invoice-1', company_id: 'company-1', payment_amount: 400, status: 'created', receipt_date: at(9) }
+  ],
+  creditNotes: [
+    { id: 'credit-1', invoice_id: 'invoice-1', credit_amount: 100, status: 'issued', credit_note_date: at(10) }
+  ],
+  onboarding: [
+    { id: 'onboarding-1', company_id: 'company-1', status: 'Completed', created_at: at(11) },
+    { id: 'onboarding-2', company_id: 'company-1', status: 'in_progress', created_at: at(12) }
+  ],
+  technical: [
+    { id: 'tech-1', company_id: 'company-1', request_status: 'completed', created_at: at(13) }
+  ]
+});
+assert.strictEqual(overview.totalClients, 2, 'same company_id across records is counted once');
+assert.strictEqual(overview.signedAgreements, 3, 'only exact normalized signed statuses count, including signed agreements without invoices');
+assert.strictEqual(overview.totalLocations, 2, 'annual SaaS agreement rows count as locations while one-time and POC rows are excluded');
+assert.strictEqual(overview.issuedInvoices, 2, 'only exact normalized issued invoices count and duplicate invoice records are removed');
+assert.strictEqual(overview.totalInvoiced, 1200, 'valid invoice header wins and missing header falls back to invoice items without duplication');
+assert.strictEqual(overview.totalPaid, 400, 'paid amount comes from partial receipts');
+assert.strictEqual(overview.totalCredited, 100, 'credited amount comes from credit notes');
+assert.strictEqual(overview.totalDue, 700, 'outstanding ignores stale balance_due and subtracts receipts and credits');
+assert.strictEqual(overview.creditableInvoices, 2);
+assert.strictEqual(overview.operationsOnboardingCreated, 2);
+assert.strictEqual(overview.operationsCompleted, 1);
+assert.strictEqual(overview.technicalRequestCompleted, 1);
+
+const dateFiltered = analytics.getLifecycleMetrics({
+  companies: [], leads: [], deals: [], agreementItems: [], invoiceItems: [], paymentSchedule: [], onboarding: [], technical: [],
+  proposals: [{ id: 'p1', status: 'accepted', created_at: at(1) }, { id: 'p2', status: 'accepted', created_at: at(20) }],
+  agreements: [], invoices: [], receipts: [], creditNotes: []
+}, { dateFrom: '2026-01-10', dateTo: '2026-01-31' });
+assert.strictEqual(dateFiltered.proposalCreated, 1, 'date filters are applied at the source-record level');
+assert.strictEqual(dateFiltered.proposalAccepted, 1);
+
+console.log('Lifecycle overview source-of-truth checks passed.');
