@@ -70,22 +70,51 @@ const minutesLater = analytics.calculateLifecycleMetrics(emptyContext({
   deals: [{ id: 'deal-minutes', created_at: '2026-01-01T00:30:00Z', status: 'open' }],
   proposals: [{ id: 'proposal-same-day', created_at: '2026-01-01T06:30:00Z', status: 'draft' }]
 }), new Date(at(2)));
-assert.strictEqual(minutesLater.daysInLead, 0.5 / 24, 'lead duration preserves minute-level decimal accuracy');
-assert.strictEqual(minutesLater.daysInDeal, 6 / 24, 'deal duration preserves same-day decimal accuracy');
+assert.strictEqual(minutesLater.daysInLead, 0.02, 'lead duration preserves minute-level accuracy rounded to two decimals');
+assert.strictEqual(minutesLater.daysInDeal, 0.25, 'deal duration preserves same-day decimal accuracy');
 
 const proposalAgreement = analytics.calculateLifecycleMetrics(emptyContext({
   proposals: [{ id: 'proposal-accepted', created_at: at(1), status: 'accepted', accepted_at: at(3) }],
   agreements: [{ id: 'agreement-sent', created_at: at(4), status: 'Sent' }]
 }), new Date(at(8)));
 assert.strictEqual(proposalAgreement.daysInProposal, 2, 'proposal acceptance is used before later agreement creation');
-assert.strictEqual(proposalAgreement.daysInAgreement, 0, 'sent agreement uses its latest source activity rather than pretending it is signed');
+assert.strictEqual(proposalAgreement.daysInAgreement, 4, 'sent agreement remains active through the injected current time');
 const sentTimeline = analytics.buildLifecycleTimeline({ agreements: [{ id: 'agreement-sent', created_at: at(4), status: 'Sent' }] });
 assert.strictEqual(sentTimeline[0].title, 'Agreement sent');
 const signedTimeline = analytics.buildLifecycleTimeline({ agreements: [{ id: 'agreement-signed', created_at: at(4), status: 'Sent', customer_sign_date: at(5) }] });
 assert.strictEqual(signedTimeline[0].title, 'Agreement signed');
 
+const parsedDisplayedDate = analytics.parseLifecycleDate('08/06/2026 13:01');
+assert.strictEqual(parsedDisplayedDate.getFullYear(), 2026, 'displayed lifecycle dates preserve their year');
+assert.strictEqual(parsedDisplayedDate.getMonth(), 5, 'DD/MM/YYYY lifecycle dates parse June as month 6');
+assert.strictEqual(parsedDisplayedDate.getDate(), 8, 'DD/MM/YYYY lifecycle dates parse the first component as the day');
+assert.strictEqual(analytics.parseLifecycleDate('31/02/2026 13:01'), null, 'invalid displayed lifecycle dates are rejected');
+
+const originalGetLifecycleNow = analytics.getLifecycleNow;
+analytics.getLifecycleNow = () => analytics.parseLifecycleDate('10/06/2026 12:44');
+const activeAgreement = analytics.calculateLifecycleMetrics(emptyContext({
+  agreements: [{ id: 'agreement-active', sent_at: '08/06/2026 13:01', updated_at: '09/06/2026 03:01', status: 'Sent' }]
+}));
+analytics.getLifecycleNow = originalGetLifecycleNow;
+assert.strictEqual(activeAgreement.daysInAgreement, 1.99, 'active agreement duration uses injectable current time minus sent_at');
+assert.strictEqual(activeAgreement.totalCycleDuration, 1.99, 'total cycle duration includes the active agreement through current time');
+assert.strictEqual(activeAgreement.stuckStage, 'None', 'an agreement below the default 30-day threshold is not stuck');
+assert.strictEqual(activeAgreement.bottleneckWarning, '', 'an agreement below the default 30-day threshold has no bottleneck warning');
+
+const agreementFromSentLog = analytics.calculateLifecycleMetrics(emptyContext({
+  agreements: [{ id: 'agreement-log-start', created_at: '2026-06-01T00:00:00Z', status: 'Sent' }],
+  lifecycleStatusLogs: [{ entity_type: 'agreement', entity_id: 'agreement-log-start', new_status: 'Sent', changed_at: '2026-06-08T13:01:00Z' }]
+}), new Date('2026-06-10T12:44:00Z'));
+assert.strictEqual(agreementFromSentLog.daysInAgreement, 1.99, 'agreement sent status log takes precedence over an earlier creation date');
+
+const staleSentSignedAgreement = analytics.calculateLifecycleMetrics(emptyContext({
+  agreements: [{ id: 'agreement-signed-stale-status', sent_at: at(1), signed_at: at(3), status: 'Sent' }]
+}), new Date(at(40)));
+assert.strictEqual(staleSentSignedAgreement.daysInAgreement, 2, 'a valid signed date closes an agreement even if its stored status is stale');
+assert.strictEqual(staleSentSignedAgreement.stuckStage, 'None', 'a signed agreement with a stale Sent status is not treated as stuck');
+
 const invoiceUnpaid = analytics.calculateLifecycleMetrics(emptyContext({ invoices: [{ id: 'invoice-unpaid', invoice_date: at(1), updated_at: at(4), payment_status: 'Unpaid' }] }), new Date(at(10)));
-assert.strictEqual(invoiceUnpaid.daysInInvoice, 3, 'unpaid invoice duration uses latest lifecycle activity');
+assert.strictEqual(invoiceUnpaid.daysInInvoice, 9, 'unpaid invoice duration uses the injected current time rather than updated_at');
 const invoiceReceipt = analytics.calculateLifecycleMetrics(emptyContext({
   invoices: [{ id: 'invoice-paid', invoice_date: at(1), payment_status: 'Partially Paid' }],
   receipts: [{ id: 'receipt-partial', invoice_id: 'invoice-paid', receipt_date: at(3) }, { id: 'receipt-later', invoice_id: 'invoice-paid', receipt_date: at(5) }],

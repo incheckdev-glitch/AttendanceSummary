@@ -507,20 +507,38 @@ const LifecycleAnalytics = {
     if (value instanceof Date) return Number.isFinite(value.getTime()) ? new Date(value.getTime()) : null;
     const raw = this.text(value);
     if (!raw) return null;
+    const displayedDate = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?)?$/);
+    if (displayedDate) {
+      const [, dayValue, monthValue, yearValue, hourValue = '0', minuteValue = '0', secondValue = '0', millisecondValue = '0'] = displayedDate;
+      const day = Number(dayValue);
+      const month = Number(monthValue);
+      const year = Number(yearValue);
+      const hour = Number(hourValue);
+      const minute = Number(minuteValue);
+      const second = Number(secondValue);
+      const millisecond = Number(millisecondValue.padEnd(3, '0'));
+      const parsedDisplayedDate = new Date(year, month - 1, day, hour, minute, second, millisecond);
+      const isValidDisplayedDate = parsedDisplayedDate.getFullYear() === year
+        && parsedDisplayedDate.getMonth() === month - 1
+        && parsedDisplayedDate.getDate() === day
+        && parsedDisplayedDate.getHours() === hour
+        && parsedDisplayedDate.getMinutes() === minute
+        && parsedDisplayedDate.getSeconds() === second;
+      return isValidDisplayedDate ? parsedDisplayedDate : null;
+    }
     const parsed = new Date(raw);
     return Number.isFinite(parsed.getTime()) ? parsed : null;
   },
   parseDateSafe(value) {
-    if (value instanceof Date) return Number.isFinite(value.getTime()) ? new Date(value.getTime()) : null;
-    const raw = this.text(value);
-    if (!raw) return null;
-    const parsed = new Date(raw);
-    return Number.isFinite(parsed.getTime()) ? parsed : null;
+    return this.parseLifecycleDate(value);
   },
   toDate(value) {
     return this.parseDateSafe(value);
   },
-  diffDays(startValue, endValue = new Date()) {
+  getLifecycleNow() {
+    return new Date();
+  },
+  diffDays(startValue, endValue = this.getLifecycleNow()) {
     const start = this.parseLifecycleDate(startValue);
     const end = this.parseLifecycleDate(endValue);
     if (!start || !end) return null;
@@ -530,7 +548,9 @@ const LifecycleAnalytics = {
       }
       return 0;
     }
-    return (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+    const diffMs = end.getTime() - start.getTime();
+    const days = Math.max(0, diffMs / (1000 * 60 * 60 * 24));
+    return Number(days.toFixed(2));
   },
   normalizeStatus(value) {
     return this.text(value).toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -557,7 +577,7 @@ const LifecycleAnalytics = {
   getLatestRecordDate(records = [], fields = []) {
     return this.getLatestDate((Array.isArray(records) ? records : []).flatMap(record => fields.map(field => record?.[field])));
   },
-  calculateDecimalDays(startValue, endValue = new Date()) {
+  calculateDecimalDays(startValue, endValue = this.getLifecycleNow()) {
     return this.diffDays(startValue, endValue);
   },
   getEarliestDate(...values) {
@@ -1141,9 +1161,9 @@ const LifecycleAnalytics = {
 
     return { accounts: [...accounts.values()], today, companiesById, companiesByName };
   },
-  calculateLifecycleMetrics(lifecycleContext = {}, todayValue = new Date()) {
+  calculateLifecycleMetrics(lifecycleContext = {}, todayValue) {
     const context = lifecycleContext || {};
-    const today = this.parseLifecycleDate(todayValue) || new Date();
+    const today = this.parseLifecycleDate(todayValue) || this.getLifecycleNow();
     const rows = key => Array.isArray(context[key]) ? context[key] : [];
     const first = (key, fields) => this.getEarliestDate(rows(key).map(record => fields.map(field => record?.[field])));
     const normalizedStatus = record => this.normalizeStatus(record?.status || record?.stage || record?.agreement_status || record?.invoice_status || record?.payment_status || record?.payment_state || record?.onboarding_status || record?.request_status);
@@ -1156,6 +1176,7 @@ const LifecycleAnalytics = {
     const transitionDate = (entities, statuses) => this.getEarliestDate(allLogs
       .filter(log => entities.some(entity => logEntity(log).includes(entity)) && statuses.some(status => logStatus(log).includes(status)))
       .map(logTimestamp));
+    const stageIsActive = (collection, closedStatuses = []) => rows(collection).some(record => !closedStatuses.some(status => this.lifecycleStatusMatches(normalizedStatus(record), status)));
     const latestActivityDate = this.getLatestDate(
       ...['leads', 'deals', 'proposals', 'agreements', 'invoices', 'receipts', 'creditNotes', 'onboarding', 'technical', 'tickets', 'events', 'binersEntries', 'binersSchedules', 'paymentForecastFollowups', 'workflowApprovals']
         .flatMap(key => rows(key).flatMap(record => ['created_at', 'updated_at', 'changed_at', 'status_changed_at', 'completed_at', 'qualified_at', 'converted_at', 'accepted_at', 'acceptance_date', 'signed_at', 'signed_date', 'provider_sign_date', 'customer_sign_date', 'invoice_date', 'issue_date', 'issued_date', 'issued_at', 'receipt_date', 'payment_date', 'credit_note_date', 'go_live_at', 'go_live_date', 'approval_requested_at', 'submitted_for_approval_at', 'pending_approval_at', 'approved_at', 'rejected_at', 'approval_decision_at'].map(field => record?.[field]))),
@@ -1163,26 +1184,32 @@ const LifecycleAnalytics = {
     );
     const endForOpenStage = (start, collection, closedStatuses = []) => {
       if (!start || !rows(collection).length) return null;
-      const active = rows(collection).some(record => !closedStatuses.some(status => this.lifecycleStatusMatches(normalizedStatus(record), status)));
-      return active ? (latestActivityDate || today) : null;
+      return stageIsActive(collection, closedStatuses) ? today : null;
     };
     const firstEnd = (start, candidates = [], openEnd = null) => {
       if (!start) return null;
-      const valid = candidates.flat(Infinity).map(value => this.parseLifecycleDate(value)).filter(date => date && date >= start);
+      const valid = candidates.flat(Infinity).map(value => this.parseLifecycleDate(value)).filter(date => date && date >= start && date <= today);
       return this.getEarliestDate(valid) || (openEnd && this.parseLifecycleDate(openEnd) >= start ? this.parseLifecycleDate(openEnd) : null);
     };
 
     const leadStart = first('leads', ['lead_created_at', 'created_at', 'qualified_at', 'lead_date']);
     const dealStart = first('deals', ['deal_created_at', 'created_at', 'deal_opened_at', 'deal_date']);
     const proposalStart = first('proposals', ['created_at', 'proposal_date', 'sent_at']);
-    const agreementStart = first('agreements', ['created_at', 'agreement_date', 'sent_at', 'effective_date']);
+    const agreementSent = this.getEarliestDate(
+      rows('agreements').map(record => record?.sent_at),
+      transitionDate(['agreement'], ['sent', 'agreement sent'])
+    );
+    const agreementStart = agreementSent || first('agreements', ['created_at', 'agreement_date', 'effective_date']);
     const invoiceStart = first('invoices', ['invoice_date', 'issue_date', 'issued_date', 'issued_at', 'created_at']);
     const receiptStart = first('receipts', ['receipt_date', 'payment_date', 'created_at']);
 
     const leadConverted = this.getEarliestDate(rows('leads').map(record => [record.lead_converted_at, record.converted_at]), transitionDate(['lead'], ['qualified', 'converted']));
     const proposalAccepted = this.getEarliestDate(rows('proposals').map(record => [record.accepted_at, record.acceptance_date, record.signed_at]), transitionDate(['proposal'], ['accepted']));
-    const agreementSigned = this.getEarliestDate(rows('agreements').map(record => [record.signed_at, record.signed_date, record.provider_sign_date, record.customer_sign_date, record.provider_signed_at, record.customer_signed_at]), transitionDate(['agreement'], ['signed', 'executed']));
+    const agreementSignedDate = this.getEarliestDate(rows('agreements').map(record => [record.signed_at, record.signed_date, record.provider_sign_date, record.customer_sign_date, record.provider_signed_at, record.customer_signed_at]), transitionDate(['agreement'], ['signed', 'executed']));
+    const agreementSigned = agreementSignedDate && agreementSignedDate <= today ? agreementSignedDate : null;
     const invoiceSettled = this.getEarliestDate(rows('invoices').map(record => [record.paid_at, record.settled_at, record.full_settlement_date]), transitionDate(['invoice'], ['fully paid', 'paid', 'settled']));
+    const validAgreementInvoiceStart = invoiceStart && invoiceStart <= today ? invoiceStart : null;
+    const agreementIsActive = stageIsActive('agreements', ['signed', 'executed', 'cancelled', 'terminated']) && !agreementSigned && !validAgreementInvoiceStart;
 
     const leadEnd = firstEnd(leadStart, [dealStart, leadConverted], endForOpenStage(leadStart, 'leads', ['qualified', 'converted', 'lost', 'closed', 'disqualified']));
     const dealEnd = firstEnd(dealStart, [proposalStart], endForOpenStage(dealStart, 'deals', ['won', 'lost', 'closed', 'converted']));
@@ -1237,27 +1264,27 @@ const LifecycleAnalytics = {
       : (discountAuditRows.length ? discountAuditRows.reduce((sum, item) => sum + item.discountPercent, 0) / discountAuditRows.length : null);
 
     const earliestLifecycleDate = this.getEarliestDate(leadStart, dealStart, proposalStart, agreementStart, invoiceStart, first('onboarding', ['created_at']));
-    const totalCycleDuration = earliestLifecycleDate && latestActivityDate ? this.diffDays(earliestLifecycleDate, latestActivityDate) : null;
+    const latestLifecycleEnd = this.getLatestDate(leadEnd, dealEnd, proposalEnd, agreementEnd, invoiceEnd, latestActivityDate);
+    const totalCycleDuration = earliestLifecycleDate && latestLifecycleEnd ? this.diffDays(earliestLifecycleDate, latestLifecycleEnd) : null;
     const invoiceDueDate = first('invoices', ['due_date', 'payment_due_date']);
     const invoiceThreshold = invoiceStart && invoiceDueDate ? this.diffDays(invoiceStart, invoiceDueDate) : 30;
     const stageThresholds = { Lead: 7, Deal: 14, Proposal: 14, Agreement: 30, Invoice: invoiceThreshold, Onboarding: 14, 'Technical request': 7, ...(context.lifecycleStageThresholds || {}) };
     const openStageCandidates = [];
     const addOpenStage = (name, start, collection, closedStatuses) => {
-      if (!start || !rows(collection).length || !rows(collection).some(record => !closedStatuses.some(status => this.lifecycleStatusMatches(normalizedStatus(record), status)))) return;
-      openStageCandidates.push({ name, start, age: this.diffDays(start, latestActivityDate || today), threshold: this.safeNumber(stageThresholds[name], 0) });
+      if (!start || !rows(collection).length || !stageIsActive(collection, closedStatuses)) return;
+      openStageCandidates.push({ name, start, age: this.diffDays(start, today), threshold: this.safeNumber(stageThresholds[name], 0) });
     };
     if (!dealStart) addOpenStage('Lead', leadStart, 'leads', ['qualified', 'converted', 'lost', 'closed', 'disqualified']);
     if (!proposalStart) addOpenStage('Deal', dealStart, 'deals', ['won', 'lost', 'closed', 'converted']);
     if (!agreementStart) addOpenStage('Proposal', proposalStart, 'proposals', ['accepted', 'rejected', 'declined', 'expired', 'cancelled']);
-    if (!invoiceStart) addOpenStage('Agreement', agreementStart, 'agreements', ['signed', 'executed', 'cancelled', 'terminated']);
+    if (!validAgreementInvoiceStart && !agreementSigned) addOpenStage('Agreement', agreementStart, 'agreements', ['signed', 'executed', 'cancelled', 'terminated']);
     addOpenStage('Invoice', invoiceStart, 'invoices', ['fully paid', 'paid', 'settled', 'cancelled', 'void']);
     addOpenStage('Onboarding', first('onboarding', ['created_at', 'requested_at']), 'onboarding', ['completed', 'cancelled']);
     addOpenStage('Technical request', first('technical', ['created_at', 'requested_at']), 'technical', ['completed', 'cancelled', 'closed']);
     const latestOpenStage = openStageCandidates.sort((a, b) => b.start - a.start)[0] || null;
     const stuck = latestOpenStage && latestOpenStage.age > latestOpenStage.threshold ? latestOpenStage : null;
     const durations = [{ name: 'Lead', value: daysInLead }, { name: 'Deal', value: daysInDeal }, { name: 'Proposal', value: daysInProposal }, { name: 'Agreement', value: daysInAgreement }, { name: 'Invoice', value: daysInInvoice }].filter(item => item.value !== null);
-    const averageDuration = durations.length ? durations.reduce((sum, item) => sum + item.value, 0) / durations.length : 0;
-    const bottleneck = stuck || durations.filter(item => item.value > stageThresholds[item.name] || (averageDuration > 0 && item.value > averageDuration * 2)).sort((a, b) => b.value - a.value)[0];
+    const bottleneck = stuck || durations.filter(item => item.value > this.safeNumber(stageThresholds[item.name], 0)).sort((a, b) => b.value - a.value)[0];
 
     const metrics = {
       daysInLead, daysInDeal, daysInProposal, daysInAgreement, daysInInvoice, totalCycleDuration,
@@ -1277,11 +1304,19 @@ const LifecycleAnalytics = {
       durations: { daysInLead, daysInDeal, daysInProposal, daysInAgreement, daysInInvoice, totalCycleDuration }, annualSaasRows: discountAuditRows,
       discountBaseAmount, discountAmount, weightedAverageDiscount: averageDiscount, finalCardValues: metrics
     };
+    if (this.isDevelopmentMode()) console.log('Lifecycle Agreement Duration Audit', {
+      agreementStageStart: agreementStart?.toISOString() || null,
+      agreementStageEnd: agreementEnd?.toISOString() || null,
+      isAgreementActive: agreementIsActive,
+      now: today.toISOString(),
+      daysInAgreement,
+      expectedThresholdDays: this.safeNumber(stageThresholds.Agreement, 30)
+    });
     const isDevelopment = typeof process !== 'undefined' ? process.env?.NODE_ENV !== 'production' : ['localhost', '127.0.0.1', ''].includes(globalThis?.location?.hostname || '');
     if (isDevelopment) console.log('Lifecycle Metrics Audit', audit);
     return metrics;
   },
-  buildLifecycleMetrics(account = {}, today = new Date()) {
+  buildLifecycleMetrics(account = {}, today) {
     return this.calculateLifecycleMetrics(account, today);
   },
   normalizeText(value) {
