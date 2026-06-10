@@ -16,6 +16,14 @@ forecast.ensureDefaultDateRange();
 assert.strictEqual(forecast.state.filters.dateFrom, '2025-06-01', 'default forecast must start at the first day of the current month minus 12 months');
 assert.strictEqual(forecast.state.filters.dateTo, '2027-06-10', 'default forecast must end at the current date plus 12 months');
 
+assert.strictEqual(forecast.PAGE_SIZE, 10, 'renewal forecast pagination must use 10 rows per page');
+assert.deepStrictEqual(JSON.parse(JSON.stringify(forecast.pagination(1, 37))), { currentPage: 1, totalPages: 4, start: 1, end: 10, rowsStart: 0, rowsEnd: 10 });
+assert.deepStrictEqual(JSON.parse(JSON.stringify(forecast.pagination(4, 37))), { currentPage: 4, totalPages: 4, start: 31, end: 37, rowsStart: 30, rowsEnd: 40 });
+assert.match(forecast.renderPagination('details', 1, 37), /Showing 1–10 of 37 renewals/);
+assert.match(forecast.renderPagination('details', 1, 37), /Page 1 of 4/);
+assert.match(forecast.renderPagination('details', 1, 37), /data-rf-page="previous"[^>]+disabled/);
+assert.match(forecast.renderPagination('details', 4, 37), /data-rf-page="next"[^>]+disabled/);
+
 const agreementItems = [
   { id: 'agreement-only', agreement_id: 'AGR-1', section: 'Annual SaaS', item_name: 'Location A', service_end_date: '2026-06-30', unit_price: 9999 }
 ];
@@ -58,7 +66,11 @@ assert.strictEqual(old.renewal_status, 'renewed', 'a later SaaS invoice item for
 assert.strictEqual(forecast.summary.call({ ...forecast, filtered: () => rows }).value, 5880, 'expected renewal value must sum invoice SaaS rows');
 forecast.state.rows = rows;
 forecast.state.filters = { dateFrom: '2028-01-01', dateTo: '2028-12-31', client: 'all', country: 'all', status: 'all', agreement: 'all', owner: 'all' };
+forecast.state.overviewPage = 3;
+forecast.state.detailPage = 2;
 forecast.applyFilters();
+assert.strictEqual(forecast.state.overviewPage, 1, 'filter changes must reset overview pagination');
+assert.strictEqual(forecast.state.detailPage, 1, 'filter changes must reset detail pagination');
 assert.strictEqual(forecast.filtered().length, 0, 'active date filters may remove otherwise valid renewal rows');
 assert(forecast.emptyState().includes('No renewal rows match the active filters.'), 'filtered empty state must explain that active filters removed rows');
 assert(forecast.emptyState().includes('Service end from: 2028-01-01'), 'filtered empty state must show active filters');
