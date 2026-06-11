@@ -98,7 +98,16 @@ const RenewalForecast = {
   },
 
   isAdmin() {
-    return window.Permissions?.isAdmin?.() === true || window.Session?.isAdmin?.() === true;
+    const user = window.Permissions?.getResolvedCurrentUser?.() || window.Session?.authContext?.() || null;
+    return window.isMonthlyRenewalForecastAdmin?.(user) === true;
+  },
+
+  renderAccessDenied() {
+    const message = 'Access denied. This forecast is available for admin users only.';
+    const state = document.getElementById?.('renewalForecastState');
+    const body = document.getElementById?.('renewalForecastBody');
+    if (state) state.textContent = message;
+    if (body) body.innerHTML = '';
   },
 
   denyAccess() {
@@ -107,6 +116,7 @@ const RenewalForecast = {
     this.state.monthSummaries = [];
     this.state.error = 'Access denied. This forecast is available for admin users only.';
     this.closeDrawer();
+    this.renderAccessDenied();
     UI.toast(this.state.error);
     return false;
   },
@@ -123,6 +133,7 @@ const RenewalForecast = {
   },
 
   async fetchMonthSummaries() {
+    if (!this.requireAdmin()) return [];
     const { dateFrom, months } = this.rpcRange();
     const { data, error } = await this.getClient().rpc('crm_get_monthly_renewal_forecast', {
       p_start_date: dateFrom,
@@ -133,6 +144,7 @@ const RenewalForecast = {
   },
 
   async fetchMonthDetails(month) {
+    if (!this.requireAdmin()) return [];
     const monthDate = this.monthDate(month);
     if (!monthDate) return [];
     if (this.state.detailsCache[monthDate]) return this.state.detailsCache[monthDate];
@@ -148,6 +160,7 @@ const RenewalForecast = {
   },
 
   async fetchAllDetails(monthSummaries) {
+    if (!this.requireAdmin()) return [];
     const months = [...new Set(monthSummaries.map(row => this.monthDate(row.renewal_month)).filter(Boolean))];
     const batches = await Promise.all(months.map(async month => {
       try { return await this.fetchMonthDetails(month); }
@@ -237,6 +250,7 @@ const RenewalForecast = {
   },
 
   async fetchManualRenewals() {
+    if (!this.requireAdmin()) return [];
     const { dateFrom, dateTo } = this.rpcRange();
     try {
       const { data, error } = await this.getClient().rpc('crm_get_manual_renewal_overrides', {
@@ -305,6 +319,7 @@ const RenewalForecast = {
   },
 
   async fetchNoRenewalNeededOverrides() {
+    if (!this.requireAdmin()) return [];
     const { dateFrom, dateTo } = this.rpcRange();
     const { data, error } = await this.getClient().rpc('crm_get_renewal_no_needed_overrides', {
       p_start_date: dateFrom,
@@ -387,6 +402,7 @@ const RenewalForecast = {
   },
 
   async markManualRenewed(row) {
+    if (!this.requireAdmin()) return;
     const renewalAgreementRef = window.prompt?.('Enter the manual renewal agreement/reference already created for this location:', row.manual_renewal_agreement_ref || '') ?? null;
     if (renewalAgreementRef === null) return;
     const renewalInvoiceRef = window.prompt?.('Optional: enter renewal invoice reference if available:', row.manual_renewal_invoice_ref || '') ?? '';
@@ -412,6 +428,7 @@ const RenewalForecast = {
   },
 
   async unmarkManualRenewed(row) {
+    if (!this.requireAdmin()) return;
     if (!window.confirm?.('Remove the manual renewed mark for this location?')) return;
     const { error } = await this.getClient().rpc('crm_unmark_manual_renewal', {
       p_opportunity_key: this.manualKey(row)
@@ -640,7 +657,7 @@ const RenewalForecast = {
   },
 
   render() {
-    if (!this.isAdmin()) return;
+    if (!this.isAdmin()) { this.renderAccessDenied(); return; }
     const state = document.getElementById('renewalForecastState');
     const body = document.getElementById('renewalForecastBody');
     if (!state || !body) return;
@@ -673,6 +690,7 @@ const RenewalForecast = {
   },
 
   detailActions(row) {
+    if (!this.isAdmin()) return '';
     const canFollowUp = ['upcoming', 'due_soon', 'overdue'].includes(row.renewal_status);
     return `<div class="pf-actions">${canFollowUp ? `<button class="btn primary xs" data-rf-action="renew" data-id="${U.escapeAttr(row.opportunity_id)}">Renew</button><button class="btn ghost xs" data-rf-action="manual-renewed" data-id="${U.escapeAttr(row.opportunity_id)}">Mark Renewed</button><button class="btn ghost xs" data-rf-action="no-renewal-needed" data-id="${U.escapeAttr(row.opportunity_id)}">Mark as No Renewal Needed</button>` : ''}${row.manual_renewal ? `<button class="btn ghost xs" data-rf-action="unmark-renewed" data-id="${U.escapeAttr(row.opportunity_id)}">Unmark Renewed</button>` : ''}${row.manual_no_renewal_needed ? `<button class="btn ghost xs" data-rf-action="undo-no-renewal-needed" data-id="${U.escapeAttr(row.opportunity_id)}">Undo No Renewal Needed</button>` : ''}<button class="btn ghost xs" data-rf-action="agreement" data-id="${U.escapeAttr(row.opportunity_id)}">View Agreement</button><button class="btn ghost xs" data-rf-action="client" data-id="${U.escapeAttr(row.opportunity_id)}">View Client</button>${canFollowUp && this.canCreateInvoice() ? `<button class="btn ghost xs" data-rf-action="invoice" data-id="${U.escapeAttr(row.opportunity_id)}">Create Renewal Invoice</button>` : ''}</div>${row.manual_renewal_note ? `<div class="muted">Note: ${U.escapeHtml(row.manual_renewal_note)}</div>` : ''}${row.no_renewal_needed_note ? `<div class="muted">Note: ${U.escapeHtml(row.no_renewal_needed_note)}</div>` : ''}`;
   },

@@ -2,24 +2,33 @@
 -- Invoice items joined to their invoice headers are the sole renewal-opportunity
 -- source. Agreement and client rows are returned only to enrich display labels.
 
+create or replace function public.crm_is_admin_user()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select auth.uid() is not null
+    and exists (
+      select 1
+      from public.profiles profile
+      where profile.id = auth.uid()
+        and lower(trim(coalesce(profile.role_key, ''))) = 'admin'
+    );
+$$;
+
+revoke all on function public.crm_is_admin_user() from public, anon;
+grant execute on function public.crm_is_admin_user() to authenticated;
+
 create or replace function public.crm_get_monthly_renewal_forecast()
 returns jsonb
 language plpgsql
 security definer
 set search_path = public
 as $$
-declare
-  v_role_key text := '';
 begin
-  if auth.uid() is not null then
-    select lower(trim(coalesce(profile.role_key, '')))
-      into v_role_key
-    from public.profiles profile
-    where profile.id = auth.uid()
-    limit 1;
-  end if;
-
-  if auth.uid() is null or v_role_key <> 'admin' then
+  if not public.crm_is_admin_user() then
     raise exception 'Access denied. Admin only.' using errcode = '42501';
   end if;
 

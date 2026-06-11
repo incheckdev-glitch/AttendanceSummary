@@ -1,3 +1,15 @@
+function isMonthlyRenewalForecastAdmin(user) {
+  const role = String(
+    user?.role ||
+    user?.role_key ||
+    user?.profile?.role ||
+    user?.profile?.role_key ||
+    ''
+  ).trim().toLowerCase();
+
+  return role === 'admin';
+}
+
 const BASE_PERMISSION_MATRIX = Object.freeze({
   tickets: Object.freeze({
     list: ['admin', 'dev', 'viewer', 'hoo'],
@@ -1126,7 +1138,7 @@ const Permissions = {
     if (!key) return false;
     if (!Session.isAuthenticated()) return false;
     if (key === 'aiAssistant') return this.canUseAiAssistant();
-    if (key === 'renewalForecast') return this.isAdmin();
+    if (key === 'renewalForecast') return isMonthlyRenewalForecastAdmin(this.getResolvedCurrentUser() || Session.authContext?.());
 
     const requirements = this.getTabPermissionRequirements(key);
     if (!requirements.length) return true;
@@ -1213,6 +1225,7 @@ window.PermissionAudit.checkVisibleActions = function () {
   return rows;
 };
 
+window.isMonthlyRenewalForecastAdmin = isMonthlyRenewalForecastAdmin;
 window.Permissions = Permissions;
 window.AppPermissions = Permissions;
 window.requirePermission = requirePermission;

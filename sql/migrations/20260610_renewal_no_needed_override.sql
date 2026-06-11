@@ -20,6 +20,17 @@ create table if not exists public.crm_renewal_no_needed_overrides (
 
 alter table public.crm_renewal_no_needed_overrides enable row level security;
 revoke all on table public.crm_renewal_no_needed_overrides from public, anon, authenticated;
+grant select, insert, update, delete on table public.crm_renewal_no_needed_overrides to authenticated;
+
+
+drop policy if exists crm_renewal_no_needed_overrides_admin_select on public.crm_renewal_no_needed_overrides;
+drop policy if exists crm_renewal_no_needed_overrides_admin_insert on public.crm_renewal_no_needed_overrides;
+drop policy if exists crm_renewal_no_needed_overrides_admin_update on public.crm_renewal_no_needed_overrides;
+drop policy if exists crm_renewal_no_needed_overrides_admin_delete on public.crm_renewal_no_needed_overrides;
+create policy crm_renewal_no_needed_overrides_admin_select on public.crm_renewal_no_needed_overrides for select to authenticated using (public.crm_is_admin_user());
+create policy crm_renewal_no_needed_overrides_admin_insert on public.crm_renewal_no_needed_overrides for insert to authenticated with check (public.crm_is_admin_user());
+create policy crm_renewal_no_needed_overrides_admin_update on public.crm_renewal_no_needed_overrides for update to authenticated using (public.crm_is_admin_user()) with check (public.crm_is_admin_user());
+create policy crm_renewal_no_needed_overrides_admin_delete on public.crm_renewal_no_needed_overrides for delete to authenticated using (public.crm_is_admin_user());
 
 create or replace function public.crm_require_renewal_admin()
 returns void
@@ -27,16 +38,8 @@ language plpgsql
 security definer
 set search_path = public
 as $$
-declare
-  v_role_key text := '';
 begin
-  select lower(trim(coalesce(profile.role_key, '')))
-    into v_role_key
-  from public.profiles profile
-  where profile.id = auth.uid()
-  limit 1;
-
-  if auth.uid() is null or v_role_key <> 'admin' then
+  if not public.crm_is_admin_user() then
     raise exception 'Access denied. Admin only.' using errcode = '42501';
   end if;
 end;
