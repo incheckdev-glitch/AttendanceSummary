@@ -28,7 +28,9 @@
       detailsVisible: true,
       exportingPdf: false,
       detailsEditing: false,
-      detailsDraftByConversation: new Map()
+      detailsDraftByConversation: new Map(),
+      directCreateContext: null,
+      sourceRecordContext: null
     },
     realtimeChannel: null,
     realtimeReady: false,
@@ -1016,6 +1018,9 @@
     agreement: { table: 'agreements', idField: 'agreement_id', route: 'agreements', queryKey: 'agreement_id', labelFields: ['agreement_reference', 'agreement_id', 'legal_company_name', 'company_name', 'status'] },
     invoice: { table: 'invoices', idField: 'invoice_id', route: 'invoices', queryKey: 'invoice_id', labelFields: ['invoice_reference', 'invoice_id', 'legal_company_name', 'company_name', 'balance_due', 'payment_status'] },
     receipt: { table: 'receipts', idField: 'receipt_id', route: 'receipts', queryKey: 'receipt_id', labelFields: ['receipt_reference', 'receipt_id', 'legal_company_name', 'company_name', 'payment_amount'] },
+    credit_note: { table: 'credit_notes', idField: 'credit_note_id', route: 'credit-notes', queryKey: 'credit_note_id', labelFields: ['credit_note_number', 'credit_note_id', 'legal_company_name', 'company_name', 'credit_amount', 'status'] },
+    company: { table: 'companies', idField: 'id', route: 'companies', queryKey: 'company_id', labelFields: ['legal_company_name', 'company_name', 'name', 'id'] },
+    contact: { table: 'contacts', idField: 'id', route: 'contacts', queryKey: 'contact_id', labelFields: ['full_name', 'contact_name', 'email', 'company_name', 'id'] },
     ticket: { table: 'tickets', idField: 'ticket_id', route: 'tickets', queryKey: 'ticket_id', labelFields: ['ticket_id', 'title', 'status'] },
     event: { table: 'calendar_events', idField: 'event_id', route: 'events', queryKey: 'event_id', labelFields: ['title', 'event_date', 'status'] },
     client: { table: 'clients', idField: 'client_id', route: 'clients', queryKey: 'client_id', labelFields: ['legal_company_name', 'company_name', 'client_id'] },
@@ -1029,6 +1034,9 @@
     agreement: 'Agreement',
     invoice: 'Invoice',
     receipt: 'Receipt',
+    credit_note: 'Credit Note',
+    company: 'Company',
+    contact: 'Contact',
     ticket: 'Ticket',
     event: 'Event',
     client: 'Client',
@@ -1042,6 +1050,10 @@
     agreements: 'agreement',
     invoices: 'invoice',
     receipts: 'receipt',
+    credit_notes: 'credit_note',
+    'credit-notes': 'credit_note',
+    companies: 'company',
+    contacts: 'contact',
     tickets: 'ticket',
     events: 'event',
     calendar_events: 'event',
@@ -1939,7 +1951,7 @@
     }
   }
 
-  async function dispatchCommunicationCentreNotification({ action, conversationId, actorId, conversationNo, conversationTitle }) {
+  async function dispatchCommunicationCentreNotification({ action, conversationId, actorId, conversationNo, conversationTitle, relatedRecordRef }) {
     const normalizedAction = String(action || '').trim();
     const normalizedConversationId = String(conversationId || '').trim();
     if (!normalizedAction || !normalizedConversationId) return null;
@@ -1982,7 +1994,7 @@
           normalizedAction === 'conversation_reopened' ? 'Communication Centre conversation reopened' :
           'Communication Centre notification'
         );
-        const body = String(first.message || '').trim() || `Conversation ${conversationTitle || conversationNo || ''} was updated.`;
+        const body = String(first.message || '').trim() || (normalizedAction === 'conversation_created' && relatedRecordRef ? `New communication created for ${relatedRecordRef}` : `Conversation ${conversationTitle || conversationNo || ''} was updated.`);
         const url = `/#communication_centre?conversation_id=${encodeURIComponent(normalizedConversationId)}`;
 
         console.log('[Communication Centre PWA]', {
@@ -2603,7 +2615,7 @@
               <label class="muted" for="communicationCentreCreateRelatedResource">Related module</label>
               <select id="communicationCentreCreateRelatedResource" class="select communication-related-record-select">
                 <option value="">None</option>
-                <option value="ticket">Ticket</option><option value="event">Event</option><option value="client">Client</option><option value="lead">Lead</option><option value="deal">Deal</option><option value="proposal">Proposal</option><option value="agreement">Agreement</option><option value="invoice">Invoice</option><option value="receipt">Receipt</option><option value="operations_onboarding">Operations Onboarding</option>
+                <option value="ticket">Ticket</option><option value="event">Event</option><option value="client">Client</option><option value="company">Company</option><option value="contact">Contact</option><option value="lead">Lead</option><option value="deal">Deal</option><option value="proposal">Proposal</option><option value="agreement">Agreement</option><option value="invoice">Invoice</option><option value="receipt">Receipt</option><option value="credit_note">Credit Note</option><option value="operations_onboarding">Operations Onboarding</option>
               </select>
             </div>
             <div class="filter-row" style="position:relative;">
@@ -2654,24 +2666,73 @@
     }
   }
 
-  async function openCreateModal() {
+  function normalizeDirectCreateContext(context = {}) {
+    const moduleKey = normalizeRelatedModuleKey(context.related_module || context.module || context.relatedResource);
+    const recordId = normalizeText(context.related_record_id || context.recordId || context.id);
+    const recordRef = normalizeText(context.related_record_ref || context.recordRef || context.reference || recordId);
+    const recordTitle = normalizeText(context.related_record_title || context.recordTitle || context.title);
+    const partyName = normalizeText(context.client_name || context.company_name || context.companyName || context.contact_name || context.contactName);
+    const moduleLabel = getRelatedModuleLabel(moduleKey) || 'Record';
+    const displayRef = recordRef && !recordRef.toLowerCase().startsWith(moduleLabel.toLowerCase())
+      ? `${moduleLabel}${recordRef.startsWith('#') ? '' : '#'}${recordRef}`
+      : recordRef;
+    const titleSuffix = partyName || recordTitle;
+    return {
+      related_module: moduleKey,
+      related_record_id: recordId,
+      related_record_ref: displayRef || recordId,
+      related_record_title: recordTitle,
+      company_name: normalizeText(context.company_name || context.companyName),
+      client_name: normalizeText(context.client_name || context.clientName),
+      contact_name: normalizeText(context.contact_name || context.contactName),
+      default_title: normalizeText(context.default_title) || `Communication regarding ${displayRef || moduleLabel}${titleSuffix ? ` - ${titleSuffix}` : ''}`
+    };
+  }
+
+  function setDirectCreateFields(context = null) {
+    const moduleSelect = $('communicationCentreCreateRelatedResource');
+    const recordSearch = $('communicationCentreCreateRelatedRecordSearch');
+    const recordId = $('communicationCentreCreateRelatedRecordId');
+    const title = $('communicationCentreCreateTitleInput');
+    const direct = context?.related_module && context?.related_record_id ? context : null;
+    M.state.directCreateContext = direct;
+    if (moduleSelect) {
+      moduleSelect.value = direct?.related_module || '';
+      moduleSelect.disabled = Boolean(direct);
+      moduleSelect.setAttribute('aria-readonly', direct ? 'true' : 'false');
+    }
+    if (recordId) recordId.value = direct?.related_record_id || '';
+    if (recordSearch) {
+      recordSearch.value = direct?.related_record_ref || direct?.related_record_title || direct?.related_record_id || '';
+      recordSearch.disabled = Boolean(direct) || !moduleSelect?.value;
+      recordSearch.readOnly = Boolean(direct);
+      recordSearch.setAttribute('aria-readonly', direct ? 'true' : 'false');
+    }
+    if (title && direct?.default_title) title.value = direct.default_title;
+  }
+
+  async function openCreateModal(sourceContext = null) {
     if (!can('create')) {
-      showFriendlyError('Unable to create conversation. Please check your permissions and try again.');
-      return;
+      showFriendlyError('Access denied. You do not have permission to create communications.');
+      return false;
     }
     const modal = ensureCreateModal();
     const form = $('communicationCentreCreateForm');
     if (form) form.reset();
     M.state.relatedRecordOptions = [];
     M.state.relatedRecordLoading = false;
-    await loadCreateRelatedRecords();
+    const direct = sourceContext ? normalizeDirectCreateContext(sourceContext) : null;
+    setDirectCreateFields(direct);
+    if (!direct) await loadCreateRelatedRecords();
     modal.classList.add('open');
     modal.setAttribute('aria-hidden', 'false');
     await populateCreateModalOptions();
     $('communicationCentreCreateTitleInput')?.focus();
+    return true;
   }
 
   function closeCreateModal() {
+    M.state.directCreateContext = null;
     const modal = $('communicationCentreCreateModal');
     if (!modal) return;
     modal.classList.remove('open');
@@ -2729,6 +2790,7 @@
         inlineError.style.display = 'none';
         inlineError.textContent = '';
       }
+      const directCreateContext = M.state.directCreateContext;
       closeCreateModal();
       await refresh();
       if (conversation?.id) {
@@ -2739,7 +2801,8 @@
           conversationId: conversation.id,
           actorId: conversation.created_by,
           conversationNo: conversation.conversation_no,
-          conversationTitle: conversation.title || title
+          conversationTitle: conversation.title || title,
+          relatedRecordRef: directCreateContext?.related_record_ref || null
         });
       }
       showFriendlySuccess('Conversation created successfully.');
@@ -2838,6 +2901,129 @@
     element.addEventListener('click', handler, options);
   }
 
+  const SOURCE_RECORD_ACTIONS = [
+    ['lead', 'data-lead-edit'], ['deal', 'data-deal-edit'], ['agreement', 'data-agreement-view'], ['agreement', 'data-agreement-edit'],
+    ['proposal', 'data-proposal-view'], ['proposal', 'data-proposal-edit'], ['invoice', 'data-invoice-view'], ['invoice', 'data-invoice-edit'],
+    ['invoice', 'data-invoice-preview'], ['receipt', 'data-receipt-view'], ['receipt', 'data-receipt-edit'], ['receipt', 'data-receipt-preview'],
+    ['credit_note', 'data-credit-note-view'], ['credit_note', 'data-credit-note-edit'], ['credit_note', 'data-credit-note-preview'],
+    ['ticket', 'data-ticket-view'], ['ticket', 'data-ticket-edit'], ['company', 'data-company-edit'], ['contact', 'data-contact-edit'],
+    ['client', 'data-client-view'], ['client', 'data-client-edit'], ['operations_onboarding', 'data-op-open-details']
+  ];
+
+  function contextFromSourceAction(element) {
+    if (!element) return null;
+    for (const [moduleKey, attribute] of SOURCE_RECORD_ACTIONS) {
+      if (!element.hasAttribute(attribute)) continue;
+      const recordId = normalizeText(element.getAttribute(attribute));
+      if (!recordId) return null;
+      const row = element.closest('tr, .card, [data-record-id]');
+      const cells = [...(row?.querySelectorAll?.('td') || [])].map(cell => normalizeText(cell.textContent)).filter(Boolean);
+      const recordRef = normalizeText(element.dataset.communicationRef || cells[0] || recordId);
+      const recordTitle = normalizeText(element.dataset.communicationTitle || cells[1] || '');
+      return normalizeDirectCreateContext({ related_module: moduleKey, related_record_id: recordId, related_record_ref: recordRef, related_record_title: recordTitle });
+    }
+    return null;
+  }
+
+  function createSourceCommunicationButton(context) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn ghost sm communication-source-create-btn';
+    button.textContent = 'Create Communication';
+    button.dataset.createCommunication = 'true';
+    button.dataset.communicationContext = encodeURIComponent(JSON.stringify(context));
+    return button;
+  }
+
+  async function fetchRelatedConversations(context) {
+    const direct = normalizeDirectCreateContext(context);
+    if (!direct.related_module || !direct.related_record_id || !canOpenConversation()) return [];
+    const client = db();
+    if (!client?.from) return [];
+    let result = await client.from('communication_centre_conversations').select('*').eq('related_module', direct.related_module).eq('related_record_id', direct.related_record_id).order('updated_at', { ascending: false }).limit(20);
+    if (!result.error && !result.data?.length && direct.related_record_ref) {
+      const referenceResult = await client.from('communication_centre_conversations').select('*').eq('related_module', direct.related_module).eq('related_record_ref', direct.related_record_ref).order('updated_at', { ascending: false }).limit(20);
+      if (!referenceResult.error) result = referenceResult;
+    }
+    if ((result.error || !result.data?.length) && direct.related_record_ref && direct.related_record_ref !== direct.related_record_id) {
+      result = await client.from('communication_centre_conversations').select('*').eq('related_module', direct.related_module).eq('related_record_id', direct.related_record_ref).order('updated_at', { ascending: false }).limit(20);
+    }
+    if (result.error) {
+      console.warn('[Communication Centre] related conversations unavailable', result.error);
+      return [];
+    }
+    return result.data || [];
+  }
+
+  async function renderRelatedConversations(container, context) {
+    if (!container) return;
+    container.innerHTML = '<div class="muted">Loading communications…</div>';
+    const rows = await fetchRelatedConversations(context);
+    container.innerHTML = rows.length ? `<div class="table-wrap"><table><thead><tr><th>Conversation title</th><th>Latest message</th><th>Assigned users/roles</th><th>Status</th><th>Created date</th><th>Last activity</th><th></th></tr></thead><tbody>${rows.map(row => `<tr><td>${escapeHtml(row.title || row.conversation_no || 'Conversation')}</td><td>${escapeHtml(row.latest_message || row.description || '—')}</td><td>${escapeHtml(row.assigned_role || row.assigned_to_name || row.assigned_user_name || '—')}</td><td>${escapeHtml(row.status || 'Open')}</td><td>${escapeHtml(formatCommunicationExportDate(row.created_at))}</td><td>${escapeHtml(formatCommunicationExportDate(row.last_message_at || row.updated_at))}</td><td><button type="button" class="btn ghost sm" data-open-related-conversation="${escapeAttr(row.id)}">Open Conversation</button></td></tr>`).join('')}</tbody></table></div>` : '<div class="muted">No communications linked to this record yet.</div>';
+  }
+
+  function injectCommunicationIntoOpenDetail(context) {
+    const modals = [...document.querySelectorAll('.modal.open, .modal[aria-hidden="false"]')].filter(modal => modal.id !== 'communicationCentreCreateModal');
+    const modal = modals.at(-1);
+    if (!modal || modal.dataset.communicationContextInjected === `${context.related_module}:${context.related_record_id}`) return;
+    modal.dataset.communicationContextInjected = `${context.related_module}:${context.related_record_id}`;
+    const actions = modal.querySelector('.modal-header .actions, .modal-content > .header .actions, .modal-content > .actions');
+    if (actions && can('create')) actions.prepend(createSourceCommunicationButton(context));
+    const content = modal.querySelector('.modal-content');
+    if (content && !content.querySelector('.communication-related-section')) {
+      const section = document.createElement('section');
+      section.className = 'card communication-related-section';
+      section.innerHTML = '<div class="header"><h3 style="margin:0">Communications</h3></div><div data-related-communications-list></div>';
+      content.appendChild(section);
+      renderRelatedConversations(section.querySelector('[data-related-communications-list]'), context);
+    }
+  }
+
+  function decorateSourceRecordActions() {
+    if (!can('create')) return;
+    SOURCE_RECORD_ACTIONS.forEach(([, attribute]) => {
+      document.querySelectorAll(`[${attribute}]`).forEach(action => {
+        const context = contextFromSourceAction(action);
+        const host = action.parentElement;
+        if (!context || !host || host.querySelector(`[data-communication-for="${CSS.escape(`${context.related_module}:${context.related_record_id}`)}"]`)) return;
+        const button = createSourceCommunicationButton(context);
+        button.dataset.communicationFor = `${context.related_module}:${context.related_record_id}`;
+        action.insertAdjacentElement('afterend', button);
+      });
+    });
+  }
+
+  function wireSourceRecordActions() {
+    document.addEventListener('click', event => {
+      const directButton = event.target.closest?.('[data-create-communication]');
+      if (directButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        let context = M.state.sourceRecordContext;
+        try { context = JSON.parse(decodeURIComponent(directButton.dataset.communicationContext || '')) || context; } catch (_error) {}
+        openCreateModal(context);
+        return;
+      }
+      const sourceAction = event.target.closest?.(SOURCE_RECORD_ACTIONS.map(([, attribute]) => `[${attribute}]`).join(','));
+      const context = contextFromSourceAction(sourceAction);
+      if (context) {
+        M.state.sourceRecordContext = context;
+        setTimeout(() => injectCommunicationIntoOpenDetail(context), 100);
+        setTimeout(() => injectCommunicationIntoOpenDetail(context), 500);
+      }
+      const openConversation = event.target.closest?.('[data-open-related-conversation]');
+      if (openConversation) {
+        event.preventDefault();
+        const id = openConversation.getAttribute('data-open-related-conversation');
+        if (typeof global.setActiveView === 'function') global.setActiveView('communication_centre');
+        setTimeout(() => openDetail(id), 0);
+      }
+    }, true);
+    const observer = new MutationObserver(() => decorateSourceRecordActions());
+    observer.observe(document.body, { childList: true, subtree: true });
+    decorateSourceRecordActions();
+  }
+
   function wireCreateButton() {
     const button = $('communicationCentreNewBtn') || document.querySelector('[data-cc-new-conversation]');
     if (button) {
@@ -2878,6 +3064,7 @@
     }
     M.state.accessGranted = true;
     wireCreateButton();
+    wireSourceRecordActions();
     const role = String(global.Session?.role?.() || '').trim().toLowerCase();
     const canManage = can('manage');
     const canCreate = can('create');
@@ -3126,10 +3313,15 @@
   };
 
   global.addEventListener('beforeunload', () => { teardownRealtime(); stopCommunicationCentrePolling(); });
+  M.openCreateForRecord = openCreateModal;
+  M.fetchRelatedConversations = fetchRelatedConversations;
+  M.renderRelatedConversations = renderRelatedConversations;
+  M.canCreate = () => can('create');
   global.CommunicationCentre = M;
 
   document.addEventListener('DOMContentLoaded', () => {
     wireCreateButton();
+    wireSourceRecordActions();
     const tab = $('communicationCentreTab') || document.querySelector('[data-view="communication_centre"],[data-tab="communication_centre"],[href="#communication_centre"]');
     if (tab && tab.dataset.ccClickFallbackBound !== 'true') {
       tab.dataset.ccClickFallbackBound = 'true';
