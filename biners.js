@@ -11,6 +11,7 @@
   const date = value => value ? new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' }) : '—';
   const monthLabel = value => value ? new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString(undefined, { year: 'numeric', month: 'long' }) : '—';
   const auth = () => global.Session?.authContext?.() || {};
+  const isDevelopment = () => ['localhost', '127.0.0.1', '[::1]'].includes(global.location?.hostname) || global.location?.protocol === 'file:';
 
   const state = {
     initialized: false,
@@ -25,7 +26,8 @@
     summary: null,
     drawer: null,
     filters: { search: '', status: 'all', paymentStatus: 'all', currency: 'all' },
-    pages: {}
+    pages: {},
+    savingEntry: false
   };
 
   async function request(action, payload = {}) {
@@ -34,7 +36,7 @@
       try {
         return await global.Api.requestWithSession('biners', action, cleanPayload);
       } catch (error) {
-        console.warn('[Biners] Api request failed, trying direct Supabase dispatch fallback', action, error);
+        if (isDevelopment()) console.warn('[Biners] Api request failed, trying direct Supabase dispatch fallback', action, error);
         if (!global.SupabaseData?.dispatch) throw error;
       }
     }
@@ -463,6 +465,7 @@
   function openEntryModal() {
     const form = $('binersEntryForm');
     form.reset();
+    clearEntryErrors();
     populateClients('');
     $('binersCurrency').value = 'USD';
     $('binersLicenseLengthMonths').value = 12;
@@ -512,65 +515,178 @@
   function closePayment() { $('binersRecordPaymentModal').hidden = true; }
   const values = selector => [...document.querySelectorAll(selector)];
 
-  async function saveEntry(e) {
-    e.preventDefault();
+  function toast(message) {
+    global.UI?.toast?.(message);
+  }
+
+  function clearEntryErrors() {
+    $('binersEntryErrorBanner')?.setAttribute('hidden', '');
+    const banner = $('binersEntryErrorBanner');
+    if (banner) banner.textContent = '';
+    values('#binersEntryForm [aria-invalid="true"]').forEach(input => input.removeAttribute('aria-invalid'));
+    values('#binersEntryForm .biners-field-error').forEach(error => error.remove());
+  }
+
+  function showFieldError(input, message) {
+    if (!input) return;
+    input.setAttribute('aria-invalid', 'true');
+    const error = document.createElement('span');
+    error.className = 'biners-field-error';
+    error.textContent = message;
+    input.insertAdjacentElement('afterend', error);
+  }
+
+  function validateEntry() {
+    clearEntryErrors();
+    const existingClientFlow = $('binersEntryType').value === 'existing_client_new_location';
+    const rules = [
+      [existingClientFlow ? $('binersExistingClientId') : $('binersClientName'), existingClientFlow ? 'Client is required.' : 'Manual client name is required.', value => Boolean(String(value).trim())],
+      [$('binersModuleName'), 'Module name is required.', value => Boolean(String(value).trim())],
+      [$('binersLicenseLengthMonths'), 'License length months is required.', value => num(value) > 0],
+      [$('binersNumberOfLocations'), 'Number of locations is required.', value => num(value) > 0],
+      [$('binersCostPerLocation'), 'Cost per location is required.', value => String(value).trim() !== '' && num(value) >= 0]
+    ];
+    if (existingClientFlow) rules.push(
+      [$('binersClientLegalName'), 'Client legal name is required.', value => Boolean(String(value).trim())],
+      [$('binersLicenseType'), 'License type is required.', value => Boolean(String(value).trim())],
+      [$('binersServiceStartDate'), 'Service start date is required.', value => Boolean(value)],
+      [$('binersServiceEndDate'), 'Service end date is required.', value => Boolean(value)],
+      [$('binersCurrency'), 'Currency is required.', value => Boolean(String(value).trim())]
+    );
+    const validationErrors = [];
+    rules.forEach(([input, message, valid]) => {
+      if (!input || valid(input.value)) return;
+      validationErrors.push(message);
+      showFieldError(input, message);
+    });
+    const locationInputs = values('.biners-location-row [data-biners-location-name]');
+    if (!locationInputs.some(input => input.value.trim())) {
+      const message = 'At least one related location name is required.';
+      validationErrors.push(message);
+      showFieldError(locationInputs[0], message);
+    }
+    if (validationErrors.length) {
+      const banner = $('binersEntryErrorBanner');
+      if (banner) {
+        banner.textContent = validationErrors.join(' ');
+        banner.hidden = false;
+      }
+      validationErrors[0] && toast(validationErrors[0]);
+      $('binersEntryForm')?.querySelector('[aria-invalid="true"]')?.focus();
+    }
+    return validationErrors;
+  }
+
+  function buildEntryPayload() {
     const client = state.clients.find(item => String(item.id) === String($('binersExistingClientId').value));
-    const payload = {
+    const clientId = client?.client_id || null;
+    const companyId = client?.company_id || client?.company_uuid || null;
+    const clientName = $('binersClientName').value.trim() || client?.customer_name || client?.legal_name || '';
+    const legalName = $('binersClientLegalName').value.trim() || client?.legal_name || clientName;
+    const moduleName = $('binersModuleName').value.trim();
+    const licenseType = $('binersLicenseType').value.trim();
+    const licenseLength = num($('binersLicenseLengthMonths').value);
+    const startDate = $('binersServiceStartDate').value || null;
+    const endDate = $('binersServiceEndDate').value || null;
+    const currency = $('binersCurrency').value.trim() || 'USD';
+    const createdBy = auth();
+    return {
       entry: {
         entry_type: $('binersEntryType').value,
         client_id: client?.client_id || null,
         company_id: client?.company_id || client?.company_uuid || null,
-        company_name: client?.legal_name || client?.customer_name || '',
+        company_name: legalName,
         client_reference: client?.account_number || '',
-        client_name: $('binersClientName').value || client?.customer_name || client?.legal_name,
-        client_legal_name: $('binersClientLegalName').value,
-        client_country: $('binersClientCountry').value,
-        client_city: $('binersClientCity').value,
-        client_address: $('binersClientAddress').value,
-        client_contact_name: $('binersClientContactName').value,
-        client_contact_email: $('binersClientContactEmail').value,
-        client_contact_phone: $('binersClientContactPhone').value,
-        module_name: $('binersModuleName').value,
-        license_type: $('binersLicenseType').value,
-        license_length_months: num($('binersLicenseLengthMonths').value),
+        client_name: clientName,
+        client_legal_name: legalName,
+        client_country: $('binersClientCountry').value.trim() || client?.country || '',
+        client_city: $('binersClientCity').value.trim() || client?.city || '',
+        client_address: $('binersClientAddress').value.trim() || client?.address || '',
+        client_contact_name: $('binersClientContactName').value.trim() || client?.contact_name || '',
+        client_contact_email: $('binersClientContactEmail').value.trim() || client?.contact_email || '',
+        client_contact_phone: $('binersClientContactPhone').value.trim() || client?.contact_phone || '',
+        module_name: moduleName,
+        license_type: licenseType,
+        license_length_months: licenseLength,
         number_of_locations: num($('binersNumberOfLocations').value),
-        service_start_date: $('binersServiceStartDate').value || null,
-        service_end_date: $('binersServiceEndDate').value || null,
-        currency: $('binersCurrency').value || 'USD',
+        service_start_date: startDate,
+        service_end_date: endDate,
+        currency,
         total_payable_amount: num($('binersTotalPayableAmount').value),
         cost_per_location: num($('binersCostPerLocation').value),
         description: $('binersDescription').value,
         internal_notes: $('binersInternalNotes').value,
         entry_status: 'active',
         payment_status: 'unpaid',
-        created_by: auth().id || null,
-        created_by_email: auth().email || ''
+        created_by: createdBy.id || null,
+        created_by_email: createdBy.email || ''
       },
-      locations: values('.biners-location-row').map(x => ({
-        location_name: x.querySelector('[data-biners-location-name]').value,
-        location_reference: x.querySelector('[data-biners-location-code]').value,
-        module_name: $('binersModuleName').value,
-        license_type: $('binersLicenseType').value,
-        license_length_months: num($('binersLicenseLengthMonths').value),
-        service_start_date: $('binersServiceStartDate').value || null,
-        service_end_date: $('binersServiceEndDate').value || null,
-        currency: $('binersCurrency').value || 'USD',
+      locations: values('.biners-location-row').map(row => ({
+        location_name: row.querySelector('[data-biners-location-name]').value.trim(),
+        location_reference: row.querySelector('[data-biners-location-code]').value.trim(),
+        client_id: clientId,
+        company_id: companyId,
+        service_start_date: startDate,
+        service_end_date: endDate,
+        module_name: moduleName,
+        license_type: licenseType,
+        license_length_months: licenseLength,
+        currency,
         cost_amount: num($('binersCostPerLocation').value)
-      })).filter(x => x.location_name || x.location_reference),
-      schedules: values('.biners-schedule-row').map(x => ({
-        schedule_no: num(x.querySelector('[data-biners-schedule-no]').value),
-        due_date: x.querySelector('[data-biners-schedule-due]').value,
-        scheduled_amount: num(x.querySelector('[data-biners-schedule-amount]').value),
-        payment_status: x.querySelector('[data-biners-schedule-status]').value,
-        currency: $('binersCurrency').value || 'USD',
-        created_by: auth().id || null,
-        created_by_email: auth().email || ''
-      })).filter(x => x.due_date && x.scheduled_amount > 0)
+      })).filter(location => location.location_name || location.location_reference),
+      schedules: values('.biners-schedule-row').map(row => ({
+        schedule_no: num(row.querySelector('[data-biners-schedule-no]').value),
+        due_date: row.querySelector('[data-biners-schedule-due]').value,
+        scheduled_amount: num(row.querySelector('[data-biners-schedule-amount]').value),
+        payment_status: row.querySelector('[data-biners-schedule-status]').value,
+        currency,
+        created_by: createdBy.id || null,
+        created_by_email: createdBy.email || ''
+      })).filter(schedule => schedule.due_date && schedule.scheduled_amount > 0)
     };
-    await request('create', payload);
-    closeEntry();
-    await refresh();
-    global.UI?.toast?.('Biners entry created.');
+  }
+
+  function entrySaveErrorMessage(error) {
+    const message = String(error?.message || error || 'Unknown error');
+    return /forbidden|permission|row-level security|rls|42501/i.test(message)
+      ? 'Access denied. You do not have permission to create Biners entries.'
+      : message.startsWith('Unable to create Biners entry') ? message : `Unable to create Biners entry: ${message}`;
+  }
+
+  function showEntrySaveError(error) {
+    if (isDevelopment()) console.error('Biners Entry Save Failed', error);
+    const message = entrySaveErrorMessage(error);
+    const banner = $('binersEntryErrorBanner');
+    if (banner) { banner.textContent = message; banner.hidden = false; }
+    setState(message, 'error');
+    toast(message);
+  }
+
+  async function saveEntry(e) {
+    e.preventDefault();
+    if (state.savingEntry) return;
+    updateServiceEnd();
+    updateTotal();
+    const validationErrors = validateEntry();
+    const payload = validationErrors.length ? null : buildEntryPayload();
+    if (isDevelopment()) console.log('Biners Save Clicked', { formState: payload?.entry || null, validationErrors, payload });
+    if (validationErrors.length) return;
+
+    const btn = $('binersSaveEntryBtn');
+    state.savingEntry = true;
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
+    try {
+      const result = await request('create', payload);
+      if (isDevelopment()) console.log('Biners Entry Created', result);
+      closeEntry();
+      await refresh();
+      toast('Biners entry created successfully.');
+    } catch (error) {
+      showEntrySaveError(error);
+    } finally {
+      state.savingEntry = false;
+      if (btn) { btn.disabled = false; btn.textContent = 'Save Entry'; }
+    }
   }
 
   async function recordOneSchedulePayment(row, amount, basePayload) {
@@ -608,7 +724,21 @@
     }
   }
 
-  function updateTotal() { const el = $('binersTotalPayableAmount'); if (el) el.value = (num($('binersNumberOfLocations').value) * num($('binersCostPerLocation').value)).toFixed(2); }
+  function updateServiceEnd() {
+    const start = $('binersServiceStartDate')?.value;
+    const months = num($('binersLicenseLengthMonths')?.value);
+    if (!start || months <= 0) return;
+    const startDate = new Date(`${start}T00:00:00Z`);
+    const end = new Date(Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth() + months + 1, 0));
+    end.setUTCDate(Math.min(startDate.getUTCDate(), end.getUTCDate()));
+    end.setUTCDate(end.getUTCDate() - 1);
+    $('binersServiceEndDate').value = end.toISOString().slice(0, 10);
+  }
+
+  function updateTotal() {
+    const el = $('binersTotalPayableAmount');
+    if (el) el.value = (num($('binersNumberOfLocations').value) * num($('binersCostPerLocation').value) * num($('binersLicenseLengthMonths').value) / 12).toFixed(2);
+  }
 
   function normalizeList(value) {
     if (Array.isArray(value)) return value;
@@ -712,11 +842,12 @@
     document.querySelectorAll('[data-biners-close-entry]').forEach(x => x.addEventListener('click', closeEntry));
     document.querySelectorAll('[data-biners-close-payment]').forEach(x => x.addEventListener('click', closePayment));
     document.querySelectorAll('[data-biners-close-drawer]').forEach(x => x.addEventListener('click', closeDrawer));
-    $('binersEntryForm')?.addEventListener('submit', e => saveEntry(e).catch(err => setState(err.message || String(err), 'error')));
+    $('binersEntryForm')?.addEventListener('submit', e => saveEntry(e).catch(showEntrySaveError));
     $('binersRecordPaymentForm')?.addEventListener('submit', e => savePayment(e).catch(err => setState(err.message || String(err), 'error')));
     $('binersAddScheduleRowBtn')?.addEventListener('click', () => addScheduleRow());
     $('binersAddLocationRowBtn')?.addEventListener('click', () => addLocationRow());
-    ['binersNumberOfLocations', 'binersCostPerLocation'].forEach(id => $(id)?.addEventListener('input', updateTotal));
+    ['binersNumberOfLocations', 'binersCostPerLocation', 'binersLicenseLengthMonths'].forEach(id => $(id)?.addEventListener('input', updateTotal));
+    ['binersServiceStartDate', 'binersLicenseLengthMonths'].forEach(id => $(id)?.addEventListener('input', updateServiceEnd));
     ['binersSearchInput', 'binersStatusFilter', 'binersPaymentStatusFilter', 'binersCurrencyFilter'].forEach(id => $(id)?.addEventListener(id === 'binersSearchInput' ? 'input' : 'change', () => {
       state.filters = { search: $('binersSearchInput').value, status: $('binersStatusFilter').value, paymentStatus: $('binersPaymentStatusFilter').value, currency: $('binersCurrencyFilter').value };
       state.pages = {};

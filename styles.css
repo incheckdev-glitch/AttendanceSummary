@@ -3419,3 +3419,9 @@ body.pf-modal-open{overflow:hidden}.pf-activity-modal[hidden],.pf-note-modal[hid
 @media (max-width: 720px) { .lifecycle-history-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .lifecycle-history-drawer { border-radius: 0; } }
 .cc-edited-label{font-size:11px;font-weight:700;color:#64748b}
 .cc-delete-message-btn{color:#b42318;border-color:#fecaca}.cc-delete-message-btn:hover{background:#fef2f2;border-color:#fca5a5;color:#991b1b}
+
+/* Biners entry validation and save feedback */
+.biners-entry-error { margin-bottom:12px; padding:10px 12px; border:1px solid #fecaca; border-radius:10px; background:#fef2f2; color:#991b1b; font-size:13px; font-weight:600; }
+.biners-entry-error[hidden] { display:none; }
+.biners-field-error { color:#b91c1c; font-size:11px; font-weight:600; letter-spacing:0; }
+#binersEntryForm [aria-invalid="true"] { border-color:#dc2626; box-shadow:0 0 0 2px rgba(220,38,38,.12); }
