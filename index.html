@@ -2158,17 +2158,18 @@ Sample:
 
       <div id="binersEntryModal" class="biners-modal" role="dialog" aria-modal="true" aria-labelledby="binersEntryModalTitle" hidden>
         <button class="biners-modal-backdrop" type="button" data-biners-close-entry aria-label="Close Biners entry"></button>
-        <form id="binersEntryForm" class="biners-dialog">
+        <form id="binersEntryForm" class="biners-dialog" novalidate>
           <header class="biners-dialog-header">
             <div><span class="pf-eyebrow">Biners</span><h2 id="binersEntryModalTitle">New Biners Entry</h2></div>
             <button class="btn ghost sm" type="button" data-biners-close-entry>Close</button>
           </header>
+          <div id="binersEntryErrorBanner" class="biners-entry-error" role="alert" hidden></div>
           <div class="biners-form-grid">
             <label>Entry Type *<select id="binersEntryType" class="select" required><option value="existing_client_new_location">Existing Client - New Location</option><option value="new_client_with_location">New Client with Location</option></select></label>
             <label>Find Existing Company / Client<input id="binersExistingClientSearch" class="input" type="search" placeholder="Legal name, client name, account #, or email" /></label>
             <label>Existing Company / Client<select id="binersExistingClientId" class="select"><option value="">Select existing client...</option></select></label>
             <label>Manual Client Name *<input id="binersClientName" class="input" type="text" required /></label>
-            <label>Client Legal Name<input id="binersClientLegalName" class="input" type="text" /></label>
+            <label>Client Legal Name *<input id="binersClientLegalName" class="input" type="text" /></label>
             <label>Country<input id="binersClientCountry" class="input" type="text" /></label>
             <label>City<input id="binersClientCity" class="input" type="text" /></label>
             <label>Address<input id="binersClientAddress" class="input" type="text" /></label>
@@ -2176,12 +2177,12 @@ Sample:
             <label>Contact Email<input id="binersClientContactEmail" class="input" type="email" /></label>
             <label>Contact Phone<input id="binersClientContactPhone" class="input" type="text" /></label>
             <label>Module Name *<input id="binersModuleName" class="input" type="text" placeholder="InCheck Basic / Module..." required /></label>
-            <label>License Type<input id="binersLicenseType" class="input" type="text" placeholder="SaaS / Lite / Full" /></label>
+            <label>License Type *<input id="binersLicenseType" class="input" type="text" placeholder="SaaS / Lite / Full" /></label>
             <label>License Length Months *<input id="binersLicenseLengthMonths" class="input" type="number" min="1" value="12" required /></label>
             <label>Number of Locations *<input id="binersNumberOfLocations" class="input" type="number" min="1" value="1" required /></label>
-            <label>Service Start<input id="binersServiceStartDate" class="input" type="date" /></label>
-            <label>Service End<input id="binersServiceEndDate" class="input" type="date" /></label>
-            <label>Currency<input id="binersCurrency" class="input" type="text" value="USD" /></label>
+            <label>Service Start *<input id="binersServiceStartDate" class="input" type="date" /></label>
+            <label>Service End *<input id="binersServiceEndDate" class="input" type="date" /></label>
+            <label>Currency *<input id="binersCurrency" class="input" type="text" value="USD" /></label>
             <label>Cost Per Location *<input id="binersCostPerLocation" class="input" type="number" min="0" step="0.01" value="0" required /></label>
             <label>Total Payable<input id="binersTotalPayableAmount" class="input" type="number" readonly /></label>
             <label class="biners-full">Description<textarea id="binersDescription" class="input" rows="2"></textarea></label>
@@ -4215,7 +4216,7 @@ Sample:
   <script src="credit-notes.js?v=20260604-credit-notes1"></script>
   <script src="payment-forecast.js?v=20260605-followup-activity2"></script>
   <script src="renewal-forecast.js?v=20260611-admin-guard1"></script>
-  <script src="biners.js?v=20260605-biners-init-safe-final"></script>
+  <script src="biners.js?v=20260611-entry-save-fix"></script>
   <script src="lifecycle-analytics.js?v=20260610-lifecycle-metrics-source-truth"></script>
   <script src="clients.js?v=20260611-direct-communication"></script>
   <script src="proposal-catalog.js?v=20260427-allpwa1"></script>
