@@ -5,7 +5,7 @@ const vm = require('vm');
 const frontend = fs.readFileSync('renewal-forecast.js', 'utf8');
 const html = fs.readFileSync('index.html', 'utf8');
 const migration = fs.readFileSync('sql/migrations/20260610_renewal_no_needed_override.sql', 'utf8');
-const context = { console, Blob: class {}, URL: {}, window: {}, document: {}, U: { fmtNumber: value => String(value), fmtDate: value => value, escapeHtml: value => String(value), escapeAttr: value => String(value) }, UI: { toast() {} } };
+const context = { console, Blob: class {}, URL: {}, window: { isMonthlyRenewalForecastAdmin: () => true, Permissions: { getResolvedCurrentUser: () => ({ role: 'admin' }) } }, document: {}, U: { fmtNumber: value => String(value), fmtDate: value => value, escapeHtml: value => String(value), escapeAttr: value => String(value) }, UI: { toast() {} }, Permissions: { can: () => true, hasAdminOverride: () => false } };
 vm.createContext(context);
 vm.runInContext(frontend, context);
 const forecast = context.window.RenewalForecast;
