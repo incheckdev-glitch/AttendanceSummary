@@ -13,7 +13,6 @@ const LifecycleAnalytics = {
       stage: 'All',
       paymentState: 'All',
       onboardingStatus: 'All',
-      technicalStatus: 'All',
       renewalWindow: 'All',
       locationState: 'All',
       client: 'All',
@@ -152,7 +151,6 @@ const LifecycleAnalytics = {
     const aliases = type => {
       const values = new Set([type]);
       if (type.includes('operationsonboarding') || type === 'onboarding') values.add('onboarding');
-      if (type.includes('technicaladminrequest') || type === 'technicalrequest' || type === 'technical') values.add('technicalrequest');
       if (type === 'creditnote') values.add('creditnote');
       return values;
     };
@@ -167,7 +165,7 @@ const LifecycleAnalytics = {
     const historySources = [
       ['lifecycleStatusLogs', ''], ['lifecycleLogs', ''], ['lifecycleHistory', ''], ['activityLogs', ''], ['auditLogs', ''], ['statusHistory', ''],
       ['proposalLogs', 'proposal'], ['agreementLogs', 'agreement'], ['invoiceLogs', 'invoice'], ['receiptLogs', 'receipt'],
-      ['creditNoteLogs', 'credit_note'], ['operationsOnboardingLogs', 'operations_onboarding'], ['technicalAdminRequestLogs', 'technical_admin_request']
+      ['creditNoteLogs', 'credit_note'], ['operationsOnboardingLogs', 'operations_onboarding']
     ];
     return historySources.flatMap(([key, sourceType]) => (Array.isArray(account?.[key]) ? account[key] : []).map(log => ({ log, sourceType })))
       .filter(({ log, sourceType }) => {
@@ -472,7 +470,6 @@ const LifecycleAnalytics = {
     const additionalEntities = [
       ['creditNotes', 'credit_note', 'Credit note created', ['credit_note_number','credit_note_id'], ['status']],
       ['onboarding', 'operations_onboarding', 'Operations onboarding created', ['onboarding_id','agreement_id'], ['onboarding_status','status']],
-      ['technical', 'technical_admin_request', 'Technical admin request created', ['request_id','technical_request_id'], ['request_status','technical_request_status','status']],
       ['tickets', 'ticket', 'Ticket created', ['ticket_id'], ['status']],
       ['events', 'event', 'Event created', ['event_id'], ['status']],
       ['binersEntries', 'biners_entry', 'Biners entry created', ['entry_number','schedule_number'], ['status','schedule_status']],
@@ -930,7 +927,6 @@ const LifecycleAnalytics = {
       paymentSchedule: this.safeFetchTable(db, 'invoice_payment_schedule', '*'),
       clients: this.safeFetchTable(db, 'clients', '*'),
       onboarding: this.fetchOnboardingRows(db),
-      technical: this.safeFetchTable(db, 'technical_admin_requests', '*'),
       tickets: this.safeFetchTable(db, 'tickets', '*'),
       events: this.safeFetchTable(db, 'events', '*'),
       binersEntries: this.safeFetchTable(db, 'biners_entries', '*'),
@@ -945,7 +941,6 @@ const LifecycleAnalytics = {
       receiptLogs: this.safeFetchTable(db, 'receipt_logs', '*', { quiet: true }),
       creditNoteLogs: this.safeFetchTable(db, 'credit_note_logs', '*', { quiet: true }),
       operationsOnboardingLogs: this.safeFetchTable(db, 'operations_onboarding_logs', '*', { quiet: true }),
-      technicalAdminRequestLogs: this.safeFetchTable(db, 'technical_admin_request_logs', '*', { quiet: true }),
       activityLogs: this.safeFetchTable(db, 'activity_logs', '*', { quiet: true }),
       auditLogs: this.safeFetchTable(db, 'audit_logs', '*', { quiet: true }),
       statusHistory: this.safeFetchTable(db, 'status_history', '*', { quiet: true }),
@@ -983,9 +978,8 @@ const LifecycleAnalytics = {
       paymentSchedule: data.paymentSchedule.length,
       clients: data.clients.length,
       onboarding: data.onboarding.length,
-      technical: data.technical.length,
       lifecycleStatusLogs: data.lifecycleStatusLogs.length,
-      relatedHistoryLogs: ['lifecycleLogs', 'lifecycleHistory', 'proposalLogs', 'agreementLogs', 'invoiceLogs', 'receiptLogs', 'creditNoteLogs', 'operationsOnboardingLogs', 'technicalAdminRequestLogs', 'activityLogs', 'auditLogs', 'statusHistory'].reduce((sum, key) => sum + data[key].length, 0),
+      relatedHistoryLogs: ['lifecycleLogs', 'lifecycleHistory', 'proposalLogs', 'agreementLogs', 'invoiceLogs', 'receiptLogs', 'creditNoteLogs', 'operationsOnboardingLogs', 'activityLogs', 'auditLogs', 'statusHistory'].reduce((sum, key) => sum + data[key].length, 0),
       workflowApprovals: data.workflowApprovals.length
     });
 
@@ -1223,7 +1217,7 @@ const LifecycleAnalytics = {
       if (!reference) return null;
       return [...accounts.values()].find(candidate => lifecycleCollections.some(key => candidate[key].some(record => lifecycleRecordKeys(record).includes(reference)))) || null;
     };
-    ['lifecycleStatusLogs', 'lifecycleLogs', 'lifecycleHistory', 'proposalLogs', 'agreementLogs', 'invoiceLogs', 'receiptLogs', 'creditNoteLogs', 'operationsOnboardingLogs', 'technicalAdminRequestLogs', 'activityLogs', 'auditLogs', 'statusHistory'].forEach(source => { const target = source;
+    ['lifecycleStatusLogs', 'lifecycleLogs', 'lifecycleHistory', 'proposalLogs', 'agreementLogs', 'invoiceLogs', 'receiptLogs', 'creditNoteLogs', 'operationsOnboardingLogs', 'activityLogs', 'auditLogs', 'statusHistory'].forEach(source => { const target = source;
       (data[source] || []).forEach(log => {
         const account = this.lifecycleReferenceFields().map(field => log?.[field]).map(findAccountForLifecycleReference).find(Boolean);
         if (account) account[target].push(log);
@@ -1244,7 +1238,7 @@ const LifecycleAnalytics = {
     const rows = key => Array.isArray(context[key]) ? context[key] : [];
     const first = (key, fields) => this.getEarliestDate(rows(key).map(record => fields.map(field => record?.[field])));
     const normalizedStatus = record => this.normalizeStatus(record?.status || record?.stage || record?.agreement_status || record?.invoice_status || record?.payment_status || record?.payment_state || record?.onboarding_status || record?.request_status);
-    const logCollections = ['lifecycleStatusLogs', 'lifecycleLogs', 'lifecycleHistory', 'activityLogs', 'auditLogs', 'statusHistory', 'proposalLogs', 'agreementLogs', 'invoiceLogs', 'receiptLogs', 'creditNoteLogs', 'operationsOnboardingLogs', 'technicalAdminRequestLogs'];
+    const logCollections = ['lifecycleStatusLogs', 'lifecycleLogs', 'lifecycleHistory', 'activityLogs', 'auditLogs', 'statusHistory', 'proposalLogs', 'agreementLogs', 'invoiceLogs', 'receiptLogs', 'creditNoteLogs', 'operationsOnboardingLogs'];
     const allLogs = logCollections.flatMap(rows);
     const logStatus = log => this.normalizeStatus(log?.new_status || log?.status || log?.to_status || log?.new_value);
     const logEntity = log => this.normalizeStatus(log?.entity_type || log?.module || log?.resource_type || log?.table_name).replace(/ /g, '');
@@ -1345,7 +1339,7 @@ const LifecycleAnalytics = {
     const totalCycleDuration = earliestLifecycleDate && latestLifecycleEnd ? this.diffDays(earliestLifecycleDate, latestLifecycleEnd) : null;
     const invoiceDueDate = first('invoices', ['due_date', 'payment_due_date']);
     const invoiceThreshold = invoiceStart && invoiceDueDate ? this.diffDays(invoiceStart, invoiceDueDate) : 30;
-    const stageThresholds = { Lead: 7, Deal: 14, Proposal: 14, Agreement: 30, Invoice: invoiceThreshold, Onboarding: 14, 'Technical request': 7, ...(context.lifecycleStageThresholds || {}) };
+    const stageThresholds = { Lead: 7, Deal: 14, Proposal: 14, Agreement: 30, Invoice: invoiceThreshold, Onboarding: 14, ...(context.lifecycleStageThresholds || {}) };
     const openStageCandidates = [];
     const addOpenStage = (name, start, collection, closedStatuses) => {
       if (!start || !rows(collection).length || !stageIsActive(collection, closedStatuses)) return;
@@ -1357,7 +1351,6 @@ const LifecycleAnalytics = {
     if (!validAgreementInvoiceStart && !agreementSigned) addOpenStage('Agreement', agreementStart, 'agreements', ['signed', 'executed', 'cancelled', 'terminated']);
     addOpenStage('Invoice', invoiceStart, 'invoices', ['fully paid', 'paid', 'settled', 'cancelled', 'void']);
     addOpenStage('Onboarding', first('onboarding', ['created_at', 'requested_at']), 'onboarding', ['completed', 'cancelled']);
-    addOpenStage('Technical request', first('technical', ['created_at', 'requested_at']), 'technical', ['completed', 'cancelled', 'closed']);
     const latestOpenStage = openStageCandidates.sort((a, b) => b.start - a.start)[0] || null;
     const stuck = latestOpenStage && latestOpenStage.age > latestOpenStage.threshold ? latestOpenStage : null;
     const durations = [{ name: 'Lead', value: daysInLead }, { name: 'Deal', value: daysInDeal }, { name: 'Proposal', value: daysInProposal }, { name: 'Agreement', value: daysInAgreement }, { name: 'Invoice', value: daysInInvoice }].filter(item => item.value !== null);
@@ -1505,20 +1498,12 @@ const LifecycleAnalytics = {
     const lifecycle = this.buildLifecycleMetrics(account, today);
     const paymentState = this.derivePaymentStateFromInvoices(account.invoices, totalInvoiced, totalPaid, totalDue);
     const onboardingStatus = this.summarizeOperationalStatus(account.onboarding, 'onboarding');
-    const technicalStatus = this.summarizeOperationalStatus(account.technical, 'technical');
 
     const relatedOnboarding = this.findRelatedOnboarding(account, account.onboarding);
-    const latestTechnical = account.technical
-      .slice()
-      .sort((a, b) => (this.toDate(b.completed_at || b.requested_at)?.getTime() || 0) - (this.toDate(a.completed_at || a.requested_at)?.getTime() || 0))[0] || null;
 
     const openClientRequest = account.onboarding.some(row => {
       const status = this.norm(row.onboarding_status);
       return status.includes('pending') || status.includes('progress') || status.includes('block');
-    });
-    const openTechnicalRequest = account.technical.some(row => {
-      const status = this.norm(row.request_status);
-      return !(status.includes('complete') || status.includes('closed'));
     });
 
     const row = {
@@ -1550,11 +1535,9 @@ const LifecycleAnalytics = {
       paymentState,
       paymentHealth: paymentState,
       onboardingStatus,
-      technicalStatus,
       assignedCsm: this.text(relatedOnboarding?.csm_assigned_to),
       goLiveDate: this.text(this.getActualGoLiveDate(relatedOnboarding)),
       openClientRequest,
-      openTechnicalRequest,
       operationalReadiness: this.getOperationalReadiness(relatedOnboarding),
       lastActivity: lifecycle.lastActivityDate,
       lifecycle,
@@ -1759,11 +1742,9 @@ const LifecycleAnalytics = {
       partiallyPaidScheduleRows: schedules.filter(row => this.normalizeScheduleStatus(row) === 'Partially Paid').length,
       accountsDueForRenewal: annualSaasItems.filter(item => { const end = this.toDate(item.service_end_date); const days = end ? this.calculateDecimalDays(today, end) : null; return days !== null && days <= 30; }).length,
       activeOnboardingAccounts: onboarding.filter(row => !this.isLifecycleStatus(row, ['status', 'onboarding_status'], 'completed')).length,
-      openTechnicalAdminRequests: technical.filter(row => !this.isLifecycleStatus(row, ['status', 'request_status', 'technical_request_status'], 'completed')).length,
       proposalCreated: proposals.length, proposalAccepted: acceptedProposals.length, agreementSigned: signedAgreements.length,
       invoiceIssued: issuedInvoices.length, receiptCreated: receipts.length, creditNoteCreated: creditNotes.length,
       operationsOnboardingCreated: onboarding.length, operationsCompleted: onboarding.filter(row => this.isLifecycleStatus(row, ['status', 'onboarding_status'], 'completed')).length,
-      technicalRequestCreated: technical.length, technicalRequestCompleted: technical.filter(row => this.isLifecycleStatus(row, ['status', 'request_status', 'technical_request_status'], 'completed')).length
     };
     Object.keys(metrics).forEach(key => { if (typeof metrics[key] === 'number' && !Number.isFinite(metrics[key])) metrics[key] = 0; });
     this.logLifecycleMetricsAudit({ rawProposals: proposals.length, rawAgreements: agreements.length, signedAgreements: signedAgreements.length, annualSaasRows: annualSaasItems.length, issuedInvoices: issuedInvoices.length, receiptsTotal: totalPaid, creditNotesTotal: totalCredited, outstandingTotal: totalDue, finalCardValues: metrics });
@@ -1817,7 +1798,6 @@ const LifecycleAnalytics = {
       if (f.stage !== 'All' && row.currentStage !== f.stage) return false;
       if (f.paymentState !== 'All' && row.paymentState !== f.paymentState) return false;
       if (f.onboardingStatus !== 'All' && row.onboardingStatus !== f.onboardingStatus) return false;
-      if (f.technicalStatus !== 'All' && row.technicalStatus !== f.technicalStatus) return false;
       const selectedClient = this.text(f.client);
       const linkedCompany = row.linkedCompany || null;
       const legalName = this.getLifecycleClientLegalName(row.lifecycleChain || row, linkedCompany);
@@ -1923,7 +1903,6 @@ const LifecycleAnalytics = {
       ['Partial Schedule Rows', o.partiallyPaidScheduleRows],
       ['Renewal / SaaS Ends', o.accountsDueForRenewal],
       ['Active Onboarding Accounts', o.activeOnboardingAccounts],
-      ['Open Technical Admin Requests', o.openTechnicalAdminRequests],
       ['Proposal Created', o.proposalCreated],
       ['Proposal Accepted', o.proposalAccepted],
       ['Agreement Signed', o.agreementSigned],
@@ -1932,8 +1911,6 @@ const LifecycleAnalytics = {
       ['Credit Note Created', o.creditNoteCreated],
       ['Operations Onboarding Created', o.operationsOnboardingCreated],
       ['Operations Completed', o.operationsCompleted],
-      ['Technical Request Created', o.technicalRequestCreated],
-      ['Technical Request Completed', o.technicalRequestCompleted]
     ];
     root.innerHTML = cards
       .map(([label, value]) => `<div class="card kpi"><div class="label">${this.escape(label)}</div><div class="value">${this.escape(String(value ?? 0))}</div></div>`)
@@ -1947,7 +1924,7 @@ const LifecycleAnalytics = {
     const warningText = (this.state.warnings || []).join(' ');
     state.textContent = `${rows.length} account${rows.length === 1 ? '' : 's'} in 360 analytics.${warningText ? ` ${warningText}` : ''}`;
     if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="14" class="muted" style="text-align:center;">No accounts match the selected filters.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="13" class="muted" style="text-align:center;">No accounts match the selected filters.</td></tr>';
       return;
     }
 
@@ -1965,7 +1942,6 @@ const LifecycleAnalytics = {
         <td>${this.escape(U.fmtDisplayDate(row.nextRenewal) || '—')}</td>
         <td>${this.statusBadge(row.paymentState)}</td>
         <td>${this.statusBadge(row.onboardingStatus)}</td>
-        <td>${this.statusBadge(row.technicalStatus)}</td>
         <td>${this.escape(U.fmtDisplayDate(row.lastActivity) || '—')}</td>
       </tr>`)
       .join('');
@@ -2026,11 +2002,9 @@ const LifecycleAnalytics = {
         <div class="card"><div class="label">Next Renewal</div><div class="value">${this.escape(this.fmtDate(selected.nextRenewal))}</div></div>
         <div class="card"><div class="label">Renewal Exposure</div><div class="value">${this.escape(selected.renewalExposure)}</div></div>
         <div class="card"><div class="label">Onboarding Status</div><div class="value">${this.escape(selected.onboardingStatus)}</div></div>
-        <div class="card"><div class="label">Technical Admin Status</div><div class="value">${this.escape(selected.technicalStatus)}</div></div>
         <div class="card"><div class="label">Assigned CSM</div><div class="value">${this.escape(selected.assignedCsm || '—')}</div></div>
         <div class="card"><div class="label">Go Live Date</div><div class="value">${this.escape((selected.goLiveDate ? this.formatDateTime(selected.goLiveDate) : '—'))}</div></div>
         <div class="card"><div class="label">Open Client Request</div><div class="value">${this.escape(selected.openClientRequest ? 'Yes' : 'No')}</div></div>
-        <div class="card"><div class="label">Open Technical Request</div><div class="value">${this.escape(selected.openTechnicalRequest ? 'Yes' : 'No')}</div></div>
         <div class="card"><div class="label">Operational Readiness</div><div class="value">${this.escape(selected.operationalReadiness)}</div></div>
       </div>
       ${this.renderLifecycleTimeline(selected)}
@@ -2067,7 +2041,7 @@ const LifecycleAnalytics = {
     const state = document.getElementById('lifecycleState');
     const tbody = document.getElementById('lifecycleRecordsTbody');
     if (state) state.textContent = 'Loading 360 analytics…';
-    if (tbody) tbody.innerHTML = '<tr><td colspan="14" class="muted" style="text-align:center;">Loading 360 analytics…</td></tr>';
+    if (tbody) tbody.innerHTML = '<tr><td colspan="13" class="muted" style="text-align:center;">Loading 360 analytics…</td></tr>';
     const detailRoot = document.getElementById('lifecycleDetailPanel');
     if (detailRoot) detailRoot.innerHTML = '<div class="muted">Loading account-level analytics…</div>';
   },
@@ -2075,7 +2049,7 @@ const LifecycleAnalytics = {
     const state = document.getElementById('lifecycleState');
     if (state) state.textContent = message;
     const tbody = document.getElementById('lifecycleRecordsTbody');
-    if (tbody) tbody.innerHTML = `<tr><td colspan="14" class="muted" style="text-align:center;color:#ffb4b4;">${this.escape(message)}</td></tr>`;
+    if (tbody) tbody.innerHTML = `<tr><td colspan="13" class="muted" style="text-align:center;color:#ffb4b4;">${this.escape(message)}</td></tr>`;
   },
   renderAll() {
     this.renderOverview();
@@ -2137,7 +2111,6 @@ const LifecycleAnalytics = {
     this.bindFilter('lifecycleStageFilter', 'stage');
     this.bindFilter('lifecyclePaymentStateFilter', 'paymentState');
     this.bindFilter('lifecycleOnboardingFilter', 'onboardingStatus');
-    this.bindFilter('lifecycleTechnicalFilter', 'technicalStatus');
     this.bindFilter('lifecycleRenewalFilter', 'renewalWindow');
     this.bindFilter('lifecycleLocationFilter', 'locationState');
     this.bindFilter('lifecycleClientFilter', 'client');
@@ -2180,7 +2153,7 @@ const LifecycleAnalytics = {
   exportRows() {
     if (!(Permissions.can('analytics','export') || Permissions.can('lifecycle_analytics','export'))) { UI.toast('You do not have permission to export lifecycle analytics.'); return; }
     const rows = this.state.filteredRows || [];
-    const headers = ['Client Name', 'Current Stage', 'Payment Status', 'Onboarding Status', 'Technical Status', 'Renewal Status', 'Invoice Number', 'Receipt Number', 'Agreement Number', 'Proposal Number'];
+    const headers = ['Client Name', 'Current Stage', 'Payment Status', 'Onboarding Status', 'Renewal Status', 'Invoice Number', 'Receipt Number', 'Agreement Number', 'Proposal Number'];
     const csv = [
       headers.join(','),
       ...rows.map(row => [
@@ -2188,7 +2161,6 @@ const LifecycleAnalytics = {
         row.currentStage,
         row.paymentState,
         row.onboardingStatus,
-        row.technicalStatus,
         row.renewalExposure,
         row.lifecycleChain?.invoice || '',
         row.lifecycleChain?.receipt || '',

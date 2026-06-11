@@ -1019,8 +1019,7 @@
     ticket: { table: 'tickets', idField: 'ticket_id', route: 'tickets', queryKey: 'ticket_id', labelFields: ['ticket_id', 'title', 'status'] },
     event: { table: 'calendar_events', idField: 'event_id', route: 'events', queryKey: 'event_id', labelFields: ['title', 'event_date', 'status'] },
     client: { table: 'clients', idField: 'client_id', route: 'clients', queryKey: 'client_id', labelFields: ['legal_company_name', 'company_name', 'client_id'] },
-    operations_onboarding: { table: 'operations_onboarding', idField: 'onboarding_id', route: 'operations-onboarding', queryKey: 'onboarding_id', labelFields: ['onboarding_id', 'legal_company_name', 'company_name', 'status'] },
-    technical_admin_request: { table: 'technical_admin_requests', idField: 'request_id', route: 'technical-admin-requests', queryKey: 'request_id', labelFields: ['request_id', 'legal_company_name', 'company_name', 'status'] }
+    operations_onboarding: { table: 'operations_onboarding', idField: 'onboarding_id', route: 'operations-onboarding', queryKey: 'onboarding_id', labelFields: ['onboarding_id', 'legal_company_name', 'company_name', 'status'] }
   };
 
   const RELATED_MODULE_LABELS = {
@@ -1033,8 +1032,7 @@
     ticket: 'Ticket',
     event: 'Event',
     client: 'Client',
-    operations_onboarding: 'Operations Onboarding',
-    technical_admin_request: 'Technical Admin Request'
+    operations_onboarding: 'Operations Onboarding'
   };
 
   const RELATED_MODULE_ALIASES = {
@@ -1052,9 +1050,6 @@
     operations_onboardings: 'operations_onboarding',
     'operations onboarding': 'operations_onboarding',
     'operations-onboarding': 'operations_onboarding',
-    technical_admin_requests: 'technical_admin_request',
-    'technical admin request': 'technical_admin_request',
-    'technical-admin-requests': 'technical_admin_request'
   };
 
   function normalizeRelatedModuleKey(value) {
@@ -1122,8 +1117,7 @@
       ticket: [first, title, status],
       event: [title || first, eventDate, status],
       client: [company || first, first && company ? first : ''],
-      operations_onboarding: [first, company, status],
-      technical_admin_request: [first, company, status]
+      operations_onboarding: [first, company, status]
     };
     const seen = new Set();
     const parts = (partsByKey[key] || config.labelFields.map(field => normalizeText(row[field]))).filter(part => {
@@ -2609,7 +2603,7 @@
               <label class="muted" for="communicationCentreCreateRelatedResource">Related module</label>
               <select id="communicationCentreCreateRelatedResource" class="select communication-related-record-select">
                 <option value="">None</option>
-                <option value="ticket">Ticket</option><option value="event">Event</option><option value="client">Client</option><option value="lead">Lead</option><option value="deal">Deal</option><option value="proposal">Proposal</option><option value="agreement">Agreement</option><option value="invoice">Invoice</option><option value="receipt">Receipt</option><option value="operations_onboarding">Operations Onboarding</option><option value="technical_admin_request">Technical Admin Request</option>
+                <option value="ticket">Ticket</option><option value="event">Event</option><option value="client">Client</option><option value="lead">Lead</option><option value="deal">Deal</option><option value="proposal">Proposal</option><option value="agreement">Agreement</option><option value="invoice">Invoice</option><option value="receipt">Receipt</option><option value="operations_onboarding">Operations Onboarding</option>
               </select>
             </div>
             <div class="filter-row" style="position:relative;">

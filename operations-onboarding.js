@@ -553,7 +553,7 @@ const OperationsOnboarding = {
     return this.canAssignOperationsCsm(this.currentUser(), this.getOperationsOnboardingPermissions());
   },
   canRequestTechnicalAdmin() {
-    return Permissions.canRequestTechnicalAdmin();
+    return false;
   },
   extractRows(response) {
     const candidates = [response, response?.items, response?.rows, response?.data, response?.result, response?.payload, response?.data?.rows];
@@ -665,9 +665,6 @@ const OperationsOnboarding = {
   },
   requestTypeBucket(requestType = '') {
     const normalized = String(requestType || '').trim().toLowerCase();
-    if (normalized === 'technical_admin' || normalized === 'technical admin' || normalized === 'technical admin request') return 'Technical Admin';
-    if (normalized === 'incheck_lite' || normalized === 'incheck lite') return 'Technical Admin';
-    if (normalized === 'incheck_full' || normalized === 'incheck full') return 'Technical Admin';
     return 'Other / Blank';
   },
   normalizeToken(value = '') {
@@ -984,7 +981,6 @@ const OperationsOnboarding = {
 
     const statusMap = new Map();
     const requestMap = new Map([
-      ['Technical Admin', 0],
       ['Other / Blank', 0]
     ]);
     const clientLocationsMap = new Map();
@@ -1066,7 +1062,6 @@ const OperationsOnboarding = {
         nextRenewalDate,
         avgLocationsPerClient,
         avgAgreementsPerClient,
-        technicalAdmin: requestMap.get('Technical Admin') || 0,
         assignedToCsm: agreementRollup.filter(row => String(row.csm_assigned_to || '').trim()).length,
         unassigned: agreementRollup.filter(row => !String(row.csm_assigned_to || '').trim()).length,
         completed: agreementRollup.filter(row => this.isCompletedStatus(row.onboarding_status)).length,
@@ -1192,7 +1187,6 @@ const OperationsOnboarding = {
       ['Avg Locations per Client', (totals.avgLocationsPerClient || 0).toFixed(2), 'clear', ''],
       ['Avg Agreements per Client', (totals.avgAgreementsPerClient || 0).toFixed(2), 'clear', ''],
       ['Next Renewal Date', this.formatDate(totals.nextRenewalDate), 'clear', ''],
-      ['Technical Admin Requests', totals.technicalAdmin || 0, 'request_type', 'Technical Admin'],
       ['Assigned to CSM', totals.assignedToCsm || 0, 'assigned', 'true'],
       ['Unassigned', totals.unassigned || 0, 'assigned', 'false'],
       ['Completed', totals.completed || 0, 'completed', 'true'],
@@ -1317,14 +1311,13 @@ const OperationsOnboarding = {
               <td>${U.escapeHtml(String(row.total_locations || 0))}</td>
               <td>${U.escapeHtml(String(row.active_onboarding_count || 0))}</td>
               <td>${U.escapeHtml(String(row.completed_onboarding_count || 0))}</td>
-              <td>${U.escapeHtml(String(row.technical_admin_count || 0))}</td>
               <td>${U.escapeHtml(String(row.assigned_csm_count || 0))}</td>
               <td>${U.escapeHtml(String(row.overdue_count || 0))}</td>
               <td>${U.escapeHtml(row.last_request_date || '—')}</td>
             </tr>`
           )
           .join('')
-        : '<tr><td colspan="10" class="muted" style="text-align:center;">No client rollup data.</td></tr>';
+        : '<tr><td colspan="9" class="muted" style="text-align:center;">No client rollup data.</td></tr>';
     }
 
     if (E.operationsOnboardingAgreementRollupBody) {
@@ -1337,14 +1330,13 @@ const OperationsOnboarding = {
               <td>${U.escapeHtml(row.client_name || '—')}</td>
               <td>${U.escapeHtml(String(row.locations || 0))}</td>
               <td>${U.escapeHtml(row.onboarding_status || '—')}</td>
-              <td>${U.escapeHtml(row.request_type || '—')}</td>
               <td>${U.escapeHtml(row.csm_assigned_to || 'Unassigned')}</td>
               <td>${U.escapeHtml(this.formatDate(row.requested_at || row.signed_date))}</td>
               <td>${U.escapeHtml(String(row.days_open || 0))}</td>
             </tr>`
           )
           .join('')
-        : '<tr><td colspan="8" class="muted" style="text-align:center;">No agreement rollup data.</td></tr>';
+        : '<tr><td colspan="7" class="muted" style="text-align:center;">No agreement rollup data.</td></tr>';
     }
 
     if (E.operationsOnboardingOverdueBody) {
@@ -1406,12 +1398,12 @@ const OperationsOnboarding = {
     if (!E.operationsOnboardingTbody || !E.operationsOnboardingState) return;
     if (this.state.loading) {
       E.operationsOnboardingState.textContent = 'Loading operations onboarding…';
-      E.operationsOnboardingTbody.innerHTML = '<tr><td colspan="19" class="muted" style="text-align:center;">Loading operations onboarding…</td></tr>';
+      E.operationsOnboardingTbody.innerHTML = '<tr><td colspan="16" class="muted" style="text-align:center;">Loading operations onboarding…</td></tr>';
       return;
     }
     if (this.state.loadError) {
       E.operationsOnboardingState.textContent = this.state.loadError;
-      E.operationsOnboardingTbody.innerHTML = `<tr><td colspan="19" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(this.state.loadError)}</td></tr>`;
+      E.operationsOnboardingTbody.innerHTML = `<tr><td colspan="16" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(this.state.loadError)}</td></tr>`;
       return;
     }
     const rows = this.state.filteredRows;
@@ -1419,13 +1411,12 @@ const OperationsOnboarding = {
     this.renderAnalyticsPanels();
     E.operationsOnboardingState.textContent = `${rows.length} onboarding row${rows.length === 1 ? '' : 's'} · page ${this.state.page}`;
     if (!rows.length) {
-      E.operationsOnboardingTbody.innerHTML = '<tr><td colspan="19" class="muted" style="text-align:center;">No onboarding rows found.</td></tr>';
+      E.operationsOnboardingTbody.innerHTML = '<tr><td colspan="16" class="muted" style="text-align:center;">No onboarding rows found.</td></tr>';
       return;
     }
     const text = value => U.escapeHtml(String(value || '—'));
     const canWrite = this.canWrite();
     const canAssignCsm = this.canAssignCsm();
-    const canCreateTechnicalRequest = this.canRequestTechnicalAdmin();
     E.operationsOnboardingTbody.innerHTML = rows.map(row => {
       const agreementId = U.escapeAttr(row.agreement_id);
       const proposalId = String(row.proposal_id || '').trim();
@@ -1452,32 +1443,13 @@ const OperationsOnboarding = {
       const serviceEnd = isPocRow ? (displayRow.poc_end_date || displayRow.service_end_date) : this.getRowServiceEnd(displayRow, agreement, agreementItems);
       const billingFrequency = displayRow.billing_frequency || agreement.billing_frequency;
       const paymentTerm = displayRow.payment_term || agreement.payment_term;
-      const technicalRequestContext = {
-        ...row,
-        ...displayRow,
-        operations_onboarding_id: row.id || row.operations_onboarding_id || row.db_id || row.onboarding_id,
-        onboarding_id: row.onboarding_id || row.id || row.db_id,
-        agreement_id: row.agreement_id || displayRow.agreement_id,
-        agreement_number: row.agreement_number || displayRow.agreement_number,
-        proposal_id: row.proposal_id || displayRow.proposal_id,
-        location_name: row.location_name || row.invoiced_location_names || row.invoiced_locations || row.location_names,
-        company_id: row.company_id || row.client_company_id || row.customer_company_id
-      };
-      const technicalRequestMatch = this.getExistingTechnicalRequest(technicalRequestContext, this.state.technicalAdminRequests || []);
-      const technicalRequestExists = Boolean(technicalRequestMatch.request);
-      const missingTechnicalData = !hasAgreementId && !isPocRow;
-      const technicalBlockedReason = technicalRequestExists
-        ? technicalRequestMatch.matchedBy
-        : (!canCreateTechnicalRequest ? 'permission' : (missingTechnicalData ? 'missing-critical-data' : ''));
-      if (technicalBlockedReason) this.debugRequestTechnicalBlocked(technicalRequestContext, technicalBlockedReason, technicalRequestMatch);
       return `<tr>
           <td>${onboardingLabel}</td><td>${text(displayRow.agreement_id)}</td><td>${text(isPocRow ? (displayRow.proposal_reference || displayRow.proposal_id || 'POC') : displayRow.agreement_number)}</td><td>${text(displayRow.client_name)}</td><td>${text(this.formatDate(displayRow.signed_date))}</td><td>${text(displayRow.onboarding_status)}</td>
-          <td>${text(displayRow.request_type || displayRow.technical_request_type)}</td><td>${text(displayRow.requested_by)}</td><td>${text(this.formatDate(displayRow.requested_at))}</td><td>${text(displayRow.technical_request_status || displayRow.technical_admin_request)}</td><td>${text(displayRow.request_message || displayRow.technical_request_details || displayRow.technical_admin_request_message)}</td><td><strong>${text(assignedCsmName || 'Unassigned')}</strong>${displayRow.assigned_csm_email ? `<div class="muted">${U.escapeHtml(displayRow.assigned_csm_email)}</div>` : ''}</td><td>${text(locationCount)}</td><td>${text(this.formatDate(serviceStart))}</td><td>${text(this.formatDate(serviceEnd))}</td><td>${text(billingFrequency)}</td><td>${text(paymentTerm)}</td><td>${text(this.formatDate(displayRow.updated_at))}</td>
+          <td>${text(displayRow.requested_by)}</td><td>${text(this.formatDate(displayRow.requested_at))}</td><td><strong>${text(assignedCsmName || 'Unassigned')}</strong>${displayRow.assigned_csm_email ? `<div class="muted">${U.escapeHtml(displayRow.assigned_csm_email)}</div>` : ''}</td><td>${text(locationCount)}</td><td>${text(this.formatDate(serviceStart))}</td><td>${text(this.formatDate(serviceEnd))}</td><td>${text(billingFrequency)}</td><td>${text(paymentTerm)}</td><td>${text(this.formatDate(displayRow.updated_at))}</td>
           <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
             ${isPocRow ? `<button class="btn ghost sm" type="button" data-permission-resource="proposals" data-permission-action="view" data-op-open-proposal="${U.escapeAttr(proposalId)}" ${hasProposalId ? '' : 'disabled title="Proposal is not linked to this POC onboarding row."'}>Open Proposal</button>` : `<button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-open-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Open Agreement</button>
             <button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-preview-agreement="${agreementId}" ${hasAgreementId ? '' : 'disabled title="Agreement ID not available"'}>Preview Agreement</button>`}
             <button class="btn ghost sm" type="button" data-op-open-details="${rowDbId}" data-op-agreement-id="${agreementId}" ${hasRowDbId ? '' : 'disabled title="Onboarding row ID not available"'}>Open Onboarding Details</button>
-            ${canCreateTechnicalRequest ? `<button class="btn ghost sm action-btn technical-request-btn ${technicalRequestExists ? 'is-disabled is-blocked' : ''}" type="button" data-op-technical-admin="${agreementId}" data-op-technical-onboarding="${rowDbId}" ${technicalRequestExists ? 'disabled aria-disabled="true"' : (missingTechnicalData ? 'disabled title="Agreement ID not available"' : '')} title="${U.escapeAttr(technicalRequestExists ? `Technical request already exists for this ${technicalRequestMatch.matchedBy === 'invoice' ? 'invoice' : technicalRequestMatch.matchedBy === 'onboarding' ? 'onboarding row' : 'agreement'}.` : 'Request technical support')}">${technicalRequestExists ? 'Technical Requested' : 'Request Technical'}</button>` : ''}
             ${showAssignCsmButton ? `<button class="btn ghost sm" type="button" data-op-assign-csm="${rowDbId}" data-op-agreement-id="${agreementId}" data-op-proposal-id="${U.escapeAttr(row.proposal_id || '')}">${assignCsmButtonLabel}</button>` : ''}
             ${canWrite ? `<button class="btn ghost sm action-btn onboarding-progress-btn ${inProgressBlocked ? 'is-disabled is-blocked' : ''}" type="button" data-op-mark-progress="${rowDbId}" data-op-agreement-id="${agreementId}" ${(inProgressBlocked || !hasRowDbId) ? 'disabled aria-disabled="true"' : ''} title="${U.escapeAttr(!hasRowDbId ? 'Onboarding row ID not available' : (inProgressBlocked ? 'This onboarding has already been marked in progress or completed.' : 'Mark as in progress'))}">${inProgressBlocked ? 'In Progress Marked' : 'Mark In Progress'}</button>
             <button class="btn ghost sm action-btn onboarding-complete-btn ${completedBlocked ? 'is-disabled is-blocked' : ''}" type="button" data-op-mark-completed="${rowDbId}" data-op-agreement-id="${agreementId}" ${(completedBlocked || !hasRowDbId) ? 'disabled aria-disabled="true"' : ''} title="${U.escapeAttr(!hasRowDbId ? 'Onboarding row ID not available' : (completedBlocked ? 'This onboarding has already been completed.' : 'Mark as completed'))}">${completedBlocked ? 'Completed' : 'Mark Completed'}</button>` : ''}
@@ -1527,8 +1499,6 @@ const OperationsOnboarding = {
       });
       const normalizedResponse = Api.normalizeListResponse(response);
       this.state.rows = this.extractRows(normalizedResponse).map(row => this.normalizeRow(row));
-      const technicalList = await Api.listTechnicalAdminRequests({}, { forceRefresh: force });
-      this.state.technicalAdminRequests = Array.isArray(technicalList?.rows) ? technicalList.rows : [];
       this.state.page = Number(normalizedResponse.page || this.state.page || 1);
       this.state.limit = U.normalizePageSize(normalizedResponse.limit ?? this.state.limit, 50, 200);
       this.state.offset = Number(normalizedResponse.offset ?? Math.max(0, (this.state.page - 1) * this.state.limit));
@@ -1616,9 +1586,6 @@ const OperationsOnboarding = {
           <div><span class="muted">Module Summary:</span> ${U.escapeHtml(detail.module_summary || '—')}</div>
           <div><span class="muted">Requested By:</span> ${U.escapeHtml(detail.requested_by || '—')}</div>
           <div><span class="muted">Requested At:</span> ${U.escapeHtml(this.formatDate(detail.requested_at))}</div>
-          <div><span class="muted">Technical Request Type:</span> ${U.escapeHtml(detail.technical_request_type || detail.request_type || '—')}</div>
-          <div><span class="muted">Technical Request Message:</span> ${U.escapeHtml(detail.request_message || detail.technical_request_details || detail.technical_admin_request_message || '—')}</div>
-          <div><span class="muted">Technical Request Status:</span> ${U.escapeHtml(detail.technical_request_status || detail.technical_admin_request || '—')}</div>
           <div><span class="muted">Go Live Target Date:</span> ${U.escapeHtml(this.formatDate(detail.go_live_target_date))}</div>
           <div><span class="muted">Go Live Date:</span> ${U.escapeHtml(this.formatDateTime(detail.go_live_date || detail.go_live_at))}</div>
           <div><span class="muted">Completed At:</span> ${U.escapeHtml(this.formatDateTime(detail.completed_at))}</div>
@@ -1627,7 +1594,6 @@ const OperationsOnboarding = {
         </div>
         <div class="actions" style="justify-content:flex-start;gap:8px;margin-top:12px;">
           ${isPocDetail ? `<button class="btn ghost sm" type="button" data-permission-resource="proposals" data-permission-action="view" data-op-details-open-proposal="${U.escapeAttr(detail.proposal_id || '')}" ${String(detail.proposal_id || '').trim() ? '' : 'disabled title="Proposal is not linked to this POC onboarding row."'}>Open Proposal</button>` : (String(detail.agreement_id || '').trim() ? `<button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-details-open-agreement="${U.escapeAttr(detail.agreement_id || '')}">Open Agreement</button><button class="btn ghost sm" type="button" data-permission-resource="agreements" data-permission-action="view" data-op-details-preview-agreement="${U.escapeAttr(detail.agreement_id || '')}">Preview Agreement</button>` : '')}
-          ${this.canRequestTechnicalAdmin() && (String(detail.agreement_id || '').trim() || isPocDetail) ? `<button class="btn ghost sm" type="button" data-op-technical-admin="${U.escapeAttr(detail.agreement_id || '')}" data-op-technical-onboarding="${U.escapeAttr(detail.id || detail.db_id || detail.onboarding_id || '')}">Technical Admin Request</button>` : ''}
           ${this.canAssignCsm() && Boolean(detail.id || detail.db_id || detail.onboarding_id) && !this.isOnboardingCancelledOrClosed(detail) ? `<button class="btn sm" type="button" data-op-details-assign-csm="${U.escapeAttr(detail.id || detail.db_id || detail.onboarding_id || '')}" data-op-agreement-id="${U.escapeAttr(detail.agreement_id || '')}">${(detail.assigned_csm_name || detail.csm_assigned_to) ? 'Change CSM' : 'Assign CSM'}</button>` : ''}
         </div>`;
       E.operationsOnboardingDetailsModal.classList.add('open');
@@ -1830,35 +1796,6 @@ const OperationsOnboarding = {
       UI.toast(`Unable to mark onboarding ${normalizedStatus}: ` + (error?.message || 'Unknown error'));
     }
   },
-  buildDefaultTechnicalAdminMessage(summary = {}, agreementLabel = '') {
-    const safeSummary = summary && typeof summary === 'object' ? summary : {};
-    const isPoc = String(safeSummary.onboarding_type || '').trim().toLowerCase() === 'poc'
-      || String(safeSummary.request_type || '').trim().toLowerCase() === 'poc';
-    if (isPoc) {
-      const proposalLabel = String(safeSummary.proposal_reference || safeSummary.proposal_id || safeSummary.source_id || 'the accepted POC proposal').trim();
-      const pocCount = Number(safeSummary.poc_location_count || safeSummary.location_count || safeSummary.number_of_locations || 0) || 0;
-      const pocDates = [safeSummary.poc_start_date || safeSummary.service_start_date, safeSummary.poc_end_date || safeSummary.service_end_date]
-        .filter(Boolean)
-        .map(value => this.formatDate(value))
-        .join(' to ');
-      return `Please proceed with the POC technical setup for ${proposalLabel}${pocCount ? ` (${pocCount} location${pocCount === 1 ? '' : 's'})` : ''}${pocDates ? `, POC period ${pocDates}` : ''}.`;
-    }
-    const label = String(agreementLabel || safeSummary.agreement_number || safeSummary.agreement_id || '').trim() || 'the agreement';
-    const locationText = String(safeSummary.invoiced_location_names || safeSummary.invoiced_locations || safeSummary.location_names || '').trim();
-    const textLocationCount = this.countStoredLocations(locationText);
-    const locationCount = textLocationCount || Number(safeSummary.invoiced_location_count || safeSummary.number_of_locations || safeSummary.location_count || 0);
-    if (locationText) {
-      return `Please proceed with the invoiced location${locationCount > 1 ? 's' : ''}: ${locationText}. Agreement ${label}.`;
-    }
-    return `Please proceed with the invoiced location${locationCount > 1 ? 's' : ''}${locationCount ? ` (${locationCount})` : ''} for agreement ${label}.`;
-  },
-  promptTechnicalAdminRequestMessage(defaultMessage = '') {
-    const fallback = String(defaultMessage || 'Please proceed with the invoiced location(s).').trim();
-    if (typeof window === 'undefined' || typeof window.prompt !== 'function') return fallback;
-    const value = window.prompt('Customize the message that will be sent to Technical Admin:', fallback);
-    if (value === null) return null;
-    return String(value || '').trim() || fallback;
-  },
   isPocTechnicalFlow(record = {}) {
     const normalizedValues = [
       record?.onboarding_type,
@@ -1905,100 +1842,6 @@ const OperationsOnboarding = {
       }
     }
   },
-  async requestTechnicalAdmin(agreementId, onboardingRowId = '') {
-    const id = String(agreementId || '').trim();
-    if (!this.canRequestTechnicalAdmin()) return UI.toast('Insufficient permissions.');
-    const normalizedOnboardingRowId = String(onboardingRowId || '').trim();
-    const summary = this.state.rows.find(row => {
-      const rowId = String(row.id || row.db_id || row.onboarding_id || '').trim();
-      return (normalizedOnboardingRowId && rowId === normalizedOnboardingRowId) || (!normalizedOnboardingRowId && String(row.agreement_id || '') === id);
-    }) || {};
-    const isPoc = this.isPocTechnicalFlow(summary);
-    if (!id && !isPoc) return UI.toast('Agreement ID is required.');
-    if (isPoc && !normalizedOnboardingRowId) return UI.toast('POC onboarding row ID is required.');
-    const agreementLabel = isPoc
-      ? (summary.proposal_reference || summary.proposal_id || summary.source_id || 'POC')
-      : (summary.agreement_number || id);
-    const existingMessage = String(summary.request_message || summary.technical_request_details || summary.technical_admin_request_message || summary.request_details || '').trim();
-    const defaultMessage = existingMessage || this.buildDefaultTechnicalAdminMessage(summary, agreementLabel);
-    const message = this.promptTechnicalAdminRequestMessage(defaultMessage);
-    if (message === null) return UI.toast('Technical Admin request cancelled.');
-    try {
-      const response = isPoc
-        ? await Api.requestPocTechnicalAdmin({ onboardingId: normalizedOnboardingRowId, message })
-        : await Api.requestAgreementTechnicalAdmin(id, message, { onboardingId: normalizedOnboardingRowId });
-      Api.clearApiCache('operations_onboarding:list');
-      const onboardingRecord = Api.unwrapApiPayload?.(response?.operations_onboarding || response) || response?.operations_onboarding || null;
-      this.upsertLocalRow({
-        ...summary,
-        ...(onboardingRecord && typeof onboardingRecord === 'object' ? onboardingRecord : {}),
-        id: normalizedOnboardingRowId || summary.id || summary.db_id || summary.onboarding_id,
-        agreement_id: isPoc ? (summary.agreement_id || '') : id,
-        onboarding_type: isPoc ? 'poc' : (summary.onboarding_type || 'agreement'),
-        source_type: isPoc ? 'proposal' : (summary.source_type || ''),
-        source_id: isPoc ? (summary.source_id || summary.proposal_id || '') : (summary.source_id || ''),
-        proposal_id: isPoc ? (summary.proposal_id || summary.source_id || '') : (summary.proposal_id || ''),
-        proposal_reference: isPoc ? (summary.proposal_reference || '') : (summary.proposal_reference || ''),
-        request_type: isPoc ? 'POC' : 'Technical Admin',
-        technical_request_type: isPoc ? 'POC' : 'Technical Admin',
-        request_message: message,
-        request_details: message,
-        technical_request_details: message,
-        technical_admin_request: 'Requested',
-        technical_request_status: 'Requested',
-        request_status: 'Requested',
-        technical_admin_request_message: message,
-        number_of_locations:
-          summary.number_of_locations ||
-          summary.locations_count ||
-          summary.location_count ||
-          summary.invoiced_locations_count ||
-          summary.invoiced_location_count ||
-          (summary.location_name ? 1 : null),
-        locations_count:
-          summary.locations_count ||
-          summary.number_of_locations ||
-          summary.location_count ||
-          summary.invoiced_locations_count ||
-          summary.invoiced_location_count ||
-          (summary.location_name ? 1 : null),
-        location_count:
-          summary.location_count ||
-          summary.number_of_locations ||
-          summary.locations_count ||
-          summary.invoiced_locations_count ||
-          summary.invoiced_location_count ||
-          (summary.location_name ? 1 : null),
-        location_number:
-          summary.location_number ||
-          summary.number_of_locations ||
-          summary.locations_count ||
-          summary.location_count ||
-          (summary.location_name ? 1 : null),
-        locations_number:
-          summary.locations_number ||
-          summary.number_of_locations ||
-          summary.locations_count ||
-          summary.location_count ||
-          (summary.location_name ? 1 : null)
-      });
-      await this.loadAndRefresh({ force: true });
-      if (window.TechnicalAdmin?.loadAndRefresh) {
-        if (window.TechnicalAdmin.state) window.TechnicalAdmin.state.page = 1;
-        await window.TechnicalAdmin.loadAndRefresh({ force: true });
-        const activeSearch = String(window.TechnicalAdmin.state?.search || '').trim();
-        const activeStatus = String(window.TechnicalAdmin.state?.status || 'All').trim();
-        if (activeSearch || activeStatus !== 'All') {
-          UI.toast('Technical Admin list refreshed. Active filters may hide the new request.');
-        }
-      } else {
-        Api.clearApiCache('technical_admin_requests:list');
-      }
-      UI.toast(isPoc ? 'Technical Admin requested for POC onboarding.' : `Technical Admin requested for agreement ${agreementLabel}.`);
-    } catch (error) {
-      UI.toast('Unable to request Technical Admin: ' + (error?.message || 'Unknown error'));
-    }
-  },
   handleAnalyticsClick(event) {
     const trigger = event.target?.closest?.('[data-op-analytics-filter-kind]');
     if (!trigger) return;
@@ -2035,7 +1878,7 @@ const OperationsOnboarding = {
       E.operationsOnboardingTbody.addEventListener('click', event => {
         const trigger = event.target?.closest?.('button');
         if (!trigger) return;
-        const agreementId = trigger.getAttribute('data-op-agreement-id') || trigger.getAttribute('data-op-open-agreement') || trigger.getAttribute('data-op-preview-agreement') || trigger.getAttribute('data-op-technical-admin') || '';
+        const agreementId = trigger.getAttribute('data-op-agreement-id') || trigger.getAttribute('data-op-open-agreement') || trigger.getAttribute('data-op-preview-agreement') || '';
         const actionOnboardingId = trigger.getAttribute('data-op-assign-csm') || trigger.getAttribute('data-op-mark-progress') || trigger.getAttribute('data-op-mark-completed') || '';
         const detailOnboardingId = trigger.getAttribute('data-op-open-details') || '';
         if (trigger.hasAttribute('data-op-open-agreement')) {
@@ -2044,10 +1887,6 @@ const OperationsOnboarding = {
         if (trigger.hasAttribute('data-op-open-proposal')) return this.openProposalRecord(trigger.getAttribute('data-op-open-proposal') || '', { readOnly: true, trigger });
         if (trigger.hasAttribute('data-op-preview-agreement')) return this.previewAgreement(agreementId, trigger);
         if (trigger.hasAttribute('data-op-open-details')) return this.openOnboardingDetails(detailOnboardingId, agreementId);
-        if (trigger.hasAttribute('data-op-technical-admin')) {
-          if (!Permissions.canRequestTechnicalAdmin()) return UI.toast('You do not have permission to create technical requests.');
-          return this.requestTechnicalAdmin(agreementId, trigger.getAttribute('data-op-technical-onboarding') || '');
-        }
         if (trigger.hasAttribute('data-op-assign-csm')) {
           if (!this.canAssignCsm()) return UI.toast('You do not have permission to assign CSM.');
           return this.openAssignCsmModal(actionOnboardingId, agreementId);
@@ -2065,14 +1904,6 @@ const OperationsOnboarding = {
         if (openProposalTrigger) return this.openProposalRecord(openProposalTrigger.getAttribute('data-op-details-open-proposal') || '', { readOnly: true, trigger: openProposalTrigger });
         const previewAgreementTrigger = event.target?.closest?.('button[data-op-details-preview-agreement]');
         if (previewAgreementTrigger) return this.previewAgreement(previewAgreementTrigger.getAttribute('data-op-details-preview-agreement') || '', previewAgreementTrigger);
-        const technicalRequestTrigger = event.target?.closest?.('button[data-op-technical-admin]');
-        if (technicalRequestTrigger) {
-          if (!Permissions.canRequestTechnicalAdmin()) return UI.toast('You do not have permission to create technical requests.');
-          return this.requestTechnicalAdmin(
-            technicalRequestTrigger.getAttribute('data-op-technical-admin') || '',
-            technicalRequestTrigger.getAttribute('data-op-technical-onboarding') || ''
-          );
-        }
         const trigger = event.target?.closest?.('button[data-op-details-assign-csm]');
         if (trigger) {
           if (!this.canAssignCsm()) return UI.toast('You do not have permission to assign CSM.');

@@ -2440,50 +2440,6 @@ const Agreements = {
     if (!fresh.canCreateInvoice) throw new Error('Invoice creation is blocked because a real invoice link or active invoice still exists.');
     return Api.createInvoiceFromAgreement(String(fresh.agreement?.id || agreementId || '').trim());
   },
-  extractTechnicalRequest(response) {
-    const payload = Api.unwrapApiPayload(response);
-    const candidates = [
-      payload?.technical_request,
-      payload?.technicalAdminRequest,
-      payload?.request,
-      payload,
-      response?.technical_request,
-      response?.request
-    ];
-    for (const candidate of candidates) {
-      if (!candidate || typeof candidate !== 'object') continue;
-      const requestId = String(candidate.technical_request_id || candidate.technicalRequestId || '').trim();
-      if (requestId) return candidate;
-    }
-    return null;
-  },
-  async requestTechnicalAdminFlow(agreementId) {
-    const id = String(agreementId || '').trim();
-    if (!id) return UI.toast('Agreement ID is required.');
-    UI.toast('Technical Admin requests must be created from the Operations Onboarding invoice row, not directly from a signed agreement. Create the invoice first, then request Technical Admin from the related Operations row.');
-    return;
-  },
-  async requestTechnicalAdminFlowLegacyDisabled(agreementId) {
-    const id = String(agreementId || '').trim();
-    if (!id) return UI.toast('Agreement ID is required.');
-    const defaultMessage = `Please proceed with the invoiced location(s) for agreement ${id}.`;
-    const promptedMessage = typeof window !== 'undefined' && typeof window.prompt === 'function'
-      ? window.prompt('Customize the message that will be sent to Technical Admin:', defaultMessage)
-      : defaultMessage;
-    if (promptedMessage === null) return UI.toast('Technical Admin request cancelled.');
-    const message = String(promptedMessage || '').trim() || defaultMessage;
-    try {
-      const response = await Api.requestAgreementTechnicalAdmin(id, message);
-      const technicalRequest = this.extractTechnicalRequest(response);
-      if (technicalRequest && window.TechnicalAdmin?.upsertLocalRow) {
-        TechnicalAdmin.upsertLocalRow(technicalRequest);
-      }
-      if (window.TechnicalAdmin?.loadAndRefresh) TechnicalAdmin.loadAndRefresh({ force: !technicalRequest });
-      UI.toast(`Technical Admin request sent for agreement ${id}.`);
-    } catch (error) {
-      UI.toast('Unable to request Technical Admin: ' + (error?.message || 'Unknown error'));
-    }
-  },
   isSignedStatus(status) {
     return this.isAgreementSigned({ status });
   },
@@ -2902,7 +2858,6 @@ const Agreements = {
       const invoiceBlocked = signedRow && this.state.invoiceBlockedAgreementIds.has(String(row?.id || '').trim());
       const signedDocUploaded = this.hasSignedDocument(row);
       const uploadBlocked = signedDocUploaded;
-      const technicalRequestExists = this.hasExistingTechnicalRequest({ agreement_id: row.id, location_name: row.location_name, company_id: row.company_id }, this.state.technicalAdminRequests || []);
       return `<tr>
         <td>${textCell(row.agreement_id)}${importedBadge}</td><td>${textCell(row.agreement_number)}</td><td>${textCell(row.agreement_title)}</td>
         <td>${textCell(row.customer_name)}</td><td>${textCell(this.getAgreementProposalDisplayRef(row))}</td><td>${textCell(row.deal_id)}</td>
@@ -2913,7 +2868,6 @@ const Agreements = {
         ${Permissions.canView('agreements') ? `<button class="btn ghost sm" type="button" data-agreement-view="${id}">View</button>` : ''}
         ${signedRow && Permissions.canUpdateAgreement() ? `<button class=\"btn ghost sm action-btn upload-signed-doc-btn${uploadBlocked ? ' is-disabled is-blocked' : ''}\" type=\"button\" data-agreement-upload-signed=\"${id}\" data-permission-resource=\"agreements\" data-permission-action=\"update\" ${uploadBlocked ? 'disabled aria-disabled="true"' : ''} title="${U.escapeAttr(uploadBlocked ? 'Signed document has already been uploaded.' : 'Upload signed document')}">${uploadBlocked ? 'Signed Doc Uploaded' : 'Upload Signed Doc'}</button>` : ''}
         ${!signedRow && Permissions.canUpdateAgreement() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="agreements" data-permission-action="update" data-agreement-edit=\"${id}\" data-permission-resource=\"agreements\" data-permission-action=\"update\">Edit</button>` : ''}
-        ${Permissions.canRequestTechnicalAdmin() ? `<button class=\"btn ghost sm action-btn technical-request-btn ${technicalRequestExists ? 'is-disabled is-blocked' : ''}\" type=\"button\" data-agreement-request-technical=\"${id}\" data-permission-resource=\"technical_admin_requests\" data-permission-action=\"create\" ${technicalRequestExists ? 'disabled aria-disabled=\"true\"' : ''} title=\"${U.escapeAttr(technicalRequestExists ? 'Technical request has already been created for this location.' : 'Request technical support')}\">${technicalRequestExists ? 'Technical Requested' : 'Request Technical'}</button>` : ''}
         ${Permissions.canGenerateAgreementHtml() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="agreements" data-permission-action="view" data-agreement-preview=\"${id}\">View Agreement</button>` : ''}
         ${signedRow && Permissions.canCreateInvoiceFromAgreement() ? `<button class=\"btn ghost sm create-invoice-btn${invoiceBlocked ? ' is-disabled is-blocked' : ''}\" type=\"button\" data-permission-resource="invoices" data-permission-action="create_from_agreement" data-agreement-create-invoice=\"${id}\" data-permission-resource=\"invoices\" data-permission-action=\"create\" ${invoiceBlocked ? 'disabled aria-disabled="true"' : ''} title="${U.escapeAttr(invoiceBlocked ? 'All Annual SaaS locations have already been invoiced.' : 'Create invoice')}">Create Invoice</button>` : ''}
         ${Permissions.canDeleteAgreement() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="agreements" data-permission-action="delete" data-agreement-delete=\"${id}\" data-permission-resource=\"agreements\" data-permission-action=\"delete\">Delete</button>` : ''}
@@ -4709,25 +4663,6 @@ const Agreements = {
       } catch {}
     }
   },
-  isOptionalTechnicalRequestPermissionError(error) {
-    const message = String(error?.message || error || '').toLowerCase();
-    return (
-      message.includes('forbidden')
-      || message.includes('cannot list technical_admin_requests')
-      || message.includes('permission')
-    );
-  },
-  async loadOptionalTechnicalAdminRequests({ force = false } = {}) {
-    if (!Permissions.canViewTechnicalAdmin?.()) return [];
-    try {
-      const technicalList = await Api.listTechnicalAdminRequests({}, { forceRefresh: force });
-      return Array.isArray(technicalList?.rows) ? technicalList.rows : [];
-    } catch (error) {
-      if (!this.isOptionalTechnicalRequestPermissionError(error)) throw error;
-      console.warn('[Agreements] Optional technical requests load failed. Continuing without technical requests.', error);
-      return [];
-    }
-  },
   async loadAndRefresh({ force = false } = {}) {
     try {
       if (this.state.loading && !force) return;
@@ -4753,7 +4688,7 @@ const Agreements = {
       });
       const normalized = this.extractListResult(response);
       this.state.rows = await this.enrichAgreementsWithProposalDisplayRefs(normalized.rows.map(row => this.normalizeAgreement(row)));
-      this.state.technicalAdminRequests = await this.loadOptionalTechnicalAdminRequests({ force });
+      this.state.technicalAdminRequests = [];
       this.state.invoiceBlockedAgreementIds = await this.loadInvoiceBlockedAgreementIds(this.state.rows);
       this.state.total = normalized.total;
       this.state.returned = normalized.returned;
@@ -4846,11 +4781,6 @@ const Agreements = {
         const row = this.state.rows.find(entry => String(entry?.id || '').trim() === String(uploadSignedId || '').trim());
         if (row && this.hasSignedDocument(row)) return;
         return this.runRowAction(`upload-signed:${uploadSignedId}`, trigger, () => this.openAgreementFormById(uploadSignedId, { readOnly: true, trigger, focusSignedDocument: true }));
-      }
-      const requestTechnicalId = trigger.getAttribute('data-agreement-request-technical');
-      if (requestTechnicalId) {
-        if (!Permissions.canRequestTechnicalAdmin()) return UI.toast('You do not have permission to request Technical Admin.');
-        return this.runRowAction(`request-technical:${requestTechnicalId}`, trigger, () => this.requestTechnicalAdminFlow(requestTechnicalId));
       }
       const previewId = trigger.getAttribute('data-agreement-preview');
       if (previewId) { if (!Permissions.canGenerateAgreementHtml()) return UI.toast('You do not have permission to preview agreements.'); return this.runRowAction(`preview:${previewId}`, trigger, () => this.previewAgreementHtml(previewId)); }
