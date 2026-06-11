@@ -325,7 +325,7 @@
                     role="tab" aria-selected="false" aria-controls="paymentForecastView">
               <span class="icon" aria-hidden="true">📈</span> Payment Forecast
             </button>
-            <button id="renewalForecastTab" class="view-tab" data-view="renewalForecast" data-admin-only="monthly-renewal-forecast"
+            <button id="renewalForecastTab" class="view-tab" data-view="renewalForecast" data-permission-resource="monthly_renewal_forecast" data-permission-action="view"
                     role="tab" aria-selected="false" aria-controls="renewalForecastView">
               <span class="icon" aria-hidden="true">🔄</span> Monthly Renewal Forecast
             </button>
@@ -801,8 +801,8 @@ Sample:
             <table id="rolePermissionsTable">
               <thead>
                 <tr>
-                  <th scope="col">resource</th>
-                  <th scope="col">action</th>
+                  <th scope="col">Module / category</th>
+                  <th scope="col">Permission action</th>
                   <th scope="col">roles</th>
                   <th scope="col">description</th>
                   <th scope="col">updated_at</th>
@@ -2092,7 +2092,7 @@ Sample:
       <section id="renewalForecastView" class="view payment-forecast-module" role="tabpanel" aria-labelledby="renewalForecastTab">
         <div class="pf-page-header">
           <div><span class="pf-eyebrow">Client · Forecast</span><h2>Monthly Renewal Forecast</h2><p class="muted">Forecast Annual SaaS invoice-item renewals by service end date. Invoice dates, due dates, payment schedules, and agreement rows are never used as renewal opportunities.</p></div>
-          <div class="pf-header-actions"><button id="renewalForecastRefreshBtn" class="btn ghost sm" type="button">Refresh</button><button id="renewalForecastExportBtn" class="btn sm" type="button">Export CSV</button></div>
+          <div class="pf-header-actions"><button id="renewalForecastRefreshBtn" class="btn ghost sm" type="button">Refresh</button><button id="renewalForecastExportBtn" class="btn sm" type="button" data-permission-resource="monthly_renewal_forecast" data-permission-action="export">Export CSV</button></div>
         </div>
         <div id="renewalForecastSummary" class="payment-forecast-summary-grid" aria-live="polite"></div>
         <section class="card pf-filter-panel" aria-label="Renewal forecast filters">

@@ -4,21 +4,22 @@ const vm = require('vm');
 
 const permissionsSource = fs.readFileSync('permissions.js', 'utf8');
 const forecastSource = fs.readFileSync('renewal-forecast.js', 'utf8');
-const appSource = fs.readFileSync('app.js', 'utf8');
+const rolesAdminSource = fs.readFileSync('roles-admin.js', 'utf8');
 const htmlSource = fs.readFileSync('index.html', 'utf8');
+const permissionMigration = fs.readFileSync('sql/migrations/20260611_monthly_renewal_forecast_permissions.sql', 'utf8');
 const hardeningMigration = fs.readFileSync('sql/migrations/20260611_monthly_renewal_forecast_admin_security.sql', 'utf8');
 const forecastMigration = fs.readFileSync('sql/migrations/20260610_monthly_renewal_forecast_admin_guard.sql', 'utf8');
 const overrideMigration = fs.readFileSync('sql/migrations/20260610_renewal_no_needed_override.sql', 'utf8');
 
-const helperMatch = permissionsSource.match(/function isMonthlyRenewalForecastAdmin\(user\) \{[\s\S]*?\n\}/);
-assert(helperMatch, 'shared Monthly Renewal Forecast admin helper must exist');
-const helperContext = {};
-vm.createContext(helperContext);
-vm.runInContext(`${helperMatch[0]}; this.check = isMonthlyRenewalForecastAdmin;`, helperContext);
-['dev', 'csm', 'hoo', 'viewer', 'sales_executive', 'head_of_sales', 'accounting', 'Senior Financial Controller', 'General Manager', ' administrator ', ''].forEach(role => {
-  assert.strictEqual(helperContext.check({ role }), false, `${role || 'empty role'} must not have access`);
+const actions = ['view', 'export', 'view_details', 'mark_renewed', 'mark_no_renewal_needed', 'undo_override', 'create_renewal_invoice'];
+actions.forEach(action => {
+  assert(permissionsSource.includes(`${action}: ['admin']`), `${action} must default to admin only`);
+  assert(permissionMigration.includes(`('${action}')`), `${action} must be seeded`);
 });
-assert.strictEqual(helperContext.check({ profile: { role_key: ' ADMIN ' } }), true, 'normalized admin must have access');
+assert(permissionsSource.includes("renewalForecast: [{ resource: 'monthly_renewal_forecast', action: 'view' }]"), 'tab access must use the view permission');
+assert(permissionsSource.includes("renewalForecast: 'monthly_renewal_forecast'"), 'tab resource map must use the new resource');
+assert(rolesAdminSource.includes("moduleName: 'Monthly Renewal Forecast'") && rolesAdminSource.includes("displayGroup: 'Reports / Forecasts'"), 'permissions UI must include module and group labels');
+['View Monthly Renewal Forecast', 'Export Monthly Renewal Forecast', 'View Renewal Details', 'Mark Renewal as Renewed', 'Mark No Renewal Needed', 'Undo Renewal Override', 'Create Renewal Invoice'].forEach(label => assert(rolesAdminSource.includes(label), `missing UI permission label ${label}`));
 
 let rpcCalls = 0;
 const elements = {
@@ -26,13 +27,17 @@ const elements = {
   renewalForecastBody: { innerHTML: 'old content' },
   renewalForecastDetailsDrawer: { hidden: true }
 };
+const allowed = new Set();
+const permissionApi = {
+  canPerformAction(resource, action) { return resource === 'monthly_renewal_forecast' && allowed.has(action); },
+  can(resource, action) { return this.canPerformAction(resource, action); }
+};
 const forecastContext = {
   console,
   Blob: class {},
   URL: {},
   window: {
-    isMonthlyRenewalForecastAdmin: helperContext.check,
-    Permissions: { getResolvedCurrentUser: () => ({ role: 'viewer' }) },
+    Permissions: permissionApi,
     SupabaseClient: { getClient: () => ({ rpc: async () => { rpcCalls += 1; return { data: [], error: null }; } }) }
   },
   document: {
@@ -49,20 +54,33 @@ const forecast = forecastContext.window.RenewalForecast;
 (async () => {
   await forecast.refresh();
   await forecast.fetchMonthSummaries();
-  await forecast.fetchMonthDetails('2026-06-01');
-  await forecast.fetchManualRenewals();
-  await forecast.fetchNoRenewalNeededOverrides();
-  assert.strictEqual(rpcCalls, 0, 'non-admin component and loading paths must never call an RPC');
-  assert.strictEqual(elements.renewalForecastState.textContent, 'Access denied. This forecast is available for admin users only.');
+  assert.strictEqual(rpcCalls, 0, 'users without view permission must never call an RPC');
+  assert.strictEqual(elements.renewalForecastState.textContent, 'Access denied. You need permission to view Monthly Renewal Forecast.');
   assert.strictEqual(elements.renewalForecastBody.innerHTML, '');
-  assert.strictEqual(forecast.detailActions({ renewal_status: 'upcoming' }), '', 'non-admin action buttons must not render');
+  assert.strictEqual(forecast.detailActions({ renewal_status: 'upcoming' }), '', 'detail actions require view_details');
 
-  assert(permissionsSource.includes("if (key === 'renewalForecast') return isMonthlyRenewalForecastAdmin"), 'navigation access must use shared helper');
-  assert(appSource.includes("requestedView === 'renewalForecast'") && appSource.includes('Access denied. This forecast is available for admin users only.'), 'direct route must show required denial');
+  allowed.add('view_details');
+  allowed.add('mark_renewed');
+  let rendered = forecast.detailActions({ renewal_status: 'upcoming', opportunity_id: 'renewal-1' });
+  assert(rendered.includes('Mark Renewed'), 'mark renewed button must use mark_renewed');
+  assert(!rendered.includes('Mark as No Renewal Needed'), 'No Renewal Needed button must require its permission');
+  assert(!rendered.includes('Create Renewal Invoice'), 'invoice button must require create_renewal_invoice');
+
+  allowed.add('mark_no_renewal_needed');
+  allowed.add('create_renewal_invoice');
+  allowed.add('undo_override');
+  rendered = forecast.detailActions({ renewal_status: 'upcoming', opportunity_id: 'renewal-1', manual_renewal: true });
+  assert(rendered.includes('Mark as No Renewal Needed'));
+  assert(rendered.includes('Create Renewal Invoice'));
+  assert(rendered.includes('Unmark Renewed'));
+
+  assert(htmlSource.includes('data-permission-resource="monthly_renewal_forecast" data-permission-action="view"'), 'tab must declare view permission');
+  assert(htmlSource.includes('data-permission-resource="monthly_renewal_forecast" data-permission-action="export"'), 'export button must declare export permission');
+  assert(!permissionMigration.includes("'payment_forecast'"), 'Payment Forecast permissions must remain untouched');
+  ['dev', 'csm', 'hoo', 'viewer', 'sales_executive', 'head_of_sales', 'accounting', 'senior_financial_controller', 'general_manager'].forEach(role => assert(permissionMigration.includes(`'${role}'`), `${role} must be seeded disabled`));
+  ['crm_get_monthly_renewal_forecast', 'crm_get_monthly_renewal_forecast_details', 'crm_mark_renewal_manual', 'crm_mark_renewal_no_needed', 'crm_unmark_renewal_override', 'crm_get_renewal_no_needed_overrides'].forEach(rpc => assert(permissionMigration.includes(`'${rpc}'`), `${rpc} admin guard must be verified`));
   assert(forecastMigration.includes('if not public.crm_is_admin_user() then'), 'forecast RPC must use crm_is_admin_user');
   assert(overrideMigration.includes('if not public.crm_is_admin_user() then'), 'override RPC guard must use crm_is_admin_user');
   assert(hardeningMigration.includes('monthly_renewal_overrides_admin_all') && hardeningMigration.includes('crm_renewal_no_needed_overrides_admin_select'), 'override tables must have admin-only RLS');
-  assert(!hardeningMigration.includes('payment_forecast'), 'Payment Forecast permissions must remain untouched');
-  assert(!htmlSource.match(/id="renewalForecast(?:Tab|ExportBtn)"[^>]+data-permission-resource="payment_forecast"/), 'renewal forecast controls must not inherit Payment Forecast permissions');
-  console.log('Monthly Renewal Forecast admin access checks passed.');
+  console.log('Monthly Renewal Forecast permission access checks passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

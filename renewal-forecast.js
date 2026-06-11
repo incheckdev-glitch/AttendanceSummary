@@ -97,13 +97,18 @@ const RenewalForecast = {
     return client;
   },
 
-  isAdmin() {
-    const user = window.Permissions?.getResolvedCurrentUser?.() || window.Session?.authContext?.() || null;
-    return window.isMonthlyRenewalForecastAdmin?.(user) === true;
+  hasPermission(action) {
+    return !window.Permissions || window.Permissions.canPerformAction?.('monthly_renewal_forecast', action) || window.Permissions.can?.('monthly_renewal_forecast', action);
+  },
+
+  requirePermission(action, message) {
+    if (this.hasPermission(action)) return true;
+    UI.toast(message || 'You do not have permission for this Monthly Renewal Forecast action.');
+    return false;
   },
 
   renderAccessDenied() {
-    const message = 'Access denied. This forecast is available for admin users only.';
+    const message = 'Access denied. You need permission to view Monthly Renewal Forecast.';
     const state = document.getElementById?.('renewalForecastState');
     const body = document.getElementById?.('renewalForecastBody');
     if (state) state.textContent = message;
@@ -114,15 +119,15 @@ const RenewalForecast = {
     this.state.rows = [];
     this.state.filteredRows = [];
     this.state.monthSummaries = [];
-    this.state.error = 'Access denied. This forecast is available for admin users only.';
+    this.state.error = 'Access denied. You need permission to view Monthly Renewal Forecast.';
     this.closeDrawer();
     this.renderAccessDenied();
     UI.toast(this.state.error);
     return false;
   },
 
-  requireAdmin() {
-    return this.isAdmin() || this.denyAccess();
+  requireView() {
+    return this.hasPermission('view') || this.denyAccess();
   },
 
   rpcRange() {
@@ -133,7 +138,7 @@ const RenewalForecast = {
   },
 
   async fetchMonthSummaries() {
-    if (!this.requireAdmin()) return [];
+    if (!this.requireView()) return [];
     const { dateFrom, months } = this.rpcRange();
     const { data, error } = await this.getClient().rpc('crm_get_monthly_renewal_forecast', {
       p_start_date: dateFrom,
@@ -144,7 +149,7 @@ const RenewalForecast = {
   },
 
   async fetchMonthDetails(month) {
-    if (!this.requireAdmin()) return [];
+    if (!this.requirePermission('view_details', 'You do not have permission to view renewal details.')) return [];
     const monthDate = this.monthDate(month);
     if (!monthDate) return [];
     if (this.state.detailsCache[monthDate]) return this.state.detailsCache[monthDate];
@@ -160,7 +165,7 @@ const RenewalForecast = {
   },
 
   async fetchAllDetails(monthSummaries) {
-    if (!this.requireAdmin()) return [];
+    if (!this.requirePermission('view_details', 'You do not have permission to view renewal details.')) return [];
     const months = [...new Set(monthSummaries.map(row => this.monthDate(row.renewal_month)).filter(Boolean))];
     const batches = await Promise.all(months.map(async month => {
       try { return await this.fetchMonthDetails(month); }
@@ -250,7 +255,7 @@ const RenewalForecast = {
   },
 
   async fetchManualRenewals() {
-    if (!this.requireAdmin()) return [];
+    if (!this.requirePermission('view_details', 'You do not have permission to view renewal details.')) return [];
     const { dateFrom, dateTo } = this.rpcRange();
     try {
       const { data, error } = await this.getClient().rpc('crm_get_manual_renewal_overrides', {
@@ -319,7 +324,7 @@ const RenewalForecast = {
   },
 
   async fetchNoRenewalNeededOverrides() {
-    if (!this.requireAdmin()) return [];
+    if (!this.requirePermission('view_details', 'You do not have permission to view renewal details.')) return [];
     const { dateFrom, dateTo } = this.rpcRange();
     const { data, error } = await this.getClient().rpc('crm_get_renewal_no_needed_overrides', {
       p_start_date: dateFrom,
@@ -349,7 +354,7 @@ const RenewalForecast = {
   },
 
   openNoRenewalNeededModal(row) {
-    if (!this.requireAdmin() || !['upcoming', 'due_soon', 'overdue'].includes(row.renewal_status) || !row.invoice_item_id) return;
+    if (!this.requirePermission('mark_no_renewal_needed', 'You do not have permission to mark No Renewal Needed.') || !['upcoming', 'due_soon', 'overdue'].includes(row.renewal_status) || !row.invoice_item_id) return;
     this.state.noRenewalNeededRow = row;
     const modal = document.getElementById('renewalNoNeededModal');
     const reason = document.getElementById('renewalNoNeededReason');
@@ -372,7 +377,7 @@ const RenewalForecast = {
   },
 
   async confirmNoRenewalNeeded() {
-    if (!this.requireAdmin()) return;
+    if (!this.requirePermission('mark_no_renewal_needed', 'You do not have permission to mark No Renewal Needed.')) return;
     const row = this.state.noRenewalNeededRow;
     const reason = this.text(document.getElementById('renewalNoNeededReason')?.value);
     const note = this.text(document.getElementById('renewalNoNeededNote')?.value);
@@ -394,7 +399,7 @@ const RenewalForecast = {
   },
 
   async undoNoRenewalNeeded(row) {
-    if (!this.requireAdmin() || !row.invoice_item_id || !window.confirm?.('Undo the No Renewal Needed mark for this location?')) return;
+    if (!this.requirePermission('undo_override', 'You do not have permission to undo renewal overrides.') || !row.invoice_item_id || !window.confirm?.('Undo the No Renewal Needed mark for this location?')) return;
     const { error } = await this.getClient().rpc('crm_unmark_renewal_override', { p_invoice_item_id: row.invoice_item_id });
     if (error) throw error;
     UI.toast('No Renewal Needed mark removed.');
@@ -402,7 +407,7 @@ const RenewalForecast = {
   },
 
   async markManualRenewed(row) {
-    if (!this.requireAdmin()) return;
+    if (!this.requirePermission('mark_renewed', 'You do not have permission to mark renewals as renewed.')) return;
     const renewalAgreementRef = window.prompt?.('Enter the manual renewal agreement/reference already created for this location:', row.manual_renewal_agreement_ref || '') ?? null;
     if (renewalAgreementRef === null) return;
     const renewalInvoiceRef = window.prompt?.('Optional: enter renewal invoice reference if available:', row.manual_renewal_invoice_ref || '') ?? '';
@@ -428,7 +433,7 @@ const RenewalForecast = {
   },
 
   async unmarkManualRenewed(row) {
-    if (!this.requireAdmin()) return;
+    if (!this.requirePermission('undo_override', 'You do not have permission to undo renewal overrides.')) return;
     if (!window.confirm?.('Remove the manual renewed mark for this location?')) return;
     const { error } = await this.getClient().rpc('crm_unmark_manual_renewal', {
       p_opportunity_key: this.manualKey(row)
@@ -465,7 +470,7 @@ const RenewalForecast = {
   },
 
   async refresh() {
-    if (!this.requireAdmin() || this.state.loading) return;
+    if (!this.requireView() || this.state.loading) return;
     this.ensureDefaultDateRange();
     this.state.loading = true;
     this.state.error = '';
@@ -612,7 +617,7 @@ const RenewalForecast = {
   },
 
   canCreateInvoice() {
-    return !window.Permissions || Permissions.can('invoices', 'create') || Permissions.can('invoices', 'manage') || Permissions.can('invoices', 'create_from_agreement') || Permissions.hasAdminOverride?.();
+    return this.hasPermission('create_renewal_invoice');
   },
 
   statusBadge(status) {
@@ -657,7 +662,7 @@ const RenewalForecast = {
   },
 
   render() {
-    if (!this.isAdmin()) { this.renderAccessDenied(); return; }
+    if (!this.hasPermission('view')) { this.renderAccessDenied(); return; }
     const state = document.getElementById('renewalForecastState');
     const body = document.getElementById('renewalForecastBody');
     if (!state || !body) return;
@@ -690,9 +695,12 @@ const RenewalForecast = {
   },
 
   detailActions(row) {
-    if (!this.isAdmin()) return '';
+    if (!this.hasPermission('view_details')) return '';
     const canFollowUp = ['upcoming', 'due_soon', 'overdue'].includes(row.renewal_status);
-    return `<div class="pf-actions">${canFollowUp ? `<button class="btn primary xs" data-rf-action="renew" data-id="${U.escapeAttr(row.opportunity_id)}">Renew</button><button class="btn ghost xs" data-rf-action="manual-renewed" data-id="${U.escapeAttr(row.opportunity_id)}">Mark Renewed</button><button class="btn ghost xs" data-rf-action="no-renewal-needed" data-id="${U.escapeAttr(row.opportunity_id)}">Mark as No Renewal Needed</button>` : ''}${row.manual_renewal ? `<button class="btn ghost xs" data-rf-action="unmark-renewed" data-id="${U.escapeAttr(row.opportunity_id)}">Unmark Renewed</button>` : ''}${row.manual_no_renewal_needed ? `<button class="btn ghost xs" data-rf-action="undo-no-renewal-needed" data-id="${U.escapeAttr(row.opportunity_id)}">Undo No Renewal Needed</button>` : ''}<button class="btn ghost xs" data-rf-action="agreement" data-id="${U.escapeAttr(row.opportunity_id)}">View Agreement</button><button class="btn ghost xs" data-rf-action="client" data-id="${U.escapeAttr(row.opportunity_id)}">View Client</button>${canFollowUp && this.canCreateInvoice() ? `<button class="btn ghost xs" data-rf-action="invoice" data-id="${U.escapeAttr(row.opportunity_id)}">Create Renewal Invoice</button>` : ''}</div>${row.manual_renewal_note ? `<div class="muted">Note: ${U.escapeHtml(row.manual_renewal_note)}</div>` : ''}${row.no_renewal_needed_note ? `<div class="muted">Note: ${U.escapeHtml(row.no_renewal_needed_note)}</div>` : ''}`;
+    const canMarkRenewed = canFollowUp && this.hasPermission('mark_renewed');
+    const canMarkNoRenewal = canFollowUp && this.hasPermission('mark_no_renewal_needed');
+    const canUndo = this.hasPermission('undo_override');
+    return `<div class="pf-actions">${canFollowUp && this.canCreateInvoice() ? `<button class="btn primary xs" data-rf-action="renew" data-id="${U.escapeAttr(row.opportunity_id)}">Renew</button>` : ''}${canMarkRenewed ? `<button class="btn ghost xs" data-rf-action="manual-renewed" data-id="${U.escapeAttr(row.opportunity_id)}">Mark Renewed</button>` : ''}${canMarkNoRenewal ? `<button class="btn ghost xs" data-rf-action="no-renewal-needed" data-id="${U.escapeAttr(row.opportunity_id)}">Mark as No Renewal Needed</button>` : ''}${row.manual_renewal && canUndo ? `<button class="btn ghost xs" data-rf-action="unmark-renewed" data-id="${U.escapeAttr(row.opportunity_id)}">Unmark Renewed</button>` : ''}${row.manual_no_renewal_needed && canUndo ? `<button class="btn ghost xs" data-rf-action="undo-no-renewal-needed" data-id="${U.escapeAttr(row.opportunity_id)}">Undo No Renewal Needed</button>` : ''}<button class="btn ghost xs" data-rf-action="agreement" data-id="${U.escapeAttr(row.opportunity_id)}">View Agreement</button><button class="btn ghost xs" data-rf-action="client" data-id="${U.escapeAttr(row.opportunity_id)}">View Client</button>${canFollowUp && this.canCreateInvoice() ? `<button class="btn ghost xs" data-rf-action="invoice" data-id="${U.escapeAttr(row.opportunity_id)}">Create Renewal Invoice</button>` : ''}</div>${row.manual_renewal_note ? `<div class="muted">Note: ${U.escapeHtml(row.manual_renewal_note)}</div>` : ''}${row.no_renewal_needed_note ? `<div class="muted">Note: ${U.escapeHtml(row.no_renewal_needed_note)}</div>` : ''}`;
   },
 
   renderMonthDetails() {
@@ -711,7 +719,7 @@ const RenewalForecast = {
   },
 
   async openMonth(month) {
-    if (!this.requireAdmin()) return;
+    if (!this.requirePermission('view_details', 'You do not have permission to view renewal details.')) return;
     this.state.selectedMonth = month;
     this.state.detailPage = 1;
     this.state.detailRows = [];
@@ -748,7 +756,7 @@ const RenewalForecast = {
   },
 
   async action(action, id) {
-    if (!this.requireAdmin()) return;
+    if (!this.requirePermission('view_details', 'You do not have permission to view renewal details.')) return;
     const row = this.state.detailRows.find(item => item.opportunity_id === id) || this.state.rows.find(item => item.opportunity_id === id) || Object.values(this.state.detailsCache).flat().find(item => item.opportunity_id === id);
     if (!row) return;
     if (action === 'manual-renewed') return this.markManualRenewed(row);
@@ -757,7 +765,7 @@ const RenewalForecast = {
     if (action === 'undo-no-renewal-needed') return this.undoNoRenewalNeeded(row);
     if (action === 'agreement') return window.Agreements?.openAgreementFormById?.(row.agreement_uuid || row.agreement_number, { readOnly: true });
     if (action === 'client') { window.setActiveView?.('clients'); return UI.toast(`Client: ${row.client_name}`); }
-    if (action === 'invoice' && !this.canCreateInvoice()) return UI.toast('You do not have permission to create renewal invoices.');
+    if (['invoice', 'renew'].includes(action) && !this.canCreateInvoice()) return UI.toast('You do not have permission to create renewal invoices.');
     if (['invoice', 'renew'].includes(action)) {
       if (window.Clients?.openRenewalFlow_) {
         return Clients.openRenewalFlow_([{ ...row, row_id: row.opportunity_id, agreement_id: row.agreement_uuid || row.agreement_number, annual_license_price: row.current_annual_price || row.current_invoice_row_amount, discount_percent: row.current_discount }]);
@@ -767,7 +775,7 @@ const RenewalForecast = {
   },
 
   exportCsv() {
-    if (!this.requireAdmin()) return;
+    if (!this.requirePermission('export', 'You do not have permission to export Monthly Renewal Forecast.')) return;
     const header = ['Client Name','Invoice Number','Agreement Number','SaaS Item / Location Name','Service Start Date','Service End Date','Days Until Renewal','Current Invoice SaaS Row Amount','Current Annual Price','Current Discount','Expected Renewal Amount','Renewal Status','Manual Renewal','Manual Renewal Agreement','Manual Renewal Invoice','Manual Renewal Note','No Renewal Needed Reason','No Renewal Needed Note'];
     const values = this.filtered().map(row => [row.client_name,row.invoice_number,row.agreement_number,row.location_name,row.service_start_date,row.service_end_date,row.days_until_renewal,row.current_invoice_row_amount,row.current_annual_price,row.current_discount,row.expected_renewal_amount,row.renewal_status,row.manual_renewal ? 'Yes' : 'No',row.manual_renewal_agreement_ref,row.manual_renewal_invoice_ref,row.manual_renewal_note,row.no_renewal_needed_reason,row.no_renewal_needed_note]);
     const csv = [header, ...values].map(cols => cols.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');

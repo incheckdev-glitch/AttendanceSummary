@@ -155,6 +155,15 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     create_receipt: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm'],
     manage: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm']
   }),
+  monthly_renewal_forecast: Object.freeze({
+    view: ['admin'],
+    export: ['admin'],
+    view_details: ['admin'],
+    mark_renewed: ['admin'],
+    mark_no_renewal_needed: ['admin'],
+    undo_override: ['admin'],
+    create_renewal_invoice: ['admin']
+  }),
   biners: Object.freeze({
     view: ['admin', 'dev', 'developer', 'general_manager', 'gm', 'senior_financial_controller', 'senior_fc', 'sfc', 'accountant', 'accounting', 'hod', 'head_of_department'],
     list: ['admin', 'dev', 'developer', 'general_manager', 'gm', 'senior_financial_controller', 'senior_fc', 'sfc', 'accountant', 'accounting', 'hod', 'head_of_department'],
@@ -246,7 +255,7 @@ const Permissions = {
     receipts: [{ resource: 'receipts', action: 'list' }],
     creditNotes: [{ resource: 'credit_notes', action: 'view' }],
     paymentForecast: [{ resource: 'payment_forecast', action: 'view' }],
-    renewalForecast: [],
+    renewalForecast: [{ resource: 'monthly_renewal_forecast', action: 'view' }],
     biners: [{ resource: 'biners', action: 'view' }],
     lifecycleAnalytics: [{ resource: 'analytics', action: 'list' }],
     clients: [{ resource: 'clients', action: 'list' }],
@@ -277,7 +286,7 @@ const Permissions = {
     receipts: 'receipts',
     creditNotes: 'credit_notes',
     paymentForecast: 'payment_forecast',
-    renewalForecast: null,
+    renewalForecast: 'monthly_renewal_forecast',
     biners: 'biners',
     lifecycleAnalytics: 'analytics',
     clients: 'clients',
@@ -1138,7 +1147,6 @@ const Permissions = {
     if (!key) return false;
     if (!Session.isAuthenticated()) return false;
     if (key === 'aiAssistant') return this.canUseAiAssistant();
-    if (key === 'renewalForecast') return isMonthlyRenewalForecastAdmin(this.getResolvedCurrentUser() || Session.authContext?.());
 
     const requirements = this.getTabPermissionRequirements(key);
     if (!requirements.length) return true;
@@ -1182,8 +1190,8 @@ async function handleExpiredSession(message = 'Session expired. Please log in ag
 
 
 const PermissionAudit = {
-  resources: ['tickets','events','ai_insights','companies','contacts','leads','deals','proposals','agreements','operations_onboarding','technical_admin_requests','invoices','receipts','credit_notes','payment_forecast','biners','clients','analytics','notifications','notification_settings','workflow','users','role_permissions'],
-  actions: ['list','get','create','update','delete','export','manage','approve','reject','convert_to_deal','create_from_deal','create_from_proposal','create_from_agreement','create_from_invoice','cancel','print','export','assign_csm','update_status','view_renewals','view_statement','statement_view','statement_export','create_receipt','schedule_payment','record_payment'],
+  resources: ['tickets','events','ai_insights','companies','contacts','leads','deals','proposals','agreements','operations_onboarding','technical_admin_requests','invoices','receipts','credit_notes','payment_forecast','monthly_renewal_forecast','biners','clients','analytics','notifications','notification_settings','workflow','users','role_permissions'],
+  actions: ['list','get','create','update','delete','export','manage','approve','reject','convert_to_deal','create_from_deal','create_from_proposal','create_from_agreement','create_from_invoice','cancel','print','export','assign_csm','update_status','view_renewals','view_statement','statement_view','statement_export','create_receipt','schedule_payment','record_payment','view_details','mark_renewed','mark_no_renewal_needed','undo_override','create_renewal_invoice'],
   inspect(resource, action) {
     const role = Permissions.normalizeRole(Session.role());
     const matchedRows = Permissions.getMatchedRows(resource, action, role, { includeDenied: true });
