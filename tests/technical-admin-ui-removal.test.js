@@ -12,7 +12,7 @@ const notifications = read('notifications.js');
 assert.doesNotMatch(index, /technicalAdminTab|technicalAdminView|technical-admin\.js|Technical Admin|Technical Request|lifecycleTechnicalFilter/);
 assert.doesNotMatch(index, /operationsOnboardingRequestTypeFilter|<th>Request Type<\/th>/);
 assert.doesNotMatch(onboarding, /data-op-technical-admin|canCreateTechnicalRequest|Technical Request Status:|Technical Request Message:/);
-assert.doesNotMatch(lifecycle, /lifecycleTechnicalFilter|Open Technical Admin Requests|Technical Admin Status|Open Technical Request|Technical Status/);
+assert.doesNotMatch(lifecycle, /technical/i, 'Lifecycle Analytics must have no Technical Admin data, status, metric, timeline, or activity dependency');
 assert.match(app, /technical-admin-requests.*unavailable: true/);
 assert.match(permissions, /technical_admin_requests.*return false/);
 assert.match(notifications, /isRemovedModuleNotification/);

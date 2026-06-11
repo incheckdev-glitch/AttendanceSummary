@@ -60,7 +60,7 @@ assert.strictEqual(analytics.formatDays(0), '0.00 days');
 
 
 const emptyContext = overrides => ({
-  leads: [], deals: [], proposals: [], agreements: [], invoices: [], receipts: [], creditNotes: [], onboarding: [], technical: [],
+  leads: [], deals: [], proposals: [], agreements: [], invoices: [], receipts: [], creditNotes: [], onboarding: [],
   lifecycleStatusLogs: [], activityLogs: [], auditLogs: [], statusHistory: [], workflowApprovals: [], proposalItems: [], agreementItems: [], invoiceItems: [],
   ...overrides
 });
@@ -208,9 +208,6 @@ const overview = analytics.getLifecycleMetrics({
   onboarding: [
     { id: 'onboarding-1', company_id: 'company-1', status: 'Completed', created_at: at(11) },
     { id: 'onboarding-2', company_id: 'company-1', status: 'in_progress', created_at: at(12) }
-  ],
-  technical: [
-    { id: 'tech-1', company_id: 'company-1', request_status: 'completed', created_at: at(13) }
   ]
 });
 assert.strictEqual(overview.totalClients, 2, 'same company_id across records is counted once');
@@ -227,7 +224,7 @@ assert.strictEqual(overview.operationsCompleted, 1);
 assert.strictEqual(Object.prototype.hasOwnProperty.call(overview, 'technicalRequestCompleted'), false, 'Technical Admin metrics must not be exposed');
 
 const dateFiltered = analytics.getLifecycleMetrics({
-  companies: [], leads: [], deals: [], agreementItems: [], invoiceItems: [], paymentSchedule: [], onboarding: [], technical: [],
+  companies: [], leads: [], deals: [], agreementItems: [], invoiceItems: [], paymentSchedule: [], onboarding: [],
   proposals: [{ id: 'p1', status: 'accepted', created_at: at(1) }, { id: 'p2', status: 'accepted', created_at: at(20) }],
   agreements: [], invoices: [], receipts: [], creditNotes: []
 }, { dateFrom: '2026-01-10', dateTo: '2026-01-31' });

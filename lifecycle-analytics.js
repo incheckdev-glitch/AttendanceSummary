@@ -123,10 +123,10 @@ const LifecycleAnalytics = {
     return [
       'id', 'uuid', 'entity_id', 'record_id', 'resource_id', 'source_id', 'related_id', 'target_id', 'module_id', 'parent_id',
       'lead_id', 'deal_id', 'proposal_id', 'agreement_id', 'invoice_id', 'receipt_id', 'credit_note_id',
-      'onboarding_id', 'technical_request_id', 'request_id',
+      'onboarding_id', 'request_id',
       'entity_number', 'record_number', 'resource_number', 'source_number', 'related_number', 'target_number', 'module_number', 'ref_number',
       'lead_number', 'deal_number', 'proposal_number', 'agreement_number', 'invoice_number', 'receipt_number',
-      'credit_note_number', 'onboarding_number', 'technical_request_number'
+      'credit_note_number', 'onboarding_number'
     ];
   },
   getLifecycleReferences(...records) {
@@ -1045,8 +1045,8 @@ const LifecycleAnalytics = {
           currency: 'USD',
           leads: [], deals: [], proposals: [], agreements: [], invoices: [], receipts: [], creditNotes: [],
           proposalItems: [], agreementItems: [], invoiceItems: [], receiptItems: [], paymentSchedule: [],
-          onboarding: [], technical: [], tickets: [], events: [], binersEntries: [], binersSchedules: [], paymentForecastFollowups: [], locationItems: [], contacts: [],
-          lifecycleStatusLogs: [], lifecycleLogs: [], lifecycleHistory: [], proposalLogs: [], agreementLogs: [], invoiceLogs: [], receiptLogs: [], creditNoteLogs: [], operationsOnboardingLogs: [], technicalAdminRequestLogs: [], activityLogs: [], auditLogs: [], statusHistory: [], workflowApprovals: [],
+          onboarding: [], tickets: [], events: [], binersEntries: [], binersSchedules: [], paymentForecastFollowups: [], locationItems: [], contacts: [],
+          lifecycleStatusLogs: [], lifecycleLogs: [], lifecycleHistory: [], proposalLogs: [], agreementLogs: [], invoiceLogs: [], receiptLogs: [], creditNoteLogs: [], operationsOnboardingLogs: [], activityLogs: [], auditLogs: [], statusHistory: [], workflowApprovals: [],
           stages: {},
           lifecycleChain: {},
           metrics: {}
@@ -1197,7 +1197,6 @@ const LifecycleAnalytics = {
       });
     };
     attachOperational(data.onboarding, 'onboarding');
-    attachOperational(data.technical, 'technical');
     attachOperational(data.tickets, 'tickets');
     attachOperational(data.events, 'events');
     attachOperational(data.binersEntries, 'binersEntries');
@@ -1208,10 +1207,10 @@ const LifecycleAnalytics = {
       record?.id, record?.uuid, record?.lead_id, record?.lead_number, record?.deal_id, record?.deal_number,
       record?.proposal_id, record?.proposal_number, record?.ref_number, record?.agreement_id, record?.agreement_number,
       record?.invoice_id, record?.invoice_number, record?.receipt_id, record?.receipt_number, record?.credit_note_id, record?.credit_note_number,
-      record?.onboarding_id, record?.request_id, record?.technical_request_id, record?.ticket_id, record?.event_id,
+      record?.onboarding_id, record?.request_id, record?.ticket_id, record?.event_id,
       record?.entry_number, record?.schedule_number, record?.followup_id
     ].map(value => this.text(value)).filter(Boolean);
-    const lifecycleCollections = ['leads', 'deals', 'proposals', 'agreements', 'invoices', 'receipts', 'creditNotes', 'onboarding', 'technical', 'tickets', 'events', 'binersEntries', 'binersSchedules', 'paymentForecastFollowups'];
+    const lifecycleCollections = ['leads', 'deals', 'proposals', 'agreements', 'invoices', 'receipts', 'creditNotes', 'onboarding', 'tickets', 'events', 'binersEntries', 'binersSchedules', 'paymentForecastFollowups'];
     const findAccountForLifecycleReference = value => {
       const reference = this.text(value);
       if (!reference) return null;
@@ -1237,19 +1236,19 @@ const LifecycleAnalytics = {
     const today = this.parseLifecycleDate(todayValue) || this.getLifecycleNow();
     const rows = key => Array.isArray(context[key]) ? context[key] : [];
     const first = (key, fields) => this.getEarliestDate(rows(key).map(record => fields.map(field => record?.[field])));
-    const normalizedStatus = record => this.normalizeStatus(record?.status || record?.stage || record?.agreement_status || record?.invoice_status || record?.payment_status || record?.payment_state || record?.onboarding_status || record?.request_status);
+    const normalizedStatus = record => this.normalizeStatus(record?.status || record?.stage || record?.agreement_status || record?.invoice_status || record?.payment_status || record?.payment_state || record?.onboarding_status);
     const logCollections = ['lifecycleStatusLogs', 'lifecycleLogs', 'lifecycleHistory', 'activityLogs', 'auditLogs', 'statusHistory', 'proposalLogs', 'agreementLogs', 'invoiceLogs', 'receiptLogs', 'creditNoteLogs', 'operationsOnboardingLogs'];
     const allLogs = logCollections.flatMap(rows);
     const logStatus = log => this.normalizeStatus(log?.new_status || log?.status || log?.to_status || log?.new_value);
     const logEntity = log => this.normalizeStatus(log?.entity_type || log?.module || log?.resource_type || log?.table_name).replace(/ /g, '');
     const logTimestamp = log => this.getFirstValidDate(log, ['status_changed_at', 'changed_at', 'action_at', 'created_at', 'updated_at']);
-    const logReference = log => this.text(log?.entity_id || log?.record_id || log?.resource_id || log?.source_id || log?.proposal_id || log?.agreement_id || log?.invoice_id || log?.receipt_id || log?.credit_note_id || log?.onboarding_id || log?.request_id || log?.technical_request_id || log?.entity_number || log?.record_number);
+    const logReference = log => this.text(log?.entity_id || log?.record_id || log?.resource_id || log?.source_id || log?.proposal_id || log?.agreement_id || log?.invoice_id || log?.receipt_id || log?.credit_note_id || log?.onboarding_id || log?.request_id || log?.entity_number || log?.record_number);
     const transitionDate = (entities, statuses) => this.getEarliestDate(allLogs
       .filter(log => entities.some(entity => logEntity(log).includes(entity)) && statuses.some(status => logStatus(log).includes(status)))
       .map(logTimestamp));
     const stageIsActive = (collection, closedStatuses = []) => rows(collection).some(record => !closedStatuses.some(status => this.lifecycleStatusMatches(normalizedStatus(record), status)));
     const latestActivityDate = this.getLatestDate(
-      ...['leads', 'deals', 'proposals', 'agreements', 'invoices', 'receipts', 'creditNotes', 'onboarding', 'technical', 'tickets', 'events', 'binersEntries', 'binersSchedules', 'paymentForecastFollowups', 'workflowApprovals']
+      ...['leads', 'deals', 'proposals', 'agreements', 'invoices', 'receipts', 'creditNotes', 'onboarding', 'tickets', 'events', 'binersEntries', 'binersSchedules', 'paymentForecastFollowups', 'workflowApprovals']
         .flatMap(key => rows(key).flatMap(record => ['created_at', 'updated_at', 'changed_at', 'status_changed_at', 'completed_at', 'qualified_at', 'converted_at', 'accepted_at', 'acceptance_date', 'signed_at', 'signed_date', 'provider_sign_date', 'customer_sign_date', 'invoice_date', 'issue_date', 'issued_date', 'issued_at', 'receipt_date', 'payment_date', 'credit_note_date', 'go_live_at', 'go_live_date', 'approval_requested_at', 'submitted_for_approval_at', 'pending_approval_at', 'approved_at', 'rejected_at', 'approval_decision_at'].map(field => record?.[field]))),
       allLogs.map(logTimestamp)
     );
@@ -1437,9 +1436,9 @@ const LifecycleAnalytics = {
     if (byClientName.length) return findLatest(byClientName);
     return null;
   },
-  summarizeOperationalStatus(rows = [], type = 'onboarding') {
+  summarizeOnboardingStatus(rows = []) {
     if (!rows.length) return 'None';
-    const values = rows.map(row => this.norm(type === 'onboarding' ? row.onboarding_status : row.request_status));
+    const values = rows.map(row => this.norm(row?.onboarding_status || row?.status));
     if (values.some(value => value.includes('block'))) return 'Blocked';
     if (values.some(value => value.includes('progress') || value.includes('pending') || value.includes('requested'))) return 'Pending';
     if (values.every(value => value.includes('complete') || value.includes('closed'))) return 'Completed';
@@ -1455,8 +1454,7 @@ const LifecycleAnalytics = {
       ...(account.receipts || []).map(item => this.getRecordDate(item, ['receipt_date', 'payment_date', 'created_at'])),
       ...(account.paymentSchedule || []).map(item => this.getRecordDate(item, ['due_date', 'scheduled_date', 'payment_date'])),
       ...(account.locationItems || []).map(item => this.getRecordDate(item, ['service_end_date', 'service_start_date'])),
-      ...(account.onboarding || []).map(item => this.getRecordDate(item, ['go_live_date', 'go_live_at', 'completed_at', 'updated_at'])),
-      ...(account.technical || []).map(item => this.getRecordDate(item, ['requested_at', 'completed_at']))
+      ...(account.onboarding || []).map(item => this.getRecordDate(item, ['go_live_date', 'go_live_at', 'completed_at', 'updated_at']))
     ].filter(Boolean);
   },
   buildAccountAnalytics(account, today, context = {}) {
@@ -1497,7 +1495,7 @@ const LifecycleAnalytics = {
 
     const lifecycle = this.buildLifecycleMetrics(account, today);
     const paymentState = this.derivePaymentStateFromInvoices(account.invoices, totalInvoiced, totalPaid, totalDue);
-    const onboardingStatus = this.summarizeOperationalStatus(account.onboarding, 'onboarding');
+    const onboardingStatus = this.summarizeOnboardingStatus(account.onboarding);
 
     const relatedOnboarding = this.findRelatedOnboarding(account, account.onboarding);
 
@@ -1554,7 +1552,6 @@ const LifecycleAnalytics = {
         customer_legal_name: this.text(account.linkedCompany?.legal_name || account.linkedCompany?.legalName || account.legalName),
         legal_name: this.text(account.linkedCompany?.legal_name || account.linkedCompany?.legalName || account.legalName)
       },
-      latestTechnicalStatus: this.text(latestTechnical?.request_status),
       dateValues: this.collectAccountDateValues(account)
     };
     const lifecycleCompanyId = this.getLifecycleCompanyId(row.lifecycleChain);
@@ -1644,7 +1641,6 @@ const LifecycleAnalytics = {
     const receipts = filterRows('receipts', ['receipt_date', 'payment_date', 'created_at'], ['id', 'receipt_id', 'receipt_uuid', 'uuid']);
     const creditNotes = filterRows('creditNotes', ['credit_note_date', 'issue_date', 'created_at'], ['id', 'credit_note_id', 'credit_note_uuid', 'uuid']);
     const onboarding = filterRows('onboarding', ['requested_at', 'created_at', 'completed_at'], ['id', 'onboarding_id', 'request_id', 'uuid']);
-    const technical = filterRows('technical', ['requested_at', 'created_at', 'completed_at'], ['id', 'request_id', 'technical_request_id', 'uuid']);
     const leads = filterRows('leads', ['created_at', 'lead_date'], ['id', 'lead_id', 'lead_uuid', 'uuid']);
     const deals = filterRows('deals', ['created_at', 'deal_date'], ['id', 'deal_id', 'deal_uuid', 'uuid']);
     const companies = filterRows('companies', ['created_at'], ['id', 'company_id', 'company_uuid', 'uuid']);
@@ -1687,7 +1683,7 @@ const LifecycleAnalytics = {
     });
 
     const nameToId = new Map();
-    [...companies, ...proposals, ...agreements, ...invoices, ...receipts, ...onboarding, ...technical].forEach(row => {
+    [...companies, ...proposals, ...agreements, ...invoices, ...receipts, ...onboarding].forEach(row => {
       const id = this.lifecycleRecordId(row, ['company_id', 'company_uuid', 'companyId', 'companyUuid', 'id']);
       const name = this.normalizeCompanyKey(this.firstValue(row, ['legal_company_name', 'legal_name', 'customer_name', 'client_name', 'company_name', 'name']));
       if (id && name && !nameToId.has(name)) nameToId.set(name, id);
@@ -1696,7 +1692,7 @@ const LifecycleAnalytics = {
       const id = this.lifecycleRecordId(row, ['company_id', 'company_uuid', 'companyId', 'companyUuid', 'id', 'uuid']);
       return id ? `id:${id.toLowerCase()}` : this.lifecycleClientKey(row, nameToId);
     }).filter(Boolean));
-    [...proposals, ...agreements, ...invoices, ...receipts, ...onboarding, ...technical]
+    [...proposals, ...agreements, ...invoices, ...receipts, ...onboarding]
       .map(row => this.lifecycleClientKey(row, nameToId)).filter(Boolean).forEach(key => clientKeys.add(key));
 
     const leadStatuses = leads.reduce((acc, row) => { const key = this.normalizeLeadStatus(row.status); acc[key] = (acc[key] || 0) + 1; return acc; }, {});
