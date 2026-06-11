@@ -82,6 +82,11 @@
   const DEFAULT_AGREEMENT_TERMS_AND_CONDITIONS = `Provider and Customer hereby agree to abide by and be bound to this Subscription Agreement, Provider’s Terms of Use, and Provider's Privacy Policy. Provider's Terms of Use and Privacy Policy can be found at https://www.incheck360.com/terms-of-use and https://www.incheck360.com/privacy-policy, respectively, and are hereby incorporated into this Agreement. The Subscription Agreement, Provider's Terms of Use, and Privacy Policy form the Agreement between Customer, as listed above, and InCheck 360 Holding B.V.
 
 IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by their authorized representatives as of the date of last signature by either party ("Effective Date").`;
+  const DEFAULT_PROPOSAL_TERMS_AND_CONDITIONS = `1. SaaS Cost is an annual recurring cost, while Account Setup is a one-time fee.
+2. Customer Support is continuous during the subscription term with an unlimited quantity of requests.
+3. InCheck's Privacy Policy can be found at https://incheck360.com/privacy-policy
+4. InCheck's Terms of Use can be found at https://incheck360.com/terms-of-use`;
+  const LEGACY_AUTO_PROPOSAL_TERMS_AND_CONDITIONS = DEFAULT_AGREEMENT_TERMS_AND_CONDITIONS;
   function normalizeLocationKey(value = '') {
     return String(value || '').trim().toLowerCase().normalize('NFKC').replace(/\s+/g, ' ');
   }
@@ -3498,7 +3503,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       provider_name: PROPOSAL_PROVIDER_CONTACT_DEFAULTS.name,
       provider_legal_name: PROPOSAL_PROVIDER_CONTACT_DEFAULTS.name,
       provider_address: firstDefined(record, ['provider_address', 'providerAddress']),
-      terms_conditions: firstDefined(record, ['terms_conditions', 'termsConditions']),
+      terms_conditions: firstDefined(record, ['terms_conditions', 'termsConditions']) ?? (ensureBusinessIds ? DEFAULT_PROPOSAL_TERMS_AND_CONDITIONS : undefined),
       customer_official_signatory_name: firstDefined(record, ['customer_official_signatory_name', 'customerOfficialSignatoryName', 'customer_signatory_Name', 'customer_signatory_name', 'customerSignatoryName']),
       customer_official_signatory_title: firstDefined(record, ['customer_official_signatory_title', 'customerOfficialSignatoryTitle', 'customer_signatory_title', 'customerSignatoryTitle']),
       customer_signatory_name: firstDefined(record, ['customer_signatory_name', 'customer_signatory_Name', 'customer_signature_name', 'customerSignatureName', 'customerSignatoryName', 'customer_official_signatory_name', 'customerOfficialSignatoryName']),
@@ -7198,20 +7203,25 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
 
       const ensuredProposalId = ensureBusinessProposalId(createdProposal.proposal_id);
       const ensuredRefNumber = ensureProposalRefNumber(createdProposal.ref_number);
-      const hasProposalId = String(createdProposal.proposal_id || '').trim();
-      const hasRefNumber = String(createdProposal.ref_number || '').trim();
-      if (hasProposalId && hasRefNumber) {
+      const existingTerms = String(createdProposal.terms_conditions || '').trim();
+      const proposalUpdates = {};
+      if (!existingTerms || existingTerms === LEGACY_AUTO_PROPOSAL_TERMS_AND_CONDITIONS.trim()) {
+        proposalUpdates.terms_conditions = DEFAULT_PROPOSAL_TERMS_AND_CONDITIONS;
+      }
+      if (!String(createdProposal.proposal_id || '').trim()) proposalUpdates.proposal_id = ensuredProposalId;
+      if (!String(createdProposal.ref_number || '').trim()) proposalUpdates.ref_number = ensuredRefNumber;
+      if (!Object.keys(proposalUpdates).length) {
         await notifyProposalCreatedFromDeal(createdProposal);
         return createdProposal;
       }
 
       const { data: updatedProposal, error: updateError } = await client
         .from('proposals')
-        .update({ proposal_id: ensuredProposalId, ref_number: ensuredRefNumber })
+        .update(proposalUpdates)
         .eq('id', candidateUuid)
         .select('*')
         .maybeSingle();
-      if (updateError) throw friendlyError('Unable to finalize proposal business identifiers', updateError);
+      if (updateError) throw friendlyError('Unable to finalize proposal created from deal', updateError);
       const proposalRow = updatedProposal || createdProposal;
       await notifyProposalCreatedFromDeal(proposalRow);
       return proposalRow;

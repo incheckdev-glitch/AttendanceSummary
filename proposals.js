@@ -28,11 +28,29 @@ const Proposals = {
     mobile: '+31 97 010280855',
     email: 'Info@incheck360.nl'
   },
-  defaultProposalTermsAndConditions: `Provider and Customer hereby agree to abide by and be bound to this Subscription Agreement, Provider’s Terms of Use, and Provider's Privacy Policy. Provider's Terms of Use and Privacy Policy can be found at
-https://www.incheck360.com/terms-of-use and https://www.incheck360.com/privacy-policy, respectively, and are hereby incorporated into this Agreement. The Subscription Agreement, Provider's Terms of Use, and
-Privacy Policy form the Agreement between Customer, as listed above, and InCheck 360 Holding B.V.
-
-IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by their authorized representatives as of the date of last signature by either party ("Effective Date").`,
+  defaultProposalTermsAndConditions: `1. SaaS Cost is an annual recurring cost, while Account Setup is a one-time fee.
+2. Customer Support is continuous during the subscription term with an unlimited quantity of requests.
+3. InCheck's Privacy Policy can be found at https://incheck360.com/privacy-policy
+4. InCheck's Terms of Use can be found at https://incheck360.com/terms-of-use`,
+  renderProposalTermsHtml(terms = '') {
+    const rawTerms = String(terms ?? '').trim();
+    if (!rawTerms) return '—';
+    const linkify = text => U.escapeHtml(String(text ?? '')).replace(
+      /https:\/\/incheck360\.com\/(?:privacy-policy|terms-of-use)/g,
+      url => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`
+    );
+    const lines = rawTerms.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    const numberedItems = lines.map(line => line.match(/^\d+\.\s+(.+)$/));
+    if (lines.length && numberedItems.every(Boolean)) {
+      return `<ol class="proposal-terms-list">${numberedItems.map(match => `<li>${linkify(match[1])}</li>`).join('')}</ol>`;
+    }
+    return `<div class="proposal-terms-text">${linkify(rawTerms)}</div>`;
+  },
+  resetProposalTermsToDefault() {
+    if (!E.proposalFormTerms || this.state.formReadOnly) return;
+    E.proposalFormTerms.value = this.defaultProposalTermsAndConditions;
+    E.proposalFormTerms.focus?.();
+  },
   finalStatusOptions: ['draft', 'pending_approval', 'sent', 'accepted', 'rejected', 'expired'],
   proposalFields: [
     'proposal_id',
@@ -2629,6 +2647,10 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       .totals-row.grand-total-words-row span { flex: 0 0 auto; font-weight: 600; white-space: nowrap; }
       .totals-row.grand-total-words-row strong { flex: 1 1 auto; min-width: 0; font-weight: 500; line-height: 1.4; text-align: right; overflow-wrap: anywhere; }
       .terms { margin-top: 16px; font-size: 12.5px; line-height: 1.6; border: 1px solid #d7e1ed; border-radius: 6px; padding: 12px; }
+      .proposal-terms-list { margin: 8px 0 0; padding-left: 22px; }
+      .proposal-terms-list li + li { margin-top: 5px; }
+      .proposal-terms-text { margin-top: 8px; white-space: pre-wrap; }
+      .terms a { color: inherit; text-decoration: underline; overflow-wrap: anywhere; }
       .signature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 12px; }
       .signature-box { border: 1px solid #d7e1ed; min-height: 124px; border-radius: 6px; overflow: hidden; }
       .signature-head { background: #f8fbff; border-bottom: 1px solid #e3eaf3; padding: 8px 10px; font-size: 11px; letter-spacing: 0.08em; font-weight: 700; color: #1e3a5f; }
@@ -2775,7 +2797,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
 
       <section class="terms">
         <div><strong>Terms & Conditions:</strong></div>
-        <div style="white-space: pre-wrap;">${textValue(proposalData.terms_conditions)}</div>
+        ${this.renderProposalTermsHtml(proposalData.terms_conditions)}
       </section>
 
       <section class="signature-grid">
@@ -3398,7 +3420,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       if (el.id === 'proposalSignedDocumentFile') return;
       el.disabled = !!readOnly;
     });
-    [E.proposalAddAnnualRowBtn, E.proposalAddOneTimeRowBtn, E.proposalAddCapabilityRowBtn].forEach(btn => {
+    [E.proposalAddAnnualRowBtn, E.proposalAddOneTimeRowBtn, E.proposalAddCapabilityRowBtn, E.proposalResetTermsBtn].forEach(btn => {
       if (!btn) return;
       btn.style.display = readOnly ? 'none' : '';
     });
@@ -5203,6 +5225,9 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     }
     if (E.proposalFormStatus) {
       E.proposalFormStatus.addEventListener('change', () => this.refreshSignedDocumentUi(this.state.currentProposal || {}));
+    }
+    if (E.proposalResetTermsBtn) {
+      E.proposalResetTermsBtn.addEventListener('click', () => this.resetProposalTermsToDefault());
     }
     [E.proposalFormCustomerSignDate, E.proposalFormProviderSignDate].forEach(el => {
       if (!el) return;
