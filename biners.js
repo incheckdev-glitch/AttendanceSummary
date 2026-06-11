@@ -2,6 +2,7 @@
   'use strict';
 
   const PAGE_SIZE = 10;
+  const SAVE_TIMEOUT_MS = 20000;
   const $ = id => document.getElementById(id);
   const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;' }[ch]));
   const norm = value => String(value ?? '').trim().toLowerCase();
@@ -519,6 +520,14 @@
     global.UI?.toast?.(message);
   }
 
+  function withTimeout(promise, message = 'Save request timed out. Please try again.') {
+    let timeoutId;
+    const timeout = new Promise((_, reject) => {
+      timeoutId = global.setTimeout(() => reject(new Error(message)), SAVE_TIMEOUT_MS);
+    });
+    return Promise.race([Promise.resolve(promise), timeout]).finally(() => global.clearTimeout(timeoutId));
+  }
+
   function clearEntryErrors() {
     $('binersEntryErrorBanner')?.setAttribute('hidden', '');
     const banner = $('binersEntryErrorBanner');
@@ -665,27 +674,46 @@
   async function saveEntry(e) {
     e.preventDefault();
     if (state.savingEntry) return;
-    updateServiceEnd();
-    updateTotal();
-    const validationErrors = validateEntry();
-    const payload = validationErrors.length ? null : buildEntryPayload();
-    if (isDevelopment()) console.log('Biners Save Clicked', { formState: payload?.entry || null, validationErrors, payload });
-    if (validationErrors.length) return;
 
     const btn = $('binersSaveEntryBtn');
     state.savingEntry = true;
     if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
+    if (isDevelopment()) console.log('Biners Save Clicked', { formState: new FormData($('binersEntryForm')) });
+
     try {
-      const result = await request('create', payload);
-      if (isDevelopment()) console.log('Biners Entry Created', result);
+      updateServiceEnd();
+      updateTotal();
+      const validationErrors = validateEntry();
+      if (validationErrors.length) return;
+
+      const payload = buildEntryPayload();
+      if (!payload.locations.length) throw new Error('At least one related location name is required.');
+      if (isDevelopment()) console.log('Biners Save Payload', payload);
+
+      const result = await withTimeout(request('create', payload));
+      if (!result) throw new Error('No result returned while creating the Biners entry.');
+      if (isDevelopment()) console.log('Biners Save Success', result);
+
+      state.entries = [result, ...state.entries.filter(entry => String(entry.id) !== String(result.id))];
+      render();
+      try {
+        await withTimeout(refresh(), 'Biners entry was created, but refreshing the list timed out. Please refresh the page.');
+        if (!state.entries.some(entry => String(entry.id) === String(result.id))) state.entries.unshift(result);
+        render();
+      } catch (refreshError) {
+        if (isDevelopment()) console.error('Unable to refresh Biners entries after save', refreshError);
+        const refreshMessage = refreshError?.message || 'Biners entry was created, but the list could not refresh. Please refresh the page.';
+        setState(refreshMessage, 'error');
+        toast(refreshMessage);
+      }
       closeEntry();
-      await refresh();
       toast('Biners entry created successfully.');
     } catch (error) {
+      if (isDevelopment()) console.error('Biners Save Error', error);
       showEntrySaveError(error);
     } finally {
       state.savingEntry = false;
-      if (btn) { btn.disabled = false; btn.textContent = 'Save Entry'; }
+      if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
     }
   }
 
@@ -766,13 +794,13 @@
     setState('Loading Biners payable data…');
     try {
       const [entries, schedules, forecast, payments, summary, monthly, clients] = await Promise.all([
-        safeLoad('entries', request('list'), []),
-        safeLoad('scheduled payments', (global.Api?.getBinersScheduleRows?.() || request('list_schedules')), []),
-        safeLoad('forecast rows', (global.Api?.getBinersForecastRows?.() || request('list_forecast')), []),
-        safeLoad('payment history', request('list_payments'), []),
-        safeLoad('summary', request('summary'), null),
-        safeLoad('monthly forecast', (global.Api?.getBinersMonthlyForecast?.() || request('monthly_forecast')), []),
-        safeLoad('clients', loadClients(), [])
+        safeLoad('entries', request('list'), state.entries),
+        safeLoad('scheduled payments', (global.Api?.getBinersScheduleRows?.() || request('list_schedules')), state.schedules),
+        safeLoad('forecast rows', (global.Api?.getBinersForecastRows?.() || request('list_forecast')), state.forecast),
+        safeLoad('payment history', request('list_payments'), state.payments),
+        safeLoad('summary', request('summary'), state.summary),
+        safeLoad('monthly forecast', (global.Api?.getBinersMonthlyForecast?.() || request('monthly_forecast')), state.monthly),
+        safeLoad('clients', loadClients(), state.clients)
       ]);
       Object.assign(state, {
         entries: normalizeList(entries),
