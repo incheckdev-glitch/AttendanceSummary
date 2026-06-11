@@ -3659,7 +3659,10 @@ Sample:
 
         <div class="divider" style="margin:12px 0;"></div>
         <div class="filter-row">
-          <label class="muted" for="proposalFormTerms">Terms &amp; Conditions</label>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+            <label class="muted" for="proposalFormTerms">Terms &amp; Conditions</label>
+            <button id="proposalResetTermsBtn" class="btn ghost sm" type="button">Reset to Default Terms</button>
+          </div>
           <textarea id="proposalFormTerms" class="input" rows="6" placeholder="Default proposal terms are added automatically and can be edited before saving."></textarea>
         </div>
 
