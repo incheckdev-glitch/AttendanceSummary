@@ -96,6 +96,11 @@ const NotificationSound = {
   }
 };
 
+const logNotificationDevelopmentWarning = (...args) => {
+  const host = String(window.location?.hostname || '').toLowerCase();
+  if (window.RUNTIME_CONFIG?.DEBUG_API || host === 'localhost' || host === '127.0.0.1') console.warn(...args);
+};
+
 const Notifications = {
 
   setRouteHash(hash = '') {
@@ -143,7 +148,9 @@ const Notifications = {
     seenHydrated: false,
     seenRealtimeNotificationIds: new Set(),
     autoPopupTimer: null,
-    previewHovering: false
+    previewHovering: false,
+    communicationReadRequests: new Map(),
+    communicationReadCompletedAt: new Map()
   },
   normalize(item = {}) {
     const source = item && typeof item === 'object' ? item : {};
@@ -175,7 +182,12 @@ const Notifications = {
       }
       return {};
     };
-    const meta = parseMeta(firstValue(source.meta, source.meta_json));
+    const meta = {
+      ...parseMeta(source.metadata),
+      ...parseMeta(source.payload),
+      ...parseMeta(source.data),
+      ...parseMeta(firstValue(source.meta, source.meta_json))
+    };
     const statusValue = String(firstValue(source.status, source.notification_status)).trim().toLowerCase();
     const isRead = parseBoolean(firstValue(source.is_read, source.isRead, source.read)) || statusValue === 'read';
     return {
@@ -193,7 +205,11 @@ const Notifications = {
       status: String(firstValue(source.status, source.notification_status)).trim(),
       is_read: isRead,
       read_at: String(firstValue(source.read_at, source.readAt)).trim(),
-      link_target: String(firstValue(source.link_target, source.link, source.target_link)).trim(),
+      link_target: String(firstValue(source.link_target, source.link, source.target_link, source.deep_link, source.url)).trim(),
+      conversation_id: String(firstValue(source.conversation_id, source.communication_id, source.related_conversation_id)).trim(),
+      source_id: String(firstValue(source.source_id)).trim(),
+      target_id: String(firstValue(source.target_id)).trim(),
+      related_record_id: String(firstValue(source.related_record_id)).trim(),
       event_status: String(firstValue(source.event_status, source.eventStatus, meta.event_status, meta.eventStatus)).trim(),
       meta
     };
@@ -1065,6 +1081,66 @@ const Notifications = {
       )
     ).trim();
   },
+  notificationMatchesConversation(notification = {}, conversationId = '') {
+    const wanted = String(conversationId || '').trim().toLowerCase();
+    if (!wanted) return false;
+    const meta = notification?.meta && typeof notification.meta === 'object' ? notification.meta : {};
+    const directValues = [
+      notification?.conversation_id, notification?.communication_id, notification?.related_conversation_id,
+      notification?.source_id, notification?.target_id, notification?.related_record_id,
+      notification?.resource_id, notification?.target_resource_id,
+      meta?.conversation_id, meta?.communication_id, meta?.related_conversation_id
+    ];
+    if (directValues.some(value => String(value || '').trim().toLowerCase() === wanted)) return true;
+    return [notification?.link_target, notification?.deep_link, notification?.url, meta?.deep_link, meta?.url]
+      .some(value => String(value || '').toLowerCase().includes(wanted));
+  },
+  applyCommunicationNotificationsRead(conversationId = '') {
+    const mark = list => (Array.isArray(list) ? list : []).map(item => {
+      if (item?.is_read || !this.notificationMatchesConversation(item, conversationId)) return item;
+      return { ...item, is_read: true, status: 'read', read_at: new Date().toISOString() };
+    });
+    this.state.items = mark(this.state.items);
+    this.state.previewItems = mark(this.state.previewItems);
+    this.recalculateUnreadCount();
+    this.renderBell();
+    this.renderPreview();
+    this.renderHub();
+  },
+  async markCommunicationNotificationsRead(conversationId = '') {
+    const normalizedConversationId = String(conversationId || '').trim();
+    if (!normalizedConversationId || !Session.isAuthenticated() || this.state.unavailable) return 0;
+    const requestKey = `${String(Session.userId?.() || '').trim()}:${normalizedConversationId}`;
+
+    const existingRequest = this.state.communicationReadRequests.get(requestKey);
+    if (existingRequest) return existingRequest;
+    const lastCompletedAt = Number(this.state.communicationReadCompletedAt.get(requestKey) || 0);
+    if (Date.now() - lastCompletedAt < 5000) return 0;
+
+    const request = (async () => {
+      try {
+        const client = window.SupabaseClient?.getClient?.();
+        if (!client?.rpc) return 0;
+        const { data, error } = await client.rpc('crm_mark_communication_notifications_read', {
+          p_conversation_id: normalizedConversationId
+        });
+        if (error) throw error;
+        this.state.communicationReadCompletedAt.set(requestKey, Date.now());
+        this.applyCommunicationNotificationsRead(normalizedConversationId);
+        await this.refreshUnreadCount();
+        if (this.state.filters.mode === 'unread' && E.notificationsView?.classList.contains('active')) await this.loadHub(true);
+        return Number(data || 0);
+      } catch (error) {
+        logNotificationDevelopmentWarning('[notifications] unable to mark communication notifications as read', error);
+        return 0;
+      } finally {
+        this.state.communicationReadRequests.delete(requestKey);
+      }
+    })();
+
+    this.state.communicationReadRequests.set(requestKey, request);
+    return request;
+  },
   async markNotificationRead(notification = {}) {
     const notificationId = String(notification?.notification_id || '').trim();
     if (!notificationId || notification?.is_read) return true;
@@ -1192,7 +1268,8 @@ async routeToResourceTarget(resource, targetId, notification) {
       if (!opened) return false;
       if (normalizedTargetId) this.setRouteHash(`#communication_centre?conversation_id=${encodeURIComponent(normalizedTargetId)}`);
       if (normalizedTargetId && window.CommunicationCentre?.openConversationById) {
-        await window.CommunicationCentre.openConversationById(normalizedTargetId, { source: 'notification' });
+        const conversationOpened = await window.CommunicationCentre.openConversationById(normalizedTargetId, { source: 'notification' });
+        if (conversationOpened === false) return false;
       }
       return true;
     }
@@ -1385,8 +1462,11 @@ async routeToResourceTarget(resource, targetId, notification) {
       resolvedResource: resource,
       targetId
     });
-    const readMarked = await this.markNotificationRead(notification);
-    if (!readMarked && !notification?.is_read) return;
+    const marksWhenConversationOpens = resource === 'communication_centre' && Boolean(targetId);
+    if (!marksWhenConversationOpens) {
+      const readMarked = await this.markNotificationRead(notification);
+      if (!readMarked && !notification?.is_read) return;
+    }
     this.closePanel();
     try {
       const opened = await this.routeToResourceTarget(resource, targetId, notification);
@@ -1726,6 +1806,8 @@ async routeToResourceTarget(resource, targetId, notification) {
       this.state.autoPopupTimer = null;
     }
     this.state.seenRealtimeNotificationIds = new Set();
+    this.state.communicationReadRequests = new Map();
+    this.state.communicationReadCompletedAt = new Map();
     this.state.previewHovering = false;
     this.clearUnavailable();
     NotificationSound.seenNotificationIds.clear();

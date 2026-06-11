@@ -43,6 +43,8 @@
     lastRealtimeAt: null,
     activeConversationId: null,
     openedConversationIds: new Set(),
+    notificationReadRequests: new Map(),
+    notificationReadCompletedAt: new Map(),
     userScrolledUpByConversation: new Map(),
     lastMessageCountByConversation: new Map()
   };
@@ -83,6 +85,10 @@
   }
   const showFriendlyError = message => ccNotify(message, 'error');
   const showFriendlySuccess = message => ccNotify(message, 'success');
+  const logDevelopmentWarning = (...args) => {
+    const host = String(global.location?.hostname || '').toLowerCase();
+    if (global.RUNTIME_CONFIG?.DEBUG_API || host === 'localhost' || host === '127.0.0.1') console.warn(...args);
+  };
   const db = () => global.SupabaseClient?.getClient?.();
   const MESSAGE_EDIT_WINDOW_MS = 5 * 60 * 1000;
   const MESSAGE_TEXT_FIELDS = ['message', 'message_body', 'body', 'content', 'text'];
@@ -1481,6 +1487,45 @@
     }
   }
 
+  async function markCommunicationNotificationsRead(conversationId) {
+    const normalizedConversationId = String(conversationId || '').trim();
+    if (!normalizedConversationId) return 0;
+    const requestKey = `${getCurrentUserId(getCurrentUser())}:${normalizedConversationId}`;
+
+    const existingRequest = M.notificationReadRequests.get(requestKey);
+    if (existingRequest) return existingRequest;
+
+    const lastCompletedAt = Number(M.notificationReadCompletedAt.get(requestKey) || 0);
+    if (Date.now() - lastCompletedAt < 5000) return 0;
+
+    const request = (async () => {
+      try {
+        if (global.Notifications?.markCommunicationNotificationsRead) {
+          const markedCount = await global.Notifications.markCommunicationNotificationsRead(normalizedConversationId);
+          M.notificationReadCompletedAt.set(requestKey, Date.now());
+          return Number(markedCount || 0);
+        }
+
+        const client = db();
+        if (!client?.rpc) return 0;
+        const { data, error } = await client.rpc('crm_mark_communication_notifications_read', {
+          p_conversation_id: normalizedConversationId
+        });
+        if (error) throw error;
+        M.notificationReadCompletedAt.set(requestKey, Date.now());
+        return Number(data || 0);
+      } catch (error) {
+        logDevelopmentWarning('[Communication Centre] unable to mark related notifications as read', error);
+        return 0;
+      } finally {
+        M.notificationReadRequests.delete(requestKey);
+      }
+    })();
+
+    M.notificationReadRequests.set(requestKey, request);
+    return request;
+  }
+
   async function list() {
     const client = db();
     if (!client) throw new Error('Supabase client is not available.');
@@ -1552,7 +1597,7 @@
       const client = db();
       if (!client) {
         showFriendlyError('Unable to open conversation. Please refresh and try again.');
-        return;
+        return false;
       }
       const { data, error } = await client
         .from('communication_centre_conversations')
@@ -1562,7 +1607,7 @@
       if (error || !data) {
         console.error('[Communication Centre] open detail failed', error || new Error('Conversation not found'));
         showFriendlyError('Unable to open conversation. Please refresh and try again.');
-        return;
+        return false;
       }
       const participantsResult = await client
         .from('communication_centre_participants')
@@ -1591,7 +1636,7 @@
         if (drawer) drawer.innerHTML = '';
         render();
         ccNotify('You are not assigned to this conversation.', 'warning');
-        return;
+        return false;
       }
       M.state.active = {
         ...visibleConversation,
@@ -1624,12 +1669,15 @@
         preserveDetailsPanel
       });
       if (conversationId) M.openedConversationIds.add(conversationId);
+      await markCommunicationNotificationsRead(id);
       if (options.markRead !== false) await markCommunicationConversationRead(id);
       M.state.rows = (M.state.rows || []).map(row => String(row.id) === String(id) ? { ...row, unread_count: 0 } : row);
       render();
+      return true;
     } catch (error) {
       console.error('[Communication Centre] open detail failed', error);
       showFriendlyError('Unable to open conversation. Please refresh and try again.');
+      return false;
     }
   }
 
