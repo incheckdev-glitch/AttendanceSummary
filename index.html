@@ -1530,6 +1530,7 @@ Sample:
               </div>
               <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
                 <span id="clientDetailStatus" class="chip">Unknown</span>
+                <button id="clientCreateCommunicationBtn" class="btn ghost sm" type="button" data-create-communication hidden>Create Communication</button>
                 <button id="clientActionProposalBtn" class="btn ghost sm" type="button">New Proposal</button>
                 <button id="clientActionAgreementBtn" class="btn ghost sm" type="button">New Agreement</button>
                 <button id="clientActionInvoiceBtn" class="btn ghost sm" type="button">Issue Invoice</button>
@@ -1537,6 +1538,7 @@ Sample:
               </div>
             </div>
             <div id="clientDetailOverview" class="muted" style="margin:10px 0 14px;"></div>
+            <section class="card communication-related-section" style="margin:10px 0 14px;"><div class="header"><h3 style="margin:0">Communications</h3></div><div id="clientRelatedCommunications" class="muted">Select a client to view communications.</div></section>
             <div id="clientDetailTabButtons" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
               <button class="btn ghost sm" type="button" data-client-detail-tab="overview">Overview</button>
               <button class="btn ghost sm" type="button" data-permission-resource="clients" data-permission-action="view_renewals" data-client-detail-tab="renewals">Renewals &amp; Payments</button>
@@ -2665,6 +2667,7 @@ Sample:
         <h2 id="modalTitle" style="margin:0;font-size:20px">Ticket</h2>
         <div class="actions">
           <span id="replyRecipientLabel" class="muted" style="font-size:12px;" hidden>To: khaled.yakan@incheck360.nl</span>
+          <button id="ticketCreateCommunicationBtn" class="btn sm" type="button" data-create-communication hidden>Create Communication</button>
           <button id="replyEmailBtn" class="btn sm" type="button" aria-label="Reply via email">
             <span class="icon" aria-hidden="true">📧</span> Reply via Email
           </button>
@@ -4197,8 +4200,8 @@ Sample:
   <script src="crm-form-selectors.js?v=20260609-final-company-contact-fix"></script>
   <script src="ui.js?v=20260605-csm-notes"></script>
   <script src="leads.js?v=20260609-contact-company-uuid"></script>
-  <script src="companies.js?v=20260609-contact-company-uuid"></script>
-  <script src="contacts.js?v=20260609-contact-company-uuid"></script>
+  <script src="companies.js?v=20260611-direct-communication"></script>
+  <script src="contacts.js?v=20260611-direct-communication"></script>
   <script src="deals.js?v=20260608-company-options-fresh"></script>
   <script src="proposals.js?v=v17-agreement-today-helper"></script>
   <script src="agreements.js?v=v17-agreement-today-helper"></script>
@@ -4210,9 +4213,9 @@ Sample:
   <script src="renewal-forecast.js?v=20260611-admin-guard1"></script>
   <script src="biners.js?v=20260605-biners-init-safe-final"></script>
   <script src="lifecycle-analytics.js?v=20260610-lifecycle-metrics-source-truth"></script>
-  <script src="clients.js?v=20260427-allpwa1"></script>
+  <script src="clients.js?v=20260611-direct-communication"></script>
   <script src="proposal-catalog.js?v=20260427-allpwa1"></script>
-  <script src="communication-centre.js?v=20260505-cc-whatsapp-notify-map1"></script>
+  <script src="communication-centre.js?v=20260611-direct-communication"></script>
   <script src="events.js?v=20260605-cancelled-title1"></script>
   <script src="notifications.js?v=20260605-cancelled-title1"></script>
   <script src="push-notifications.js?v=20260427-allpwa1"></script>
@@ -4224,6 +4227,6 @@ Sample:
   <script src="csm-service.js?v=20260605-csm-uuid-update"></script>
   <script src="ai-insights-service.js?v=20260427-allpwa1"></script>
   <script src="ai-assistant.js?v=20260526-ai-assistant-v1"></script>
-  <script src="app.js?v=20260605-csm-uuid-update"></script>
+  <script src="app.js?v=20260611-direct-communication"></script>
 </body>
 </html>

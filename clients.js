@@ -3973,6 +3973,14 @@ const Clients = {
     if (E.clientDetailName) E.clientDetailName.textContent = title;
     if (E.clientDetailMeta) E.clientDetailMeta.textContent = `${subtitleValue || client.customer_legal_name || 'No legal name'} • ${this.buildContactPersonName(primaryContact) || 'No contact'} • ${(String(primaryContact?.email || primaryContact?.contact_email || '').trim()) || '—'}`;
     if (E.clientDetailStatus) E.clientDetailStatus.textContent = client.status || 'Unknown';
+    const communicationContext = { related_module: 'client', related_record_id: client.client_id, related_record_ref: client.client_id, related_record_title: title, client_name: title, company_name: subtitleValue || title, contact_name: this.buildContactPersonName(primaryContact) || '' };
+    const communicationButton = document.getElementById('clientCreateCommunicationBtn');
+    if (communicationButton) {
+      communicationButton.hidden = !window.CommunicationCentre?.canCreate?.();
+      communicationButton.dataset.communicationContext = encodeURIComponent(JSON.stringify(communicationContext));
+    }
+    window.CommunicationCentre?.renderRelatedConversations?.(document.getElementById('clientRelatedCommunications'), communicationContext);
+
     if (E.clientDetailOverview) {
       const latestAgreement = this.resolveLatestAgreementContext_(client.client_id).preferred;
       const latestInvoice = this.listClientRelatedInvoices_(client.client_id)

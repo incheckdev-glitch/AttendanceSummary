@@ -1801,12 +1801,24 @@ UI.Modals = {
           <h5>Log</h5>
           <p>${logValue}</p>
         </section>
+
+        <section class="card communication-related-section">
+          <div class="header"><h3 style="margin:0">Communications</h3></div>
+          <div id="ticketRelatedCommunications" class="muted">Loading communications…</div>
+        </section>
       </article>
     `;
     if (E.editIssueBtn) {
       E.editIssueBtn.disabled = !Permissions.canEditTicket();
       E.editIssueBtn.dataset.id = r.id || '';
     }
+    const ticketCommunicationContext = { related_module: 'ticket', related_record_id: r.id || r.ticket_id || '', related_record_ref: r.ticket_id || r.id || '', related_record_title: r.title || '' };
+    const ticketCommunicationButton = document.getElementById('ticketCreateCommunicationBtn');
+    if (ticketCommunicationButton) {
+      ticketCommunicationButton.hidden = !window.CommunicationCentre?.canCreate?.();
+      ticketCommunicationButton.dataset.communicationContext = encodeURIComponent(JSON.stringify(ticketCommunicationContext));
+    }
+    window.CommunicationCentre?.renderRelatedConversations?.(document.getElementById('ticketRelatedCommunications'), ticketCommunicationContext);
     if (E.replyRecipientLabel) E.replyRecipientLabel.textContent = `To: ${r.emailAddressee || r.email || '—'}`;
     E.issueModal.style.display = 'flex';
     E.exportIssuePdf?.focus();
