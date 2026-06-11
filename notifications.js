@@ -523,7 +523,7 @@ const Notifications = {
         limit: 10,
         forceRefresh: force
       });
-      const rows = this.extractRows(response).map(item => this.normalize(item));
+      const rows = this.extractRows(response).map(item => this.normalize(item)).filter(item => !this.isRemovedModuleNotification(item));
       this.state.previewItems = rows.slice(0, 10);
       this.handleIncomingNotifications(rows, { source: 'preview' });
     } catch (error) {
@@ -596,7 +596,7 @@ const Notifications = {
       const rows = normalizedList.rows;
       this.state.rawRows = Array.isArray(rows) ? rows.slice() : [];
       console.debug('[notifications] extracted rows', rows);
-      const normalizedItems = rows.map(item => this.normalize(item));
+      const normalizedItems = rows.map(item => this.normalize(item)).filter(item => !this.isRemovedModuleNotification(item));
       console.debug('[notifications] normalized items', normalizedItems);
       console.debug('[notifications] active filters', this.state.filters);
       this.state.items = normalizedItems;
@@ -997,6 +997,14 @@ const Notifications = {
     const selected = candidates.map(normalizeResourceToken).find(Boolean);
     return selected || normalizeResourceToken(firstValue(notification?.link_target, meta?.url));
   },
+  isRemovedModuleNotification(notification = {}) {
+    const resource = this.resolveNotificationResource(notification);
+    const meta = notification?.meta && typeof notification.meta === 'object' ? JSON.stringify(notification.meta) : '';
+    const searchable = [resource, notification?.resource, notification?.type, notification?.title, notification?.action_label, notification?.link_target, meta]
+      .map(value => String(value || '').trim().toLowerCase())
+      .join(' ');
+    return resource === 'technical_admin' || /technical[_ -]?(admin|request)/.test(searchable);
+  },
   resolveNotificationTargetId(notification = {}) {
     const meta = notification?.meta && typeof notification.meta === 'object' ? notification.meta : {};
     const firstValue = (...values) => {
@@ -1095,7 +1103,7 @@ const Notifications = {
       credit_notes: 'creditNotes',
       payment_forecast: 'paymentForecast',
       operations_onboarding: 'operationsOnboarding',
-      technical_admin: 'technicalAdmin',
+      technical_admin: 'issues',
       clients: 'clients',
       leads: 'leads',
       deals: 'deals',
@@ -1122,7 +1130,6 @@ const Notifications = {
     if (tabKey === 'invoices' && window.Invoices?.refresh) await Invoices.refresh({ force: true });
     if (tabKey === 'receipts' && window.Receipts?.refresh) await Receipts.refresh({ force: true });
     if (tabKey === 'operations_onboarding' && window.OperationsOnboarding?.loadAndRefresh) await OperationsOnboarding.loadAndRefresh({ force: true });
-    if (tabKey === 'technical_admin' && window.TechnicalAdmin?.loadAndRefresh) await TechnicalAdmin.loadAndRefresh({ force: true });
     if (tabKey === 'clients' && window.Clients?.loadAndRefresh) await Clients.loadAndRefresh({ force: true });
     if (tabKey === 'leads' && window.Leads?.loadAndRefresh) await Leads.loadAndRefresh({ force: true });
     if (tabKey === 'deals' && window.Deals?.loadAndRefresh) await Deals.loadAndRefresh({ force: true });
@@ -1327,12 +1334,8 @@ async routeToResourceTarget(resource, targetId, notification) {
       return targetId ? this.highlightRowById(targetId) || true : true;
     }
     if (normalizedResource === 'technical_admin' || normalizedResource === 'technical_admin_requests') {
-      const opened = await this.openModuleTab('technical_admin');
-      if (!opened) return false;
-      if (targetId) this.setRouteHash(`#technical-admin?id=${encodeURIComponent(String(targetId).trim())}`);
-      if (targetId && window.TechnicalAdmin?.openDetails) await TechnicalAdmin.openDetails(targetId);
-      else if (targetId && window.TechnicalAdmin?.highlightRow) window.TechnicalAdmin.highlightRow(targetId);
-      return targetId ? this.highlightRowById(targetId) || true : true;
+      UI.toast('Page not available.');
+      return this.openModuleTab('issues');
     }
     if (normalizedResource === 'clients') {
       const opened = await this.openModuleTab('clients');
@@ -1426,7 +1429,7 @@ async routeToResourceTarget(resource, targetId, notification) {
       E.notificationPreviewList.innerHTML = '';
       return;
     }
-    const list = this.state.previewItems || [];
+    const list = (this.state.previewItems || []).filter(item => !this.isRemovedModuleNotification(item));
     if (!list.length) {
       E.notificationPreviewState.textContent = 'No new notifications.';
       E.notificationPreviewList.innerHTML = '';
@@ -1494,8 +1497,8 @@ async routeToResourceTarget(resource, targetId, notification) {
       return;
     }
     this.renderPagination();
-    const list = Array.isArray(this.state.items) ? this.state.items.slice() : [];
-    const unread = this.state.items.filter(item => !item.is_read);
+    const list = Array.isArray(this.state.items) ? this.state.items.filter(item => !this.isRemovedModuleNotification(item)) : [];
+    const unread = list.filter(item => !item.is_read);
     const highUnread = unread.filter(item => this.isHighPriority(item)).length;
     const approvalsUnread = unread.filter(item => this.isApproval(item)).length;
     const operationsUnread = unread.filter(item => this.isOperations(item)).length;

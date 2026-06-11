@@ -1141,7 +1141,7 @@ const ClientsService = {
       input.legacy_client_ref ? `Legacy Client Ref: ${input.legacy_client_ref}` : '',
       input.account_number ? `Account Number: ${input.account_number}` : '',
       legacyAgreementRef ? `Imported Agreement Ref: ${legacyAgreementRef}` : '',
-      'Imported historical agreement — no workflow, onboarding, technical admin, invoice, receipt, or notification automation.'
+      'Imported historical agreement — no workflow, onboarding, invoice, receipt, or notification automation.'
     ].filter(Boolean);
 
     const companyPayload = {

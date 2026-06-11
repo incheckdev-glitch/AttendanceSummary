@@ -650,6 +650,8 @@ const RolesAdmin = {
   filteredPermissionRows() {
     const { resource, action, role, text } = this.state.filters;
     return this.state.groupedPermissions.filter(rule => {
+      if (['technical_admin', 'technical_admin_requests', 'technical_requests', 'request_technical_admin'].includes(String(rule.resource || '').trim().toLowerCase())) return false;
+      if (String(rule.action || '').trim().toLowerCase() === 'request_technical_admin') return false;
       if (!this.isCommunicationCentreUiAction(rule.resource, rule.action)) return false;
       const catalog = this.permissionCatalog(rule.resource, rule.action);
       const searchable = `${rule.resource} ${rule.action} ${catalog.moduleName} ${catalog.displayGroup} ${catalog.actionLabel} ${rule.roleKeys.join(' ')}`.toLowerCase();

@@ -64,7 +64,7 @@ const matchingAccount = {
   technicalAdminRequestLogs: [{ id: 'technical-log', technical_request_number: 'TECH-001', details: '{"note":"Technical note"}', changed_at: '2026-05-03' }]
 };
 assert.deepStrictEqual(Array.from(context.lifecycle.getRelatedLifecycleLogs(matchingAccount, {}, 'proposal', 'proposal-uuid'), log => log.id), ['proposal-log'], 'module-specific logs must not leak into another stage history');
-assert.strictEqual(context.lifecycle.getLatestLifecycleNote(matchingAccount, {}, 'technical_admin_request', '', 'TECH-001'), 'Technical note', 'business references and module aliases should match technical logs');
+assert.strictEqual(context.lifecycle.getLatestLifecycleNote(matchingAccount, {}, 'technical_admin_request', '', 'TECH-001'), 'No note', 'removed Technical Admin history must not be exposed in lifecycle UI');
 const moduleHistoryNote = context.lifecycle.getLatestLifecycleNote({ proposalLogs: [{ proposal_id: 'proposal-1', payload: '{"note":"Module note"}', changed_at: '2026-01-01' }] }, { id: 'proposal-1' }, 'proposal', 'proposal-1');
 assert.strictEqual(moduleHistoryNote, 'Module note', 'module-specific history arrays should be inspected');
 const timelineHtml = context.lifecycle.renderLifecycleTimeline(account);

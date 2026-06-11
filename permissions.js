@@ -114,12 +114,6 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     assign_csm: ['admin', 'hoo', 'head_of_operations', 'operations_manager'],
     delete: ['admin']
   }),
-  technical_admin_requests: Object.freeze({
-    list: ['admin', 'dev', 'hoo'],
-    get: ['admin', 'dev', 'hoo'],
-    create: ['admin', 'dev', 'hoo'],
-    update_status: ['admin', 'dev', 'hoo']
-  }),
   invoices: Object.freeze({
     list: ['admin', 'dev', 'viewer', 'hoo'],
     get: ['admin', 'dev', 'viewer', 'hoo'],
@@ -250,7 +244,6 @@ const Permissions = {
     proposals: [{ resource: 'proposals', action: 'list' }],
     agreements: [{ resource: 'agreements', action: 'list' }],
     operationsOnboarding: [{ resource: 'operations_onboarding', action: 'list' }],
-    technicalAdmin: [{ resource: 'technical_admin_requests', action: 'list' }],
     invoices: [{ resource: 'invoices', action: 'list' }],
     receipts: [{ resource: 'receipts', action: 'list' }],
     creditNotes: [{ resource: 'credit_notes', action: 'view' }],
@@ -281,7 +274,6 @@ const Permissions = {
     proposals: 'proposals',
     agreements: 'agreements',
     operationsOnboarding: 'operations_onboarding',
-    technicalAdmin: 'technical_admin_requests',
     invoices: 'invoices',
     receipts: 'receipts',
     creditNotes: 'credit_notes',
@@ -948,12 +940,10 @@ const Permissions = {
     return this.canView('operations_onboarding');
   },
   canViewTechnicalAdmin() {
-    return this.canView('technical_admin_requests');
+    return false;
   },
   canRequestTechnicalAdmin() {
-    return this.canCreate('technical_admin_requests') ||
-      this.canPerformAction('technical_admin_requests', 'manage') ||
-      this.canPerformAction('operations_onboarding', 'request_technical_admin');
+    return false;
   },
   canAccessInsights() {
     return (
@@ -965,9 +955,7 @@ const Permissions = {
     );
   },
   canManageTechnicalAdmin() {
-    return this.canPerformAction('technical_admin_requests', 'update_status') ||
-      this.canEdit('technical_admin_requests') ||
-      this.canPerformAction('technical_admin_requests', 'manage');
+    return false;
   },
   canManageOperationsOnboarding() {
     return this.canEdit('operations_onboarding');
@@ -1190,7 +1178,7 @@ async function handleExpiredSession(message = 'Session expired. Please log in ag
 
 
 const PermissionAudit = {
-  resources: ['tickets','events','ai_insights','companies','contacts','leads','deals','proposals','agreements','operations_onboarding','technical_admin_requests','invoices','receipts','credit_notes','payment_forecast','monthly_renewal_forecast','biners','clients','analytics','notifications','notification_settings','workflow','users','role_permissions'],
+  resources: ['tickets','events','ai_insights','companies','contacts','leads','deals','proposals','agreements','operations_onboarding','invoices','receipts','credit_notes','payment_forecast','monthly_renewal_forecast','biners','clients','analytics','notifications','notification_settings','workflow','users','role_permissions'],
   actions: ['list','get','create','update','delete','export','manage','approve','reject','convert_to_deal','create_from_deal','create_from_proposal','create_from_agreement','create_from_invoice','cancel','print','export','assign_csm','update_status','view_renewals','view_statement','statement_view','statement_export','create_receipt','schedule_payment','record_payment','view_details','mark_renewed','mark_no_renewal_needed','undo_override','create_renewal_invoice'],
   inspect(resource, action) {
     const role = Permissions.normalizeRole(Session.role());

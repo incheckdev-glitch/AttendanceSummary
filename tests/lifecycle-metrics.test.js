@@ -224,7 +224,7 @@ assert.strictEqual(overview.totalDue, 700, 'outstanding ignores stale balance_du
 assert.strictEqual(overview.creditableInvoices, 2);
 assert.strictEqual(overview.operationsOnboardingCreated, 2);
 assert.strictEqual(overview.operationsCompleted, 1);
-assert.strictEqual(overview.technicalRequestCompleted, 1);
+assert.strictEqual(Object.prototype.hasOwnProperty.call(overview, 'technicalRequestCompleted'), false, 'Technical Admin metrics must not be exposed');
 
 const dateFiltered = analytics.getLifecycleMetrics({
   companies: [], leads: [], deals: [], agreementItems: [], invoiceItems: [], paymentSchedule: [], onboarding: [], technical: [],

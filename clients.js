@@ -2333,7 +2333,7 @@ const Clients = {
   showDirectRenewalModal_(draft = {}, agreement = {}) {
     const modal = this.ensureRenewalModal_();
     const rowsHtml = draft.rows.map(row => `<tr><td>${U.escapeHtml(row.location_name || '—')}</td><td>${U.escapeHtml(U.fmtDisplayDate(row.service_end_date) || '—')}</td><td><input class="input" type="date" data-renew-new-start="${U.escapeHtml(row.row_id)}" value="${U.escapeHtml(row.new_service_start_date)}"></td><td><input class="input" type="date" data-renew-new-end="${U.escapeHtml(row.row_id)}" value="${U.escapeHtml(row.new_service_end_date)}"></td><td>${U.escapeHtml(String(row.license_months || 12))}</td><td>${U.escapeHtml(this.formatCurrency_(row.renewal_price || 0, row.currency || 'USD'))}</td></tr>`).join('');
-    modal.innerHTML = `<div class="modal-content wide"><button class="modal-close" type="button" data-renew-modal-close>&times;</button><h2>Renew Selected Location(s)</h2><p class="muted">This will renew the selected existing location(s). It will not create a new Technical Admin request or open a new location.</p><div class="grid cols-2"><div><strong>Client legal name</strong><br>${U.escapeHtml(draft.rows[0]?.client_name || '—')}</div><div><strong>Agreement reference</strong><br>${U.escapeHtml(agreement.agreement_number || draft.rows[0]?.agreement_number || '—')}</div></div><div class="table-wrap" style="margin-top:12px;"><table><thead><tr><th>Selected location(s)</th><th>Current service end date</th><th>New service start date</th><th>New service end date</th><th>License months</th><th>Renewal price</th></tr></thead><tbody>${rowsHtml}</tbody></table></div><label class="field" style="margin-top:12px;"><span>Notes</span><textarea class="input" data-renew-notes rows="3" placeholder="Renewal notes"></textarea></label><div class="modal-actions"><button class="btn ghost" type="button" data-renew-modal-close>Cancel</button><button class="btn primary" type="button" data-confirm-direct-renewal="${U.escapeHtml(draft.renewal_batch_id)}">Create Renewal Invoice Draft</button></div></div>`;
+    modal.innerHTML = `<div class="modal-content wide"><button class="modal-close" type="button" data-renew-modal-close>&times;</button><h2>Renew Selected Location(s)</h2><p class="muted">This will renew the selected existing location(s). It will not open a new location.</p><div class="grid cols-2"><div><strong>Client legal name</strong><br>${U.escapeHtml(draft.rows[0]?.client_name || '—')}</div><div><strong>Agreement reference</strong><br>${U.escapeHtml(agreement.agreement_number || draft.rows[0]?.agreement_number || '—')}</div></div><div class="table-wrap" style="margin-top:12px;"><table><thead><tr><th>Selected location(s)</th><th>Current service end date</th><th>New service start date</th><th>New service end date</th><th>License months</th><th>Renewal price</th></tr></thead><tbody>${rowsHtml}</tbody></table></div><label class="field" style="margin-top:12px;"><span>Notes</span><textarea class="input" data-renew-notes rows="3" placeholder="Renewal notes"></textarea></label><div class="modal-actions"><button class="btn ghost" type="button" data-renew-modal-close>Cancel</button><button class="btn primary" type="button" data-confirm-direct-renewal="${U.escapeHtml(draft.renewal_batch_id)}">Create Renewal Invoice Draft</button></div></div>`;
     modal.classList.add('open');
   },
   showAgreementRenewalChoiceModal_(draft = {}, agreement = {}) {
@@ -2471,7 +2471,7 @@ const Clients = {
       const reusedDraft = Boolean(response?.data?._renewal_draft_reused || response?._renewal_draft_reused);
       UI.toast(reusedDraft
         ? 'A draft renewal invoice already exists for this client and renewal period. The existing draft has been opened for update.'
-        : 'Renewal invoice draft created. Operations onboarding and Technical Admin were not created.');
+        : 'Renewal invoice draft created. Operations onboarding was not created.');
       this.closeRenewalModal_();
       this.invalidateClientTabCache(this.state.selectedClientId, ['overview', 'renewals', 'statement', 'scheduledPayments', 'invoices']);
       if (this.state.selectedClientId) await this.loadClientSubTab(this.state.selectedClientId, this.state.activeDetailTab || 'overview', { force: true }).catch(() => {});
@@ -2513,7 +2513,7 @@ const Clients = {
       subtotal_locations: total,
       subtotal_one_time: 0,
       grand_total: total,
-      notes: `Renewal commercial path ${batchId}. Selected existing locations only. Do not create Operations Onboarding, Technical Admin request, or new locations.`,
+      notes: `Renewal commercial path ${batchId}. Selected existing locations only. Do not create Operations Onboarding or new locations.`,
       source_type: 'renewal',
       renewal_batch_id: batchId,
       renewed_from_agreement_id: first.agreement_id || agreement.id || ''
@@ -2600,7 +2600,7 @@ const Clients = {
       renewal_path: renewalPath,
       created_at: now,
       updated_at: now,
-      notes: 'Commercial renewal only; no onboarding or Technical Admin request.'
+      notes: 'Commercial renewal only; no onboarding.'
     }));
     try {
       for (const record of records) {

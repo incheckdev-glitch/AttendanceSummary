@@ -305,10 +305,6 @@
                     role="tab" aria-selected="false" aria-controls="operationsOnboardingView">
               <span class="icon" aria-hidden="true">🧭</span> Operations Onboarding
             </button>
-            <button id="technicalAdminTab" class="view-tab" data-view="technicalAdmin"
-                    role="tab" aria-selected="false" aria-controls="technicalAdminView">
-              <span class="icon" aria-hidden="true">🛠️</span> Technical Admin
-            </button>
             <button id="invoicesTab" class="view-tab" data-view="invoices"
                     role="tab" aria-selected="false" aria-controls="invoicesView">
               <span class="icon" aria-hidden="true">🧮</span> Invoices
@@ -719,7 +715,6 @@ Sample:
               <option value="invoices">Invoices</option>
               <option value="receipts">Receipts</option>
               <option value="operations_onboarding">Operations Onboarding</option>
-              <option value="technical_admin_requests">Technical Admin Requests</option>
               <option value="events">Events</option>
               <option value="workflow">Workflow</option>
               <option value="communication_centre">Communication Centre</option>
@@ -1769,7 +1764,7 @@ Sample:
               <input type="hidden" name="one_time_fee_items_json" id="importOldOneTimeItemsJson" />
             </div>
             <textarea class="input" name="notes" placeholder="Notes" style="grid-column:1/-1;min-height:70px;"></textarea>
-            <label style="grid-column:1/-1;display:flex;gap:8px;align-items:flex-start;"><input type="checkbox" name="historical_lock" checked disabled /><span>Imported historical agreement — create Company + Contact + Agreement only, with no workflow, onboarding, technical admin, invoice, receipt, or notifications.</span></label>
+            <label style="grid-column:1/-1;display:flex;gap:8px;align-items:flex-start;"><input type="checkbox" name="historical_lock" checked disabled /><span>Imported historical agreement — create Company + Contact + Agreement only, with no workflow, onboarding, invoice, receipt, or notifications.</span></label>
             <div class="actions" style="grid-column:1/-1;justify-content:flex-end;">
               <button id="importOldClientCancelBtn" class="btn ghost" type="button">Cancel</button>
               <button class="btn" type="submit">Import Old Agreement</button>
@@ -1895,7 +1890,6 @@ Sample:
 
         <div id="operationsOnboardingAnalytics" class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px;">
           <article class="card"><strong>Status distribution</strong><div id="operationsOnboardingStatusDistribution" class="deals-status-bars" style="margin-top:8px;"></div></article>
-          <article class="card"><strong>Request type distribution</strong><div id="operationsOnboardingRequestDistribution" class="deals-status-bars" style="margin-top:8px;"></div></article>
           <article class="card"><strong>Agreements vs Clients vs Locations</strong><div id="operationsOnboardingComparativeChart" style="margin-top:8px;"></div></article>
           <article class="card"><strong>Locations by client</strong><div id="operationsOnboardingLocationsByClient" class="deals-status-bars" style="margin-top:8px;"></div></article>
           <article class="card"><strong>Agreements by client</strong><div id="operationsOnboardingAgreementsByClient" class="deals-status-bars" style="margin-top:8px;"></div></article>
@@ -1904,8 +1898,8 @@ Sample:
         </div>
 
         <div id="operationsOnboardingAnalyticsTables" class="grid" style="grid-template-columns:1fr;gap:12px;margin-bottom:12px;">
-          <article class="card"><strong>Client rollup</strong><div class="table-wrap" role="region" aria-label="Operations onboarding client rollup"><table><thead><tr><th>Client</th><th>Unique Client Key</th><th>Agreements</th><th>Locations</th><th>Active Onboardings</th><th>Completed</th><th>Technical Admin Requests</th><th>Assigned CSM</th><th>Overdue</th><th>Last Request Date</th></tr></thead><tbody id="operationsOnboardingClientRollupBody"></tbody></table></div></article>
-          <article class="card"><strong>Agreement rollup</strong><div class="table-wrap" role="region" aria-label="Operations onboarding agreement rollup"><table><thead><tr><th>Agreement No</th><th>Client</th><th>Locations</th><th>Onboarding Status</th><th>Request Type</th><th>Assigned CSM</th><th>Requested At</th><th>Days Open</th></tr></thead><tbody id="operationsOnboardingAgreementRollupBody"></tbody></table></div></article>
+          <article class="card"><strong>Client rollup</strong><div class="table-wrap" role="region" aria-label="Operations onboarding client rollup"><table><thead><tr><th>Client</th><th>Unique Client Key</th><th>Agreements</th><th>Locations</th><th>Active Onboardings</th><th>Completed</th><th>Assigned CSM</th><th>Overdue</th><th>Last Request Date</th></tr></thead><tbody id="operationsOnboardingClientRollupBody"></tbody></table></div></article>
+          <article class="card"><strong>Agreement rollup</strong><div class="table-wrap" role="region" aria-label="Operations onboarding agreement rollup"><table><thead><tr><th>Agreement No</th><th>Client</th><th>Locations</th><th>Onboarding Status</th><th>Assigned CSM</th><th>Requested At</th><th>Days Open</th></tr></thead><tbody id="operationsOnboardingAgreementRollupBody"></tbody></table></div></article>
           <article class="card"><strong>Overdue / stuck</strong><div class="table-wrap" role="region" aria-label="Operations onboarding overdue"><table><thead><tr><th>Agreement No</th><th>Client</th><th>Locations</th><th>Status</th><th>Assigned CSM</th><th>Days Open</th><th>Notes</th></tr></thead><tbody id="operationsOnboardingOverdueBody"></tbody></table></div></article>
           <article class="card"><strong>CSM workload table</strong><div class="table-wrap" role="region" aria-label="Operations onboarding csm workload"><table><thead><tr><th>CSM Name</th><th>Active Agreements</th><th>Unique Clients</th><th>Total Locations</th><th>Completed Agreements</th><th>Overdue Items</th><th>Avg Completion Days</th></tr></thead><tbody id="operationsOnboardingCsmWorkloadBody"></tbody></table></div></article>
         </div>
@@ -1919,7 +1913,6 @@ Sample:
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
               <input id="operationsOnboardingSearchInput" class="input" type="search" placeholder="Search onboarding, agreement, client..." aria-label="Search operations onboarding" />
               <select id="operationsOnboardingStatusFilter" class="select" aria-label="Filter by onboarding status"><option>All</option></select>
-              <select id="operationsOnboardingRequestTypeFilter" class="select" aria-label="Filter by request type"><option>All</option></select>
               <select id="operationsOnboardingCsmFilter" class="select" aria-label="Filter by assigned CSM"><option>All</option></select>
               <button id="operationsOnboardingRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
             </div>
@@ -1929,62 +1922,10 @@ Sample:
             <table>
               <thead>
                 <tr>
-                  <th>Onboarding ID</th><th>Agreement ID</th><th>Agreement Number</th><th>Client Name</th><th>Signed Date</th><th>Onboarding Status</th><th>Request Type</th><th>Requested By</th><th>Requested At</th><th>Technical Request Status</th><th>Technical Request Message</th><th>Assigned CSM</th><th>Number of Locations</th><th>Service Start Date</th><th>Service End Date</th><th>Billing Frequency</th><th>Payment Term</th><th>Updated At</th><th>Actions</th>
+                  <th>Onboarding ID</th><th>Agreement ID</th><th>Agreement Number</th><th>Client Name</th><th>Signed Date</th><th>Onboarding Status</th><th>Requested By</th><th>Requested At</th><th>Assigned CSM</th><th>Number of Locations</th><th>Service Start Date</th><th>Service End Date</th><th>Billing Frequency</th><th>Payment Term</th><th>Updated At</th><th>Actions</th>
                 </tr>
               </thead>
               <tbody id="operationsOnboardingTbody"></tbody>
-            </table>
-          </div>
-        </div>
-      </section>
-
-      <section id="technicalAdminView" class="view" role="tabpanel" aria-labelledby="technicalAdminTab">
-        <div class="card technical-admin-dashboard-shell">
-          <div class="technical-admin-filterbar card">
-            <div class="technical-admin-filter-col search"><input id="technicalAdminSearchInput" class="input" type="search" placeholder="Search request, agreement, client..." aria-label="Search technical admin requests" /></div>
-            <div class="technical-admin-filter-col selects">
-              <select id="technicalAdminStatusFilter" class="select" aria-label="Filter by request status"><option>All</option></select>
-              <select id="technicalAdminAssigneeFilter" class="select" aria-label="Filter by assignee"><option>All Assignees</option></select>
-              <select id="technicalAdminClientFilter" class="select" aria-label="Filter by client"><option>All Clients</option></select>
-              <select id="technicalAdminDateRangeFilter" class="select" aria-label="Filter by date range"><option value="30">Last 30 Days</option><option value="7">Last 7 Days</option><option value="90">Last 90 Days</option><option value="0">All Time</option></select>
-            </div>
-            <div class="technical-admin-filter-col actions">
-              <label class="technical-admin-toggle"><input id="technicalAdminMyRequestsToggle" type="checkbox" /> My Requests</label>
-              <label class="technical-admin-toggle"><input id="technicalAdminOnlyOverdueToggle" type="checkbox" /> Only Overdue</label>
-              <button id="technicalAdminResetFiltersBtn" class="btn ghost sm" type="button">Reset Filters</button>
-              <button id="technicalAdminRefreshBtn" class="btn sm" type="button">Refresh</button>
-            </div>
-          </div>
-          <div class="technical-admin-kpi-grid primary" id="technicalAdminSummary" aria-live="polite"></div>
-          <div class="technical-admin-kpi-grid secondary" id="technicalAdminSecondaryMetrics"></div>
-          <div class="technical-admin-panel-grid primary-grid">
-            <article class="card technical-widget"><div class="technical-admin-panel-head"><div><strong>Request Volume Trend</strong><p>Creation volume over selected range</p></div><div class="btn-row"><button class="btn ghost sm" type="button" data-range="7" data-volume-range>7D</button><button class="btn ghost sm" type="button" data-range="30" data-volume-range>30D</button><button class="btn ghost sm" type="button" data-range="90" data-volume-range>90D</button></div></div><div id="technicalAdminVolumeChart"></div></article>
-            <article class="card technical-widget"><div class="technical-admin-panel-head"><div><strong>Status Distribution</strong><p>Operational mix of current request statuses</p></div></div><div id="technicalAdminStatusPipeline"></div></article>
-          </div>
-          <div class="technical-admin-panel-grid">
-            <article class="card technical-widget"><div class="technical-admin-panel-head"><div><strong>Assignee Workload</strong><p>Open request load and risk per assignee</p></div></div><div id="technicalAdminAssigneeWorkload"></div></article>
-            <article class="card technical-widget"><div class="technical-admin-panel-head"><div><strong>Attention Required</strong><p>Overdue or aging requests requiring intervention</p></div><button class="btn ghost sm" type="button" data-technical-view-all="critical">View All</button></div><div id="technicalAdminCriticalQueue"></div></article>
-            <article class="card technical-widget"><div class="technical-admin-panel-head"><div><strong>Upcoming Dates</strong><p>Near-term schedule and delivery deadlines</p></div></div><div id="technicalAdminUpcomingPanel"></div></article>
-            <article class="card technical-widget"><div class="technical-admin-panel-head"><div><strong>Recent Activity</strong><p>Latest updates across technical admin requests</p></div></div><div id="technicalAdminRecentActivity"></div></article>
-          </div>
-        </div>
-        <div class="card" aria-label="Technical admin request list">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
-            <div>
-              <strong>Technical Admin Requests</strong>
-              <div class="muted">Track all technical admin requests raised from agreements.</div>
-            </div>
-            <button id="technicalAdminExportBtn" class="btn ghost sm" type="button">Export CSV</button>
-          </div>
-          <div id="technicalAdminState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
-          <div class="table-wrap" role="region" aria-label="Technical admin requests table">
-            <table id="technicalAdminTable">
-              <thead>
-                <tr>
-                  <th>TR #</th><th>Agreement Number</th><th>Client Name</th><th>Number of Locations</th><th>Service Start Date</th><th>Service End Date</th><th>Billing Frequency</th><th>Payment Term</th><th>Request Status</th><th>Requested By</th><th>Requested At</th><th>Assigned To</th><th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="technicalAdminTbody"></tbody>
             </table>
           </div>
         </div>
@@ -2310,7 +2251,7 @@ Sample:
           <div class="analytics-header">
             <div>
               <h2>360 Analytics</h2>
-              <p class="muted">Unified lifecycle, finance, renewal, onboarding, and technical status analytics from Supabase data.</p>
+              <p class="muted">Unified lifecycle, finance, renewal, and onboarding analytics from Supabase data.</p>
             </div>
           </div>
           <div class="analytics-filter-bar">
@@ -2334,10 +2275,6 @@ Sample:
               <div class="analytics-filter-control">
                 <label for="lifecycleOnboardingFilter" class="analytics-filter-label">Onboarding Status</label>
                 <select id="lifecycleOnboardingFilter" class="select analytics-filter-input"><option value="All">All Onboarding Statuses</option><option>Pending</option><option>Completed</option><option>Blocked</option><option>None</option></select>
-              </div>
-              <div class="analytics-filter-control">
-                <label for="lifecycleTechnicalFilter" class="analytics-filter-label">Technical Status</label>
-                <select id="lifecycleTechnicalFilter" class="select analytics-filter-input"><option value="All">All Technical Statuses</option><option>Pending</option><option>Completed</option><option>Blocked</option><option>None</option></select>
               </div>
               <div class="analytics-filter-control">
                 <label for="lifecycleRenewalFilter" class="analytics-filter-label">Renewal Status</label>
@@ -2373,7 +2310,7 @@ Sample:
               <table id="lifecycleRecordsTable">
                 <thead>
                   <tr>
-                    <th>Open</th><th>Client / Account</th><th>Current Stage</th><th>Lead→Deal→Proposal→Agreement→Invoice→Receipt</th><th>Agreement Value</th><th>Total Invoiced</th><th>Total Paid</th><th>Total Due</th><th>Locations</th><th>Next Renewal</th><th>Payment State</th><th>Onboarding</th><th>Technical</th><th>Last Activity</th>
+                    <th>Open</th><th>Client / Account</th><th>Current Stage</th><th>Lead→Deal→Proposal→Agreement→Invoice→Receipt</th><th>Agreement Value</th><th>Total Invoiced</th><th>Total Paid</th><th>Total Due</th><th>Locations</th><th>Next Renewal</th><th>Payment State</th><th>Onboarding</th><th>Last Activity</th>
                   </tr>
                 </thead>
                 <tbody id="lifecycleRecordsTbody"></tbody>
@@ -4034,17 +3971,6 @@ Sample:
       </form>
     </div>
   </div>
-
-  <div id="technicalAdminDetailsModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true">
-    <div class="modal-content" style="max-width:900px;">
-      <div class="header">
-        <h2 id="technicalAdminDetailsTitle" style="margin:0;font-size:20px;">Technical Admin Request</h2>
-        <div class="actions"><button class="modal-close" id="technicalAdminDetailsCloseBtn" aria-label="Close technical admin details">✕</button></div>
-      </div>
-      <div id="technicalAdminDetailsContent" class="muted"></div>
-    </div>
-  </div>
-
   <div id="invoiceFormModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="invoiceFormTitle" aria-hidden="true">
     <div class="modal-content" style="max-width:1200px;">
       <div class="header"><h2 id="invoiceFormTitle" style="margin:0;font-size:20px">Invoice</h2><div class="actions"><button class="modal-close" id="invoiceFormCloseBtn" aria-label="Close invoice form">✕</button></div></div>
@@ -4277,7 +4203,6 @@ Sample:
   <script src="proposals.js?v=v17-agreement-today-helper"></script>
   <script src="agreements.js?v=v17-agreement-today-helper"></script>
   <script src="operations-onboarding.js?v=20260427-allpwa1"></script>
-  <script src="technical-admin.js?v=20260427-allpwa1"></script>
   <script src="invoices.js?v=20260512-final-isPoc-click-fix"></script>
   <script src="receipts.js?v=20260427-allpwa1"></script>
   <script src="credit-notes.js?v=20260604-credit-notes1"></script>
