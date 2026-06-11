@@ -21,7 +21,7 @@
     forecast: [],
     monthly: [],
     payments: [],
-    companies: [],
+    clients: [],
     summary: null,
     drawer: null,
     filters: { search: '', status: 'all', paymentStatus: 'all', currency: 'all' },
@@ -360,9 +360,90 @@
 
   function closeDrawer() { const drawer = $('binersDetailsDrawer'); if (drawer) drawer.hidden = true; state.drawer = null; }
 
-  function populateCompanies() {
+  const first = (row, keys) => {
+    const source = row && typeof row === 'object' ? row : {};
+    for (const key of keys) {
+      const value = source[key];
+      if (value !== undefined && value !== null && String(value).trim()) return String(value).trim();
+    }
+    return '';
+  };
+
+  function normalizeClient(row = {}) {
+    const legalName = first(row, ['customer_legal_name', 'company_name', 'legal_name', 'legal_company_name']);
+    const customerName = first(row, ['customer_name', 'client_name', 'name']) || legalName;
+    return {
+      ...row,
+      id: first(row, ['client_id', 'id', 'company_id', 'company_uuid', 'account_number', 'client_code']),
+      client_id: first(row, ['client_id', 'client_uuid', 'id']),
+      company_id: first(row, ['company_id', 'company_uuid', 'customer_company_id', 'client_company_id']),
+      company_uuid: first(row, ['company_uuid']),
+      account_number: first(row, ['account_number', 'client_code', 'customer_number', 'registration_number']),
+      customer_name: customerName,
+      legal_name: legalName || customerName,
+      country: first(row, ['country', 'client_country']),
+      city: first(row, ['city', 'client_city']),
+      address: first(row, ['address', 'company_address', 'customer_address', 'billing_address']),
+      contact_name: first(row, ['primary_contact_name', 'contact_name', 'customer_contact_name']),
+      contact_email: first(row, ['primary_contact_email', 'primary_email', 'contact_email', 'customer_contact_email', 'email']),
+      contact_phone: first(row, ['primary_contact_phone', 'primary_phone', 'phone', 'contact_phone', 'customer_contact_phone', 'customer_contact_mobile', 'mobile']),
+      currency: first(row, ['currency', 'currency_code'])
+    };
+  }
+
+  function mergeClient(current, candidate) {
+    const merged = { ...current };
+    Object.entries(candidate).forEach(([key, value]) => {
+      if ((merged[key] === undefined || merged[key] === null || String(merged[key]).trim() === '') && value !== undefined && value !== null && String(value).trim()) merged[key] = value;
+    });
+    return merged;
+  }
+
+  function dedupeClients(rows = []) {
+    const clients = [];
+    const keyToIndex = new Map();
+    normalizeList(rows).map(normalizeClient).filter(client => client.id && (client.legal_name || client.customer_name)).forEach(client => {
+      const identifierKeys = [client.company_id, client.company_uuid, client.client_id, client.account_number].filter(Boolean).map(value => `id:${norm(value)}`);
+      const nameKey = norm(client.legal_name || client.customer_name).replace(/[^a-z0-9]+/g, ' ').trim();
+      const keys = [...identifierKeys, ...(nameKey ? [`name:${nameKey}`] : [])];
+      const existingIndex = keys.map(key => keyToIndex.get(key)).find(index => index !== undefined);
+      if (existingIndex !== undefined) clients[existingIndex] = mergeClient(clients[existingIndex], client);
+      else clients.push(client);
+      const index = existingIndex !== undefined ? existingIndex : clients.length - 1;
+      keys.forEach(key => keyToIndex.set(key, index));
+    });
+    return clients.sort((a, b) => (a.legal_name || a.customer_name).localeCompare(b.legal_name || b.customer_name));
+  }
+
+  async function loadClients() {
+    if (!global.ClientsService?.getDashboardData) throw new Error('Clients module data source is not available.');
+    const rows = [];
+    let page = 1;
+    let hasMore = true;
+    while (hasMore && page <= 50) {
+      const result = await global.ClientsService.getDashboardData({ page, limit: 200, summaryOnly: true, allowClientMutations: false });
+      rows.push(...normalizeList(result));
+      hasMore = Boolean(result?.hasMore ?? result?.has_more);
+      page += 1;
+    }
+    return dedupeClients(rows);
+  }
+
+  const clientOptionLabel = client => {
+    const details = [[client.city, client.country].filter(Boolean).join(', '), client.account_number ? `Account ${client.account_number}` : ''].filter(Boolean);
+    const name = client.legal_name || client.customer_name || 'Client';
+    const alias = client.customer_name && norm(client.customer_name) !== norm(name) ? ` (${client.customer_name})` : '';
+    return `${name}${alias}${details.length ? ` — ${details.join(' · ')}` : ''}`;
+  };
+
+  function populateClients(search = '') {
     const select = $('binersExistingClientId');
-    if (select) select.innerHTML = '<option value="">Select existing client...</option>' + state.companies.map(c => `<option value="${esc(c.id)}">${esc(c.legal_name || c.company_name || c.name || 'Client')}</option>`).join('');
+    if (!select) return;
+    const selected = select.value;
+    const query = norm(search);
+    const visible = state.clients.filter(client => !query || [client.legal_name, client.customer_name, client.account_number, client.contact_email].some(value => norm(value).includes(query)) || client.id === selected);
+    select.innerHTML = '<option value="">Select existing client...</option>' + visible.map(client => `<option value="${esc(client.id)}">${esc(clientOptionLabel(client))}</option>`).join('');
+    if (visible.some(client => client.id === selected)) select.value = selected;
   }
 
   function addScheduleRow(data = {}) {
@@ -382,6 +463,7 @@
   function openEntryModal() {
     const form = $('binersEntryForm');
     form.reset();
+    populateClients('');
     $('binersCurrency').value = 'USD';
     $('binersLicenseLengthMonths').value = 12;
     $('binersNumberOfLocations').value = 1;
@@ -432,12 +514,15 @@
 
   async function saveEntry(e) {
     e.preventDefault();
-    const company = state.companies.find(c => String(c.id) === String($('binersExistingClientId').value));
+    const client = state.clients.find(item => String(item.id) === String($('binersExistingClientId').value));
     const payload = {
       entry: {
         entry_type: $('binersEntryType').value,
-        company_id: company?.id || null,
-        client_name: $('binersClientName').value || company?.company_name || company?.legal_name,
+        client_id: client?.client_id || null,
+        company_id: client?.company_id || client?.company_uuid || null,
+        company_name: client?.legal_name || client?.customer_name || '',
+        client_reference: client?.account_number || '',
+        client_name: $('binersClientName').value || client?.customer_name || client?.legal_name,
         client_legal_name: $('binersClientLegalName').value,
         client_country: $('binersClientCountry').value,
         client_city: $('binersClientCity').value,
@@ -550,14 +635,14 @@
     ensureInitialized();
     setState('Loading Biners payable data…');
     try {
-      const [entries, schedules, forecast, payments, summary, monthly, companies] = await Promise.all([
+      const [entries, schedules, forecast, payments, summary, monthly, clients] = await Promise.all([
         safeLoad('entries', request('list'), []),
         safeLoad('scheduled payments', (global.Api?.getBinersScheduleRows?.() || request('list_schedules')), []),
         safeLoad('forecast rows', (global.Api?.getBinersForecastRows?.() || request('list_forecast')), []),
         safeLoad('payment history', request('list_payments'), []),
         safeLoad('summary', request('summary'), null),
         safeLoad('monthly forecast', (global.Api?.getBinersMonthlyForecast?.() || request('monthly_forecast')), []),
-        safeLoad('companies', (global.Api?.requestWithSession?.('companies', 'list', { limit: 1000 }) || Promise.resolve([])), [])
+        safeLoad('clients', loadClients(), [])
       ]);
       Object.assign(state, {
         entries: normalizeList(entries),
@@ -566,9 +651,9 @@
         payments: normalizeList(payments),
         summary: summary && Array.isArray(summary) ? summary[0] : summary,
         monthly: normalizeList(monthly),
-        companies: Array.isArray(companies) ? companies : (companies?.rows || [])
+        clients: dedupeClients(clients)
       });
-      populateCompanies();
+      populateClients($('binersExistingClientSearch')?.value || '');
       const currencies = [...new Set([...state.entries, ...state.forecast, ...state.monthly].map(x => x.currency).filter(Boolean))];
       if ($('binersCurrencyFilter')) $('binersCurrencyFilter').innerHTML = '<option value="all">All currencies</option>' + currencies.map(x => `<option>${esc(x)}</option>`).join('');
       render();
@@ -609,16 +694,19 @@
       state.pages = {};
       render();
     });
+    $('binersExistingClientSearch')?.addEventListener('input', event => populateClients(event.target.value));
     $('binersExistingClientId')?.addEventListener('change', () => {
-      const c = state.companies.find(x => String(x.id) === String($('binersExistingClientId').value));
-      if (!c) return;
-      $('binersClientName').value = c.company_name || c.legal_name || c.name || '';
-      $('binersClientLegalName').value = c.legal_name || c.company_name || c.name || '';
-      $('binersClientCountry').value = c.country || '';
-      $('binersClientCity').value = c.city || '';
-      $('binersClientAddress').value = c.address || '';
-      $('binersClientContactEmail').value = c.main_email || '';
-      $('binersClientContactPhone').value = c.main_phone || '';
+      const client = state.clients.find(item => String(item.id) === String($('binersExistingClientId').value));
+      if (!client) return;
+      $('binersClientName').value = client.customer_name || client.legal_name || '';
+      $('binersClientLegalName').value = client.legal_name || client.customer_name || '';
+      $('binersClientCountry').value = client.country || '';
+      $('binersClientCity').value = client.city || '';
+      $('binersClientAddress').value = client.address || '';
+      $('binersClientContactName').value = client.contact_name || '';
+      $('binersClientContactEmail').value = client.contact_email || '';
+      $('binersClientContactPhone').value = client.contact_phone || '';
+      if (client.currency) $('binersCurrency').value = client.currency;
     });
     document.querySelectorAll('[data-biners-tab]').forEach(x => x.addEventListener('click', () => setActiveTab(x.dataset.binersTab)));
     document.querySelectorAll('[data-biners-close-entry]').forEach(x => x.addEventListener('click', closeEntry));
