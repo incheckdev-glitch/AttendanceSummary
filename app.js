@@ -2946,7 +2946,7 @@ function setActiveView(view) {
  const firstAllowedView = names.find(name => Permissions.canAccessTab(name)) || '';
  if (!Permissions.canAccessTab(view)) {
    if (requestedView === 'insights') UI.toast('You do not have permission to view AI Insights.');
-   else if (requestedView === 'renewalForecast') UI.toast('Access denied. This forecast is available for admin users only.');
+   else if (requestedView === 'renewalForecast') UI.toast('Access denied. You need permission to view Monthly Renewal Forecast.');
    else UI.toast('You do not have permission to view that module.');
    view = firstAllowedView;
  }

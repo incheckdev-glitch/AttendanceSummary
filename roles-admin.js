@@ -617,6 +617,30 @@ const RolesAdmin = {
     }
   },
 
+  permissionCatalog(resource = '', action = '') {
+    const catalog = {
+      monthly_renewal_forecast: {
+        moduleName: 'Monthly Renewal Forecast',
+        displayGroup: 'Reports / Forecasts',
+        actions: {
+          view: 'View Monthly Renewal Forecast',
+          export: 'Export Monthly Renewal Forecast',
+          view_details: 'View Renewal Details',
+          mark_renewed: 'Mark Renewal as Renewed',
+          mark_no_renewal_needed: 'Mark No Renewal Needed',
+          undo_override: 'Undo Renewal Override',
+          create_renewal_invoice: 'Create Renewal Invoice'
+        }
+      }
+    };
+    const module = catalog[String(resource || '').trim().toLowerCase()] || null;
+    return {
+      moduleName: module?.moduleName || resource,
+      displayGroup: module?.displayGroup || '',
+      actionLabel: module?.actions?.[this.canonicalAction(action)] || action
+    };
+  },
+
   permissionChips(roleKeys = []) {
     if (!roleKeys.length) return '<span class="muted">No active roles</span>';
     const labels = new Map(this.state.roles.map(role => [this.roleKey(role), this.displayName(role)]));
@@ -627,7 +651,8 @@ const RolesAdmin = {
     const { resource, action, role, text } = this.state.filters;
     return this.state.groupedPermissions.filter(rule => {
       if (!this.isCommunicationCentreUiAction(rule.resource, rule.action)) return false;
-      const searchable = `${rule.resource} ${rule.action} ${rule.roleKeys.join(' ')}`;
+      const catalog = this.permissionCatalog(rule.resource, rule.action);
+      const searchable = `${rule.resource} ${rule.action} ${catalog.moduleName} ${catalog.displayGroup} ${catalog.actionLabel} ${rule.roleKeys.join(' ')}`.toLowerCase();
       if (resource && !rule.resource.includes(resource)) return false;
       if (action && !rule.action.includes(action)) return false;
       if (role && !rule.roleKeys.some(roleKey => roleKey.includes(role))) return false;
@@ -671,10 +696,12 @@ const RolesAdmin = {
     }
     const pageResult = this.paginateClientRows(rules, 'permissionsPage', 'permissionsLimit');
     E.rolePermissionsState.textContent = `${rules.length} grouped rule(s) · ${this.state.permissions.length} permission row(s) loaded · showing ${pageResult.from + 1}-${pageResult.to}`;
-    E.rolePermissionsTbody.innerHTML = pageResult.rows.map(rule => `
+    E.rolePermissionsTbody.innerHTML = pageResult.rows.map(rule => {
+      const catalog = this.permissionCatalog(rule.resource, rule.action);
+      return `
       <tr data-rule-key="${U.escapeAttr(rule.key)}">
-        <td><input class="input sm" data-rule-field="resource" type="text" value="${U.escapeAttr(rule.resource)}" disabled /></td>
-        <td><input class="input sm" data-rule-field="action" type="text" value="${U.escapeAttr(rule.action)}" disabled /></td>
+        <td><strong>${U.escapeHtml(catalog.moduleName)}</strong>${catalog.displayGroup ? `<div class="muted">${U.escapeHtml(catalog.displayGroup)}</div>` : ''}<input data-rule-field="resource" type="hidden" value="${U.escapeAttr(rule.resource)}" disabled /></td>
+        <td><strong>${U.escapeHtml(catalog.actionLabel)}</strong><div class="muted">${U.escapeHtml(rule.resource)}.${U.escapeHtml(rule.action)}</div><input data-rule-field="action" type="hidden" value="${U.escapeAttr(rule.action)}" disabled /></td>
         <td>
           <div data-rule-chips>${this.permissionChips(rule.roleKeys)}</div>
           <select class="select sm" data-rule-field="roles" multiple size="5" style="display:none;">${this.state.roles
@@ -695,7 +722,8 @@ const RolesAdmin = {
           </div>
         </td>
       </tr>
-    `).join('');
+    `;
+    }).join('');
 
     E.rolePermissionsTbody.querySelectorAll('[data-rule-action]').forEach(btn => {
       btn.addEventListener('click', async event => {
