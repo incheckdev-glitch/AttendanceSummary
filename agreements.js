@@ -452,6 +452,66 @@ const Agreements = {
   normalizeText(value) {
     return String(value ?? '').trim().toLowerCase();
   },
+  toNumber(value) {
+    if (value === null || value === undefined || value === '') return 0;
+    const cleaned = String(value).replace(/[^0-9.-]/g, '');
+    const num = Number(cleaned);
+    return Number.isFinite(num) ? num : 0;
+  },
+  getAgreementItemAmount(item = {}) {
+    const direct =
+      this.toNumber(item.line_total ?? item.lineTotal) ||
+      this.toNumber(item.total) ||
+      this.toNumber(item.total_amount ?? item.totalAmount) ||
+      this.toNumber(item.amount) ||
+      this.toNumber(item.subtotal);
+
+    if (direct) return direct;
+
+    const unit = this.toNumber(item.unit_price ?? item.unitPrice);
+    const qty = this.toNumber(item.quantity || item.qty);
+    const discount = this.toNumber(item.discount_percent || item.discountPercent || item.discount || 0);
+    return unit * qty * (1 - discount / 100);
+  },
+  isAgreementOneTimeFeeItem(item = {}) {
+    const section = this.normalizeText(item.section);
+    const itemText = this.normalizeText([
+      item.item_name,
+      item.itemName,
+      item.name,
+      item.description
+    ].filter(Boolean).join(' '));
+
+    return (
+      section === 'one_time_fee' ||
+      section === 'one-time-fee' ||
+      section === 'one_time_fees' ||
+      section === 'one-time fees' ||
+      section === 'one_time' ||
+      section.includes('one time') ||
+      section.includes('one-time') ||
+      itemText.includes('account setup') ||
+      itemText.includes('setup')
+    );
+  },
+  isAgreementAnnualSaasItem(item = {}) {
+    const section = this.normalizeText(item.section);
+    const itemText = this.normalizeText([
+      item.item_name,
+      item.itemName,
+      item.name,
+      item.description
+    ].filter(Boolean).join(' '));
+
+    return (
+      section === 'annual_saas' ||
+      section === 'subscription' ||
+      section === 'saas' ||
+      section.includes('annual') ||
+      section.includes('saas') ||
+      itemText.includes('incheck basic')
+    );
+  },
   normalizeAgreementStatus(value) {
     return normalizeAgreementStatus(value);
   },
@@ -1543,12 +1603,16 @@ const Agreements = {
       service_end_date: this.normalizeDateInputValue(pick(source.service_end_date, source.serviceEndDate)),
       item_name: String(pick(source.item_name, source.itemName, source.name)).trim(),
       description: String(pick(source.description, source.item_description, source.itemDescription, source.note, source.notes, source.catalog_note, source.catalogNote, source.catalog_description, source.catalogDescription)).trim(),
-      unit_price: this.toNumberSafe(pick(source.unit_price, source.unitPrice)),
-      discount_percent: this.toNumberSafe(pick(source.discount_percent, source.discountPercent)),
-      discounted_unit_price: rawDiscountedUnitPrice === '' ? '' : this.toNumberSafe(rawDiscountedUnitPrice),
-      quantity: this.toNumberSafe(pick(source.quantity, source.qty)),
-      license_quantity: this.toNumberSafe(pick(source.license_quantity, source.licenseQuantity, source.user_quantity, source.userQuantity, source.item_quantity, source.itemQuantity)),
-      line_total: rawLineTotal === '' ? '' : this.toNumberSafe(rawLineTotal),
+      unit_price: this.toNumber(pick(source.unit_price, source.unitPrice)),
+      discount_percent: this.toNumber(pick(source.discount_percent, source.discountPercent)),
+      discounted_unit_price: rawDiscountedUnitPrice === '' ? '' : this.toNumber(rawDiscountedUnitPrice),
+      quantity: this.toNumber(pick(source.quantity, source.qty)),
+      license_quantity: this.toNumber(pick(source.license_quantity, source.licenseQuantity, source.user_quantity, source.userQuantity, source.item_quantity, source.itemQuantity)),
+      line_total: rawLineTotal === '' ? '' : this.toNumber(rawLineTotal),
+      total: pick(source.total),
+      total_amount: pick(source.total_amount, source.totalAmount),
+      amount: pick(source.amount),
+      subtotal: pick(source.subtotal),
       capability_name: String(pick(source.capability_name, source.capabilityName)).trim(),
       capability_value: String(pick(source.capability_value, source.capabilityValue)).trim(),
       notes: String(pick(source.notes)).trim(),
@@ -1569,7 +1633,9 @@ const Agreements = {
     if (section === 'annual_saas' || section === 'one_time_fee') {
       const computed = this.computeCommercialRow(normalized);
       if (normalized.discounted_unit_price === '') normalized.discounted_unit_price = computed.discounted_unit_price;
-      if (normalized.line_total === '') normalized.line_total = computed.line_total;
+      const hasAlternateAmount = [normalized.total, normalized.total_amount, normalized.amount, normalized.subtotal]
+        .some(value => value !== undefined && value !== null && String(value).trim() !== '');
+      if (normalized.line_total === '' && !hasAlternateAmount) normalized.line_total = computed.line_total;
     }
     return normalized;
   },
@@ -2135,15 +2201,6 @@ const Agreements = {
       const formatted = U.fmtDisplayDate(raw);
       return formatted && formatted !== 'Invalid Date' ? formatted : U.escapeHtml(raw);
     };
-    const sectionKey = value => String(value || '').trim().toLowerCase();
-    const isSubscription = value => {
-      const key = sectionKey(value);
-      return key === 'annual_saas' || key === 'subscription' || key === 'saas';
-    };
-    const isOneTime = value => {
-      const key = sectionKey(value);
-      return key === 'one_time_fee' || key === 'one-time-fee' || key === 'one_time';
-    };
     const computeRow = item => {
       const section = String(item?.section || '').trim().toLowerCase();
       const quantity = this.toNumberSafe(item.quantity) || (section === 'annual_saas' ? 12 : 1);
@@ -2154,13 +2211,12 @@ const Agreements = {
         quantity,
         unitPrice,
         discountPercent,
-        lineTotal: computed.line_total
+        lineTotal: this.getAgreementItemAmount(item) || computed.line_total
       };
     };
 
-    const subscriptionItems = normalizedItems.filter(item => isSubscription(item.section));
-    const oneTimeItems = normalizedItems.filter(item => isOneTime(item.section));
-    const otherItems = normalizedItems.filter(item => !isSubscription(item.section) && !isOneTime(item.section) && sectionKey(item.section) !== 'capability');
+    const subscriptionItems = normalizedItems.filter(item => this.isAgreementAnnualSaasItem(item));
+    const oneTimeItems = normalizedItems.filter(item => this.isAgreementOneTimeFeeItem(item));
 
     const subscriptionRows = subscriptionItems.length
       ? subscriptionItems
@@ -2180,8 +2236,8 @@ const Agreements = {
           .join('')
       : '<tr><td colspan="8" class="cell-center muted">No SaaS / subscription items found.</td></tr>';
 
-    const oneTimeRows = (oneTimeItems.length ? oneTimeItems : otherItems).length
-      ? (oneTimeItems.length ? oneTimeItems : otherItems)
+    const oneTimeRows = oneTimeItems.length
+      ? oneTimeItems
           .map(item => {
             const computed = computeRow(item);
             return `<tr>
@@ -2197,9 +2253,10 @@ const Agreements = {
       : '<tr><td colspan="6" class="cell-center muted">No one-time fee items found.</td></tr>';
 
     const calculatedTotals = this.calculateTotals(normalizedItems);
-    const subtotalLocations = calculatedTotals.grand_total > 0 ? calculatedTotals.saas_total : this.toNumberSafe(agreementData.subtotal_locations || agreementData.saas_total);
-    const subtotalOneTime = calculatedTotals.grand_total > 0 ? calculatedTotals.one_time_total : this.toNumberSafe(agreementData.subtotal_one_time || agreementData.one_time_total);
-    const grandTotal = calculatedTotals.grand_total > 0 ? calculatedTotals.grand_total : this.toNumberSafe(agreementData.grand_total || subtotalLocations + subtotalOneTime);
+    const hasAgreementItemRows = normalizedItems.length > 0;
+    const subtotalLocations = hasAgreementItemRows ? calculatedTotals.saas_total : this.toNumberSafe(agreementData.subtotal_locations || agreementData.saas_total);
+    const subtotalOneTime = hasAgreementItemRows ? calculatedTotals.one_time_total : this.toNumberSafe(agreementData.subtotal_one_time || agreementData.one_time_total);
+    const grandTotal = hasAgreementItemRows ? subtotalLocations + subtotalOneTime : this.toNumberSafe(agreementData.grand_total || subtotalLocations + subtotalOneTime);
     const grandTotalInWords = U.formatAmountInWords(grandTotal, currency);
     const isPoc = this.toDbBoolean(agreementData.is_poc ?? agreementData.isPoc, false);
     const pocDetailsHtml = isPoc ? `
@@ -2945,12 +3002,10 @@ const Agreements = {
   },
   calculateTotals(items = []) {
     const safeItems = Array.isArray(items) ? items : [];
-    const saas_total = safeItems
-      .filter(i => i.section === 'annual_saas')
-      .reduce((sum, i) => sum + this.toNumberSafe(this.computeCommercialRow({ ...i, section: 'annual_saas' }).line_total), 0);
-    const one_time_total = safeItems
-      .filter(i => i.section === 'one_time_fee')
-      .reduce((sum, i) => sum + this.toNumberSafe(this.computeCommercialRow({ ...i, section: 'one_time_fee' }).line_total), 0);
+    const annualRows = safeItems.filter(item => this.isAgreementAnnualSaasItem(item));
+    const oneTimeRows = safeItems.filter(item => this.isAgreementOneTimeFeeItem(item));
+    const saas_total = annualRows.reduce((sum, item) => sum + this.getAgreementItemAmount(item), 0);
+    const one_time_total = oneTimeRows.reduce((sum, item) => sum + this.getAgreementItemAmount(item), 0);
     return { saas_total, one_time_total, grand_total: saas_total + one_time_total };
   },
   calculateTotalsFromAgreementRecord(record = {}) {
@@ -2965,15 +3020,7 @@ const Agreements = {
         : [];
     if (rawItems.length) {
       const normalizedItems = rawItems.map(item => this.normalizeItem(item, item?.section || item?.type || ''));
-      const itemTotals = this.calculateTotals(normalizedItems);
-      if (itemTotals.grand_total > 0 && directGrand <= 0) return itemTotals;
-      if (itemTotals.grand_total > 0 && (!directSaas || !directOneTime)) {
-        return {
-          saas_total: directSaas || itemTotals.saas_total,
-          one_time_total: directOneTime || itemTotals.one_time_total,
-          grand_total: directGrand || itemTotals.grand_total
-        };
-      }
+      return this.calculateTotals(normalizedItems);
     }
     return {
       saas_total: directSaas,
