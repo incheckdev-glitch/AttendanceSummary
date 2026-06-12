@@ -1643,8 +1643,8 @@ const Agreements = {
     const grouped = { annual_saas: [], one_time_fee: [], capability: [] };
     (Array.isArray(items) ? items : []).forEach(raw => {
       const item = this.normalizeItem(raw);
-      if (item.section === 'capability') grouped.capability.push(item);
-      else if (item.section === 'one_time_fee') grouped.one_time_fee.push(item);
+      if (this.isAgreementOneTimeFeeItem(item)) grouped.one_time_fee.push({ ...item, section: 'one_time_fee' });
+      else if (item.section === 'capability') grouped.capability.push(item);
       else grouped.annual_saas.push({ ...item, section: 'annual_saas' });
     });
     return grouped;
