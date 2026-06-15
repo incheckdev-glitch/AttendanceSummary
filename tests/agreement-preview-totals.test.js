@@ -95,4 +95,35 @@ assert.deepStrictEqual(
   'agreement record totals should prefer item rows over stale header fields'
 );
 
+const agreement83Items = [
+  { section: 'annual_saas', line_total: 500 },
+  { section: 'one_time_fees', total_amount: 112.50 }
+];
+const agreement83Html = agreements.buildAgreementPreviewHtml({
+  agreement_number: 'Agreement#00083',
+  currency: 'USD',
+  grand_total: 1025
+}, agreement83Items);
+assert.match(agreement83Html, /<span>Grand Total<\/span><strong>USD 612.5<\/strong>/, 'Agreement#00083 preview should calculate 612.50 from its rows');
+assert.match(agreement83Html, /<span>Grand Total in Words<\/span><strong>USD words 612.5<\/strong>/, 'Agreement#00083 total in words should use the calculated row total');
+
+const companySignatory = agreements.resolveCustomerSignatorySnapshot(
+  { status: 'draft' },
+  { authorized_signatory_name: 'Customer Signer', customer_signatory_title: 'Director' }
+);
+assert.deepStrictEqual(
+  JSON.parse(JSON.stringify(companySignatory)),
+  { name: 'Customer Signer', title: 'Director' },
+  'draft agreements should use the related company signatory fallback'
+);
+const signedSignatory = agreements.resolveCustomerSignatorySnapshot(
+  { status: 'signed', customer_signatory_name: 'Historical Signer', customer_signatory_title: 'Former Director' },
+  { authorized_signatory_name: 'New Signer', authorized_signatory_title: 'New Director' }
+);
+assert.deepStrictEqual(
+  JSON.parse(JSON.stringify(signedSignatory)),
+  { name: 'Historical Signer', title: 'Former Director' },
+  'signed agreements should preserve saved signatory snapshots'
+);
+
 console.log('Agreement preview row-derived total checks passed.');

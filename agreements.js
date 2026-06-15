@@ -365,7 +365,12 @@ const Agreements = {
       invoicesByBusinessId = Array.isArray(data) ? data : [];
     }
     const invoices = [...new Map([...(invoicesByUuid || []), ...invoicesByBusinessId].map(invoice => [String(invoice?.id || ''), invoice])).values()];
-    const items = Array.isArray(agreementItems) ? agreementItems : [];
+    let items = Array.isArray(agreementItems) ? agreementItems : [];
+    if (!items.length && businessId && businessId !== id) {
+      const { data, error } = await client.from('agreement_items').select('*').eq('agreement_id', businessId).order('created_at', { ascending: true });
+      if (error) throw error;
+      items = Array.isArray(data) ? data : [];
+    }
     const normalizedAgreement = this.normalizeAgreement(agreement);
     const normalizedItems = items.map(item => this.normalizeItem(item));
     const canCreateInvoice = this.logCreateInvoiceGate(normalizedAgreement, normalizedItems, invoices);
@@ -459,14 +464,18 @@ const Agreements = {
     return Number.isFinite(num) ? num : 0;
   },
   getAgreementItemAmount(item = {}) {
-    const direct =
-      this.toNumber(item.line_total ?? item.lineTotal) ||
-      this.toNumber(item.total) ||
-      this.toNumber(item.total_amount ?? item.totalAmount) ||
-      this.toNumber(item.amount) ||
-      this.toNumber(item.subtotal);
-
-    if (direct) return direct;
+    const directCandidates = [
+      item.line_total ?? item.lineTotal,
+      item.total,
+      item.total_amount ?? item.totalAmount,
+      item.amount,
+      item.subtotal
+    ];
+    for (const candidate of directCandidates) {
+      if (candidate !== null && candidate !== undefined && String(candidate).trim() !== '') {
+        return this.toNumber(candidate);
+      }
+    }
 
     const unit = this.toNumber(item.unit_price ?? item.unitPrice);
     const qty = this.toNumber(item.quantity || item.qty);
@@ -720,6 +729,7 @@ const Agreements = {
         company?.authorizedSignatoryFullName ||
         company?.customer_authorized_signatory_name ||
         company?.signatory_name ||
+        company?.customer_signatory_name ||
         ''
       ).trim(),
       title: String(
@@ -727,6 +737,8 @@ const Agreements = {
         company?.authorizedSignatoryTitle ||
         company?.customer_authorized_signatory_title ||
         company?.signatory_title ||
+        company?.customer_signatory_title ||
+        company?.contact?.position ||
         ''
       ).trim()
     };
@@ -756,6 +768,7 @@ const Agreements = {
       company.authorizedSignatoryFullName ||
       company.customer_authorized_signatory_name ||
       company.signatory_name ||
+      company.customer_signatory_name ||
       ''
     ).trim();
 
@@ -764,6 +777,8 @@ const Agreements = {
       company.authorizedSignatoryTitle ||
       company.customer_authorized_signatory_title ||
       company.signatory_title ||
+      company.customer_signatory_title ||
+      company.contact?.position ||
       ''
     ).trim();
 
@@ -1342,8 +1357,8 @@ const Agreements = {
   },
   async applyCompanyIdentityToAgreement(agreement = {}, { allowFallbackToAgreement = false } = {}) {
     const next = agreement && typeof agreement === 'object' ? { ...agreement } : {};
-    const originalCompanyId = String(next.company_id || next.companyId || next.customer_company_id || next.customerCompanyId || next.client_company_id || next.clientCompanyId || '').trim();
-    const selectedCompany = await this.getFullCompanyRecord(originalCompanyId || {});
+    const originalCompanyId = String(next.company_id || next.companyId || next.company_uuid || next.companyUuid || next.customer_company_id || next.customerCompanyId || next.client_company_id || next.clientCompanyId || '').trim();
+    const selectedCompany = await this.getFullCompanyRecord(originalCompanyId || next.company || {});
     const customerLegalName = this.getCompanyLegalName(selectedCompany || {});
     if (selectedCompany) {
       const resolvedCompanyId = String(selectedCompany.id || selectedCompany.company_uuid || selectedCompany.companyUuid || selectedCompany.company_id || selectedCompany.companyId || originalCompanyId || '').trim();
@@ -2160,9 +2175,22 @@ const Agreements = {
     if (!agreement) throw new Error('Agreement was not found.');
     if (itemsError) throw new Error(`Unable to load agreement items: ${itemsError.message || 'Unknown error'}`);
 
+    let loadedItems = Array.isArray(items) ? items : [];
+    const businessId = String(agreement.agreement_id || '').trim();
+    if (!loadedItems.length && businessId && businessId !== id) {
+      const { data: businessItems, error: businessItemsError } = await client
+        .from('agreement_items')
+        .select('*')
+        .eq('agreement_id', businessId)
+        .order('line_no', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: true, nullsFirst: false });
+      if (businessItemsError) throw new Error(`Unable to load agreement items: ${businessItemsError.message || 'Unknown error'}`);
+      loadedItems = Array.isArray(businessItems) ? businessItems : [];
+    }
+    const companyHydratedAgreement = await this.applyCompanyIdentityToAgreement(agreement, { allowFallbackToAgreement: true });
     return {
-      agreement: this.normalizeAgreement(agreement),
-      items: Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : []
+      agreement: this.normalizeAgreement(companyHydratedAgreement),
+      items: loadedItems.map(item => this.normalizeItem(item))
     };
   },
   getItemDescription(item = {}) {
@@ -3474,6 +3502,8 @@ const Agreements = {
     return [
       source.company_id,
       source.companyId,
+      source.company_uuid,
+      source.companyUuid,
       source.customer_company_id,
       source.customerCompanyId,
       source.client_company_id,
