@@ -8,7 +8,9 @@ assert.match(frontend, /ClientsService\.getDashboardData\(\{ page, limit: 200, s
 assert.doesNotMatch(frontend, /requestWithSession\?\.\('companies', 'list'/, 'Biners must not load raw companies for the existing-client dropdown');
 assert.match(frontend, /function dedupeClients[\s\S]*client\.company_id[\s\S]*client\.client_id[\s\S]*name:/, 'client choices must deduplicate by identifiers with normalized-name fallback');
 assert.match(frontend, /\[client\.legal_name, client\.customer_name, client\.account_number, client\.contact_email\]/, 'client search must cover legal name, customer name, account number, and contact email');
-assert.match(frontend, /client_id: client\?\.client_id[\s\S]*company_id: client\?\.company_id[\s\S]*client_reference: client\?\.account_number/, 'selected client identifiers must be retained when saving');
+assert.match(frontend, /function isUuid[\s\S]*Expected UUID but received/, 'Biners must validate selected UUIDs before saving');
+assert.match(frontend, /<option value="\$\{esc\(client\.id\)\}"[\s\S]*\$\{esc\(clientOptionLabel\(client\)\)\}/, 'existing-client options must use the real UUID value and display label text separately');
+assert.match(frontend, /client_id: clientId[\s\S]*company_id: companyId[\s\S]*client_reference: clientDisplayReference\(client\) \|\| null/, 'selected client UUID and display reference must be separated when saving');
 [
   ['binersClientName', 'client.customer_name'],
   ['binersClientLegalName', 'client.legal_name'],

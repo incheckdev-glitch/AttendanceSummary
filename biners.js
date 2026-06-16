@@ -13,6 +13,9 @@
   const monthLabel = value => value ? new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString(undefined, { year: 'numeric', month: 'long' }) : '—';
   const auth = () => global.Session?.authContext?.() || {};
   const isDevelopment = () => ['localhost', '127.0.0.1', '[::1]'].includes(global.location?.hostname) || global.location?.protocol === 'file:';
+  function isUuid(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+  }
 
   const state = {
     initialized: false,
@@ -28,7 +31,8 @@
     drawer: null,
     filters: { search: '', status: 'all', paymentStatus: 'all', currency: 'all' },
     pages: {},
-    savingEntry: false
+    savingEntry: false,
+    selectedClient: null
   };
 
   async function request(action, payload = {}) {
@@ -375,14 +379,20 @@
   function normalizeClient(row = {}) {
     const legalName = first(row, ['customer_legal_name', 'company_name', 'legal_name', 'legal_company_name']);
     const customerName = first(row, ['customer_name', 'client_name', 'name']) || legalName;
+    const clientUuid = [row.id, row.client_uuid, row.clientUuid, row.client_id, row.clientId].map(value => String(value || '').trim()).find(isUuid) || '';
+    const companyUuid = [row.company_id, row.companyId, row.company_uuid, row.companyUuid, row.customer_company_id, row.client_company_id].map(value => String(value || '').trim()).find(isUuid) || '';
+    const clientReference = first(row, ['client_number', 'clientNumber', 'reference', 'client_reference', 'clientReference', 'account_number', 'client_code', 'customer_number', 'registration_number']) || (!isUuid(row.client_id) ? first(row, ['client_id', 'clientId']) : '');
     return {
       ...row,
-      id: first(row, ['client_id', 'id', 'company_id', 'company_uuid', 'account_number', 'client_code']),
-      client_id: first(row, ['client_id', 'client_uuid', 'id']),
-      company_id: first(row, ['company_id', 'company_uuid', 'customer_company_id', 'client_company_id']),
-      company_uuid: first(row, ['company_uuid']),
-      account_number: first(row, ['account_number', 'client_code', 'customer_number', 'registration_number']),
+      id: clientUuid || companyUuid,
+      client_id: clientUuid,
+      company_id: companyUuid,
+      company_uuid: companyUuid || first(row, ['company_uuid']),
+      client_number: clientReference,
+      reference: first(row, ['reference']) || clientReference,
+      account_number: clientReference,
       customer_name: customerName,
+      client_name: first(row, ['client_name']) || customerName,
       legal_name: legalName || customerName,
       country: first(row, ['country', 'client_country']),
       city: first(row, ['city', 'client_city']),
@@ -432,11 +442,12 @@
     return dedupeClients(rows);
   }
 
+  const clientDisplayReference = client => client?.client_number || client?.reference || client?.account_number || '';
+
   const clientOptionLabel = client => {
-    const details = [[client.city, client.country].filter(Boolean).join(', '), client.account_number ? `Account ${client.account_number}` : ''].filter(Boolean);
-    const name = client.legal_name || client.customer_name || 'Client';
-    const alias = client.customer_name && norm(client.customer_name) !== norm(name) ? ` (${client.customer_name})` : '';
-    return `${name}${alias}${details.length ? ` — ${details.join(' · ')}` : ''}`;
+    const reference = clientDisplayReference(client);
+    const name = client.client_name || client.customer_name || client.legal_name || 'Client';
+    return reference ? `${reference} - ${name}` : name;
   };
 
   function populateClients(search = '') {
@@ -444,8 +455,8 @@
     if (!select) return;
     const selected = select.value;
     const query = norm(search);
-    const visible = state.clients.filter(client => !query || [client.legal_name, client.customer_name, client.account_number, client.contact_email].some(value => norm(value).includes(query)) || client.id === selected);
-    select.innerHTML = '<option value="">Select existing client...</option>' + visible.map(client => `<option value="${esc(client.id)}">${esc(clientOptionLabel(client))}</option>`).join('');
+    const visible = state.clients.filter(client => !query || [client.legal_name, client.customer_name, client.account_number, client.contact_email].concat([client.client_name, clientDisplayReference(client)]).some(value => norm(value).includes(query)) || client.id === selected);
+    select.innerHTML = '<option value="">Select existing client...</option>' + visible.map(client => `<option value="${esc(client.id)}" data-client-reference="${esc(clientDisplayReference(client))}">${esc(clientOptionLabel(client))}</option>`).join('');
     if (visible.some(client => client.id === selected)) select.value = selected;
   }
 
@@ -467,6 +478,7 @@
     const form = $('binersEntryForm');
     form.reset();
     clearEntryErrors();
+    state.selectedClient = null;
     populateClients('');
     $('binersCurrency').value = 'USD';
     $('binersLicenseLengthMonths').value = 12;
@@ -586,10 +598,23 @@
     return validationErrors;
   }
 
+  function resolveSelectedClient() {
+    const selectedValue = String($('binersExistingClientId')?.value || '').trim();
+    if (!selectedValue) return null;
+    return state.selectedClient
+      || state.clients.find(item => String(item.id) === selectedValue)
+      || state.clients.find(item => [item.client_number, item.reference, item.account_number].some(value => String(value || '').trim() === selectedValue))
+      || null;
+  }
+
   function buildEntryPayload() {
-    const client = state.clients.find(item => String(item.id) === String($('binersExistingClientId').value));
-    const clientId = client?.client_id || null;
+    const client = resolveSelectedClient();
+    const selectedValue = String($('binersExistingClientId')?.value || '').trim();
+    const clientId = client?.id || null;
+    if (selectedValue && !isUuid(selectedValue) && !clientId) throw new Error(`Invalid client_id. Expected UUID but received: ${selectedValue}`);
+    if (clientId && !isUuid(clientId)) throw new Error(`Invalid client_id. Expected UUID but received: ${clientId}`);
     const companyId = client?.company_id || client?.company_uuid || null;
+    if (companyId && !isUuid(companyId)) throw new Error(`Invalid company_id. Expected UUID but received: ${companyId}`);
     const clientName = $('binersClientName').value.trim() || client?.customer_name || client?.legal_name || '';
     const legalName = $('binersClientLegalName').value.trim() || client?.legal_name || clientName;
     const moduleName = $('binersModuleName').value.trim();
@@ -602,10 +627,10 @@
     return {
       entry: {
         entry_type: $('binersEntryType').value,
-        client_id: client?.client_id || null,
-        company_id: client?.company_id || client?.company_uuid || null,
+        client_id: clientId,
+        company_id: companyId,
         company_name: legalName,
-        client_reference: client?.account_number || '',
+        client_reference: clientDisplayReference(client) || null,
         client_name: clientName,
         client_legal_name: legalName,
         client_country: $('binersClientCountry').value.trim() || client?.country || '',
@@ -855,6 +880,7 @@
     $('binersExistingClientSearch')?.addEventListener('input', event => populateClients(event.target.value));
     $('binersExistingClientId')?.addEventListener('change', () => {
       const client = state.clients.find(item => String(item.id) === String($('binersExistingClientId').value));
+      state.selectedClient = client || null;
       if (!client) return;
       $('binersClientName').value = client.customer_name || client.legal_name || '';
       $('binersClientLegalName').value = client.legal_name || client.customer_name || '';
