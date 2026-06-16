@@ -7068,11 +7068,19 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         const locations = Array.isArray(payload?.locations) ? payload.locations : [];
         const allowedEntry = ['entry_type','company_id','client_id','agreement_id','invoice_id','company_name','client_name','client_reference','client_legal_name','client_country','client_city','client_address','client_phone','client_email','client_contact_name','client_contact_email','client_contact_phone','module_name','license_type','license_length_months','number_of_locations','service_start_date','service_end_date','currency','cost_per_location','total_payable_amount','entry_status','payment_status','description','internal_notes','created_by','created_by_email'];
         const cleanEntry = Object.fromEntries(allowedEntry.filter(k => entryPayload[k] !== undefined).map(k => [k, entryPayload[k]]));
+        ['client_id','company_id','agreement_id','invoice_id'].forEach(key => {
+          if (cleanEntry[key] && !isUuid(cleanEntry[key])) throw new Error(`Invalid ${key}. Expected UUID but received: ${cleanEntry[key]}`);
+        });
         const requiredEntryFields = ['client_legal_name','module_name','license_type','license_length_months','number_of_locations','service_start_date','service_end_date','currency','cost_per_location'];
         const missingEntryFields = requiredEntryFields.filter(key => cleanEntry[key] === undefined || cleanEntry[key] === null || String(cleanEntry[key]).trim() === '');
         if (missingEntryFields.length) throw new Error(`Unable to create Biners entry: missing required fields (${missingEntryFields.join(', ')}).`);
         if (cleanEntry.entry_type === 'existing_client_new_location' && !cleanEntry.client_id && !cleanEntry.company_id) throw new Error('Unable to create Biners entry: an existing client must be selected.');
         if (!locations.length || locations.some(location => !String(location?.location_name || '').trim())) throw new Error('Unable to create Biners entry: at least one related location name is required.');
+        locations.forEach(loc => {
+          ['client_id','company_id'].forEach(key => {
+            if (loc[key] && !isUuid(loc[key])) throw new Error(`Invalid ${key}. Expected UUID but received: ${loc[key]}`);
+          });
+        });
         const { data: entry, error: entryError } = await client.from('biners_entries').insert(cleanEntry).select('*').single();
         if (entryError) throw friendlyError('Unable to create Biners entry', entryError);
         if (locations.length) {
