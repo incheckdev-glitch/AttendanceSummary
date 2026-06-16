@@ -6,7 +6,16 @@
   const $ = id => document.getElementById(id);
   const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;' }[ch]));
   const norm = value => String(value ?? '').trim().toLowerCase();
-  const num = value => Number.isFinite(Number(value)) ? Number(value) : 0;
+  function toNumber(value) {
+    if (value === null || value === undefined || value === '') return 0;
+    const cleaned = String(value).replace(/[^0-9.-]/g, '');
+    const parsed = Number(cleaned);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  const num = toNumber;
+  function cleanPayload(payload) {
+    return Object.fromEntries(Object.entries(payload || {}).filter(([, value]) => value !== undefined));
+  }
   const today = () => new Date().toISOString().slice(0, 10);
   const pickValue = (...values) => values.find(value => value !== null && value !== undefined && value !== '') || '—';
   const money = (value, currency = 'USD') => `${String(currency || 'USD').toUpperCase()} ${num(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -83,7 +92,7 @@
   const scheduleId = row => row?.schedule_id || row?.biners_schedule_id || row?.scheduleId || row?.id;
   const getEntry = row => state.entries.find(item => String(item.id) === String(entryId(row))) || row || {};
   const getForecastRow = row => state.forecast.find(item => String(scheduleId(item)) === String(scheduleId(row))) || {};
-  const remaining = row => row?.remaining_amount ?? Math.max(0, num(row?.scheduled_amount) - num(row?.paid_amount));
+  const remaining = row => Math.max(0, num(row?.scheduled_amount) - num(row?.paid_amount));
   const currencyOf = row => row?.currency || getEntry(row)?.currency || 'USD';
   const badge = value => `<span class="pf-status-badge pf-status-${esc(norm(value || 'scheduled').replace(/_/g, '-'))}">${esc(String(value || 'scheduled').replace(/_/g, ' '))}</span>`;
   const stopAction = html => `<span class="biners-row-actions">${html}</span>`;
@@ -125,8 +134,8 @@
       biners_entry_number: row?.biners_entry_number || row?.entry_number || row?.reference || row?.biners_number || forecast?.biners_entry_number || forecast?.entry_number || forecast?.reference || entry?.biners_entry_number || entry?.entry_number || entry?.reference || entry?.biners_number,
       location_name: row?.location_name || row?.location || forecast?.location_name || forecast?.location,
       location_reference: row?.location_reference || row?.location_ref || row?.location_code || forecast?.location_reference || forecast?.location_ref || forecast?.location_code,
-      module_name: row?.module_name || forecast?.module_name || entry?.module_name,
-      license_type: row?.license_type || forecast?.license_type || entry?.license_type,
+      module_name: row?.module || row?.module_name || forecast?.module || forecast?.module_name || entry?.module || entry?.module_name,
+      license_type: row?.license || row?.license_type || forecast?.license || forecast?.license_type || entry?.license || entry?.license_type,
       license_length_months: row?.license_length_months || forecast?.license_length_months || entry?.license_length_months,
       number_of_locations: row?.number_of_locations || entry?.number_of_locations,
       currency: row?.currency || entry?.currency || 'USD'
@@ -135,8 +144,8 @@
 
   const clientLabel = row => pickValue(row?.client_name, row?.client_legal_name, row?.company_name);
   const locationLabel = row => pickValue(row?.location_name, row?.location, row?.site_name, 'Entry level / All locations');
-  const moduleLabel = row => row?.module_name || '—';
-  const licenseLabel = row => row?.license_type ? `${row.license_type} · ${row.license_length_months ?? '—'} months` : '—';
+  const moduleLabel = row => row?.module || row?.module_name || '—';
+  const licenseLabel = row => row?.license || row?.license_type ? `${row?.license || row?.license_type} · ${row?.license_length_months ?? '—'} months` : '—';
   const timingLabel = row => {
     if (row?.days_overdue != null && num(row.days_overdue) > 0) return `${num(row.days_overdue)} days overdue`;
     if (row?.days_until_due != null) return `${num(row.days_until_due)} days until due`;
@@ -399,11 +408,18 @@
     const entryIdValue = entry?.id;
     if (!entryIdValue) throw new Error('Unable to load Biners payable details without an entry id.');
 
-    const [locations, schedule, payments] = await Promise.all([
+    const [locations, scheduleById, payments] = await Promise.all([
       loadFromTableOptions(supabase, 'locations', ['biners_locations'], entry, false),
-      loadFromTableOptions(supabase, 'schedule', ['biners_payment_schedules', 'biners_payment_schedule', 'biners_schedules', 'biners_schedule'], entry, true),
+      loadFromTableOptions(supabase, 'schedule', ['biners_payment_schedules'], entry, true),
       loadFromTableOptions(supabase, 'payments', ['biners_payments', 'biners_receipts', 'biners_payment_history'], entry, true)
     ]);
+    let schedule = scheduleById;
+    const entryNumber = entry.entry_number || entry.reference || entry.biners_entry_number;
+    if (!schedule.length && entryNumber) {
+      const fallback = await supabase.from('biners_payment_schedules').select('*').eq('entry_number', entryNumber);
+      if (fallback.error) throw fallback.error;
+      schedule = fallback.data || [];
+    }
 
     return { entry, locations, schedule, payments };
   }
@@ -421,8 +437,8 @@
       biners_entry_number: detailsEntryNumber(entry),
       location_name: pickValue(entry.location_name, entry.location, location.location_name, location.location),
       location_reference: pickValue(entry.location_reference, entry.location_ref, entry.location_code, location.location_reference, location.location_ref, location.location_code),
-      module_name: pickValue(entry.module_name, entry.module, location.module_name),
-      license_type: pickValue(entry.license_type, entry.license, location.license_type),
+      module_name: pickValue(entry.module, entry.module_name, location.module, location.module_name),
+      license_type: pickValue(entry.license, entry.license_type, location.license, location.license_type),
       license_length_months: pickValue(entry.license_length_months, entry.license_period_months, entry.license_period, location.license_length_months),
       due_date: pickValue(entry.due_date, entry.schedule_due_date, entry.payment_due_date, entry.schedule_date),
       schedule_no: pickValue(entry.schedule_no, entry.installment_no, entry.installment_number),
@@ -462,7 +478,7 @@
       ? `<dl class="biners-detail-list"><div><dt>Month</dt><dd>${esc(monthLabel(r.forecast_month || r.month || r.due_date))}</dd></div><div><dt>Currency</dt><dd>${esc(r.currency || 'USD')}</dd></div><div><dt>Clients</dt><dd>${esc(aggregate.clients)}</dd></div><div><dt>Entries</dt><dd>${esc(aggregate.entries)}</dd></div><div><dt>Locations</dt><dd>${esc(aggregate.locations)}</dd></div><div><dt>Scheduled Rows</dt><dd>${esc(aggregate.scheduled_rows)}</dd></div></dl>`
       : `<dl class="biners-detail-list"><div><dt>Client</dt><dd>${esc(clientLabel(r))}</dd></div><div><dt>Entry #</dt><dd>${esc(r.biners_entry_number || '—')}</dd></div><div><dt>Location</dt><dd>${esc(locationLabel(r))}</dd></div><div><dt>Location Reference</dt><dd>${esc(r.location_reference || '—')}</dd></div><div><dt>Module</dt><dd>${esc(moduleLabel(r))}</dd></div><div><dt>License</dt><dd>${esc(licenseLabel(r))}</dd></div><div><dt>Schedule / Due</dt><dd>#${esc(r.schedule_no || '—')} · ${date(r.due_date)}</dd></div><div><dt>Status</dt><dd>${badge(statusFor(r))}</dd></div><div><dt>Timing</dt><dd>${esc(r.timing && r.timing !== '—' ? r.timing : timingLabel(r))}</dd></div><div><dt>Created date</dt><dd>${date(r.created_at || r.created_date)}</dd></div><div><dt>Updated date</dt><dd>${date(r.updated_at || r.updated_date)}</dd></div>${pickValue(r.notes, r.description, r.internal_notes) !== '—' ? `<div><dt>Notes</dt><dd>${esc(pickValue(r.notes, r.description, r.internal_notes))}</dd></div>` : ''}</dl>${paymentButton(r) ? `<div class="biners-drawer-actions">${paymentButton(r)}</div>` : ''}`;
 
-    content.innerHTML = `<div class="biners-drawer-summary">${stats.map(([a, b]) => `<article><span>${esc(a)}</span><strong>${formatDrawerValue(a, b, r.currency)}</strong></article>`).join('')}</div><section class="biners-drawer-section"><h3>${esc(detailsTitle)}</h3>${detailsHtml}</section>${miniTable('Scheduled payments', schedules, [['#', x => x.schedule_no], ['Client', x => clientLabel(x)], ['Entry #', x => x.biners_entry_number], ['Location', x => locationLabel(x)], ['Location Reference', x => x.location_reference || '—'], ['Module', x => moduleLabel(x)], ['License', x => licenseLabel(x)], ['Due date', x => date(x.due_date)], ['Scheduled amount', x => money(x.scheduled_amount, x.currency || r.currency)], ['Paid amount', x => money(x.paid_amount, x.currency || r.currency)], ['Remaining amount', x => money(x.remaining_amount ?? remaining(x), x.currency || r.currency)], ['Status', x => badge(x.forecast_status || x.payment_status || statusFor(x)), 'html'], ['Notes', x => x.notes || x.description]])}${miniTable('Payment history', payments, [['Payment date', x => date(x.payment_date || x.created_at)], ['Amount', x => money(x.payment_amount ?? x.amount ?? x.paid_amount, x.currency || r.currency)], ['Method', x => x.payment_method || x.method], ['Reference', x => x.payment_reference || x.reference], ['Notes', x => x.notes], ['Created by / recorded by', x => x.created_by_email || x.created_by || x.recorded_by_email || x.recorded_by]])}${locations.length ? miniTable('Related clients / locations', locations, [['Client', x => x.client_name], ['Location', x => x.location_name || x.location], ['Module', x => x.module_name]]) : ''}${entries.length > 1 ? miniTable('Related entries', entries, [['Entry #', x => x.biners_entry_number], ['Client', x => x.client_name], ['Module', x => x.module_name]]) : ''}`;
+    content.innerHTML = `<div class="biners-drawer-summary">${stats.map(([a, b]) => `<article><span>${esc(a)}</span><strong>${formatDrawerValue(a, b, r.currency)}</strong></article>`).join('')}</div><section class="biners-drawer-section"><h3>${esc(detailsTitle)}</h3>${detailsHtml}</section>${miniTable('Scheduled payments', schedules, [['#', x => x.schedule_no], ['Client', x => clientLabel(x)], ['Entry #', x => x.biners_entry_number], ['Location', x => locationLabel(x)], ['Location Reference', x => x.location_reference || '—'], ['Module', x => moduleLabel(x)], ['License', x => licenseLabel(x)], ['Due date', x => date(x.due_date)], ['Scheduled amount', x => money(x.scheduled_amount, x.currency || r.currency)], ['Paid amount', x => money(x.paid_amount, x.currency || r.currency)], ['Remaining amount', x => money(x.remaining_amount ?? remaining(x), x.currency || r.currency)], ['Status', x => badge(x.forecast_status || x.payment_status || statusFor(x)), 'html'], ['Notes', x => x.notes || x.description]])}${miniTable('Payment history', payments, [['Payment date', x => date(x.payment_date || x.created_at)], ['Amount', x => money(x.payment_amount ?? x.amount ?? x.paid_amount, x.currency || r.currency)], ['Method', x => x.payment_method || x.method], ['Reference', x => x.payment_reference || x.reference], ['Notes', x => x.notes], ['Created by / recorded by', x => x.created_by_email || x.created_by || x.recorded_by_email || x.recorded_by]])}${locations.length ? miniTable('Related clients / locations', locations, [['Client', x => x.client_name], ['Location', x => x.location_name || x.location], ['Module', x => x.module || x.module_name]]) : ''}${entries.length > 1 ? miniTable('Related entries', entries, [['Entry #', x => x.biners_entry_number], ['Client', x => x.client_name], ['Module', x => x.module || x.module_name]]) : ''}`;
     drawer.hidden = false;
   }
 
@@ -744,125 +760,105 @@
       || null;
   }
 
-  function buildEntryPayload() {
-    const client = resolveSelectedClient();
-    const selectedValue = String($('binersExistingClientId')?.value || '').trim();
-    const clientId = client?.id || null;
-    if (selectedValue && !isUuid(selectedValue) && !clientId) throw new Error(`Invalid client_id. Expected UUID but received: ${selectedValue}`);
+  function buildBinersEntryPayload({ form, selectedClient, totals, requestKey }) {
+    const clientId = selectedClient?.id || selectedClient?.value || null;
     if (clientId && !isUuid(clientId)) throw new Error(`Invalid client_id. Expected UUID but received: ${clientId}`);
-    const companyId = client?.company_id || client?.company_uuid || null;
-    if (companyId && !isUuid(companyId)) throw new Error(`Invalid company_id. Expected UUID but received: ${companyId}`);
+    return cleanPayload({
+      request_key: requestKey,
+      client_id: clientId,
+      client_reference: selectedClient?.client_number || selectedClient?.reference || selectedClient?.client_reference || selectedClient?.account_number || null,
+      client_name: selectedClient?.client_name || selectedClient?.legal_name || selectedClient?.name || selectedClient?.customer_name || form.client_name || null,
+      module: form.module || form.module_name || null,
+      license: form.license || form.license_type || null,
+      gross_payable: toNumber(totals.grossPayable),
+      paid_amount: 0,
+      due_date: form.due_date || form.payment_due_date || null,
+      status: 'upcoming',
+      notes: form.notes || null
+    });
+  }
 
-    const clientName = $('binersClientName').value.trim() || client?.client_name || client?.customer_name || client?.legal_name || '';
-    const legalName = $('binersClientLegalName').value.trim() || client?.legal_name || clientName;
+  function buildBinersLocationPayload({ entry, location, form, selectedClient }) {
+    return cleanPayload({
+      biners_entry_id: entry.id,
+      client_reference: selectedClient?.client_number || selectedClient?.reference || selectedClient?.client_reference || selectedClient?.account_number || null,
+      client_name: selectedClient?.client_name || selectedClient?.legal_name || selectedClient?.name || selectedClient?.customer_name || form.client_name || null,
+      location_name: location.location_name || location.name || location.label || null,
+      location_reference: location.location_reference || location.reference || null,
+      module: form.module || form.module_name || null,
+      license: form.license || form.license_type || null,
+      due_date: location.due_date || form.due_date || null,
+      scheduled_amount: toNumber(location.amount || location.scheduled_amount),
+      notes: location.notes || null
+    });
+  }
+
+  function buildBinersSchedulePayload({ entry, location, schedule, selectedClient, form, amount }) {
+    const clientId = selectedClient?.id || selectedClient?.value || null;
+    if (clientId && !isUuid(clientId)) throw new Error(`Invalid client_id. Expected UUID but received: ${clientId}`);
+    const dueDate = schedule.due_date || location.due_date || form.due_date || null;
+    return cleanPayload({
+      schedule_key: schedule.schedule_key || `${entry.id}:${location.id || location.location_name}:${dueDate}`,
+      biners_entry_id: entry.id,
+      entry_number: entry.entry_number || entry.reference || null,
+      client_id: clientId,
+      client_reference: selectedClient?.client_number || selectedClient?.reference || selectedClient?.client_reference || selectedClient?.account_number || null,
+      client_name: selectedClient?.client_name || selectedClient?.legal_name || selectedClient?.name || selectedClient?.customer_name || form.client_name || null,
+      location_id: isUuid(location.id) ? location.id : null,
+      location_name: location.location_name || location.name || location.label || null,
+      location_reference: location.location_reference || location.reference || null,
+      module: form.module || form.module_name || null,
+      license: form.license || form.license_type || null,
+      due_date: dueDate,
+      scheduled_amount: toNumber(amount),
+      paid_amount: 0,
+      status: 'upcoming',
+      notes: schedule.notes || location.notes || null
+    });
+  }
+
+  function buildEntryPayload() {
+    const selectedClient = resolveSelectedClient();
+    const selectedValue = String($('binersExistingClientId')?.value || '').trim();
+    if (selectedValue && !isUuid(selectedValue)) throw new Error(`Invalid client UUID: ${selectedValue}`);
+
     const moduleName = $('binersModuleName').value.trim();
     const licenseType = $('binersLicenseType').value.trim();
-    const licenseLength = num($('binersLicenseLengthMonths').value);
-    const startDate = $('binersServiceStartDate').value || null;
-    const endDate = $('binersServiceEndDate').value || null;
-    const currency = $('binersCurrency').value.trim() || 'USD';
-    const createdBy = auth();
     const locationRows = values('.biners-location-row').map((row, index) => ({
       location_name: row.querySelector('[data-biners-location-name]').value.trim(),
       location_reference: row.querySelector('[data-biners-location-code]').value.trim(),
-      client_reference: clientDisplayReference(client) || null,
-      client_name: clientName,
-      module_name: moduleName,
-      license_type: licenseType,
-      country: $('binersClientCountry').value.trim() || client?.country || '',
-      city: $('binersClientCity').value.trim() || client?.city || '',
-      address: $('binersClientAddress').value.trim() || client?.address || '',
+      due_date: $('binersServiceStartDate').value || $('binersServiceEndDate').value || today(),
       notes: '',
       row_index: index + 1
     })).filter(location => location.location_name || location.location_reference);
 
-    const locationCount = Math.max(1, locationRows.length || num($('binersNumberOfLocations').value));
-    const perLocationAmount = Number((num($('binersCostPerLocation').value) * licenseLength / 12).toFixed(2));
-    const totalPayable = Number((locationRows.length ? locationRows.length : num($('binersNumberOfLocations').value)) * perLocationAmount).toFixed(2);
-    const scheduleRowsFromForm = values('.biners-schedule-row').map(row => ({
-      schedule_no: num(row.querySelector('[data-biners-schedule-no]').value),
-      due_date: row.querySelector('[data-biners-schedule-due]').value,
-      scheduled_amount: num(row.querySelector('[data-biners-schedule-amount]').value),
-      payment_status: row.querySelector('[data-biners-schedule-status]').value || 'unpaid',
-      status: row.querySelector('[data-biners-schedule-status]').value || 'unpaid'
-    })).filter(schedule => schedule.due_date && schedule.scheduled_amount > 0);
-
-    const baseScheduleRows = scheduleRowsFromForm.length ? scheduleRowsFromForm : [{
-      schedule_no: 1,
-      due_date: startDate || endDate || today(),
-      scheduled_amount: perLocationAmount || num($('binersTotalPayableAmount').value),
-      payment_status: 'unpaid',
-      status: 'unpaid'
-    }];
-
-    const schedules = [];
-    const locationsForSchedules = locationRows.length ? locationRows : [{ location_name: '', location_reference: '', row_index: 1 }];
-    baseScheduleRows.forEach((schedule, scheduleIndex) => {
-      const rawAmount = num(schedule.scheduled_amount);
-      const amountLooksEntryLevel = locationCount > 1 && Math.abs(rawAmount - num($('binersTotalPayableAmount').value)) < 0.01;
-      const amountForEachLocation = amountLooksEntryLevel ? Number((rawAmount / locationCount).toFixed(2)) : rawAmount;
-
-      locationsForSchedules.forEach((location, locationIndex) => {
-        const scheduledAmount = amountForEachLocation || perLocationAmount;
-        schedules.push({
-          schedule_no: schedule.schedule_no || scheduleIndex + 1,
-          schedule_key: [location.location_reference || location.location_name || locationIndex + 1, schedule.schedule_no || scheduleIndex + 1, schedule.due_date].join('|'),
-          entry_number: null,
-          client_name: clientName,
-          client_reference: clientDisplayReference(client) || null,
-          location_name: location.location_name || '',
-          location_reference: location.location_reference || '',
-          module_name: moduleName,
-          license_type: licenseType,
-          due_date: schedule.due_date || startDate || endDate || today(),
-          scheduled_amount: scheduledAmount,
-          paid_amount: 0,
-          remaining_amount: scheduledAmount,
-          payment_status: schedule.payment_status || schedule.status || 'unpaid',
-          status: schedule.status || schedule.payment_status || 'unpaid',
-          currency,
-          notes: schedule.notes || '',
-          created_by: createdBy.id || null,
-          created_by_email: createdBy.email || ''
-        });
-      });
-    });
-
-    return {
-      entry: {
-        request_key: makeRequestKey(),
-        entry_type: $('binersEntryType').value,
-        client_id: clientId,
-        company_id: companyId,
-        company_name: legalName,
-        client_reference: clientDisplayReference(client) || null,
-        client_name: clientName,
-        client_legal_name: legalName,
-        client_country: $('binersClientCountry').value.trim() || client?.country || '',
-        client_city: $('binersClientCity').value.trim() || client?.city || '',
-        client_address: $('binersClientAddress').value.trim() || client?.address || '',
-        client_contact_name: $('binersClientContactName').value.trim() || client?.contact_name || '',
-        client_contact_email: $('binersClientContactEmail').value.trim() || client?.contact_email || '',
-        client_contact_phone: $('binersClientContactPhone').value.trim() || client?.contact_phone || '',
-        module_name: moduleName,
-        license_type: licenseType,
-        license_length_months: licenseLength,
-        number_of_locations: locationRows.length || num($('binersNumberOfLocations').value),
-        service_start_date: startDate,
-        service_end_date: endDate,
-        currency,
-        total_payable_amount: totalPayable,
-        cost_per_location: num($('binersCostPerLocation').value),
-        description: $('binersDescription').value,
-        internal_notes: $('binersInternalNotes').value,
-        entry_status: 'active',
-        payment_status: 'unpaid',
-        created_by: createdBy.id || null,
-        created_by_email: createdBy.email || ''
-      },
-      locations: locationRows,
-      schedules
+    const locationCount = Math.max(1, locationRows.length || toNumber($('binersNumberOfLocations').value));
+    const annualPerLocation = toNumber($('binersCostPerLocation').value) * toNumber($('binersLicenseLengthMonths').value) / 12;
+    const totalAmount = toNumber($('binersTotalPayableAmount').value) || annualPerLocation * locationCount;
+    const amountMode = 'per_location';
+    const amountPerLocation = amountMode === 'total' ? totalAmount / locationCount : annualPerLocation || totalAmount;
+    const form = {
+      client_name: $('binersClientName').value.trim() || selectedClient?.client_name || selectedClient?.customer_name || selectedClient?.legal_name || '',
+      module: moduleName,
+      license: licenseType,
+      due_date: $('binersServiceStartDate').value || $('binersServiceEndDate').value || today(),
+      amount_mode: amountMode,
+      amount_per_location: amountPerLocation,
+      total_amount: totalAmount,
+      notes: $('binersInternalNotes').value || $('binersDescription').value || null
     };
+
+    const entry = buildBinersEntryPayload({ form, selectedClient, totals: { grossPayable: totalAmount }, requestKey: makeRequestKey() });
+    const locations = locationRows.map(location => buildBinersLocationPayload({ entry: { id: null }, location: { ...location, amount: amountPerLocation }, form, selectedClient }));
+    const schedules = locationRows.map((location, idx) => buildBinersSchedulePayload({
+      entry: { id: '__pending__', entry_number: null },
+      location,
+      schedule: { due_date: location.due_date || form.due_date, schedule_key: `${location.location_reference || location.location_name || idx + 1}|${location.due_date || form.due_date}` },
+      selectedClient,
+      form,
+      amount: amountPerLocation
+    }));
+    return { entry, locations, schedules };
   }
 
   function entrySaveErrorMessage(error) {
@@ -1012,8 +1008,8 @@
         client_reference: entry.client_reference,
         location_name: entry.location_name || 'Entry level / All locations',
         location_reference: entry.location_reference || '',
-        module_name: entry.module_name,
-        license_type: entry.license_type,
+        module: entry.module || entry.module_name,
+        license: entry.license || entry.license_type,
         license_length_months: entry.license_length_months,
         due_date: String(due).slice(0, 10),
         scheduled_amount: scheduled,
