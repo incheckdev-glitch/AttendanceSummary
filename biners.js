@@ -379,7 +379,9 @@
     // in one .or() call, but PostgREST fails the whole request when any optional
     // column does not exist in the table schema cache. The final migration guarantees
     // biners_entry_id on Biners child tables, so use it as the stable relation key.
-    const result = await supabase.from(tableName).select('*').eq('biners_entry_id', entryIdValue);
+    let query = supabase.from(tableName).select('*').eq('biners_entry_id', entryIdValue);
+    if (tableName === 'biners_payment_schedules') query = query.order('due_date', { ascending: true });
+    const result = await query;
     if (result.error) throw result.error;
     return result.data || [];
   }
@@ -478,7 +480,7 @@
       ? `<dl class="biners-detail-list"><div><dt>Month</dt><dd>${esc(monthLabel(r.forecast_month || r.month || r.due_date))}</dd></div><div><dt>Currency</dt><dd>${esc(r.currency || 'USD')}</dd></div><div><dt>Clients</dt><dd>${esc(aggregate.clients)}</dd></div><div><dt>Entries</dt><dd>${esc(aggregate.entries)}</dd></div><div><dt>Locations</dt><dd>${esc(aggregate.locations)}</dd></div><div><dt>Scheduled Rows</dt><dd>${esc(aggregate.scheduled_rows)}</dd></div></dl>`
       : `<dl class="biners-detail-list"><div><dt>Client</dt><dd>${esc(clientLabel(r))}</dd></div><div><dt>Entry #</dt><dd>${esc(r.biners_entry_number || '—')}</dd></div><div><dt>Location</dt><dd>${esc(locationLabel(r))}</dd></div><div><dt>Location Reference</dt><dd>${esc(r.location_reference || '—')}</dd></div><div><dt>Module</dt><dd>${esc(moduleLabel(r))}</dd></div><div><dt>License</dt><dd>${esc(licenseLabel(r))}</dd></div><div><dt>Schedule / Due</dt><dd>#${esc(r.schedule_no || '—')} · ${date(r.due_date)}</dd></div><div><dt>Status</dt><dd>${badge(statusFor(r))}</dd></div><div><dt>Timing</dt><dd>${esc(r.timing && r.timing !== '—' ? r.timing : timingLabel(r))}</dd></div><div><dt>Created date</dt><dd>${date(r.created_at || r.created_date)}</dd></div><div><dt>Updated date</dt><dd>${date(r.updated_at || r.updated_date)}</dd></div>${pickValue(r.notes, r.description, r.internal_notes) !== '—' ? `<div><dt>Notes</dt><dd>${esc(pickValue(r.notes, r.description, r.internal_notes))}</dd></div>` : ''}</dl>${paymentButton(r) ? `<div class="biners-drawer-actions">${paymentButton(r)}</div>` : ''}`;
 
-    content.innerHTML = `<div class="biners-drawer-summary">${stats.map(([a, b]) => `<article><span>${esc(a)}</span><strong>${formatDrawerValue(a, b, r.currency)}</strong></article>`).join('')}</div><section class="biners-drawer-section"><h3>${esc(detailsTitle)}</h3>${detailsHtml}</section>${miniTable('Scheduled payments', schedules, [['#', x => x.schedule_no], ['Client', x => clientLabel(x)], ['Entry #', x => x.biners_entry_number], ['Location', x => locationLabel(x)], ['Location Reference', x => x.location_reference || '—'], ['Module', x => moduleLabel(x)], ['License', x => licenseLabel(x)], ['Due date', x => date(x.due_date)], ['Scheduled amount', x => money(x.scheduled_amount, x.currency || r.currency)], ['Paid amount', x => money(x.paid_amount, x.currency || r.currency)], ['Remaining amount', x => money(x.remaining_amount ?? remaining(x), x.currency || r.currency)], ['Status', x => badge(x.forecast_status || x.payment_status || statusFor(x)), 'html'], ['Notes', x => x.notes || x.description]])}${miniTable('Payment history', payments, [['Payment date', x => date(x.payment_date || x.created_at)], ['Amount', x => money(x.payment_amount ?? x.amount ?? x.paid_amount, x.currency || r.currency)], ['Method', x => x.payment_method || x.method], ['Reference', x => x.payment_reference || x.reference], ['Notes', x => x.notes], ['Created by / recorded by', x => x.created_by_email || x.created_by || x.recorded_by_email || x.recorded_by]])}${locations.length ? miniTable('Related clients / locations', locations, [['Client', x => x.client_name], ['Location', x => x.location_name || x.location], ['Module', x => x.module || x.module_name]]) : ''}${entries.length > 1 ? miniTable('Related entries', entries, [['Entry #', x => x.biners_entry_number], ['Client', x => x.client_name], ['Module', x => x.module || x.module_name]]) : ''}`;
+    content.innerHTML = `<div class="biners-drawer-summary">${stats.map(([a, b]) => `<article><span>${esc(a)}</span><strong>${formatDrawerValue(a, b, r.currency)}</strong></article>`).join('')}</div><section class="biners-drawer-section"><h3>${esc(detailsTitle)}</h3>${detailsHtml}</section>${miniTable('Scheduled payments', schedules, [['#', x => x.schedule_no], ['Client', x => clientLabel(x)], ['Entry #', x => x.biners_entry_number], ['Location', x => locationLabel(x)], ['Location Reference', x => x.location_reference || '—'], ['Module', x => moduleLabel(x)], ['License', x => licenseLabel(x)], ['Due date', x => date(x.due_date)], ['Scheduled amount', x => money(x.scheduled_amount, x.currency || r.currency)], ['Paid amount', x => money(x.paid_amount, x.currency || r.currency)], ['Remaining amount', x => money(remaining(x), x.currency || r.currency)], ['Status', x => badge(x.forecast_status || x.payment_status || statusFor(x)), 'html'], ['Notes', x => x.notes || x.description]])}${miniTable('Payment history', payments, [['Payment date', x => date(x.payment_date || x.created_at)], ['Amount', x => money(x.payment_amount ?? x.amount ?? x.paid_amount, x.currency || r.currency)], ['Method', x => x.payment_method || x.method], ['Reference', x => x.payment_reference || x.reference], ['Notes', x => x.notes], ['Created by / recorded by', x => x.created_by_email || x.created_by || x.recorded_by_email || x.recorded_by]])}${locations.length ? miniTable('Related clients / locations', locations, [['Client', x => x.client_name], ['Location', x => x.location_name || x.location], ['Module', x => x.module || x.module_name]]) : ''}${entries.length > 1 ? miniTable('Related entries', entries, [['Entry #', x => x.biners_entry_number], ['Client', x => x.client_name], ['Module', x => x.module || x.module_name]]) : ''}`;
     drawer.hidden = false;
   }
 
@@ -793,27 +795,27 @@
     });
   }
 
-  function buildBinersSchedulePayload({ entry, location, schedule, selectedClient, form, amount }) {
+  function buildBinersSchedulePayload({ entry, schedule, selectedClient, form, index }) {
     const clientId = selectedClient?.id || selectedClient?.value || null;
     if (clientId && !isUuid(clientId)) throw new Error(`Invalid client_id. Expected UUID but received: ${clientId}`);
-    const dueDate = schedule.due_date || location.due_date || form.due_date || null;
+    const dueDate = schedule.due_date || schedule.payment_date || schedule.schedule_date || schedule.date || null;
+    const scheduledAmount = toNumber(schedule.scheduled_amount || schedule.amount || schedule.value);
     return cleanPayload({
-      schedule_key: schedule.schedule_key || `${entry.id}:${location.id || location.location_name}:${dueDate}`,
+      schedule_key: `${entry.id}:schedule:${index}:${dueDate}:${scheduledAmount}`,
       biners_entry_id: entry.id,
       entry_number: entry.entry_number || entry.reference || null,
       client_id: clientId,
-      client_reference: selectedClient?.client_number || selectedClient?.reference || selectedClient?.client_reference || selectedClient?.account_number || null,
-      client_name: selectedClient?.client_name || selectedClient?.legal_name || selectedClient?.name || selectedClient?.customer_name || form.client_name || null,
-      location_id: isUuid(location.id) ? location.id : null,
-      location_name: location.location_name || location.name || location.label || null,
-      location_reference: location.location_reference || location.reference || null,
-      module: form.module || form.module_name || null,
-      license: form.license || form.license_type || null,
+      client_reference: selectedClient?.client_number || selectedClient?.reference || selectedClient?.client_reference || null,
+      client_name: selectedClient?.client_name || selectedClient?.legal_name || selectedClient?.name || form.client_name || null,
+      location_name: schedule.location_name || form.location_name || 'All Locations',
+      location_reference: schedule.location_reference || form.location_reference || null,
+      module: form.module || null,
+      license: form.license || null,
       due_date: dueDate,
-      scheduled_amount: toNumber(amount),
+      scheduled_amount: scheduledAmount,
       paid_amount: 0,
       status: 'upcoming',
-      notes: schedule.notes || location.notes || null
+      notes: schedule.notes || null
     });
   }
 
@@ -850,14 +852,27 @@
 
     const entry = buildBinersEntryPayload({ form, selectedClient, totals: { grossPayable: totalAmount }, requestKey: makeRequestKey() });
     const locations = locationRows.map(location => buildBinersLocationPayload({ entry: { id: null }, location: { ...location, amount: amountPerLocation }, form, selectedClient }));
-    const schedules = locationRows.map((location, idx) => buildBinersSchedulePayload({
+    const scheduledPayments = values('.biners-schedule-row').map(row => ({
+      schedule_no: row.querySelector('[data-biners-schedule-no]')?.value,
+      due_date: row.querySelector('[data-biners-schedule-due]')?.value,
+      amount: row.querySelector('[data-biners-schedule-amount]')?.value,
+      status: row.querySelector('[data-biners-schedule-status]')?.value || 'upcoming'
+    }));
+    const manualScheduleRows = scheduledPayments.filter(row => (
+      row.due_date || row.payment_date || row.schedule_date || row.date || toNumber(row.amount || row.scheduled_amount) > 0
+    ));
+    const scheduleRowsToSave = manualScheduleRows.length > 0
+      ? manualScheduleRows
+      : [{ due_date: form.start_service_date || form.service_start_date || form.due_date, amount: totalAmount }];
+    const schedules = scheduleRowsToSave.map((schedule, index) => buildBinersSchedulePayload({
       entry: { id: '__pending__', entry_number: null },
-      location,
-      schedule: { due_date: location.due_date || form.due_date, schedule_key: `${location.location_reference || location.location_name || idx + 1}|${location.due_date || form.due_date}` },
+      schedule,
       selectedClient,
       form,
-      amount: amountPerLocation
+      index
     }));
+    const scheduleTotal = schedules.reduce((sum, row) => sum + toNumber(row.scheduled_amount), 0);
+    if (Math.abs(scheduleTotal - toNumber(totalAmount)) > 0.01) throw new Error(`Scheduled payments total (${scheduleTotal}) must equal gross payable (${totalAmount}).`);
     return { entry, locations, schedules };
   }
 

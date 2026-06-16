@@ -7106,35 +7106,35 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
           const { data: createdLocations, error: locationError } = await client.from('biners_locations').insert(locationRows).select('*');
           if (locationError) throw friendlyError('Biners locations could not be saved; the entry was rolled back', locationError);
 
-          const locationCount = Math.max((createdLocations || []).length, 1);
-          const fallbackPerLocation = toNumber(cleanEntry.gross_payable) / locationCount;
-          const scheduleRows = (schedules.length ? schedules : (createdLocations || []).map(location => ({
-            due_date: location.due_date || cleanEntry.due_date,
-            scheduled_amount: toNumber(location.scheduled_amount) || fallbackPerLocation,
-            location_name: location.location_name,
-            location_reference: location.location_reference,
-            notes: location.notes
-          }))).map((schedule, idx) => {
-            const location = (createdLocations || [])[idx] || (createdLocations || [])[0] || {};
+          const manualScheduleRows = schedules.filter(row => (
+            row?.due_date || row?.payment_date || row?.schedule_date || row?.date || toNumber(row?.amount || row?.scheduled_amount) > 0
+          ));
+          const scheduleRowsToSave = manualScheduleRows.length > 0
+            ? manualScheduleRows
+            : [{ due_date: cleanEntry.due_date, amount: cleanEntry.gross_payable, location_name: 'All Locations' }];
+          const scheduleRows = scheduleRowsToSave.map((schedule, idx) => {
+            const dueDate = schedule.due_date || schedule.payment_date || schedule.schedule_date || schedule.date || null;
+            const scheduledAmount = toNumber(schedule.scheduled_amount || schedule.amount || schedule.value);
             return pickExistingFields({
-              schedule_key: schedule.schedule_key && !String(schedule.schedule_key).includes('__pending__') ? schedule.schedule_key : `${entry.id}:${location.id || schedule.location_name || idx + 1}:${schedule.due_date || cleanEntry.due_date || ''}`,
+              schedule_key: `${entry.id}:schedule:${idx}:${dueDate}:${scheduledAmount}`,
               biners_entry_id: entry.id,
               entry_number: entryNumber,
               client_id: cleanEntry.client_id || null,
               client_reference: cleanEntry.client_reference || null,
               client_name: cleanEntry.client_name || null,
-              location_id: isUuid(location.id) ? location.id : null,
-              location_name: schedule.location_name || location.location_name || null,
-              location_reference: schedule.location_reference || location.location_reference || null,
-              module: schedule.module || cleanEntry.module || null,
-              license: schedule.license || cleanEntry.license || null,
-              due_date: schedule.due_date || cleanEntry.due_date || null,
-              scheduled_amount: toNumber(schedule.scheduled_amount) || fallbackPerLocation,
-              paid_amount: toNumber(schedule.paid_amount),
-              status: schedule.status || 'upcoming',
+              location_name: schedule.location_name || 'All Locations',
+              location_reference: schedule.location_reference || null,
+              module: cleanEntry.module || null,
+              license: cleanEntry.license || null,
+              due_date: dueDate,
+              scheduled_amount: scheduledAmount,
+              paid_amount: 0,
+              status: 'upcoming',
               notes: schedule.notes || null
             }, allowedSchedule);
           });
+          const scheduleTotal = scheduleRows.reduce((sum, row) => sum + toNumber(row.scheduled_amount), 0);
+          if (Math.abs(scheduleTotal - toNumber(cleanEntry.gross_payable)) > 0.01) throw new Error(`Scheduled payments total (${scheduleTotal}) must equal gross payable (${cleanEntry.gross_payable}).`);
           const { error: scheduleError } = await client.from('biners_payment_schedules').insert(scheduleRows);
           if (scheduleError) throw friendlyError('Biners schedules could not be saved; the entry was rolled back', scheduleError);
           return entry;
