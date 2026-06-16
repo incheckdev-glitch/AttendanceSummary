@@ -27,7 +27,7 @@ assert.match(frontend, /isDevelopment\(\)\) console\.log\('Biners Save Payload'/
 assert.match(frontend, /isDevelopment\(\)\) console\.log\('Biners Save Success'/, 'Save success debug logging must be development-only');
 assert.match(frontend, /isDevelopment\(\)\) console\.error\('Biners Save Error'/, 'Save error debug logging must be development-only');
 assert.match(dataLayer, /if \(!locations\.length[\s\S]*at least one related location name is required/, 'The create data layer must reject entries without related locations before inserting');
-assert.match(dataLayer, /Do not insert legacy\/schema-cache columns such as module_name, license_type, or remaining_amount\.[\s\S]*const allowedSchedule = \['schedule_key','biners_entry_id','entry_number','client_id','client_reference','client_name','location_id','location_name','location_reference','module','license','due_date','scheduled_amount','paid_amount','status','notes'\]/, 'The create data layer must allow only stable schedule insert fields and explicitly exclude schema-mismatch columns.');
+assert.match(dataLayer, /const allowedSchedule = \['schedule_key','biners_entry_id','entry_number','client_id','client_reference','client_name','location_id','location_name','location_reference','module','license','due_date','scheduled_amount','paid_amount','status','notes'\]/, 'The create data layer must allow only stable schedule insert fields.');
 assert.doesNotMatch(dataLayer, /remaining_amount[\s\S]{0,80}insert|module_name[\s\S]{0,80}insert|license_type[\s\S]{0,80}insert/, 'The create data layer must not insert generated or legacy schedule fields.');
 
 console.log('Biners entry save checks passed.');

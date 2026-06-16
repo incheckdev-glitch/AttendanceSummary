@@ -7084,8 +7084,6 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         };
         const allowedEntry = ['request_key','client_id','client_reference','client_name','module','license','gross_payable','paid_amount','due_date','status','notes'];
         const allowedLocation = ['biners_entry_id','client_reference','client_name','location_name','location_reference','module','license','due_date','scheduled_amount','notes'];
-        // Keep this insert allowlist aligned with the stable biners_payment_schedules schema.
-        // Do not insert legacy/schema-cache columns such as module_name, license_type, or remaining_amount.
         const allowedSchedule = ['schedule_key','biners_entry_id','entry_number','client_id','client_reference','client_name','location_id','location_name','location_reference','module','license','due_date','scheduled_amount','paid_amount','status','notes'];
         const cleanEntry = pickExistingFields(entryPayload, allowedEntry);
         if (cleanEntry.client_id && !isUuid(cleanEntry.client_id)) throw new Error(`Invalid client_id. Expected UUID but received: ${cleanEntry.client_id}`);
