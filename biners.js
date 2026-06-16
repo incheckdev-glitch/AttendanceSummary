@@ -8,6 +8,7 @@
   const norm = value => String(value ?? '').trim().toLowerCase();
   const num = value => Number.isFinite(Number(value)) ? Number(value) : 0;
   const today = () => new Date().toISOString().slice(0, 10);
+  const pickValue = (...values) => values.find(value => value !== null && value !== undefined && value !== '') || '—';
   const money = (value, currency = 'USD') => `${String(currency || 'USD').toUpperCase()} ${num(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const date = value => value ? new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' }) : '—';
   const monthLabel = value => value ? new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString(undefined, { year: 'numeric', month: 'long' }) : '—';
@@ -95,9 +96,9 @@
       ...forecast,
       ...row,
       client_name: row?.client_name || forecast?.client_name || entry?.client_name || entry?.client_legal_name || entry?.company_name,
-      biners_entry_number: row?.biners_entry_number || forecast?.biners_entry_number || entry?.biners_entry_number,
-      location_name: row?.location_name || forecast?.location_name,
-      location_reference: row?.location_reference || forecast?.location_reference,
+      biners_entry_number: row?.biners_entry_number || row?.entry_number || row?.reference || row?.biners_number || forecast?.biners_entry_number || forecast?.entry_number || forecast?.reference || entry?.biners_entry_number || entry?.entry_number || entry?.reference || entry?.biners_number,
+      location_name: row?.location_name || row?.location || forecast?.location_name || forecast?.location,
+      location_reference: row?.location_reference || row?.location_ref || row?.location_code || forecast?.location_reference || forecast?.location_ref || forecast?.location_code,
       module_name: row?.module_name || forecast?.module_name || entry?.module_name,
       license_type: row?.license_type || forecast?.license_type || entry?.license_type,
       license_length_months: row?.license_length_months || forecast?.license_length_months || entry?.license_length_months,
@@ -106,8 +107,8 @@
     };
   }
 
-  const clientLabel = row => row?.client_name || '—';
-  const locationLabel = row => row?.location_name || 'Entry level / All locations';
+  const clientLabel = row => pickValue(row?.client_name, row?.client_legal_name, row?.company_name);
+  const locationLabel = row => pickValue(row?.location_name, row?.location, row?.site_name, 'Entry level / All locations');
   const moduleLabel = row => row?.module_name || '—';
   const licenseLabel = row => row?.license_type ? `${row.license_type} · ${row.license_length_months ?? '—'} months` : '—';
   const timingLabel = row => {
@@ -315,32 +316,126 @@
     };
   }
 
+
+  function getSupabaseClient() {
+    return global.SupabaseClient?.getClient?.() || global.supabaseClient || null;
+  }
+
+  function detailsEntryNumber(entry = {}) {
+    return pickValue(entry.entry_number, entry.biners_entry_number, entry.reference, entry.biners_number, entry.biners_entry_number);
+  }
+
+  function relatedToEntry(row = {}, entry = {}) {
+    const id = entry.id;
+    const number = detailsEntryNumber(entry);
+    return [row.biners_entry_id, row.entry_id, row.biners_id].some(value => String(value || '') === String(id || ''))
+      || [row.entry_number, row.reference, row.biners_entry_number].some(value => number !== '—' && String(value || '') === String(number));
+  }
+
+  async function queryBinersRelatedTable(supabase, tableName, entry, includeEntryNumber = false) {
+    const entryIdValue = entry.id;
+    const entryNumber = detailsEntryNumber(entry);
+    const filters = [`biners_entry_id.eq.${entryIdValue}`, `entry_id.eq.${entryIdValue}`, `biners_id.eq.${entryIdValue}`];
+    if (includeEntryNumber && entryNumber !== '—') filters.push(`entry_number.eq.${entryNumber}`, `reference.eq.${entryNumber}`, `biners_entry_number.eq.${entryNumber}`);
+    const result = await supabase.from(tableName).select('*').or(filters.join(','));
+    if (result.error) throw result.error;
+    return result.data || [];
+  }
+
+  async function loadFromTableOptions(supabase, label, tableNames, entry, includeEntryNumber = false) {
+    let lastError = null;
+    for (const tableName of tableNames) {
+      try {
+        const rows = await queryBinersRelatedTable(supabase, tableName, entry, includeEntryNumber);
+        return rows;
+      } catch (error) {
+        lastError = error;
+        const code = String(error?.code || '');
+        const message = String(error?.message || error || '');
+        if (!/42P01|PGRST205|does not exist|Could not find the table/i.test(`${code} ${message}`)) throw error;
+        if (isDevelopment()) console.warn(`[Biners] Optional ${label} table ${tableName} is unavailable`, error);
+      }
+    }
+    if (lastError) throw lastError;
+    return [];
+  }
+
+  async function loadBinersPayableDetails(entry) {
+    const supabase = getSupabaseClient();
+    if (!supabase?.from) throw new Error('Supabase client is not available for Biners payable details.');
+    const entryIdValue = entry?.id;
+    if (!entryIdValue) throw new Error('Unable to load Biners payable details without an entry id.');
+
+    const [locations, schedule, payments] = await Promise.all([
+      loadFromTableOptions(supabase, 'locations', ['biners_locations'], entry, false),
+      loadFromTableOptions(supabase, 'schedule', ['biners_payment_schedule', 'biners_schedules', 'biners_schedule', 'biners_payment_schedules'], entry, true),
+      loadFromTableOptions(supabase, 'payments', ['biners_payments', 'biners_receipts', 'biners_payment_history'], entry, true)
+    ]);
+
+    return { entry, locations, schedule, payments };
+  }
+
+  function enrichBinersDetail(entry = {}, detail = {}) {
+    const locations = normalizeList(detail.locations);
+    const payments = normalizeList(detail.payments).filter(payment => relatedToEntry(payment, entry));
+    const location = locations[0] || {};
+    const paidAmount = payments.reduce((sum, payment) => sum + num(payment.amount ?? payment.payment_amount ?? payment.paid_amount), 0);
+    const grossPayable = num(entry.gross_payable ?? entry.total_payable ?? entry.total_payable_amount ?? entry.amount ?? entry.scheduled_amount);
+    const remainingAmount = Math.max(grossPayable - paidAmount, 0);
+    const base = {
+      ...entry,
+      client_name: pickValue(entry.client_name, entry.client_legal_name, entry.company_name),
+      biners_entry_number: detailsEntryNumber(entry),
+      location_name: pickValue(entry.location_name, entry.location, location.location_name, location.location),
+      location_reference: pickValue(entry.location_reference, entry.location_ref, entry.location_code, location.location_reference, location.location_ref, location.location_code),
+      module_name: pickValue(entry.module_name, entry.module, location.module_name),
+      license_type: pickValue(entry.license_type, entry.license, location.license_type),
+      license_length_months: pickValue(entry.license_length_months, entry.license_period_months, entry.license_period, location.license_length_months),
+      due_date: pickValue(entry.due_date, entry.schedule_due_date, entry.payment_due_date, entry.schedule_date),
+      schedule_no: pickValue(entry.schedule_no, entry.installment_no, entry.installment_number),
+      paid_amount: paidAmount || num(entry.paid_amount),
+      remaining_payable: paidAmount ? remainingAmount : (entry.remaining_payable ?? entry.remaining_amount ?? remainingAmount),
+      gross_payable: grossPayable,
+      timing: pickValue(entry.timing, entry.payment_schedule, entry.schedule_timing)
+    };
+    let schedule = normalizeList(detail.schedule).filter(row => relatedToEntry(row, entry)).map(row => rowContext({ ...base, ...row }));
+    if (!schedule.length && grossPayable > 0) {
+      const status = remainingAmount <= 0 ? 'paid' : paidAmount > 0 ? 'partially_paid' : 'unpaid';
+      schedule = [{ ...base, schedule_no: base.schedule_no === '—' ? 1 : base.schedule_no, scheduled_amount: grossPayable, paid_amount: paidAmount, remaining_amount: remainingAmount, payment_status: status, status }];
+    }
+    const normalizedPayments = payments.map(payment => rowContext({ ...base, ...payment, payment_amount: payment.payment_amount ?? payment.amount ?? payment.paid_amount }));
+    return { entry: base, locations, schedule, payments: normalizedPayments };
+  }
+
   function openDrawer(row, type = 'entry', remote = {}) {
     const drawer = $('binersDetailsDrawer'), content = $('binersDetailsContent');
     if (!drawer || !content) return;
-    const r = rowContext(row || {}), local = detailRowsFor(r), detail = normalizeDetail(remote);
-    let schedules = detail.scheduled_payments || detail.schedules || detail.rows || local.schedules;
-    const payments = detail.payment_history || detail.payments || local.payments;
+    const initial = rowContext(row || {}), local = detailRowsFor(initial), detail = normalizeDetail(remote);
+    const enriched = type === 'entry' ? enrichBinersDetail({ ...local.entry, ...initial }, detail) : null;
+    const r = enriched?.entry || initial;
+    let schedules = enriched?.schedule || detail.scheduled_payments || detail.schedule || detail.schedules || detail.rows || local.schedules;
+    const payments = enriched?.payments || detail.payment_history || detail.payments || local.payments;
     const entries = detail.entries || (local.entry?.id ? [local.entry] : []);
-    const locations = detail.locations || detail.related_locations || [];
+    const locations = enriched?.locations || detail.locations || detail.related_locations || [];
     const aggregate = type === 'month' ? aggregateRows(schedules, r.currency) : null;
     state.drawer = { row: r, type, remote };
 
     const stats = type === 'month'
       ? [['Gross Payable', aggregate.gross_payable], ['Paid Amount', aggregate.paid_amount], ['Remaining', aggregate.remaining_payable], ['Overdue', aggregate.overdue_amount], ['Clients', aggregate.clients], ['Entries', aggregate.entries], ['Locations', aggregate.locations], ['Scheduled Rows', aggregate.scheduled_rows]]
-      : [['Client', clientLabel(r)], ['Entry #', r.biners_entry_number || '—'], ['Location', locationLabel(r)], ['Module', moduleLabel(r)], ['Gross Payable', r.gross_payable ?? r.total_payable_amount ?? r.scheduled_amount], ['Paid Amount', r.paid_amount], ['Remaining', r.remaining_payable ?? remaining(r)], ['Overdue', r.overdue_amount]].filter(x => x[1] !== undefined && x[1] !== null);
+      : [['Client', clientLabel(r)], ['Entry #', r.biners_entry_number || '—'], ['Location', locationLabel(r)], ['Module', moduleLabel(r)], ['Gross Payable', r.gross_payable ?? r.total_payable_amount ?? r.scheduled_amount], ['Paid Amount', r.paid_amount], ['Remaining', r.remaining_payable ?? r.remaining_amount ?? remaining(r)], ['Status', statusFor(r)]].filter(x => x[1] !== undefined && x[1] !== null);
 
     const detailsTitle = type === 'month' ? 'Monthly forecast details' : 'Client & entry details';
     const detailsHtml = type === 'month'
       ? `<dl class="biners-detail-list"><div><dt>Month</dt><dd>${esc(monthLabel(r.forecast_month || r.month || r.due_date))}</dd></div><div><dt>Currency</dt><dd>${esc(r.currency || 'USD')}</dd></div><div><dt>Clients</dt><dd>${esc(aggregate.clients)}</dd></div><div><dt>Entries</dt><dd>${esc(aggregate.entries)}</dd></div><div><dt>Locations</dt><dd>${esc(aggregate.locations)}</dd></div><div><dt>Scheduled Rows</dt><dd>${esc(aggregate.scheduled_rows)}</dd></div></dl>`
-      : `<dl class="biners-detail-list"><div><dt>Client</dt><dd>${esc(r.client_name || '—')}</dd></div><div><dt>Entry #</dt><dd>${esc(r.biners_entry_number || '—')}</dd></div><div><dt>Location</dt><dd>${esc(locationLabel(r))}</dd></div><div><dt>Location Reference</dt><dd>${esc(r.location_reference || '—')}</dd></div><div><dt>Module</dt><dd>${esc(moduleLabel(r))}</dd></div><div><dt>License</dt><dd>${esc(licenseLabel(r))}</dd></div><div><dt>Schedule / Due</dt><dd>#${esc(r.schedule_no || '—')} · ${date(r.due_date)}</dd></div><div><dt>Status</dt><dd>${badge(statusFor(r))}</dd></div><div><dt>Timing</dt><dd>${esc(timingLabel(r))}</dd></div></dl>${paymentButton(r) ? `<div class="biners-drawer-actions">${paymentButton(r)}</div>` : ''}`;
+      : `<dl class="biners-detail-list"><div><dt>Client</dt><dd>${esc(clientLabel(r))}</dd></div><div><dt>Entry #</dt><dd>${esc(r.biners_entry_number || '—')}</dd></div><div><dt>Location</dt><dd>${esc(locationLabel(r))}</dd></div><div><dt>Location Reference</dt><dd>${esc(r.location_reference || '—')}</dd></div><div><dt>Module</dt><dd>${esc(moduleLabel(r))}</dd></div><div><dt>License</dt><dd>${esc(licenseLabel(r))}</dd></div><div><dt>Schedule / Due</dt><dd>#${esc(r.schedule_no || '—')} · ${date(r.due_date)}</dd></div><div><dt>Status</dt><dd>${badge(statusFor(r))}</dd></div><div><dt>Timing</dt><dd>${esc(r.timing && r.timing !== '—' ? r.timing : timingLabel(r))}</dd></div><div><dt>Created date</dt><dd>${date(r.created_at || r.created_date)}</dd></div><div><dt>Updated date</dt><dd>${date(r.updated_at || r.updated_date)}</dd></div>${pickValue(r.notes, r.description, r.internal_notes) !== '—' ? `<div><dt>Notes</dt><dd>${esc(pickValue(r.notes, r.description, r.internal_notes))}</dd></div>` : ''}</dl>${paymentButton(r) ? `<div class="biners-drawer-actions">${paymentButton(r)}</div>` : ''}`;
 
-    content.innerHTML = `<div class="biners-drawer-summary">${stats.map(([a, b]) => `<article><span>${esc(a)}</span><strong>${formatDrawerValue(a, b, r.currency)}</strong></article>`).join('')}</div><section class="biners-drawer-section"><h3>${esc(detailsTitle)}</h3>${detailsHtml}</section>${miniTable('Scheduled payments', schedules, [['#', x => x.schedule_no], ['Client', x => clientLabel(x)], ['Entry #', x => x.biners_entry_number], ['Location', x => locationLabel(x)], ['Location Reference', x => x.location_reference || '—'], ['Module', x => moduleLabel(x)], ['License', x => licenseLabel(x)], ['Due', x => date(x.due_date)], ['Scheduled', x => money(x.scheduled_amount, x.currency || r.currency)], ['Paid', x => money(x.paid_amount, x.currency || r.currency)], ['Remaining', x => money(remaining(x), x.currency || r.currency)], ['Status', x => badge(x.forecast_status || statusFor(x)), 'html']])}${miniTable('Payment history', payments, [['Date', x => date(x.payment_date)], ['Amount', x => money(x.payment_amount, x.currency || r.currency)], ['Method', x => x.payment_method], ['Reference', x => x.payment_reference], ['Notes', x => x.notes]])}${locations.length ? miniTable('Related clients / locations', locations, [['Client', x => x.client_name], ['Location', x => x.location_name || x.location], ['Module', x => x.module_name]]) : ''}${entries.length > 1 ? miniTable('Related entries', entries, [['Entry #', x => x.biners_entry_number], ['Client', x => x.client_name], ['Module', x => x.module_name]]) : ''}`;
+    content.innerHTML = `<div class="biners-drawer-summary">${stats.map(([a, b]) => `<article><span>${esc(a)}</span><strong>${formatDrawerValue(a, b, r.currency)}</strong></article>`).join('')}</div><section class="biners-drawer-section"><h3>${esc(detailsTitle)}</h3>${detailsHtml}</section>${miniTable('Scheduled payments', schedules, [['#', x => x.schedule_no], ['Client', x => clientLabel(x)], ['Entry #', x => x.biners_entry_number], ['Location', x => locationLabel(x)], ['Location Reference', x => x.location_reference || '—'], ['Module', x => moduleLabel(x)], ['License', x => licenseLabel(x)], ['Due date', x => date(x.due_date)], ['Scheduled amount', x => money(x.scheduled_amount, x.currency || r.currency)], ['Paid amount', x => money(x.paid_amount, x.currency || r.currency)], ['Remaining amount', x => money(x.remaining_amount ?? remaining(x), x.currency || r.currency)], ['Status', x => badge(x.forecast_status || x.payment_status || statusFor(x)), 'html'], ['Notes', x => x.notes || x.description]])}${miniTable('Payment history', payments, [['Payment date', x => date(x.payment_date || x.created_at)], ['Amount', x => money(x.payment_amount ?? x.amount ?? x.paid_amount, x.currency || r.currency)], ['Method', x => x.payment_method || x.method], ['Reference', x => x.payment_reference || x.reference], ['Notes', x => x.notes], ['Created by / recorded by', x => x.created_by_email || x.created_by || x.recorded_by_email || x.recorded_by]])}${locations.length ? miniTable('Related clients / locations', locations, [['Client', x => x.client_name], ['Location', x => x.location_name || x.location], ['Module', x => x.module_name]]) : ''}${entries.length > 1 ? miniTable('Related entries', entries, [['Entry #', x => x.biners_entry_number], ['Client', x => x.client_name], ['Module', x => x.module_name]]) : ''}`;
     drawer.hidden = false;
   }
 
   async function loadDrawer(row, type) {
     let selected = row || {};
+    if (type === 'entry') setState('Loading Biners payable details…');
     const sid = scheduleId(selected);
     if (sid && ['schedule', 'forecast', 'payment'].includes(type)) {
       const matches = normalizeList(await safeLoad('selected forecast row', (global.Api?.getBinersForecastRows?.({ schedule_id: sid }) || request('list_forecast', { schedule_id: sid })), []));
@@ -350,7 +445,16 @@
     const schedules = id
       ? normalizeList(await safeLoad('related forecast rows', (global.Api?.getBinersForecastRows?.({ biners_entry_id: id }) || request('list_forecast', { biners_entry_id: id })), []))
       : [];
-    openDrawer(selected, type, schedules.length ? { scheduled_payments: schedules } : {});
+    try {
+      const details = type === 'entry' ? await loadBinersPayableDetails(selected) : null;
+      openDrawer(selected, type, details || (schedules.length ? { scheduled_payments: schedules } : {}));
+      if (type === 'entry') setState('Biners payable details loaded.');
+    } catch (error) {
+      console.error('[Biners] Unable to load payable details', error);
+      toast(error?.message || String(error));
+      setState(error?.message || String(error), 'error');
+      openDrawer(selected, type, schedules.length ? { scheduled_payments: schedules } : {});
+    }
   }
 
   async function openMonthly(month, currency) {
