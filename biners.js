@@ -85,7 +85,7 @@
     if (num(row?.paid_amount) > 0) return 'partially_paid';
     const days = daysUntil(row?.due_date);
     if (days == null) return explicit || 'scheduled';
-    return days < 0 ? 'overdue' : days <= 7 ? 'due_soon' : 'scheduled';
+    return days < 0 ? 'overdue' : 'upcoming';
   }
 
   function rowContext(row) {
@@ -719,7 +719,7 @@
     if (clientId && !isUuid(clientId)) throw new Error(`Invalid client_id. Expected UUID but received: ${clientId}`);
     const companyId = client?.company_id || client?.company_uuid || null;
     if (companyId && !isUuid(companyId)) throw new Error(`Invalid company_id. Expected UUID but received: ${companyId}`);
-    const clientName = $('binersClientName').value.trim() || client?.customer_name || client?.legal_name || '';
+    const clientName = $('binersClientName').value.trim() || client?.client_name || client?.customer_name || client?.legal_name || '';
     const legalName = $('binersClientLegalName').value.trim() || client?.legal_name || clientName;
     const moduleName = $('binersModuleName').value.trim();
     const licenseType = $('binersLicenseType').value.trim();
@@ -762,25 +762,57 @@
       locations: values('.biners-location-row').map(row => ({
         location_name: row.querySelector('[data-biners-location-name]').value.trim(),
         location_reference: row.querySelector('[data-biners-location-code]').value.trim(),
-        client_id: clientId,
-        company_id: companyId,
-        service_start_date: startDate,
-        service_end_date: endDate,
-        module_name: moduleName,
-        license_type: licenseType,
-        license_length_months: licenseLength,
-        currency,
-        cost_amount: num($('binersCostPerLocation').value)
+        client_reference: clientDisplayReference(client) || null,
+        client_name: clientName,
+        country: $('binersClientCountry').value.trim() || client?.country || '',
+        city: $('binersClientCity').value.trim() || client?.city || '',
+        address: $('binersClientAddress').value.trim() || client?.address || '',
+        notes: ''
       })).filter(location => location.location_name || location.location_reference),
-      schedules: values('.biners-schedule-row').map(row => ({
-        schedule_no: num(row.querySelector('[data-biners-schedule-no]').value),
-        due_date: row.querySelector('[data-biners-schedule-due]').value,
-        scheduled_amount: num(row.querySelector('[data-biners-schedule-amount]').value),
-        payment_status: row.querySelector('[data-biners-schedule-status]').value,
-        currency,
-        created_by: createdBy.id || null,
-        created_by_email: createdBy.email || ''
-      })).filter(schedule => schedule.due_date && schedule.scheduled_amount > 0)
+      schedules: (() => {
+        const scheduleRows = values('.biners-schedule-row').map(row => {
+          const scheduledAmount = num(row.querySelector('[data-biners-schedule-amount]').value);
+          return {
+            schedule_no: num(row.querySelector('[data-biners-schedule-no]').value),
+            entry_number: null,
+            client_name: clientName,
+            client_reference: clientDisplayReference(client) || null,
+            location_name: values('.biners-location-row [data-biners-location-name]')[0]?.value.trim() || '',
+            location_reference: values('.biners-location-row [data-biners-location-code]')[0]?.value.trim() || '',
+            module_name: moduleName,
+            license_type: licenseType,
+            due_date: row.querySelector('[data-biners-schedule-due]').value,
+            scheduled_amount: scheduledAmount,
+            paid_amount: 0,
+            remaining_amount: scheduledAmount,
+            payment_status: row.querySelector('[data-biners-schedule-status]').value || 'unpaid',
+            status: row.querySelector('[data-biners-schedule-status]').value || 'unpaid',
+            currency,
+            notes: '',
+            created_by: createdBy.id || null,
+            created_by_email: createdBy.email || ''
+          };
+        }).filter(schedule => schedule.due_date && schedule.scheduled_amount > 0);
+        return scheduleRows.length ? scheduleRows : [{
+          schedule_no: 1,
+          client_name: clientName,
+          client_reference: clientDisplayReference(client) || null,
+          location_name: values('.biners-location-row [data-biners-location-name]')[0]?.value.trim() || '',
+          location_reference: values('.biners-location-row [data-biners-location-code]')[0]?.value.trim() || '',
+          module_name: moduleName,
+          license_type: licenseType,
+          due_date: startDate || endDate || today(),
+          scheduled_amount: num($('binersTotalPayableAmount').value),
+          paid_amount: 0,
+          remaining_amount: num($('binersTotalPayableAmount').value),
+          payment_status: 'unpaid',
+          status: 'unpaid',
+          currency,
+          notes: '',
+          created_by: createdBy.id || null,
+          created_by_email: createdBy.email || ''
+        }];
+      })()
     };
   }
 
@@ -909,11 +941,47 @@
     bind();
   }
 
+
+  function fallbackRowsFromEntries(entries = []) {
+    return normalizeList(entries).map((entry, idx) => {
+      const scheduled = num(entry.scheduled_amount ?? entry.total_payable_amount ?? entry.gross_payable ?? entry.total_payable ?? entry.amount);
+      const paid = num(entry.paid_amount);
+      const due = entry.due_date || entry.payment_due_date || entry.service_start_date || entry.service_end_date || entry.created_at || today();
+      const remainingAmount = Math.max(0, scheduled - paid);
+      const status = remainingAmount <= 0 ? 'paid' : paid > 0 ? 'partially_paid' : (String(due).slice(0, 10) < today() ? 'overdue' : 'upcoming');
+      return {
+        id: `entry-fallback-${entry.id || idx}`,
+        schedule_id: null,
+        biners_entry_id: entry.id,
+        entry_number: detailsEntryNumber(entry),
+        biners_entry_number: detailsEntryNumber(entry),
+        client_name: entry.client_name || entry.client_legal_name || entry.company_name,
+        client_reference: entry.client_reference,
+        location_name: entry.location_name || 'Entry level / All locations',
+        location_reference: entry.location_reference || '',
+        module_name: entry.module_name,
+        license_type: entry.license_type,
+        license_length_months: entry.license_length_months,
+        due_date: String(due).slice(0, 10),
+        scheduled_amount: scheduled,
+        paid_amount: paid,
+        remaining_amount: remainingAmount,
+        payment_status: status,
+        forecast_status: status,
+        status,
+        currency: entry.currency || 'USD',
+        schedule_no: 1,
+        notes: entry.description || entry.internal_notes || ''
+      };
+    }).filter(row => row.scheduled_amount > 0);
+  }
+
   async function safeLoad(label, promise, fallback) {
     try {
       return await promise;
     } catch (error) {
       console.warn(`[Biners] Unable to load ${label}`, error);
+      toast(error?.message || `Unable to load ${label}`);
       return fallback;
     }
   }
@@ -931,10 +999,14 @@
         safeLoad('monthly forecast', (global.Api?.getBinersMonthlyForecast?.() || request('monthly_forecast')), state.monthly),
         safeLoad('clients', loadClients(), state.clients)
       ]);
+      const normalizedEntries = normalizeList(entries);
+      const fallbackForecast = fallbackRowsFromEntries(normalizedEntries);
+      const normalizedSchedules = normalizeList(schedules);
+      const normalizedForecast = normalizeList(forecast);
       Object.assign(state, {
-        entries: normalizeList(entries),
-        schedules: normalizeList(schedules),
-        forecast: normalizeList(forecast),
+        entries: normalizedEntries,
+        schedules: normalizedSchedules.length ? normalizedSchedules : fallbackForecast,
+        forecast: normalizedForecast.length ? normalizedForecast : (normalizedSchedules.length ? normalizedSchedules : fallbackForecast),
         payments: normalizeList(payments),
         summary: summary && Array.isArray(summary) ? summary[0] : summary,
         monthly: normalizeList(monthly),

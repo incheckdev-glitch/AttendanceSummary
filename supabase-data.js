@@ -7066,8 +7066,11 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         const entryPayload = payload?.entry && typeof payload.entry === 'object' ? payload.entry : payload;
         const schedules = Array.isArray(payload?.schedules) ? payload.schedules : [];
         const locations = Array.isArray(payload?.locations) ? payload.locations : [];
+        const pickExistingFields = (source, allowedFields) => Object.fromEntries(Object.entries(source || {}).filter(([key]) => allowedFields.includes(key) && source[key] !== undefined));
         const allowedEntry = ['entry_type','company_id','client_id','agreement_id','invoice_id','company_name','client_name','client_reference','client_legal_name','client_country','client_city','client_address','client_phone','client_email','client_contact_name','client_contact_email','client_contact_phone','module_name','license_type','license_length_months','number_of_locations','service_start_date','service_end_date','currency','cost_per_location','total_payable_amount','entry_status','payment_status','description','internal_notes','created_by','created_by_email'];
-        const cleanEntry = Object.fromEntries(allowedEntry.filter(k => entryPayload[k] !== undefined).map(k => [k, entryPayload[k]]));
+        const allowedLocation = ['biners_entry_id','location_name','location_reference','client_reference','client_name','country','city','address','notes'];
+        const allowedSchedule = ['biners_entry_id','entry_number','client_name','client_reference','location_name','location_reference','module_name','license_type','due_date','scheduled_amount','paid_amount','remaining_amount','payment_status','status','notes','schedule_no','currency','created_by','created_by_email'];
+        const cleanEntry = pickExistingFields(entryPayload, allowedEntry);
         ['client_id','company_id','agreement_id','invoice_id'].forEach(key => {
           if (cleanEntry[key] && !isUuid(cleanEntry[key])) throw new Error(`Invalid ${key}. Expected UUID but received: ${cleanEntry[key]}`);
         });
@@ -7081,19 +7084,68 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
             if (loc[key] && !isUuid(loc[key])) throw new Error(`Invalid ${key}. Expected UUID but received: ${loc[key]}`);
           });
         });
-        const { data: entry, error: entryError } = await client.from('biners_entries').insert(cleanEntry).select('*').single();
-        if (entryError) throw friendlyError('Unable to create Biners entry', entryError);
-        if (locations.length) {
-          const locRows = locations.map(loc => ({ ...loc, biners_entry_id: entry.id }));
-          const { error } = await client.from('biners_locations').insert(locRows);
-          if (error) throw friendlyError('Biners entry created, but locations could not be saved', error);
+        const rpcPayload = { ...cleanEntry, locations, schedules };
+        const { data: rpcEntry, error: rpcError } = await client.rpc('crm_create_biners_entry_with_details', { p_payload: rpcPayload });
+        if (!rpcError) return Array.isArray(rpcEntry) ? rpcEntry[0] : rpcEntry;
+        const rpcMessage = String(rpcError?.message || rpcError || '');
+        if (!/function .*crm_create_biners_entry_with_details|does not exist|PGRST202|schema cache/i.test(rpcMessage)) throw friendlyError('Unable to create Biners entry', rpcError);
+
+        let entry = null;
+        try {
+          const { data: createdEntry, error: entryError } = await client.from('biners_entries').insert(cleanEntry).select('*').single();
+          if (entryError) throw friendlyError('Unable to create Biners entry', entryError);
+          entry = createdEntry;
+          const entryNumber = entry.entry_number || entry.biners_entry_number || entry.reference || null;
+          if (locations.length) {
+            const locRows = locations.map(loc => pickExistingFields({
+              biners_entry_id: entry.id,
+              location_name: loc.location_name,
+              location_reference: loc.location_reference || loc.location_code,
+              client_reference: cleanEntry.client_reference,
+              client_name: cleanEntry.client_name || cleanEntry.client_legal_name,
+              country: loc.country || cleanEntry.client_country,
+              city: loc.city || cleanEntry.client_city,
+              address: loc.address || cleanEntry.client_address,
+              notes: loc.notes || loc.description || ''
+            }, allowedLocation));
+            const { error } = await client.from('biners_locations').insert(locRows);
+            if (error) throw friendlyError('Biners locations could not be saved; the entry was rolled back', error);
+          }
+          const normalizedSchedules = schedules.length ? schedules : [{ due_date: cleanEntry.service_start_date || cleanEntry.service_end_date, scheduled_amount: cleanEntry.total_payable_amount, payment_status: 'unpaid' }];
+          if (normalizedSchedules.length) {
+            const fallbackLocation = locations[0] || {};
+            const rows = normalizedSchedules.map((schedule, idx) => pickExistingFields({
+              biners_entry_id: entry.id,
+              entry_number: entryNumber,
+              client_name: cleanEntry.client_name || cleanEntry.client_legal_name,
+              client_reference: cleanEntry.client_reference,
+              location_name: schedule.location_name || fallbackLocation.location_name || '',
+              location_reference: schedule.location_reference || fallbackLocation.location_reference || fallbackLocation.location_code || '',
+              module_name: cleanEntry.module_name,
+              license_type: cleanEntry.license_type,
+              due_date: schedule.due_date,
+              scheduled_amount: Number(schedule.scheduled_amount || 0),
+              paid_amount: Number(schedule.paid_amount || 0),
+              remaining_amount: Number(schedule.remaining_amount ?? (Number(schedule.scheduled_amount || 0) - Number(schedule.paid_amount || 0))),
+              payment_status: schedule.payment_status || schedule.status || 'unpaid',
+              status: schedule.status || schedule.payment_status || 'unpaid',
+              notes: schedule.notes || '',
+              schedule_no: schedule.schedule_no || idx + 1,
+              currency: schedule.currency || cleanEntry.currency,
+              created_by: schedule.created_by || cleanEntry.created_by || null,
+              created_by_email: schedule.created_by_email || cleanEntry.created_by_email || ''
+            }, allowedSchedule));
+            const { error } = await client.from('biners_payment_schedules').insert(rows);
+            if (error) throw friendlyError('Biners schedules could not be saved; the entry was rolled back', error);
+          }
+          return entry;
+        } catch (error) {
+          if (entry?.id) {
+            const { error: rollbackError } = await client.from('biners_entries').delete().eq('id', entry.id);
+            if (rollbackError) console.error('[Biners] Failed to rollback partially-created entry', rollbackError);
+          }
+          throw error;
         }
-        if (schedules.length) {
-          const rows = schedules.map((schedule, idx) => ({ ...schedule, biners_entry_id: entry.id, schedule_no: schedule.schedule_no || idx + 1 }));
-          const { error } = await client.from('biners_payment_schedules').insert(rows);
-          if (error) throw friendlyError('Biners entry created, but schedules could not be saved', error);
-        }
-        return entry;
       }
       if (binersAction === 'record_payment') {
         const scheduleId = String(payload?.schedule_id || '').trim() || null;
