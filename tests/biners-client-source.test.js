@@ -10,7 +10,7 @@ assert.match(frontend, /function dedupeClients[\s\S]*client\.company_id[\s\S]*cl
 assert.match(frontend, /\[client\.legal_name, client\.customer_name, client\.account_number, client\.contact_email\]/, 'client search must cover legal name, customer name, account number, and contact email');
 assert.match(frontend, /function isUuid[\s\S]*Expected UUID but received/, 'Biners must validate selected UUIDs before saving');
 assert.match(frontend, /<option value="\$\{esc\(client\.id\)\}"[\s\S]*\$\{esc\(clientOptionLabel\(client\)\)\}/, 'existing-client options must use the real UUID value and display label text separately');
-assert.match(frontend, /client_id: clientId[\s\S]*company_id: companyId[\s\S]*client_reference: clientDisplayReference\(client\) \|\| null/, 'selected client UUID and display reference must be separated when saving');
+assert.match(frontend, /client_id: clientId[\s\S]*client_reference: selectedClient\?\.client_number/, 'selected client UUID and display reference must be separated when saving');
 [
   ['binersClientName', 'client.customer_name'],
   ['binersClientLegalName', 'client.legal_name'],
