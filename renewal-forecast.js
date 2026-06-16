@@ -9,6 +9,7 @@ const RenewalForecast = {
     manualRenewals: [],
     noRenewalNeededOverrides: [],
     noRenewalNeededRow: null,
+    actionLoadingId: '',
     overviewPage: 1,
     detailPage: 1,
     detailRows: [],
@@ -230,6 +231,10 @@ const RenewalForecast = {
     };
   },
 
+  renewalRowKey(row = {}) {
+    return this.text(row?.invoice_item_id || row?.agreement_item_id || row?.renewal_key || row?.id || row?.opportunity_id);
+  },
+
   manualKey(row = {}) {
     const existing = this.text(row.opportunity_id || row.opportunity_key || row.manual_renewal_key);
     if (existing) return existing;
@@ -354,7 +359,7 @@ const RenewalForecast = {
   },
 
   openNoRenewalNeededModal(row) {
-    if (!this.requirePermission('mark_no_renewal_needed', 'You do not have permission to mark No Renewal Needed.') || !['upcoming', 'due_soon', 'overdue'].includes(row.renewal_status) || !row.invoice_item_id) return;
+    if (!this.requirePermission('mark_no_renewal_needed', 'You do not have permission to mark No Renewal Needed.') || !['upcoming', 'due_soon', 'overdue'].includes(row.renewal_status) || !this.renewalRowKey(row)) return;
     this.state.noRenewalNeededRow = row;
     const modal = document.getElementById('renewalNoNeededModal');
     const reason = document.getElementById('renewalNoNeededReason');
@@ -379,28 +384,48 @@ const RenewalForecast = {
   async confirmNoRenewalNeeded() {
     if (!this.requirePermission('mark_no_renewal_needed', 'You do not have permission to mark No Renewal Needed.')) return;
     const row = this.state.noRenewalNeededRow;
-    const reason = this.text(document.getElementById('renewalNoNeededReason')?.value);
+    const rowKey = this.renewalRowKey(row);
+    const reason = this.text(document.getElementById('renewalNoNeededReason')?.value) || 'No renewal needed';
     const note = this.text(document.getElementById('renewalNoNeededNote')?.value);
-    if (!row || !reason) return UI.toast('Select a reason before confirming.');
-    const { error } = await this.getClient().rpc('crm_mark_renewal_no_needed', {
-      p_invoice_item_id: row.invoice_item_id,
-      p_invoice_number: row.invoice_number || null,
-      p_client_name: row.client_name || null,
-      p_location_name: row.location_name || null,
-      p_service_start_date: row.service_start_date || null,
-      p_service_end_date: row.service_end_date || null,
-      p_reason: reason,
-      p_note: note || null
-    });
-    if (error) throw error;
-    this.closeNoRenewalNeededModal();
-    UI.toast('Location marked as No Renewal Needed.');
-    await this.refresh();
+    if (!row || !rowKey) return UI.toast('Unable to mark renewal: missing unique renewal row key.');
+
+    this.state.actionLoadingId = rowKey;
+    this.renderMonthDetails();
+    try {
+      const { error } = await this.getClient().rpc('crm_mark_monthly_renewal_no_renewal_needed', {
+        p_invoice_item_id: rowKey,
+        p_reason: reason,
+        p_note: note || null,
+        p_invoice_number: row.invoice_number || null,
+        p_client_name: row.client_name || null,
+        p_location_name: row.location_name || null,
+        p_service_start_date: row.service_start_date || null,
+        p_service_end_date: row.service_end_date || null
+      });
+      if (error) throw error;
+
+      const applySavedState = item => this.renewalRowKey(item) === rowKey ? this.applyNoRenewalNeededOverride(item, [{ invoice_item_id: rowKey, reason, note }]) : item;
+      this.state.rows = this.state.rows.map(applySavedState);
+      this.state.detailRows = this.state.detailRows.map(applySavedState);
+      Object.keys(this.state.detailsCache).forEach(month => { this.state.detailsCache[month] = this.state.detailsCache[month].map(applySavedState); });
+      this.applyFilters();
+      this.closeNoRenewalNeededModal();
+      UI.toast('Renewal marked as No Renewal Needed.');
+      await this.refresh();
+      if (this.state.selectedMonth) this.state.detailRows = this.filtered().filter(item => this.monthKey(item.service_end_date || item.renewal_month) === this.state.selectedMonth && !item._summaryOnly);
+      this.renderMonthDetails();
+    } catch (error) {
+      console.error('Failed to mark renewal as no renewal needed:', error);
+      UI.toast(error?.message || 'Failed to mark renewal as No Renewal Needed.');
+    } finally {
+      this.state.actionLoadingId = '';
+      this.renderMonthDetails();
+    }
   },
 
   async undoNoRenewalNeeded(row) {
-    if (!this.requirePermission('undo_override', 'You do not have permission to undo renewal overrides.') || !row.invoice_item_id || !window.confirm?.('Undo the No Renewal Needed mark for this location?')) return;
-    const { error } = await this.getClient().rpc('crm_unmark_renewal_override', { p_invoice_item_id: row.invoice_item_id });
+    if (!this.requirePermission('undo_override', 'You do not have permission to undo renewal overrides.') || !this.renewalRowKey(row) || !window.confirm?.('Undo the No Renewal Needed mark for this location?')) return;
+    const { error } = await this.getClient().rpc('crm_unmark_renewal_override', { p_invoice_item_id: this.renewalRowKey(row) });
     if (error) throw error;
     UI.toast('No Renewal Needed mark removed.');
     await this.refresh();
@@ -700,7 +725,7 @@ const RenewalForecast = {
     const canMarkRenewed = canFollowUp && this.hasPermission('mark_renewed');
     const canMarkNoRenewal = canFollowUp && this.hasPermission('mark_no_renewal_needed');
     const canUndo = this.hasPermission('undo_override');
-    return `<div class="pf-actions">${canFollowUp && this.canCreateInvoice() ? `<button class="btn primary xs" data-rf-action="renew" data-id="${U.escapeAttr(row.opportunity_id)}">Renew</button>` : ''}${canMarkRenewed ? `<button class="btn ghost xs" data-rf-action="manual-renewed" data-id="${U.escapeAttr(row.opportunity_id)}">Mark Renewed</button>` : ''}${canMarkNoRenewal ? `<button class="btn ghost xs" data-rf-action="no-renewal-needed" data-id="${U.escapeAttr(row.opportunity_id)}">Mark as No Renewal Needed</button>` : ''}${row.manual_renewal && canUndo ? `<button class="btn ghost xs" data-rf-action="unmark-renewed" data-id="${U.escapeAttr(row.opportunity_id)}">Unmark Renewed</button>` : ''}${row.manual_no_renewal_needed && canUndo ? `<button class="btn ghost xs" data-rf-action="undo-no-renewal-needed" data-id="${U.escapeAttr(row.opportunity_id)}">Undo No Renewal Needed</button>` : ''}<button class="btn ghost xs" data-rf-action="agreement" data-id="${U.escapeAttr(row.opportunity_id)}">View Agreement</button><button class="btn ghost xs" data-rf-action="client" data-id="${U.escapeAttr(row.opportunity_id)}">View Client</button>${canFollowUp && this.canCreateInvoice() ? `<button class="btn ghost xs" data-rf-action="invoice" data-id="${U.escapeAttr(row.opportunity_id)}">Create Renewal Invoice</button>` : ''}</div>${row.manual_renewal_note ? `<div class="muted">Note: ${U.escapeHtml(row.manual_renewal_note)}</div>` : ''}${row.no_renewal_needed_note ? `<div class="muted">Note: ${U.escapeHtml(row.no_renewal_needed_note)}</div>` : ''}`;
+    return `<div class="pf-actions">${canFollowUp && this.canCreateInvoice() ? `<button class="btn primary xs" data-rf-action="renew" data-id="${U.escapeAttr(row.opportunity_id)}">Renew</button>` : ''}${canMarkRenewed ? `<button class="btn ghost xs" data-rf-action="manual-renewed" data-id="${U.escapeAttr(row.opportunity_id)}">Mark Renewed</button>` : ''}${canMarkNoRenewal ? `<button class="btn ghost xs" data-rf-action="no-renewal-needed" data-id="${U.escapeAttr(row.opportunity_id)}" ${this.state.actionLoadingId === this.renewalRowKey(row) ? 'disabled' : ''}>${this.state.actionLoadingId === this.renewalRowKey(row) ? 'Saving...' : 'Mark as No Renewal Needed'}</button>` : ''}${row.manual_renewal && canUndo ? `<button class="btn ghost xs" data-rf-action="unmark-renewed" data-id="${U.escapeAttr(row.opportunity_id)}">Unmark Renewed</button>` : ''}${row.manual_no_renewal_needed && canUndo ? `<button class="btn ghost xs" data-rf-action="undo-no-renewal-needed" data-id="${U.escapeAttr(row.opportunity_id)}">Undo No Renewal Needed</button>` : ''}<button class="btn ghost xs" data-rf-action="agreement" data-id="${U.escapeAttr(row.opportunity_id)}">View Agreement</button><button class="btn ghost xs" data-rf-action="client" data-id="${U.escapeAttr(row.opportunity_id)}">View Client</button>${canFollowUp && this.canCreateInvoice() ? `<button class="btn ghost xs" data-rf-action="invoice" data-id="${U.escapeAttr(row.opportunity_id)}">Create Renewal Invoice</button>` : ''}</div>${row.manual_renewal_note ? `<div class="muted">Note: ${U.escapeHtml(row.manual_renewal_note)}</div>` : ''}${row.no_renewal_needed_note ? `<div class="muted">Note: ${U.escapeHtml(row.no_renewal_needed_note)}</div>` : ''}`;
   },
 
   renderMonthDetails() {

@@ -28,8 +28,10 @@ assert.strictEqual(month.overdue, 1, 'No Renewal Needed rows must not count as o
 assert.strictEqual(month.noRenewalNeeded, 1, 'No Renewal Needed rows must count separately');
 assert.strictEqual(month.value, 1200, 'No Renewal Needed rows must not count toward expected renewal value');
 
-assert(frontend.includes("rpc('crm_mark_renewal_no_needed'") && frontend.includes("rpc('crm_unmark_renewal_override'"));
-assert(html.includes('Mark as No Renewal Needed') && html.includes('<option value="no_renewal_needed">No Renewal Needed</option>'));
+assert(frontend.includes("rpc('crm_mark_monthly_renewal_no_renewal_needed'") && frontend.includes("rpc('crm_unmark_renewal_override'"));
+assert(frontend.includes("console.error('Failed to mark renewal as no renewal needed:'"));
+assert(frontend.includes("Renewal marked as No Renewal Needed."));
+assert(html.includes('Mark as No Renewal Needed') && html.includes('Are you sure you want to mark this renewal as No Renewal Needed?') && html.includes('<option value="no_renewal_needed">No Renewal Needed</option>'));
 assert(migration.includes('perform public.crm_require_renewal_admin()'));
 assert(migration.includes('set active = false') && !migration.includes('delete from public.crm_renewal_no_needed_overrides'));
 assert(!migration.includes('update public.invoice_items') && !migration.includes('update public.invoices') && !migration.includes('update public.agreements'));

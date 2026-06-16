@@ -10,10 +10,11 @@ const permissionMigration = fs.readFileSync('sql/migrations/20260611_monthly_ren
 const hardeningMigration = fs.readFileSync('sql/migrations/20260611_monthly_renewal_forecast_admin_security.sql', 'utf8');
 const forecastMigration = fs.readFileSync('sql/migrations/20260610_monthly_renewal_forecast_admin_guard.sql', 'utf8');
 const overrideMigration = fs.readFileSync('sql/migrations/20260610_renewal_no_needed_override.sql', 'utf8');
+const actionFixMigration = fs.readFileSync('sql/migrations/20260616_monthly_renewal_no_needed_action_fix.sql', 'utf8');
 
 const actions = ['view', 'export', 'view_details', 'mark_renewed', 'mark_no_renewal_needed', 'undo_override', 'create_renewal_invoice'];
 actions.forEach(action => {
-  assert(permissionsSource.includes(`${action}: ['admin']`), `${action} must default to admin only`);
+  assert(permissionsSource.includes(`${action}: ['admin', 'senior_financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm', 'accounting', 'accountant']`), `${action} must default to allowed finance/admin roles`);
   assert(permissionMigration.includes(`('${action}')`), `${action} must be seeded`);
 });
 assert(permissionsSource.includes("renewalForecast: [{ resource: 'monthly_renewal_forecast', action: 'view' }]"), 'tab access must use the view permission');
@@ -77,10 +78,11 @@ const forecast = forecastContext.window.RenewalForecast;
   assert(htmlSource.includes('data-permission-resource="monthly_renewal_forecast" data-permission-action="view"'), 'tab must declare view permission');
   assert(htmlSource.includes('data-permission-resource="monthly_renewal_forecast" data-permission-action="export"'), 'export button must declare export permission');
   assert(!permissionMigration.includes("'payment_forecast'"), 'Payment Forecast permissions must remain untouched');
-  ['dev', 'csm', 'hoo', 'viewer', 'sales_executive', 'head_of_sales', 'accounting', 'senior_financial_controller', 'general_manager'].forEach(role => assert(permissionMigration.includes(`'${role}'`), `${role} must be seeded disabled`));
+  ['dev', 'csm', 'hoo', 'viewer', 'sales_executive', 'head_of_sales', 'accounting', 'senior_financial_controller', 'general_manager'].forEach(role => assert(permissionMigration.includes(`'${role}'`), `${role} must be seeded`));
+  ['accounting', 'accountant', 'senior_financial_controller', 'general_manager'].forEach(role => assert(actionFixMigration.includes(`'${role}'`), `${role} must be allowed by action fix migration`));
   ['crm_get_monthly_renewal_forecast', 'crm_get_monthly_renewal_forecast_details', 'crm_mark_renewal_manual', 'crm_mark_renewal_no_needed', 'crm_unmark_renewal_override', 'crm_get_renewal_no_needed_overrides'].forEach(rpc => assert(permissionMigration.includes(`'${rpc}'`), `${rpc} admin guard must be verified`));
   assert(forecastMigration.includes('if not public.crm_is_admin_user() then'), 'forecast RPC must use crm_is_admin_user');
-  assert(overrideMigration.includes('if not public.crm_is_admin_user() then'), 'override RPC guard must use crm_is_admin_user');
+  assert(actionFixMigration.includes('crm_require_monthly_renewal_forecast_action') && actionFixMigration.includes('mark_no_renewal_needed'), 'override RPC guard must use Monthly Renewal Forecast action permission');
   assert(hardeningMigration.includes('monthly_renewal_overrides_admin_all') && hardeningMigration.includes('crm_renewal_no_needed_overrides_admin_select'), 'override tables must have admin-only RLS');
   console.log('Monthly Renewal Forecast permission access checks passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

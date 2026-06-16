@@ -150,13 +150,13 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     manage: ['admin', 'accounting', 'accountant', 'senior_financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm']
   }),
   monthly_renewal_forecast: Object.freeze({
-    view: ['admin'],
-    export: ['admin'],
-    view_details: ['admin'],
-    mark_renewed: ['admin'],
-    mark_no_renewal_needed: ['admin'],
-    undo_override: ['admin'],
-    create_renewal_invoice: ['admin']
+    view: ['admin', 'senior_financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm', 'accounting', 'accountant'],
+    export: ['admin', 'senior_financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm', 'accounting', 'accountant'],
+    view_details: ['admin', 'senior_financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm', 'accounting', 'accountant'],
+    mark_renewed: ['admin', 'senior_financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm', 'accounting', 'accountant'],
+    mark_no_renewal_needed: ['admin', 'senior_financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm', 'accounting', 'accountant'],
+    undo_override: ['admin', 'senior_financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm', 'accounting', 'accountant'],
+    create_renewal_invoice: ['admin', 'senior_financial_controller', 'senior_fc', 'sfc', 'general_manager', 'gm', 'accounting', 'accountant']
   }),
   biners: Object.freeze({
     view: ['admin', 'dev', 'developer', 'general_manager', 'gm', 'senior_financial_controller', 'senior_fc', 'sfc', 'accountant', 'accounting', 'hod', 'head_of_department'],
