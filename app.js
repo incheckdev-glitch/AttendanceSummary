@@ -6932,6 +6932,7 @@ const CSMActivity = {
     startDate: '',
     endDate: ''
   },
+  workloadDebugLogged: false,
   charts: {
     weekdayWorkload: null,
     weeklyTrend: null,
@@ -7332,6 +7333,91 @@ const CSMActivity = {
   destroyChart(chart) {
     if (chart && typeof chart.destroy === 'function') chart.destroy();
   },
+  toNumber(value) {
+    if (value === null || value === undefined || value === '') return 0;
+    const num = Number(String(value).replace(/[^0-9.-]/g, ''));
+    return Number.isFinite(num) ? num : 0;
+  },
+  getWorkedMinutes(row = {}) {
+    const minuteValue =
+      this.toNumber(row.worked_minutes) ||
+      this.toNumber(row.total_minutes) ||
+      this.toNumber(row.duration_minutes) ||
+      this.toNumber(row.minutes) ||
+      this.toNumber(row.timeSpentMinutes) ||
+      this.toNumber(row.time_spent_minutes);
+
+    if (minuteValue) return minuteValue;
+
+    const hourValue =
+      this.toNumber(row.workedHours) ||
+      this.toNumber(row.worked_hours) ||
+      this.toNumber(row.total_hours) ||
+      this.toNumber(row.duration_hours);
+
+    if (hourValue) return hourValue * 60;
+
+    if (row.check_in && row.check_out) {
+      const start = new Date(row.check_in);
+      const end = new Date(row.check_out);
+      const diff = (end.getTime() - start.getTime()) / 60000;
+      return Number.isFinite(diff) && diff > 0 ? diff : 0;
+    }
+
+    return 0;
+  },
+  getAttendanceDate(row = {}) {
+    return (
+      row.date ||
+      row.attendance_date ||
+      row.work_date ||
+      row.shift_date ||
+      row.check_in ||
+      row.created_at ||
+      row.activity_date ||
+      row.submitted_at ||
+      row.timestamp ||
+      row.task_date ||
+      row.submittedAt ||
+      row.createdAt ||
+      row.parsedDate ||
+      null
+    );
+  },
+  getWeekStart(date) {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    d.setDate(d.getDate() + diff);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  },
+  formatWeekLabel(date) {
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  },
+  setWorkloadEmptyState(canvas, chartKey, isEmpty) {
+    if (!canvas) return;
+    const parent = canvas.parentElement;
+    if (!parent) return;
+    const stateId = `${canvas.id || chartKey}EmptyState`;
+    let emptyState = parent.querySelector(`#${stateId}`);
+    if (isEmpty) {
+      this.destroyChart(this.charts[chartKey]);
+      this.charts[chartKey] = null;
+      canvas.style.display = 'none';
+      if (!emptyState) {
+        emptyState = document.createElement('div');
+        emptyState.id = stateId;
+        emptyState.className = 'muted';
+        emptyState.style.cssText = 'min-height:130px;display:flex;align-items:center;justify-content:center;text-align:center;padding:12px;';
+        parent.appendChild(emptyState);
+      }
+      emptyState.textContent = 'No workload data found for the selected filters.';
+    } else {
+      canvas.style.display = '';
+      if (emptyState) emptyState.remove();
+    }
+  },
   upsertChart(existingChart, ctx, config) {
     if (existingChart && existingChart.config?.type === config.type) {
       existingChart.data = config.data;
@@ -7343,7 +7429,7 @@ const CSMActivity = {
     return new Chart(ctx, config);
   },
   renderCharts(list) {
-    const minutes = row => Number(row.timeSpentMinutes) || 0;
+    const minutes = row => this.getWorkedMinutes(row);
     const countByKey = key => {
       const map = new Map();
       list.forEach(row => {
@@ -7352,16 +7438,7 @@ const CSMActivity = {
       });
       return map;
     };
-    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const weekdayIndex = date => (date.getUTCDay() + 6) % 7;
-    const isoWeekLabel = date => {
-      const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-      const dayNum = d.getUTCDay() || 7;
-      d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-      const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-      const week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-      return `${d.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
-    };
+    const weekdayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     const totalByKey = key => {
       const map = new Map();
       list.forEach(row => {
@@ -7426,32 +7503,59 @@ const CSMActivity = {
       });
     }
 
+    const weekdayTotals = [0, 0, 0, 0, 0, 0, 0];
+    const weeklyMap = new Map();
+    list.forEach(row => {
+      const dateValue = this.getAttendanceDate(row);
+      if (!dateValue) return;
+      const date = new Date(dateValue);
+      if (Number.isNaN(date.getTime())) return;
+
+      const jsDay = date.getDay();
+      const mondayIndex = jsDay === 0 ? 6 : jsDay - 1;
+      const workedMinutes = minutes(row);
+      weekdayTotals[mondayIndex] += workedMinutes;
+
+      const weekStart = this.getWeekStart(date);
+      const key = weekStart.toISOString().slice(0, 10);
+      weeklyMap.set(key, {
+        date: weekStart,
+        minutes: (weeklyMap.get(key)?.minutes || 0) + workedMinutes
+      });
+    });
+    const weeklyRows = Array.from(weeklyMap.values()).sort((a, b) => a.date.getTime() - b.date.getTime());
+    if (window.DEBUG_CSM_WORKLOAD && !this.workloadDebugLogged) {
+      console.debug('CSM workload chart data', {
+        rawRowsCount: Array.isArray(this.allRows) ? this.allRows.length : 0,
+        filteredRowsCount: Array.isArray(list) ? list.length : 0,
+        weekdayTotals,
+        weeklyTotals: weeklyRows.map(row => ({ label: this.formatWeekLabel(row.date), minutes: row.minutes }))
+      });
+      this.workloadDebugLogged = true;
+    }
+
     if (E.csmWeekdayWorkloadChart?.getContext) {
-      const weekdayMinutes = new Array(7).fill(0);
-      list.forEach(row => {
-        if (!row.parsedDate) return;
-        weekdayMinutes[weekdayIndex(row.parsedDate)] += minutes(row);
-      });
-      this.charts.weekdayWorkload = this.upsertChart(this.charts.weekdayWorkload, E.csmWeekdayWorkloadChart.getContext('2d'), {
-        type: 'bar',
-        data: { labels: weekdays, datasets: [{ label: 'Minutes', data: weekdayMinutes.map(v => Math.round(v)), backgroundColor: '#0ea5e9' }] },
-        options: { responsive: true, plugins: { legend: { display: true } }, scales: { y: { beginAtZero: true, title: { display: true, text: 'Minutes' } } } }
-      });
+      const hasWeekdayData = weekdayTotals.some(value => value > 0);
+      this.setWorkloadEmptyState(E.csmWeekdayWorkloadChart, 'weekdayWorkload', !hasWeekdayData);
+      if (hasWeekdayData) {
+        this.charts.weekdayWorkload = this.upsertChart(this.charts.weekdayWorkload, E.csmWeekdayWorkloadChart.getContext('2d'), {
+          type: 'bar',
+          data: { labels: weekdayLabels, datasets: [{ label: 'Minutes', data: weekdayTotals.map(v => Math.round(v)), backgroundColor: '#0ea5e9' }] },
+          options: { responsive: true, plugins: { legend: { display: true } }, scales: { y: { beginAtZero: true, title: { display: true, text: 'Minutes' } } } }
+        });
+      }
     }
 
     if (E.csmWeeklyTrendChart?.getContext) {
-      const byWeek = new Map();
-      list.forEach(row => {
-        if (!row.parsedDate) return;
-        const week = isoWeekLabel(row.parsedDate);
-        byWeek.set(week, (byWeek.get(week) || 0) + minutes(row));
-      });
-      const weeklyRows = [...byWeek.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-12);
-      this.charts.weeklyTrend = this.upsertChart(this.charts.weeklyTrend, E.csmWeeklyTrendChart.getContext('2d'), {
-        type: 'line',
-        data: { labels: weeklyRows.map(r => r[0]), datasets: [{ label: 'Minutes', data: weeklyRows.map(r => Math.round(r[1])), borderColor: '#16a34a', backgroundColor: 'rgba(22,163,74,.15)', fill: true, tension: 0.35 }] },
-        options: { responsive: true, scales: { y: { beginAtZero: false, title: { display: true, text: 'Minutes' } } } }
-      });
+      const hasWeeklyData = weeklyRows.some(row => row.minutes > 0);
+      this.setWorkloadEmptyState(E.csmWeeklyTrendChart, 'weeklyTrend', !hasWeeklyData);
+      if (hasWeeklyData) {
+        this.charts.weeklyTrend = this.upsertChart(this.charts.weeklyTrend, E.csmWeeklyTrendChart.getContext('2d'), {
+          type: 'line',
+          data: { labels: weeklyRows.map(row => this.formatWeekLabel(row.date)), datasets: [{ label: 'Minutes', data: weeklyRows.map(row => Math.round(row.minutes)), borderColor: '#16a34a', backgroundColor: 'rgba(22,163,74,.15)', fill: true, tension: 0.35 }] },
+          options: { responsive: true, scales: { y: { beginAtZero: true, title: { display: true, text: 'Minutes' } } } }
+        });
+      }
     }
 
     if (E.csmEffortMixByCsmChart?.getContext) {
