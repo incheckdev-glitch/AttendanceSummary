@@ -7018,12 +7018,32 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         return data || [];
       }
       if (binersAction === 'list_schedules' || binersAction === 'list_forecast') {
-        let query = client.from('biners_forecast_rows').select('*');
-        if (payload?.schedule_id) query = query.eq('schedule_id', payload.schedule_id);
-        if (payload?.biners_entry_id) query = query.eq('biners_entry_id', payload.biners_entry_id);
-        const { data, error } = await query.order('due_date', { ascending: true }).limit(Number(payload?.limit || 1000));
-        if (error) throw friendlyError(binersAction === 'list_schedules' ? 'Unable to load Biners schedules' : 'Unable to load Biners forecast', error);
-        return data || [];
+        const loadForecastView = async () => {
+          let query = client.from('biners_forecast_rows').select('*');
+          if (payload?.schedule_id) query = query.eq('schedule_id', payload.schedule_id);
+          if (payload?.biners_entry_id) query = query.eq('biners_entry_id', payload.biners_entry_id);
+          return query.order('due_date', { ascending: true }).limit(Number(payload?.limit || 1000));
+        };
+        let { data, error } = await loadForecastView();
+        if (error) {
+          const message = String(error?.message || error || '');
+          if (!/biners_forecast_rows|does not exist|PGRST205|schema cache|Could not find/i.test(message)) {
+            throw friendlyError(binersAction === 'list_schedules' ? 'Unable to load Biners schedules' : 'Unable to load Biners forecast', error);
+          }
+          let query = client.from('biners_payment_schedules').select('*');
+          if (payload?.schedule_id) query = query.eq('id', payload.schedule_id);
+          if (payload?.biners_entry_id) query = query.eq('biners_entry_id', payload.biners_entry_id);
+          const fallback = await query.order('due_date', { ascending: true }).limit(Number(payload?.limit || 1000));
+          if (fallback.error) throw friendlyError(binersAction === 'list_schedules' ? 'Unable to load Biners schedules' : 'Unable to load Biners forecast', fallback.error);
+          data = fallback.data || [];
+        }
+        const seen = new Set();
+        return (data || []).filter((row, index) => {
+          const key = String(row.schedule_id || row.biners_schedule_id || row.id || row.schedule_key || [row.biners_entry_id, row.entry_number, row.location_reference || row.location_name, row.schedule_no || index + 1, row.due_date, row.scheduled_amount].join('|'));
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
       }
       if (binersAction === 'list_payments') {
         const { data, error } = await client.from('biners_payments').select('*').order('payment_date', { ascending: false }).limit(Number(payload?.limit || 1000));
@@ -7067,9 +7087,9 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         const schedules = Array.isArray(payload?.schedules) ? payload.schedules : [];
         const locations = Array.isArray(payload?.locations) ? payload.locations : [];
         const pickExistingFields = (source, allowedFields) => Object.fromEntries(Object.entries(source || {}).filter(([key]) => allowedFields.includes(key) && source[key] !== undefined));
-        const allowedEntry = ['entry_type','company_id','client_id','agreement_id','invoice_id','company_name','client_name','client_reference','client_legal_name','client_country','client_city','client_address','client_phone','client_email','client_contact_name','client_contact_email','client_contact_phone','module_name','license_type','license_length_months','number_of_locations','service_start_date','service_end_date','currency','cost_per_location','total_payable_amount','entry_status','payment_status','description','internal_notes','created_by','created_by_email'];
+        const allowedEntry = ['request_key','entry_type','company_id','client_id','agreement_id','invoice_id','company_name','client_name','client_reference','client_legal_name','client_country','client_city','client_address','client_phone','client_email','client_contact_name','client_contact_email','client_contact_phone','module_name','license_type','license_length_months','number_of_locations','service_start_date','service_end_date','currency','cost_per_location','total_payable_amount','entry_status','payment_status','description','internal_notes','created_by','created_by_email'];
         const allowedLocation = ['biners_entry_id','location_name','location_reference','client_reference','client_name','country','city','address','notes'];
-        const allowedSchedule = ['biners_entry_id','entry_number','client_name','client_reference','location_name','location_reference','module_name','license_type','due_date','scheduled_amount','paid_amount','remaining_amount','payment_status','status','notes','schedule_no','currency','created_by','created_by_email'];
+        const allowedSchedule = ['biners_entry_id','biners_location_id','schedule_key','entry_number','client_name','client_reference','location_name','location_reference','module_name','license_type','due_date','scheduled_amount','paid_amount','remaining_amount','payment_status','status','notes','schedule_no','currency','created_by','created_by_email'];
         const cleanEntry = pickExistingFields(entryPayload, allowedEntry);
         ['client_id','company_id','agreement_id','invoice_id'].forEach(key => {
           if (cleanEntry[key] && !isUuid(cleanEntry[key])) throw new Error(`Invalid ${key}. Expected UUID but received: ${cleanEntry[key]}`);
@@ -7079,6 +7099,11 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         if (missingEntryFields.length) throw new Error(`Unable to create Biners entry: missing required fields (${missingEntryFields.join(', ')}).`);
         if (cleanEntry.entry_type === 'existing_client_new_location' && !cleanEntry.client_id && !cleanEntry.company_id) throw new Error('Unable to create Biners entry: an existing client must be selected.');
         if (!locations.length || locations.some(location => !String(location?.location_name || '').trim())) throw new Error('Unable to create Biners entry: at least one related location name is required.');
+        if (cleanEntry.request_key) {
+          const existing = await client.from('biners_entries').select('*').eq('request_key', cleanEntry.request_key).maybeSingle();
+          if (!existing.error && existing.data) return existing.data;
+          if (existing.error && !/request_key|schema cache|Could not find/i.test(String(existing.error.message || existing.error))) throw friendlyError('Unable to check existing Biners entry', existing.error);
+        }
         locations.forEach(loc => {
           ['client_id','company_id'].forEach(key => {
             if (loc[key] && !isUuid(loc[key])) throw new Error(`Invalid ${key}. Expected UUID but received: ${loc[key]}`);
@@ -7111,30 +7136,44 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
             const { error } = await client.from('biners_locations').insert(locRows);
             if (error) throw friendlyError('Biners locations could not be saved; the entry was rolled back', error);
           }
-          const normalizedSchedules = schedules.length ? schedules : [{ due_date: cleanEntry.service_start_date || cleanEntry.service_end_date, scheduled_amount: cleanEntry.total_payable_amount, payment_status: 'unpaid' }];
+          const perLocationAmount = Number(cleanEntry.cost_per_location || 0) * Number(cleanEntry.license_length_months || 0) / 12;
+          const normalizedSchedules = schedules.length ? schedules : locations.map((loc, idx) => ({
+            due_date: cleanEntry.service_start_date || cleanEntry.service_end_date,
+            scheduled_amount: perLocationAmount || Number(cleanEntry.total_payable_amount || 0) / Math.max(locations.length, 1),
+            payment_status: 'unpaid',
+            status: 'unpaid',
+            schedule_no: 1,
+            location_name: loc.location_name || '',
+            location_reference: loc.location_reference || loc.location_code || '',
+            schedule_key: `${loc.location_reference || loc.location_name || idx + 1}|1|${cleanEntry.service_start_date || cleanEntry.service_end_date || ''}`
+          }));
           if (normalizedSchedules.length) {
-            const fallbackLocation = locations[0] || {};
-            const rows = normalizedSchedules.map((schedule, idx) => pickExistingFields({
-              biners_entry_id: entry.id,
-              entry_number: entryNumber,
-              client_name: cleanEntry.client_name || cleanEntry.client_legal_name,
-              client_reference: cleanEntry.client_reference,
-              location_name: schedule.location_name || fallbackLocation.location_name || '',
-              location_reference: schedule.location_reference || fallbackLocation.location_reference || fallbackLocation.location_code || '',
-              module_name: cleanEntry.module_name,
-              license_type: cleanEntry.license_type,
-              due_date: schedule.due_date,
-              scheduled_amount: Number(schedule.scheduled_amount || 0),
-              paid_amount: Number(schedule.paid_amount || 0),
-              remaining_amount: Number(schedule.remaining_amount ?? (Number(schedule.scheduled_amount || 0) - Number(schedule.paid_amount || 0))),
-              payment_status: schedule.payment_status || schedule.status || 'unpaid',
-              status: schedule.status || schedule.payment_status || 'unpaid',
-              notes: schedule.notes || '',
-              schedule_no: schedule.schedule_no || idx + 1,
-              currency: schedule.currency || cleanEntry.currency,
-              created_by: schedule.created_by || cleanEntry.created_by || null,
-              created_by_email: schedule.created_by_email || cleanEntry.created_by_email || ''
-            }, allowedSchedule));
+            const rows = normalizedSchedules.map((schedule, idx) => {
+              const scheduledAmount = Number(schedule.scheduled_amount || 0);
+              const paidAmount = Number(schedule.paid_amount || 0);
+              return pickExistingFields({
+                biners_entry_id: entry.id,
+                schedule_key: schedule.schedule_key || `${schedule.location_reference || schedule.location_name || idx + 1}|${schedule.schedule_no || idx + 1}|${schedule.due_date || ''}`,
+                entry_number: entryNumber,
+                client_name: cleanEntry.client_name || cleanEntry.client_legal_name,
+                client_reference: cleanEntry.client_reference,
+                location_name: schedule.location_name || '',
+                location_reference: schedule.location_reference || '',
+                module_name: schedule.module_name || cleanEntry.module_name,
+                license_type: schedule.license_type || cleanEntry.license_type,
+                due_date: schedule.due_date,
+                scheduled_amount: scheduledAmount,
+                paid_amount: paidAmount,
+                remaining_amount: Math.max(0, Number(schedule.remaining_amount ?? (scheduledAmount - paidAmount))),
+                payment_status: schedule.payment_status || schedule.status || 'unpaid',
+                status: schedule.status || schedule.payment_status || 'unpaid',
+                notes: schedule.notes || '',
+                schedule_no: schedule.schedule_no || idx + 1,
+                currency: schedule.currency || cleanEntry.currency,
+                created_by: schedule.created_by || cleanEntry.created_by || null,
+                created_by_email: schedule.created_by_email || cleanEntry.created_by_email || ''
+              }, allowedSchedule);
+            });
             const { error } = await client.from('biners_payment_schedules').insert(rows);
             if (error) throw friendlyError('Biners schedules could not be saved; the entry was rolled back', error);
           }

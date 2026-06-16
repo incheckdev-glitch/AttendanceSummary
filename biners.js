@@ -18,6 +18,32 @@
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
   }
 
+  function makeRequestKey() {
+    if (global.crypto?.randomUUID) return global.crypto.randomUUID();
+    return `biners-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  function scheduleUniqueKey(row = {}, index = 0) {
+    return String(row.schedule_id || row.biners_schedule_id || row.id || row.schedule_key || [
+      row.biners_entry_id || row.entry_id || '',
+      row.entry_number || row.biners_entry_number || '',
+      row.location_reference || row.location_name || '',
+      row.schedule_no || index + 1,
+      row.due_date || '',
+      row.scheduled_amount || ''
+    ].join('|'));
+  }
+
+  function dedupeScheduleRows(rows = []) {
+    const seen = new Set();
+    return normalizeList(rows).filter((row, index) => {
+      const key = scheduleUniqueKey(row, index);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
   const state = {
     initialized: false,
     activeTab: 'overview',
@@ -223,7 +249,11 @@
   }
 
   function entriesTable(rows) {
-    return table(['Entry #', 'Client', 'Module', 'Locations', 'License', 'Gross Payable', 'Payment', 'Status', 'Actions'], rows.map(r => clickable(`data-biners-open-entry="${esc(r.id)}"`, `<td><strong>${esc(r.biners_entry_number || 'Auto')}</strong></td><td>${esc(r.client_name || r.client_legal_name || '—')}</td><td>${esc(r.module_name || '—')}</td><td>${esc(r.number_of_locations || 0)}</td><td>${esc(r.license_type || '—')} · ${esc(r.license_length_months || '—')} mo</td><td>${money(r.total_payable_amount, r.currency)}</td><td>${badge(r.payment_status)}</td><td>${badge(r.entry_status)}</td><td>${stopAction('<button class="btn ghost xs" type="button" data-biners-open-entry="' + esc(r.id) + '">View</button>')}</td>`)).join(''), 'No Biners entries found.');
+    return table(['Entry #', 'Client', 'Module', 'Locations', 'License', 'Gross Payable', 'Payment', 'Status', 'Actions'], rows.map(row => {
+      const r = rowContext(row);
+      const entryNumber = detailsEntryNumber(r);
+      return clickable(`data-biners-open-entry="${esc(r.id)}"`, `<td><strong>${esc(entryNumber === '—' ? 'Auto' : entryNumber)}</strong></td><td>${esc(r.client_name || r.client_legal_name || '—')}</td><td>${esc(r.module_name || '—')}</td><td>${esc(r.number_of_locations || 0)}</td><td>${esc(r.license_type || '—')} · ${esc(r.license_length_months || '—')} mo</td><td>${money(r.total_payable_amount, r.currency)}</td><td>${badge(r.payment_status)}</td><td>${badge(r.entry_status)}</td><td>${stopAction('<button class="btn ghost xs" type="button" data-biners-open-entry="' + esc(r.id) + '">View</button>')}</td>`);
+    }).join(''), 'No Biners entries found.');
   }
 
   function scheduleTable(rows, kind = 'schedule') {
@@ -334,10 +364,13 @@
 
   async function queryBinersRelatedTable(supabase, tableName, entry, includeEntryNumber = false) {
     const entryIdValue = entry.id;
-    const entryNumber = detailsEntryNumber(entry);
-    const filters = [`biners_entry_id.eq.${entryIdValue}`, `entry_id.eq.${entryIdValue}`, `biners_id.eq.${entryIdValue}`];
-    if (includeEntryNumber && entryNumber !== '—') filters.push(`entry_number.eq.${entryNumber}`, `reference.eq.${entryNumber}`, `biners_entry_number.eq.${entryNumber}`);
-    const result = await supabase.from(tableName).select('*').or(filters.join(','));
+    if (!entryIdValue) return [];
+
+    // Keep this query schema-safe. Earlier versions tried entry_id/biners_id/reference
+    // in one .or() call, but PostgREST fails the whole request when any optional
+    // column does not exist in the table schema cache. The final migration guarantees
+    // biners_entry_id on Biners child tables, so use it as the stable relation key.
+    const result = await supabase.from(tableName).select('*').eq('biners_entry_id', entryIdValue);
     if (result.error) throw result.error;
     return result.data || [];
   }
@@ -368,7 +401,7 @@
 
     const [locations, schedule, payments] = await Promise.all([
       loadFromTableOptions(supabase, 'locations', ['biners_locations'], entry, false),
-      loadFromTableOptions(supabase, 'schedule', ['biners_payment_schedule', 'biners_schedules', 'biners_schedule', 'biners_payment_schedules'], entry, true),
+      loadFromTableOptions(supabase, 'schedule', ['biners_payment_schedules', 'biners_payment_schedule', 'biners_schedules', 'biners_schedule'], entry, true),
       loadFromTableOptions(supabase, 'payments', ['biners_payments', 'biners_receipts', 'biners_payment_history'], entry, true)
     ]);
 
@@ -413,7 +446,7 @@
     const initial = rowContext(row || {}), local = detailRowsFor(initial), detail = normalizeDetail(remote);
     const enriched = type === 'entry' ? enrichBinersDetail({ ...local.entry, ...initial }, detail) : null;
     const r = enriched?.entry || initial;
-    let schedules = enriched?.schedule || detail.scheduled_payments || detail.schedule || detail.schedules || detail.rows || local.schedules;
+    let schedules = dedupeScheduleRows(enriched?.schedule || detail.scheduled_payments || detail.schedule || detail.schedules || detail.rows || local.schedules);
     const payments = enriched?.payments || detail.payment_history || detail.payments || local.payments;
     const entries = detail.entries || (local.entry?.id ? [local.entry] : []);
     const locations = enriched?.locations || detail.locations || detail.related_locations || [];
@@ -719,6 +752,7 @@
     if (clientId && !isUuid(clientId)) throw new Error(`Invalid client_id. Expected UUID but received: ${clientId}`);
     const companyId = client?.company_id || client?.company_uuid || null;
     if (companyId && !isUuid(companyId)) throw new Error(`Invalid company_id. Expected UUID but received: ${companyId}`);
+
     const clientName = $('binersClientName').value.trim() || client?.client_name || client?.customer_name || client?.legal_name || '';
     const legalName = $('binersClientLegalName').value.trim() || client?.legal_name || clientName;
     const moduleName = $('binersModuleName').value.trim();
@@ -728,8 +762,75 @@
     const endDate = $('binersServiceEndDate').value || null;
     const currency = $('binersCurrency').value.trim() || 'USD';
     const createdBy = auth();
+    const locationRows = values('.biners-location-row').map((row, index) => ({
+      location_name: row.querySelector('[data-biners-location-name]').value.trim(),
+      location_reference: row.querySelector('[data-biners-location-code]').value.trim(),
+      client_reference: clientDisplayReference(client) || null,
+      client_name: clientName,
+      module_name: moduleName,
+      license_type: licenseType,
+      country: $('binersClientCountry').value.trim() || client?.country || '',
+      city: $('binersClientCity').value.trim() || client?.city || '',
+      address: $('binersClientAddress').value.trim() || client?.address || '',
+      notes: '',
+      row_index: index + 1
+    })).filter(location => location.location_name || location.location_reference);
+
+    const locationCount = Math.max(1, locationRows.length || num($('binersNumberOfLocations').value));
+    const perLocationAmount = Number((num($('binersCostPerLocation').value) * licenseLength / 12).toFixed(2));
+    const totalPayable = Number((locationRows.length ? locationRows.length : num($('binersNumberOfLocations').value)) * perLocationAmount).toFixed(2);
+    const scheduleRowsFromForm = values('.biners-schedule-row').map(row => ({
+      schedule_no: num(row.querySelector('[data-biners-schedule-no]').value),
+      due_date: row.querySelector('[data-biners-schedule-due]').value,
+      scheduled_amount: num(row.querySelector('[data-biners-schedule-amount]').value),
+      payment_status: row.querySelector('[data-biners-schedule-status]').value || 'unpaid',
+      status: row.querySelector('[data-biners-schedule-status]').value || 'unpaid'
+    })).filter(schedule => schedule.due_date && schedule.scheduled_amount > 0);
+
+    const baseScheduleRows = scheduleRowsFromForm.length ? scheduleRowsFromForm : [{
+      schedule_no: 1,
+      due_date: startDate || endDate || today(),
+      scheduled_amount: perLocationAmount || num($('binersTotalPayableAmount').value),
+      payment_status: 'unpaid',
+      status: 'unpaid'
+    }];
+
+    const schedules = [];
+    const locationsForSchedules = locationRows.length ? locationRows : [{ location_name: '', location_reference: '', row_index: 1 }];
+    baseScheduleRows.forEach((schedule, scheduleIndex) => {
+      const rawAmount = num(schedule.scheduled_amount);
+      const amountLooksEntryLevel = locationCount > 1 && Math.abs(rawAmount - num($('binersTotalPayableAmount').value)) < 0.01;
+      const amountForEachLocation = amountLooksEntryLevel ? Number((rawAmount / locationCount).toFixed(2)) : rawAmount;
+
+      locationsForSchedules.forEach((location, locationIndex) => {
+        const scheduledAmount = amountForEachLocation || perLocationAmount;
+        schedules.push({
+          schedule_no: schedule.schedule_no || scheduleIndex + 1,
+          schedule_key: [location.location_reference || location.location_name || locationIndex + 1, schedule.schedule_no || scheduleIndex + 1, schedule.due_date].join('|'),
+          entry_number: null,
+          client_name: clientName,
+          client_reference: clientDisplayReference(client) || null,
+          location_name: location.location_name || '',
+          location_reference: location.location_reference || '',
+          module_name: moduleName,
+          license_type: licenseType,
+          due_date: schedule.due_date || startDate || endDate || today(),
+          scheduled_amount: scheduledAmount,
+          paid_amount: 0,
+          remaining_amount: scheduledAmount,
+          payment_status: schedule.payment_status || schedule.status || 'unpaid',
+          status: schedule.status || schedule.payment_status || 'unpaid',
+          currency,
+          notes: schedule.notes || '',
+          created_by: createdBy.id || null,
+          created_by_email: createdBy.email || ''
+        });
+      });
+    });
+
     return {
       entry: {
+        request_key: makeRequestKey(),
         entry_type: $('binersEntryType').value,
         client_id: clientId,
         company_id: companyId,
@@ -746,11 +847,11 @@
         module_name: moduleName,
         license_type: licenseType,
         license_length_months: licenseLength,
-        number_of_locations: num($('binersNumberOfLocations').value),
+        number_of_locations: locationRows.length || num($('binersNumberOfLocations').value),
         service_start_date: startDate,
         service_end_date: endDate,
         currency,
-        total_payable_amount: num($('binersTotalPayableAmount').value),
+        total_payable_amount: totalPayable,
         cost_per_location: num($('binersCostPerLocation').value),
         description: $('binersDescription').value,
         internal_notes: $('binersInternalNotes').value,
@@ -759,60 +860,8 @@
         created_by: createdBy.id || null,
         created_by_email: createdBy.email || ''
       },
-      locations: values('.biners-location-row').map(row => ({
-        location_name: row.querySelector('[data-biners-location-name]').value.trim(),
-        location_reference: row.querySelector('[data-biners-location-code]').value.trim(),
-        client_reference: clientDisplayReference(client) || null,
-        client_name: clientName,
-        country: $('binersClientCountry').value.trim() || client?.country || '',
-        city: $('binersClientCity').value.trim() || client?.city || '',
-        address: $('binersClientAddress').value.trim() || client?.address || '',
-        notes: ''
-      })).filter(location => location.location_name || location.location_reference),
-      schedules: (() => {
-        const scheduleRows = values('.biners-schedule-row').map(row => {
-          const scheduledAmount = num(row.querySelector('[data-biners-schedule-amount]').value);
-          return {
-            schedule_no: num(row.querySelector('[data-biners-schedule-no]').value),
-            entry_number: null,
-            client_name: clientName,
-            client_reference: clientDisplayReference(client) || null,
-            location_name: values('.biners-location-row [data-biners-location-name]')[0]?.value.trim() || '',
-            location_reference: values('.biners-location-row [data-biners-location-code]')[0]?.value.trim() || '',
-            module_name: moduleName,
-            license_type: licenseType,
-            due_date: row.querySelector('[data-biners-schedule-due]').value,
-            scheduled_amount: scheduledAmount,
-            paid_amount: 0,
-            remaining_amount: scheduledAmount,
-            payment_status: row.querySelector('[data-biners-schedule-status]').value || 'unpaid',
-            status: row.querySelector('[data-biners-schedule-status]').value || 'unpaid',
-            currency,
-            notes: '',
-            created_by: createdBy.id || null,
-            created_by_email: createdBy.email || ''
-          };
-        }).filter(schedule => schedule.due_date && schedule.scheduled_amount > 0);
-        return scheduleRows.length ? scheduleRows : [{
-          schedule_no: 1,
-          client_name: clientName,
-          client_reference: clientDisplayReference(client) || null,
-          location_name: values('.biners-location-row [data-biners-location-name]')[0]?.value.trim() || '',
-          location_reference: values('.biners-location-row [data-biners-location-code]')[0]?.value.trim() || '',
-          module_name: moduleName,
-          license_type: licenseType,
-          due_date: startDate || endDate || today(),
-          scheduled_amount: num($('binersTotalPayableAmount').value),
-          paid_amount: 0,
-          remaining_amount: num($('binersTotalPayableAmount').value),
-          payment_status: 'unpaid',
-          status: 'unpaid',
-          currency,
-          notes: '',
-          created_by: createdBy.id || null,
-          created_by_email: createdBy.email || ''
-        }];
-      })()
+      locations: locationRows,
+      schedules
     };
   }
 
@@ -926,7 +975,11 @@
 
   function updateTotal() {
     const el = $('binersTotalPayableAmount');
-    if (el) el.value = (num($('binersNumberOfLocations').value) * num($('binersCostPerLocation').value) * num($('binersLicenseLengthMonths').value) / 12).toFixed(2);
+    const explicitLocations = num($('binersNumberOfLocations')?.value);
+    const locationRows = values('.biners-location-row [data-biners-location-name]').filter(input => String(input.value || '').trim()).length;
+    const locationCount = Math.max(explicitLocations, locationRows || 0, 1);
+    const total = locationCount * num($('binersCostPerLocation')?.value) * num($('binersLicenseLengthMonths')?.value) / 12;
+    if (el) el.value = total.toFixed(2);
   }
 
   function normalizeList(value) {
@@ -1001,8 +1054,8 @@
       ]);
       const normalizedEntries = normalizeList(entries);
       const fallbackForecast = fallbackRowsFromEntries(normalizedEntries);
-      const normalizedSchedules = normalizeList(schedules);
-      const normalizedForecast = normalizeList(forecast);
+      const normalizedSchedules = dedupeScheduleRows(schedules);
+      const normalizedForecast = dedupeScheduleRows(forecast);
       Object.assign(state, {
         entries: normalizedEntries,
         schedules: normalizedSchedules.length ? normalizedSchedules : fallbackForecast,
@@ -1075,7 +1128,7 @@
     $('binersEntryForm')?.addEventListener('submit', e => saveEntry(e).catch(showEntrySaveError));
     $('binersRecordPaymentForm')?.addEventListener('submit', e => savePayment(e).catch(err => setState(err.message || String(err), 'error')));
     $('binersAddScheduleRowBtn')?.addEventListener('click', () => addScheduleRow());
-    $('binersAddLocationRowBtn')?.addEventListener('click', () => addLocationRow());
+    $('binersAddLocationRowBtn')?.addEventListener('click', () => { addLocationRow(); updateTotal(); });
     ['binersNumberOfLocations', 'binersCostPerLocation', 'binersLicenseLengthMonths'].forEach(id => $(id)?.addEventListener('input', updateTotal));
     ['binersServiceStartDate', 'binersLicenseLengthMonths'].forEach(id => $(id)?.addEventListener('input', updateServiceEnd));
     ['binersSearchInput', 'binersStatusFilter', 'binersPaymentStatusFilter', 'binersCurrencyFilter'].forEach(id => $(id)?.addEventListener(id === 'binersSearchInput' ? 'input' : 'change', () => {
@@ -1083,6 +1136,9 @@
       state.pages = {};
       render();
     }));
+    document.addEventListener('input', e => {
+      if (e.target?.matches?.('[data-biners-location-name],[data-biners-location-code]')) updateTotal();
+    });
     document.addEventListener('change', e => {
       const all = e.target.closest('[data-biners-select-all-schedules]');
       if (all) {
@@ -1093,7 +1149,7 @@
       const actionEl = e.target.closest('button,a,input,label');
       if (actionEl?.closest('.biners-row-actions') || actionEl?.matches('[data-biners-record-payment],[data-biners-select-schedule],[data-biners-select-all-schedules]')) e.stopPropagation();
       const remove = e.target.closest('[data-biners-remove-row]');
-      if (remove) { remove.parentElement.remove(); return; }
+      if (remove) { remove.parentElement.remove(); updateTotal(); return; }
       const bulk = e.target.closest('[data-biners-bulk-payment]');
       if (bulk) { const ids = selectedScheduleIds(); if (!ids.length) { setState('Select at least one scheduled payment first.', 'error'); return; } openPaymentModal(ids); return; }
       const pay = e.target.closest('[data-biners-record-payment]');
