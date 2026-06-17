@@ -7021,7 +7021,10 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         let query = client.from('biners_payment_schedules').select('*');
         if (payload?.schedule_id) query = query.eq('id', payload.schedule_id);
         if (payload?.biners_entry_id) query = query.eq('biners_entry_id', payload.biners_entry_id);
-        const { data, error } = await query.order('due_date', { ascending: true }).limit(Number(payload?.limit || 1000));
+        const orderedQuery = binersAction === 'list_schedules'
+          ? query.order('schedule_no', { ascending: true }).order('due_date', { ascending: true })
+          : query.order('due_date', { ascending: true });
+        const { data, error } = await orderedQuery.limit(Number(payload?.limit || 1000));
         if (error) throw friendlyError(binersAction === 'list_schedules' ? 'Unable to load Biners schedules' : 'Unable to load Biners forecast', error);
         const seen = new Set();
         return (data || []).map(row => ({
