@@ -9,6 +9,7 @@ const NotificationSetup = {
     ['invoices',['invoice_created','invoice_created_from_agreement','invoice_payment_state_changed','invoice_fully_paid']],
     ['invoice_payment_schedule',['payment_due_reminder']],
     ['receipts',['receipt_created','receipt_created_from_invoice','receipt_updated']],
+    ['biners',['biners_entry_created']],
     ['operations_onboarding',['onboarding_created','operations_onboarding_created','onboarding_status_changed','onboarding_request_submitted','assigned_csm']],
     ['events',['event_created','event_updated','event_status_changed','event_schedule_changed','event_deleted']],
     ['workflow',['workflow_approval_requested','workflow_approved','workflow_rejected']],
@@ -40,6 +41,9 @@ const NotificationSetup = {
     }
     if (resource === 'invoice_payment_schedule' && action === 'payment_due_reminder') {
       return 'Notify selected users 30, 14, or 7 days before an invoice payment schedule due date.';
+    }
+    if (resource === 'biners' && action === 'biners_entry_created') {
+      return 'Notify relevant users when a new Biners payable entry is created.';
     }
     return '';
   },
