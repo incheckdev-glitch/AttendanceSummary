@@ -113,14 +113,27 @@
     return Math.round((due - base) / 86400000);
   }
 
+  function resolveBinersScheduleStatus(row = {}) {
+    const scheduled = toNumber(row.scheduled_amount);
+    const paid = toNumber(row.paid_amount);
+    const remainingAmount = Math.max(scheduled - paid, 0);
+
+    if (remainingAmount <= 0) return 'paid';
+    if (paid > 0) return 'partially_paid';
+
+    const dueDate = row.due_date ? new Date(`${String(row.due_date).slice(0, 10)}T00:00:00`) : null;
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
+
+    if (dueDate && dueDate < todayDate) return 'overdue';
+
+    return row.status || 'upcoming';
+  }
+
   function statusFor(row) {
     const explicit = norm(row?.forecast_status || row?.payment_status || row?.status);
     if (explicit === 'cancelled' || explicit === 'canceled') return 'cancelled';
-    if (num(remaining(row)) <= 0) return 'paid';
-    if (num(row?.paid_amount) > 0) return 'partially_paid';
-    const days = daysUntil(row?.due_date);
-    if (days == null) return explicit || 'scheduled';
-    return days < 0 ? 'overdue' : 'upcoming';
+    return resolveBinersScheduleStatus({ ...row, status: explicit || row?.status });
   }
 
   function rowContext(row) {
@@ -169,7 +182,7 @@
   }
 
   function calculateSummary() {
-    const rows = state.forecast.length ? state.forecast : state.schedules;
+    const rows = state.schedules;
     const entries = state.entries || [];
     return {
       total_entries: entries.length,
@@ -195,8 +208,7 @@
     const el = $('binersSummary');
     if (!el) return;
     const calculated = calculateSummary();
-    const rpc = state.summary || {};
-    const s = { ...calculated, ...rpc };
+    const s = { ...calculated };
     // The RPC returns payable totals only. Keep operational counts from calculated data when RPC does not provide them.
     s.total_entries = s.total_entries ?? calculated.total_entries;
     s.active_entries = s.active_entries ?? calculated.active_entries;
@@ -218,7 +230,23 @@
     el.innerHTML = cards.map(([label, value, helper]) => `<article class="payment-forecast-summary-card biners-summary-card"><div class="summary-label">${esc(label)}</div><div class="summary-value">${esc(value ?? 0)}</div><div class="summary-subtitle">${esc(helper)}</div></article>`).join('');
   }
 
+  function filteredScheduledPaymentRows() {
+    const f = state.filters, search = norm(f.search);
+    return (state.schedules || []).filter(row => {
+      const rowStatus = norm(row.status || statusFor(row));
+      const matchesSearch = !search || [
+        row.entry_number, row.biners_entry_number, row.client_name, row.location_name,
+        row.location_reference, row.module, row.license, rowStatus
+      ].filter(Boolean).some(value => norm(value).includes(search));
+      const matchesStatus = !f.status || f.status === 'all' || rowStatus === f.status;
+      const matchesPaymentStatus = !f.paymentStatus || f.paymentStatus === 'all' || rowStatus === f.paymentStatus;
+      const matchesCurrency = !f.currency || f.currency === 'all' || norm(row.currency) === f.currency || !row.currency;
+      return matchesSearch && matchesStatus && matchesPaymentStatus && matchesCurrency;
+    });
+  }
+
   function filtered(rows) {
+    if (rows === state.schedules) return filteredScheduledPaymentRows();
     const f = state.filters, q = norm(f.search);
     return (rows || []).filter(row => {
       const status = norm(row.entry_status || row.status || row.forecast_status);
@@ -226,7 +254,7 @@
       return (!q || norm(JSON.stringify(row)).includes(q))
         && (f.status === 'all' || status === f.status)
         && (f.paymentStatus === 'all' || paymentStatus === f.paymentStatus)
-        && (f.currency === 'all' || norm(row.currency) === f.currency);
+        && (f.currency === 'all' || norm(row.currency) === f.currency || !row.currency);
     });
   }
 
@@ -1018,9 +1046,9 @@
       scheduled_amount: scheduled,
       paid_amount: paid,
       remaining_amount: Math.max(scheduled - paid, 0),
-      status: row.status,
-      payment_status: row.payment_status || row.status,
-      forecast_status: row.forecast_status || row.status,
+      status: resolveBinersScheduleStatus(row),
+      payment_status: row.payment_status || resolveBinersScheduleStatus(row),
+      forecast_status: row.forecast_status || resolveBinersScheduleStatus(row),
       notes: row.notes,
       currency: row.currency || entry.currency || 'USD'
     };
@@ -1060,6 +1088,53 @@
     }).filter(row => row.scheduled_amount > 0);
   }
 
+  async function loadBinersScheduledPayments() {
+    const supabase = getSupabaseClient();
+    if (!supabase) throw new Error('Supabase client is not available.');
+
+    const { data, error } = await supabase
+      .from('biners_payment_schedules')
+      .select('*')
+      .order('due_date', { ascending: true })
+      .order('schedule_no', { ascending: true });
+
+    if (error) throw error;
+
+    console.log('Loaded Biners scheduled payments:', data);
+
+    const rows = (data || []).map(row => {
+      const scheduled = toNumber(row.scheduled_amount);
+      const paid = toNumber(row.paid_amount);
+      const status = resolveBinersScheduleStatus(row);
+      return {
+        id: row.id,
+        schedule_id: row.id,
+        biners_entry_id: row.biners_entry_id,
+        entry_number: row.entry_number,
+        biners_entry_number: row.entry_number,
+        client_name: row.client_name,
+        client_reference: row.client_reference,
+        location_name: row.location_name || 'All Locations',
+        location_reference: row.location_reference || '—',
+        module: row.module || '—',
+        license: row.license || '—',
+        schedule_no: row.schedule_no,
+        due_date: row.due_date,
+        scheduled_amount: scheduled,
+        paid_amount: paid,
+        remaining_amount: Math.max(scheduled - paid, 0),
+        status,
+        payment_status: status,
+        forecast_status: status,
+        currency: row.currency || 'USD',
+        notes: row.notes || null
+      };
+    });
+
+    state.schedules = rows;
+    return rows;
+  }
+
   async function safeLoad(label, promise, fallback) {
     try {
       return await promise;
@@ -1078,7 +1153,7 @@
       let forecastLoaded = true;
       const [entries, schedules, forecast, payments, summary, monthly, clients] = await Promise.all([
         safeLoad('entries', request('list'), state.entries),
-        (global.Api?.getBinersScheduleRows?.() || request('list_schedules')).catch(error => { schedulesLoaded = false; console.warn('[Biners] Unable to load scheduled payments', error); toast(error?.message || 'Unable to load scheduled payments'); return state.schedules; }),
+        loadBinersScheduledPayments().catch(error => { schedulesLoaded = false; console.warn('[Biners] Unable to load scheduled payments', error); toast(error?.message || 'Unable to load scheduled payments'); return []; }),
         (global.Api?.getBinersForecastRows?.() || request('list_forecast')).catch(error => { forecastLoaded = false; console.warn('[Biners] Unable to load forecast rows', error); toast(error?.message || 'Unable to load forecast rows'); return state.forecast; }),
         safeLoad('payment history', request('list_payments'), state.payments),
         safeLoad('summary', request('summary'), state.summary),
@@ -1091,15 +1166,15 @@
       const normalizedForecast = dedupeScheduleRows(forecast).map(row => normalizeBinersScheduleRow(row, getEntry(row)));
       Object.assign(state, {
         entries: normalizedEntries,
-        schedules: normalizedSchedules.length ? normalizedSchedules : (schedulesLoaded ? fallbackForecast : []),
-        forecast: normalizedForecast.length ? normalizedForecast : (normalizedSchedules.length ? normalizedSchedules : (forecastLoaded && schedulesLoaded ? fallbackForecast : [])),
+        schedules: normalizedSchedules,
+        forecast: normalizedForecast.length ? normalizedForecast : normalizedSchedules,
         payments: normalizeList(payments),
         summary: summary && Array.isArray(summary) ? summary[0] : summary,
         monthly: normalizeList(monthly),
         clients: dedupeClients(clients)
       });
       populateClients($('binersExistingClientSearch')?.value || '');
-      const currencies = [...new Set([...state.entries, ...state.forecast, ...state.monthly].map(x => x.currency).filter(Boolean))];
+      const currencies = [...new Set([...state.entries, ...state.schedules, ...state.forecast, ...state.monthly].map(x => x.currency).filter(Boolean))];
       if ($('binersCurrencyFilter')) $('binersCurrencyFilter').innerHTML = '<option value="all">All currencies</option>' + currencies.map(x => `<option>${esc(x)}</option>`).join('');
       render();
     } catch (e) {
@@ -1112,6 +1187,16 @@
     state.activeTab = tab;
     document.querySelectorAll('[data-biners-tab]').forEach(x => x.classList.toggle('active', x.dataset.binersTab === tab));
     render();
+    if (tab === 'scheduled_payments') {
+      loadBinersScheduledPayments()
+        .then(() => render())
+        .catch(error => {
+          console.error('Unable to load Biners scheduled payments:', error);
+          toast(error?.message || 'Unable to load Biners scheduled payments.');
+          state.schedules = [];
+          render();
+        });
+    }
   }
 
   function exportCsv() {
