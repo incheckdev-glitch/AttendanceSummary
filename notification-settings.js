@@ -268,12 +268,10 @@ const NotificationSetup = {
         const created = Number(data?.created || data?.notification_count || 0);
         const push = data?.push || {};
         const email = data?.email || {};
-        const parts = [
-          `In-app: ${created > 0 ? 'sent' : 'not created'}`,
-          `PWA: ${push.sent ? 'sent' : (push.reason || push.error || 'skipped')}`,
-          email.attempted || email.sent ? `Email: ${email.sent ? 'sent' : (email.reason || email.error || 'skipped')}` : 'Email: skipped'
-        ];
-        UI.toast(`Test notification result — ${parts.join(' · ')}`);
+        const inAppText = created > 0 ? `created (${created})` : (data?.reason || data?.push?.reason || 'not created');
+        const pushText = push.sent ? 'sent' : (push.reason || push.error || (push.attempted ? 'failed' : 'not created'));
+        const emailText = email.sent ? 'sent' : (email.reason || email.error || (email.attempted ? 'failed' : 'skipped'));
+        UI.toast(`Test notification result — In-app: ${inAppText} · PWA: ${pushText} · Email: ${emailText}`);
       } catch (error) {
         UI.toast(String(error?.message || 'Unable to test rule.'));
       }

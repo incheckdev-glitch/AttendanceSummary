@@ -12,7 +12,8 @@
     technical_admin_requests: ['technical_request_submitted','technical_request_status_changed'],
     events: ['event_created','event_updated','event_status_changed','event_schedule_changed','event_deleted'],
     workflow: ['workflow_approval_requested','workflow_approved','workflow_rejected'],
-    communication_centre: ['conversation_created','reply_added','conversation_closed','conversation_reopened','user_mentioned','role_mentioned','conversation_escalated','action_item_assigned','action_item_completed']
+    communication_centre: ['conversation_created','reply_added','conversation_closed','conversation_reopened','user_mentioned','role_mentioned','conversation_escalated','action_item_assigned','action_item_completed'],
+    biners: ['biners_entry_created']
   };
 
   const ACTION_ALIASES = {
@@ -575,7 +576,8 @@
       receipts: `/#finance?tab=receipts&id=${encodedId}`,
       clients: `/#clients?id=${encodedId}`,
       events: `/#events?id=${encodedId}`,
-      communication_centre: `/#communication_centre?conversation_id=${encodedId}`
+      communication_centre: `/#communication_centre?conversation_id=${encodedId}`,
+      biners: `/#biners?entryId=${encodedId}`
     };
     return routeMap[normalizedResource] || `/#${encodeURIComponent(normalizedResource)}?id=${encodedId}`;
   }
