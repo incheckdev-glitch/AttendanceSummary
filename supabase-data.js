@@ -6789,6 +6789,62 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     };
   }
 
+  async function createBinersEntryNotification({ entry, schedules = [], locations = [], createdBy } = {}) {
+    if (!entry?.id) return null;
+    const entryNumber = entry.entry_number || entry.reference || entry.biners_number || 'New Biners Entry';
+    const clientName = entry.client_name || entry.client_reference || 'Unknown Client';
+    const grossPayable = toNumber(entry.gross_payable || entry.total_payable_amount || entry.scheduled_amount);
+    const scheduleCount = Array.isArray(schedules) ? schedules.length : 0;
+    const locationCount = Array.isArray(locations) ? locations.length : 0;
+    const title = 'New Biners Entry Created';
+    const message = `A new Biners payable entry ${entryNumber} was created for ${clientName} ` +
+      `with a gross payable amount of USD ${grossPayable.toFixed(2)}. ` +
+      `${scheduleCount} scheduled payment${scheduleCount === 1 ? '' : 's'} created.`;
+    const link = `/biners?entryId=${entry.id}`;
+    const createdByName = createdBy?.name || createdBy?.full_name || createdBy?.display_name || createdBy?.email || entry.created_by_email || 'Unknown user';
+    const createdAt = entry.created_at || new Date().toISOString();
+
+    return createNotificationAndPush({
+      resource: 'biners',
+      action: 'biners_entry_created',
+      event_type: 'biners_entry_created',
+      event_key: 'biners_entry_created',
+      title,
+      message,
+      body: message,
+      record: entry,
+      record_id: entry.id,
+      record_ref: entryNumber,
+      display_ref: entryNumber,
+      deep_link: link,
+      url: link,
+      priority: 'normal',
+      actor_user_id: createdBy?.id || entry.created_by || null,
+      created_by: createdBy?.id || entry.created_by || null,
+      target_roles: ['admin', 'accounting', 'Senior Financial Controller', 'General Manager'],
+      dedupe_key: `biners_entry_created:${entry.id}`,
+      meta: {
+        module: 'biners',
+        event_type: 'biners_entry_created',
+        entity_type: 'biners_entry',
+        entity_id: entry.id,
+        entity_number: entryNumber,
+        biners_entry_id: entry.id,
+        entry_number: entryNumber,
+        client_name: clientName,
+        gross_payable: grossPayable,
+        schedule_count: scheduleCount,
+        location_count: locationCount,
+        created_by_user_name: createdByName,
+        created_at: createdAt,
+        deep_link: link
+      }
+    }, 'biners:create').catch(error => {
+      console.warn('[notifications] Biners entry creation notification failed', error);
+      return null;
+    });
+  }
+
   async function handleRpcResource(resource, action, payload) {
     const client = getClient();
     if (resource === 'lifecycle_status_logs' && action === 'add') {
@@ -7171,8 +7227,15 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
           });
           const scheduleTotal = scheduleRows.reduce((sum, row) => sum + toNumber(row.scheduled_amount), 0);
           if (Math.abs(scheduleTotal - toNumber(cleanEntry.gross_payable)) > 0.01) throw new Error(`Scheduled payments total (${scheduleTotal}) must equal gross payable (${cleanEntry.gross_payable}).`);
-          const { error: scheduleError } = await client.from('biners_payment_schedules').insert(scheduleRows);
+          const { data: createdSchedules, error: scheduleError } = await client.from('biners_payment_schedules').insert(scheduleRows).select('*');
           if (scheduleError) throw friendlyError('Biners schedules could not be saved; the entry was rolled back', scheduleError);
+          const currentUser = global.Session?.authContext?.() || global.AppState?.currentUser || {};
+          await createBinersEntryNotification({
+            entry,
+            schedules: Array.isArray(createdSchedules) ? createdSchedules : scheduleRows,
+            locations: Array.isArray(createdLocations) ? createdLocations : locationRows,
+            createdBy: currentUser
+          });
           return entry;
         } catch (error) {
           if (entry?.id) {
