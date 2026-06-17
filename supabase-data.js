@@ -7109,13 +7109,34 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
           const { data: createdLocations, error: locationError } = await client.from('biners_locations').insert(locationRows).select('*');
           if (locationError) throw friendlyError('Biners locations could not be saved; the entry was rolled back', locationError);
 
+          const resolveBinersScheduleLocationName = ({ schedule, location, createdLocations, form }) => (
+            schedule.location_name ||
+            schedule.locationName ||
+            location?.location_name ||
+            location?.name ||
+            location?.label ||
+            createdLocations?.[0]?.location_name ||
+            createdLocations?.[0]?.name ||
+            form.location_name ||
+            form.locationName ||
+            'All Locations'
+          );
+
           const manualScheduleRows = schedules.filter(row => (
             row?.due_date || row?.payment_date || row?.schedule_date || row?.date || toNumber(row?.amount || row?.scheduled_amount) > 0
           ));
           const scheduleRowsToSave = manualScheduleRows.length > 0
             ? manualScheduleRows
-            : [{ due_date: cleanEntry.due_date, amount: cleanEntry.gross_payable, location_name: 'All Locations' }];
+            : [{ due_date: cleanEntry.due_date, amount: cleanEntry.gross_payable }];
           const scheduleRows = scheduleRowsToSave.map((schedule, idx) => {
+            const relatedLocation =
+              createdLocations?.[idx] ||
+              createdLocations?.find((loc) =>
+                schedule.location_id
+                  ? loc.id === schedule.location_id
+                  : false
+              ) ||
+              createdLocations?.[0];
             const dueDate = schedule.due_date || schedule.payment_date || schedule.schedule_date || schedule.date || null;
             const scheduledAmount = toNumber(schedule.scheduled_amount || schedule.amount || schedule.value);
             return pickExistingFields({
@@ -7125,8 +7146,20 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
               client_id: cleanEntry.client_id || null,
               client_reference: cleanEntry.client_reference || null,
               client_name: cleanEntry.client_name || null,
-              location_name: schedule.location_name || 'All Locations',
-              location_reference: schedule.location_reference || null,
+              location_id: schedule.location_id || relatedLocation?.id || null,
+              location_name: resolveBinersScheduleLocationName({
+                schedule,
+                location: relatedLocation,
+                createdLocations,
+                form: cleanEntry
+              }),
+              location_reference:
+                schedule.location_reference ||
+                schedule.locationReference ||
+                relatedLocation?.location_reference ||
+                relatedLocation?.reference ||
+                createdLocations?.[0]?.location_reference ||
+                null,
               module: cleanEntry.module || null,
               license: cleanEntry.license || null,
               due_date: dueDate,

@@ -818,7 +818,22 @@
     });
   }
 
-  function buildBinersSchedulePayload({ entry, schedule, selectedClient, form, index }) {
+  function resolveBinersScheduleLocationName({ schedule, location, createdLocations, form }) {
+    return (
+      schedule.location_name ||
+      schedule.locationName ||
+      location?.location_name ||
+      location?.name ||
+      location?.label ||
+      createdLocations?.[0]?.location_name ||
+      createdLocations?.[0]?.name ||
+      form.location_name ||
+      form.locationName ||
+      'All Locations'
+    );
+  }
+
+  function buildBinersSchedulePayload({ entry, schedule, location, createdLocations, selectedClient, form, index }) {
     const clientId = selectedClient?.id || selectedClient?.value || null;
     if (clientId && !isUuid(clientId)) throw new Error(`Invalid client_id. Expected UUID but received: ${clientId}`);
     const dueDate = schedule.due_date || schedule.payment_date || schedule.schedule_date || schedule.date || null;
@@ -830,8 +845,19 @@
       client_id: clientId,
       client_reference: selectedClient?.client_number || selectedClient?.reference || selectedClient?.client_reference || null,
       client_name: selectedClient?.client_name || selectedClient?.legal_name || selectedClient?.name || form.client_name || null,
-      location_name: schedule.location_name || form.location_name || 'All Locations',
-      location_reference: schedule.location_reference || form.location_reference || null,
+      location_name: resolveBinersScheduleLocationName({
+        schedule,
+        location,
+        createdLocations,
+        form
+      }),
+      location_reference:
+        schedule.location_reference ||
+        schedule.locationReference ||
+        location?.location_reference ||
+        location?.reference ||
+        createdLocations?.[0]?.location_reference ||
+        null,
       module: form.module || null,
       license: form.license || null,
       due_date: dueDate,
@@ -887,13 +913,26 @@
     const scheduleRowsToSave = manualScheduleRows.length > 0
       ? manualScheduleRows
       : [{ due_date: form.start_service_date || form.service_start_date || form.due_date, amount: totalAmount }];
-    const schedules = scheduleRowsToSave.map((schedule, index) => buildBinersSchedulePayload({
-      entry: { id: '__pending__', entry_number: null },
-      schedule,
-      selectedClient,
-      form,
-      index
-    }));
+    const schedules = scheduleRowsToSave.map((schedule, index) => {
+      const relatedLocation =
+        locations[index] ||
+        locations.find((loc) =>
+          schedule.location_id
+            ? loc.id === schedule.location_id
+            : false
+        ) ||
+        locations[0];
+
+      return buildBinersSchedulePayload({
+        entry: { id: '__pending__', entry_number: null },
+        schedule,
+        location: relatedLocation,
+        createdLocations: locations,
+        selectedClient,
+        form,
+        index
+      });
+    });
     const scheduleTotal = schedules.reduce((sum, row) => sum + toNumber(row.scheduled_amount), 0);
     if (Math.abs(scheduleTotal - toNumber(totalAmount)) > 0.01) throw new Error(`Scheduled payments total (${scheduleTotal}) must equal gross payable (${totalAmount}).`);
     return { entry, locations, schedules };
@@ -1114,7 +1153,11 @@
         biners_entry_number: row.entry_number,
         client_name: row.client_name,
         client_reference: row.client_reference,
-        location_name: row.location_name || 'All Locations',
+        location_name:
+          row.location_name ||
+          row.location ||
+          row.location_reference ||
+          '—',
         location_reference: row.location_reference || '—',
         module: row.module || '—',
         license: row.license || '—',
