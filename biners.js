@@ -380,7 +380,7 @@
     // column does not exist in the table schema cache. The final migration guarantees
     // biners_entry_id on Biners child tables, so use it as the stable relation key.
     let query = supabase.from(tableName).select('*').eq('biners_entry_id', entryIdValue);
-    if (tableName === 'biners_payment_schedules') query = query.order('due_date', { ascending: true });
+    if (tableName === 'biners_payment_schedules') query = query.order('schedule_no', { ascending: true }).order('due_date', { ascending: true });
     const result = await query;
     if (result.error) throw result.error;
     return result.data || [];
@@ -410,18 +410,13 @@
     const entryIdValue = entry?.id;
     if (!entryIdValue) throw new Error('Unable to load Biners payable details without an entry id.');
 
-    const [locations, scheduleById, payments] = await Promise.all([
+    const [locations, schedule, payments] = await Promise.all([
       loadFromTableOptions(supabase, 'locations', ['biners_locations'], entry, false),
       loadFromTableOptions(supabase, 'schedule', ['biners_payment_schedules'], entry, true),
       loadFromTableOptions(supabase, 'payments', ['biners_payments', 'biners_receipts', 'biners_payment_history'], entry, true)
     ]);
-    let schedule = scheduleById;
-    const entryNumber = entry.entry_number || entry.reference || entry.biners_entry_number;
-    if (!schedule.length && entryNumber) {
-      const fallback = await supabase.from('biners_payment_schedules').select('*').eq('entry_number', entryNumber);
-      if (fallback.error) throw fallback.error;
-      schedule = fallback.data || [];
-    }
+    console.log('Biners entry id:', entry.id);
+    console.log('Loaded Biners schedules:', schedule);
 
     return { entry, locations, schedule, payments };
   }
@@ -449,7 +444,7 @@
       gross_payable: grossPayable,
       timing: pickValue(entry.timing, entry.payment_schedule, entry.schedule_timing)
     };
-    let schedule = normalizeList(detail.schedule).filter(row => relatedToEntry(row, entry)).map(row => rowContext({ ...base, ...row }));
+    let schedule = normalizeList(detail.schedule).map(row => rowContext(normalizeBinersScheduleRow(row, base)));
     if (!schedule.length && grossPayable > 0) {
       const status = remainingAmount <= 0 ? 'paid' : paidAmount > 0 ? 'partially_paid' : 'unpaid';
       schedule = [{ ...base, schedule_no: base.schedule_no === '—' ? 1 : base.schedule_no, scheduled_amount: grossPayable, paid_amount: paidAmount, remaining_amount: remainingAmount, payment_status: status, status }];
@@ -1006,11 +1001,36 @@
   }
 
 
+
+  function normalizeBinersScheduleRow(row = {}, entry = {}) {
+    const scheduled = num(row.scheduled_amount);
+    const paid = num(row.paid_amount);
+    return {
+      ...entry,
+      ...row,
+      id: row.id,
+      schedule_id: row.id || row.schedule_id || row.biners_schedule_id,
+      biners_entry_id: row.biners_entry_id || entry.id,
+      entry_number: row.entry_number || entry.entry_number,
+      biners_entry_number: row.entry_number || row.biners_entry_number || detailsEntryNumber(entry),
+      schedule_no: row.schedule_no,
+      due_date: row.due_date,
+      scheduled_amount: scheduled,
+      paid_amount: paid,
+      remaining_amount: Math.max(scheduled - paid, 0),
+      status: row.status,
+      payment_status: row.payment_status || row.status,
+      forecast_status: row.forecast_status || row.status,
+      notes: row.notes,
+      currency: row.currency || entry.currency || 'USD'
+    };
+  }
+
   function fallbackRowsFromEntries(entries = []) {
     return normalizeList(entries).map((entry, idx) => {
       const scheduled = num(entry.scheduled_amount ?? entry.total_payable_amount ?? entry.gross_payable ?? entry.total_payable ?? entry.amount);
       const paid = num(entry.paid_amount);
-      const due = entry.due_date || entry.payment_due_date || entry.service_start_date || entry.service_end_date || entry.created_at || today();
+      const due = entry.due_date || entry.payment_due_date || entry.start_service_date || entry.service_start_date || entry.service_end_date || entry.created_at || today();
       const remainingAmount = Math.max(0, scheduled - paid);
       const status = remainingAmount <= 0 ? 'paid' : paid > 0 ? 'partially_paid' : (String(due).slice(0, 10) < today() ? 'overdue' : 'upcoming');
       return {
@@ -1054,10 +1074,12 @@
     ensureInitialized();
     setState('Loading Biners payable data…');
     try {
+      let schedulesLoaded = true;
+      let forecastLoaded = true;
       const [entries, schedules, forecast, payments, summary, monthly, clients] = await Promise.all([
         safeLoad('entries', request('list'), state.entries),
-        safeLoad('scheduled payments', (global.Api?.getBinersScheduleRows?.() || request('list_schedules')), state.schedules),
-        safeLoad('forecast rows', (global.Api?.getBinersForecastRows?.() || request('list_forecast')), state.forecast),
+        (global.Api?.getBinersScheduleRows?.() || request('list_schedules')).catch(error => { schedulesLoaded = false; console.warn('[Biners] Unable to load scheduled payments', error); toast(error?.message || 'Unable to load scheduled payments'); return state.schedules; }),
+        (global.Api?.getBinersForecastRows?.() || request('list_forecast')).catch(error => { forecastLoaded = false; console.warn('[Biners] Unable to load forecast rows', error); toast(error?.message || 'Unable to load forecast rows'); return state.forecast; }),
         safeLoad('payment history', request('list_payments'), state.payments),
         safeLoad('summary', request('summary'), state.summary),
         safeLoad('monthly forecast', (global.Api?.getBinersMonthlyForecast?.() || request('monthly_forecast')), state.monthly),
@@ -1065,12 +1087,12 @@
       ]);
       const normalizedEntries = normalizeList(entries);
       const fallbackForecast = fallbackRowsFromEntries(normalizedEntries);
-      const normalizedSchedules = dedupeScheduleRows(schedules);
-      const normalizedForecast = dedupeScheduleRows(forecast);
+      const normalizedSchedules = dedupeScheduleRows(schedules).map(row => normalizeBinersScheduleRow(row, getEntry(row)));
+      const normalizedForecast = dedupeScheduleRows(forecast).map(row => normalizeBinersScheduleRow(row, getEntry(row)));
       Object.assign(state, {
         entries: normalizedEntries,
-        schedules: normalizedSchedules.length ? normalizedSchedules : fallbackForecast,
-        forecast: normalizedForecast.length ? normalizedForecast : (normalizedSchedules.length ? normalizedSchedules : fallbackForecast),
+        schedules: normalizedSchedules.length ? normalizedSchedules : (schedulesLoaded ? fallbackForecast : []),
+        forecast: normalizedForecast.length ? normalizedForecast : (normalizedSchedules.length ? normalizedSchedules : (forecastLoaded && schedulesLoaded ? fallbackForecast : [])),
         payments: normalizeList(payments),
         summary: summary && Array.isArray(summary) ? summary[0] : summary,
         monthly: normalizeList(monthly),
