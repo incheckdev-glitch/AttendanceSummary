@@ -262,7 +262,21 @@ const NotificationSetup = {
     }));
     tbody.querySelectorAll('[data-test]').forEach(btn => btn.addEventListener('click', async e => {
       const tr = e.target.closest('tr');
-      try { await Api.testNotificationSetting(this.collect(tr.dataset.resource, tr.dataset.action)); UI.toast('Test dispatched (or skipped based on rule).'); } catch (error) { UI.toast(String(error?.message || 'Unable to test rule.')); }
+      try {
+        const result = await Api.testNotificationSetting(this.collect(tr.dataset.resource, tr.dataset.action));
+        const data = result?.data || result || {};
+        const created = Number(data?.created || data?.notification_count || 0);
+        const push = data?.push || {};
+        const email = data?.email || {};
+        const parts = [
+          `In-app: ${created > 0 ? 'sent' : 'not created'}`,
+          `PWA: ${push.sent ? 'sent' : (push.reason || push.error || 'skipped')}`,
+          email.attempted || email.sent ? `Email: ${email.sent ? 'sent' : (email.reason || email.error || 'skipped')}` : 'Email: skipped'
+        ];
+        UI.toast(`Test notification result — ${parts.join(' · ')}`);
+      } catch (error) {
+        UI.toast(String(error?.message || 'Unable to test rule.'));
+      }
     }));
   }
 };

@@ -6223,6 +6223,120 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     return `${normalizedResource}-${normalizedAction}-${normalizedRecordId}`;
   }
 
+
+  function isUuidLike(value = '') {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+  }
+
+  function getRecordRef(resource, record = {}, fallback = '') {
+    const safeRecord = record && typeof record === 'object' ? record : {};
+    const fallbackRef = String(fallback || '').trim();
+    const helper = typeof global.getRecordRef === 'function'
+      ? global.getRecordRef
+      : global.NotificationTemplateHelpers?.getRecordRef;
+    const sharedRef = typeof helper === 'function' ? helper(safeRecord, fallbackRef) : fallbackRef;
+    const normalizedResource = String(resource || safeRecord.resource || '').trim().toLowerCase();
+    const valueByResource = {
+      tickets: safeRecord.ticket_number || safeRecord.ticket_id || safeRecord.ticket_ref || safeRecord.reference,
+      agreements: safeRecord.agreement_number || safeRecord.agreement_reference || safeRecord.agreement_ref || safeRecord.agreement_id,
+      proposals: safeRecord.proposal_number || safeRecord.proposal_reference || safeRecord.proposal_ref || safeRecord.proposal_id,
+      invoices: safeRecord.invoice_number || safeRecord.invoice_no || safeRecord.invoice_ref || safeRecord.invoice_id,
+      receipts: safeRecord.receipt_number || safeRecord.receipt_no || safeRecord.receipt_ref || safeRecord.receipt_id,
+      leads: safeRecord.lead_number || safeRecord.lead_reference || safeRecord.lead_ref || safeRecord.lead_id,
+      deals: safeRecord.deal_number || safeRecord.deal_reference || safeRecord.deal_ref || safeRecord.deal_id,
+      biners: safeRecord.entry_number || safeRecord.biners_entry_number || safeRecord.reference || safeRecord.biners_number,
+      operations_onboarding: safeRecord.onboarding_number || safeRecord.onboarding_ref || safeRecord.onboarding_id || safeRecord.reference,
+      technical_admin_requests: safeRecord.request_number || safeRecord.technical_request_number || safeRecord.technical_request_id || safeRecord.request_ref || safeRecord.reference,
+      communication_centre: safeRecord.conversation_number || safeRecord.conversation_no || safeRecord.reference,
+      events: safeRecord.event_number || safeRecord.event_ref || safeRecord.event_id || safeRecord.reference
+    };
+    const direct = String(valueByResource[normalizedResource] || '').trim();
+    if (direct && !isUuidLike(direct)) return direct;
+    if (sharedRef && !isUuidLike(sharedRef)) return sharedRef;
+    const generic = String(safeRecord.record_ref || safeRecord.record_reference || safeRecord.display_ref || safeRecord.reference || safeRecord.number || safeRecord.code || '').trim();
+    if (generic && !isUuidLike(generic)) return generic;
+    return fallbackRef;
+  }
+
+  function renderNotificationTemplate(template = '', context = {}) {
+    const safeContext = context && typeof context === 'object' ? context : {};
+    const recordRef = getRecordRef(safeContext.resource, safeContext, String(safeContext.record_ref || safeContext.reference || safeContext.display_ref || '').trim());
+    const directMap = {
+      record_ref: recordRef || '',
+      reference: recordRef || safeContext.reference || '',
+      display_ref: safeContext.display_ref || recordRef || '',
+      ticket_number: safeContext.ticket_number || recordRef || '',
+      agreement_number: safeContext.agreement_number || recordRef || '',
+      invoice_number: safeContext.invoice_number || recordRef || '',
+      receipt_number: safeContext.receipt_number || recordRef || '',
+      lead_number: safeContext.lead_number || recordRef || '',
+      deal_number: safeContext.deal_number || recordRef || '',
+      entry_number: safeContext.entry_number || safeContext.biners_entry_number || recordRef || '',
+      request_number: safeContext.request_number || safeContext.technical_request_number || recordRef || ''
+    };
+    return String(template || '')
+      .replace(/\{\{\s*([^}]+)\s*\}\}/g, (_, key) => {
+        const cleanKey = String(key).trim();
+        const value = directMap[cleanKey] ?? safeContext[cleanKey] ?? '';
+        return String(value ?? '');
+      })
+      .replace(/\{([a-z0-9_]+)\}/gi, (_, key) => {
+        const value = directMap[key] ?? safeContext[key] ?? '';
+        return String(value ?? '');
+      })
+      .trim();
+  }
+
+  function getRecordDeepLink(resourceOrConfig, record = {}) {
+    const eventConfig = resourceOrConfig && typeof resourceOrConfig === 'object' ? resourceOrConfig : { resource: resourceOrConfig };
+    const template = String(
+      eventConfig?.deep_link_template ||
+      eventConfig?.deepLinkTemplate ||
+      eventConfig?.link_template ||
+      eventConfig?.url_template ||
+      eventConfig?.deep_link ||
+      eventConfig?.link ||
+      ''
+    ).trim();
+    const testPayload = record && typeof record === 'object' ? record : {};
+    const payload = {
+      ...testPayload,
+      id: testPayload.id || testPayload.record_id || testPayload.entity_id || 'test',
+      record_id: testPayload.record_id || testPayload.id || testPayload.entity_id || 'test',
+      entity_id: testPayload.entity_id || testPayload.id || testPayload.record_id || 'test',
+      biners_entry_id: testPayload.biners_entry_id || testPayload.entry_id || testPayload.id || 'test',
+      entry_id: testPayload.entry_id || testPayload.biners_entry_id || testPayload.id || 'test',
+      entry_number: testPayload.entry_number || testPayload.biners_entry_number || 'BIN/TEST',
+      client_name: testPayload.client_name || 'Test Client',
+      gross_payable: testPayload.gross_payable || '340.00',
+      schedule_count: testPayload.schedule_count || '2',
+      location_count: testPayload.location_count || '1'
+    };
+    if (template) {
+      return template.replace(/\{\{\s*([^}]+)\s*\}\}/g, (_, key) => {
+        const cleanKey = String(key).trim();
+        return encodeURIComponent(payload[cleanKey] ?? '');
+      }).replace(/\{([a-z0-9_]+)\}/gi, (_, key) => encodeURIComponent(payload[key] ?? ''));
+    }
+    const moduleKey = String(eventConfig?.module || eventConfig?.module_key || eventConfig?.resource || '').trim().toLowerCase();
+    const ref = encodeURIComponent(getRecordRef(moduleKey, payload) || payload.record_id || '');
+    if (moduleKey === 'biners') return `/biners?entryId=${encodeURIComponent(payload.biners_entry_id)}`;
+    const routes = {
+      tickets: `/#tickets?ticket_id=${ref}`,
+      agreements: `/#crm?tab=agreements&id=${ref}`,
+      proposals: `/#crm?tab=proposals&id=${ref}`,
+      invoices: `/#finance?tab=invoices&id=${ref}`,
+      receipts: `/#finance?tab=receipts&id=${ref}`,
+      leads: `/#crm?tab=leads&id=${ref}`,
+      deals: `/#crm?tab=deals&id=${ref}`,
+      operations_onboarding: `/#operations-onboarding?onboarding_id=${ref}`,
+      technical_admin_requests: `/#operations-onboarding?technical_request_id=${ref}`,
+      communication_centre: `/#communication_centre?conversation_id=${ref}`,
+      events: `/#events?event_id=${ref}`
+    };
+    return routes[moduleKey] || (moduleKey ? `/#${moduleKey}?record_id=${ref}` : '/#notifications');
+  }
+
   const NOTIFICATION_RULE_DEFAULTS = [
     { resource: 'tickets', action: 'ticket_created', recipient_roles: ['admin', 'dev'] },
     { resource: 'tickets', action: 'ticket_high_priority', recipient_roles: ['admin', 'dev'] },
@@ -6239,7 +6353,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     { resource: 'proposals', action: 'proposal_requires_approval', recipient_roles: ['financial_controller', 'gm'] },
     { resource: 'agreements', action: 'agreement_signed', recipient_roles: ['admin', 'accounting', 'hoo'] },
     { resource: 'invoice_payment_schedule', action: 'payment_due_reminder', recipient_user_ids: [], in_app_enabled: true, pwa_enabled: true, email_enabled: false, title_template: 'Scheduled Payment Due in {{days_until_due}} Days · {{invoice_number}}', body_template: 'Payment {{schedule_label}} for invoice {{invoice_number}} is due on {{due_date}}. Scheduled amount: {{scheduled_amount}} {{currency}}. Balance due: {{balance_due}} {{currency}}.', deep_link_template: '#invoices?invoice_id={{invoice_id}}' },
-    { resource: 'biners', action: 'biners_entry_created', description: 'Notify relevant users when a new Biners payable entry is created.', resource_label: 'Biners', action_label: 'New Biners Entry Created', recipient_roles: ['admin', 'accounting', 'senior_financial_controller', 'general_manager'], in_app_enabled: true, pwa_enabled: true, email_enabled: false, title_template: 'New Biners Entry Created', body_template: 'Notify relevant users when a new Biners payable entry is created.', deep_link_template: '/biners?entryId={{biners_entry_id}}' },
+    { resource: 'biners', action: 'biners_entry_created', description: 'Notify relevant users when a new Biners payable entry is created.', resource_label: 'Biners', action_label: 'New Biners Entry Created', recipient_roles: ['admin', 'accounting', 'senior_financial_controller', 'general_manager'], in_app_enabled: true, pwa_enabled: true, email_enabled: false, title_template: 'New Biners Entry Created', body_template: 'A new Biners payable entry {{entry_number}} was created for {{client_name}} with a gross payable amount of USD {{gross_payable}}. {{schedule_count}} scheduled payment(s) created.', deep_link_template: '/biners?entryId={{biners_entry_id}}' },
     { resource: 'agreements', action: 'agreement_customer_signed', recipient_roles: ['financial_controller'], users_from_record: ['financial_controller_email'] },
     { resource: 'agreements', action: 'agreement_financial_controller_signed', recipient_roles: ['gm'] },
     { resource: 'agreements', action: 'agreement_fully_signed', recipient_roles: ['head_of_sales', 'sales_executive'], users_from_record: ['head_of_sales_email','sales_executive_email','owner_email','assigned_sales_email','created_by_email'] },
@@ -6279,6 +6393,8 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
   function resolveNotificationUrl(resource = '', action = '', recordId = '', fallback = '') {
     const normalizedResource = String(resource || '').trim().toLowerCase();
     const id = String(recordId || '').trim();
+    const fallbackUrl = String(fallback || '').trim();
+    if (fallbackUrl) return fallbackUrl;
     if (normalizedResource === 'tickets' && id) return `/#tickets?ticket_id=${encodeURIComponent(id)}`;
     if (normalizedResource === 'workflow' && id) return `/#workflow?approval_id=${encodeURIComponent(id)}`;
     if (['operations_onboarding', 'technical_admin_requests'].includes(normalizedResource) && id) return `/#operations-onboarding?onboarding_id=${encodeURIComponent(id)}`;
@@ -6288,8 +6404,9 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     if (normalizedResource === 'agreements' && id) return `/#crm?tab=agreements&id=${encodeURIComponent(id)}`;
     if (normalizedResource === 'invoices' && id) return `/#finance?tab=invoices&id=${encodeURIComponent(id)}`;
     if (normalizedResource === 'receipts' && id) return `/#finance?tab=receipts&id=${encodeURIComponent(id)}`;
+    if (normalizedResource === 'biners' && id) return `/biners?entryId=${encodeURIComponent(id)}`;
     if (normalizedResource === 'communication_centre' && id) return `/#communication_centre?conversation_id=${encodeURIComponent(id)}`;
-    return String(fallback || '').trim() || '/#notifications';
+    return '/#notifications';
   }
 
   function normalizeNotificationRoles(...roleSources) {
@@ -6645,12 +6762,21 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const actorUserId = String(normalizedPayload?.actor_user_id || normalizedPayload?.created_by || '').trim();
     const { rules: matchingRules, error: matchingRulesError } = await listMatchingNotificationRules(getClient(), resource, action, eventKey);
     if (matchingRulesError) console.warn('[notifications:rules] unable to load rules', { context, resource, action, matchingRulesError });
-    if (!matchingRules.length) {
-      console.info('[notifications] rule decision', { resource, action, eventKey, ruleFound: false, usedPreset: true, assignedRolesCount: 0, assignedUsersCount: 0, assignedEmailsCount: 0, resolvedRecipientsCount: 0, shouldSend: false, reason: 'no-rule' });
+    const fallbackRules = !matchingRules.length
+      ? NOTIFICATION_RULE_DEFAULTS.filter(rule => {
+        const normalizedRuleResource = String(rule?.resource || '').trim().toLowerCase();
+        const normalizedRuleAction = String(rule?.action || '').trim().toLowerCase();
+        const aliases = getNotificationActionAliases(resource, action, eventKey);
+        return normalizedRuleResource === resource && aliases.includes(normalizedRuleAction);
+      })
+      : [];
+    const effectiveRules = matchingRules.length ? matchingRules : fallbackRules;
+    if (!effectiveRules.length) {
+      console.info('[notifications] rule decision', { resource, action, eventKey, ruleFound: false, usedPreset: false, assignedRolesCount: 0, assignedUsersCount: 0, assignedEmailsCount: 0, resolvedRecipientsCount: 0, shouldSend: false, reason: 'no-rule' });
       console.warn('[notifications:rules] no rule found; notification skipped', { context, resource, action });
-      return { created: 0, push: { attempted: false, skipped: true, reason: 'no-rule' }, notification_id: null };
+      return { created: 0, push: { attempted: false, skipped: true, reason: 'no-rule' }, email: { attempted: false, skipped: true, reason: 'no-rule' }, notification_id: null };
     }
-    const enabledRulesForRecipients = matchingRules.filter(rule => isNotificationRuleEnabled(rule));
+    const enabledRulesForRecipients = effectiveRules.filter(rule => isNotificationRuleEnabled(rule));
     const normalizedRoles = [...new Set(enabledRulesForRecipients.flatMap(rule => getRuleAssignedRoles(rule)))];
     // Preset defaults are initialization-only. Send-time uses saved notification_rules exclusively.
     // Rule recipient roles are the source of truth. Do not fall back to module-provided target_roles when a rule exists.
@@ -6671,7 +6797,10 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       normalizedPayload?.target_emails,
       normalizedPayload?.emails
     ]).map(value => String(value || '').trim().toLowerCase()).filter(value => !isPlaceholderRecipientToken(value));
-    const assignedUsers = [...new Set([...resolvedRuleRecipients.users, ...directPayloadUsers].map(v => String(v || '').trim()).filter(Boolean))];
+    const forcedTestUserIds = /notification_settings:test_notification/i.test(String(context || ''))
+      ? normalizeNotificationList([actorUserId, normalizedPayload?.current_user_id, normalizedPayload?.target_user_id])
+      : [];
+    const assignedUsers = [...new Set([...resolvedRuleRecipients.users, ...directPayloadUsers, ...forcedTestUserIds].map(v => String(v || '').trim()).filter(Boolean))];
     const assignedEmails = [...new Set([...resolvedRuleRecipients.emails, ...directPayloadEmails])];
     const recipientUserIds = new Set(assignedUsers);
     const recipientEmails = new Set([
@@ -6690,9 +6819,9 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const assignedUsersCount = assignedUsers.length;
     const assignedEmailsCount = assignedEmails.length;
     const resolvedRecipientsCount = resolvedRecipients.users.length + resolvedRecipients.emails.length;
-    const hasAnyConfiguredRecipients = enabledRulesForRecipients.some(rule => hasConfiguredRecipients(rule, resolvedRecipients));
+    const hasAnyConfiguredRecipients = enabledRulesForRecipients.some(rule => hasConfiguredRecipients(rule, resolvedRecipients)) || assignedUsers.length > 0 || assignedEmails.length > 0;
     const recipientsCount = recipientUserIds.size + recipientEmails.size + normalizedRoles.length;
-    const primaryRule = enabledRulesForRecipients[0] || matchingRules[0] || null;
+    const primaryRule = enabledRulesForRecipients[0] || effectiveRules[0] || matchingRules[0] || null;
     const templateContext = {
       ...(record && typeof record === 'object' ? record : {}),
       resource,
@@ -6706,7 +6835,14 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       receipt_number: record?.receipt_number || recordRef,
       lead_number: record?.lead_number || recordRef,
       deal_number: record?.deal_number || recordRef,
-      request_number: record?.request_number || record?.technical_request_number || recordRef
+      request_number: record?.request_number || record?.technical_request_number || recordRef,
+      biners_entry_id: record?.biners_entry_id || record?.id || normalizedPayload?.record_id || '',
+      entry_id: record?.entry_id || record?.biners_entry_id || record?.id || normalizedPayload?.record_id || '',
+      entry_number: record?.entry_number || record?.biners_entry_number || recordRef,
+      client_name: record?.client_name || normalizedPayload?.client_name || '',
+      gross_payable: record?.gross_payable ?? normalizedPayload?.gross_payable ?? '',
+      schedule_count: record?.schedule_count ?? normalizedPayload?.schedule_count ?? '',
+      location_count: record?.location_count ?? normalizedPayload?.location_count ?? ''
     };
     const synthesizedTitle = renderNotificationTemplate(primaryRule?.title_template, templateContext);
     const synthesizedMessage = renderNotificationTemplate(primaryRule?.body_template, templateContext);
@@ -7182,7 +7318,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         };
         const allowedEntry = ['request_key','client_id','client_reference','client_name','module','license','gross_payable','paid_amount','due_date','status','notes'];
         const allowedLocation = ['biners_entry_id','client_reference','client_name','location_name','location_reference','module','license','due_date','scheduled_amount','notes'];
-        const allowedSchedule = ['schedule_key','biners_entry_id','entry_number','client_id','client_reference','client_name','location_id','location_name','location_reference','module','license','due_date','scheduled_amount','paid_amount','status','notes'];
+        const allowedSchedule = ['schedule_key','biners_entry_id','entry_number','schedule_no','client_id','client_reference','client_name','location_id','location_name','location_reference','module','license','due_date','scheduled_amount','paid_amount','status','notes'];
         const cleanEntry = pickExistingFields(entryPayload, allowedEntry);
         if (cleanEntry.client_id && !isUuid(cleanEntry.client_id)) throw new Error(`Invalid client_id. Expected UUID but received: ${cleanEntry.client_id}`);
         if (!String(cleanEntry.client_name || '').trim()) throw new Error('Unable to create Biners entry: client name is required.');
@@ -7235,8 +7371,9 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
             const dueDate = schedule.due_date || schedule.payment_date || schedule.schedule_date || schedule.date || null;
             const scheduledAmount = toNumber(schedule.scheduled_amount || schedule.amount || schedule.value);
             return pickExistingFields({
-              schedule_key: `${entry.id}:schedule:${idx}:${dueDate}:${scheduledAmount}`,
+              schedule_key: `${entry.id}:schedule:${idx + 1}:${dueDate}:${scheduledAmount}`,
               biners_entry_id: entry.id,
+              schedule_no: Number(schedule.schedule_no || idx + 1),
               entry_number: entryNumber,
               client_id: cleanEntry.client_id || null,
               client_reference: cleanEntry.client_reference || null,
@@ -8448,6 +8585,8 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         body: renderedBody,
         deep_link: deepLink,
         actor_user_id: currentUserId || null,
+        current_user_id: currentUserId || null,
+        target_user_id: currentUserId || null,
         record_id: recordRef,
         record_ref: recordRef,
         reference: recordRef,

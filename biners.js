@@ -839,8 +839,9 @@
     const dueDate = schedule.due_date || schedule.payment_date || schedule.schedule_date || schedule.date || null;
     const scheduledAmount = toNumber(schedule.scheduled_amount || schedule.amount || schedule.value);
     return cleanPayload({
-      schedule_key: `${entry.id}:schedule:${index}:${dueDate}:${scheduledAmount}`,
+      schedule_key: `${entry.id}:schedule:${index + 1}:${dueDate}:${scheduledAmount}`,
       biners_entry_id: entry.id,
+      schedule_no: Number(schedule.schedule_no || index + 1),
       entry_number: entry.entry_number || entry.reference || null,
       client_id: clientId,
       client_reference: selectedClient?.client_number || selectedClient?.reference || selectedClient?.client_reference || null,
