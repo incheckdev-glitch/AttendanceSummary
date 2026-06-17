@@ -2348,6 +2348,87 @@ const Proposals = {
     const shouldShowDescription = itemDescription && itemDescription !== itemName;
     return `<div class="doc-item-name">${U.escapeHtml(itemName || '—')}</div>${shouldShowDescription ? `<div class="doc-item-description">${U.escapeHtml(itemDescription)}</div>` : ''}`;
   },
+
+  resolveProposalCustomerDetails(proposal = {}, company = null, contact = null) {
+    const saved = proposal && typeof proposal === 'object' ? proposal : {};
+    const companyData = company && typeof company === 'object' ? company : {};
+    const contactData = contact && typeof contact === 'object' ? contact : {};
+    const firstText = (...values) => {
+      for (const value of values) {
+        const text = String(value ?? '').trim();
+        if (text) return text;
+      }
+      return '—';
+    };
+    const contactName = this.buildContactDisplayName(contactData) || String(contactData.name || contactData.full_name || contactData.contact_name || '').trim();
+    return {
+      companyName: firstText(
+        saved.customer_company_name,
+        saved.company_name,
+        saved.client_name,
+        saved.customer_legal_name,
+        saved.customer_name,
+        companyData.legal_name,
+        companyData.name,
+        companyData.company_name
+      ),
+      contactName: firstText(
+        saved.customer_contact_name,
+        saved.contact_name,
+        contactName,
+        contactData.name,
+        contactData.full_name
+      ),
+      email: firstText(saved.customer_email, saved.contact_email, saved.customer_contact_email, contactData.email),
+      phone: firstText(saved.customer_phone, saved.contact_phone, saved.customer_contact_mobile, contactData.phone, contactData.mobile),
+      address: firstText(saved.customer_address, saved.company_address, companyData.address, companyData.street_address),
+      signatoryName: firstText(
+        saved.customer_signatory_name,
+        saved.authorized_signatory_name,
+        saved.customer_authorized_signatory_name,
+        companyData.authorized_signatory_name,
+        companyData.authorized_signatory_full_name,
+        contactName,
+        contactData.name
+      ),
+      signatoryTitle: firstText(
+        saved.customer_signatory_title,
+        saved.authorized_signatory_title,
+        saved.customer_authorized_signatory_title,
+        companyData.authorized_signatory_title,
+        contactData.position,
+        contactData.job_title,
+        contactData.title
+      )
+    };
+  },
+  buildSafePreviewProposal(proposal = {}, company = null, contact = null) {
+    const details = this.resolveProposalCustomerDetails(proposal, company, contact);
+    const companyId = String(company?.id || proposal?.company_id || '').trim();
+    const contactId = String(contact?.id || proposal?.contact_id || '').trim();
+    return {
+      ...proposal,
+      company_id: companyId,
+      company_name: details.companyName,
+      customer_company_name: details.companyName,
+      customer_name: details.companyName,
+      customer_legal_name: details.companyName,
+      customer_address: details.address,
+      contact_id: contactId,
+      contact_name: details.contactName,
+      contact_email: details.email,
+      contact_phone: details.phone,
+      customer_contact_name: details.contactName,
+      customer_contact_email: details.email,
+      customer_contact_mobile: details.phone,
+      customer_email: details.email,
+      customer_phone: details.phone,
+      customer_signatory_name: details.signatoryName,
+      customer_signatory_title: details.signatoryTitle,
+      customer_authorized_signatory_name: details.signatoryName,
+      customer_authorized_signatory_title: details.signatoryTitle
+    };
+  },
   buildProposalDocumentHtml(proposal = {}, items = [], options = {}) {
     const proposalData = proposal && typeof proposal === 'object' ? proposal : {};
     const normalizedItems = (Array.isArray(items) ? items : []).map((item, index) => {
@@ -4967,31 +5048,36 @@ const Proposals = {
     }
     try {
       const { proposal, items } = await this.loadProposalPreviewData(proposalId);
-      const companyId = String(proposal?.company_id || '').trim();
-      const selectedCompanyId = String(this.state.selectedCompanyId || '').trim();
-      if (selectedCompanyId && companyId !== selectedCompanyId) throw new Error('Selected company data mismatch. Please reselect the company.');
-      const loadedCompany = await this.loadCompanyByUuid(companyId);
-      if (!loadedCompany || loadedCompany.id !== companyId) {
-        UI.toast('Selected company data mismatch. Please reselect the company.');
-        return;
+      const companyKey = String(proposal?.company_id || '').trim();
+      const contactKey = String(proposal?.contact_id || '').trim();
+      let loadedCompany = null;
+      let loadedContact = null;
+      let resolvedCompanyId = '';
+      let resolvedContactId = '';
+
+      if (companyKey) {
+        resolvedCompanyId = await this.resolveCompanyUuid(companyKey) || '';
+        loadedCompany = resolvedCompanyId ? await this.loadCompanySafe(resolvedCompanyId) : null;
+        if (!loadedCompany) console.warn('[Proposal Preview] Company could not be resolved; using saved proposal snapshot.', { proposalId, companyKey });
+      } else {
+        console.warn('[Proposal Preview] Proposal has no company_id; using saved proposal snapshot.', { proposalId });
       }
-      const resolvedContactId = proposal?.contact_id ? await this.resolveContactUuid(proposal.contact_id) : '';
-      if (proposal?.contact_id && !resolvedContactId) {
-        UI.toast('Selected contact could not be resolved. Please reselect the contact.');
-        return;
+
+      if (contactKey) {
+        resolvedContactId = await this.resolveContactUuid(contactKey) || '';
+        loadedContact = resolvedContactId ? await this.loadContactByUuid(resolvedContactId) : null;
+        if (!loadedContact) console.warn('[Proposal Preview] Contact could not be resolved; using saved proposal snapshot.', { proposalId, contactKey });
       }
-      const loadedContact = resolvedContactId ? await this.loadContactByUuid(resolvedContactId) : null;
-      if (resolvedContactId && (!loadedContact || loadedContact.id !== resolvedContactId)) {
-        UI.toast('Selected contact could not be resolved. Please reselect the contact.');
-        return;
+
+      if (loadedCompany && loadedContact) {
+        const belongs = await this.contactBelongsToCompany(loadedContact.id, loadedCompany.id);
+        if (!belongs) {
+          console.warn('[Proposal Preview] Contact no longer belongs to proposal company; using saved proposal snapshot where available.', { proposalId, companyKey, contactKey });
+          loadedContact = null;
+        }
       }
-      const belongs = resolvedContactId ? await this.contactBelongsToCompany(resolvedContactId, loadedCompany.id) : true;
-      if (!belongs) {
-        await this.clearSelectedContactForCompany(loadedCompany.id);
-        UI.toast('Selected contact does not belong to the selected company. Please reselect the contact.');
-        return;
-      }
-      const previewProposal = { ...proposal, company_id: loadedCompany.id, company_name: loadedCompany.company_name, customer_name: loadedCompany.legal_name || loadedCompany.company_name, customer_legal_name: loadedCompany.legal_name || loadedCompany.company_name, customer_address: loadedCompany.address || '', contact_id: loadedContact?.id || '', contact_name: loadedContact ? this.buildContactDisplayName(loadedContact) : '', contact_email: loadedContact?.email || '', contact_phone: loadedContact?.mobile || loadedContact?.phone || '', customer_contact_name: loadedContact ? this.buildContactDisplayName(loadedContact) : '', customer_contact_email: loadedContact?.email || '', customer_contact_mobile: loadedContact?.mobile || loadedContact?.phone || '' };
+
+      const previewProposal = this.buildSafePreviewProposal(proposal, loadedCompany, loadedContact);
       const html = this.buildProposalDocumentHtml(previewProposal, items, { mode: 'preview' });
       if (!html) {
         UI.toast('Unable to build proposal preview.');
