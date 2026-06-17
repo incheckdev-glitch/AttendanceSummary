@@ -5034,8 +5034,37 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       if (generic && !isUuid(generic)) return generic;
       return fallbackRef;
     }
-    function getRecordDeepLink(resource, record = {}) {
-      const ref = encodeURIComponent(getRecordRef(resource, record) || '');
+    function getRecordDeepLink(resourceOrConfig, record = {}) {
+      const eventConfig = resourceOrConfig && typeof resourceOrConfig === 'object' ? resourceOrConfig : { resource: resourceOrConfig };
+      const template = String(
+        eventConfig?.deep_link_template ||
+        eventConfig?.deepLinkTemplate ||
+        eventConfig?.link_template ||
+        eventConfig?.url_template ||
+        eventConfig?.deep_link ||
+        eventConfig?.link ||
+        ''
+      ).trim();
+      const testPayload = record && typeof record === 'object' ? record : {};
+      const payload = {
+        ...testPayload,
+        id: testPayload.id || testPayload.record_id || testPayload.entity_id || 'test',
+        record_id: testPayload.record_id || testPayload.id || testPayload.entity_id || 'test',
+        entity_id: testPayload.entity_id || testPayload.id || testPayload.record_id || 'test',
+        biners_entry_id: testPayload.biners_entry_id || testPayload.entry_id || testPayload.id || 'test',
+        entry_id: testPayload.entry_id || testPayload.biners_entry_id || testPayload.id || 'test',
+        entry_number: testPayload.entry_number || 'BIN/TEST',
+        client_name: testPayload.client_name || 'Test Client'
+      };
+      if (template) {
+        return template.replace(/\{\{\s*([^}]+)\s*\}\}/g, (_, key) => {
+          const cleanKey = String(key).trim();
+          return encodeURIComponent(payload[cleanKey] ?? '');
+        });
+      }
+      const ref = encodeURIComponent(getRecordRef(eventConfig.resource, payload) || payload.record_id || '');
+      const moduleKey = String(eventConfig?.module || eventConfig?.module_key || eventConfig?.resource || '').trim().toLowerCase();
+      if (moduleKey === 'biners') return `/biners?entryId=${encodeURIComponent(payload.biners_entry_id)}`;
       const routes = {
         tickets: `#tickets?ticket_id=${ref}`,
         agreements: `#agreements?agreement_id=${ref}`,
@@ -5048,7 +5077,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         technical_admin_requests: `#technical-admin-requests?request_id=${ref}`,
         events: `#events?event_id=${ref}`
       };
-      return routes[String(resource || '').trim().toLowerCase()] || `#${String(resource || '').trim().toLowerCase()}?record_id=${ref}`;
+      return routes[moduleKey] || (moduleKey ? `#${moduleKey}?record_id=${ref}` : '/');
     }
     function renderNotificationTemplate(template = '', context = {}) {
       const safeContext = context && typeof context === 'object' ? context : {};
@@ -5065,10 +5094,17 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         deal_number: safeContext.deal_number || recordRef || '',
         request_number: safeContext.request_number || safeContext.technical_request_number || recordRef || ''
       };
-      return String(template || '').replace(/\{([a-z0-9_]+)\}/gi, (_, key) => {
-        const value = directMap[key] ?? safeContext[key] ?? '';
-        return String(value || '');
-      }).trim();
+      return String(template || '')
+        .replace(/\{\{\s*([^}]+)\s*\}\}/g, (_, key) => {
+          const cleanKey = String(key).trim();
+          const value = directMap[cleanKey] ?? safeContext[cleanKey] ?? '';
+          return String(value ?? '');
+        })
+        .replace(/\{([a-z0-9_]+)\}/gi, (_, key) => {
+          const value = directMap[key] ?? safeContext[key] ?? '';
+          return String(value ?? '');
+        })
+        .trim();
     }
     function normalizeNotificationRoles(...roleSources) {
       return [...new Set(
@@ -6203,7 +6239,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     { resource: 'proposals', action: 'proposal_requires_approval', recipient_roles: ['financial_controller', 'gm'] },
     { resource: 'agreements', action: 'agreement_signed', recipient_roles: ['admin', 'accounting', 'hoo'] },
     { resource: 'invoice_payment_schedule', action: 'payment_due_reminder', recipient_user_ids: [], in_app_enabled: true, pwa_enabled: true, email_enabled: false, title_template: 'Scheduled Payment Due in {{days_until_due}} Days · {{invoice_number}}', body_template: 'Payment {{schedule_label}} for invoice {{invoice_number}} is due on {{due_date}}. Scheduled amount: {{scheduled_amount}} {{currency}}. Balance due: {{balance_due}} {{currency}}.', deep_link_template: '#invoices?invoice_id={{invoice_id}}' },
-    { resource: 'biners', action: 'biners_entry_created', description: 'Notify relevant users when a new Biners payable entry is created.', resource_label: 'Biners', action_label: 'New Biners Entry Created', recipient_roles: ['admin', 'accounting', 'senior_financial_controller', 'general_manager'], in_app_enabled: true, pwa_enabled: true, email_enabled: false, title_template: 'New Biners Entry Created', body_template: 'Notify relevant users when a new Biners payable entry is created.', deep_link_template: '#biners?entryId={{record_id}}' },
+    { resource: 'biners', action: 'biners_entry_created', description: 'Notify relevant users when a new Biners payable entry is created.', resource_label: 'Biners', action_label: 'New Biners Entry Created', recipient_roles: ['admin', 'accounting', 'senior_financial_controller', 'general_manager'], in_app_enabled: true, pwa_enabled: true, email_enabled: false, title_template: 'New Biners Entry Created', body_template: 'Notify relevant users when a new Biners payable entry is created.', deep_link_template: '/biners?entryId={{biners_entry_id}}' },
     { resource: 'agreements', action: 'agreement_customer_signed', recipient_roles: ['financial_controller'], users_from_record: ['financial_controller_email'] },
     { resource: 'agreements', action: 'agreement_financial_controller_signed', recipient_roles: ['gm'] },
     { resource: 'agreements', action: 'agreement_fully_signed', recipient_roles: ['head_of_sales', 'sales_executive'], users_from_record: ['head_of_sales_email','sales_executive_email','owner_email','assigned_sales_email','created_by_email'] },
@@ -8356,7 +8392,19 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
           .maybeSingle();
         currentUser = profile || null;
       }
+      const testPayload = {
+        biners_entry_id: 'test',
+        entry_id: 'test',
+        entry_number: 'BIN/TEST',
+        client_name: 'Test Client',
+        gross_payable: '340.00',
+        schedule_count: '2',
+        location_count: '1'
+      };
       const testRecord = {
+        ...testPayload,
+        id: 'test',
+        record_id: 'test',
         record_ref: 'TEST-NOTIFICATION',
         reference: 'TEST-NOTIFICATION',
         title: 'Test Notification',
@@ -8375,8 +8423,18 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         actor_name: userName,
         created_by_name: userName,
         date: new Date().toLocaleDateString(),
-        datetime: new Date().toLocaleString()
+        datetime: new Date().toLocaleString(),
+        ...testPayload
       };
+      const deepLink = getRecordDeepLink(selectedRule, {
+        id: 'test',
+        biners_entry_id: 'test',
+        entry_id: 'test',
+        entry_number: 'BIN/TEST',
+        client_name: 'Test Client'
+      });
+      const renderedTitle = renderNotificationTemplate(selectedRule?.title_template, templateData) || 'Test Notification';
+      const renderedBody = renderNotificationTemplate(selectedRule?.body_template, templateData) || `This is a test notification from InCheck360 for ${recordRef}.`;
       const result = await createNotificationAndPush({
         ...selectedRule,
         ...templateData,
@@ -8385,9 +8443,10 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         meta: templateData,
         resource: String(selectedRule?.resource || 'notification_hub').trim().toLowerCase(),
         action: String(selectedRule?.action || 'test').trim().toLowerCase(),
-        title: 'Test Notification',
-        message: `This is a test notification from InCheck360 for ${recordRef}.`,
-        body: `This is a test notification from InCheck360 for ${recordRef}.`,
+        title: renderedTitle,
+        message: renderedBody,
+        body: renderedBody,
+        deep_link: deepLink,
         actor_user_id: currentUserId || null,
         record_id: recordRef,
         record_ref: recordRef,
