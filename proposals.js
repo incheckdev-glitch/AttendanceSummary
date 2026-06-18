@@ -1890,7 +1890,14 @@ const Proposals = {
     const titleParts = [companyName || fullName, serviceInterest].filter(Boolean);
     const selectedCompany = await this.getFullCompanyRecord(deal.company_id || deal.companyId || {});
     const legalName = U.getCustomerLegalName(selectedCompany || {}, deal);
-    const selectedContact = await this.getFullContactRecord(deal.contact_id || deal.contactId || {});
+    const dealContactId =
+      deal.contact_id ||
+      deal.customer_contact_id ||
+      deal.client_contact_id ||
+      deal.primary_contact_id ||
+      deal.contactId ||
+      null;
+    const selectedContact = await this.getFullContactRecord(dealContactId || {});
     const draft = {
       ...this.emptyProposal(),
       deal_id: String(deal.id || '').trim(),
@@ -1904,14 +1911,14 @@ const Proposals = {
       customer_contact_email: String(deal.contact_email || deal.contactEmail || deal.email || '').trim(),
       company_id: String(deal.company_id || deal.companyId || '').trim(),
       company_name: String(deal.company_name || deal.companyName || '').trim(),
-      contact_id: String(deal.contact_id || deal.contactId || '').trim(),
+      contact_id: String(dealContactId || '').trim(),
       contact_name: String(deal.contact_name || deal.contactName || fullName || '').trim(),
       contact_email: String(deal.contact_email || deal.contactEmail || deal.email || '').trim(),
       contact_phone: String(deal.contact_phone || deal.contactPhone || deal.phone || '').trim(),
       currency: String(deal.currency || '').trim(),
       company_id: String(selectedCompany?.id || deal.company_id || deal.companyId || '').trim(),
       company_name: String(selectedCompany?.company_name || deal.company_name || deal.companyName || '').trim(),
-      contact_id: String(selectedContact?.id || deal.contact_id || deal.contactId || '').trim(),
+      contact_id: String(selectedContact?.id || dealContactId || '').trim(),
       contact_name: this.buildContactDisplayName(selectedContact || {}) || fullName,
       contact_email: String(selectedContact?.email || deal.contact_email || deal.contactEmail || deal.email || '').trim(),
       contact_phone: String(selectedContact?.mobile || selectedContact?.phone || deal.contact_phone || deal.contactPhone || deal.phone || '').trim(),
