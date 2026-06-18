@@ -38,15 +38,26 @@ create table if not exists public.user_push_subscriptions (
   role text,
   email text,
   user_agent text,
-  device_label text,
-  origin text,
   app_context text,
+  permission_status text,
+  device_label text,
+  browser_name text,
+  origin text,
   is_active boolean not null default true,
   last_seen_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique(user_id, endpoint)
 );
+
+alter table public.user_push_subscriptions add column if not exists user_agent text;
+alter table public.user_push_subscriptions add column if not exists app_context text;
+alter table public.user_push_subscriptions add column if not exists permission_status text;
+alter table public.user_push_subscriptions add column if not exists device_label text;
+alter table public.user_push_subscriptions add column if not exists browser_name text;
+alter table public.user_push_subscriptions add column if not exists is_active boolean not null default true;
+alter table public.user_push_subscriptions add column if not exists last_seen_at timestamptz;
+alter table public.user_push_subscriptions add column if not exists updated_at timestamptz not null default now();
 
 create table if not exists public.notification_delivery_queue (
   id uuid primary key default gen_random_uuid(),
