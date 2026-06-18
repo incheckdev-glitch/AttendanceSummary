@@ -3425,3 +3425,85 @@ body.pf-modal-open{overflow:hidden}.pf-activity-modal[hidden],.pf-note-modal[hid
 .biners-entry-error[hidden] { display:none; }
 .biners-field-error { color:#b91c1c; font-size:11px; font-weight:600; letter-spacing:0; }
 #binersEntryForm [aria-invalid="true"] { border-color:#dc2626; box-shadow:0 0 0 2px rgba(220,38,38,.12); }
+
+/* Communication Centre Message Info */
+.cc-message-time-link,
+.cc-message-info-trigger {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
+.cc-message-status.cc-message-info-trigger {
+  display: inline-flex;
+  gap: 4px;
+  margin-top: 4px;
+  text-decoration: none;
+}
+.cc-message-status.read { color: #2563eb; }
+.cc-message-status.received { color: #475569; }
+.cc-message-status.sent { color: #64748b; }
+.cc-message-info-drawer[hidden] { display: none; }
+.cc-message-info-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.35);
+  z-index: 1050;
+}
+.cc-message-info-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(460px, 100vw);
+  overflow: auto;
+  background: #fff;
+  box-shadow: -18px 0 40px rgba(15, 23, 42, 0.22);
+  z-index: 1051;
+  padding: 20px;
+}
+.cc-message-info-panel header,
+.cc-message-info-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.cc-message-info-preview,
+.cc-message-info-meta,
+.cc-message-info-section {
+  border-top: 1px solid #e5e7eb;
+  margin-top: 16px;
+  padding-top: 16px;
+}
+.cc-message-info-meta div,
+.cc-message-info-row {
+  margin-bottom: 12px;
+}
+.cc-message-info-meta dt {
+  color: #64748b;
+  font-size: 12px;
+}
+.cc-message-info-meta dd {
+  margin: 2px 0 0;
+}
+.cc-message-info-row strong,
+.cc-message-info-row span,
+.cc-message-info-row small,
+.cc-message-info-row time {
+  display: block;
+}
+.cc-message-info-row time {
+  color: #64748b;
+  font-size: 12px;
+  text-align: right;
+  margin-top: 4px;
+}
+.cc-message-info-badge.failed { color: #b42318; background: #fee4e2; }
+.cc-message-info-badge.read { color: #1d4ed8; background: #dbeafe; }
+.cc-message-info-badge.delivered { color: #166534; background: #dcfce7; }
+.cc-message-info-badge.sent { color: #475569; background: #f1f5f9; }
