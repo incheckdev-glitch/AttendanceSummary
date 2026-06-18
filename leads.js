@@ -95,6 +95,33 @@ const Leads = {
       notes: String(this.pick(raw, 'notes')).trim()
     };
   },
+
+  getLeadContactId(lead = {}) {
+    return (
+      lead.contact_id ||
+      lead.customer_contact_id ||
+      lead.client_contact_id ||
+      lead.primary_contact_id ||
+      lead.selected_contact_id ||
+      null
+    );
+  },
+  async loadLeadContactForDealConversion(lead = {}) {
+    const leadContactId = this.getLeadContactId(lead);
+    if (!leadContactId) return null;
+    const contactsTable = 'contacts';
+    const { data, error } = await this.getClient()
+      .from(contactsTable)
+      .select('*')
+      .eq('id', leadContactId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Failed to load lead contact during deal conversion:', error);
+    }
+
+    return data || null;
+  },
   normalizeBool(value) {
     const normalized = String(value ?? '')
       .trim()
@@ -668,7 +695,7 @@ const Leads = {
     if (error) throw this.toSupabaseError('Unable to check existing deal', error);
     return Array.isArray(data) && data.length ? data[0] : null;
   },
-  buildDealFromLead(lead, company = {}) {
+  buildDealFromLead(lead, company = {}, selectedContact = null) {
     const converter = this.currentConverterIdentity();
     const convertedAt = new Date().toISOString();
     const estimatedValueNumber =
@@ -681,14 +708,42 @@ const Leads = {
       lead_code: String(lead.lead_id || '').trim(),
       full_name: lead.full_name,
       company_name: company.company_name || lead.company_name,
-      company_id: company.company_id || lead.company_id,
+      company_id: lead.company_id || lead.customer_company_id || lead.client_company_id || company.company_id || null,
       customer_name: legalCustomerName,
       customer_legal_name: legalCustomerName,
       customer_address: String(company.address || lead.customer_address || '').trim(),
-      contact_id: lead.contact_id,
-      contact_name: lead.contact_name,
-      contact_email: lead.contact_email,
-      contact_phone: lead.contact_phone,
+      contact_id: this.getLeadContactId(lead),
+      customer_contact_id: this.getLeadContactId(lead),
+      contact_name:
+        selectedContact?.full_name ||
+        selectedContact?.contact_name ||
+        selectedContact?.name ||
+        [selectedContact?.first_name, selectedContact?.last_name].filter(Boolean).join(' ') ||
+        lead.contact_name ||
+        lead.customer_contact_name ||
+        '',
+      contact_email:
+        selectedContact?.email ||
+        selectedContact?.contact_email ||
+        selectedContact?.work_email ||
+        lead.contact_email ||
+        lead.customer_contact_email ||
+        '',
+      contact_phone:
+        selectedContact?.phone ||
+        selectedContact?.mobile ||
+        selectedContact?.mobile_number ||
+        lead.contact_phone ||
+        lead.customer_contact_phone ||
+        '',
+      contact_title:
+        selectedContact?.title ||
+        selectedContact?.job_title ||
+        selectedContact?.position ||
+        selectedContact?.designation ||
+        lead.contact_title ||
+        lead.customer_contact_title ||
+        '',
       phone: lead.phone,
       email: lead.email,
       country: lead.country,
@@ -2334,7 +2389,8 @@ const Leads = {
       console.log('[deal conversion] business lead code', sourceLead.lead_id);
       const existingDeal = await this.findDealByLeadUuid(sourceLead.id);
       const fullCompany = sourceLead.company_id ? await this.getFullCompanyRecord(sourceLead.company_id) : null;
-      const payload = this.sanitizeDealCreatePayloadForConversion(this.buildDealFromLead(sourceLead, fullCompany || {}));
+      const selectedContact = await this.loadLeadContactForDealConversion(sourceLead);
+      const payload = this.sanitizeDealCreatePayloadForConversion(this.buildDealFromLead(sourceLead, fullCompany || {}, selectedContact));
       console.log('[lead->deal] sanitized deal payload', payload);
       const savedDeal =
         existingDeal ||

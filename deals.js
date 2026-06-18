@@ -169,10 +169,13 @@ const Deals = {
         }
       ),
       customer_address: String(pick(source.customer_address, source.customerAddress, lead.customer_address, lead.customerAddress)).trim(),
-      contact_id: String(pick(source.contact_id, source.contactId, lead.contact_id, lead.contactId)).trim(),
+      contact_id: String(pick(source.contact_id, source.contactId, source.customer_contact_id, source.customerContactId, source.client_contact_id, source.clientContactId, lead.contact_id, lead.contactId)).trim(),
+      customer_contact_id: String(pick(source.customer_contact_id, source.customerContactId, source.contact_id, source.contactId, lead.customer_contact_id, lead.customerContactId, lead.contact_id, lead.contactId)).trim(),
+      client_contact_id: String(pick(source.client_contact_id, source.clientContactId, lead.client_contact_id, lead.clientContactId)).trim(),
       contact_name: String(pick(source.contact_name, source.contactName, lead.contact_name, lead.contactName, source.full_name)).trim(),
       contact_email: String(pick(source.contact_email, source.contactEmail, lead.contact_email, lead.contactEmail, source.email)).trim(),
       contact_phone: String(pick(source.contact_phone, source.contactPhone, lead.contact_phone, lead.contactPhone, source.phone)).trim(),
+      contact_title: String(pick(source.contact_title, source.contactTitle, lead.contact_title, lead.contactTitle)).trim(),
       phone: String(pick(source.phone, lead.phone)).trim(),
       email: String(pick(source.email, lead.email)).trim(),
       country: String(pick(source.country, lead.country)).trim(),
@@ -255,9 +258,12 @@ const Deals = {
       company_id: toTextOrEmpty(['company_id', 'companyId']),
       company_name: toTextOrEmpty(['company_name', 'companyName']),
       contact_id: toTextOrEmpty(['contact_id', 'contactId']),
+      customer_contact_id: toTextOrEmpty(['customer_contact_id', 'customerContactId']),
+      client_contact_id: toTextOrEmpty(['client_contact_id', 'clientContactId']),
       contact_name: toTextOrEmpty(['contact_name', 'contactName']),
       contact_email: toTextOrEmpty(['contact_email', 'contactEmail']),
       contact_phone: toTextOrEmpty(['contact_phone', 'contactPhone']),
+      contact_title: toTextOrEmpty(['contact_title', 'contactTitle']),
       phone: toTextOrEmpty(['phone']),
       email: toTextOrEmpty(['email']),
       country: toTextOrEmpty(['country']),
@@ -1245,8 +1251,17 @@ const Deals = {
       const has = contactIdOrRecord.first_name || contactIdOrRecord.firstName || contactIdOrRecord.last_name || contactIdOrRecord.lastName || contactIdOrRecord.job_title || contactIdOrRecord.jobTitle || contactIdOrRecord.department || contactIdOrRecord.decision_role || contactIdOrRecord.decisionRole || contactIdOrRecord.contact_status || contactIdOrRecord.contactStatus;
       if (has) return this.normalizeContact(contactIdOrRecord);
     }
-    const contactId = typeof contactIdOrRecord === 'object' ? (contactIdOrRecord.contact_id || contactIdOrRecord.contactId) : contactIdOrRecord;
+    const contactId = typeof contactIdOrRecord === 'object' ? (contactIdOrRecord.id || contactIdOrRecord.contact_uuid || contactIdOrRecord.contactUuid || contactIdOrRecord.contact_id || contactIdOrRecord.contactId) : contactIdOrRecord;
     if (!contactId) return null;
+    if (this.isUuid(contactId)) {
+      const { data, error } = await this.getClient()
+        .from('contacts')
+        .select('*')
+        .eq('id', contactId)
+        .maybeSingle();
+      if (!error && data) return this.normalizeContact(data);
+      if (error) console.warn('[deals] contact lookup by deal contact_id failed', { contactId, error });
+    }
     const response = await Api.requestWithSession('contacts','list',{ filters:{ contact_id: contactId }, limit:1 },{ requireAuth:true });
     const rows = response?.rows || response?.items || response?.data || [];
     const row = Array.isArray(rows) ? (rows[0] || null) : (rows || null);
