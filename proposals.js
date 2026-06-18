@@ -67,6 +67,7 @@ const Proposals = {
     'company_id',
     'company_name',
     'contact_id',
+    'customer_contact_id',
     'contact_name',
     'contact_email',
     'contact_phone',
@@ -1895,6 +1896,8 @@ const Proposals = {
       deal.customer_contact_id ||
       deal.client_contact_id ||
       deal.primary_contact_id ||
+      deal.selected_contact_id ||
+      deal.contact_uuid ||
       deal.contactId ||
       null;
     const selectedContact = await this.getFullContactRecord(dealContactId || {});
@@ -1909,6 +1912,7 @@ const Proposals = {
       customer_contact_name: fullName,
       customer_contact_mobile: String(deal.contact_phone || deal.contactPhone || deal.phone || '').trim(),
       customer_contact_email: String(deal.contact_email || deal.contactEmail || deal.email || '').trim(),
+      customer_contact_id: String(dealContactId || '').trim(),
       company_id: String(deal.company_id || deal.companyId || '').trim(),
       company_name: String(deal.company_name || deal.companyName || '').trim(),
       contact_id: String(dealContactId || '').trim(),
@@ -1919,6 +1923,7 @@ const Proposals = {
       company_id: String(selectedCompany?.id || deal.company_id || deal.companyId || '').trim(),
       company_name: String(selectedCompany?.company_name || deal.company_name || deal.companyName || '').trim(),
       contact_id: String(selectedContact?.id || dealContactId || '').trim(),
+      customer_contact_id: String(selectedContact?.id || dealContactId || '').trim(),
       contact_name: this.buildContactDisplayName(selectedContact || {}) || fullName,
       contact_email: String(selectedContact?.email || deal.contact_email || deal.contactEmail || deal.email || '').trim(),
       contact_phone: String(selectedContact?.mobile || selectedContact?.phone || deal.contact_phone || deal.contactPhone || deal.phone || '').trim(),
