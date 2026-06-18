@@ -8122,7 +8122,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         .select('*', { count: 'exact' })
         .eq('recipient_user_id', currentUserId);
       query = applyFilters(query, payload, { resource: 'notifications' });
-      if (mode === 'unread') query = query.eq('is_read', false);
+      if (mode === 'unread') query = query.eq('is_read', false).or('status.is.null,status.not.in.(read,seen,opened,done)');
       if (mode === 'read') query = query.eq('is_read', true);
       if (mode === 'high') query = query.eq('priority', 'high');
       if (mode === 'approvals') query = query.or('type.ilike.%approval%,resource.ilike.%workflow%');
@@ -8283,7 +8283,8 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         .from('notifications')
         .select('notification_id', { count: 'exact', head: true })
         .eq('recipient_user_id', currentUserId)
-        .eq('is_read', false);
+        .eq('is_read', false)
+        .or('status.is.null,status.not.in.(read,seen,opened,done)');
       if (error) throw friendlyError('Unable to load unread notification count', error);
       const unread = Number(count || 0);
       return { handled: true, data: { unread_count: unread, count: unread } };
@@ -8310,7 +8311,8 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         .from('notifications')
         .update({ is_read: true, status: 'read', read_at: new Date().toISOString() })
         .eq('recipient_user_id', currentUserId)
-        .eq('is_read', false);
+        .eq('is_read', false)
+        .or('status.is.null,status.not.in.(read,seen,opened,done)');
       if (error) throw friendlyError('Unable to mark all notifications as read', error);
       return { handled: true, data: { ok: true } };
     }
