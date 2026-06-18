@@ -610,19 +610,27 @@
       const value = String(endpoint || '').trim();
       if (!value) throw new Error('Missing push endpoint.');
       const client = global.SupabaseClient.getClient();
-      const { data, error } = await client
+      const currentUserId = String(global.Session?.userId?.() || '').trim();
+      let query = client
         .from('user_push_subscriptions')
-        .select('endpoint,is_active,app_context')
-        .eq('endpoint', value)
+        .select('*')
         .eq('is_active', true)
-        .eq('app_context', 'erp')
-        .limit(1)
-        .maybeSingle();
-      if (error) throw error;
-      if (!data?.endpoint) {
-        throw new Error('Push subscription registration could not be verified.');
+        .eq('app_context', 'erp');
+
+      if (currentUserId) {
+        query = query.eq('user_id', currentUserId);
+      } else {
+        query = query.eq('endpoint', value);
       }
-      return data;
+
+      const { data, error } = await query;
+      if (error) throw error;
+      const activeRows = Array.isArray(data) ? data : [];
+      const matchingEndpoint = activeRows.find(row => String(row.endpoint || '') === value);
+      if (!activeRows.length || !matchingEndpoint) {
+        throw new Error('Push permission is enabled, but no active subscription was saved.');
+      }
+      return matchingEndpoint;
     },
 
     async markSubscriptionInactive(endpoint = '') {

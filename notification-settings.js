@@ -304,17 +304,39 @@ const NotificationSetup = {
             conversation_title: 'Test Conversation',
           },
         });
-        if (typeof window.processNotificationDeliveryQueue === 'function') {
-          await window.processNotificationDeliveryQueue({
-            supabase,
-            sendEmail: payload => fetch('/api/proxy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ resource: 'notifications', action: 'send_email', ...payload }) }),
-            sendPush: payload => window.Api.sendWebPush ? window.Api.sendWebPush(payload, { context: 'notification-setup-test' }) : Promise.resolve({ skipped: true })
-          });
+        const sessionResult = await supabase.auth.getSession();
+        const accessToken = String(sessionResult?.data?.session?.access_token || '').trim();
+        const processResponse = await fetch('/api/notifications/process-queue', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
+          },
+          body: JSON.stringify({ source: 'notification-setup-test' })
+        });
+        const processResult = await processResponse.json().catch(() => ({}));
+        if (!processResponse.ok || processResult?.ok === false) {
+          throw new Error(processResult?.error || 'Notification queue worker failed.');
         }
-        const { data: logs } = await supabase.from('notification_delivery_logs').select('*').eq('event_key', selectedEvent.event_key || selectedEvent.action).order('created_at', { ascending: false }).limit(10);
-        const pwaLog = (logs || []).find(row => row.channel === 'pwa');
-        const emailLog = (logs || []).find(row => row.channel === 'email');
-        UI.toast(`Test notification result — In-app: created (${Array.isArray(dispatchResult) ? dispatchResult.length : 0}) · PWA: ${pwaLog?.status || 'queued/skipped'} · Email: ${emailLog?.status || 'queued/skipped'}`);
+
+        const eventKey = selectedEvent.event_key || selectedEvent.action;
+        const { data: queueRows } = await supabase
+          .from('notification_delivery_queue')
+          .select('id,channel,status,last_error,updated_at,created_at')
+          .eq('event_key', eventKey)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        const { data: logs } = await supabase.from('notification_delivery_logs').select('*').eq('event_key', eventKey).order('created_at', { ascending: false }).limit(10);
+        const queueByChannel = channel => (queueRows || []).find(row => row.channel === channel) || null;
+        const logByChannel = channel => (logs || []).find(row => row.channel === channel) || null;
+        const formatChannel = channel => {
+          const queueRow = queueByChannel(channel);
+          const logRow = logByChannel(channel);
+          const status = queueRow?.status || logRow?.status || 'not queued';
+          const errorMessage = queueRow?.last_error || logRow?.error_message || '';
+          return `${status}${errorMessage ? ` (${errorMessage})` : ''}`;
+        };
+        UI.toast(`Test notification result — In-app: created (${Array.isArray(dispatchResult) ? dispatchResult.length : 0}) · Email: ${formatChannel('email')} · PWA: ${formatChannel('pwa')}`);
       } catch (error) {
         UI.toast(String(error?.message || 'Unable to test rule.'));
       }
