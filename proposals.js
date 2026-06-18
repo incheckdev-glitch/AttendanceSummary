@@ -891,8 +891,13 @@ const Proposals = {
       industry: String(c.industry || '').trim(),
       website: String(c.website || '').trim(),
       company_status: String(c.company_status || c.companyStatus || c.status || '').trim(),
-      authorized_signatory_full_name: String(c.authorized_signatory_full_name || c.authorizedSignatoryFullName || c.authorized_signatory_name || c.authorizedSignatoryName || c.signatory_name || c.signatoryName || '').trim(),
-      authorized_signatory_title: String(c.authorized_signatory_title || c.authorizedSignatoryTitle || c.signatory_title || c.signatoryTitle || '').trim()
+      authorized_signatory_full_name: String(c.authorized_signatory_full_name || c.authorizedSignatoryFullName || c.authorized_signatory_name || c.authorizedSignatoryName || c.signatory_name || c.signatoryName || c.customer_signatory_name || c.customerSignatoryName || c.customer_authorized_signatory_name || c.customerAuthorizedSignatoryName || c.authorized_person_name || c.authorizedPersonName || '').trim(),
+      authorized_signatory_name: String(c.authorized_signatory_name || c.authorizedSignatoryName || c.authorized_signatory_full_name || c.authorizedSignatoryFullName || c.signatory_name || c.signatoryName || c.customer_signatory_name || c.customerSignatoryName || c.customer_authorized_signatory_name || c.customerAuthorizedSignatoryName || c.authorized_person_name || c.authorizedPersonName || '').trim(),
+      authorized_signatory_title: String(c.authorized_signatory_title || c.authorizedSignatoryTitle || c.signatory_title || c.signatoryTitle || c.customer_signatory_title || c.customerSignatoryTitle || c.customer_authorized_signatory_title || c.customerAuthorizedSignatoryTitle || c.authorized_person_title || c.authorizedPersonTitle || '').trim(),
+      customer_signatory_name: String(c.customer_signatory_name || c.customerSignatoryName || '').trim(),
+      customer_signatory_title: String(c.customer_signatory_title || c.customerSignatoryTitle || '').trim(),
+      authorized_person_name: String(c.authorized_person_name || c.authorizedPersonName || '').trim(),
+      authorized_person_title: String(c.authorized_person_title || c.authorizedPersonTitle || '').trim()
     };
   },
   normalizeContact(contact = {}) {
@@ -1409,15 +1414,57 @@ const Proposals = {
         company?.authorizedSignatoryName ||
         company?.authorized_signatory_full_name ||
         company?.authorizedSignatoryFullName ||
-        company?.customer_authorized_signatory_name ||
         company?.signatory_name ||
+        company?.signatoryName ||
+        company?.customer_signatory_name ||
+        company?.customerSignatoryName ||
+        company?.customer_authorized_signatory_name ||
+        company?.customerAuthorizedSignatoryName ||
+        company?.authorized_person_name ||
+        company?.authorizedPersonName ||
         ''
       ).trim(),
       title: String(
         company?.authorized_signatory_title ||
         company?.authorizedSignatoryTitle ||
-        company?.customer_authorized_signatory_title ||
         company?.signatory_title ||
+        company?.signatoryTitle ||
+        company?.customer_signatory_title ||
+        company?.customerSignatoryTitle ||
+        company?.customer_authorized_signatory_title ||
+        company?.customerAuthorizedSignatoryTitle ||
+        company?.authorized_person_title ||
+        company?.authorizedPersonTitle ||
+        ''
+      ).trim()
+    };
+  },
+  resolveProposalCustomerSignatory(proposal = {}, company = {}) {
+    const companySignatory = this.resolveCompanyAuthorizedSignatory(company);
+    return {
+      name: String(
+        proposal?.customer_signatory_name ||
+        proposal?.customer_signatory_Name ||
+        proposal?.customerSignatoryName ||
+        proposal?.customer_authorized_signatory_name ||
+        proposal?.customerAuthorizedSignatoryName ||
+        proposal?.customer_signature_name ||
+        proposal?.customerSignatureName ||
+        proposal?.authorized_signatory_name ||
+        proposal?.authorizedSignatoryName ||
+        companySignatory.name ||
+        ''
+      ).trim(),
+      title: String(
+        proposal?.customer_signatory_title ||
+        proposal?.customerSignatoryTitle ||
+        proposal?.customer_authorized_signatory_title ||
+        proposal?.customerAuthorizedSignatoryTitle ||
+        proposal?.customer_signature_title ||
+        proposal?.customerSignatureTitle ||
+        proposal?.authorized_signatory_title ||
+        proposal?.authorizedSignatoryTitle ||
+        companySignatory.title ||
         ''
       ).trim()
     };
@@ -1441,11 +1488,11 @@ const Proposals = {
       ''
     ).trim();
     if (locked) return { name: existingName, title: existingTitle };
-    const contactSigner = { name: this.getContactDisplayName(contact), title: this.getContactTitle(contact) };
     const companySigner = this.resolveCompanyAuthorizedSignatory(company);
+    const contactSigner = { name: this.getContactDisplayName(contact), title: this.getContactTitle(contact) };
     return {
-      name: existingName || contactSigner.name || companySigner.name,
-      title: existingTitle || contactSigner.title || companySigner.title
+      name: existingName || companySigner.name || contactSigner.name,
+      title: existingTitle || companySigner.title || contactSigner.title
     };
   },
   applyProposalContactSignatory(contact, options = {}) {
@@ -2533,22 +2580,9 @@ const Proposals = {
       position: proposalData.contact_position || proposalData.position || '',
       job_title: proposalData.contact_job_title || proposalData.job_title || ''
     };
-    const fallbackCompanySigner = this.resolveCompanyAuthorizedSignatory(proposalData.company || proposalData);
-    const customerSignatoryName = String(
-      proposalData.customer_signatory_name ||
-      proposalData.customer_signatory_Name ||
-      proposalData.customer_signature_name ||
-      this.getContactDisplayName(proposalContact) ||
-      fallbackCompanySigner.name ||
-      ''
-    ).trim();
-    const customerSignatoryTitle = String(
-      proposalData.customer_signatory_title ||
-      proposalData.customer_signature_title ||
-      this.getContactTitle(proposalContact) ||
-      fallbackCompanySigner.title ||
-      ''
-    ).trim();
+    const fallbackCompanySigner = this.resolveProposalCustomerSignatory(proposalData, proposalData.company || proposalData);
+    const customerSignatoryName = String(fallbackCompanySigner.name || this.getContactDisplayName(proposalContact) || '').trim();
+    const customerSignatoryTitle = String(fallbackCompanySigner.title || this.getContactTitle(proposalContact) || '').trim();
     const isPoc = this.normalizeTruthy(proposalData.is_poc || proposalData.isPoc);
     const pocDetailsHtml = isPoc ? `
       <section class="info-grid" style="margin-top:14px;grid-template-columns:1fr;">
@@ -4202,12 +4236,13 @@ const Proposals = {
       String(E.proposalFormCustomerName?.value || '').trim() ||
       String(selectedCompany.legal_name || selectedCompany.company_name || '').trim();
     const currentLockedSnapshot = this.isSignedOrAcceptedDocument(this.state.currentProposal || {});
+    const companySignatory = this.resolveCompanyAuthorizedSignatory(selectedCompany);
     const customerSignatoryNameValue = currentLockedSnapshot
       ? String(this.state.currentProposal?.customer_signatory_name || this.state.currentProposal?.customer_signatory_Name || this.state.currentProposal?.customer_signature_name || '').trim()
-      : (String(E.proposalFormCustomerSignatoryName?.value || '').trim() || this.getContactDisplayName(selectedContact));
+      : (String(E.proposalFormCustomerSignatoryName?.value || '').trim() || companySignatory.name || this.getContactDisplayName(selectedContact));
     const customerSignatoryTitleValue = currentLockedSnapshot
       ? String(this.state.currentProposal?.customer_signatory_title || this.state.currentProposal?.customer_signature_title || '').trim()
-      : (String(E.proposalFormCustomerSignatoryTitle?.value || '').trim() || this.getContactTitle(selectedContact));
+      : (String(E.proposalFormCustomerSignatoryTitle?.value || '').trim() || companySignatory.title || this.getContactTitle(selectedContact));
     return {
       proposal_id: String(E.proposalFormProposalId?.value || '').trim(),
       ref_number: this.ensureRefNumber(existingRefNumber),

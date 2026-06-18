@@ -727,23 +727,62 @@ const Agreements = {
         company?.authorizedSignatoryName ||
         company?.authorized_signatory_full_name ||
         company?.authorizedSignatoryFullName ||
-        company?.customer_authorized_signatory_name ||
         company?.signatory_name ||
+        company?.signatoryName ||
         company?.customer_signatory_name ||
+        company?.customerSignatoryName ||
+        company?.customer_authorized_signatory_name ||
+        company?.customerAuthorizedSignatoryName ||
+        company?.authorized_person_name ||
+        company?.authorizedPersonName ||
         ''
       ).trim(),
       title: String(
         company?.authorized_signatory_title ||
         company?.authorizedSignatoryTitle ||
-        company?.customer_authorized_signatory_title ||
         company?.signatory_title ||
+        company?.signatoryTitle ||
         company?.customer_signatory_title ||
+        company?.customerSignatoryTitle ||
+        company?.customer_authorized_signatory_title ||
+        company?.customerAuthorizedSignatoryTitle ||
+        company?.authorized_person_title ||
+        company?.authorizedPersonTitle ||
         company?.contact?.position ||
         ''
       ).trim()
     };
   },
+  resolveProposalCustomerSignatory(proposal = {}, company = {}) {
+    const companySignatory = this.resolveCompanyAuthorizedSignatory(company);
+    return {
+      name: String(
+        proposal?.customer_signatory_name ||
+        proposal?.customer_signatory_Name ||
+        proposal?.customerSignatoryName ||
+        proposal?.customer_authorized_signatory_name ||
+        proposal?.customerAuthorizedSignatoryName ||
+        proposal?.authorized_signatory_name ||
+        proposal?.authorizedSignatoryName ||
+        companySignatory.name ||
+        ''
+      ).trim(),
+      title: String(
+        proposal?.customer_signatory_title ||
+        proposal?.customerSignatoryTitle ||
+        proposal?.customer_authorized_signatory_title ||
+        proposal?.customerAuthorizedSignatoryTitle ||
+        proposal?.authorized_signatory_title ||
+        proposal?.authorizedSignatoryTitle ||
+        companySignatory.title ||
+        ''
+      ).trim()
+    };
+  },
   resolveAgreementCustomerSignatory(agreement = {}, company = {}) {
+    const isSigned = ['signed', 'active', 'executed'].includes(
+      String(agreement.status || agreement.agreement_status || '').toLowerCase()
+    );
     const savedName = String(
       agreement.customer_signatory_Name ||
       agreement.customer_signatory_name ||
@@ -752,7 +791,6 @@ const Agreements = {
       agreement.authorized_signatory_name ||
       ''
     ).trim();
-
     const savedTitle = String(
       agreement.customer_signatory_title ||
       agreement.customer_authorized_signatory_title ||
@@ -760,32 +798,9 @@ const Agreements = {
       agreement.authorized_signatory_title ||
       ''
     ).trim();
-
-    const companyName = String(
-      company.authorized_signatory_name ||
-      company.authorizedSignatoryName ||
-      company.authorized_signatory_full_name ||
-      company.authorizedSignatoryFullName ||
-      company.customer_authorized_signatory_name ||
-      company.signatory_name ||
-      company.customer_signatory_name ||
-      ''
-    ).trim();
-
-    const companyTitle = String(
-      company.authorized_signatory_title ||
-      company.authorizedSignatoryTitle ||
-      company.customer_authorized_signatory_title ||
-      company.signatory_title ||
-      company.customer_signatory_title ||
-      company.contact?.position ||
-      ''
-    ).trim();
-
-    return {
-      name: savedName || companyName,
-      title: savedTitle || companyTitle
-    };
+    if (isSigned && (savedName || savedTitle)) return { name: savedName, title: savedTitle };
+    const companySignatory = this.resolveCompanyAuthorizedSignatory(company);
+    return { name: savedName || companySignatory.name || '', title: savedTitle || companySignatory.title || '' };
   },
   getCompanyAuthorizedSignatory(company = {}) {
     return this.resolveCompanyAuthorizedSignatory(company);
@@ -1780,7 +1795,7 @@ const Agreements = {
       source.payment_term || source.payment_terms || source.paymentTerm || source.paymentTerms,
       'Net 30'
     );
-    const proposalSignatorySnapshot = this.resolveCustomerSignatorySnapshot(source, {});
+    const proposalSignatorySnapshot = this.resolveProposalCustomerSignatory(source, source.company || source);
     const draft = this.normalizeAgreement({
       ...this.emptyAgreement(),
       proposal_id: proposalUuid,
