@@ -22,7 +22,9 @@ const Contacts = {
     sortBy: 'created_at',
     sortDir: 'desc',
     companyId: '',
-    companyName: ''
+    companyName: '',
+    selectedCompanyIds: [],
+    companyOptions: []
   },
 
   setCompanyFilter(companyId = '', companyName = '') {
@@ -212,8 +214,12 @@ const Contacts = {
     if (this._formBound) return;
     this._formBound = true;
     document.getElementById('contactForm')?.addEventListener('submit', e => this.submitForm(e));
-    document.getElementById('contactCompanyInput')?.addEventListener('focus', () => this.ensureCompanyOptions(this.state.currentContact || {}, '').catch(error => console.error('[contacts] company picker refresh on open failed', error)));
-    window.CrmCompanyContactSelectors?.bindCompanyRemoteSearch?.(document.getElementById('contactCompanyInput'), searchText => this.ensureCompanyOptions(this.state.currentContact || {}, searchText));
+    const companyInput = document.getElementById('contactCompanyInput');
+    if (companyInput) companyInput.addEventListener('change', () => {
+      this.state.selectedCompanyIds = this.getSelectedCompanies().map(company => company.company_id);
+      this.renderSelectedCompanyChips();
+    });
+    window.CrmCompanyContactSelectors?.bindCompanyRemoteSearch?.(companyInput, searchText => this.ensureCompanyOptions(this.state.currentContact || {}, searchText));
     window.addEventListener('crm:company-saved', event => {
       if (document.getElementById('contactModal')?.getAttribute('aria-hidden') === 'true') return;
       const companyId = String(event?.detail?.companyId || event?.detail?.company?.id || '').trim();
@@ -236,7 +242,10 @@ const Contacts = {
 
     const { rows, unavailable, error } = await this.loadCompanyOptionsSafe(searchText || '');
     const normalizedExisting = this.normalize(existing || {});
-    const existingIds = normalizedExisting.company_ids.length ? normalizedExisting.company_ids : [normalizedExisting.company_id || this.state.companyId].filter(Boolean);
+    const existingIds = [
+      ...(normalizedExisting.company_ids.length ? normalizedExisting.company_ids : [normalizedExisting.company_id || this.state.companyId].filter(Boolean)),
+      ...this.state.selectedCompanyIds
+    ].filter(Boolean);
     const resolvedExistingIds = (await Promise.all(existingIds.map(companyId => window.CrmCompanyContactSelectors?.resolveCompanyUuid?.(companyId)))).filter(Boolean);
     const rowIds = new Set(rows.map(r => this.companyRelationId(r)).filter(Boolean));
     const mergedRows = [...rows];
@@ -246,7 +255,11 @@ const Contacts = {
       rowIds.add(companyId);
     });
 
-    select.innerHTML = mergedRows.map(r => `<option value="${U.escapeAttr(this.companyRelationId(r))}">${U.escapeHtml(r.legal_name || r.company_name || r.name || this.companyRelationId(r))}</option>`).join('');
+    this.state.companyOptions = mergedRows.map(r => ({
+      id: this.companyRelationId(r),
+      name: r.legal_name || r.company_name || r.name || this.companyRelationId(r)
+    })).filter(company => company.id);
+    select.innerHTML = this.state.companyOptions.map(r => `<option value="${U.escapeAttr(r.id)}">${U.escapeHtml(r.name)}</option>`).join('');
     const companyListDenied = unavailable && this.isCompanyListPermissionError(error);
     if (!mergedRows.length || companyListDenied) {
       select.disabled = true;
@@ -255,6 +268,7 @@ const Contacts = {
       select.disabled = false;
       this.setCompanyFallbackMessage('');
     }
+    this.setSelectedCompanies(this.state.selectedCompanyIds);
     return mergedRows;
   },
 
@@ -263,6 +277,17 @@ const Contacts = {
     if (!select) return;
     const ids = new Set((Array.isArray(companyIds) ? companyIds : [companyIds]).map(v => String(v || '').trim()).filter(Boolean));
     Array.from(select.options).forEach(option => { option.selected = ids.has(option.value); });
+    this.state.selectedCompanyIds = Array.from(ids);
+    this.renderSelectedCompanyChips();
+  },
+
+  renderSelectedCompanyChips() {
+    const container = document.getElementById('contactSelectedCompanies');
+    if (!container) return;
+    const selected = this.state.companyOptions.filter(company => this.state.selectedCompanyIds.includes(company.id));
+    container.innerHTML = selected.length
+      ? selected.map(company => `<span class='badge'>${U.escapeHtml(company.name)}</span>`).join('')
+      : "<span class='muted'>No companies selected</span>";
   },
 
   getSelectedCompanies() {
@@ -290,6 +315,105 @@ const Contacts = {
     return resolved;
   },
 
+
+  getSupabaseClient() {
+    return window.SupabaseClient?.getClient?.() || window.supabaseClient || window.supabase || null;
+  },
+
+  async loadContactCompanyAssignments(contactId, fallbackContact = {}) {
+    const client = this.getSupabaseClient();
+    const fallbackIds = this.normalizeCompanyIds(fallbackContact);
+    if (!client?.from || !contactId) return fallbackIds;
+    const { data, error } = await client
+      .from('contact_company_assignments')
+      .select('company_id, is_primary')
+      .eq('contact_id', contactId)
+      .order('is_primary', { ascending: false })
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    const ids = (data || []).map(row => String(row.company_id || '').trim()).filter(Boolean);
+    if (!ids.length && fallbackContact.company_id) return [fallbackContact.company_id];
+    return ids.length ? ids : fallbackIds;
+  },
+
+  async saveContactCompanyAssignments(contactId, resolvedCompanies = []) {
+    const client = this.getSupabaseClient();
+    const uniqueCompanyIds = [...new Set((resolvedCompanies || []).map(company => String(company.company_id || company || '').trim()).filter(Boolean))];
+    if (!client?.from || !contactId) {
+      await this.linkSavedContactToCompanies(contactId, resolvedCompanies);
+      return;
+    }
+    const { error: deleteError } = await client
+      .from('contact_company_assignments')
+      .delete()
+      .eq('contact_id', contactId);
+    if (deleteError) throw deleteError;
+    if (uniqueCompanyIds.length) {
+      const rows = uniqueCompanyIds.map((companyId, index) => ({
+        contact_id: contactId,
+        company_id: companyId,
+        is_primary: index === 0
+      }));
+      const { error: insertError } = await client
+        .from('contact_company_assignments')
+        .insert(rows);
+      if (insertError) throw insertError;
+    }
+    const primaryCompany = resolvedCompanies.find(company => company.company_id === uniqueCompanyIds[0]) || {};
+    const primaryCompanyId = primaryCompany.contact_company_fk_value || uniqueCompanyIds[0] || null;
+    const { error: updateError } = await client
+      .from('contacts')
+      .update({
+        company_id: primaryCompanyId,
+        company_ids: uniqueCompanyIds,
+        company_names: resolvedCompanies.map(company => company.company_name || company.company_id).filter(Boolean).join(', '),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', contactId);
+    if (updateError) throw updateError;
+    await this.linkSavedContactToCompanies(contactId, resolvedCompanies).catch(error => console.warn('[contacts] legacy contact-company link sync failed', error));
+  },
+
+  async hydrateRowsWithCompanyAssignments(rows = []) {
+    const client = this.getSupabaseClient();
+    const ids = rows.map(row => String(row.id || '').trim()).filter(Boolean);
+    if (!client?.from || !ids.length) return rows;
+    try {
+      const { data, error } = await client
+        .from('contact_company_assignments')
+        .select('contact_id, company_id, is_primary, companies(id, legal_name, company_name, name)')
+        .in('contact_id', ids);
+      if (error) throw error;
+      const byContact = new Map();
+      (data || []).forEach(row => {
+        const contactId = String(row.contact_id || '').trim();
+        if (!contactId) return;
+        if (!byContact.has(contactId)) byContact.set(contactId, []);
+        byContact.get(contactId).push(row);
+      });
+      return rows.map(row => {
+        const assignments = byContact.get(String(row.id || '').trim()) || [];
+        if (!assignments.length) return row;
+        const ordered = assignments.slice().sort((a, b) => Number(Boolean(b.is_primary)) - Number(Boolean(a.is_primary)));
+        const companyIds = ordered.map(item => String(item.company_id || '').trim()).filter(Boolean);
+        const companyNames = ordered.map(item => {
+          const company = item.companies || {};
+          return company.legal_name || company.company_name || company.name || item.company_id;
+        }).filter(Boolean);
+        return {
+          ...row,
+          company_id: companyIds[0] || row.company_id,
+          company_name: companyNames[0] || row.company_name,
+          company_ids: companyIds,
+          company_names: companyNames.join(', ')
+        };
+      });
+    } catch (error) {
+      console.warn('[contacts] contact-company assignment hydrate failed', error);
+      return rows;
+    }
+  },
+
   async linkSavedContactToCompanies(savedContactKey, resolvedCompanies = []) {
     const companyIds = (resolvedCompanies || []).map(c => c.company_id).filter(Boolean);
     if (!savedContactKey || !companyIds.length) return;
@@ -311,7 +435,8 @@ const Contacts = {
     document.getElementById('contactSaveBtn').textContent = isEdit ? 'Update Contact' : 'Save Contact';
     document.getElementById('contactRecordId').value = isEdit ? (data.id || '') : '';
     const set = (id, value = '') => { const el = document.getElementById(id); if (el) el.value = value || ''; };
-    const selectedCompanyIds = data.company_ids.length ? data.company_ids : [data.company_id || this.state.companyId];
+    this.state.currentContact = data;
+    const selectedCompanyIds = data.company_ids.length ? data.company_ids : [data.company_id || this.state.companyId].filter(Boolean);
     const companySelect = document.getElementById('contactCompanyInput');
     if (companySelect) {
       companySelect.disabled = true;
@@ -335,8 +460,9 @@ const Contacts = {
 
     this.ensureCompanyOptions(data)
       .then(async () => {
-        const resolvedIds = (await Promise.all((selectedCompanyIds || []).map(id => window.CrmCompanyContactSelectors?.resolveCompanyUuid?.(id)))).filter(Boolean);
-        this.setSelectedCompanies(resolvedIds.length ? resolvedIds : selectedCompanyIds);
+        const assignmentIds = isEdit && data.id ? await this.loadContactCompanyAssignments(data.id, data) : selectedCompanyIds;
+        const resolvedIds = (await Promise.all((assignmentIds || []).map(id => window.CrmCompanyContactSelectors?.resolveCompanyUuid?.(id)))).filter(Boolean);
+        this.setSelectedCompanies(resolvedIds.length ? resolvedIds : assignmentIds);
       })
       .catch(error => {
         console.warn('[contacts] company selector load failed after modal open', error);
@@ -348,6 +474,9 @@ const Contacts = {
     document.getElementById('contactForm')?.reset();
     document.getElementById('contactRecordId').value = '';
     document.getElementById('contactStatusInput').value = 'Active';
+    this.state.currentContact = null;
+    this.state.selectedCompanyIds = [];
+    this.renderSelectedCompanyChips();
     const modal = document.getElementById('contactModal');
     modal.style.display = 'none';
     modal.setAttribute('aria-hidden', 'true');
@@ -418,7 +547,7 @@ const Contacts = {
       const response = await Api.requestWithSession('contacts', action, body, { requireAuth: true });
       const savedRow = response?.data || response?.row || response?.contact || response || {};
       const savedContactKey = savedRow.id || savedRow.contact_uuid || savedRow.contact_id || recordId || payload.email || payload.full_name;
-      await this.linkSavedContactToCompanies(savedContactKey, selectedCompanies).catch(error => console.warn('[contacts] contact-company link sync failed', error));
+      await this.saveContactCompanyAssignments(savedContactKey, selectedCompanies);
       UI?.toast?.(recordId ? 'Contact updated' : 'Contact saved', 'success');
       this.closeForm();
       this.state.page = recordId ? this.state.page : 1;
@@ -440,7 +569,7 @@ const Contacts = {
       if (this.state.companyId) filters.company_id = this.state.companyId;
       const res = await Api.requestWithSession('contacts', 'list', { page: this.state.page, limit: this.state.limit, search: this.state.search, filters, sortBy: this.state.sortBy, sortDir: this.state.sortDir }, { requireAuth: true });
       const rows = Array.isArray(res?.rows) ? res.rows : Array.isArray(res) ? res : [];
-      this.state.rows = rows.map(r => this.normalize(r));
+      this.state.rows = await this.hydrateRowsWithCompanyAssignments(rows.map(r => this.normalize(r)));
       this.state.total = Number(res?.total ?? rows.length) || rows.length;
       this.render();
     } catch (e) {
