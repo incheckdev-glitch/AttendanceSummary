@@ -97,6 +97,7 @@ const Proposals = {
     'one_time_total',
     'grand_total',
     'terms_conditions',
+    'internal_notes',
     'customer_signatory_name',
     'customer_signatory_title',
     'customer_signature_name',
@@ -1738,6 +1739,7 @@ const Proposals = {
     normalized.customer_signatory_name = String(source.customer_signatory_name || source.customer_signatory_Name || source.customer_signature_name || source.customerSignatoryName || normalized.customer_signatory_name || '').trim();
     normalized.customer_signatory_title = String(source.customer_signatory_title || source.customer_signature_title || source.customerSignatoryTitle || normalized.customer_signatory_title || '').trim();
     normalized.customer_sign_date = String(source.customer_sign_date || source.customer_signed_at || source.customerSignDate || normalized.customer_sign_date || '').trim();
+    normalized.internal_notes = String(source.internal_notes ?? source.proposal_notes ?? source.internal_note ?? source.notes ?? normalized.internal_notes ?? '').trim();
     normalized.status = this.normalizeProposalStatus(normalized.status);
     normalized.provider_contact_name = this.providerContactDefaults.name;
     normalized.provider_contact_mobile = this.providerContactDefaults.mobile;
@@ -2286,6 +2288,10 @@ const Proposals = {
         sanitized[field] = this.normalizeDateForSave(sanitized[field]);
       }
     });
+    sanitized.internal_notes = String(sanitized.internal_notes ?? sanitized.proposal_notes ?? sanitized.internal_note ?? sanitized.notes ?? '').trim() || null;
+    delete sanitized.proposal_notes;
+    delete sanitized.internal_note;
+    delete sanitized.notes;
     sanitized.is_poc = this.normalizeTruthy(sanitized.is_poc);
     if (!sanitized.is_poc) {
       sanitized.poc_location_count = null;
@@ -3407,6 +3413,7 @@ const Proposals = {
       provider_signatory_title: '',
       provider_sign_date: '',
       terms_conditions: this.defaultProposalTermsAndConditions,
+      internal_notes: '',
       approved_annual_saas_discount_percent: '',
       approved_one_time_fee_discount_percent: '',
       approved_discount_percent: '',
@@ -3546,6 +3553,7 @@ const Proposals = {
     if (E.proposalFormPocServiceEndDate) E.proposalFormPocServiceEndDate.value = '';
     if (E.proposalFormPocSuccessKpis) E.proposalFormPocSuccessKpis.value = '';
     if (E.proposalFormPocConversionCommitment) E.proposalFormPocConversionCommitment.value = '';
+    if (E.proposalFormInternalNotes) E.proposalFormInternalNotes.value = '';
     this.syncPocDetailsVisibility();
     this.syncProposalAcceptedLockMessage(false);
   },
@@ -3618,6 +3626,7 @@ const Proposals = {
     set(E.proposalFormProviderSignatoryName, this.getProposalProviderSignatoryName(proposal));
     set(E.proposalFormProviderSignatoryTitle, this.getProposalProviderSignatoryTitle(proposal));
     set(E.proposalFormProviderSignDate, this.normalizeDateInputValue(proposal.provider_sign_date || ''));
+    set(E.proposalFormInternalNotes, proposal.internal_notes || proposal.proposal_notes || proposal.internal_note || proposal.notes || '');
     set(E.proposalFormTerms, proposal.terms_conditions || '');
     this.refreshSignedDocumentUi(proposal);
   },
@@ -4307,6 +4316,7 @@ const Proposals = {
       provider_signatory_title: String(E.proposalFormProviderSignatoryTitle?.value || mapped.provider_signatory_title || mapped.providerSignatoryTitle || providerRole).trim(),
       provider_sign_date: providerSignDateValue,
       terms_conditions: String(E.proposalFormTerms?.value || '').trim(),
+      internal_notes: String(E.proposalFormInternalNotes?.value || '').trim() || null,
       company_id: selectedCompany.company_id || '',
       company_name: selectedCompany.company_name || resolvedCustomerName || '',
       contact_id: selectedContact.contact_id || '',

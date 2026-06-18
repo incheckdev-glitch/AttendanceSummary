@@ -1026,7 +1026,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       'customer_contact_mobile', 'customer_contact_email', 'provider_contact_name', 'provider_contact_mobile',
       'provider_contact_email', 'proposal_title', 'proposal_date', 'proposal_valid_until', 'agreement_date',
       'effective_date', 'service_start_date', 'service_end_date', 'contract_term', 'account_number', 'billing_frequency', 'payment_term', 'po_number',
-      'currency', 'customer_legal_name', 'provider_name', 'provider_legal_name', 'terms_conditions',
+      'currency', 'customer_legal_name', 'provider_name', 'provider_legal_name', 'terms_conditions', 'internal_notes',
       'customer_official_signatory_name', 'customer_official_signatory_title', 'customer_official_sign_date',
       'customer_signatory_name', 'customer_signatory_title', 'provider_official_signatory_1_name', 'provider_official_signatory_1_title', 'provider_official_signatory_1_sign_date',
       'provider_official_signatory_2_name', 'provider_official_signatory_2_title', 'provider_official_signatory_2_sign_date', 'provider_signatory_name', 'provider_signatory_title',
