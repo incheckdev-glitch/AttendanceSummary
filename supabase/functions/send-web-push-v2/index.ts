@@ -622,7 +622,7 @@ async function deactivateSubscription(
   subscriptionId: string,
 ): Promise<boolean> {
   const { error } = await supabaseAdmin
-    .from("push_subscriptions")
+    .from("user_push_subscriptions")
     .update({
       is_active: false,
       updated_at: new Date().toISOString(),
@@ -654,7 +654,7 @@ async function fetchSubscriptions(
 
   for (let safety = 0; safety < 50; safety += 1) {
     let query = supabaseAdmin
-      .from("push_subscriptions")
+      .from("user_push_subscriptions")
       .select("id,user_id,email,role,endpoint,p256dh,auth")
       .eq("is_active", true)
       .range(from, from + pageSize - 1);
@@ -718,7 +718,7 @@ async function verifySubscriptionOwnership(
   if (subscriptionIds.length === 0) return true;
 
   const { data, error } = await supabaseAdmin
-    .from("push_subscriptions")
+    .from("user_push_subscriptions")
     .select("id,user_id")
     .in("id", subscriptionIds)
     .eq("is_active", true);

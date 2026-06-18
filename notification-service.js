@@ -617,7 +617,7 @@
     async sendBusinessNotification({ resource = '', action = '', eventKey = '', recordId = '', recordNumber = '', title = '', body = '', targetUsers = [], targetEmails = [], url = '', metadata = {}, channels = ['in_app', 'push', 'email'], roles = ['admin'] } = {}) {
       const normalizedResource = String(resource || '').trim();
       const normalizedAction = String(action || '').trim();
-      const normalizedEventKey = String(eventKey || `${normalizedResource}.${normalizedAction}`).trim();
+      const normalizedEventKey = String(eventKey || `${normalizedResource}_${normalizedAction}`).trim();
       if (!normalizedResource || !normalizedAction) return { attempted: false, skipped: true, reason: 'missing-resource-action' };
 
       let rules = [];
@@ -740,7 +740,6 @@
         record_id: normalizedRecordId || undefined,
         record_number: String(recordNumber || '').trim() || undefined,
         url: finalUrl,
-        tag: `${normalizedResource}-${normalizedAction}-${normalizedRecordId || 'record'}-${Date.now()}`,
         data: {
           resource: normalizedResource,
           action: normalizedAction,
@@ -752,50 +751,46 @@
         },
         channels: [
           ...(decision.channels.in_app ? ['in_app'] : []),
-          ...(decision.channels.push ? ['push'] : []),
+          ...(decision.channels.push ? ['pwa'] : []),
           ...(decision.channels.email ? ['email'] : [])
         ],
         user_ids: userIds,
         emails: emailRecipients,
         target_roles: assignedRoles
       };
-      if (decision.channels.in_app) {
-        await createInAppNotifications({
-          userIds,
-          title: payload.title,
-          body: payload.body,
-          resource: normalizedResource,
-          action: normalizedAction,
-          recordId: normalizedRecordId,
-          url: payload.url,
-          metadata: payload.data
+
+      const client = getClient();
+      const dispatcher = global.dispatchNotification || async function fallbackDispatchNotification({ supabase, eventKey: key, recipientUserIds = [], payload: rpcPayload = {}, resource: rpcResource = null, resourceId = null, deepLink = null }) {
+        const cleanRecipients = [...new Set((recipientUserIds || []).filter(Boolean))];
+        if (!key || !cleanRecipients.length) return [];
+        const { data, error } = await supabase.rpc('dispatch_notification', {
+          p_event_key: key,
+          p_recipient_user_ids: cleanRecipients,
+          p_payload: rpcPayload,
+          p_resource: rpcResource,
+          p_resource_id: resourceId ? String(resourceId) : null,
+          p_deep_link: deepLink
         });
-      }
+        if (error) throw error;
+        return data || [];
+      };
 
-      let pushResult = { attempted: false, skipped: true, reason: 'push-disabled-by-rule' };
-      if (decision.channels.push) {
-        try {
-          pushResult = await global.Api.sendWebPush(payload, { context: `${normalizedResource}:${normalizedAction}:central` });
-        } catch (error) {
-          console.warn('[notifications] push send failed', { resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, error: error?.message || String(error) });
-          pushResult = { attempted: true, sent: false, error: String(error?.message || error) };
-        }
-      } else {
-        console.info('[notifications] push skipped by channel rule', { resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey });
-      }
+      const dispatchResult = await dispatcher({
+        supabase: client,
+        eventKey: normalizedEventKey,
+        recipientUserIds: userIds,
+        payload,
+        resource: normalizedResource,
+        resourceId: normalizedRecordId,
+        deepLink: finalUrl
+      });
 
-      if (decision.channels.email) {
-        try {
-          await sendNotificationEmail({ resource: normalizedResource, action: normalizedAction, eventKey: normalizedEventKey, title: payload.title, body: payload.body, recipients: emailRecipients, recordId: normalizedRecordId, recordNumber: payload.record_number, url: payload.url, actorName: metadata?.actor_name || metadata?.actorName || '', metadata });
-        } catch (error) {
-          console.warn('[notifications] email log', { channel: 'email', status: 'failed', error_message: error?.message || String(error), resource: normalizedResource, action: normalizedAction, record_id: normalizedRecordId || null, record_number: payload.record_number || null, eventKey: normalizedEventKey });
-        }
-      } else {
-        const reason = !emailRecipients.length ? 'no_email_recipients_resolved' : 'email_channel_disabled';
-        console.info('[notifications] email log', { channel: 'email', status: 'skipped', error_message: reason, resource: normalizedResource, action: normalizedAction, record_id: normalizedRecordId || null, record_number: payload.record_number || null, eventKey: normalizedEventKey });
-      }
-
-      return pushResult;
+      return {
+        attempted: true,
+        created: Array.isArray(dispatchResult) ? dispatchResult.length : 0,
+        queued: true,
+        dispatchResult
+      };
     }
   };
 

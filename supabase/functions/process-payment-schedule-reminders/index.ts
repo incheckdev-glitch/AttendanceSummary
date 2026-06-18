@@ -160,35 +160,32 @@ async function processReminders(today: string, dryRun = false) {
           const deepLink = `#invoices?invoice_id=${schedule.invoice_id}`;
           const dedupeKey = `invoice_payment_schedule:${schedule.id}:${daysUntilDue}:${recipientUserId}`;
           let notificationId = null;
-          let pushResult = null;
-          let emailResult = null;
+          let deliveryResult = null;
           if (!dryRun) {
-            if (channelEnabled(rule, 'in_app')) {
-              const { data: inserted, error: insertError } = await sb.from('notifications').insert({
-                recipient_user_id: recipientUserId,
+            const { data: dispatched, error: dispatchError } = await sb.rpc('dispatch_notification', {
+              p_event_key: 'invoice_payment_schedule_payment_due_reminder',
+              p_recipient_user_ids: [recipientUserId],
+              p_payload: {
                 title,
-                message: body,
-                type: 'payment_due_reminder',
-                resource: 'invoice_payment_schedule',
-                resource_id: schedule.id,
-                priority: Number(daysUntilDue) <= 7 ? 'high' : 'normal',
-                status: 'unread',
-                is_read: false,
-                link_target: deepLink,
-                meta: { dedupe_key: dedupeKey, invoice_id: schedule.invoice_id, invoice_number: invoiceRef, days_until_due: daysUntilDue },
-                push_status: channelEnabled(rule, 'pwa') ? 'pending' : 'skipped'
-              }).select('notification_id').maybeSingle();
-              if (insertError) throw insertError;
-              notificationId = inserted?.notification_id || null;
-            }
-            if (channelEnabled(rule, 'pwa')) {
-              try { pushResult = await sendPwa({ title, body, deep_link: deepLink, dedupe_key: dedupeKey, resource: 'invoice_payment_schedule', action: 'payment_due_reminder', record_id: schedule.id, invoice_id: schedule.invoice_id }, recipientUserId); }
-              catch (pushError) { console.warn('[payment-schedule-reminders] PWA failed', pushError); pushResult = { error: String(pushError?.message || pushError) }; }
-            }
-            if (channelEnabled(rule, 'email')) {
-              try { emailResult = await sendEmail({ title, body, deep_link: deepLink }, recipientUserId); }
-              catch (emailError) { console.warn('[payment-schedule-reminders] email failed', emailError); emailResult = { error: String(emailError?.message || emailError) }; }
-            }
+                body,
+                invoice_id: schedule.invoice_id,
+                invoice_number: invoiceRef,
+                schedule_id: schedule.id,
+                days_until_due: daysUntilDue,
+                dedupe_key: dedupeKey,
+                channels: [
+                  ...(channelEnabled(rule, 'in_app') ? ['in_app'] : []),
+                  ...(channelEnabled(rule, 'pwa') ? ['pwa'] : []),
+                  ...(channelEnabled(rule, 'email') ? ['email'] : []),
+                ],
+              },
+              p_resource: 'invoice_payment_schedule',
+              p_resource_id: String(schedule.id),
+              p_deep_link: deepLink,
+            });
+            if (dispatchError) throw dispatchError;
+            deliveryResult = dispatched || null;
+            notificationId = Array.isArray(dispatched) ? (dispatched[0]?.notification_id || dispatched[0]?.id || null) : (dispatched?.notification_id || dispatched?.id || null);
             const { error: insertLogError } = await sb.from('invoice_payment_schedule_reminder_log').insert({
               schedule_id: schedule.id,
               reminder_day: daysUntilDue,
@@ -196,7 +193,7 @@ async function processReminders(today: string, dryRun = false) {
               notification_id: notificationId,
               sent_at: new Date().toISOString(),
               status: 'processed',
-              error_message: [pushResult?.error, emailResult?.error].filter(Boolean).join('; ') || null
+              error_message: deliveryResult?.error || null
             });
             if (insertLogError) throw insertLogError;
           }

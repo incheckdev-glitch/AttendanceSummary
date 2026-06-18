@@ -257,7 +257,7 @@ Deno.serve(async req => {
         let targetsOwnSubscriptionsOnly = false;
         if (targetSubscriptionIds.length > 0) {
           const { data: ownedRows, error: ownedError } = await adminClient
-            .from('push_subscriptions')
+            .from('user_push_subscriptions')
             .select('id,user_id')
             .in('id', targetSubscriptionIds)
             .eq('is_active', true);
@@ -330,7 +330,7 @@ Deno.serve(async req => {
 
       if (targetSubscriptionIds.length > 0) {
         const { data: subscriptionRows, error: subscriptionError } = await adminClient
-          .from('push_subscriptions')
+          .from('user_push_subscriptions')
           .select('id, user_id, email, role, endpoint, p256dh, auth')
           .eq('is_active', true)
           .in('id', targetSubscriptionIds)
@@ -346,7 +346,7 @@ Deno.serve(async req => {
 
       if (combinedUserIds.length > 0) {
         const { data: userRows, error: userError } = await adminClient
-          .from('push_subscriptions')
+          .from('user_push_subscriptions')
           .select('id, user_id, email, role, endpoint, p256dh, auth')
           .eq('is_active', true)
           .in('user_id', combinedUserIds)
@@ -362,7 +362,7 @@ Deno.serve(async req => {
 
       if (targetEmails.length > 0) {
         const { data: emailSubRows, error: emailSubError } = await adminClient
-          .from('push_subscriptions')
+          .from('user_push_subscriptions')
           .select('id, user_id, email, role, endpoint, p256dh, auth')
           .eq('is_active', true)
           .in('email', targetEmails)
@@ -378,7 +378,7 @@ Deno.serve(async req => {
 
       if (targetRoles.length > 0) {
         const { data: roleRows, error: roleError } = await adminClient
-          .from('push_subscriptions')
+          .from('user_push_subscriptions')
           .select('id, user_id, email, role, endpoint, p256dh, auth')
           .eq('is_active', true)
           .limit(1000);
@@ -459,7 +459,7 @@ Deno.serve(async req => {
       if (statusCode !== 404 && statusCode !== 410) continue;
       const endpoint = normalizeString(subscriptions[i]?.endpoint);
       if (!endpoint) continue;
-      await adminClient?.from('push_subscriptions').update({ is_active: false, last_seen_at: new Date().toISOString() }).eq('endpoint', endpoint);
+      await adminClient?.from('user_push_subscriptions').update({ is_active: false, updated_at: new Date().toISOString() }).eq('endpoint', endpoint);
     }
     console.info('[send-web-push-v2] delivery result', {
       rows: subscriptions.length,
