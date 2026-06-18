@@ -957,8 +957,7 @@
     const allRead = rows.length > 0 && rows.every(row => normalizeMessageReceiptStatus(row.status) === 'read' || row.read_at);
     const hasFailed = rows.some(row => normalizeMessageReceiptStatus(row.status) === 'failed' || row.failed_at);
     const label = hasFailed ? 'Not delivered' : (allRead ? 'Read' : (hasDelivered ? 'Delivered' : (hasRecipients ? 'Sent' : 'Sent')));
-    const marks = allRead ? '✓✓' : (hasDelivered ? '✓✓' : '✓');
-    return `<button type="button" class="cc-message-status cc-message-info-trigger ${allRead ? 'read' : hasDelivered ? 'received' : 'sent'}" data-cc-message-info="${escapeAttr(message.id)}" title="Message Info">${escapeHtml(marks)} ${escapeHtml(label)}</button>`;
+    return `<button type="button" class="cc-message-status cc-message-info-trigger ${allRead ? 'read' : hasDelivered ? 'received' : 'sent'}" data-cc-message-info="${escapeAttr(message.id)}" title="Message Info">${escapeHtml(label)}</button>`;
   }
 
 
@@ -1890,22 +1889,8 @@
     }
   }
 
-  function renderMessageReactions(messageId) {
-    const rows = M.state.reactionsByMessage[String(messageId)] || [];
-    const grouped = rows.reduce((acc, row) => {
-      const key = row.reaction;
-      acc[key] = acc[key] || { count: 0, users: [] };
-      acc[key].count += 1;
-      acc[key].users.push(row.user_name || row.user_id);
-      return acc;
-    }, {});
-    const allowed = ['👍', '✅', '👀', '🙏', '🔥'];
-    return `<div class="cc-reactions">${allowed.map(r => {
-      const g = grouped[r];
-      const count = g?.count || 0;
-      const title = g?.users?.join(', ') || '';
-      return `<button type="button" class="btn ghost sm cc-reaction-btn" data-cc-react="${escapeAttr(String(messageId))}" data-reaction="${escapeAttr(r)}" title="${escapeAttr(title)}">${r}${count ? ` ${count}` : ''}</button>`;
-    }).join('')}</div>`;
+  function renderMessageReactions(_messageId) {
+    return '';
   }
 
 
@@ -2395,7 +2380,7 @@
     listEl.innerHTML = rows.map(row => {
       const unreadCount = Number(row.unread_count || 0);
       const hasUnread = unreadCount > 0;
-      return `<button class="cc-item communication-conversation-card ${activeId===row.id?'active':''} ${hasUnread?'unread has-unread':''}" data-cc-open="${escapeAttr(row.id)}" type="button"><div class="cc-item-main"><div class="cc-item-header"><div class="cc-item-title-wrap"><small>${escapeHtml(row.conversation_no||'')}</small><strong>${escapeHtml(row.title||'Untitled')}</strong></div>${hasUnread?`<span class="conversation-unread-badge" aria-label="${escapeAttr(String(unreadCount))} unread messages">${escapeHtml(String(unreadCount))}</span>`:''}</div><p>${escapeHtml(row.last_message_preview||'No messages yet')}</p><div class="cc-item-submeta">${row.is_pinned?'<span class="chip">📌 Pinned</span>':''}${M.state.filters.quick==='archived'&&row.is_archived?'<span class="chip">Archived</span>':''}${row.participant_count?`<span class="chip">${escapeHtml(String(row.participant_count))} participants</span>`:''}</div></div><div class="cc-item-meta"><span class="cc-time">${escapeHtml(relTime(row.updated_at||row.last_message_at))}</span><span class="chip cc-status-chip">${escapeHtml(row.status||'Open')}</span>${row.priority?`<span class="chip cc-priority-chip">${escapeHtml(row.priority)}</span>`:''}</div></button>`;
+      return `<button class="cc-item communication-conversation-card ${activeId===row.id?'active':''} ${hasUnread?'unread has-unread':''}" data-cc-open="${escapeAttr(row.id)}" type="button"><div class="cc-item-main"><div class="cc-item-header"><div class="cc-item-title-wrap"><small>${escapeHtml(row.conversation_no||'')}</small><strong>${escapeHtml(row.title||'Untitled')}</strong></div>${hasUnread?`<span class="conversation-unread-badge" aria-label="${escapeAttr(String(unreadCount))} unread messages">${escapeHtml(String(unreadCount))}</span>`:''}</div><p>${escapeHtml(row.last_message_preview||'No messages yet')}</p><div class="cc-item-submeta">${row.is_pinned?'<span class="chip">Pinned</span>':''}${M.state.filters.quick==='archived'&&row.is_archived?'<span class="chip">Archived</span>':''}${row.participant_count?`<span class="chip">${escapeHtml(String(row.participant_count))} participants</span>`:''}</div></div><div class="cc-item-meta"><span class="cc-time">${escapeHtml(relTime(row.updated_at||row.last_message_at))}</span><span class="chip cc-status-chip">${escapeHtml(row.status||'Open')}</span>${row.priority?`<span class="chip cc-priority-chip">${escapeHtml(row.priority)}</span>`:''}</div></button>`;
     }).join('') || '<div class="muted communication-centre-empty-state" style="padding:16px;">No conversations found for this filter.</div>';
     const pageInfo = $('communicationCentrePageInfo');
     if (pageInfo) pageInfo.textContent = `Page ${M.state.page} • ${M.state.count} total`;
@@ -2552,7 +2537,7 @@
     const messages = $('communicationCentreMessages');
     const replyWrap = $('communicationCentreReplyWrap');
     const closedMsg = $('communicationCentreClosedMsg');
-      const mobileBack = isMobileViewport() ? '<button id="communicationCentreBackToList" class="btn ghost sm" type="button">← Conversations</button>' : '';
+      const mobileBack = isMobileViewport() ? '<button id="communicationCentreBackToList" class="btn ghost sm" type="button">Conversations</button>' : '';
       const relatedLabel = conversation.related_module && conversation.related_record_id
         ? `Related: ${conversation._relatedRecordLabel || conversation.related_record_id}`
         : '';
@@ -2849,7 +2834,7 @@
       <div class="modal-content" style="max-width:920px;">
         <div class="header">
           <h2 id="communicationCentreCreateTitle" style="margin:0;font-size:20px;">New Communication Centre Conversation</h2>
-          <div class="actions"><button class="modal-close" id="communicationCentreCreateClose" type="button" aria-label="Close">✕</button></div>
+          <div class="actions"><button class="modal-close" id="communicationCentreCreateClose" type="button" aria-label="Close">Close</button></div>
         </div>
         <form id="communicationCentreCreateForm">
           <div id="communicationCentreCreateError" class="card danger communication-centre-error" style="display:none;margin-bottom:12px;padding:10px;border-left:4px solid #d73a49;"></div>
