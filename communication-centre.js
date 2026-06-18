@@ -13,6 +13,13 @@
       roles: [],
       reactionsByMessage: {},
       readReceipts: [],
+      messageReceiptsByMessage: {},
+      messageInfoOpen: false,
+      selectedMessageInfo: null,
+      messageInfoRows: [],
+      messageInfoLoading: false,
+      deliveredReceiptKeys: new Set(),
+      readReceiptKeys: new Set(),
       actionItems: [],
       relatedRecordOptions: [],
       relatedRecordLabels: {},
@@ -931,25 +938,100 @@
     const senderNames = [message?.sender_name, message?.created_by_name, message?.user_name, message?.sender_email, message?.created_by_email, message?.email].map(normalizeIdentityValue);
     return senderNames.some(name => name && identity.names.has(name));
   }
+  function normalizeMessageReceiptStatus(status) {
+    const normalized = String(status || '').trim().toLowerCase().replace(/\s+/g, '_');
+    if (['not_delivered', 'failed_not_delivered', 'failure'].includes(normalized)) return 'failed';
+    if (['read', 'delivered', 'sent', 'failed'].includes(normalized)) return normalized;
+    return 'sent';
+  }
+
+  function getMessageReceiptRows(messageId) {
+    return M.state.messageReceiptsByMessage[String(messageId || '')] || [];
+  }
+
   function renderMessageDeliveryStatus(message, isMine) {
     if (!isMine || message?.is_system_message) return '';
-    const createdAt = message?.created_at ? new Date(message.created_at).getTime() : 0;
-    const identity = getCurrentIdentity();
-    const others = (M.state.readReceipts || []).filter(row => {
-      const uid = normalizeIdentityValue(row.user_id || row.profile_id || row.auth_user_id);
-      return uid && !identity.ids.has(uid);
-    });
-    const hasRead = others.some(row => {
-      const t = new Date(row.last_read_at || row.read_at || row.updated_at || row.created_at || 0).getTime();
-      return t && createdAt && t >= createdAt;
-    });
-    const hasOtherParticipants = (M.state.participants || []).some(row => {
-      const uid = normalizeIdentityValue(row.user_id || row.profile_id || row.auth_user_id);
-      const name = normalizeIdentityValue(row.user_name || row.name || row.email);
-      return (uid && !identity.ids.has(uid)) || (name && !identity.names.has(name));
-    });
-    const label = hasRead ? '✓✓ Read' : (hasOtherParticipants ? '✓✓ Received' : '✓ Sent');
-    return `<div class="cc-message-status ${hasRead ? 'read' : 'received'}">${escapeHtml(label)}</div>`;
+    const rows = getMessageReceiptRows(message.id);
+    const hasRecipients = rows.length > 0 || (M.state.participants || []).some(row => !isMessageParticipantCurrentUser(row));
+    const hasDelivered = rows.some(row => ['delivered', 'read'].includes(normalizeMessageReceiptStatus(row.status)) || row.delivered_at || row.read_at);
+    const allRead = rows.length > 0 && rows.every(row => normalizeMessageReceiptStatus(row.status) === 'read' || row.read_at);
+    const hasFailed = rows.some(row => normalizeMessageReceiptStatus(row.status) === 'failed' || row.failed_at);
+    const label = hasFailed ? 'Not delivered' : (allRead ? 'Read' : (hasDelivered ? 'Delivered' : (hasRecipients ? 'Sent' : 'Sent')));
+    const marks = allRead ? '✓✓' : (hasDelivered ? '✓✓' : '✓');
+    return `<button type="button" class="cc-message-status cc-message-info-trigger ${allRead ? 'read' : hasDelivered ? 'received' : 'sent'}" data-cc-message-info="${escapeAttr(message.id)}" title="Message Info">${escapeHtml(marks)} ${escapeHtml(label)}</button>`;
+  }
+
+
+  function canViewMessageInfo(message = {}) {
+    if (!message?.id || !conversationIncludesUser(M.state.active, getCurrentUser())) return false;
+    if (isMessageMine(message)) return true;
+    return canManageConversation();
+  }
+
+  function receiptTimestamp(row = {}) {
+    const status = normalizeMessageReceiptStatus(row.status);
+    return status === 'read' ? row.read_at : status === 'delivered' ? row.delivered_at : status === 'failed' ? (row.failed_at || row.updated_at) : (row.sent_at || row.created_at);
+  }
+
+  function formatMessageInfoTime(value) {
+    return value ? new Date(value).toLocaleString() : 'No timestamp';
+  }
+
+  function renderMessageInfoSection(title, rows) {
+    return `<section class="cc-message-info-section"><h4>${escapeHtml(title)}</h4>${rows.length ? rows.map(row => {
+      const status = normalizeMessageReceiptStatus(row.status);
+      const statusLabel = status === 'failed' ? 'Failed / Not delivered' : status.charAt(0).toUpperCase() + status.slice(1);
+      return `<div class="cc-message-info-row"><div><strong>${escapeHtml(row.recipient_name || row.user_name || row.name || row.recipient_user_id || 'Unknown User')}</strong>${row.recipient_email ? `<span class="muted">${escapeHtml(row.recipient_email)}</span>` : ''}${status === 'failed' && row.failure_reason ? `<small>${escapeHtml(row.failure_reason)}</small>` : ''}</div><div><span class="chip cc-message-info-badge ${escapeAttr(status)}">${escapeHtml(statusLabel)}</span><time>${escapeHtml(formatMessageInfoTime(receiptTimestamp(row)))}</time></div></div>`;
+    }).join('') : '<p class="muted">No recipients in this section.</p>'}</section>`;
+  }
+
+  function renderMessageInfoDrawer() {
+    let drawer = $('communicationCentreMessageInfoDrawer');
+    if (!drawer) {
+      drawer = document.createElement('div');
+      drawer.id = 'communicationCentreMessageInfoDrawer';
+      drawer.className = 'cc-message-info-drawer';
+      document.body.appendChild(drawer);
+    }
+    if (!M.state.messageInfoOpen) {
+      drawer.hidden = true;
+      drawer.innerHTML = '';
+      return;
+    }
+    const message = M.state.selectedMessageInfo || {};
+    const rows = M.state.messageInfoRows || [];
+    const grouped = {
+      read: rows.filter(row => normalizeMessageReceiptStatus(row.status) === 'read'),
+      delivered: rows.filter(row => normalizeMessageReceiptStatus(row.status) === 'delivered'),
+      sent: rows.filter(row => normalizeMessageReceiptStatus(row.status) === 'sent'),
+      failed: rows.filter(row => normalizeMessageReceiptStatus(row.status) === 'failed')
+    };
+    drawer.hidden = false;
+    drawer.innerHTML = `<div class="cc-message-info-backdrop" data-cc-close-message-info="true"></div><aside class="cc-message-info-panel" role="dialog" aria-modal="true" aria-labelledby="communicationCentreMessageInfoTitle"><header><h3 id="communicationCentreMessageInfoTitle">Message Info</h3><button class="btn ghost sm" type="button" data-cc-close-message-info="true">Close</button></header><div class="cc-message-info-preview"><strong>Message preview</strong><p>${escapeHtml(getMessageText(message)).slice(0, 240) || 'No message text.'}</p></div><dl class="cc-message-info-meta"><div><dt>Sent by</dt><dd>${escapeHtml(message.sender_name || message.created_by_name || message.sender_email || 'Unknown sender')}</dd></div><div><dt>Sent at</dt><dd>${escapeHtml(formatMessageInfoTime(message.created_at || message.sent_at))}</dd></div></dl>${M.state.messageInfoLoading ? '<p class="muted">Loading message info...</p>' : `${renderMessageInfoSection('Read by', grouped.read)}${renderMessageInfoSection('Delivered to', grouped.delivered)}${renderMessageInfoSection('Sent / Pending', grouped.sent)}${renderMessageInfoSection('Failed', grouped.failed)}`}</aside>`;
+  }
+
+  async function openMessageInfo(message) {
+    if (!canViewMessageInfo(message)) return showFriendlyError('You do not have permission to view this message info.');
+    M.state.selectedMessageInfo = message;
+    M.state.messageInfoOpen = true;
+    M.state.messageInfoLoading = true;
+    M.state.messageInfoRows = [];
+    renderMessageInfoDrawer();
+    try {
+      const { data, error } = await db().rpc('get_communication_message_receipts', { p_message_id: message.id });
+      if (error) throw error;
+      const rows = data || [];
+      M.state.messageInfoRows = isMessageMine(message) || canManageConversation()
+        ? rows
+        : rows.filter(row => String(row.recipient_user_id || row.user_id || '').toLowerCase() === String(getCurrentUserId(getCurrentUser())).toLowerCase());
+    } catch (error) {
+      console.error('Unable to load message info:', error);
+      showFriendlyError('Unable to load message info.');
+      M.state.messageInfoRows = [];
+    } finally {
+      M.state.messageInfoLoading = false;
+      renderMessageInfoDrawer();
+    }
   }
 
   function renderReplyTargetPreview() {
@@ -1458,6 +1540,104 @@
     return counts;
   }
 
+
+  function isMessageParticipantCurrentUser(participant = {}) {
+    const identity = getCurrentIdentity();
+    const uid = normalizeIdentityValue(participant.user_id || participant.id || participant.participant_user_id || participant.profile_id || participant.auth_user_id);
+    const name = normalizeIdentityValue(participant.full_name || participant.user_name || participant.name || participant.email);
+    return (uid && identity.ids.has(uid)) || (name && identity.names.has(name));
+  }
+
+  function getParticipantUserId(participant = {}) {
+    return firstNonEmpty(participant.user_id, participant.id, participant.participant_user_id, participant.profile_id, participant.auth_user_id);
+  }
+
+  function getParticipantName(participant = {}) {
+    return firstNonEmpty(participant.full_name, participant.user_name, participant.name, participant.email, 'Unknown User');
+  }
+
+  async function upsertMessageReceipt({ conversationId, messageId, recipientUserId, recipientName, recipientEmail, status, failureReason = null }) {
+    const client = db();
+    if (!client?.rpc || !conversationId || !messageId || !recipientUserId) return;
+    const { error } = await client.rpc('upsert_communication_message_receipt', {
+      p_conversation_id: conversationId,
+      p_message_id: messageId,
+      p_recipient_user_id: recipientUserId,
+      p_recipient_name: recipientName || recipientEmail || 'Unknown User',
+      p_recipient_email: recipientEmail || null,
+      p_status: status,
+      p_failure_reason: failureReason
+    });
+    if (error) throw error;
+  }
+
+  async function createMessageReceiptsForRecipients(conversation, messageId) {
+    const currentUser = getCurrentUser();
+    const currentUserId = getCurrentUserId(currentUser);
+    const seen = new Set();
+    const recipients = (M.state.participants || conversation?.participants || conversation?.communication_centre_participants || [])
+      .filter(participant => {
+        const userId = getParticipantUserId(participant);
+        if (!userId || String(userId) === String(currentUserId) || seen.has(String(userId))) return false;
+        seen.add(String(userId));
+        return true;
+      });
+    await Promise.allSettled(recipients.map(recipient => upsertMessageReceipt({
+      conversationId: conversation.id,
+      messageId,
+      recipientUserId: getParticipantUserId(recipient),
+      recipientName: getParticipantName(recipient),
+      recipientEmail: recipient.email || null,
+      status: 'sent'
+    })));
+  }
+
+  async function markMessageDelivered(message) {
+    const currentUser = getCurrentUser();
+    const currentUserId = getCurrentUserId(currentUser);
+    if (!message?.id || String(message.sender_id || message.sender_user_id || message.user_id || message.created_by || '') === String(currentUserId) || isMessageMine(message)) return;
+    const key = `${message.id}:delivered`;
+    if (M.state.deliveredReceiptKeys.has(key)) return;
+    M.state.deliveredReceiptKeys.add(key);
+    try {
+      await upsertMessageReceipt({
+        conversationId: message.conversation_id || M.state.active?.id,
+        messageId: message.id,
+        recipientUserId: currentUserId,
+        recipientName: firstNonEmpty(currentUser.full_name, currentUser.name, currentUser.email, 'Unknown User'),
+        recipientEmail: currentUser.email || null,
+        status: 'delivered'
+      });
+    } catch (error) { console.warn('[Communication Centre] mark delivered failed', error); }
+  }
+
+  async function markMessageRead(message) {
+    const client = db();
+    const currentUser = getCurrentUser();
+    const currentUserId = getCurrentUserId(currentUser);
+    if (!client?.rpc || !message?.id || !currentUserId || isMessageMine(message)) return;
+    const key = `${message.id}:read`;
+    if (M.state.readReceiptKeys.has(key)) return;
+    M.state.readReceiptKeys.add(key);
+    try {
+      const { error } = await client.rpc('mark_communication_message_read', {
+        p_conversation_id: message.conversation_id || M.state.active?.id,
+        p_message_id: message.id,
+        p_user_id: currentUserId,
+        p_user_name: firstNonEmpty(currentUser.full_name, currentUser.name, currentUser.email, 'Unknown User'),
+        p_user_email: currentUser.email || null
+      });
+      if (error) throw error;
+    } catch (error) { console.warn('[Communication Centre] mark message read failed', error); }
+  }
+
+  async function markVisibleMessagesDeliveredAndRead(messages = M.state.messages) {
+    await Promise.allSettled((messages || []).filter(message => !message.is_system_message && !isMessageMine(message)).map(async message => {
+      await markMessageDelivered(message);
+      await markMessageRead(message);
+    }));
+  }
+
   async function markCommunicationConversationRead(conversationId) {
     const client = db();
     const normalizedConversationId = String(conversationId || '').trim();
@@ -1642,14 +1822,17 @@
         ...visibleConversation,
         _relatedRecordLabel: await resolveRelatedRecordLabel(data.related_module, data.related_record_id)
       };
-      const [messagesResult, reactionsResult, readReceiptsResult, actionItemsResult] = await Promise.all([
+      const [messagesResult, reactionsResult, readReceiptsResult, messageReceiptsResult, actionItemsResult] = await Promise.all([
         client.rpc('list_communication_centre_messages_secure', { p_conversation_id: id }),
         client.from('communication_centre_message_reactions').select('*').eq('conversation_id', id),
         client.from('communication_centre_read_receipts').select('*').eq('conversation_id', id),
+        client.from('communication_message_receipts').select('*').eq('conversation_id', id),
         client.from('communication_centre_action_items').select('*').eq('conversation_id', id).order('created_at', { ascending: false })
       ]);
       if (messagesResult.error) console.error('[Communication Centre encryption] secure message load failed', messagesResult.error);
       if (readReceiptsResult.error) console.warn('[Communication Centre] unable to load read receipts', readReceiptsResult.error);
+      if (messageReceiptsResult.error) console.warn('[Communication Centre] unable to load message receipts', messageReceiptsResult.error);
+      M.state.messageReceiptsByMessage = (messageReceiptsResult.data || []).reduce((acc, row) => { const k = String(row.message_id || ''); if (k) (acc[k] = acc[k] || []).push(row); return acc; }, {});
       M.state.messages = messagesResult.data || [];
       M.state.participants = participantRows;
       M.state.readReceipts = readReceiptsResult.data || [];
@@ -1670,6 +1853,7 @@
       });
       if (conversationId) M.openedConversationIds.add(conversationId);
       await markCommunicationNotificationsRead(id);
+      await markVisibleMessagesDeliveredAndRead(M.state.messages);
       if (options.markRead !== false) await markCommunicationConversationRead(id);
       M.state.rows = (M.state.rows || []).map(row => String(row.id) === String(id) ? { ...row, unread_count: 0 } : row);
       render();
@@ -1751,6 +1935,7 @@
     const eventType = payload?.eventType || payload?.type || 'change';
     console.log('[Communication Centre realtime] event', { source, table, eventType, payload });
     scheduleConversationListRefresh(`${source}:${table}:${eventType}`);
+    if (table === 'communication_centre_messages' && payload?.new) markMessageDelivered(payload.new);
     if (isRealtimePayloadForActiveConversation(payload)) {
       const markRead = table !== 'communication_centre_read_receipts';
       scheduleActiveConversationRefresh(`${source}:${table}:${eventType}`, { markRead });
@@ -1800,6 +1985,8 @@
         'communication_centre_messages',
         'communication_centre_participants',
         'communication_centre_read_receipts',
+        'communication_message_receipts',
+        'communication_message_status_events',
         'communication_centre_message_reactions',
         'communication_centre_action_items'
       ].forEach(table => {
@@ -1990,9 +2177,18 @@
         results
       });
 
-      const failed = results.filter((item) => item.status === 'rejected');
+      const failed = results.map((item, index) => ({ item, recipientUserId: recipients[index] })).filter(entry => entry.item.status === 'rejected');
       if (failed.length) {
         console.warn('[Communication Centre PWA] Some push notifications failed', failed);
+        await Promise.allSettled(failed.map(entry => upsertMessageReceipt({
+          conversationId,
+          messageId,
+          recipientUserId: entry.recipientUserId,
+          recipientName: String(entry.recipientUserId || 'Unknown User'),
+          recipientEmail: null,
+          status: 'failed',
+          failureReason: entry.item.reason?.message || 'Delivery failed'
+        })));
       }
     } catch (error) {
       console.warn('[Communication Centre PWA] Push failed but message save remains successful', error);
@@ -2356,7 +2552,7 @@
           <div class="cc-message-row ${isMine ? 'mine' : 'incoming'}" style="${muted}">
             ${isMine ? '' : `<div class="cc-avatar">${initials}</div>`}
             <div class="cc-bubble communication-message-bubble ${isMine ? 'outgoing' : 'incoming'}">
-              <div class="cc-message-meta"><span class="cc-sender">${senderName}</span><span class="cc-sep">•</span><span>${message.created_at ? escapeHtml(new Date(message.created_at).toLocaleString()) : ''}</span>${message.edited_at ? '<span class="cc-sep">•</span><span class="cc-edited-label">Edited</span>' : ''}</div>
+              <div class="cc-message-meta"><span class="cc-sender">${senderName}</span><span class="cc-sep">•</span><button class="cc-message-time-link" type="button" data-cc-message-info="${escapeAttr(message.id)}">${message.created_at ? escapeHtml(new Date(message.created_at).toLocaleString()) : ''}</button>${message.edited_at ? '<span class="cc-sep">•</span><span class="cc-edited-label">Edited</span>' : ''}</div>
               <div class="cc-message-body">${escapeHtml(getMessageText(message))}</div>
               ${renderMessageDeliveryStatus(message, isMine)}
               ${!message.is_deleted ? `<div class="cc-message-actions"><button class="btn ghost sm" data-cc-reply-message="${escapeAttr(message.id)}" type="button">Reply</button>${canModifyOwnMessage(message) ? `<button class="btn ghost sm" data-cc-edit-message="${escapeAttr(message.id)}" type="button">Edit</button><button class="btn ghost sm cc-delete-message-btn" data-cc-delete-message="${escapeAttr(message.id)}" type="button">Delete message</button>` : ''}</div>` : ''}
@@ -3234,6 +3430,9 @@
         }
         if (e.target?.id === 'communicationCentreBackToList') setMobileView('list');
         if (e.target?.id === 'communicationCentreBackToChat') setMobileView('chat');
+        if (e.target?.closest?.('[data-cc-close-message-info]')) { M.state.messageInfoOpen = false; renderMessageInfoDrawer(); return; }
+        const infoTrigger = e.target?.closest?.('[data-cc-message-info]');
+        if (infoTrigger) { const message = M.state.messages.find(m => String(m.id) === String(infoTrigger.getAttribute('data-cc-message-info'))); if (message) openMessageInfo(message); return; }
         if (e.target?.id === 'communicationCentreCancelReplyTarget') { M.state.replyToMessage = null; M.state.editingMessageId = null; M.state.editingMessageOriginal = null; if ($('communicationCentreReplyInput')) $('communicationCentreReplyInput').value = ''; preserveCurrentMessageScroll(() => renderReplyTargetPreview()); }
       });
     }
@@ -3309,6 +3508,7 @@
           messageId,
           senderUserId
         });
+        await createMessageReceiptsForRecipients(conversation, messageId);
         sendCommunicationCentrePwaPush({
           conversationId: conversation.id,
           messageId,
