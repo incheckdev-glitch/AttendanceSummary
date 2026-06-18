@@ -327,7 +327,7 @@ async function findRequesterRole(
     return { userId, email, role: metadataRole };
   }
 
-  const tables = ["profiles", "users"];
+  const tables = ["profiles"];
 
   for (const tableName of tables) {
     const byId = await maybeGetSingleByFilter(

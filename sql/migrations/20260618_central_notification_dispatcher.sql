@@ -115,6 +115,79 @@ begin
 end;
 $$;
 
+create or replace function public.get_notification_user_identity(user_id uuid)
+returns table(recipient_email text, recipient_name text)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_email text;
+  v_name text;
+begin
+  if user_id is null then
+    return query select null::text, null::text;
+    return;
+  end if;
+
+  if to_regclass('public.profiles') is not null then
+    execute $sql$
+      select
+        coalesce(
+          nullif(to_jsonb(p)->>'email', ''),
+          nullif(to_jsonb(p)->>'user_email', ''),
+          nullif(to_jsonb(p)->>'email_address', '')
+        ) as recipient_email,
+        coalesce(
+          nullif(to_jsonb(p)->>'full_name', ''),
+          nullif(to_jsonb(p)->>'display_name', ''),
+          nullif(to_jsonb(p)->>'name', ''),
+          nullif(to_jsonb(p)->>'user_name', '')
+        ) as recipient_name
+      from public.profiles p
+      where to_jsonb(p)->>'id' = $1::text or to_jsonb(p)->>'user_id' = $1::text
+      limit 1
+    $sql$
+    into v_email, v_name
+    using user_id;
+  end if;
+
+  if (v_email is null and v_name is null) and to_regclass('public.users') is not null then
+    execute $sql$
+      select
+        coalesce(
+          nullif(to_jsonb(u)->>'email', ''),
+          nullif(to_jsonb(u)->>'user_email', ''),
+          nullif(to_jsonb(u)->>'email_address', '')
+        ) as recipient_email,
+        coalesce(
+          nullif(to_jsonb(u)->>'full_name', ''),
+          nullif(to_jsonb(u)->>'display_name', ''),
+          nullif(to_jsonb(u)->>'name', ''),
+          nullif(to_jsonb(u)->>'user_name', '')
+        ) as recipient_name
+      from public.users u
+      where to_jsonb(u)->>'id' = $1::text
+        or to_jsonb(u)->>'auth_user_id' = $1::text
+        or to_jsonb(u)->>'user_id' = $1::text
+      limit 1
+    $sql$
+    into v_email, v_name
+    using user_id;
+  end if;
+
+  if v_email is null and to_regclass('auth.users') is not null then
+    select nullif(au.email, '')
+    into v_email
+    from auth.users au
+    where au.id = user_id
+    limit 1;
+  end if;
+
+  return query select v_email, coalesce(v_name, v_email, user_id::text);
+end;
+$$;
+
 create or replace function public.dispatch_notification(
   p_event_key text,
   p_recipient_user_ids uuid[],
@@ -130,12 +203,13 @@ set search_path = public
 as $$
 declare
   v_event public.notification_event_types%rowtype;
-  v_recipient uuid;
+  v_user_id uuid;
   v_notification_id uuid;
   v_title text;
   v_body text;
   v_deep_link text;
   v_email text;
+  v_name text;
   v_rows jsonb := '[]'::jsonb;
 begin
   select * into v_event from public.notification_event_types where event_key = p_event_key and enabled = true;
@@ -147,32 +221,35 @@ begin
   v_body := coalesce(nullif(public.render_notification_template(v_event.body_template, p_payload), ''), p_payload ->> 'body', p_payload ->> 'message', 'A record needs your attention.');
   v_deep_link := coalesce(p_deep_link, nullif(public.render_notification_template(v_event.deep_link_template, p_payload), ''));
 
-  foreach v_recipient in array coalesce(p_recipient_user_ids, array[]::uuid[]) loop
+  foreach v_user_id in array coalesce(p_recipient_user_ids, array[]::uuid[]) loop
     if v_event.default_in_app then
       insert into public.notifications (recipient_user_id, title, message, type, resource, resource_id, status, is_read, link_target, meta)
-      values (v_recipient, v_title, v_body, p_event_key, coalesce(p_resource, v_event.module), p_resource_id, 'unread', false, v_deep_link, p_payload)
+      values (v_user_id, v_title, v_body, p_event_key, coalesce(p_resource, v_event.module), p_resource_id, 'unread', false, v_deep_link, p_payload)
       returning notification_id into v_notification_id;
     else
       v_notification_id := null;
     end if;
 
-    select email into v_email from public.profiles where id = v_recipient limit 1;
+    select recipient_email, recipient_name
+    into v_email, v_name
+    from public.get_notification_user_identity(v_user_id);
 
     if v_event.default_pwa then
       insert into public.notification_delivery_queue(notification_id, event_key, channel, recipient_user_id, title, body, deep_link, resource, resource_id, payload)
-      values (v_notification_id, p_event_key, 'pwa', v_recipient, v_title, v_body, v_deep_link, coalesce(p_resource, v_event.module), p_resource_id, p_payload);
+      values (v_notification_id, p_event_key, 'pwa', v_user_id, v_title, v_body, v_deep_link, coalesce(p_resource, v_event.module), p_resource_id, p_payload);
     end if;
 
     if v_event.default_email then
       insert into public.notification_delivery_queue(notification_id, event_key, channel, recipient_user_id, recipient_email, title, body, deep_link, resource, resource_id, payload)
-      values (v_notification_id, p_event_key, 'email', v_recipient, v_email, v_title, v_body, v_deep_link, coalesce(p_resource, v_event.module), p_resource_id, p_payload);
+      values (v_notification_id, p_event_key, 'email', v_user_id, v_email, v_title, v_body, v_deep_link, coalesce(p_resource, v_event.module), p_resource_id, p_payload);
     end if;
 
-    v_rows := v_rows || jsonb_build_array(jsonb_build_object('recipient_user_id', v_recipient, 'notification_id', v_notification_id, 'event_key', p_event_key));
+    v_rows := v_rows || jsonb_build_array(jsonb_build_object('recipient_user_id', v_user_id, 'recipient_email', v_email, 'recipient_name', v_name, 'notification_id', v_notification_id, 'event_key', p_event_key));
   end loop;
 
   return v_rows;
 end;
 $$;
 
+grant execute on function public.get_notification_user_identity(uuid) to authenticated, service_role;
 grant execute on function public.dispatch_notification(text, uuid[], jsonb, text, text, text) to authenticated, service_role;
