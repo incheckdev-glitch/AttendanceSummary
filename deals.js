@@ -169,9 +169,12 @@ const Deals = {
         }
       ),
       customer_address: String(pick(source.customer_address, source.customerAddress, lead.customer_address, lead.customerAddress)).trim(),
-      contact_id: String(pick(source.contact_id, source.contactId, source.customer_contact_id, source.customerContactId, source.client_contact_id, source.clientContactId, lead.contact_id, lead.contactId)).trim(),
+      contact_id: String(pick(source.contact_id, source.contactId, source.customer_contact_id, source.customerContactId, source.client_contact_id, source.clientContactId, source.primary_contact_id, source.primaryContactId, source.selected_contact_id, source.selectedContactId, source.contact_uuid, source.contactUuid, lead.contact_id, lead.contactId)).trim(),
       customer_contact_id: String(pick(source.customer_contact_id, source.customerContactId, source.contact_id, source.contactId, lead.customer_contact_id, lead.customerContactId, lead.contact_id, lead.contactId)).trim(),
       client_contact_id: String(pick(source.client_contact_id, source.clientContactId, lead.client_contact_id, lead.clientContactId)).trim(),
+      primary_contact_id: String(pick(source.primary_contact_id, source.primaryContactId, lead.primary_contact_id, lead.primaryContactId)).trim(),
+      selected_contact_id: String(pick(source.selected_contact_id, source.selectedContactId, lead.selected_contact_id, lead.selectedContactId)).trim(),
+      contact_uuid: String(pick(source.contact_uuid, source.contactUuid, lead.contact_uuid, lead.contactUuid)).trim(),
       contact_name: String(pick(source.contact_name, source.contactName, lead.contact_name, lead.contactName, source.full_name)).trim(),
       contact_email: String(pick(source.contact_email, source.contactEmail, lead.contact_email, lead.contactEmail, source.email)).trim(),
       contact_phone: String(pick(source.contact_phone, source.contactPhone, lead.contact_phone, lead.contactPhone, source.phone)).trim(),
@@ -260,6 +263,9 @@ const Deals = {
       contact_id: toTextOrEmpty(['contact_id', 'contactId']),
       customer_contact_id: toTextOrEmpty(['customer_contact_id', 'customerContactId']),
       client_contact_id: toTextOrEmpty(['client_contact_id', 'clientContactId']),
+      primary_contact_id: toTextOrEmpty(['primary_contact_id', 'primaryContactId']),
+      selected_contact_id: toTextOrEmpty(['selected_contact_id', 'selectedContactId']),
+      contact_uuid: toTextOrEmpty(['contact_uuid', 'contactUuid']),
       contact_name: toTextOrEmpty(['contact_name', 'contactName']),
       contact_email: toTextOrEmpty(['contact_email', 'contactEmail']),
       contact_phone: toTextOrEmpty(['contact_phone', 'contactPhone']),
@@ -1245,6 +1251,35 @@ const Deals = {
     const row = await window.CrmCompanyContactSelectors?.loadCompanySafe?.(companyId);
     return row ? this.normalizeCompany(row) : null;
   },
+
+  getDealContactId(deal = {}) {
+    return (
+      deal.contact_id ||
+      deal.customer_contact_id ||
+      deal.client_contact_id ||
+      deal.primary_contact_id ||
+      deal.selected_contact_id ||
+      deal.contact_uuid ||
+      null
+    );
+  },
+  async loadDealContact(deal) {
+    const contactId = this.getDealContactId(deal);
+    if (!contactId) return null;
+
+    const { data, error } = await this.getClient()
+      .from('contacts')
+      .select('*')
+      .eq('id', contactId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Failed to load deal contact:', error);
+      return null;
+    }
+
+    return data || null;
+  },
   async getFullContactRecord(contactIdOrRecord) {
     if (!contactIdOrRecord) return null;
     if (typeof contactIdOrRecord === 'object') {
@@ -1380,14 +1415,14 @@ const Deals = {
       if (E.dealFormNotes) E.dealFormNotes.value = '';
       this.hydrateLeadCodeFromLeadUuid(row);
       const companyId = row.company_id || row.companyId || '';
-      const contactId = row.contact_id || row.contactId || '';
+      const contactId = this.getDealContactId(row) || '';
       if (companyId) {
         const company = await this.getFullCompanyRecord(companyId);
         this.hydrateDealFromCompany(company || { company_id: companyId, company_name: row.company_name || row.companyName || '', country: row.country || '' });
       }
       if (contactId) {
-        const contact = await this.getFullContactRecord(contactId);
-        this.hydrateDealFromContact(contact || { contact_id: contactId, full_name: row.contact_name || row.contactName || row.full_name || '', email: row.contact_email || row.contactEmail || row.email || '', phone: row.contact_phone || row.contactPhone || row.phone || '' });
+        const dealContact = await this.loadDealContact(row);
+        this.hydrateDealFromContact(dealContact || { id: contactId, contact_id: contactId, full_name: row.contact_name || row.contactName || row.full_name || '', email: row.contact_email || row.contactEmail || row.email || '', phone: row.contact_phone || row.contactPhone || row.phone || '' });
       }
       this.lockCompanyContactFields();
       this.syncDealFormDropdowns({
@@ -1458,17 +1493,30 @@ const Deals = {
     if (E.dealFormContactSelector) E.dealFormContactSelector.value = c.contact_id || '';
         if (E.dealFormPhone) E.dealFormPhone.value = c.phone || c.mobile || '';
     if (E.dealFormEmail) E.dealFormEmail.value = c.email || '';
-    this.setReadonlyField(E.dealContactIdDisplay, c.contact_id);
-        this.setReadonlyField(E.dealContactFirstNameDisplay, c.first_name);
-    this.setReadonlyField(E.dealContactLastNameDisplay, c.last_name);
-    this.setReadonlyField(E.dealContactJobTitleDisplay, c.job_title);
-    this.setReadonlyField(E.dealContactDepartmentDisplay, c.department);
-    this.setReadonlyField(E.dealContactEmailDisplay, c.email);
-    this.setReadonlyField(E.dealContactPhoneDisplay, c.phone);
-    this.setReadonlyField(E.dealContactMobileDisplay, c.mobile);
-    this.setReadonlyField(E.dealContactDecisionRoleDisplay, c.decision_role);
-    this.setReadonlyField(E.dealContactPrimaryDisplay, c.is_primary_contact ? 'Yes' : 'No');
-    this.setReadonlyField(E.dealContactStatusDisplay, c.contact_status);
+    const contactDetails = {
+      contactId: c.contact_number || c.contact_no || c.contact_code || c.id || '—',
+      firstName: c.first_name || '',
+      lastName: c.last_name || '',
+      jobTitle: c.title || c.job_title || c.position || c.designation || '',
+      department: c.department || '',
+      email: c.email || c.contact_email || c.work_email || '',
+      phone: c.phone || c.contact_phone || '',
+      mobile: c.mobile || c.mobile_number || '',
+      decisionRole: c.decision_role || '',
+      primaryContact: c.is_primary ? 'Yes' : '',
+      contactStatus: c.status || c.contact_status || ''
+    };
+    this.setReadonlyField(E.dealContactIdDisplay, contactDetails.contactId);
+        this.setReadonlyField(E.dealContactFirstNameDisplay, contactDetails.firstName);
+    this.setReadonlyField(E.dealContactLastNameDisplay, contactDetails.lastName);
+    this.setReadonlyField(E.dealContactJobTitleDisplay, contactDetails.jobTitle);
+    this.setReadonlyField(E.dealContactDepartmentDisplay, contactDetails.department);
+    this.setReadonlyField(E.dealContactEmailDisplay, contactDetails.email);
+    this.setReadonlyField(E.dealContactPhoneDisplay, contactDetails.phone);
+    this.setReadonlyField(E.dealContactMobileDisplay, contactDetails.mobile);
+    this.setReadonlyField(E.dealContactDecisionRoleDisplay, contactDetails.decisionRole);
+    this.setReadonlyField(E.dealContactPrimaryDisplay, contactDetails.primaryContact);
+    this.setReadonlyField(E.dealContactStatusDisplay, contactDetails.contactStatus);
     const shouldLockPartySelectors = E.dealForm?.dataset.mode === 'edit' || this.state.form.lockLinks;
     this.lockCompanyContactFields({ lockCompanySelector: shouldLockPartySelectors && !!this.state.form.companyId, lockContactSelector: shouldLockPartySelectors && !!c.contact_id });
   },
