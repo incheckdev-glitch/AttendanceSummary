@@ -248,6 +248,15 @@
   function str(value) { return String(value ?? '').trim(); }
   function normalizeCompare(value) { return str(value).toLowerCase(); }
   function isUuid(value) { return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str(value)); }
+
+  function resolveCompanyAuthorizedSignatory(company = {}) {
+    const c = company && typeof company === 'object' ? company : {};
+    return {
+      name: str(c.authorized_signatory_name || c.authorizedSignatoryName || c.authorized_signatory_full_name || c.authorizedSignatoryFullName || c.signatory_name || c.signatoryName || c.customer_signatory_name || c.customerSignatoryName || c.customer_authorized_signatory_name || c.customerAuthorizedSignatoryName || c.authorized_person_name || c.authorizedPersonName),
+      title: str(c.authorized_signatory_title || c.authorizedSignatoryTitle || c.signatory_title || c.signatoryTitle || c.customer_signatory_title || c.customerSignatoryTitle || c.customer_authorized_signatory_title || c.customerAuthorizedSignatoryTitle || c.authorized_person_title || c.authorizedPersonTitle)
+    };
+  }
+
   function normalizeCompany(raw = {}) {
     const c = raw && typeof raw === 'object' ? raw : {};
     const rawCompanyId = str(c.company_id || c.companyId);
@@ -287,8 +296,15 @@
       deleted_at: str(c.deleted_at || c.deletedAt),
       currency: str(c.currency),
       payment_term: str(c.payment_term || c.paymentTerm || c.payment_terms || c.paymentTerms),
-      authorized_signatory_full_name: str(c.authorized_signatory_full_name || c.authorizedSignatoryFullName),
-      authorized_signatory_title: str(c.authorized_signatory_title || c.authorizedSignatoryTitle),
+      authorized_signatory_full_name: resolveCompanyAuthorizedSignatory(c).name,
+      authorized_signatory_name: resolveCompanyAuthorizedSignatory(c).name,
+      authorized_signatory_title: resolveCompanyAuthorizedSignatory(c).title,
+      signatory_name: str(c.signatory_name || c.signatoryName),
+      signatory_title: str(c.signatory_title || c.signatoryTitle),
+      customer_signatory_name: str(c.customer_signatory_name || c.customerSignatoryName),
+      customer_signatory_title: str(c.customer_signatory_title || c.customerSignatoryTitle),
+      authorized_person_name: str(c.authorized_person_name || c.authorizedPersonName),
+      authorized_person_title: str(c.authorized_person_title || c.authorizedPersonTitle),
       documents_verified: c.documents_verified === true || c.documentsVerified === true || String(c.documents_verified ?? c.documentsVerified ?? '').toLowerCase() === 'true',
       documents_verification_status: str(c.documents_verification_status || c.documentsVerificationStatus)
     };
@@ -859,14 +875,13 @@
     // Extra common customer/company aliases used by proposal/agreement/invoice/receipt templates.
     ['CustomerName', 'CustomerLegalName'].forEach(suffix => setText(`${prefix}${suffix}`, suffix === 'CustomerLegalName' ? (c.legal_name || displayName) : displayName));
     setText(`${prefix}CustomerAddress`, c.address);
-    setText(`${prefix}CustomerOfficialSignatoryName`, c.authorized_signatory_full_name);
-    setText(`${prefix}CustomerOfficialSignatoryTitle`, c.authorized_signatory_title);
-    if (cfg.formId !== 'proposalForm' || !str(byId(cfg.contactHiddenId)?.value || byId(cfg.formId)?.dataset?.contactId)) {
-      const signatoryNameField = byId(`${prefix}CustomerSignatoryName`);
-      const signatoryTitleField = byId(`${prefix}CustomerSignatoryTitle`);
-      if (cfg.formId !== 'proposalForm' || !str(signatoryNameField?.value)) setText(`${prefix}CustomerSignatoryName`, c.authorized_signatory_full_name);
-      if (cfg.formId !== 'proposalForm' || !str(signatoryTitleField?.value)) setText(`${prefix}CustomerSignatoryTitle`, c.authorized_signatory_title);
-    }
+    const companySignatory = resolveCompanyAuthorizedSignatory(c);
+    setText(`${prefix}CustomerOfficialSignatoryName`, companySignatory.name);
+    setText(`${prefix}CustomerOfficialSignatoryTitle`, companySignatory.title);
+    const signatoryNameField = byId(`${prefix}CustomerSignatoryName`);
+    const signatoryTitleField = byId(`${prefix}CustomerSignatoryTitle`);
+    if (!str(signatoryNameField?.value)) setText(`${prefix}CustomerSignatoryName`, companySignatory.name);
+    if (!str(signatoryTitleField?.value)) setText(`${prefix}CustomerSignatoryTitle`, companySignatory.title);
     setText(`${prefix}CompanyName`, c.company_name || displayName);
     setText(`${prefix}CompanyEmail`, c.main_email);
     setText(`${prefix}CompanyPhone`, c.main_phone);
@@ -1215,6 +1230,9 @@
     const address = str(loadedCompany.address);
     const email = str(loadedCompany.main_email || loadedCompany.email);
     const phone = str(loadedCompany.main_phone || loadedCompany.phone);
+    const companySignatory = resolveCompanyAuthorizedSignatory(loadedCompany);
+    const existingSignatoryName = str(payload.customer_signatory_name || payload.customer_signatory_Name || payload.customer_authorized_signatory_name || payload.customer_official_signatory_name || payload.authorized_signatory_name);
+    const existingSignatoryTitle = str(payload.customer_signatory_title || payload.customer_authorized_signatory_title || payload.customer_official_signatory_title || payload.authorized_signatory_title);
     const next = {
       ...payload,
       company_id: str(loadedCompany.id),
@@ -1224,8 +1242,8 @@
       customer_address: address,
       customer_email: email,
       customer_phone: phone,
-      customer_signatory_name: str(loadedCompany.authorized_signatory_full_name || loadedCompany.authorized_signatory_name),
-      customer_signatory_title: str(loadedCompany.authorized_signatory_title)
+      customer_signatory_name: existingSignatoryName || companySignatory.name,
+      customer_signatory_title: existingSignatoryTitle || companySignatory.title
     };
     if (loadedContact) next.contact_id = str(loadedContact.id);
     return next;
