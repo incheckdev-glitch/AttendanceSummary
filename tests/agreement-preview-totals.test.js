@@ -116,6 +116,17 @@ assert.deepStrictEqual(
   { name: 'Customer Signer', title: 'Director' },
   'draft agreements should use the related company signatory fallback'
 );
+
+const convertedSignatory = agreements.resolveProposalCustomerSignatory(
+  { customer_signatory_name: 'Proposal Contact', customer_signatory_title: 'Contact Title' },
+  { authorized_signatory_name: 'Company Authorized', authorized_signatory_title: 'Company Title' }
+);
+assert.deepStrictEqual(
+  JSON.parse(JSON.stringify(convertedSignatory)),
+  { name: 'Company Authorized', title: 'Company Title' },
+  'proposal-to-agreement conversion should prefer company authorized signatory over proposal/contact signatory'
+);
+
 const signedSignatory = agreements.resolveCustomerSignatorySnapshot(
   { status: 'signed', customer_signatory_name: 'Historical Signer', customer_signatory_title: 'Former Director' },
   { authorized_signatory_name: 'New Signer', authorized_signatory_title: 'New Director' }

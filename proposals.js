@@ -1439,8 +1439,32 @@ const Proposals = {
       ).trim()
     };
   },
-  resolveProposalCustomerSignatory(proposal = {}, company = {}) {
-    const companySignatory = this.resolveCompanyAuthorizedSignatory(company);
+  resolveContactSignatory(contact = {}) {
+    return {
+      name: String(
+        contact?.full_name ||
+        contact?.fullName ||
+        contact?.contact_name ||
+        contact?.contactName ||
+        contact?.name ||
+        [contact?.first_name || contact?.firstName, contact?.last_name || contact?.lastName].filter(Boolean).join(' ') ||
+        ''
+      ).trim(),
+      title: String(
+        contact?.title ||
+        contact?.job_title ||
+        contact?.jobTitle ||
+        contact?.position ||
+        contact?.designation ||
+        contact?.contact_title ||
+        contact?.contactTitle ||
+        contact?.role ||
+        ''
+      ).trim()
+    };
+  },
+  resolveProposalCustomerSignatory(proposal = {}, contact = {}) {
+    const contactSignatory = this.resolveContactSignatory(contact);
     return {
       name: String(
         proposal?.customer_signatory_name ||
@@ -1452,7 +1476,7 @@ const Proposals = {
         proposal?.customerSignatureName ||
         proposal?.authorized_signatory_name ||
         proposal?.authorizedSignatoryName ||
-        companySignatory.name ||
+        contactSignatory.name ||
         ''
       ).trim(),
       title: String(
@@ -1464,7 +1488,7 @@ const Proposals = {
         proposal?.customerSignatureTitle ||
         proposal?.authorized_signatory_title ||
         proposal?.authorizedSignatoryTitle ||
-        companySignatory.title ||
+        contactSignatory.title ||
         ''
       ).trim()
     };
@@ -1488,22 +1512,19 @@ const Proposals = {
       ''
     ).trim();
     if (locked) return { name: existingName, title: existingTitle };
-    const companySigner = this.resolveCompanyAuthorizedSignatory(company);
-    const contactSigner = { name: this.getContactDisplayName(contact), title: this.getContactTitle(contact) };
+    const contactSigner = this.resolveContactSignatory(contact);
     return {
-      name: existingName || companySigner.name || contactSigner.name,
-      title: existingTitle || companySigner.title || contactSigner.title
+      name: existingName || contactSigner.name,
+      title: existingTitle || contactSigner.title
     };
   },
-  applyProposalContactSignatory(contact, options = {}) {
-    const isContactChanged = options.contactChanged === true;
+  applyProposalContactSignatory(contact) {
     const signatoryNameInput = document.querySelector('[name="customer_signatory_name"], [data-proposal-customer-signatory-name], #proposalFormCustomerSignatoryName');
     const signatoryTitleInput = document.querySelector('[name="customer_signatory_title"], [data-proposal-customer-signatory-title], #proposalFormCustomerSignatoryTitle');
     if (!signatoryNameInput || !signatoryTitleInput) return;
-    const contactName = this.getContactDisplayName(contact);
-    const contactTitle = this.getContactTitle(contact);
-    if (contactName && (!signatoryNameInput.value || isContactChanged)) signatoryNameInput.value = contactName;
-    if (contactTitle && (!signatoryTitleInput.value || isContactChanged)) signatoryTitleInput.value = contactTitle;
+    const signatory = this.resolveContactSignatory(contact);
+    if (signatory.name && !signatoryNameInput.value) signatoryNameInput.value = signatory.name;
+    if (signatory.title && !signatoryTitleInput.value) signatoryTitleInput.value = signatory.title;
   },
   hydrateMappedProposalFields(proposal = {}, selectedCompany = {}, selectedContact = {}) {
     const customerAddress = String(selectedCompany?.address || '').trim();
@@ -1594,8 +1615,8 @@ const Proposals = {
       if (E.proposalFormCustomerContactName) E.proposalFormCustomerContactName.value = '';
       if (E.proposalFormCustomerContactMobile) E.proposalFormCustomerContactMobile.value = '';
       if (E.proposalFormCustomerContactEmail) E.proposalFormCustomerContactEmail.value = '';
-      if (E.proposalFormCustomerSignatoryName) E.proposalFormCustomerSignatoryName.value = String(company.authorized_signatory_full_name || '').trim();
-      if (E.proposalFormCustomerSignatoryTitle) E.proposalFormCustomerSignatoryTitle.value = String(company.authorized_signatory_title || '').trim();
+      if (E.proposalFormCustomerSignatoryName && !E.proposalFormCustomerSignatoryName.value) E.proposalFormCustomerSignatoryName.value = '';
+      if (E.proposalFormCustomerSignatoryTitle && !E.proposalFormCustomerSignatoryTitle.value) E.proposalFormCustomerSignatoryTitle.value = '';
     }
     return true;
   },
@@ -2580,9 +2601,9 @@ const Proposals = {
       position: proposalData.contact_position || proposalData.position || '',
       job_title: proposalData.contact_job_title || proposalData.job_title || ''
     };
-    const fallbackCompanySigner = this.resolveProposalCustomerSignatory(proposalData, proposalData.company || proposalData);
-    const customerSignatoryName = String(fallbackCompanySigner.name || this.getContactDisplayName(proposalContact) || '').trim();
-    const customerSignatoryTitle = String(fallbackCompanySigner.title || this.getContactTitle(proposalContact) || '').trim();
+    const customerSignatory = this.resolveProposalCustomerSignatory(proposalData, proposalContact);
+    const customerSignatoryName = String(customerSignatory.name || '').trim();
+    const customerSignatoryTitle = String(customerSignatory.title || '').trim();
     const isPoc = this.normalizeTruthy(proposalData.is_poc || proposalData.isPoc);
     const pocDetailsHtml = isPoc ? `
       <section class="info-grid" style="margin-top:14px;grid-template-columns:1fr;">
@@ -4236,13 +4257,13 @@ const Proposals = {
       String(E.proposalFormCustomerName?.value || '').trim() ||
       String(selectedCompany.legal_name || selectedCompany.company_name || '').trim();
     const currentLockedSnapshot = this.isSignedOrAcceptedDocument(this.state.currentProposal || {});
-    const companySignatory = this.resolveCompanyAuthorizedSignatory(selectedCompany);
+    const contactSignatory = this.resolveContactSignatory(selectedContact);
     const customerSignatoryNameValue = currentLockedSnapshot
       ? String(this.state.currentProposal?.customer_signatory_name || this.state.currentProposal?.customer_signatory_Name || this.state.currentProposal?.customer_signature_name || '').trim()
-      : (String(E.proposalFormCustomerSignatoryName?.value || '').trim() || companySignatory.name || this.getContactDisplayName(selectedContact));
+      : (String(E.proposalFormCustomerSignatoryName?.value || '').trim() || contactSignatory.name);
     const customerSignatoryTitleValue = currentLockedSnapshot
       ? String(this.state.currentProposal?.customer_signatory_title || this.state.currentProposal?.customer_signature_title || '').trim()
-      : (String(E.proposalFormCustomerSignatoryTitle?.value || '').trim() || companySignatory.title || this.getContactTitle(selectedContact));
+      : (String(E.proposalFormCustomerSignatoryTitle?.value || '').trim() || contactSignatory.title);
     return {
       proposal_id: String(E.proposalFormProposalId?.value || '').trim(),
       ref_number: this.ensureRefNumber(existingRefNumber),
@@ -4338,11 +4359,11 @@ const Proposals = {
     proposal.customer_name = legalName;
     proposal.customer_legal_name = legalName;
     proposal.customer_address = String(loadedCompany.address || '').trim();
-    const signatory = this.resolveCompanyAuthorizedSignatory(loadedCompany);
-    proposal.customer_signatory_name = signatory.name || '';
-    proposal.customer_signatory_title = signatory.title || '';
-    proposal.customer_authorized_signatory_name = signatory.name || '';
-    proposal.customer_authorized_signatory_title = signatory.title || '';
+    const signatory = this.resolveContactSignatory(loadedContact || {});
+    proposal.customer_signatory_name = proposal.customer_signatory_name || signatory.name || '';
+    proposal.customer_signatory_title = proposal.customer_signatory_title || signatory.title || '';
+    proposal.customer_authorized_signatory_name = proposal.customer_signatory_name || '';
+    proposal.customer_authorized_signatory_title = proposal.customer_signatory_title || '';
     if (loadedContact) {
       proposal.contact_id = loadedContact.id;
       proposal.contact_name = this.buildContactDisplayName(loadedContact);

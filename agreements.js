@@ -757,6 +757,7 @@ const Agreements = {
     const companySignatory = this.resolveCompanyAuthorizedSignatory(company);
     return {
       name: String(
+        companySignatory.name ||
         proposal?.customer_signatory_name ||
         proposal?.customer_signatory_Name ||
         proposal?.customerSignatoryName ||
@@ -764,17 +765,16 @@ const Agreements = {
         proposal?.customerAuthorizedSignatoryName ||
         proposal?.authorized_signatory_name ||
         proposal?.authorizedSignatoryName ||
-        companySignatory.name ||
         ''
       ).trim(),
       title: String(
+        companySignatory.title ||
         proposal?.customer_signatory_title ||
         proposal?.customerSignatoryTitle ||
         proposal?.customer_authorized_signatory_title ||
         proposal?.customerAuthorizedSignatoryTitle ||
         proposal?.authorized_signatory_title ||
         proposal?.authorizedSignatoryTitle ||
-        companySignatory.title ||
         ''
       ).trim()
     };
