@@ -1,12 +1,12 @@
 -- Mark only the authenticated user's unread notifications that reference an opened Communication Centre conversation.
-create or replace function public.crm_mark_communication_notifications_read(p_conversation_id uuid)
+create or replace function public.mark_conversation_notifications_read(p_conversation_id uuid, p_user_id uuid default auth.uid())
 returns integer
 language plpgsql
 security definer
 set search_path = ''
 as $$
 declare
-  v_user_id uuid := auth.uid();
+  v_user_id uuid := coalesce(p_user_id, auth.uid());
   v_recipient_column text;
   v_column text;
   v_json_column text;
@@ -66,7 +66,7 @@ begin
 
   foreach v_column in array array[
     'conversation_id', 'communication_id', 'related_conversation_id', 'source_id',
-    'target_id', 'related_record_id', 'resource_id'
+    'target_id', 'related_record_id', 'resource_id', 'entity_id'
   ] loop
     if exists (
       select 1 from information_schema.columns
@@ -90,7 +90,7 @@ begin
       select 1 from information_schema.columns
       where table_schema = 'public' and table_name = 'notifications' and column_name = v_json_column
     ) then
-      foreach v_json_key in array array['conversation_id', 'communication_id', 'related_conversation_id'] loop
+      foreach v_json_key in array array['conversation_id', 'conversationId', 'communication_id', 'related_conversation_id', 'resource_id', 'entity_id'] loop
         v_match_parts := array_append(
           v_match_parts,
           format('coalesce(n.%I::jsonb ->> %L, '''') = $1::text', v_json_column, v_json_key)
@@ -114,6 +114,19 @@ begin
   get diagnostics v_marked = row_count;
   return coalesce(v_marked, 0);
 end;
+$$;
+
+revoke all on function public.mark_conversation_notifications_read(uuid, uuid) from public, anon;
+grant execute on function public.mark_conversation_notifications_read(uuid, uuid) to authenticated;
+
+-- Backward-compatible wrapper for older frontend bundles.
+create or replace function public.crm_mark_communication_notifications_read(p_conversation_id uuid)
+returns integer
+language sql
+security definer
+set search_path = ''
+as $$
+  select public.mark_conversation_notifications_read(p_conversation_id, auth.uid());
 $$;
 
 revoke all on function public.crm_mark_communication_notifications_read(uuid) from public, anon;

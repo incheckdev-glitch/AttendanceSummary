@@ -978,10 +978,11 @@ const Notifications = {
         communicationcentre: 'communication_centre',
         communicationcenter: 'communication_centre',
         'communication-centre': 'communication_centre',
-        'communication-center': 'communication_centre'
+        'communication-center': 'communication_centre',
+        communication: 'communication_centre'
       };
       if (map[route]) return map[route];
-      if (route.includes('communication_centre') || route.includes('communication-centre') || route.includes('communicationcentre') || route.includes('communication_center')) return 'communication_centre';
+      if (route.includes('communication_centre') || route.includes('communication-centre') || route.includes('communicationcentre') || route.includes('communication_center') || route === 'communication') return 'communication_centre';
       if (route.includes('ticket') || route.includes('issue')) return 'tickets';
       if (route.includes('event')) return 'events';
       if (route.includes('workflow') || route.includes('approval')) return 'workflow';
@@ -1037,11 +1038,13 @@ const Notifications = {
         const hash = String(url.hash || '').replace(/^#/, '');
         const query = hash.includes('?') ? hash.split('?').slice(1).join('?') : url.search.replace(/^\?/, '');
         const params = new URLSearchParams(query || '');
+        const pathMatch = `${url.pathname || ''}/${hash.split('?')[0] || ''}`.match(/(?:communication-centre|communication|communication_centre)\/conversation\/([^/?#]+)/i);
         return String(
           params.get('conversation_id') ||
           params.get('conversationId') ||
           params.get('communication_centre_id') ||
           params.get('id') ||
+          (pathMatch ? decodeURIComponent(pathMatch[1]) : '') ||
           ''
         ).trim();
       } catch (_) {
@@ -1062,6 +1065,7 @@ const Notifications = {
         meta?.communicationCentreId,
         meta?.resource_id,
         meta?.target_resource_id,
+        meta?.entity_id,
         meta?.record_id,
         meta?.id,
         parseIdFromLink(notification?.link_target),
@@ -1088,8 +1092,9 @@ const Notifications = {
     const directValues = [
       notification?.conversation_id, notification?.communication_id, notification?.related_conversation_id,
       notification?.source_id, notification?.target_id, notification?.related_record_id,
-      notification?.resource_id, notification?.target_resource_id,
-      meta?.conversation_id, meta?.communication_id, meta?.related_conversation_id
+      notification?.resource_id, notification?.target_resource_id, notification?.entity_id,
+      meta?.conversation_id, meta?.communication_id, meta?.related_conversation_id,
+      meta?.resource_id, meta?.entity_id
     ];
     if (directValues.some(value => String(value || '').trim().toLowerCase() === wanted)) return true;
     return [notification?.link_target, notification?.deep_link, notification?.url, meta?.deep_link, meta?.url]
@@ -1121,14 +1126,18 @@ const Notifications = {
       try {
         const client = window.SupabaseClient?.getClient?.();
         if (!client?.rpc) return 0;
-        const { data, error } = await client.rpc('crm_mark_communication_notifications_read', {
-          p_conversation_id: normalizedConversationId
+        const { data, error } = await client.rpc('mark_conversation_notifications_read', {
+          p_conversation_id: normalizedConversationId,
+          p_user_id: String(Session.userId?.() || '').trim()
         });
         if (error) throw error;
         this.state.communicationReadCompletedAt.set(requestKey, Date.now());
         this.applyCommunicationNotificationsRead(normalizedConversationId);
-        await this.refreshUnreadCount();
-        if (this.state.filters.mode === 'unread' && E.notificationsView?.classList.contains('active')) await this.loadHub(true);
+        await Promise.allSettled([
+          this.fetchPreview(true),
+          this.refreshUnreadCount(),
+          E.notificationsView?.classList.contains('active') ? this.loadHub(true) : Promise.resolve()
+        ]);
         return Number(data || 0);
       } catch (error) {
         logNotificationDevelopmentWarning('[notifications] unable to mark communication notifications as read', error);
