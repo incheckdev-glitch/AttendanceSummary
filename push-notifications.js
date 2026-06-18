@@ -573,38 +573,56 @@
       return 'Unknown';
     },
 
-    async upsertSubscription(subscription, { isActive = true } = {}) {
-      const subscriptionJson = subscription?.toJSON?.() || {};
-      const endpoint = String(subscriptionJson.endpoint || subscription?.endpoint || '').trim();
+    async savePushSubscription(subscription) {
+      if (!subscription) {
+        throw new Error('Missing push subscription.');
+      }
+
+      const json = subscription.toJSON?.() || {};
+      const endpoint = String(json.endpoint || subscription.endpoint || '').trim();
       if (!endpoint) throw new Error('Missing push endpoint.');
-      const currentUser = global.Session?.user?.() || {};
-      const userId = String(global.Session?.userId?.() || currentUser.id || currentUser.user_id || '').trim();
-      if (!userId) throw new Error('Missing current user id.');
-      const nowIso = new Date().toISOString();
-      const payload = {
-        user_id: userId,
-        endpoint,
-        p256dh: subscriptionJson.keys?.p256dh || null,
-        auth: subscriptionJson.keys?.auth || null,
-        user_agent: navigator.userAgent || null,
-        app_context: 'erp',
-        permission_status: Notification.permission,
-        browser_name: this.getBrowserName?.() || null,
-        device_label: this.deriveDeviceLabel?.() || null,
-        is_active: Boolean(isActive),
-        last_seen_at: nowIso,
-        updated_at: nowIso
-      };
 
       const client = global.SupabaseClient.getClient();
-      const { error } = await client
-        .from('user_push_subscriptions')
-        .upsert(payload, { onConflict: 'user_id,endpoint' });
+      const { data, error } = await client.rpc(
+        'register_user_push_subscription',
+        {
+          p_endpoint: endpoint,
+          p_p256dh: json.keys?.p256dh || null,
+          p_auth: json.keys?.auth || null,
+          p_user_agent: navigator.userAgent || null,
+          p_app_context: 'erp',
+          p_permission_status: Notification.permission || 'granted',
+          p_device_label: this.deriveDeviceLabel?.() || null,
+          p_browser_name: this.getBrowserName?.() || null
+        }
+      );
+
       if (error) {
-        console.error('Failed to save push subscription:', error);
+        console.error('Failed to register push subscription:', error);
         throw error;
       }
-      return payload;
+
+      await this.verifySavedPushSubscription(endpoint);
+      return data;
+    },
+
+    async verifySavedPushSubscription(endpoint = '') {
+      const value = String(endpoint || '').trim();
+      if (!value) throw new Error('Missing push endpoint.');
+      const client = global.SupabaseClient.getClient();
+      const { data, error } = await client
+        .from('user_push_subscriptions')
+        .select('endpoint,is_active,app_context')
+        .eq('endpoint', value)
+        .eq('is_active', true)
+        .eq('app_context', 'erp')
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data?.endpoint) {
+        throw new Error('Push subscription registration could not be verified.');
+      }
+      return data;
     },
 
     async markSubscriptionInactive(endpoint = '') {
@@ -649,7 +667,7 @@
             return true;
           }
 
-          await this.upsertSubscription(subscription, { isActive: true });
+          await this.savePushSubscription(subscription);
           this.setStoredVapidPublicKey(vapidPublicKey);
           await this.logDiagnostics({ source: 'syncExistingSubscription', registration, subscription });
           this.state.enabled = true;
@@ -728,7 +746,7 @@
           });
         }
 
-        await this.upsertSubscription(subscription, { isActive: true });
+        await this.savePushSubscription(subscription);
         this.setStoredVapidPublicKey(vapidPublicKey);
         await this.logDiagnostics({ source: 'enablePush', registration, subscription });
         this.state.enabled = true;
@@ -810,7 +828,7 @@
           userVisibleOnly: true,
           applicationServerKey
         });
-        await this.upsertSubscription(newSubscription, { isActive: true });
+        await this.savePushSubscription(newSubscription);
         this.setStoredVapidPublicKey(vapidPublicKey);
         this.state.enabled = true;
         this.setMessage('Push subscription refreshed successfully. Running server push test…');
