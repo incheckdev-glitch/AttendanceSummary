@@ -744,6 +744,7 @@ function cacheEls() {
     'proposalFormProviderSignatoryName',
     'proposalFormProviderSignatoryTitle',
     'proposalFormProviderSignDate',
+    'proposalFormInternalNotes',
     'proposalFormTerms',
     'proposalResetTermsBtn',
     'proposalAnnualItemsTbody',
