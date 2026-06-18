@@ -43,21 +43,17 @@ async function resolveEmailsForUsers(supabase, userIds = [], extraEmails = []) {
   const ids = [...new Set(normalizeArray(userIds).map(String).filter(Boolean))];
   if (!ids.length) return [...emails];
 
-  const tables = ['profiles', 'users'];
-  for (const table of tables) {
+  await Promise.all(ids.map(async (userId) => {
     try {
-      const { data, error } = await supabase
-        .from(table)
-        .select('*')
-        .in('id', ids);
-      if (!error && Array.isArray(data)) {
-        data.forEach(row => {
-          const email = normalizeEmail(row?.email || row?.user_email || row?.email_address);
-          if (isValidEmail(email)) emails.add(email);
-        });
-      }
+      const { data, error } = await supabase.rpc('get_notification_user_identity', { user_id: userId });
+      if (error) return;
+      const rows = Array.isArray(data) ? data : (data ? [data] : []);
+      rows.forEach(row => {
+        const email = normalizeEmail(row?.recipient_email);
+        if (isValidEmail(email)) emails.add(email);
+      });
     } catch (_) {}
-  }
+  }));
 
   try {
     const currentUser = (typeof window !== 'undefined' && (window.Session?.user?.() || window.Session?.currentUser?.())) || null;
