@@ -1580,6 +1580,32 @@ const Proposals = {
     const row = await window.CrmCompanyContactSelectors?.loadContactSafe?.(contactKey);
     return row ? this.normalizeContact(row) : null;
   },
+  getProposalContactId(proposal = {}) {
+    return String(
+      proposal?.contact_id ||
+      proposal?.customer_contact_id ||
+      proposal?.client_contact_id ||
+      proposal?.primary_contact_id ||
+      proposal?.selected_contact_id ||
+      ''
+    ).trim();
+  },
+  async loadProposalContactForPreview(client, proposal = {}) {
+    const contactId = this.getProposalContactId(proposal);
+    if (!client || !contactId) return null;
+    const { data, error } = await client
+      .from('contacts')
+      .select('*')
+      .eq('id', contactId)
+      .maybeSingle();
+
+    if (error) {
+      console.warn('[Proposal Preview] Contact could not be loaded from proposal contact id; using saved proposal snapshot.', { contactId, error });
+      return null;
+    }
+
+    return data ? this.normalizeContact(data) : null;
+  },
   async getFullCompanyRecord(companyIdOrRecord) {
     const id = typeof companyIdOrRecord === 'object' ? (companyIdOrRecord.id || companyIdOrRecord.company_uuid || companyIdOrRecord.companyUuid) : companyIdOrRecord;
     return this.loadCompanyByUuid(id);
@@ -2398,10 +2424,18 @@ const Proposals = {
     if (itemsError) throw new Error(`Unable to load proposal items: ${itemsError.message || 'Unknown error'}`);
 
     const normalizedItems = Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : [];
-    const proposalWithTotals = this.withCalculatedTotalsFallback(proposal, normalizedItems);
-    const creatorProfile = await this.resolveProposalCreatorProfile(client, proposalWithTotals);
+    const normalizedProposal = this.normalizeProposal(proposal);
+    const proposalWithTotals = this.withCalculatedTotalsFallback({ ...proposal, ...normalizedProposal }, normalizedItems);
+    const [creatorProfile, previewContact] = await Promise.all([
+      this.resolveProposalCreatorProfile(client, proposalWithTotals),
+      this.loadProposalContactForPreview(client, proposalWithTotals)
+    ]);
     return {
-      proposal: creatorProfile ? { ...proposalWithTotals, __providerSignatoryCreator: creatorProfile } : proposalWithTotals,
+      proposal: {
+        ...proposalWithTotals,
+        ...(creatorProfile ? { __providerSignatoryCreator: creatorProfile } : {}),
+        ...(previewContact ? { contact: previewContact } : {})
+      },
       items: normalizedItems
     };
   },
@@ -2456,30 +2490,16 @@ const Proposals = {
       email: firstText(saved.customer_email, saved.contact_email, saved.customer_contact_email, contactData.email),
       phone: firstText(saved.customer_phone, saved.contact_phone, saved.customer_contact_mobile, contactData.phone, contactData.mobile),
       address: firstText(saved.customer_address, saved.company_address, companyData.address, companyData.street_address),
-      signatoryName: firstText(
-        saved.customer_signatory_name,
-        saved.authorized_signatory_name,
-        saved.customer_authorized_signatory_name,
-        companyData.authorized_signatory_name,
-        companyData.authorized_signatory_full_name,
-        contactName,
-        contactData.name
-      ),
-      signatoryTitle: firstText(
-        saved.customer_signatory_title,
-        saved.authorized_signatory_title,
-        saved.customer_authorized_signatory_title,
-        companyData.authorized_signatory_title,
-        contactData.position,
-        contactData.job_title,
-        contactData.title
-      )
+      signatoryName: this.resolveProposalCustomerSignatory(saved, contactData).name || firstText(contactName, contactData.name),
+      signatoryTitle: this.resolveProposalCustomerSignatory(saved, contactData).title
     };
   },
   buildSafePreviewProposal(proposal = {}, company = null, contact = null) {
-    const details = this.resolveProposalCustomerDetails(proposal, company, contact);
+    const previewContact = contact || proposal?.contact || null;
+    const details = this.resolveProposalCustomerDetails(proposal, company, previewContact);
     const companyId = String(company?.id || proposal?.company_id || '').trim();
-    const contactId = String(contact?.id || proposal?.contact_id || '').trim();
+    const contactId = String(previewContact?.id || this.getProposalContactId(proposal)).trim();
+    const signatory = this.resolveProposalCustomerSignatory(proposal, previewContact);
     return {
       ...proposal,
       company_id: companyId,
@@ -2497,10 +2517,11 @@ const Proposals = {
       customer_contact_mobile: details.phone,
       customer_email: details.email,
       customer_phone: details.phone,
-      customer_signatory_name: details.signatoryName,
-      customer_signatory_title: details.signatoryTitle,
-      customer_authorized_signatory_name: details.signatoryName,
-      customer_authorized_signatory_title: details.signatoryTitle
+      customer_signatory_name: signatory.name,
+      customer_signatory_title: signatory.title,
+      customer_authorized_signatory_name: signatory.name,
+      customer_authorized_signatory_title: signatory.title,
+      contact: previewContact
     };
   },
   buildProposalDocumentHtml(proposal = {}, items = [], options = {}) {
@@ -5115,7 +5136,7 @@ const Proposals = {
     try {
       const { proposal, items } = await this.loadProposalPreviewData(proposalId);
       const companyKey = String(proposal?.company_id || '').trim();
-      const contactKey = String(proposal?.contact_id || '').trim();
+      const contactKey = this.getProposalContactId(proposal);
       let loadedCompany = null;
       let loadedContact = null;
       let resolvedCompanyId = '';
