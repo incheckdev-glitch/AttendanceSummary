@@ -555,34 +555,55 @@
     async getRegistration() {
       const existing = await navigator.serviceWorker.getRegistration();
       if (existing) return existing;
-      return navigator.serviceWorker.ready;
+      const ready = await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise(resolve => setTimeout(() => resolve(null), 5000))
+      ]);
+      if (!ready) throw new Error('Service worker is not registered.');
+      return ready;
+    },
+
+    getBrowserName() {
+      const ua = String(navigator.userAgent || '').toLowerCase();
+      if (/edg\//.test(ua)) return 'Edge';
+      if (/opr\//.test(ua) || /opera/.test(ua)) return 'Opera';
+      if (/firefox\//.test(ua) || /fxios\//.test(ua)) return 'Firefox';
+      if (/crios\//.test(ua) || (/chrome\//.test(ua) && !/edg\//.test(ua))) return 'Chrome';
+      if (/safari\//.test(ua) && !/chrome\//.test(ua) && !/crios\//.test(ua)) return 'Safari';
+      return 'Unknown';
     },
 
     async upsertSubscription(subscription, { isActive = true } = {}) {
-      const endpoint = String(subscription?.endpoint || '').trim();
+      const subscriptionJson = subscription?.toJSON?.() || {};
+      const endpoint = String(subscriptionJson.endpoint || subscription?.endpoint || '').trim();
       if (!endpoint) throw new Error('Missing push endpoint.');
-      const auth = subscription?.getKey ? subscription.getKey('auth') : null;
-      const p256dh = subscription?.getKey ? subscription.getKey('p256dh') : null;
-      const sessionUser = global.Session?.user?.() || {};
+      const currentUser = global.Session?.user?.() || {};
+      const userId = String(global.Session?.userId?.() || currentUser.id || currentUser.user_id || '').trim();
+      if (!userId) throw new Error('Missing current user id.');
       const nowIso = new Date().toISOString();
       const payload = {
+        user_id: userId,
         endpoint,
-        user_id: String(global.Session?.userId?.() || sessionUser.user_id || '').trim() || null,
-        role: String(global.Session?.role?.() || sessionUser.role || sessionUser.profile?.role_key || '').trim() || null,
-        email: String(sessionUser.email || global.Session?.state?.profile?.email || '').trim().toLowerCase() || null,
-        p256dh: p256dh ? global.btoa(String.fromCharCode(...new Uint8Array(p256dh))) : null,
-        auth: auth ? global.btoa(String.fromCharCode(...new Uint8Array(auth))) : null,
-        user_agent: String(navigator.userAgent || '').trim() || null,
-        device_label: this.deriveDeviceLabel(),
-        origin: String(global.location?.origin || '').trim() || null,
-        app_context: this.isStandalonePwa() ? 'pwa' : 'web',
+        p256dh: subscriptionJson.keys?.p256dh || null,
+        auth: subscriptionJson.keys?.auth || null,
+        user_agent: navigator.userAgent || null,
+        app_context: 'erp',
+        permission_status: Notification.permission,
+        browser_name: this.getBrowserName?.() || null,
+        device_label: this.deriveDeviceLabel?.() || null,
         is_active: Boolean(isActive),
-        last_seen_at: nowIso
+        last_seen_at: nowIso,
+        updated_at: nowIso
       };
 
       const client = global.SupabaseClient.getClient();
-      const { error } = await client.from('user_push_subscriptions').upsert({ ...payload, updated_at: nowIso }, { onConflict: 'user_id,endpoint' });
-      if (error) throw new Error(error.message || 'Unable to save push subscription.');
+      const { error } = await client
+        .from('user_push_subscriptions')
+        .upsert(payload, { onConflict: 'user_id,endpoint' });
+      if (error) {
+        console.error('Failed to save push subscription:', error);
+        throw error;
+      }
       return payload;
     },
 
@@ -642,7 +663,7 @@
           if (!hasVapidPublicKey) {
             this.setMessage('Push notifications are not configured yet. Contact your administrator.');
           } else if (this.state.permission === 'denied') {
-            this.setMessage('Notifications are blocked in browser settings.');
+            this.setMessage('Push notification permission is blocked. Please enable it from browser settings.');
           } else {
             this.setMessage('Push notifications disabled on this device.');
           }
@@ -692,7 +713,7 @@
           this.state.enabled = false;
           this.renderButtonLabel();
           if (this.state.permission === 'denied') {
-            this.setMessage('Notifications are blocked in browser settings.');
+            this.setMessage('Push notification permission is blocked. Please enable it from browser settings.');
           } else {
             this.setMessage('Push notifications were not enabled.');
           }
@@ -714,7 +735,12 @@
         this.setMessage('Push notifications enabled on this device.');
       } catch (error) {
         console.warn('[push] Enable failed', error);
-        this.setMessage(`Unable to enable push notifications: ${String(error?.message || 'Unknown error')}`);
+        const message = String(error?.message || 'Unknown error');
+        if (message === 'Service worker is not registered.') {
+          this.setMessage('Service worker is not registered.');
+        } else {
+          this.setMessage(`Unable to enable push notifications: ${message}`);
+        }
       } finally {
         this.setBusy(false);
       }
