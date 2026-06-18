@@ -299,38 +299,24 @@ self.addEventListener('message', event => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  const data = event.notification?.data || {};
-  const targetUrl =
-    data.deep_link ||
-    data.url ||
-    data.link ||
-    '/#communication-centre';
-  console.log('[SW notificationclick]', targetUrl);
+  const url = event.notification?.data?.url || event.notification?.data?.deep_link || '/';
 
-  event.waitUntil((async () => {
-    const absoluteUrl = new URL(targetUrl, self.location.origin).href;
-
-    const allClients = await self.clients.matchAll({
-      type: 'window',
-      includeUncontrolled: true
-    });
-
-    for (const client of allClients) {
-      try {
-        if ('navigate' in client) {
-          await client.navigate(absoluteUrl);
-        }
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
         if ('focus' in client) {
-          return client.focus();
+          client.focus();
+          client.postMessage({
+            type: 'OPEN_NOTIFICATION_URL',
+            url,
+          });
+          return;
         }
-        return;
-      } catch {
-        // continue to fallback
       }
-    }
 
-    if (self.clients.openWindow) {
-      await self.clients.openWindow(absoluteUrl);
-    }
-  })());
+      if (clients.openWindow) {
+        return clients.openWindow(url);
+      }
+    })
+  );
 });

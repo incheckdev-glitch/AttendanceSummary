@@ -458,7 +458,7 @@
       const client = global.SupabaseClient?.getClient?.();
       if (!client) return false;
       const { data } = await client
-        .from('push_subscriptions')
+        .from('user_push_subscriptions')
         .select('endpoint,is_active')
         .eq('endpoint', value)
         .eq('is_active', true)
@@ -490,7 +490,7 @@
       const endpoint = String(activeSubscription?.endpoint || '').trim();
 
       let query = client
-        .from('push_subscriptions')
+        .from('user_push_subscriptions')
         .select('id,user_id,endpoint,is_active,last_seen_at,updated_at,created_at')
         .eq('user_id', value)
         .eq('is_active', true)
@@ -503,7 +503,7 @@
 
       if (endpoint) {
         const { data: byEndpoint } = await client
-          .from('push_subscriptions')
+          .from('user_push_subscriptions')
           .select('id,user_id,endpoint,is_active,last_seen_at,updated_at,created_at')
           .eq('endpoint', endpoint)
           .eq('is_active', true)
@@ -513,7 +513,7 @@
       }
 
       const { data: fallback } = await client
-        .from('push_subscriptions')
+        .from('user_push_subscriptions')
         .select('id,user_id,endpoint,is_active,last_seen_at,updated_at,created_at')
         .eq('user_id', value)
         .eq('is_active', true)
@@ -581,7 +581,7 @@
       };
 
       const client = global.SupabaseClient.getClient();
-      const { error } = await client.from('push_subscriptions').upsert(payload, { onConflict: 'endpoint' });
+      const { error } = await client.from('user_push_subscriptions').upsert({ ...payload, updated_at: nowIso }, { onConflict: 'user_id,endpoint' });
       if (error) throw new Error(error.message || 'Unable to save push subscription.');
       return payload;
     },
@@ -591,8 +591,8 @@
       if (!value) return;
       const client = global.SupabaseClient.getClient();
       const { error } = await client
-        .from('push_subscriptions')
-        .update({ is_active: false, last_seen_at: new Date().toISOString() })
+        .from('user_push_subscriptions')
+        .update({ is_active: false, updated_at: new Date().toISOString() })
         .eq('endpoint', value);
       if (error) throw new Error(error.message || 'Unable to disable push subscription.');
     },
@@ -602,8 +602,8 @@
       const userId = String(global.Session?.userId?.() || '').trim();
       if (!client || !userId) return;
       await client
-        .from('push_subscriptions')
-        .update({ is_active: false, last_seen_at: new Date().toISOString() })
+        .from('user_push_subscriptions')
+        .update({ is_active: false, updated_at: new Date().toISOString() })
         .eq('user_id', userId)
         .eq('is_active', true);
     },
@@ -980,7 +980,7 @@
       const client = global.SupabaseClient?.getClient?.();
       if (!client) return [];
       const { data, error } = await client
-        .from('push_subscriptions')
+        .from('user_push_subscriptions')
         .select('id,device_label,user_agent,endpoint,is_active,last_seen_at,created_at,updated_at')
         .eq('user_id', userId)
         .eq('is_active', true)
@@ -1397,7 +1397,7 @@
         let dbRow = null;
         if (endpoint && client) {
           const { data } = await client
-            .from('push_subscriptions')
+            .from('user_push_subscriptions')
             .select('endpoint,last_seen_at,saved_at,updated_at,created_at')
             .eq('endpoint', endpoint)
             .order('last_seen_at', { ascending: false })

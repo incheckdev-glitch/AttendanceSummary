@@ -5244,6 +5244,20 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       const targetRoles = Array.isArray(normalizedPayload?.target_roles)
         ? normalizedPayload.target_roles.map(role => String(role || '').trim().toLowerCase()).filter(Boolean)
         : [];
+      const directRecipientIds = [...new Set([targetUserId, ...(Array.isArray(normalizedPayload?.target_user_ids) ? normalizedPayload.target_user_ids : [])].map(value => String(value || '').trim()).filter(Boolean))];
+      if (directRecipientIds.length) {
+        const dispatchEventKey = String(normalizedPayload?.event_key || normalizedPayload?.eventKey || normalizedPayload?.action || normalizedPayload?.event_type || 'notification').trim();
+        const { data, error } = await client.rpc('dispatch_notification', {
+          p_event_key: dispatchEventKey,
+          p_recipient_user_ids: directRecipientIds,
+          p_payload: normalizedPayload,
+          p_resource: String(normalizedPayload?.resource || '').trim() || null,
+          p_resource_id: normalizedPayload?.record_id ? String(normalizedPayload.record_id) : null,
+          p_deep_link: normalizedPayload?.deep_link || normalizedPayload?.url || null
+        });
+        if (error) throw error;
+        return { created: Array.isArray(data) ? data.length : 0, queued: true, dispatchResult: data || [], notification_id: data?.[0]?.notification_id || data?.[0]?.id || null };
+      }
       const shouldAttemptPush = Boolean(targetUserId || targetRole || targetRoles.length);
       console.info('[notifications:pwa] createNotificationAndPush started', {
         context,
@@ -6793,67 +6807,23 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     }
     const targetUserIds = [...recipientUserIds];
     const finalEmailRecipients = [...new Set([...recipientEmails].map(value => String(value || '').trim().toLowerCase()).filter(isValidNotificationEmail))];
-    const shouldAttemptPush = Boolean(decision.channels.push && (targetUserIds.length || finalEmailRecipients.length || normalizedRoles.length));
-    const dedupeWindowSeconds = Math.max(1, Number(enabledRulesForRecipients.find(rule => Number(rule?.dedupe_window_seconds || 0) > 0)?.dedupe_window_seconds || 60) || 60);
-    const dedupeMinuteBucket = Math.floor(Date.now() / (dedupeWindowSeconds * 1000));
-    const recordId = String(normalizedPayload?.record_id || record?.id || '').trim();
-    const baseDedupeKey = resource + ':' + action + ':' + (recordId || 'na') + ':in_app:' + dedupeMinuteBucket;
-    const expandedRoleAliases = expandNotificationRoleAliases(normalizedRoles);
-    const createHubForUser = (targetUserId) => createNotificationHubEvent({
-      ...payloadWithRefs,
-      target_role: null,
-      target_roles: [],
-      target_user_id: targetUserId,
-      dedupe_key: baseDedupeKey + ':' + targetUserId
-    }, context);
-    const sanitizedHubPayload = {
-      ...payloadWithRefs,
-      target_role: undefined,
-      target_roles: expandedRoleAliases,
-      target_user_id: undefined,
-      dedupe_key: baseDedupeKey + ':roles'
-    };
-    const hubPromise = decision.channels.in_app
-      ? (targetUserIds.length
-        ? Promise.all(targetUserIds.map(createHubForUser)).then(chunks => chunks.flat())
-        : createNotificationHubEvent(sanitizedHubPayload, context))
-        .catch(error => {
-          console.warn('[notifications:hub] create failed but save should continue', { context, error });
-          return [];
-        })
-      : Promise.resolve([]);
-    const pushPromise = shouldAttemptPush
-      ? sendPwaPushForNotification({
-        ...payloadWithRefs,
-        target_user_ids: targetUserIds,
-        target_emails: finalEmailRecipients,
-        target_roles: expandedRoleAliases,
-        dedupe_key: baseDedupeKey + ':push'
-      }, context)
-      : Promise.resolve({ attempted: false, reason: decision.channels.push ? 'no-target' : 'push-disabled' });
-    const emailPromise = decision.channels.email
-      ? sendEmailForNotification({
-        ...payloadWithRefs,
-        target_user_ids: targetUserIds,
-        target_emails: finalEmailRecipients,
-        target_roles: normalizedRoles,
-        dedupe_key: dedupeKey
-      }, finalEmailRecipients, context)
-      : Promise.resolve({ attempted: false, skipped: true, reason: 'email-disabled' });
-    const [hubSettled, pushSettled, emailSettled] = await Promise.allSettled([hubPromise, pushPromise, emailPromise]);
-    const insertedRows = hubSettled.status === 'fulfilled' && Array.isArray(hubSettled.value) ? hubSettled.value : [];
-    const pushResult = pushSettled.status === 'fulfilled'
-      ? pushSettled.value
-      : { attempted: shouldAttemptPush, sent: false, error: String(pushSettled.reason?.message || pushSettled.reason || 'PWA push failed') };
-    const emailResult = emailSettled.status === 'fulfilled'
-      ? emailSettled.value
-      : { attempted: decision.channels.email, sent: false, error: String(emailSettled.reason?.message || emailSettled.reason || 'Email send failed') };
-    const notificationId = String(insertedRows?.[0]?.notification_id || '').trim();
+    const dispatchResult = await getClient().rpc('dispatch_notification', {
+      p_event_key: eventKey || `${resource}_${action}`,
+      p_recipient_user_ids: targetUserIds,
+      p_payload: payloadWithRefs,
+      p_resource: resource || null,
+      p_resource_id: recordId ? String(recordId) : null,
+      p_deep_link: payloadWithRefs.deep_link || payloadWithRefs.url || null
+    });
+    if (dispatchResult.error) throw dispatchResult.error;
+    const dispatchedRows = Array.isArray(dispatchResult.data) ? dispatchResult.data : [];
+    const notificationId = String(dispatchedRows?.[0]?.notification_id || dispatchedRows?.[0]?.id || '').trim();
     return {
-      created: insertedRows.length,
-      push: pushResult,
-      email: emailResult,
-      notification_id: notificationId || null
+      created: dispatchedRows.length,
+      push: { attempted: decision.channels.push, queued: decision.channels.push },
+      email: { attempted: decision.channels.email, queued: decision.channels.email },
+      notification_id: notificationId || null,
+      dispatchResult: dispatchResult.data || []
     };
   }
 

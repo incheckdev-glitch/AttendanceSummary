@@ -79,8 +79,26 @@ const NotificationSetup = {
   async load(force = false) {
     if (!Permissions.canManageNotificationSettings()) return;
     try {
-      const [rulesRes, rolesRes] = await Promise.all([Api.listNotificationSettings(), Api.listRoles({ forceRefresh: force })]);
-      const rawRules = Array.isArray(rulesRes?.rows) ? rulesRes.rows : Array.isArray(rulesRes) ? rulesRes : [];
+      const client = window.SupabaseClient?.getClient?.();
+      const [rulesRes, rolesRes, eventTypesRes, userSettingsRes] = await Promise.all([
+        Api.listNotificationSettings(),
+        Api.listRoles({ forceRefresh: force }),
+        client ? client.from('notification_event_types').select('*').order('module', { ascending: true }).order('event_key', { ascending: true }) : Promise.resolve({ data: [] }),
+        client ? client.from('notification_user_settings').select('*').limit(1000) : Promise.resolve({ data: [] })
+      ]);
+      const eventTypeRows = Array.isArray(eventTypesRes?.data) ? eventTypesRes.data : [];
+      const rawRules = eventTypeRows.length
+        ? eventTypeRows.map(eventType => ({
+            ...eventType,
+            resource: eventType.module || eventType.resource,
+            action: eventType.action || eventType.event_key,
+            event_key: eventType.event_key,
+            is_enabled: eventType.enabled ?? eventType.is_enabled,
+            in_app_enabled: eventType.default_in_app ?? eventType.in_app_enabled,
+            pwa_enabled: eventType.default_pwa ?? eventType.pwa_enabled,
+            email_enabled: eventType.default_email ?? eventType.email_enabled
+          }))
+        : (Array.isArray(rulesRes?.rows) ? rulesRes.rows : Array.isArray(rulesRes) ? rulesRes : []);
       this.state.rules = rawRules.map(rule => ({
         ...rule,
         is_enabled: (rule?.is_enabled ?? rule?.enabled) !== false,
@@ -98,8 +116,10 @@ const NotificationSetup = {
         recipient_mode: String(rule?.recipient_mode || '').trim(),
         deep_link_template: String(rule?.deep_link_template || rule?.url_template || '').trim(),
         resource_label: String(rule?.resource_label || '').trim(),
-        action_label: String(rule?.action_label || '').trim()
+        action_label: String(rule?.action_label || '').trim(),
+        event_key: String(rule?.event_key || rule?.action || '').trim()
       }));
+      this.state.userSettings = Array.isArray(userSettingsRes?.data) ? userSettingsRes.data : [];
       this.state.roles = Array.isArray(rolesRes?.rows) ? rolesRes.rows : Array.isArray(rolesRes) ? rolesRes : [];
       console.info('[notification setup] rules loaded', {
         count: this.state.rules.length,
@@ -228,7 +248,7 @@ const NotificationSetup = {
             <input data-k="deep_link_template" class="input" placeholder="Deep link template" value="${U.escapeHtml(rule.deep_link_template || '')}">
           </div>`;
         rows.push(`<tr data-resource="${resource}" data-action="${action}">
-          <td>${U.escapeHtml(resourceLabel)}</td><td>${U.escapeHtml(actionLabel)}<div class="muted" style="font-size:11px;">${U.escapeHtml(action)}</div></td><td class="muted">${U.escapeHtml(description || actionLabel)}${templateBlock}</td>
+          <td>${U.escapeHtml(resourceLabel)}</td><td>${U.escapeHtml(actionLabel)}<div class="muted" style="font-size:11px;">event key: ${U.escapeHtml(rule.event_key || action)}</div><div class="muted" style="font-size:11px;">module: ${U.escapeHtml(resource)}</div></td><td class="muted">${U.escapeHtml(description || actionLabel)}${templateBlock}</td>
           <td><input type="checkbox" data-k="enabled" ${isEnabled ? 'checked' : ''}></td>
           <td><input type="checkbox" data-k="inapp" ${(rule.in_app_enabled !== false) ? 'checked' : ''}></td>
           <td><input type="checkbox" data-k="pwa" ${(rule.pwa_enabled !== false) ? 'checked' : ''}></td>
@@ -263,15 +283,38 @@ const NotificationSetup = {
     tbody.querySelectorAll('[data-test]').forEach(btn => btn.addEventListener('click', async e => {
       const tr = e.target.closest('tr');
       try {
-        const result = await Api.testNotificationSetting(this.collect(tr.dataset.resource, tr.dataset.action));
-        const data = result?.data || result || {};
-        const created = Number(data?.created || data?.notification_count || 0);
-        const push = data?.push || {};
-        const email = data?.email || {};
-        const inAppText = created > 0 ? `created (${created})` : (data?.reason || data?.push?.reason || 'not created');
-        const pushText = push.sent ? 'sent' : (push.reason || push.error || (push.attempted ? 'failed' : 'not created'));
-        const emailText = email.sent ? 'sent' : (email.reason || email.error || (email.attempted ? 'failed' : 'skipped'));
-        UI.toast(`Test notification result — In-app: ${inAppText} · PWA: ${pushText} · Email: ${emailText}`);
+        const selectedEvent = this.collect(tr.dataset.resource, tr.dataset.action);
+        const currentUser = window.Session?.user?.() || window.Session?.currentUser?.() || {};
+        const currentUserId = window.Session?.userId?.() || currentUser.id || currentUser.user_id;
+        const supabase = window.SupabaseClient?.getClient?.();
+        if (!supabase || !currentUserId) throw new Error('Unable to resolve current user for notification test.');
+        const dispatchResult = await window.dispatchNotification({
+          supabase,
+          eventKey: selectedEvent.event_key || selectedEvent.action,
+          recipientUserIds: [currentUserId],
+          resource: selectedEvent.resource,
+          resourceId: 'test',
+          deepLink: '/notifications-test',
+          payload: {
+            sender_name: currentUser.full_name || currentUser.email,
+            client_name: 'Test Client',
+            invoice_number: 'INV-TEST',
+            proposal_number: 'PROPOSAL-TEST',
+            entry_number: 'BIN-TEST',
+            conversation_title: 'Test Conversation',
+          },
+        });
+        if (typeof window.processNotificationDeliveryQueue === 'function') {
+          await window.processNotificationDeliveryQueue({
+            supabase,
+            sendEmail: payload => fetch('/api/proxy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ resource: 'notifications', action: 'send_email', ...payload }) }),
+            sendPush: payload => window.Api.sendWebPush ? window.Api.sendWebPush(payload, { context: 'notification-setup-test' }) : Promise.resolve({ skipped: true })
+          });
+        }
+        const { data: logs } = await supabase.from('notification_delivery_logs').select('*').eq('event_key', selectedEvent.event_key || selectedEvent.action).order('created_at', { ascending: false }).limit(10);
+        const pwaLog = (logs || []).find(row => row.channel === 'pwa');
+        const emailLog = (logs || []).find(row => row.channel === 'email');
+        UI.toast(`Test notification result — In-app: created (${Array.isArray(dispatchResult) ? dispatchResult.length : 0}) · PWA: ${pwaLog?.status || 'queued/skipped'} · Email: ${emailLog?.status || 'queued/skipped'}`);
       } catch (error) {
         UI.toast(String(error?.message || 'Unable to test rule.'));
       }
