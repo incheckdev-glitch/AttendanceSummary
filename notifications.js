@@ -191,6 +191,7 @@ const Notifications = {
     const statusValue = String(firstValue(source.status, source.notification_status)).trim().toLowerCase();
     const isRead = parseBoolean(firstValue(source.is_read, source.isRead, source.read)) || statusValue === 'read';
     return {
+      id: String(firstValue(source.id, source.notification_id)).trim(),
       notification_id: String(firstValue(source.notification_id, source.id)).trim(),
       recipient_user_id: String(firstValue(source.recipient_user_id, source.user_id)).trim(),
       created_at: String(firstValue(source.created_at, source.createdAt, source.timestamp, source.date)).trim(),
@@ -204,6 +205,8 @@ const Notifications = {
       priority: String(firstValue(source.priority, source.priority_level)).trim().toLowerCase(),
       status: String(firstValue(source.status, source.notification_status)).trim(),
       is_read: isRead,
+      read: isRead,
+      unread: !isRead,
       read_at: String(firstValue(source.read_at, source.readAt)).trim(),
       link_target: String(firstValue(source.link_target, source.link, source.target_link, source.deep_link, source.url)).trim(),
       conversation_id: String(firstValue(source.conversation_id, source.communication_id, source.related_conversation_id)).trim(),
@@ -696,14 +699,27 @@ const Notifications = {
     E.notificationSoundToggleBtn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
     E.notificationSoundToggleBtn.title = enabled ? 'Mute notification sound' : 'Unmute notification sound';
   },
+  isUnreadNotification(notification) {
+    if (!notification) return false;
+    if (notification.is_read === true) return false;
+    if (notification.read === true) return false;
+    if (notification.unread === false) return false;
+
+    const status = String(notification.status || '').toLowerCase();
+    if (['read', 'seen', 'opened', 'done'].includes(status)) return false;
+
+    return true;
+  },
   updateLocalRead(notificationId) {
     if (!notificationId) return;
     const update = list => list.map(item => {
-      if (item.notification_id !== notificationId) return item;
+      if (String(item.notification_id || item.id || '').trim() !== String(notificationId || '').trim()) return item;
       return {
         ...item,
         is_read: true,
-        status: item.status || 'read',
+        read: true,
+        unread: false,
+        status: 'read',
         read_at: new Date().toISOString()
       };
     });
@@ -722,7 +738,7 @@ const Notifications = {
   },
   recalculateUnreadCount() {
     this.state.unreadCount = Array.isArray(this.state.items)
-      ? this.state.items.filter(item => !item?.is_read).length
+      ? this.state.items.filter(item => this.isUnreadNotification(item)).length
       : 0;
     return this.state.unreadCount;
   },
@@ -894,7 +910,13 @@ const Notifications = {
   },
   async handleNotificationClick(item) {
     if (!item) return;
-    await this.routeNotification(item);
+    try {
+      await this.markNotificationRead(item);
+      await this.routeNotification(item);
+    } catch (error) {
+      console.error('Failed to mark notification as read:', error);
+      await this.routeNotification(item);
+    }
   },
   waitForNextFrame() {
     return new Promise(resolve => {
@@ -1102,8 +1124,8 @@ const Notifications = {
   },
   applyCommunicationNotificationsRead(conversationId = '') {
     const mark = list => (Array.isArray(list) ? list : []).map(item => {
-      if (item?.is_read || !this.notificationMatchesConversation(item, conversationId)) return item;
-      return { ...item, is_read: true, status: 'read', read_at: new Date().toISOString() };
+      if (!this.isUnreadNotification(item) || !this.notificationMatchesConversation(item, conversationId)) return item;
+      return { ...item, is_read: true, read: true, unread: false, status: 'read', read_at: new Date().toISOString() };
     });
     this.state.items = mark(this.state.items);
     this.state.previewItems = mark(this.state.previewItems);
@@ -1151,8 +1173,8 @@ const Notifications = {
     return request;
   },
   async markNotificationRead(notification = {}) {
-    const notificationId = String(notification?.notification_id || '').trim();
-    if (!notificationId || notification?.is_read) return true;
+    const notificationId = String(notification?.notification_id || notification?.id || '').trim();
+    if (!notificationId || !this.isUnreadNotification(notification)) return true;
     if (!Session.isAuthenticated() || this.state.unavailable) return false;
     if (!this.hasPermission('mark_read')) {
       this.setPermissionDenied('mark_read');
@@ -1164,8 +1186,17 @@ const Notifications = {
     this.renderPreview();
     this.renderHub();
     try {
-      await Api.markNotificationRead(notificationId);
+      const client = window.SupabaseClient?.getClient?.();
+      if (client?.rpc) {
+        const { error } = await client.rpc('mark_notification_read', {
+          p_notification_id: notificationId
+        });
+        if (error) throw error;
+      } else {
+        await Api.markNotificationRead(notificationId);
+      }
       await this.refreshUnreadCount();
+      await this.fetchPreview(true);
       return true;
     } catch (error) {
       console.warn('Unable to mark notification as read', error);
@@ -1471,11 +1502,6 @@ async routeToResourceTarget(resource, targetId, notification) {
       resolvedResource: resource,
       targetId
     });
-    const marksWhenConversationOpens = resource === 'communication_centre' && Boolean(targetId);
-    if (!marksWhenConversationOpens) {
-      const readMarked = await this.markNotificationRead(notification);
-      if (!readMarked && !notification?.is_read) return;
-    }
     this.closePanel();
     try {
       const opened = await this.routeToResourceTarget(resource, targetId, notification);
