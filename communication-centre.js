@@ -1021,6 +1021,7 @@
       const { data, error } = await db().rpc('get_communication_message_receipts', { p_message_id: message.id });
       if (error) throw error;
       const rows = data || [];
+      console.log('Message info rows:', rows);
       M.state.messageInfoRows = isMessageMine(message) || canManageConversation()
         ? rows
         : rows.filter(row => String(row.recipient_user_id || row.user_id || '').toLowerCase() === String(getCurrentUserId(getCurrentUser())).toLowerCase());
@@ -1592,30 +1593,54 @@
     })));
   }
 
+  function getMessageSenderId(message = {}) {
+    return firstNonEmpty(
+      message.sender_id,
+      message.sender_user_id,
+      message.created_by,
+      message.user_id,
+      message.sender?.id
+    );
+  }
+
+  function isMessageFromCurrentUser(message = {}, currentUser = getCurrentUser()) {
+    const currentUserId = getCurrentUserId(currentUser);
+    const senderId = getMessageSenderId(message);
+    return Boolean(
+      (senderId && currentUserId && String(senderId) === String(currentUserId)) ||
+      isMessageMine(message)
+    );
+  }
+
   async function markMessageDelivered(message) {
+    const client = db();
     const currentUser = getCurrentUser();
     const currentUserId = getCurrentUserId(currentUser);
-    if (!message?.id || String(message.sender_id || message.sender_user_id || message.user_id || message.created_by || '') === String(currentUserId) || isMessageMine(message)) return;
+    if (!client?.rpc || !message?.id || !currentUserId || isMessageFromCurrentUser(message, currentUser)) return;
     const key = `${message.id}:delivered`;
     if (M.state.deliveredReceiptKeys.has(key)) return;
     M.state.deliveredReceiptKeys.add(key);
+    console.log('Mark delivered for message:', message.id, currentUserId);
     try {
-      await upsertMessageReceipt({
-        conversationId: message.conversation_id || M.state.active?.id,
-        messageId: message.id,
-        recipientUserId: currentUserId,
-        recipientName: firstNonEmpty(currentUser.full_name, currentUser.name, currentUser.email, 'Unknown User'),
-        recipientEmail: currentUser.email || null,
-        status: 'delivered'
+      const { error } = await client.rpc('mark_communication_message_delivered', {
+        p_conversation_id: message.conversation_id || M.state.active?.id,
+        p_message_id: message.id,
+        p_user_id: currentUserId,
+        p_user_name: firstNonEmpty(currentUser.full_name, currentUser.name, currentUser.email, 'Unknown User'),
+        p_user_email: currentUser.email || null
       });
-    } catch (error) { console.warn('[Communication Centre] mark delivered failed', error); }
+      if (error) throw error;
+    } catch (error) {
+      M.state.deliveredReceiptKeys.delete(key);
+      console.warn('[Communication Centre] mark delivered failed', error);
+    }
   }
 
   async function markMessageRead(message) {
     const client = db();
     const currentUser = getCurrentUser();
     const currentUserId = getCurrentUserId(currentUser);
-    if (!client?.rpc || !message?.id || !currentUserId || isMessageMine(message)) return;
+    if (!client?.rpc || !message?.id || !currentUserId || isMessageFromCurrentUser(message, currentUser)) return;
     const key = `${message.id}:read`;
     if (M.state.readReceiptKeys.has(key)) return;
     M.state.readReceiptKeys.add(key);
@@ -1935,7 +1960,10 @@
     const eventType = payload?.eventType || payload?.type || 'change';
     console.log('[Communication Centre realtime] event', { source, table, eventType, payload });
     scheduleConversationListRefresh(`${source}:${table}:${eventType}`);
-    if (table === 'communication_centre_messages' && payload?.new) markMessageDelivered(payload.new);
+    if (['communication_centre_messages', 'communication_messages'].includes(table) && payload?.new) {
+      markMessageDelivered(payload.new);
+      if (String(payload.new.conversation_id || '') === String(getActiveConversationId() || '')) markMessageRead(payload.new);
+    }
     if (isRealtimePayloadForActiveConversation(payload)) {
       const markRead = table !== 'communication_centre_read_receipts';
       scheduleActiveConversationRefresh(`${source}:${table}:${eventType}`, { markRead });
