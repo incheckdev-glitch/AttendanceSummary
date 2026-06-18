@@ -1691,6 +1691,19 @@
     }
   }
 
+
+  function getConversationIdFromCurrentLocation() {
+    const href = String(global.location?.href || '');
+    const hash = String(global.location?.hash || '').replace(/^#/, '');
+    const search = String(global.location?.search || '').replace(/^\?/, '');
+    const hashQuery = hash.includes('?') ? hash.split('?').slice(1).join('?') : '';
+    const params = new URLSearchParams(hashQuery || search || '');
+    const queryId = params.get('conversationId') || params.get('conversation_id') || params.get('id') || '';
+    if (queryId) return String(queryId).trim();
+    const match = href.match(/(?:communication-centre|communication|communication_centre)\/conversation\/([^/?#]+)/i);
+    return match ? decodeURIComponent(match[1]) : '';
+  }
+
   async function markCommunicationNotificationsRead(conversationId) {
     const normalizedConversationId = String(conversationId || '').trim();
     if (!normalizedConversationId) return 0;
@@ -1712,8 +1725,11 @@
 
         const client = db();
         if (!client?.rpc) return 0;
-        const { data, error } = await client.rpc('crm_mark_communication_notifications_read', {
-          p_conversation_id: normalizedConversationId
+        const currentUserId = getCurrentUserId(getCurrentUser());
+        if (!currentUserId) return 0;
+        const { data, error } = await client.rpc('mark_conversation_notifications_read', {
+          p_conversation_id: normalizedConversationId,
+          p_user_id: currentUserId
         });
         if (error) throw error;
         M.notificationReadCompletedAt.set(requestKey, Date.now());
@@ -3557,11 +3573,7 @@
         showFriendlyError(friendlyMessage);
       }
     });
-    const hashConversationId = (() => {
-      const hash = String(global.location?.hash || '');
-      const match = hash.match(/conversation_id=([^&]+)/i);
-      return match ? decodeURIComponent(match[1]) : '';
-    })();
+    const hashConversationId = getConversationIdFromCurrentLocation();
     await refresh();
     setupCommunicationCentreRealtime();
     logCommunicationCentreDebugContext();
