@@ -705,6 +705,26 @@ const ClientsService = {
 
     return text.includes('annual_saas') || ['annual', 'yearly', '12 month', '12-month', 'year', 'renewal'].some(token => text.includes(token));
   },
+  isPocAgreementItem_(item = {}) {
+    const text = this.normalizeText([
+      item.item_type,
+      item.type,
+      item.category,
+      item.section,
+      item.item_name,
+      item.itemName,
+      item.product_name,
+      item.productName,
+      item.service_name,
+      item.serviceName,
+      item.module,
+      item.module_name,
+      item.moduleName,
+      item.description,
+      item.notes
+    ].filter(Boolean).join(' '));
+    return Boolean(text && /(^|[^a-z0-9])p\s*o\s*c([^a-z0-9]|$)|proof of concept|pilot/.test(text));
+  },
   isAnnualSaasItem(item = {}) {
     const section = String(item?.section || item?.item_section || '')
       .trim()
@@ -732,7 +752,7 @@ const ClientsService = {
         : Array.isArray(agreement?.line_items)
           ? agreement.line_items
           : [];
-    return items.some(item => this.isAnnualSaasItem(item) && !this.isSupersededItem(item));
+    return items.some(item => this.isAnnualSaasItem(item) && !this.isPocAgreementItem_(item) && !this.isSupersededItem(item));
   },
   async fetchAgreementItemsForClients_(db) {
     // temporary analytics fallback - replace with SQL view/RPC aggregation
@@ -806,6 +826,7 @@ const ClientsService = {
     const map = new Map();
     for (const item of Array.isArray(items) ? items : []) {
       if (!this.isAnnualSaasItem(item)) continue;
+      if (this.isPocAgreementItem_(item)) continue;
       if (this.isSupersededItem(item)) continue;
       const locationKey = this.normalizeLocationKey(item?.location_name || item?.locationName || item?.location || '');
       if (!locationKey) continue;
@@ -923,6 +944,112 @@ const ClientsService = {
       total_paid: totalPaid,
       total_due: totalDue
     };
+  },
+
+  async listSignedAgreementClients_() {
+    const supabase = this.getDb();
+    const { data: signedClients, error } = await supabase
+      .from("client_panel_clients_unified")
+      .select("*");
+
+    if (error) {
+      console.error("Failed to load signed agreement clients:", error);
+      return [];
+    }
+
+    return Array.isArray(signedClients) ? signedClients : [];
+  },
+  getClientPanelMapKey_(client = {}) {
+    return String(client.company_id || client.companyId || client.client_name || client.clientName || client.company_name || client.companyName || '')
+      .trim()
+      .toLowerCase();
+  },
+  getClientPanelDisplayName_(client = {}) {
+    const company = this.findCompanyForRecord_(client);
+    if (String(client.company_id || client.companyId || '').trim() && company) {
+      const legal = String(
+        company.legal_company_name ||
+        company.legalCompanyName ||
+        company.legal_name ||
+        company.legalName ||
+        company.company_name ||
+        company.companyName ||
+        company.name ||
+        ''
+      ).trim();
+      if (legal) return legal;
+    }
+    return String(client.client_name || client.clientName || client.company_name || client.companyName || client.customer_legal_name || client.customer_name || '').trim();
+  },
+  mapSignedAgreementClientToUi_(client = {}) {
+    const displayName = this.getClientPanelDisplayName_(client);
+    const companyName = String(client.company_name || client.companyName || client.customer_legal_name || displayName || '').trim();
+    const totalValue = this.toNumber(client.total_value || 0);
+    const totalAgreements = this.toNumber(client.total_agreements || 0);
+    return {
+      ...client,
+      id: String(client.id || client.client_uuid || client.client_id || client.company_id || client.client_name || displayName || '').trim(),
+      client_id: String(client.client_id || client.client_uuid || client.company_id || client.client_name || displayName || '').trim(),
+      company_id: String(client.company_id || client.companyId || '').trim(),
+      client_name: displayName,
+      company_name: companyName || displayName,
+      customer_name: displayName,
+      customer_legal_name: companyName || displayName,
+      primary_email: String(client.primary_email || client.primary_contact_email || client.client_email || '').trim(),
+      primary_phone: String(client.primary_phone || client.phone || client.client_phone || '').trim(),
+      status: String(client.status || 'Active').trim(),
+      total_agreements: totalAgreements,
+      total_locations: this.toNumber(client.total_locations || 0),
+      total_value: totalValue,
+      total_paid: 0,
+      total_due: totalValue,
+      agreements: Array.isArray(client.agreements) ? client.agreements : [],
+      invoices: [],
+      receipts: [],
+      first_service_start_date: client.first_service_start_date,
+      last_service_end_date: client.last_service_end_date,
+      source: client.source || 'signed_agreements'
+    };
+  },
+  buildClientPanelClientsFromSignedBase_(signedClients = [], fallbackClients = [], agreements = [], invoices = [], receipts = []) {
+    const clientMap = new Map();
+
+    for (const client of signedClients || []) {
+      const key = String(client.company_id || client.client_name || "")
+        .trim()
+        .toLowerCase();
+
+      if (!key) continue;
+
+      clientMap.set(key, this.mapSignedAgreementClientToUi_(client));
+    }
+
+    for (const client of Array.isArray(fallbackClients) ? fallbackClients : []) {
+      const key = this.getClientPanelMapKey_(client);
+      if (!key) continue;
+      if (!clientMap.has(key)) clientMap.set(key, client);
+      else clientMap.set(key, { ...client, ...clientMap.get(key), id: clientMap.get(key).id || client.id, client_id: clientMap.get(key).client_id || client.client_id });
+    }
+
+    const clients = Array.from(clientMap.values()).map(client => {
+      const linkedAgreements = agreements.filter(row => this.matchAgreementClient(row, client));
+      const linkedInvoices = this.dedupeRenewalInvoicesForTotals_(invoices.filter(row => this.invoiceBelongsToClient(row, client, linkedAgreements)));
+      const linkedReceipts = receipts.filter(row => this.receiptBelongsToClient(row, client, linkedAgreements, linkedInvoices));
+      return {
+        ...client,
+        agreements: linkedAgreements,
+        invoices: linkedInvoices,
+        receipts: linkedReceipts
+      };
+    }).filter((client) => {
+      return (
+        Number(client.total_agreements || 0) > 0 ||
+        (client.invoices || []).length > 0 ||
+        (client.receipts || []).length > 0
+      );
+    });
+
+    return clients;
   },
   async listClients({ page = 1, limit = 50, search = '', status = '' } = {}) {
     const db = this.getDb();
@@ -1474,16 +1601,29 @@ const ClientsService = {
     const agreements = this.attachAgreementItems(agreementRows.map(row => this.mapAgreementRow(row)), itemRows);
     const invoices = this.attachInvoiceItems(invoiceRows, invoiceItemRows);
     const receipts = receiptRows;
-    const clientsList = await this.listClients(options);
+    const [signedClients, clientsList] = await Promise.all([
+      this.listSignedAgreementClients_(),
+      this.listClients(options)
+    ]);
+    const panelBaseClients = this.buildClientPanelClientsFromSignedBase_(signedClients, clientsList.rows || [], agreements, invoices, receipts);
     const allowClientMutations = options.allowClientMutations !== undefined
       ? Boolean(options.allowClientMutations)
       : Boolean(window.Permissions?.canEdit?.('clients'));
     const syncedClients = allowClientMutations
-      ? await this.syncSignedAgreementsToClients(agreements, clientsList.rows || [])
-      : (clientsList.rows || []);
+      ? await this.syncSignedAgreementsToClients(agreements, panelBaseClients)
+      : panelBaseClients;
     const clients = syncedClients.map(clientRow => {
       const totals = this.computeTotalsForClient(clientRow, agreements, invoices, receipts, itemRows);
-      return { ...clientRow, ...totals };
+      return {
+        ...clientRow,
+        ...totals,
+        total_agreements: Math.max(this.toNumber(clientRow.total_agreements), this.toNumber(totals.total_agreements)),
+        total_locations: Math.max(this.toNumber(clientRow.total_locations), this.toNumber(totals.total_locations)),
+        total_value: Math.max(this.toNumber(clientRow.total_value), this.toNumber(totals.total_value)),
+        total_due: this.toNumber(totals.total_paid) > 0 || this.toNumber(totals.total_due) > 0
+          ? this.toNumber(totals.total_due)
+          : this.toNumber(clientRow.total_due)
+      };
     });
     const updates = clients
       .filter(row => String(row.id || '').trim())
