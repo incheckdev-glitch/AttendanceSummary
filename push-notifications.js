@@ -3,14 +3,29 @@
   const IN_APP_SOUND_STORAGE_KEY = 'incheck360_in_app_notification_sound_enabled';
   const FOREGROUND_PUSH_BANNER_DEDUPE_WINDOW_MS = 15000;
   const FOREGROUND_PUSH_BANNER_AUTO_DISMISS_MS = 10000;
-  function getPushVapidPublicKey() {
-    return String(
+  function getImportMetaVapidPublicKey() {
+    try {
+      return String(global.__INCHECK360_VITE_ENV__?.VITE_VAPID_PUBLIC_KEY || '').trim();
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function getVapidPublicKey() {
+    return (
+      getImportMetaVapidPublicKey() ||
+      global.INCHECK360_CONFIG?.VAPID_PUBLIC_KEY ||
+      global.VAPID_PUBLIC_KEY ||
       global.RUNTIME_CONFIG?.PUSH_VAPID_PUBLIC_KEY ||
-        global.RUNTIME_CONFIG?.VAPID_PUBLIC_KEY ||
-        global.INCHECK360_PUSH_CONFIG?.vapidPublicKey ||
-        global.APP_CONFIG?.PUSH_VAPID_PUBLIC_KEY ||
-        ''
-    ).trim();
+      global.RUNTIME_CONFIG?.VAPID_PUBLIC_KEY ||
+      global.INCHECK360_PUSH_CONFIG?.vapidPublicKey ||
+      global.APP_CONFIG?.PUSH_VAPID_PUBLIC_KEY ||
+      ''
+    );
+  }
+
+  function getPushVapidPublicKey() {
+    return String(getVapidPublicKey()).trim();
   }
 
   const PushNotifications = {
@@ -687,7 +702,7 @@
         this.renderButtonLabel();
         if (!silent) {
           if (!hasVapidPublicKey) {
-            this.setMessage('Push notifications are not configured yet. Contact your administrator.');
+            this.setMessage('Push notifications are not configured yet. Missing VAPID public key.');
           } else if (this.state.permission === 'denied') {
             this.setMessage('Push notification permission is blocked. Please enable it from browser settings.');
           } else {
@@ -723,15 +738,16 @@
         return;
       }
 
-      const vapidPublicKey = this.getVapidPublicKey();
-      const applicationServerKey = this.getApplicationServerKey(vapidPublicKey);
-      if (!applicationServerKey) {
-        this.setMessage('Push notifications are not configured yet. Contact your administrator.');
-        return;
-      }
-
       this.setBusy(true);
       try {
+        const vapidPublicKey = this.getVapidPublicKey();
+        if (!vapidPublicKey) {
+          throw new Error('Push notifications are not configured yet. Missing VAPID public key.');
+        }
+        const applicationServerKey = this.getApplicationServerKey(vapidPublicKey);
+        if (!applicationServerKey) {
+          throw new Error('Push notifications are not configured yet. Missing VAPID public key.');
+        }
         const registration = await this.getRegistration();
         const permission = await Notification.requestPermission();
         this.state.permission = String(permission || 'default').toLowerCase();
@@ -750,7 +766,7 @@
         if (!subscription) {
           subscription = await registration.pushManager.subscribe({
             userVisibleOnly: true,
-            applicationServerKey
+            applicationServerKey: this.urlBase64ToUint8Array(vapidPublicKey)
           });
         }
 
@@ -802,15 +818,16 @@
         this.setMessage('Push notifications are not supported on this browser/device.');
         return;
       }
-      const vapidPublicKey = this.getVapidPublicKey();
-      const applicationServerKey = this.getApplicationServerKey(vapidPublicKey);
-      if (!applicationServerKey) {
-        this.setMessage('Push notifications are not configured yet. Contact your administrator.');
-        return;
-      }
-
       if (!skipBusyState) this.setBusy(true);
       try {
+        const vapidPublicKey = this.getVapidPublicKey();
+        if (!vapidPublicKey) {
+          throw new Error('Push notifications are not configured yet. Missing VAPID public key.');
+        }
+        const applicationServerKey = this.getApplicationServerKey(vapidPublicKey);
+        if (!applicationServerKey) {
+          throw new Error('Push notifications are not configured yet. Missing VAPID public key.');
+        }
         const registration = await this.getRegistration();
         const oldSubscription = await registration.pushManager.getSubscription();
         const oldEndpoint = String(oldSubscription?.endpoint || '').trim();
@@ -834,7 +851,7 @@
 
         const newSubscription = await registration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey
+          applicationServerKey: this.urlBase64ToUint8Array(vapidPublicKey)
         });
         await this.savePushSubscription(newSubscription);
         this.setStoredVapidPublicKey(vapidPublicKey);
