@@ -59,14 +59,29 @@ export async function sendEmail({ to, subject, html, text }) {
   return transporter.sendMail({ from, to, subject, html, text });
 }
 
-export async function sendPush({ supabaseAdmin, subscription, payload }) {
-  const subject = process.env.VAPID_SUBJECT || 'mailto:info@incheck360.nl';
-  const publicKey = process.env.VAPID_PUBLIC_KEY;
-  const privateKey = process.env.VAPID_PRIVATE_KEY;
+export function getVapidConfig(env = process.env) {
+  const subject = String(env.VAPID_SUBJECT || '').trim();
+  const publicKey = String(env.VAPID_PUBLIC_KEY || '').trim();
+  const privateKey = String(env.VAPID_PRIVATE_KEY || '').trim();
+  const missing = [];
 
-  if (!publicKey || !privateKey) {
-    throw new Error('Missing VAPID configuration.');
+  if (!publicKey) missing.push('VAPID_PUBLIC_KEY');
+  if (!privateKey) missing.push('VAPID_PRIVATE_KEY');
+  if (!subject) missing.push('VAPID_SUBJECT');
+
+  if (missing.length) {
+    throw new Error(`Missing required web push VAPID environment variable(s): ${missing.join(', ')}`);
   }
+
+  return { subject, publicKey, privateKey };
+}
+
+function isWebPushChannel(channel = '') {
+  return ['pwa', 'push', 'web_push'].includes(String(channel || '').toLowerCase());
+}
+
+export async function sendPush({ supabaseAdmin, subscription, payload }) {
+  const { subject, publicKey, privateKey } = getVapidConfig();
 
   webpush.setVapidDetails(subject, publicKey, privateKey);
 
@@ -145,7 +160,8 @@ export async function processNotificationDeliveryQueue({
           html: buildNotificationEmailHtml(lockedJob),
           text: `${lockedJob.title}\n\n${lockedJob.body}\n\n${lockedJob.deep_link || ''}`
         });
-      } else if (lockedJob.channel === 'pwa') {
+      } else if (isWebPushChannel(lockedJob.channel)) {
+        getVapidConfig();
         if (!lockedJob.recipient_user_id) {
           results.push(await markSkipped(supabaseAdmin, lockedJob, 'Missing recipient user id'));
           continue;
@@ -186,7 +202,7 @@ export async function processNotificationDeliveryQueue({
 
       results.push(await markSent(supabaseAdmin, lockedJob));
     } catch (error) {
-      results.push(await markFailedOrRetry(supabaseAdmin, lockedJob, error));
+      results.push(await markFailedOrRetry(supabaseAdmin, lockedJob, error, { forceFailed: isWebPushChannel(lockedJob.channel) }));
     }
   }
 
@@ -229,9 +245,9 @@ export async function markSkipped(supabaseAdmin, job, reason) {
   return resultFromJob(job, 'skipped', reason);
 }
 
-export async function markFailedOrRetry(supabaseAdmin, job, error) {
+export async function markFailedOrRetry(supabaseAdmin, job, error, { forceFailed = false } = {}) {
   const attempts = Number(job.attempts || 0);
-  const failedFinal = attempts >= MAX_ATTEMPTS;
+  const failedFinal = forceFailed || attempts >= MAX_ATTEMPTS;
   const status = failedFinal ? 'failed' : 'queued';
   const errorMessage = getErrorMessage(error);
   const now = new Date();
