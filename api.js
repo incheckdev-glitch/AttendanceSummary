@@ -2212,23 +2212,34 @@ const Api = {
     });
     return response;
   },
-  async updateReceipt(receiptId, updates = {}, items) {
+  async updateReceipt(receiptId, updates = {}, items, options = {}) {
+    const opts = options && typeof options === 'object' ? options : {};
+    const cleanUpdates = { ...(updates || {}) };
+    const silent = opts.silent === true || opts.suppressNotifications === true || cleanUpdates.__skip_notifications === true || cleanUpdates.__silent === true;
+    delete cleanUpdates.__skip_notifications;
+    delete cleanUpdates.__silent;
     const payload = {
       id: receiptId,
       receipt_id: receiptId,
-      updates
+      updates: cleanUpdates
     };
+    if (silent) {
+      payload.silent = true;
+      payload.suppress_notifications = true;
+    }
     if (items !== undefined) payload.items = items;
     const response = await this.requestWithSession('receipts', 'update', payload);
-    await this.safeSendBusinessPwaPush({
-      resource: 'receipts',
-      action: 'receipt_updated',
-      recordId: this.extractBusinessRecordId(response, receiptId),
-      title: 'Receipt updated',
-      body: 'Receipt ' + (receiptId || '') + ' was updated.',
-      roles: ['admin', 'accounting'],
-      url: receiptId ? '/#receipts?id=' + encodeURIComponent(receiptId) : '/#receipts'
-    });
+    if (!silent) {
+      await this.safeSendBusinessPwaPush({
+        resource: 'receipts',
+        action: 'receipt_updated',
+        recordId: this.extractBusinessRecordId(response, receiptId),
+        title: 'Receipt updated',
+        body: 'Receipt ' + (receiptId || '') + ' was updated.',
+        roles: ['admin', 'accounting'],
+        url: receiptId ? '/#receipts?id=' + encodeURIComponent(receiptId) : '/#receipts'
+      });
+    }
     return response;
   },
   async deleteReceipt(receiptId) {

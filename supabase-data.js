@@ -8942,7 +8942,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
           console.warn('[invoice_payment_schedule] invoice create schedule creation failed', scheduleError);
         });
       }
-      if (resource === 'receipts') {
+      if (resource === 'receipts' && !payload?.silent && !payload?.suppress_notifications) {
         await createNotificationAndPush({
           title: 'Receipt created',
           message: `${String(created.receipt_number || created.receipt_id || created.id || '').trim() || 'Receipt'} was recorded.`,
@@ -9088,6 +9088,13 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       console.log('[CRUD] resource, pk, value', resource, key, id);
       const updates = requestedUpdates;
       const safeUpdates = { ...updates };
+      const suppressNotifications =
+        payload?.silent === true ||
+        payload?.suppress_notifications === true ||
+        safeUpdates.__skip_notifications === true ||
+        safeUpdates.__silent === true;
+      delete safeUpdates.__skip_notifications;
+      delete safeUpdates.__silent;
       if (resource === 'operations_onboarding') {
         delete safeUpdates.id;
         delete safeUpdates.db_id;

@@ -1682,7 +1682,21 @@ const Receipts = {
             linkedInvoice,
             invoiceReceipts
           });
-          await Api.updateReceipt(receiptUuid, this.filterReceiptColumns(headerPayload));
+          try {
+            const postCreateUpdates = this.filterReceiptColumns({
+              ...headerPayload,
+              __skip_notifications: true,
+              __silent: true
+            });
+            await Api.updateReceipt(receiptUuid, postCreateUpdates, undefined, { silent: true, suppressNotifications: true });
+          } catch (headerSyncError) {
+            // The database receipt RPC already created the receipt. Do not block the user because
+            // a non-critical header normalization/update failed later (common when notification
+            // triggers or issued-document locks are still being migrated). The receipt will be
+            // reloaded below and can still be viewed/edited by permitted users.
+            console.warn('[receipts] post-create header sync failed; receipt creation will continue', headerSyncError);
+            UI.toast('Receipt was created. Some header fields could not be auto-synced; refresh/open the receipt to verify.');
+          }
         }
         const receiptDisplay = String(normalized?.receipt_id || receipt?.receipt_id || '').trim();
         let normalizedDetailItems = parsed?.items || [];
