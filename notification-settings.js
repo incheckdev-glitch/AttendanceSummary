@@ -1,19 +1,19 @@
 const NotificationSetup = {
   state: { rules: [], roles: [], dirty: new Set(), filterModule: '', filterStatus: 'all', search: '' },
   moduleActions: [
-    ['tickets',['ticket_created','ticket_high_priority','ticket_status_changed','dev_team_status_changed','ticket_under_development','ticket_youtrack_changed','ticket_issue_related_changed']],
+    ['tickets',['ticket_created','ticket_assigned']],
     ['leads',['lead_created','lead_updated','lead_converted_to_deal','lead_follow_up_due_today']],
     ['deals',['deal_created','deal_updated','deal_created_from_lead','deal_important_stage','deal_follow_up_due_today']],
-    ['proposals',['proposal_created','proposal_updated','proposal_requires_approval','proposal_approved','proposal_rejected','proposal_created_from_deal']],
-    ['agreements',['agreement_created','agreement_created_from_proposal','agreement_requires_signature','agreement_signed','agreement_customer_signed','agreement_financial_controller_signed','agreement_fully_signed']],
-    ['invoices',['invoice_created','invoice_created_from_agreement','invoice_payment_state_changed','invoice_fully_paid']],
-    ['invoice_payment_schedule',['payment_due_reminder']],
-    ['receipts',['receipt_created','receipt_created_from_invoice','receipt_updated']],
+    ['proposals',['proposal_created','proposal_approval_required']],
+    ['agreements',['agreement_signed']],
+    ['invoices',['invoice_issued']],
+    ['invoice_payment_schedule',['payment_followup_due']],
+    ['receipts',['receipt_created','credit_note_created']],
     ['biners',['biners_entry_created']],
-    ['operations_onboarding',['onboarding_created','operations_onboarding_created','onboarding_status_changed','onboarding_request_submitted','assigned_csm']],
-    ['events',['event_created','event_updated','event_status_changed','event_schedule_changed','event_deleted']],
+    ['operations_onboarding',['onboarding_created','renewal_due','csm_activity_created']],
+    ['events',['event_created']],
     ['workflow',['workflow_approval_requested','workflow_approved','workflow_rejected']],
-    ['communication_centre',['conversation_created','reply_added','conversation_closed','conversation_reopened']]
+    ['communication_centre',['communication_message_created']]
   ],
 
 
@@ -104,7 +104,7 @@ const NotificationSetup = {
         is_enabled: (rule?.is_enabled ?? rule?.enabled) !== false,
         in_app_enabled: rule?.in_app_enabled !== false,
         pwa_enabled: rule?.pwa_enabled !== false,
-        email_enabled: rule?.email_enabled === true,
+        email_enabled: rule?.email_enabled !== false,
         recipient_roles: Array.isArray(rule?.recipient_roles) ? rule.recipient_roles : [],
         recipient_user_ids: Array.isArray(rule?.recipient_user_ids) ? rule.recipient_user_ids : [],
         recipient_emails: Array.isArray(rule?.recipient_emails) ? rule.recipient_emails : [],
@@ -302,23 +302,9 @@ const NotificationSetup = {
             proposal_number: 'PROPOSAL-TEST',
             entry_number: 'BIN-TEST',
             conversation_title: 'Test Conversation',
+            channels: ['in_app', 'pwa', 'email'],
           },
         });
-        const sessionResult = await supabase.auth.getSession();
-        const accessToken = String(sessionResult?.data?.session?.access_token || '').trim();
-        const processResponse = await fetch('/api/notifications/process-queue', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
-          },
-          body: JSON.stringify({ source: 'notification-setup-test' })
-        });
-        const processResult = await processResponse.json().catch(() => ({}));
-        if (!processResponse.ok || processResult?.ok === false) {
-          throw new Error(processResult?.error || 'Notification queue worker failed.');
-        }
-
         const eventKey = selectedEvent.event_key || selectedEvent.action;
         const { data: queueRows } = await supabase
           .from('notification_delivery_queue')
@@ -336,7 +322,11 @@ const NotificationSetup = {
           const errorMessage = queueRow?.last_error || logRow?.error_message || '';
           return `${status}${errorMessage ? ` (${errorMessage})` : ''}`;
         };
-        UI.toast(`Test notification result — In-app: created (${Array.isArray(dispatchResult) ? dispatchResult.length : 0}) · Email: ${formatChannel('email')} · PWA: ${formatChannel('pwa')}`);
+        const emailStatus = formatChannel('email');
+        const pwaStatus = formatChannel('pwa');
+        const inAppCreated = Array.isArray(dispatchResult) && dispatchResult.length > 0;
+        const allChannelsOk = inAppCreated && !/^not queued/i.test(emailStatus) && !/^not queued/i.test(pwaStatus) && !/failed/i.test(emailStatus + pwaStatus);
+        UI.toast(`${allChannelsOk ? 'Test notification result' : 'Notification test incomplete'} — In-app: ${inAppCreated ? 'created' : 'not created'} (${Array.isArray(dispatchResult) ? dispatchResult.length : 0}) · Email: ${emailStatus} · PWA: ${pwaStatus}`);
       } catch (error) {
         UI.toast(String(error?.message || 'Unable to test rule.'));
       }
