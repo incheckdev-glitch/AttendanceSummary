@@ -1,3 +1,7 @@
+function isWebPushChannel(channel = '') {
+  return ['pwa', 'push', 'web_push'].includes(String(channel || '').toLowerCase());
+}
+
 export async function processNotificationDeliveryQueue({ supabase, sendEmail, sendPush }) {
   const { data: jobs, error } = await supabase
     .from("notification_delivery_queue")
@@ -37,7 +41,12 @@ export async function processNotificationDeliveryQueue({ supabase, sendEmail, se
         });
       }
 
-      if (job.channel === "pwa") {
+      if (isWebPushChannel(job.channel)) {
+        if (!job.recipient_user_id) {
+          await markJobSkipped(supabase, job, "Missing recipient user id");
+          continue;
+        }
+
         const { data: subscriptions, error: subError } = await supabase
           .from("user_push_subscriptions")
           .select("*")
@@ -92,6 +101,7 @@ export async function processNotificationDeliveryQueue({ supabase, sendEmail, se
         .update({
           status: "sent",
           processed_at: new Date().toISOString(),
+          last_error: null,
           updated_at: new Date().toISOString(),
         })
         .eq("id", job.id);
@@ -107,7 +117,7 @@ export async function processNotificationDeliveryQueue({ supabase, sendEmail, se
       });
     } catch (err) {
       const attempts = Number(job.attempts || 0) + 1;
-      const failedFinal = attempts >= 3;
+      const failedFinal = isWebPushChannel(job.channel) || attempts >= 3;
 
       await supabase
         .from("notification_delivery_queue")
