@@ -19,6 +19,7 @@ type InputPayload = {
   emails?: string[];
   target_emails?: string[];
   recipient_emails?: string[];
+  subscription_id?: string;
   subscription_ids?: string[];
 
   // Resource context
@@ -36,6 +37,7 @@ type InputPayload = {
 
 type PushSubscriptionRow = {
   id: string;
+  __table?: string;
   user_id: string | null;
   email?: string | null;
   role: string | null;
@@ -621,15 +623,21 @@ async function deactivateSubscription(
   supabaseAdmin: SupabaseAdminClient,
   subscriptionId: string,
 ): Promise<boolean> {
-  const { error } = await supabaseAdmin
-    .from("user_push_subscriptions")
-    .update({
-      is_active: false,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", subscriptionId);
+  const tables = ["user_push_subscriptions", "push_subscriptions"];
 
-  return !error;
+  for (const table of tables) {
+    const { error } = await supabaseAdmin
+      .from(table)
+      .update({
+        is_active: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", subscriptionId);
+
+    if (!error) return true;
+  }
+
+  return false;
 }
 
 async function fetchSubscriptions(
@@ -641,43 +649,60 @@ async function fetchSubscriptions(
     roles: string[];
     allowBroadcast: boolean;
   },
-): Promise<{ rows: PushSubscriptionRow[]; error?: string }> {
+): Promise<{ rows: PushSubscriptionRow[]; error?: string; checkedTables: string[] }> {
   const { subscriptionIds, userIds, emails, roles, allowBroadcast } = params;
-
+  const checkedTables = ["user_push_subscriptions", "push_subscriptions"];
   const pageSize = 1000;
-  let from = 0;
   const allRows: PushSubscriptionRow[] = [];
+  const errors: string[] = [];
 
   const needsUnionFiltering =
     subscriptionIds.length === 0 &&
     (emails.length > 0 || roles.length > 0 || (userIds.length > 0 && emails.length > 0));
 
-  for (let safety = 0; safety < 50; safety += 1) {
-    let query = supabaseAdmin
-      .from("user_push_subscriptions")
-      .select("id,user_id,email,role,endpoint,p256dh,auth")
-      .eq("is_active", true)
-      .range(from, from + pageSize - 1);
+  if (
+    subscriptionIds.length === 0 &&
+    userIds.length === 0 &&
+    emails.length === 0 &&
+    roles.length === 0 &&
+    !allowBroadcast
+  ) {
+    return { rows: [], error: "No valid subscription target provided", checkedTables };
+  }
 
-    if (subscriptionIds.length > 0) {
-      query = query.in("id", subscriptionIds);
-    } else if (userIds.length > 0 && !needsUnionFiltering) {
-      query = query.in("user_id", userIds);
-    } else if (!needsUnionFiltering && !allowBroadcast) {
-      return { rows: [], error: "No valid subscription target provided" };
+  for (const tableName of checkedTables) {
+    let from = 0;
+
+    for (let safety = 0; safety < 50; safety += 1) {
+      let query = supabaseAdmin
+        .from(tableName)
+        .select("id,user_id,email,role,endpoint,p256dh,auth")
+        .eq("is_active", true)
+        .range(from, from + pageSize - 1);
+
+      if (subscriptionIds.length > 0) {
+        query = query.in("id", subscriptionIds);
+      } else if (userIds.length > 0 && !needsUnionFiltering) {
+        query = query.in("user_id", userIds);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        errors.push(`${tableName}: ${error.message}`);
+        break;
+      }
+
+      const rows = Array.isArray(data) ? (data as PushSubscriptionRow[]) : [];
+      allRows.push(...rows.map((row) => ({ ...row, __table: tableName })));
+
+      if (rows.length < pageSize) break;
+      from += pageSize;
     }
+  }
 
-    const { data, error } = await query;
-
-    if (error) {
-      return { rows: [], error: error.message };
-    }
-
-    const rows = Array.isArray(data) ? (data as PushSubscriptionRow[]) : [];
-    allRows.push(...rows);
-
-    if (rows.length < pageSize) break;
-    from += pageSize;
+  if (errors.length === checkedTables.length) {
+    return { rows: [], error: errors.join("; "), checkedTables };
   }
 
   const subscriptionIdSet = new Set(subscriptionIds);
@@ -696,18 +721,17 @@ async function fetchSubscriptions(
       const matchesRole = row.role ? roleSet.has(normalizeRole(row.role)) : false;
       return matchesUser || matchesEmail || matchesRole;
     });
-  } else if (!allowBroadcast) {
-    return { rows: [], error: "No valid subscription target provided" };
   }
 
   const seen = new Set<string>();
   const deduped = rows.filter((row) => {
-    if (seen.has(row.id)) return false;
-    seen.add(row.id);
+    const key = String(row.endpoint || row.id || "").trim();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
     return true;
   });
 
-  return { rows: deduped };
+  return { rows: deduped, checkedTables };
 }
 
 async function verifySubscriptionOwnership(
@@ -717,17 +741,26 @@ async function verifySubscriptionOwnership(
 ): Promise<boolean> {
   if (subscriptionIds.length === 0) return true;
 
-  const { data, error } = await supabaseAdmin
-    .from("user_push_subscriptions")
-    .select("id,user_id")
-    .in("id", subscriptionIds)
-    .eq("is_active", true);
+  const checkedTables = ["user_push_subscriptions", "push_subscriptions"];
+  const ownedIds = new Set<string>();
 
-  if (error || !Array.isArray(data)) return false;
+  for (const tableName of checkedTables) {
+    const { data, error } = await supabaseAdmin
+      .from(tableName)
+      .select("id,user_id")
+      .in("id", subscriptionIds)
+      .eq("is_active", true);
 
-  if (data.length !== subscriptionIds.length) return false;
+    if (error || !Array.isArray(data)) continue;
 
-  return data.every((row) => row.user_id === requesterUserId);
+    data.forEach((row) => {
+      if (row.user_id === requesterUserId && row.id) {
+        ownedIds.add(String(row.id));
+      }
+    });
+  }
+
+  return subscriptionIds.every((id) => ownedIds.has(id));
 }
 
 Deno.serve(async (req: Request) => {
@@ -822,7 +855,10 @@ Deno.serve(async (req: Request) => {
     let roles = collectRoles(input);
     let userIds = collectUserIds(input);
     let emails = collectEmails(input);
-    const subscriptionIds = uniqueStrings(safeStringArray(input.subscription_ids));
+    const subscriptionIds = uniqueStrings([
+      ...safeStringArray(input.subscription_id),
+      ...safeStringArray(input.subscription_ids),
+    ]);
     let allowBroadcast = input.allow_broadcast === true;
 
     const tag =
@@ -980,7 +1016,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const { rows: subscriptions, error: fetchError } =
+    const { rows: subscriptions, error: fetchError, checkedTables } =
       await fetchSubscriptions(supabaseAdmin, {
         subscriptionIds,
         userIds,
@@ -1008,6 +1044,8 @@ Deno.serve(async (req: Request) => {
         failed: 0,
         deactivated: 0,
         errors: [],
+        checked_tables: checkedTables,
+        error: `No active push subscriptions found in checked tables: ${checkedTables.join(", ")}`,
         debug: {
           requester_user_id: requester.userId,
           requester_email: requester.email,
@@ -1019,6 +1057,8 @@ Deno.serve(async (req: Request) => {
           selected_user_ids: userIds,
           selected_emails: emails,
           selected_roles: roles,
+          selected_subscription_ids: subscriptionIds,
+          checked_tables: checkedTables,
         },
       });
     }

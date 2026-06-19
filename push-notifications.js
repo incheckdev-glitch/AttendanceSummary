@@ -1048,18 +1048,31 @@
       }
       const client = global.SupabaseClient?.getClient?.();
       if (!client) return [];
-      const { data, error } = await client
-        .from('user_push_subscriptions')
-        .select('id,device_label,user_agent,endpoint,is_active,last_seen_at,created_at,updated_at')
-        .eq('user_id', userId)
-        .eq('is_active', true)
-        .order('last_seen_at', { ascending: false });
-      if (error) {
-        if (this.els.activeDevicesState) this.els.activeDevicesState.textContent = `Unable to load active push devices: ${error.message || 'Unknown error'}`;
+      const subscriptionTables = ['user_push_subscriptions', 'push_subscriptions'];
+      const results = await Promise.all(subscriptionTables.map(async table => {
+        const { data, error } = await client
+          .from(table)
+          .select('*')
+          .eq('user_id', userId)
+          .eq('is_active', true)
+          .order('last_seen_at', { ascending: false });
+        if (error) return { table, rows: [], error };
+        return { table, rows: Array.isArray(data) ? data.map(row => ({ ...row, __table: table })) : [], error: null };
+      }));
+      const successfulResults = results.filter(result => !result.error);
+      if (successfulResults.length === 0) {
+        const message = results.map(result => `${result.table}: ${result.error?.message || 'Unknown error'}`).join('; ');
+        if (this.els.activeDevicesState) this.els.activeDevicesState.textContent = `Unable to load active push devices: ${message}`;
         if (this.els.activeDevicesTbody) this.els.activeDevicesTbody.innerHTML = '';
         return [];
       }
-      const rows = Array.isArray(data) ? data : [];
+      const seen = new Set();
+      const rows = successfulResults.flatMap(result => result.rows).filter(row => {
+        const key = String(row.endpoint || row.id || '').trim();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
       this.state.activeDeviceRows = rows;
       if (this.els.activeDevicesState) {
         this.els.activeDevicesState.textContent = `${rows.length} active device subscription${rows.length === 1 ? '' : 's'} for current user.`;
@@ -1093,15 +1106,20 @@
       if (!client) return;
       this.setBusy(true);
       try {
+        const { data: sessionData } = await client.auth.getSession();
+        const accessToken = sessionData?.session?.access_token;
         const payload = {
           title: 'InCheck360 Device Test',
           body: 'Testing push to this device.',
           url: '/',
-          subscription_ids: [normalizedId],
+          subscription_id: normalizedId,
           tag: 'device-test-push',
           data: { test: true, subscription_id: normalizedId }
         };
-        const { data, error } = await client.functions.invoke(WEB_PUSH_FUNCTION_NAME, { body: payload });
+        const { data, error } = await client.functions.invoke(WEB_PUSH_FUNCTION_NAME, {
+          body: payload,
+          headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined
+        });
         if (error) throw error;
         this.setDeviceTestResult({
           targetSubscriptionId: normalizedId,
