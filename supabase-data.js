@@ -4968,7 +4968,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     }
     async function sendWorkflowWebPush(payload = {}, context = '') {
       try {
-        const { error } = await client.functions.invoke('send-web-push-v2', {
+        const { error } = await client.functions.invoke('notification-delivery-queue-only', {
           body: payload && typeof payload === 'object' ? payload : {}
         });
         if (error) {
@@ -5177,7 +5177,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         requestPayload
       });
       try {
-        const { data, error } = await client.functions.invoke('send-web-push-v2', { body: requestPayload });
+        const { data, error } = await client.functions.invoke('notification-delivery-queue-only', { body: requestPayload });
         console.info('[notifications:pwa] push result', {
           context,
           resource,
@@ -5198,17 +5198,17 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
             roles,
             error
           });
-          return { attempted: true, sent: false, error: String(error?.message || error || 'send-web-push-v2 failed') };
+          return { attempted: true, sent: false, error: String(error?.message || error || 'PWA is queued by notification delivery worker') };
         }
         return { attempted: true, sent: true, response: data || null };
       } catch (error) {
         console.warn('[notifications:pwa] push failed', {
           ...debugContext,
-          reason: String(error?.message || error || 'send-web-push-v2 failed'),
+          reason: String(error?.message || error || 'PWA is queued by notification delivery worker'),
           response: null,
           error
         });
-        return { attempted: true, sent: false, error: String(error?.message || error || 'send-web-push-v2 failed') };
+        return { attempted: true, sent: false, error: String(error?.message || error || 'PWA is queued by notification delivery worker') };
       }
     }
     async function createNotificationHubEvent(payload = {}, context = '') {
@@ -5318,7 +5318,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       const normalizedEventType = String(eventType || '').trim().toLowerCase();
       if (!normalizedEventType) return null;
       try {
-        const { data, error } = await client.functions.invoke('send-workflow-approval-email', {
+        const { data, error } = await client.functions.invoke('notification-delivery-queue-only', {
           body: {
             event_type: normalizedEventType,
             ...(payload && typeof payload === 'object' ? payload : {})
@@ -6540,49 +6540,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
   }
 
   async function sendEmailForNotification(payload = {}, recipientEmails = [], context = '') {
-    const emails = [...new Set(
-      normalizeNotificationList(recipientEmails)
-        .map(value => String(value || '').trim().toLowerCase())
-        .filter(value => isValidNotificationEmail(value) && !isPlaceholderRecipientToken(value))
-    )];
-
-    if (!emails.length) {
-      console.info('[notifications:email] log', { channel: 'email', status: 'skipped', error_message: 'no_email_recipients_resolved', context, resource: payload?.resource || null, action: payload?.action || payload?.event_type || null, record_id: payload?.record_id || null, record_number: payload?.record_number || null });
-      return { attempted: false, skipped: true, reason: 'no_email_recipients_resolved' };
-    }
-
-    const token = await getNotificationAccessToken();
-    if (!token) {
-      console.warn('[notifications:email] log', { channel: 'email', status: 'skipped', error_message: 'missing-access-token', context, resource: payload?.resource || null, action: payload?.action || payload?.event_type || null, record_id: payload?.record_id || null, record_number: payload?.record_number || null });
-      return { attempted: false, skipped: true, reason: 'missing-access-token' };
-    }
-
-    const template = buildNotificationEmailTemplate(payload);
-    try {
-      const response = await fetch('/api/proxy', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-          'X-Supabase-Access-Token': token
-        },
-        body: JSON.stringify({
-          resource: 'notifications',
-          action: 'send_email',
-          to: emails,
-          ...template
-        })
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(String(result?.error || result?.message || 'Unable to send email notification'));
-      }
-      console.info('[notifications:email] log', { channel: 'email', status: 'sent', recipient_email: emails.join(','), context, resource: payload?.resource || null, action: payload?.action || payload?.event_type || null, record_id: payload?.record_id || null, record_number: payload?.record_number || null, recipientsCount: emails.length, messageId: result?.messageId || null });
-      return { attempted: true, sent: true, response: result };
-    } catch (error) {
-      console.warn('[notifications:email] log', { channel: 'email', status: 'failed', error_message: error?.message || String(error), context, resource: payload?.resource || null, action: payload?.action || payload?.event_type || null, record_id: payload?.record_id || null, record_number: payload?.record_number || null });
-      return { attempted: true, sent: false, error: String(error?.message || error) };
-    }
+    return { attempted: false, skipped: true, reason: 'email queued by notification delivery worker' };
   }
 
   async function sendPwaPushForNotification(payload = {}, context = '') {
@@ -6629,15 +6587,15 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     if (roles.length) requestPayload.roles = roles;
     if (targetEmails.length) requestPayload.emails = targetEmails;
     try {
-      const { data, error } = await client.functions.invoke('send-web-push-v2', { body: requestPayload });
+      const { data, error } = await client.functions.invoke('notification-delivery-queue-only', { body: requestPayload });
       if (error) {
         console.warn('[notifications:pwa] push failed', { ...debugContext, error });
-        return { attempted: true, sent: false, error: String(error?.message || error || 'send-web-push-v2 failed') };
+        return { attempted: true, sent: false, error: String(error?.message || error || 'PWA is queued by notification delivery worker') };
       }
       return { attempted: true, sent: true, response: data || null };
     } catch (error) {
       console.warn('[notifications:pwa] push failed', { ...debugContext, error });
-      return { attempted: true, sent: false, error: String(error?.message || error || 'send-web-push-v2 failed') };
+      return { attempted: true, sent: false, error: String(error?.message || error || 'PWA is queued by notification delivery worker') };
     }
   }
 
@@ -6820,8 +6778,8 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const notificationId = String(dispatchedRows?.[0]?.notification_id || dispatchedRows?.[0]?.id || '').trim();
     return {
       created: dispatchedRows.length,
-      push: { attempted: decision.channels.push, queued: decision.channels.push },
-      email: { attempted: decision.channels.email, queued: decision.channels.email },
+      push: { attempted: decision.channels.push, queued: decision.channels.push, source: 'notification_delivery_queue' },
+      email: { attempted: decision.channels.email, queued: decision.channels.email, source: 'notification_delivery_queue' },
       notification_id: notificationId || null,
       dispatchResult: dispatchResult.data || []
     };

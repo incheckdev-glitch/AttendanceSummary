@@ -168,46 +168,6 @@
     };
   }
 
-  async function sendNotificationEmail({ resource = '', action = '', eventKey = '', title = '', body = '', recipients = [], recordId = '', recordNumber = '', url = '', actorName = '', metadata = {} } = {}) {
-    const emailRecipients = [...new Set(normalizeList(recipients).map(item => String(item || '').trim().toLowerCase()).filter(isValidEmail))];
-    console.info('[notifications] email decision', {
-      resource,
-      action,
-      eventKey,
-      emailEnabled: true,
-      recipientsCount: emailRecipients.length,
-      hasSmtpHost: Boolean(global?.ENV?.SMTP_HOST || global?.process?.env?.SMTP_HOST),
-      hasSmtpUser: Boolean(global?.ENV?.SMTP_USER || global?.process?.env?.SMTP_USER),
-      hasSmtpPass: Boolean(global?.ENV?.SMTP_PASS || global?.process?.env?.SMTP_PASS),
-      hasSmtpFrom: Boolean(global?.ENV?.SMTP_FROM || global?.process?.env?.SMTP_FROM)
-    });
-    if (!emailRecipients.length) {
-      console.info('[notifications] email log', { channel: 'email', status: 'skipped', error_message: 'no_email_recipients_resolved', resource, action, record_id: recordId || null, record_number: recordNumber || null });
-      return { attempted: false, skipped: true, reason: 'no_email_recipients_resolved' };
-    }
-    const token = await global.Api.getCurrentAccessToken();
-    const template = buildEmailTemplate({ title, body, resource, action, recordId, recordNumber, url, actorName, metadata });
-    console.info('[notifications] email template built', {
-      resource,
-      action,
-      eventKey,
-      hasUrl: Boolean(url),
-      recordNumber: recordNumber || null
-    });
-    const response = await fetch('/api/proxy', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}`, 'X-Supabase-Access-Token': token } : {})
-      },
-      body: JSON.stringify({ resource: 'notifications', action: 'send_email', to: emailRecipients, ...template })
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(String(result?.error || 'Unable to send email notification'));
-    console.info('[notifications] email log', { channel: 'email', status: 'sent', recipient_email: emailRecipients.join(','), resource, action, record_id: recordId || null, record_number: recordNumber || null, eventKey, recipientsCount: emailRecipients.length, messageId: result?.messageId || null });
-    return result;
-  }
-
   function isPlaceholderRecipientToken(value = '') {
     const normalized = normalizeText(value);
     return !normalized || normalized === 'optional: user@company.com' || normalized === 'user@company.com';
@@ -640,74 +600,6 @@
     return Array.isArray(rows) && rows.some(row => String(row?.channel || '').toLowerCase() === normalizedChannel && String(row?.status || '').toLowerCase() === 'sent');
   }
 
-  async function sendPwaPushForBusinessNotification({ title = '', body = '', userIds = [], emails = [], roles = [], resource = '', action = '', recordId = '', recordNumber = '', url = '', metadata = {}, notificationId = '' } = {}) {
-    const client = getClient();
-    const safeTitle = String(title || '').trim() || 'InCheck360 notification';
-    const safeBody = String(body || '').trim() || 'A record was updated.';
-    const targetUserIds = [...new Set(normalizeList(userIds).map(item => String(item || '').trim()).filter(Boolean))];
-    const targetEmails = [...new Set(normalizeList(emails).map(item => String(item || '').trim().toLowerCase()).filter(isValidEmail))];
-    const targetRoles = normalizeRoleList(roles);
-    if (!targetUserIds.length && !targetEmails.length && !targetRoles.length) {
-      return { attempted: false, skipped: true, reason: 'no_pwa_recipients_resolved' };
-    }
-
-    const requestPayload = {
-      title: safeTitle,
-      body: safeBody,
-      url: url || buildNotificationRoute(resource, recordId),
-      tag: `${String(resource || 'notification').toLowerCase()}-${String(action || 'event').toLowerCase()}-${String(recordId || recordNumber || Date.now()).toLowerCase()}`,
-      resource,
-      action,
-      record_id: recordId || undefined,
-      record_number: recordNumber || undefined,
-      notification_id: notificationId || undefined,
-      data: {
-        notification_id: notificationId || undefined,
-        resource,
-        action,
-        record_id: recordId || undefined,
-        record_number: recordNumber || undefined,
-        url: url || buildNotificationRoute(resource, recordId),
-        ...(metadata && typeof metadata === 'object' ? metadata : {})
-      }
-    };
-    if (targetUserIds.length) requestPayload.user_ids = targetUserIds;
-    if (targetEmails.length) requestPayload.emails = targetEmails;
-    if (targetRoles.length) requestPayload.roles = targetRoles;
-
-    try {
-      const { data, error } = await client.functions.invoke('send-web-push-v2', { body: requestPayload });
-      if (error) throw error;
-      console.info('[notifications:pwa] direct fallback sent', { resource, action, recordId, users: targetUserIds.length, emails: targetEmails.length, roles: targetRoles.length, data });
-      return { attempted: true, sent: true, response: data || null };
-    } catch (error) {
-      console.warn('[notifications:pwa] direct fallback failed', { resource, action, recordId, error });
-      return { attempted: true, sent: false, error: String(error?.message || error || 'send-web-push-v2 failed') };
-    }
-  }
-
-  async function updateLatestQueueRowsAfterDirectSend({ client, eventKey = '', resource = '', recordId = '', channel = '', status = '', error = '' } = {}) {
-    try {
-      if (!client || !eventKey || !channel || !status) return;
-      let query = client
-        .from('notification_delivery_queue')
-        .update({
-          status,
-          processed_at: new Date().toISOString(),
-          last_error: error || null,
-          updated_at: new Date().toISOString()
-        })
-        .eq('event_key', eventKey)
-        .eq('channel', channel)
-        .in('status', ['queued', 'processing']);
-      if (resource) query = query.eq('resource', resource);
-      if (recordId) query = query.eq('resource_id', String(recordId));
-      await query;
-    } catch (err) {
-      console.warn('[notifications] unable to sync queue after direct channel send', { eventKey, channel, err });
-    }
-  }
-
   const NotificationService = {
     resolveNotificationChannels,
     async sendBusinessNotification({ resource = '', action = '', eventKey = '', recordId = '', recordNumber = '', title = '', body = '', targetUsers = [], targetEmails = [], url = '', metadata = {}, channels = ['in_app', 'push', 'email'], roles = ['admin'] } = {}) {
@@ -888,68 +780,9 @@
       const channelResults = {
         in_app: { attempted: decision.channels.in_app, created: Array.isArray(dispatchResult) ? dispatchResult.length : 0 },
         queue_worker: await processNotificationQueueNow(),
-        email: { attempted: false, skipped: true, reason: decision.channels.email ? 'pending_direct_fallback' : 'email_channel_disabled' },
-        pwa: { attempted: false, skipped: true, reason: decision.channels.push ? 'pending_direct_fallback' : 'pwa_channel_disabled' }
+        email: { attempted: decision.channels.email, queued: decision.channels.email, source: 'notification_delivery_queue' },
+        pwa: { attempted: decision.channels.push, queued: decision.channels.push, source: 'notification_delivery_queue' }
       };
-
-      if (decision.channels.email) {
-        if (queueResultHasSentChannel(channelResults.queue_worker, 'email')) {
-          channelResults.email = { attempted: true, sent: true, source: 'queue_worker' };
-        } else {
-          channelResults.email = await sendNotificationEmail({
-            resource: normalizedResource,
-            action: normalizedAction,
-            eventKey: normalizedEventKey,
-            title: payload.title,
-            body: payload.body,
-            recipients: emailRecipients,
-            recordId: normalizedRecordId,
-            recordNumber,
-            url: finalUrl,
-            actorName: metadata?.actor_name || metadata?.actor_display_name || metadata?.sender_name || '',
-            metadata
-          });
-          await updateLatestQueueRowsAfterDirectSend({
-            client,
-            eventKey: normalizedEventKey,
-            resource: normalizedResource,
-            recordId: normalizedRecordId,
-            channel: 'email',
-            status: channelResults.email?.sent || channelResults.email?.messageId ? 'sent' : (channelResults.email?.skipped ? 'skipped' : 'failed'),
-            error: channelResults.email?.error || channelResults.email?.reason || ''
-          });
-        }
-      }
-
-      if (decision.channels.push) {
-        if (queueResultHasSentChannel(channelResults.queue_worker, 'pwa')) {
-          channelResults.pwa = { attempted: true, sent: true, source: 'queue_worker' };
-        } else {
-          channelResults.pwa = await sendPwaPushForBusinessNotification({
-            title: payload.title,
-            body: payload.body,
-            userIds,
-            emails: emailRecipients,
-            roles: assignedRoles,
-            resource: normalizedResource,
-            action: normalizedAction,
-            recordId: normalizedRecordId,
-            recordNumber,
-            url: finalUrl,
-            metadata,
-            notificationId: firstNotificationId
-          });
-          await updateLatestQueueRowsAfterDirectSend({
-            client,
-            eventKey: normalizedEventKey,
-            resource: normalizedResource,
-            recordId: normalizedRecordId,
-            channel: 'pwa',
-            status: channelResults.pwa?.sent ? 'sent' : (channelResults.pwa?.skipped ? 'skipped' : 'failed'),
-            error: channelResults.pwa?.error || channelResults.pwa?.reason || ''
-          });
-        }
-      }
 
       return {
         attempted: true,

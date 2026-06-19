@@ -70,46 +70,6 @@ function channelEnabled(rule: Record<string, unknown> | null, channel: 'in_app' 
   return value === true || String(value).toLowerCase() === 'true' || String(value) === '1';
 }
 
-async function sendPwa(payload: Record<string, unknown>, recipientUserId: string) {
-  const { data, error } = await sb.functions.invoke('send-web-push-v2', {
-    body: {
-      title: payload.title,
-      body: payload.body,
-      url: payload.deep_link,
-      tag: payload.dedupe_key,
-      resource: payload.resource,
-      action: payload.action,
-      record_id: payload.record_id,
-      user_ids: [recipientUserId],
-      data: {
-        resource: payload.resource,
-        action: payload.action,
-        record_id: payload.record_id,
-        invoice_id: payload.invoice_id,
-        url: payload.deep_link
-      }
-    }
-  });
-  if (error) throw error;
-  return data || null;
-}
-
-async function sendEmail(payload: Record<string, unknown>, recipientUserId: string) {
-  const { data: profile } = await sb.from('profiles').select('email,name,full_name').eq('id', recipientUserId).maybeSingle();
-  const email = String(profile?.email || '').trim().toLowerCase();
-  if (!email) return { skipped: true, reason: 'missing-recipient-email' };
-  const html = `<p>${String(payload.title || '')}</p><p>${String(payload.body || '')}</p><p><a href="${APP_BASE_URL}/${String(payload.deep_link || '').replace(/^\/+/, '')}">Open in InCheck360</a></p>`;
-  const { data, error } = await sb.functions.invoke('send-workflow-approval-email', {
-    body: {
-      to: email,
-      subject: payload.title,
-      html,
-      text: `${payload.title}\n\n${payload.body}\n\nOpen in InCheck360: ${APP_BASE_URL}/${String(payload.deep_link || '').replace(/^\/+/, '')}`
-    }
-  });
-  if (error) throw error;
-  return data || null;
-}
 
 async function processReminders(today: string, dryRun = false) {
   const summary = { ok: true, date: today, scanned: 0, matched: 0, sent: 0, skipped: 0, errors: [] as unknown[] };

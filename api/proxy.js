@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js';
-import nodemailer from 'nodemailer';
 
 const RESOURCE_ALIASES = {
   operations_onboarding: ['operationsOnboarding', 'operations-onboarding']
@@ -213,28 +212,6 @@ async function getCallerProfile(supabaseAdmin, authUserId, email = '') {
 
 function isValidEmail(value = '') {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim().toLowerCase());
-}
-
-async function sendEmailNotification({ to, subject, html, text }) {
-  const host = process.env.SMTP_HOST;
-  const port = Number(process.env.SMTP_PORT || 587);
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  const from = process.env.SMTP_FROM;
-
-  if (!host || !port || !user || !pass || !from) {
-    throw new Error('Missing SMTP configuration.');
-  }
-
-  const transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: { user, pass },
-    requireTLS: port !== 465
-  });
-
-  return transporter.sendMail({ from, to, subject, html, text });
 }
 
 function getMissingColumnName(error) {
@@ -516,45 +493,10 @@ export default async function handler(req, res) {
 
 
   if (resource === 'notifications' && (action === 'send_email' || action === 'test_email')) {
-    const token = extractBearerToken(req, payload);
-    if (!token) return res.status(401).json({ ok: false, error: 'Missing access token.' });
-
-    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!supabaseUrl || !serviceRoleKey) {
-      return res.status(500).json({ ok: false, error: 'Server is missing Supabase admin configuration.' });
-    }
-
-    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
-    const { data: verified, error: verifiedError } = await supabaseAdmin.auth.getUser(token);
-    if (verifiedError || !verified?.user) return res.status(401).json({ ok: false, error: 'Invalid or expired session.' });
-    const callerRole = getCallerRole(await getCallerProfile(supabaseAdmin, verified.user.id, verified.user.email || ''), verified.user);
-    if (action === 'test_email' && !isAdminRole(callerRole)) return res.status(403).json({ ok: false, error: 'Admin role required.' });
-
-    const recipients = Array.isArray(payload?.to) ? payload.to : String(payload?.to || '').split(',');
-    const normalizedTo = [...new Set(recipients.map((item) => String(item || '').trim().toLowerCase()).filter(isValidEmail))];
-    if (!normalizedTo.length) {
-      console.info('[proxy:email] log', { channel: 'email', status: 'skipped', error_message: 'no_email_recipients_resolved' });
-      return res.status(400).json({ ok: false, error: 'no_email_recipients_resolved' });
-    }
-
-    try {
-      const subject = String(payload?.subject || 'InCheck360 Notification').trim() || 'InCheck360 Notification';
-      const html = String(payload?.html || '').trim();
-      const text = String(payload?.text || '').trim();
-      if (!html || !text) throw new Error('Email payload must include both html and text.');
-      const result = await sendEmailNotification({
-        to: normalizedTo.join(', '),
-        subject,
-        html,
-        text
-      });
-      console.info('[proxy:email] log', { channel: 'email', status: 'sent', recipient_email: normalizedTo.join(','), messageId: result?.messageId || null });
-      return res.status(200).json({ ok: true, messageId: result?.messageId || null, recipientsCount: normalizedTo.length });
-    } catch (error) {
-      console.warn('[proxy:email] log', { channel: 'email', status: 'failed', error_message: String(error?.message || error) });
-      return res.status(500).json({ ok: false, error: String(error?.message || error) });
-    }
+    return res.status(410).json({
+      ok: false,
+      error: 'Direct notification email sending has been disabled. Insert public.notifications rows and let notification_delivery_queue be processed by the worker.'
+    });
   }
 
   if (resource === 'users' || resource === 'roles' || resource === 'role_permissions') {
