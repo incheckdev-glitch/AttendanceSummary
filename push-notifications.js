@@ -1,5 +1,5 @@
 (function initPushNotifications(global) {
-  const WEB_PUSH_FUNCTION_NAME = 'send-web-push-v2';
+  const WEB_PUSH_FUNCTION_NAME = 'notification-delivery-queue-only';
   const IN_APP_SOUND_STORAGE_KEY = 'incheck360_in_app_notification_sound_enabled';
   const FOREGROUND_PUSH_BANNER_DEDUPE_WINDOW_MS = 15000;
   const FOREGROUND_PUSH_BANNER_AUTO_DISMISS_MS = 10000;

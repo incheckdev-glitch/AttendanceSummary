@@ -321,21 +321,8 @@ const Api = {
   },
  
   async sendWebPush(payload = {}, { context = 'unspecified' } = {}) {
-    const client = window.SupabaseClient?.getClient?.();
-    if (!client) return null;
-    try {
-      const { data, error } = await client.functions.invoke(WEB_PUSH_FUNCTION_NAME, {
-        body: payload && typeof payload === 'object' ? payload : {}
-      });
-      if (error) {
-        console.warn(`[push] ${context} failed`, error);
-        return null;
-      }
-      return data || null;
-    } catch (error) {
-      console.warn(`[push] ${context} failed`, error);
-      return null;
-    }
+    console.warn(`[push] ${context} skipped: PWA delivery is handled by notification_delivery_queue worker only.`);
+    return null;
   },
   fireAndForgetWebPush(payload = {}, options = {}) {
     Promise.resolve()

@@ -315,11 +315,13 @@ const NotificationSetup = {
         const { data: logs } = await supabase.from('notification_delivery_logs').select('*').eq('event_key', eventKey).order('created_at', { ascending: false }).limit(10);
         const queueByChannel = channel => (queueRows || []).find(row => row.channel === channel) || null;
         const logByChannel = channel => (logs || []).find(row => row.channel === channel) || null;
+        const validQueueStatuses = ['queued', 'sent', 'failed', 'skipped'];
         const formatChannel = channel => {
           const queueRow = queueByChannel(channel);
           const logRow = logByChannel(channel);
-          const status = queueRow?.status || logRow?.status || 'not queued';
-          const errorMessage = queueRow?.last_error || logRow?.error_message || '';
+          const rawStatus = String(queueRow?.status || logRow?.status || '').toLowerCase();
+          const status = validQueueStatuses.includes(rawStatus) ? rawStatus : 'not queued';
+          const errorMessage = status === 'skipped' ? (queueRow?.last_error || logRow?.error_message || '') : '';
           return `${status}${errorMessage ? ` (${errorMessage})` : ''}`;
         };
         const emailStatus = formatChannel('email');
