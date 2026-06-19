@@ -37,7 +37,7 @@ declare
   v_payload jsonb;
 begin
   if new.recipient_user_id is null then
-    return new;
+    raise exception 'notifications.recipient_user_id is required for real notification delivery';
   end if;
 
   v_payload := coalesce(new.meta, '{}'::jsonb);
@@ -110,7 +110,15 @@ begin
   v_body := coalesce(nullif(public.render_notification_template(v_event.body_template, p_payload), ''), p_payload ->> 'body', p_payload ->> 'message', 'A record needs your attention.');
   v_deep_link := coalesce(p_deep_link, nullif(public.render_notification_template(v_event.deep_link_template, p_payload), ''), p_payload ->> 'deep_link', p_payload ->> 'url');
 
+  if coalesce(array_length(p_recipient_user_ids, 1), 0) = 0 then
+    raise exception 'dispatch_notification requires at least one recipient_user_id';
+  end if;
+
   foreach v_user_id in array coalesce(p_recipient_user_ids, array[]::uuid[]) loop
+    if v_user_id is null then
+      raise exception 'dispatch_notification received a null recipient_user_id';
+    end if;
+
     insert into public.notifications (recipient_user_id, title, message, type, resource, resource_id, status, is_read, link_target, meta)
     values (v_user_id, v_title, v_body, p_event_key, coalesce(p_resource, v_event.module), p_resource_id, 'unread', false, v_deep_link, coalesce(p_payload, '{}'::jsonb))
     returning notification_id into v_notification_id;

@@ -2,6 +2,36 @@ function isWebPushChannel(channel = '') {
   return ['pwa', 'push', 'web_push'].includes(String(channel || '').toLowerCase());
 }
 
+function hasSubscriptionKeys(row = {}) {
+  const keys = row.keys || row.subscription?.keys || {};
+  return Boolean(String(row.endpoint || row.subscription?.endpoint || '').trim() && String(row.p256dh || keys.p256dh || '').trim() && String(row.auth || keys.auth || '').trim());
+}
+
+function isActiveSubscription(row = {}) {
+  if (row.is_active === true || row.active === true || row.enabled === true || row.permission_status === 'granted') return true;
+  const hasActiveFlag = Object.prototype.hasOwnProperty.call(row, 'is_active') || Object.prototype.hasOwnProperty.call(row, 'active') || Object.prototype.hasOwnProperty.call(row, 'enabled') || Object.prototype.hasOwnProperty.call(row, 'permission_status');
+  return !hasActiveFlag && hasSubscriptionKeys(row);
+}
+
+async function loadSubscriptionsByUserColumn(supabase, table, column, userId) {
+  const { data, error } = await supabase.from(table).select('*').eq(column, userId);
+  if (error) return [];
+  return (data || []).map(row => ({ ...row, __table: table }));
+}
+
+export async function loadActiveSubscriptions(supabase, userId) {
+  const tables = ['user_push_subscriptions', 'push_subscriptions'];
+  const userColumns = ['user_id', 'recipient_user_id', 'auth_user_id'];
+  const results = await Promise.all(tables.flatMap(table => userColumns.map(column => loadSubscriptionsByUserColumn(supabase, table, column, userId))));
+  const seen = new Set();
+  return results.flat().filter(row => {
+    const endpoint = String(row.endpoint || row.subscription?.endpoint || '').trim();
+    if (!endpoint || seen.has(endpoint) || !hasSubscriptionKeys(row) || !isActiveSubscription(row)) return false;
+    seen.add(endpoint);
+    return true;
+  });
+}
+
 export async function processNotificationDeliveryQueue({ supabase, sendEmail, sendPush }) {
   const { data: jobs, error } = await supabase
     .from("notification_delivery_queue")
@@ -47,16 +77,10 @@ export async function processNotificationDeliveryQueue({ supabase, sendEmail, se
           continue;
         }
 
-        const { data: subscriptions, error: subError } = await supabase
-          .from("user_push_subscriptions")
-          .select("*")
-          .eq("user_id", job.recipient_user_id)
-          .eq("is_active", true);
+        const subscriptions = await loadActiveSubscriptions(supabase, job.recipient_user_id);
 
-        if (subError) throw subError;
-
-        if (!subscriptions || subscriptions.length === 0) {
-          await markJobSkipped(supabase, job, "No active PWA subscription");
+        if (!subscriptions.length) {
+          await markJobSkipped(supabase, job, `No active PWA subscription found for recipient_user_id ${job.recipient_user_id} in user_push_subscriptions or push_subscriptions`);
           continue;
         }
 
@@ -84,9 +108,11 @@ export async function processNotificationDeliveryQueue({ supabase, sendEmail, se
             const statusCode = Number(pushError?.statusCode || pushError?.status || pushError?.code || 0);
             if (statusCode === 404 || statusCode === 410) {
               await supabase
-                .from("user_push_subscriptions")
+                .from(sub.__table || "user_push_subscriptions")
                 .update({
                   is_active: false,
+                  active: false,
+                  enabled: false,
                   updated_at: new Date().toISOString(),
                 })
                 .eq("endpoint", sub.endpoint);

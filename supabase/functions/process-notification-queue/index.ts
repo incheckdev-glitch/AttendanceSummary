@@ -86,24 +86,37 @@ async function sendPush(supabaseAdmin: any, subscription: Record<string, any>, p
   } catch (error) {
     const statusCode = Number((error as any)?.statusCode || (error as any)?.status || 0);
     if ((statusCode === 404 || statusCode === 410) && subscription.id) {
-      await supabaseAdmin.from('user_push_subscriptions').update({ is_active: false, updated_at: new Date().toISOString() }).eq('id', subscription.id);
-      await supabaseAdmin.from('push_subscriptions').update({ is_active: false, updated_at: new Date().toISOString() }).eq('id', subscription.id);
+      await supabaseAdmin.from(subscription.__table || 'user_push_subscriptions').update({ is_active: false, active: false, enabled: false, updated_at: new Date().toISOString() }).eq('id', subscription.id);
     }
     throw error;
   }
 }
 
+function hasSubscriptionKeys(row: Record<string, any>) {
+  const keys = row.keys || row.subscription?.keys || {};
+  return Boolean(String(row.endpoint || row.subscription?.endpoint || '').trim() && String(row.p256dh || keys.p256dh || '').trim() && String(row.auth || keys.auth || '').trim());
+}
+
+function isActiveSubscription(row: Record<string, any>) {
+  if (row.is_active === true || row.active === true || row.enabled === true || row.permission_status === 'granted') return true;
+  const hasActiveFlag = Object.prototype.hasOwnProperty.call(row, 'is_active') || Object.prototype.hasOwnProperty.call(row, 'active') || Object.prototype.hasOwnProperty.call(row, 'enabled') || Object.prototype.hasOwnProperty.call(row, 'permission_status');
+  return !hasActiveFlag && hasSubscriptionKeys(row);
+}
+
+async function loadSubscriptionsByUserColumn(supabaseAdmin: any, table: string, column: string, userId: string) {
+  const { data, error } = await supabaseAdmin.from(table).select('*').eq(column, userId);
+  if (error) return [];
+  return (data || []).map((row: Record<string, any>) => ({ ...row, __table: table }));
+}
+
 async function loadActiveSubscriptions(supabaseAdmin: any, userId: string) {
-  const selects = ['user_push_subscriptions', 'push_subscriptions'].map(async (table) => {
-    const { data, error } = await supabaseAdmin.from(table).select('*').eq('user_id', userId).eq('is_active', true);
-    if (error) return [];
-    return (data || []).map((row: Record<string, any>) => ({ ...row, __table: table }));
-  });
-  const results = await Promise.all(selects);
+  const tables = ['user_push_subscriptions', 'push_subscriptions'];
+  const userColumns = ['user_id', 'recipient_user_id', 'auth_user_id'];
+  const results = await Promise.all(tables.flatMap((table) => userColumns.map((column) => loadSubscriptionsByUserColumn(supabaseAdmin, table, column, userId))));
   const seen = new Set<string>();
   return results.flat().filter((row) => {
     const endpoint = String(row.endpoint || row.subscription?.endpoint || '').trim();
-    if (!endpoint || seen.has(endpoint)) return false;
+    if (!endpoint || seen.has(endpoint) || !hasSubscriptionKeys(row) || !isActiveSubscription(row)) return false;
     seen.add(endpoint);
     return true;
   });
@@ -199,7 +212,7 @@ async function processNotificationDeliveryQueue(supabaseAdmin: any, limit: numbe
         }
         const subscriptions = await loadActiveSubscriptions(supabaseAdmin, lockedJob.recipient_user_id);
         if (!subscriptions.length) {
-          results.push(await markSkipped(supabaseAdmin, lockedJob, 'No active PWA subscription'));
+          results.push(await markSkipped(supabaseAdmin, lockedJob, `No active PWA subscription found for recipient_user_id ${lockedJob.recipient_user_id} in user_push_subscriptions or push_subscriptions`));
           continue;
         }
         for (const subscription of subscriptions) {
