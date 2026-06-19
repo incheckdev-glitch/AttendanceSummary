@@ -7112,8 +7112,10 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         return data || [];
       }
       if (binersAction === 'list_schedules' || binersAction === 'list_forecast') {
-        let query = client.from('biners_payment_schedules').select('*');
-        if (payload?.schedule_id) query = query.eq('id', payload.schedule_id);
+        let query = client.from(binersAction === 'list_forecast' ? 'biners_forecast_rows' : 'biners_payment_schedules').select('*');
+        if (payload?.schedule_id) query = binersAction === 'list_forecast'
+          ? query.eq('schedule_id', payload.schedule_id)
+          : query.eq('id', payload.schedule_id);
         if (payload?.biners_entry_id) query = query.eq('biners_entry_id', payload.biners_entry_id);
         const orderedQuery = binersAction === 'list_schedules'
           ? query.order('schedule_no', { ascending: true }).order('due_date', { ascending: true })
@@ -7143,14 +7145,16 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         return Array.isArray(data) ? data[0] : data;
       }
       if (binersAction === 'monthly_forecast') {
-        const { data, error } = await client.rpc('get_biners_monthly_forecast');
+        const { data, error } = await client.rpc('get_biners_monthly_forecast', {
+          p_currency: payload?.currency || 'all'
+        });
         if (error) throw friendlyError('Unable to load Biners monthly forecast', error);
         return data || [];
       }
       if (binersAction === 'monthly_forecast_details') {
         const { data, error } = await client.rpc('get_biners_monthly_forecast_details', {
-          p_forecast_month: payload?.forecast_month,
-          p_currency: payload?.currency
+          p_currency: payload?.currency || 'all',
+          p_forecast_month: payload?.forecast_month
         });
         if (error) throw friendlyError('Unable to load Biners monthly forecast details', error);
         return data || [];

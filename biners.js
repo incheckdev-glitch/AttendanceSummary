@@ -481,6 +481,16 @@
     return { entry: base, locations, schedule, payments: normalizedPayments };
   }
 
+
+  function normalizeMonthKey(value) {
+    if (value instanceof Date && !Number.isNaN(value.valueOf())) return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}`;
+    const text = String(value || '').trim();
+    if (/^\d{4}-\d{2}$/.test(text)) return text;
+    if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 7);
+    const parsed = new Date(text);
+    return Number.isNaN(parsed.valueOf()) ? text : `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}`;
+  }
+
   function openDrawer(row, type = 'entry', remote = {}) {
     const drawer = $('binersDetailsDrawer'), content = $('binersDetailsContent');
     if (!drawer || !content) return;
@@ -503,7 +513,10 @@
       ? `<dl class="biners-detail-list"><div><dt>Month</dt><dd>${esc(monthLabel(r.forecast_month || r.month || r.due_date))}</dd></div><div><dt>Currency</dt><dd>${esc(r.currency || 'USD')}</dd></div><div><dt>Clients</dt><dd>${esc(aggregate.clients)}</dd></div><div><dt>Entries</dt><dd>${esc(aggregate.entries)}</dd></div><div><dt>Locations</dt><dd>${esc(aggregate.locations)}</dd></div><div><dt>Scheduled Rows</dt><dd>${esc(aggregate.scheduled_rows)}</dd></div></dl>`
       : `<dl class="biners-detail-list"><div><dt>Client</dt><dd>${esc(clientLabel(r))}</dd></div><div><dt>Entry #</dt><dd>${esc(r.biners_entry_number || '—')}</dd></div><div><dt>Location</dt><dd>${esc(locationLabel(r))}</dd></div><div><dt>Location Reference</dt><dd>${esc(r.location_reference || '—')}</dd></div><div><dt>Module</dt><dd>${esc(moduleLabel(r))}</dd></div><div><dt>License</dt><dd>${esc(licenseLabel(r))}</dd></div><div><dt>Schedule / Due</dt><dd>#${esc(r.schedule_no || '—')} · ${date(r.due_date)}</dd></div><div><dt>Status</dt><dd>${badge(statusFor(r))}</dd></div><div><dt>Timing</dt><dd>${esc(r.timing && r.timing !== '—' ? r.timing : timingLabel(r))}</dd></div><div><dt>Created date</dt><dd>${date(r.created_at || r.created_date)}</dd></div><div><dt>Updated date</dt><dd>${date(r.updated_at || r.updated_date)}</dd></div>${pickValue(r.notes, r.description, r.internal_notes) !== '—' ? `<div><dt>Notes</dt><dd>${esc(pickValue(r.notes, r.description, r.internal_notes))}</dd></div>` : ''}</dl>${paymentButton(r) ? `<div class="biners-drawer-actions">${paymentButton(r)}</div>` : ''}`;
 
-    content.innerHTML = `<div class="biners-drawer-summary">${stats.map(([a, b]) => `<article><span>${esc(a)}</span><strong>${formatDrawerValue(a, b, r.currency)}</strong></article>`).join('')}</div><section class="biners-drawer-section"><h3>${esc(detailsTitle)}</h3>${detailsHtml}</section>${miniTable('Scheduled payments', schedules, [['#', x => x.schedule_no], ['Client', x => clientLabel(x)], ['Entry #', x => x.biners_entry_number], ['Location', x => locationLabel(x)], ['Location Reference', x => x.location_reference || '—'], ['Module', x => moduleLabel(x)], ['License', x => licenseLabel(x)], ['Due date', x => date(x.due_date)], ['Scheduled amount', x => money(x.scheduled_amount, x.currency || r.currency)], ['Paid amount', x => money(x.paid_amount, x.currency || r.currency)], ['Remaining amount', x => money(remaining(x), x.currency || r.currency)], ['Status', x => badge(x.forecast_status || x.payment_status || statusFor(x)), 'html'], ['Notes', x => x.notes || x.description]])}${miniTable('Payment history', payments, [['Payment date', x => date(x.payment_date || x.created_at)], ['Amount', x => money(x.payment_amount ?? x.amount ?? x.paid_amount, x.currency || r.currency)], ['Method', x => x.payment_method || x.method], ['Reference', x => x.payment_reference || x.reference], ['Notes', x => x.notes], ['Created by / recorded by', x => x.created_by_email || x.created_by || x.recorded_by_email || x.recorded_by]])}${locations.length ? miniTable('Related clients / locations', locations, [['Client', x => x.client_name], ['Location', x => x.location_name || x.location], ['Module', x => x.module || x.module_name]]) : ''}${entries.length > 1 ? miniTable('Related entries', entries, [['Entry #', x => x.biners_entry_number], ['Client', x => x.client_name], ['Module', x => x.module || x.module_name]]) : ''}`;
+    const schedulesTableHtml = type === 'month'
+      ? miniTable('Monthly scheduled payments', schedules, [['Schedule No', x => x.schedule_no], ['Client Name', x => clientLabel(x)], ['Biners Entry Number', x => x.entry_number || x.biners_entry_number], ['Location Name', x => locationLabel(x)], ['Due Date', x => date(x.due_date)], ['Currency', x => x.currency || r.currency], ['Scheduled Amount', x => money(x.scheduled_amount, x.currency || r.currency)], ['Paid Amount', x => money(x.paid_amount, x.currency || r.currency)], ['Remaining Amount', x => money(x.remaining_amount ?? remaining(x), x.currency || r.currency)], ['Status', x => badge(x.status || x.forecast_status || x.payment_status || statusFor(x)), 'html'], ['Notes', x => x.notes || x.description]])
+      : miniTable('Scheduled payments', schedules, [['#', x => x.schedule_no], ['Client', x => clientLabel(x)], ['Entry #', x => x.biners_entry_number], ['Location', x => locationLabel(x)], ['Location Reference', x => x.location_reference || '—'], ['Module', x => moduleLabel(x)], ['License', x => licenseLabel(x)], ['Due date', x => date(x.due_date)], ['Scheduled amount', x => money(x.scheduled_amount, x.currency || r.currency)], ['Paid amount', x => money(x.paid_amount, x.currency || r.currency)], ['Remaining amount', x => money(remaining(x), x.currency || r.currency)], ['Status', x => badge(x.forecast_status || x.payment_status || statusFor(x)), 'html'], ['Notes', x => x.notes || x.description]]);
+    content.innerHTML = `<div class="biners-drawer-summary">${stats.map(([a, b]) => `<article><span>${esc(a)}</span><strong>${formatDrawerValue(a, b, r.currency)}</strong></article>`).join('')}</div><section class="biners-drawer-section"><h3>${esc(detailsTitle)}</h3>${detailsHtml}</section>${schedulesTableHtml}${miniTable('Payment history', payments, [['Payment date', x => date(x.payment_date || x.created_at)], ['Amount', x => money(x.payment_amount ?? x.amount ?? x.paid_amount, x.currency || r.currency)], ['Method', x => x.payment_method || x.method], ['Reference', x => x.payment_reference || x.reference], ['Notes', x => x.notes], ['Created by / recorded by', x => x.created_by_email || x.created_by || x.recorded_by_email || x.recorded_by]])}${locations.length ? miniTable('Related clients / locations', locations, [['Client', x => x.client_name], ['Location', x => x.location_name || x.location], ['Module', x => x.module || x.module_name]]) : ''}${entries.length > 1 ? miniTable('Related entries', entries, [['Entry #', x => x.biners_entry_number], ['Client', x => x.client_name], ['Module', x => x.module || x.module_name]]) : ''}`;
     drawer.hidden = false;
   }
 
@@ -534,9 +547,11 @@
   async function openMonthly(month, currency) {
     setState('Loading monthly forecast details…');
     try {
-      const detail = await (global.Api?.getBinersMonthlyForecastDetails?.(month, currency) || request('monthly_forecast_details', { forecast_month: month, currency }));
-      const base = state.monthly.find(x => String(x.forecast_month || x.month) === String(month) && String(x.currency) === String(currency)) || { forecast_month: month, currency };
-      openDrawer({ ...base, due_date: month }, 'month', detail);
+      const monthKey = normalizeMonthKey(month);
+      const selectedCurrency = currency || state.filters.currency || 'all';
+      const detail = await (global.Api?.getBinersMonthlyForecastDetails?.(monthKey, selectedCurrency) || request('monthly_forecast_details', { forecast_month: monthKey, currency: selectedCurrency }));
+      const base = state.monthly.find(x => String(x.forecast_month || x.month).slice(0, 7) === String(monthKey).slice(0, 7) && (selectedCurrency === 'all' || String(x.currency) === String(selectedCurrency))) || { forecast_month: monthKey, currency: selectedCurrency };
+      openDrawer({ ...base, due_date: monthKey }, 'month', detail);
       setState('Monthly forecast details loaded.');
     } catch (e) {
       setState(e.message || String(e), 'error');
@@ -1201,7 +1216,7 @@
         (global.Api?.getBinersForecastRows?.() || request('list_forecast')).catch(error => { forecastLoaded = false; console.warn('[Biners] Unable to load forecast rows', error); toast(error?.message || 'Unable to load forecast rows'); return state.forecast; }),
         safeLoad('payment history', request('list_payments'), state.payments),
         safeLoad('summary', request('summary'), state.summary),
-        safeLoad('monthly forecast', (global.Api?.getBinersMonthlyForecast?.() || request('monthly_forecast')), state.monthly),
+        safeLoad('monthly forecast', (global.Api?.getBinersMonthlyForecast?.(state.filters.currency || 'all') || request('monthly_forecast', { currency: state.filters.currency || 'all' })), state.monthly),
         safeLoad('clients', loadClients(), state.clients)
       ]);
       const normalizedEntries = normalizeList(entries);

@@ -628,11 +628,11 @@ const Api = {
   async getBinersScheduleRows(filters = {}) {
     return this.requestWithSession('biners', 'list_schedules', filters);
   },
-  async getBinersMonthlyForecast() {
-    return this.requestWithSession('biners', 'monthly_forecast');
+  async getBinersMonthlyForecast(currency = 'all') {
+    return this.requestWithSession('biners', 'monthly_forecast', { currency: currency || 'all' });
   },
-  async getBinersMonthlyForecastDetails(month, currency) {
-    return this.requestWithSession('biners', 'monthly_forecast_details', { forecast_month: month, currency });
+  async getBinersMonthlyForecastDetails(month, currency = 'all') {
+    return this.requestWithSession('biners', 'monthly_forecast_details', { forecast_month: month, currency: currency || 'all' });
   },
   async recordBinersScheduledPayment(payload = {}) {
     return this.requestWithSession('biners', 'record_scheduled_payment', payload);
