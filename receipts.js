@@ -1555,8 +1555,54 @@ const Receipts = {
       amount_received: normalizedPaidNow ?? this.getReceiptAmountValue(existing)
     };
     const paymentSnapshot = this.resolveReceiptPaymentSnapshot(mergedReceipt, linkedInvoice || {}, invoiceReceipts);
-    const currentBalanceDue = this.toNumberSafe((linkedInvoice || {}).balance_due ?? (linkedInvoice || {}).pending_amount ?? Math.max(this.toNumberSafe((linkedInvoice || {}).invoice_total ?? (linkedInvoice || {}).grand_total) - this.toNumberSafe((linkedInvoice || {}).amount_paid ?? (linkedInvoice || {}).received_amount) - this.toNumberSafe((linkedInvoice || {}).credit_note_amount), 0));
-    if (normalizedPaidNow > currentBalanceDue + 0.0001) throw new Error(`Receipt amount cannot exceed remaining invoice balance after credit notes (${U.fmtNumber(currentBalanceDue)}).`);
+    /*
+      Receipt validation must be based on the balance BEFORE the current receipt,
+      not on the invoice balance after the receipt has already been created/synced.
+
+      Previously, create-from-invoice could succeed in the backend, then the local
+      header sync reloaded the invoice with balance_due = 0 and blocked the receipt
+      update with:
+      "Receipt amount cannot exceed remaining invoice balance after credit notes (0)".
+
+      The allowed amount is invoice total - old paid before this receipt - credit notes.
+      For existing/persisted receipts, calculateReceiptSnapshot already subtracts the
+      current receipt from the cumulative paid total to produce old_paid_total.
+    */
+    const invoiceCreditNoteAmount = this.toNumberSafe(
+      (linkedInvoice || {}).credit_note_amount ??
+      (linkedInvoice || {}).credit_amount ??
+      (linkedInvoice || {}).credited_amount
+    );
+    const invoiceTotalForValidation = this.toNumberSafe(
+      paymentSnapshot.invoice_total ??
+      (linkedInvoice || {}).invoice_total ??
+      (linkedInvoice || {}).grand_total ??
+      (linkedInvoice || {}).total_amount ??
+      formValues.invoice_total ??
+      formValues.invoice_grand_total
+    );
+    const oldPaidBeforeThisReceipt = this.toNumberSafe(paymentSnapshot.old_paid_total);
+    const balanceBeforeThisReceipt = Math.max(
+      invoiceTotalForValidation - oldPaidBeforeThisReceipt - invoiceCreditNoteAmount,
+      0
+    );
+    const linkedInvoiceBalanceDue = this.toNumberSafe(
+      (linkedInvoice || {}).balance_due ??
+      (linkedInvoice || {}).pending_amount ??
+      0
+    );
+    const maxAllowedPaidNow = Math.max(
+      balanceBeforeThisReceipt,
+      linkedInvoiceBalanceDue,
+      this.toNumberSafe(paymentSnapshot.paid_now),
+      this.toNumberSafe(existing.paid_now ?? existing.received_amount ?? existing.amount_received)
+    );
+    if (
+      invoiceTotalForValidation > 0 &&
+      normalizedPaidNow > maxAllowedPaidNow + 0.0001
+    ) {
+      throw new Error(`Receipt amount cannot exceed remaining invoice balance after credit notes (${U.fmtNumber(maxAllowedPaidNow)}).`);
+    }
     const normalizedNewPaidTotal = paymentSnapshot.new_paid_total;
     const normalizedPendingAmount = paymentSnapshot.pending_amount;
     const normalizedPaymentState = this.receiptPaymentStateFromSnapshot(paymentSnapshot, linkedInvoice || {});
@@ -1682,21 +1728,7 @@ const Receipts = {
             linkedInvoice,
             invoiceReceipts
           });
-          try {
-            const postCreateUpdates = this.filterReceiptColumns({
-              ...headerPayload,
-              __skip_notifications: true,
-              __silent: true
-            });
-            await Api.updateReceipt(receiptUuid, postCreateUpdates, undefined, { silent: true, suppressNotifications: true });
-          } catch (headerSyncError) {
-            // The database receipt RPC already created the receipt. Do not block the user because
-            // a non-critical header normalization/update failed later (common when notification
-            // triggers or issued-document locks are still being migrated). The receipt will be
-            // reloaded below and can still be viewed/edited by permitted users.
-            console.warn('[receipts] post-create header sync failed; receipt creation will continue', headerSyncError);
-            UI.toast('Receipt was created. Some header fields could not be auto-synced; refresh/open the receipt to verify.');
-          }
+          await Api.updateReceipt(receiptUuid, this.filterReceiptColumns(headerPayload));
         }
         const receiptDisplay = String(normalized?.receipt_id || receipt?.receipt_id || '').trim();
         let normalizedDetailItems = parsed?.items || [];
