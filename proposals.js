@@ -4716,11 +4716,18 @@ const Proposals = {
       if (effectiveReadOnly) E.proposalFormTitle.textContent = acceptedLocked ? 'View Locked Proposal' : expiredLocked ? 'View Expired Proposal' : 'View Proposal';
       else E.proposalFormTitle.textContent = mode === 'edit' ? 'Edit Proposal' : 'Create Proposal';
     }
+    const proposalFormSubtitle = document.getElementById('proposalFormSubtitle');
+    if (proposalFormSubtitle) {
+      proposalFormSubtitle.textContent = mode === 'edit'
+        ? 'Update proposal details, pricing, terms and signatures.'
+        : 'Create a new proposal with customer, pricing, terms and signatures.';
+    }
     if (E.proposalFormDeleteBtn)
       E.proposalFormDeleteBtn.style.display = mode === 'edit' && !effectiveReadOnly && Permissions.canDeleteProposal() ? '' : 'none';
     if (E.proposalFormSaveBtn) {
       const canSave = mode === 'edit' ? Permissions.canUpdateProposal() : Permissions.canCreateProposal();
       E.proposalFormSaveBtn.style.display = !effectiveReadOnly && canSave ? '' : 'none';
+      E.proposalFormSaveBtn.textContent = mode === 'edit' ? 'Update Proposal' : 'Save Proposal';
     }
 
     this.syncProposalAcceptedLockMessage((acceptedLocked || expiredLocked) && !adminOverride);
