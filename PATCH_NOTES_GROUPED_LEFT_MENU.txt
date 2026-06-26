@@ -1,0 +1,15 @@
+Grouped Left Menu Patch
+
+Updated files:
+- index.html
+- styles.css
+
+What changed:
+- Converted the flat View navigation into a grouped left menu.
+- Added Workspace, CRM, Accounting, and Control Center groups.
+- CRM contains Company, Contacts, Leads, Deals, Proposals, Agreements, and Proposal Catalog.
+- Accounting contains Clients, Invoices, Receipts, Credit Notes, Payment Forecast, Monthly Renewal Forecast, and Biners Control Center.
+- Preserved all existing tab IDs, data-view values, permission attributes, hidden admin styles, and aria controls.
+- Added responsive grouped menu styling for desktop, tablet, and mobile.
+
+No backend or database changes required.
