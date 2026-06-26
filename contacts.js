@@ -100,37 +100,12 @@ const Contacts = {
 
   ensureControls() {
     const v = document.getElementById('contactsView');
-    if (!v) return;
+    if (!v || document.getElementById('contactsSearchInput')) return;
+    const c = v.querySelector('.card');
+    c.insertAdjacentHTML('afterbegin', `<div class='stack' style='gap:8px;margin-bottom:10px'><div class='row' style='gap:8px;flex-wrap:wrap'><input id='contactsSearchInput' class='input' type='search' placeholder='Search contacts...'/><select id='contactsCompanyFilter' class='select'><option value=''>All Companies</option></select><select id='contactsStatusFilter' class='select'><option value=''>All Statuses</option><option>Active</option><option>Inactive</option><option>Left Company</option><option>Do Not Contact</option></select><select id='contactsDecisionRoleFilter' class='select'><option value=''>All Roles</option><option>Decision Maker</option><option>Influencer</option><option>Finance Contact</option><option>Technical Contact</option><option>Operations Contact</option><option>Procurement Contact</option><option>User</option><option>Other</option></select><input id='contactsDepartmentFilter' class='input' placeholder='Department'/><select id='contactsPrimaryFilter' class='select'><option value=''>All Contacts</option><option value='primary'>Primary only</option><option value='non_primary'>Non-primary only</option></select><input id='contactsCreatedFromFilter' class='input' type='date'/><input id='contactsCreatedToFilter' class='input' type='date'/><button id='contactsClearFiltersBtn' class='btn ghost sm'>Clear Filters</button></div><div class='row' style='gap:8px'><button id='contactsExportBtn' class='btn ghost sm' data-permission-resource='contacts' data-permission-action='export'>Export</button><span id='contactsPageInfo' class='muted'></span></div></div>`);
+    v.querySelector('.table-wrap')?.insertAdjacentHTML('afterend', `<div class='table-actions'><div class='pagination'><button id='contactsPrevBtn' class='chip-btn'>‹ Prev</button><button id='contactsNextBtn' class='chip-btn'>Next ›</button></div><div><label class='muted'>Rows</label><select id='contactsRowsPerPage' class='select sm'><option>25</option><option selected>50</option><option>100</option></select></div></div>`);
 
-    const filterCard = document.getElementById('contactsFilterCard') || v.querySelector('.card');
-    if (filterCard && !document.getElementById('contactsSearchInput')) {
-      filterCard.innerHTML = `<div class="crm-modern-panel-title"><span class="crm-modern-panel-icon">⌕</span><h2>Filters</h2></div>
-        <div class="crm-modern-filter-grid crm-modern-filter-grid-6">
-          <label class="crm-modern-filter-field crm-modern-filter-search" for="contactsSearchInput"><span>Search contacts</span><div class="crm-modern-input-shell"><span aria-hidden="true">⌕</span><input id="contactsSearchInput" class="input" type="search" placeholder="Search name, company, email, phone..." /></div></label>
-          <label class="crm-modern-filter-field" for="contactsCompanyFilter"><span>Company</span><select id="contactsCompanyFilter" class="select"><option value="">All Companies</option></select></label>
-          <label class="crm-modern-filter-field" for="contactsStatusFilter"><span>Status</span><select id="contactsStatusFilter" class="select"><option value="">All Statuses</option><option>Active</option><option>Inactive</option><option>Left Company</option><option>Do Not Contact</option></select></label>
-          <label class="crm-modern-filter-field" for="contactsDecisionRoleFilter"><span>Decision Role</span><select id="contactsDecisionRoleFilter" class="select"><option value="">All Roles</option><option>Decision Maker</option><option>Influencer</option><option>Finance Contact</option><option>Technical Contact</option><option>Operations Contact</option><option>Procurement Contact</option><option>User</option><option>Other</option></select></label>
-          <label class="crm-modern-filter-field" for="contactsDepartmentFilter"><span>Department</span><input id="contactsDepartmentFilter" class="input" placeholder="Department" /></label>
-          <label class="crm-modern-filter-field" for="contactsPrimaryFilter"><span>Primary Contact</span><select id="contactsPrimaryFilter" class="select"><option value="">All Contacts</option><option value="primary">Primary only</option><option value="non_primary">Non-primary only</option></select></label>
-          <label class="crm-modern-filter-field" for="contactsCreatedFromFilter"><span>From Date</span><input id="contactsCreatedFromFilter" class="input" type="date" /></label>
-          <label class="crm-modern-filter-field" for="contactsCreatedToFilter"><span>To Date</span><input id="contactsCreatedToFilter" class="input" type="date" /></label>
-          <div class="crm-modern-filter-field crm-modern-filter-clear"><button id="contactsClearFiltersBtn" class="btn ghost crm-modern-clear-btn" type="button">↻ Clear Filters</button></div>
-        </div>`;
-    }
-
-    const footer = document.getElementById('contactsTableFooter');
-    if (footer && !document.getElementById('contactsPrevBtn')) {
-      footer.innerHTML = `<nav class="crm-modern-pagination" aria-label="Contacts pagination"><button id="contactsPrevBtn" class="crm-modern-page-btn" type="button">‹</button><button id="contactsNextBtn" class="crm-modern-page-btn" type="button">›</button></nav>`;
-    }
-
-    if (this._controlsBound) {
-      this.ensureFilterCompanies().catch(error => console.warn('[contacts] company filter load failed', error));
-      return;
-    }
-    this._controlsBound = true;
-
-    const searchInput = document.getElementById('contactsSearchInput');
-    if (searchInput) searchInput.oninput = e => {
+    document.getElementById('contactsSearchInput').oninput = e => {
       this.state.search = e.target.value.trim();
       this.state.page = 1;
       this.loadAndRefresh();
@@ -143,36 +118,31 @@ const Contacts = {
         this.loadAndRefresh();
       };
     });
-    const departmentFilter = document.getElementById('contactsDepartmentFilter');
-    if (departmentFilter) departmentFilter.oninput = e => {
+    document.getElementById('contactsDepartmentFilter').oninput = e => {
       this.state.filters.department = e.target.value.trim();
       this.state.page = 1;
       this.loadAndRefresh();
     };
-    const prevBtn = document.getElementById('contactsPrevBtn');
-    if (prevBtn) prevBtn.onclick = () => {
+    document.getElementById('contactsPrevBtn').onclick = () => {
       if (this.state.page > 1) {
         this.state.page--;
         this.loadAndRefresh();
       }
     };
-    const nextBtn = document.getElementById('contactsNextBtn');
-    if (nextBtn) nextBtn.onclick = () => {
+    document.getElementById('contactsNextBtn').onclick = () => {
       if (this.state.page * this.state.limit < this.state.total) {
         this.state.page++;
         this.loadAndRefresh();
       }
     };
-    const rowsSelect = document.getElementById('contactsRowsPerPage');
-    if (rowsSelect) rowsSelect.onchange = e => {
+    document.getElementById('contactsRowsPerPage').onchange = e => {
       this.state.limit = Number(e.target.value) || 50;
       this.state.page = 1;
       this.loadAndRefresh();
     };
-    const exportBtn = document.getElementById('contactsExportBtn');
-    if (exportBtn) exportBtn.onclick = () => this.exportCsv();
-    const clearBtn = document.getElementById('contactsClearFiltersBtn');
-    if (clearBtn) clearBtn.onclick = () => {
+    document.getElementById('contactsExportBtn').onclick = () => this.exportCsv();
+    applyPermissionVisibility(v);
+    document.getElementById('contactsClearFiltersBtn').onclick = () => {
       this.state.search = '';
       this.state.filters = { company_id: '', contact_status: '', decision_role: '', department: '', is_primary_contact: '', created_from: '', created_to: '' };
       ['contactsSearchInput','contactsCompanyFilter','contactsStatusFilter','contactsDecisionRoleFilter','contactsDepartmentFilter','contactsPrimaryFilter','contactsCreatedFromFilter','contactsCreatedToFilter'].forEach(id => {
@@ -185,7 +155,6 @@ const Contacts = {
     this.ensureFilterCompanies().catch(error => console.warn('[contacts] company filter load failed', error));
     this.bindFormEvents();
   },
-
 
   companyRelationId(company = {}) {
     const raw = String(company.id || company.company_uuid || company.companyUuid || '').trim();
@@ -657,23 +626,7 @@ const Contacts = {
     });
     this.render();
   },
-  renderSummary() {
-    const host = document.getElementById('contactsSummaryGrid');
-    if (!host) return;
-    const rows = Array.isArray(this.state.rows) ? this.state.rows : [];
-    const total = Number(this.state.total || rows.length) || 0;
-    const active = rows.filter(r => String(r.contact_status || '').toLowerCase() === 'active').length;
-    const primary = rows.filter(r => r.is_primary_contact).length;
-    const companies = new Set(rows.flatMap(r => this.normalizeCompanyIds(r).length ? this.normalizeCompanyIds(r) : [r.company_id || r.company_name]).filter(Boolean)).size;
-    host.innerHTML = `
-      <article class="crm-modern-summary-card crm-modern-summary-card--blue"><div class="crm-modern-summary-icon">♙</div><div><span>Total Contacts</span><strong>${total}</strong></div></article>
-      <article class="crm-modern-summary-card crm-modern-summary-card--green"><div class="crm-modern-summary-icon">✓</div><div><span>Active Contacts</span><strong>${active}</strong></div></article>
-      <article class="crm-modern-summary-card crm-modern-summary-card--lime"><div class="crm-modern-summary-icon">★</div><div><span>Primary Contacts</span><strong>${primary}</strong></div></article>
-      <article class="crm-modern-summary-card crm-modern-summary-card--violet"><div class="crm-modern-summary-icon">▦</div><div><span>Linked Companies</span><strong>${companies}</strong></div></article>`;
-  },
-
   render() {
-    this.renderSummary();
     const b = document.getElementById('contactsTableBody');
     if (!b) return;
     const canEdit = Permissions.canEdit('contacts');
