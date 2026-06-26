@@ -6626,14 +6626,27 @@ body.pf-modal-open{overflow:hidden}.pf-activity-modal[hidden],.pf-note-modal[hid
   background: #fff;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
 }
-.proposal-section-title {
+.proposal-section-title,
+.proposal-item-heading {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
   margin-bottom: 16px;
 }
-.proposal-section-title > span {
+.proposal-section-title > .btn,
+.proposal-item-heading > .btn {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+.proposal-section-heading-left {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+.proposal-section-icon {
   display: grid;
   place-items: center;
   width: 34px;
@@ -6643,8 +6656,10 @@ body.pf-modal-open{overflow:hidden}.pf-activity-modal[hidden],.pf-note-modal[hid
   background: #eff6ff;
   color: #2563eb;
 }
-.proposal-section-title h3 { margin: 0; color: #0f172a; font-size: 16px; }
-.proposal-section-title p { margin: 3px 0 0; color: #64748b; font-size: 12px; line-height: 1.45; }
+.proposal-section-title h3,
+.proposal-item-heading h3 { margin: 0; color: #0f172a; font-size: 16px; }
+.proposal-section-title p,
+.proposal-item-heading p { margin: 3px 0 0; color: #64748b; font-size: 12px; line-height: 1.45; }
 .proposal-form-grid,
 .proposal-signatory-grid {
   display: grid;
@@ -6709,14 +6724,14 @@ body.pf-modal-open{overflow:hidden}.pf-activity-modal[hidden],.pf-note-modal[hid
 .proposal-info-card { border-color: #bfdbfe; background: #eff6ff; color: #1e3a8a; }
 .proposal-info-card p { margin: 6px 0 0; color: #334155; }
 .proposal-info-card a { color: #1d4ed8; font-weight: 700; }
-.proposal-inline-actions,
-.proposal-item-heading {
+.proposal-inline-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
 }
+.proposal-item-heading { flex-wrap: wrap; }
 .proposal-item-group + .proposal-item-group { margin-top: 20px; padding-top: 18px; border-top: 1px solid #e2e8f0; }
 .proposal-table-wrap { border: 1px solid #e2e8f0; border-radius: 14px; overflow-x: auto; background: #fff; }
 .proposal-items-panel table { min-width: 920px; border-collapse: separate; border-spacing: 0; }
