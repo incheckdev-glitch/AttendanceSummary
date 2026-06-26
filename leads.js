@@ -32,6 +32,8 @@ const Leads = {
     hasMore: false,
     selectedCompany: null,
     selectedContact: null,
+    currentLead: null,
+    selectedLeadId: '',
     companyPickerRows: [],
     contactPickerRows: []
   },
@@ -534,11 +536,13 @@ const Leads = {
     if (idx === -1) this.state.rows.unshift(normalized);
     else this.state.rows[idx] = { ...this.state.rows[idx], ...normalized };
     this.rerenderVisibleTable();
+    if (String(this.state.selectedLeadId || '') === String(normalized.id || '')) this.renderLeadDetails(normalized);
     return normalized;
   },
   removeLocalRow(id) {
     const before = this.state.rows.length;
     this.state.rows = this.state.rows.filter(item => item.id !== id);
+    if (String(this.state.selectedLeadId || '') === String(id || '')) this.closeDetails();
     if (this.state.rows.length !== before) this.rerenderVisibleTable();
   },
   rerenderVisibleTable() {
@@ -1234,6 +1238,110 @@ const Leads = {
     }
     this.syncKpiCardState();
   },
+  findLeadById(id) {
+    const target = String(id || '').trim();
+    if (!target) return null;
+    return (
+      this.state.rows.find(item => String(item.id || '') === target) ||
+      this.state.filteredRows.find(item => String(item.id || '') === target) ||
+      null
+    );
+  },
+  leadDisplay(value, fallback = '—') {
+    const text = String(value ?? '').trim();
+    return text || fallback;
+  },
+  formatLeadDateTime(value) {
+    if (!value) return '—';
+    try { return U.formatDateTimeMMDDYYYYHHMM(value); } catch { return this.normalizeComparableLeadDate(value) || '—'; }
+  },
+  formatLeadMoney(row = {}) {
+    const amount = Number(row.estimated_value);
+    if (!Number.isFinite(amount)) return '—';
+    const currency = String(row.currency || '').trim();
+    return `${currency ? `${currency.toUpperCase()} ` : ''}${U.fmtNumber(amount)}`;
+  },
+  leadDetailsSection(title, content, cls = '') {
+    return `<section class="payment-forecast-details-section lead-details-section ${cls}"><h3>${U.escapeHtml(title)}</h3>${content}</section>`;
+  },
+  leadDetailsField(label, value) {
+    return `<div class="lead-details-field"><span>${U.escapeHtml(label)}</span><strong>${U.escapeHtml(this.leadDisplay(value))}</strong></div>`;
+  },
+  leadDetailsGrid(items = []) {
+    return `<div class="lead-details-fields">${items.map(([label, value]) => this.leadDetailsField(label, value)).join('')}</div>`;
+  },
+  leadDetailsActions(row = {}) {
+    const id = U.escapeAttr(row.id || '');
+    const actions = [];
+    if (this.canEditDelete()) actions.push(`<button class="btn primary sm" type="button" data-lead-details-edit="${id}">Edit Lead</button>`);
+    if (this.canConvertLead(row)) actions.push(`<button class="btn ghost sm" type="button" data-lead-details-convert="${id}">Convert to Deal</button>`);
+    if (this.canEditDelete()) actions.push(`<button class="btn ghost sm" type="button" data-lead-details-delete="${id}">Delete</button>`);
+    actions.push('<button class="btn ghost sm" type="button" data-lead-close-details>Close</button>');
+    return this.leadDetailsSection('Actions', `<div class="lead-details-actions">${actions.join('')}</div>`);
+  },
+  renderLeadDetails(row = null) {
+    const content = document.getElementById('leadDetailsContent');
+    if (!content) return;
+    const lead = row ? this.normalizeLead(row) : this.findLeadById(this.state.selectedLeadId);
+    if (!lead) {
+      content.innerHTML = '<div class="pf-detail-empty">Lead details are not available. Refresh the list and try again.</div>';
+      return;
+    }
+    const title = document.getElementById('leadDetailsTitle');
+    const subtitle = document.getElementById('leadDetailsSubtitle');
+    if (title) title.textContent = lead.lead_id || 'Lead Details';
+    if (subtitle) subtitle.textContent = [lead.company_name, lead.full_name, lead.status].filter(Boolean).join(' · ');
+    const summary = this.leadDetailsSection('Summary', `<div class="payment-forecast-details-grid">
+      ${[
+        ['Status', lead.status],
+        ['Priority', lead.priority],
+        ['Next Follow-up', this.formatLeadDateTime(lead.next_follow_up || lead.next_follow_up_at)],
+        ['Estimated Value', this.formatLeadMoney(lead)],
+        ['Assigned To', lead.assigned_to],
+        ['Last Contact', this.normalizeComparableLeadDate(lead.last_contact) || '—']
+      ].map(([label, value]) => `<div class="payment-forecast-details-card"><span>${U.escapeHtml(label)}</span><strong>${U.escapeHtml(this.leadDisplay(value))}</strong></div>`).join('')}
+    </div>`);
+    const companyContact = this.leadDetailsSection('Company & Contact', this.leadDetailsGrid([
+      ['Company', lead.company_name || lead.customer_legal_name || lead.customer_name],
+      ['Contact', lead.full_name || lead.contact_name],
+      ['Email', lead.email || lead.contact_email],
+      ['Phone', lead.phone || lead.contact_phone],
+      ['Country', lead.country],
+      ['Company UUID', lead.company_id || lead.company_uuid]
+    ]));
+    const leadInfo = this.leadDetailsSection('Lead Information', this.leadDetailsGrid([
+      ['Lead Source', lead.lead_source],
+      ['Service Interest', lead.service_interest],
+      ['Currency', lead.currency],
+      ['Created At', this.formatLeadDateTime(lead.created_at)],
+      ['Updated At', this.formatLeadDateTime(lead.updated_at)],
+      ['Converted Deal', lead.deal_id || lead.converted_deal_uuid || (lead.converted_at ? 'Converted' : '')]
+    ]));
+    const notes = this.leadDetailsSection('Notes', `<div class="lead-details-notes">${U.escapeHtml(lead.notes || 'No notes added yet.')}</div>`);
+    content.innerHTML = `${summary}${companyContact}${leadInfo}${notes}${this.leadDetailsActions(lead)}`;
+  },
+  openDetails(rowOrId) {
+    const row = typeof rowOrId === 'string' ? this.findLeadById(rowOrId) : rowOrId;
+    if (!row) {
+      UI.toast('Lead details are not available. Refresh the list and try again.');
+      return;
+    }
+    const lead = this.normalizeLead(row);
+    this.state.selectedLeadId = lead.id || '';
+    const drawer = document.getElementById('leadDetailsDrawer');
+    if (!drawer) return;
+    drawer.hidden = false;
+    document.body.classList.add('pf-modal-open');
+    this.renderLeadDetails(lead);
+    this.render();
+  },
+  closeDetails() {
+    const drawer = document.getElementById('leadDetailsDrawer');
+    if (drawer) drawer.hidden = true;
+    document.body.classList.remove('pf-modal-open');
+    this.state.selectedLeadId = '';
+    this.render();
+  },
   canEditDelete() {
     return Permissions.canEditDeleteLead();
   },
@@ -1305,7 +1413,8 @@ const Leads = {
           );
         }
         const actions = actionButtons.length ? actionButtons.join(' ') : '<span class="muted">—</span>';
-        return `<tr>
+        const isSelected = String(this.state.selectedLeadId || '') === String(row.id || '');
+        return `<tr class="lead-clickable-row${isSelected ? ' is-selected' : ''}" tabindex="0" data-lead-row="${U.escapeAttr(row.id || '')}" aria-label="Open lead ${U.escapeAttr(row.lead_id || row.company_name || row.full_name || '')} details">
           <td>${U.escapeHtml(row.lead_id || '—')}</td>
           <td>${this.formatDate(row.created_at)}</td>
           <td>${U.escapeHtml(row.full_name || '—')}</td>
@@ -2478,21 +2587,59 @@ const Leads = {
 
     if (E.leadsTbody) {
       E.leadsTbody.addEventListener('click', event => {
-        const editId = event.target?.getAttribute('data-lead-edit');
+        const editId = event.target?.closest?.('[data-lead-edit]')?.getAttribute('data-lead-edit');
         if (editId) {
-          const row = this.state.rows.find(item => item.id === editId);
+          const row = this.findLeadById(editId);
           if (row) this.openForm(row);
           return;
         }
-        const deleteId = event.target?.getAttribute('data-lead-delete');
+        const deleteId = event.target?.closest?.('[data-lead-delete]')?.getAttribute('data-lead-delete');
         if (deleteId) {
           this.deleteLeadById(deleteId);
           return;
         }
-        const convertId = event.target?.getAttribute('data-lead-convert');
-        if (convertId) this.convertLeadById(convertId);
+        const convertId = event.target?.closest?.('[data-lead-convert]')?.getAttribute('data-lead-convert');
+        if (convertId) {
+          this.convertLeadById(convertId);
+          return;
+        }
+        const row = event.target?.closest?.('tr[data-lead-row]');
+        const id = row?.getAttribute('data-lead-row');
+        if (id) this.openDetails(id);
+      });
+      E.leadsTbody.addEventListener('keydown', event => {
+        if (!['Enter', ' '].includes(event.key)) return;
+        const row = event.target?.closest?.('tr[data-lead-row]');
+        const id = row?.getAttribute('data-lead-row');
+        if (!id) return;
+        event.preventDefault();
+        this.openDetails(id);
       });
     }
+    document.getElementById('leadDetailsDrawer')?.addEventListener('click', event => {
+      if (event.target.closest('[data-lead-close-details]')) {
+        this.closeDetails();
+        return;
+      }
+      const editId = event.target.closest('[data-lead-details-edit]')?.getAttribute('data-lead-details-edit');
+      if (editId) {
+        const row = this.findLeadById(editId);
+        this.closeDetails();
+        if (row) this.openForm(row);
+        return;
+      }
+      const deleteId = event.target.closest('[data-lead-details-delete]')?.getAttribute('data-lead-details-delete');
+      if (deleteId) {
+        this.deleteLeadById(deleteId);
+        return;
+      }
+      const convertId = event.target.closest('[data-lead-details-convert]')?.getAttribute('data-lead-details-convert');
+      if (convertId) this.convertLeadById(convertId);
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && document.getElementById('leadDetailsDrawer')?.hidden === false) this.closeDetails();
+    });
+
     const leadsAnalyticsGrid = document.getElementById('leadsAnalyticsGrid');
     if (leadsAnalyticsGrid) {
       const activate = card => {
