@@ -458,8 +458,11 @@ const ProposalCatalog = {
     E.proposalCatalogForm.dataset.mode = mode;
     E.proposalCatalogForm.dataset.id = normalized.id || '';
     if (E.proposalCatalogFormTitle)
-      E.proposalCatalogFormTitle.textContent =
-        mode === 'edit' ? `Edit Catalog Item · ${normalized.catalog_item_id}` : 'Create Catalog Item';
+      E.proposalCatalogFormTitle.textContent = mode === 'edit' ? 'Edit Catalog Item' : 'Create Catalog Item';
+    const subtitleEl = document.getElementById('proposalCatalogFormSubtitle');
+    if (subtitleEl)
+      subtitleEl.textContent =
+        mode === 'edit' ? 'Update catalog item details.' : 'Add a new item to the proposal catalog.';
     if (E.proposalCatalogFormItemId) E.proposalCatalogFormItemId.value = normalized.catalog_item_id || '';
     if (E.proposalCatalogFormIsActive) E.proposalCatalogFormIsActive.value = normalized.is_active ? 'true' : 'false';
     if (E.proposalCatalogFormSection) E.proposalCatalogFormSection.value = normalized.section || 'annual_saas';
@@ -473,6 +476,7 @@ const ProposalCatalog = {
     if (E.proposalCatalogFormQuantity) E.proposalCatalogFormQuantity.value = normalized.quantity ?? '';
     if (E.proposalCatalogFormSortOrder) E.proposalCatalogFormSortOrder.value = normalized.sort_order ?? '';
     if (E.proposalCatalogFormNotes) E.proposalCatalogFormNotes.value = normalized.notes || '';
+    this.updateNotesCounter();
     if (E.proposalCatalogFormDeleteBtn) {
       E.proposalCatalogFormDeleteBtn.setAttribute('data-permission-resource', 'proposal_catalog');
       E.proposalCatalogFormDeleteBtn.setAttribute('data-permission-action', 'update');
@@ -484,6 +488,7 @@ const ProposalCatalog = {
       E.proposalCatalogFormSaveBtn.setAttribute('data-permission-resource', 'proposal_catalog');
       E.proposalCatalogFormSaveBtn.setAttribute('data-permission-action', mode === 'edit' ? 'update' : 'create');
       E.proposalCatalogFormSaveBtn.style.display = canSave ? '' : 'none';
+      E.proposalCatalogFormSaveBtn.textContent = mode === 'edit' ? '💾 Update Item' : '💾 Save Item';
     }
 
     E.proposalCatalogFormModal.style.display = 'flex';
@@ -494,6 +499,7 @@ const ProposalCatalog = {
     E.proposalCatalogFormModal.style.display = 'none';
     E.proposalCatalogFormModal.setAttribute('aria-hidden', 'true');
     E.proposalCatalogForm.reset();
+    this.updateNotesCounter();
   },
   collectFormPayload() {
     const section = this.getValue(E.proposalCatalogFormSection) || 'annual_saas';
@@ -518,11 +524,20 @@ const ProposalCatalog = {
     });
     return out;
   },
+  updateNotesCounter() {
+    const counterEl = document.getElementById('proposalCatalogNotesCounter');
+    if (!counterEl || !E.proposalCatalogFormNotes) return;
+    counterEl.textContent = `${String(E.proposalCatalogFormNotes.value || '').length}/500`;
+  },
+  getSaveButtonLabel() {
+    const mode = String(E.proposalCatalogForm?.dataset.mode || 'create');
+    return mode === 'edit' ? '💾 Update Item' : '💾 Save Item';
+  },
   setFormBusy(value) {
     const busy = !!value;
     if (E.proposalCatalogFormSaveBtn) {
       E.proposalCatalogFormSaveBtn.disabled = busy;
-      E.proposalCatalogFormSaveBtn.textContent = busy ? 'Saving…' : 'Save';
+      E.proposalCatalogFormSaveBtn.textContent = busy ? 'Saving…' : this.getSaveButtonLabel();
     }
     if (E.proposalCatalogFormDeleteBtn) E.proposalCatalogFormDeleteBtn.disabled = busy;
   },
@@ -686,6 +701,8 @@ const ProposalCatalog = {
         this.submitForm();
       });
     }
+    if (E.proposalCatalogFormNotes)
+      E.proposalCatalogFormNotes.addEventListener('input', () => this.updateNotesCounter());
     if (E.proposalCatalogFormCloseBtn)
       E.proposalCatalogFormCloseBtn.addEventListener('click', () => this.closeForm());
     if (E.proposalCatalogFormCancelBtn)
