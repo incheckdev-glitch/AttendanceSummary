@@ -6466,3 +6466,79 @@ body.pf-modal-open{overflow:hidden}.pf-activity-modal[hidden],.pf-note-modal[hid
   .catalog-soft-btn,
   .catalog-primary-btn { width: 100%; }
 }
+
+/* Proposal catalog item modal */
+.proposal-catalog-form-modal{
+  background:rgba(15,23,42,.58);
+  padding:24px;
+}
+.proposal-catalog-modal-content{
+  width:min(94vw,960px);
+  max-width:960px !important;
+  max-height:min(92vh,920px);
+  padding:0;
+  overflow:hidden;
+  border:1px solid rgba(226,232,240,.9);
+  border-radius:20px;
+  background:#fff;
+  box-shadow:0 28px 80px rgba(15,23,42,.24);
+}
+.proposal-catalog-modal-header{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:18px;
+  padding:24px 28px 20px;
+  border-bottom:1px solid #eef2f7;
+  background:linear-gradient(135deg,#fff 0%,#f8fbff 58%,#f5f3ff 100%);
+}
+.proposal-catalog-modal-heading{display:flex;align-items:center;gap:14px;min-width:0}
+.proposal-catalog-modal-icon{
+  display:grid;place-items:center;flex:0 0 48px;width:48px;height:48px;border-radius:16px;
+  color:#fff;font-size:22px;font-weight:800;
+  background:linear-gradient(135deg,#2563eb,#7c3aed);
+  box-shadow:0 12px 24px rgba(37,99,235,.22);
+}
+.proposal-catalog-modal-heading h2{margin:0;color:#0f172a;font-size:24px;line-height:1.15;letter-spacing:-.02em}
+.proposal-catalog-modal-heading p{margin:6px 0 0;color:#64748b;font-size:14px;line-height:1.45}
+.proposal-catalog-modal-close{
+  display:grid;place-items:center;width:40px;height:40px;border:1px solid #e2e8f0;border-radius:12px;
+  background:#fff;color:#64748b;font-size:18px;transition:all .18s ease;
+}
+.proposal-catalog-modal-close:hover{border-color:#cbd5e1;color:#0f172a;box-shadow:0 8px 18px rgba(15,23,42,.08)}
+.proposal-catalog-form{display:flex;flex-direction:column;max-height:calc(92vh - 1px);overflow:auto}
+.proposal-catalog-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;padding:24px 28px 18px}
+.proposal-catalog-field{position:relative;display:flex;flex-direction:column;gap:8px;min-width:0}
+.proposal-catalog-field-full{grid-column:1 / -1}
+.proposal-catalog-field label,.proposal-catalog-label-row label{color:#334155;font-size:13px;font-weight:800;letter-spacing:.01em}
+.required-mark{color:#ef4444}
+.proposal-catalog-field .input,.proposal-catalog-field .select{
+  width:100%;min-height:48px;padding:0 14px;border:1px solid #dbe3ef;border-radius:12px;
+  background:#fff;color:#0f172a;font-size:14px;box-shadow:0 1px 2px rgba(15,23,42,.04);transition:all .18s ease;
+}
+.proposal-catalog-field textarea.input{min-height:112px;padding:12px 14px;resize:vertical;line-height:1.5}
+.proposal-catalog-field-with-prefix .input{padding-left:42px}
+.proposal-catalog-input-prefix{position:absolute;left:14px;bottom:14px;color:#64748b;font-weight:800;pointer-events:none}
+.proposal-catalog-field .input:focus,.proposal-catalog-field .select:focus{
+  outline:none;border-color:#6366f1;box-shadow:0 0 0 4px rgba(99,102,241,.14),0 8px 18px rgba(37,99,235,.08);
+}
+.proposal-catalog-field-highlight .input{border-color:#bfdbfe;background:linear-gradient(180deg,#fff,#fbfdff)}
+.proposal-catalog-label-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.proposal-catalog-counter{color:#94a3b8;font-size:12px;font-weight:700}
+.proposal-catalog-info-callout{display:flex;align-items:flex-start;gap:10px;margin:0 28px 22px;padding:14px 16px;border:1px solid #dbeafe;border-radius:16px;background:linear-gradient(135deg,#eff6ff,#f5f3ff);color:#334155}
+.proposal-catalog-info-callout span{display:grid;place-items:center;flex:0 0 22px;width:22px;height:22px;border-radius:999px;background:#2563eb;color:#fff;font-weight:900;font-size:13px}
+.proposal-catalog-info-callout p{margin:1px 0 0;line-height:1.45}
+.proposal-catalog-modal-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 28px;border-top:1px solid #eef2f7;background:#fff}
+.proposal-catalog-footer-actions{display:flex;justify-content:flex-end;gap:10px;margin-left:auto}
+.proposal-catalog-cancel-btn{border:1px solid #cbd5e1;background:#fff;color:#334155}
+.proposal-catalog-save-btn{border:0;background:linear-gradient(135deg,#2563eb,#7c3aed);box-shadow:0 12px 24px rgba(37,99,235,.22);color:#fff}
+.proposal-catalog-save-btn:hover{filter:brightness(1.03);transform:translateY(-1px)}
+@media(max-width:720px){
+  .proposal-catalog-form-modal{padding:12px;align-items:flex-start}
+  .proposal-catalog-modal-content{width:100%;max-height:94vh}
+  .proposal-catalog-modal-header,.proposal-catalog-form-grid,.proposal-catalog-modal-footer{padding-left:18px;padding-right:18px}
+  .proposal-catalog-form-grid{grid-template-columns:1fr;gap:14px}
+  .proposal-catalog-modal-footer{align-items:stretch;flex-direction:column}
+  .proposal-catalog-footer-actions{width:100%;margin-left:0;flex-direction:column-reverse}
+  .proposal-catalog-footer-actions .btn,.proposal-catalog-modal-footer>.btn{width:100%}
+}
