@@ -19,7 +19,7 @@ const context = vm.createContext({
       if (filters.p_page_size === 100) {
         return [
           { row_data: { invoice_id: 'invoice-1', invoice_number: 'INV-1', client_id: 'client-a', client_name: 'Client A', currency: 'USD', scheduled_amount: 100, paid_amount: 20, allocated_credit_amount: 5, remaining_amount: 75 }, total_count: 2 },
-          { row_data: { invoice_id: 'invoice-2', invoice_number: 'INV-2', client_id: 'client-a', client_name: 'Client A', currency: 'USD', scheduled_amount: 25, paid_amount: 5, allocated_credit_amount: 0, remaining_amount: 20 }, total_count: 2 }
+          { row_data: { invoice_id: 'invoice-2', invoice_number: 'INV-2', client_id: 'legacy-client-a', client_name: ' client a ', currency: 'USD', scheduled_amount: 25, paid_amount: 5, allocated_credit_amount: 0, remaining_amount: 20 }, total_count: 2 }
         ];
       }
       return [{ row_data: { invoice_id: 'invoice-1', remaining_amount: 100 }, total_count: 44 }];
@@ -101,7 +101,12 @@ forecast.populateFilters = () => {};
   assert.strictEqual(calls.at(-1)[1].p_view, 'all', 'client distribution must use raw scheduled rows as the gross source of truth');
   assert.strictEqual(calls.at(-1)[1].p_page_size, 100, 'client distribution gross scheduled audit must fetch full raw pages');
   assert.strictEqual(calls.filter(call => call[0] === 'clients').length, clientRpcCallsBefore, 'client distribution must not trust stale grouped gross scheduled RPC totals');
+  assert.strictEqual(forecast.state.rowsByTab.client_distribution.length, 1, 'same legal client must be consolidated into one Client Distribution row even with multiple invoice/agreement IDs');
+  assert.strictEqual(forecast.state.pagination.client_distribution.total, 1);
   assert.strictEqual(forecast.state.rowsByTab.client_distribution[0].client_name, 'Client A');
+  assert.strictEqual(forecast.state.rowsByTab.client_distribution[0].client_id, 'client-a');
+  assert.strictEqual(forecast.state.rowsByTab.client_distribution[0].scheduled_payment_count, 2);
+  assert.strictEqual(forecast.state.rowsByTab.client_distribution[0].invoice_count, 2);
   assert.strictEqual(forecast.state.rowsByTab.client_distribution[0].gross_scheduled_amount, 125);
   assert.strictEqual(forecast.state.rowsByTab.client_distribution[0].paid_amount, 25);
   assert.strictEqual(forecast.state.rowsByTab.client_distribution[0].credit_adjustment_amount, 5);

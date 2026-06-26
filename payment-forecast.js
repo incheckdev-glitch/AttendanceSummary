@@ -225,11 +225,28 @@ const PaymentForecast = {
       currency
     };
   },
+  normalizeClientDistributionName(value) {
+    const raw = this.text(value);
+    if (!raw || raw.toLowerCase() === 'unknown client') return '';
+    const normalized = raw.normalize ? raw.normalize('NFKC') : raw;
+    return normalized.toLowerCase().replace(/[\u0640]/g, '').replace(/\s+/g, ' ').trim();
+  },
+  clientDistributionKey(row = {}) {
+    const currency = this.text(row.currency || 'USD').toUpperCase() || 'USD';
+    const normalizedName = this.normalizeClientDistributionName(row.client_name || row.customer_name || row.company_name);
+    const fallbackId = this.text(row.company_id || row.client_id || row.customer_id || row.invoice_id || row.invoice_number);
+    return `${normalizedName || fallbackId || 'unknown-client'}::${currency}`;
+  },
   groupClientRows(rows = []) {
     const map = new Map();
     rows.forEach(row => {
-      const key = `${row.client_id || row.client_name}::${row.currency}`;
-      const current = map.get(key) || { client_name: row.client_name || 'Unknown Client', client_id: row.client_id || '', company_id: row.company_id || row.client_id || '', currency: row.currency || 'USD', scheduled_payment_count: 0, invoice_ids: new Set(), gross_scheduled_amount: 0, paid_amount: 0, credit_adjustment_amount: 0, net_expected_amount: 0, overdue_amount: 0, next_due_date: '' };
+      const key = this.clientDistributionKey(row);
+      const rowName = this.text(row.client_name || row.customer_name || row.company_name || 'Unknown Client') || 'Unknown Client';
+      const rowClientId = this.text(row.company_id || row.client_id || row.customer_id);
+      const current = map.get(key) || { client_name: rowName, client_id: rowClientId || '', company_id: rowClientId || '', currency: (this.text(row.currency || 'USD').toUpperCase() || 'USD'), scheduled_payment_count: 0, invoice_ids: new Set(), gross_scheduled_amount: 0, paid_amount: 0, credit_adjustment_amount: 0, net_expected_amount: 0, overdue_amount: 0, next_due_date: '' };
+      if (rowClientId && !current.client_id) current.client_id = rowClientId;
+      if (rowClientId && !current.company_id) current.company_id = rowClientId;
+      if (rowName && (current.client_name === 'Unknown Client' || rowName.length > current.client_name.length)) current.client_name = rowName;
       current.scheduled_payment_count += 1;
       if (row.invoice_id || row.invoice_number) current.invoice_ids.add(row.invoice_id || row.invoice_number);
       current.gross_scheduled_amount += this.n(row.scheduled_amount);
