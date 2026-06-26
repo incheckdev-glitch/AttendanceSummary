@@ -3883,229 +3883,100 @@ Sample:
       </div>
     </div>
   </div>
-  <div id="proposalFormModal" class="modal" role="dialog" aria-modal="true"
+  <div id="proposalFormModal" class="modal proposal-modern-modal" role="dialog" aria-modal="true"
        aria-labelledby="proposalFormTitle" aria-hidden="true">
-    <div class="modal-content" style="max-width:1100px;">
-      <div class="header">
-        <h2 id="proposalFormTitle" style="margin:0;font-size:20px">Create Proposal</h2>
-        <div class="actions">
-          <button class="modal-close" id="proposalFormCloseBtn" aria-label="Close proposal form">✕</button>
+    <div class="modal-content proposal-modern-content">
+      <div class="proposal-modal-header">
+        <div class="proposal-header-mark" aria-hidden="true">🧾</div>
+        <div class="proposal-header-copy">
+          <h2 id="proposalFormTitle">Create Proposal</h2>
+          <p id="proposalFormSubtitle">Create a new proposal with customer, pricing, terms and signatures.</p>
         </div>
+        <button class="modal-close proposal-close-btn" id="proposalFormCloseBtn" aria-label="Close proposal form">✕</button>
       </div>
-      <form id="proposalForm">
-        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
-          <div class="filter-row">
-            <label class="muted" for="proposalFormProposalId">Proposal ID</label>
-            <input id="proposalFormProposalId" class="input" type="text" readonly />
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="proposalFormTitleField">Proposal Title</label>
-            <input id="proposalFormTitleField" class="input" type="text" required />
-          </div>
-          <div class="filter-row"><label class="muted" for="proposalFormDealId">Deal ID</label><input id="proposalFormDealId" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="proposalFormProposalDate">Proposal Date</label><input id="proposalFormProposalDate" class="input" type="date" /></div>
-          <div class="filter-row"><label class="muted" for="proposalFormValidUntil">Valid Until</label><input id="proposalFormValidUntil" class="input readonly-field locked-field" type="date" readonly aria-readonly="true" /><small class="muted">Auto-calculated as 14 days after the proposal date.</small></div>
-          <div class="filter-row">
-            <label class="muted" for="proposalFormStatus">Status</label>
-            <select id="proposalFormStatus" class="select">
-              <option value="draft">Draft</option>
-              <option value="pending_approval" disabled>Pending Approval</option>
-              <option value="sent">Sent</option>
-              <option value="accepted">Accepted</option>
-              <option value="rejected">Rejected</option>
-              <option value="expired" disabled>Expired</option>
-            </select>
-          </div>
-          <div class="filter-row"><label class="muted" for="proposalFormCurrency">Currency</label><input id="proposalFormCurrency" class="input" type="text" placeholder="USD" /></div>
-        </div>
-
-        <div id="proposalSignedDocumentSection" class="card" style="margin-top:12px;display:none;">
-          <strong style="display:block;margin-bottom:8px;">Signed Proposal Document</strong>
-          <p id="proposalSignedDocumentState" class="muted" style="margin:0 0 8px;">Upload a signed proposal after the proposal status is Accepted.</p>
-          <div class="actions" style="justify-content:flex-start;gap:8px;flex-wrap:wrap;">
-            <input id="proposalSignedDocumentFile" class="input" type="file" aria-label="Signed proposal document" />
-            <button id="proposalSignedDocumentUploadBtn" class="btn ghost sm" type="button">Upload Signed Document</button>
-            <button id="proposalSignedDocumentOpenBtn" class="btn ghost sm" type="button" style="display:none;">View / Download</button>
-          </div>
-          <small class="muted">Files are stored in a private Supabase bucket and opened with temporary signed URLs.</small>
-        </div>
-
-        <div class="divider" style="margin:12px 0;"></div>
-        <strong style="display:block;margin-bottom:8px;">Customer / Company Details</strong>
-        <div class="filter-row muted" style="grid-column:1 / -1;">Customer and contact details are managed from the Company and Contacts modules.</div>
-        <div class="grid crm-party-selector-grid" data-party-selector="proposal" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px;">
-          <div class="filter-row"><label class="muted" for="proposalFormCompanySelector">Company</label><select id="proposalFormCompanySelector" class="select"><option value="">Select company</option></select><input id="proposalFormCompanyId" type="hidden" /><input id="proposalFormCompanyNameHidden" type="hidden" /></div>
-          <div class="filter-row"><label class="muted" for="proposalFormContactSelector">Contact</label><select id="proposalFormContactSelector" class="select" disabled><option value="">Select company first</option></select><input id="proposalFormContactId" type="hidden" /><input id="proposalFormContactNameHidden" type="hidden" /></div>
-        </div>
-        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
-          <div class="filter-row"><label class="muted" for="proposalFormCustomerName">Customer Name</label><input id="proposalFormCustomerName" class="input readonly-field" type="text" readonly aria-readonly="true" /></div>
-          <div class="filter-row"><label class="muted" for="proposalFormCustomerAddress">Customer Address</label><input id="proposalFormCustomerAddress" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
-          <div class="filter-row"><label class="muted" for="proposalFormCustomerContactName">Contact Name</label><input id="proposalFormCustomerContactName" class="input readonly-field" type="text" readonly aria-readonly="true" /></div>
-          <div class="filter-row"><label class="muted" for="proposalFormCustomerContactMobile">Contact Mobile</label><input id="proposalFormCustomerContactMobile" class="input readonly-field" type="text" readonly aria-readonly="true" /></div>
-          <div class="filter-row"><label class="muted" for="proposalFormCustomerContactEmail">Contact Email</label><input id="proposalFormCustomerContactEmail" class="input readonly-field" type="email" readonly aria-readonly="true" /></div>
-        </div>
-
-        <div class="divider" style="margin:12px 0;"></div>
-        <strong style="display:block;margin-bottom:8px;">Provider</strong>
-        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
-          <div class="filter-row"><label class="muted" for="proposalFormProviderContactName">Provider Contact Name</label><input id="proposalFormProviderContactName" class="input readonly-field" type="text" readonly aria-readonly="true" /></div>
-          <div class="filter-row"><label class="muted" for="proposalFormProviderContactMobile">Provider Contact Mobile</label><input id="proposalFormProviderContactMobile" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
-          <div class="filter-row"><label class="muted" for="proposalFormProviderContactEmail">Provider Contact Email</label><input id="proposalFormProviderContactEmail" class="input readonly-field" type="email" readonly aria-readonly="true" /></div>
-        </div>
-
-        <div class="divider" style="margin:12px 0;"></div>
-        <strong style="display:block;margin-bottom:8px;">Commercial Details</strong>
-        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
-          <div class="filter-row"><label class="muted" for="proposalFormServiceStartDate">Service Start Date</label><input id="proposalFormServiceStartDate" class="input" type="date" /></div>
-          <div class="filter-row">
-            <label class="muted" for="proposalFormContractTerm">Contract Term</label>
-            <input id="proposalFormContractTerm" class="input" type="text" list="proposalContractTermOptions" />
-          </div>
-          <div class="filter-row"><label class="muted" for="proposalFormAccountNumber">Account Number</label><input id="proposalFormAccountNumber" class="input" type="text" /></div>
-          <div class="filter-row">
-            <label class="muted" for="proposalFormBillingFrequency">Billing Frequency</label>
-            <input id="proposalFormBillingFrequency" class="input readonly-field" type="text" value="Annual" readonly aria-readonly="true" />
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="proposalFormPaymentTerm">Payment Term</label>
-            <select id="proposalFormPaymentTerm" class="select"><option value="Net 7">Monthly</option><option value="Net 14">Quarterly</option><option value="Net 21">Semi-Annually</option><option value="Net 30">Annually</option></select>
-          </div>
-          <div class="filter-row"><label class="muted" for="proposalFormPoNumber">PO Number</label><input id="proposalFormPoNumber" class="input" type="text" /></div>
-        </div>
-
-        <div class="divider" style="margin:12px 0;"></div>
-        <div class="card" style="padding:12px;margin:0;">
-          <label style="display:flex;align-items:center;gap:8px;font-weight:700;">
-            <input id="proposalFormIsPoc" type="checkbox" />
-            POC
-          </label>
-          <div class="muted" style="margin-top:4px;font-size:12px;">Enable this when the proposal is for a proof of concept. The details will appear in the preview and carry to agreement and invoice.</div>
-          <div id="proposalPocDetails" class="grid" style="display:none;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:12px;">
-            <div class="filter-row"><label class="muted" for="proposalFormPocLocationCount">Number of Locations</label><input id="proposalFormPocLocationCount" class="input" type="number" min="0" step="1" /></div>
-            
-            <div class="filter-row"><label class="muted" for="proposalFormPocLicenseMonths">License / Month</label><input id="proposalFormPocLicenseMonths" class="input" type="number" min="0" step="0.01" /></div>
-            <div class="filter-row"><label class="muted" for="proposalFormPocServiceStartDate">POC Service Start Date</label><input id="proposalFormPocServiceStartDate" class="input" type="date" /></div>
-            <div class="filter-row"><label class="muted" for="proposalFormPocServiceEndDate">POC Service End Date</label><input id="proposalFormPocServiceEndDate" class="input" type="date" /></div>
-            <div style="grid-column:1 / -1;margin-top:4px;padding-top:10px;border-top:1px solid #e5e7eb;">
-              <strong style="display:block;margin-bottom:4px;">POC Success & Conversion Commitment</strong>
-              <div class="muted" style="font-size:12px;line-height:1.45;">Define the success KPIs and the customer commitment to proceed with the full commercial agreement once the KPIs are achieved.</div>
+      <form id="proposalForm" class="proposal-modern-form">
+        <div class="proposal-modal-scroll">
+          <section class="proposal-section-card">
+            <div class="proposal-section-title"><span aria-hidden="true">ℹ️</span><div><h3>Proposal Information</h3><p>Core proposal identifiers, dates, deal reference and status.</p></div></div>
+            <div class="proposal-form-grid">
+              <div class="filter-row"><label class="muted" for="proposalFormProposalId">Proposal No.</label><input id="proposalFormProposalId" class="input" type="text" readonly /></div>
+              <div class="filter-row"><label class="muted" for="proposalFormTitleField">Proposal Title <span class="required-star">*</span></label><input id="proposalFormTitleField" class="input" type="text" required /></div>
+              <div class="filter-row"><label class="muted" for="proposalFormDealId">Deal</label><input id="proposalFormDealId" class="input" type="text" /></div>
+              <div class="filter-row"><label class="muted" for="proposalFormProposalDate">Proposal Date</label><input id="proposalFormProposalDate" class="input" type="date" /></div>
+              <div class="filter-row"><label class="muted" for="proposalFormValidUntil">Valid Until</label><input id="proposalFormValidUntil" class="input readonly-field locked-field" type="date" readonly aria-readonly="true" /><small class="muted">Auto-calculated as 14 days after the proposal date.</small></div>
+              <div class="filter-row"><label class="muted" for="proposalFormStatus">Status</label><select id="proposalFormStatus" class="select"><option value="draft">Draft</option><option value="pending_approval" disabled>Pending Approval</option><option value="sent">Sent</option><option value="accepted">Accepted</option><option value="rejected">Rejected</option><option value="expired" disabled>Expired</option></select></div>
             </div>
-            <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="proposalFormPocSuccessKpis">POC Success KPIs</label><textarea id="proposalFormPocSuccessKpis" class="input" rows="4" style="min-height:96px;resize:vertical;" placeholder="Example: agreed monitoring results, implementation completion, reporting accuracy, user acceptance, or operational success criteria."></textarea></div>
-            <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="proposalFormPocConversionCommitment">POC Commercial Commitment</label><textarea id="proposalFormPocConversionCommitment" class="input" rows="4" style="min-height:96px;resize:vertical;" placeholder="If the POC success KPIs are achieved, the customer proceeds with the full commercial subscription/agreement."></textarea></div>
+          </section>
+
+          <div id="proposalSignedDocumentSection" class="proposal-section-card proposal-info-card" style="display:none;">
+            <div class="proposal-section-title"><span aria-hidden="true">✍️</span><div><h3>Signed Proposal Document</h3><p id="proposalSignedDocumentState">Upload a signed proposal after the proposal status is Accepted.</p></div></div>
+            <div class="proposal-inline-actions"><input id="proposalSignedDocumentFile" class="input" type="file" aria-label="Signed proposal document" /><button id="proposalSignedDocumentUploadBtn" class="btn btn-incheck-outline sm" type="button">Upload Signed Document</button><button id="proposalSignedDocumentOpenBtn" class="btn btn-incheck-outline sm" type="button" style="display:none;">View / Download</button></div>
+            <small class="muted">Files are stored in a private Supabase bucket and opened with temporary signed URLs.</small>
           </div>
-        </div>
-        <datalist id="proposalBillingCycleOptions">
-          <option value="One-time"></option>
-          <option value="Monthly"></option>
-          <option value="Quarterly"></option>
-          <option value="Semi-Annual"></option>
-          <option value="Annual"></option>
-        </datalist>
-        <datalist id="proposalContractTermOptions">
-          <option value="1 year"></option>
-          <option value="2 years"></option>
-          <option value="3 years"></option>
-        </datalist>
-        <datalist id="proposalPaymentTermOptions">
-          <option value="Due on Receipt"></option>
-          <option value="Net 7">Monthly</option>
-          <option value="Net 15"></option>
-          <option value="Net 30">Annually</option>
-          <option value="Net 45"></option>
-          <option value="Net 60"></option>
-          <option value="50% Upfront / 50% Delivery"></option>
-          <option value="Milestone Based"></option>
-        </datalist>
 
-        <div class="divider" style="margin:12px 0;"></div>
-        <strong style="display:block;margin-bottom:8px;">Signatory</strong>
-        <div class="signatory-section form-grid">
-          <div class="signatory-column" aria-label="Customer signatory fields">
-            <div class="filter-row"><label class="muted" for="proposalFormCustomerSignatoryName">Customer Signatory Name</label><input id="proposalFormCustomerSignatoryName" class="input readonly-field" type="text" readonly aria-readonly="true" /></div>
-            <div class="filter-row"><label class="muted" for="proposalFormCustomerSignatoryTitle">Customer Signatory Title</label><input id="proposalFormCustomerSignatoryTitle" class="input readonly-field" type="text" readonly aria-readonly="true" /></div>
-            <div class="filter-row"><label class="muted" for="proposalFormCustomerSignDate">Customer Sign Date</label><input id="proposalFormCustomerSignDate" class="input" type="date" /></div>
-          </div>
-          <div class="signatory-column" aria-label="Provider signatory fields">
-            <div class="filter-row"><label class="muted" for="proposalFormProviderSignatoryName">Provider Signatory Name</label><input id="proposalFormProviderSignatoryName" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
-            <div class="filter-row"><label class="muted" for="proposalFormProviderSignatoryTitle">Provider Signatory Title</label><input id="proposalFormProviderSignatoryTitle" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
-            <div class="filter-row"><label class="muted" for="proposalFormProviderSignDate">Provider Sign Date</label><input id="proposalFormProviderSignDate" class="input" type="date" /></div>
-          </div>
-        </div>
+          <section class="proposal-section-card">
+            <div class="proposal-section-title"><span aria-hidden="true">🏢</span><div><h3>Customer / Company Details</h3><p>Customer and contact details are managed from the Company and Contacts modules.</p></div></div>
+            <div class="proposal-form-grid crm-party-selector-grid" data-party-selector="proposal">
+              <div class="filter-row"><label class="muted" for="proposalFormCompanySelector">Company</label><select id="proposalFormCompanySelector" class="select"><option value="">Select company</option></select><input id="proposalFormCompanyId" type="hidden" /><input id="proposalFormCompanyNameHidden" type="hidden" /></div>
+              <div class="filter-row"><label class="muted" for="proposalFormContactSelector">Contact</label><select id="proposalFormContactSelector" class="select" disabled><option value="">Select company first</option></select><input id="proposalFormContactId" type="hidden" /><input id="proposalFormContactNameHidden" type="hidden" /></div>
+              <div class="filter-row"><label class="muted" for="proposalFormCustomerName">Company Name</label><input id="proposalFormCustomerName" class="input readonly-field" type="text" readonly aria-readonly="true" /></div>
+              <div class="filter-row"><label class="muted" for="proposalFormCustomerContactEmail">Contact Email</label><input id="proposalFormCustomerContactEmail" class="input readonly-field" type="email" readonly aria-readonly="true" /></div>
+              <div class="filter-row"><label class="muted" for="proposalFormCustomerContactMobile">Contact Phone</label><input id="proposalFormCustomerContactMobile" class="input readonly-field" type="text" readonly aria-readonly="true" /></div>
+              <div class="filter-row"><label class="muted" for="proposalFormCustomerContactName">Contact Person</label><input id="proposalFormCustomerContactName" class="input readonly-field" type="text" readonly aria-readonly="true" /></div>
+              <div class="filter-row proposal-span-2"><label class="muted" for="proposalFormCustomerAddress">Contact Address</label><input id="proposalFormCustomerAddress" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            </div>
+          </section>
 
-        <div class="divider" style="margin:12px 0;"></div>
-        <strong style="display:block;margin-bottom:8px;">Internal Notes</strong>
-        <div class="filter-row">
-          <label class="muted" for="proposalFormInternalNotes">Internal Notes</label>
-          <textarea id="proposalFormInternalNotes" class="input" rows="4" style="min-height:96px;resize:vertical;" placeholder="Add internal notes for this proposal..."></textarea>
-          <small class="muted">Internal only. This note will not appear in the proposal preview or PDF.</small>
-        </div>
+          <section class="proposal-section-card">
+            <div class="proposal-section-title"><span aria-hidden="true">🛡️</span><div><h3>Provider</h3><p>Read-only provider details used in proposal documents.</p></div></div>
+            <div class="proposal-form-grid">
+              <div class="filter-row"><label class="muted" for="proposalFormProviderContactName">Provider Legal Name</label><input id="proposalFormProviderContactName" class="input readonly-field" type="text" readonly aria-readonly="true" /></div>
+              <div class="filter-row"><label class="muted" for="proposalFormProviderContactMobile">Provider License / Registration Number</label><input id="proposalFormProviderContactMobile" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+              <div class="filter-row proposal-span-2"><label class="muted" for="proposalFormProviderContactEmail">Provider Email</label><input id="proposalFormProviderContactEmail" class="input readonly-field" type="email" readonly aria-readonly="true" /></div>
+            </div>
+          </section>
 
-        <div class="divider" style="margin:12px 0;"></div>
-        <div class="filter-row">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-            <label class="muted" for="proposalFormTerms">Terms &amp; Conditions</label>
-            <button id="proposalResetTermsBtn" class="btn ghost sm" type="button">Reset to Default Terms</button>
-          </div>
-          <textarea id="proposalFormTerms" class="input" rows="6" placeholder="Default proposal terms are added automatically and can be edited before saving."></textarea>
-        </div>
+          <section class="proposal-section-card">
+            <div class="proposal-section-title"><span aria-hidden="true">💳</span><div><h3>Commercial Details</h3><p>Currency, payment cadence, contract terms and POC configuration.</p></div></div>
+            <div class="proposal-form-grid">
+              <div class="filter-row"><label class="muted" for="proposalFormCurrency">Currency</label><input id="proposalFormCurrency" class="input" type="text" placeholder="USD" /></div>
+              <div class="filter-row"><label class="muted" for="proposalFormPaymentTerm">Payment Term</label><select id="proposalFormPaymentTerm" class="select"><option value="Net 7">Monthly</option><option value="Net 14">Quarterly</option><option value="Net 21">Semi-Annually</option><option value="Net 30">Annually</option></select></div>
+              <div class="filter-row"><label class="muted" for="proposalFormBillingFrequency">Billing Frequency</label><input id="proposalFormBillingFrequency" class="input readonly-field" type="text" value="Annual" readonly aria-readonly="true" /></div>
+              <div class="filter-row"><label class="muted" for="proposalFormContractTerm">Proposal Type / Contract Term</label><input id="proposalFormContractTerm" class="input" type="text" list="proposalContractTermOptions" /></div>
+              <div class="filter-row"><label class="muted" for="proposalFormServiceStartDate">Service Start Date</label><input id="proposalFormServiceStartDate" class="input" type="date" /></div>
+              <div class="filter-row"><label class="muted" for="proposalFormPoNumber">PO Number</label><input id="proposalFormPoNumber" class="input" type="text" /></div>
+              <div class="filter-row proposal-span-2"><label class="muted" for="proposalFormAccountNumber">Account Number</label><input id="proposalFormAccountNumber" class="input" type="text" /></div>
+            </div>
+            <label class="proposal-poc-toggle" for="proposalFormIsPoc"><span><strong>POC</strong><small>Enable for a proof of concept proposal. Details appear in preview and carry to agreement and invoice.</small></span><input id="proposalFormIsPoc" type="checkbox" /></label>
+            <div id="proposalPocDetails" class="proposal-form-grid proposal-poc-details" style="display:none;">
+              <div class="filter-row"><label class="muted" for="proposalFormPocLocationCount">Number of Locations</label><input id="proposalFormPocLocationCount" class="input" type="number" min="0" step="1" /></div>
+              <div class="filter-row"><label class="muted" for="proposalFormPocLicenseMonths">License / Month</label><input id="proposalFormPocLicenseMonths" class="input" type="number" min="0" step="0.01" /></div>
+              <div class="filter-row"><label class="muted" for="proposalFormPocServiceStartDate">POC Service Start Date</label><input id="proposalFormPocServiceStartDate" class="input" type="date" /></div>
+              <div class="filter-row"><label class="muted" for="proposalFormPocServiceEndDate">POC Service End Date</label><input id="proposalFormPocServiceEndDate" class="input" type="date" /></div>
+              <div class="filter-row proposal-span-2"><label class="muted" for="proposalFormPocSuccessKpis">POC Success KPIs</label><textarea id="proposalFormPocSuccessKpis" class="input" rows="4" placeholder="Example: agreed monitoring results, implementation completion, reporting accuracy, user acceptance, or operational success criteria."></textarea></div>
+              <div class="filter-row proposal-span-2"><label class="muted" for="proposalFormPocConversionCommitment">POC Commercial Commitment</label><textarea id="proposalFormPocConversionCommitment" class="input" rows="4" placeholder="If the POC success KPIs are achieved, the customer proceeds with the full commercial subscription/agreement."></textarea></div>
+            </div>
+          </section>
+          <datalist id="proposalBillingCycleOptions"><option value="One-time"></option><option value="Monthly"></option><option value="Quarterly"></option><option value="Semi-Annual"></option><option value="Annual"></option></datalist>
+          <datalist id="proposalContractTermOptions"><option value="1 year"></option><option value="2 years"></option><option value="3 years"></option></datalist>
+          <datalist id="proposalPaymentTermOptions"><option value="Due on Receipt"></option><option value="Net 7">Monthly</option><option value="Net 15"></option><option value="Net 30">Annually</option><option value="Net 45"></option><option value="Net 60"></option><option value="50% Upfront / 50% Delivery"></option><option value="Milestone Based"></option></datalist>
 
-        <div class="divider" style="margin:12px 0;"></div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-          <strong>Annual SaaS Items</strong>
-          <button id="proposalAddAnnualRowBtn" class="btn ghost sm" type="button">Add Row</button>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Location</th><th>License</th><th>License Price / Year</th><th>License / Month</th><th>Service Start Date</th><th>Service End Date</th><th>Discount %</th><th>Total</th><th>Actions</th></tr></thead>
-            <tbody id="proposalAnnualItemsTbody"></tbody>
-          </table>
-        </div>
-        <datalist id="proposalCatalogOptions-annual_saas"></datalist>
+          <section class="proposal-section-card"><div class="proposal-section-title"><span aria-hidden="true">🖊️</span><div><h3>Signatory</h3><p>Customer and provider signature information.</p></div></div><div class="proposal-signatory-grid"><div class="proposal-signatory-column"><h4>Customer</h4><div class="filter-row"><label class="muted" for="proposalFormCustomerSignatoryName">Customer Signatory Name</label><input id="proposalFormCustomerSignatoryName" class="input readonly-field" type="text" readonly aria-readonly="true" /></div><div class="filter-row"><label class="muted" for="proposalFormCustomerSignatoryTitle">Customer Signatory Title</label><input id="proposalFormCustomerSignatoryTitle" class="input readonly-field" type="text" readonly aria-readonly="true" /></div><div class="filter-row"><label class="muted" for="proposalFormCustomerSignDate">Customer Sign Date</label><input id="proposalFormCustomerSignDate" class="input" type="date" /></div></div><div class="proposal-signatory-column"><h4>Provider</h4><div class="filter-row"><label class="muted" for="proposalFormProviderSignatoryName">Provider Signatory Name</label><input id="proposalFormProviderSignatoryName" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div><div class="filter-row"><label class="muted" for="proposalFormProviderSignatoryTitle">Provider Signatory Title</label><input id="proposalFormProviderSignatoryTitle" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div><div class="filter-row"><label class="muted" for="proposalFormProviderSignDate">Provider Sign Date</label><input id="proposalFormProviderSignDate" class="input" type="date" /></div></div></div></section>
 
-        <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px;">
-          <strong>One Time Fee Items</strong>
-          <button id="proposalAddOneTimeRowBtn" class="btn ghost sm" type="button">Add Row</button>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Location</th><th>Item / Service</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead>
-            <tbody id="proposalOneTimeItemsTbody"></tbody>
-          </table>
-        </div>
-        <datalist id="proposalCatalogOptions-one_time_fee"></datalist>
+          <section class="proposal-section-card"><div class="proposal-section-title"><span aria-hidden="true">📝</span><div><h3>Internal Notes</h3><p>Internal only. This note will not appear on the proposal preview or PDF.</p></div></div><div class="filter-row"><label class="muted" for="proposalFormInternalNotes">Internal Notes</label><textarea id="proposalFormInternalNotes" class="input" rows="4" placeholder="Add internal notes for this proposal..."></textarea></div></section>
+          <section class="proposal-info-card"><strong>Important / Terms Reminder</strong><p>By approving this proposal, the customer accepts the applicable privacy and service terms. Review the <a href="https://incheck360.com/privacy-policy" target="_blank" rel="noopener">Privacy Policy</a> and <a href="https://incheck360.com/terms-of-use" target="_blank" rel="noopener">Terms of Use</a>.</p></section>
 
-        <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px;">
-          <strong>Hardware Items</strong>
-          <button id="proposalAddHardwareRowBtn" class="btn ghost sm" type="button">Add Row</button>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Location</th><th>Hardware / Product</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead>
-            <tbody id="proposalHardwareItemsTbody"></tbody>
-          </table>
-        </div>
-        <datalist id="proposalCatalogOptions-hardware"></datalist>
+          <section class="proposal-section-card"><div class="proposal-section-title"><span aria-hidden="true">📄</span><div><h3>Terms &amp; Conditions</h3><p>Default proposal terms are added automatically and can be edited before saving.</p></div><button id="proposalResetTermsBtn" class="btn btn-incheck-outline sm" type="button">Reset to Default Terms</button></div><div class="filter-row"><label class="muted" for="proposalFormTerms">Terms &amp; Conditions</label><textarea id="proposalFormTerms" class="input" rows="7" placeholder="Default proposal terms are added automatically and can be edited before saving."></textarea></div></section>
 
-        <div class="card" style="margin-top:12px;">
-          <strong>Totals Preview</strong>
-          <div class="grid" style="grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:8px;">
-            <div><div class="muted">SaaS Total</div><div id="proposalSaasTotal">0</div></div>
-            <div><div class="muted">One Time Total</div><div id="proposalOneTimeTotal">0</div></div>
-            <div><div class="muted">Hardware Total</div><div id="proposalHardwareTotal">0</div></div>
-            <div><div class="muted">Grand Total</div><div id="proposalGrandTotal">0</div></div>
-          </div>
-        </div>
+          <section class="proposal-section-card proposal-items-panel"><div class="proposal-section-title"><span aria-hidden="true">🧩</span><div><h3>Proposal Items</h3><p>Add annual SaaS, one-time fee and hardware line items.</p></div></div>
+            <div class="proposal-item-group"><div class="proposal-item-heading"><strong>Annual SaaS Items</strong><button id="proposalAddAnnualRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap proposal-table-wrap"><table><thead><tr><th>Location</th><th>License</th><th>License Price / Year</th><th>License / Month</th><th>Service Start Date</th><th>Service End Date</th><th>Discount %</th><th>Total</th><th>Actions</th></tr></thead><tbody id="proposalAnnualItemsTbody"></tbody></table></div><datalist id="proposalCatalogOptions-annual_saas"></datalist></div>
+            <div class="proposal-item-group"><div class="proposal-item-heading"><strong>One-Time Fee Items</strong><button id="proposalAddOneTimeRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap proposal-table-wrap"><table><thead><tr><th>Location</th><th>Item / Service</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead><tbody id="proposalOneTimeItemsTbody"></tbody></table></div><datalist id="proposalCatalogOptions-one_time_fee"></datalist></div>
+            <div class="proposal-item-group"><div class="proposal-item-heading"><strong>Hardware Items</strong><button id="proposalAddHardwareRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap proposal-table-wrap"><table><thead><tr><th>Location</th><th>Hardware / Product</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead><tbody id="proposalHardwareItemsTbody"></tbody></table></div><datalist id="proposalCatalogOptions-hardware"></datalist></div>
+          </section>
 
-        <div class="actions" style="justify-content:space-between;gap:8px;margin-top:12px;">
-          <div style="display:flex;gap:8px;">
-            <button id="proposalFormDeleteBtn" type="button" class="btn ghost" style="display:none;">Delete</button>
-            <button id="proposalFormPreviewBtn" type="button" class="btn ghost">Preview Proposal</button>
-          </div>
-          <div style="display:flex;gap:8px;">
-            <button id="proposalFormCancelBtn" type="button" class="btn ghost">Cancel</button>
-            <button id="proposalFormSaveBtn" type="submit" class="btn">Save</button>
-          </div>
+          <section class="proposal-summary-card"><strong>Totals Summary</strong><div><span>SaaS Total</span><b id="proposalSaasTotal">0</b></div><div><span>One-Time Total</span><b id="proposalOneTimeTotal">0</b></div><div><span>Hardware Total</span><b id="proposalHardwareTotal">0</b></div><div class="proposal-grand-total"><span>Grand Total</span><b id="proposalGrandTotal">0</b></div></section>
         </div>
+        <div class="proposal-modal-footer"><button id="proposalFormDeleteBtn" type="button" class="btn proposal-danger-btn" style="display:none;">Delete</button><span class="proposal-footer-spacer"></span><button id="proposalFormCancelBtn" type="button" class="btn btn-incheck-outline">Cancel</button><button id="proposalFormPreviewBtn" type="button" class="btn btn-incheck-outline">Preview Proposal</button><button id="proposalFormSaveBtn" type="submit" class="btn btn-incheck-primary">Save Proposal</button></div>
       </form>
     </div>
   </div>
