@@ -3088,8 +3088,9 @@ function setActiveView(view) {
   if (E.mainFiltersPanel) {
     E.mainFiltersPanel.style.display = shouldShowTicketFilters(view) ? '' : 'none';
   }
-  if (E.leadsFiltersPanel) E.leadsFiltersPanel.style.display = view === 'leads' ? '' : 'none';
-  if (E.dealsFiltersPanel) E.dealsFiltersPanel.style.display = view === 'deals' ? '' : 'none';
+  // Leads and Deals filters are now embedded inside their module pages.
+  if (E.leadsFiltersPanel) E.leadsFiltersPanel.style.display = 'none';
+  if (E.dealsFiltersPanel) E.dealsFiltersPanel.style.display = 'none';
   const isForbiddenError = error => {
     if (typeof window.isPermissionError === 'function') return window.isPermissionError(error);
     const message = String(error?.message || error || '').toLowerCase();

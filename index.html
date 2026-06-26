@@ -173,87 +173,9 @@
       </div>
       </div>
 
-      <div id="leadsFiltersPanel" style="display:none;">
-        <h3>Leads Filters</h3>
-        <div class="filter-group" style="margin-bottom:10px;">
-          <div class="filter-row">
-            <label class="muted" for="leadsSearchInput">Search</label>
-            <input id="leadsSearchInput" class="input" type="search" placeholder="Lead ID, name, company, email, notes..." />
-          </div>
-        </div>
+      <div id="leadsFiltersPanel" style="display:none;" aria-hidden="true"></div>
 
-        <div class="filter-group" style="margin-bottom:10px;">
-          <div class="filter-row">
-            <label class="muted" for="leadsStatusFilter">Status</label>
-            <select id="leadsStatusFilter" class="select"><option value="All">All Statuses</option></select>
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="leadsServiceInterestFilter">Service Interest</label>
-            <select id="leadsServiceInterestFilter" class="select"><option>All</option></select>
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="leadsAssignedToFilter">Assigned To</label>
-            <select id="leadsAssignedToFilter" class="select"><option>All</option></select>
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="leadsStartDateFilter">Created From</label>
-            <input id="leadsStartDateFilter" class="input" type="date" />
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="leadsEndDateFilter">Created To</label>
-            <input id="leadsEndDateFilter" class="input" type="date" />
-          </div>
-        </div>
-
-        <div class="filter-group">
-          <button id="leadsResetBtn" class="btn ghost" type="button">Reset Leads Filters</button>
-        </div>
-      </div>
-
-      <div id="dealsFiltersPanel" style="display:none;">
-        <h3>Deals Filters</h3>
-        <div class="filter-group" style="margin-bottom:10px;">
-          <div class="filter-row">
-            <label class="muted" for="dealsSidebarSearchInput">Search</label>
-            <input id="dealsSidebarSearchInput" class="input" type="search" placeholder="Deal ID, lead, company, owner, notes..." />
-          </div>
-        </div>
-
-        <div class="filter-group" style="margin-bottom:10px;">
-          <div class="filter-row">
-            <label class="muted" for="dealsStageFilter">Stage</label>
-            <select id="dealsStageFilter" class="select"><option>All</option></select>
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="dealsPriorityFilter">Priority</label>
-            <select id="dealsPriorityFilter" class="select"><option>All</option></select>
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="dealsServiceInterestFilter">Service Interest</label>
-            <select id="dealsServiceInterestFilter" class="select"><option>All</option></select>
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="dealsLeadSourceFilter">Lead Source</label>
-            <select id="dealsLeadSourceFilter" class="select"><option>All</option></select>
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="dealsAssignedToFilter">Assigned To</label>
-            <select id="dealsAssignedToFilter" class="select"><option>All</option></select>
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="dealsStartDateFilter">Converted From</label>
-            <input id="dealsStartDateFilter" class="input" type="date" />
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="dealsEndDateFilter">Converted To</label>
-            <input id="dealsEndDateFilter" class="input" type="date" />
-          </div>
-        </div>
-
-        <div class="filter-group">
-          <button id="dealsResetBtn" class="btn ghost" type="button">Reset Deals Filters</button>
-        </div>
-      </div>
+      <div id="dealsFiltersPanel" style="display:none;" aria-hidden="true"></div>
     </aside>
 
     <main class="content">
@@ -331,7 +253,7 @@
               </button>
               <button id="proposalCatalogTab" class="view-tab" data-view="proposalCatalog"
                       role="tab" aria-selected="false" aria-controls="proposalCatalogView">
-                <span class="icon" aria-hidden="true">📚</span> Proposal Catalog
+                <span class="icon" aria-hidden="true">📚</span> Products Catalog
               </button>
               </div>
             </div>
@@ -572,15 +494,52 @@
         </div>
       </section>
 
-      <section id="contactsView" class="view" role="tabpanel" aria-labelledby="contactsTab">
-        <div class="card">
-          <div class="row between center" style="margin-bottom:12px;">
-            <h2>Contacts</h2>
-            <button id="contactsCreateBtn" class="btn">Add Contact</button>
-          </div>
-          <div class="table-wrap">
-            <table id="contactsTable"><thead><tr><th>Contact ID</th><th>First Name</th><th>Last Name</th><th>Company</th><th>Job Title</th><th>Department</th><th>Email</th><th>Phone</th><th>Primary Contact</th><th>Status</th><th>Actions</th></tr></thead><tbody id="contactsTableBody"></tbody></table>
-          </div>
+      <section id="contactsView" class="view crm-modern-view" role="tabpanel" aria-labelledby="contactsTab">
+        <div class="crm-modern-page-shell">
+          <header class="crm-modern-page-header">
+            <div>
+              <h1>Contacts</h1>
+              <p>Manage people, company relationships, communication details, and lead handoff.</p>
+            </div>
+            <button id="contactsCreateBtn" class="btn crm-modern-primary-btn" data-permission-resource="contacts" data-permission-action="create" type="button">
+              <span aria-hidden="true">＋</span> Add Contact
+            </button>
+          </header>
+
+          <div id="contactsSummaryGrid" class="crm-modern-summary-grid" aria-label="Contacts summary"></div>
+
+          <section id="contactsFilterCard" class="crm-modern-panel crm-modern-filter-card" aria-label="Contacts filters"></section>
+
+          <section class="crm-modern-panel crm-modern-table-panel" aria-label="Contacts list">
+            <div class="crm-modern-table-toolbar">
+              <div class="crm-modern-table-toolbar-left">
+                <button id="contactsExportBtn" class="btn ghost crm-modern-export-btn" data-permission-resource="contacts" data-permission-action="export" type="button">
+                  <span aria-hidden="true">⇩</span> Export
+                </button>
+                <span id="contactsPageInfo" class="crm-modern-page-info" aria-live="polite"></span>
+              </div>
+              <label class="crm-modern-rows-control" for="contactsRowsPerPage">
+                <span>Rows per page</span>
+                <select id="contactsRowsPerPage" class="select sm" aria-label="Rows per page">
+                  <option>25</option><option selected>50</option><option>100</option>
+                </select>
+              </label>
+            </div>
+            <div class="table-wrap crm-modern-table-wrap">
+              <table id="contactsTable">
+                <thead>
+                  <tr><th>Contact ID</th><th>First Name</th><th>Last Name</th><th>Company</th><th>Job Title</th><th>Department</th><th>Email</th><th>Phone</th><th>Primary Contact</th><th>Status</th><th>Actions</th></tr>
+                </thead>
+                <tbody id="contactsTableBody"></tbody>
+              </table>
+            </div>
+            <div id="contactsTableFooter" class="crm-modern-table-footer">
+              <nav class="crm-modern-pagination" aria-label="Contacts pagination">
+                <button id="contactsPrevBtn" class="crm-modern-page-btn" type="button">‹</button>
+                <button id="contactsNextBtn" class="crm-modern-page-btn" type="button">›</button>
+              </nav>
+            </div>
+          </section>
         </div>
       </section>
 
@@ -1416,74 +1375,73 @@ Sample:
         </div>
       </div>
 
-      <section id="leadsView" class="view" role="tabpanel" aria-labelledby="leadsTab">
-        <div class="card" aria-label="Leads list">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+      <section id="leadsView" class="view crm-modern-view" role="tabpanel" aria-labelledby="leadsTab">
+        <div class="crm-modern-page-shell">
+          <header class="crm-modern-page-header">
             <div>
-              <strong>Leads</strong>
-              <div class="muted">Lead pipeline synced with backend resource.</div>
+              <h1>Leads</h1>
+              <p>Manage lead pipeline, qualification status, owner follow-up, and conversion readiness.</p>
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <button id="leadsRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
-              <button id="leadsExportCsvBtn" class="btn ghost sm" type="button">Export CSV</button>
-              <button id="leadsCreateBtn" class="btn sm" type="button" data-permission-resource="leads" data-permission-action="create">Create Lead</button>
+            <button id="leadsCreateBtn" class="btn crm-modern-primary-btn" type="button" data-permission-resource="leads" data-permission-action="create">
+              <span aria-hidden="true">＋</span> Add Lead
+            </button>
+          </header>
+
+          <div id="leadsAnalytics" class="crm-modern-analytics" aria-label="Leads analytics widgets">
+            <div id="leadsAnalyticsGrid" class="crm-modern-summary-grid leads-analytics-grid">
+              <article class="card kpi crm-modern-summary-card leads-kpi-card" data-kpi-filter="total"><div class="crm-modern-summary-icon">◎</div><div><div class="label">Total Leads</div><div id="leadsKpiTotal" class="value">0</div><div class="sub">Loaded leads</div></div></article>
+              <article class="card kpi crm-modern-summary-card leads-kpi-card" data-kpi-filter="not-contacted-yet"><div class="crm-modern-summary-icon">◌</div><div><div class="label">Not Contacted</div><div id="leadsKpiNew" class="value">0</div><div class="sub">Awaiting first contact</div></div></article>
+              <article class="card kpi crm-modern-summary-card leads-kpi-card" data-kpi-filter="qualified"><div class="crm-modern-summary-icon">✓</div><div><div class="label">Qualified</div><div id="leadsKpiQualified" class="value">0</div><div id="leadsKpiConversionRate" class="sub">0%</div></div></article>
+              <article class="card kpi crm-modern-summary-card leads-kpi-card" data-kpi-filter="high-priority"><div class="crm-modern-summary-icon">!</div><div><div class="label">High Priority</div><div id="leadsKpiHighPriority" class="value">0</div><div class="sub">High or urgent</div></div></article>
+              <article class="card kpi crm-modern-summary-card leads-kpi-card" data-kpi-filter="not-available"><div class="crm-modern-summary-icon">–</div><div><div class="label">Not Available</div><div id="leadsKpiProposalSent" class="value">0</div><div class="sub">Status not available</div></div></article>
+              <article class="card kpi crm-modern-summary-card leads-kpi-card" data-kpi-filter="negotiation"><div class="crm-modern-summary-icon">↔</div><div><div class="label">Negotiation</div><div id="leadsKpiWon" class="value">0</div><div class="sub">Open discussion</div></div></article>
+              <article class="card kpi crm-modern-summary-card leads-kpi-card" data-kpi-filter="lost"><div class="crm-modern-summary-icon">×</div><div><div class="label">Lost</div><div id="leadsKpiLost" class="value">0</div><div class="sub">Closed lost</div></div></article>
+              <article class="card kpi crm-modern-summary-card leads-kpi-card" data-kpi-filter="pipeline-value"><div class="crm-modern-summary-icon">$</div><div><div class="label">Pipeline Value</div><div id="leadsKpiPipelineValue" class="value">0</div><div id="leadsKpiPipelineSub" class="sub">Total estimated value</div></div></article>
             </div>
           </div>
 
-          <div id="leadsAnalytics" class="leads-analytics" aria-label="Leads analytics widgets">
-            <div id="leadsAnalyticsGrid" class="grid leads-analytics-grid">
-              <article class="card kpi leads-kpi-card" data-kpi-filter="total"><div class="label">Total Leads</div><div id="leadsKpiTotal" class="value">0</div><div class="sub">Loaded leads</div></article>
-              <article class="card kpi leads-kpi-card" data-kpi-filter="not-contacted-yet"><div class="label">Not Contacted Yet</div><div id="leadsKpiNew" class="value">0</div><div class="sub">Status = not contacted yet</div></article>
-              <article class="card kpi leads-kpi-card" data-kpi-filter="qualified"><div class="label">Qualified Leads</div><div id="leadsKpiQualified" class="value">0</div><div class="sub">Status = qualified</div></article>
-              <article class="card kpi leads-kpi-card" data-kpi-filter="not-available"><div class="label">Not Available</div><div id="leadsKpiProposalSent" class="value">0</div><div class="sub">Status = not available</div></article>
-              <article class="card kpi leads-kpi-card" data-kpi-filter="negotiation"><div class="label">Negotiation</div><div id="leadsKpiWon" class="value">0</div><div class="sub">Status = negotiation</div></article>
-              <article class="card kpi leads-kpi-card" data-kpi-filter="lost"><div class="label">Lost Leads</div><div id="leadsKpiLost" class="value">0</div><div class="sub">Closed lost</div></article>
-              <article class="card kpi leads-kpi-card" data-kpi-filter="high-priority"><div class="label">High Priority Leads</div><div id="leadsKpiHighPriority" class="value">0</div><div class="sub">High or Urgent</div></article>
-              <article class="card kpi leads-kpi-card" data-kpi-filter="pipeline-value"><div class="label">Estimated Pipeline Value</div><div id="leadsKpiPipelineValue" class="value">0</div><div id="leadsKpiPipelineSub" class="sub">Total estimated value</div></article>
-              <article class="card kpi leads-kpi-card" data-kpi-filter="qualified"><div class="label">Qualified Rate</div><div id="leadsKpiConversionRate" class="value">0%</div><div class="sub">Qualified / Total</div></article>
+          <section class="crm-modern-panel crm-modern-filter-card" aria-label="Leads filters">
+            <div class="crm-modern-panel-title"><span class="crm-modern-panel-icon">⌕</span><h2>Filters</h2></div>
+            <div class="crm-modern-filter-grid crm-modern-filter-grid-6">
+              <label class="crm-modern-filter-field crm-modern-filter-search" for="leadsSearchInput"><span>Search leads</span><div class="crm-modern-input-shell"><span aria-hidden="true">⌕</span><input id="leadsSearchInput" class="input" type="search" placeholder="Lead ID, name, company, email, notes..." /></div></label>
+              <label class="crm-modern-filter-field" for="leadsStatusFilter"><span>Status</span><select id="leadsStatusFilter" class="select"><option value="All">All Statuses</option></select></label>
+              <label class="crm-modern-filter-field" for="leadsServiceInterestFilter"><span>Service Interest</span><select id="leadsServiceInterestFilter" class="select"><option>All</option></select></label>
+              <label class="crm-modern-filter-field" for="leadsAssignedToFilter"><span>Assigned To</span><select id="leadsAssignedToFilter" class="select"><option>All</option></select></label>
+              <label class="crm-modern-filter-field" for="leadsStartDateFilter"><span>From Date</span><input id="leadsStartDateFilter" class="input" type="date" /></label>
+              <label class="crm-modern-filter-field" for="leadsEndDateFilter"><span>To Date</span><input id="leadsEndDateFilter" class="input" type="date" /></label>
+              <div class="crm-modern-filter-field crm-modern-filter-clear"><button id="leadsResetBtn" class="btn ghost crm-modern-clear-btn" type="button">↻ Clear Filters</button></div>
             </div>
+          </section>
 
-            <div class="card leads-status-card" aria-label="Leads status distribution">
-              <div class="leads-status-head">
-                <strong>Status Distribution</strong>
-                <span class="muted">Based on visible leads</span>
+          <section class="crm-modern-panel crm-modern-table-panel" aria-label="Leads list">
+            <div class="crm-modern-table-toolbar">
+              <div class="crm-modern-table-toolbar-left">
+                <button id="leadsExportCsvBtn" class="btn ghost crm-modern-export-btn" type="button"><span aria-hidden="true">⇩</span> Export CSV</button>
+                <button id="leadsRefreshBtn" class="btn ghost crm-modern-export-btn" type="button">↻ Refresh</button>
               </div>
-              <div id="leadsStatusDistribution" class="leads-status-bars"></div>
             </div>
-          </div>
+            <div id="leadsState" class="muted crm-modern-state">No data loaded.</div>
+            <div class="table-wrap crm-modern-table-wrap" role="region" aria-label="Leads table">
+              <table id="leadsTable">
+                <thead>
+                  <tr>
+                    <th>Lead ID</th><th>Created At</th><th>Contact Name</th><th>Company Name</th><th>Phone</th><th>Email</th><th>Country</th><th>Lead Source</th><th>Service Interest</th><th>Status</th><th>Priority</th><th>Estimated Value</th><th>Currency</th><th>Assigned To</th><th>Next Follow-up</th><th>Last Contact</th><th>Notes</th><th>Updated At</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="leadsTbody"></tbody>
+              </table>
+            </div>
+            <div class="crm-modern-table-footer"><nav id="leadsPaginationControls" class="crm-modern-pagination" aria-label="Leads pagination"></nav></div>
+          </section>
 
-          <div id="leadsState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
-          <div class="table-wrap" role="region" aria-label="Leads table">
-            <table id="leadsTable">
-              <thead>
-                <tr>
-                  <th>Lead ID</th>
-                  <th>Created At</th>
-                  <th>Contact Name</th>
-                  <th>Company Name</th>
-                  <th>Phone</th>
-                  <th>Email</th>
-                  <th>Country</th>
-                  <th>Lead Source</th>
-                  <th>Service Interest</th>
-                  <th>Status</th>
-                  <th>Priority</th>
-                  <th>Estimated Value</th>
-                  <th>Currency</th>
-                  <th>Assigned To</th>
-                  <th>Next Follow-up</th>
-                  <th>Last Contact</th>
-                  <th>Notes</th>
-                  <th>Updated At</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="leadsTbody"></tbody>
-            </table>
-          </div>
+          <section class="crm-modern-panel crm-modern-breakdown-card" aria-label="Leads status distribution">
+            <div class="crm-modern-panel-title"><span class="crm-modern-panel-icon">◷</span><h2>Status Distribution</h2><span class="muted">Based on visible leads</span></div>
+            <div id="leadsStatusDistribution" class="deals-status-bars leads-status-bars"></div>
+          </section>
         </div>
       </section>
 
+      
       <div id="leadDetailsDrawer" class="payment-forecast-details-drawer lead-details-drawer" role="dialog" aria-modal="true" aria-labelledby="leadDetailsTitle" hidden>
         <button class="payment-forecast-details-backdrop" type="button" aria-label="Close lead details" data-lead-close-details></button>
         <section class="payment-forecast-details-panel lead-details-panel">
@@ -1499,91 +1457,73 @@ Sample:
         </section>
       </div>
 
-      <section id="dealsView" class="view" role="tabpanel" aria-labelledby="dealsTab">
-        <div class="card" aria-label="Deals list">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+
+      <section id="dealsView" class="view crm-modern-view" role="tabpanel" aria-labelledby="dealsTab">
+        <div class="crm-modern-page-shell">
+          <header class="crm-modern-page-header">
             <div>
-              <strong>Deals</strong>
-              <div class="muted">Converted opportunities synced from backend deals resource.</div>
+              <h1>Deals</h1>
+              <p>Manage active opportunities, pipeline value, deal stages, and proposal conversion.</p>
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <input id="dealsSearchInput" class="input" type="search"
-                     placeholder="Search deal, lead, company, owner, notes..." aria-label="Search deals" />
-              <button id="dealsExportCsvBtn" class="btn ghost sm" type="button">Export CSV</button>
-              <button id="dealsCreateBtn" class="btn sm" type="button">Create Deal</button>
-              <button id="dealsRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
-            </div>
-          </div>
-          <div id="dealsAnalytics" class="deals-analytics" aria-label="Deals analytics widgets">
-            <div id="dealsAnalyticsGrid" class="grid deals-analytics-grid">
-              <article class="card kpi deals-kpi-card" data-kpi-filter="total"><div class="label">Total Deals</div><div id="dealsKpiTotal" class="value">0</div><div class="sub">Visible deals</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="open"><div class="label">Open Deals</div><div id="dealsKpiOpen" class="value">0</div><div class="sub">Open / Active / In Progress</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="won"><div class="label">Won Deals</div><div id="dealsKpiWon" class="value">0</div><div class="sub">Stage matched as won</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="lost"><div class="label">Lost Deals</div><div id="dealsKpiLost" class="value">0</div><div class="sub">Stage matched as lost</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="high-priority"><div class="label">High Priority Deals</div><div id="dealsKpiHighPriority" class="value">0</div><div class="sub">High or Urgent</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="pipeline-value"><div class="label">Total Pipeline Value</div><div id="dealsKpiPipelineValue" class="value">0</div><div id="dealsKpiPipelineSub" class="sub">Visible estimated value</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="weighted-pipeline"><div class="label">Weighted Pipeline</div><div id="dealsKpiWeightedPipelineValue" class="value">0</div><div id="dealsKpiWeightedPipelineSub" class="sub">Stage probability weighted</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="win-rate"><div class="label">Win Rate</div><div id="dealsKpiWinRate" class="value">0%</div><div class="sub">Won / (Won + Lost)</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="average-deal-size"><div class="label">Average Deal Size</div><div id="dealsKpiAverageDealSize" class="value">0</div><div class="sub">Across valid values</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="average-won-deal-size"><div class="label">Average Won Deal Size</div><div id="dealsKpiAverageWonDealSize" class="value">0</div><div class="sub">Won deals only</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="converted-from-leads"><div class="label">Converted from Leads</div><div id="dealsKpiConvertedFromLeads" class="value">0</div><div class="sub">lead_id or converted_at</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="unique-companies"><div class="label">Unique Companies</div><div id="dealsKpiUniqueCompanies" class="value">0</div><div class="sub">Distinct companies</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="unique-assignees"><div class="label">Unique Assignees</div><div id="dealsKpiUniqueAssignees" class="value">0</div><div class="sub">Distinct owners</div></article>
-            </div>
-            <div class="deals-breakdown-grid">
-              <article class="card deals-breakdown-card" aria-label="Deals stage distribution">
-                <div class="deals-breakdown-title">Stage distribution</div>
-                <div id="dealsStageDistribution" class="deals-status-bars"></div>
-              </article>
-              <article class="card deals-breakdown-card" aria-label="Deals assignee breakdown">
-                <div class="deals-breakdown-title">Assignee breakdown</div>
-                <div id="dealsAssigneeBreakdown" class="deals-status-bars"></div>
-              </article>
-              <article class="card deals-breakdown-card" aria-label="Deals service interest breakdown">
-                <div class="deals-breakdown-title">Top services</div>
-                <div id="dealsServiceBreakdown" class="deals-status-bars"></div>
-              </article>
-              <article class="card deals-breakdown-card" aria-label="Deals lead source breakdown">
-                <div class="deals-breakdown-title">Lead sources</div>
-                <div id="dealsSourceBreakdown" class="deals-status-bars"></div>
-              </article>
+            <button id="dealsCreateBtn" class="btn crm-modern-primary-btn" type="button"><span aria-hidden="true">＋</span> Add Deal</button>
+          </header>
+
+          <div id="dealsAnalytics" class="crm-modern-analytics" aria-label="Deals analytics widgets">
+            <div id="dealsAnalyticsGrid" class="crm-modern-summary-grid deals-analytics-grid">
+              <article class="card kpi crm-modern-summary-card deals-kpi-card" data-kpi-filter="total"><div class="crm-modern-summary-icon">◎</div><div><div class="label">Total Deals</div><div id="dealsKpiTotal" class="value">0</div><div class="sub">Visible deals</div></div></article>
+              <article class="card kpi crm-modern-summary-card deals-kpi-card" data-kpi-filter="open"><div class="crm-modern-summary-icon">◌</div><div><div class="label">Open Deals</div><div id="dealsKpiOpen" class="value">0</div><div class="sub">Active pipeline</div></div></article>
+              <article class="card kpi crm-modern-summary-card deals-kpi-card" data-kpi-filter="won"><div class="crm-modern-summary-icon">✓</div><div><div class="label">Won Deals</div><div id="dealsKpiWon" class="value">0</div><div id="dealsKpiWinRate" class="sub">0%</div></div></article>
+              <article class="card kpi crm-modern-summary-card deals-kpi-card" data-kpi-filter="pipeline-value"><div class="crm-modern-summary-icon">$</div><div><div class="label">Pipeline Value</div><div id="dealsKpiPipelineValue" class="value">0</div><div id="dealsKpiPipelineSub" class="sub">Visible estimated value</div></div></article>
+              <article class="card kpi crm-modern-summary-card deals-kpi-card" data-kpi-filter="lost"><div class="crm-modern-summary-icon">×</div><div><div class="label">Lost Deals</div><div id="dealsKpiLost" class="value">0</div><div class="sub">Stage matched lost</div></div></article>
+              <article class="card kpi crm-modern-summary-card deals-kpi-card" data-kpi-filter="high-priority"><div class="crm-modern-summary-icon">!</div><div><div class="label">High Priority</div><div id="dealsKpiHighPriority" class="value">0</div><div class="sub">High or urgent</div></div></article>
+              <article class="card kpi crm-modern-summary-card deals-kpi-card" data-kpi-filter="weighted-pipeline-value"><div class="crm-modern-summary-icon">%</div><div><div class="label">Weighted Pipeline</div><div id="dealsKpiWeightedPipelineValue" class="value">0</div><div id="dealsKpiWeightedPipelineSub" class="sub">Weighted value</div></div></article>
+              <article class="card kpi crm-modern-summary-card deals-kpi-card" data-kpi-filter="average-deal-size"><div class="crm-modern-summary-icon">Ø</div><div><div class="label">Avg Deal Size</div><div id="dealsKpiAverageDealSize" class="value">0</div><div id="dealsKpiAverageWonDealSize" class="sub">Avg won: 0</div></div></article>
+              <article class="card kpi crm-modern-summary-card deals-kpi-card" data-kpi-filter="converted-from-leads"><div class="crm-modern-summary-icon">↗</div><div><div class="label">From Leads</div><div id="dealsKpiConvertedFromLeads" class="value">0</div><div class="sub">Converted records</div></div></article>
+              <article class="card kpi crm-modern-summary-card deals-kpi-card" data-kpi-filter="unique-companies"><div class="crm-modern-summary-icon">▦</div><div><div class="label">Companies</div><div id="dealsKpiUniqueCompanies" class="value">0</div><div class="sub">Unique companies</div></div></article>
+              <article class="card kpi crm-modern-summary-card deals-kpi-card" data-kpi-filter="unique-assignees"><div class="crm-modern-summary-icon">♙</div><div><div class="label">Assignees</div><div id="dealsKpiUniqueAssignees" class="value">0</div><div class="sub">Unique owners</div></div></article>
             </div>
           </div>
-          <div id="dealsState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
-          <div class="table-wrap" role="region" aria-label="Deals table">
-            <table id="dealsTable">
-              <thead>
-                <tr>
-                  <th>Deal ID</th>
-                  <th>Lead ID</th>
-                  <th>Contact Name</th>
-                  <th>Company Name</th>
-                  <th>Phone</th>
-                  <th>Email</th>
-                  <th>Country</th>
-                  <th>Lead Source</th>
-                  <th>Service Interest</th>
-                  <th>Stage</th>
-                  <th>Next Follow-up</th>
-                  <th>Last Contacted</th>
-                  <th>Priority</th>
-                  <th>Estimated Value</th>
-                  <th>Currency</th>
-                  <th>Assigned To</th>
-                  <th>Converted At</th>
-                  <th>Converted By</th>
-                  <th>Notes</th>
-                  <th>Created At</th>
-                  <th>Updated At</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="dealsTbody"></tbody>
-            </table>
-          </div>
+
+          <section class="crm-modern-panel crm-modern-filter-card" aria-label="Deals filters">
+            <div class="crm-modern-panel-title"><span class="crm-modern-panel-icon">⌕</span><h2>Filters</h2></div>
+            <div class="crm-modern-filter-grid crm-modern-filter-grid-6">
+              <label class="crm-modern-filter-field crm-modern-filter-search" for="dealsSearchInput"><span>Search deals</span><div class="crm-modern-input-shell"><span aria-hidden="true">⌕</span><input id="dealsSearchInput" class="input" type="search" placeholder="Deal ID, lead, company, owner, notes..." aria-label="Search deals" /></div></label>
+              <label class="crm-modern-filter-field" for="dealsStageFilter"><span>Stage</span><select id="dealsStageFilter" class="select"><option>All</option></select></label>
+              <label class="crm-modern-filter-field" for="dealsPriorityFilter"><span>Priority</span><select id="dealsPriorityFilter" class="select"><option>All</option></select></label>
+              <label class="crm-modern-filter-field" for="dealsServiceInterestFilter"><span>Service Interest</span><select id="dealsServiceInterestFilter" class="select"><option>All</option></select></label>
+              <label class="crm-modern-filter-field" for="dealsLeadSourceFilter"><span>Lead Source</span><select id="dealsLeadSourceFilter" class="select"><option>All</option></select></label>
+              <label class="crm-modern-filter-field" for="dealsAssignedToFilter"><span>Assigned To</span><select id="dealsAssignedToFilter" class="select"><option>All</option></select></label>
+              <label class="crm-modern-filter-field" for="dealsStartDateFilter"><span>From Date</span><input id="dealsStartDateFilter" class="input" type="date" /></label>
+              <label class="crm-modern-filter-field" for="dealsEndDateFilter"><span>To Date</span><input id="dealsEndDateFilter" class="input" type="date" /></label>
+              <div class="crm-modern-filter-field crm-modern-filter-clear"><button id="dealsResetBtn" class="btn ghost crm-modern-clear-btn" type="button">↻ Clear Filters</button></div>
+            </div>
+          </section>
+
+          <section class="crm-modern-panel crm-modern-table-panel" aria-label="Deals list">
+            <div class="crm-modern-table-toolbar">
+              <div class="crm-modern-table-toolbar-left">
+                <button id="dealsExportCsvBtn" class="btn ghost crm-modern-export-btn" type="button"><span aria-hidden="true">⇩</span> Export CSV</button>
+                <button id="dealsRefreshBtn" class="btn ghost crm-modern-export-btn" type="button">↻ Refresh</button>
+              </div>
+            </div>
+            <div id="dealsState" class="muted crm-modern-state">No data loaded.</div>
+            <div class="table-wrap crm-modern-table-wrap" role="region" aria-label="Deals table">
+              <table id="dealsTable"><thead><tr><th>Deal ID</th><th>Lead ID</th><th>Contact Name</th><th>Company Name</th><th>Phone</th><th>Email</th><th>Country</th><th>Lead Source</th><th>Service Interest</th><th>Stage</th><th>Next Follow-up</th><th>Last Contacted</th><th>Priority</th><th>Estimated Value</th><th>Currency</th><th>Assigned To</th><th>Converted At</th><th>Converted By</th><th>Notes</th><th>Created At</th><th>Updated At</th><th>Actions</th></tr></thead><tbody id="dealsTbody"></tbody></table>
+            </div>
+            <div class="crm-modern-table-footer"><nav id="dealsPaginationControls" class="crm-modern-pagination" aria-label="Deals pagination"></nav></div>
+          </section>
+
+          <section class="crm-modern-breakdown-grid">
+            <article class="crm-modern-panel crm-modern-breakdown-card" aria-label="Deal stage distribution"><div class="crm-modern-panel-title"><span class="crm-modern-panel-icon">◷</span><h2>Stage distribution</h2></div><div id="dealsStageDistribution" class="deals-status-bars"></div></article>
+            <article class="crm-modern-panel crm-modern-breakdown-card" aria-label="Deal status distribution"><div class="crm-modern-panel-title"><span class="crm-modern-panel-icon">◉</span><h2>Status distribution</h2></div><div id="dealsStatusDistribution" class="deals-status-bars"></div></article>
+            <article class="crm-modern-panel crm-modern-breakdown-card" aria-label="Deal assignee breakdown"><div class="crm-modern-panel-title"><span class="crm-modern-panel-icon">♙</span><h2>Assignee breakdown</h2></div><div id="dealsAssigneeBreakdown" class="deals-status-bars"></div></article>
+            <article class="crm-modern-panel crm-modern-breakdown-card" aria-label="Deal service breakdown"><div class="crm-modern-panel-title"><span class="crm-modern-panel-icon">▦</span><h2>Service breakdown</h2></div><div id="dealsServiceBreakdown" class="deals-status-bars"></div></article>
+            <article class="crm-modern-panel crm-modern-breakdown-card" aria-label="Deal source breakdown"><div class="crm-modern-panel-title"><span class="crm-modern-panel-icon">↗</span><h2>Source breakdown</h2></div><div id="dealsSourceBreakdown" class="deals-status-bars"></div></article>
+          </section>
         </div>
       </section>
 
+      
       <section id="clientsView" class="view" role="tabpanel" aria-labelledby="clientsTab">
         <div class="card" aria-label="Clients intelligence hub">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
@@ -1882,114 +1822,94 @@ Sample:
         </div>
       </div>
 
-      <section id="proposalsView" class="view" role="tabpanel" aria-labelledby="proposalsTab">
-        <div class="card" aria-label="Proposals list">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+      <section id="proposalsView" class="view crm-modern-view" role="tabpanel" aria-labelledby="proposalsTab">
+        <div class="crm-modern-page-shell">
+          <header class="crm-modern-page-header">
             <div>
-              <strong>Proposals</strong>
-              <div class="muted">Proposal records synced from backend proposals resource.</div>
+              <h1>Proposals</h1>
+              <p>Manage proposal drafts, sent offers, accepted proposals, pricing, and customer conversion.</p>
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <input id="proposalsSearchInput" class="input" type="search" placeholder="Search proposal ID, title, deal, customer..." aria-label="Search proposals" />
-              <input id="proposalsCustomerFilter" class="input" type="search" placeholder="Customer filter..." aria-label="Filter by customer" />
-              <select id="proposalsStatusFilter" class="select" aria-label="Filter by proposal status">
-                <option>All</option>
-              </select>
-              <button id="proposalsExportCsvBtn" class="btn ghost sm" type="button">Export CSV</button>
-              <button id="proposalsRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
-              <button id="proposalsCreateBtn" class="btn sm" type="button">Create Proposal</button>
-            </div>
-          </div>
-          <div id="proposalsAnalytics" class="deals-analytics" aria-label="Proposals analytics widgets">
-            <div id="proposalsAnalyticsGrid" class="grid deals-analytics-grid">
-              <article class="card kpi deals-kpi-card" data-kpi-filter="total"><div class="label">Visible Proposals</div><div id="proposalsKpiTotal" class="value">0</div><div class="sub">Rows after filters</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="draft"><div class="label">Draft</div><div id="proposalsKpiDraft" class="value">0</div><div class="sub">Status matched as draft</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="sent"><div class="label">Sent</div><div id="proposalsKpiSent" class="value">0</div><div class="sub">Status matched as sent</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="approved"><div class="label">Accepted</div><div id="proposalsKpiApproved" class="value">0</div><div class="sub">Status matched as accepted</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="rejected"><div class="label">Rejected</div><div id="proposalsKpiRejected" class="value">0</div><div class="sub">Status matched as rejected</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="expired"><div class="label">Expired</div><div id="proposalsKpiExpired" class="value">0</div><div class="sub">Status matched as expired</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="unique-customers"><div class="label">Unique Customers</div><div id="proposalsKpiUniqueCustomers" class="value">0</div><div class="sub">Distinct customer_name</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="linked-deals"><div class="label">Linked Deals</div><div id="proposalsKpiLinkedDeals" class="value">0</div><div class="sub">Rows with deal_id</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="avg-grand-total"><div class="label">Avg Grand Total</div><div id="proposalsKpiAvgGrandTotal" class="value">0</div><div class="sub">Average grand total</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="grand-total"><div class="label">Total Grand Value</div><div id="proposalsKpiGrandTotal" class="value">0</div><div id="proposalsKpiGrandTotalSub" class="sub">Sum of grand total</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="saas-total"><div class="label">Total SaaS Value</div><div id="proposalsKpiSaasTotal" class="value">0</div><div id="proposalsKpiSaasTotalSub" class="sub">Sum of SaaS totals</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="one-time-total"><div class="label">Total One-Time Value</div><div id="proposalsKpiOneTimeTotal" class="value">0</div><div id="proposalsKpiOneTimeTotalSub" class="sub">Sum of one-time totals</div></article>
-            </div>
-            <div class="deals-breakdown-grid">
-              <article class="card deals-breakdown-card" aria-label="Proposal status distribution">
-                <div class="deals-breakdown-title">Status distribution</div>
-                <div id="proposalsStatusDistribution" class="deals-status-bars"></div>
-              </article>
-              <article class="card deals-breakdown-card" aria-label="Proposal currency distribution">
-                <div class="deals-breakdown-title">Currency distribution</div>
-                <div id="proposalsCurrencyDistribution" class="deals-status-bars"></div>
-              </article>
-              <article class="card deals-breakdown-card" aria-label="Top proposal generators">
-                <div class="deals-breakdown-title">Top generators</div>
-                <div id="proposalsGeneratedByDistribution" class="deals-status-bars"></div>
-              </article>
+            <button id="proposalsCreateBtn" class="btn crm-modern-primary-btn" type="button"><span aria-hidden="true">＋</span> Add Proposal</button>
+          </header>
+
+          <div id="proposalsAnalytics" class="crm-modern-analytics" aria-label="Proposals analytics widgets">
+            <div id="proposalsAnalyticsGrid" class="crm-modern-summary-grid deals-analytics-grid">
+              <article class="card kpi crm-modern-summary-card deals-kpi-card" data-kpi-filter="total"><div class="crm-modern-summary-icon">◎</div><div><div class="label">Visible Proposals</div><div id="proposalsKpiTotal" class="value">0</div><div class="sub">Rows after filters</div></div></article>
+              <article class="card kpi crm-modern-summary-card deals-kpi-card" data-kpi-filter="draft"><div class="crm-modern-summary-icon">□</div><div><div class="label">Draft</div><div id="proposalsKpiDraft" class="value">0</div><div class="sub">Draft status</div></div></article>
+              <article class="card kpi crm-modern-summary-card deals-kpi-card" data-kpi-filter="sent"><div class="crm-modern-summary-icon">↗</div><div><div class="label">Sent</div><div id="proposalsKpiSent" class="value">0</div><div class="sub">Sent to client</div></div></article>
+              <article class="card kpi crm-modern-summary-card deals-kpi-card" data-kpi-filter="approved"><div class="crm-modern-summary-icon">✓</div><div><div class="label">Accepted</div><div id="proposalsKpiApproved" class="value">0</div><div class="sub">Accepted proposals</div></div></article>
+              <article class="card kpi crm-modern-summary-card deals-kpi-card" data-kpi-filter="rejected"><div class="crm-modern-summary-icon">×</div><div><div class="label">Rejected</div><div id="proposalsKpiRejected" class="value">0</div><div class="sub">Rejected proposals</div></div></article>
+              <article class="card kpi crm-modern-summary-card deals-kpi-card" data-kpi-filter="expired"><div class="crm-modern-summary-icon">⌛</div><div><div class="label">Expired</div><div id="proposalsKpiExpired" class="value">0</div><div class="sub">Past validity</div></div></article>
+              <article class="card kpi crm-modern-summary-card deals-kpi-card" data-kpi-filter="unique-customers"><div class="crm-modern-summary-icon">▦</div><div><div class="label">Unique Customers</div><div id="proposalsKpiUniqueCustomers" class="value">0</div><div class="sub">Distinct customers</div></div></article>
+              <article class="card kpi crm-modern-summary-card deals-kpi-card" data-kpi-filter="linked-deals"><div class="crm-modern-summary-icon">↔</div><div><div class="label">Linked Deals</div><div id="proposalsKpiLinkedDeals" class="value">0</div><div class="sub">Rows with deal ID</div></div></article>
+              <article class="card kpi crm-modern-summary-card deals-kpi-card" data-kpi-filter="avg-grand-total"><div class="crm-modern-summary-icon">Ø</div><div><div class="label">Avg Grand Total</div><div id="proposalsKpiAvgGrandTotal" class="value">0</div><div class="sub">Average grand total</div></div></article>
+              <article class="card kpi crm-modern-summary-card deals-kpi-card" data-kpi-filter="grand-total"><div class="crm-modern-summary-icon">$</div><div><div class="label">Total Grand Value</div><div id="proposalsKpiGrandTotal" class="value">0</div><div id="proposalsKpiGrandTotalSub" class="sub">Sum of grand total</div></div></article>
+              <article class="card kpi crm-modern-summary-card deals-kpi-card" data-kpi-filter="saas-total"><div class="crm-modern-summary-icon">S</div><div><div class="label">Total SaaS Value</div><div id="proposalsKpiSaasTotal" class="value">0</div><div id="proposalsKpiSaasTotalSub" class="sub">Sum of SaaS totals</div></div></article>
+              <article class="card kpi crm-modern-summary-card deals-kpi-card" data-kpi-filter="one-time-total"><div class="crm-modern-summary-icon">1</div><div><div class="label">One-Time Value</div><div id="proposalsKpiOneTimeTotal" class="value">0</div><div id="proposalsKpiOneTimeTotalSub" class="sub">Sum of one-time totals</div></div></article>
             </div>
           </div>
-          <div id="proposalsState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
-          <div class="table-wrap" role="region" aria-label="Proposals table">
-            <table id="proposalsTable">
-              <thead>
-                <tr>
-                  <th>Proposal ID</th>
-                  <th>Ref Number</th>
-                  <th>Proposal Title</th>
-                  <th>Customer Name</th>
-                  <th>Deal ID</th>
-                  <th>Status</th>
-                  <th>Currency</th>
-                  <th>SaaS Total</th>
-                  <th>One Time Total</th>
-                  <th>Grand Total</th>
-                  <th>Proposal Date</th>
-                  <th>Valid Until</th>
-                  <th>Generated By</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="proposalsTbody"></tbody>
-            </table>
-          </div>
+
+          <section class="crm-modern-panel crm-modern-filter-card" aria-label="Proposals filters">
+            <div class="crm-modern-panel-title"><span class="crm-modern-panel-icon">⌕</span><h2>Filters</h2></div>
+            <div class="crm-modern-filter-grid crm-modern-filter-grid-4">
+              <label class="crm-modern-filter-field crm-modern-filter-search" for="proposalsSearchInput"><span>Search proposals</span><div class="crm-modern-input-shell"><span aria-hidden="true">⌕</span><input id="proposalsSearchInput" class="input" type="search" placeholder="Proposal ID, title, deal, customer..." aria-label="Search proposals" /></div></label>
+              <label class="crm-modern-filter-field" for="proposalsCustomerFilter"><span>Customer</span><input id="proposalsCustomerFilter" class="input" type="search" placeholder="Customer filter..." aria-label="Filter by customer" /></label>
+              <label class="crm-modern-filter-field" for="proposalsStatusFilter"><span>Status</span><select id="proposalsStatusFilter" class="select" aria-label="Filter by proposal status"><option>All</option></select></label>
+            </div>
+          </section>
+
+          <section class="crm-modern-panel crm-modern-table-panel" aria-label="Proposals list">
+            <div class="crm-modern-table-toolbar"><div class="crm-modern-table-toolbar-left"><button id="proposalsExportCsvBtn" class="btn ghost crm-modern-export-btn" type="button"><span aria-hidden="true">⇩</span> Export CSV</button><button id="proposalsRefreshBtn" class="btn ghost crm-modern-export-btn" type="button">↻ Refresh</button></div></div>
+            <div id="proposalsState" class="muted crm-modern-state">No data loaded.</div>
+            <div class="table-wrap crm-modern-table-wrap" role="region" aria-label="Proposals table">
+              <table id="proposalsTable"><thead><tr><th>Proposal ID</th><th>Ref Number</th><th>Proposal Title</th><th>Customer Name</th><th>Deal ID</th><th>Status</th><th>Currency</th><th>SaaS Total</th><th>One Time Total</th><th>Grand Total</th><th>Proposal Date</th><th>Valid Until</th><th>Generated By</th><th>Actions</th></tr></thead><tbody id="proposalsTbody"></tbody></table>
+            </div>
+            <div class="crm-modern-table-footer"><nav id="proposalsPaginationControls" class="crm-modern-pagination" aria-label="Proposals pagination"></nav></div>
+          </section>
+
+          <section class="crm-modern-breakdown-grid">
+            <article class="crm-modern-panel crm-modern-breakdown-card" aria-label="Proposal status distribution"><div class="crm-modern-panel-title"><span class="crm-modern-panel-icon">◷</span><h2>Status distribution</h2></div><div id="proposalsStatusDistribution" class="deals-status-bars"></div></article>
+            <article class="crm-modern-panel crm-modern-breakdown-card" aria-label="Proposal currency distribution"><div class="crm-modern-panel-title"><span class="crm-modern-panel-icon">$</span><h2>Currency distribution</h2></div><div id="proposalsCurrencyDistribution" class="deals-status-bars"></div></article>
+            <article class="crm-modern-panel crm-modern-breakdown-card" aria-label="Top proposal generators"><div class="crm-modern-panel-title"><span class="crm-modern-panel-icon">♙</span><h2>Top generators</h2></div><div id="proposalsGeneratedByDistribution" class="deals-status-bars"></div></article>
+          </section>
         </div>
       </section>
 
-      <section id="agreementsView" class="view" role="tabpanel" aria-labelledby="agreementsTab">
-        <div class="grid cols-4" id="agreementsSummary" aria-live="polite"></div>
-        <div class="card" aria-label="Agreements list">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+      
+      <section id="agreementsView" class="view crm-modern-view" role="tabpanel" aria-labelledby="agreementsTab">
+        <div class="crm-modern-page-shell">
+          <header class="crm-modern-page-header">
             <div>
-              <strong>Agreements</strong>
-              <div class="muted">Agreement records synced from backend agreements resource.</div>
+              <h1>Agreements</h1>
+              <p>Manage signed contracts, proposal links, commercial totals, billing setup, and invoice creation.</p>
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <input id="agreementsSearchInput" class="input" type="search" placeholder="Search ID, number, title, customer, contact..." aria-label="Search agreements" />
-              <select id="agreementsStatusFilter" class="select" aria-label="Filter by agreement status"><option>All</option></select>
-              <input id="agreementsProposalDealFilter" class="input" type="search" placeholder="Proposal ID or Deal ID" aria-label="Filter by proposal or deal" />
-              <input id="agreementsCreateFromProposalInput" class="input" type="text" placeholder="Proposal ID (e.g. PROP-0001)" aria-label="Proposal ID to create agreement" />
-              <button id="agreementsExportCsvBtn" class="btn ghost sm" type="button">Export CSV</button>
-              <button id="agreementsRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
-              <button id="agreementsCreateBtn" class="btn sm" type="button">Create Agreement</button>
-              <button id="agreementsImportOldClientBtn" class="btn ghost sm" type="button" data-import-old-client-agreement="true" style="display:none;" hidden>Import Old Client Agreement</button>
+            <button id="agreementsCreateBtn" class="btn crm-modern-primary-btn" type="button"><span aria-hidden="true">＋</span> Add Agreement</button>
+          </header>
+
+          <div id="agreementsSummary" class="crm-modern-summary-grid" aria-live="polite"></div>
+
+          <section class="crm-modern-panel crm-modern-filter-card" aria-label="Agreements filters">
+            <div class="crm-modern-panel-title"><span class="crm-modern-panel-icon">⌕</span><h2>Filters</h2></div>
+            <div class="crm-modern-filter-grid crm-modern-filter-grid-5">
+              <label class="crm-modern-filter-field crm-modern-filter-search" for="agreementsSearchInput"><span>Search agreements</span><div class="crm-modern-input-shell"><span aria-hidden="true">⌕</span><input id="agreementsSearchInput" class="input" type="search" placeholder="ID, number, title, customer, contact..." aria-label="Search agreements" /></div></label>
+              <label class="crm-modern-filter-field" for="agreementsStatusFilter"><span>Status</span><select id="agreementsStatusFilter" class="select" aria-label="Filter by agreement status"><option>All</option></select></label>
+              <label class="crm-modern-filter-field" for="agreementsProposalDealFilter"><span>Proposal / Deal</span><input id="agreementsProposalDealFilter" class="input" type="search" placeholder="Proposal ID or Deal ID" aria-label="Filter by proposal or deal" /></label>
+              <label class="crm-modern-filter-field" for="agreementsCreateFromProposalInput"><span>Create from Proposal</span><input id="agreementsCreateFromProposalInput" class="input" type="text" placeholder="Proposal ID (e.g. PROP-0001)" aria-label="Proposal ID to create agreement" /></label>
             </div>
-          </div>
-          <div id="agreementsState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
-          <div class="table-wrap" role="region" aria-label="Agreements table">
-            <table id="agreementsTable">
-              <thead>
-                <tr>
-                  <th>Agreement ID</th><th>Agreement Number</th><th>Title</th><th>Customer</th><th>Proposal ID</th><th>Deal ID</th><th>Start Date</th><th>Agreement Length</th><th>Billing Frequency</th><th>Payment Term</th><th>Currency</th><th>Grand Total</th><th>Status</th><th>Updated At</th><th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="agreementsTbody"></tbody>
-            </table>
-          </div>
+          </section>
+
+          <section class="crm-modern-panel crm-modern-table-panel" aria-label="Agreements list">
+            <div class="crm-modern-table-toolbar"><div class="crm-modern-table-toolbar-left"><button id="agreementsExportCsvBtn" class="btn ghost crm-modern-export-btn" type="button"><span aria-hidden="true">⇩</span> Export CSV</button><button id="agreementsRefreshBtn" class="btn ghost crm-modern-export-btn" type="button">↻ Refresh</button><button id="agreementsImportOldClientBtn" class="btn ghost crm-modern-export-btn" type="button" data-import-old-client-agreement="true" style="display:none;" hidden>Import Old Client Agreement</button></div></div>
+            <div id="agreementsState" class="muted crm-modern-state">No data loaded.</div>
+            <div class="table-wrap crm-modern-table-wrap" role="region" aria-label="Agreements table">
+              <table id="agreementsTable"><thead><tr><th>Agreement ID</th><th>Agreement Number</th><th>Title</th><th>Customer</th><th>Proposal ID</th><th>Deal ID</th><th>Start Date</th><th>Agreement Length</th><th>Billing Frequency</th><th>Payment Term</th><th>Currency</th><th>Grand Total</th><th>Status</th><th>Updated At</th><th>Actions</th></tr></thead><tbody id="agreementsTbody"></tbody></table>
+            </div>
+            <div class="crm-modern-table-footer"><nav id="agreementsPagination" class="crm-modern-pagination" aria-label="Agreements pagination"></nav></div>
+          </section>
         </div>
       </section>
 
+      
       <section id="operationsOnboardingView" class="view" role="tabpanel" aria-labelledby="operationsOnboardingTab">
         <div class="grid cols-4" id="operationsOnboardingSummary" aria-live="polite"></div>
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin:8px 0;flex-wrap:wrap;">
@@ -2605,62 +2525,38 @@ Sample:
         </div>
       </div>
 
-      <section id="proposalCatalogView" class="view" role="tabpanel" aria-labelledby="proposalCatalogTab">
-        <div class="grid cols-4" id="proposalCatalogSummary" aria-live="polite"></div>
-        <div class="card" aria-label="Proposal catalog list">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+      <section id="proposalCatalogView" class="view crm-modern-view" role="tabpanel" aria-labelledby="proposalCatalogTab">
+        <div class="crm-modern-page-shell">
+          <header class="crm-modern-page-header">
             <div>
-              <strong>Proposal Catalog</strong>
-              <div class="muted">Reusable proposal items for annual SaaS and one-time fee entries.</div>
+              <h1>Products Catalog</h1>
+              <p>Manage reusable product catalog items for SaaS, one-time fees, hardware, pricing, and discount defaults.</p>
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <input id="proposalCatalogSearchInput" class="input" type="search" placeholder="Search item, category, notes..." aria-label="Search proposal catalog items" />
-              <select id="proposalCatalogSectionFilter" class="select" aria-label="Filter by section">
-                <option value="All">All Sections</option>
-                <option value="annual_saas">annual_saas</option>
-                <option value="one_time_fee">one_time_fee</option>
-                <option value="hardware">hardware</option>
-              </select>
-              <select id="proposalCatalogActiveFilter" class="select" aria-label="Filter by active state">
-                <option value="All">All Statuses</option>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-              </select>
-              <select id="proposalCatalogSortFilter" class="select" aria-label="Sort proposal catalog">
-                <option value="updated_desc">Updated (Newest)</option>
-                <option value="created_desc">Created (Newest)</option>
-                <option value="sort_order_asc">Sort Order (Asc)</option>
-              </select>
-              <button id="proposalCatalogRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
-              <button id="proposalCatalogCreateBtn" class="btn sm" type="button">Add Item</button>
+            <button id="proposalCatalogCreateBtn" class="btn crm-modern-primary-btn" type="button"><span aria-hidden="true">＋</span> Add Item</button>
+          </header>
+
+          <div id="proposalCatalogSummary" class="crm-modern-summary-grid" aria-live="polite"></div>
+
+          <section class="crm-modern-panel crm-modern-filter-card" aria-label="Products catalog filters">
+            <div class="crm-modern-panel-title"><span class="crm-modern-panel-icon">⌕</span><h2>Filters</h2></div>
+            <div class="crm-modern-filter-grid crm-modern-filter-grid-5">
+              <label class="crm-modern-filter-field crm-modern-filter-search" for="proposalCatalogSearchInput"><span>Search items</span><div class="crm-modern-input-shell"><span aria-hidden="true">⌕</span><input id="proposalCatalogSearchInput" class="input" type="search" placeholder="Item, category, notes..." aria-label="Search proposal catalog items" /></div></label>
+              <label class="crm-modern-filter-field" for="proposalCatalogSectionFilter"><span>Section</span><select id="proposalCatalogSectionFilter" class="select" aria-label="Filter by section"><option value="All">All Sections</option><option value="annual_saas">annual_saas</option><option value="one_time_fee">one_time_fee</option><option value="hardware">hardware</option></select></label>
+              <label class="crm-modern-filter-field" for="proposalCatalogActiveFilter"><span>Status</span><select id="proposalCatalogActiveFilter" class="select" aria-label="Filter by active state"><option value="All">All Statuses</option><option value="active">Active</option><option value="inactive">Inactive</option></select></label>
+              <label class="crm-modern-filter-field" for="proposalCatalogSortFilter"><span>Sort</span><select id="proposalCatalogSortFilter" class="select" aria-label="Sort proposal catalog"><option value="updated_desc">Updated (Newest)</option><option value="created_desc">Created (Newest)</option><option value="sort_order_asc">Sort Order (Asc)</option></select></label>
             </div>
-          </div>
-          <div id="proposalCatalogState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
-          <div class="table-wrap" role="region" aria-label="Proposal catalog table">
-            <table id="proposalCatalogTable">
-              <thead>
-                <tr>
-                  <th>Catalog ID</th>
-                  <th>Active</th>
-                  <th>Section</th>
-                  <th>Category</th>
-                  <th>Item Name</th>
-                  <th>Default Location</th>
-                  <th>Unit Price</th>
-                  <th>Discount %</th>
-                  <th>Quantity</th>
-                  <th>Sort Order</th>
-                  <th>Updated At</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="proposalCatalogTbody"></tbody>
-            </table>
-          </div>
+          </section>
+
+          <section class="crm-modern-panel crm-modern-table-panel" aria-label="Products catalog list">
+            <div class="crm-modern-table-toolbar"><div class="crm-modern-table-toolbar-left"><button id="proposalCatalogRefreshBtn" class="btn ghost crm-modern-export-btn" type="button">↻ Refresh</button></div></div>
+            <div id="proposalCatalogState" class="muted crm-modern-state">No data loaded.</div>
+            <div class="table-wrap crm-modern-table-wrap" role="region" aria-label="Products catalog table">
+              <table id="proposalCatalogTable"><thead><tr><th>Catalog ID</th><th>Active</th><th>Section</th><th>Category</th><th>Item Name</th><th>Default Location</th><th>Unit Price</th><th>Discount %</th><th>Quantity</th><th>Sort Order</th><th>Updated At</th><th>Actions</th></tr></thead><tbody id="proposalCatalogTbody"></tbody></table>
+            </div>
+            <div class="crm-modern-table-footer"><nav id="proposalCatalogPagination" class="crm-modern-pagination" aria-label="Products catalog pagination"></nav></div>
+          </section>
         </div>
       </section>
-        </div>
-      </div>
     </main>
   </div>
 
@@ -4451,12 +4347,12 @@ Sample:
   <script src="crm-form-selectors.js?v=20260609-final-company-contact-fix"></script>
   <script src="ui.js?v=20260605-csm-notes"></script>
   <script src="record-details-drawer.js?v=20260626-shared-right-panel"></script>
-  <script src="leads.js?v=20260626-lead-detail-drawer"></script>
+  <script src="leads.js?v=20260626-modern-crm-ui"></script>
   <script src="companies.js?v=20260626-company-ui-refresh"></script>
-  <script src="contacts.js?v=20260611-direct-communication"></script>
-  <script src="deals.js?v=20260608-company-options-fresh"></script>
-  <script src="proposals.js?v=v17-agreement-today-helper"></script>
-  <script src="agreements.js?v=v17-agreement-today-helper"></script>
+  <script src="contacts.js?v=20260626-modern-crm-ui"></script>
+  <script src="deals.js?v=20260626-modern-crm-ui"></script>
+  <script src="proposals.js?v=20260626-modern-crm-ui"></script>
+  <script src="agreements.js?v=20260626-modern-crm-ui"></script>
   <script src="operations-onboarding.js?v=20260427-allpwa1"></script>
   <script src="invoices.js?v=20260512-final-isPoc-click-fix"></script>
   <script src="receipts.js?v=20260427-allpwa1"></script>
@@ -4466,7 +4362,7 @@ Sample:
   <script src="biners.js?v=20260611-entry-save-fix"></script>
   <script src="lifecycle-analytics.js?v=20260610-lifecycle-metrics-source-truth"></script>
   <script src="clients.js?v=20260611-direct-communication"></script>
-  <script src="proposal-catalog.js?v=20260427-allpwa1"></script>
+  <script src="proposal-catalog.js?v=20260626-modern-crm-ui"></script>
   <script src="communication-centre.js?v=20260611-direct-communication"></script>
   <script src="events.js?v=20260605-cancelled-title1"></script>
   <script src="notifications.js?v=20260605-cancelled-title1"></script>
@@ -4479,6 +4375,6 @@ Sample:
   <script src="csm-service.js?v=20260605-csm-uuid-update"></script>
   <script src="ai-insights-service.js?v=20260427-allpwa1"></script>
   <script src="ai-assistant.js?v=20260526-ai-assistant-v1"></script>
-  <script src="app.js?v=20260611-direct-communication"></script>
+  <script src="app.js?v=20260626-modern-crm-ui"></script>
 </body>
 </html>
