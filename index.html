@@ -180,47 +180,8 @@
       </div>
 
       <div id="dealsFiltersPanel" style="display:none;">
-        <h3>Deals Filters</h3>
-        <div class="filter-group" style="margin-bottom:10px;">
-          <div class="filter-row">
-            <label class="muted" for="dealsSidebarSearchInput">Search</label>
-            <input id="dealsSidebarSearchInput" class="input" type="search" placeholder="Deal ID, lead, company, owner, notes..." />
-          </div>
-        </div>
-
-        <div class="filter-group" style="margin-bottom:10px;">
-          <div class="filter-row">
-            <label class="muted" for="dealsStageFilter">Stage</label>
-            <select id="dealsStageFilter" class="select"><option>All</option></select>
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="dealsPriorityFilter">Priority</label>
-            <select id="dealsPriorityFilter" class="select"><option>All</option></select>
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="dealsServiceInterestFilter">Service Interest</label>
-            <select id="dealsServiceInterestFilter" class="select"><option>All</option></select>
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="dealsLeadSourceFilter">Lead Source</label>
-            <select id="dealsLeadSourceFilter" class="select"><option>All</option></select>
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="dealsAssignedToFilter">Assigned To</label>
-            <select id="dealsAssignedToFilter" class="select"><option>All</option></select>
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="dealsStartDateFilter">Converted From</label>
-            <input id="dealsStartDateFilter" class="input" type="date" />
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="dealsEndDateFilter">Converted To</label>
-            <input id="dealsEndDateFilter" class="input" type="date" />
-          </div>
-        </div>
-
         <div class="filter-group">
-          <button id="dealsResetBtn" class="btn ghost" type="button">Reset Deals Filters</button>
+          <span class="muted">Deals filters are available inside the Deals workspace.</span>
         </div>
       </div>
     </aside>
@@ -1518,88 +1479,146 @@ Sample:
         </section>
       </div>
 
-      <section id="dealsView" class="view" role="tabpanel" aria-labelledby="dealsTab">
-        <div class="card" aria-label="Deals list">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+      <section id="dealsView" class="view deals-modern-workspace" role="tabpanel" aria-labelledby="dealsTab">
+        <div class="deals-page-shell" aria-label="Deals list">
+          <header class="deals-page-header">
             <div>
-              <strong>Deals</strong>
-              <div class="muted">Converted opportunities synced from backend deals resource.</div>
+              <h1>Deals</h1>
+              <p>Manage your sales opportunities and pipeline.</p>
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <input id="dealsSearchInput" class="input" type="search"
-                     placeholder="Search deal, lead, company, owner, notes..." aria-label="Search deals" />
-              <button id="dealsExportCsvBtn" class="btn ghost sm" type="button">Export CSV</button>
-              <button id="dealsCreateBtn" class="btn sm" type="button">Create Deal</button>
-              <button id="dealsRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
+            <div class="deals-header-actions">
+              <button id="dealsRefreshBtn" class="btn ghost sm deals-soft-btn" type="button">↻ Refresh</button>
+              <button id="dealsExportCsvBtn" class="btn ghost sm deals-soft-btn" type="button">⇩ Export CSV</button>
+              <button id="dealsCreateBtn" class="btn sm deals-primary-btn" type="button">+ Create Deal</button>
             </div>
-          </div>
+          </header>
+
           <div id="dealsAnalytics" class="deals-analytics" aria-label="Deals analytics widgets">
             <div id="dealsAnalyticsGrid" class="grid deals-analytics-grid">
-              <article class="card kpi deals-kpi-card" data-kpi-filter="total"><div class="label">Total Deals</div><div id="dealsKpiTotal" class="value">0</div><div class="sub">Visible deals</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="open"><div class="label">Open Deals</div><div id="dealsKpiOpen" class="value">0</div><div class="sub">Open / Active / In Progress</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="won"><div class="label">Won Deals</div><div id="dealsKpiWon" class="value">0</div><div class="sub">Stage matched as won</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="lost"><div class="label">Lost Deals</div><div id="dealsKpiLost" class="value">0</div><div class="sub">Stage matched as lost</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="high-priority"><div class="label">High Priority Deals</div><div id="dealsKpiHighPriority" class="value">0</div><div class="sub">High or Urgent</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="pipeline-value"><div class="label">Total Pipeline Value</div><div id="dealsKpiPipelineValue" class="value">0</div><div id="dealsKpiPipelineSub" class="sub">Visible estimated value</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="weighted-pipeline"><div class="label">Weighted Pipeline</div><div id="dealsKpiWeightedPipelineValue" class="value">0</div><div id="dealsKpiWeightedPipelineSub" class="sub">Stage probability weighted</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="win-rate"><div class="label">Win Rate</div><div id="dealsKpiWinRate" class="value">0%</div><div class="sub">Won / (Won + Lost)</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="average-deal-size"><div class="label">Average Deal Size</div><div id="dealsKpiAverageDealSize" class="value">0</div><div class="sub">Across valid values</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="average-won-deal-size"><div class="label">Average Won Deal Size</div><div id="dealsKpiAverageWonDealSize" class="value">0</div><div class="sub">Won deals only</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="converted-from-leads"><div class="label">Converted from Leads</div><div id="dealsKpiConvertedFromLeads" class="value">0</div><div class="sub">lead_id or converted_at</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="unique-companies"><div class="label">Unique Companies</div><div id="dealsKpiUniqueCompanies" class="value">0</div><div class="sub">Distinct companies</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="unique-assignees"><div class="label">Unique Assignees</div><div id="dealsKpiUniqueAssignees" class="value">0</div><div class="sub">Distinct owners</div></article>
+              <article class="deals-kpi-card deals-kpi-card--violet" data-kpi-filter="total">
+                <div class="deals-kpi-icon" aria-hidden="true">👥</div>
+                <div class="deals-kpi-content"><div class="label">Total Deals</div><div id="dealsKpiTotal" class="value">0</div><div class="sub">All deals</div></div>
+              </article>
+              <article class="deals-kpi-card deals-kpi-card--blue" data-kpi-filter="open">
+                <div class="deals-kpi-icon" aria-hidden="true">💼</div>
+                <div class="deals-kpi-content"><div class="label">Open Deals</div><div id="dealsKpiOpen" class="value">0</div><div class="sub">Open / Active / In Progress</div></div>
+              </article>
+              <article class="deals-kpi-card deals-kpi-card--green" data-kpi-filter="won">
+                <div class="deals-kpi-icon" aria-hidden="true">✓</div>
+                <div class="deals-kpi-content"><div class="label">Won Deals</div><div id="dealsKpiWon" class="value">0</div><div class="sub">Stage matched as won</div></div>
+              </article>
+              <article class="deals-kpi-card deals-kpi-card--rose" data-kpi-filter="lost">
+                <div class="deals-kpi-icon" aria-hidden="true">⊗</div>
+                <div class="deals-kpi-content"><div class="label">Lost Deals</div><div id="dealsKpiLost" class="value">0</div><div class="sub">Stage matched as lost</div></div>
+              </article>
+              <article class="deals-kpi-card deals-kpi-card--orange" data-kpi-filter="high-priority">
+                <div class="deals-kpi-icon" aria-hidden="true">⚑</div>
+                <div class="deals-kpi-content"><div class="label">High Priority Deals</div><div id="dealsKpiHighPriority" class="value">0</div><div class="sub">High or Urgent</div></div>
+              </article>
+              <article class="deals-kpi-card deals-kpi-card--money" data-kpi-filter="pipeline-value">
+                <div class="deals-kpi-icon" aria-hidden="true">$</div>
+                <div class="deals-kpi-content"><div class="label">Total Pipeline Value</div><div id="dealsKpiPipelineValue" class="value">0</div><div id="dealsKpiPipelineSub" class="sub">Visible estimated value</div></div>
+              </article>
+              <article class="deals-kpi-card deals-kpi-card--purple" data-kpi-filter="weighted-pipeline">
+                <div class="deals-kpi-icon" aria-hidden="true">◔</div>
+                <div class="deals-kpi-content"><div class="label">Weighted Pipeline</div><div id="dealsKpiWeightedPipelineValue" class="value">0</div><div id="dealsKpiWeightedPipelineSub" class="sub">Stage probability weighted</div></div>
+              </article>
+              <article class="deals-kpi-card deals-kpi-card--percent" data-kpi-filter="win-rate">
+                <div class="deals-kpi-icon" aria-hidden="true">%</div>
+                <div class="deals-kpi-content"><div class="label">Win Rate</div><div id="dealsKpiWinRate" class="value">0%</div><div class="sub">Won / (Won + Lost)</div></div>
+              </article>
+              <article class="deals-kpi-card deals-kpi-card--amber" data-kpi-filter="average-deal-size">
+                <div class="deals-kpi-icon" aria-hidden="true">▥</div>
+                <div class="deals-kpi-content"><div class="label">Average Deal Size</div><div id="dealsKpiAverageDealSize" class="value">0</div><div class="sub">Across valid values</div></div>
+              </article>
+              <article class="deals-kpi-card deals-kpi-card--teal" data-kpi-filter="converted-from-leads">
+                <div class="deals-kpi-icon" aria-hidden="true">⇄</div>
+                <div class="deals-kpi-content"><div class="label">Converted From Leads</div><div id="dealsKpiConvertedFromLeads" class="value">0</div><div class="sub">Leads / # converted</div></div>
+              </article>
             </div>
-            <div class="deals-breakdown-grid">
-              <article class="card deals-breakdown-card" aria-label="Deals stage distribution">
-                <div class="deals-breakdown-title">Stage distribution</div>
-                <div id="dealsStageDistribution" class="deals-status-bars"></div>
-              </article>
-              <article class="card deals-breakdown-card" aria-label="Deals assignee breakdown">
-                <div class="deals-breakdown-title">Assignee breakdown</div>
-                <div id="dealsAssigneeBreakdown" class="deals-status-bars"></div>
-              </article>
-              <article class="card deals-breakdown-card" aria-label="Deals service interest breakdown">
-                <div class="deals-breakdown-title">Top services</div>
-                <div id="dealsServiceBreakdown" class="deals-status-bars"></div>
-              </article>
-              <article class="card deals-breakdown-card" aria-label="Deals lead source breakdown">
-                <div class="deals-breakdown-title">Lead sources</div>
-                <div id="dealsSourceBreakdown" class="deals-status-bars"></div>
-              </article>
+            <div style="display:none" aria-hidden="true">
+              <span id="dealsKpiAverageWonDealSize">0</span>
+              <span id="dealsKpiUniqueCompanies">0</span>
+              <span id="dealsKpiUniqueAssignees">0</span>
             </div>
           </div>
-          <div id="dealsState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
-          <div class="table-wrap" role="region" aria-label="Deals table">
-            <table id="dealsTable">
-              <thead>
-                <tr>
-                  <th>Deal ID</th>
-                  <th>Lead ID</th>
-                  <th>Contact Name</th>
-                  <th>Company Name</th>
-                  <th>Phone</th>
-                  <th>Email</th>
-                  <th>Country</th>
-                  <th>Lead Source</th>
-                  <th>Service Interest</th>
-                  <th>Stage</th>
-                  <th>Next Follow-up</th>
-                  <th>Last Contacted</th>
-                  <th>Priority</th>
-                  <th>Estimated Value</th>
-                  <th>Currency</th>
-                  <th>Assigned To</th>
-                  <th>Converted At</th>
-                  <th>Converted By</th>
-                  <th>Notes</th>
-                  <th>Created At</th>
-                  <th>Updated At</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="dealsTbody"></tbody>
-            </table>
-          </div>
+
+          <section class="deals-filter-card" aria-label="Deals filters">
+            <div class="deals-panel-title">
+              <span class="deals-panel-icon" aria-hidden="true">⌁</span>
+              <h2>Filters</h2>
+            </div>
+            <div class="deals-filter-grid">
+              <label class="deals-filter-field deals-filter-search" for="dealsSidebarSearchInput">
+                <span>Search deals</span>
+                <div class="deals-input-shell"><span aria-hidden="true">⌕</span><input id="dealsSidebarSearchInput" class="input" type="search" placeholder="Search by lead ID, company, owner, notes..." /></div>
+              </label>
+              <label class="deals-filter-field" for="dealsStageFilter"><span>Stage</span><select id="dealsStageFilter" class="select"><option>All</option></select></label>
+              <label class="deals-filter-field" for="dealsPriorityFilter"><span>Priority</span><select id="dealsPriorityFilter" class="select"><option>All</option></select></label>
+              <label class="deals-filter-field" for="dealsServiceInterestFilter"><span>Service Interest</span><select id="dealsServiceInterestFilter" class="select"><option>All</option></select></label>
+              <label class="deals-filter-field" for="dealsLeadSourceFilter"><span>Lead Source</span><select id="dealsLeadSourceFilter" class="select"><option>All</option></select></label>
+              <label class="deals-filter-field" for="dealsAssignedToFilter"><span>Assigned To</span><select id="dealsAssignedToFilter" class="select"><option>All</option></select></label>
+              <label class="deals-filter-field" for="dealsStartDateFilter"><span>Converted From</span><input id="dealsStartDateFilter" class="input" type="date" /></label>
+              <label class="deals-filter-field" for="dealsEndDateFilter"><span>Converted To</span><input id="dealsEndDateFilter" class="input" type="date" /></label>
+              <div class="deals-filter-clear"><button id="dealsResetBtn" class="btn ghost deals-soft-btn" type="button">↻ Clear Filters</button></div>
+            </div>
+          </section>
+
+          <section class="deals-breakdown-grid" aria-label="Deal analytics breakdowns">
+            <article class="deals-breakdown-card" aria-label="Deals stage distribution">
+              <div class="deals-panel-title"><span class="deals-panel-icon" aria-hidden="true">◔</span><h2>Stage Distribution</h2></div>
+              <div id="dealsStageDistribution" class="deals-status-bars"></div>
+            </article>
+            <article class="deals-breakdown-card" aria-label="Deals assignee breakdown">
+              <div class="deals-panel-title"><span class="deals-panel-icon" aria-hidden="true">♙</span><h2>Assignee Breakdown</h2></div>
+              <div id="dealsAssigneeBreakdown" class="deals-status-bars"></div>
+            </article>
+            <article class="deals-breakdown-card" aria-label="Deals service and lead source breakdown">
+              <div class="deals-panel-title"><span class="deals-panel-icon" aria-hidden="true">◇</span><h2>Top Services / Lead Sources</h2></div>
+              <div id="dealsServiceBreakdown" class="deals-status-bars"></div>
+              <div id="dealsSourceBreakdown" class="deals-status-bars deals-source-bars"></div>
+            </article>
+          </section>
+
+          <section class="deals-table-panel" aria-label="Deals table panel">
+            <div class="deals-table-toolbar">
+              <div class="deals-table-toolbar-left">
+                <button class="btn ghost deals-soft-btn" type="button" data-deals-export-proxy>⇩ Export</button>
+                <span id="dealsState" class="deals-page-info">No data loaded.</span>
+              </div>
+            </div>
+            <div class="deals-table-wrap" role="region" aria-label="Deals table">
+              <table id="dealsTable">
+                <thead>
+                  <tr>
+                    <th>Deal ID</th>
+                    <th>Lead ID</th>
+                    <th>Contact Name</th>
+                    <th>Company Name</th>
+                    <th>Phone</th>
+                    <th>Email</th>
+                    <th>Country</th>
+                    <th>Lead Source</th>
+                    <th>Service Interest</th>
+                    <th>Stage</th>
+                    <th>Next Follow-up</th>
+                    <th>Last Contacted</th>
+                    <th>Priority</th>
+                    <th>Estimated Value</th>
+                    <th>Currency</th>
+                    <th>Assigned To</th>
+                    <th>Converted At</th>
+                    <th>Converted By</th>
+                    <th>Notes</th>
+                    <th>Created At</th>
+                    <th>Updated At</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="dealsTbody"></tbody>
+              </table>
+            </div>
+          </section>
         </div>
       </section>
 

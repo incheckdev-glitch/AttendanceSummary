@@ -556,6 +556,63 @@ const Deals = {
     if (formatted === '—') return U.escapeHtml(String(value));
     return U.escapeHtml(formatted);
   },
+  dealInitials(row = {}) {
+    const source = String(row.full_name || row.contact_name || row.company_name || row.deal_id || '').trim();
+    if (!source) return 'D';
+    const words = source.split(/\s+/).filter(Boolean);
+    const initials = words.length > 1 ? `${words[0][0] || ''}${words[1][0] || ''}` : source.slice(0, 2);
+    return initials.toUpperCase();
+  },
+  dealAvatarClass(row = {}) {
+    const source = String(row.full_name || row.company_name || row.deal_id || 'deal');
+    const sum = [...source].reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return ['violet', 'blue', 'green', 'orange'][sum % 4];
+  },
+  dealChip(label = '', variant = 'neutral') {
+    const text = String(label || '').trim() || '—';
+    return `<span class="deal-chip deal-chip--${U.escapeAttr(variant)}">${U.escapeHtml(text)}</span>`;
+  },
+  dealStageChip(stage = '') {
+    const normalized = this.normalizeStage(stage);
+    const lower = this.normalizeText(normalized);
+    const variant = this.matchesWonStatus(lower) ? 'success' : this.matchesLostStatus(lower) ? 'danger' : lower.includes('qualif') ? 'success' : lower.includes('progress') || lower.includes('negotiat') ? 'info' : 'neutral';
+    return this.dealChip(normalized, variant);
+  },
+  dealPriorityChip(priority = '') {
+    const normalized = String(priority || '').trim();
+    const lower = normalized.toLowerCase();
+    const variant = lower === 'high' || lower === 'urgent' ? 'danger' : lower === 'medium' ? 'info' : lower === 'low' ? 'success' : 'neutral';
+    return this.dealChip(normalized || '—', variant);
+  },
+  dealAssigneePill(name = '') {
+    const display = String(name || '').trim();
+    if (!display) return '—';
+    const initials = display.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase() || 'U';
+    return `<span class="deal-assignee-pill"><span>${U.escapeHtml(initials)}</span>${U.escapeHtml(display)}</span>`;
+  },
+  formatDealMoneyCell(row = {}) {
+    const amount = Number(row.estimated_value);
+    if (!Number.isFinite(amount)) return '—';
+    const currency = String(row.currency || '').trim().toUpperCase();
+    if (currency) {
+      try {
+        return U.escapeHtml(amount.toLocaleString(undefined, { style: 'currency', currency, maximumFractionDigits: 2 }));
+      } catch (_) {
+        return U.escapeHtml(`${currency} ${amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}`);
+      }
+    }
+    return U.escapeHtml(amount.toLocaleString(undefined, { maximumFractionDigits: 2 }));
+  },
+  compactDealDate(value) {
+    if (!value) return '—';
+    const formatted = U.formatDateTimeMMDDYYYYHHMM(value);
+    return formatted && formatted !== '—' ? U.escapeHtml(formatted) : U.escapeHtml(String(value).slice(0, 10));
+  },
+  truncateDealNotes(value = '') {
+    const text = String(value || '').trim();
+    if (!text) return '—';
+    return U.escapeHtml(text.length > 150 ? `${text.slice(0, 147)}...` : text);
+  },
   formatDateTimeMMDDYYYYHHMM(value) {
     if (!value) return '';
     const formatted = U.formatDateTimeMMDDYYYYHHMM(value);
@@ -981,16 +1038,17 @@ const Deals = {
   renderDistribution(el, entries = [], total = 0) {
     if (!el) return;
     if (!entries.length) {
-      el.innerHTML = '<div class="muted">No data for current filters.</div>';
+      el.innerHTML = '<div class="muted deals-empty-breakdown">No data for current filters.</div>';
       return;
     }
     el.innerHTML = entries
       .map(([label, count]) => {
         const percent = total > 0 ? (count / total) * 100 : 0;
         return `<div class="deals-status-row">
-          <div class="deals-status-label">${U.escapeHtml(label)}</div>
-          <div class="leads-status-track"><span class="deals-status-fill" style="width:${Math.min(100, percent).toFixed(1)}%"></span></div>
-          <div class="deals-status-meta">${count} · ${percent.toFixed(1)}%</div>
+          <div class="deals-status-label"><span class="deals-status-dot"></span>${U.escapeHtml(label)}</div>
+          <div class="deals-status-count">${count}</div>
+          <div class="deals-status-track"><span class="deals-status-fill" style="width:${Math.min(100, percent).toFixed(1)}%"></span></div>
+          <div class="deals-status-meta">${percent.toFixed(1)}%</div>
         </div>`;
       })
       .join('');
@@ -1184,7 +1242,13 @@ const Deals = {
 
     const rows = this.state.filteredRows;
     this.renderDealAnalytics(this.computeDealAnalytics(rows));
-    E.dealsState.textContent = `${rows.length} deal${rows.length === 1 ? '' : 's'} · page ${this.state.page}`;
+    const shownFrom = rows.length ? (Number(this.state.offset) || 0) + 1 : 0;
+    const shownTo = rows.length ? (Number(this.state.offset) || 0) + rows.length : 0;
+    const totalEstimate = Number(this.state.total) || rows.length;
+    const totalLabel = this.state.hasMore ? `${totalEstimate}+` : String(totalEstimate || rows.length);
+    E.dealsState.textContent = rows.length
+      ? `Showing ${shownFrom}-${shownTo} of ${totalLabel} records`
+      : 'No records to show';
     const paginationHost = U.ensurePaginationHost({ hostId: 'dealsPaginationControls', anchor: E.dealsState });
     U.renderPaginationControls({
       host: paginationHost,
@@ -1206,47 +1270,60 @@ const Deals = {
     });
 
     if (!rows.length) {
-      E.dealsTbody.innerHTML = '<tr><td colspan="22" class="muted" style="text-align:center;">No deals found.</td></tr>';
+      E.dealsTbody.innerHTML = '<tr><td colspan="22" class="muted deals-empty-row">No deals found for current filters.</td></tr>';
       this.updateCreateButtonState();
       return;
     }
 
-    const renderCell = (row, column) => {
-      if (column === 'lead_id') return U.escapeHtml(this.displayLeadId(row) || '—');
-      if (column === 'lead_code') return undefined;
-      if (['converted_at', 'created_at', 'updated_at', 'next_follow_up_at'].includes(column)) return this.formatDateTime(row[column]);
-      if (column === 'last_contacted_date') return row[column] ? U.escapeHtml(String(row[column]).slice(0, 10)) : '—';
-      const value = row[column];
-      return U.escapeHtml(value === '' || value == null ? '—' : String(value));
-    };
-
     E.dealsTbody.innerHTML = rows
       .map(row => {
+        const rowId = U.escapeAttr(row.id || row.deal_id || '');
         const actionButtons = [];
         if (this.canEdit()) {
           actionButtons.push(
-            `<button class="btn ghost sm" type="button" data-deal-edit="${U.escapeAttr(row.id)}" data-permission-resource="deals" data-permission-action="update">Edit</button>`
-          );
-        }
-        if (this.canDelete()) {
-          actionButtons.push(
-            `<button class="btn ghost sm" type="button" data-deal-delete="${U.escapeAttr(row.id)}" data-permission-resource="deals" data-permission-action="delete">Delete</button>`
+            `<button class="deal-menu-item" type="button" data-deal-edit="${rowId}" data-permission-resource="deals" data-permission-action="update">Edit</button>`
           );
         }
         if (row.id && this.canShowCreateProposalForDeal(row)) {
           const inFlight = this.state.rowActionInFlight.has(`create-proposal:${row.id}`);
           actionButtons.push(
-            `<button class="btn ghost sm" type="button" data-deal-create-proposal="${U.escapeAttr(
-              row.id
-            )}" data-permission-resource="proposals" data-permission-action="create" data-permission-resource="proposals" data-permission-action="create_from_deal" ${inFlight ? 'disabled' : ''}>Convert to Proposal</button>`
+            `<button class="deal-menu-item" type="button" data-deal-create-proposal="${rowId}" data-permission-resource="proposals" data-permission-action="create_from_deal" ${inFlight ? 'disabled' : ''}>Convert to Proposal</button>`
           );
         }
-        const actions = actionButtons.length ? actionButtons.join(' ') : '<span class="muted">—</span>';
+        if (this.canDelete()) {
+          actionButtons.push(
+            `<button class="deal-menu-item danger" type="button" data-deal-delete="${rowId}" data-permission-resource="deals" data-permission-action="delete">Delete</button>`
+          );
+        }
+        const menu = actionButtons.length
+          ? `<details class="deal-actions-menu"><summary class="deal-more-btn" aria-label="More deal actions">⋮</summary><div class="deal-actions-popover">${actionButtons.join('')}</div></details>`
+          : '';
+        const actions = `<div class="deal-row-actions"><button class="deal-view-btn" type="button" data-deal-view="${rowId}">View</button>${menu}</div>`;
         const selected = String(this.state.selectedDetailsId || '') === String(row.id || row.deal_id || '');
-        return `<tr class="entity-clickable-row${selected ? ' is-selected' : ''}" tabindex="0" data-deal-row="${U.escapeAttr(row.id || row.deal_id || '')}" aria-label="Open deal ${U.escapeAttr(row.deal_id || row.company_name || '')} details">${this.columns
-          .filter(column => column !== 'lead_code')
-          .map(column => `<td>${renderCell(row, column)}</td>`)
-          .join('')}<td>${actions}</td></tr>`;
+        return `<tr class="deal-clickable-row${selected ? ' is-selected' : ''}" tabindex="0" data-deal-row="${rowId}" aria-label="Open deal ${U.escapeAttr(row.deal_id || row.company_name || '')} details">
+          <td class="deal-id-cell">${U.escapeHtml(row.deal_id || '—')}</td>
+          <td>${U.escapeHtml(this.displayLeadId(row) || '—')}</td>
+          <td class="deal-name-cell"><div class="deal-name-wrap"><span class="deal-avatar deal-avatar--${this.dealAvatarClass(row)}">${U.escapeHtml(this.dealInitials(row))}</span><span>${U.escapeHtml(row.full_name || row.contact_name || '—')}</span></div></td>
+          <td>${U.escapeHtml(row.company_name || '—')}</td>
+          <td>${U.escapeHtml(row.phone || '—')}</td>
+          <td class="deal-email-cell">${U.escapeHtml(row.email || '—')}</td>
+          <td>${U.escapeHtml(row.country || '—')}</td>
+          <td>${U.escapeHtml(row.lead_source || '—')}</td>
+          <td>${U.escapeHtml(row.service_interest || '—')}</td>
+          <td>${this.dealStageChip(row.stage)}</td>
+          <td>${this.compactDealDate(row.next_follow_up_at)}</td>
+          <td>${row.last_contacted_date ? U.escapeHtml(String(row.last_contacted_date).slice(0, 10)) : '—'}</td>
+          <td>${this.dealPriorityChip(row.priority)}</td>
+          <td class="deal-money-cell">${this.formatDealMoneyCell(row)}</td>
+          <td>${U.escapeHtml(row.currency || '—')}</td>
+          <td>${this.dealAssigneePill(row.assigned_to)}</td>
+          <td>${this.compactDealDate(row.converted_at)}</td>
+          <td>${U.escapeHtml(row.converted_by || '—')}</td>
+          <td class="deal-notes-cell">${this.truncateDealNotes(row.notes)}</td>
+          <td>${this.compactDealDate(row.created_at)}</td>
+          <td>${this.compactDealDate(row.updated_at)}</td>
+          <td>${actions}</td>
+        </tr>`;
       })
       .join('');
   },
@@ -1878,6 +1955,9 @@ const Deals = {
     if (E.dealsExportCsvBtn) {
       E.dealsExportCsvBtn.addEventListener('click', () => this.exportDealsCsv());
     }
+    document.querySelectorAll('[data-deals-export-proxy]').forEach(button => {
+      button.addEventListener('click', () => this.exportDealsCsv());
+    });
 
     if (E.dealsCreateBtn) {
       E.dealsCreateBtn.addEventListener('click', () => {
@@ -1923,12 +2003,19 @@ const Deals = {
           });
           return;
         }
+        const viewId = event.target?.getAttribute('data-deal-view');
+        if (viewId) {
+          this.openDetailsDrawer(viewId);
+          return;
+        }
+        if (event.target?.closest?.('.deal-actions-menu')) return;
         const detailsRow = event.target?.closest?.('tr[data-deal-row]');
         const detailsId = detailsRow?.getAttribute('data-deal-row');
         if (detailsId) this.openDetailsDrawer(detailsId);
       });
       E.dealsTbody.addEventListener('keydown', event => {
         if (!['Enter', ' '].includes(event.key)) return;
+        if (event.target?.closest?.('.deal-actions-menu')) return;
         const row = event.target?.closest?.('tr[data-deal-row]');
         const id = row?.getAttribute('data-deal-row');
         if (!id) return;
