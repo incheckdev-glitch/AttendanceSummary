@@ -1,5 +1,5 @@
 const ProposalCatalog = {
-  sectionValues: ['annual_saas', 'one_time_fee'],
+  sectionValues: ['annual_saas', 'one_time_fee', 'hardware'],
   state: {
     rows: [],
     filteredRows: [],
@@ -198,6 +198,7 @@ const ProposalCatalog = {
       { label: 'Active Items', value: rows.filter(item => item.is_active).length },
       { label: 'Annual SaaS Items', value: countBySection('annual_saas') },
       { label: 'One-Time Fee Items', value: countBySection('one_time_fee') },
+      { label: 'Hardware Items', value: countBySection('hardware') },
     ];
 
     E.proposalCatalogSummary.innerHTML = cards

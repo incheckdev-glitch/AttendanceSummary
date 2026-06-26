@@ -3822,7 +3822,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
   function getAgreementItemCommercialSection(item = {}) {
     const raw = String(item?.section || item?.type || item?.category || item?.billing_type || item?.billing_cycle || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
     if (raw.includes('annual') || raw.includes('saas') || raw.includes('subscription') || raw.includes('recurring')) return 'annual_saas';
-    if (raw.includes('one_time') || raw.includes('setup') || raw.includes('implementation') || raw.includes('installation') || raw.includes('fee')) return 'one_time_fee';
+    if (raw.includes('one_time') || raw.includes('setup') || raw.includes('implementation') || raw.includes('installation') || raw.includes('fee') || raw.includes('hardware') || raw.includes('hardwar') || raw.includes('device')) return 'one_time_fee';
     return raw;
   }
 
@@ -4699,6 +4699,9 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         raw.includes('one_time') ||
         raw.includes('one-time') ||
         raw.includes('one time') ||
+        raw.includes('hardware') ||
+        raw.includes('hardwar') ||
+        raw.includes('device') ||
         raw.includes('setup') ||
         raw.includes('implementation') ||
         raw.includes('installation') ||

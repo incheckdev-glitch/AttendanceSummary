@@ -2468,6 +2468,7 @@ Sample:
                 <option value="All">All Sections</option>
                 <option value="annual_saas">annual_saas</option>
                 <option value="one_time_fee">one_time_fee</option>
+                <option value="hardware">hardware</option>
               </select>
               <select id="proposalCatalogActiveFilter" class="select" aria-label="Filter by active state">
                 <option value="All">All Statuses</option>
@@ -3701,11 +3702,24 @@ Sample:
         </div>
         <datalist id="proposalCatalogOptions-one_time_fee"></datalist>
 
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px;">
+          <strong>Hardware Items</strong>
+          <button id="proposalAddHardwareRowBtn" class="btn ghost sm" type="button">Add Row</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Location</th><th>Hardware / Product</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead>
+            <tbody id="proposalHardwareItemsTbody"></tbody>
+          </table>
+        </div>
+        <datalist id="proposalCatalogOptions-hardware"></datalist>
+
         <div class="card" style="margin-top:12px;">
           <strong>Totals Preview</strong>
-          <div class="grid" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:8px;">
+          <div class="grid" style="grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:8px;">
             <div><div class="muted">SaaS Total</div><div id="proposalSaasTotal">0</div></div>
             <div><div class="muted">One Time Total</div><div id="proposalOneTimeTotal">0</div></div>
+            <div><div class="muted">Hardware Total</div><div id="proposalHardwareTotal">0</div></div>
             <div><div class="muted">Grand Total</div><div id="proposalGrandTotal">0</div></div>
           </div>
         </div>
@@ -3760,6 +3774,7 @@ Sample:
             <select id="proposalCatalogFormSection" class="select" required>
               <option value="annual_saas">annual_saas</option>
               <option value="one_time_fee">one_time_fee</option>
+              <option value="hardware">hardware</option>
             </select>
           </div>
           <div class="filter-row">
@@ -3904,7 +3919,10 @@ Sample:
         <div class="table-wrap"><table><thead><tr><th>Location</th><th>License</th><th>License Price / Year</th><th>License / Month</th><th>Service Start Date</th><th>Service End Date</th><th>Discount %</th><th>Total</th><th>Invoice Status</th><th>Actions</th></tr></thead><tbody id="agreementAnnualItemsTbody"></tbody></table></div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px;"><strong>One-time Fee Rows</strong><button id="agreementAddOneTimeRowBtn" class="btn ghost sm" type="button">Add Row</button></div>
         <div class="table-wrap"><table><thead><tr><th>Location</th><th>Item / Service</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead><tbody id="agreementOneTimeItemsTbody"></tbody></table></div>
-        <div class="card" style="margin-top:12px;"><strong>Totals Preview</strong><div class="grid" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:8px;"><div><div class="muted">SaaS Total</div><div id="agreementSaasTotal">0</div></div><div><div class="muted">One Time Total</div><div id="agreementOneTimeTotal">0</div></div><div><div class="muted">Grand Total</div><div id="agreementGrandTotal">0</div></div></div></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px;"><strong>Hardware Rows</strong><button id="agreementAddHardwareRowBtn" class="btn ghost sm" type="button">Add Row</button></div>
+        <div class="table-wrap"><table><thead><tr><th>Location</th><th>Hardware / Product</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead><tbody id="agreementHardwareItemsTbody"></tbody></table></div>
+        <datalist id="agreementCatalogOptions-hardware"></datalist>
+        <div class="card" style="margin-top:12px;"><strong>Totals Preview</strong><div class="grid" style="grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:8px;"><div><div class="muted">SaaS Total</div><div id="agreementSaasTotal">0</div></div><div><div class="muted">One Time Total</div><div id="agreementOneTimeTotal">0</div></div><div><div class="muted">Hardware Total</div><div id="agreementHardwareTotal">0</div></div><div><div class="muted">Grand Total</div><div id="agreementGrandTotal">0</div></div></div></div>
         <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">Agreement Terms</strong>
         <div class="filter-row"><label class="muted" for="agreementFormTermsConditions">Terms &amp; Conditions</label><textarea id="agreementFormTermsConditions" class="input" rows="4"></textarea></div>
         <div class="filter-row"><label class="muted" for="agreementFormNotes">Notes</label><textarea id="agreementFormNotes" class="input" rows="3"></textarea></div>

@@ -1970,6 +1970,7 @@ const Invoices = {
       .toLowerCase();
     if (!raw) return '';
     if (['subscription', 'annual', 'annual_saas', 'annual saas', 'saas', 'recurring'].includes(raw) || (raw.includes('annual') && (raw.includes('saas') || raw.includes('subscription') || raw.includes('renewal')))) return 'annual_saas';
+    if (['hardware', 'hardwares', 'hardwar', 'hardwars', 'device', 'devices', 'equipment'].includes(raw) || raw.includes('hardware') || raw.includes('hardwar')) return 'hardware';
     if (['one_time', 'one-time_fee', 'one_time_fee', 'one-time', 'one-time fee', 'one time fee', 'onetime', 'setup', 'non_recurring', 'non-recurring'].includes(raw))
       return 'one_time_fee';
     if (raw === 'capability') return 'capability';
@@ -2230,7 +2231,7 @@ const Invoices = {
   },
   isOneTimeSection(section = '') {
     const normalized = this.normalizeSection(section);
-    return ['one_time_fee', 'one_time', 'setup', 'non_recurring', 'non-recurring'].includes(normalized);
+    return ['one_time_fee', 'one_time', 'setup', 'non_recurring', 'non-recurring', 'hardware'].includes(normalized);
   },
   isGenericSetupLocation(value) {
     const key = this.normalizeLocationKey(value);
@@ -2268,6 +2269,9 @@ const Invoices = {
         text.includes('one-time') ||
         text.includes('one time') ||
         text.includes('setup') ||
+        text.includes('hardware') ||
+        text.includes('hardwar') ||
+        text.includes('device') ||
         text.includes('account setup') ||
         text.includes('implementation') ||
         text.includes('activation')
@@ -2279,6 +2283,9 @@ const Invoices = {
       text.includes('one-time') ||
       text.includes('one time') ||
       text.includes('setup') ||
+      text.includes('hardware') ||
+      text.includes('hardwar') ||
+      text.includes('device') ||
       text.includes('account setup') ||
       text.includes('implementation') ||
       text.includes('activation') ||

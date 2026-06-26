@@ -482,6 +482,23 @@ const Agreements = {
     const discount = this.toNumber(item.discount_percent || item.discountPercent || item.discount || 0);
     return unit * qty * (1 - discount / 100);
   },
+  isAgreementHardwareItem(item = {}) {
+    const section = this.normalizeText(item.section);
+    const itemText = this.normalizeText([
+      item.item_name,
+      item.itemName,
+      item.name,
+      item.category,
+      item.description,
+      item.notes
+    ].filter(Boolean).join(' '));
+    return section === 'hardware'
+      || section === 'hardwares'
+      || section === 'hardwar'
+      || section === 'hardwars'
+      || itemText.includes('hardware')
+      || itemText.includes('hardwar');
+  },
   isAgreementOneTimeFeeItem(item = {}) {
     const section = this.normalizeText(item.section);
     const itemText = this.normalizeText([
@@ -490,6 +507,8 @@ const Agreements = {
       item.name,
       item.description
     ].filter(Boolean).join(' '));
+
+    if (this.isAgreementHardwareItem(item)) return false;
 
     return (
       section === 'one_time_fee' ||
@@ -893,7 +912,7 @@ const Agreements = {
     const isAnnualUserBased = section === 'annual_saas' && this.isAnnualSaasUserItem(item);
     let qty = this.toNumberSafe(item.quantity);
     if (!qty && section === 'annual_saas') qty = 12;
-    if (!qty && section === 'one_time_fee') qty = 1;
+    if (!qty && (section === 'one_time_fee' || section === 'hardware')) qty = 1;
     const licenseQty = isAnnualUserBased ? Math.max(1, Math.round(this.toNumberSafe(item.license_quantity ?? item.user_quantity ?? item.item_quantity) || 1)) : 1;
     const rawDiscountRatio = this.normalizeDiscount(item.discount_percent);
     const hasSavedForcedDiscount = this.hasSavedForcedAnnualDiscount(item);
@@ -1657,10 +1676,10 @@ const Agreements = {
       normalized.license_quantity = Math.max(1, normalized.license_quantity || 1);
       if (!normalized.service_start_date) normalized.service_start_date = this.getDefaultAnnualServiceStartDate();
       if (!normalized.service_end_date) normalized.service_end_date = this.calculateServiceEndDate(normalized.service_start_date, normalized.quantity);
-    } else if (section === 'one_time_fee' && !normalized.quantity) {
+    } else if ((section === 'one_time_fee' || section === 'hardware') && !normalized.quantity) {
       normalized.quantity = 1;
     }
-    if (section === 'annual_saas' || section === 'one_time_fee') {
+    if (section === 'annual_saas' || section === 'one_time_fee' || section === 'hardware') {
       const computed = this.computeCommercialRow(normalized);
       if (normalized.discounted_unit_price === '') normalized.discounted_unit_price = computed.discounted_unit_price;
       const hasAlternateAmount = [normalized.total, normalized.total_amount, normalized.amount, normalized.subtotal]
@@ -1670,10 +1689,11 @@ const Agreements = {
     return normalized;
   },
   groupedItems(items = []) {
-    const grouped = { annual_saas: [], one_time_fee: [], capability: [] };
+    const grouped = { annual_saas: [], one_time_fee: [], hardware: [], capability: [] };
     (Array.isArray(items) ? items : []).forEach(raw => {
       const item = this.normalizeItem(raw);
-      if (this.isAgreementOneTimeFeeItem(item)) grouped.one_time_fee.push({ ...item, section: 'one_time_fee' });
+      if (this.isAgreementHardwareItem(item) || item.section === 'hardware') grouped.hardware.push({ ...item, section: 'hardware' });
+      else if (this.isAgreementOneTimeFeeItem(item)) grouped.one_time_fee.push({ ...item, section: 'one_time_fee' });
       else if (item.section === 'capability') grouped.capability.push(item);
       else grouped.annual_saas.push({ ...item, section: 'annual_saas' });
     });
@@ -1871,7 +1891,7 @@ const Agreements = {
       this.mapProposalItemToAgreementDraftItem(item, index)
     );
     const lockedGroups = this.syncOneTimeFeeRowsWithAnnualCount(this.groupedItems(mappedItems));
-    const draftItems = [...lockedGroups.annual_saas, ...lockedGroups.one_time_fee];
+    const draftItems = [...lockedGroups.annual_saas, ...lockedGroups.one_time_fee, ...lockedGroups.hardware];
     const totals = this.calculateTotals(draftItems);
     draft.saas_total = totals.saas_total;
     draft.one_time_total = totals.one_time_total;
@@ -2259,6 +2279,7 @@ const Agreements = {
     };
 
     const subscriptionItems = normalizedItems.filter(item => this.isAgreementAnnualSaasItem(item));
+    const hardwareItems = normalizedItems.filter(item => this.isAgreementHardwareItem(item));
     const oneTimeItems = normalizedItems.filter(item => this.isAgreementOneTimeFeeItem(item));
 
     const subscriptionRows = subscriptionItems.length
@@ -2295,10 +2316,54 @@ const Agreements = {
           .join('')
       : '<tr><td colspan="6" class="cell-center muted">No one-time fee items found.</td></tr>';
 
+    const sumRows = rows => (Array.isArray(rows) ? rows : []).reduce((sum, item) => sum + this.toNumberSafe(computeRow(item).lineTotal), 0);
+    const oneTimeFeesSubtotal = sumRows(oneTimeItems);
+    const hardwareSubtotal = sumRows(hardwareItems);
+    const hardwareRows = hardwareItems.length
+      ? hardwareItems
+          .map(item => {
+            const computed = computeRow(item);
+            return `<tr>
+              <td>${textValue(item.location_name || item.locationName)}</td>
+              <td>${this.renderDocumentItemCell(item)}</td>
+              <td class="cell-right">${money(computed.unitPrice)}</td>
+              <td class="cell-center">${U.escapeHtml(String(computed.discountPercent || 0))}%</td>
+              <td class="cell-center">${computed.quantity ? U.escapeHtml(String(computed.quantity)) : '—'}</td>
+              <td class="cell-right">${money(computed.lineTotal)}</td>
+            </tr>`;
+          })
+          .join('')
+      : '';
+    const hardwareSectionHtml = hardwareItems.length ? `
+      <section class="section">
+        <h2>Hardware Details</h2>
+        <div class="subhead">Hardware Rows</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Location</th>
+              <th>Hardware / Product</th>
+              <th style="width:14%">Unit Price</th>
+              <th style="width:10%">Discount %</th>
+              <th style="width:8%">Qty</th>
+              <th style="width:14%">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${hardwareRows}
+            <tr class="total-row">
+              <td colspan="5" class="cell-right">Total Hardware</td>
+              <td class="cell-right">${money(hardwareSubtotal)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>` : '';
+
     const calculatedTotals = this.calculateTotals(normalizedItems);
     const hasAgreementItemRows = normalizedItems.length > 0;
     const subtotalLocations = hasAgreementItemRows ? calculatedTotals.saas_total : this.toNumberSafe(agreementData.subtotal_locations || agreementData.saas_total);
-    const subtotalOneTime = hasAgreementItemRows ? calculatedTotals.one_time_total : this.toNumberSafe(agreementData.subtotal_one_time || agreementData.one_time_total);
+    const subtotalOneTime = hasAgreementItemRows ? oneTimeFeesSubtotal + hardwareSubtotal : this.toNumberSafe(agreementData.subtotal_one_time || agreementData.one_time_total);
+    const displayOneTimeFeesSubtotal = hasAgreementItemRows ? oneTimeFeesSubtotal : subtotalOneTime;
     const grandTotal = hasAgreementItemRows ? subtotalLocations + subtotalOneTime : this.toNumberSafe(agreementData.grand_total || subtotalLocations + subtotalOneTime);
     const grandTotalInWords = U.formatAmountInWords(grandTotal, currency);
     const isPoc = this.toDbBoolean(agreementData.is_poc ?? agreementData.isPoc, false);
@@ -2486,9 +2551,12 @@ const Agreements = {
         </table>
       </section>
 
+      ${hardwareSectionHtml}
+
       <section class="totals-wrap">
         <div class="totals-box">
-          <div class="totals-row"><span>One Time Fees</span><strong>${money(subtotalOneTime)}</strong></div>
+          <div class="totals-row"><span>One Time Fees</span><strong>${money(displayOneTimeFeesSubtotal)}</strong></div>
+          ${hardwareItems.length ? `<div class="totals-row"><span>Hardware</span><strong>${money(hardwareSubtotal)}</strong></div>` : ''}
           <div class="totals-row"><span>Subscription Fees</span><strong>${money(subtotalLocations)}</strong></div>
           <div class="totals-row grand"><span>Grand Total</span><strong>${money(grandTotal)}</strong></div>
           <div class="totals-row grand-total-words-row"><span>Grand Total in Words</span><strong>${U.escapeHtml(grandTotalInWords)}</strong></div>
@@ -3046,9 +3114,10 @@ const Agreements = {
   calculateTotals(items = []) {
     const safeItems = Array.isArray(items) ? items : [];
     const annualRows = safeItems.filter(item => this.isAgreementAnnualSaasItem(item));
+    const hardwareRows = safeItems.filter(item => this.isAgreementHardwareItem(item));
     const oneTimeRows = safeItems.filter(item => this.isAgreementOneTimeFeeItem(item));
     const saas_total = annualRows.reduce((sum, item) => sum + this.getAgreementItemAmount(item), 0);
-    const one_time_total = oneTimeRows.reduce((sum, item) => sum + this.getAgreementItemAmount(item), 0);
+    const one_time_total = [...oneTimeRows, ...hardwareRows].reduce((sum, item) => sum + this.getAgreementItemAmount(item), 0);
     return { saas_total, one_time_total, grand_total: saas_total + one_time_total };
   },
   calculateTotalsFromAgreementRecord(record = {}) {
@@ -3242,7 +3311,9 @@ const Agreements = {
         ? ['Location', 'User(s)']
         : section === 'one_time_fee'
           ? ['Setup Fee', 'Onboarding Fee', 'CS Hours']
-          : [];
+          : section === 'hardware'
+            ? ['Hardware Device', 'Printer', 'Tablet', 'Sensor']
+            : [];
       rows = fallbackNames.map(name => ({ item_name: name, is_active: true, section }));
     }
     let selectedFound = false;
@@ -3328,7 +3399,7 @@ const Agreements = {
     if (shouldAutoLinkOneTimeFees && !oneTimeRows.length) {
       oneTimeRows = [{ section: 'one_time_fee', quantity: linkedQuantity, discount_percent: 0, unit_price: 0, line_total: 0 }];
     }
-    return { ...groups, annual_saas: annualRows, one_time_fee: oneTimeRows };
+    return { ...groups, annual_saas: annualRows, one_time_fee: oneTimeRows, hardware: Array.isArray(groups.hardware) ? groups.hardware : [] };
   },
   refreshOneTimeFeeQuantityInputs() {
     const inCheckBasicCount = this.getInCheckBasicAnnualRowCountFromDom();
@@ -3500,15 +3571,22 @@ const Agreements = {
     };
     if (E.agreementAnnualItemsTbody) E.agreementAnnualItemsTbody.innerHTML = grouped.annual_saas.map((item, idx) => rowHtml('annual_saas', item, idx)).join('');
     if (E.agreementOneTimeItemsTbody) E.agreementOneTimeItemsTbody.innerHTML = grouped.one_time_fee.map((item, idx) => rowHtml('one_time_fee', item, idx)).join('');
-    [E.agreementAnnualItemsTbody, E.agreementOneTimeItemsTbody].forEach((tbody, index) => {
-      const section = index === 0 ? 'annual_saas' : 'one_time_fee';
+    if (E.agreementHardwareItemsTbody) E.agreementHardwareItemsTbody.innerHTML = grouped.hardware.map((item, idx) => rowHtml('hardware', item, idx)).join('');
+    [
+      [E.agreementAnnualItemsTbody, 'annual_saas'],
+      [E.agreementOneTimeItemsTbody, 'one_time_fee'],
+      [E.agreementHardwareItemsTbody, 'hardware']
+    ].forEach(([tbody, section]) => {
       Array.from(tbody?.querySelectorAll?.('tr[data-item-row]') || []).forEach(tr => this.applyCatalogSelectionToRow(tr, section));
     });
     this.refreshOneTimeFeeQuantityInputs();
     if (E.agreementCapabilityItemsTbody) E.agreementCapabilityItemsTbody.innerHTML = '';
-    const totals = this.calculateTotals([...grouped.annual_saas, ...grouped.one_time_fee]);
+    const totals = this.calculateTotals([...grouped.annual_saas, ...grouped.one_time_fee, ...grouped.hardware]);
+    const oneTimeFeeTotal = grouped.one_time_fee.reduce((sum, item) => sum + this.getAgreementItemAmount(item), 0);
+    const hardwareTotal = grouped.hardware.reduce((sum, item) => sum + this.getAgreementItemAmount(item), 0);
     if (E.agreementSaasTotal) E.agreementSaasTotal.textContent = this.formatMoney(totals.saas_total);
-    if (E.agreementOneTimeTotal) E.agreementOneTimeTotal.textContent = this.formatMoney(totals.one_time_total);
+    if (E.agreementOneTimeTotal) E.agreementOneTimeTotal.textContent = this.formatMoney(oneTimeFeeTotal);
+    if (E.agreementHardwareTotal) E.agreementHardwareTotal.textContent = this.formatMoney(hardwareTotal);
     if (E.agreementGrandTotal) E.agreementGrandTotal.textContent = this.formatMoney(totals.grand_total);
     this.applyAgreementItemLocks();
   },
@@ -3954,13 +4032,13 @@ const Agreements = {
     if (!E.agreementForm) return;
     const lockItems = this.isAgreementItemsLocked();
     E.agreementForm.classList.toggle('agreement-items-locked', lockItems);
-    [E.agreementAddAnnualRowBtn, E.agreementAddOneTimeRowBtn].forEach(btn => {
+    [E.agreementAddAnnualRowBtn, E.agreementAddOneTimeRowBtn, E.agreementAddHardwareRowBtn].forEach(btn => {
       if (!btn) return;
       btn.style.display = lockItems ? 'none' : '';
       btn.disabled = lockItems;
       btn.setAttribute('aria-disabled', lockItems ? 'true' : 'false');
     });
-    const containers = [E.agreementAnnualItemsTbody, E.agreementOneTimeItemsTbody, E.agreementCapabilityItemsTbody].filter(Boolean);
+    const containers = [E.agreementAnnualItemsTbody, E.agreementOneTimeItemsTbody, E.agreementHardwareItemsTbody, E.agreementCapabilityItemsTbody].filter(Boolean);
     containers.forEach(container => {
       container.querySelectorAll('input, select, textarea, button').forEach(el => {
         if (String(el.type || '').toLowerCase() === 'hidden') return;
@@ -4002,6 +4080,10 @@ const Agreements = {
     if (E.agreementAddOneTimeRowBtn) {
       E.agreementAddOneTimeRowBtn.style.display = lockItems ? 'none' : '';
       E.agreementAddOneTimeRowBtn.disabled = lockItems;
+    }
+    if (E.agreementAddHardwareRowBtn) {
+      E.agreementAddHardwareRowBtn.style.display = lockItems ? 'none' : '';
+      E.agreementAddHardwareRowBtn.disabled = lockItems;
     }
     E.agreementForm.querySelectorAll('input, select, textarea').forEach(el => {
       const allowed = adminOverride || (!readOnlyMode && (!isEditMode || this.isAgreementEditableInEditMode(el)));
@@ -4239,7 +4321,7 @@ const Agreements = {
     }
     const grouped = this.groupedItems(this.collectItems());
     grouped[section] = grouped[section].filter((_, idx) => idx !== index);
-    this.renderItemRows([...grouped.annual_saas, ...grouped.one_time_fee]);
+    this.renderItemRows([...grouped.annual_saas, ...grouped.one_time_fee, ...grouped.hardware]);
   },
   async openAgreementFormById(agreementId, { readOnly = false, trigger = null, focusSignedDocument = false } = {}) {
     const id = String(agreementId || '').trim();
@@ -4980,6 +5062,7 @@ const Agreements = {
 
     if (E.agreementAddAnnualRowBtn) E.agreementAddAnnualRowBtn.addEventListener('click', () => this.addRow('annual_saas'));
     if (E.agreementAddOneTimeRowBtn) E.agreementAddOneTimeRowBtn.addEventListener('click', () => this.addRow('one_time_fee'));
+    if (E.agreementAddHardwareRowBtn) E.agreementAddHardwareRowBtn.addEventListener('click', () => this.addRow('hardware'));
     if (E.agreementPreviewExportPdfBtn) E.agreementPreviewExportPdfBtn.addEventListener('click', () => this.exportPreviewPdf());
     if (E.agreementPreviewCloseBtn) E.agreementPreviewCloseBtn.addEventListener('click', () => this.closePreviewModal());
     if (E.agreementPreviewModal) E.agreementPreviewModal.addEventListener('click', event => {

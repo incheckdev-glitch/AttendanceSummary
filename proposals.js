@@ -406,6 +406,7 @@ const Proposals = {
     if (this.normalizeTruthy(safe.one_time)) return 'one_time';
     if (this.normalizeTruthy(safe.is_saas) || this.normalizeTruthy(safe.is_recurring)) return 'saas';
 
+    const hardwareTokens = ['hardware', 'hardwares', 'hardwar', 'hardwars', 'device', 'devices', 'tablet', 'printer', 'scanner', 'kiosk'];
     const oneTimeTokens = [
       'one_time',
       'one_time_fee',
@@ -414,7 +415,6 @@ const Proposals = {
       'one_time_costs',
       'setup',
       'implementation',
-      'hardware',
       'training',
       'professional_service',
       'service_fee'
@@ -429,6 +429,7 @@ const Proposals = {
       'yearly'
     ];
     const hasToken = tokens => tokens.some(token => textHaystack.includes(token));
+    if (hasToken(hardwareTokens)) return 'hardware';
     if (hasToken(oneTimeTokens)) return 'one_time';
     if (hasToken(recurringTokens)) return 'saas';
     if (section === 'capability' || type === 'capability') return 'capability';
@@ -444,6 +445,8 @@ const Proposals = {
       total_discount: 0,
       saas_total: 0,
       one_time_total: 0,
+      one_time_fee_total: 0,
+      hardware_total: 0,
       grand_total: 0
     };
     safeItems.forEach(item => {
@@ -455,7 +458,9 @@ const Proposals = {
         ? 'annual_saas'
         : sectionType === 'one_time'
           ? 'one_time_fee'
-          : String(safe.section || '').trim().toLowerCase();
+          : sectionType === 'hardware'
+            ? 'hardware'
+            : String(safe.section || '').trim().toLowerCase();
       const quantity = section === 'annual_saas'
         ? this.getAnnualSaasMonths(safe)
         : Math.max(0, this.toNumberSafe(safe.quantity ?? safe.qty) || 1);
@@ -488,7 +493,12 @@ const Proposals = {
       if (sectionType === 'saas') {
         totals.saas_total += lineTotal;
         totals.subtotal_locations += lineTotal;
+      } else if (sectionType === 'hardware' || section === 'hardware') {
+        totals.hardware_total += lineTotal;
+        totals.one_time_total += lineTotal;
+        totals.subtotal_one_time += lineTotal;
       } else {
+        totals.one_time_fee_total += lineTotal;
         totals.one_time_total += lineTotal;
         totals.subtotal_one_time += lineTotal;
       }
@@ -2040,9 +2050,11 @@ const Proposals = {
       normalized.quantity = inCheckBasicCount > 0
         ? Math.max(1, inCheckBasicCount)
         : Math.max(1, normalized.quantity || 1);
+    } else if (section === 'hardware') {
+      normalized.quantity = Math.max(1, normalized.quantity || 1);
     }
 
-    if (section === 'annual_saas' || section === 'one_time_fee') {
+    if (section === 'annual_saas' || section === 'one_time_fee' || section === 'hardware') {
       const computed = this.computeCommercialRow(normalized);
       if (normalized.discounted_unit_price === '') normalized.discounted_unit_price = computed.discounted_unit_price;
       if (normalized.line_total === '') normalized.line_total = computed.line_total;
@@ -2582,10 +2594,11 @@ const Proposals = {
     };
 
     const subscriptionItems = normalizedItems.filter(item => this.classifyProposalItemBilling(item) === 'saas');
+    const hardwareItems = normalizedItems.filter(item => this.classifyProposalItemBilling(item) === 'hardware');
     const oneTimeItems = normalizedItems.filter(item => this.classifyProposalItemBilling(item) === 'one_time');
     const otherItems = normalizedItems.filter(item => {
       const type = this.classifyProposalItemBilling(item);
-      return type !== 'saas' && type !== 'one_time' && type !== 'capability';
+      return type !== 'saas' && type !== 'one_time' && type !== 'hardware' && type !== 'capability';
     });
 
     const renderSubscriptionRows = rows => (rows.length
@@ -2622,16 +2635,45 @@ const Proposals = {
           .join('')
       : '<tr><td colspan="6" class="cell-center muted">No one-time fee items found.</td></tr>');
 
+    const sumRows = rows => (Array.isArray(rows) ? rows : []).reduce((sum, item) => sum + this.toNumberSafe(computeRow(item).lineTotal), 0);
+    const hardwareSubtotal = sumRows(hardwareItems);
+    const oneTimeFeesSubtotal = sumRows(oneTimeItems.length ? oneTimeItems : otherItems);
+    const hardwareSectionHtml = hardwareItems.length ? `
+      <section class="section">
+        <h2>Hardware Details</h2>
+        <div class="subhead">Hardware Rows</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Location</th>
+              <th>Hardware / Product</th>
+              <th style="width:14%">Unit Price</th>
+              <th style="width:10%">Discount %</th>
+              <th style="width:8%">Qty</th>
+              <th style="width:14%">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${renderOneTimeRows(hardwareItems)}
+            <tr class="total-row">
+              <td colspan="5" class="cell-right">Total Hardware</td>
+              <td class="cell-right">${money(hardwareSubtotal)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>` : '';
+
     const calculatedTotals = this.calculateProposalTotals(normalizedItems);
     const headerSaas = this.toNumberSafe(proposalData.subtotal_locations ?? proposalData.saas_total);
     const headerOneTime = this.toNumberSafe(proposalData.subtotal_one_time ?? proposalData.one_time_total);
     const headerGrand = this.toNumberSafe(proposalData.grand_total);
     const hasCalculatedTotals = calculatedTotals.grand_total > 0;
     const subtotalLocations = hasCalculatedTotals ? calculatedTotals.saas_total : headerSaas;
-    const subtotalOneTime = hasCalculatedTotals ? calculatedTotals.one_time_total : headerOneTime;
+    const subtotalOneTime = hasCalculatedTotals ? oneTimeFeesSubtotal + hardwareSubtotal : headerOneTime;
     const grandTotal = hasCalculatedTotals
-      ? calculatedTotals.grand_total
+      ? subtotalLocations + subtotalOneTime
       : this.toNumberSafe(headerGrand || subtotalLocations + subtotalOneTime);
+    const displayOneTimeFeesSubtotal = hasCalculatedTotals ? oneTimeFeesSubtotal : subtotalOneTime;
     const grandTotalInWords = U.formatAmountInWords(grandTotal, currency);
     const providerSignatoryName = this.getProposalProviderSignatoryName(proposalData);
     const providerSignatoryTitle = this.getProposalProviderSignatoryTitle(proposalData);
@@ -2959,9 +3001,12 @@ const Proposals = {
         </table>
       </section>
 
+      ${hardwareSectionHtml}
+
       <section class="totals-wrap">
         <div class="totals-box">
-          <div class="totals-row"><span>One Time Fees</span><strong>${money(subtotalOneTime)}</strong></div>
+          <div class="totals-row"><span>One Time Fees</span><strong>${money(displayOneTimeFeesSubtotal)}</strong></div>
+          ${hardwareItems.length ? `<div class="totals-row"><span>Hardware</span><strong>${money(hardwareSubtotal)}</strong></div>` : ''}
           <div class="totals-row"><span>Subscription Fees</span><strong>${money(subtotalLocations)}</strong></div>
           <div class="totals-row grand"><span>Grand Total</span><strong>${money(grandTotal)}</strong></div>
           <div class="totals-row grand-total-words-row"><span>Grand Total in Words</span><strong>${U.escapeHtml(grandTotalInWords)}</strong></div>
@@ -3597,7 +3642,7 @@ const Proposals = {
       if (el.id === 'proposalSignedDocumentFile') return;
       el.disabled = !!readOnly;
     });
-    [E.proposalAddAnnualRowBtn, E.proposalAddOneTimeRowBtn, E.proposalAddCapabilityRowBtn, E.proposalResetTermsBtn].forEach(btn => {
+    [E.proposalAddAnnualRowBtn, E.proposalAddOneTimeRowBtn, E.proposalAddHardwareRowBtn, E.proposalAddCapabilityRowBtn, E.proposalResetTermsBtn].forEach(btn => {
       if (!btn) return;
       btn.style.display = readOnly ? 'none' : '';
     });
@@ -3670,7 +3715,7 @@ const Proposals = {
     let qty = section === 'annual_saas'
       ? this.getAnnualSaasMonths(item)
       : this.toNumberSafe(item.quantity);
-    if (!qty && section === 'one_time_fee') qty = 1;
+    if (!qty && (section === 'one_time_fee' || section === 'hardware')) qty = 1;
     const licenseQty = isAnnualUserBased ? Math.max(1, Math.round(this.toNumberSafe(item.license_quantity ?? item.user_quantity ?? item.item_quantity) || 1)) : 1;
     const rawDiscountRatio = this.normalizeDiscount(item.discount_percent);
     const hasSavedForcedDiscount = this.hasSavedForcedAnnualDiscount(item);
@@ -3767,6 +3812,7 @@ const Proposals = {
   renderCatalogOptionLists() {
     this.renderCatalogOptionList('annual_saas');
     this.renderCatalogOptionList('one_time_fee');
+    this.renderCatalogOptionList('hardware');
   },
   getCatalogItemByName(section, itemName) {
     const target = this.normalizeText(itemName);
@@ -3871,7 +3917,7 @@ const Proposals = {
   },
   async ensureCatalogLoaded() {
     this.renderCatalogOptionLists();
-    const hasRows = this.getCatalogRowsForSection('annual_saas').length || this.getCatalogRowsForSection('one_time_fee').length;
+    const hasRows = this.getCatalogRowsForSection('annual_saas').length || this.getCatalogRowsForSection('one_time_fee').length || this.getCatalogRowsForSection('hardware').length;
     if (hasRows) return;
     if (this.state.catalogLoading || typeof window.ProposalCatalog?.ensureLookupLoaded !== 'function') return;
 
@@ -3879,7 +3925,7 @@ const Proposals = {
     try {
       await window.ProposalCatalog.ensureLookupLoaded();
       this.renderCatalogOptionLists();
-      [E.proposalAnnualItemsTbody, E.proposalOneTimeItemsTbody].forEach(tbody => {
+      [E.proposalAnnualItemsTbody, E.proposalOneTimeItemsTbody, E.proposalHardwareItemsTbody].forEach(tbody => {
         if (!tbody) return;
         [...tbody.querySelectorAll('tr[data-item-row]')].forEach(tr => {
           const section = String(tr.getAttribute('data-item-row') || '').trim();
@@ -3897,11 +3943,12 @@ const Proposals = {
     const groups = {
       annual_saas: [],
       one_time_fee: [],
+      hardware: [],
       capability: []
     };
     (Array.isArray(items) ? items : []).forEach((item, idx) => {
       const normalized = this.normalizeItem(item);
-      const section = ['annual_saas', 'one_time_fee', 'capability'].includes(normalized.section)
+      const section = ['annual_saas', 'one_time_fee', 'hardware', 'capability'].includes(normalized.section)
         ? normalized.section
         : 'annual_saas';
       normalized.line_no = normalized.line_no || idx + 1;
@@ -3915,7 +3962,9 @@ const Proposals = {
         ? E.proposalAnnualItemsTbody
         : section === 'one_time_fee'
         ? E.proposalOneTimeItemsTbody
-        : E.proposalCapabilityItemsTbody;
+        : section === 'hardware'
+          ? E.proposalHardwareItemsTbody
+          : E.proposalCapabilityItemsTbody;
     if (!tbody) return;
 
     const safeRows = Array.isArray(rows) ? rows : [];
@@ -4089,7 +4138,7 @@ const Proposals = {
     if (shouldAutoLinkOneTimeFees && !oneTimeRows.length) {
       oneTimeRows = [{ section: 'one_time_fee', quantity: linkedQuantity, discount_percent: 0, unit_price: 0, line_total: 0 }];
     }
-    return { ...groups, annual_saas: annualRows, one_time_fee: oneTimeRows };
+    return { ...groups, annual_saas: annualRows, one_time_fee: oneTimeRows, hardware: Array.isArray(groups.hardware) ? groups.hardware : [] };
   },
   refreshOneTimeFeeQuantityInputs() {
     const inCheckBasicCount = this.getInCheckBasicAnnualRowCountFromDom();
@@ -4142,6 +4191,7 @@ const Proposals = {
     this.updateAnnualSaasHeaderForProposal((groups.annual_saas || []).some(item => this.isAnnualSaasUserItem(item)));
     this.renderSectionRows('annual_saas', groups.annual_saas);
     this.renderSectionRows('one_time_fee', groups.one_time_fee);
+    this.renderSectionRows('hardware', groups.hardware);
     this.refreshOneTimeFeeQuantityInputs();
     if (E.proposalCapabilityItemsTbody) E.proposalCapabilityItemsTbody.innerHTML = '';
     this.renderTotalsPreview();
@@ -4153,7 +4203,9 @@ const Proposals = {
         ? E.proposalAnnualItemsTbody
         : section === 'one_time_fee'
         ? E.proposalOneTimeItemsTbody
-        : E.proposalCapabilityItemsTbody;
+        : section === 'hardware'
+          ? E.proposalHardwareItemsTbody
+          : E.proposalCapabilityItemsTbody;
     if (!tbody) return [];
     const rows = [...tbody.querySelectorAll('tr[data-item-row]')];
     const inCheckBasicCount = this.getInCheckBasicAnnualRowCountFromDom();
@@ -4237,7 +4289,8 @@ const Proposals = {
   collectProposalItems() {
     return [
       ...this.collectSectionItems('annual_saas'),
-      ...this.collectSectionItems('one_time_fee')
+      ...this.collectSectionItems('one_time_fee'),
+      ...this.collectSectionItems('hardware')
     ];
   },
   collectProposalFormData() {
@@ -4431,11 +4484,13 @@ const Proposals = {
     const items = this.collectProposalItems();
     const totals = this.calculateTotalsFromItems(items);
     const saasTotal = this.toNumberSafe(totals.subtotal_locations);
-    const oneTimeTotal = this.toNumberSafe(totals.subtotal_one_time);
+    const oneTimeTotal = this.toNumberSafe(totals.one_time_fee_total ?? totals.subtotal_one_time);
+    const hardwareTotal = this.toNumberSafe(totals.hardware_total);
     const grandTotal = this.toNumberSafe(totals.grand_total);
 
     if (E.proposalSaasTotal) E.proposalSaasTotal.textContent = this.formatMoney(saasTotal);
     if (E.proposalOneTimeTotal) E.proposalOneTimeTotal.textContent = this.formatMoney(oneTimeTotal);
+    if (E.proposalHardwareTotal) E.proposalHardwareTotal.textContent = this.formatMoney(hardwareTotal);
     if (E.proposalGrandTotal) E.proposalGrandTotal.textContent = this.formatMoney(grandTotal);
   },
   async openProposalFormById(proposalId, { readOnly = false, trigger = null } = {}) {
@@ -4801,14 +4856,15 @@ const Proposals = {
       return false;
     }
     const hasInvalidOneTime = safeItems.some(item => {
-      if (String(item?.section || '').trim().toLowerCase() !== 'one_time_fee') return false;
+      const section = String(item?.section || '').trim().toLowerCase();
+      if (section !== 'one_time_fee' && section !== 'hardware') return false;
       const unit = this.toNumberSafe(item.unit_price);
       const qty = this.toNumberSafe(item.quantity);
       const discount = this.toNumberSafe(item.discount_percent);
       return unit < 0 || qty <= 0 || discount < 0 || discount > 100;
     });
     if (hasInvalidOneTime) {
-      UI.toast('Please enter valid one-time fee unit prices, quantities, and discounts.');
+      UI.toast('Please enter valid one-time fee/hardware unit prices, quantities, and discounts.');
       return false;
     }
     return true;
@@ -5364,13 +5420,13 @@ const Proposals = {
       discounted_unit_price: 0,
       line_total: 0
     });
-    this.renderProposalItems([...groups.annual_saas, ...groups.one_time_fee]);
+    this.renderProposalItems([...groups.annual_saas, ...groups.one_time_fee, ...groups.hardware]);
   },
   removeRow(section, index) {
     const groups = this.groupedItems(this.collectProposalItems());
     if (!groups[section]) return;
     groups[section] = groups[section].filter((_, idx) => idx !== index);
-    this.renderProposalItems([...groups.annual_saas, ...groups.one_time_fee]);
+    this.renderProposalItems([...groups.annual_saas, ...groups.one_time_fee, ...groups.hardware]);
   },
   wire() {
     if (this.state.initialized) return;
@@ -5633,6 +5689,8 @@ const Proposals = {
       E.proposalAddAnnualRowBtn.addEventListener('click', () => this.addRow('annual_saas'));
     if (E.proposalAddOneTimeRowBtn)
       E.proposalAddOneTimeRowBtn.addEventListener('click', () => this.addRow('one_time_fee'));
+    if (E.proposalAddHardwareRowBtn)
+      E.proposalAddHardwareRowBtn.addEventListener('click', () => this.addRow('hardware'));
 
     window.addEventListener('proposal-catalog-lookup-invalidated', () => {
       if (E.proposalFormModal?.style?.display === 'flex') this.ensureCatalogLoaded();
