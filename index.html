@@ -35,35 +35,48 @@
   <script defer src="/_vercel/insights/script.js"></script>
 </head>
 <body class="auth-locked">
-  <header id="appHeader">
-    <div class="brand" aria-label="InCheck brand">
-        <img src="assets/incheck360-ui-logo.png" class="brand-logo ui-brand-logo" alt="InCheck360 MonitorCore logo" width="158" height="38" />
-    </div>
-
-    <button id="drawerBtn" class="btn drawer-toggle" aria-expanded="false" aria-controls="sidebar">
-      <span class="icon" aria-hidden="true">🧰</span> Filters
+  <header id="appHeader" class="app-topbar">
+    <button id="drawerBtn" class="topbar-menu-btn" type="button" aria-expanded="false" aria-controls="sidebar" aria-label="Open menu">
+      <span aria-hidden="true">☰</span>
     </button>
 
-    <div class="toolbar">
-      <input id="searchInput" class="input" type="search"
-             placeholder="Search ID, title, description, log…  ( / to focus )"
+    <div class="topbar-brand" aria-label="InCheck360 brand">
+      <div class="topbar-logo">
+        <img src="assets/incheck360-ui-logo.png" class="brand-logo ui-brand-logo" alt="InCheck360 logo" width="42" height="42" />
+      </div>
+      <div class="topbar-brand-text">
+        <strong>InCheck360</strong>
+        <span>ERP SOLUTION</span>
+      </div>
+    </div>
+
+    <div class="topbar-divider" aria-hidden="true"></div>
+
+    <div class="topbar-search" role="search">
+      <span class="topbar-search-icon" aria-hidden="true">⌕</span>
+      <input id="searchInput" type="search"
+             placeholder="Search anything..."
              aria-label="Search tickets" />
+      <span class="topbar-search-shortcut" aria-hidden="true">Ctrl + K</span>
+    </div>
+
+    <div class="toolbar topbar-actions">
+      <button id="refreshNow" class="topbar-icon-btn" type="button" aria-label="Refresh from source" title="Refresh">
+        <span aria-hidden="true">↻</span>
+      </button>
 
       <button
         id="themeSelect"
-        class="btn theme-toggle-btn"
+        class="topbar-icon-btn theme-toggle-btn"
         type="button"
         aria-label="Switch to dark mode"
         title="Switch to dark mode"
       >🌙</button>
 
-      <button id="refreshNow" class="btn" aria-label="Refresh from source">
-        <span class="icon" aria-hidden="true">🔄</span> Refresh
-      </button>
       <div class="notification-shell">
-        <button id="notificationBellBtn" class="btn ghost sm notification-bell" type="button" aria-label="Notifications (0 unread)">
-          <span class="icon" aria-hidden="true">🔔</span>
-          <span id="notificationUnreadBadge" class="notification-unread-badge" style="display:none;">0</span>
+        <button id="notificationBellBtn" class="topbar-icon-btn topbar-notification-btn notification-bell" type="button" aria-label="Notifications (0 unread)" title="Notifications">
+          <span aria-hidden="true">🔔</span>
+          <span id="notificationUnreadBadge" class="topbar-badge notification-unread-badge" style="display:none;">0</span>
         </button>
         <div id="notificationPreviewPanel" class="notification-preview-panel" aria-label="Notification preview">
           <div class="notification-preview-header">
@@ -78,13 +91,24 @@
         </div>
       </div>
 
-      <span class="chip online" id="onlineStatusChip" aria-live="polite">Online</span>
-      <span class="chip" id="currentUserChip" aria-live="polite">User: guest</span>
-      <span class="chip" id="currentRoleChip" aria-live="polite">Role: guest</span>
-      <button id="logoutBtn" class="btn ghost sm" type="button" aria-label="Log out">
-        Logout
+      <span class="topbar-online" id="onlineStatusChip" aria-live="polite"><span aria-hidden="true"></span><span class="topbar-online-text">Online</span></span>
+
+      <button class="topbar-language" type="button" aria-label="Language selector">
+        <span aria-hidden="true">🇺🇸</span><span>EN</span><span aria-hidden="true">⌄</span>
       </button>
 
+      <button class="topbar-profile" id="profileMenuBtn" type="button" aria-label="Current user profile">
+        <span class="topbar-avatar" id="currentUserAvatar" aria-hidden="true">GU</span>
+        <span class="topbar-user-info">
+          <strong id="currentUserChip" aria-live="polite">guest</strong>
+          <span class="topbar-role-badge" id="currentRoleChip" aria-live="polite">guest</span>
+        </span>
+        <span class="topbar-profile-arrow" aria-hidden="true">⌄</span>
+      </button>
+
+      <button id="logoutBtn" class="topbar-logout" type="button" aria-label="Log out">
+        <span aria-hidden="true">⎋</span><span class="topbar-logout-text">Logout</span>
+      </button>
     </div>
   </header>
 

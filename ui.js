@@ -229,6 +229,7 @@ function cacheEls() {
     'calendarTz',
     'onlineStatusChip',
     'currentUserChip',
+    'currentUserAvatar',
     'currentRoleChip',
     'usersTab',
     'rolePermissionsTab',
@@ -1257,8 +1258,18 @@ const UI = {
       setIfOptionExists(E.issueRelatedFilter, 'All');
     }
 
-    if (E.currentUserChip) E.currentUserChip.textContent = `User: ${displayName}`;
-    if (E.currentRoleChip) E.currentRoleChip.textContent = `Role: ${role}`;
+    if (E.currentUserChip) E.currentUserChip.textContent = displayName;
+    if (E.currentRoleChip) E.currentRoleChip.textContent = String(role || 'guest').replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase());
+    if (E.currentUserAvatar) {
+      const initials = String(displayName || 'Guest')
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map(part => part[0])
+        .join('')
+        .toUpperCase() || 'GU';
+      E.currentUserAvatar.textContent = initials;
+    }
     const tabRegistry = this.tabRegistry();
     console.info(
       '[Tabs] full registry before filtering',
