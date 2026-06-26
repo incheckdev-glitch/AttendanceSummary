@@ -192,20 +192,26 @@ const ProposalCatalog = {
   renderSummary() {
     if (!E.proposalCatalogSummary) return;
     const rows = this.state.filteredRows;
+    const activeRows = rows.filter(item => item.is_active);
     const countBySection = section => rows.filter(item => item.section === section).length;
     const cards = [
-      { label: 'Total Items', value: rows.length },
-      { label: 'Active Items', value: rows.filter(item => item.is_active).length },
-      { label: 'Annual SaaS Items', value: countBySection('annual_saas') },
-      { label: 'One-Time Fee Items', value: countBySection('one_time_fee') },
-      { label: 'Hardware Items', value: countBySection('hardware') },
+      { label: 'Total Items', value: rows.length, sub: 'All catalog items', icon: '▱', tone: 'violet' },
+      { label: 'Active Items', value: activeRows.length, sub: 'Currently active', icon: '✓', tone: 'green' },
+      { label: 'Annual SaaS Items', value: countBySection('annual_saas'), sub: 'Annual recurring items', icon: '♛', tone: 'blue' },
+      { label: 'One-Time Fee Items', value: countBySection('one_time_fee'), sub: 'One-time fee items', icon: '◆', tone: 'amber' },
+      { label: 'Hardware Items', value: countBySection('hardware'), sub: 'Hardware items', icon: '▦', tone: 'indigo' }
     ];
 
+    E.proposalCatalogSummary.className = 'catalog-kpi-grid';
     E.proposalCatalogSummary.innerHTML = cards
       .map(
-        card => `<div class="card kpi">
-          <div class="label">${U.escapeHtml(card.label)}</div>
-          <div class="value">${U.escapeHtml(String(card.value))}</div>
+        card => `<div class="catalog-kpi-card catalog-kpi-card--${U.escapeAttr(card.tone)}">
+          <div class="catalog-kpi-icon" aria-hidden="true">${U.escapeHtml(card.icon)}</div>
+          <div>
+            <div class="label">${U.escapeHtml(card.label)}</div>
+            <div class="value">${U.escapeHtml(String(card.value))}</div>
+            <div class="sub">${U.escapeHtml(card.sub)}</div>
+          </div>
         </div>`
       )
       .join('');
@@ -215,6 +221,32 @@ const ProposalCatalog = {
     const num = Number(value);
     if (!Number.isFinite(num)) return '—';
     return num.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  },
+  formatMoney(value) {
+    if (value === null || value === undefined || value === '') return '—';
+    const num = Number(value);
+    if (!Number.isFinite(num)) return '—';
+    return `$${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  },
+  formatDateTime(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '—';
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return raw;
+    return date.toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  },
+  prettySection(value) {
+    const key = String(value || '').trim().toLowerCase();
+    if (key === 'annual_saas') return 'Annual SaaS';
+    if (key === 'one_time_fee') return 'One-time Fee';
+    if (key === 'hardware') return 'Hardware';
+    return this.normalizeText(value) || '—';
   },
   render() {
     if (!E.proposalCatalogState || !E.proposalCatalogTbody) return;
@@ -246,27 +278,36 @@ const ProposalCatalog = {
     const textCell = value => U.escapeHtml(this.normalizeText(value) || '—');
     const activeCell = value =>
       value
-        ? '<span class="pill status-Resolved">Active</span>'
-        : '<span class="pill status-Rejected">Inactive</span>';
+        ? '<span class="catalog-chip catalog-chip--active">Active</span>'
+        : '<span class="catalog-chip catalog-chip--inactive">Inactive</span>';
+    const sectionCell = value => {
+      const normalized = String(value || '').trim().toLowerCase();
+      const tone = normalized === 'annual_saas' ? 'blue' : normalized === 'one_time_fee' ? 'amber' : normalized === 'hardware' ? 'indigo' : 'neutral';
+      return `<span class="catalog-chip catalog-chip--${tone}">${U.escapeHtml(this.prettySection(value))}</span>`;
+    };
 
     E.proposalCatalogTbody.innerHTML = rows
       .map(row => {
         const id = U.escapeAttr(row.id || '');
+        const initials = this.prettySection(row.section).slice(0, 2).toUpperCase();
+        const canManage = this.canManageCatalogStatus();
         return `<tr>
-          <td>${textCell(row.catalog_item_id)}</td>
+          <td class="catalog-id-cell">${textCell(row.catalog_item_id)}</td>
           <td>${activeCell(row.is_active)}</td>
-          <td>${textCell(row.section)}</td>
+          <td>${sectionCell(row.section)}</td>
           <td>${textCell(row.category)}</td>
-          <td>${textCell(row.item_name)}</td>
+          <td class="catalog-item-cell"><div class="catalog-item-wrap"><span class="catalog-avatar" aria-hidden="true">${U.escapeHtml(initials)}</span><span>${textCell(row.item_name)}</span></div></td>
           <td>${textCell(row.default_location_name)}</td>
-          <td>${this.formatNumber(row.unit_price)}</td>
-          <td>${this.formatNumber(row.discount_percent)}</td>
+          <td class="catalog-money-cell">${this.formatMoney(row.unit_price)}</td>
+          <td>${this.formatNumber(row.discount_percent)}%</td>
           <td>${this.formatNumber(row.quantity)}</td>
           <td>${this.formatNumber(row.sort_order)}</td>
-          <td>${textCell(row.updated_at)}</td>
+          <td><div class="catalog-date-cell">${U.escapeHtml(this.formatDateTime(row.updated_at))}<span>by system</span></div></td>
           <td>
-            ${this.canManageCatalogStatus() ? `<button class=\"btn ghost sm\" type=\"button\" data-proposal-catalog-edit=\"${id}\">Edit</button>` : ''}
-            ${this.canManageCatalogStatus() ? `<button class=\"btn ghost sm\" type=\"button\" data-proposal-catalog-status=\"${id}\" data-next-active=\"${row.is_active ? 'false' : 'true'}\">${row.is_active ? 'Deactivate' : 'Reactivate'}</button>` : ''}
+            <div class="catalog-actions">
+              ${canManage ? `<button class="catalog-action-btn catalog-action-btn--edit" type="button" data-proposal-catalog-edit="${id}">Edit</button>` : ''}
+              ${canManage ? `<button class="catalog-action-btn" type="button" data-proposal-catalog-status="${id}" data-next-active="${row.is_active ? 'false' : 'true'}">${row.is_active ? 'Deactivate' : 'Reactivate'}</button>` : ''}
+            </div>
           </td>
         </tr>`;
       })
@@ -337,7 +378,7 @@ const ProposalCatalog = {
   renderPagination() {
     const host = U.ensurePaginationHost({
       hostId: 'proposalCatalogPagination',
-      anchor: E.proposalCatalogState?.closest?.('.card')
+      anchor: E.proposalCatalogState?.closest?.('.catalog-table-panel') || E.proposalCatalogState?.closest?.('.card')
     });
     U.renderPaginationControls({
       host,
@@ -620,17 +661,21 @@ const ProposalCatalog = {
 
     if (E.proposalCatalogTbody) {
       E.proposalCatalogTbody.addEventListener('click', event => {
-        const editId = event.target?.getAttribute('data-proposal-catalog-edit');
+        const target = event.target;
+        const editButton = target?.closest?.('[data-proposal-catalog-edit]');
+        const editId = editButton?.getAttribute('data-proposal-catalog-edit');
         if (editId) {
           this.openFormById(editId);
           return;
         }
-        const statusId = event.target?.getAttribute('data-proposal-catalog-status');
+        const statusButton = target?.closest?.('[data-proposal-catalog-status]');
+        const statusId = statusButton?.getAttribute('data-proposal-catalog-status');
         if (statusId) {
-          this.setActiveById(statusId, event.target?.getAttribute('data-next-active') === 'true');
+          this.setActiveById(statusId, statusButton?.getAttribute('data-next-active') === 'true');
           return;
         }
-        const deleteId = event.target?.getAttribute('data-proposal-catalog-delete');
+        const deleteButton = target?.closest?.('[data-proposal-catalog-delete]');
+        const deleteId = deleteButton?.getAttribute('data-proposal-catalog-delete');
         if (deleteId) this.deleteById(deleteId);
       });
     }

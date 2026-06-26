@@ -2810,57 +2810,73 @@ Sample:
         </div>
       </div>
 
-      <section id="proposalCatalogView" class="view" role="tabpanel" aria-labelledby="proposalCatalogTab">
-        <div class="grid cols-4" id="proposalCatalogSummary" aria-live="polite"></div>
-        <div class="card" aria-label="Proposal catalog list">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
-            <div>
-              <strong>Proposal Catalog</strong>
-              <div class="muted">Reusable proposal items for annual SaaS and one-time fee entries.</div>
-            </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <input id="proposalCatalogSearchInput" class="input" type="search" placeholder="Search item, category, notes..." aria-label="Search proposal catalog items" />
-              <select id="proposalCatalogSectionFilter" class="select" aria-label="Filter by section">
-                <option value="All">All Sections</option>
-                <option value="annual_saas">annual_saas</option>
-                <option value="one_time_fee">one_time_fee</option>
-                <option value="hardware">hardware</option>
-              </select>
-              <select id="proposalCatalogActiveFilter" class="select" aria-label="Filter by active state">
-                <option value="All">All Statuses</option>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-              </select>
-              <select id="proposalCatalogSortFilter" class="select" aria-label="Sort proposal catalog">
-                <option value="updated_desc">Updated (Newest)</option>
-                <option value="created_desc">Created (Newest)</option>
-                <option value="sort_order_asc">Sort Order (Asc)</option>
-              </select>
-              <button id="proposalCatalogRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
-              <button id="proposalCatalogCreateBtn" class="btn sm" type="button">Add Item</button>
+      <section id="proposalCatalogView" class="view catalog-modern-workspace" role="tabpanel" aria-labelledby="proposalCatalogTab">
+        <div class="catalog-page-shell">
+          <div class="catalog-page-header">
+            <div class="catalog-title-row">
+              <div class="catalog-title-icon" aria-hidden="true">▣</div>
+              <div>
+                <h1>Proposal Catalog</h1>
+                <p>Reusable products and services for annual SaaS, hardware, and one-time fee proposal items.</p>
+              </div>
             </div>
           </div>
-          <div id="proposalCatalogState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
-          <div class="table-wrap" role="region" aria-label="Proposal catalog table">
-            <table id="proposalCatalogTable">
-              <thead>
-                <tr>
-                  <th>Catalog ID</th>
-                  <th>Active</th>
-                  <th>Section</th>
-                  <th>Category</th>
-                  <th>Item Name</th>
-                  <th>Default Location</th>
-                  <th>Unit Price</th>
-                  <th>Discount %</th>
-                  <th>Quantity</th>
-                  <th>Sort Order</th>
-                  <th>Updated At</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="proposalCatalogTbody"></tbody>
-            </table>
+
+          <div class="catalog-kpi-grid" id="proposalCatalogSummary" aria-live="polite"></div>
+
+          <div class="catalog-table-panel" aria-label="Proposal catalog list">
+            <div class="catalog-table-header">
+              <div class="catalog-title-block">
+                <h2>Proposal Catalog</h2>
+                <p>Reusable proposal items for annual SaaS and one-time fee entries.</p>
+              </div>
+              <div class="catalog-toolbar" aria-label="Proposal catalog filters and actions">
+                <label class="catalog-search-field" aria-label="Search proposal catalog items">
+                  <span aria-hidden="true">⌕</span>
+                  <input id="proposalCatalogSearchInput" class="input" type="search" placeholder="Search item, category, notes..." />
+                </label>
+                <select id="proposalCatalogSectionFilter" class="select" aria-label="Filter by section">
+                  <option value="All">All Sections</option>
+                  <option value="annual_saas">Annual SaaS</option>
+                  <option value="one_time_fee">One-time Fee</option>
+                  <option value="hardware">Hardware</option>
+                </select>
+                <select id="proposalCatalogActiveFilter" class="select" aria-label="Filter by active state">
+                  <option value="All">All Statuses</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+                <select id="proposalCatalogSortFilter" class="select" aria-label="Sort proposal catalog">
+                  <option value="updated_desc">Updated (Newest)</option>
+                  <option value="created_desc">Created (Newest)</option>
+                  <option value="sort_order_asc">Sort Order (Asc)</option>
+                </select>
+                <button id="proposalCatalogRefreshBtn" class="catalog-soft-btn" type="button">⟳ Refresh</button>
+                <button id="proposalCatalogCreateBtn" class="catalog-primary-btn" type="button">＋ Add Item</button>
+              </div>
+            </div>
+            <div id="proposalCatalogState" class="catalog-state">No data loaded.</div>
+            <div class="catalog-table-wrap" role="region" aria-label="Proposal catalog table">
+              <table id="proposalCatalogTable" class="catalog-table">
+                <thead>
+                  <tr>
+                    <th>Catalog ID</th>
+                    <th>Status</th>
+                    <th>Section</th>
+                    <th>Category</th>
+                    <th>Item Name</th>
+                    <th>Default Location</th>
+                    <th>Unit Price (USD)</th>
+                    <th>Discount %</th>
+                    <th>Quantity</th>
+                    <th>Sort Order</th>
+                    <th>Updated At</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="proposalCatalogTbody"></tbody>
+              </table>
+            </div>
           </div>
         </div>
       </section>
@@ -4671,7 +4687,7 @@ Sample:
   <script src="biners.js?v=20260611-entry-save-fix"></script>
   <script src="lifecycle-analytics.js?v=20260610-lifecycle-metrics-source-truth"></script>
   <script src="clients.js?v=20260611-direct-communication"></script>
-  <script src="proposal-catalog.js?v=20260427-allpwa1"></script>
+  <script src="proposal-catalog.js?v=20260626-modern-product-catalog-ui"></script>
   <script src="communication-centre.js?v=20260611-direct-communication"></script>
   <script src="events.js?v=20260605-cancelled-title1"></script>
   <script src="notifications.js?v=20260605-cancelled-title1"></script>
