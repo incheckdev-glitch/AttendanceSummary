@@ -14,11 +14,20 @@ const context = vm.createContext({
   document: { readyState: 'loading', addEventListener() {}, getElementById() { return null; }, querySelectorAll() { return []; } },
   Api: {
     async getPaymentForecastSummary(filters) { calls.push(['summary', filters]); return [{ scheduled_rows: 0, gross_scheduled: 125, paid_amount: 25 }]; },
-    async getPaymentForecastPage(filters) { calls.push(['page', filters]); return [{ row_data: { invoice_id: 'invoice-1', remaining_amount: 100 }, total_count: 44 }]; },
+    async getPaymentForecastPage(filters) {
+      calls.push(['page', filters]);
+      if (filters.p_page_size === 100) {
+        return [
+          { row_data: { invoice_id: 'invoice-1', invoice_number: 'INV-1', client_id: 'client-a', client_name: 'Client A', currency: 'USD', scheduled_amount: 100, paid_amount: 20, allocated_credit_amount: 5, remaining_amount: 75 }, total_count: 2 },
+          { row_data: { invoice_id: 'invoice-2', invoice_number: 'INV-2', client_id: 'client-a', client_name: 'Client A', currency: 'USD', scheduled_amount: 25, paid_amount: 5, allocated_credit_amount: 0, remaining_amount: 20 }, total_count: 2 }
+        ];
+      }
+      return [{ row_data: { invoice_id: 'invoice-1', remaining_amount: 100 }, total_count: 44 }];
+    },
     async getPaymentForecastFollowupsPage(filters) { calls.push(['followups', filters]); return [{ row_data: { invoice_id: 'invoice-followup', client_name: 'Client Follow-up', follow_up_status: 'contacted', follow_up_notes: 'Called client' }, total_count: 12 }]; },
     async getPaymentForecastClientDistribution(filters) {
       calls.push(['clients', filters]);
-      return [{ row_data: { client_name: 'Client A', currency: 'USD', scheduled_payment_count: 2, gross_scheduled_amount: 125 }, total_count: 1 }];
+      return [{ row_data: { client_name: 'Client A', currency: 'USD', scheduled_payment_count: 2, gross_scheduled_amount: 999 }, total_count: 1 }];
     },
     async createPaymentForecastFollowupLog(payload) { calls.push(['create-log', payload]); return payload; },
     async getPaymentForecastMonthlySummary(filters) {
@@ -86,13 +95,17 @@ forecast.populateFilters = () => {};
   assert.strictEqual(forecast.state.pagination.upcoming.page, 2);
 
   forecast.state.activeTab = 'client_distribution';
+  const clientRpcCallsBefore = calls.filter(call => call[0] === 'clients').length;
   await forecast.loadActiveTab();
-  assert.strictEqual(calls.at(-1)[0], 'clients');
-  assert.strictEqual(calls.at(-1)[1].p_view, 'client_distribution');
-  assert.strictEqual(calls.at(-1)[1].p_page, 1, 'grouped RPC must receive its current page');
-  assert.strictEqual(calls.at(-1)[1].p_page_size, 10, 'grouped RPC must receive the fixed 10-row page size');
+  assert.strictEqual(calls.at(-1)[0], 'page');
+  assert.strictEqual(calls.at(-1)[1].p_view, 'all', 'client distribution must use raw scheduled rows as the gross source of truth');
+  assert.strictEqual(calls.at(-1)[1].p_page_size, 100, 'client distribution gross scheduled audit must fetch full raw pages');
+  assert.strictEqual(calls.filter(call => call[0] === 'clients').length, clientRpcCallsBefore, 'client distribution must not trust stale grouped gross scheduled RPC totals');
   assert.strictEqual(forecast.state.rowsByTab.client_distribution[0].client_name, 'Client A');
   assert.strictEqual(forecast.state.rowsByTab.client_distribution[0].gross_scheduled_amount, 125);
+  assert.strictEqual(forecast.state.rowsByTab.client_distribution[0].paid_amount, 25);
+  assert.strictEqual(forecast.state.rowsByTab.client_distribution[0].credit_adjustment_amount, 5);
+  assert.strictEqual(forecast.state.rowsByTab.client_distribution[0].net_expected_amount, 95);
 
   forecast.state.activeTab = 'monthly_forecast';
   await forecast.loadActiveTab();

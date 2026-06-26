@@ -296,6 +296,24 @@ const PaymentForecast = {
       if (requestId === this._summaryRequestId) { this.state.loading.summary = false; this.renderActiveTab(); }
     }
   },
+  pageRows(rows = [], pagination = this.activePagination()) {
+    const page = Math.max(1, this.n(pagination?.page) || 1);
+    const size = this.n(pagination?.pageSize) || this.fixedPageSize;
+    const start = (page - 1) * size;
+    return rows.slice(start, start + size);
+  },
+  async buildClientDistributionFromRawRows(tab, pagination, requestId) {
+    // Client Distribution gross scheduled must be calculated from the actual schedule rows,
+    // not from the grouped RPC cache. This keeps each client total equal to SUM(scheduled_amount)
+    // before receipts and credit-note adjustments.
+    console.log('[PaymentForecast] loading source', 'get_payment_forecast_page client_distribution_gross_source');
+    const rawRows = await this.fetchAllForecastRows(this.rpcFilters(tab));
+    if (requestId !== this._rowsRequestId || tab !== this.canonicalTab()) return null;
+    const allGroupedRows = this.groupClientRows(rawRows);
+    pagination.total = allGroupedRows.length;
+    if (pagination.page > Math.max(1, Math.ceil(pagination.total / this.fixedPageSize))) pagination.page = 1;
+    return this.pageRows(allGroupedRows, pagination);
+  },
   async loadGrouped(type = this.canonicalTab()) {
     const tab = this.canonicalTab(type);
     const pagination = this.state.pagination[tab];
@@ -308,24 +326,27 @@ const PaymentForecast = {
     console.log('[PaymentForecast] loading source', sourceName);
     this.renderActiveTab();
     try {
-      const groupedParams = { ...this.rpcFilters(tab), p_page: pagination.page, p_page_size: this.fixedPageSize };
-      const data = tab === 'client_distribution'
-        ? await Api.getPaymentForecastClientDistribution(groupedParams)
-        : await Api.getPaymentForecastMonthlySummary(groupedParams);
-      if (requestId !== this._rowsRequestId || tab !== this.canonicalTab()) return;
-      const items = Array.isArray(data) ? data : [];
-      let groupedRows = items.map(item => item?.row_data || item).filter(Boolean);
-      const serverTotal = this.n(items[0]?.total_count);
-      if (!groupedRows.length && serverTotal === 0) {
-        console.log('[PaymentForecast] loading source', `${sourceName} fallback get_payment_forecast_page`);
-        const rawRows = await this.fetchAllForecastRows(this.rpcFilters(tab));
-        if (requestId !== this._rowsRequestId || tab !== this.canonicalTab()) return;
-        const allGroupedRows = tab === 'client_distribution' ? this.groupClientRows(rawRows) : this.groupMonthlyRows(rawRows);
-        pagination.total = allGroupedRows.length;
-        const start = (pagination.page - 1) * this.fixedPageSize;
-        groupedRows = allGroupedRows.slice(start, start + this.fixedPageSize);
+      let groupedRows = [];
+      if (tab === 'client_distribution') {
+        groupedRows = await this.buildClientDistributionFromRawRows(tab, pagination, requestId);
+        if (!groupedRows) return;
       } else {
-        pagination.total = serverTotal || groupedRows.length;
+        const groupedParams = { ...this.rpcFilters(tab), p_page: pagination.page, p_page_size: this.fixedPageSize };
+        const data = await Api.getPaymentForecastMonthlySummary(groupedParams);
+        if (requestId !== this._rowsRequestId || tab !== this.canonicalTab()) return;
+        const items = Array.isArray(data) ? data : [];
+        groupedRows = items.map(item => item?.row_data || item).filter(Boolean);
+        const serverTotal = this.n(items[0]?.total_count);
+        if (!groupedRows.length && serverTotal === 0) {
+          console.log('[PaymentForecast] loading source', `${sourceName} fallback get_payment_forecast_page`);
+          const rawRows = await this.fetchAllForecastRows(this.rpcFilters(tab));
+          if (requestId !== this._rowsRequestId || tab !== this.canonicalTab()) return;
+          const allGroupedRows = this.groupMonthlyRows(rawRows);
+          pagination.total = allGroupedRows.length;
+          groupedRows = this.pageRows(allGroupedRows, pagination);
+        } else {
+          pagination.total = serverTotal || groupedRows.length;
+        }
       }
       this.state.rowsByTab[tab] = groupedRows.map(row => this.normalizeGroupedRow(row, tab));
       if (!this.state.rowsByTab[tab].length && pagination.total > 0 && pagination.page > 1) { pagination.page = 1; return this.loadGrouped(tab); }
@@ -334,14 +355,19 @@ const PaymentForecast = {
       if (requestId !== this._rowsRequestId) return;
       console.error(`[PaymentForecast] ${sourceName} failed`, error);
       try {
-        console.log('[PaymentForecast] loading source', `${sourceName} fallback get_payment_forecast_page`);
-        const rawRows = await this.fetchAllForecastRows(this.rpcFilters(tab));
-        if (requestId !== this._rowsRequestId || tab !== this.canonicalTab()) return;
-        const allGroupedRows = tab === 'client_distribution' ? this.groupClientRows(rawRows) : this.groupMonthlyRows(rawRows);
-        pagination.total = allGroupedRows.length;
-        if (pagination.page > Math.max(1, Math.ceil(pagination.total / this.fixedPageSize))) pagination.page = 1;
-        const start = (pagination.page - 1) * this.fixedPageSize;
-        this.state.rowsByTab[tab] = allGroupedRows.slice(start, start + this.fixedPageSize).map(row => this.normalizeGroupedRow(row, tab));
+        if (tab === 'client_distribution') {
+          const groupedRows = await this.buildClientDistributionFromRawRows(tab, pagination, requestId);
+          if (!groupedRows) return;
+          this.state.rowsByTab[tab] = groupedRows.map(row => this.normalizeGroupedRow(row, tab));
+        } else {
+          console.log('[PaymentForecast] loading source', `${sourceName} fallback get_payment_forecast_page`);
+          const rawRows = await this.fetchAllForecastRows(this.rpcFilters(tab));
+          if (requestId !== this._rowsRequestId || tab !== this.canonicalTab()) return;
+          const allGroupedRows = this.groupMonthlyRows(rawRows);
+          pagination.total = allGroupedRows.length;
+          if (pagination.page > Math.max(1, Math.ceil(pagination.total / this.fixedPageSize))) pagination.page = 1;
+          this.state.rowsByTab[tab] = this.pageRows(allGroupedRows, pagination).map(row => this.normalizeGroupedRow(row, tab));
+        }
         this.state.rowsError = '';
         console.log('[PaymentForecast] rows', this.state.rowsByTab[tab].length, 'total', pagination.total);
       } catch (fallbackError) {
