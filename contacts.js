@@ -102,104 +102,200 @@ const Contacts = {
   async ensureControls() {
     const view = document.getElementById('contactsView');
     if (!view) return;
+    view.classList.add('contacts-workspace');
 
-    if (!document.getElementById('contactsSearchInput')) {
-      const filterCard = document.getElementById('contactsFilterCard') || view.querySelector('.card');
-      if (filterCard) {
-        filterCard.innerHTML = `
-          <div class="contacts-panel-title">
-            <span class="contacts-panel-icon" aria-hidden="true">⌁</span>
-            <h2>Filters</h2>
-          </div>
-          <div class="contacts-filter-grid">
-            <label class="contacts-filter-field contacts-filter-search" for="contactsSearchInput">
-              <span>Search Contacts</span>
-              <div class="contacts-input-shell">
-                <span aria-hidden="true">⌕</span>
-                <input id="contactsSearchInput" class="input" type="search" placeholder="Search by name, email, job title..." autocomplete="off" />
+    const needsModernLayout = !document.getElementById('contactsSummaryGrid')
+      || !document.getElementById('contactsFilterCard')
+      || !document.getElementById('contactsTableBody')
+      || !document.getElementById('contactsTableCard');
+
+    if (needsModernLayout) {
+      view.innerHTML = `
+        <div class="contacts-page-shell">
+          <header class="contacts-page-header">
+            <div>
+              <h1>Contacts</h1>
+              <p>Manage and organize your contacts</p>
+            </div>
+            <button id="contactsCreateBtn" class="btn primary contacts-add-btn" type="button" data-action="create-contact" data-contact-create="true">
+              <span aria-hidden="true">＋</span>
+              Add Contact
+            </button>
+          </header>
+
+          <section id="contactsSummaryGrid" class="contacts-summary-grid" aria-label="Contacts summary"></section>
+
+          <section id="contactsFilterCard" class="contacts-panel contacts-filter-card" aria-label="Contacts filters">
+            <div class="contacts-panel-title">
+              <span class="contacts-panel-icon" aria-hidden="true">⌁</span>
+              <h2>Filters</h2>
+            </div>
+            <div class="contacts-filter-grid">
+              <label class="contacts-filter-field contacts-filter-search" for="contactsSearchInput">
+                <span>Search Contacts</span>
+                <div class="contacts-input-shell">
+                  <span aria-hidden="true">⌕</span>
+                  <input id="contactsSearchInput" class="input" type="search" placeholder="Search by name, email, job title..." autocomplete="off" />
+                </div>
+              </label>
+              <label class="contacts-filter-field" for="contactsCompanyFilter">
+                <span>Company</span>
+                <select id="contactsCompanyFilter" class="select"><option value="">All Companies</option></select>
+              </label>
+              <label class="contacts-filter-field" for="contactsStatusFilter">
+                <span>Status</span>
+                <select id="contactsStatusFilter" class="select">
+                  <option value="">All Statuses</option>
+                  <option>Active</option>
+                  <option>Inactive</option>
+                  <option>Left Company</option>
+                  <option>Do Not Contact</option>
+                </select>
+              </label>
+              <label class="contacts-filter-field" for="contactsDecisionRoleFilter">
+                <span>Role</span>
+                <select id="contactsDecisionRoleFilter" class="select">
+                  <option value="">All Roles</option>
+                  <option>Decision Maker</option>
+                  <option>Influencer</option>
+                  <option>Finance Contact</option>
+                  <option>Technical Contact</option>
+                  <option>Operations Contact</option>
+                  <option>Procurement Contact</option>
+                  <option>User</option>
+                  <option>Other</option>
+                </select>
+              </label>
+              <label class="contacts-filter-field" for="contactsDepartmentFilter">
+                <span>Department</span>
+                <input id="contactsDepartmentFilter" class="input" placeholder="Department" autocomplete="off" />
+              </label>
+              <label class="contacts-filter-field" for="contactsPrimaryFilter">
+                <span>Primary Contact</span>
+                <select id="contactsPrimaryFilter" class="select">
+                  <option value="">All Contacts</option>
+                  <option value="primary">Primary only</option>
+                  <option value="non_primary">Non-primary only</option>
+                </select>
+              </label>
+              <label class="contacts-filter-field" for="contactsCreatedFromFilter">
+                <span>From Date</span>
+                <input id="contactsCreatedFromFilter" class="input" type="date" />
+              </label>
+              <label class="contacts-filter-field" for="contactsCreatedToFilter">
+                <span>To Date</span>
+                <input id="contactsCreatedToFilter" class="input" type="date" />
+              </label>
+              <div class="contacts-filter-field contacts-filter-clear">
+                <span>&nbsp;</span>
+                <button id="contactsClearFiltersBtn" class="btn ghost" type="button"><span aria-hidden="true">↻</span> Clear Filters</button>
               </div>
-            </label>
-            <label class="contacts-filter-field" for="contactsCompanyFilter">
-              <span>Company</span>
-              <select id="contactsCompanyFilter" class="select"><option value="">All Companies</option></select>
-            </label>
-            <label class="contacts-filter-field" for="contactsStatusFilter">
-              <span>Status</span>
-              <select id="contactsStatusFilter" class="select">
-                <option value="">All Statuses</option>
-                <option>Active</option>
-                <option>Inactive</option>
-                <option>Left Company</option>
-                <option>Do Not Contact</option>
-              </select>
-            </label>
-            <label class="contacts-filter-field" for="contactsDecisionRoleFilter">
-              <span>Role</span>
-              <select id="contactsDecisionRoleFilter" class="select">
-                <option value="">All Roles</option>
-                <option>Decision Maker</option>
-                <option>Influencer</option>
-                <option>Finance Contact</option>
-                <option>Technical Contact</option>
-                <option>Operations Contact</option>
-                <option>Procurement Contact</option>
-                <option>User</option>
-                <option>Other</option>
-              </select>
-            </label>
-            <label class="contacts-filter-field" for="contactsDepartmentFilter"><span>Department</span><input id="contactsDepartmentFilter" class="input" placeholder="Department" autocomplete="off" /></label>
-            <label class="contacts-filter-field" for="contactsPrimaryFilter">
-              <span>Primary Contact</span>
-              <select id="contactsPrimaryFilter" class="select">
-                <option value="">All Contacts</option>
-                <option value="primary">Primary only</option>
-                <option value="non_primary">Non-primary only</option>
-              </select>
-            </label>
-            <label class="contacts-filter-field" for="contactsCreatedFromFilter"><span>From Date</span><input id="contactsCreatedFromFilter" class="input" type="date" /></label>
-            <label class="contacts-filter-field" for="contactsCreatedToFilter"><span>To Date</span><input id="contactsCreatedToFilter" class="input" type="date" /></label>
-            <div class="contacts-filter-field contacts-filter-clear"><span>&nbsp;</span><button id="contactsClearFiltersBtn" class="btn ghost" type="button"><span aria-hidden="true">↻</span> Clear Filters</button></div>
-          </div>`;
-      }
+            </div>
+          </section>
 
-      document.getElementById('contactsSearchInput')?.addEventListener('input', e => {
-        this.state.search = e.target.value.trim();
-        this.state.page = 1;
-        this.loadAndRefresh();
-      });
-      [['contactsCompanyFilter','company_id'],['contactsStatusFilter','contact_status'],['contactsDecisionRoleFilter','decision_role'],['contactsPrimaryFilter','is_primary_contact'],['contactsCreatedFromFilter','created_from'],['contactsCreatedToFilter','created_to']].forEach(([id,key]) => {
-        document.getElementById(id)?.addEventListener('change', e => {
-          this.state.filters[key] = e.target.value.trim();
-          this.state.page = 1;
-          this.loadAndRefresh();
-        });
-      });
-      document.getElementById('contactsDepartmentFilter')?.addEventListener('input', e => {
-        this.state.filters.department = e.target.value.trim();
-        this.state.page = 1;
-        this.loadAndRefresh();
-      });
-      document.getElementById('contactsClearFiltersBtn')?.addEventListener('click', () => {
-        this.state.search = '';
-        this.state.filters = { company_id: '', contact_status: '', decision_role: '', department: '', is_primary_contact: '', created_from: '', created_to: '' };
-        ['contactsSearchInput','contactsCompanyFilter','contactsStatusFilter','contactsDecisionRoleFilter','contactsDepartmentFilter','contactsPrimaryFilter','contactsCreatedFromFilter','contactsCreatedToFilter'].forEach(id => {
-          const el = document.getElementById(id);
-          if (el) el.value = '';
-        });
-        this.state.page = 1;
-        this.loadAndRefresh();
-      });
-      document.getElementById('contactsExportBtn')?.addEventListener('click', () => this.exportCsv());
-      document.getElementById('contactsRowsPerPage')?.addEventListener('change', e => {
-        this.state.limit = Number(e.target.value) || 50;
-        this.state.page = 1;
-        this.loadAndRefresh();
-      });
-      await this.ensureFilterCompanies().catch(error => console.warn('[contacts] company filter load failed', error));
+          <section id="contactsTableCard" class="contacts-panel contacts-table-panel" aria-label="Contacts table">
+            <div class="contacts-table-toolbar">
+              <div class="contacts-table-toolbar-left">
+                <button id="contactsExportBtn" class="btn ghost contacts-export-btn" type="button"><span aria-hidden="true">⇩</span> Export</button>
+                <span id="contactsPageInfo" class="contacts-page-info" aria-live="polite">Showing 0 records</span>
+              </div>
+              <label class="contacts-rows-control" for="contactsRowsPerPage">
+                <span>Rows per page</span>
+                <select id="contactsRowsPerPage" class="select">
+                  <option value="10">10</option>
+                  <option value="25">25</option>
+                  <option value="50" selected>50</option>
+                  <option value="100">100</option>
+                </select>
+              </label>
+            </div>
+            <div class="contacts-table-wrap">
+              <table id="contactsTable">
+                <thead>
+                  <tr>
+                    <th scope="col">Contact ID</th>
+                    <th scope="col">Full Name</th>
+                    <th scope="col">Company</th>
+                    <th scope="col">Job Title</th>
+                    <th scope="col">Department</th>
+                    <th scope="col">Email</th>
+                    <th scope="col">Phone</th>
+                    <th scope="col">Primary Contact</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="contactsTableBody"></tbody>
+              </table>
+            </div>
+            <div class="contacts-table-footer">
+              <nav id="contactsPagination" class="contacts-pagination" aria-label="Contacts pagination"></nav>
+              <span id="contactsFooterInfo" class="contacts-footer-info" aria-live="polite">Showing 0 records</span>
+            </div>
+          </section>
+        </div>`;
     }
+
+    const bindControl = (id, eventName, handler) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const key = `contactsBound${eventName.replace(/[^a-z0-9]/gi, '')}`;
+      if (el.dataset[key]) return;
+      el.dataset[key] = 'true';
+      el.addEventListener(eventName, handler);
+    };
+
+    bindControl('contactsSearchInput', 'input', e => {
+      this.state.search = e.target.value.trim();
+      this.state.page = 1;
+      this.loadAndRefresh();
+    });
+
+    [
+      ['contactsCompanyFilter', 'company_id'],
+      ['contactsStatusFilter', 'contact_status'],
+      ['contactsDecisionRoleFilter', 'decision_role'],
+      ['contactsPrimaryFilter', 'is_primary_contact'],
+      ['contactsCreatedFromFilter', 'created_from'],
+      ['contactsCreatedToFilter', 'created_to']
+    ].forEach(([id, key]) => {
+      bindControl(id, 'change', e => {
+        this.state.filters[key] = e.target.value.trim();
+        this.state.page = 1;
+        this.loadAndRefresh();
+      });
+    });
+
+    bindControl('contactsDepartmentFilter', 'input', e => {
+      this.state.filters.department = e.target.value.trim();
+      this.state.page = 1;
+      this.loadAndRefresh();
+    });
+
+    bindControl('contactsClearFiltersBtn', 'click', () => {
+      this.state.search = '';
+      this.state.filters = { company_id: '', contact_status: '', decision_role: '', department: '', is_primary_contact: '', created_from: '', created_to: '' };
+      ['contactsSearchInput', 'contactsCompanyFilter', 'contactsStatusFilter', 'contactsDecisionRoleFilter', 'contactsDepartmentFilter', 'contactsPrimaryFilter', 'contactsCreatedFromFilter', 'contactsCreatedToFilter'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+      this.state.page = 1;
+      this.loadAndRefresh();
+    });
+
+    bindControl('contactsExportBtn', 'click', () => this.exportCsv());
+    bindControl('contactsRowsPerPage', 'change', e => {
+      this.state.limit = Number(e.target.value) || 50;
+      this.state.page = 1;
+      this.loadAndRefresh();
+    });
 
     const rowsSelect = document.getElementById('contactsRowsPerPage');
     if (rowsSelect) rowsSelect.value = String(this.state.limit || 50);
+    const companyFilter = document.getElementById('contactsCompanyFilter');
+    if (companyFilter && this.state.filters.company_id) companyFilter.value = this.state.filters.company_id;
+
+    await this.ensureFilterCompanies().catch(error => console.warn('[contacts] company filter load failed', error));
     this.bindFormEvents();
     applyPermissionVisibility(view);
   },
