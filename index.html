@@ -3459,92 +3459,76 @@ Sample:
     </div>
   </div>
 
-  <div id="companyModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="companyModalTitle">
-    <div class="modal-content" style="max-width:980px;">
-      <div class="modal-header"><h2 id="companyModalTitle" style="margin:0;font-size:20px">Create Company</h2><button class="modal-close" id="companyCloseBtn" aria-label="Close company form">✕</button></div>
-      <form id="companyForm" class="stack" style="margin-top:12px;">
-        <input id="companyRecordId" type="hidden" />
-        <div class="grid cols-2">
-          <div class="filter-row"><label class="muted" for="companyNameInput">Company Name *</label><input id="companyNameInput" class="input" type="text" required /></div>
-          <div class="filter-row"><label class="muted" for="companyLegalNameInput">Legal Name</label><input id="companyLegalNameInput" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="companyAuthorizedSignatoryFullNameInput">Authorized Signatory Full Name</label><input id="companyAuthorizedSignatoryFullNameInput" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="companyAuthorizedSignatoryTitleInput">Authorized Signatory Title</label><input id="companyAuthorizedSignatoryTitleInput" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="companyRegistrationNumberInput">Registration Number</label><input id="companyRegistrationNumberInput" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="companyTypeInput">Company Type</label><select id="companyTypeInput" class="select"></select></div>
-          <div class="filter-row"><label class="muted" for="companyIndustryInput">Industry</label><select id="companyIndustryInput" class="select"></select></div>
-          <div class="filter-row"><label class="muted" for="companyWebsiteInput">Website</label><input id="companyWebsiteInput" class="input" type="url" /></div>
-          <div class="filter-row"><label class="muted" for="companyMainEmailInput">Main Email</label><input id="companyMainEmailInput" class="input" type="email" /></div>
-          <div class="filter-row"><label class="muted" for="companyMainPhoneInput">Main Phone</label><input id="companyMainPhoneInput" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="companyCountryInput">Country</label><input id="companyCountryInput" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="companyCityInput">City</label><input id="companyCityInput" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="companyAddressInput">Address</label><input id="companyAddressInput" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="companyTaxNumberInput">Tax Number</label><input id="companyTaxNumberInput" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="companyStatusInput">Company Status</label><input id="companyStatusInput" class="input" type="text" value="Prospect" readonly aria-describedby="companyStatusHelp" /><small id="companyStatusHelp" class="muted">Auto-calculated from lifecycle stage.</small></div>
-          
-          
-          
-          <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="companyNotesInput">Notes</label><textarea id="companyNotesInput" class="input" rows="3"></textarea></div>
-        </div>
-        <section id="companyDocumentsSection" class="card stack" style="display:none;gap:10px;">
-          <div>
-            <strong>Company Documents</strong>
-            <p id="companyDocumentsCreateNote" class="muted" style="margin:6px 0 0;">Save the company first before uploading documents.</p>
-          </div>
-          <div id="companyDocumentUploadControls" class="stack" style="gap:8px;display:none;">
-            <div class="grid cols-2">
-              <div class="filter-row"><label class="muted" for="companyDocumentTitleInput">Document Title (optional)</label><input id="companyDocumentTitleInput" class="input" type="text" /></div>
-              <div class="filter-row"><label class="muted" for="companyDocumentFileInput">Document File</label><input id="companyDocumentFileInput" class="input" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx,application/pdf,image/png,image/jpeg,image/webp,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" /></div>
-            </div>
-            <div><button id="companyDocumentUploadBtn" class="btn ghost sm" type="button">Upload Document</button></div>
-          </div>
-          <div id="companyDocumentsList" class="stack" style="gap:8px;"></div>
-          <section id="companyVerificationPanel" class="card stack" style="display:none;gap:10px;"></section>
-        </section>
-        <div class="actions" style="justify-content:flex-end;gap:8px;"><button id="companyCancelBtn" type="button" class="btn ghost">Cancel</button><button id="companySaveBtn" type="submit" class="btn">Save Company</button></div>
-      </form>
-    </div>
-  </div>
-  <div id="contactModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="contactModalTitle">
-    <div class="modal-content" style="max-width:980px;">
-      <div class="modal-header"><h2 id="contactModalTitle" style="margin:0;font-size:20px">Create Contact</h2><button class="modal-close" id="contactCloseBtn" aria-label="Close contact form">✕</button></div>
-      <form id="contactForm" class="stack" style="margin-top:12px;">
-        <input id="contactRecordId" type="hidden" />
-        <div class="grid cols-2">
-          <div class="filter-row"><label class="muted" for="contactCompanyInput">Companies *</label><select id="contactCompanyInput" class="select" multiple size="5" required><option value="">Select company</option></select><div id="contactSelectedCompanies" class="row" style="gap:6px;flex-wrap:wrap"><span class='muted'>No companies selected</span></div><small class="muted">Hold Ctrl/Cmd to assign the contact to multiple companies. The first selected company is kept as the primary company for existing flows.</small></div>
-          
-          <div class="filter-row"><label class="muted" for="contactFirstNameInput">First Name</label><input id="contactFirstNameInput" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="contactLastNameInput">Last Name</label><input id="contactLastNameInput" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="contactJobTitleInput">Job Title</label><input id="contactJobTitleInput" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="contactDepartmentInput">Department</label><input id="contactDepartmentInput" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="contactEmailInput">Email</label><input id="contactEmailInput" class="input" type="email" /></div>
-          <div class="filter-row"><label class="muted" for="contactPhoneInput">Phone</label><input id="contactPhoneInput" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="contactMobileInput">Mobile</label><input id="contactMobileInput" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="contactDecisionRoleInput">Decision Role</label><select id="contactDecisionRoleInput" class="select"><option value="">—</option><option>Decision Maker</option><option>Influencer</option><option>Finance Contact</option><option>Technical Contact</option><option>Operations Contact</option><option>Procurement Contact</option><option>User</option><option>Other</option></select></div>
-          <div class="filter-row"><label class="muted" for="contactStatusInput">Contact Status</label><select id="contactStatusInput" class="select"><option>Active</option><option>Inactive</option><option>Left Company</option><option>Do Not Contact</option></select></div>
-          <div class="filter-row" style="display:flex;align-items:flex-end;"><label style="display:flex;align-items:center;gap:8px;"><input id="contactIsPrimaryInput" type="checkbox" /> <span class="muted">Primary Contact</span></label></div>
-          <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="contactNotesInput">Notes</label><textarea id="contactNotesInput" class="input" rows="3"></textarea></div>
-        </div>
-        <div class="actions" style="justify-content:flex-end;gap:8px;"><button id="contactCancelBtn" type="button" class="btn ghost">Cancel</button><button id="contactSaveBtn" type="submit" class="btn">Save Contact</button></div>
-      </form>
-    </div>
-  </div>
-  <div id="leadFormModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="leadFormTitle">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2 id="leadFormTitle" style="margin:0;font-size:20px">Create Lead</h2>
-        <button class="modal-close" id="leadFormCloseBtn" aria-label="Close lead form">✕</button>
+  <div id="companyModal" class="modal modern-crm-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="companyModalTitle">
+    <div class="modal-content modern-crm-modal-content modern-crm-modal-content--wide">
+      <div class="modern-crm-modal-header">
+        <div class="modern-crm-header-left"><div class="modern-crm-modal-icon">🏢</div><div><h2 id="companyModalTitle" class="modern-crm-modal-title">Create Company</h2><p class="modern-crm-modal-subtitle">Create a new company record with legal, contact, and lifecycle details.</p></div></div>
+        <button class="modal-close modern-crm-close" id="companyCloseBtn" aria-label="Close company form">✕</button>
       </div>
-      <form id="leadForm" class="stack" style="margin-top:12px;">
-        <div class="grid cols-2">
-          <div class="filter-row">
+      <form id="companyForm" class="modern-crm-form">
+        <input id="companyRecordId" type="hidden" />
+        <div class="modern-crm-scroll-body">
+          <section class="modern-crm-section-card"><h3 class="modern-crm-section-title"><span>1</span>Basic Company Information</h3><div class="modern-crm-form-grid">
+            <div class="crm-field"><label for="companyNameInput">Company Name <span class="required-mark">*</span></label><input id="companyNameInput" class="input" type="text" required /></div>
+            <div class="crm-field"><label for="companyLegalNameInput">Legal Name</label><input id="companyLegalNameInput" class="input" type="text" /></div>
+            <div class="crm-field"><label for="companyTypeInput">Company Type</label><select id="companyTypeInput" class="select"></select></div>
+            <div class="crm-field"><label for="companyIndustryInput">Industry</label><select id="companyIndustryInput" class="select"></select></div>
+            <div class="crm-field"><label for="companyStatusInput">Company Status</label><input id="companyStatusInput" class="input" type="text" value="Prospect" readonly aria-describedby="companyStatusHelp" /><small id="companyStatusHelp">Auto-calculated from lifecycle stage.</small></div>
+          </div></section>
+          <section class="modern-crm-section-card"><h3 class="modern-crm-section-title"><span>2</span>Authorized Signatory</h3><div class="modern-crm-form-grid">
+            <div class="crm-field"><label for="companyAuthorizedSignatoryFullNameInput">Authorized Signatory Full Name</label><input id="companyAuthorizedSignatoryFullNameInput" class="input" type="text" /></div>
+            <div class="crm-field"><label for="companyAuthorizedSignatoryTitleInput">Authorized Signatory Title</label><input id="companyAuthorizedSignatoryTitleInput" class="input" type="text" /></div>
+          </div></section>
+          <section class="modern-crm-section-card"><h3 class="modern-crm-section-title"><span>3</span>Registration &amp; Tax</h3><div class="modern-crm-form-grid">
+            <div class="crm-field"><label for="companyRegistrationNumberInput">Registration Number</label><input id="companyRegistrationNumberInput" class="input" type="text" /></div>
+            <div class="crm-field"><label for="companyTaxNumberInput">Tax Number</label><input id="companyTaxNumberInput" class="input" type="text" /></div>
+          </div></section>
+          <section class="modern-crm-section-card"><h3 class="modern-crm-section-title"><span>4</span>Contact Information</h3><div class="modern-crm-form-grid">
+            <div class="crm-field"><label for="companyWebsiteInput">Website</label><input id="companyWebsiteInput" class="input" type="url" /></div>
+            <div class="crm-field"><label for="companyMainEmailInput">Main Email</label><input id="companyMainEmailInput" class="input" type="email" /></div>
+            <div class="crm-field"><label for="companyMainPhoneInput">Main Phone</label><input id="companyMainPhoneInput" class="input" type="text" /></div>
+          </div></section>
+          <section class="modern-crm-section-card"><h3 class="modern-crm-section-title"><span>5</span>Address</h3><div class="modern-crm-form-grid">
+            <div class="crm-field"><label for="companyCountryInput">Country</label><input id="companyCountryInput" class="input" type="text" /></div>
+            <div class="crm-field"><label for="companyCityInput">City</label><input id="companyCityInput" class="input" type="text" /></div>
+            <div class="crm-field crm-field-full"><label for="companyAddressInput">Address</label><input id="companyAddressInput" class="input" type="text" /></div>
+          </div></section>
+          <section class="modern-crm-section-card"><h3 class="modern-crm-section-title"><span>6</span>Notes</h3><div class="crm-field"><label for="companyNotesInput">Notes</label><textarea id="companyNotesInput" class="input" rows="4"></textarea></div></section>
+          <section id="companyDocumentsSection" class="modern-crm-section-card" style="display:none;"><h3 class="modern-crm-section-title"><span>7</span>Company Documents</h3><p id="companyDocumentsCreateNote" class="modern-crm-info-callout">Save the company first before uploading documents.</p><div id="companyDocumentUploadControls" class="stack" style="gap:12px;display:none;"><div class="modern-crm-form-grid"><div class="crm-field"><label for="companyDocumentTitleInput">Document Title (optional)</label><input id="companyDocumentTitleInput" class="input" type="text" /></div><div class="crm-field"><label for="companyDocumentFileInput">Document File</label><input id="companyDocumentFileInput" class="input" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx,application/pdf,image/png,image/jpeg,image/webp,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" /></div></div><div><button id="companyDocumentUploadBtn" class="btn btn-incheck-outline sm" type="button">Upload Document</button></div></div><div id="companyDocumentsList" class="stack" style="gap:8px;"></div><section id="companyVerificationPanel" class="modern-crm-notes-card" style="display:none;"></section></section>
+        </div>
+        <div class="modern-crm-modal-footer"><span></span><div class="modern-crm-footer-actions"><button id="companyCancelBtn" type="button" class="btn btn-incheck-outline">Cancel</button><button id="companySaveBtn" type="submit" class="btn btn-incheck-primary">Save Company</button></div></div>
+      </form>
+    </div>
+  </div>
+  <div id="contactModal" class="modal modern-crm-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="contactModalTitle">
+    <div class="modal-content modern-crm-modal-content">
+      <div class="modern-crm-modal-header"><div class="modern-crm-header-left"><div class="modern-crm-modal-icon">👤</div><div><h2 id="contactModalTitle" class="modern-crm-modal-title">Create Contact</h2><p class="modern-crm-modal-subtitle">Create a new contact and link it to one or multiple companies.</p></div></div><button class="modal-close modern-crm-close" id="contactCloseBtn" aria-label="Close contact form">✕</button></div>
+      <form id="contactForm" class="modern-crm-form"><input id="contactRecordId" type="hidden" /><div class="modern-crm-scroll-body">
+        <section class="modern-crm-section-card"><h3 class="modern-crm-section-title"><span>1</span>Company Assignment</h3><div class="crm-field crm-field-full"><label for="contactCompanyInput">Companies <span class="required-mark">*</span></label><select id="contactCompanyInput" class="select crm-multiselect" multiple size="6" required><option value="">Select company</option></select><div id="contactSelectedCompanies" class="crm-chip-row"><span class='muted'>No companies selected</span></div><small>Hold Ctrl/Cmd to assign the contact to multiple companies. The first selected company is kept as the primary company for existing flows.</small></div></section>
+        <section class="modern-crm-section-card"><h3 class="modern-crm-section-title"><span>2</span>Personal Details</h3><div class="modern-crm-form-grid"><div class="crm-field"><label for="contactFirstNameInput">First Name</label><input id="contactFirstNameInput" class="input" type="text" /></div><div class="crm-field"><label for="contactLastNameInput">Last Name</label><input id="contactLastNameInput" class="input" type="text" /></div><div class="crm-field"><label for="contactJobTitleInput">Job Title</label><input id="contactJobTitleInput" class="input" type="text" /></div><div class="crm-field"><label for="contactDepartmentInput">Department</label><input id="contactDepartmentInput" class="input" type="text" /></div></div></section>
+        <section class="modern-crm-section-card"><h3 class="modern-crm-section-title"><span>3</span>Contact Information</h3><div class="modern-crm-form-grid"><div class="crm-field"><label for="contactEmailInput">Email</label><input id="contactEmailInput" class="input" type="email" /></div><div class="crm-field"><label for="contactPhoneInput">Phone</label><input id="contactPhoneInput" class="input" type="text" /></div><div class="crm-field"><label for="contactMobileInput">Mobile</label><input id="contactMobileInput" class="input" type="text" /></div></div></section>
+        <section class="modern-crm-section-card"><h3 class="modern-crm-section-title"><span>4</span>Contact Role &amp; Status</h3><div class="modern-crm-form-grid"><div class="crm-field"><label for="contactDecisionRoleInput">Decision Role</label><select id="contactDecisionRoleInput" class="select"><option value="">—</option><option>Decision Maker</option><option>Influencer</option><option>Finance Contact</option><option>Technical Contact</option><option>Operations Contact</option><option>Procurement Contact</option><option>User</option><option>Other</option></select></div><div class="crm-field"><label for="contactStatusInput">Contact Status</label><select id="contactStatusInput" class="select"><option>Active</option><option>Inactive</option><option>Left Company</option><option>Do Not Contact</option></select></div><div class="crm-field crm-checkbox-field"><label><input id="contactIsPrimaryInput" type="checkbox" /> <span>Primary Contact</span></label></div></div></section>
+        <section class="modern-crm-section-card"><h3 class="modern-crm-section-title"><span>5</span>Notes</h3><div class="crm-field"><label for="contactNotesInput">Notes</label><textarea id="contactNotesInput" class="input" rows="4"></textarea></div></section>
+      </div><div class="modern-crm-modal-footer"><span></span><div class="modern-crm-footer-actions"><button id="contactCancelBtn" type="button" class="btn btn-incheck-outline">Cancel</button><button id="contactSaveBtn" type="submit" class="btn btn-incheck-primary">Save Contact</button></div></div></form>
+    </div>
+  </div>
+  <div id="leadFormModal" class="modal modern-crm-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="leadFormTitle">
+    <div class="modal-content modern-crm-modal-content modern-crm-modal-content--wide">
+      <div class="modern-crm-modal-header">
+        <div class="modern-crm-header-left"><div class="modern-crm-modal-icon">🎯</div><div><h2 id="leadFormTitle" class="modern-crm-modal-title">Create Lead</h2><p class="modern-crm-modal-subtitle">Create a new lead with customer details, qualification, and follow-up.</p></div></div>
+        <button class="modal-close modern-crm-close" id="leadFormCloseBtn" aria-label="Close lead form">✕</button>
+      </div>
+      <form id="leadForm" class="modern-crm-form">
+        <div class="modern-crm-scroll-body modern-crm-form-grid">
+          <div class="crm-field">
             <label class="muted" for="leadFormLeadId">Lead ID</label>
             <input id="leadFormLeadId" class="input" type="text" readonly />
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="leadFormCreatedAt">Created At</label>
             <input id="leadFormCreatedAt" class="input" type="text" readonly />
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="leadFormCompanyName">Company *</label>
             <input id="leadFormCompanyId" type="hidden" />
             <select id="leadFormCompanyName" class="input" required>
@@ -3552,7 +3536,7 @@ Sample:
             </select>
           </div>
           <datalist id="leadCompanyPicker"></datalist>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="leadFormContactName">Contact *</label>
             <input id="leadFormContactId" type="hidden" />
             <select id="leadFormContactName" class="input" required>
@@ -3560,141 +3544,141 @@ Sample:
             </select>
           </div>
           <datalist id="leadContactPicker"></datalist>
-          <div id="leadNoContactsHint" class="filter-row muted" style="display:none;grid-column:1 / -1;">No contacts found for this company. Add contacts from the Contacts module.</div>
-          <div class="filter-row muted" style="grid-column:1 / -1;">Company and contact details are managed from the Company and Contacts modules.</div>
-          <div class="filter-row muted" style="grid-column:1 / -1;">Edit this information from the Company or Contacts module.</div>
-          <div class="filter-row" style="grid-column:1 / -1;"><strong>Company Details (Read-only)</strong></div>
-          <div class="filter-row"><label class="muted" for="leadCompanyLegalName">Legal Name</label><input id="leadCompanyLegalName" class="input readonly" type="text" readonly /></div>
-          <div class="filter-row"><label class="muted" for="leadCompanyType">Company Type</label><input id="leadCompanyType" class="input readonly" type="text" readonly /></div>
-          <div class="filter-row"><label class="muted" for="leadCompanyIndustry">Industry</label><input id="leadCompanyIndustry" class="input readonly" type="text" readonly /></div>
-          <div class="filter-row"><label class="muted" for="leadCompanyWebsite">Website</label><input id="leadCompanyWebsite" class="input readonly" type="text" readonly /></div>
-          <div class="filter-row"><label class="muted" for="leadCompanyMainEmail">Main Email</label><input id="leadCompanyMainEmail" class="input readonly" type="text" readonly /></div>
-          <div class="filter-row"><label class="muted" for="leadCompanyMainPhone">Main Phone</label><input id="leadCompanyMainPhone" class="input readonly" type="text" readonly /></div>
-          <div class="filter-row"><label class="muted" for="leadCompanyCountry">Country</label><input id="leadCompanyCountry" class="input readonly" type="text" readonly /></div>
-          <div class="filter-row"><label class="muted" for="leadCompanyCity">City</label><input id="leadCompanyCity" class="input readonly" type="text" readonly /></div>
-          <div class="filter-row"><label class="muted" for="leadCompanyAddress">Address</label><input id="leadCompanyAddress" class="input readonly" type="text" readonly /></div>
-          <div class="filter-row"><label class="muted" for="leadCompanyTaxNumber">Tax Number</label><input id="leadCompanyTaxNumber" class="input readonly" type="text" readonly /></div>
-          <div class="filter-row"><label class="muted" for="leadCompanyStatus">Company Status</label><input id="leadCompanyStatus" class="input readonly" type="text" readonly /></div>
+          <div id="leadNoContactsHint" class="crm-field muted" style="display:none;grid-column:1 / -1;">No contacts found for this company. Add contacts from the Contacts module.</div>
+          <div class="crm-field muted" style="grid-column:1 / -1;">Company and contact details are managed from the Company and Contacts modules.</div>
+          <div class="crm-field muted" style="grid-column:1 / -1;">Edit this information from the Company or Contacts module.</div>
+          <div class="crm-field" style="grid-column:1 / -1;"><strong>Company Details (Read-only)</strong></div>
+          <div class="crm-field"><label class="muted" for="leadCompanyLegalName">Legal Name</label><input id="leadCompanyLegalName" class="input readonly" type="text" readonly /></div>
+          <div class="crm-field"><label class="muted" for="leadCompanyType">Company Type</label><input id="leadCompanyType" class="input readonly" type="text" readonly /></div>
+          <div class="crm-field"><label class="muted" for="leadCompanyIndustry">Industry</label><input id="leadCompanyIndustry" class="input readonly" type="text" readonly /></div>
+          <div class="crm-field"><label class="muted" for="leadCompanyWebsite">Website</label><input id="leadCompanyWebsite" class="input readonly" type="text" readonly /></div>
+          <div class="crm-field"><label class="muted" for="leadCompanyMainEmail">Main Email</label><input id="leadCompanyMainEmail" class="input readonly" type="text" readonly /></div>
+          <div class="crm-field"><label class="muted" for="leadCompanyMainPhone">Main Phone</label><input id="leadCompanyMainPhone" class="input readonly" type="text" readonly /></div>
+          <div class="crm-field"><label class="muted" for="leadCompanyCountry">Country</label><input id="leadCompanyCountry" class="input readonly" type="text" readonly /></div>
+          <div class="crm-field"><label class="muted" for="leadCompanyCity">City</label><input id="leadCompanyCity" class="input readonly" type="text" readonly /></div>
+          <div class="crm-field"><label class="muted" for="leadCompanyAddress">Address</label><input id="leadCompanyAddress" class="input readonly" type="text" readonly /></div>
+          <div class="crm-field"><label class="muted" for="leadCompanyTaxNumber">Tax Number</label><input id="leadCompanyTaxNumber" class="input readonly" type="text" readonly /></div>
+          <div class="crm-field"><label class="muted" for="leadCompanyStatus">Company Status</label><input id="leadCompanyStatus" class="input readonly" type="text" readonly /></div>
           
           
           
-          <div class="filter-row" style="grid-column:1 / -1;"><strong>Customer / Company Details — Read-only (Read-only)</strong></div>
-          <div class="filter-row"><label class="muted" for="leadContactFirstName">First Name</label><input id="leadContactFirstName" class="input readonly" type="text" readonly /></div>
-          <div class="filter-row"><label class="muted" for="leadContactLastName">Last Name</label><input id="leadContactLastName" class="input readonly" type="text" readonly /></div>
-          <div class="filter-row"><label class="muted" for="leadContactJobTitle">Job Title</label><input id="leadContactJobTitle" class="input readonly" type="text" readonly /></div>
-          <div class="filter-row"><label class="muted" for="leadContactDepartment">Department</label><input id="leadContactDepartment" class="input readonly" type="text" readonly /></div>
-          <div class="filter-row">
+          <div class="crm-field" style="grid-column:1 / -1;"><strong>Customer / Company Details — Read-only (Read-only)</strong></div>
+          <div class="crm-field"><label class="muted" for="leadContactFirstName">First Name</label><input id="leadContactFirstName" class="input readonly" type="text" readonly /></div>
+          <div class="crm-field"><label class="muted" for="leadContactLastName">Last Name</label><input id="leadContactLastName" class="input readonly" type="text" readonly /></div>
+          <div class="crm-field"><label class="muted" for="leadContactJobTitle">Job Title</label><input id="leadContactJobTitle" class="input readonly" type="text" readonly /></div>
+          <div class="crm-field"><label class="muted" for="leadContactDepartment">Department</label><input id="leadContactDepartment" class="input readonly" type="text" readonly /></div>
+          <div class="crm-field">
             <label class="muted" for="leadFormContactEmail">Contact Email</label>
             <input id="leadFormContactEmail" class="input" type="email" readonly />
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="leadFormContactPhone">Contact Phone</label>
             <input id="leadFormContactPhone" class="input" type="text" readonly />
           </div>
-          <div class="filter-row"><label class="muted" for="leadContactMobile">Mobile</label><input id="leadContactMobile" class="input readonly" type="text" readonly /></div>
-          <div class="filter-row"><label class="muted" for="leadContactDecisionRole">Decision Role</label><input id="leadContactDecisionRole" class="input readonly" type="text" readonly /></div>
-          <div class="filter-row"><label class="muted" for="leadContactPrimary">Primary Contact</label><input id="leadContactPrimary" class="input readonly" type="text" readonly /></div>
-          <div class="filter-row"><label class="muted" for="leadContactStatus">Contact Status</label><input id="leadContactStatus" class="input readonly" type="text" readonly /></div>
-          <div class="filter-row">
+          <div class="crm-field"><label class="muted" for="leadContactMobile">Mobile</label><input id="leadContactMobile" class="input readonly" type="text" readonly /></div>
+          <div class="crm-field"><label class="muted" for="leadContactDecisionRole">Decision Role</label><input id="leadContactDecisionRole" class="input readonly" type="text" readonly /></div>
+          <div class="crm-field"><label class="muted" for="leadContactPrimary">Primary Contact</label><input id="leadContactPrimary" class="input readonly" type="text" readonly /></div>
+          <div class="crm-field"><label class="muted" for="leadContactStatus">Contact Status</label><input id="leadContactStatus" class="input readonly" type="text" readonly /></div>
+          <div class="crm-field">
             <label class="muted" for="leadFormLeadSource">Lead Source</label>
             <select id="leadFormLeadSource" class="select">
               <option value="">—</option>
             </select>
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="leadFormServiceInterest">Service Interest</label>
             <select id="leadFormServiceInterest" class="select">
               <option value="">—</option>
             </select>
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="leadFormStatus">Status</label>
             <select id="leadFormStatus" class="select">
               <option value="">—</option>
             </select>
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="leadFormPriority">Priority</label>
             <select id="leadFormPriority" class="select">
               <option value="">—</option>
             </select>
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="leadFormEstimatedValue">Estimated Value</label>
             <input id="leadFormEstimatedValue" class="input" type="number" step="0.01" />
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="leadFormCurrency">Currency</label>
             <select id="leadFormCurrency" class="select">
               <option value="">—</option>
             </select>
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="leadFormAssignedTo">Assigned To</label>
             <input id="leadFormAssignedTo" class="input" type="text" />
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="leadNextFollowUpAtInput">Next Follow Up</label>
             <input id="leadNextFollowUpAtInput" class="input" type="datetime-local" required />
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="leadFormLastContactDate">Last Contact</label>
             <input id="leadFormLastContactDate" class="input" type="date" />
           </div>
-          <div class="filter-row" style="grid-column:1 / -1;">
+          <div class="crm-field" style="grid-column:1 / -1;">
             <label class="muted" for="leadFormNotes">New Note</label>
             <textarea id="leadFormNotes" class="input" rows="3" placeholder="Type a fresh note for this lead change" aria-required="true"></textarea>
             <div class="muted">Required for every lead edit. Previous notes are available in Notes History.</div>
           </div>
-          <section class="card" style="grid-column:1 / -1;padding:12px;">
+          <section class="modern-crm-notes-card" style="grid-column:1 / -1;padding:12px;">
             <h3 style="margin:0 0 8px;font-size:16px;">Notes History</h3>
             <div id="leadNotesHistoryList" class="lead-notes-history-list"><div class="muted">No note history yet.</div></div>
           </section>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="leadFormUpdatedAt">Updated At</label>
             <input id="leadFormUpdatedAt" class="input" type="text" readonly />
           </div>
         </div>
-        <div class="actions" style="justify-content:space-between;gap:8px;">
-          <button id="leadFormDeleteBtn" type="button" class="btn ghost" style="display:none;">Delete</button>
+        <div class="modern-crm-modal-footer">
+          <button id="leadFormDeleteBtn" type="button" class="btn btn-incheck-outline" style="display:none;">Delete</button>
           <div style="display:flex;gap:8px;">
-            <button id="leadFormCancelBtn" type="button" class="btn ghost">Cancel</button>
-            <button id="leadFormSaveBtn" type="submit" class="btn">Save</button>
+            <button id="leadFormCancelBtn" type="button" class="btn btn-incheck-outline">Cancel</button>
+            <button id="leadFormSaveBtn" type="submit" class="btn btn-incheck-primary">Save</button>
           </div>
         </div>
       </form>
     </div>
   </div>
-  <div id="dealFormModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="dealFormTitle">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2 id="dealFormTitle" style="margin:0;font-size:20px">Create Deal</h2>
-        <button class="modal-close" id="dealFormCloseBtn" aria-label="Close deal form">✕</button>
+  <div id="dealFormModal" class="modal modern-crm-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="dealFormTitle">
+    <div class="modal-content modern-crm-modal-content modern-crm-modal-content--wide">
+      <div class="modern-crm-modal-header">
+        <div class="modern-crm-header-left"><div class="modern-crm-modal-icon">💼</div><div><h2 id="dealFormTitle" class="modern-crm-modal-title">Create Deal</h2><p class="modern-crm-modal-subtitle">Create a new deal with pipeline, owner, value, and conversion details.</p></div></div>
+        <button class="modal-close modern-crm-close" id="dealFormCloseBtn" aria-label="Close deal form">✕</button>
       </div>
-      <form id="dealForm" class="stack" style="margin-top:12px;">
+      <form id="dealForm" class="modern-crm-form">
         <section class="form-section">
           <div class="form-section-header">
             <h3>Deal Information</h3>
           </div>
-          <div class="grid cols-2">
-          <div class="filter-row">
+          <div class="modern-crm-scroll-body modern-crm-form-grid">
+          <div class="crm-field">
             <label class="muted" for="dealFormDealId">Deal ID</label>
             <input id="dealFormDealId" class="input" type="text" readonly />
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="dealFormLeadId">Linked Lead ID</label>
             <input id="dealFormLeadId" class="input" type="text" readonly />
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="dealFormLeadSelector">Lead Selector (manual)</label>
             <input id="dealFormLeadSelector" class="input" type="text" placeholder="Optional lead id" />
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="dealFormCompanySelector">Company</label>
             <select id="dealFormCompanySelector" class="select"><option value="">Select company</option></select>
             <input id="dealFormCompanyId" type="hidden" />
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="dealFormContactSelector">Contact</label>
             <select id="dealFormContactSelector" class="select" disabled><option value="">Select company first</option></select>
             <input id="dealFormContactId" type="hidden" />
@@ -3744,93 +3728,93 @@ Sample:
         </section>
         <section class="form-section">
           <div class="form-section-header"><h3>Deal Details</h3></div>
-          <div class="grid cols-2">
-                    <div class="filter-row">
+          <div class="modern-crm-scroll-body modern-crm-form-grid">
+                    <div class="crm-field">
             <label class="muted" for="dealFormCompanyName">Company Name</label>
             <input id="dealFormCompanyName" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" />
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="dealFormPhone">Phone</label>
             <input id="dealFormPhone" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" />
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="dealFormEmail">Email</label>
             <input id="dealFormEmail" class="input readonly-field locked-field" type="email" readonly aria-readonly="true" />
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="dealFormCountry">Country</label>
             <input id="dealFormCountry" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" />
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="dealFormLeadSource">Lead Source</label>
             <select id="dealFormLeadSource" class="select">
               <option value="">—</option>
             </select>
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="dealFormServiceInterest">Service Interest</label>
             <select id="dealFormServiceInterest" class="select">
               <option value="">—</option>
             </select>
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="dealFormStage">Stage</label>
             <select id="dealFormStage" class="select">
               <option value="">—</option>
             </select>
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="dealNextFollowUpAtInput">Next Follow Up</label>
             <input id="dealNextFollowUpAtInput" class="input" type="datetime-local" required />
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="dealLastContactedDateInput">Last Contacted Date</label>
             <input id="dealLastContactedDateInput" class="input" type="date" />
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="dealFormPriority">Priority</label>
             <select id="dealFormPriority" class="select">
               <option value="">—</option>
             </select>
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="dealFormEstimatedValue">Estimated Value</label>
             <input id="dealFormEstimatedValue" class="input" type="number" step="0.01" />
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="dealFormCurrency">Currency</label>
             <select id="dealFormCurrency" class="select">
               <option value="">—</option>
             </select>
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="dealFormAssignedTo">Assigned To</label>
             <input id="dealFormAssignedTo" class="input" type="text" />
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="dealFormConvertedBy">Converted By</label>
             <input id="dealFormConvertedBy" class="input" type="text" />
           </div>
-          <div class="filter-row">
+          <div class="crm-field">
             <label class="muted" for="dealFormConvertedAt">Converted At</label>
             <input id="dealFormConvertedAt" class="input" type="text" readonly />
           </div>
-          <div class="filter-row" style="grid-column:1 / -1;">
+          <div class="crm-field" style="grid-column:1 / -1;">
             <label class="muted" for="dealFormNotes">New Note</label>
             <textarea id="dealFormNotes" class="input" rows="3" placeholder="Required note for this deal change" required></textarea>
             <div class="muted">Required for every deal edit. Previous notes are available in Notes History.</div>
           </div>
         </div>
-        <section class="card" aria-label="Deal notes history" style="margin-top:12px;">
+        <section class="modern-crm-notes-card" aria-label="Deal notes history" style="margin-top:12px;">
           <h3 style="margin:0 0 8px;font-size:16px;">Notes History</h3>
           <div id="dealNotesHistoryList" class="lead-notes-history-list"><div class="muted">No note history yet.</div></div>
         </section>
         </section>
-        <div class="actions" style="justify-content:space-between;gap:8px;">
-          <button id="dealFormDeleteBtn" type="button" class="btn ghost" style="display:none;">Delete</button>
+        <div class="modern-crm-modal-footer">
+          <button id="dealFormDeleteBtn" type="button" class="btn btn-incheck-outline" style="display:none;">Delete</button>
           <div style="display:flex;gap:8px;">
-            <button id="dealFormCancelBtn" type="button" class="btn ghost">Cancel</button>
-            <button id="dealFormSaveBtn" type="submit" class="btn">Save</button>
+            <button id="dealFormCancelBtn" type="button" class="btn btn-incheck-outline">Cancel</button>
+            <button id="dealFormSaveBtn" type="submit" class="btn btn-incheck-primary">Save</button>
           </div>
         </div>
       </form>

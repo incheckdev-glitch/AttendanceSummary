@@ -431,7 +431,7 @@ const Contacts = {
     if (!container) return;
     const selected = this.state.companyOptions.filter(company => this.state.selectedCompanyIds.includes(company.id));
     container.innerHTML = selected.length
-      ? selected.map(company => `<span class='badge'>${U.escapeHtml(company.name)}</span>`).join('')
+      ? selected.map(company => `<span class='crm-chip'>${U.escapeHtml(company.name)}</span>`).join('')
       : "<span class='muted'>No companies selected</span>";
   },
 
