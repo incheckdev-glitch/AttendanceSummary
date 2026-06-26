@@ -1023,6 +1023,7 @@ const Leads = {
         a.localeCompare(b)
       );
 
+    if (E.leadsSearchInput) E.leadsSearchInput.value = this.state.search || '';
     if (this.state.status !== 'All' && !this.allowedLeadStatuses().includes(this.state.status)) this.state.status = 'All';
     assign(E.leadsStatusFilter, this.allowedLeadStatuses(), this.state.status, { All: 'All Statuses' });
     assign(
@@ -1084,6 +1085,67 @@ const Leads = {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return U.escapeHtml(String(value));
     return U.escapeHtml(U.formatDateTimeMMDDYYYYHHMM(value));
+  },
+  leadInitials(row = {}) {
+    const source = String(row.full_name || row.contact_name || row.company_name || row.lead_id || '').trim();
+    if (!source) return 'L';
+    const words = source.split(/\s+/).filter(Boolean);
+    const initials = words.length > 1 ? `${words[0][0] || ''}${words[1][0] || ''}` : source.slice(0, 2);
+    return initials.toUpperCase();
+  },
+  leadAvatarClass(row = {}) {
+    const source = String(row.full_name || row.company_name || row.lead_id || 'lead');
+    const sum = [...source].reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return ['violet', 'blue', 'green', 'orange'][sum % 4];
+  },
+  leadChip(label = '', variant = 'neutral') {
+    const text = String(label || '').trim() || '—';
+    return `<span class="lead-chip lead-chip--${U.escapeAttr(variant)}">${U.escapeHtml(text)}</span>`;
+  },
+  leadStatusChip(status = '') {
+    const normalized = this.normalizeLeadStatus(status);
+    const variants = {
+      'qualified': 'success',
+      'negotiation': 'info',
+      'not contacted yet': 'neutral',
+      'not available': 'warning',
+      'lost': 'danger'
+    };
+    return this.leadChip(normalized, variants[normalized] || 'neutral');
+  },
+  leadPriorityChip(priority = '') {
+    const normalized = String(priority || '').trim();
+    const lower = normalized.toLowerCase();
+    const variant = lower === 'high' || lower === 'urgent' ? 'danger' : lower === 'medium' ? 'info' : lower === 'low' ? 'success' : 'neutral';
+    return this.leadChip(normalized || '—', variant);
+  },
+  leadAssigneePill(name = '') {
+    const display = String(name || '').trim();
+    if (!display) return '—';
+    const initials = display.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase() || 'U';
+    return `<span class="lead-assignee-pill"><span>${U.escapeHtml(initials)}</span>${U.escapeHtml(display)}</span>`;
+  },
+  formatLeadMoneyCell(row = {}) {
+    const amount = Number(row.estimated_value);
+    if (!Number.isFinite(amount)) return '—';
+    const currency = String(row.currency || '').trim().toUpperCase();
+    if (currency) {
+      try {
+        return U.escapeHtml(amount.toLocaleString(undefined, { style: 'currency', currency, maximumFractionDigits: 2 }));
+      } catch (_) {
+        return U.escapeHtml(`${currency} ${amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}`);
+      }
+    }
+    return U.escapeHtml(amount.toLocaleString(undefined, { maximumFractionDigits: 2 }));
+  },
+  compactLeadDate(value) {
+    const normalized = this.normalizeComparableLeadDate(value);
+    return normalized ? U.escapeHtml(normalized) : '—';
+  },
+  truncateLeadNotes(value = '') {
+    const text = String(value || '').trim();
+    if (!text) return '—';
+    return U.escapeHtml(text.length > 150 ? `${text.slice(0, 147)}...` : text);
   },
   boolLabel(value) {
     if (value === 'yes') return 'Yes';
@@ -1217,24 +1279,31 @@ const Leads = {
 
     if (E.leadsStatusDistribution) {
       const statuses = [
-        ['not contacted yet', 'not contacted yet'],
-        ['not available', 'not available'],
-        ['negotiation', 'negotiation'],
-        ['lost', 'lost'],
-        ['qualified', 'qualified']
+        ['Not Contacted Yet', 'not contacted yet'],
+        ['Not Available', 'not available'],
+        ['Negotiation', 'negotiation'],
+        ['Lost', 'lost'],
+        ['Qualified', 'qualified']
       ];
       const total = safe.total || 0;
-      E.leadsStatusDistribution.innerHTML = statuses
+      const statusRows = statuses
         .map(([label, key]) => {
           const count = safe.statusBreakdown?.[key] || 0;
           const percent = total > 0 ? (count / total) * 100 : 0;
-          return `<div class="leads-status-row">
-            <div class="leads-status-label">${U.escapeHtml(label)}</div>
+          return `<div class="leads-status-row" data-status="${U.escapeAttr(key)}">
+            <div class="leads-status-label"><span class="leads-status-dot"></span>${U.escapeHtml(label)}</div>
+            <div class="leads-status-count">${count}</div>
             <div class="leads-status-track"><span class="leads-status-fill" style="width:${Math.min(100, percent).toFixed(1)}%"></span></div>
-            <div class="leads-status-meta">${count} · ${percent.toFixed(1)}%</div>
+            <div class="leads-status-meta">${percent.toFixed(1)}%</div>
           </div>`;
         })
         .join('');
+      E.leadsStatusDistribution.innerHTML = `${statusRows}<div class="leads-status-row leads-status-row--total" data-status="total">
+        <div class="leads-status-label"><span class="leads-status-dot"></span>Total Leads</div>
+        <div class="leads-status-count">${total}</div>
+        <div class="leads-status-track"><span class="leads-status-fill" style="width:${total ? 100 : 0}%"></span></div>
+        <div class="leads-status-meta">${total ? '100%' : '0.0%'}</div>
+      </div>`;
     }
     this.syncKpiCardState();
   },
@@ -1370,7 +1439,13 @@ const Leads = {
 
     const rows = this.state.filteredRows;
     this.renderLeadAnalytics(this.computeLeadAnalytics(rows));
-    E.leadsState.textContent = `${rows.length} lead${rows.length === 1 ? '' : 's'} · page ${this.state.page}`;
+    const shownFrom = rows.length ? (Number(this.state.offset) || 0) + 1 : 0;
+    const shownTo = rows.length ? (Number(this.state.offset) || 0) + rows.length : 0;
+    const totalEstimate = Number(this.state.total) || rows.length;
+    const totalLabel = this.state.hasMore ? `${totalEstimate}+` : String(totalEstimate || rows.length);
+    E.leadsState.textContent = rows.length
+      ? `Showing ${shownFrom}-${shownTo} of ${totalLabel} records`
+      : 'No records to show';
     const paginationHost = U.ensurePaginationHost({ hostId: 'leadsPaginationControls', anchor: E.leadsState });
     U.renderPaginationControls({
       host: paginationHost,
@@ -1392,46 +1467,50 @@ const Leads = {
     });
 
     if (!rows.length) {
-      E.leadsTbody.innerHTML = '<tr><td colspan="19" class="muted" style="text-align:center;">No leads found for current filters.</td></tr>';
+      E.leadsTbody.innerHTML = '<tr><td colspan="19" class="muted leads-empty-row">No leads found for current filters.</td></tr>';
       return;
     }
 
     E.leadsTbody.innerHTML = rows
       .map(row => {
+        const rowId = U.escapeAttr(row.id || '');
         const actionButtons = [];
         if (this.canConvertLead(row)) {
           actionButtons.push(
-            `<button class="btn ghost sm" type="button" data-lead-convert="${U.escapeAttr(row.id)}">Convert to Deal</button>`
+            `<button class="lead-menu-item" type="button" data-lead-convert="${rowId}">Convert to Deal</button>`
           );
         }
         if (this.canEditDelete()) {
           actionButtons.push(
-            `<button class="btn ghost sm" type="button" data-lead-edit="${U.escapeAttr(row.id)}">Edit</button>`
+            `<button class="lead-menu-item" type="button" data-lead-edit="${rowId}">Edit</button>`
           );
           actionButtons.push(
-            `<button class="btn ghost sm" type="button" data-lead-delete="${U.escapeAttr(row.id)}">Delete</button>`
+            `<button class="lead-menu-item danger" type="button" data-lead-delete="${rowId}">Delete</button>`
           );
         }
-        const actions = actionButtons.length ? actionButtons.join(' ') : '<span class="muted">—</span>';
+        const menu = actionButtons.length
+          ? `<details class="lead-actions-menu"><summary class="lead-more-btn" aria-label="More lead actions">⋮</summary><div class="lead-actions-popover">${actionButtons.join('')}</div></details>`
+          : '';
+        const actions = `<div class="lead-row-actions"><button class="lead-view-btn" type="button" data-lead-view="${rowId}">View</button>${menu}</div>`;
         const isSelected = String(this.state.selectedLeadId || '') === String(row.id || '');
-        return `<tr class="lead-clickable-row${isSelected ? ' is-selected' : ''}" tabindex="0" data-lead-row="${U.escapeAttr(row.id || '')}" aria-label="Open lead ${U.escapeAttr(row.lead_id || row.company_name || row.full_name || '')} details">
-          <td>${U.escapeHtml(row.lead_id || '—')}</td>
+        return `<tr class="lead-clickable-row${isSelected ? ' is-selected' : ''}" tabindex="0" data-lead-row="${rowId}" aria-label="Open lead ${U.escapeAttr(row.lead_id || row.company_name || row.full_name || '')} details">
+          <td class="lead-id-cell">${U.escapeHtml(row.lead_id || '—')}</td>
           <td>${this.formatDate(row.created_at)}</td>
-          <td>${U.escapeHtml(row.full_name || '—')}</td>
+          <td class="lead-name-cell"><div class="lead-name-wrap"><span class="lead-avatar lead-avatar--${this.leadAvatarClass(row)}">${U.escapeHtml(this.leadInitials(row))}</span><span>${U.escapeHtml(row.full_name || '—')}</span></div></td>
           <td>${U.escapeHtml(row.company_name || '—')}</td>
           <td>${U.escapeHtml(row.phone || '—')}</td>
-          <td>${U.escapeHtml(row.email || '—')}</td>
+          <td class="lead-email-cell">${U.escapeHtml(row.email || '—')}</td>
           <td>${U.escapeHtml(row.country || '—')}</td>
           <td>${U.escapeHtml(row.lead_source || '—')}</td>
           <td>${U.escapeHtml(row.service_interest || '—')}</td>
-          <td>${U.escapeHtml(row.status || '—')}</td>
-          <td>${U.escapeHtml(row.priority || '—')}</td>
-          <td>${U.escapeHtml(row.estimated_value === '' ? '—' : String(row.estimated_value))}</td>
+          <td>${this.leadStatusChip(row.status)}</td>
+          <td>${this.leadPriorityChip(row.priority)}</td>
+          <td class="lead-money-cell">${this.formatLeadMoneyCell(row)}</td>
           <td>${U.escapeHtml(row.currency || '—')}</td>
-          <td>${U.escapeHtml(row.assigned_to || '—')}</td>
-          <td>${U.escapeHtml(this.normalizeComparableLeadDate(row.next_follow_up) || '—')}</td>
-          <td>${U.escapeHtml(this.normalizeComparableLeadDate(row.last_contact) || '—')}</td>
-          <td>${U.escapeHtml(row.notes || '—')}</td>
+          <td>${this.leadAssigneePill(row.assigned_to)}</td>
+          <td>${this.compactLeadDate(row.next_follow_up || row.next_follow_up_at)}</td>
+          <td>${this.compactLeadDate(row.last_contact)}</td>
+          <td class="lead-notes-cell">${this.truncateLeadNotes(row.notes)}</td>
           <td>${this.formatDate(row.updated_at)}</td>
           <td>${actions}</td>
         </tr>`;
@@ -2584,6 +2663,9 @@ const Leads = {
     if (E.leadsExportCsvBtn) {
       E.leadsExportCsvBtn.addEventListener('click', () => this.exportLeadsCsv());
     }
+    document.querySelectorAll('[data-leads-export-proxy]').forEach(button => {
+      button.addEventListener('click', () => this.exportLeadsCsv());
+    });
 
     if (E.leadsTbody) {
       E.leadsTbody.addEventListener('click', event => {
@@ -2603,12 +2685,14 @@ const Leads = {
           this.convertLeadById(convertId);
           return;
         }
+        if (event.target?.closest?.('.lead-actions-menu')) return;
         const row = event.target?.closest?.('tr[data-lead-row]');
         const id = row?.getAttribute('data-lead-row');
         if (id) this.openDetails(id);
       });
       E.leadsTbody.addEventListener('keydown', event => {
         if (!['Enter', ' '].includes(event.key)) return;
+        if (event.target?.closest?.('.lead-actions-menu')) return;
         const row = event.target?.closest?.('tr[data-lead-row]');
         const id = row?.getAttribute('data-lead-row');
         if (!id) return;

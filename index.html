@@ -174,39 +174,8 @@
       </div>
 
       <div id="leadsFiltersPanel" style="display:none;">
-        <h3>Leads Filters</h3>
-        <div class="filter-group" style="margin-bottom:10px;">
-          <div class="filter-row">
-            <label class="muted" for="leadsSearchInput">Search</label>
-            <input id="leadsSearchInput" class="input" type="search" placeholder="Lead ID, name, company, email, notes..." />
-          </div>
-        </div>
-
-        <div class="filter-group" style="margin-bottom:10px;">
-          <div class="filter-row">
-            <label class="muted" for="leadsStatusFilter">Status</label>
-            <select id="leadsStatusFilter" class="select"><option value="All">All Statuses</option></select>
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="leadsServiceInterestFilter">Service Interest</label>
-            <select id="leadsServiceInterestFilter" class="select"><option>All</option></select>
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="leadsAssignedToFilter">Assigned To</label>
-            <select id="leadsAssignedToFilter" class="select"><option>All</option></select>
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="leadsStartDateFilter">Created From</label>
-            <input id="leadsStartDateFilter" class="input" type="date" />
-          </div>
-          <div class="filter-row">
-            <label class="muted" for="leadsEndDateFilter">Created To</label>
-            <input id="leadsEndDateFilter" class="input" type="date" />
-          </div>
-        </div>
-
         <div class="filter-group">
-          <button id="leadsResetBtn" class="btn ghost" type="button">Reset Leads Filters</button>
+          <span class="muted">Leads filters are available inside the Leads workspace.</span>
         </div>
       </div>
 
@@ -572,61 +541,15 @@
         </div>
       </section>
 
-      <section id="contactsView" class="view contacts-workspace" role="tabpanel" aria-labelledby="contactsTab">
-        <div class="contacts-page-shell">
-          <header class="contacts-page-header">
-            <div>
-              <h1>Contacts</h1>
-              <p>Manage and organize your contacts</p>
-            </div>
-            <button id="contactsCreateBtn" class="btn contacts-add-btn" data-permission-resource="contacts" data-permission-action="create" type="button">
-              <span aria-hidden="true">＋</span> Add Contact
-            </button>
-          </header>
-
-          <div id="contactsSummaryGrid" class="contacts-summary-grid" aria-label="Contacts summary"></div>
-
-          <section id="contactsFilterCard" class="contacts-panel contacts-filter-card" aria-label="Contacts filters"></section>
-
-          <section class="contacts-panel contacts-table-panel" aria-label="Contact records">
-            <div class="contacts-table-toolbar">
-              <div class="contacts-table-toolbar-left">
-                <button id="contactsExportBtn" class="btn ghost contacts-export-btn" data-permission-resource="contacts" data-permission-action="export" type="button">
-                  <span aria-hidden="true">⇩</span> Export
-                </button>
-                <span id="contactsPageInfo" class="contacts-page-info" aria-live="polite"></span>
-              </div>
-              <label class="contacts-rows-control" for="contactsRowsPerPage">
-                <span>Rows per page</span>
-                <select id="contactsRowsPerPage" class="select sm" aria-label="Rows per page">
-                  <option>25</option><option selected>50</option><option>100</option>
-                </select>
-              </label>
-            </div>
-            <div class="table-wrap contacts-table-wrap">
-              <table id="contactsTable">
-                <thead>
-                  <tr>
-                    <th>Contact ID</th>
-                    <th>Full Name</th>
-                    <th>Company</th>
-                    <th>Job Title</th>
-                    <th>Department</th>
-                    <th>Email</th>
-                    <th>Phone</th>
-                    <th>Primary Contact</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody id="contactsTableBody"></tbody>
-              </table>
-            </div>
-            <div class="contacts-table-footer">
-              <nav id="contactsPagination" class="contacts-pagination" aria-label="Contacts pagination"></nav>
-              <span id="contactsFooterInfo" class="contacts-footer-info" aria-live="polite"></span>
-            </div>
-          </section>
+      <section id="contactsView" class="view" role="tabpanel" aria-labelledby="contactsTab">
+        <div class="card">
+          <div class="row between center" style="margin-bottom:12px;">
+            <h2>Contacts</h2>
+            <button id="contactsCreateBtn" class="btn">Add Contact</button>
+          </div>
+          <div class="table-wrap">
+            <table id="contactsTable"><thead><tr><th>Contact ID</th><th>First Name</th><th>Last Name</th><th>Company</th><th>Job Title</th><th>Department</th><th>Email</th><th>Phone</th><th>Primary Contact</th><th>Status</th><th>Actions</th></tr></thead><tbody id="contactsTableBody"></tbody></table>
+          </div>
         </div>
       </section>
 
@@ -1462,71 +1385,121 @@ Sample:
         </div>
       </div>
 
-      <section id="leadsView" class="view" role="tabpanel" aria-labelledby="leadsTab">
-        <div class="card" aria-label="Leads list">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+      <section id="leadsView" class="view leads-modern-workspace" role="tabpanel" aria-labelledby="leadsTab">
+        <div class="leads-page-shell" aria-label="Leads list">
+          <header class="leads-page-header">
             <div>
-              <strong>Leads</strong>
-              <div class="muted">Lead pipeline synced with backend resource.</div>
+              <h1>Leads</h1>
+              <p>Manage your sales pipeline and follow-ups</p>
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <button id="leadsRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
-              <button id="leadsExportCsvBtn" class="btn ghost sm" type="button">Export CSV</button>
-              <button id="leadsCreateBtn" class="btn sm" type="button" data-permission-resource="leads" data-permission-action="create">Create Lead</button>
+            <div class="leads-header-actions">
+              <button id="leadsRefreshBtn" class="btn ghost sm leads-soft-btn" type="button">↻ Refresh</button>
+              <button id="leadsExportCsvBtn" class="btn ghost sm leads-soft-btn" type="button">⇩ Export CSV</button>
+              <button id="leadsCreateBtn" class="btn sm leads-primary-btn" type="button" data-permission-resource="leads" data-permission-action="create">+ Create Lead</button>
             </div>
-          </div>
+          </header>
 
           <div id="leadsAnalytics" class="leads-analytics" aria-label="Leads analytics widgets">
             <div id="leadsAnalyticsGrid" class="grid leads-analytics-grid">
-              <article class="card kpi leads-kpi-card" data-kpi-filter="total"><div class="label">Total Leads</div><div id="leadsKpiTotal" class="value">0</div><div class="sub">Loaded leads</div></article>
-              <article class="card kpi leads-kpi-card" data-kpi-filter="not-contacted-yet"><div class="label">Not Contacted Yet</div><div id="leadsKpiNew" class="value">0</div><div class="sub">Status = not contacted yet</div></article>
-              <article class="card kpi leads-kpi-card" data-kpi-filter="qualified"><div class="label">Qualified Leads</div><div id="leadsKpiQualified" class="value">0</div><div class="sub">Status = qualified</div></article>
-              <article class="card kpi leads-kpi-card" data-kpi-filter="not-available"><div class="label">Not Available</div><div id="leadsKpiProposalSent" class="value">0</div><div class="sub">Status = not available</div></article>
-              <article class="card kpi leads-kpi-card" data-kpi-filter="negotiation"><div class="label">Negotiation</div><div id="leadsKpiWon" class="value">0</div><div class="sub">Status = negotiation</div></article>
-              <article class="card kpi leads-kpi-card" data-kpi-filter="lost"><div class="label">Lost Leads</div><div id="leadsKpiLost" class="value">0</div><div class="sub">Closed lost</div></article>
-              <article class="card kpi leads-kpi-card" data-kpi-filter="high-priority"><div class="label">High Priority Leads</div><div id="leadsKpiHighPriority" class="value">0</div><div class="sub">High or Urgent</div></article>
-              <article class="card kpi leads-kpi-card" data-kpi-filter="pipeline-value"><div class="label">Estimated Pipeline Value</div><div id="leadsKpiPipelineValue" class="value">0</div><div id="leadsKpiPipelineSub" class="sub">Total estimated value</div></article>
-              <article class="card kpi leads-kpi-card" data-kpi-filter="qualified"><div class="label">Qualified Rate</div><div id="leadsKpiConversionRate" class="value">0%</div><div class="sub">Qualified / Total</div></article>
+              <article class="leads-kpi-card leads-kpi-card--violet" data-kpi-filter="total">
+                <div class="leads-kpi-icon" aria-hidden="true">👥</div>
+                <div class="leads-kpi-content"><div class="label">Total Leads</div><div id="leadsKpiTotal" class="value">0</div><div class="sub">Loaded leads</div></div>
+              </article>
+              <article class="leads-kpi-card leads-kpi-card--amber" data-kpi-filter="not-contacted-yet">
+                <div class="leads-kpi-icon" aria-hidden="true">☎</div>
+                <div class="leads-kpi-content"><div class="label">Not Contacted Yet</div><div id="leadsKpiNew" class="value">0</div><div class="sub">Status = not contacted yet</div></div>
+              </article>
+              <article class="leads-kpi-card leads-kpi-card--green" data-kpi-filter="qualified">
+                <div class="leads-kpi-icon" aria-hidden="true">✅</div>
+                <div class="leads-kpi-content"><div class="label">Qualified Leads</div><div id="leadsKpiQualified" class="value">0</div><div class="sub">Status = qualified</div></div>
+              </article>
+              <article class="leads-kpi-card leads-kpi-card--blue" data-kpi-filter="not-available">
+                <div class="leads-kpi-icon" aria-hidden="true">✕</div>
+                <div class="leads-kpi-content"><div class="label">Not Available</div><div id="leadsKpiProposalSent" class="value">0</div><div class="sub">Status = not available</div></div>
+              </article>
+              <article class="leads-kpi-card leads-kpi-card--sky" data-kpi-filter="negotiation">
+                <div class="leads-kpi-icon" aria-hidden="true">🤝</div>
+                <div class="leads-kpi-content"><div class="label">Negotiation</div><div id="leadsKpiWon" class="value">0</div><div class="sub">Status = negotiation</div></div>
+              </article>
+              <article class="leads-kpi-card leads-kpi-card--rose" data-kpi-filter="lost">
+                <div class="leads-kpi-icon" aria-hidden="true">⊗</div>
+                <div class="leads-kpi-content"><div class="label">Lost Leads</div><div id="leadsKpiLost" class="value">0</div><div class="sub">Closed lost</div></div>
+              </article>
+              <article class="leads-kpi-card leads-kpi-card--orange" data-kpi-filter="high-priority">
+                <div class="leads-kpi-icon" aria-hidden="true">⚑</div>
+                <div class="leads-kpi-content"><div class="label">High Priority Leads</div><div id="leadsKpiHighPriority" class="value">0</div><div class="sub">High or Urgent</div></div>
+              </article>
+              <article class="leads-kpi-card leads-kpi-card--money" data-kpi-filter="pipeline-value">
+                <div class="leads-kpi-icon" aria-hidden="true">$</div>
+                <div class="leads-kpi-content"><div class="label">Estimated Pipeline Value</div><div id="leadsKpiPipelineValue" class="value">0</div><div id="leadsKpiPipelineSub" class="sub">Total estimated value</div></div>
+              </article>
+              <article class="leads-kpi-card leads-kpi-card--percent" data-kpi-filter="conversion-rate">
+                <div class="leads-kpi-icon" aria-hidden="true">%</div>
+                <div class="leads-kpi-content"><div class="label">Qualified Rate</div><div id="leadsKpiConversionRate" class="value">0%</div><div class="sub">Qualified / Total</div></div>
+              </article>
             </div>
+          </div>
 
-            <div class="card leads-status-card" aria-label="Leads status distribution">
-              <div class="leads-status-head">
-                <strong>Status Distribution</strong>
-                <span class="muted">Based on visible leads</span>
+          <section class="leads-filter-card" aria-label="Leads filters">
+            <div class="leads-panel-title">
+              <span class="leads-panel-icon" aria-hidden="true">⌁</span>
+              <h2>Filters</h2>
+            </div>
+            <div class="leads-filter-grid">
+              <label class="leads-filter-field" for="leadsSearchInput"><span>Search leads</span><div class="leads-input-shell"><span aria-hidden="true">⌕</span><input id="leadsSearchInput" class="input" type="search" placeholder="Search by name, email, company..." /></div></label>
+              <label class="leads-filter-field" for="leadsStatusFilter"><span>Status</span><select id="leadsStatusFilter" class="select"><option value="All">All Statuses</option></select></label>
+              <label class="leads-filter-field" for="leadsServiceInterestFilter"><span>Service Interest</span><select id="leadsServiceInterestFilter" class="select"><option>All</option></select></label>
+              <label class="leads-filter-field" for="leadsAssignedToFilter"><span>Assigned To</span><select id="leadsAssignedToFilter" class="select"><option>All</option></select></label>
+              <label class="leads-filter-field" for="leadsStartDateFilter"><span>From Date</span><input id="leadsStartDateFilter" class="input" type="date" /></label>
+              <label class="leads-filter-field" for="leadsEndDateFilter"><span>To Date</span><input id="leadsEndDateFilter" class="input" type="date" /></label>
+              <div class="leads-filter-clear"><button id="leadsResetBtn" class="btn ghost leads-soft-btn" type="button">↻ Clear Filters</button></div>
+            </div>
+          </section>
+
+          <section class="leads-status-card" aria-label="Leads status distribution">
+            <div class="leads-status-head">
+              <div class="leads-panel-title"><span class="leads-panel-icon" aria-hidden="true">◔</span><h2>Status Distribution</h2></div>
+              <span class="muted">Based on visible leads</span>
+            </div>
+            <div id="leadsStatusDistribution" class="leads-status-bars"></div>
+          </section>
+
+          <section class="leads-table-panel" aria-label="Leads table panel">
+            <div class="leads-table-toolbar">
+              <div class="leads-table-toolbar-left">
+                <button class="btn ghost leads-soft-btn" type="button" data-leads-export-proxy>⇩ Export</button>
+                <span id="leadsState" class="leads-page-info">No data loaded.</span>
               </div>
-              <div id="leadsStatusDistribution" class="leads-status-bars"></div>
             </div>
-          </div>
-
-          <div id="leadsState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
-          <div class="table-wrap" role="region" aria-label="Leads table">
-            <table id="leadsTable">
-              <thead>
-                <tr>
-                  <th>Lead ID</th>
-                  <th>Created At</th>
-                  <th>Contact Name</th>
-                  <th>Company Name</th>
-                  <th>Phone</th>
-                  <th>Email</th>
-                  <th>Country</th>
-                  <th>Lead Source</th>
-                  <th>Service Interest</th>
-                  <th>Status</th>
-                  <th>Priority</th>
-                  <th>Estimated Value</th>
-                  <th>Currency</th>
-                  <th>Assigned To</th>
-                  <th>Next Follow-up</th>
-                  <th>Last Contact</th>
-                  <th>Notes</th>
-                  <th>Updated At</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="leadsTbody"></tbody>
-            </table>
-          </div>
+            <div class="leads-table-wrap" role="region" aria-label="Leads table">
+              <table id="leadsTable">
+                <thead>
+                  <tr>
+                    <th>Lead ID</th>
+                    <th>Created At</th>
+                    <th>Contact Name</th>
+                    <th>Company Name</th>
+                    <th>Phone</th>
+                    <th>Email</th>
+                    <th>Country</th>
+                    <th>Lead Source</th>
+                    <th>Service Interest</th>
+                    <th>Status</th>
+                    <th>Priority</th>
+                    <th>Estimated Value</th>
+                    <th>Currency</th>
+                    <th>Assigned To</th>
+                    <th>Next Follow-up</th>
+                    <th>Last Contact</th>
+                    <th>Notes</th>
+                    <th>Updated At</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="leadsTbody"></tbody>
+              </table>
+            </div>
+          </section>
         </div>
       </section>
 
