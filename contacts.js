@@ -25,7 +25,8 @@ const Contacts = {
     companyName: '',
     selectedCompanyIds: [],
     companyOptions: [],
-    selectedDetailsId: ''
+    selectedDetailsId: '',
+    summary: { totalContacts: 0, activeContacts: 0, primaryContacts: 0, withEmail: 0 }
   },
 
   setCompanyFilter(companyId = '', companyName = '') {
@@ -98,62 +99,109 @@ const Contacts = {
     };
   },
 
-  ensureControls() {
-    const v = document.getElementById('contactsView');
-    if (!v || document.getElementById('contactsSearchInput')) return;
-    const c = v.querySelector('.card');
-    c.insertAdjacentHTML('afterbegin', `<div class='stack' style='gap:8px;margin-bottom:10px'><div class='row' style='gap:8px;flex-wrap:wrap'><input id='contactsSearchInput' class='input' type='search' placeholder='Search contacts...'/><select id='contactsCompanyFilter' class='select'><option value=''>All Companies</option></select><select id='contactsStatusFilter' class='select'><option value=''>All Statuses</option><option>Active</option><option>Inactive</option><option>Left Company</option><option>Do Not Contact</option></select><select id='contactsDecisionRoleFilter' class='select'><option value=''>All Roles</option><option>Decision Maker</option><option>Influencer</option><option>Finance Contact</option><option>Technical Contact</option><option>Operations Contact</option><option>Procurement Contact</option><option>User</option><option>Other</option></select><input id='contactsDepartmentFilter' class='input' placeholder='Department'/><select id='contactsPrimaryFilter' class='select'><option value=''>All Contacts</option><option value='primary'>Primary only</option><option value='non_primary'>Non-primary only</option></select><input id='contactsCreatedFromFilter' class='input' type='date'/><input id='contactsCreatedToFilter' class='input' type='date'/><button id='contactsClearFiltersBtn' class='btn ghost sm'>Clear Filters</button></div><div class='row' style='gap:8px'><button id='contactsExportBtn' class='btn ghost sm' data-permission-resource='contacts' data-permission-action='export'>Export</button><span id='contactsPageInfo' class='muted'></span></div></div>`);
-    v.querySelector('.table-wrap')?.insertAdjacentHTML('afterend', `<div class='table-actions'><div class='pagination'><button id='contactsPrevBtn' class='chip-btn'>‹ Prev</button><button id='contactsNextBtn' class='chip-btn'>Next ›</button></div><div><label class='muted'>Rows</label><select id='contactsRowsPerPage' class='select sm'><option>25</option><option selected>50</option><option>100</option></select></div></div>`);
+  async ensureControls() {
+    const view = document.getElementById('contactsView');
+    if (!view) return;
 
-    document.getElementById('contactsSearchInput').oninput = e => {
-      this.state.search = e.target.value.trim();
-      this.state.page = 1;
-      this.loadAndRefresh();
-    };
-    [['contactsCompanyFilter','company_id'],['contactsStatusFilter','contact_status'],['contactsDecisionRoleFilter','decision_role'],['contactsPrimaryFilter','is_primary_contact'],['contactsCreatedFromFilter','created_from'],['contactsCreatedToFilter','created_to']].forEach(([id,key]) => {
-      const el = document.getElementById(id);
-      if (el) el.onchange = e => {
-        this.state.filters[key] = e.target.value.trim();
+    if (!document.getElementById('contactsSearchInput')) {
+      const filterCard = document.getElementById('contactsFilterCard') || view.querySelector('.card');
+      if (filterCard) {
+        filterCard.innerHTML = `
+          <div class="contacts-panel-title">
+            <span class="contacts-panel-icon" aria-hidden="true">⌁</span>
+            <h2>Filters</h2>
+          </div>
+          <div class="contacts-filter-grid">
+            <label class="contacts-filter-field contacts-filter-search" for="contactsSearchInput">
+              <span>Search Contacts</span>
+              <div class="contacts-input-shell">
+                <span aria-hidden="true">⌕</span>
+                <input id="contactsSearchInput" class="input" type="search" placeholder="Search by name, email, job title..." autocomplete="off" />
+              </div>
+            </label>
+            <label class="contacts-filter-field" for="contactsCompanyFilter">
+              <span>Company</span>
+              <select id="contactsCompanyFilter" class="select"><option value="">All Companies</option></select>
+            </label>
+            <label class="contacts-filter-field" for="contactsStatusFilter">
+              <span>Status</span>
+              <select id="contactsStatusFilter" class="select">
+                <option value="">All Statuses</option>
+                <option>Active</option>
+                <option>Inactive</option>
+                <option>Left Company</option>
+                <option>Do Not Contact</option>
+              </select>
+            </label>
+            <label class="contacts-filter-field" for="contactsDecisionRoleFilter">
+              <span>Role</span>
+              <select id="contactsDecisionRoleFilter" class="select">
+                <option value="">All Roles</option>
+                <option>Decision Maker</option>
+                <option>Influencer</option>
+                <option>Finance Contact</option>
+                <option>Technical Contact</option>
+                <option>Operations Contact</option>
+                <option>Procurement Contact</option>
+                <option>User</option>
+                <option>Other</option>
+              </select>
+            </label>
+            <label class="contacts-filter-field" for="contactsDepartmentFilter"><span>Department</span><input id="contactsDepartmentFilter" class="input" placeholder="Department" autocomplete="off" /></label>
+            <label class="contacts-filter-field" for="contactsPrimaryFilter">
+              <span>Primary Contact</span>
+              <select id="contactsPrimaryFilter" class="select">
+                <option value="">All Contacts</option>
+                <option value="primary">Primary only</option>
+                <option value="non_primary">Non-primary only</option>
+              </select>
+            </label>
+            <label class="contacts-filter-field" for="contactsCreatedFromFilter"><span>From Date</span><input id="contactsCreatedFromFilter" class="input" type="date" /></label>
+            <label class="contacts-filter-field" for="contactsCreatedToFilter"><span>To Date</span><input id="contactsCreatedToFilter" class="input" type="date" /></label>
+            <div class="contacts-filter-field contacts-filter-clear"><span>&nbsp;</span><button id="contactsClearFiltersBtn" class="btn ghost" type="button"><span aria-hidden="true">↻</span> Clear Filters</button></div>
+          </div>`;
+      }
+
+      document.getElementById('contactsSearchInput')?.addEventListener('input', e => {
+        this.state.search = e.target.value.trim();
         this.state.page = 1;
         this.loadAndRefresh();
-      };
-    });
-    document.getElementById('contactsDepartmentFilter').oninput = e => {
-      this.state.filters.department = e.target.value.trim();
-      this.state.page = 1;
-      this.loadAndRefresh();
-    };
-    document.getElementById('contactsPrevBtn').onclick = () => {
-      if (this.state.page > 1) {
-        this.state.page--;
-        this.loadAndRefresh();
-      }
-    };
-    document.getElementById('contactsNextBtn').onclick = () => {
-      if (this.state.page * this.state.limit < this.state.total) {
-        this.state.page++;
-        this.loadAndRefresh();
-      }
-    };
-    document.getElementById('contactsRowsPerPage').onchange = e => {
-      this.state.limit = Number(e.target.value) || 50;
-      this.state.page = 1;
-      this.loadAndRefresh();
-    };
-    document.getElementById('contactsExportBtn').onclick = () => this.exportCsv();
-    applyPermissionVisibility(v);
-    document.getElementById('contactsClearFiltersBtn').onclick = () => {
-      this.state.search = '';
-      this.state.filters = { company_id: '', contact_status: '', decision_role: '', department: '', is_primary_contact: '', created_from: '', created_to: '' };
-      ['contactsSearchInput','contactsCompanyFilter','contactsStatusFilter','contactsDecisionRoleFilter','contactsDepartmentFilter','contactsPrimaryFilter','contactsCreatedFromFilter','contactsCreatedToFilter'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.value = '';
       });
-      this.state.page = 1;
-      this.loadAndRefresh();
-    };
-    this.ensureFilterCompanies().catch(error => console.warn('[contacts] company filter load failed', error));
+      [['contactsCompanyFilter','company_id'],['contactsStatusFilter','contact_status'],['contactsDecisionRoleFilter','decision_role'],['contactsPrimaryFilter','is_primary_contact'],['contactsCreatedFromFilter','created_from'],['contactsCreatedToFilter','created_to']].forEach(([id,key]) => {
+        document.getElementById(id)?.addEventListener('change', e => {
+          this.state.filters[key] = e.target.value.trim();
+          this.state.page = 1;
+          this.loadAndRefresh();
+        });
+      });
+      document.getElementById('contactsDepartmentFilter')?.addEventListener('input', e => {
+        this.state.filters.department = e.target.value.trim();
+        this.state.page = 1;
+        this.loadAndRefresh();
+      });
+      document.getElementById('contactsClearFiltersBtn')?.addEventListener('click', () => {
+        this.state.search = '';
+        this.state.filters = { company_id: '', contact_status: '', decision_role: '', department: '', is_primary_contact: '', created_from: '', created_to: '' };
+        ['contactsSearchInput','contactsCompanyFilter','contactsStatusFilter','contactsDecisionRoleFilter','contactsDepartmentFilter','contactsPrimaryFilter','contactsCreatedFromFilter','contactsCreatedToFilter'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.value = '';
+        });
+        this.state.page = 1;
+        this.loadAndRefresh();
+      });
+      document.getElementById('contactsExportBtn')?.addEventListener('click', () => this.exportCsv());
+      document.getElementById('contactsRowsPerPage')?.addEventListener('change', e => {
+        this.state.limit = Number(e.target.value) || 50;
+        this.state.page = 1;
+        this.loadAndRefresh();
+      });
+      await this.ensureFilterCompanies().catch(error => console.warn('[contacts] company filter load failed', error));
+    }
+
+    const rowsSelect = document.getElementById('contactsRowsPerPage');
+    if (rowsSelect) rowsSelect.value = String(this.state.limit || 50);
     this.bindFormEvents();
+    applyPermissionVisibility(view);
   },
 
   companyRelationId(company = {}) {
@@ -564,7 +612,7 @@ const Contacts = {
 
   async loadAndRefresh() {
     if (!Permissions.canView('contacts')) return;
-    this.ensureControls();
+    await this.ensureControls();
     try {
       const filters = { ...this.state.filters };
       if (this.state.companyId) filters.company_id = this.state.companyId;
@@ -572,6 +620,7 @@ const Contacts = {
       const rows = Array.isArray(res?.rows) ? res.rows : Array.isArray(res) ? res : [];
       this.state.rows = await this.hydrateRowsWithCompanyAssignments(rows.map(r => this.normalize(r)));
       this.state.total = Number(res?.total ?? rows.length) || rows.length;
+      await this.refreshSummaryMetricsForCurrentFilters(filters);
       this.render();
     } catch (e) {
       UI?.toast?.('Unable to load contacts', 'error');
@@ -626,19 +675,209 @@ const Contacts = {
     });
     this.render();
   },
+  updateSummaryMetrics(rows = this.state.rows) {
+    const sourceRows = Array.isArray(rows) ? rows : [];
+    this.state.summary = {
+      totalContacts: Number(this.state.total || sourceRows.length) || 0,
+      activeContacts: sourceRows.filter(row => String(row.contact_status || '').trim().toLowerCase() === 'active').length,
+      primaryContacts: sourceRows.filter(row => Boolean(row.is_primary_contact)).length,
+      withEmail: sourceRows.filter(row => String(row.email || '').trim()).length
+    };
+  },
+
+  async refreshSummaryMetricsForCurrentFilters(filters = null) {
+    const total = Number(this.state.total || 0) || 0;
+    if (!total || total <= this.state.rows.length) {
+      this.updateSummaryMetrics(this.state.rows);
+      return;
+    }
+    const safeLimit = Math.min(total, 1000);
+    try {
+      const res = await Api.requestWithSession('contacts', 'list', {
+        page: 1,
+        limit: safeLimit,
+        search: this.state.search,
+        filters: filters || this.state.filters,
+        sortBy: this.state.sortBy,
+        sortDir: this.state.sortDir
+      }, { requireAuth: true });
+      const rows = Array.isArray(res?.rows) ? res.rows : Array.isArray(res) ? res : [];
+      this.state.total = Number(res?.total ?? this.state.total ?? rows.length) || rows.length;
+      this.updateSummaryMetrics(rows.map(row => this.normalize(row)));
+    } catch (error) {
+      console.warn('[contacts] unable to refresh summary metrics, using current page rows', error);
+      this.updateSummaryMetrics(this.state.rows);
+    }
+  },
+
+  formatPercent(value = 0, total = 0) {
+    const denom = Number(total || 0);
+    if (!denom) return '0.0% of total';
+    return `${((Number(value || 0) / denom) * 100).toFixed(1)}% of total`;
+  },
+
+  renderContactSummaryCards() {
+    const grid = document.getElementById('contactsSummaryGrid');
+    if (!grid) return;
+    const summary = this.state.summary || {};
+    const total = Number(summary.totalContacts || 0) || 0;
+    const cards = [
+      { label: 'Total Contacts', value: total, subtitle: 'All time', icon: '♙', tone: 'violet' },
+      { label: 'Active Contacts', value: summary.activeContacts || 0, subtitle: this.formatPercent(summary.activeContacts, total), icon: '✓', tone: 'green' },
+      { label: 'Primary Contacts', value: summary.primaryContacts || 0, subtitle: this.formatPercent(summary.primaryContacts, total), icon: '☑', tone: 'orange' },
+      { label: 'With Email', value: summary.withEmail || 0, subtitle: this.formatPercent(summary.withEmail, total), icon: '✉', tone: 'blue' }
+    ];
+    grid.innerHTML = cards.map(card => `
+      <article class="contacts-summary-card contacts-summary-card--${U.escapeAttr(card.tone)}">
+        <div class="contacts-summary-icon" aria-hidden="true">${U.escapeHtml(card.icon)}</div>
+        <div>
+          <span>${U.escapeHtml(card.label)}</span>
+          <strong>${U.escapeHtml(card.value)}</strong>
+          <small>${U.escapeHtml(card.subtitle)}</small>
+        </div>
+      </article>`).join('');
+  },
+
+  getContactFullName(row = {}) {
+    return [row.first_name, row.last_name].filter(Boolean).join(' ').trim() || row.full_name || row.contact_name || row.email || row.contact_id || 'Contact';
+  },
+
+  getContactInitials(name = '') {
+    const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return '?';
+    const initials = parts.slice(0, 2).map(part => part[0]).join('').toUpperCase();
+    return initials || '?';
+  },
+
+  getAvatarTone(row = {}) {
+    const key = this.getContactFullName(row);
+    const code = key.charCodeAt(0) || 0;
+    return ['violet','blue','green','orange'][code % 4];
+  },
+
+  renderContactNameCell(row = {}) {
+    const fullName = this.getContactFullName(row);
+    return `<span class="contact-name-wrap"><span class="contact-avatar contact-avatar--${U.escapeAttr(this.getAvatarTone(row))}" aria-hidden="true">${U.escapeHtml(this.getContactInitials(fullName))}</span><span>${U.escapeHtml(fullName)}</span></span>`;
+  },
+
+  renderPrimaryBadge(row = {}) {
+    const isPrimary = Boolean(row.is_primary_contact);
+    return `<span class="contacts-chip contacts-chip--${isPrimary ? 'success' : 'danger'}">${isPrimary ? 'Yes' : 'No'}</span>`;
+  },
+
+  renderStatusBadge(status = '') {
+    const clean = String(status || 'Active').trim() || 'Active';
+    const normalized = clean.toLowerCase();
+    let tone = 'neutral';
+    if (normalized === 'active') tone = 'success';
+    else if (normalized.includes('do not')) tone = 'danger';
+    else if (normalized.includes('left')) tone = 'warning';
+    return `<span class="contacts-chip contacts-chip--${tone}">${U.escapeHtml(clean)}</span>`;
+  },
+
+  renderContactActions(row, permissions = {}) {
+    const id = U.escapeAttr(row.id || row.contact_id || '');
+    const items = [];
+    if (permissions.canCreateLead) items.push(`<button type="button" data-a="lead" data-permission-resource="leads" data-permission-action="create" data-id="${id}">Create Lead</button>`);
+    if (permissions.canEdit) items.push(`<button type="button" data-a="edit" data-contact-edit="${id}" data-permission-resource="contacts" data-permission-action="update" data-id="${id}">Edit</button>`);
+    if (permissions.canDelete) items.push(`<button type="button" class="danger" data-a="del" data-permission-resource="contacts" data-permission-action="delete" data-id="${id}">Delete</button>`);
+    return `
+      <div class="contact-row-actions">
+        <button class="contact-view-btn" type="button" data-a="view" data-id="${id}">View</button>
+        <div class="contact-actions-menu">
+          <button class="contact-more-btn" type="button" data-contact-more="${id}" aria-label="More actions">⋮</button>
+          <div class="contact-actions-popover" role="menu">${items.join('') || '<span class="contact-no-actions">No actions</span>'}</div>
+        </div>
+      </div>`;
+  },
+
+  renderContactPagination(start, end) {
+    const pagination = document.getElementById('contactsPagination');
+    const footerInfo = document.getElementById('contactsFooterInfo');
+    const pageInfo = document.getElementById('contactsPageInfo');
+    const total = Number(this.state.total || 0) || 0;
+    const totalPages = Math.max(1, Math.ceil(total / (Number(this.state.limit) || 50)));
+    const current = Math.min(Math.max(1, Number(this.state.page) || 1), totalPages);
+    const info = total ? `Showing ${start}-${end} of ${total} records` : 'Showing 0 records';
+    if (pageInfo) pageInfo.textContent = info;
+    if (footerInfo) footerInfo.textContent = info;
+    if (!pagination) return;
+    const pageNumbers = new Set([1, current - 1, current, current + 1, totalPages]);
+    const pages = [...pageNumbers].filter(page => page >= 1 && page <= totalPages).sort((a, b) => a - b);
+    const parts = [`<button type="button" class="contacts-page-btn" data-contacts-page="prev" ${current <= 1 ? 'disabled' : ''} aria-label="Previous page">‹</button>`];
+    let previous = 0;
+    pages.forEach(page => {
+      if (previous && page - previous > 1) parts.push('<span class="contacts-page-ellipsis">…</span>');
+      parts.push(`<button type="button" class="contacts-page-btn ${page === current ? 'is-active' : ''}" data-contacts-page="${page}" ${page === current ? 'aria-current="page"' : ''}>${page}</button>`);
+      previous = page;
+    });
+    parts.push(`<button type="button" class="contacts-page-btn" data-contacts-page="next" ${current >= totalPages ? 'disabled' : ''} aria-label="Next page">›</button>`);
+    pagination.innerHTML = parts.join('');
+    pagination.querySelectorAll('[data-contacts-page]').forEach(button => {
+      button.onclick = () => {
+        const value = button.getAttribute('data-contacts-page');
+        let nextPage = current;
+        if (value === 'prev') nextPage = current - 1;
+        else if (value === 'next') nextPage = current + 1;
+        else nextPage = Number(value) || current;
+        nextPage = Math.min(Math.max(1, nextPage), totalPages);
+        if (nextPage !== this.state.page) {
+          this.state.page = nextPage;
+          this.loadAndRefresh();
+        }
+      };
+    });
+  },
+
+  bindContactActionMenuClose() {
+    if (this._contactActionMenuBound) return;
+    this._contactActionMenuBound = true;
+    document.addEventListener('click', event => {
+      if (event.target?.closest?.('.contact-actions-menu')) return;
+      document.querySelectorAll('.contact-actions-menu.is-open').forEach(menu => menu.classList.remove('is-open'));
+    });
+  },
+
   render() {
     const b = document.getElementById('contactsTableBody');
     if (!b) return;
     const canEdit = Permissions.canEdit('contacts');
     const canDelete = Permissions.canDelete('contacts');
     const canCreateLead = Permissions.canCreate('leads');
-    b.innerHTML = this.state.rows.map(r => { const selected = String(this.state.selectedDetailsId || '') === String(r.id || r.contact_id || ''); return `<tr class='entity-clickable-row${selected ? ' is-selected' : ''}' tabindex='0' data-contact-row='${U.escapeAttr(r.id || r.contact_id || '')}' aria-label='Open contact ${U.escapeAttr([r.first_name, r.last_name].filter(Boolean).join(' ') || r.contact_id || '')} details'><td>${U.escapeHtml(r.contact_id)}</td><td>${U.escapeHtml(r.first_name)}</td><td>${U.escapeHtml(r.last_name)}</td><td>${U.escapeHtml(r.company_names || r.company_name)}</td><td>${U.escapeHtml(r.job_title)}</td><td>${U.escapeHtml(r.department)}</td><td>${U.escapeHtml(r.email)}</td><td>${U.escapeHtml(r.phone)}</td><td>${r.is_primary_contact ? 'Yes' : 'No'}</td><td>${U.escapeHtml(r.contact_status)}</td><td>${canCreateLead ? `<button class='chip-btn' data-a='lead' data-permission-resource='leads' data-permission-action='create' data-id='${U.escapeAttr(r.id)}'>Create Lead</button>` : ''}${canEdit ? `<button class='chip-btn' data-a='edit' data-contact-edit='${U.escapeAttr(r.id)}' data-permission-resource='contacts' data-permission-action='update' data-id='${U.escapeAttr(r.id)}'>Edit</button>` : ''}${canDelete ? `<button class='chip-btn' data-a='del' data-permission-resource='contacts' data-permission-action='delete' data-id='${U.escapeAttr(r.id)}'>Delete</button>` : ''}</td></tr>`; }).join('');
-    b.querySelectorAll('button').forEach(x => x.onclick = event => { event?.stopPropagation?.(); this.onAction(x.dataset.a, x.dataset.id); }); b.querySelectorAll('tr[data-contact-row]').forEach(tr => { tr.onclick = event => { if (event.target?.closest?.('button')) return; this.openDetailsDrawer(tr.getAttribute('data-contact-row')); }; tr.onkeydown = event => { if (!['Enter', ' '].includes(event.key)) return; event.preventDefault(); this.openDetailsDrawer(tr.getAttribute('data-contact-row')); }; });
+    const permissions = { canEdit, canDelete, canCreateLead };
+    this.renderContactSummaryCards();
+    b.innerHTML = this.state.rows.map(r => {
+      const selected = String(this.state.selectedDetailsId || '') === String(r.id || r.contact_id || '');
+      return `<tr class='entity-clickable-row contact-row${selected ? ' is-selected' : ''}' tabindex='0' data-contact-row='${U.escapeAttr(r.id || r.contact_id || '')}' aria-label='Open contact ${U.escapeAttr(this.getContactFullName(r))} details'>
+        <td class="contact-id-cell">${U.escapeHtml(r.contact_id || '—')}</td>
+        <td class="contact-name-cell">${this.renderContactNameCell(r)}</td>
+        <td>${U.escapeHtml(r.company_names || r.company_name || '—')}</td>
+        <td>${U.escapeHtml(r.job_title || '—')}</td>
+        <td>${U.escapeHtml(r.department || '—')}</td>
+        <td class="contact-email-cell">${U.escapeHtml(r.email || '—')}</td>
+        <td>${U.escapeHtml(r.phone || r.mobile || '—')}</td>
+        <td>${this.renderPrimaryBadge(r)}</td>
+        <td>${this.renderStatusBadge(r.contact_status)}</td>
+        <td>${this.renderContactActions(r, permissions)}</td>
+      </tr>`;
+    }).join('');
+    b.querySelectorAll('[data-a]').forEach(button => button.onclick = event => { event?.stopPropagation?.(); this.onAction(button.dataset.a, button.dataset.id); });
+    b.querySelectorAll('[data-contact-more]').forEach(button => button.onclick = event => {
+      event?.stopPropagation?.();
+      const menu = button.closest('.contact-actions-menu');
+      const isOpen = menu?.classList.contains('is-open');
+      document.querySelectorAll('.contact-actions-menu.is-open').forEach(item => item.classList.remove('is-open'));
+      if (menu && !isOpen) menu.classList.add('is-open');
+    });
+    b.querySelectorAll('tr[data-contact-row]').forEach(tr => {
+      tr.onclick = event => { if (event.target?.closest?.('.contact-row-actions,button,a,input,select,textarea')) return; this.openDetailsDrawer(tr.getAttribute('data-contact-row')); };
+      tr.onkeydown = event => { if (!['Enter', ' '].includes(event.key)) return; event.preventDefault(); this.openDetailsDrawer(tr.getAttribute('data-contact-row')); };
+    });
+    this.bindContactActionMenuClose();
     const s = this.state.total ? ((this.state.page - 1) * this.state.limit) + 1 : 0;
     const e = Math.min(this.state.page * this.state.limit, this.state.total);
+    this.renderContactPagination(s, e);
     applyPermissionVisibility(b);
-    const pi = document.getElementById('contactsPageInfo');
-    if (pi) pi.textContent = `Showing ${s}-${e} of ${this.state.total} records`;
     const canCreateContacts = canCreateContact(Permissions.getResolvedCurrentUser?.());
     const canExportContact = Permissions.can('contacts','export') || Permissions.can('contacts','manage');
     const cbtn = document.getElementById('contactsCreateBtn');
@@ -672,20 +911,29 @@ const Contacts = {
   },
 
   async onAction(a, id) {
-    const r = this.state.rows.find(x => x.id === id);
+    const target = String(id || '').trim();
+    const r = this.state.rows.find(x => [x.id, x.contact_id, x.email].some(value => String(value || '').trim() === target));
     if (!r) return;
+    if (a === 'view') {
+      this.openDetailsDrawer(r);
+      return;
+    }
     if (a === 'lead') {
       if (!Permissions.can('leads', 'create') || !Permissions.canCreate('leads')) {
         UI?.toast?.('You do not have permission to create leads.');
         return;
       }
       window.Leads?.openLeadCreateFormWithPrefill?.({ contact: r });
+      return;
     }
-    if (a === 'edit') this.openForm(r, true);
+    if (a === 'edit') {
+      this.openForm(r, true);
+      return;
+    }
     if (a === 'del') {
       if (!Permissions.canDelete('contacts')) { UI?.toast?.('You do not have permission for this action.'); return; }
       if (!confirm('Delete contact?')) return;
-      await Api.requestWithSession('contacts', 'delete', { id }, { requireAuth: true });
+      await Api.requestWithSession('contacts', 'delete', { id: r.id || target }, { requireAuth: true });
       this.loadAndRefresh();
     }
   },

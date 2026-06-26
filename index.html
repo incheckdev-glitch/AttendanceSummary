@@ -572,15 +572,61 @@
         </div>
       </section>
 
-      <section id="contactsView" class="view" role="tabpanel" aria-labelledby="contactsTab">
-        <div class="card">
-          <div class="row between center" style="margin-bottom:12px;">
-            <h2>Contacts</h2>
-            <button id="contactsCreateBtn" class="btn">Add Contact</button>
-          </div>
-          <div class="table-wrap">
-            <table id="contactsTable"><thead><tr><th>Contact ID</th><th>First Name</th><th>Last Name</th><th>Company</th><th>Job Title</th><th>Department</th><th>Email</th><th>Phone</th><th>Primary Contact</th><th>Status</th><th>Actions</th></tr></thead><tbody id="contactsTableBody"></tbody></table>
-          </div>
+      <section id="contactsView" class="view contacts-workspace" role="tabpanel" aria-labelledby="contactsTab">
+        <div class="contacts-page-shell">
+          <header class="contacts-page-header">
+            <div>
+              <h1>Contacts</h1>
+              <p>Manage and organize your contacts</p>
+            </div>
+            <button id="contactsCreateBtn" class="btn contacts-add-btn" data-permission-resource="contacts" data-permission-action="create" type="button">
+              <span aria-hidden="true">＋</span> Add Contact
+            </button>
+          </header>
+
+          <div id="contactsSummaryGrid" class="contacts-summary-grid" aria-label="Contacts summary"></div>
+
+          <section id="contactsFilterCard" class="contacts-panel contacts-filter-card" aria-label="Contacts filters"></section>
+
+          <section class="contacts-panel contacts-table-panel" aria-label="Contact records">
+            <div class="contacts-table-toolbar">
+              <div class="contacts-table-toolbar-left">
+                <button id="contactsExportBtn" class="btn ghost contacts-export-btn" data-permission-resource="contacts" data-permission-action="export" type="button">
+                  <span aria-hidden="true">⇩</span> Export
+                </button>
+                <span id="contactsPageInfo" class="contacts-page-info" aria-live="polite"></span>
+              </div>
+              <label class="contacts-rows-control" for="contactsRowsPerPage">
+                <span>Rows per page</span>
+                <select id="contactsRowsPerPage" class="select sm" aria-label="Rows per page">
+                  <option>25</option><option selected>50</option><option>100</option>
+                </select>
+              </label>
+            </div>
+            <div class="table-wrap contacts-table-wrap">
+              <table id="contactsTable">
+                <thead>
+                  <tr>
+                    <th>Contact ID</th>
+                    <th>Full Name</th>
+                    <th>Company</th>
+                    <th>Job Title</th>
+                    <th>Department</th>
+                    <th>Email</th>
+                    <th>Phone</th>
+                    <th>Primary Contact</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="contactsTableBody"></tbody>
+              </table>
+            </div>
+            <div class="contacts-table-footer">
+              <nav id="contactsPagination" class="contacts-pagination" aria-label="Contacts pagination"></nav>
+              <span id="contactsFooterInfo" class="contacts-footer-info" aria-live="polite"></span>
+            </div>
+          </section>
         </div>
       </section>
 
