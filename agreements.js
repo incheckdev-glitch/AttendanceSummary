@@ -4357,11 +4357,14 @@ const Agreements = {
     this.state.selectedAgreementCompanyForVerification = this.hasCompanyVerificationFields(agreement) ? agreement : null;
     this.updateAgreementCompanyVerificationUi(this.state.selectedAgreementCompanyForVerification);
     if (E.agreementFormTitle) E.agreementFormTitle.textContent = agreement.id ? (signedLocked && !adminOverride ? 'Signed Agreement · Upload Document' : (effectiveReadOnly ? 'View Agreement' : 'Edit Agreement')) : 'Create Agreement';
+    const agreementSubtitle = document.getElementById('agreementFormSubtitle');
+    if (agreementSubtitle) agreementSubtitle.textContent = agreement.id ? 'Update agreement details, items, terms, and signatures.' : 'Create a new customer agreement with terms, fees, and signatures.';
     if (E.agreementSignedLockMessage) E.agreementSignedLockMessage.style.display = signedLocked && !adminOverride ? '' : 'none';
     if (E.agreementFormDeleteBtn) E.agreementFormDeleteBtn.style.display = !effectiveReadOnly && agreement.id && Permissions.canDeleteAgreement() ? '' : 'none';
     if (E.agreementFormSaveBtn) {
       const canSave = agreement.id ? Permissions.canUpdateAgreement() : Permissions.canCreateAgreement();
       E.agreementFormSaveBtn.style.display = !effectiveReadOnly && canSave ? '' : 'none';
+      E.agreementFormSaveBtn.textContent = agreement.id ? 'Update Agreement' : 'Create Agreement';
     }
     if (adminOverride && agreement.id && (signedLocked || readOnly || this.isAgreementExpired(agreement))) this.applyAdminOverrideBanner();
     this.setFormReadOnly(effectiveReadOnly);

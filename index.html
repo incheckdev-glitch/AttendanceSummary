@@ -4209,147 +4209,96 @@ Sample:
   </div>
 
 
-  <div id="agreementFormModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="agreementFormTitle" aria-hidden="true">
-    <div class="modal-content" style="max-width:1100px;">
-      <div class="header"><h2 id="agreementFormTitle" style="margin:0;font-size:20px">Create Agreement</h2><div class="actions"><button class="modal-close" id="agreementFormCloseBtn" aria-label="Close agreement form">✕</button></div></div>
-      <form id="agreementForm">
-        <div id="agreementSignedLockMessage" class="card" style="display:none;margin-bottom:12px;border-color:#92400e;background:rgba(146,64,14,.08);color:#78350f;">
+  <div id="agreementFormModal" class="modal agreement-modern-modal" role="dialog" aria-modal="true" aria-labelledby="agreementFormTitle" aria-hidden="true">
+    <div class="modal-content agreement-modern-content">
+      <div class="agreement-modal-header">
+        <div class="agreement-header-left">
+          <div class="agreement-header-icon" aria-hidden="true">✓</div>
+          <div><h2 id="agreementFormTitle">Create Agreement</h2><p id="agreementFormSubtitle">Create a new customer agreement with terms, fees, and signatures.</p></div>
+        </div>
+        <button class="modal-close agreement-close-btn" id="agreementFormCloseBtn" aria-label="Close agreement form" type="button">✕</button>
+      </div>
+      <form id="agreementForm" class="agreement-modern-form">
+        <div class="agreement-scroll-body">
+        <div id="agreementSignedLockMessage" class="agreement-lock-card" style="display:none;">
           <strong>Signed agreement is locked.</strong> Only signed document upload and invoice creation are allowed.
         </div>
-        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
-          <div class="filter-row"><label class="muted" for="agreementFormAgreementId">Agreement ID</label><input id="agreementFormAgreementId" class="input" type="text" readonly /></div>
-          <div class="filter-row"><label class="muted" for="agreementFormAgreementNumber">Agreement Number</label><input id="agreementFormAgreementNumber" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="agreementFormAgreementTitle">Agreement Title</label><input id="agreementFormAgreementTitle" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="agreementFormStatus">Status</label>
-            <select id="agreementFormStatus" class="select">
-              <option value="Draft">Draft</option>
-              <option value="Sent">Sent</option>
-              <option value="Under Review">Under Review</option>
-              <option value="Revision Required">Revision Required</option>
-              <option value="Approved">Approved</option>
-              <option value="Signed">Signed</option>
-              <option value="Rejected">Rejected</option>
-              <option value="Expired">Expired</option>
-              <option value="Cancelled">Cancelled</option>
-            </select>
+
+        <section class="agreement-section-card"><h3 class="agreement-section-title"><span>ℹ</span> Basic Information</h3>
+          <div class="agreement-form-grid">
+            <div class="filter-row"><label class="muted" for="agreementFormAgreementId">Agreement ID</label><input id="agreementFormAgreementId" class="input" type="text" readonly /></div>
+            <div class="filter-row"><label class="muted" for="agreementFormAgreementNumber">Agreement Number</label><input id="agreementFormAgreementNumber" class="input" type="text" /></div>
+            <div class="filter-row"><label class="muted" for="agreementFormStatus">Agreement Status</label><select id="agreementFormStatus" class="select"><option value="Draft">Draft</option><option value="Sent">Sent</option><option value="Under Review">Under Review</option><option value="Revision Required">Revision Required</option><option value="Approved">Approved</option><option value="Signed">Signed</option><option value="Rejected">Rejected</option><option value="Expired">Expired</option><option value="Cancelled">Cancelled</option></select></div>
+            <div class="filter-row"><label class="muted" for="agreementFormProposalId">Proposal</label><input id="agreementFormProposalId" class="input" type="text" /></div>
+            <div class="filter-row"><label class="muted" for="agreementFormDealId">Deal</label><input id="agreementFormDealId" class="input" type="text" /></div>
+            <div class="filter-row"><label class="muted" for="agreementFormLeadId">Lead ID</label><input id="agreementFormLeadId" class="input" type="text" /></div>
+            <div class="filter-row agreement-span-2"><label class="muted" for="agreementFormAgreementTitle">Title</label><input id="agreementFormAgreementTitle" class="input" type="text" /></div>
+            <div class="filter-row"><label class="muted" for="agreementFormCurrency">Currency</label><input id="agreementFormCurrency" class="input" type="text" /></div>
+            <input id="agreementFormIsPoc" type="hidden" /><input id="agreementFormPocLicenseCount" type="hidden" />
           </div>
-          <div class="filter-row"><label class="muted" for="agreementFormProposalId">Proposal ID</label><input id="agreementFormProposalId" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="agreementFormDealId">Deal ID</label><input id="agreementFormDealId" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="agreementFormLeadId">Lead ID</label><input id="agreementFormLeadId" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="agreementFormCurrency">Currency</label><input id="agreementFormCurrency" class="input" type="text" /></div>
-          <input id="agreementFormIsPoc" type="hidden" />
-          <input id="agreementFormPocLicenseCount" type="hidden" />
-        </div>
-        <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">Company / Contact Selection</strong>
-        <div class="grid crm-party-selector-grid" data-party-selector="agreement" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px;">
-          <div class="filter-row"><label class="muted" for="agreementFormCompanySelector">Company</label><select id="agreementFormCompanySelector" class="select"><option value="">Select company</option></select><input id="agreementFormCompanyId" type="hidden" /><input id="agreementFormCompanyName" type="hidden" /><div id="agreementCompanyVerificationStatus" class="muted" style="margin-top:6px;font-size:12px;"></div><div id="agreementCompanyVerificationWarning" class="muted" style="display:none;margin-top:4px;color:#b45309;font-size:12px;">Company must be verified before agreement creation.</div><div id="agreementCompanySignatoryWarning" class="muted" style="display:none;margin-top:4px;color:#b91c1c;font-size:12px;">Company authorized signatory details are missing. Please update the company profile before creating the agreement.</div></div>
-          <div class="filter-row"><label class="muted" for="agreementFormContactSelector">Contact</label><select id="agreementFormContactSelector" class="select" disabled><option value="">Select company first</option></select><input id="agreementFormContactId" type="hidden" /><input id="agreementFormContactName" type="hidden" /><input id="agreementFormContactEmail" type="hidden" /><input id="agreementFormContactPhone" type="hidden" /><input id="agreementFormContactMobile" type="hidden" /></div>
-        </div>
-        <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">Contact Details</strong>
-        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
-          <div class="filter-row"><label class="muted" for="agreementFormCustomerName">Customer Name</label><input id="agreementFormCustomerName" class="input" type="text" /></div><div class="filter-row"><label class="muted" for="agreementFormCustomerContactEmail">Customer Contact Email</label><input id="agreementFormCustomerContactEmail" class="input" type="email" /></div>
-          <div class="filter-row"><label class="muted" for="agreementFormCustomerContactName">Customer Contact Name</label><input id="agreementFormCustomerContactName" class="input" type="text" /></div><div class="filter-row"><label class="muted" for="agreementFormCustomerContactMobile">Customer Contact Mobile</label><input id="agreementFormCustomerContactMobile" class="input" type="text" /></div>
-          <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="agreementFormCustomerAddress">Customer Address</label><input id="agreementFormCustomerAddress" class="input" type="text" /></div>
-        </div>
-        <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">Agreement Details</strong>
-        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
-          <div class="filter-row"><label class="muted" for="agreementFormAgreementDate">Agreement Date</label><input id="agreementFormAgreementDate" class="input" type="date" /></div><div class="filter-row"><label class="muted" for="agreementFormEffectiveDate">Effective Date</label><input id="agreementFormEffectiveDate" class="input" type="date" /></div>
-          <div class="filter-row"><label class="muted" for="agreementFormServiceStartDate">Service Start Date</label><input id="agreementFormServiceStartDate" class="input" type="date" /></div><div class="filter-row"><label class="muted" for="agreementFormServiceEndDate">Service End Date</label><input id="agreementFormServiceEndDate" class="input" type="date" /></div>
-          <div class="filter-row"><label class="muted" for="agreementFormAgreementLength">Agreement Length</label><input id="agreementFormAgreementLength" class="input" type="text" list="agreementLengthOptions" /></div><div class="filter-row"><label class="muted" for="agreementFormAccountNumber">Account Number</label><input id="agreementFormAccountNumber" class="input" type="text" /></div>
+        </section>
+
+        <section class="agreement-section-card agreement-party-card"><h3 class="agreement-section-title"><span>🏢</span> Company / Contact Selection</h3>
+          <div class="agreement-form-grid crm-party-selector-grid" data-party-selector="agreement">
+            <div class="filter-row"><label class="muted" for="agreementFormCompanySelector">Company</label><select id="agreementFormCompanySelector" class="select"><option value="">Select company</option></select><input id="agreementFormCompanyId" type="hidden" /><input id="agreementFormCompanyName" type="hidden" /><div id="agreementCompanyVerificationStatus" class="muted agreement-field-help"></div><div id="agreementCompanyVerificationWarning" class="muted agreement-warning" style="display:none;">Company must be verified before agreement creation.</div><div id="agreementCompanySignatoryWarning" class="muted agreement-danger" style="display:none;">Company authorized signatory details are missing. Please update the company profile before creating the agreement.</div></div>
+            <div class="filter-row"><label class="muted" for="agreementFormContactSelector">Primary Contact</label><select id="agreementFormContactSelector" class="select" disabled><option value="">Select company first</option></select><input id="agreementFormContactId" type="hidden" /><input id="agreementFormContactName" type="hidden" /><input id="agreementFormContactEmail" type="hidden" /><input id="agreementFormContactPhone" type="hidden" /><input id="agreementFormContactMobile" type="hidden" /></div>
+          </div>
+        </section>
+
+        <section class="agreement-section-card"><h3 class="agreement-section-title"><span>☏</span> Contact Details</h3><div class="agreement-form-grid">
+          <div class="filter-row"><label class="muted" for="agreementFormCustomerLegalName">Customer Legal Name</label><input id="agreementFormCustomerLegalName" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormCustomerName">Contact Person / Customer Name</label><input id="agreementFormCustomerName" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormCustomerContactName">Contact Name</label><input id="agreementFormCustomerContactName" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormCustomerContactEmail">Contact Email</label><input id="agreementFormCustomerContactEmail" class="input" type="email" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormCustomerContactMobile">Contact Phone</label><input id="agreementFormCustomerContactMobile" class="input" type="text" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormAccountNumber">Account / Reference</label><input id="agreementFormAccountNumber" class="input" type="text" /></div>
           <div class="filter-row"><label class="muted" for="agreementFormPoNumber">PO Number</label><input id="agreementFormPoNumber" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="agreementFormBillingFrequency">Billing Frequency</label><input id="agreementFormBillingFrequency" class="input readonly-field" type="text" value="Annual" readonly aria-readonly="true" /></div><div class="filter-row"><label class="muted" for="agreementFormPaymentTerm">Payment Terms</label><select id="agreementFormPaymentTerm" class="select"><option value="Net 7">Monthly</option><option value="Net 14">Quarterly</option><option value="Net 21">Semi-Annually</option><option value="Net 30">Annually</option></select></div>
+          <div class="filter-row agreement-span-2"><label class="muted" for="agreementFormCustomerAddress">Billing Address</label><input id="agreementFormCustomerAddress" class="input" type="text" /></div>
+        </div></section>
+
+        <section class="agreement-section-card"><h3 class="agreement-section-title"><span>📅</span> Agreement Details</h3><div class="agreement-form-grid">
+          <div class="filter-row"><label class="muted" for="agreementFormAgreementDate">Agreement Date</label><input id="agreementFormAgreementDate" class="input" type="date" /></div><div class="filter-row"><label class="muted" for="agreementFormEffectiveDate">Valid Until / Signature Deadline</label><input id="agreementFormEffectiveDate" class="input" type="date" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormServiceStartDate">Start Date</label><input id="agreementFormServiceStartDate" class="input" type="date" /></div><div class="filter-row"><label class="muted" for="agreementFormServiceEndDate">End Date</label><input id="agreementFormServiceEndDate" class="input" type="date" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormAgreementLength">Agreement Length</label><input id="agreementFormAgreementLength" class="input" type="text" list="agreementLengthOptions" /></div><div class="filter-row"><label class="muted" for="agreementFormBillingFrequency">Billing Frequency</label><input id="agreementFormBillingFrequency" class="input readonly-field" type="text" value="Annual" readonly aria-readonly="true" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormPaymentTerm">Payment Term</label><select id="agreementFormPaymentTerm" class="select"><option value="Net 7">Monthly</option><option value="Net 14">Quarterly</option><option value="Net 21">Semi-Annually</option><option value="Net 30">Annually</option></select></div>
+          <div class="agreement-toggle-row"><label><input id="agreementFormIsPocToggle" type="checkbox" /> POC Agreement</label><p>If this agreement comes from a POC proposal, keep the POC details available here.</p></div>
         </div>
-        <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">POC Details</strong>
-        <div class="muted" style="margin:-4px 0 8px;">If this agreement comes from a POC proposal, keep the POC details available here as well.</div>
-        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start;">
-          <div class="filter-row" style="grid-column:1 / -1;"><label style="display:flex;align-items:center;gap:8px;font-weight:600;"><input id="agreementFormIsPocToggle" type="checkbox" /> POC</label></div>
+        <div id="agreementPocDetails" class="agreement-form-grid agreement-poc-panel" style="display:none;">
+          <div class="filter-row"><label class="muted" for="agreementFormPocLocationCount">Number of Locations</label><input id="agreementFormPocLocationCount" class="input" type="number" min="0" step="1" /></div><div class="filter-row"><label class="muted" for="agreementFormPocLicenseMonths">License / Month</label><input id="agreementFormPocLicenseMonths" class="input" type="number" min="0" step="0.01" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormPocServiceStartDate">POC Service Start Date</label><input id="agreementFormPocServiceStartDate" class="input" type="date" /></div><div class="filter-row"><label class="muted" for="agreementFormPocServiceEndDate">POC Service End Date</label><input id="agreementFormPocServiceEndDate" class="input" type="date" /></div>
+          <div class="agreement-span-2 agreement-subsection-note"><strong>POC Success & Conversion Commitment</strong><span>These fields carry from the proposal and must remain available in the agreement.</span></div>
+          <div class="filter-row agreement-span-2"><label class="muted" for="agreementFormPocSuccessKpis">POC Success KPIs</label><textarea id="agreementFormPocSuccessKpis" class="input" rows="4"></textarea></div>
+          <div class="filter-row agreement-span-2"><label class="muted" for="agreementFormPocConversionCommitment">POC Commercial Commitment</label><textarea id="agreementFormPocConversionCommitment" class="input" rows="4"></textarea></div>
+        </div></section>
+
+        <datalist id="agreementBillingCycleOptions"><option value="One-time"></option><option value="Monthly"></option><option value="Quarterly"></option><option value="Semi-Annual"></option><option value="Annual"></option></datalist><datalist id="agreementLengthOptions"><option value="1 year"></option><option value="2 years"></option><option value="3 years"></option></datalist><datalist id="agreementPaymentTermOptions"><option value="Net 7" label="Monthly"></option><option value="Net 14" label="Quarterly"></option><option value="Net 21" label="Semi-Annually"></option><option value="Net 30" label="Annually"></option></datalist>
+
+        <section class="agreement-section-card agreement-provider-card"><h3 class="agreement-section-title"><span>🛡</span> Provider Details</h3><div class="agreement-form-grid agreement-readonly-grid">
+          <div class="filter-row"><label class="muted" for="agreementFormProviderLegalName">Provider Legal Name</label><input id="agreementFormProviderLegalName" class="input readonly-field" type="text" readonly aria-readonly="true" /></div><div class="filter-row"><label class="muted" for="agreementFormProviderName">Provider Registration Number</label><input id="agreementFormProviderName" class="input readonly-field" type="text" readonly aria-readonly="true" /></div>
+          <div class="filter-row agreement-span-2"><label class="muted" for="agreementFormProviderAddress">Provider Address</label><input id="agreementFormProviderAddress" class="input readonly-field" type="text" readonly aria-readonly="true" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormProviderContactName">VAT / Provider Contact Name</label><input id="agreementFormProviderContactName" class="input" type="text" /></div><div class="filter-row"><label class="muted" for="agreementFormProviderContactEmail">Provider Email</label><input id="agreementFormProviderContactEmail" class="input" type="email" /></div>
+          <div class="filter-row"><label class="muted" for="agreementFormProviderContactMobile">Support Email / Phone</label><input id="agreementFormProviderContactMobile" class="input" type="text" /></div>
+        </div></section>
+
+        <section class="agreement-section-card"><h3 class="agreement-section-title"><span>☰</span> Agreement Items</h3>
+          <div class="agreement-items-panel"><div class="agreement-items-header"><strong>Annual SaaS Items</strong><button id="agreementAddAnnualRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap agreement-table-wrap"><table><thead><tr><th>Location</th><th>License</th><th>License Price / Year</th><th>License / Month</th><th>Service Start Date</th><th>Service End Date</th><th>Discount %</th><th>Total</th><th>Invoice Status</th><th>Actions</th></tr></thead><tbody id="agreementAnnualItemsTbody"></tbody></table></div></div>
+          <div class="agreement-items-panel"><div class="agreement-items-header"><strong>One-Time Fee Items</strong><button id="agreementAddOneTimeRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap agreement-table-wrap"><table><thead><tr><th>Location</th><th>Item / Service</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead><tbody id="agreementOneTimeItemsTbody"></tbody></table></div></div>
+          <div class="agreement-items-panel"><div class="agreement-items-header"><strong>Hardware Items</strong><button id="agreementAddHardwareRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap agreement-table-wrap"><table><thead><tr><th>Location</th><th>Hardware / Product</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead><tbody id="agreementHardwareItemsTbody"></tbody></table></div></div>
+          <datalist id="agreementCatalogOptions-hardware"></datalist>
+          <div class="agreement-summary-card"><strong>Totals Summary</strong><div><span>Subtotal SaaS</span><b id="agreementSaasTotal">0</b></div><div><span>One-Time Fees</span><b id="agreementOneTimeTotal">0</b></div><div><span>Hardware</span><b id="agreementHardwareTotal">0</b></div><div class="agreement-grand-total"><span>Grand Total</span><b id="agreementGrandTotal">0</b></div></div>
+        </section>
+
+        <section class="agreement-section-card"><h3 class="agreement-section-title"><span>✎</span> Agreement Terms</h3><div class="filter-row"><label class="muted" for="agreementFormTermsConditions">Terms &amp; Conditions</label><textarea id="agreementFormTermsConditions" class="input agreement-large-textarea" rows="6"></textarea><p class="agreement-field-help">Define commercial terms, renewal clauses, scope, and agreement conditions.</p></div><div class="filter-row"><label class="muted" for="agreementFormNotes">Notes</label><textarea id="agreementFormNotes" class="input" rows="3"></textarea></div></section>
+
+        <section class="agreement-section-card"><h3 class="agreement-section-title"><span>✍</span> Signatures</h3><div class="agreement-signature-grid signatory-section form-grid">
+          <div class="signatory-column"><h4>Customer Official Signatory</h4><div class="filter-row"><label class="muted" for="agreementFormCustomerOfficialSignatoryName">Name</label><input id="agreementFormCustomerOfficialSignatoryName" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div><div class="filter-row"><label class="muted" for="agreementFormCustomerOfficialSignatoryTitle">Title</label><input id="agreementFormCustomerOfficialSignatoryTitle" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div><div class="filter-row"><label class="muted" for="agreementFormCustomerOfficialSignDate">Signature Date</label><input id="agreementFormCustomerOfficialSignDate" class="input" type="date" /></div></div>
+          <div class="signatory-column"><h4>Provider Official Signatories</h4><div class="agreement-signature-subtitle">SFC signatory</div><div class="filter-row"><label class="muted" for="agreementFormProviderOfficialSignatory1Name">Name</label><input id="agreementFormProviderOfficialSignatory1Name" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div><div class="filter-row"><label class="muted" for="agreementFormProviderOfficialSignatory1Title">Title</label><input id="agreementFormProviderOfficialSignatory1Title" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div><div class="filter-row"><label class="muted" for="agreementFormProviderOfficialSignatory1SignDate">Date</label><input id="agreementFormProviderOfficialSignatory1SignDate" class="input" type="date" /></div><div class="agreement-signature-subtitle">GM signatory</div><div class="filter-row"><label class="muted" for="agreementFormProviderOfficialSignatory2Name">Name</label><input id="agreementFormProviderOfficialSignatory2Name" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div><div class="filter-row"><label class="muted" for="agreementFormProviderOfficialSignatory2Title">Title</label><input id="agreementFormProviderOfficialSignatory2Title" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div><div class="filter-row"><label class="muted" for="agreementFormProviderOfficialSignatory2SignDate">Date</label><input id="agreementFormProviderOfficialSignatory2SignDate" class="input" type="date" /></div></div>
+          <input id="agreementFormCustomerSignatoryName" type="hidden" /><input id="agreementFormCustomerSignatoryTitle" type="hidden" /><input id="agreementFormCustomerSignDate" type="hidden" /><input id="agreementFormProviderSignatoryNamePrimary" type="hidden" /><input id="agreementFormProviderSignatoryTitlePrimary" type="hidden" /><input id="agreementFormProviderSignatoryNameSecondary" type="hidden" /><input id="agreementFormProviderSignatoryTitleSecondary" type="hidden" /><input id="agreementFormProviderSignDate" type="hidden" />
+        </div></section>
+
+        <section id="agreementSignedDocumentSection" class="agreement-section-card" style="display:none;"><h3 class="agreement-section-title"><span>▤</span> Signed Agreement Document</h3><p id="agreementSignedDocumentState" class="muted">Upload the signed agreement document before creating an invoice.</p><div class="actions agreement-doc-actions"><input id="agreementSignedDocumentFile" class="input" type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" aria-label="Signed agreement document" /><button id="agreementSignedDocumentUploadBtn" class="btn btn-incheck-outline sm" type="button">Upload Signed Agreement</button><button id="agreementSignedDocumentOpenBtn" class="btn btn-incheck-outline sm" type="button" style="display:none;">View / Download</button></div></section>
         </div>
-        <div id="agreementPocDetails" class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:8px;display:none;">
-          <div class="filter-row"><label class="muted" for="agreementFormPocLocationCount">Number of Locations</label><input id="agreementFormPocLocationCount" class="input" type="number" min="0" step="1" /></div>
-          <div class="filter-row"><label class="muted" for="agreementFormPocLicenseMonths">License / Month</label><input id="agreementFormPocLicenseMonths" class="input" type="number" min="0" step="0.01" /></div>
-          <div class="filter-row"><label class="muted" for="agreementFormPocServiceStartDate">POC Service Start Date</label><input id="agreementFormPocServiceStartDate" class="input" type="date" /></div>
-          <div class="filter-row"><label class="muted" for="agreementFormPocServiceEndDate">POC Service End Date</label><input id="agreementFormPocServiceEndDate" class="input" type="date" /></div>
-          <div style="grid-column:1 / -1;margin-top:4px;padding-top:10px;border-top:1px solid #e5e7eb;">
-            <strong style="display:block;margin-bottom:4px;">POC Success & Conversion Commitment</strong>
-            <div class="muted" style="font-size:12px;line-height:1.45;">These fields carry from the proposal and must remain available in the agreement.</div>
-          </div>
-          <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="agreementFormPocSuccessKpis">POC Success KPIs</label><textarea id="agreementFormPocSuccessKpis" class="input" rows="4" style="min-height:96px;resize:vertical;"></textarea></div>
-          <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="agreementFormPocConversionCommitment">POC Commercial Commitment</label><textarea id="agreementFormPocConversionCommitment" class="input" rows="4" style="min-height:96px;resize:vertical;"></textarea></div>
-        </div>
-        <datalist id="agreementBillingCycleOptions">
-          <option value="One-time"></option>
-          <option value="Monthly"></option>
-          <option value="Quarterly"></option>
-          <option value="Semi-Annual"></option>
-          <option value="Annual"></option>
-        </datalist>
-        <datalist id="agreementLengthOptions">
-          <option value="1 year"></option>
-          <option value="2 years"></option>
-          <option value="3 years"></option>
-        </datalist>
-        <datalist id="agreementPaymentTermOptions">
-          <option value="Net 7" label="Monthly"></option>
-          <option value="Net 14" label="Quarterly"></option>
-          <option value="Net 21" label="Semi-Annually"></option>
-          <option value="Net 30" label="Annually"></option>
-        </datalist>
-        <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">Provider Details — Read-only</strong>
-        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
-          <div class="filter-row"><label class="muted" for="agreementFormCustomerLegalName">Customer Legal Name</label><input id="agreementFormCustomerLegalName" class="input" type="text" /></div><div class="filter-row"><label class="muted" for="agreementFormProviderLegalName">Provider Legal Name</label><input id="agreementFormProviderLegalName" class="input readonly-field" type="text" readonly aria-readonly="true" /></div>
-          <div class="filter-row"><label class="muted" for="agreementFormProviderName">Provider Name</label><input id="agreementFormProviderName" class="input readonly-field" type="text" readonly aria-readonly="true" /></div><div class="filter-row"><label class="muted" for="agreementFormProviderContactEmail">Provider Contact Email</label><input id="agreementFormProviderContactEmail" class="input" type="email" /></div>
-          <div class="filter-row"><label class="muted" for="agreementFormProviderContactName">Provider Contact Name</label><input id="agreementFormProviderContactName" class="input" type="text" /></div><div class="filter-row"><label class="muted" for="agreementFormProviderContactMobile">Provider Contact Mobile</label><input id="agreementFormProviderContactMobile" class="input" type="text" /></div>
-          <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="agreementFormProviderAddress">Provider Address</label><input id="agreementFormProviderAddress" class="input readonly-field" type="text" readonly aria-readonly="true" /></div>
-        </div>
-        <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">Subscription Details / Items</strong>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><strong>Annual SaaS Rows</strong><button id="agreementAddAnnualRowBtn" class="btn ghost sm" type="button">Add Row</button></div>
-        <div class="table-wrap"><table><thead><tr><th>Location</th><th>License</th><th>License Price / Year</th><th>License / Month</th><th>Service Start Date</th><th>Service End Date</th><th>Discount %</th><th>Total</th><th>Invoice Status</th><th>Actions</th></tr></thead><tbody id="agreementAnnualItemsTbody"></tbody></table></div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px;"><strong>One-time Fee Rows</strong><button id="agreementAddOneTimeRowBtn" class="btn ghost sm" type="button">Add Row</button></div>
-        <div class="table-wrap"><table><thead><tr><th>Location</th><th>Item / Service</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead><tbody id="agreementOneTimeItemsTbody"></tbody></table></div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px;"><strong>Hardware Rows</strong><button id="agreementAddHardwareRowBtn" class="btn ghost sm" type="button">Add Row</button></div>
-        <div class="table-wrap"><table><thead><tr><th>Location</th><th>Hardware / Product</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead><tbody id="agreementHardwareItemsTbody"></tbody></table></div>
-        <datalist id="agreementCatalogOptions-hardware"></datalist>
-        <div class="card" style="margin-top:12px;"><strong>Totals Preview</strong><div class="grid" style="grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:8px;"><div><div class="muted">SaaS Total</div><div id="agreementSaasTotal">0</div></div><div><div class="muted">One Time Total</div><div id="agreementOneTimeTotal">0</div></div><div><div class="muted">Hardware Total</div><div id="agreementHardwareTotal">0</div></div><div><div class="muted">Grand Total</div><div id="agreementGrandTotal">0</div></div></div></div>
-        <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">Agreement Terms</strong>
-        <div class="filter-row"><label class="muted" for="agreementFormTermsConditions">Terms &amp; Conditions</label><textarea id="agreementFormTermsConditions" class="input" rows="4"></textarea></div>
-        <div class="filter-row"><label class="muted" for="agreementFormNotes">Notes</label><textarea id="agreementFormNotes" class="input" rows="3"></textarea></div>
-        <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">Signatories</strong>
-        <div class="signatory-section form-grid">
-          <div class="signatory-column" aria-label="Customer official signatory fields">
-            <strong style="display:block;margin-bottom:8px;">Customer Official Signatory</strong>
-            <div class="filter-row"><label class="muted" for="agreementFormCustomerOfficialSignatoryName">Customer Official Signatory Name</label><input id="agreementFormCustomerOfficialSignatoryName" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
-            <div class="filter-row"><label class="muted" for="agreementFormCustomerOfficialSignatoryTitle">Customer Official Signatory Title</label><input id="agreementFormCustomerOfficialSignatoryTitle" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
-            <div class="filter-row"><label class="muted" for="agreementFormCustomerOfficialSignDate">Customer Official Sign Date</label><input id="agreementFormCustomerOfficialSignDate" class="input" type="date" /></div>
-          </div>
-          <div class="signatory-column" aria-label="Provider official signatory fields">
-            <strong style="display:block;margin-bottom:8px;">Provider Official Signatories</strong>
-            <div class="filter-row"><label class="muted" for="agreementFormProviderOfficialSignatory1Name">Provider Official Signatory 1 Name</label><input id="agreementFormProviderOfficialSignatory1Name" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
-            <div class="filter-row"><label class="muted" for="agreementFormProviderOfficialSignatory1Title">Provider Official Signatory 1 Title</label><input id="agreementFormProviderOfficialSignatory1Title" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
-            <div class="filter-row"><label class="muted" for="agreementFormProviderOfficialSignatory1SignDate">Provider Official Signatory 1 Sign Date</label><input id="agreementFormProviderOfficialSignatory1SignDate" class="input" type="date" /></div>
-            <div class="divider" style="margin:10px 0;"></div>
-            <div class="filter-row"><label class="muted" for="agreementFormProviderOfficialSignatory2Name">Provider Official Signatory 2 Name</label><input id="agreementFormProviderOfficialSignatory2Name" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
-            <div class="filter-row"><label class="muted" for="agreementFormProviderOfficialSignatory2Title">Provider Official Signatory 2 Title</label><input id="agreementFormProviderOfficialSignatory2Title" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
-            <div class="filter-row"><label class="muted" for="agreementFormProviderOfficialSignatory2SignDate">Provider Official Signatory 2 Sign Date</label><input id="agreementFormProviderOfficialSignatory2SignDate" class="input" type="date" /></div>
-          </div>
-          <input id="agreementFormCustomerSignatoryName" type="hidden" />
-          <input id="agreementFormCustomerSignatoryTitle" type="hidden" />
-          <input id="agreementFormCustomerSignDate" type="hidden" />
-          <input id="agreementFormProviderSignatoryNamePrimary" type="hidden" />
-          <input id="agreementFormProviderSignatoryTitlePrimary" type="hidden" />
-          <input id="agreementFormProviderSignatoryNameSecondary" type="hidden" />
-          <input id="agreementFormProviderSignatoryTitleSecondary" type="hidden" />
-          <input id="agreementFormProviderSignDate" type="hidden" />
-        </div>
-        <div id="agreementSignedDocumentSection" class="card" style="display:none;margin-top:12px;">
-          <strong style="display:block;margin-bottom:6px;">Signed Agreement Document</strong>
-          <p id="agreementSignedDocumentState" class="muted" style="margin:0 0 8px;">Upload the signed agreement document before creating an invoice.</p>
-          <div class="actions" style="justify-content:flex-start;gap:8px;">
-            <input id="agreementSignedDocumentFile" class="input" type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" aria-label="Signed agreement document" />
-            <button id="agreementSignedDocumentUploadBtn" class="btn ghost sm" type="button">Upload Signed Agreement</button>
-            <button id="agreementSignedDocumentOpenBtn" class="btn ghost sm" type="button" style="display:none;">View / Download</button>
-          </div>
-        </div>
-        <div class="actions" style="justify-content:space-between;gap:8px;margin-top:12px;"><div style="display:flex;gap:8px;"><button id="agreementFormDeleteBtn" type="button" class="btn ghost" style="display:none;">Delete</button><button id="agreementFormPreviewBtn" type="button" class="btn ghost">View Agreement</button></div><div style="display:flex;gap:8px;"><button id="agreementFormCancelBtn" type="button" class="btn ghost">Cancel</button><button id="agreementFormSaveBtn" type="submit" class="btn">Save</button></div></div>
+        <div class="agreement-modal-footer"><div><button id="agreementFormDeleteBtn" type="button" class="btn agreement-danger-btn" style="display:none;">Delete</button></div><div class="agreement-footer-actions"><button id="agreementFormCancelBtn" type="button" class="btn btn-incheck-outline">Cancel</button><button id="agreementFormPreviewBtn" type="button" class="btn btn-incheck-outline">View Agreement</button><button id="agreementFormSaveBtn" type="submit" class="btn btn-incheck-primary">Save</button></div></div>
       </form>
     </div>
   </div>
