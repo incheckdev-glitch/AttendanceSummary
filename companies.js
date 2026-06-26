@@ -77,7 +77,7 @@ if (typeof window !== 'undefined') {
 }
 
 const Companies = {
-  state: { rows: [], page: 1, limit: 50, total: 0, search: '', filters: { company_status: '', company_type: '', industry: '', country: '', city: '', created_from: '', created_to: '' }, sortBy: 'created_at', sortDir: 'desc', companyTypeOptions: COMPANY_TYPE_FALLBACK_OPTIONS, companyIndustryOptions: COMPANY_INDUSTRY_FALLBACK_OPTIONS, currentCompany: null, documents: [], selectedDetailsId: '' },
+  state: { rows: [], page: 1, limit: 50, total: 0, search: '', filters: { company_status: '', company_type: '', industry: '', country: '', city: '', created_from: '', created_to: '' }, sortBy: 'created_at', sortDir: 'desc', companyTypeOptions: COMPANY_TYPE_FALLBACK_OPTIONS, companyIndustryOptions: COMPANY_INDUSTRY_FALLBACK_OPTIONS, currentCompany: null, documents: [], selectedDetailsId: '', summary: { totalCompanies: 0, verified: 0, activeClients: 0, prospects: 0 } },
   formatCodeFallback(value = '') { return String(value || '').replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase()); },
   formatCompanyType(value = '') { const found = this.state.companyTypeOptions.find(o => o.value === value); return found?.label || this.formatCodeFallback(value); },
   formatCompanyIndustry(value = '') { const found = this.state.companyIndustryOptions.find(o => o.value === value); return found?.label || this.formatCodeFallback(value); },
@@ -101,24 +101,70 @@ const Companies = {
     el.innerHTML = [`<option value="">${placeholder}</option>`].concat(options.map(o => `<option value="${U.escapeAttr(o.value)}">${U.escapeHtml(o.label)}</option>`)).join('');
   },
   async ensureControls() {
-    const view = document.getElementById('companyView'); if (!view || document.getElementById('companySearchInput')) return;
-    await this.hydrateOptionSources();
-    const card = view.querySelector('.card');
-    card.insertAdjacentHTML('afterbegin', `<div class="stack" style="gap:8px;margin-bottom:10px"><div class="row" style="gap:8px;flex-wrap:wrap"><input id="companySearchInput" class="input" type="search" placeholder="Search companies..."/><select id="companyStatusFilter" class="select"><option value="">All Statuses</option>${COMPANY_LIFECYCLE_STATUSES.map(status => `<option>${U.escapeHtml(status)}</option>`).join('')}</select><select id="companyTypeFilter" class="select"></select><select id="companyIndustryFilter" class="select"></select><input id="companyCountryFilter" class="input" placeholder="Country"/><input id="companyCityFilter" class="input" placeholder="City"/><input id="companyCreatedFromFilter" class="input" type="date"/><input id="companyCreatedToFilter" class="input" type="date"/><button id="companyClearFiltersBtn" class="btn ghost sm">Clear Filters</button></div><div class="row" style="gap:8px"><button id="companyExportBtn" class="btn ghost sm" data-permission-resource="companies" data-permission-action="export">Export</button><span id="companyPageInfo" class="muted"></span></div></div>`);
-    this.renderSelectOptions('companyTypeFilter', this.state.companyTypeOptions, 'All Types');
-    this.renderSelectOptions('companyIndustryFilter', this.state.companyIndustryOptions, 'All Industries');
-    view.querySelector('.table-wrap')?.insertAdjacentHTML('afterend', `<div class="table-actions"><div class="pagination"><button id="companyPrevBtn" class="chip-btn">‹ Prev</button><button id="companyNextBtn" class="chip-btn">Next ›</button></div><div><label class="muted">Rows</label><select id="companyRowsPerPage" class="select sm"><option>25</option><option selected>50</option><option>100</option></select></div></div>`);
-    document.getElementById('companySearchInput').addEventListener('input', e => { this.state.search = e.target.value.trim(); this.state.page = 1; this.loadAndRefresh(); });
-    const bind = (id, key) => document.getElementById(id)?.addEventListener('change', e => { this.state.filters[key] = e.target.value.trim(); this.state.page = 1; this.loadAndRefresh(); });
-    bind('companyStatusFilter', 'company_status'); bind('companyTypeFilter', 'company_type'); bind('companyIndustryFilter', 'industry'); bind('companyCountryFilter', 'country'); bind('companyCityFilter', 'city'); bind('companyCreatedFromFilter', 'created_from'); bind('companyCreatedToFilter', 'created_to');
-    document.getElementById('companyCountryFilter')?.addEventListener('input', e => { this.state.filters.country = e.target.value.trim(); this.state.page = 1; this.loadAndRefresh(); });
-    document.getElementById('companyCityFilter')?.addEventListener('input', e => { this.state.filters.city = e.target.value.trim(); this.state.page = 1; this.loadAndRefresh(); });
-    document.getElementById('companyClearFiltersBtn').onclick = () => { this.state.search = ''; this.state.filters = { company_status: '', company_type: '', industry: '', country: '', city: '', created_from: '', created_to: '' }; ['companySearchInput','companyStatusFilter','companyTypeFilter','companyIndustryFilter','companyCountryFilter','companyCityFilter','companyCreatedFromFilter','companyCreatedToFilter'].forEach(fid => { const el = document.getElementById(fid); if (el) el.value = ''; }); this.state.page = 1; this.loadAndRefresh(); };
-    document.getElementById('companyPrevBtn').onclick = () => { if (this.state.page > 1) { this.state.page--; this.loadAndRefresh(); } };
-    document.getElementById('companyNextBtn').onclick = () => { if (this.state.page * this.state.limit < this.state.total) { this.state.page++; this.loadAndRefresh(); } };
-    document.getElementById('companyRowsPerPage').onchange = (e) => { this.state.limit = Number(e.target.value) || 50; this.state.page = 1; this.loadAndRefresh(); };
-    document.getElementById('companyExportBtn').onclick = () => this.exportCsv(); applyPermissionVisibility(view);
+    const view = document.getElementById('companyView');
+    if (!view) return;
+
+    if (!document.getElementById('companySearchInput')) {
+      await this.hydrateOptionSources();
+      const filterCard = document.getElementById('companyFilterCard') || view.querySelector('.card');
+      if (filterCard) {
+        filterCard.innerHTML = `
+          <div class="company-panel-title">
+            <span class="company-panel-icon" aria-hidden="true">⌁</span>
+            <h2>Filters</h2>
+          </div>
+          <div class="company-filter-grid">
+            <label class="company-filter-field company-filter-search" for="companySearchInput">
+              <span>Search companies</span>
+              <div class="company-input-shell">
+                <span aria-hidden="true">⌕</span>
+                <input id="companySearchInput" class="input" type="search" placeholder="Search by name, ID, email..." autocomplete="off" />
+              </div>
+            </label>
+            <label class="company-filter-field" for="companyStatusFilter">
+              <span>Status</span>
+              <select id="companyStatusFilter" class="select">
+                <option value="">All Statuses</option>
+                ${COMPANY_LIFECYCLE_STATUSES.map(status => `<option value="${U.escapeAttr(status)}">${U.escapeHtml(status)}</option>`).join('')}
+              </select>
+            </label>
+            <label class="company-filter-field" for="companyTypeFilter"><span>Type</span><select id="companyTypeFilter" class="select"></select></label>
+            <label class="company-filter-field" for="companyIndustryFilter"><span>Industry</span><select id="companyIndustryFilter" class="select"></select></label>
+            <label class="company-filter-field" for="companyCountryFilter"><span>Country</span><input id="companyCountryFilter" class="input" placeholder="Country" autocomplete="off" /></label>
+            <label class="company-filter-field" for="companyCityFilter"><span>City</span><input id="companyCityFilter" class="input" placeholder="City" autocomplete="off" /></label>
+            <label class="company-filter-field" for="companyCreatedFromFilter"><span>From Date</span><input id="companyCreatedFromFilter" class="input" type="date" /></label>
+            <label class="company-filter-field" for="companyCreatedToFilter"><span>To Date</span><input id="companyCreatedToFilter" class="input" type="date" /></label>
+            <div class="company-filter-field company-filter-clear"><span>&nbsp;</span><button id="companyClearFiltersBtn" class="btn ghost" type="button"><span aria-hidden="true">↻</span> Clear Filters</button></div>
+          </div>`;
+      }
+      this.renderSelectOptions('companyTypeFilter', this.state.companyTypeOptions, 'All Types');
+      this.renderSelectOptions('companyIndustryFilter', this.state.companyIndustryOptions, 'All Industries');
+
+      document.getElementById('companySearchInput')?.addEventListener('input', e => { this.state.search = e.target.value.trim(); this.state.page = 1; this.loadAndRefresh(); });
+      const bindChange = (id, key) => document.getElementById(id)?.addEventListener('change', e => { this.state.filters[key] = e.target.value.trim(); this.state.page = 1; this.loadAndRefresh(); });
+      bindChange('companyStatusFilter', 'company_status');
+      bindChange('companyTypeFilter', 'company_type');
+      bindChange('companyIndustryFilter', 'industry');
+      bindChange('companyCreatedFromFilter', 'created_from');
+      bindChange('companyCreatedToFilter', 'created_to');
+      const bindText = (id, key) => document.getElementById(id)?.addEventListener('input', e => { this.state.filters[key] = e.target.value.trim(); this.state.page = 1; this.loadAndRefresh(); });
+      bindText('companyCountryFilter', 'country');
+      bindText('companyCityFilter', 'city');
+      document.getElementById('companyClearFiltersBtn')?.addEventListener('click', () => {
+        this.state.search = '';
+        this.state.filters = { company_status: '', company_type: '', industry: '', country: '', city: '', created_from: '', created_to: '' };
+        ['companySearchInput','companyStatusFilter','companyTypeFilter','companyIndustryFilter','companyCountryFilter','companyCityFilter','companyCreatedFromFilter','companyCreatedToFilter'].forEach(fid => { const el = document.getElementById(fid); if (el) el.value = ''; });
+        this.state.page = 1;
+        this.loadAndRefresh();
+      });
+      document.getElementById('companyExportBtn')?.addEventListener('click', () => this.exportCsv());
+      document.getElementById('companyRowsPerPage')?.addEventListener('change', e => { this.state.limit = Number(e.target.value) || 50; this.state.page = 1; this.loadAndRefresh(); });
+    }
+
+    const rowsSelect = document.getElementById('companyRowsPerPage');
+    if (rowsSelect) rowsSelect.value = String(this.state.limit || 50);
     this.bindFormEvents();
+    applyPermissionVisibility(view);
   },
   bindFormEvents() { if (this._formBound) return; this._formBound = true; document.getElementById('companyForm')?.addEventListener('submit', e => this.submitForm(e)); document.getElementById('companyDocumentUploadBtn')?.addEventListener('click', () => this.uploadCompanyDocument()); ['companyCancelBtn', 'companyCloseBtn'].forEach(id => document.getElementById(id)?.addEventListener('click', () => this.closeForm())); document.getElementById('companyModal')?.addEventListener('click', e => { if (e.target?.id === 'companyModal') this.closeForm(); }); },
   async openForm(existing = null) {
@@ -192,16 +238,190 @@ const Companies = {
     });
     this.render();
   },
-  async loadAndRefresh() { if (!Permissions.canView('companies')) return; await this.ensureControls(); try { const res = await Api.requestWithSession('companies', 'list', { page: this.state.page, limit: this.state.limit, search: this.state.search, filters: this.state.filters, sortBy: this.state.sortBy, sortDir: this.state.sortDir }, { requireAuth: true }); const rows = Array.isArray(res?.rows) ? res.rows : Array.isArray(res) ? res : []; this.state.rows = rows.map(r => this.normalize(r)); this.state.total = Number(res?.total ?? rows.length) || rows.length; this.render(); this.refreshVisibleCompanyLifecycleStatuses(); } catch (e) { UI?.toast?.('Unable to load companies', 'error'); console.error(e); } },
+  updateSummaryMetrics(rows = this.state.rows) {
+    const sourceRows = Array.isArray(rows) ? rows : [];
+    const activeClients = sourceRows.filter(row => this.normalizeLifecycleStatus(row.company_status) === 'Active Client').length;
+    const prospects = sourceRows.filter(row => this.normalizeLifecycleStatus(row.company_status) === 'Prospect').length;
+    const verified = sourceRows.filter(row => this.getCompanyVerificationStatus(row) === 'verified').length;
+    this.state.summary = {
+      totalCompanies: Number(this.state.total || sourceRows.length) || 0,
+      verified,
+      activeClients,
+      prospects
+    };
+  },
+  async refreshSummaryMetricsForCurrentFilters() {
+    const total = Number(this.state.total || 0) || 0;
+    if (!total || total <= this.state.rows.length) {
+      this.updateSummaryMetrics(this.state.rows);
+      return;
+    }
+    const safeLimit = Math.min(total, 1000);
+    try {
+      const res = await Api.requestWithSession('companies', 'list', { page: 1, limit: safeLimit, search: this.state.search, filters: this.state.filters, sortBy: this.state.sortBy, sortDir: this.state.sortDir }, { requireAuth: true });
+      const rows = Array.isArray(res?.rows) ? res.rows : Array.isArray(res) ? res : [];
+      this.updateSummaryMetrics(rows.map(r => this.normalize(r)));
+    } catch (error) {
+      console.warn('[companies] unable to refresh summary metrics, using current page rows', error);
+      this.updateSummaryMetrics(this.state.rows);
+    }
+  },
+  renderCompanySummaryCards() {
+    const grid = document.getElementById('companySummaryGrid');
+    if (!grid) return;
+    const summary = this.state.summary || {};
+    const cards = [
+      { label: 'Total Companies', value: summary.totalCompanies || 0, icon: '▥', tone: 'violet' },
+      { label: 'Verified', value: summary.verified || 0, icon: '✓', tone: 'green' },
+      { label: 'Active Clients', value: summary.activeClients || 0, icon: '♙', tone: 'lime' },
+      { label: 'Prospects', value: summary.prospects || 0, icon: '♙', tone: 'blue' }
+    ];
+    grid.innerHTML = cards.map(card => `
+      <article class="company-summary-card company-summary-card--${U.escapeAttr(card.tone)}">
+        <div class="company-summary-icon" aria-hidden="true">${U.escapeHtml(card.icon)}</div>
+        <div>
+          <span>${U.escapeHtml(card.label)}</span>
+          <strong>${U.escapeHtml(card.value)}</strong>
+        </div>
+      </article>`).join('');
+  },
+  getCountryFlag(country = '') {
+    const value = String(country || '').trim().toLowerCase();
+    const flags = {
+      lebanon: '🇱🇧', uae: '🇦🇪', 'united arab emirates': '🇦🇪', netherlands: '🇳🇱', france: '🇫🇷', jordan: '🇯🇴', 'saudi arabia': '🇸🇦', qatar: '🇶🇦', kuwait: '🇰🇼', oman: '🇴🇲', bahrain: '🇧🇭', egypt: '🇪🇬', turkey: '🇹🇷', 'united states': '🇺🇸', usa: '🇺🇸', 'united kingdom': '🇬🇧', uk: '🇬🇧'
+    };
+    return flags[value] || '';
+  },
+  renderCountryCell(country = '') {
+    const clean = String(country || '').trim();
+    if (!clean) return '—';
+    const flag = this.getCountryFlag(clean);
+    return `<span class="company-country-cell">${flag ? `<span aria-hidden="true">${flag}</span>` : ''}<span>${U.escapeHtml(clean)}</span></span>`;
+  },
+  renderCompanyActions(row, permissions = {}) {
+    const id = U.escapeAttr(row.id || '');
+    const items = [];
+    if (permissions.canCreateLead) items.push(`<button type="button" data-a="lead" data-permission-resource="leads" data-permission-action="create" data-id="${id}">Create Lead</button>`);
+    if (Permissions.canCreateContact?.() || Permissions.canCreate('contacts')) items.push(`<button type="button" class="js-create-contact" data-a="contacts" data-action="create-contact" data-contact-create="true" data-permission-resource="contacts" data-permission-action="create" data-id="${id}">Add Contact</button>`);
+    if (permissions.canEdit) items.push(`<button type="button" data-a="edit" data-company-edit="${id}" data-permission-resource="companies" data-permission-action="update" data-id="${id}">Edit</button>`);
+    if (permissions.canDelete) items.push(`<button type="button" class="danger" data-a="del" data-permission-resource="companies" data-permission-action="delete" data-id="${id}">Delete</button>`);
+    return `
+      <div class="company-row-actions">
+        <button class="company-view-btn" type="button" data-a="view" data-id="${id}">View</button>
+        <div class="company-actions-menu">
+          <button class="company-more-btn" type="button" data-company-more="${id}" aria-label="More actions">⋮</button>
+          <div class="company-actions-popover" role="menu">${items.join('') || '<span class="company-no-actions">No actions</span>'}</div>
+        </div>
+      </div>`;
+  },
+  renderCompanyPagination(start, end) {
+    const pagination = document.getElementById('companyPagination');
+    const footerInfo = document.getElementById('companyFooterInfo');
+    const pageInfo = document.getElementById('companyPageInfo');
+    const total = Number(this.state.total || 0) || 0;
+    const totalPages = Math.max(1, Math.ceil(total / (Number(this.state.limit) || 50)));
+    const current = Math.min(Math.max(1, Number(this.state.page) || 1), totalPages);
+    const info = total ? `Showing ${start}-${end} of ${total} records` : 'Showing 0 records';
+    if (pageInfo) pageInfo.textContent = info;
+    if (footerInfo) footerInfo.textContent = info;
+    if (!pagination) return;
+    const pageNumbers = new Set([1, current - 1, current, current + 1, totalPages]);
+    const pages = [...pageNumbers].filter(page => page >= 1 && page <= totalPages).sort((a, b) => a - b);
+    const parts = [`<button type="button" class="company-page-btn" data-company-page="prev" ${current <= 1 ? 'disabled' : ''} aria-label="Previous page">‹</button>`];
+    let previous = 0;
+    pages.forEach(page => {
+      if (previous && page - previous > 1) parts.push('<span class="company-page-ellipsis">…</span>');
+      parts.push(`<button type="button" class="company-page-btn ${page === current ? 'is-active' : ''}" data-company-page="${page}" ${page === current ? 'aria-current="page"' : ''}>${page}</button>`);
+      previous = page;
+    });
+    parts.push(`<button type="button" class="company-page-btn" data-company-page="next" ${current >= totalPages ? 'disabled' : ''} aria-label="Next page">›</button>`);
+    pagination.innerHTML = parts.join('');
+    pagination.querySelectorAll('[data-company-page]').forEach(button => {
+      button.onclick = () => {
+        const value = button.getAttribute('data-company-page');
+        let nextPage = current;
+        if (value === 'prev') nextPage = current - 1;
+        else if (value === 'next') nextPage = current + 1;
+        else nextPage = Number(value) || current;
+        nextPage = Math.min(Math.max(1, nextPage), totalPages);
+        if (nextPage !== this.state.page) {
+          this.state.page = nextPage;
+          this.loadAndRefresh();
+        }
+      };
+    });
+  },
+  bindCompanyActionMenuClose() {
+    if (this._companyActionMenuBound) return;
+    this._companyActionMenuBound = true;
+    document.addEventListener('click', event => {
+      if (event.target?.closest?.('.company-actions-menu')) return;
+      document.querySelectorAll('.company-actions-menu.is-open').forEach(menu => menu.classList.remove('is-open'));
+    });
+  },
+  async loadAndRefresh() {
+    if (!Permissions.canView('companies')) return;
+    await this.ensureControls();
+    try {
+      const res = await Api.requestWithSession('companies', 'list', { page: this.state.page, limit: this.state.limit, search: this.state.search, filters: this.state.filters, sortBy: this.state.sortBy, sortDir: this.state.sortDir }, { requireAuth: true });
+      const rows = Array.isArray(res?.rows) ? res.rows : Array.isArray(res) ? res : [];
+      this.state.rows = rows.map(r => this.normalize(r));
+      this.state.total = Number(res?.total ?? rows.length) || rows.length;
+      await this.refreshSummaryMetricsForCurrentFilters();
+      this.render();
+      this.refreshVisibleCompanyLifecycleStatuses();
+    } catch (e) { UI?.toast?.('Unable to load companies', 'error'); console.error(e); }
+  },
   render() {
     const body = document.getElementById('companyTableBody'); if (!body) return;
     const canEdit = Permissions.canEdit('companies'), canDelete = Permissions.canDelete('companies'); const canCreateLead = Permissions.canCreate('leads');
-    body.innerHTML = this.state.rows.map(r => { const selected = String(this.state.selectedDetailsId || '') === String(r.id || r.company_id || ''); return `<tr class='entity-clickable-row${selected ? ' is-selected' : ''}' tabindex='0' data-company-row='${U.escapeAttr(r.id || r.company_id || '')}' aria-label='Open company ${U.escapeAttr(r.company_name || r.company_id || '')} details'><td>${U.escapeHtml(r.company_id)}</td><td>${this.renderCompanyVerificationBadge(r)}</td><td>${U.escapeHtml(r.company_name)}</td><td>${U.escapeHtml(this.formatCompanyType(r.company_type))}</td><td>${U.escapeHtml(this.formatCompanyIndustry(r.industry))}</td><td>${this.renderLifecycleStatusBadge(r.company_status)}</td><td>${U.escapeHtml(r.main_email)}</td><td>${U.escapeHtml(r.main_phone)}</td><td>${U.escapeHtml(r.country)}</td><td>${U.escapeHtml(r.city)}</td><td>${U.escapeHtml(U.fmtTS(r.created_at))}</td><td>${canCreateLead ? `<button class='chip-btn' data-a='lead' data-permission-resource='leads' data-permission-action='create' data-id='${r.id}'>Create Lead</button>` : ''}${canEdit ? `<button class='chip-btn' data-a='edit' data-company-edit='${r.id}' data-permission-resource='companies' data-permission-action='update' data-id='${r.id}'>Edit</button>` : ''}${canDelete ? `<button class='chip-btn' data-a='del' data-permission-resource='companies' data-permission-action='delete' data-id='${r.id}'>Delete</button>` : ''}${(Permissions.canCreateContact?.() || Permissions.canCreate('contacts')) ? `<button class='chip-btn js-create-contact' data-a='contacts' data-action='create-contact' data-contact-create='true' data-permission-resource='contacts' data-permission-action='create' data-id='${r.id}'>Add Contact</button>` : ''}</td></tr>`; }).join('');
-    body.querySelectorAll('button').forEach(b => b.onclick = event => { event?.stopPropagation?.(); this.onAction(b.dataset.a, b.dataset.id); }); body.querySelectorAll('tr[data-company-row]').forEach(tr => { tr.onclick = event => { if (event.target?.closest?.('button')) return; this.openDetailsDrawer(tr.getAttribute('data-company-row')); }; tr.onkeydown = event => { if (!['Enter', ' '].includes(event.key)) return; event.preventDefault(); this.openDetailsDrawer(tr.getAttribute('data-company-row')); }; }); const start = this.state.total ? ((this.state.page - 1) * this.state.limit) + 1 : 0; const end = Math.min(this.state.page * this.state.limit, this.state.total); applyPermissionVisibility(body || b); const pi = document.getElementById('companyPageInfo'); if (pi) pi.textContent = `Showing ${start}-${end} of ${this.state.total} records`; const canCreateCompany = Permissions.can('companies','create') || Permissions.can('companies','manage'); const canExportCompany = Permissions.can('companies','export') || Permissions.can('companies','manage'); const createBtn = document.getElementById('companyCreateBtn'); if (createBtn) { createBtn.style.display = canCreateCompany ? '' : 'none'; createBtn.onclick = () => this.openForm(); } const exportBtn = document.getElementById('companyExportBtn'); if (exportBtn) { exportBtn.style.display = canExportCompany ? '' : 'none'; exportBtn.disabled = !canExportCompany; }
+    const permissions = { canEdit, canDelete, canCreateLead };
+    this.renderCompanySummaryCards();
+    body.innerHTML = this.state.rows.map(r => {
+      const selected = String(this.state.selectedDetailsId || '') === String(r.id || r.company_id || '');
+      return `<tr class='entity-clickable-row company-row${selected ? ' is-selected' : ''}' tabindex='0' data-company-row='${U.escapeAttr(r.id || r.company_id || '')}' aria-label='Open company ${U.escapeAttr(r.company_name || r.company_id || '')} details'>
+        <td class="company-id-cell">${U.escapeHtml(r.company_id || '—')}</td>
+        <td>${this.renderCompanyVerificationBadge(r)}</td>
+        <td class="company-name-cell">${U.escapeHtml(r.company_name || '—')}</td>
+        <td>${U.escapeHtml(this.formatCompanyType(r.company_type) || '—')}</td>
+        <td>${U.escapeHtml(this.formatCompanyIndustry(r.industry) || '—')}</td>
+        <td>${this.renderLifecycleStatusBadge(r.company_status)}</td>
+        <td>${U.escapeHtml(r.main_email || '—')}</td>
+        <td>${U.escapeHtml(r.main_phone || '—')}</td>
+        <td>${this.renderCountryCell(r.country)}</td>
+        <td>${U.escapeHtml(r.city || '—')}</td>
+        <td>${U.escapeHtml(U.fmtTS(r.created_at) || '—')}</td>
+        <td>${this.renderCompanyActions(r, permissions)}</td>
+      </tr>`;
+    }).join('');
+    body.querySelectorAll('[data-a]').forEach(button => button.onclick = event => { event?.stopPropagation?.(); this.onAction(button.dataset.a, button.dataset.id); });
+    body.querySelectorAll('[data-company-more]').forEach(button => button.onclick = event => {
+      event?.stopPropagation?.();
+      const menu = button.closest('.company-actions-menu');
+      const isOpen = menu?.classList.contains('is-open');
+      document.querySelectorAll('.company-actions-menu.is-open').forEach(item => item.classList.remove('is-open'));
+      if (menu && !isOpen) menu.classList.add('is-open');
+    });
+    body.querySelectorAll('tr[data-company-row]').forEach(tr => {
+      tr.onclick = event => { if (event.target?.closest?.('.company-row-actions,button,a,input,select,textarea')) return; this.openDetailsDrawer(tr.getAttribute('data-company-row')); };
+      tr.onkeydown = event => { if (!['Enter', ' '].includes(event.key)) return; event.preventDefault(); this.openDetailsDrawer(tr.getAttribute('data-company-row')); };
+    });
+    this.bindCompanyActionMenuClose();
+    const start = this.state.total ? ((this.state.page - 1) * this.state.limit) + 1 : 0;
+    const end = Math.min(this.state.page * this.state.limit, this.state.total);
+    this.renderCompanyPagination(start, end);
+    applyPermissionVisibility(body);
+    const canCreateCompany = Permissions.can('companies','create') || Permissions.can('companies','manage'); const canExportCompany = Permissions.can('companies','export') || Permissions.can('companies','manage'); const createBtn = document.getElementById('companyCreateBtn'); if (createBtn) { createBtn.style.display = canCreateCompany ? '' : 'none'; createBtn.onclick = () => this.openForm(); } const exportBtn = document.getElementById('companyExportBtn'); if (exportBtn) { exportBtn.style.display = canExportCompany ? '' : 'none'; exportBtn.disabled = !canExportCompany; }
   },
   async onAction(a, id) {
-    const row = this.state.rows.find(x => String(x.id || '') === String(id || ''));
+    const target = String(id || '').trim();
+    const row = this.state.rows.find(x => [x.id, x.company_id, x.company_name].some(value => String(value || '').trim() === target));
     if (!row) return;
+
+    if (a === 'view') {
+      this.openDetailsDrawer(row);
+      return;
+    }
 
     if (a === 'edit') {
       this.openForm(row);

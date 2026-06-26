@@ -512,15 +512,63 @@
         </div>
       </section>
 
-      <section id="companyView" class="view" role="tabpanel" aria-labelledby="companyTab">
-        <div class="card">
-          <div class="row between center" style="margin-bottom:12px;">
-            <h2>Company</h2>
-            <button id="companyCreateBtn" class="btn">Add Company</button>
-          </div>
-          <div class="table-wrap">
-            <table id="companyTable"><thead><tr><th>Company ID</th><th>Verification</th><th>Company Name</th><th>Company Type</th><th>Industry</th><th>Status</th><th>Main Email</th><th>Main Phone</th><th>Country</th><th>City</th><th>Created Date</th><th>Actions</th></tr></thead><tbody id="companyTableBody"></tbody></table>
-          </div>
+      <section id="companyView" class="view company-workspace" role="tabpanel" aria-labelledby="companyTab">
+        <div class="company-page-shell">
+          <header class="company-page-header">
+            <div>
+              <h1>Company</h1>
+              <p>Manage company records, contacts, and lifecycle</p>
+            </div>
+            <button id="companyCreateBtn" class="btn company-add-btn" data-permission-resource="companies" data-permission-action="create" type="button">
+              <span aria-hidden="true">＋</span> Add Company
+            </button>
+          </header>
+
+          <div id="companySummaryGrid" class="company-summary-grid" aria-label="Company summary"></div>
+
+          <section id="companyFilterCard" class="company-panel company-filter-card" aria-label="Company filters"></section>
+
+          <section class="company-panel company-table-panel" aria-label="Company records">
+            <div class="company-table-toolbar">
+              <div class="company-table-toolbar-left">
+                <button id="companyExportBtn" class="btn ghost company-export-btn" data-permission-resource="companies" data-permission-action="export" type="button">
+                  <span aria-hidden="true">⇩</span> Export
+                </button>
+                <span id="companyPageInfo" class="company-page-info" aria-live="polite"></span>
+              </div>
+              <label class="company-rows-control" for="companyRowsPerPage">
+                <span>Rows per page</span>
+                <select id="companyRowsPerPage" class="select sm" aria-label="Rows per page">
+                  <option>25</option><option selected>50</option><option>100</option>
+                </select>
+              </label>
+            </div>
+            <div class="table-wrap company-table-wrap">
+              <table id="companyTable">
+                <thead>
+                  <tr>
+                    <th>Company ID</th>
+                    <th>Verification</th>
+                    <th>Company Name</th>
+                    <th>Type</th>
+                    <th>Industry</th>
+                    <th>Status</th>
+                    <th>Main Email</th>
+                    <th>Main Phone</th>
+                    <th>Country</th>
+                    <th>City</th>
+                    <th>Created Date</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="companyTableBody"></tbody>
+              </table>
+            </div>
+            <div class="company-table-footer">
+              <nav id="companyPagination" class="company-pagination" aria-label="Company pagination"></nav>
+              <span id="companyFooterInfo" class="company-footer-info" aria-live="polite"></span>
+            </div>
+          </section>
         </div>
       </section>
 
@@ -4404,7 +4452,7 @@ Sample:
   <script src="ui.js?v=20260605-csm-notes"></script>
   <script src="record-details-drawer.js?v=20260626-shared-right-panel"></script>
   <script src="leads.js?v=20260626-lead-detail-drawer"></script>
-  <script src="companies.js?v=20260611-direct-communication"></script>
+  <script src="companies.js?v=20260626-company-ui-refresh"></script>
   <script src="contacts.js?v=20260611-direct-communication"></script>
   <script src="deals.js?v=20260608-company-options-fresh"></script>
   <script src="proposals.js?v=v17-agreement-today-helper"></script>
