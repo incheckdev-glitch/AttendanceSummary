@@ -224,6 +224,7 @@ const Agreements = {
     detailCacheTtlMs: 90 * 1000,
     openingAgreementIds: new Set(),
     rowActionInFlight: new Set(),
+    selectedDetailsId: '',
     selectedAgreementCompanyForVerification: null,
     invoiceBlockedAgreementIds: new Set(),
     technicalAdminRequests: []
@@ -2995,6 +2996,64 @@ const Agreements = {
       }
     }
   },
+
+  findDetailsRow(id) {
+    const target = String(id || '').trim();
+    if (!target) return null;
+    const matches = row => [row?.id, row?.agreement_id, row?.agreement_number, row?.agreementId].some(value => String(value || '').trim() === target);
+    return (this.state.rows || []).find(matches) || (this.state.filteredRows || []).find(matches) || null;
+  },
+  openDetailsDrawer(rowOrId) {
+    const row = typeof rowOrId === 'string' ? this.findDetailsRow(rowOrId) : rowOrId;
+    if (!row || !window.RecordDetailsDrawer) return;
+    const id = String(row.id || row.agreement_id || row.agreement_number || row.agreementId || '').trim();
+    const rowTotals = this.calculateTotalsFromAgreementRecord(row);
+    const signedRow = this.isAgreementLockedAsSigned(row);
+    const invoiceBlocked = signedRow && this.state.invoiceBlockedAgreementIds.has(String(row?.id || '').trim());
+    const uploadBlocked = this.hasSignedDocument(row);
+    this.state.selectedDetailsId = id;
+    window.RecordDetailsDrawer.open({
+      eyebrow: 'Commercial · Agreement',
+      title: row.agreement_id || row.agreement_number || 'Agreement Details',
+      subtitle: [row.customer_name, this.resolveAgreementStatus(row), row.currency].filter(Boolean).join(' · '),
+      sections: [
+        { title: 'Summary', cards: [
+          ['Status', this.resolveAgreementStatus(row)],
+          ['Currency', row.currency],
+          ['Grand Total', this.formatMoney(rowTotals.grand_total)],
+          ['Payment Term', this.getPaymentTermDisplay(row.payment_term)],
+          ['Billing Frequency', row.billing_frequency],
+          ['Signed Document', this.hasSignedDocument(row) ? 'Uploaded' : 'Not uploaded']
+        ] },
+        { title: 'Customer & Source', fields: [
+          ['Customer', row.customer_name],
+          ['Agreement Number', row.agreement_number],
+          ['Agreement Title', row.agreement_title],
+          ['Proposal', this.getAgreementProposalDisplayRef(row)],
+          ['Deal', row.deal_id],
+          ['PO Number', row.po_number]
+        ] },
+        { title: 'Service & Dates', fields: [
+          ['Service Start', U.fmtDisplayDate(row.service_start_date)],
+          ['Service End', U.fmtDisplayDate(row.service_end_date)],
+          ['Agreement Length', row.agreement_length],
+          ['Agreement Date', U.fmtDisplayDate(row.agreement_date)],
+          ['Effective Date', U.fmtDisplayDate(row.effective_date)],
+          ['Updated At', U.fmtDisplayDate(row.updated_at)]
+        ] },
+        { title: 'Notes', html: `<div class="lead-details-notes">${U.escapeHtml(row.notes || row.internal_notes || 'No notes added yet.')}</div>` }
+      ],
+      actions: [
+        Permissions.canView('agreements') ? { label: 'View', variant: 'primary', permissionResource: 'agreements', permissionAction: 'view', onClick: btn => this.openAgreementFormById(id, { readOnly: true, trigger: btn }) } : null,
+        signedRow && Permissions.canUpdateAgreement() && !uploadBlocked ? { label: 'Upload Signed Doc', variant: 'ghost', permissionResource: 'agreements', permissionAction: 'update', onClick: btn => this.openAgreementFormById(id, { readOnly: true, trigger: btn, focusSignedDocument: true }) } : null,
+        !signedRow && Permissions.canUpdateAgreement() ? { label: 'Edit', variant: 'ghost', permissionResource: 'agreements', permissionAction: 'update', onClick: btn => this.openAgreementFormById(id, { readOnly: false, trigger: btn }) } : null,
+        Permissions.canGenerateAgreementHtml() ? { label: 'View Agreement', variant: 'ghost', permissionResource: 'agreements', permissionAction: 'view', onClick: () => this.previewAgreementHtml(id) } : null,
+        signedRow && Permissions.canCreateInvoiceFromAgreement() && !invoiceBlocked ? { label: 'Create Invoice', variant: 'ghost', permissionResource: 'invoices', permissionAction: 'create_from_agreement', onClick: () => this.createInvoiceFromAgreementFlow(id) } : null,
+        Permissions.canDeleteAgreement() ? { label: 'Delete', variant: 'ghost', permissionResource: 'agreements', permissionAction: 'delete', onClick: () => this.deleteById(id) } : null
+      ].filter(Boolean)
+    });
+    this.render();
+  },
   render() {
     if (!E.agreementsState || !E.agreementsTbody) return;
     if (this.state.loading) {
@@ -3026,7 +3085,8 @@ const Agreements = {
       const invoiceBlocked = signedRow && this.state.invoiceBlockedAgreementIds.has(String(row?.id || '').trim());
       const signedDocUploaded = this.hasSignedDocument(row);
       const uploadBlocked = signedDocUploaded;
-      return `<tr>
+      const selected = String(this.state.selectedDetailsId || '') === String(row.id || row.agreement_id || row.agreement_number || '');
+      return `<tr class="entity-clickable-row${selected ? ' is-selected' : ''}" tabindex="0" data-agreement-row="${id}" aria-label="Open agreement ${U.escapeAttr(row.agreement_id || row.agreement_number || row.customer_name || '')} details">
         <td>${textCell(row.agreement_id)}${importedBadge}</td><td>${textCell(row.agreement_number)}</td><td>${textCell(row.agreement_title)}</td>
         <td>${textCell(row.customer_name)}</td><td>${textCell(this.getAgreementProposalDisplayRef(row))}</td><td>${textCell(row.deal_id)}</td>
         <td>${U.escapeHtml(U.fmtDisplayDate(row.service_start_date))}</td><td>${textCell(row.agreement_length)}</td><td>${textCell(row.billing_frequency)}</td>
@@ -4964,6 +5024,20 @@ const Agreements = {
       }
       const deleteId = trigger.getAttribute('data-agreement-delete');
       if (deleteId) return this.runRowAction(`delete:${deleteId}`, trigger, () => this.deleteById(deleteId));
+    });
+    if (E.agreementsTbody) E.agreementsTbody.addEventListener('click', event => {
+      if (event.target?.closest?.('button')) return;
+      const detailsRow = event.target?.closest?.('tr[data-agreement-row]');
+      const detailsId = detailsRow?.getAttribute('data-agreement-row');
+      if (detailsId) this.openDetailsDrawer(detailsId);
+    });
+    if (E.agreementsTbody) E.agreementsTbody.addEventListener('keydown', event => {
+      if (!['Enter', ' '].includes(event.key)) return;
+      const row = event.target?.closest?.('tr[data-agreement-row]');
+      const id = row?.getAttribute('data-agreement-row');
+      if (!id) return;
+      event.preventDefault();
+      this.openDetailsDrawer(id);
     });
 
     if (E.agreementFormCloseBtn) E.agreementFormCloseBtn.addEventListener('click', () => this.closeAgreementForm());

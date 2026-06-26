@@ -130,7 +130,8 @@ const Receipts = {
     detailCacheById: {},
     detailCacheTtlMs: 90 * 1000,
     openingReceiptIds: new Set(),
-    rowActionInFlight: new Set()
+    rowActionInFlight: new Set(),
+    selectedDetailsId: ''
   },
   toNumberSafe(value) {
     return U.toMoneyNumber(value);
@@ -658,6 +659,59 @@ const Receipts = {
     E.receiptsStatusFilter.innerHTML = statuses.map(v => `<option>${U.escapeHtml(v)}</option>`).join('');
     E.receiptsStatusFilter.value = statuses.includes(this.state.status) ? this.state.status : 'All';
   },
+
+  findDetailsRow(id) {
+    const target = String(id || '').trim();
+    if (!target) return null;
+    const matches = row => [row?.id, row?.receipt_id, row?.receipt_number].some(value => String(value || '').trim() === target);
+    return (this.state.rows || []).find(matches) || (this.state.filteredRows || []).find(matches) || null;
+  },
+  openDetailsDrawer(rowOrId) {
+    const row = typeof rowOrId === 'string' ? this.findDetailsRow(rowOrId) : rowOrId;
+    if (!row || !window.RecordDetailsDrawer) return;
+    const id = String(row.id || row.receipt_id || row.receipt_number || '').trim();
+    const paymentState = this.normalizeReceiptPaymentState(row, row);
+    this.state.selectedDetailsId = id;
+    window.RecordDetailsDrawer.open({
+      eyebrow: 'Finance · Receipt',
+      title: row.receipt_number || row.receipt_id || 'Receipt Details',
+      subtitle: [row.customer_name, paymentState || row.status, row.currency].filter(Boolean).join(' · '),
+      sections: [
+        { title: 'Summary', cards: [
+          ['Status', row.status],
+          ['Payment State', paymentState],
+          ['Type', this.receiptTypeLabel(row)],
+          ['Currency', row.currency],
+          ['Amount Received', this.formatMoney(row.amount_received ?? row.received_amount ?? row.paid_now)],
+          ['Pending Amount', this.formatMoney(row.pending_amount ?? row.balance_due)]
+        ] },
+        { title: 'Customer & Invoice', fields: [
+          ['Customer', row.customer_name],
+          ['Invoice', row.invoice_number || row.invoice_id],
+          ['Agreement', row.agreement_number || row.agreement_id],
+          ['Company', row.company_name || row.company_id],
+          ['Contact', row.contact_name],
+          ['Receipt UUID', row.id]
+        ] },
+        { title: 'Payment Details', fields: [
+          ['Receipt Date', U.fmtDisplayDate(row.receipt_date || row.payment_date)],
+          ['Payment Method', row.payment_method],
+          ['Payment Reference', row.payment_reference],
+          ['Invoice Total', this.formatMoney(row.invoice_total)],
+          ['Old Paid Total', this.formatMoney(row.old_paid_total)],
+          ['New Paid Total', this.formatMoney(row.new_paid_total)]
+        ] },
+        { title: 'Notes', html: `<div class="lead-details-notes">${U.escapeHtml(row.payment_notes || row.notes || 'No notes added yet.')}</div>` }
+      ],
+      actions: [
+        { label: 'View', variant: 'primary', permissionResource: 'receipts', permissionAction: 'view', onClick: btn => this.openReceiptById(id, { readOnly: true, trigger: btn }) },
+        Permissions.canUpdateReceipt() ? { label: 'Edit', variant: 'ghost', permissionResource: 'receipts', permissionAction: 'update', onClick: btn => this.openReceiptById(id, { readOnly: false, trigger: btn }) } : null,
+        Permissions.canPreviewReceipt() ? { label: 'Preview', variant: 'ghost', permissionResource: 'receipts', permissionAction: 'view', onClick: () => this.previewReceipt(id) } : null,
+        Permissions.canDeleteReceipt() ? { label: 'Delete', variant: 'ghost', permissionResource: 'receipts', permissionAction: 'delete', onClick: () => this.deleteReceipt(id) } : null
+      ].filter(Boolean)
+    });
+    this.render();
+  },
   render() {
     if (!E.receiptsTbody || !E.receiptsState) return;
     if (this.state.loading) {
@@ -686,7 +740,8 @@ const Receipts = {
         const typeLabel = this.receiptTypeLabel(row);
         const paymentState = this.normalizeReceiptPaymentState(row, row);
         const settlementBadge = this.isSettlementReceipt({ ...row, payment_state: paymentState }) ? ' <span class="pill">Settlement</span>' : '';
-        return `<tr>
+        const selected = String(this.state.selectedDetailsId || '') === String(row.id || row.receipt_id || row.receipt_number || '');
+        return `<tr class="entity-clickable-row${selected ? ' is-selected' : ''}" tabindex="0" data-receipt-row="${rowUuid}" aria-label="Open receipt ${U.escapeAttr(row.receipt_number || row.receipt_id || row.customer_name || '')} details">
           <td><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;"><span>${U.escapeHtml(row.receipt_number || row.receipt_id || '—')}</span><span class="pill">${U.escapeHtml(typeLabel)}</span>${settlementBadge}</div></td>
           <td>${U.escapeHtml(row.invoice_number || row.invoice_id || '—')}</td>
           <td>${U.escapeHtml(row.customer_name || '—')}</td>
@@ -2386,6 +2441,20 @@ const Receipts = {
         if (previewId) return this.runRowAction(`preview:${previewId}`, trigger, () => this.previewReceipt(previewId));
         const deleteId = trigger.getAttribute('data-receipt-delete');
         if (deleteId) return this.runRowAction(`delete:${deleteId}`, trigger, () => this.deleteReceipt(deleteId));
+      });
+      E.receiptsTbody.addEventListener('click', event => {
+        if (event.target?.closest?.('button')) return;
+        const detailsRow = event.target?.closest?.('tr[data-receipt-row]');
+        const detailsId = detailsRow?.getAttribute('data-receipt-row');
+        if (detailsId) this.openDetailsDrawer(detailsId);
+      });
+      E.receiptsTbody.addEventListener('keydown', event => {
+        if (!['Enter', ' '].includes(event.key)) return;
+        const row = event.target?.closest?.('tr[data-receipt-row]');
+        const id = row?.getAttribute('data-receipt-row');
+        if (!id) return;
+        event.preventDefault();
+        this.openDetailsDrawer(id);
       });
     }
     if (E.receiptForm) {

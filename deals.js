@@ -56,6 +56,7 @@ const Deals = {
     total: 0,
     returned: 0,
     hasMore: false,
+    selectedDetailsId: '',
     form: { mode: 'create', selectedLead: null, selectedCompany: null, selectedContact: null, companyId: '', contactId: '', lockLinks: false }
   },
   normalizeBool(value) {
@@ -1100,6 +1101,64 @@ const Deals = {
     this.applyFilters();
     this.render();
   },
+
+  findDetailsRow(id) {
+    const target = String(id || '').trim();
+    if (!target) return null;
+    return (this.state.rows || []).find(row => [row.id, row.deal_id, row.dealId].some(value => String(value || '').trim() === target)) ||
+      (this.state.filteredRows || []).find(row => [row.id, row.deal_id, row.dealId].some(value => String(value || '').trim() === target)) || null;
+  },
+  detailsMoney(row = {}) {
+    const amount = Number(row.estimated_value);
+    if (!Number.isFinite(amount)) return '—';
+    const currency = String(row.currency || '').trim();
+    return `${currency ? `${currency.toUpperCase()} ` : ''}${U.fmtNumber ? U.fmtNumber(amount) : amount.toFixed(2)}`;
+  },
+  openDetailsDrawer(rowOrId) {
+    const source = typeof rowOrId === 'string' ? this.findDetailsRow(rowOrId) : rowOrId;
+    if (!source || !window.RecordDetailsDrawer) return;
+    const row = this.normalizeDeal(source);
+    const id = String(row.id || row.deal_id || row.dealId || '').trim();
+    this.state.selectedDetailsId = id;
+    window.RecordDetailsDrawer.open({
+      eyebrow: 'CRM · Deal',
+      title: row.deal_id || row.dealId || 'Deal Details',
+      subtitle: [row.company_name, row.full_name, row.stage].filter(Boolean).join(' · '),
+      sections: [
+        { title: 'Summary', cards: [
+          ['Stage', row.stage],
+          ['Priority', row.priority],
+          ['Estimated Value', this.detailsMoney(row)],
+          ['Next Follow-up', this.formatDateTime(row.next_follow_up_at)],
+          ['Assigned To', row.assigned_to],
+          ['Converted At', this.formatDateTime(row.converted_at)]
+        ] },
+        { title: 'Company & Contact', fields: [
+          ['Company', row.company_name],
+          ['Contact', row.full_name],
+          ['Email', row.email],
+          ['Phone', row.phone],
+          ['Country', row.country],
+          ['Lead Ref', this.displayLeadId(row)]
+        ] },
+        { title: 'Deal Information', fields: [
+          ['Lead Source', row.lead_source],
+          ['Service Interest', row.service_interest],
+          ['Currency', row.currency],
+          ['Created At', this.formatDateTime(row.created_at)],
+          ['Updated At', this.formatDateTime(row.updated_at)],
+          ['Converted By', row.converted_by]
+        ] },
+        { title: 'Notes', html: `<div class="lead-details-notes">${U.escapeHtml(row.notes || 'No notes added yet.')}</div>` }
+      ],
+      actions: [
+        this.canEdit() ? { label: 'Edit Deal', variant: 'primary', permissionResource: 'deals', permissionAction: 'update', onClick: () => this.openForm(row) } : null,
+        row.id && this.canShowCreateProposalForDeal(row) ? { label: 'Convert to Proposal', variant: 'ghost', permissionResource: 'proposals', permissionAction: 'create_from_deal', onClick: () => window.Proposals?.createFromDealFlow?.(row.id, { openAfterCreate: true }) } : null,
+        this.canDelete() ? { label: 'Delete', variant: 'ghost', permissionResource: 'deals', permissionAction: 'delete', onClick: () => this.deleteDealById(id) } : null
+      ].filter(Boolean)
+    });
+    this.render();
+  },
   render() {
     if (!E.dealsState || !E.dealsTbody) return;
     this.updateExportButtonState();
@@ -1183,7 +1242,8 @@ const Deals = {
           );
         }
         const actions = actionButtons.length ? actionButtons.join(' ') : '<span class="muted">—</span>';
-        return `<tr>${this.columns
+        const selected = String(this.state.selectedDetailsId || '') === String(row.id || row.deal_id || '');
+        return `<tr class="entity-clickable-row${selected ? ' is-selected' : ''}" tabindex="0" data-deal-row="${U.escapeAttr(row.id || row.deal_id || '')}" aria-label="Open deal ${U.escapeAttr(row.deal_id || row.company_name || '')} details">${this.columns
           .filter(column => column !== 'lead_code')
           .map(column => `<td>${renderCell(row, column)}</td>`)
           .join('')}<td>${actions}</td></tr>`;
@@ -1861,7 +1921,19 @@ const Deals = {
             if (trigger && 'disabled' in trigger) trigger.disabled = false;
             this.render();
           });
+          return;
         }
+        const detailsRow = event.target?.closest?.('tr[data-deal-row]');
+        const detailsId = detailsRow?.getAttribute('data-deal-row');
+        if (detailsId) this.openDetailsDrawer(detailsId);
+      });
+      E.dealsTbody.addEventListener('keydown', event => {
+        if (!['Enter', ' '].includes(event.key)) return;
+        const row = event.target?.closest?.('tr[data-deal-row]');
+        const id = row?.getAttribute('data-deal-row');
+        if (!id) return;
+        event.preventDefault();
+        this.openDetailsDrawer(id);
       });
     }
     const dealsAnalyticsGrid = document.getElementById('dealsAnalyticsGrid');

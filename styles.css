@@ -3523,3 +3523,17 @@ body.pf-modal-open{overflow:hidden}.pf-activity-modal[hidden],.pf-note-modal[hid
 .lead-details-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
 .lead-details-status-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:12px;font-weight:800;text-transform:capitalize;}
 @media(max-width:800px){.lead-details-fields{grid-template-columns:1fr}.lead-details-panel{width:min(100vw,100%);}}
+
+/* Shared CRM/commercial right-side details drawer */
+.record-details-panel{width:min(1040px,96vw);}
+.record-details-content{display:grid;gap:16px;}
+.record-details-fields{display:grid;grid-template-columns:repeat(3,minmax(150px,1fr));gap:10px;}
+.record-details-field{padding:12px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;min-width:0;}
+.record-details-field span{display:block;color:#64748b;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;}
+.record-details-field strong{display:block;margin-top:5px;color:#0f172a;font-size:14px;line-height:1.35;word-break:break-word;}
+.record-details-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
+.entity-clickable-row{cursor:pointer;transition:background .15s ease,box-shadow .15s ease;}
+.entity-clickable-row:hover td{background:#eff6ff;}
+.entity-clickable-row:focus-visible{outline:2px solid #2563eb;outline-offset:-2px;}
+.entity-clickable-row.is-selected td{background:#eef2ff;}
+@media(max-width:800px){.record-details-fields{grid-template-columns:1fr}.record-details-panel{width:100%;}}

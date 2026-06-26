@@ -24,7 +24,8 @@ const Contacts = {
     companyId: '',
     companyName: '',
     selectedCompanyIds: [],
-    companyOptions: []
+    companyOptions: [],
+    selectedDetailsId: ''
   },
 
   setCompanyFilter(companyId = '', companyName = '') {
@@ -578,14 +579,61 @@ const Contacts = {
     }
   },
 
+
+  findDetailsRow(id) { const target = String(id || '').trim(); if (!target) return null; return (this.state.rows || []).find(row => [row.id, row.contact_id, row.email].some(value => String(value || '').trim() === target)) || null; },
+  openDetailsDrawer(rowOrId) {
+    const r = typeof rowOrId === 'string' ? this.findDetailsRow(rowOrId) : rowOrId;
+    if (!r || !window.RecordDetailsDrawer) return;
+    const id = String(r.id || r.contact_id || '').trim();
+    const fullName = [r.first_name, r.last_name].filter(Boolean).join(' ') || r.full_name || r.contact_name || 'Contact Details';
+    this.state.selectedDetailsId = id;
+    window.RecordDetailsDrawer.open({
+      eyebrow: 'CRM · Contact',
+      title: fullName,
+      subtitle: [r.company_names || r.company_name, r.job_title, r.contact_status].filter(Boolean).join(' · '),
+      sections: [
+        { title: 'Summary', cards: [
+          ['Contact ID', r.contact_id],
+          ['Status', r.contact_status],
+          ['Primary Contact', r.is_primary_contact ? 'Yes' : 'No'],
+          ['Decision Role', r.decision_role],
+          ['Department', r.department],
+          ['Created At', U.fmtTS(r.created_at)]
+        ] },
+        { title: 'Contact Information', fields: [
+          ['First Name', r.first_name],
+          ['Last Name', r.last_name],
+          ['Job Title', r.job_title],
+          ['Department', r.department],
+          ['Decision Role', r.decision_role],
+          ['Status', r.contact_status]
+        ] },
+        { title: 'Company & Communication', fields: [
+          ['Company', r.company_names || r.company_name],
+          ['Email', r.email],
+          ['Phone', r.phone],
+          ['Mobile', r.mobile],
+          ['LinkedIn', r.linkedin],
+          ['Updated At', U.fmtTS(r.updated_at)]
+        ] },
+        { title: 'Notes', html: `<div class="lead-details-notes">${U.escapeHtml(r.notes || 'No notes added yet.')}</div>` }
+      ],
+      actions: [
+        Permissions.canCreate('leads') ? { label: 'Create Lead', variant: 'primary', permissionResource: 'leads', permissionAction: 'create', onClick: () => this.onAction('lead', id) } : null,
+        Permissions.canEdit('contacts') ? { label: 'Edit', variant: 'ghost', permissionResource: 'contacts', permissionAction: 'update', onClick: () => this.onAction('edit', id) } : null,
+        Permissions.canDelete('contacts') ? { label: 'Delete', variant: 'ghost', permissionResource: 'contacts', permissionAction: 'delete', onClick: () => this.onAction('del', id) } : null
+      ].filter(Boolean)
+    });
+    this.render();
+  },
   render() {
     const b = document.getElementById('contactsTableBody');
     if (!b) return;
     const canEdit = Permissions.canEdit('contacts');
     const canDelete = Permissions.canDelete('contacts');
     const canCreateLead = Permissions.canCreate('leads');
-    b.innerHTML = this.state.rows.map(r => `<tr><td>${U.escapeHtml(r.contact_id)}</td><td>${U.escapeHtml(r.first_name)}</td><td>${U.escapeHtml(r.last_name)}</td><td>${U.escapeHtml(r.company_names || r.company_name)}</td><td>${U.escapeHtml(r.job_title)}</td><td>${U.escapeHtml(r.department)}</td><td>${U.escapeHtml(r.email)}</td><td>${U.escapeHtml(r.phone)}</td><td>${r.is_primary_contact ? 'Yes' : 'No'}</td><td>${U.escapeHtml(r.contact_status)}</td><td>${canCreateLead ? `<button class='chip-btn' data-a='lead' data-permission-resource='leads' data-permission-action='create' data-id='${U.escapeAttr(r.id)}'>Create Lead</button>` : ''}${canEdit ? `<button class='chip-btn' data-a='edit' data-contact-edit='${U.escapeAttr(r.id)}' data-permission-resource='contacts' data-permission-action='update' data-id='${U.escapeAttr(r.id)}'>Edit</button>` : ''}${canDelete ? `<button class='chip-btn' data-a='del' data-permission-resource='contacts' data-permission-action='delete' data-id='${U.escapeAttr(r.id)}'>Delete</button>` : ''}</td></tr>`).join('');
-    b.querySelectorAll('button').forEach(x => x.onclick = () => this.onAction(x.dataset.a, x.dataset.id));
+    b.innerHTML = this.state.rows.map(r => { const selected = String(this.state.selectedDetailsId || '') === String(r.id || r.contact_id || ''); return `<tr class='entity-clickable-row${selected ? ' is-selected' : ''}' tabindex='0' data-contact-row='${U.escapeAttr(r.id || r.contact_id || '')}' aria-label='Open contact ${U.escapeAttr([r.first_name, r.last_name].filter(Boolean).join(' ') || r.contact_id || '')} details'><td>${U.escapeHtml(r.contact_id)}</td><td>${U.escapeHtml(r.first_name)}</td><td>${U.escapeHtml(r.last_name)}</td><td>${U.escapeHtml(r.company_names || r.company_name)}</td><td>${U.escapeHtml(r.job_title)}</td><td>${U.escapeHtml(r.department)}</td><td>${U.escapeHtml(r.email)}</td><td>${U.escapeHtml(r.phone)}</td><td>${r.is_primary_contact ? 'Yes' : 'No'}</td><td>${U.escapeHtml(r.contact_status)}</td><td>${canCreateLead ? `<button class='chip-btn' data-a='lead' data-permission-resource='leads' data-permission-action='create' data-id='${U.escapeAttr(r.id)}'>Create Lead</button>` : ''}${canEdit ? `<button class='chip-btn' data-a='edit' data-contact-edit='${U.escapeAttr(r.id)}' data-permission-resource='contacts' data-permission-action='update' data-id='${U.escapeAttr(r.id)}'>Edit</button>` : ''}${canDelete ? `<button class='chip-btn' data-a='del' data-permission-resource='contacts' data-permission-action='delete' data-id='${U.escapeAttr(r.id)}'>Delete</button>` : ''}</td></tr>`; }).join('');
+    b.querySelectorAll('button').forEach(x => x.onclick = event => { event?.stopPropagation?.(); this.onAction(x.dataset.a, x.dataset.id); }); b.querySelectorAll('tr[data-contact-row]').forEach(tr => { tr.onclick = event => { if (event.target?.closest?.('button')) return; this.openDetailsDrawer(tr.getAttribute('data-contact-row')); }; tr.onkeydown = event => { if (!['Enter', ' '].includes(event.key)) return; event.preventDefault(); this.openDetailsDrawer(tr.getAttribute('data-contact-row')); }; });
     const s = this.state.total ? ((this.state.page - 1) * this.state.limit) + 1 : 0;
     const e = Math.min(this.state.page * this.state.limit, this.state.total);
     applyPermissionVisibility(b);

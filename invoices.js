@@ -112,6 +112,7 @@ const Invoices = {
     openingInvoiceIds: new Set(),
     loadingInvoiceReceiptIds: new Set(),
     rowActionInFlight: new Set(),
+    selectedDetailsId: '',
     selectedAgreementItemIds: new Set(),
     accountSetupBillingMode: 'per_selected_locations',
     agreementInvoiceSelection: null
@@ -2884,6 +2885,60 @@ const Invoices = {
       E.invoicesStatusFilter.value = options.includes(this.state.status) ? this.state.status : 'All';
     }
   },
+
+  findDetailsRow(id) {
+    const target = String(id || '').trim();
+    if (!target) return null;
+    const matches = row => [row?.id, row?.invoice_id, row?.invoice_number, row?.invoiceId].some(value => String(value || '').trim() === target);
+    return (this.state.rows || []).find(matches) || (this.state.filteredRows || []).find(matches) || null;
+  },
+  openDetailsDrawer(rowOrId) {
+    const row = typeof rowOrId === 'string' ? this.findDetailsRow(rowOrId) : rowOrId;
+    if (!row || !window.RecordDetailsDrawer) return;
+    const id = String(row.id || row.invoice_id || row.invoice_number || row.invoiceId || '').trim();
+    this.state.selectedDetailsId = id;
+    const invoiceNumber = row.invoice_number || row.invoice_id || 'Invoice Details';
+    window.RecordDetailsDrawer.open({
+      eyebrow: 'Finance · Invoice',
+      title: invoiceNumber,
+      subtitle: [row.customer_name, row.status, row.currency].filter(Boolean).join(' · '),
+      sections: [
+        { title: 'Summary', cards: [
+          ['Status', row.status],
+          ['Payment Status', row.payment_status || row.payment_state],
+          ['Currency', row.currency],
+          ['Invoice Total', this.formatMoney(row.invoice_total)],
+          ['Paid Amount', this.formatMoney(row.amount_paid || row.paid_amount || row.paid_total)],
+          ['Pending Amount', this.formatMoney(row.pending_amount || row.balance_due)]
+        ] },
+        { title: 'Customer & Source', fields: [
+          ['Customer', row.customer_name],
+          ['Agreement', this.getInvoiceAgreementDisplay(row)],
+          ['Agreement Number', row.agreement_number],
+          ['Company ID', row.company_id],
+          ['Contact', row.contact_name],
+          ['Invoice UUID', row.id]
+        ] },
+        { title: 'Dates & Terms', fields: [
+          ['Issue Date', U.fmtDisplayDate(row.issue_date)],
+          ['Due Date', U.fmtDisplayDate(row.due_date)],
+          ['Payment Term', row.payment_term],
+          ['Billing Frequency', row.billing_frequency],
+          ['Updated At', U.fmtDisplayDate(row.updated_at)],
+          ['Created At', U.fmtDisplayDate(row.created_at)]
+        ] },
+        { title: 'Notes', html: `<div class="lead-details-notes">${U.escapeHtml(row.notes || row.payment_notes || 'No notes added yet.')}</div>` }
+      ],
+      actions: [
+        { label: 'Open', variant: 'primary', permissionResource: 'invoices', permissionAction: 'view', onClick: btn => this.openInvoiceById(id, { readOnly: true, trigger: btn }) },
+        Permissions.canUpdateInvoice() ? { label: 'Edit', variant: 'ghost', permissionResource: 'invoices', permissionAction: 'update', onClick: btn => this.openInvoiceById(id, { readOnly: false, trigger: btn }) } : null,
+        Permissions.canPreviewInvoice() ? { label: 'Preview', variant: 'ghost', permissionResource: 'invoices', permissionAction: 'view', onClick: () => this.previewInvoice(id) } : null,
+        Permissions.canCreateReceiptFromInvoice() && this.canCreateReceiptFromInvoice(row) ? { label: 'Create Receipt', variant: 'ghost', permissionResource: 'receipts', permissionAction: 'create_from_invoice', onClick: () => this.createReceiptFromInvoice(id) } : null,
+        Permissions.canDeleteInvoice() ? { label: 'Delete', variant: 'ghost', permissionResource: 'invoices', permissionAction: 'delete', onClick: () => this.deleteInvoice(id) } : null
+      ].filter(Boolean)
+    });
+    this.render();
+  },
   render() {
     if (!E.invoicesState || !E.invoicesTbody) return;
     if (this.state.loading) {
@@ -2914,7 +2969,8 @@ const Invoices = {
     E.invoicesTbody.innerHTML = rows
       .map(row => {
         const id = U.escapeAttr(row.id || row.invoice_id || row.invoice_number || row.invoiceId || '');
-        return `<tr>
+        const selected = String(this.state.selectedDetailsId || '') === String(row.id || row.invoice_id || row.invoice_number || '');
+        return `<tr class="entity-clickable-row${selected ? ' is-selected' : ''}" tabindex="0" data-invoice-row="${id}" aria-label="Open invoice ${U.escapeAttr(row.invoice_number || row.invoice_id || row.customer_name || '')} details">
           <td>${textCell(row.invoice_number || row.invoice_id)}</td>
           <td>${textCell(row.customer_name)}</td>
           <td>${textCell(this.getInvoiceAgreementDisplay(row))}</td>
@@ -4949,6 +5005,20 @@ const Invoices = {
         if (createReceiptId) return this.runRowAction(`create-receipt:${createReceiptId}`, trigger, () => this.createReceiptFromInvoice(createReceiptId));
         const deleteId = trigger.getAttribute('data-invoice-delete');
         if (deleteId) return this.runRowAction(`delete:${deleteId}`, trigger, () => this.deleteInvoice(deleteId));
+      });
+      E.invoicesTbody.addEventListener('click', event => {
+        if (event.target?.closest?.('button')) return;
+        const detailsRow = event.target?.closest?.('tr[data-invoice-row]');
+        const detailsId = detailsRow?.getAttribute('data-invoice-row');
+        if (detailsId) this.openDetailsDrawer(detailsId);
+      });
+      E.invoicesTbody.addEventListener('keydown', event => {
+        if (!['Enter', ' '].includes(event.key)) return;
+        const row = event.target?.closest?.('tr[data-invoice-row]');
+        const id = row?.getAttribute('data-invoice-row');
+        if (!id) return;
+        event.preventDefault();
+        this.openDetailsDrawer(id);
       });
     }
     if (E.invoiceForm) {

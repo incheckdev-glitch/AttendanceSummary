@@ -77,7 +77,7 @@ if (typeof window !== 'undefined') {
 }
 
 const Companies = {
-  state: { rows: [], page: 1, limit: 50, total: 0, search: '', filters: { company_status: '', company_type: '', industry: '', country: '', city: '', created_from: '', created_to: '' }, sortBy: 'created_at', sortDir: 'desc', companyTypeOptions: COMPANY_TYPE_FALLBACK_OPTIONS, companyIndustryOptions: COMPANY_INDUSTRY_FALLBACK_OPTIONS, currentCompany: null, documents: [] },
+  state: { rows: [], page: 1, limit: 50, total: 0, search: '', filters: { company_status: '', company_type: '', industry: '', country: '', city: '', created_from: '', created_to: '' }, sortBy: 'created_at', sortDir: 'desc', companyTypeOptions: COMPANY_TYPE_FALLBACK_OPTIONS, companyIndustryOptions: COMPANY_INDUSTRY_FALLBACK_OPTIONS, currentCompany: null, documents: [], selectedDetailsId: '' },
   formatCodeFallback(value = '') { return String(value || '').replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase()); },
   formatCompanyType(value = '') { const found = this.state.companyTypeOptions.find(o => o.value === value); return found?.label || this.formatCodeFallback(value); },
   formatCompanyIndustry(value = '') { const found = this.state.companyIndustryOptions.find(o => o.value === value); return found?.label || this.formatCodeFallback(value); },
@@ -137,12 +137,67 @@ const Companies = {
   async submitForm(e) { e.preventDefault(); const recordId = document.getElementById('companyRecordId').value; const company_name = document.getElementById('companyNameInput').value.trim(); if (!company_name) { UI?.toast?.('Company Name is required', 'error'); return; } const payload = { company_name, legal_name: document.getElementById('companyLegalNameInput').value.trim(), company_type: document.getElementById('companyTypeInput').value.trim(), industry: document.getElementById('companyIndustryInput').value.trim(), website: document.getElementById('companyWebsiteInput').value.trim(), main_email: document.getElementById('companyMainEmailInput').value.trim(), main_phone: document.getElementById('companyMainPhoneInput').value.trim(), country: document.getElementById('companyCountryInput').value.trim(), city: document.getElementById('companyCityInput').value.trim(), address: document.getElementById('companyAddressInput').value.trim(), tax_number: document.getElementById('companyTaxNumberInput').value.trim(), authorized_signatory_full_name: document.getElementById('companyAuthorizedSignatoryFullNameInput').value.trim(), authorized_signatory_title: document.getElementById('companyAuthorizedSignatoryTitleInput').value.trim(), registration_number: document.getElementById('companyRegistrationNumberInput').value.trim(), company_status: recordId ? (this.state.currentCompany?.company_status || 'Prospect') : 'Prospect', notes: document.getElementById('companyNotesInput').value.trim() };
     this.toggleSave(true); try { const action = recordId ? 'update' : 'create'; if (recordId && !Permissions.canEdit('companies')) { UI?.toast?.('You do not have permission for this action.'); return; } if (!recordId && !Permissions.canCreate('companies')) { UI?.toast?.('You do not have permission for this action.'); return; } const body = recordId ? { id: recordId, updates: payload } : payload; const savedResponse = await Api.requestWithSession('companies', action, body, { requireAuth: true }); const saved = savedResponse?.row || savedResponse?.data || savedResponse?.company || savedResponse; const savedId = String(saved?.id || recordId || '').trim(); if (!savedId) throw new Error('Company saved without a UUID in the create response.'); window.CrmCompanyContactSelectors?.invalidateCompanies?.(); const savedCompany = { ...payload, ...saved, id: savedId }; await window.CrmCompanyContactSelectors?.refreshAfterCompanySave?.(savedCompany); window.dispatchEvent(new CustomEvent('crm:company-saved', { detail: { companyId: savedId, company: savedCompany } })); try { await this.refreshCompanyLifecycleStatus(savedId, { fullRecalculation: true }); } catch (syncError) { console.error('[companies] lifecycle status refresh failed after save', syncError); UI?.toast?.('Company saved, but lifecycle status could not be refreshed'); } UI?.toast?.(recordId ? 'Company updated' : 'Company saved', 'success'); this.closeForm(); this.state.page = recordId ? this.state.page : 1; await this.loadAndRefresh(); } catch (err) { UI?.toast?.('Unable to save company', 'error'); console.error(err); } finally { this.toggleSave(false); }
   },
+
+  findDetailsRow(id) { const target = String(id || '').trim(); if (!target) return null; return (this.state.rows || []).find(row => [row.id, row.company_id, row.company_name].some(value => String(value || '').trim() === target)) || null; },
+  openDetailsDrawer(rowOrId) {
+    const row = typeof rowOrId === 'string' ? this.findDetailsRow(rowOrId) : rowOrId;
+    if (!row || !window.RecordDetailsDrawer) return;
+    const id = String(row.id || row.company_id || '').trim();
+    this.state.selectedDetailsId = id;
+    window.RecordDetailsDrawer.open({
+      eyebrow: 'CRM · Company',
+      title: row.company_name || row.legal_name || 'Company Details',
+      subtitle: [this.formatCompanyType(row.company_type), this.normalizeLifecycleStatus(row.company_status), row.country].filter(Boolean).join(' · '),
+      sections: [
+        { title: 'Summary', cards: [
+          ['Company ID', row.company_id],
+          ['Lifecycle Status', this.normalizeLifecycleStatus(row.company_status)],
+          ['Verification', row.documents_verified ? 'Verified' : row.documents_verification_status || 'Not verified'],
+          ['Company Type', this.formatCompanyType(row.company_type)],
+          ['Industry', this.formatCompanyIndustry(row.industry)],
+          ['Created Date', U.fmtTS(row.created_at)]
+        ] },
+        { title: 'Company Information', fields: [
+          ['Legal Name', row.legal_name || row.legal_company_name],
+          ['Registration Number', row.registration_number],
+          ['Tax Number', row.tax_number],
+          ['VAT Number', row.vat_number],
+          ['Website', row.website],
+          ['Status', row.company_status]
+        ] },
+        { title: 'Contact & Address', fields: [
+          ['Main Email', row.main_email],
+          ['Main Phone', row.main_phone],
+          ['Country', row.country],
+          ['State', row.state],
+          ['City', row.city],
+          ['Address', row.address]
+        ] },
+        { title: 'Authorized Signatory', fields: [
+          ['Name', row.authorized_signatory_full_name],
+          ['Title', row.authorized_signatory_title],
+          ['Verified At', U.fmtTS(row.documents_verified_at)],
+          ['Verified By', row.documents_verified_by],
+          ['Verification Notes', row.documents_verification_notes],
+          ['Invalidated Reason', row.documents_verification_invalidated_reason]
+        ] },
+        { title: 'Notes', html: `<div class="lead-details-notes">${U.escapeHtml(row.notes || 'No notes added yet.')}</div>` }
+      ],
+      actions: [
+        Permissions.canCreate('leads') ? { label: 'Create Lead', variant: 'primary', permissionResource: 'leads', permissionAction: 'create', onClick: () => this.onAction('lead', id) } : null,
+        (Permissions.canCreateContact?.() || Permissions.canCreate('contacts')) ? { label: 'Add Contact', variant: 'ghost', permissionResource: 'contacts', permissionAction: 'create', onClick: () => this.onAction('contacts', id) } : null,
+        Permissions.canEdit('companies') ? { label: 'Edit', variant: 'ghost', permissionResource: 'companies', permissionAction: 'update', onClick: () => this.onAction('edit', id) } : null,
+        Permissions.canDelete('companies') ? { label: 'Delete', variant: 'ghost', permissionResource: 'companies', permissionAction: 'delete', onClick: () => this.onAction('del', id) } : null
+      ].filter(Boolean)
+    });
+    this.render();
+  },
   async loadAndRefresh() { if (!Permissions.canView('companies')) return; await this.ensureControls(); try { const res = await Api.requestWithSession('companies', 'list', { page: this.state.page, limit: this.state.limit, search: this.state.search, filters: this.state.filters, sortBy: this.state.sortBy, sortDir: this.state.sortDir }, { requireAuth: true }); const rows = Array.isArray(res?.rows) ? res.rows : Array.isArray(res) ? res : []; this.state.rows = rows.map(r => this.normalize(r)); this.state.total = Number(res?.total ?? rows.length) || rows.length; this.render(); this.refreshVisibleCompanyLifecycleStatuses(); } catch (e) { UI?.toast?.('Unable to load companies', 'error'); console.error(e); } },
   render() {
     const body = document.getElementById('companyTableBody'); if (!body) return;
     const canEdit = Permissions.canEdit('companies'), canDelete = Permissions.canDelete('companies'); const canCreateLead = Permissions.canCreate('leads');
-    body.innerHTML = this.state.rows.map(r => `<tr><td>${U.escapeHtml(r.company_id)}</td><td>${this.renderCompanyVerificationBadge(r)}</td><td>${U.escapeHtml(r.company_name)}</td><td>${U.escapeHtml(this.formatCompanyType(r.company_type))}</td><td>${U.escapeHtml(this.formatCompanyIndustry(r.industry))}</td><td>${this.renderLifecycleStatusBadge(r.company_status)}</td><td>${U.escapeHtml(r.main_email)}</td><td>${U.escapeHtml(r.main_phone)}</td><td>${U.escapeHtml(r.country)}</td><td>${U.escapeHtml(r.city)}</td><td>${U.escapeHtml(U.fmtTS(r.created_at))}</td><td>${canCreateLead ? `<button class='chip-btn' data-a='lead' data-permission-resource='leads' data-permission-action='create' data-id='${r.id}'>Create Lead</button>` : ''}${canEdit ? `<button class='chip-btn' data-a='edit' data-company-edit='${r.id}' data-permission-resource='companies' data-permission-action='update' data-id='${r.id}'>Edit</button>` : ''}${canDelete ? `<button class='chip-btn' data-a='del' data-permission-resource='companies' data-permission-action='delete' data-id='${r.id}'>Delete</button>` : ''}${(Permissions.canCreateContact?.() || Permissions.canCreate('contacts')) ? `<button class='chip-btn js-create-contact' data-a='contacts' data-action='create-contact' data-contact-create='true' data-permission-resource='contacts' data-permission-action='create' data-id='${r.id}'>Add Contact</button>` : ''}</td></tr>`).join('');
-    body.querySelectorAll('button').forEach(b => b.onclick = () => this.onAction(b.dataset.a, b.dataset.id)); const start = this.state.total ? ((this.state.page - 1) * this.state.limit) + 1 : 0; const end = Math.min(this.state.page * this.state.limit, this.state.total); applyPermissionVisibility(body || b); const pi = document.getElementById('companyPageInfo'); if (pi) pi.textContent = `Showing ${start}-${end} of ${this.state.total} records`; const canCreateCompany = Permissions.can('companies','create') || Permissions.can('companies','manage'); const canExportCompany = Permissions.can('companies','export') || Permissions.can('companies','manage'); const createBtn = document.getElementById('companyCreateBtn'); if (createBtn) { createBtn.style.display = canCreateCompany ? '' : 'none'; createBtn.onclick = () => this.openForm(); } const exportBtn = document.getElementById('companyExportBtn'); if (exportBtn) { exportBtn.style.display = canExportCompany ? '' : 'none'; exportBtn.disabled = !canExportCompany; }
+    body.innerHTML = this.state.rows.map(r => { const selected = String(this.state.selectedDetailsId || '') === String(r.id || r.company_id || ''); return `<tr class='entity-clickable-row${selected ? ' is-selected' : ''}' tabindex='0' data-company-row='${U.escapeAttr(r.id || r.company_id || '')}' aria-label='Open company ${U.escapeAttr(r.company_name || r.company_id || '')} details'><td>${U.escapeHtml(r.company_id)}</td><td>${this.renderCompanyVerificationBadge(r)}</td><td>${U.escapeHtml(r.company_name)}</td><td>${U.escapeHtml(this.formatCompanyType(r.company_type))}</td><td>${U.escapeHtml(this.formatCompanyIndustry(r.industry))}</td><td>${this.renderLifecycleStatusBadge(r.company_status)}</td><td>${U.escapeHtml(r.main_email)}</td><td>${U.escapeHtml(r.main_phone)}</td><td>${U.escapeHtml(r.country)}</td><td>${U.escapeHtml(r.city)}</td><td>${U.escapeHtml(U.fmtTS(r.created_at))}</td><td>${canCreateLead ? `<button class='chip-btn' data-a='lead' data-permission-resource='leads' data-permission-action='create' data-id='${r.id}'>Create Lead</button>` : ''}${canEdit ? `<button class='chip-btn' data-a='edit' data-company-edit='${r.id}' data-permission-resource='companies' data-permission-action='update' data-id='${r.id}'>Edit</button>` : ''}${canDelete ? `<button class='chip-btn' data-a='del' data-permission-resource='companies' data-permission-action='delete' data-id='${r.id}'>Delete</button>` : ''}${(Permissions.canCreateContact?.() || Permissions.canCreate('contacts')) ? `<button class='chip-btn js-create-contact' data-a='contacts' data-action='create-contact' data-contact-create='true' data-permission-resource='contacts' data-permission-action='create' data-id='${r.id}'>Add Contact</button>` : ''}</td></tr>`; }).join('');
+    body.querySelectorAll('button').forEach(b => b.onclick = event => { event?.stopPropagation?.(); this.onAction(b.dataset.a, b.dataset.id); }); body.querySelectorAll('tr[data-company-row]').forEach(tr => { tr.onclick = event => { if (event.target?.closest?.('button')) return; this.openDetailsDrawer(tr.getAttribute('data-company-row')); }; tr.onkeydown = event => { if (!['Enter', ' '].includes(event.key)) return; event.preventDefault(); this.openDetailsDrawer(tr.getAttribute('data-company-row')); }; }); const start = this.state.total ? ((this.state.page - 1) * this.state.limit) + 1 : 0; const end = Math.min(this.state.page * this.state.limit, this.state.total); applyPermissionVisibility(body || b); const pi = document.getElementById('companyPageInfo'); if (pi) pi.textContent = `Showing ${start}-${end} of ${this.state.total} records`; const canCreateCompany = Permissions.can('companies','create') || Permissions.can('companies','manage'); const canExportCompany = Permissions.can('companies','export') || Permissions.can('companies','manage'); const createBtn = document.getElementById('companyCreateBtn'); if (createBtn) { createBtn.style.display = canCreateCompany ? '' : 'none'; createBtn.onclick = () => this.openForm(); } const exportBtn = document.getElementById('companyExportBtn'); if (exportBtn) { exportBtn.style.display = canExportCompany ? '' : 'none'; exportBtn.disabled = !canExportCompany; }
   },
   async onAction(a, id) {
     const row = this.state.rows.find(x => String(x.id || '') === String(id || ''));
