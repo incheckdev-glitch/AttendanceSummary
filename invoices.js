@@ -1648,7 +1648,8 @@ const Invoices = {
       </section>` : '';
 
     const subscriptionItems = normalizedItems.filter(item => this.isSubscriptionSection(item.section));
-    const oneTimeItems = normalizedItems.filter(item => this.isOneTimeSection(item.section));
+    const hardwareItems = normalizedItems.filter(item => this.isHardwareSection(item.section));
+    const oneTimeItems = normalizedItems.filter(item => this.isOneTimeSection(item.section) && !this.isHardwareSection(item.section));
 
     const subscriptionRows = subscriptionItems.length
       ? subscriptionItems
@@ -1683,6 +1684,46 @@ const Invoices = {
           })
           .join('')
       : '<tr><td colspan="6" class="cell-center muted">No one-time fee items found.</td></tr>';
+
+    const hardwareSubtotal = hardwareItems.reduce((sum, item) => sum + this.toNumberSafe(this.computeCommercialRow(item).line_total), 0);
+    const oneTimeFeesSubtotal = oneTimeItems.reduce((sum, item) => sum + this.toNumberSafe(this.computeCommercialRow(item).line_total), 0);
+    const hardwareRows = hardwareItems
+      .map(item => {
+        const computed = this.computeCommercialRow(item);
+        return `<tr>
+          <td>${textValue(item.location_name)}</td>
+          <td>${this.renderDocumentItemCell(item)}</td>
+          <td class="cell-right">${money(item.unit_price)}</td>
+          <td class="cell-center">${U.escapeHtml(String(this.toNumberSafe(item.discount_percent)))}%</td>
+          <td class="cell-center">${item.quantity ? U.escapeHtml(String(item.quantity)) : '—'}</td>
+          <td class="cell-right">${money(computed.line_total)}</td>
+        </tr>`;
+      })
+      .join('');
+    const hardwareSectionHtml = hardwareItems.length ? `
+      <section class="section">
+        <h2>Hardware Items</h2>
+        <div class="subhead">Hardware Rows</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Location</th>
+              <th>Hardware / Product</th>
+              <th style="width:16%">Unit Price</th>
+              <th style="width:12%">Discount %</th>
+              <th style="width:10%">Qty</th>
+              <th style="width:16%">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${hardwareRows}
+            <tr class="total-row">
+              <td colspan="5" class="cell-right">Total Hardware</td>
+              <td class="cell-right">${money(hardwareSubtotal)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>` : '';
     const linkedAgreement = this.state.selectedAgreement || {};
     const savedScheduleRows = (Array.isArray(paymentScheduleRows) ? paymentScheduleRows : [])
       .map(row => this.normalizeInvoiceScheduleRow(row))
@@ -1906,17 +1947,20 @@ const Invoices = {
             ${oneTimeRows}
             <tr class="total-row">
               <td colspan="5" class="cell-right">Total One Time Fees</td>
-              <td class="cell-right">${money(subtotalOneTime)}</td>
+              <td class="cell-right">${money(oneTimeFeesSubtotal)}</td>
             </tr>
           </tbody>
         </table>
       </section>
 
+      ${hardwareSectionHtml}
+
       ${canViewCreditNoteDetails && Array.isArray(creditNotes) && creditNotes.length ? `<section class="section"><h2>Credit Notes</h2><table><thead><tr><th>Credit Note #</th><th>Date</th><th>Description</th><th class="cell-right">Amount</th></tr></thead><tbody>${creditNotes.map(note => `<tr><td>${textValue(note.credit_note_number || note.credit_note_id)}</td><td>${dateValue(note.credit_note_date)}</td><td>${textValue(note.description)}</td><td class="cell-right">${money(note.credit_amount)}</td></tr>`).join('')}</tbody></table></section>` : ''}
 
       <section class="totals-wrap">
         <div class="totals-box">
-          <div class="totals-row"><span>One Time Fees</span><strong>${money(subtotalOneTime)}</strong></div>
+          <div class="totals-row"><span>One Time Fees</span><strong>${money(oneTimeFeesSubtotal)}</strong></div>
+          ${hardwareItems.length ? `<div class="totals-row"><span>Hardware</span><strong>${money(hardwareSubtotal)}</strong></div>` : ``}
           <div class="totals-row"><span>Subscription Fees</span><strong>${money(subtotalLocations)}</strong></div>
           <div class="totals-row grand"><span>Grand Total</span><strong>${money(invoiceTotal)}</strong></div>
           <div class="totals-row amount-in-words"><span>Grand Amount in Words:</span><strong>${textValue(grandAmountInWords)}</strong></div>
@@ -2228,6 +2272,9 @@ const Invoices = {
   isSubscriptionSection(section = '') {
     const normalized = this.normalizeSection(section);
     return ['annual_saas', 'subscription', 'recurring', 'saas'].includes(normalized);
+  },
+  isHardwareSection(section = '') {
+    return this.normalizeSection(section) === 'hardware';
   },
   isOneTimeSection(section = '') {
     const normalized = this.normalizeSection(section);
@@ -2575,6 +2622,7 @@ const Invoices = {
   renderCatalogOptionLists() {
     this.renderCatalogOptionList('annual_saas');
     this.renderCatalogOptionList('one_time_fee');
+    this.renderCatalogOptionList('hardware');
   },
   async ensureCatalogLoaded() {
     this.renderCatalogOptionLists();
@@ -2929,10 +2977,15 @@ const Invoices = {
     };
   },
   groupedItems(items = []) {
-    const groups = { annual_saas: [], one_time_fee: [] };
+    const groups = { annual_saas: [], one_time_fee: [], hardware: [] };
     this.filterInvoiceCommercialItems(items).forEach((item, idx) => {
       const normalized = this.normalizeItem(item);
-      const section = normalized.section === 'one_time_fee' ? 'one_time_fee' : 'annual_saas';
+      const section = this.isSubscriptionSection(normalized.section)
+        ? 'annual_saas'
+        : this.isHardwareSection(normalized.section)
+          ? 'hardware'
+          : 'one_time_fee';
+      normalized.section = section;
       normalized.line_no = normalized.line_no || idx + 1;
       groups[section].push(normalized);
     });
@@ -2977,7 +3030,9 @@ const Invoices = {
     const tbody =
       section === 'annual_saas'
         ? E.invoiceAnnualItemsTbody
-        : E.invoiceOneTimeItemsTbody;
+        : section === 'hardware'
+          ? E.invoiceHardwareItemsTbody
+          : E.invoiceOneTimeItemsTbody;
     if (!tbody) return;
 
     const safeRows = Array.isArray(rows) ? rows : [];
@@ -3022,6 +3077,7 @@ const Invoices = {
     const groups = this.groupedItems(items);
     this.renderSectionRows('annual_saas', groups.annual_saas);
     this.renderSectionRows('one_time_fee', groups.one_time_fee);
+    this.renderSectionRows('hardware', groups.hardware);
   },
   assignFormValues(invoice = {}) {
     const set = (id, value) => {
@@ -3053,7 +3109,9 @@ const Invoices = {
     const tbody =
       section === 'annual_saas'
         ? E.invoiceAnnualItemsTbody
-        : E.invoiceOneTimeItemsTbody;
+        : section === 'hardware'
+          ? E.invoiceHardwareItemsTbody
+          : E.invoiceOneTimeItemsTbody;
     if (!tbody) return [];
     const rows = [...tbody.querySelectorAll('tr[data-item-row]')];
     return rows
@@ -3096,7 +3154,8 @@ const Invoices = {
   collectItems() {
     return [
       ...this.collectSectionItems('annual_saas'),
-      ...this.collectSectionItems('one_time_fee')
+      ...this.collectSectionItems('one_time_fee'),
+      ...this.collectSectionItems('hardware')
     ];
   },
   collectFormValues() {
@@ -3324,6 +3383,7 @@ const Invoices = {
     this.lockInvoicePaymentTermField();
     if (E.invoiceAddAnnualRowBtn) E.invoiceAddAnnualRowBtn.style.display = adminOverride ? '' : 'none';
     if (E.invoiceAddOneTimeRowBtn) E.invoiceAddOneTimeRowBtn.style.display = adminOverride ? '' : 'none';
+    if (E.invoiceAddHardwareRowBtn) E.invoiceAddHardwareRowBtn.style.display = adminOverride ? '' : 'none';
     if (E.invoiceAddCapabilityRowBtn) E.invoiceAddCapabilityRowBtn.style.display = adminOverride ? '' : 'none';
     E.invoiceForm.querySelectorAll('[data-item-field]').forEach(el => {
       el.disabled = readOnly || isExistingLocked;
@@ -4981,6 +5041,15 @@ const Invoices = {
         if (String(E.invoiceForm?.dataset.id || '').trim()) return;
         const items = this.collectItems();
         items.push(this.normalizeItem({ section: 'one_time_fee', quantity: 1 }));
+        this.renderItems(items);
+        this.applyTotalsToForm(this.deriveCalculatedSummary(this.collectFormValues().invoice, items));
+      });
+    }
+    if (E.invoiceAddHardwareRowBtn) {
+      E.invoiceAddHardwareRowBtn.addEventListener('click', () => {
+        if (String(E.invoiceForm?.dataset.id || '').trim()) return;
+        const items = this.collectItems();
+        items.push(this.normalizeItem({ section: 'hardware', quantity: 1 }));
         this.renderItems(items);
         this.applyTotalsToForm(this.deriveCalculatedSummary(this.collectFormValues().invoice, items));
       });

@@ -37,6 +37,19 @@ function getItemCategory(item) {
   }
 
   if (
+    raw.includes('hardware') ||
+    raw.includes('hardwar') ||
+    raw.includes('device') ||
+    raw.includes('equipment') ||
+    raw.includes('tablet') ||
+    raw.includes('printer') ||
+    raw.includes('scanner') ||
+    raw.includes('kiosk')
+  ) {
+    return 'hardware';
+  }
+
+  if (
     raw.includes('one_time') ||
     raw.includes('one-time') ||
     raw.includes('one time') ||
@@ -63,6 +76,7 @@ function getItemDiscountPercent(item) {
 function getProposalDiscountsByCategory(proposal, items = []) {
   let annualSaasDiscount = 0;
   let oneTimeFeeDiscount = 0;
+  let hardwareDiscount = 0;
   let overallMaxDiscount = 0;
 
   for (const item of items || []) {
@@ -78,11 +92,16 @@ function getProposalDiscountsByCategory(proposal, items = []) {
     if (category === 'one_time_fee') {
       oneTimeFeeDiscount = Math.max(oneTimeFeeDiscount, discount);
     }
+
+    if (category === 'hardware') {
+      hardwareDiscount = Math.max(hardwareDiscount, discount);
+    }
   }
 
   return {
     annualSaasDiscount,
     oneTimeFeeDiscount,
+    hardwareDiscount,
     overallMaxDiscount
   };
 }
@@ -169,6 +188,17 @@ function evaluateProposalDiscountApproval(proposal, items, workflowRule) {
     return { ...oneTimeDecision, discounts };
   }
 
+  const hardwareDecision = needsApprovalAgainstBaseline(
+    discounts.hardwareDiscount,
+    workflowRule?.hardware_no_approval_until_percent ?? workflowRule?.one_time_fee_no_approval_until_percent ?? 20,
+    workflowRule?.hardware_hard_stop_discount_percent ?? workflowRule?.one_time_fee_hard_stop_discount_percent ?? 30,
+    proposal?.approved_hardware_discount_percent ?? proposal?.approvedHardwareDiscountPercent ?? proposal?.approved_discount_percent
+  );
+
+  if (!hardwareDecision.allowed && !hardwareDecision.requiresApproval) {
+    return { ...hardwareDecision, discounts };
+  }
+
   const reasons = [];
 
   if (annualDecision.requiresApproval) {
@@ -179,6 +209,10 @@ function evaluateProposalDiscountApproval(proposal, items, workflowRule) {
     reasons.push(oneTimeDecision.reason);
   }
 
+  if (hardwareDecision.requiresApproval) {
+    reasons.push(hardwareDecision.reason);
+  }
+
   if (reasons.length > 0) {
     return {
       allowed: false,
@@ -187,8 +221,10 @@ function evaluateProposalDiscountApproval(proposal, items, workflowRule) {
       discounts,
       annualNeedsApproval: annualDecision.requiresApproval,
       oneTimeNeedsApproval: oneTimeDecision.requiresApproval,
+      hardwareNeedsApproval: hardwareDecision.requiresApproval,
       annualDecision,
-      oneTimeDecision
+      oneTimeDecision,
+      hardwareDecision
     };
   }
 
@@ -199,8 +235,10 @@ function evaluateProposalDiscountApproval(proposal, items, workflowRule) {
     discounts,
     annualNeedsApproval: false,
     oneTimeNeedsApproval: false,
+    hardwareNeedsApproval: false,
     annualDecision,
-    oneTimeDecision
+    oneTimeDecision,
+    hardwareDecision
   };
 }
 
@@ -226,6 +264,8 @@ function evaluateProposalDiscountApprovalRequirement(proposal, items, nextStatus
     approvedAnnualSaasDiscount: proposal?.approved_annual_saas_discount_percent,
     oneTimeFeeDiscount: discounts.oneTimeFeeDiscount,
     approvedOneTimeFeeDiscount: proposal?.approved_one_time_fee_discount_percent,
+    hardwareDiscount: discounts.hardwareDiscount,
+    approvedHardwareDiscount: proposal?.approved_hardware_discount_percent,
     currentStatus,
     targetStatus,
     decision: result
@@ -256,7 +296,8 @@ function isProposalDiscountApprovalPayload(payload = {}) {
     hasValue(safe.requested_discount_percent) ||
     hasValue(requested.discount_percent) ||
     hasValue(requested.annual_saas_discount_percent) ||
-    hasValue(requested.one_time_fee_discount_percent);
+    hasValue(requested.one_time_fee_discount_percent) ||
+    hasValue(requested.hardware_discount_percent);
 }
 
 function shouldSkipWorkflowForDraftSave({ currentStatus, nextStatus, action, payload } = {}) {
@@ -401,6 +442,15 @@ const WorkflowEngine = {
           : hasValue(record?.approved_discount_percent)
             ? record.approved_discount_percent
             : undefined,
+      approved_hardware_discount_percent: hasValue(proposalPayload?.approved_hardware_discount_percent)
+        ? proposalPayload.approved_hardware_discount_percent
+        : hasValue(record?.approved_hardware_discount_percent)
+          ? record.approved_hardware_discount_percent
+          : hasValue(record?.approvedHardwareDiscountPercent)
+            ? record.approvedHardwareDiscountPercent
+            : hasValue(record?.approved_discount_percent)
+              ? record.approved_discount_percent
+              : undefined,
       approved_discount_percent: hasValue(proposalPayload?.approved_discount_percent)
         ? proposalPayload.approved_discount_percent
         : record?.approved_discount_percent
@@ -419,6 +469,7 @@ const WorkflowEngine = {
       const normalizedDiscount = Number(toNumber(discount).toFixed(2));
       const normalizedAnnual = Number(toNumber(discounts?.annualSaasDiscount).toFixed(2));
       const normalizedOneTime = Number(toNumber(discounts?.oneTimeFeeDiscount).toFixed(2));
+      const normalizedHardware = Number(toNumber(discounts?.hardwareDiscount).toFixed(2));
       return (Array.isArray(rows) ? rows : []).find(row => {
         const requested = row?.requested_changes && typeof row.requested_changes === 'object' ? row.requested_changes : {};
         const requestedDiscounts = requested?.category_discounts && typeof requested.category_discounts === 'object' ? requested.category_discounts : {};
@@ -427,12 +478,14 @@ const WorkflowEngine = {
         const rowDiscount = Number(toNumber(requested?.discount_percent).toFixed(2));
         const rowAnnual = Number(toNumber(requestedDiscounts?.annualSaasDiscount ?? requested?.annual_saas_discount_percent).toFixed(2));
         const rowOneTime = Number(toNumber(requestedDiscounts?.oneTimeFeeDiscount ?? requested?.one_time_fee_discount_percent).toFixed(2));
+        const rowHardware = Number(toNumber(requestedDiscounts?.hardwareDiscount ?? requested?.hardware_discount_percent).toFixed(2));
         return String(row?.resource || '').trim().toLowerCase() === 'proposals' &&
           rowRecordId === normalizedRecordId &&
           rowStatus === normalizedTarget &&
           rowDiscount === normalizedDiscount &&
           rowAnnual === normalizedAnnual &&
-          rowOneTime === normalizedOneTime;
+          rowOneTime === normalizedOneTime &&
+          rowHardware === normalizedHardware;
       }) || null;
     } catch (error) {
       console.warn('[Proposal discount workflow] Unable to check duplicate approval requests', error);
@@ -499,6 +552,7 @@ const WorkflowEngine = {
       discount_percent: toNumber(discountPercent),
       annual_saas_discount_percent: categoryDiscounts.annualSaasDiscount,
       one_time_fee_discount_percent: categoryDiscounts.oneTimeFeeDiscount,
+      hardware_discount_percent: categoryDiscounts.hardwareDiscount,
       category_discounts: categoryDiscounts,
       submitted_by_name: submittedByName,
       submitted_by_email: submittedByEmail,
@@ -750,6 +804,8 @@ const WorkflowEngine = {
             approvedAnnual: proposal?.approved_annual_saas_discount_percent || proposal?.approved_discount_percent,
             oneTimeFeeDiscount: decision?.discounts?.oneTimeFeeDiscount,
             approvedOneTime: proposal?.approved_one_time_fee_discount_percent || proposal?.approved_discount_percent,
+            hardwareDiscount: decision?.discounts?.hardwareDiscount,
+            approvedHardware: proposal?.approved_hardware_discount_percent || proposal?.approved_discount_percent,
             allowed: decision.allowed,
             requiresApproval: decision.requiresApproval,
             reason: decision.reason
@@ -787,7 +843,8 @@ const WorkflowEngine = {
               : decision.reason,
             discounts: decision.discounts,
             annualNeedsApproval: decision.annualNeedsApproval,
-            oneTimeNeedsApproval: decision.oneTimeNeedsApproval
+            oneTimeNeedsApproval: decision.oneTimeNeedsApproval,
+            hardwareNeedsApproval: decision.hardwareNeedsApproval
           };
           const approvalResult = await this.createWorkflowApprovalFromDecision(resource, record, requestedChanges, validationResult, decision.discount);
           if (approvalResult?.approvalCreated === true) {
@@ -1445,11 +1502,13 @@ const Workflow = {
     annual_saas_no_approval_until_percent: 10,
     annual_saas_hard_stop_discount_percent: 20,
     one_time_fee_no_approval_until_percent: 20,
-    one_time_fee_hard_stop_discount_percent: 30
+    one_time_fee_hard_stop_discount_percent: 30,
+    hardware_no_approval_until_percent: 20,
+    hardware_hard_stop_discount_percent: 30
   },
   proposalCategoryApprovalMetadata: {
     approval_condition: 'category_discount_above_no_approval_limit_and_above_last_approved_baseline',
-    approval_basis: 'approved_annual_saas_discount_percent_and_approved_one_time_fee_discount_percent',
+    approval_basis: 'approved_annual_saas_discount_percent_approved_one_time_fee_discount_percent_and_approved_hardware_discount_percent',
     reapproval_mode: 'only_if_category_discount_increases_above_approved_baseline'
   },
   normalizePercentValue(value, fallback = 0) {
@@ -1520,6 +1579,14 @@ const Workflow = {
         pick(source.one_time_fee_hard_stop_discount_percent, source.onetimefeehardstopdiscountpercent),
         this.proposalCategoryDiscountDefaults.one_time_fee_hard_stop_discount_percent
       ),
+      hardware_no_approval_until_percent: this.normalizePercentValue(
+        pick(source.hardware_no_approval_until_percent, source.hardwarenoapprovaluntilpercent),
+        this.proposalCategoryDiscountDefaults.hardware_no_approval_until_percent
+      ),
+      hardware_hard_stop_discount_percent: this.normalizePercentValue(
+        pick(source.hardware_hard_stop_discount_percent, source.hardwarehardstopdiscountpercent),
+        this.proposalCategoryDiscountDefaults.hardware_hard_stop_discount_percent
+      ),
       approval_condition: String(pick(source.approval_condition, source.approvalcondition)).trim(),
       approval_basis: String(pick(source.approval_basis, source.approvalbasis)).trim(),
       reapproval_mode: String(pick(source.reapproval_mode, source.reapprovalmode)).trim(),
@@ -1570,6 +1637,14 @@ const Workflow = {
       get('workflowOneTimeFeeHardStop'),
       this.proposalCategoryDiscountDefaults.one_time_fee_hard_stop_discount_percent
     );
+    const hardwareNoApproval = this.normalizePercentValue(
+      get('workflowHardwareNoApproval'),
+      this.proposalCategoryDiscountDefaults.hardware_no_approval_until_percent
+    );
+    const hardwareHardStop = this.normalizePercentValue(
+      get('workflowHardwareHardStop'),
+      this.proposalCategoryDiscountDefaults.hardware_hard_stop_discount_percent
+    );
     const payload = {
       id: legacyId,
       resource,
@@ -1599,6 +1674,8 @@ const Workflow = {
         annual_saas_hard_stop_discount_percent: annualSaasHardStop,
         one_time_fee_no_approval_until_percent: oneTimeFeeNoApproval,
         one_time_fee_hard_stop_discount_percent: oneTimeFeeHardStop,
+        hardware_no_approval_until_percent: hardwareNoApproval,
+        hardware_hard_stop_discount_percent: hardwareHardStop,
         ...this.proposalCategoryApprovalMetadata
       });
     }
@@ -1630,6 +1707,8 @@ const Workflow = {
     if (E.workflowAnnualSaasHardStop) E.workflowAnnualSaasHardStop.value = normalizedRule.annual_saas_hard_stop_discount_percent;
     if (E.workflowOneTimeFeeNoApproval) E.workflowOneTimeFeeNoApproval.value = normalizedRule.one_time_fee_no_approval_until_percent;
     if (E.workflowOneTimeFeeHardStop) E.workflowOneTimeFeeHardStop.value = normalizedRule.one_time_fee_hard_stop_discount_percent;
+    if (E.workflowHardwareNoApproval) E.workflowHardwareNoApproval.value = normalizedRule.hardware_no_approval_until_percent;
+    if (E.workflowHardwareHardStop) E.workflowHardwareHardStop.value = normalizedRule.hardware_hard_stop_discount_percent;
     this.toggleWorkflowDiscountFields(normalizedRule.resource);
     if (E.workflowRequireComment) E.workflowRequireComment.value = String(WorkflowEngine.toBool(normalizedRule.require_comment));
     if (E.workflowRequireAttachment) E.workflowRequireAttachment.value = String(WorkflowEngine.toBool(normalizedRule.require_attachment));
@@ -1648,6 +1727,8 @@ const Workflow = {
     if (E.workflowAnnualSaasHardStop) E.workflowAnnualSaasHardStop.value = this.proposalCategoryDiscountDefaults.annual_saas_hard_stop_discount_percent;
     if (E.workflowOneTimeFeeNoApproval) E.workflowOneTimeFeeNoApproval.value = this.proposalCategoryDiscountDefaults.one_time_fee_no_approval_until_percent;
     if (E.workflowOneTimeFeeHardStop) E.workflowOneTimeFeeHardStop.value = this.proposalCategoryDiscountDefaults.one_time_fee_hard_stop_discount_percent;
+    if (E.workflowHardwareNoApproval) E.workflowHardwareNoApproval.value = this.proposalCategoryDiscountDefaults.hardware_no_approval_until_percent;
+    if (E.workflowHardwareHardStop) E.workflowHardwareHardStop.value = this.proposalCategoryDiscountDefaults.hardware_hard_stop_discount_percent;
     this.populateRuleSelects();
     this.toggleWorkflowDiscountFields(E.workflowResource?.value);
   },
@@ -2251,15 +2332,15 @@ const Workflow = {
       infoEl.textContent = `Loaded ${allRows.length} workflow rule(s)` + (resourceFilter ? ` • filter: ${resourceFilter}` : '');
     }
     if (this.state.loadError) {
-      E.workflowRulesTbody.innerHTML = `<tr><td colspan="11" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(this.state.loadError)}</td></tr>`;
+      E.workflowRulesTbody.innerHTML = `<tr><td colspan="13" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(this.state.loadError)}</td></tr>`;
       return;
     }
     if (!allRows.length) {
-      E.workflowRulesTbody.innerHTML = '<tr><td colspan="11" class="muted" style="text-align:center;">No workflow rules returned by API.</td></tr>';
+      E.workflowRulesTbody.innerHTML = '<tr><td colspan="13" class="muted" style="text-align:center;">No workflow rules returned by API.</td></tr>';
       return;
     }
     if (!rows.length) {
-      E.workflowRulesTbody.innerHTML = '<tr><td colspan="11" class="muted" style="text-align:center;">No rules match the current filter. Clear filter to see all.</td></tr>';
+      E.workflowRulesTbody.innerHTML = '<tr><td colspan="13" class="muted" style="text-align:center;">No rules match the current filter. Clear filter to see all.</td></tr>';
       return;
     }
     E.workflowRulesTbody.innerHTML = rows.map(rule => {
@@ -2270,6 +2351,8 @@ const Workflow = {
       const annualHardStop = isProposal ? normalizedRule.annual_saas_hard_stop_discount_percent : normalizedRule.hard_stop_discount_percent;
       const oneTimeLimit = isProposal ? normalizedRule.one_time_fee_no_approval_until_percent : '—';
       const oneTimeHardStop = isProposal ? normalizedRule.one_time_fee_hard_stop_discount_percent : '—';
+      const hardwareLimit = isProposal ? normalizedRule.hardware_no_approval_until_percent : '—';
+      const hardwareHardStop = isProposal ? normalizedRule.hardware_hard_stop_discount_percent : '—';
       return `
       <tr>
         <td>${U.escapeHtml(normalizedRule.resource || '—')}</td>
@@ -2281,6 +2364,8 @@ const Workflow = {
         <td>${U.escapeHtml(String(annualHardStop ?? '—'))}</td>
         <td>${U.escapeHtml(String(oneTimeLimit ?? '—'))}</td>
         <td>${U.escapeHtml(String(oneTimeHardStop ?? '—'))}</td>
+        <td>${U.escapeHtml(String(hardwareLimit ?? '—'))}</td>
+        <td>${U.escapeHtml(String(hardwareHardStop ?? '—'))}</td>
         <td>${WorkflowEngine.toBool(normalizedRule.is_active) ? 'Yes' : 'No'}</td>
         <td>${this.canManageWorkflowRules()
           ? `<button class="chip-btn" data-rule-edit="${U.escapeHtml(normalizedRule.workflow_rule_id || normalizedRule.id || '')}">Edit</button> <button class="chip-btn" data-rule-delete="${U.escapeHtml(normalizedRule.workflow_rule_id || normalizedRule.id || '')}">Delete</button>`
@@ -2448,7 +2533,8 @@ const Workflow = {
     if (payload.resource === 'proposals') {
       const categoryPairs = [
         ['Annual SaaS', payload.annual_saas_no_approval_until_percent, payload.annual_saas_hard_stop_discount_percent],
-        ['One-Time Fees', payload.one_time_fee_no_approval_until_percent, payload.one_time_fee_hard_stop_discount_percent]
+        ['One-Time Fees', payload.one_time_fee_no_approval_until_percent, payload.one_time_fee_hard_stop_discount_percent],
+        ['Hardware', payload.hardware_no_approval_until_percent, payload.hardware_hard_stop_discount_percent]
       ];
       for (const [label, noApproval, hardStop] of categoryPairs) {
         if (!Number.isFinite(noApproval) || !Number.isFinite(hardStop) || noApproval < 0 || hardStop < 0) {

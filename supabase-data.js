@@ -895,7 +895,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     'is_poc','poc_location_count','poc_license_count','poc_license_months','poc_service_start_date','poc_service_end_date','poc_success_kpis','poc_conversion_commitment',
     'terms_conditions','customer_signatory_Name','customer_signatory_name','customer_signatory_title','customer_signature_name','customer_signature_title','customer_signatory_email','customer_signatory_phone','provider_signatory_name','provider_signatory_title',
     'provider_signatory_name_secondary','provider_signatory_title_secondary','customer_sign_date','customer_signed_at','provider_sign_date',
-    'subtotal_locations','subtotal_one_time','total_discount','grand_total','status','approved_annual_saas_discount_percent','approved_one_time_fee_discount_percent','approved_discount_percent','discount_approval_status','discount_approved_at','discount_approved_by','last_discount_approval_request_id','approval_required_reason','signed_document_path','signed_document_name','signed_document_uploaded_at','signed_document_uploaded_by','generated_by','created_by','updated_by','created_at','updated_at'
+    'subtotal_locations','subtotal_one_time','total_discount','grand_total','status','approved_annual_saas_discount_percent','approved_one_time_fee_discount_percent','approved_hardware_discount_percent','approved_discount_percent','discount_approval_status','discount_approved_at','discount_approved_by','last_discount_approval_request_id','approval_required_reason','signed_document_path','signed_document_name','signed_document_uploaded_at','signed_document_uploaded_by','generated_by','created_by','updated_by','created_at','updated_at'
   ]);
   const PROPOSAL_ITEM_COLUMNS = new Set([
     'item_id','proposal_id','section','line_no','location_name','item_name','unit_price','discount_percent','discounted_unit_price','quantity','license_quantity',
@@ -3532,6 +3532,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       status: normalizeProposalBusinessStatus(firstDefined(record, ['status'])),
       approved_annual_saas_discount_percent: firstDefined(record, ['approved_annual_saas_discount_percent', 'approvedAnnualSaasDiscountPercent']),
       approved_one_time_fee_discount_percent: firstDefined(record, ['approved_one_time_fee_discount_percent', 'approvedOneTimeFeeDiscountPercent']),
+      approved_hardware_discount_percent: firstDefined(record, ['approved_hardware_discount_percent', 'approvedHardwareDiscountPercent']),
       approved_discount_percent: firstDefined(record, ['approved_discount_percent', 'approvedDiscountPercent']),
       discount_approval_status: firstDefined(record, ['discount_approval_status', 'discountApprovalStatus']),
       discount_approved_at: firstDefined(record, ['discount_approved_at', 'discountApprovedAt']),
@@ -4696,12 +4697,22 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       }
 
       if (
-        raw.includes('one_time') ||
-        raw.includes('one-time') ||
-        raw.includes('one time') ||
         raw.includes('hardware') ||
         raw.includes('hardwar') ||
         raw.includes('device') ||
+        raw.includes('equipment') ||
+        raw.includes('tablet') ||
+        raw.includes('printer') ||
+        raw.includes('scanner') ||
+        raw.includes('kiosk')
+      ) {
+        return 'hardware';
+      }
+
+      if (
+        raw.includes('one_time') ||
+        raw.includes('one-time') ||
+        raw.includes('one time') ||
         raw.includes('setup') ||
         raw.includes('implementation') ||
         raw.includes('installation') ||
@@ -4723,6 +4734,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     function getProposalDiscountsByCategory(proposal, items = []) {
       let annualSaasDiscount = 0;
       let oneTimeFeeDiscount = 0;
+      let hardwareDiscount = 0;
       let overallMaxDiscount = 0;
 
       for (const item of items || []) {
@@ -4738,11 +4750,16 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         if (category === 'one_time_fee') {
           oneTimeFeeDiscount = Math.max(oneTimeFeeDiscount, discount);
         }
+
+        if (category === 'hardware') {
+          hardwareDiscount = Math.max(hardwareDiscount, discount);
+        }
       }
 
       return {
         annualSaasDiscount,
         oneTimeFeeDiscount,
+        hardwareDiscount,
         overallMaxDiscount
       };
     }
@@ -4828,6 +4845,17 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         return { ...oneTimeDecision, discounts };
       }
 
+      const hardwareDecision = needsApprovalAgainstBaseline(
+        discounts.hardwareDiscount,
+        workflowRule?.hardware_no_approval_until_percent ?? workflowRule?.one_time_fee_no_approval_until_percent ?? 20,
+        workflowRule?.hardware_hard_stop_discount_percent ?? workflowRule?.one_time_fee_hard_stop_discount_percent ?? 30,
+        proposal?.approved_hardware_discount_percent ?? proposal?.approvedHardwareDiscountPercent ?? proposal?.approved_discount_percent
+      );
+
+      if (!hardwareDecision.allowed && !hardwareDecision.requiresApproval) {
+        return { ...hardwareDecision, discounts };
+      }
+
       const reasons = [];
 
       if (annualDecision.requiresApproval) {
@@ -4838,6 +4866,10 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         reasons.push(oneTimeDecision.reason);
       }
 
+      if (hardwareDecision.requiresApproval) {
+        reasons.push(hardwareDecision.reason);
+      }
+
       if (reasons.length > 0) {
         return {
           allowed: false,
@@ -4846,8 +4878,10 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
           discounts,
           annualNeedsApproval: annualDecision.requiresApproval,
           oneTimeNeedsApproval: oneTimeDecision.requiresApproval,
+          hardwareNeedsApproval: hardwareDecision.requiresApproval,
           annualDecision,
-          oneTimeDecision
+          oneTimeDecision,
+          hardwareDecision
         };
       }
 
@@ -4858,8 +4892,10 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         discounts,
         annualNeedsApproval: false,
         oneTimeNeedsApproval: false,
+        hardwareNeedsApproval: false,
         annualDecision,
-        oneTimeDecision
+        oneTimeDecision,
+        hardwareDecision
       };
     }
     function getProposalCurrentDiscountPercent(proposal, items = []) {
@@ -5479,7 +5515,8 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
           status: trimOrNull(firstDefined(requested, ['requested_status', 'status'])) || publicUpdates.status,
           approved_annual_saas_discount_percent: approvedCategoryDiscounts.annualSaasDiscount,
           approved_one_time_fee_discount_percent: approvedCategoryDiscounts.oneTimeFeeDiscount,
-          approved_discount_percent: Math.max(approvedCategoryDiscounts.annualSaasDiscount, approvedCategoryDiscounts.oneTimeFeeDiscount),
+          approved_hardware_discount_percent: approvedCategoryDiscounts.hardwareDiscount,
+          approved_discount_percent: Math.max(approvedCategoryDiscounts.annualSaasDiscount, approvedCategoryDiscounts.oneTimeFeeDiscount, approvedCategoryDiscounts.hardwareDiscount),
           discount_approval_status: 'approved',
           discount_approved_at: new Date().toISOString(),
           discount_approved_by: reviewerUserId || undefined,
@@ -5757,6 +5794,8 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         annual_saas_hard_stop_discount_percent: workflowPercentValue(normalizedRow.annual_saas_hard_stop_discount_percent, 20),
         one_time_fee_no_approval_until_percent: workflowPercentValue(normalizedRow.one_time_fee_no_approval_until_percent, 20),
         one_time_fee_hard_stop_discount_percent: workflowPercentValue(normalizedRow.one_time_fee_hard_stop_discount_percent, 30),
+        hardware_no_approval_until_percent: workflowPercentValue(normalizedRow.hardware_no_approval_until_percent, 20),
+        hardware_hard_stop_discount_percent: workflowPercentValue(normalizedRow.hardware_hard_stop_discount_percent, 30),
         approval_condition: String(normalizedRow.approval_condition || '').trim() || null,
         approval_basis: String(normalizedRow.approval_basis || '').trim() || null,
         reapproval_mode: String(normalizedRow.reapproval_mode || '').trim() || null,

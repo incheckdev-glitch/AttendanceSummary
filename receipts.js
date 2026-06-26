@@ -366,6 +366,10 @@ const Receipts = {
   receiptTypeLabel(receipt = {}) {
     return this.isSettlementReceipt(receipt) ? 'Settlement' : 'Receipt';
   },
+  isHardwareSection(section) {
+    const raw = String(section || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+    return ['hardware', 'hardwares', 'hardwar', 'hardwars', 'device', 'devices', 'equipment'].includes(raw);
+  },
   isOneTimeSection(section) {
     const raw = String(section || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
     return ['one_time_fee', 'one_time', 'setup', 'non_recurring'].includes(raw);
@@ -374,7 +378,11 @@ const Receipts = {
     const source = raw && typeof raw === 'object' ? raw : {};
     const pick = (...values) => values.find(v => v !== undefined && v !== null && !(typeof v === 'string' && v.trim() === ''));
     const rawSection = pick(source.section, source.item_section, source.itemSection, source.type, source.category);
-    const section = this.isOneTimeSection(rawSection) ? 'one_time_fee' : 'location_details';
+    const section = this.isHardwareSection(rawSection)
+      ? 'hardware'
+      : this.isOneTimeSection(rawSection)
+        ? 'one_time_fee'
+        : 'location_details';
     const description = this.sanitizeText(pick(source.description, source.item_description, source.itemDescription, source.note, source.notes, source.catalog_note, source.catalogNote, source.catalog_description, source.catalogDescription));
     const parsedLocationAndModule = description.includes(' - ')
       ? description.split(' - ').map(part => part.trim())
@@ -727,6 +735,7 @@ const Receipts = {
   renderItems(items = []) {
     const safeItems = this.filterReceiptCommercialItems(items).map(item => this.normalizeItem(item));
     const locations = safeItems.filter(item => item.section === 'location_details');
+    const hardware = safeItems.filter(item => this.isHardwareSection(item.section));
     const oneTime = safeItems.filter(item => this.isOneTimeSection(item.section));
     const renderLocationRow = item => `<tr>
       <td>${U.escapeHtml(item.location_name || '—')}</td>
@@ -760,6 +769,11 @@ const Receipts = {
       E.receiptOneTimeItemsTbody.innerHTML = oneTime.length
         ? oneTime.map(renderOneTimeRow).join('')
         : '<tr><td colspan="8" class="muted cell-center">No one-time fee rows.</td></tr>';
+    }
+    if (E.receiptHardwareItemsTbody) {
+      E.receiptHardwareItemsTbody.innerHTML = hardware.length
+        ? hardware.map(renderOneTimeRow).join('')
+        : '<tr><td colspan="8" class="muted cell-center">No hardware rows.</td></tr>';
     }
   },
   populateForm(receipt, items, readOnly = false, linkedInvoice = null, invoiceReceipts = null) {
@@ -1267,7 +1281,8 @@ const Receipts = {
   },
   mapInvoiceItemToReceiptItem(item = {}) {
     if (this.isCapabilityItem(item)) return null;
-    const section = this.isOneTimeSection(item.section || item.item_section || item.itemSection) ? 'one_time_fee' : 'location_details';
+    const rawSection = item.section || item.item_section || item.itemSection;
+    const section = this.isHardwareSection(rawSection) ? 'hardware' : this.isOneTimeSection(rawSection) ? 'one_time_fee' : 'location_details';
     const lineNo = this.toNumberSafe(item.line_no ?? item.lineNo);
     const amount = this.toNumberSafe(item.line_total ?? item.lineTotal ?? item.amount);
     const description = this.buildReceiptDescriptionFromInvoiceItem(item);
@@ -1926,7 +1941,10 @@ const Receipts = {
     const fallbackItems = this.filterReceiptCommercialItems(invoiceItems).map(item => this.normalizeItem(item));
     const sourceItems = normalizedItems.length ? normalizedItems : fallbackItems;
     const isOneTime = section => this.isOneTimeSection(section);
-    const locationItems = sourceItems.filter(item => !isOneTime(item.section));
+    const isHardware = section => this.isHardwareSection(section);
+    const isNonRecurring = section => isOneTime(section) || isHardware(section);
+    const locationItems = sourceItems.filter(item => !isNonRecurring(item.section));
+    const hardwareItems = sourceItems.filter(item => isHardware(item.section));
     const oneTimeItems = sourceItems.filter(item => isOneTime(item.section));
     const currency = r.currency || invoice?.currency || 'USD';
     const text = value => {
@@ -1948,7 +1966,7 @@ const Receipts = {
       const discountPercent = this.toNumberSafe(item.discount_percent);
       const qty = this.toNumberSafe(item.quantity);
       const discountRatio = discountPercent > 1 ? discountPercent / 100 : Math.max(0, discountPercent);
-      const baseAmount = isOneTime(item.section) ? unit * qty : unit * (qty / 12);
+      const baseAmount = isNonRecurring(item.section) ? unit * qty : unit * (qty / 12);
       const fallbackTotal = Math.max(0, baseAmount * (1 - discountRatio));
       return {
         ...item,
@@ -1980,6 +1998,32 @@ const Receipts = {
       </tr>`;
     };
     const oneTimeRows = oneTimeItems.length ? oneTimeItems.map(buildOneTimeRow).join('') : '<tr><td colspan="6" class="muted cell-center">No one-time fee items found.</td></tr>';
+    const hardwareRows = hardwareItems.map(buildOneTimeRow).join('');
+    const hardwareSubtotal = hardwareItems.reduce((sum, item) => sum + this.toNumberSafe(computeReceiptRow(item).line_total), 0);
+    const hardwareSectionHtml = hardwareItems.length ? `
+      <section class="section">
+        <h2>Hardware Items</h2>
+        <div class="subhead">Hardware Rows</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Location</th>
+              <th>Hardware / Product</th>
+              <th style="width:16%">Unit Price</th>
+              <th style="width:12%">Discount %</th>
+              <th style="width:10%">Qty</th>
+              <th style="width:16%">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${hardwareRows}
+            <tr class="total-row">
+              <td colspan="5" class="cell-right">Total Hardware</td>
+              <td class="cell-right">${this.money(currency, hardwareSubtotal)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>` : '';
     const locationRows = locationItems.length ? locationItems.map(buildDetailRow).join('') : '<tr><td colspan="8" class="muted cell-center">No annual SaaS items found.</td></tr>';
     const pickDefined = (...values) => values.find(value => value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === ''));
     const pickMoneyTotal = (...values) => {
@@ -1994,9 +2038,13 @@ const Receipts = {
       pickDefined(hasLocationRows ? calculatedSubtotalLocations : undefined, r.subtotal_locations, invoice?.subtotal_locations, invoice?.subtotal_subscription, 0)
     );
     const subtotalOneTime = this.toNumberSafe(
-      pickDefined(hasOneTimeRows ? calculatedSubtotalOneTime : undefined, r.subtotal_one_time, invoice?.subtotal_one_time, 0)
+      hasOneTimeRows
+        ? calculatedSubtotalOneTime
+        : hardwareItems.length
+          ? 0
+          : pickDefined(r.subtotal_one_time, invoice?.subtotal_one_time, 0)
     );
-    const calculatedInvoiceTotal = subtotalLocations + subtotalOneTime;
+    const calculatedInvoiceTotal = subtotalLocations + subtotalOneTime + hardwareSubtotal;
     const invoiceTotal = this.toNumberSafe(
       pickMoneyTotal(r.invoice_total, invoice?.invoice_total, invoice?.grand_total, calculatedInvoiceTotal)
     );
@@ -2185,11 +2233,14 @@ const Receipts = {
         </table>
       </section>
 
+      ${hardwareSectionHtml}
+
       <p class="receipt-narrative">We have received from ${text(customerName)} the sum of ${text(amountInWords)} being partial payment on account of ${text(invoiceDisplay)}. Pending amount: ${this.money(currency, pendingAmount)}.</p>
 
       <section class="totals-wrap">
         <div class="totals-box">
           <div class="totals-row grand"><span>Grand Total</span><strong>${this.money(currency, invoiceTotal)}</strong></div>
+          ${hardwareItems.length ? `<div class="totals-row"><span>Hardware</span><strong>${this.money(currency, hardwareSubtotal)}</strong></div>` : ``}
           <div class="totals-row"><span>Old Paid Total</span><strong>${this.money(currency, oldPaidTotal)}</strong></div>
           <div class="totals-row"><span>Paid Now</span><strong>${this.money(currency, paidNow)}</strong></div>
           <div class="totals-row amount-in-words"><span>Grand Amount in Words:</span><strong>${text(amountInWords)}</strong></div>

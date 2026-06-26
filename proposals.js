@@ -112,6 +112,7 @@ const Proposals = {
     'status',
     'approved_annual_saas_discount_percent',
     'approved_one_time_fee_discount_percent',
+    'approved_hardware_discount_percent',
     'approved_discount_percent',
     'discount_approval_status',
     'discount_approved_at',
@@ -1825,6 +1826,11 @@ const Proposals = {
       source.approved_one_time_fee_discount_percent ??
       source.approvedOneTimeFeeDiscountPercent ??
       normalized.approved_one_time_fee_discount_percent ??
+      '';
+    normalized.approved_hardware_discount_percent =
+      source.approved_hardware_discount_percent ??
+      source.approvedHardwareDiscountPercent ??
+      normalized.approved_hardware_discount_percent ??
       '';
     normalized.approved_discount_percent =
       source.approved_discount_percent ??
@@ -4962,6 +4968,7 @@ const Proposals = {
       requestedStatus,
       approvedAnnual: currentRecord?.approved_annual_saas_discount_percent,
       approvedOneTime: currentRecord?.approved_one_time_fee_discount_percent,
+      approvedHardware: currentRecord?.approved_hardware_discount_percent,
       approvedGeneric: currentRecord?.approved_discount_percent,
       approvalStatus: currentRecord?.discount_approval_status
     });
