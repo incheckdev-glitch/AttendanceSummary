@@ -262,12 +262,16 @@
           <div class="view-menu-header">
             <div>
               <div class="view-menu-title">Main Menu</div>
-              <div class="view-menu-subtitle">Grouped modules</div>
+              <div class="view-menu-subtitle">Click a group to open its modules</div>
             </div>
           </div>
           <div class="view-tabs grouped-view-tabs" role="tablist" aria-orientation="vertical">
-            <div class="view-menu-group" role="group" aria-label="Workspace modules">
-              <div class="view-menu-group-title"><span class="view-menu-group-icon" aria-hidden="true">🏠</span><span>Workspace</span></div>
+            <div class="view-menu-group is-expanded" role="group" aria-label="Workspace modules" data-menu-group="workspace" data-default-open="true">
+              <button class="view-menu-group-title view-menu-group-toggle" type="button" data-menu-group-toggle aria-expanded="true" aria-controls="workspaceMenuGroupBody">
+                <span class="view-menu-group-label"><span class="view-menu-group-icon" aria-hidden="true">🏠</span><span>Workspace</span></span>
+                <span class="view-menu-group-chevron" aria-hidden="true">▾</span>
+              </button>
+              <div id="workspaceMenuGroupBody" class="view-menu-group-body">
               <button id="issuesTab" class="view-tab active" data-view="issues"
                       role="tab" aria-selected="true" aria-controls="issuesView">
                 <span class="icon" aria-hidden="true">📋</span> Tickets
@@ -292,10 +296,15 @@
                       role="tab" aria-selected="false" aria-controls="lifecycleAnalyticsView">
                 <span class="icon" aria-hidden="true">📊</span> Lifecycle Analytics
               </button>
+              </div>
             </div>
 
-            <div class="view-menu-group" role="group" aria-label="CRM modules">
-              <div class="view-menu-group-title"><span class="view-menu-group-icon" aria-hidden="true">🤝</span><span>CRM</span></div>
+            <div class="view-menu-group" role="group" aria-label="CRM modules" data-menu-group="crm">
+              <button class="view-menu-group-title view-menu-group-toggle" type="button" data-menu-group-toggle aria-expanded="false" aria-controls="crmMenuGroupBody">
+                <span class="view-menu-group-label"><span class="view-menu-group-icon" aria-hidden="true">🤝</span><span>CRM</span></span>
+                <span class="view-menu-group-chevron" aria-hidden="true">▾</span>
+              </button>
+              <div id="crmMenuGroupBody" class="view-menu-group-body">
               <button id="companyTab" class="view-tab" data-view="company"
                       role="tab" aria-selected="false" aria-controls="companyView">
                 <span class="icon" aria-hidden="true">🏢</span> Company
@@ -324,10 +333,15 @@
                       role="tab" aria-selected="false" aria-controls="proposalCatalogView">
                 <span class="icon" aria-hidden="true">📚</span> Proposal Catalog
               </button>
+              </div>
             </div>
 
-            <div class="view-menu-group" role="group" aria-label="Accounting modules">
-              <div class="view-menu-group-title"><span class="view-menu-group-icon" aria-hidden="true">💼</span><span>Accounting</span></div>
+            <div class="view-menu-group" role="group" aria-label="Accounting modules" data-menu-group="accounting">
+              <button class="view-menu-group-title view-menu-group-toggle" type="button" data-menu-group-toggle aria-expanded="false" aria-controls="accountingMenuGroupBody">
+                <span class="view-menu-group-label"><span class="view-menu-group-icon" aria-hidden="true">💼</span><span>Accounting</span></span>
+                <span class="view-menu-group-chevron" aria-hidden="true">▾</span>
+              </button>
+              <div id="accountingMenuGroupBody" class="view-menu-group-body">
               <button id="clientsTab" class="view-tab" data-view="clients"
                       role="tab" aria-selected="false" aria-controls="clientsView">
                 <span class="icon" aria-hidden="true">🏢</span> Clients
@@ -356,10 +370,15 @@
                       role="tab" aria-selected="false" aria-controls="binersView">
                 <span class="icon" aria-hidden="true">🏗️</span> Biners Control Center
               </button>
+              </div>
             </div>
 
-            <div class="view-menu-group" role="group" aria-label="Control Center modules">
-              <div class="view-menu-group-title"><span class="view-menu-group-icon" aria-hidden="true">⚙️</span><span>Control Center</span></div>
+            <div class="view-menu-group" role="group" aria-label="Control Center modules" data-menu-group="control-center">
+              <button class="view-menu-group-title view-menu-group-toggle" type="button" data-menu-group-toggle aria-expanded="false" aria-controls="controlCenterMenuGroupBody">
+                <span class="view-menu-group-label"><span class="view-menu-group-icon" aria-hidden="true">⚙️</span><span>Control Center</span></span>
+                <span class="view-menu-group-chevron" aria-hidden="true">▾</span>
+              </button>
+              <div id="controlCenterMenuGroupBody" class="view-menu-group-body">
               <button id="communicationCentreTab" class="view-tab" data-view="communication_centre" role="tab" aria-selected="false" aria-controls="communicationCentreView">
                 <span class="icon" aria-hidden="true">💬</span> Communication Centre
               </button>
@@ -386,6 +405,7 @@
                       role="tab" aria-selected="false" aria-controls="rolePermissionsView" style="display:none;">
                 <span class="icon" aria-hidden="true">🛡️</span> Role Permissions
               </button>
+              </div>
             </div>
           </div>
         </aside>
@@ -4306,6 +4326,60 @@ Sample:
   <script>
     window.INCHECK360_CONFIG = window.INCHECK360_CONFIG || {};
     window.INCHECK360_CONFIG.VAPID_PUBLIC_KEY = "BOf3aUnNcsqYnx9i8lnvmQ5n_RwCFMFBOqiEtHVzY0eB7xqfncupAeqBjS7eAHvi9dGzIUwBEu6sGKVuRM5028s";
+  </script>
+  <script>
+    (function initGroupedModuleMenu(){
+      function setGroupOpen(group, open){
+        const toggle = group.querySelector('[data-menu-group-toggle]');
+        const body = group.querySelector('.view-menu-group-body');
+        group.classList.toggle('is-expanded', open);
+        group.classList.toggle('is-collapsed', !open);
+        if(toggle){
+          toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        }
+        if(body){
+          body.hidden = !open;
+        }
+      }
+      function boot(){
+        const groups = Array.from(document.querySelectorAll('.view-menu-group[data-menu-group]'));
+        if(!groups.length) return;
+        const openOnly = target => groups.forEach(group => setGroupOpen(group, group === target));
+        const openActiveGroup = () => {
+          const activeTab = document.querySelector('.grouped-view-tabs .view-tab.active');
+          const activeGroup = activeTab ? activeTab.closest('.view-menu-group[data-menu-group]') : null;
+          if(activeGroup){
+            openOnly(activeGroup);
+            return true;
+          }
+          return false;
+        };
+        groups.forEach(group => {
+          const toggle = group.querySelector('[data-menu-group-toggle]');
+          if(toggle){
+            toggle.addEventListener('click', () => openOnly(group));
+          }
+          group.querySelectorAll('.view-tab').forEach(tab => {
+            tab.addEventListener('click', () => openOnly(group));
+          });
+        });
+        if(!openActiveGroup()){
+          const defaultGroup = groups.find(group => group.dataset.defaultOpen === 'true') || groups[0];
+          openOnly(defaultGroup);
+        }
+        const observer = new MutationObserver(openActiveGroup);
+        groups.forEach(group => {
+          group.querySelectorAll('.view-tab').forEach(tab => {
+            observer.observe(tab, { attributes:true, attributeFilter:['class','aria-selected'] });
+          });
+        });
+      }
+      if(document.readyState === 'loading'){
+        document.addEventListener('DOMContentLoaded', boot);
+      }else{
+        boot();
+      }
+    })();
   </script>
   <script src="config.js?v=20260427-allpwa1"></script>
   <script src="legacy-compat.js?v=20260427-allpwa1"></script>
