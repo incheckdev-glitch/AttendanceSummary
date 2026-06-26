@@ -6785,3 +6785,487 @@ body.pf-modal-open{overflow:hidden}.pf-activity-modal[hidden],.pf-note-modal[hid
 .modern-crm-modal{align-items:center;justify-content:center;padding:24px;background:rgba(15,23,42,.52);backdrop-filter:blur(6px)}
 .modern-crm-modal[aria-hidden="false"]{display:flex!important}.modern-crm-modal-content{width:min(1040px,calc(100vw - 32px));max-width:1040px!important;max-height:90vh;padding:0!important;overflow:hidden;border:1px solid rgba(191,219,254,.9);border-radius:22px;background:#f8fafc;box-shadow:0 28px 80px rgba(15,23,42,.28)}.modern-crm-modal-content--wide{width:min(1180px,calc(100vw - 32px));max-width:1180px!important}.modern-crm-modal-header{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:24px 28px;background:linear-gradient(180deg,#fff,#f8fbff);border-bottom:1px solid #e2e8f0}.modern-crm-header-left{display:flex;align-items:center;gap:16px;min-width:0}.modern-crm-modal-icon{width:52px;height:52px;border-radius:16px;display:grid;place-items:center;background:linear-gradient(135deg,#eff6ff,#dbeafe);color:#2563eb;font-size:24px;font-weight:800;box-shadow:inset 0 0 0 1px rgba(37,99,235,.14)}.modern-crm-modal-title{margin:0;color:#0f172a;font-size:26px;line-height:1.15;font-weight:800;letter-spacing:-.03em}.modern-crm-modal-subtitle{margin:6px 0 0;color:#64748b;font-size:14px;line-height:1.45}.modern-crm-close{width:40px;height:40px;border-radius:12px!important;border:1px solid #e2e8f0!important;background:#fff!important;color:#475569!important;box-shadow:0 4px 12px rgba(15,23,42,.06)}.modern-crm-form{display:flex;flex-direction:column;min-height:0;max-height:calc(90vh - 102px)}.modern-crm-scroll-body{overflow:auto;padding:22px 28px 8px;display:flex;flex-direction:column;gap:18px}.modern-crm-section-card{background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:20px;box-shadow:0 12px 30px rgba(15,23,42,.05)}.modern-crm-section-title{margin:0 0 16px;display:flex;align-items:center;gap:10px;color:#0f172a;font-size:16px;font-weight:800}.modern-crm-section-title span{width:30px;height:30px;border-radius:10px;display:grid;place-items:center;background:#eff6ff;color:#2563eb;font-size:15px}.modern-crm-form-grid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:16px!important}.crm-field-full{grid-column:1/-1!important}.crm-field{display:flex;flex-direction:column;gap:7px;min-width:0}.crm-field label,.modern-crm-modal label.muted{color:#334155!important;font-size:12px;font-weight:800;letter-spacing:.01em}.crm-field small,.crm-field .muted{color:#64748b;font-size:12px}.modern-crm-modal .input,.modern-crm-modal .select,.modern-crm-modal textarea{width:100%;min-height:46px;border:1px solid #cbd5e1!important;border-radius:12px!important;background:#fff;color:#0f172a;padding:10px 12px;box-shadow:0 1px 2px rgba(15,23,42,.03);transition:border-color .15s,box-shadow .15s,background .15s}.modern-crm-modal textarea{min-height:112px;resize:vertical;line-height:1.5}.modern-crm-modal .input:focus,.modern-crm-modal .select:focus,.modern-crm-modal textarea:focus{outline:0;border-color:#2563eb!important;box-shadow:0 0 0 4px rgba(37,99,235,.14)}.modern-crm-modal .input[readonly],.modern-crm-modal .readonly,.modern-crm-modal .readonly-field,.modern-crm-modal .locked-field{background:#f1f5f9!important;color:#475569!important}.modern-crm-readonly-card,.modern-crm-modal .form-section{background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:20px;box-shadow:0 12px 30px rgba(15,23,42,.05)}.modern-crm-info-callout{margin:0 0 14px;padding:14px 16px;border:1px solid #bfdbfe;border-radius:16px;background:#eff6ff;color:#1e3a8a}.modern-crm-notes-card{grid-column:1/-1;background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:18px;box-shadow:0 12px 30px rgba(15,23,42,.05)}.crm-empty-state{color:#64748b}.crm-multiselect{min-height:150px!important;overflow:auto}.crm-chip-row{display:flex;gap:8px;flex-wrap:wrap;min-height:34px;padding:8px;border:1px dashed #bfdbfe;border-radius:14px;background:#eff6ff}.crm-chip,.crm-chip-row span:not(.muted){display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;background:#dbeafe;color:#1d4ed8;font-size:12px;font-weight:800}.crm-checkbox-field{justify-content:end;padding:12px 14px;border:1px solid #dbeafe;border-radius:14px;background:#f8fbff}.crm-checkbox-field label{display:flex!important;align-items:center;gap:10px;color:#1e3a8a!important}.crm-checkbox-field input{accent-color:#2563eb;width:18px;height:18px}.modern-crm-modal-footer{position:sticky;bottom:0;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 28px;background:rgba(255,255,255,.96);border-top:1px solid #e2e8f0;box-shadow:0 -12px 28px rgba(15,23,42,.06);backdrop-filter:blur(8px)}.modern-crm-footer-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin-left:auto}.btn-incheck-primary{border:1px solid #1d4ed8!important;background:#2563eb!important;color:#fff!important;box-shadow:0 10px 20px rgba(37,99,235,.22)}.btn-incheck-primary:hover{background:#1d4ed8!important;transform:translateY(-1px)}.btn-incheck-outline{border:1px solid #bfdbfe!important;background:#fff!important;color:#1d4ed8!important}.btn-incheck-outline:hover{background:#eff6ff!important}.modern-crm-modal .form-section-header h3{color:#0f172a}.modern-crm-modal .form-section-header p{color:#64748b}.modern-crm-modal .lead-notes-history-list:empty::before{content:'No note history yet.';color:#64748b}.modern-crm-modal select[multiple] option{padding:8px;border-radius:8px}.modern-crm-modal select[multiple] option:checked{background:#2563eb;color:#fff}
 @media (max-width:760px){.modern-crm-modal{padding:10px;align-items:flex-start}.modern-crm-modal-content{width:calc(100vw - 20px);max-height:94vh;border-radius:18px}.modern-crm-form{max-height:calc(94vh - 96px)}.modern-crm-modal-header{padding:18px}.modern-crm-scroll-body{padding:16px}.modern-crm-form-grid{grid-template-columns:1fr!important}.crm-field-full{grid-column:auto!important}.modern-crm-modal-footer{align-items:stretch;flex-direction:column;padding:14px 16px}.modern-crm-footer-actions{width:100%}.modern-crm-footer-actions .btn{flex:1 1 auto}.modern-crm-modal-title{font-size:22px}}
+
+/* CRM responsive hardening - 2026-06-26
+   Layout-only improvements for modern CRM modules and forms. */
+*, *::before, *::after { box-sizing: border-box; }
+img, svg { max-width: 100%; }
+body { overflow-x: hidden; }
+
+.crm-modern-workspace,
+.company-workspace,
+.contacts-workspace,
+.leads-modern-workspace,
+.deals-modern-workspace,
+.commercial-modern-workspace,
+.catalog-modern-workspace,
+.company-page-shell,
+.contacts-page-shell,
+.leads-page-shell,
+.deals-page-shell,
+.commercial-page-shell,
+.catalog-page-shell {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: clip;
+}
+
+.company-page-header,
+.contacts-page-header,
+.leads-page-header,
+.deals-page-header,
+.commercial-page-header,
+.catalog-page-header,
+.catalog-table-header,
+.company-table-toolbar,
+.contacts-table-toolbar,
+.leads-table-toolbar,
+.deals-table-toolbar,
+.commercial-table-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.company-page-header > div,
+.contacts-page-header > div,
+.leads-page-header > div,
+.deals-page-header > div,
+.commercial-title-block,
+.catalog-title-block,
+.company-table-toolbar-left,
+.contacts-table-toolbar-left,
+.leads-table-toolbar-left,
+.deals-table-toolbar-left,
+.commercial-table-toolbar-left {
+  min-width: 0;
+}
+
+.company-page-header h1,
+.contacts-page-header h1,
+.leads-page-header h1,
+.deals-page-header h1,
+.commercial-page-header h1,
+.catalog-page-header h1,
+.catalog-title-block h2 {
+  overflow-wrap: anywhere;
+}
+
+.company-header-actions,
+.contacts-header-actions,
+.leads-header-actions,
+.deals-header-actions,
+.commercial-header-actions,
+.catalog-toolbar,
+.company-table-toolbar-left,
+.contacts-table-toolbar-left,
+.leads-table-toolbar-left,
+.deals-table-toolbar-left,
+.commercial-table-toolbar-right,
+.commercial-actions,
+.catalog-actions,
+.company-actions,
+.contacts-actions,
+.leads-actions,
+.deals-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.company-summary-grid,
+.contacts-summary-grid,
+.contacts-kpi-grid,
+.leads-analytics-grid,
+.deals-analytics-grid,
+.commercial-kpi-grid,
+.catalog-kpi-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)) !important;
+  gap: 16px !important;
+  width: 100%;
+}
+
+.company-filter-card,
+.contacts-filter-card,
+.leads-filter-card,
+.deals-filter-card,
+.commercial-filter-card,
+.catalog-filter-card,
+.company-panel,
+.contacts-panel,
+.leads-status-card,
+.deals-breakdown-card,
+.commercial-breakdown-card,
+.catalog-table-panel {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.company-filter-grid,
+.contacts-filter-grid,
+.leads-filter-grid,
+.deals-filter-grid,
+.commercial-filter-grid,
+.catalog-toolbar {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)) !important;
+  gap: 14px !important;
+  align-items: end;
+  width: 100%;
+}
+
+.company-filter-field,
+.contacts-filter-field,
+.leads-filter-field,
+.deals-filter-field,
+.commercial-filter-field,
+.catalog-search-field,
+.company-filter-search,
+.contacts-filter-search,
+.leads-filter-search,
+.deals-filter-search,
+.commercial-filter-search {
+  min-width: 0 !important;
+  width: 100%;
+}
+
+.company-filter-clear,
+.contacts-filter-clear,
+.leads-filter-clear,
+.deals-filter-clear,
+.commercial-filter-clear {
+  display: flex;
+  align-items: end;
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+.company-filter-card input,
+.company-filter-card select,
+.contacts-filter-card input,
+.contacts-filter-card select,
+.leads-filter-card input,
+.leads-filter-card select,
+.deals-filter-card input,
+.deals-filter-card select,
+.commercial-filter-card input,
+.commercial-filter-card select,
+.catalog-toolbar input,
+.catalog-toolbar select,
+.modern-crm-modal input,
+.modern-crm-modal select,
+.modern-crm-modal textarea,
+.proposal-modern-modal input,
+.proposal-modern-modal select,
+.proposal-modern-modal textarea,
+.agreement-modern-modal input,
+.agreement-modern-modal select,
+.agreement-modern-modal textarea {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.modern-table-scroll,
+.table-wrap,
+.company-table-wrap,
+.contacts-table-wrap,
+.leads-table-wrap,
+.deals-table-wrap,
+.commercial-table-wrap,
+.catalog-table-wrap,
+.proposal-table-wrap,
+.agreement-table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto !important;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+}
+
+.company-table-wrap table,
+.contacts-table-wrap table,
+.leads-table-wrap table,
+.deals-table-wrap table,
+.commercial-table-wrap table,
+.catalog-table-wrap table,
+.modern-table-scroll table { min-width: 1100px; }
+.proposal-table-wrap table,
+.agreement-table-wrap table { min-width: 920px; }
+
+.company-table-wrap th,
+.company-table-wrap td,
+.contacts-table-wrap th,
+.contacts-table-wrap td,
+.leads-table-wrap th,
+.leads-table-wrap td,
+.deals-table-wrap th,
+.deals-table-wrap td,
+.commercial-table-wrap th,
+.commercial-table-wrap td,
+.catalog-table-wrap th,
+.catalog-table-wrap td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+
+.company-table-wrap td:last-child,
+.contacts-table-wrap td:last-child,
+.leads-table-wrap td:last-child,
+.deals-table-wrap td:last-child,
+.commercial-table-wrap td:last-child,
+.catalog-table-wrap td:last-child {
+  white-space: nowrap;
+}
+
+.deals-breakdown-grid,
+.commercial-breakdown-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)) !important;
+  gap: 16px !important;
+}
+
+.modern-crm-modal,
+.proposal-modern-modal,
+.agreement-modern-modal {
+  overflow-x: hidden;
+}
+.modern-crm-modal-content,
+.proposal-modern-content,
+.agreement-modern-content {
+  width: min(95vw, 1200px) !important;
+  max-width: 1200px !important;
+  max-height: 90vh !important;
+  overflow: hidden !important;
+  display: flex;
+  flex-direction: column;
+}
+.modern-crm-modal-body,
+.modern-crm-scroll-body,
+.proposal-modal-body,
+.proposal-modal-scroll,
+.agreement-modal-body,
+.agreement-scroll-body {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  min-height: 0;
+}
+.modern-crm-form-grid,
+.proposal-form-grid,
+.agreement-form-grid,
+.proposal-signatory-grid,
+.agreement-signature-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 16px !important;
+}
+.crm-field-full,
+.form-field-full,
+.proposal-span-2,
+.agreement-span-2 { grid-column: 1 / -1 !important; }
+
+.modern-section-header,
+.modern-crm-section-header,
+.modern-crm-section-title,
+.proposal-section-header,
+.proposal-section-title,
+.proposal-item-heading,
+.agreement-section-header,
+.agreement-section-title,
+.agreement-items-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.modern-section-heading-left,
+.modern-crm-section-heading-left,
+.proposal-section-heading-left,
+.agreement-section-heading-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.payment-forecast-details-drawer,
+.lead-details-drawer,
+.deal-details-drawer,
+.proposal-details-drawer,
+.agreement-details-drawer {
+  max-width: min(100vw, 520px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+@media (max-width: 1200px) {
+  .company-summary-grid,
+  .contacts-summary-grid,
+  .contacts-kpi-grid,
+  .leads-analytics-grid,
+  .deals-analytics-grid,
+  .commercial-kpi-grid,
+  .catalog-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}
+
+@media (max-width: 992px) {
+  .company-filter-grid,
+  .contacts-filter-grid,
+  .leads-filter-grid,
+  .deals-filter-grid,
+  .commercial-filter-grid,
+  .catalog-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .payment-forecast-details-drawer,
+  .lead-details-drawer,
+  .deal-details-drawer,
+  .proposal-details-drawer,
+  .agreement-details-drawer {
+    inset: 0 !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    border-radius: 0 !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .company-page-header,
+  .contacts-page-header,
+  .leads-page-header,
+  .deals-page-header,
+  .commercial-page-header,
+  .catalog-page-header,
+  .catalog-table-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .company-header-actions,
+  .contacts-header-actions,
+  .leads-header-actions,
+  .deals-header-actions,
+  .commercial-header-actions,
+  .catalog-toolbar { width: 100%; }
+  .company-summary-grid,
+  .contacts-summary-grid,
+  .contacts-kpi-grid,
+  .leads-analytics-grid,
+  .deals-analytics-grid,
+  .commercial-kpi-grid,
+  .catalog-kpi-grid,
+  .company-filter-grid,
+  .contacts-filter-grid,
+  .leads-filter-grid,
+  .deals-filter-grid,
+  .commercial-filter-grid,
+  .catalog-toolbar,
+  .modern-crm-form-grid,
+  .proposal-form-grid,
+  .agreement-form-grid,
+  .proposal-signatory-grid,
+  .agreement-signature-grid { grid-template-columns: 1fr !important; }
+  .crm-field-full,
+  .form-field-full,
+  .proposal-span-2,
+  .agreement-span-2 { grid-column: auto !important; }
+  .modern-crm-modal-content,
+  .proposal-modern-content,
+  .agreement-modern-content {
+    width: calc(100vw - 20px) !important;
+    max-height: 94vh !important;
+    border-radius: 18px !important;
+  }
+  .modern-crm-modal-footer,
+  .proposal-modal-footer,
+  .agreement-modal-footer {
+    align-items: stretch !important;
+    flex-direction: column !important;
+    padding: 14px 16px !important;
+  }
+  .modern-crm-footer-actions,
+  .proposal-footer-actions,
+  .agreement-footer-actions { width: 100%; }
+  .modern-crm-modal-footer .btn,
+  .proposal-modal-footer .btn,
+  .agreement-modal-footer .btn { flex: 1 1 auto; }
+}
+
+@media (max-width: 560px) {
+  .company-page-shell,
+  .contacts-page-shell,
+  .leads-page-shell,
+  .deals-page-shell,
+  .commercial-page-shell,
+  .catalog-page-shell { padding-left: 10px !important; padding-right: 10px !important; }
+  .company-header-actions > *,
+  .contacts-header-actions > *,
+  .leads-header-actions > *,
+  .deals-header-actions > *,
+  .commercial-header-actions > *,
+  .catalog-toolbar > *,
+  .company-filter-clear .btn,
+  .contacts-filter-clear .btn,
+  .leads-filter-clear .btn,
+  .deals-filter-clear .btn,
+  .commercial-filter-clear .btn { width: 100%; justify-content: center; }
+  .company-table-wrap th,
+  .company-table-wrap td,
+  .contacts-table-wrap th,
+  .contacts-table-wrap td,
+  .leads-table-wrap th,
+  .leads-table-wrap td,
+  .deals-table-wrap th,
+  .deals-table-wrap td,
+  .commercial-table-wrap th,
+  .commercial-table-wrap td,
+  .catalog-table-wrap th,
+  .catalog-table-wrap td { padding: 8px 10px !important; font-size: 12px !important; }
+  .modern-crm-modal-header,
+  .proposal-modal-header,
+  .agreement-modal-header { padding: 16px !important; }
+  .modern-crm-scroll-body,
+  .proposal-modal-scroll,
+  .agreement-scroll-body { padding: 14px !important; }
+}
+
+/* Keep CRM accents in InCheck blue (no purple accents in scoped CRM modules). */
+#companyView .company-summary-card--violet .company-summary-icon,
+#contactsView .contacts-summary-card--violet .contacts-summary-icon,
+#contactsView .contact-avatar--violet,
+#leadsView .leads-kpi-card--violet .leads-kpi-icon,
+#leadsView .leads-kpi-card--percent .leads-kpi-icon,
+#leadsView .lead-avatar--violet,
+#dealsView .deals-kpi-card--violet .deals-kpi-icon,
+#dealsView .deals-kpi-card--purple .deals-kpi-icon,
+#dealsView .deal-avatar--violet,
+.commercial-modern-workspace .commercial-kpi-card--violet .commercial-kpi-icon,
+.catalog-modern-workspace .catalog-kpi-card--violet .catalog-kpi-icon {
+  background: #dbeafe !important;
+  color: #1d4ed8 !important;
+}
+.commercial-modern-workspace .commercial-status-row--violet .commercial-status-dot {
+  background: #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, .12) !important;
+}
+.commercial-modern-workspace .commercial-status-row--violet .commercial-status-fill,
+#dealsView .deals-status-fill,
+#leadsView .leads-status-fill {
+  background: linear-gradient(90deg, #60a5fa, #2563eb) !important;
+}
+.proposal-catalog-save-btn,
+.catalog-primary-btn,
+.commercial-primary-btn,
+.leads-primary-btn,
+.deals-primary-btn {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
+  border-color: #1d4ed8 !important;
+}

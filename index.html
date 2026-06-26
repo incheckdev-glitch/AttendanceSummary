@@ -473,7 +473,7 @@
                 </select>
               </label>
             </div>
-            <div class="table-wrap company-table-wrap">
+            <div class="table-wrap company-table-wrap modern-table-scroll">
               <table id="companyTable">
                 <thead>
                   <tr>
@@ -601,7 +601,7 @@
                 </select>
               </label>
             </div>
-            <div class="contacts-table-wrap">
+            <div class="contacts-table-wrap modern-table-scroll">
               <table id="contactsTable">
                 <thead>
                   <tr>
@@ -1545,7 +1545,7 @@ Sample:
                 <span id="leadsState" class="leads-page-info">No data loaded.</span>
               </div>
             </div>
-            <div class="leads-table-wrap" role="region" aria-label="Leads table">
+            <div class="leads-table-wrap modern-table-scroll" role="region" aria-label="Leads table">
               <table id="leadsTable">
                 <thead>
                   <tr>
@@ -1700,7 +1700,7 @@ Sample:
                 <span id="dealsState" class="deals-page-info">No data loaded.</span>
               </div>
             </div>
-            <div class="deals-table-wrap" role="region" aria-label="Deals table">
+            <div class="deals-table-wrap modern-table-scroll" role="region" aria-label="Deals table">
               <table id="dealsTable">
                 <thead>
                   <tr>
@@ -2101,7 +2101,7 @@ Sample:
               </div>
               <div class="commercial-table-toolbar-right"><span class="muted">Rows per page managed by table controls</span></div>
             </div>
-            <div class="commercial-table-wrap" role="region" aria-label="Proposals table">
+            <div class="commercial-table-wrap modern-table-scroll" role="region" aria-label="Proposals table">
               <table id="proposalsTable" class="commercial-table">
                 <thead>
                   <tr>
@@ -2181,7 +2181,7 @@ Sample:
               <div class="commercial-table-toolbar-left"><span id="agreementsState" class="commercial-page-info">No data loaded.</span></div>
               <div class="commercial-table-toolbar-right"><span class="muted">Rows per page managed by table controls</span></div>
             </div>
-            <div class="commercial-table-wrap" role="region" aria-label="Agreements table">
+            <div class="commercial-table-wrap modern-table-scroll" role="region" aria-label="Agreements table">
               <table id="agreementsTable" class="commercial-table">
                 <thead>
                   <tr>
@@ -2856,7 +2856,7 @@ Sample:
               </div>
             </div>
             <div id="proposalCatalogState" class="catalog-state">No data loaded.</div>
-            <div class="catalog-table-wrap" role="region" aria-label="Proposal catalog table">
+            <div class="catalog-table-wrap modern-table-scroll" role="region" aria-label="Proposal catalog table">
               <table id="proposalCatalogTable" class="catalog-table">
                 <thead>
                   <tr>
@@ -3953,9 +3953,9 @@ Sample:
           <section class="proposal-section-card"><div class="proposal-section-title"><div class="proposal-section-heading-left"><span class="proposal-section-icon" aria-hidden="true">📄</span><div><h3>Terms &amp; Conditions</h3><p>Default proposal terms are added automatically and can be edited before saving.</p></div></div><button id="proposalResetTermsBtn" class="btn btn-incheck-outline sm" type="button">Reset to Default Terms</button></div><div class="filter-row"><label class="muted" for="proposalFormTerms">Terms &amp; Conditions</label><textarea id="proposalFormTerms" class="input" rows="7" placeholder="Default proposal terms are added automatically and can be edited before saving."></textarea></div></section>
 
           <section class="proposal-section-card proposal-items-panel"><div class="proposal-section-title"><div class="proposal-section-heading-left"><span class="proposal-section-icon" aria-hidden="true">🧩</span><div><h3>Proposal Items</h3><p>Add annual SaaS, one-time fee and hardware line items.</p></div></div></div>
-            <div class="proposal-item-group"><div class="proposal-item-heading"><div class="proposal-section-heading-left"><span class="proposal-section-icon" aria-hidden="true">🔁</span><div><h3>Annual SaaS Items</h3><p>Recurring subscription items for this proposal.</p></div></div><button id="proposalAddAnnualRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap proposal-table-wrap"><table><thead><tr><th>Location</th><th>License</th><th>License Price / Year</th><th>License / Month</th><th>Service Start Date</th><th>Service End Date</th><th>Discount %</th><th>Total</th><th>Actions</th></tr></thead><tbody id="proposalAnnualItemsTbody"></tbody></table></div><datalist id="proposalCatalogOptions-annual_saas"></datalist></div>
-            <div class="proposal-item-group"><div class="proposal-item-heading"><div class="proposal-section-heading-left"><span class="proposal-section-icon" aria-hidden="true">💵</span><div><h3>One-Time Fee Items</h3><p>Non-recurring services and setup fees for this proposal.</p></div></div><button id="proposalAddOneTimeRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap proposal-table-wrap"><table><thead><tr><th>Location</th><th>Item / Service</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead><tbody id="proposalOneTimeItemsTbody"></tbody></table></div><datalist id="proposalCatalogOptions-one_time_fee"></datalist></div>
-            <div class="proposal-item-group"><div class="proposal-item-heading"><div class="proposal-section-heading-left"><span class="proposal-section-icon" aria-hidden="true">🖥️</span><div><h3>Hardware Items</h3><p>Hardware and product items for this proposal.</p></div></div><button id="proposalAddHardwareRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap proposal-table-wrap"><table><thead><tr><th>Location</th><th>Hardware / Product</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead><tbody id="proposalHardwareItemsTbody"></tbody></table></div><datalist id="proposalCatalogOptions-hardware"></datalist></div>
+            <div class="proposal-item-group"><div class="proposal-item-heading"><div class="proposal-section-heading-left"><span class="proposal-section-icon" aria-hidden="true">🔁</span><div><h3>Annual SaaS Items</h3><p>Recurring subscription items for this proposal.</p></div></div><button id="proposalAddAnnualRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap proposal-table-wrap modern-table-scroll"><table><thead><tr><th>Location</th><th>License</th><th>License Price / Year</th><th>License / Month</th><th>Service Start Date</th><th>Service End Date</th><th>Discount %</th><th>Total</th><th>Actions</th></tr></thead><tbody id="proposalAnnualItemsTbody"></tbody></table></div><datalist id="proposalCatalogOptions-annual_saas"></datalist></div>
+            <div class="proposal-item-group"><div class="proposal-item-heading"><div class="proposal-section-heading-left"><span class="proposal-section-icon" aria-hidden="true">💵</span><div><h3>One-Time Fee Items</h3><p>Non-recurring services and setup fees for this proposal.</p></div></div><button id="proposalAddOneTimeRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap proposal-table-wrap modern-table-scroll"><table><thead><tr><th>Location</th><th>Item / Service</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead><tbody id="proposalOneTimeItemsTbody"></tbody></table></div><datalist id="proposalCatalogOptions-one_time_fee"></datalist></div>
+            <div class="proposal-item-group"><div class="proposal-item-heading"><div class="proposal-section-heading-left"><span class="proposal-section-icon" aria-hidden="true">🖥️</span><div><h3>Hardware Items</h3><p>Hardware and product items for this proposal.</p></div></div><button id="proposalAddHardwareRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap proposal-table-wrap modern-table-scroll"><table><thead><tr><th>Location</th><th>Hardware / Product</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead><tbody id="proposalHardwareItemsTbody"></tbody></table></div><datalist id="proposalCatalogOptions-hardware"></datalist></div>
           </section>
 
           <section class="proposal-summary-card"><strong>Totals Summary</strong><div><span>SaaS Total</span><b id="proposalSaasTotal">0</b></div><div><span>One-Time Total</span><b id="proposalOneTimeTotal">0</b></div><div><span>Hardware Total</span><b id="proposalHardwareTotal">0</b></div><div class="proposal-grand-total"><span>Grand Total</span><b id="proposalGrandTotal">0</b></div></section>
@@ -4136,9 +4136,9 @@ Sample:
         </div></section>
 
         <section class="agreement-section-card"><h3 class="agreement-section-title"><span>☰</span> Agreement Items</h3>
-          <div class="agreement-items-panel"><div class="agreement-items-header"><strong>Annual SaaS Items</strong><button id="agreementAddAnnualRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap agreement-table-wrap"><table><thead><tr><th>Location</th><th>License</th><th>License Price / Year</th><th>License / Month</th><th>Service Start Date</th><th>Service End Date</th><th>Discount %</th><th>Total</th><th>Invoice Status</th><th>Actions</th></tr></thead><tbody id="agreementAnnualItemsTbody"></tbody></table></div></div>
-          <div class="agreement-items-panel"><div class="agreement-items-header"><strong>One-Time Fee Items</strong><button id="agreementAddOneTimeRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap agreement-table-wrap"><table><thead><tr><th>Location</th><th>Item / Service</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead><tbody id="agreementOneTimeItemsTbody"></tbody></table></div></div>
-          <div class="agreement-items-panel"><div class="agreement-items-header"><strong>Hardware Items</strong><button id="agreementAddHardwareRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap agreement-table-wrap"><table><thead><tr><th>Location</th><th>Hardware / Product</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead><tbody id="agreementHardwareItemsTbody"></tbody></table></div></div>
+          <div class="agreement-items-panel"><div class="agreement-items-header"><strong>Annual SaaS Items</strong><button id="agreementAddAnnualRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap agreement-table-wrap modern-table-scroll"><table><thead><tr><th>Location</th><th>License</th><th>License Price / Year</th><th>License / Month</th><th>Service Start Date</th><th>Service End Date</th><th>Discount %</th><th>Total</th><th>Invoice Status</th><th>Actions</th></tr></thead><tbody id="agreementAnnualItemsTbody"></tbody></table></div></div>
+          <div class="agreement-items-panel"><div class="agreement-items-header"><strong>One-Time Fee Items</strong><button id="agreementAddOneTimeRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap agreement-table-wrap modern-table-scroll"><table><thead><tr><th>Location</th><th>Item / Service</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead><tbody id="agreementOneTimeItemsTbody"></tbody></table></div></div>
+          <div class="agreement-items-panel"><div class="agreement-items-header"><strong>Hardware Items</strong><button id="agreementAddHardwareRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap agreement-table-wrap modern-table-scroll"><table><thead><tr><th>Location</th><th>Hardware / Product</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead><tbody id="agreementHardwareItemsTbody"></tbody></table></div></div>
           <datalist id="agreementCatalogOptions-hardware"></datalist>
           <div class="agreement-summary-card"><strong>Totals Summary</strong><div><span>Subtotal SaaS</span><b id="agreementSaasTotal">0</b></div><div><span>One-Time Fees</span><b id="agreementOneTimeTotal">0</b></div><div><span>Hardware</span><b id="agreementHardwareTotal">0</b></div><div class="agreement-grand-total"><span>Grand Total</span><b id="agreementGrandTotal">0</b></div></div>
         </section>
