@@ -2949,6 +2949,22 @@ const Agreements = {
     this.applyFilters();
     this.render();
   },
+  renderAgreementDistribution(el, entries = [], total = 0) {
+    if (!el) return;
+    if (!entries.length) {
+      el.innerHTML = '<div class="commercial-empty-breakdown">No data for current filters.</div>';
+      return;
+    }
+    el.innerHTML = entries.map(([label, count], index) => {
+      const percent = total > 0 ? (count / total) * 100 : 0;
+      const tone = ['green', 'violet', 'blue', 'amber', 'rose', 'teal'][index % 6];
+      return `<div class="commercial-status-row commercial-status-row--${tone}">
+        <div class="commercial-status-label"><span class="commercial-status-dot"></span>${U.escapeHtml(label)}</div>
+        <div class="commercial-status-track"><span class="commercial-status-fill" style="width:${Math.min(100, percent).toFixed(1)}%"></span></div>
+        <div class="commercial-status-meta">${count} · ${percent.toFixed(1)}%</div>
+      </div>`;
+    }).join('');
+  },
   renderSummary() {
     if (!E.agreementsSummary) return;
     const rows = this.state.filteredRows;
@@ -2961,20 +2977,38 @@ const Agreements = {
     const proposalLinked = countBy(row => String(row.proposal_id || '').trim());
     const draftCount = countBy(row => this.normalizeText(this.resolveAgreementStatus(row)) === 'draft');
     const cards = [
-      ['Total Agreements', rows.length, 'total'],
-      ['Draft Agreements', draftCount, 'draft'],
-      ['Sent / Under Review / Awaiting Signature', sentReviewAwaiting, 'sent-review-awaiting'],
-      ['Signed / Active', signedActive, 'signed-active'],
-      ['Expired / Cancelled', expiredCancelled, 'expired-cancelled'],
-      ['Total Contract Value', this.formatMoney(totalValue), 'contract-value'],
-      ['Proposal-linked Agreements', proposalLinked, 'proposal-linked']
+      ['Total Agreements', rows.length, 'total', '▤', 'blue', 'All agreements'],
+      ['Draft Agreements', draftCount, 'draft', '✎', 'amber', 'Draft status'],
+      ['Sent / Under Review / Awaiting Signature', sentReviewAwaiting, 'sent-review-awaiting', '✉', 'violet', 'Pending signature'],
+      ['Signed / Active', signedActive, 'signed-active', '✓', 'green', 'Active contracts'],
+      ['Expired / Cancelled', expiredCancelled, 'expired-cancelled', '◷', 'rose', 'Expired or cancelled'],
+      ['Total Contract Value', this.formatMoney(totalValue), 'contract-value', '$', 'money', 'Grand total value'],
+      ['Proposal-linked Agreements', proposalLinked, 'proposal-linked', '⌁', 'indigo', 'Created from proposal']
     ];
     E.agreementsSummary.innerHTML = cards
-      .map(([label, value, filter]) => {
+      .map(([label, value, filter, icon, tone, sub]) => {
         const active = (this.state.kpiFilter || 'total') === filter;
-        return `<div class="card kpi${active ? ' kpi-filter-active' : ''}" data-kpi-filter="${U.escapeAttr(filter)}" role="button" tabindex="0" aria-pressed="${active ? 'true' : 'false'}"><div class="label">${U.escapeHtml(label)}</div><div class="value">${U.escapeHtml(String(value))}</div></div>`;
+        return `<article class="commercial-kpi-card commercial-kpi-card--${tone}${active ? ' kpi-filter-active' : ''}" data-kpi-filter="${U.escapeAttr(filter)}" role="button" tabindex="0" aria-pressed="${active ? 'true' : 'false'}"><div class="commercial-kpi-icon" aria-hidden="true">${U.escapeHtml(icon)}</div><div><div class="label">${U.escapeHtml(label)}</div><div class="value">${U.escapeHtml(String(value))}</div><div class="sub">${U.escapeHtml(sub)}</div></div></article>`;
       })
       .join('');
+
+    const increment = (map, key) => {
+      const label = String(key || 'Unspecified').trim() || 'Unspecified';
+      map.set(label, (map.get(label) || 0) + 1);
+    };
+    const statusMap = new Map();
+    const billingMap = new Map();
+    const linkageMap = new Map();
+    rows.forEach(row => {
+      const status = this.resolveAgreementStatus(row) || 'Unspecified';
+      increment(statusMap, status);
+      increment(billingMap, row.billing_frequency || 'Unspecified');
+      increment(linkageMap, String(row.proposal_id || '').trim() ? 'Linked to Proposal' : 'Not Linked');
+    });
+    const topEntries = (map, limit = 8) => [...map.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, limit);
+    this.renderAgreementDistribution(document.getElementById('agreementsStatusDistribution'), topEntries(statusMap), rows.length);
+    this.renderAgreementDistribution(document.getElementById('agreementsBillingDistribution'), topEntries(billingMap), rows.length);
+    this.renderAgreementDistribution(document.getElementById('agreementsLinkageDistribution'), topEntries(linkageMap), rows.length);
   },
   renderFilters() {
     const statuses = [...new Set(this.state.rows.map(r => String(r.status || '').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
@@ -3074,32 +3108,69 @@ const Agreements = {
       return;
     }
     const textCell = value => U.escapeHtml(String(value ?? '').trim() || '—');
+    const statusChip = label => {
+      const key = String(label || '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      let tone = 'neutral';
+      if (key.includes('signed') || key.includes('active')) tone = 'success';
+      else if (key.includes('draft')) tone = 'info';
+      else if (key.includes('sent') || key.includes('review') || key.includes('awaiting')) tone = 'warning';
+      else if (key.includes('expired') || key.includes('cancel')) tone = 'danger';
+      return `<span class="commercial-chip commercial-chip--${tone}">${U.escapeHtml(label || '—')}</span>`;
+    };
+    const actionsMenu = (row, id, signedRow, uploadBlocked, invoiceBlocked) => {
+      const items = [];
+      if (signedRow && Permissions.canUpdateAgreement()) {
+        items.push(`<button class="commercial-menu-item${uploadBlocked ? ' is-disabled' : ''}" type="button" data-agreement-upload-signed="${id}" data-permission-resource="agreements" data-permission-action="update" ${uploadBlocked ? 'disabled aria-disabled="true"' : ''}>${uploadBlocked ? 'Signed Doc Uploaded' : 'Upload Signed Doc'}</button>`);
+      }
+      if (!signedRow && Permissions.canUpdateAgreement()) {
+        items.push(`<button class="commercial-menu-item" type="button" data-agreement-edit="${id}" data-permission-resource="agreements" data-permission-action="update">Edit</button>`);
+      }
+      if (Permissions.canGenerateAgreementHtml()) {
+        items.push(`<button class="commercial-menu-item" type="button" data-agreement-preview="${id}" data-permission-resource="agreements" data-permission-action="view">View Agreement</button>`);
+      }
+      if (signedRow && Permissions.canCreateInvoiceFromAgreement()) {
+        items.push(`<button class="commercial-menu-item${invoiceBlocked ? ' is-disabled' : ''}" type="button" data-agreement-create-invoice="${id}" data-permission-resource="invoices" data-permission-action="create_from_agreement" ${invoiceBlocked ? 'disabled aria-disabled="true"' : ''}>Create Invoice</button>`);
+      }
+      if (Permissions.canDeleteAgreement()) {
+        items.push(`<button class="commercial-menu-item danger" type="button" data-agreement-delete="${id}" data-permission-resource="agreements" data-permission-action="delete">Delete</button>`);
+      }
+      return items.length
+        ? `<details class="commercial-actions-menu" onclick="event.stopPropagation()" onkeydown="event.stopPropagation()"><summary class="commercial-more-btn" aria-label="More agreement actions">⋮</summary><div class="commercial-actions-popover">${items.join('')}</div></details>`
+        : '';
+    };
     E.agreementsTbody.innerHTML = rows.map(row => {
       const id = U.escapeAttr(row.id || row.agreement_id || row.agreement_number || row.agreementId || '');
       const rowTotals = this.calculateTotalsFromAgreementRecord(row);
       const signedRow = this.isAgreementLockedAsSigned(row);
-      const adminOverride = this.canUseAdminOverride();
       const importedBadge = this.toDbBoolean(row.is_imported ?? row.isImported, false) || this.toDbBoolean(row.is_historical_agreement ?? row.isHistoricalAgreement, false)
-        ? ' <span class="chip" style="margin-left:6px;">Historical</span>'
+        ? ' <span class="commercial-chip commercial-chip--neutral" style="margin-left:6px;">Historical</span>'
         : '';
       const invoiceBlocked = signedRow && this.state.invoiceBlockedAgreementIds.has(String(row?.id || '').trim());
       const signedDocUploaded = this.hasSignedDocument(row);
       const uploadBlocked = signedDocUploaded;
       const selected = String(this.state.selectedDetailsId || '') === String(row.id || row.agreement_id || row.agreement_number || '');
-      return `<tr class="entity-clickable-row${selected ? ' is-selected' : ''}" tabindex="0" data-agreement-row="${id}" aria-label="Open agreement ${U.escapeAttr(row.agreement_id || row.agreement_number || row.customer_name || '')} details">
-        <td>${textCell(row.agreement_id)}${importedBadge}</td><td>${textCell(row.agreement_number)}</td><td>${textCell(row.agreement_title)}</td>
-        <td>${textCell(row.customer_name)}</td><td>${textCell(this.getAgreementProposalDisplayRef(row))}</td><td>${textCell(row.deal_id)}</td>
-        <td>${U.escapeHtml(U.fmtDisplayDate(row.service_start_date))}</td><td>${textCell(row.agreement_length)}</td><td>${textCell(row.billing_frequency)}</td>
-        <td>${textCell(this.getPaymentTermDisplay(row.payment_term))}</td><td>${textCell(row.currency)}</td><td>${textCell(this.formatMoney(rowTotals.grand_total))}</td>
-        <td>${textCell(this.resolveAgreementStatus(row))}</td><td>${U.escapeHtml(U.fmtDisplayDate(row.updated_at))}</td>
-        <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
-        ${Permissions.canView('agreements') ? `<button class="btn ghost sm" type="button" data-agreement-view="${id}">View</button>` : ''}
-        ${signedRow && Permissions.canUpdateAgreement() ? `<button class=\"btn ghost sm action-btn upload-signed-doc-btn${uploadBlocked ? ' is-disabled is-blocked' : ''}\" type=\"button\" data-agreement-upload-signed=\"${id}\" data-permission-resource=\"agreements\" data-permission-action=\"update\" ${uploadBlocked ? 'disabled aria-disabled="true"' : ''} title="${U.escapeAttr(uploadBlocked ? 'Signed document has already been uploaded.' : 'Upload signed document')}">${uploadBlocked ? 'Signed Doc Uploaded' : 'Upload Signed Doc'}</button>` : ''}
-        ${!signedRow && Permissions.canUpdateAgreement() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="agreements" data-permission-action="update" data-agreement-edit=\"${id}\" data-permission-resource=\"agreements\" data-permission-action=\"update\">Edit</button>` : ''}
-        ${Permissions.canGenerateAgreementHtml() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="agreements" data-permission-action="view" data-agreement-preview=\"${id}\">View Agreement</button>` : ''}
-        ${signedRow && Permissions.canCreateInvoiceFromAgreement() ? `<button class=\"btn ghost sm create-invoice-btn${invoiceBlocked ? ' is-disabled is-blocked' : ''}\" type=\"button\" data-permission-resource="invoices" data-permission-action="create_from_agreement" data-agreement-create-invoice=\"${id}\" data-permission-resource=\"invoices\" data-permission-action=\"create\" ${invoiceBlocked ? 'disabled aria-disabled="true"' : ''} title="${U.escapeAttr(invoiceBlocked ? 'All Annual SaaS locations have already been invoiced.' : 'Create invoice')}">Create Invoice</button>` : ''}
-        ${Permissions.canDeleteAgreement() ? `<button class=\"btn ghost sm\" type=\"button\" data-permission-resource="agreements" data-permission-action="delete" data-agreement-delete=\"${id}\" data-permission-resource=\"agreements\" data-permission-action=\"delete\">Delete</button>` : ''}
-        </div></td></tr>`;
+      const statusLabel = this.resolveAgreementStatus(row);
+      const customerInitial = String(row.customer_name || row.agreement_title || 'A').trim().charAt(0).toUpperCase() || 'A';
+      return `<tr class="entity-clickable-row commercial-clickable-row${selected ? ' is-selected' : ''}" tabindex="0" data-agreement-row="${id}" aria-label="Open agreement ${U.escapeAttr(row.agreement_id || row.agreement_number || row.customer_name || '')} details">
+        <td class="commercial-id-cell">${textCell(row.agreement_id)}${importedBadge}</td>
+        <td>${textCell(row.agreement_number)}</td>
+        <td class="commercial-name-cell"><div class="commercial-name-wrap"><span class="commercial-avatar commercial-avatar--agreement">${U.escapeHtml(customerInitial)}</span><span>${textCell(row.agreement_title)}</span></div></td>
+        <td>${textCell(row.customer_name)}</td>
+        <td>${textCell(this.getAgreementProposalDisplayRef(row))}</td>
+        <td>${textCell(row.deal_id)}</td>
+        <td>${U.escapeHtml(U.fmtDisplayDate(row.service_start_date))}</td>
+        <td>${textCell(row.agreement_length)}</td>
+        <td>${textCell(row.billing_frequency)}</td>
+        <td>${textCell(this.getPaymentTermDisplay(row.payment_term))}</td>
+        <td>${textCell(row.currency)}</td>
+        <td class="commercial-money-cell">${textCell(this.formatMoney(rowTotals.grand_total))}</td>
+        <td>${statusChip(statusLabel)}</td>
+        <td>${U.escapeHtml(U.fmtDisplayDate(row.updated_at))}</td>
+        <td><div class="commercial-row-actions">
+          ${Permissions.canView('agreements') ? `<button class="commercial-view-btn" type="button" data-agreement-view="${id}">View</button>` : ''}
+          ${actionsMenu(row, id, signedRow, uploadBlocked, invoiceBlocked)}
+        </div></td>
+      </tr>`;
     }).join('');
     const paginationHost = U.ensurePaginationHost({
       hostId: 'agreementsPagination',
@@ -4982,6 +5053,17 @@ const Agreements = {
     bindState(E.agreementsSearchInput, 'search');
     bindState(E.agreementsStatusFilter, 'status');
     bindState(E.agreementsProposalDealFilter, 'proposalOrDeal');
+
+    document.querySelector('[data-commercial-clear="agreements"]')?.addEventListener('click', () => {
+      this.state.search = '';
+      this.state.status = 'All';
+      this.state.proposalOrDeal = '';
+      this.state.kpiFilter = 'total';
+      this.state.page = 1;
+      if (E.agreementsCreateFromProposalInput) E.agreementsCreateFromProposalInput.value = '';
+      this.renderFilters();
+      this.loadAndRefresh({ force: true });
+    });
     if (E.agreementsExportCsvBtn) E.agreementsExportCsvBtn.addEventListener('click', () => this.exportAgreementsCsv());
 
     if (E.agreementsRefreshBtn) E.agreementsRefreshBtn.addEventListener('click', () => this.loadAndRefresh({ force: true }));

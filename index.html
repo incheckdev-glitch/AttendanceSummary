@@ -2033,111 +2033,165 @@ Sample:
         </div>
       </div>
 
-      <section id="proposalsView" class="view" role="tabpanel" aria-labelledby="proposalsTab">
-        <div class="card" aria-label="Proposals list">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
-            <div>
-              <strong>Proposals</strong>
-              <div class="muted">Proposal records synced from backend proposals resource.</div>
+      <section id="proposalsView" class="view commercial-modern-workspace proposals-modern-workspace" role="tabpanel" aria-labelledby="proposalsTab">
+        <div class="commercial-page-shell" aria-label="Proposals list">
+          <header class="commercial-page-header">
+            <div class="commercial-title-block">
+              <div class="commercial-title-row">
+                <span class="commercial-title-icon" aria-hidden="true">▧</span>
+                <div>
+                  <h1>Proposals</h1>
+                  <p>Manage proposals and customer quotations.</p>
+                </div>
+              </div>
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <input id="proposalsSearchInput" class="input" type="search" placeholder="Search proposal ID, title, deal, customer..." aria-label="Search proposals" />
-              <input id="proposalsCustomerFilter" class="input" type="search" placeholder="Customer filter..." aria-label="Filter by customer" />
-              <select id="proposalsStatusFilter" class="select" aria-label="Filter by proposal status">
-                <option>All</option>
-              </select>
-              <button id="proposalsExportCsvBtn" class="btn ghost sm" type="button">Export CSV</button>
-              <button id="proposalsRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
-              <button id="proposalsCreateBtn" class="btn sm" type="button">Create Proposal</button>
+            <div class="commercial-header-actions">
+              <button id="proposalsRefreshBtn" class="btn ghost sm commercial-soft-btn" type="button">↻ Refresh</button>
+              <button id="proposalsExportCsvBtn" class="btn ghost sm commercial-soft-btn" type="button">⇩ Export CSV</button>
+              <button id="proposalsCreateBtn" class="btn sm commercial-primary-btn" type="button">+ Create Proposal</button>
             </div>
-          </div>
-          <div id="proposalsAnalytics" class="deals-analytics" aria-label="Proposals analytics widgets">
-            <div id="proposalsAnalyticsGrid" class="grid deals-analytics-grid">
-              <article class="card kpi deals-kpi-card" data-kpi-filter="total"><div class="label">Visible Proposals</div><div id="proposalsKpiTotal" class="value">0</div><div class="sub">Rows after filters</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="draft"><div class="label">Draft</div><div id="proposalsKpiDraft" class="value">0</div><div class="sub">Status matched as draft</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="sent"><div class="label">Sent</div><div id="proposalsKpiSent" class="value">0</div><div class="sub">Status matched as sent</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="approved"><div class="label">Accepted</div><div id="proposalsKpiApproved" class="value">0</div><div class="sub">Status matched as accepted</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="rejected"><div class="label">Rejected</div><div id="proposalsKpiRejected" class="value">0</div><div class="sub">Status matched as rejected</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="expired"><div class="label">Expired</div><div id="proposalsKpiExpired" class="value">0</div><div class="sub">Status matched as expired</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="unique-customers"><div class="label">Unique Customers</div><div id="proposalsKpiUniqueCustomers" class="value">0</div><div class="sub">Distinct customer_name</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="linked-deals"><div class="label">Linked Deals</div><div id="proposalsKpiLinkedDeals" class="value">0</div><div class="sub">Rows with deal_id</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="avg-grand-total"><div class="label">Avg Grand Total</div><div id="proposalsKpiAvgGrandTotal" class="value">0</div><div class="sub">Average grand total</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="grand-total"><div class="label">Total Grand Value</div><div id="proposalsKpiGrandTotal" class="value">0</div><div id="proposalsKpiGrandTotalSub" class="sub">Sum of grand total</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="saas-total"><div class="label">Total SaaS Value</div><div id="proposalsKpiSaasTotal" class="value">0</div><div id="proposalsKpiSaasTotalSub" class="sub">Sum of SaaS totals</div></article>
-              <article class="card kpi deals-kpi-card" data-kpi-filter="one-time-total"><div class="label">Total One-Time Value</div><div id="proposalsKpiOneTimeTotal" class="value">0</div><div id="proposalsKpiOneTimeTotalSub" class="sub">Sum of one-time totals</div></article>
-            </div>
-            <div class="deals-breakdown-grid">
-              <article class="card deals-breakdown-card" aria-label="Proposal status distribution">
-                <div class="deals-breakdown-title">Status distribution</div>
-                <div id="proposalsStatusDistribution" class="deals-status-bars"></div>
-              </article>
-              <article class="card deals-breakdown-card" aria-label="Proposal currency distribution">
-                <div class="deals-breakdown-title">Currency distribution</div>
-                <div id="proposalsCurrencyDistribution" class="deals-status-bars"></div>
-              </article>
-              <article class="card deals-breakdown-card" aria-label="Top proposal generators">
-                <div class="deals-breakdown-title">Top generators</div>
-                <div id="proposalsGeneratedByDistribution" class="deals-status-bars"></div>
-              </article>
+          </header>
+
+          <div id="proposalsAnalytics" class="commercial-analytics" aria-label="Proposals analytics widgets">
+            <div id="proposalsAnalyticsGrid" class="commercial-kpi-grid commercial-kpi-grid--proposals">
+              <article class="commercial-kpi-card commercial-kpi-card--blue" data-kpi-filter="total" role="button" tabindex="0"><div class="commercial-kpi-icon" aria-hidden="true">▤</div><div><div class="label">Visible Proposals</div><div id="proposalsKpiTotal" class="value">0</div><div class="sub">Rows after filters</div></div></article>
+              <article class="commercial-kpi-card commercial-kpi-card--violet" data-kpi-filter="draft" role="button" tabindex="0"><div class="commercial-kpi-icon" aria-hidden="true">✎</div><div><div class="label">Draft</div><div id="proposalsKpiDraft" class="value">0</div><div class="sub">Status matched as draft</div></div></article>
+              <article class="commercial-kpi-card commercial-kpi-card--sky" data-kpi-filter="sent" role="button" tabindex="0"><div class="commercial-kpi-icon" aria-hidden="true">✈</div><div><div class="label">Sent</div><div id="proposalsKpiSent" class="value">0</div><div class="sub">Status matched as sent</div></div></article>
+              <article class="commercial-kpi-card commercial-kpi-card--green" data-kpi-filter="approved" role="button" tabindex="0"><div class="commercial-kpi-icon" aria-hidden="true">✓</div><div><div class="label">Accepted</div><div id="proposalsKpiApproved" class="value">0</div><div class="sub">Status matched as accepted</div></div></article>
+              <article class="commercial-kpi-card commercial-kpi-card--rose" data-kpi-filter="rejected" role="button" tabindex="0"><div class="commercial-kpi-icon" aria-hidden="true">×</div><div><div class="label">Rejected</div><div id="proposalsKpiRejected" class="value">0</div><div class="sub">Status matched as rejected</div></div></article>
+              <article class="commercial-kpi-card commercial-kpi-card--amber" data-kpi-filter="expired" role="button" tabindex="0"><div class="commercial-kpi-icon" aria-hidden="true">◷</div><div><div class="label">Expired</div><div id="proposalsKpiExpired" class="value">0</div><div class="sub">Status matched as expired</div></div></article>
+              <article class="commercial-kpi-card commercial-kpi-card--teal" data-kpi-filter="unique-customers" role="button" tabindex="0"><div class="commercial-kpi-icon" aria-hidden="true">👥</div><div><div class="label">Unique Customers</div><div id="proposalsKpiUniqueCustomers" class="value">0</div><div class="sub">Distinct customers</div></div></article>
+              <article class="commercial-kpi-card commercial-kpi-card--indigo" data-kpi-filter="linked-deals" role="button" tabindex="0"><div class="commercial-kpi-icon" aria-hidden="true">⌁</div><div><div class="label">Linked Deals</div><div id="proposalsKpiLinkedDeals" class="value">0</div><div class="sub">Rows with deal ID</div></div></article>
+              <article class="commercial-kpi-card commercial-kpi-card--orange" data-kpi-filter="avg-grand-total" role="button" tabindex="0"><div class="commercial-kpi-icon" aria-hidden="true">↗</div><div><div class="label">Avg Grand Total</div><div id="proposalsKpiAvgGrandTotal" class="value">0</div><div class="sub">Average grand total</div></div></article>
+              <article class="commercial-kpi-card commercial-kpi-card--money" data-kpi-filter="grand-total" role="button" tabindex="0"><div class="commercial-kpi-icon" aria-hidden="true">$</div><div><div class="label">Total Grand Value</div><div id="proposalsKpiGrandTotal" class="value">0</div><div id="proposalsKpiGrandTotalSub" class="sub">Sum of grand total</div></div></article>
+              <article class="commercial-kpi-card commercial-kpi-card--blue" data-kpi-filter="saas-total" role="button" tabindex="0"><div class="commercial-kpi-icon" aria-hidden="true">☁</div><div><div class="label">Total SaaS Value</div><div id="proposalsKpiSaasTotal" class="value">0</div><div id="proposalsKpiSaasTotalSub" class="sub">Sum of SaaS totals</div></div></article>
+              <article class="commercial-kpi-card commercial-kpi-card--violet" data-kpi-filter="one-time-total" role="button" tabindex="0"><div class="commercial-kpi-icon" aria-hidden="true">◈</div><div><div class="label">Total One-Time Value</div><div id="proposalsKpiOneTimeTotal" class="value">0</div><div id="proposalsKpiOneTimeTotalSub" class="sub">Sum of one-time totals</div></div></article>
             </div>
           </div>
-          <div id="proposalsState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
-          <div class="table-wrap" role="region" aria-label="Proposals table">
-            <table id="proposalsTable">
-              <thead>
-                <tr>
-                  <th>Proposal ID</th>
-                  <th>Ref Number</th>
-                  <th>Proposal Title</th>
-                  <th>Customer Name</th>
-                  <th>Deal ID</th>
-                  <th>Status</th>
-                  <th>Currency</th>
-                  <th>SaaS Total</th>
-                  <th>One Time Total</th>
-                  <th>Grand Total</th>
-                  <th>Proposal Date</th>
-                  <th>Valid Until</th>
-                  <th>Generated By</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="proposalsTbody"></tbody>
-            </table>
+
+          <section class="commercial-filter-card" aria-label="Proposal filters">
+            <div class="commercial-panel-title"><span class="commercial-panel-icon" aria-hidden="true">⌁</span><h2>Filters</h2></div>
+            <div class="commercial-filter-grid commercial-filter-grid--proposals">
+              <label class="commercial-filter-field commercial-filter-search" for="proposalsSearchInput"><span>Search proposal ID, title, deal ID...</span><div class="commercial-input-shell"><span aria-hidden="true">⌕</span><input id="proposalsSearchInput" class="input" type="search" placeholder="Search..." aria-label="Search proposals" /></div></label>
+              <label class="commercial-filter-field" for="proposalsCustomerFilter"><span>Customer</span><input id="proposalsCustomerFilter" class="input" type="search" placeholder="Customer filter..." aria-label="Filter by customer" /></label>
+              <label class="commercial-filter-field" for="proposalsStatusFilter"><span>Status</span><select id="proposalsStatusFilter" class="select" aria-label="Filter by proposal status"><option>All</option></select></label>
+              <div class="commercial-filter-clear"><button class="btn ghost commercial-soft-btn" type="button" data-commercial-clear="proposals">⌁ Clear Filters</button></div>
+            </div>
+          </section>
+
+          <div class="commercial-breakdown-grid">
+            <article class="commercial-breakdown-card" aria-label="Proposal status distribution">
+              <div class="commercial-breakdown-title">Status Distribution</div>
+              <div id="proposalsStatusDistribution" class="commercial-status-bars"></div>
+            </article>
+            <article class="commercial-breakdown-card" aria-label="Proposal currency distribution">
+              <div class="commercial-breakdown-title">Currency Distribution</div>
+              <div id="proposalsCurrencyDistribution" class="commercial-status-bars"></div>
+            </article>
+            <article class="commercial-breakdown-card" aria-label="Top proposal generators">
+              <div class="commercial-breakdown-title">Top Generators</div>
+              <div id="proposalsGeneratedByDistribution" class="commercial-status-bars"></div>
+            </article>
           </div>
+
+          <section class="commercial-table-panel" aria-label="Proposals table panel">
+            <div class="commercial-table-toolbar">
+              <div class="commercial-table-toolbar-left">
+                <span id="proposalsState" class="commercial-page-info">No data loaded.</span>
+              </div>
+              <div class="commercial-table-toolbar-right"><span class="muted">Rows per page managed by table controls</span></div>
+            </div>
+            <div class="commercial-table-wrap" role="region" aria-label="Proposals table">
+              <table id="proposalsTable" class="commercial-table">
+                <thead>
+                  <tr>
+                    <th>Proposal ID</th>
+                    <th>Ref Number</th>
+                    <th>Proposal Title</th>
+                    <th>Customer Name</th>
+                    <th>Deal ID</th>
+                    <th>Status</th>
+                    <th>Currency</th>
+                    <th>SaaS Total</th>
+                    <th>One Time Total</th>
+                    <th>Grand Total</th>
+                    <th>Proposal Date</th>
+                    <th>Valid Until</th>
+                    <th>Generated By</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="proposalsTbody"></tbody>
+              </table>
+            </div>
+          </section>
         </div>
       </section>
 
-      <section id="agreementsView" class="view" role="tabpanel" aria-labelledby="agreementsTab">
-        <div class="grid cols-4" id="agreementsSummary" aria-live="polite"></div>
-        <div class="card" aria-label="Agreements list">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
-            <div>
-              <strong>Agreements</strong>
-              <div class="muted">Agreement records synced from backend agreements resource.</div>
+      <section id="agreementsView" class="view commercial-modern-workspace agreements-modern-workspace" role="tabpanel" aria-labelledby="agreementsTab">
+        <div class="commercial-page-shell" aria-label="Agreements list">
+          <header class="commercial-page-header">
+            <div class="commercial-title-block">
+              <div class="commercial-title-row">
+                <span class="commercial-title-icon commercial-title-icon--agreement" aria-hidden="true">▣</span>
+                <div>
+                  <h1>Agreements</h1>
+                  <p>Manage contracts, signatures, and active agreements.</p>
+                </div>
+              </div>
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <input id="agreementsSearchInput" class="input" type="search" placeholder="Search ID, number, title, customer, contact..." aria-label="Search agreements" />
-              <select id="agreementsStatusFilter" class="select" aria-label="Filter by agreement status"><option>All</option></select>
-              <input id="agreementsProposalDealFilter" class="input" type="search" placeholder="Proposal ID or Deal ID" aria-label="Filter by proposal or deal" />
-              <input id="agreementsCreateFromProposalInput" class="input" type="text" placeholder="Proposal ID (e.g. PROP-0001)" aria-label="Proposal ID to create agreement" />
-              <button id="agreementsExportCsvBtn" class="btn ghost sm" type="button">Export CSV</button>
-              <button id="agreementsRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
-              <button id="agreementsCreateBtn" class="btn sm" type="button">Create Agreement</button>
-              <button id="agreementsImportOldClientBtn" class="btn ghost sm" type="button" data-import-old-client-agreement="true" style="display:none;" hidden>Import Old Client Agreement</button>
+            <div class="commercial-header-actions">
+              <button id="agreementsRefreshBtn" class="btn ghost sm commercial-soft-btn" type="button">↻ Refresh</button>
+              <button id="agreementsExportCsvBtn" class="btn ghost sm commercial-soft-btn" type="button">⇩ Export CSV</button>
+              <button id="agreementsCreateBtn" class="btn sm commercial-primary-btn" type="button">+ Create Agreement</button>
+              <button id="agreementsImportOldClientBtn" class="btn ghost sm commercial-soft-btn" type="button" data-import-old-client-agreement="true" style="display:none;" hidden>Import Old Client Agreement</button>
             </div>
+          </header>
+
+          <div id="agreementsSummary" class="commercial-kpi-grid commercial-kpi-grid--agreements" aria-live="polite"></div>
+
+          <section class="commercial-filter-card" aria-label="Agreement filters">
+            <div class="commercial-panel-title"><span class="commercial-panel-icon" aria-hidden="true">⌁</span><h2>Filters</h2></div>
+            <div class="commercial-filter-grid commercial-filter-grid--agreements">
+              <label class="commercial-filter-field commercial-filter-search" for="agreementsSearchInput"><span>Search</span><div class="commercial-input-shell"><span aria-hidden="true">⌕</span><input id="agreementsSearchInput" class="input" type="search" placeholder="Search by ID, number, title or customer..." aria-label="Search agreements" /></div></label>
+              <label class="commercial-filter-field" for="agreementsStatusFilter"><span>Status</span><select id="agreementsStatusFilter" class="select" aria-label="Filter by agreement status"><option>All</option></select></label>
+              <label class="commercial-filter-field" for="agreementsProposalDealFilter"><span>Linked Proposal / Deal</span><input id="agreementsProposalDealFilter" class="input" type="search" placeholder="Proposal ID or Deal ID" aria-label="Filter by proposal or deal" /></label>
+              <label class="commercial-filter-field" for="agreementsCreateFromProposalInput"><span>Proposal ID</span><input id="agreementsCreateFromProposalInput" class="input" type="text" placeholder="e.g., PROP-0001" aria-label="Proposal ID to create agreement" /></label>
+              <div class="commercial-filter-clear"><button class="btn ghost commercial-soft-btn" type="button" data-commercial-clear="agreements">⌁ Clear Filters</button></div>
+            </div>
+          </section>
+
+          <div class="commercial-breakdown-grid commercial-breakdown-grid--agreements">
+            <article class="commercial-breakdown-card" aria-label="Agreement status distribution">
+              <div class="commercial-breakdown-title">Status Distribution</div>
+              <div id="agreementsStatusDistribution" class="commercial-status-bars"></div>
+            </article>
+            <article class="commercial-breakdown-card" aria-label="Billing frequency distribution">
+              <div class="commercial-breakdown-title">Billing Frequency</div>
+              <div id="agreementsBillingDistribution" class="commercial-status-bars"></div>
+            </article>
+            <article class="commercial-breakdown-card" aria-label="Agreement source distribution">
+              <div class="commercial-breakdown-title">Agreement Sources / Linkage</div>
+              <div id="agreementsLinkageDistribution" class="commercial-status-bars"></div>
+            </article>
           </div>
-          <div id="agreementsState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
-          <div class="table-wrap" role="region" aria-label="Agreements table">
-            <table id="agreementsTable">
-              <thead>
-                <tr>
-                  <th>Agreement ID</th><th>Agreement Number</th><th>Title</th><th>Customer</th><th>Proposal ID</th><th>Deal ID</th><th>Start Date</th><th>Agreement Length</th><th>Billing Frequency</th><th>Payment Term</th><th>Currency</th><th>Grand Total</th><th>Status</th><th>Updated At</th><th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="agreementsTbody"></tbody>
-            </table>
-          </div>
+
+          <section class="commercial-table-panel" aria-label="Agreements table panel">
+            <div class="commercial-table-toolbar">
+              <div class="commercial-table-toolbar-left"><span id="agreementsState" class="commercial-page-info">No data loaded.</span></div>
+              <div class="commercial-table-toolbar-right"><span class="muted">Rows per page managed by table controls</span></div>
+            </div>
+            <div class="commercial-table-wrap" role="region" aria-label="Agreements table">
+              <table id="agreementsTable" class="commercial-table">
+                <thead>
+                  <tr>
+                    <th>Agreement ID</th><th>Agreement Number</th><th>Title</th><th>Customer</th><th>Proposal ID</th><th>Deal ID</th><th>Start Date</th><th>Agreement Length</th><th>Billing Frequency</th><th>Payment Term</th><th>Currency</th><th>Grand Total</th><th>Status</th><th>Updated At</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="agreementsTbody"></tbody>
+              </table>
+            </div>
+          </section>
         </div>
       </section>
 

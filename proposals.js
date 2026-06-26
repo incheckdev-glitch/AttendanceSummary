@@ -3226,16 +3226,17 @@ const Proposals = {
   renderDistribution(el, entries = [], total = 0) {
     if (!el) return;
     if (!entries.length) {
-      el.innerHTML = '<div class="muted">No data for current filters.</div>';
+      el.innerHTML = '<div class="commercial-empty-breakdown">No data for current filters.</div>';
       return;
     }
     el.innerHTML = entries
-      .map(([label, count]) => {
+      .map(([label, count], index) => {
         const percent = total > 0 ? (count / total) * 100 : 0;
-        return `<div class="deals-status-row">
-          <div class="deals-status-label">${U.escapeHtml(label)}</div>
-          <div class="leads-status-track"><span class="deals-status-fill" style="width:${Math.min(100, percent).toFixed(1)}%"></span></div>
-          <div class="deals-status-meta">${count} · ${percent.toFixed(1)}%</div>
+        const tone = ['blue', 'violet', 'green', 'amber', 'rose', 'teal'][index % 6];
+        return `<div class="commercial-status-row commercial-status-row--${tone}">
+          <div class="commercial-status-label"><span class="commercial-status-dot"></span>${U.escapeHtml(label)}</div>
+          <div class="commercial-status-track"><span class="commercial-status-fill" style="width:${Math.min(100, percent).toFixed(1)}%"></span></div>
+          <div class="commercial-status-meta">${count} · ${percent.toFixed(1)}%</div>
         </div>`;
       })
       .join('');
@@ -3422,6 +3423,33 @@ const Proposals = {
       const displayValue = String(row?.proposal_id || row?.proposalId || '').trim();
       return U.escapeHtml(displayValue || 'Missing ID');
     };
+    const statusChip = label => {
+      const key = String(label || '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      let tone = 'neutral';
+      if (key.includes('accept') || key.includes('approved')) tone = 'success';
+      else if (key.includes('draft')) tone = 'info';
+      else if (key.includes('sent') || key.includes('pending')) tone = 'warning';
+      else if (key.includes('reject') || key.includes('expired')) tone = 'danger';
+      return `<span class="commercial-chip commercial-chip--${tone}">${U.escapeHtml(label || '—')}</span>`;
+    };
+    const actionsMenu = (row, id, isLocked) => {
+      const items = [];
+      if (Permissions.canUpdateProposal() && (!isLocked || this.canUseAdminOverride())) {
+        items.push(`<button class="commercial-menu-item" type="button" data-proposal-edit="${id}" data-permission-resource="proposals" data-permission-action="update">${isLocked && this.canUseAdminOverride() ? 'Admin Edit' : 'Edit'}</button>`);
+      }
+      if (Permissions.canPreviewProposal()) {
+        items.push(`<button class="commercial-menu-item" type="button" data-proposal-preview="${id}" data-permission-resource="proposals" data-permission-action="view">Preview</button>`);
+      }
+      if (this.canShowConvertToAgreement(row) && !this.isAgreementAlreadyCreated(row)) {
+        items.push(`<button class="commercial-menu-item" type="button" data-proposal-convert-agreement="${id}" data-permission-resource="agreements" data-permission-action="create_from_proposal">Convert to Agreement</button>`);
+      }
+      if (Permissions.canDeleteProposal()) {
+        items.push(`<button class="commercial-menu-item danger" type="button" data-proposal-delete="${id}" data-permission-resource="proposals" data-permission-action="delete">Delete</button>`);
+      }
+      return items.length
+        ? `<details class="commercial-actions-menu" onclick="event.stopPropagation()" onkeydown="event.stopPropagation()"><summary class="commercial-more-btn" aria-label="More proposal actions">⋮</summary><div class="commercial-actions-popover">${items.join('')}</div></details>`
+        : '';
+    };
 
     E.proposalsTbody.innerHTML = rows
       .map(row => {
@@ -3430,29 +3458,26 @@ const Proposals = {
         const isExpired = this.isProposalExpired(row);
         const isLocked = isAccepted || isExpired;
         const selected = String(this.state.selectedDetailsId || '') === String(row.id || row.proposal_id || row.proposalId || '');
-        return `<tr class="entity-clickable-row${selected ? ' is-selected' : ''}" tabindex="0" data-proposal-row="${id}" aria-label="Open proposal ${U.escapeAttr(row.proposal_id || row.proposalId || row.customer_name || '')} details">
-          <td>${proposalIdCell(row)}</td>
+        const statusLabel = this.getProposalStatusLabel(this.getEffectiveProposalStatus(row));
+        const customerInitial = String(row.customer_name || row.proposal_title || 'P').trim().charAt(0).toUpperCase() || 'P';
+        return `<tr class="entity-clickable-row commercial-clickable-row${selected ? ' is-selected' : ''}" tabindex="0" data-proposal-row="${id}" aria-label="Open proposal ${U.escapeAttr(row.proposal_id || row.proposalId || row.customer_name || '')} details">
+          <td class="commercial-id-cell">${proposalIdCell(row)}</td>
           <td>${textCell(row.ref_number)}</td>
-          <td>${textCell(row.proposal_title)}</td>
+          <td class="commercial-name-cell"><div class="commercial-name-wrap"><span class="commercial-avatar commercial-avatar--proposal">${U.escapeHtml(customerInitial)}</span><span>${textCell(row.proposal_title)}</span></div></td>
           <td>${textCell(row.customer_name)}</td>
           <td>${textCell(row.deal_code || row.deal_id)}</td>
-          <td>${textCell(this.getProposalStatusLabel(this.getEffectiveProposalStatus(row)))}</td>
+          <td>${statusChip(statusLabel)}</td>
           <td>${textCell(row.currency)}</td>
-          <td>${this.formatMoney(row.saas_total)}</td>
-          <td>${this.formatMoney(row.one_time_total)}</td>
-          <td>${this.formatMoney(row.grand_total)}</td>
+          <td class="commercial-money-cell">${this.formatMoney(row.saas_total)}</td>
+          <td class="commercial-money-cell">${this.formatMoney(row.one_time_total)}</td>
+          <td class="commercial-money-cell">${this.formatMoney(row.grand_total)}</td>
           <td>${U.escapeHtml(U.fmtDisplayDate(row.proposal_date))}</td>
           <td>${U.escapeHtml(U.fmtDisplayDate(row.valid_until || row.proposal_valid_until || this.getAutoValidUntil(row.proposal_date)))}</td>
           <td>${textCell(row.generated_by)}</td>
-          <td>
-            ${Permissions.canPreviewProposal() ? `<button class="btn ghost sm" type="button" data-proposal-view="${id}" data-permission-resource="proposals" data-permission-action="view">View</button>` : ''}
-            ${Permissions.canUpdateProposal() && (!isLocked || this.canUseAdminOverride()) ? `<button class="btn ghost sm" type="button" data-proposal-edit="${id}" data-permission-resource="proposals" data-permission-action="update">${isLocked && this.canUseAdminOverride() ? 'Admin Edit' : 'Edit'}</button>` : ''}
-            ${Permissions.canPreviewProposal() ? `<button class="btn ghost sm" type="button" data-proposal-preview="${id}" data-permission-resource="proposals" data-permission-action="view">Preview</button>` : ''}
-            ${this.canShowConvertToAgreement(row) && !this.isAgreementAlreadyCreated(row)
-              ? `<button class="btn ghost sm" type="button" data-proposal-convert-agreement="${id}" data-permission-resource="agreements" data-permission-action="create_from_proposal">Convert to Agreement</button>`
-              : ''}
-            ${Permissions.canDeleteProposal() ? `<button class="btn ghost sm" type="button" data-proposal-delete="${id}" data-permission-resource="proposals" data-permission-action="delete" data-permission-resource="proposals" data-permission-action="delete">Delete</button>` : ''}
-          </td>
+          <td><div class="commercial-row-actions">
+            ${Permissions.canPreviewProposal() ? `<button class="commercial-view-btn" type="button" data-proposal-view="${id}" data-permission-resource="proposals" data-permission-action="view">View</button>` : ''}
+            ${actionsMenu(row, id, isLocked)}
+          </div></td>
         </tr>`;
       })
       .join('');
@@ -5511,6 +5536,16 @@ const Proposals = {
     bindState(E.proposalsSearchInput, 'search');
     bindState(E.proposalsCustomerFilter, 'customer');
     bindState(E.proposalsStatusFilter, 'status');
+
+    document.querySelector('[data-commercial-clear="proposals"]')?.addEventListener('click', () => {
+      this.state.search = '';
+      this.state.customer = '';
+      this.state.status = 'All';
+      this.state.kpiFilter = 'total';
+      this.state.page = 1;
+      this.renderFilters();
+      this.loadAndRefresh({ force: true });
+    });
 
     if (E.proposalFormProposalDate) {
       const syncProposalDateDependents = () => {
