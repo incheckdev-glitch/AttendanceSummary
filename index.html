@@ -26,7 +26,7 @@
   <link rel="mask-icon" href="/icons/maskable-icon.svg" color="#020617" />
 
   <!-- Your app styles -->
-  <link rel="stylesheet" href="styles.css?v=20260605-lifecycle-status-history1" />
+  <link rel="stylesheet" href="styles.css?v=20260626-grouped-left-menu1" />
 
   <!-- Vercel Web Analytics -->
   <script>
@@ -258,111 +258,155 @@
 
     <main class="content">
       <div class="content-layout">
-        <aside class="view-menu card" aria-label="View navigation">
-          <div class="view-menu-title">Views</div>
-          <div class="view-tabs" role="tablist" aria-orientation="vertical">
-            <button id="issuesTab" class="view-tab active" data-view="issues"
-                    role="tab" aria-selected="true" aria-controls="issuesView">
-              <span class="icon" aria-hidden="true">📋</span> Tickets
-            </button>
-            <button id="calendarTab" class="view-tab" data-view="calendar"
-                    role="tab" aria-selected="false" aria-controls="calendarView">
-              <span class="icon" aria-hidden="true">📅</span> Events
-            </button>
-            <button id="insightsTab" class="view-tab" data-view="insights" data-permission-resource="ai_insights" data-permission-action="view"
-                    role="tab" aria-selected="false" aria-controls="insightsView">
-              <span class="icon" aria-hidden="true">🤖</span> AI Insights
-            </button>
-            <button id="csmTab" class="view-tab" data-view="csm"
-                    role="tab" aria-selected="false" aria-controls="csmView">
-              <span class="icon" aria-hidden="true">🧑‍💼</span> CSM Daily Activity
-            </button>
-            <button id="companyTab" class="view-tab" data-view="company"
-                    role="tab" aria-selected="false" aria-controls="companyView">
-              <span class="icon" aria-hidden="true">🏢</span> Company
-            </button>
-            <button id="contactsTab" class="view-tab" data-view="contacts"
-                    role="tab" aria-selected="false" aria-controls="contactsView">
-              <span class="icon" aria-hidden="true">👤</span> Contacts
-            </button>
-            <button id="leadsTab" class="view-tab" data-view="leads"
-                    role="tab" aria-selected="false" aria-controls="leadsView">
-              <span class="icon" aria-hidden="true">🧲</span> Leads
-            </button>
-            <button id="dealsTab" class="view-tab" data-view="deals"
-                    role="tab" aria-selected="false" aria-controls="dealsView">
-              <span class="icon" aria-hidden="true">🤝</span> Deals
-            </button>
-            <button id="proposalsTab" class="view-tab" data-view="proposals"
-                    role="tab" aria-selected="false" aria-controls="proposalsView">
-              <span class="icon" aria-hidden="true">🧾</span> Proposals
-            </button>
-            <button id="agreementsTab" class="view-tab" data-view="agreements"
-                    role="tab" aria-selected="false" aria-controls="agreementsView">
-              <span class="icon" aria-hidden="true">📄</span> Agreements
-            </button>
-            <button id="operationsOnboardingTab" class="view-tab" data-view="operationsOnboarding"
-                    role="tab" aria-selected="false" aria-controls="operationsOnboardingView">
-              <span class="icon" aria-hidden="true">🧭</span> Operations Onboarding
-            </button>
-            <button id="invoicesTab" class="view-tab" data-view="invoices"
-                    role="tab" aria-selected="false" aria-controls="invoicesView">
-              <span class="icon" aria-hidden="true">🧮</span> Invoices
-            </button>
-            <button id="receiptsTab" class="view-tab" data-view="receipts"
-                    role="tab" aria-selected="false" aria-controls="receiptsView">
-              <span class="icon" aria-hidden="true">🧾</span> Receipts
-            </button>
-            <button id="creditNotesTab" class="view-tab" data-view="creditNotes" data-permission-resource="credit_notes" data-permission-action="view"
-                    role="tab" aria-selected="false" aria-controls="creditNotesView">
-              <span class="icon" aria-hidden="true">↩️</span> Credit Notes
-            </button>
-            <button id="paymentForecastTab" class="view-tab" data-view="paymentForecast" data-permission-resource="payment_forecast" data-permission-action="view"
-                    role="tab" aria-selected="false" aria-controls="paymentForecastView">
-              <span class="icon" aria-hidden="true">📈</span> Payment Forecast
-            </button>
-            <button id="renewalForecastTab" class="view-tab" data-view="renewalForecast" data-permission-resource="monthly_renewal_forecast" data-permission-action="view"
-                    role="tab" aria-selected="false" aria-controls="renewalForecastView">
-              <span class="icon" aria-hidden="true">🔄</span> Monthly Renewal Forecast
-            </button>
-            <button id="binersTab" class="view-tab" data-view="biners" data-permission-resource="biners" data-permission-action="view"
-                    role="tab" aria-selected="false" aria-controls="binersView">
-              <span class="icon" aria-hidden="true">🏗️</span> Biners
-            </button>
-            <button id="lifecycleAnalyticsTab" class="view-tab" data-view="lifecycleAnalytics"
-                    role="tab" aria-selected="false" aria-controls="lifecycleAnalyticsView">
-              <span class="icon" aria-hidden="true">🧭</span> Lifecycle Analytics
-            </button>
-            <button id="clientsTab" class="view-tab" data-view="clients"
-                    role="tab" aria-selected="false" aria-controls="clientsView">
-              <span class="icon" aria-hidden="true">🏢</span> Clients
-            </button>
-            <button id="proposalCatalogTab" class="view-tab" data-view="proposalCatalog"
-                    role="tab" aria-selected="false" aria-controls="proposalCatalogView">
-              <span class="icon" aria-hidden="true">📚</span> Proposal Catalog
-            </button>
-            <button id="communicationCentreTab" class="view-tab" data-view="communication_centre" role="tab" aria-selected="false" aria-controls="communicationCentreView">Communication Centre</button>
-            <button id="aiAssistantTab" class="view-tab" data-view="aiAssistant" data-permission-resource="ai_assistant" data-permission-action="view" role="tab" aria-selected="false" aria-controls="aiAssistantView">🤖 AI Assistant</button>
-            <button id="notificationsTab" class="view-tab" data-view="notifications"
-                    role="tab" aria-selected="false" aria-controls="notificationsView">
-              <span class="icon" aria-hidden="true">🔔</span> Notification Hub
-            </button>
-            <button id="notificationSetupTab" class="view-tab" data-view="notificationSetup"
-                    role="tab" aria-selected="false" aria-controls="notificationSetupView" style="display:none;">
-              <span class="icon" aria-hidden="true">🔔⚙️</span> Notification Setup
-            </button>
-            <button id="workflowTab" class="view-tab" data-view="workflow"
-                    role="tab" aria-selected="false" aria-controls="workflowView" style="display:none;">
-              <span class="icon" aria-hidden="true">⚙️</span> Workflow
-            </button>
-            <button id="usersTab" class="view-tab" data-view="users"
-                    role="tab" aria-selected="false" aria-controls="usersView" style="display:none;">
-              <span class="icon" aria-hidden="true">👥</span> Users
-            </button>
-            <button id="rolePermissionsTab" class="view-tab" data-view="rolePermissions"
-                    role="tab" aria-selected="false" aria-controls="rolePermissionsView" style="display:none;">
-              <span class="icon" aria-hidden="true">🛡️</span> Role Permissions
-            </button>
+        <aside class="view-menu card" aria-label="Main module navigation">
+          <div class="view-menu-header">
+            <div>
+              <div class="view-menu-title">Main Menu</div>
+              <div class="view-menu-subtitle">Click a group to open its modules</div>
+            </div>
+          </div>
+          <div class="view-tabs grouped-view-tabs" role="tablist" aria-orientation="vertical">
+            <div class="view-menu-group is-expanded" role="group" aria-label="Workspace modules" data-menu-group="workspace" data-default-open="true">
+              <button class="view-menu-group-title view-menu-group-toggle" type="button" data-menu-group-toggle aria-expanded="true" aria-controls="workspaceMenuGroupBody">
+                <span class="view-menu-group-label"><span class="view-menu-group-icon" aria-hidden="true">🏠</span><span>Workspace</span></span>
+                <span class="view-menu-group-chevron" aria-hidden="true">▾</span>
+              </button>
+              <div id="workspaceMenuGroupBody" class="view-menu-group-body">
+              <button id="issuesTab" class="view-tab active" data-view="issues"
+                      role="tab" aria-selected="true" aria-controls="issuesView">
+                <span class="icon" aria-hidden="true">📋</span> Tickets
+              </button>
+              <button id="calendarTab" class="view-tab" data-view="calendar"
+                      role="tab" aria-selected="false" aria-controls="calendarView">
+                <span class="icon" aria-hidden="true">📅</span> Events
+              </button>
+              <button id="insightsTab" class="view-tab" data-view="insights" data-permission-resource="ai_insights" data-permission-action="view"
+                      role="tab" aria-selected="false" aria-controls="insightsView">
+                <span class="icon" aria-hidden="true">🤖</span> AI Insights
+              </button>
+              <button id="csmTab" class="view-tab" data-view="csm"
+                      role="tab" aria-selected="false" aria-controls="csmView">
+                <span class="icon" aria-hidden="true">🧑‍💼</span> CSM Daily Activity
+              </button>
+              <button id="operationsOnboardingTab" class="view-tab" data-view="operationsOnboarding"
+                      role="tab" aria-selected="false" aria-controls="operationsOnboardingView">
+                <span class="icon" aria-hidden="true">🧭</span> Operations Onboarding
+              </button>
+              <button id="lifecycleAnalyticsTab" class="view-tab" data-view="lifecycleAnalytics"
+                      role="tab" aria-selected="false" aria-controls="lifecycleAnalyticsView">
+                <span class="icon" aria-hidden="true">📊</span> Lifecycle Analytics
+              </button>
+              </div>
+            </div>
+
+            <div class="view-menu-group" role="group" aria-label="CRM modules" data-menu-group="crm">
+              <button class="view-menu-group-title view-menu-group-toggle" type="button" data-menu-group-toggle aria-expanded="false" aria-controls="crmMenuGroupBody">
+                <span class="view-menu-group-label"><span class="view-menu-group-icon" aria-hidden="true">🤝</span><span>CRM</span></span>
+                <span class="view-menu-group-chevron" aria-hidden="true">▾</span>
+              </button>
+              <div id="crmMenuGroupBody" class="view-menu-group-body">
+              <button id="companyTab" class="view-tab" data-view="company"
+                      role="tab" aria-selected="false" aria-controls="companyView">
+                <span class="icon" aria-hidden="true">🏢</span> Company
+              </button>
+              <button id="contactsTab" class="view-tab" data-view="contacts"
+                      role="tab" aria-selected="false" aria-controls="contactsView">
+                <span class="icon" aria-hidden="true">👤</span> Contacts
+              </button>
+              <button id="leadsTab" class="view-tab" data-view="leads"
+                      role="tab" aria-selected="false" aria-controls="leadsView">
+                <span class="icon" aria-hidden="true">🧲</span> Leads
+              </button>
+              <button id="dealsTab" class="view-tab" data-view="deals"
+                      role="tab" aria-selected="false" aria-controls="dealsView">
+                <span class="icon" aria-hidden="true">🤝</span> Deals
+              </button>
+              <button id="proposalsTab" class="view-tab" data-view="proposals"
+                      role="tab" aria-selected="false" aria-controls="proposalsView">
+                <span class="icon" aria-hidden="true">🧾</span> Proposals
+              </button>
+              <button id="agreementsTab" class="view-tab" data-view="agreements"
+                      role="tab" aria-selected="false" aria-controls="agreementsView">
+                <span class="icon" aria-hidden="true">📄</span> Agreements
+              </button>
+              <button id="proposalCatalogTab" class="view-tab" data-view="proposalCatalog"
+                      role="tab" aria-selected="false" aria-controls="proposalCatalogView">
+                <span class="icon" aria-hidden="true">📚</span> Proposal Catalog
+              </button>
+              </div>
+            </div>
+
+            <div class="view-menu-group" role="group" aria-label="Accounting modules" data-menu-group="accounting">
+              <button class="view-menu-group-title view-menu-group-toggle" type="button" data-menu-group-toggle aria-expanded="false" aria-controls="accountingMenuGroupBody">
+                <span class="view-menu-group-label"><span class="view-menu-group-icon" aria-hidden="true">💼</span><span>Accounting</span></span>
+                <span class="view-menu-group-chevron" aria-hidden="true">▾</span>
+              </button>
+              <div id="accountingMenuGroupBody" class="view-menu-group-body">
+              <button id="clientsTab" class="view-tab" data-view="clients"
+                      role="tab" aria-selected="false" aria-controls="clientsView">
+                <span class="icon" aria-hidden="true">🏢</span> Clients
+              </button>
+              <button id="invoicesTab" class="view-tab" data-view="invoices"
+                      role="tab" aria-selected="false" aria-controls="invoicesView">
+                <span class="icon" aria-hidden="true">🧮</span> Invoices
+              </button>
+              <button id="receiptsTab" class="view-tab" data-view="receipts"
+                      role="tab" aria-selected="false" aria-controls="receiptsView">
+                <span class="icon" aria-hidden="true">🧾</span> Receipts
+              </button>
+              <button id="creditNotesTab" class="view-tab" data-view="creditNotes" data-permission-resource="credit_notes" data-permission-action="view"
+                      role="tab" aria-selected="false" aria-controls="creditNotesView">
+                <span class="icon" aria-hidden="true">↩️</span> Credit Notes
+              </button>
+              <button id="paymentForecastTab" class="view-tab" data-view="paymentForecast" data-permission-resource="payment_forecast" data-permission-action="view"
+                      role="tab" aria-selected="false" aria-controls="paymentForecastView">
+                <span class="icon" aria-hidden="true">📈</span> Payment Forecast
+              </button>
+              <button id="renewalForecastTab" class="view-tab" data-view="renewalForecast" data-permission-resource="monthly_renewal_forecast" data-permission-action="view"
+                      role="tab" aria-selected="false" aria-controls="renewalForecastView">
+                <span class="icon" aria-hidden="true">🔄</span> Monthly Renewal Forecast
+              </button>
+              <button id="binersTab" class="view-tab" data-view="biners" data-permission-resource="biners" data-permission-action="view"
+                      role="tab" aria-selected="false" aria-controls="binersView">
+                <span class="icon" aria-hidden="true">🏗️</span> Biners Control Center
+              </button>
+              </div>
+            </div>
+
+            <div class="view-menu-group" role="group" aria-label="Control Center modules" data-menu-group="control-center">
+              <button class="view-menu-group-title view-menu-group-toggle" type="button" data-menu-group-toggle aria-expanded="false" aria-controls="controlCenterMenuGroupBody">
+                <span class="view-menu-group-label"><span class="view-menu-group-icon" aria-hidden="true">⚙️</span><span>Control Center</span></span>
+                <span class="view-menu-group-chevron" aria-hidden="true">▾</span>
+              </button>
+              <div id="controlCenterMenuGroupBody" class="view-menu-group-body">
+              <button id="communicationCentreTab" class="view-tab" data-view="communication_centre" role="tab" aria-selected="false" aria-controls="communicationCentreView">
+                <span class="icon" aria-hidden="true">💬</span> Communication Centre
+              </button>
+              <button id="aiAssistantTab" class="view-tab" data-view="aiAssistant" data-permission-resource="ai_assistant" data-permission-action="view" role="tab" aria-selected="false" aria-controls="aiAssistantView">
+                <span class="icon" aria-hidden="true">🤖</span> AI Assistant
+              </button>
+              <button id="notificationsTab" class="view-tab" data-view="notifications"
+                      role="tab" aria-selected="false" aria-controls="notificationsView">
+                <span class="icon" aria-hidden="true">🔔</span> Notification Hub
+              </button>
+              <button id="notificationSetupTab" class="view-tab" data-view="notificationSetup"
+                      role="tab" aria-selected="false" aria-controls="notificationSetupView" style="display:none;">
+                <span class="icon" aria-hidden="true">🔔⚙️</span> Notification Setup
+              </button>
+              <button id="workflowTab" class="view-tab" data-view="workflow"
+                      role="tab" aria-selected="false" aria-controls="workflowView" style="display:none;">
+                <span class="icon" aria-hidden="true">⚙️</span> Workflow
+              </button>
+              <button id="usersTab" class="view-tab" data-view="users"
+                      role="tab" aria-selected="false" aria-controls="usersView" style="display:none;">
+                <span class="icon" aria-hidden="true">👥</span> Users
+              </button>
+              <button id="rolePermissionsTab" class="view-tab" data-view="rolePermissions"
+                      role="tab" aria-selected="false" aria-controls="rolePermissionsView" style="display:none;">
+                <span class="icon" aria-hidden="true">🛡️</span> Role Permissions
+              </button>
+              </div>
+            </div>
           </div>
         </aside>
         <div class="content-panels">
@@ -1392,6 +1436,21 @@ Sample:
         </div>
       </section>
 
+      <div id="leadDetailsDrawer" class="payment-forecast-details-drawer lead-details-drawer" role="dialog" aria-modal="true" aria-labelledby="leadDetailsTitle" hidden>
+        <button class="payment-forecast-details-backdrop" type="button" aria-label="Close lead details" data-lead-close-details></button>
+        <section class="payment-forecast-details-panel lead-details-panel">
+          <header class="payment-forecast-details-header lead-details-header">
+            <div>
+              <span class="pf-eyebrow">CRM · Lead</span>
+              <h2 id="leadDetailsTitle">Lead Details</h2>
+              <p id="leadDetailsSubtitle" class="muted"></p>
+            </div>
+            <button class="btn ghost sm" type="button" data-lead-close-details>Close</button>
+          </header>
+          <div id="leadDetailsContent" class="payment-forecast-details-content lead-details-content" aria-live="polite"></div>
+        </section>
+      </div>
+
       <section id="dealsView" class="view" role="tabpanel" aria-labelledby="dealsTab">
         <div class="card" aria-label="Deals list">
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
@@ -2372,22 +2431,66 @@ Sample:
               <input id="workflowMaxDiscount" class="input" type="number" min="0" step="0.01" placeholder="Max discount %" />
               <input id="workflowHardStopDiscount" class="input" type="number" min="0" step="0.01" placeholder="Hard stop discount %" />
             </div>
-            <fieldset id="workflowCategoryDiscountFields" class="card" style="display:none;grid-column:1 / -1;margin:0;padding:12px;">
-              <legend style="font-weight:700;padding:0 6px;">Category Discount Limits</legend>
-              <div class="grid cols-2" style="gap:10px;">
-                <div>
-                  <strong>Annual SaaS</strong>
-                  <label class="muted" for="workflowAnnualSaasNoApproval">No approval up to %</label>
-                  <input id="workflowAnnualSaasNoApproval" class="input" type="number" min="0" step="0.01" value="10" />
-                  <label class="muted" for="workflowAnnualSaasHardStop">Hard stop %</label>
-                  <input id="workflowAnnualSaasHardStop" class="input" type="number" min="0" step="0.01" value="20" />
+            <fieldset id="workflowCategoryDiscountFields" class="card" style="display:none;grid-column:1 / -1;margin:0;padding:18px 20px 20px;border-radius:18px;border:1px solid var(--border);box-shadow:0 10px 26px rgba(15,23,42,.06);">
+              <legend style="font-weight:800;font-size:16px;line-height:1.2;padding:0 8px;color:var(--text);">Category Discount Limits</legend>
+              <div class="muted" style="margin:0 0 14px 0;font-size:12px;">Set the approval threshold and the hard-stop threshold separately for each commercial category.</div>
+              <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;align-items:stretch;">
+                <div style="display:flex;flex-direction:column;gap:14px;padding:16px;border:1px solid var(--border);border-radius:16px;background:color-mix(in oklab,var(--card) 96%,#3b82f6 4%);box-shadow:0 8px 18px rgba(15,23,42,.04);">
+                  <div style="display:flex;align-items:center;gap:12px;">
+                    <span aria-hidden="true" style="width:42px;height:42px;border-radius:14px;display:inline-grid;place-items:center;background:rgba(37,99,235,.12);color:#2563eb;flex:0 0 auto;">
+                      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5h14"/><path d="M7 20h10a4 4 0 0 0 0-8 5.5 5.5 0 0 0-10.6-1.6A4.8 4.8 0 0 0 7 20Z"/></svg>
+                    </span>
+                    <strong style="font-size:18px;color:var(--text);">Annual SaaS</strong>
+                  </div>
+                  <div style="height:1px;background:var(--border);"></div>
+                  <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+                    <label style="display:flex;flex-direction:column;gap:7px;font-weight:700;color:var(--muted);" for="workflowAnnualSaasNoApproval">
+                      <span>No approval up to %</span>
+                      <input id="workflowAnnualSaasNoApproval" class="input" type="number" min="0" step="0.01" value="10" style="min-height:44px;font-size:16px;" />
+                    </label>
+                    <label style="display:flex;flex-direction:column;gap:7px;font-weight:700;color:var(--muted);" for="workflowAnnualSaasHardStop">
+                      <span>Hard stop %</span>
+                      <input id="workflowAnnualSaasHardStop" class="input" type="number" min="0" step="0.01" value="20" style="min-height:44px;font-size:16px;" />
+                    </label>
+                  </div>
                 </div>
-                <div>
-                  <strong>One-Time Fees</strong>
-                  <label class="muted" for="workflowOneTimeFeeNoApproval">No approval up to %</label>
-                  <input id="workflowOneTimeFeeNoApproval" class="input" type="number" min="0" step="0.01" value="20" />
-                  <label class="muted" for="workflowOneTimeFeeHardStop">Hard stop %</label>
-                  <input id="workflowOneTimeFeeHardStop" class="input" type="number" min="0" step="0.01" value="30" />
+                <div style="display:flex;flex-direction:column;gap:14px;padding:16px;border:1px solid var(--border);border-radius:16px;background:color-mix(in oklab,var(--card) 96%,#10b981 4%);box-shadow:0 8px 18px rgba(15,23,42,.04);">
+                  <div style="display:flex;align-items:center;gap:12px;">
+                    <span aria-hidden="true" style="width:42px;height:42px;border-radius:14px;display:inline-grid;place-items:center;background:rgba(16,185,129,.12);color:#059669;flex:0 0 auto;">
+                      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7Z"/><path d="M14 2v5h5"/><path d="M9 13h6"/><path d="M9 17h6"/></svg>
+                    </span>
+                    <strong style="font-size:18px;color:var(--text);">One-Time Fees</strong>
+                  </div>
+                  <div style="height:1px;background:var(--border);"></div>
+                  <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+                    <label style="display:flex;flex-direction:column;gap:7px;font-weight:700;color:var(--muted);" for="workflowOneTimeFeeNoApproval">
+                      <span>No approval up to %</span>
+                      <input id="workflowOneTimeFeeNoApproval" class="input" type="number" min="0" step="0.01" value="20" style="min-height:44px;font-size:16px;" />
+                    </label>
+                    <label style="display:flex;flex-direction:column;gap:7px;font-weight:700;color:var(--muted);" for="workflowOneTimeFeeHardStop">
+                      <span>Hard stop %</span>
+                      <input id="workflowOneTimeFeeHardStop" class="input" type="number" min="0" step="0.01" value="30" style="min-height:44px;font-size:16px;" />
+                    </label>
+                  </div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:14px;padding:16px;border:1px solid var(--border);border-radius:16px;background:color-mix(in oklab,var(--card) 96%,#8b5cf6 4%);box-shadow:0 8px 18px rgba(15,23,42,.04);">
+                  <div style="display:flex;align-items:center;gap:12px;">
+                    <span aria-hidden="true" style="width:42px;height:42px;border-radius:14px;display:inline-grid;place-items:center;background:rgba(124,58,237,.12);color:#7c3aed;flex:0 0 auto;">
+                      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M9 1v4"/><path d="M15 1v4"/><path d="M9 19v4"/><path d="M15 19v4"/><path d="M1 9h4"/><path d="M1 15h4"/><path d="M19 9h4"/><path d="M19 15h4"/><path d="M10 10h4v4h-4z"/></svg>
+                    </span>
+                    <strong style="font-size:18px;color:var(--text);">Hardware</strong>
+                  </div>
+                  <div style="height:1px;background:var(--border);"></div>
+                  <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+                    <label style="display:flex;flex-direction:column;gap:7px;font-weight:700;color:var(--muted);" for="workflowHardwareNoApproval">
+                      <span>No approval up to %</span>
+                      <input id="workflowHardwareNoApproval" class="input" type="number" min="0" step="0.01" value="20" style="min-height:44px;font-size:16px;" />
+                    </label>
+                    <label style="display:flex;flex-direction:column;gap:7px;font-weight:700;color:var(--muted);" for="workflowHardwareHardStop">
+                      <span>Hard stop %</span>
+                      <input id="workflowHardwareHardStop" class="input" type="number" min="0" step="0.01" value="30" style="min-height:44px;font-size:16px;" />
+                    </label>
+                  </div>
                 </div>
               </div>
             </fieldset>
@@ -2401,7 +2504,7 @@ Sample:
               <button id="workflowRuleResetBtn" class="btn ghost sm" type="button">Reset</button>
             </div>
           </form>
-          <div id="workflowRulesDebug" class="muted" style="margin:6px 0 8px 0;">Loaded 0 workflow rule(s)</div><div class="table-wrap"><table><thead><tr><th>Resource</th><th>Current</th><th>Next</th><th>Allowed Roles</th><th>Approval Roles</th><th>Annual SaaS Limit</th><th>Annual SaaS Hard Stop</th><th>One-Time Fee Limit</th><th>One-Time Fee Hard Stop</th><th>Active</th><th>Actions</th></tr></thead><tbody id="workflowRulesTbody"></tbody></table></div>
+          <div id="workflowRulesDebug" class="muted" style="margin:6px 0 8px 0;">Loaded 0 workflow rule(s)</div><div class="table-wrap"><table><thead><tr><th>Resource</th><th>Current</th><th>Next</th><th>Allowed Roles</th><th>Approval Roles</th><th>Annual SaaS Limit</th><th>Annual SaaS Hard Stop</th><th>One-Time Fee Limit</th><th>One-Time Fee Hard Stop</th><th>Hardware Limit</th><th>Hardware Hard Stop</th><th>Active</th><th>Actions</th></tr></thead><tbody id="workflowRulesTbody"></tbody></table></div>
         </div>
 
         <div class="grid cols-2" style="margin-top:12px;gap:12px;">
@@ -2468,6 +2571,7 @@ Sample:
                 <option value="All">All Sections</option>
                 <option value="annual_saas">annual_saas</option>
                 <option value="one_time_fee">one_time_fee</option>
+                <option value="hardware">hardware</option>
               </select>
               <select id="proposalCatalogActiveFilter" class="select" aria-label="Filter by active state">
                 <option value="All">All Statuses</option>
@@ -3701,11 +3805,24 @@ Sample:
         </div>
         <datalist id="proposalCatalogOptions-one_time_fee"></datalist>
 
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px;">
+          <strong>Hardware Items</strong>
+          <button id="proposalAddHardwareRowBtn" class="btn ghost sm" type="button">Add Row</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Location</th><th>Hardware / Product</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead>
+            <tbody id="proposalHardwareItemsTbody"></tbody>
+          </table>
+        </div>
+        <datalist id="proposalCatalogOptions-hardware"></datalist>
+
         <div class="card" style="margin-top:12px;">
           <strong>Totals Preview</strong>
-          <div class="grid" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:8px;">
+          <div class="grid" style="grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:8px;">
             <div><div class="muted">SaaS Total</div><div id="proposalSaasTotal">0</div></div>
             <div><div class="muted">One Time Total</div><div id="proposalOneTimeTotal">0</div></div>
+            <div><div class="muted">Hardware Total</div><div id="proposalHardwareTotal">0</div></div>
             <div><div class="muted">Grand Total</div><div id="proposalGrandTotal">0</div></div>
           </div>
         </div>
@@ -3760,6 +3877,7 @@ Sample:
             <select id="proposalCatalogFormSection" class="select" required>
               <option value="annual_saas">annual_saas</option>
               <option value="one_time_fee">one_time_fee</option>
+              <option value="hardware">hardware</option>
             </select>
           </div>
           <div class="filter-row">
@@ -3904,7 +4022,10 @@ Sample:
         <div class="table-wrap"><table><thead><tr><th>Location</th><th>License</th><th>License Price / Year</th><th>License / Month</th><th>Service Start Date</th><th>Service End Date</th><th>Discount %</th><th>Total</th><th>Invoice Status</th><th>Actions</th></tr></thead><tbody id="agreementAnnualItemsTbody"></tbody></table></div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px;"><strong>One-time Fee Rows</strong><button id="agreementAddOneTimeRowBtn" class="btn ghost sm" type="button">Add Row</button></div>
         <div class="table-wrap"><table><thead><tr><th>Location</th><th>Item / Service</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead><tbody id="agreementOneTimeItemsTbody"></tbody></table></div>
-        <div class="card" style="margin-top:12px;"><strong>Totals Preview</strong><div class="grid" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:8px;"><div><div class="muted">SaaS Total</div><div id="agreementSaasTotal">0</div></div><div><div class="muted">One Time Total</div><div id="agreementOneTimeTotal">0</div></div><div><div class="muted">Grand Total</div><div id="agreementGrandTotal">0</div></div></div></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px;"><strong>Hardware Rows</strong><button id="agreementAddHardwareRowBtn" class="btn ghost sm" type="button">Add Row</button></div>
+        <div class="table-wrap"><table><thead><tr><th>Location</th><th>Hardware / Product</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead><tbody id="agreementHardwareItemsTbody"></tbody></table></div>
+        <datalist id="agreementCatalogOptions-hardware"></datalist>
+        <div class="card" style="margin-top:12px;"><strong>Totals Preview</strong><div class="grid" style="grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:8px;"><div><div class="muted">SaaS Total</div><div id="agreementSaasTotal">0</div></div><div><div class="muted">One Time Total</div><div id="agreementOneTimeTotal">0</div></div><div><div class="muted">Hardware Total</div><div id="agreementHardwareTotal">0</div></div><div><div class="muted">Grand Total</div><div id="agreementGrandTotal">0</div></div></div></div>
         <div class="divider" style="margin:12px 0;"></div><strong style="display:block;margin-bottom:8px;">Agreement Terms</strong>
         <div class="filter-row"><label class="muted" for="agreementFormTermsConditions">Terms &amp; Conditions</label><textarea id="agreementFormTermsConditions" class="input" rows="4"></textarea></div>
         <div class="filter-row"><label class="muted" for="agreementFormNotes">Notes</label><textarea id="agreementFormNotes" class="input" rows="3"></textarea></div>
@@ -4050,6 +4171,13 @@ Sample:
         <div class="table-wrap"><table><thead><tr><th>Location</th><th>Item / Service</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th></tr></thead><tbody id="invoiceOneTimeItemsTbody"></tbody></table></div>
         <datalist id="invoiceCatalogOptions-one_time_fee"></datalist>
 
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px;">
+          <strong>Hardware Rows</strong>
+          <button id="invoiceAddHardwareRowBtn" class="btn ghost sm" type="button" style="display:none;">Add Row</button>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>Location</th><th>Hardware / Product</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th></tr></thead><tbody id="invoiceHardwareItemsTbody"></tbody></table></div>
+        <datalist id="invoiceCatalogOptions-hardware"></datalist>
+
         <div class="divider" style="margin:12px 0;"></div>
         <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
           <div class="filter-row"><label class="muted" for="invoiceFormSubtotalSubscription">Subtotal Subscription</label><input id="invoiceFormSubtotalSubscription" class="input" type="number" step="0.01" /></div>
@@ -4138,6 +4266,8 @@ Sample:
         <div class="divider" style="margin:12px 0;"></div>
         <strong style="display:block;margin-bottom:8px;">One-time Fees</strong>
         <div class="table-wrap"><table><thead><tr><th>Item Name</th><th>Service Start Date</th><th>Service End Date</th><th>Qty</th><th>Unit Price</th><th>Discount %</th><th>Line Total</th><th>Notes</th></tr></thead><tbody id="receiptOneTimeItemsTbody"></tbody></table></div>
+        <strong style="display:block;margin:12px 0 6px;">Hardware Rows</strong>
+        <div class="table-wrap"><table><thead><tr><th>Hardware / Product</th><th>Service Start Date</th><th>Service End Date</th><th>Qty</th><th>Unit Price</th><th>Discount %</th><th>Line Total</th><th>Notes</th></tr></thead><tbody id="receiptHardwareItemsTbody"></tbody></table></div>
         <div class="actions" style="justify-content:space-between;gap:8px;margin-top:12px;"><div style="display:flex;gap:8px;"><button id="receiptFormDeleteBtn" type="button" class="btn ghost" style="display:none;">Delete</button><button id="receiptFormPreviewBtn" type="button" class="btn ghost">Preview Receipt</button></div><div style="display:flex;gap:8px;"><button id="receiptFormCancelBtn" type="button" class="btn ghost">Cancel</button><button id="receiptFormSaveBtn" type="submit" class="btn">Save</button></div></div>
       </form>
     </div>
@@ -4197,6 +4327,60 @@ Sample:
     window.INCHECK360_CONFIG = window.INCHECK360_CONFIG || {};
     window.INCHECK360_CONFIG.VAPID_PUBLIC_KEY = "BOf3aUnNcsqYnx9i8lnvmQ5n_RwCFMFBOqiEtHVzY0eB7xqfncupAeqBjS7eAHvi9dGzIUwBEu6sGKVuRM5028s";
   </script>
+  <script>
+    (function initGroupedModuleMenu(){
+      function setGroupOpen(group, open){
+        const toggle = group.querySelector('[data-menu-group-toggle]');
+        const body = group.querySelector('.view-menu-group-body');
+        group.classList.toggle('is-expanded', open);
+        group.classList.toggle('is-collapsed', !open);
+        if(toggle){
+          toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        }
+        if(body){
+          body.hidden = !open;
+        }
+      }
+      function boot(){
+        const groups = Array.from(document.querySelectorAll('.view-menu-group[data-menu-group]'));
+        if(!groups.length) return;
+        const openOnly = target => groups.forEach(group => setGroupOpen(group, group === target));
+        const openActiveGroup = () => {
+          const activeTab = document.querySelector('.grouped-view-tabs .view-tab.active');
+          const activeGroup = activeTab ? activeTab.closest('.view-menu-group[data-menu-group]') : null;
+          if(activeGroup){
+            openOnly(activeGroup);
+            return true;
+          }
+          return false;
+        };
+        groups.forEach(group => {
+          const toggle = group.querySelector('[data-menu-group-toggle]');
+          if(toggle){
+            toggle.addEventListener('click', () => openOnly(group));
+          }
+          group.querySelectorAll('.view-tab').forEach(tab => {
+            tab.addEventListener('click', () => openOnly(group));
+          });
+        });
+        if(!openActiveGroup()){
+          const defaultGroup = groups.find(group => group.dataset.defaultOpen === 'true') || groups[0];
+          openOnly(defaultGroup);
+        }
+        const observer = new MutationObserver(openActiveGroup);
+        groups.forEach(group => {
+          group.querySelectorAll('.view-tab').forEach(tab => {
+            observer.observe(tab, { attributes:true, attributeFilter:['class','aria-selected'] });
+          });
+        });
+      }
+      if(document.readyState === 'loading'){
+        document.addEventListener('DOMContentLoaded', boot);
+      }else{
+        boot();
+      }
+    })();
+  </script>
   <script src="config.js?v=20260427-allpwa1"></script>
   <script src="legacy-compat.js?v=20260427-allpwa1"></script>
   <script src="supabase-client.js?v=20260427-allpwa1"></script>
@@ -4218,7 +4402,8 @@ Sample:
   <script src="planner.js?v=20260427-allpwa1"></script>
   <script src="crm-form-selectors.js?v=20260609-final-company-contact-fix"></script>
   <script src="ui.js?v=20260605-csm-notes"></script>
-  <script src="leads.js?v=20260609-contact-company-uuid"></script>
+  <script src="record-details-drawer.js?v=20260626-shared-right-panel"></script>
+  <script src="leads.js?v=20260626-lead-detail-drawer"></script>
   <script src="companies.js?v=20260611-direct-communication"></script>
   <script src="contacts.js?v=20260611-direct-communication"></script>
   <script src="deals.js?v=20260608-company-options-fresh"></script>
@@ -4246,7 +4431,7 @@ Sample:
   <script src="csm-service.js?v=20260605-csm-uuid-update"></script>
   <script src="ai-insights-service.js?v=20260427-allpwa1"></script>
   <script src="ai-assistant.js?v=20260526-ai-assistant-v1"></script>
-  <script src="module-list-layout.js?v=20260626-unified-list-style1"></script>
+  <script src="module-list-layout.js?v=20260626-unified-list-style-full1"></script>
   <script src="app.js?v=20260611-direct-communication"></script>
 </body>
 </html>
