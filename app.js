@@ -5817,7 +5817,9 @@ function wireConnectivity() {
   if (!E.onlineStatusChip) return;
   const update = () => {
     const online = navigator.onLine !== false;
-    E.onlineStatusChip.textContent = online ? 'Online' : 'Offline · using cache';
+    const text = E.onlineStatusChip.querySelector?.('.topbar-online-text');
+    if (text) text.textContent = online ? 'Online' : 'Offline';
+    else E.onlineStatusChip.textContent = online ? 'Online' : 'Offline · using cache';
     E.onlineStatusChip.classList.toggle('online', online);
     E.onlineStatusChip.classList.toggle('offline', !online);
   };
