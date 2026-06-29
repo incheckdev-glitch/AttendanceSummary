@@ -602,6 +602,7 @@ const Contacts = {
     const modal = document.getElementById('contactModal');
     modal.style.display = 'flex';
     modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('modal-open');
 
     this.ensureCompanyOptions(data)
       .then(async () => {
@@ -625,6 +626,7 @@ const Contacts = {
     const modal = document.getElementById('contactModal');
     modal.style.display = 'none';
     modal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('modal-open');
     this.toggleSave(false);
   },
 
