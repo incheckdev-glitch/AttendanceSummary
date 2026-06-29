@@ -7635,6 +7635,19 @@ body.public-eproposal-mode {
   background: #f8fafc;
 }
 
+.public-eproposal-document {
+  background: #eef2f7;
+  padding: 0;
+}
+
+.public-eproposal-document iframe {
+  display: block;
+  width: 100%;
+  min-height: 1200px;
+  border: 0;
+  background: #eef2f7;
+}
+
 .public-btn-primary,
 .public-btn-outline {
   border-radius: 12px;
