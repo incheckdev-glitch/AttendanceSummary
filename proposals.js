@@ -5265,39 +5265,102 @@ const Proposals = {
     const clean = String(token || '').trim();
     return clean ? `${window.location.origin}/e-proposal/${encodeURIComponent(clean)}` : '';
   },
+  getEProposalRpcErrorMessage(error, fallback = 'E-proposal action failed.') {
+    const raw = String(
+      error?.message ||
+      error?.details ||
+      error?.hint ||
+      error?.error_description ||
+      fallback ||
+      ''
+    ).trim();
+    if (!raw) return fallback;
+    return raw.replace(/^JSON object requested, multiple \(or no\) rows returned\.?\s*/i, '').trim() || fallback;
+  },
+  isEProposalRpcMissing(error) {
+    const text = [error?.message, error?.details, error?.hint, error?.code]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    return text.includes('could not find the function') ||
+      text.includes('function public.') ||
+      text.includes('does not exist') ||
+      text.includes('pgrst202') ||
+      text.includes('schema cache');
+  },
   async callEProposalRpc(name, args = {}) {
     const client = this.getSupabaseClient();
+    if (!client?.rpc) throw new Error('Supabase client is not available.');
     const { data, error } = await client.rpc(name, args);
     if (error) throw error;
     return data;
   },
+  async callFirstAvailableEProposalRpc(calls = []) {
+    let lastError = null;
+    for (const call of calls) {
+      try {
+        return await this.callEProposalRpc(call.name, call.args || {});
+      } catch (error) {
+        lastError = error;
+        if (!this.isEProposalRpcMissing(error)) throw error;
+        console.warn(`[e-proposal] RPC ${call.name} is not available, trying fallback.`, error);
+      }
+    }
+    throw lastError || new Error('No compatible e-proposal RPC function is available. Run the e-proposal SQL migration first.');
+  },
   async generateEProposalLink(proposalId, { regenerate = false } = {}) {
+    const cleanId = String(proposalId || '').trim();
+    if (!cleanId) return UI.toast('Save the proposal first to generate an e-proposal link.');
     try {
-      const data = await this.callEProposalRpc('generate_e_proposal_link', { p_proposal_id: proposalId, p_regenerate: !!regenerate });
+      const data = await this.callFirstAvailableEProposalRpc([
+        {
+          name: 'eproposal_generate_link',
+          args: { p_proposal_id: cleanId, p_base_url: window.location.origin }
+        },
+        {
+          name: 'generate_e_proposal_link',
+          args: { p_proposal_id: cleanId, p_regenerate: !!regenerate }
+        }
+      ]);
       this.showEProposalLinkModal(data);
       await this.loadAndRefresh({ force: true });
     } catch (error) {
-      UI.toast(error?.message || 'Unable to generate e-proposal link.');
+      console.error('[e-proposal] generate failed', error);
+      UI.toast(this.getEProposalRpcErrorMessage(error, 'Unable to generate e-proposal link.'));
     }
   },
   async disableEProposalLink(proposalId) {
+    const cleanId = String(proposalId || '').trim();
+    if (!cleanId) return;
     try {
-      const data = await this.callEProposalRpc('disable_e_proposal_link', { p_proposal_id: proposalId });
+      const data = await this.callFirstAvailableEProposalRpc([
+        { name: 'eproposal_disable_link', args: { p_proposal_id: cleanId } },
+        { name: 'disable_e_proposal_link', args: { p_proposal_id: cleanId } }
+      ]);
       UI.toast('E-proposal link disabled.');
       this.showEProposalLinkModal(data);
       await this.loadAndRefresh({ force: true });
     } catch (error) {
-      UI.toast(error?.message || 'Unable to disable e-proposal link.');
+      console.error('[e-proposal] disable failed', error);
+      UI.toast(this.getEProposalRpcErrorMessage(error, 'Unable to disable e-proposal link.'));
     }
   },
   async logEProposalActivity(proposalId, token, eventType) {
-    try { await this.callEProposalRpc('log_e_proposal_activity', { p_proposal_id: proposalId, p_token: token, p_event_type: eventType }); } catch (e) { console.warn('[e-proposal] audit log failed', e); }
+    try {
+      await this.callEProposalRpc('log_e_proposal_activity', {
+        p_proposal_id: proposalId,
+        p_event_type: eventType,
+        p_token: token
+      });
+    } catch (e) {
+      console.warn('[e-proposal] audit log failed', e);
+    }
   },
   showEProposalLinkModal(data = {}) {
     const row = Array.isArray(data) ? data[0] : data;
     const proposalId = String(row?.proposal_id || row?.id || '').trim();
     const token = String(row?.token || row?.e_proposal_token || '').trim();
-    const link = String(row?.public_link || this.getEProposalPublicUrl(token)).trim();
+    const link = String(row?.url || row?.public_url || row?.public_link || this.getEProposalPublicUrl(token)).trim();
     let modal = document.getElementById('eProposalLinkModal');
     if (!modal) {
       modal = document.createElement('div');
@@ -5307,7 +5370,7 @@ const Proposals = {
       modal.setAttribute('aria-modal', 'true');
       document.body.appendChild(modal);
     }
-    modal.innerHTML = `<div class="modal-content e-proposal-link-dialog"><div class="modal-header e-proposal-link-header"><div><h2>E-Proposal Link Generated</h2><p>Share this secure link manually with the customer. The customer can review, accept, or reject the proposal without ERP credentials.</p></div><button class="modal-close" data-e-proposal-close type="button">✕</button></div><div class="e-proposal-link-body"><div class="e-proposal-link-meta"><span><b>Proposal</b>${U.escapeHtml(row?.proposal_number || row?.proposal_id || '—')}</span><span><b>Customer/company</b>${U.escapeHtml(row?.customer_name || '—')}</span><span><b>Valid until</b>${U.escapeHtml(U.fmtDisplayDate(row?.valid_until || row?.proposal_valid_until) || '—')}</span></div><label class="muted" for="eProposalPublicLink">Public link</label><input id="eProposalPublicLink" class="input e-proposal-link-input" readonly value="${U.escapeAttr(link)}" /><div class="e-proposal-link-actions"><button class="btn btn-incheck-primary" data-e-proposal-copy type="button">Copy E-Proposal Link</button><button class="btn btn-incheck-outline" data-e-proposal-open type="button">Open E-Proposal</button><button class="btn btn-incheck-outline" data-e-proposal-regenerate type="button">Regenerate Link</button><button class="btn proposal-danger-btn" data-e-proposal-disable type="button">Disable Link</button></div></div></div>`;
+    modal.innerHTML = `<div class="modal-content e-proposal-link-dialog"><div class="modal-header e-proposal-link-header"><div><h2>${link ? 'E-Proposal Link Generated' : 'E-Proposal Link Disabled'}</h2><p>${link ? 'Share this secure link manually with the customer. The customer can review, accept, or reject the proposal without ERP credentials.' : 'The previous public e-proposal link is now disabled. Generate a new link when needed.'}</p></div><button class="modal-close" data-e-proposal-close type="button">✕</button></div><div class="e-proposal-link-body"><div class="e-proposal-link-meta"><span><b>Proposal</b>${U.escapeHtml(row?.proposal_number || row?.proposal_id || '—')}</span><span><b>Customer/company</b>${U.escapeHtml(row?.customer_name || row?.client_name || '—')}</span><span><b>Valid until</b>${U.escapeHtml(U.fmtDisplayDate(row?.valid_until || row?.proposal_valid_until || row?.expires_at) || '—')}</span></div>${link ? `<label class="muted" for="eProposalPublicLink">Public link</label><input id="eProposalPublicLink" class="input e-proposal-link-input" readonly value="${U.escapeAttr(link)}" />` : `<div class="e-proposal-disabled-note">No active public link is currently enabled for this proposal.</div>`}<div class="e-proposal-link-actions">${link ? `<button class="btn btn-incheck-primary" data-e-proposal-copy type="button">Copy E-Proposal Link</button><button class="btn btn-incheck-outline" data-e-proposal-open type="button">Open E-Proposal</button>` : ''}<button class="btn btn-incheck-outline" data-e-proposal-regenerate type="button">${link ? 'Regenerate Link' : 'Generate New Link'}</button>${link ? `<button class="btn proposal-danger-btn" data-e-proposal-disable type="button">Disable Link</button>` : ''}</div></div></div>`;
     const close = () => { modal.style.display = 'none'; modal.setAttribute('aria-hidden', 'true'); };
     modal.querySelector('[data-e-proposal-close]')?.addEventListener('click', close);
     modal.addEventListener('click', event => { if (event.target === modal) close(); }, { once: true });
@@ -5929,10 +5992,28 @@ window.Proposals = Proposals;
     const unavailable = (message = 'This proposal link is no longer available.') => { root.innerHTML = `<div class="e-proposal-unavailable"><h1>${U.escapeHtml(message)}</h1><p>Please contact the InCheck360 team for an updated proposal link.</p></div>`; };
     try {
       const client = window.SupabaseClient?.getClient?.();
-      const { data, error } = await client.rpc('get_e_proposal_by_token', { p_token: token });
-      if (error) throw error;
+      if (!client?.rpc) throw new Error('Supabase client is not available.');
+      const callGuestRpc = async calls => {
+        let lastError = null;
+        for (const call of calls) {
+          try {
+            const { data, error } = await client.rpc(call.name, call.args || {});
+            if (error) throw error;
+            return data;
+          } catch (error) {
+            lastError = error;
+            if (!Proposals.isEProposalRpcMissing(error)) throw error;
+            console.warn(`[e-proposal] Guest RPC ${call.name} is not available, trying fallback.`, error);
+          }
+        }
+        throw lastError || new Error('No compatible e-proposal guest RPC is available.');
+      };
+      const data = await callGuestRpc([
+        { name: 'eproposal_public_view', args: { p_token: token, p_user_agent: navigator.userAgent } },
+        { name: 'get_e_proposal_by_token', args: { p_token: token } }
+      ]);
       const payload = Array.isArray(data) ? data[0] : data;
-      if (!payload?.proposal) return unavailable();
+      if (payload?.ok === false || payload?.available === false || !payload?.proposal) return unavailable(payload?.error);
       const proposal = Proposals.normalizeProposal(payload.proposal);
       const items = Array.isArray(payload.items) ? payload.items.map(item => Proposals.normalizeItem(item)) : [];
       const documentHtml = Proposals.buildProposalDocumentHtml(proposal, items, { mode: 'guest' });
@@ -5948,10 +6029,49 @@ window.Proposals = Proposals;
         event.preventDefault();
         const form = event.target;
         const isAccept = form.matches('[data-accept-form]');
-        const body = isAccept ? { p_token: token, p_customer_name: form.name.value, p_customer_email: form.email.value, p_comment: form.comment.value } : { p_token: token, p_rejection_reason: form.reason.value };
-        const fn = isAccept ? 'accept_e_proposal' : 'reject_e_proposal';
-        const { error: actionError } = await client.rpc(fn, body);
-        if (actionError) throw actionError;
+        if (isAccept) {
+          await callGuestRpc([
+            {
+              name: 'eproposal_accept',
+              args: {
+                p_token: token,
+                p_customer_name: form.name.value,
+                p_customer_email: form.email.value,
+                p_customer_comment: form.comment.value,
+                p_user_agent: navigator.userAgent
+              }
+            },
+            {
+              name: 'accept_e_proposal',
+              args: {
+                p_token: token,
+                p_customer_name: form.name.value,
+                p_customer_email: form.email.value,
+                p_comment: form.comment.value
+              }
+            }
+          ]);
+        } else {
+          await callGuestRpc([
+            {
+              name: 'eproposal_reject',
+              args: {
+                p_token: token,
+                p_customer_name: null,
+                p_customer_email: null,
+                p_rejection_reason: form.reason.value,
+                p_user_agent: navigator.userAgent
+              }
+            },
+            {
+              name: 'reject_e_proposal',
+              args: {
+                p_token: token,
+                p_rejection_reason: form.reason.value
+              }
+            }
+          ]);
+        }
         root.innerHTML = `<div class="e-proposal-unavailable"><h1>${isAccept ? 'Proposal accepted' : 'Proposal rejected'}</h1><p>Thank you. InCheck360 has recorded your response.</p></div>`;
       });
     } catch (error) {
