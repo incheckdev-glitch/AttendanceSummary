@@ -1659,6 +1659,7 @@ const Leads = {
     if (E.leadFormSaveBtn) E.leadFormSaveBtn.disabled = false;
     E.leadFormModal.style.display = 'flex';
     E.leadFormModal.setAttribute('aria-hidden', 'false');
+    window.ModalScrollLock?.lock?.() || document.body.classList.add('modal-open');
     if (window.setAppHashRoute && window.buildRecordHashRoute) setAppHashRoute(buildRecordHashRoute('leads', row || {}));
     if (row) {
       await this.hydrateLeadLinkedDetails(row);
@@ -1732,6 +1733,7 @@ const Leads = {
     if (!E.leadFormModal) return;
     E.leadFormModal.style.display = 'none';
     E.leadFormModal.setAttribute('aria-hidden', 'true');
+    window.ModalScrollLock?.unlock?.() || document.body.classList.remove('modal-open');
     this.resetLeadSelectionState({ clearCurrentLead: true });
     if (window.setAppHashRoute) setAppHashRoute('#crm?tab=leads');
   },

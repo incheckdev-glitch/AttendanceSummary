@@ -493,11 +493,13 @@ const ProposalCatalog = {
 
     E.proposalCatalogFormModal.style.display = 'flex';
     E.proposalCatalogFormModal.setAttribute('aria-hidden', 'false');
+    window.ModalScrollLock?.lock?.() || document.body.classList.add('modal-open');
   },
   closeForm() {
     if (!E.proposalCatalogFormModal || !E.proposalCatalogForm) return;
     E.proposalCatalogFormModal.style.display = 'none';
     E.proposalCatalogFormModal.setAttribute('aria-hidden', 'true');
+    window.ModalScrollLock?.unlock?.() || document.body.classList.remove('modal-open');
     E.proposalCatalogForm.reset();
     this.updateNotesCounter();
   },

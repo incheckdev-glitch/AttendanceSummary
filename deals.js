@@ -1594,6 +1594,7 @@ const Deals = {
     if (E.dealFormSaveBtn) E.dealFormSaveBtn.disabled = false;
     E.dealFormModal.style.display = 'flex';
     E.dealFormModal.setAttribute('aria-hidden', 'false');
+    window.ModalScrollLock?.lock?.() || document.body.classList.add('modal-open');
     if (window.setAppHashRoute && window.buildRecordHashRoute) setAppHashRoute(buildRecordHashRoute('deals', row || {}));
     if (row) await this.refreshDealNoteHistory(row);
     else this.renderDealNoteHistory([]);
@@ -1742,6 +1743,7 @@ const Deals = {
     if (!E.dealFormModal) return;
     E.dealFormModal.style.display = 'none';
     E.dealFormModal.setAttribute('aria-hidden', 'true');
+    window.ModalScrollLock?.unlock?.() || document.body.classList.remove('modal-open');
     if (window.setAppHashRoute) setAppHashRoute('#crm?tab=deals');
   },
   collectFormData() {

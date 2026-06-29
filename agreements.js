@@ -4376,6 +4376,7 @@ const Agreements = {
     this.refreshSignedAgreementDocumentUi(agreement);
     E.agreementFormModal.classList.add('open');
     E.agreementFormModal.setAttribute('aria-hidden', 'false');
+    window.ModalScrollLock?.lock?.() || document.body.classList.add('modal-open');
     window.setTimeout(() => {
       window.CrmCompanyContactSelectors?.initializeCompanyContactSelectorsForAgreement?.();
       this.syncAgreementCompanySelectorFromRecord(this.state.currentAgreement || agreement);
@@ -4392,6 +4393,7 @@ const Agreements = {
     if (!E.agreementFormModal || !E.agreementForm) return;
     E.agreementFormModal.classList.remove('open');
     E.agreementFormModal.setAttribute('aria-hidden', 'true');
+    window.ModalScrollLock?.unlock?.() || document.body.classList.remove('modal-open');
     if (window.setAppHashRoute) setAppHashRoute('#crm?tab=agreements');
     E.agreementForm.reset();
     E.agreementForm.dataset.id = '';
