@@ -4736,6 +4736,7 @@ const Proposals = {
 
     E.proposalFormModal.style.display = 'flex';
     E.proposalFormModal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('modal-open');
     if (mode === 'create' && sourceCompanyId) {
       if (!this.isUuid(sourceCompanyId) || (sourceContactId && !this.isUuid(sourceContactId))) {
         UI.toast('Proposal source is missing a valid company/contact UUID. Please reselect the company.');
@@ -4750,6 +4751,7 @@ const Proposals = {
     if (!E.proposalFormModal) return;
     E.proposalFormModal.style.display = 'none';
     E.proposalFormModal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('modal-open');
     if (window.setAppHashRoute) setAppHashRoute('#crm?tab=proposals');
   },
   setFormBusy(value) {
