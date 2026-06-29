@@ -6092,17 +6092,53 @@ function bootPublicEProposalPage() {
     return data;
   };
 
+  function safeText(value, fallback = '—') {
+    return value === null || value === undefined || value === '' ? fallback : value;
+  }
+  const field = (...values) => values.find(value => value !== undefined && value !== null && String(value).trim() !== '');
+  const numericField = (...values) => {
+    for (const value of values) {
+      if (value === undefined || value === null || value === '') continue;
+      const number = Number(value);
+      if (Number.isFinite(number)) return number;
+    }
+    return 0;
+  };
   const money = (value, currency) => {
     const amount = Number(value || 0);
     try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: currency || 'EUR' }).format(amount); }
     catch (_) { return `${U.escapeHtml(currency || 'EUR')} ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; }
   };
-  const field = (...values) => values.find(value => value !== undefined && value !== null && String(value).trim() !== '');
-  const renderItems = (title, rows, currency) => rows.length ? `
-    <h3>${U.escapeHtml(title)}</h3>
-    <div class="public-table-wrap"><table><thead><tr><th>Item</th><th>Description</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead><tbody>
-      ${rows.map(item => `<tr><td>${U.escapeHtml(field(item.name, item.item_name, item.product_name, 'Item'))}</td><td>${U.escapeHtml(field(item.description, item.item_description, ''))}</td><td>${U.escapeHtml(field(item.quantity, item.qty, 1))}</td><td>${money(field(item.unit_price, item.price, item.monthly_price, 0), currency)}</td><td>${money(field(item.total, item.line_total, item.amount, 0), currency)}</td></tr>`).join('')}
-    </tbody></table></div>` : '';
+  const dateText = value => U.escapeHtml(U.fmtDisplayDate(value) || '—');
+  const display = (value, fallback = '—') => U.escapeHtml(String(safeText(value, fallback)));
+  const addressText = (...parts) => parts.map(part => safeText(part, '')).filter(Boolean).join(', ');
+  const calculateFromUnitQtyDiscount = item => {
+    const qty = numericField(item.quantity, item.qty, 1) || 1;
+    const unit = numericField(item.unit_price, item.price, item.monthly_price, item.annual_price, item.amount, 0);
+    const discountPct = numericField(item.discount_percentage, item.discount_percent, item.discount, 0);
+    return Math.max(0, qty * unit * (1 - (discountPct / 100)));
+  };
+  const lineTotalFor = item => numericField(item.line_total, item.total, item.amount, item.final_amount, calculateFromUnitQtyDiscount(item));
+  const lineGrossFor = item => {
+    const qty = numericField(item.quantity, item.qty, 1) || 1;
+    const unit = numericField(item.unit_price, item.price, item.monthly_price, item.annual_price, 0);
+    const gross = qty * unit;
+    return gross > 0 ? gross : lineTotalFor(item);
+  };
+  const sectionFor = item => {
+    const raw = String(field(item.section, item.item_section, item.category_section, item.item_type, item.type, '') || '').toLowerCase().replace(/[\s-]+/g, '_');
+    const name = String(field(item.name, item.item_name, item.product_name, item.service_name, '') || '').toLowerCase();
+    const value = raw || name;
+    if (/annual_saas|saas|license|subscription|recurring|monthly|annual/.test(value)) return 'saas';
+    if (/one_time_fee|one_time|one-time|setup|implementation|onboarding|activation/.test(value)) return 'one_time';
+    if (/hardware|device|equipment|terminal|sensor|reader/.test(value)) return 'hardware';
+    return 'one_time';
+  };
+  const renderItems = (title, rows, currency, annual = false) => rows.length ? `
+    <div class="public-items-group"><h3>${U.escapeHtml(title)}</h3>
+    <div class="public-table-wrap"><table><thead><tr><th>Item / service</th><th>Description</th>${annual ? '<th>Service start</th><th>Service end</th>' : ''}<th>Quantity</th><th>Unit price</th><th>Discount %</th><th>Total</th></tr></thead><tbody>
+      ${rows.map(item => `<tr><td>${display(field(item.name, item.item_name, item.product_name, item.service_name, 'Item'))}</td><td>${display(field(item.description, item.item_description, item.long_description))}</td>${annual ? `<td>${dateText(field(item.service_start_date, item.start_date, item.valid_from))}</td><td>${dateText(field(item.service_end_date, item.end_date, item.valid_to))}</td>` : ''}<td>${display(field(item.quantity, item.qty, 1))}</td><td>${money(field(item.unit_price, item.price, item.monthly_price, item.annual_price, 0), currency)}</td><td>${display(field(item.discount_percentage, item.discount_percent, item.discount, 0))}</td><td>${money(lineTotalFor(item), currency)}</td></tr>`).join('')}
+    </tbody></table></div></div>` : '';
 
   const renderModal = html => {
     let modal = document.getElementById('publicEProposalModal');
@@ -6124,28 +6160,32 @@ function bootPublicEProposalPage() {
       const proposal = Proposals.normalizeProposal(payload.proposal || payload);
       const items = Array.isArray(payload.items) ? payload.items.map(item => Proposals.normalizeItem(item)) : [];
       const currency = field(proposal.currency, payload.currency, 'EUR');
-      const saasItems = items.filter(item => /saas|subscription|recurring|monthly/i.test(field(item.item_type, item.type, item.category, '')));
-      const hardwareItems = items.filter(item => /hardware|device|equipment/i.test(field(item.item_type, item.type, item.category, '')));
-      const oneTimeItems = items.filter(item => !saasItems.includes(item) && !hardwareItems.includes(item));
-      const documentHtml = Proposals.buildProposalDocumentHtml(proposal, items, { mode: 'guest' });
+      const saasItems = items.filter(item => sectionFor(item) === 'saas');
+      const oneTimeItems = items.filter(item => sectionFor(item) === 'one_time');
+      const hardwareItems = items.filter(item => sectionFor(item) === 'hardware');
+      const calculatedSubtotal = items.reduce((sum, item) => sum + lineGrossFor(item), 0);
+      const calculatedGrandTotal = items.reduce((sum, item) => sum + lineTotalFor(item), 0);
+      const calculatedDiscount = Math.max(0, calculatedSubtotal - calculatedGrandTotal);
+      const proposalSubtotal = numericField(proposal.subtotal, proposal.subtotal_amount, payload.subtotal);
+      const proposalDiscount = numericField(proposal.discount_total, proposal.total_discount, proposal.discount_amount, payload.discount_total, payload.discount);
+      const subtotal = proposalSubtotal > 0 ? proposalSubtotal : calculatedSubtotal;
+      const discountTotal = proposalDiscount > 0 ? proposalDiscount : calculatedDiscount;
+      const grandTotalField = numericField(proposal.grand_total, proposal.total_amount, proposal.total, payload.grand_total, payload.total_amount, payload.total);
+      const grandTotal = grandTotalField > 0 ? grandTotalField : calculatedGrandTotal;
+      const proposalTerms = field(proposal.terms_and_conditions, proposal.terms_conditions, proposal.proposal_terms, proposal.terms, proposal.conditions, payload.terms_and_conditions, payload.terms_conditions, payload.proposal_terms, payload.terms, payload.conditions, '') || 'No terms and conditions were provided for this proposal.';
+      const providerAddress = addressText(field(proposal.provider_address, payload.provider_address), field(proposal.provider_city, payload.provider_city), field(proposal.provider_country, payload.provider_country));
       content.innerHTML = `
         <section class="public-eproposal-section public-proposal-hero">
-          <div><p class="public-kicker">Proposal ${U.escapeHtml(field(proposal.proposal_id, proposal.proposal_number, proposal.number, ''))}</p><h2>${U.escapeHtml(field(proposal.title, proposal.proposal_title, 'Customer Proposal'))}</h2><p>${U.escapeHtml(field(proposal.customer_name, proposal.client_name, proposal.company_name, 'Valued customer'))}</p></div>
-          <span class="public-status-pill">${U.escapeHtml(field(proposal.status, payload.status, 'Pending'))}</span>
+          <div class="public-hero-copy"><p class="public-kicker">Commercial Proposal</p><h2>${display(field(proposal.proposal_number, proposal.proposal_id, proposal.number, 'Proposal'))}</h2><p>${display(field(proposal.provider_name, payload.provider_name, 'InCheck 360 Holding BV'))}</p><p class="public-valid-until">Valid until ${dateText(field(proposal.valid_until, proposal.proposal_valid_until))}</p></div>
+          <span class="public-status-pill">${display(field(proposal.status, payload.status, 'Pending'))}</span>
         </section>
-        <section class="public-eproposal-section public-details-grid">
-          <div><strong>Proposal date</strong><span>${U.escapeHtml(U.fmtDisplayDate(field(proposal.proposal_date, proposal.date, proposal.created_at)) || '—')}</span></div>
-          <div><strong>Valid until</strong><span>${U.escapeHtml(U.fmtDisplayDate(field(proposal.valid_until, proposal.proposal_valid_until)) || '—')}</span></div>
-          <div><strong>Currency</strong><span>${U.escapeHtml(currency)}</span></div>
-          <div><strong>Provider</strong><span>InCheck360</span></div>
-        </section>
-        <section class="public-eproposal-section">${renderItems('SaaS items', saasItems, currency)}${renderItems('One-time items', oneTimeItems, currency)}${renderItems('Hardware items', hardwareItems, currency)}</section>
-        <section class="public-eproposal-section public-totals"><div><span>Subtotal</span><strong>${money(field(proposal.subtotal, payload.subtotal, 0), currency)}</strong></div><div><span>Discount</span><strong>${money(field(proposal.discount_total, proposal.discount, payload.discount, 0), currency)}</strong></div><div class="public-grand-total"><span>Grand total</span><strong>${money(field(proposal.grand_total, proposal.total, payload.grand_total, payload.total, 0), currency)}</strong></div></section>
-        <section class="public-eproposal-section"><h3>Terms and conditions</h3><p>${U.escapeHtml(field(proposal.terms_and_conditions, proposal.terms, payload.terms_and_conditions, 'Standard InCheck360 terms and conditions apply.'))}</p></section>
-        <section class="public-eproposal-section public-preview"><h3>Proposal preview</h3><iframe id="publicEProposalFrame" title="Proposal preview"></iframe></section>
-        <div class="public-eproposal-actions"><button class="public-btn-outline" data-public-print type="button">Download / Print Proposal</button><button class="public-btn-outline" data-public-reject type="button">Reject Proposal</button><button class="public-btn-primary" data-public-accept type="button">Accept Proposal</button></div>`;
-      document.getElementById('publicEProposalFrame').srcdoc = U.addIncheckDocumentLogo(U.formatPreviewHtmlDates(documentHtml));
-      document.querySelector('[data-public-print]')?.addEventListener('click', () => document.getElementById('publicEProposalFrame')?.contentWindow?.print());
+        <section class="public-eproposal-section public-info-cards"><div class="public-info-card"><h3>Customer</h3><p><strong>${display(field(proposal.customer_name, proposal.client_name, proposal.company_name))}</strong></p><p>${display(field(proposal.customer_contact_name, proposal.contact_name, proposal.contact_person))}</p><p>${display(field(proposal.customer_email, proposal.contact_email, proposal.email))}</p><p>${display(field(proposal.customer_phone, proposal.contact_phone, proposal.phone))}</p><p>${display(addressText(field(proposal.customer_address, proposal.address), field(proposal.customer_city, proposal.city), field(proposal.customer_country, proposal.country)))}</p></div><div class="public-info-card"><h3>Provider</h3><p><strong>${display(field(proposal.provider_name, payload.provider_name, 'InCheck 360 Holding BV'))}</strong></p><p>${display(providerAddress || '—')}</p><p>${display(field(proposal.provider_email, payload.provider_email, 'info@incheck360.com'))}</p><p>${display(field(proposal.provider_registration, proposal.provider_vat, payload.provider_registration, payload.provider_vat))}</p></div></section>
+        <section class="public-eproposal-section public-details-grid"><div><strong>Proposal date</strong><span>${dateText(field(proposal.proposal_date, proposal.date, proposal.created_at))}</span></div><div><strong>Valid until</strong><span>${dateText(field(proposal.valid_until, proposal.proposal_valid_until))}</span></div><div><strong>Currency</strong><span>${display(currency)}</span></div><div><strong>Payment term</strong><span>${display(field(proposal.payment_term, proposal.payment_terms, payload.payment_term))}</span></div><div><strong>Billing frequency</strong><span>${display(field(proposal.billing_frequency, proposal.billing_cycle, payload.billing_frequency))}</span></div><div><strong>Generated by</strong><span>${display(field(proposal.generated_by_name, proposal.created_by_name, payload.generated_by_name))}</span></div><div><strong>Deal ID</strong><span>${display(field(proposal.deal_id, payload.deal_id))}</span></div></section>
+        <section class="public-eproposal-section public-items-section"><h3>Items</h3>${renderItems('Annual SaaS Items', saasItems, currency, true)}${renderItems('One-Time Fee Items', oneTimeItems, currency)}${renderItems('Hardware Items', hardwareItems, currency)}${items.length ? '' : '<p class="public-empty-note">No proposal items were provided.</p>'}</section>
+        <section class="public-eproposal-section public-totals"><div><span>Subtotal</span><strong>${money(subtotal, currency)}</strong></div><div><span>Total discount</span><strong>${money(discountTotal, currency)}</strong></div><div class="public-grand-total"><span>Grand total</span><strong>${money(grandTotal, currency)}</strong></div></section>
+        <section class="public-eproposal-section"><h3>Terms and conditions</h3><div class="public-proposal-terms">${U.escapeHtml(String(proposalTerms))}</div></section>
+        <div class="public-eproposal-actions"><button class="public-btn-outline" data-public-print type="button">Print / Download PDF</button><button class="public-btn-outline" data-public-reject type="button">Reject Proposal</button><button class="public-btn-primary" data-public-accept type="button">Accept Proposal</button></div>`;
+      document.querySelector('[data-public-print]')?.addEventListener('click', () => window.print());
       document.querySelector('[data-public-accept]')?.addEventListener('click', () => renderModal(`<form data-public-accept-form><h3>Accept Proposal</h3><input class="input" name="name" required placeholder="Customer full name"><input class="input" name="email" type="email" required placeholder="Customer email"><textarea class="input" name="comment" rows="3" placeholder="Optional comment"></textarea><label class="public-checkbox"><input name="authorized" type="checkbox" required> I confirm I am authorized to accept this proposal.</label><button class="public-btn-primary" type="submit">Accept Proposal</button></form>`));
       document.querySelector('[data-public-reject]')?.addEventListener('click', () => renderModal(`<form data-public-reject-form><h3>Reject Proposal</h3><input class="input" name="name" placeholder="Customer name (optional)"><input class="input" name="email" type="email" placeholder="Customer email (optional)"><textarea class="input" name="reason" rows="4" placeholder="Rejection reason"></textarea><button class="public-btn-outline" type="submit">Reject Proposal</button></form>`));
       document.body.addEventListener('submit', async event => {

@@ -3546,7 +3546,7 @@ body.pf-modal-open{overflow:hidden}.pf-activity-modal[hidden],.pf-note-modal[hid
   margin-top: 4px;
   text-decoration: none;
 }
-.cc-message-status.read { color: #2563eb; }
+.cc-message-status.read { color: #0b7ec2; }
 .cc-message-status.received { color: #475569; }
 .cc-message-status.sent { color: #64748b; }
 .cc-message-info-drawer[hidden] { display: none; }
@@ -5725,7 +5725,7 @@ body.pf-modal-open{overflow:hidden}.pf-activity-modal[hidden],.pf-note-modal[hid
   place-items: center;
   border-radius: 14px;
   background: linear-gradient(135deg, #dbeafe, #eef2ff);
-  color: #2563eb;
+  color: #0b7ec2;
   font-size: 20px;
   font-weight: 900;
   box-shadow: 0 12px 28px rgba(37, 99, 235, .12);
@@ -7645,7 +7645,7 @@ body.public-eproposal-mode {
 
 .public-btn-primary {
   border: 0;
-  background: #2563eb;
+  background: #0b7ec2;
   color: #ffffff;
 }
 
@@ -7712,8 +7712,8 @@ body.public-eproposal-mode {
 
 .public-status-pill {
   border-radius: 999px;
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: #dff3ff;
+  color: #073b73;
   font-weight: 800;
   padding: 8px 14px;
 }
@@ -7754,7 +7754,7 @@ body.public-eproposal-mode {
 }
 
 .public-grand-total strong {
-  color: #1d4ed8;
+  color: #073b73;
   font-size: 24px;
 }
 
@@ -7843,5 +7843,105 @@ body.public-eproposal-mode {
   .public-btn-primary,
   .public-btn-outline {
     width: 100%;
+  }
+}
+
+.public-info-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  background: #f8fbff;
+}
+
+.public-info-card {
+  border: 1px solid #dbeafe;
+  border-radius: 18px;
+  padding: 18px;
+  background: #ffffff;
+}
+
+.public-info-card h3,
+.public-items-section h3,
+.public-items-group h3,
+.public-eproposal-section > h3 {
+  margin: 0 0 12px;
+  color: #073b73;
+}
+
+.public-info-card p {
+  margin: 7px 0;
+  color: #334155;
+  line-height: 1.45;
+}
+
+.public-hero-copy h2 {
+  color: #073b73;
+}
+
+.public-valid-until {
+  margin-top: 10px;
+  color: #475569;
+  font-weight: 700;
+}
+
+.public-items-group + .public-items-group {
+  margin-top: 24px;
+}
+
+.public-table-wrap {
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.public-table-wrap th {
+  background: #f1f7ff;
+  color: #073b73;
+  font-size: 12px;
+  letter-spacing: .035em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.public-table-wrap td {
+  color: #334155;
+  vertical-align: top;
+}
+
+.public-proposal-terms {
+  white-space: pre-wrap;
+  line-height: 1.7;
+  color: #334155;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 18px;
+  background: #ffffff;
+}
+
+.public-empty-note {
+  color: #64748b;
+  margin: 0;
+}
+
+@media (max-width: 780px) {
+  .public-info-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media print {
+  body.public-eproposal-mode {
+    background: #fff;
+  }
+  .public-eproposal-page {
+    padding: 0;
+  }
+  .public-eproposal-card {
+    box-shadow: none;
+    border: 0;
+    border-radius: 0;
+  }
+  .public-eproposal-actions {
+    display: none;
   }
 }
