@@ -341,7 +341,19 @@ begin
 
   perform public.log_e_proposal_activity(v_proposal.id, 'proposal_viewed', p_token, null, null, jsonb_build_object('user_agent', p_user_agent));
 
-  select coalesce(jsonb_agg(to_jsonb(pi)), '[]'::jsonb)
+  select coalesce(jsonb_agg(
+    to_jsonb(pi) - array[
+      'internal_notes',
+      'internal_note',
+      'internal_cost',
+      'cost',
+      'cost_price',
+      'margin',
+      'created_by',
+      'updated_by',
+      'audit_log'
+    ]::text[]
+  ), '[]'::jsonb)
   into v_items
   from public.proposal_items pi
   where pi.proposal_id = v_proposal.id;
@@ -349,7 +361,17 @@ begin
   return jsonb_build_object(
     'ok', true,
     'available', true,
-    'proposal', to_jsonb(v_proposal) - 'e_proposal_token' - 'e_proposal_generated_by',
+    'proposal', to_jsonb(v_proposal) - array[
+      'e_proposal_token',
+      'e_proposal_generated_by',
+      'internal_notes',
+      'internal_note',
+      'internal_cost',
+      'approval_logs',
+      'audit_log',
+      'created_by',
+      'updated_by'
+    ]::text[],
     'items', v_items
   );
 end;
