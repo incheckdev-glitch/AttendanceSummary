@@ -545,6 +545,98 @@ const Proposals = {
       grand_total: calculated.grand_total
     };
   },
+
+  buildProposalPreviewModel(proposal = {}, items = []) {
+    const proposalData = proposal && typeof proposal === 'object' ? proposal : {};
+    const normalizedItems = (Array.isArray(items) ? items : []).map((item, index) => {
+      const normalized = this.normalizeItem(item);
+      if (!normalized.line_no) normalized.line_no = index + 1;
+      const sectionType = this.classifyProposalItemBilling(normalized);
+      normalized.preview_section = sectionType === 'saas'
+        ? 'annual_saas'
+        : sectionType === 'hardware'
+          ? 'hardware'
+          : sectionType === 'one_time'
+            ? 'one_time_fee'
+            : String(normalized.section || normalized.item_section || normalized.category_section || '').trim().toLowerCase() || 'one_time_fee';
+      return normalized;
+    });
+    const firstItemWithCurrency = normalizedItems.find(i => i.currency || i.item_currency) || {};
+    const currency = String(
+      proposalData.currency ||
+      proposalData.proposal_currency ||
+      proposalData.document_currency ||
+      proposalData.billing_currency ||
+      firstItemWithCurrency.currency ||
+      firstItemWithCurrency.item_currency ||
+      'USD'
+    ).trim().toUpperCase();
+    const calculateLine = item => {
+      const unitPrice = this.toNumberSafe(item.unit_price ?? item.price ?? item.default_price ?? 0);
+      const qty = this.toNumberSafe(item.quantity ?? item.qty ?? 1) || 1;
+      const discountPercent = this.toNumberSafe(item.discount_percent ?? item.discount_percentage ?? item.discount ?? 0);
+      const lineSubtotal = unitPrice * qty;
+      return lineSubtotal - (lineSubtotal * (discountPercent / 100));
+    };
+    const lineTotalFor = item => this.toNumberSafe(
+      item.line_total ??
+      item.total_price ??
+      item.total ??
+      item.amount ??
+      item.final_amount ??
+      calculateLine(item)
+    );
+    const grossFor = item => {
+      const unitPrice = this.toNumberSafe(item.unit_price ?? item.price ?? item.catalog_unit_price ?? item.default_unit_price ?? 0);
+      const qty = this.toNumberSafe(item.quantity ?? item.qty ?? 1) || 1;
+      const gross = unitPrice * qty;
+      return gross > 0 ? gross : lineTotalFor(item);
+    };
+    const sectionSum = section => normalizedItems
+      .filter(item => item.preview_section === section)
+      .reduce((sum, item) => sum + lineTotalFor(item), 0);
+    const calculatedSubtotal = normalizedItems.reduce((sum, item) => sum + grossFor(item), 0);
+    const calculatedGrandTotal = normalizedItems.reduce((sum, item) => sum + lineTotalFor(item), 0);
+    const calculatedDiscount = Math.max(0, calculatedSubtotal - calculatedGrandTotal);
+    const pickNumber = (...values) => {
+      for (const value of values) {
+        if (value !== undefined && value !== null && String(value).trim() !== '') return this.toNumberSafe(value);
+      }
+      return undefined;
+    };
+    const saasTotal = pickNumber(proposalData.saas_total, proposalData.subtotal_locations) ?? sectionSum('annual_saas');
+    const hardwareTotal = pickNumber(proposalData.hardware_total, proposalData.subtotal_hardware) ?? sectionSum('hardware');
+    const oneTimeFeeTotal = pickNumber(proposalData.one_time_fee_total, proposalData.one_time_total, proposalData.subtotal_one_time) ?? sectionSum('one_time_fee');
+    const subtotal = pickNumber(proposalData.subtotal, proposalData.sub_total, proposalData.total_before_discount, proposalData.gross_total) ?? calculatedSubtotal;
+    const discountTotal = pickNumber(proposalData.discount_total, proposalData.total_discount, proposalData.discount_amount) ?? calculatedDiscount;
+    const grandTotal = pickNumber(proposalData.grand_total, proposalData.total_amount, proposalData.final_total, proposalData.total) ?? calculatedGrandTotal;
+    const terms = String(
+      proposalData.terms_and_conditions ||
+      proposalData.terms_conditions ||
+      proposalData.proposal_terms ||
+      proposalData.terms ||
+      proposalData.conditions ||
+      ''
+    );
+    return {
+      proposal: { ...proposalData, currency, terms_conditions: terms },
+      items: normalizedItems,
+      currency,
+      totals: {
+        subtotal,
+        discount_total: discountTotal,
+        total_discount: discountTotal,
+        saas_total: saasTotal,
+        subtotal_locations: saasTotal,
+        one_time_fee_total: oneTimeFeeTotal,
+        one_time_total: oneTimeFeeTotal + hardwareTotal,
+        subtotal_one_time: oneTimeFeeTotal + hardwareTotal,
+        hardware_total: hardwareTotal,
+        grand_total: grandTotal
+      },
+      lineTotalFor
+    };
+  },
   formatMoney(value) {
     const num = this.toNumberSafe(value);
     return num.toLocaleString(undefined, { maximumFractionDigits: 2 });
@@ -2567,13 +2659,10 @@ const Proposals = {
     };
   },
   buildProposalDocumentHtml(proposal = {}, items = [], options = {}) {
-    const proposalData = proposal && typeof proposal === 'object' ? proposal : {};
-    const normalizedItems = (Array.isArray(items) ? items : []).map((item, index) => {
-      const normalized = this.normalizeItem(item);
-      if (!normalized.line_no) normalized.line_no = index + 1;
-      return normalized;
-    });
-    const currency = String(proposalData.currency || 'USD').trim().toUpperCase();
+    const previewModel = this.buildProposalPreviewModel(proposal, items);
+    const proposalData = previewModel.proposal;
+    const normalizedItems = previewModel.items;
+    const currency = previewModel.currency;
     const normalizedStatus = this.normalizeProposalStatus(proposalData.status);
     const watermarkText =
       normalizedStatus === 'draft'
@@ -2596,28 +2685,22 @@ const Proposals = {
       return formatted && formatted !== 'Invalid Date' ? formatted : U.escapeHtml(raw);
     };
     const computeRow = item => {
-      const section = String(item?.section || '').trim().toLowerCase();
-      const quantity = section === 'annual_saas'
-        ? this.getAnnualSaasMonths(item)
-        : (this.toNumberSafe(item.quantity) || 1);
-      const unitPrice = this.toNumberSafe(item.unit_price);
-      const discountPercent = this.toNumberSafe(item.discount_percent);
-      const computed = this.computeCommercialRow({ ...item, section, quantity, unit_price: unitPrice, discount_percent: discountPercent });
+      const section = String(item?.preview_section || item?.section || '').trim().toLowerCase();
+      const quantity = this.toNumberSafe(item.quantity ?? item.qty ?? 1) || 1;
+      const unitPrice = this.toNumberSafe(item.unit_price ?? item.price ?? item.catalog_unit_price ?? item.default_unit_price ?? 0);
+      const discountPercent = this.toNumberSafe(item.discount_percent ?? item.discount_percentage ?? item.discount ?? 0);
       return {
         quantity,
         unitPrice,
         discountPercent,
-        lineTotal: computed.line_total
+        lineTotal: previewModel.lineTotalFor(item)
       };
     };
 
-    const subscriptionItems = normalizedItems.filter(item => this.classifyProposalItemBilling(item) === 'saas');
-    const hardwareItems = normalizedItems.filter(item => this.classifyProposalItemBilling(item) === 'hardware');
-    const oneTimeItems = normalizedItems.filter(item => this.classifyProposalItemBilling(item) === 'one_time');
-    const otherItems = normalizedItems.filter(item => {
-      const type = this.classifyProposalItemBilling(item);
-      return type !== 'saas' && type !== 'one_time' && type !== 'hardware' && type !== 'capability';
-    });
+    const subscriptionItems = normalizedItems.filter(item => item.preview_section === 'annual_saas');
+    const hardwareItems = normalizedItems.filter(item => item.preview_section === 'hardware');
+    const oneTimeItems = normalizedItems.filter(item => item.preview_section === 'one_time_fee');
+    const otherItems = normalizedItems.filter(item => !['annual_saas', 'hardware', 'one_time_fee'].includes(item.preview_section));
 
     const renderSubscriptionRows = rows => (rows.length
       ? rows
@@ -2653,9 +2736,15 @@ const Proposals = {
           .join('')
       : '<tr><td colspan="6" class="cell-center muted">No one-time fee items found.</td></tr>');
 
-    const sumRows = rows => (Array.isArray(rows) ? rows : []).reduce((sum, item) => sum + this.toNumberSafe(computeRow(item).lineTotal), 0);
-    const hardwareSubtotal = sumRows(hardwareItems);
-    const oneTimeFeesSubtotal = sumRows(oneTimeItems.length ? oneTimeItems : otherItems);
+    const previewTotals = previewModel.totals;
+    const subtotalLocations = this.toNumberSafe(previewTotals.saas_total);
+    const hardwareSubtotal = this.toNumberSafe(previewTotals.hardware_total);
+    const oneTimeFeesSubtotal = this.toNumberSafe(previewTotals.one_time_fee_total);
+    const subtotalOneTime = this.toNumberSafe(previewTotals.subtotal_one_time);
+    const subtotal = this.toNumberSafe(previewTotals.subtotal);
+    const discountTotal = this.toNumberSafe(previewTotals.discount_total);
+    const grandTotal = this.toNumberSafe(previewTotals.grand_total);
+    const displayOneTimeFeesSubtotal = oneTimeFeesSubtotal;
     const hardwareSectionHtml = hardwareItems.length ? `
       <section class="section">
         <h2>Hardware Details</h2>
@@ -2681,17 +2770,6 @@ const Proposals = {
         </table>
       </section>` : '';
 
-    const calculatedTotals = this.calculateProposalTotals(normalizedItems);
-    const headerSaas = this.toNumberSafe(proposalData.subtotal_locations ?? proposalData.saas_total);
-    const headerOneTime = this.toNumberSafe(proposalData.subtotal_one_time ?? proposalData.one_time_total);
-    const headerGrand = this.toNumberSafe(proposalData.grand_total);
-    const hasCalculatedTotals = calculatedTotals.grand_total > 0;
-    const subtotalLocations = hasCalculatedTotals ? calculatedTotals.saas_total : headerSaas;
-    const subtotalOneTime = hasCalculatedTotals ? oneTimeFeesSubtotal + hardwareSubtotal : headerOneTime;
-    const grandTotal = hasCalculatedTotals
-      ? subtotalLocations + subtotalOneTime
-      : this.toNumberSafe(headerGrand || subtotalLocations + subtotalOneTime);
-    const displayOneTimeFeesSubtotal = hasCalculatedTotals ? oneTimeFeesSubtotal : subtotalOneTime;
     const grandTotalInWords = U.formatAmountInWords(grandTotal, currency);
     const providerSignatoryName = this.getProposalProviderSignatoryName(proposalData);
     const providerSignatoryTitle = this.getProposalProviderSignatoryTitle(proposalData);
@@ -3026,6 +3104,8 @@ const Proposals = {
           <div class="totals-row"><span>One Time Fees</span><strong>${money(displayOneTimeFeesSubtotal)}</strong></div>
           ${hardwareItems.length ? `<div class="totals-row"><span>Hardware</span><strong>${money(hardwareSubtotal)}</strong></div>` : ''}
           <div class="totals-row"><span>Subscription Fees</span><strong>${money(subtotalLocations)}</strong></div>
+          <div class="totals-row"><span>Subtotal</span><strong>${money(subtotal)}</strong></div>
+          <div class="totals-row"><span>Total Discount</span><strong>${money(discountTotal)}</strong></div>
           <div class="totals-row grand"><span>Grand Total</span><strong>${money(grandTotal)}</strong></div>
           <div class="totals-row grand-total-words-row"><span>Grand Total in Words</span><strong>${U.escapeHtml(grandTotalInWords)}</strong></div>
         </div>
@@ -6096,50 +6176,8 @@ function bootPublicEProposalPage() {
     return value === null || value === undefined || value === '' ? fallback : value;
   }
   const field = (...values) => values.find(value => value !== undefined && value !== null && String(value).trim() !== '');
-  const numericField = (...values) => {
-    for (const value of values) {
-      if (value === undefined || value === null || value === '') continue;
-      const number = Number(value);
-      if (Number.isFinite(number)) return number;
-    }
-    return 0;
-  };
-  const money = (value, currency) => {
-    const amount = Number(value || 0);
-    try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: currency || 'EUR' }).format(amount); }
-    catch (_) { return `${U.escapeHtml(currency || 'EUR')} ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; }
-  };
   const dateText = value => U.escapeHtml(U.fmtDisplayDate(value) || '—');
   const display = (value, fallback = '—') => U.escapeHtml(String(safeText(value, fallback)));
-  const addressText = (...parts) => parts.map(part => safeText(part, '')).filter(Boolean).join(', ');
-  const calculateFromUnitQtyDiscount = item => {
-    const qty = numericField(item.quantity, item.qty, 1) || 1;
-    const unit = numericField(item.unit_price, item.price, item.monthly_price, item.annual_price, item.amount, 0);
-    const discountPct = numericField(item.discount_percentage, item.discount_percent, item.discount, 0);
-    return Math.max(0, qty * unit * (1 - (discountPct / 100)));
-  };
-  const lineTotalFor = item => numericField(item.line_total, item.total, item.amount, item.final_amount, calculateFromUnitQtyDiscount(item));
-  const lineGrossFor = item => {
-    const qty = numericField(item.quantity, item.qty, 1) || 1;
-    const unit = numericField(item.unit_price, item.price, item.monthly_price, item.annual_price, 0);
-    const gross = qty * unit;
-    return gross > 0 ? gross : lineTotalFor(item);
-  };
-  const sectionFor = item => {
-    const raw = String(field(item.section, item.item_section, item.category_section, item.item_type, item.type, '') || '').toLowerCase().replace(/[\s-]+/g, '_');
-    const name = String(field(item.name, item.item_name, item.product_name, item.service_name, '') || '').toLowerCase();
-    const value = raw || name;
-    if (/annual_saas|saas|license|subscription|recurring|monthly|annual/.test(value)) return 'saas';
-    if (/one_time_fee|one_time|one-time|setup|implementation|onboarding|activation/.test(value)) return 'one_time';
-    if (/hardware|device|equipment|terminal|sensor|reader/.test(value)) return 'hardware';
-    return 'one_time';
-  };
-  const renderItems = (title, rows, currency, annual = false) => rows.length ? `
-    <div class="public-items-group"><h3>${U.escapeHtml(title)}</h3>
-    <div class="public-table-wrap"><table><thead><tr><th>Item / service</th><th>Description</th>${annual ? '<th>Service start</th><th>Service end</th>' : ''}<th>Quantity</th><th>Unit price</th><th>Discount %</th><th>Total</th></tr></thead><tbody>
-      ${rows.map(item => `<tr><td>${display(field(item.name, item.item_name, item.product_name, item.service_name, 'Item'))}</td><td>${display(field(item.description, item.item_description, item.long_description))}</td>${annual ? `<td>${dateText(field(item.service_start_date, item.start_date, item.valid_from))}</td><td>${dateText(field(item.service_end_date, item.end_date, item.valid_to))}</td>` : ''}<td>${display(field(item.quantity, item.qty, 1))}</td><td>${money(field(item.unit_price, item.price, item.monthly_price, item.annual_price, 0), currency)}</td><td>${display(field(item.discount_percentage, item.discount_percent, item.discount, 0))}</td><td>${money(lineTotalFor(item), currency)}</td></tr>`).join('')}
-    </tbody></table></div></div>` : '';
-
   const renderModal = html => {
     let modal = document.getElementById('publicEProposalModal');
     if (!modal) {
@@ -6159,33 +6197,26 @@ function bootPublicEProposalPage() {
       if (payload?.ok === false || payload?.available === false || (!payload?.proposal && !payload?.proposal_id && !payload?.proposal_number)) return unavailable();
       const proposal = Proposals.normalizeProposal(payload.proposal || payload);
       const items = Array.isArray(payload.items) ? payload.items.map(item => Proposals.normalizeItem(item)) : [];
-      const currency = field(proposal.currency, payload.currency, 'EUR');
-      const saasItems = items.filter(item => sectionFor(item) === 'saas');
-      const oneTimeItems = items.filter(item => sectionFor(item) === 'one_time');
-      const hardwareItems = items.filter(item => sectionFor(item) === 'hardware');
-      const calculatedSubtotal = items.reduce((sum, item) => sum + lineGrossFor(item), 0);
-      const calculatedGrandTotal = items.reduce((sum, item) => sum + lineTotalFor(item), 0);
-      const calculatedDiscount = Math.max(0, calculatedSubtotal - calculatedGrandTotal);
-      const proposalSubtotal = numericField(proposal.subtotal, proposal.subtotal_amount, payload.subtotal);
-      const proposalDiscount = numericField(proposal.discount_total, proposal.total_discount, proposal.discount_amount, payload.discount_total, payload.discount);
-      const subtotal = proposalSubtotal > 0 ? proposalSubtotal : calculatedSubtotal;
-      const discountTotal = proposalDiscount > 0 ? proposalDiscount : calculatedDiscount;
-      const grandTotalField = numericField(proposal.grand_total, proposal.total_amount, proposal.total, payload.grand_total, payload.total_amount, payload.total);
-      const grandTotal = grandTotalField > 0 ? grandTotalField : calculatedGrandTotal;
-      const proposalTerms = field(proposal.terms_and_conditions, proposal.terms_conditions, proposal.proposal_terms, proposal.terms, proposal.conditions, payload.terms_and_conditions, payload.terms_conditions, payload.proposal_terms, payload.terms, payload.conditions, '') || 'No terms and conditions were provided for this proposal.';
-      const providerAddress = addressText(field(proposal.provider_address, payload.provider_address), field(proposal.provider_city, payload.provider_city), field(proposal.provider_country, payload.provider_country));
+      const previewModel = Proposals.buildProposalPreviewModel(proposal, items);
+      if (!String(previewModel.proposal.terms_conditions || '').trim()) {
+        previewModel.proposal.terms_conditions = 'No terms and conditions were provided for this proposal.';
+      }
+      const documentHtml = Proposals.buildProposalDocumentHtml(previewModel.proposal, previewModel.items, { publicView: true });
+      const iframeSrcdoc = U.escapeHtml(documentHtml);
       content.innerHTML = `
         <section class="public-eproposal-section public-proposal-hero">
-          <div class="public-hero-copy"><p class="public-kicker">Commercial Proposal</p><h2>${display(field(proposal.proposal_number, proposal.proposal_id, proposal.number, 'Proposal'))}</h2><p>${display(field(proposal.provider_name, payload.provider_name, 'InCheck 360 Holding BV'))}</p><p class="public-valid-until">Valid until ${dateText(field(proposal.valid_until, proposal.proposal_valid_until))}</p></div>
-          <span class="public-status-pill">${display(field(proposal.status, payload.status, 'Pending'))}</span>
+          <div class="public-hero-copy"><p class="public-kicker">Commercial Proposal</p><h2>${display(field(previewModel.proposal.proposal_number, previewModel.proposal.proposal_id, previewModel.proposal.number, 'Proposal'))}</h2><p>${display(field(previewModel.proposal.provider_name, payload.provider_name, 'InCheck 360 Holding BV'))}</p><p class="public-valid-until">Valid until ${dateText(field(previewModel.proposal.valid_until, previewModel.proposal.proposal_valid_until))}</p></div>
+          <span class="public-status-pill">${display(field(previewModel.proposal.status, payload.status, 'Pending'))}</span>
         </section>
-        <section class="public-eproposal-section public-info-cards"><div class="public-info-card"><h3>Customer</h3><p><strong>${display(field(proposal.customer_name, proposal.client_name, proposal.company_name))}</strong></p><p>${display(field(proposal.customer_contact_name, proposal.contact_name, proposal.contact_person))}</p><p>${display(field(proposal.customer_email, proposal.contact_email, proposal.email))}</p><p>${display(field(proposal.customer_phone, proposal.contact_phone, proposal.phone))}</p><p>${display(addressText(field(proposal.customer_address, proposal.address), field(proposal.customer_city, proposal.city), field(proposal.customer_country, proposal.country)))}</p></div><div class="public-info-card"><h3>Provider</h3><p><strong>${display(field(proposal.provider_name, payload.provider_name, 'InCheck 360 Holding BV'))}</strong></p><p>${display(providerAddress || '—')}</p><p>${display(field(proposal.provider_email, payload.provider_email, 'info@incheck360.com'))}</p><p>${display(field(proposal.provider_registration, proposal.provider_vat, payload.provider_registration, payload.provider_vat))}</p></div></section>
-        <section class="public-eproposal-section public-details-grid"><div><strong>Proposal date</strong><span>${dateText(field(proposal.proposal_date, proposal.date, proposal.created_at))}</span></div><div><strong>Valid until</strong><span>${dateText(field(proposal.valid_until, proposal.proposal_valid_until))}</span></div><div><strong>Currency</strong><span>${display(currency)}</span></div><div><strong>Payment term</strong><span>${display(field(proposal.payment_term, proposal.payment_terms, payload.payment_term))}</span></div><div><strong>Billing frequency</strong><span>${display(field(proposal.billing_frequency, proposal.billing_cycle, payload.billing_frequency))}</span></div><div><strong>Generated by</strong><span>${display(field(proposal.generated_by_name, proposal.created_by_name, payload.generated_by_name))}</span></div><div><strong>Deal ID</strong><span>${display(field(proposal.deal_id, payload.deal_id))}</span></div></section>
-        <section class="public-eproposal-section public-items-section"><h3>Items</h3>${renderItems('Annual SaaS Items', saasItems, currency, true)}${renderItems('One-Time Fee Items', oneTimeItems, currency)}${renderItems('Hardware Items', hardwareItems, currency)}${items.length ? '' : '<p class="public-empty-note">No proposal items were provided.</p>'}</section>
-        <section class="public-eproposal-section public-totals"><div><span>Subtotal</span><strong>${money(subtotal, currency)}</strong></div><div><span>Total discount</span><strong>${money(discountTotal, currency)}</strong></div><div class="public-grand-total"><span>Grand total</span><strong>${money(grandTotal, currency)}</strong></div></section>
-        <section class="public-eproposal-section"><h3>Terms and conditions</h3><div class="public-proposal-terms">${U.escapeHtml(String(proposalTerms))}</div></section>
+        <section class="public-eproposal-document" data-public-proposal-document>
+          <iframe title="Proposal preview" data-public-proposal-frame srcdoc="${iframeSrcdoc}"></iframe>
+        </section>
         <div class="public-eproposal-actions"><button class="public-btn-outline" data-public-print type="button">Print / Download PDF</button><button class="public-btn-outline" data-public-reject type="button">Reject Proposal</button><button class="public-btn-primary" data-public-accept type="button">Accept Proposal</button></div>`;
-      document.querySelector('[data-public-print]')?.addEventListener('click', () => window.print());
+      document.querySelector('[data-public-print]')?.addEventListener('click', () => {
+        const frame = document.querySelector('[data-public-proposal-frame]');
+        frame?.contentWindow?.focus?.();
+        frame?.contentWindow?.print?.();
+      });
       document.querySelector('[data-public-accept]')?.addEventListener('click', () => renderModal(`<form data-public-accept-form><h3>Accept Proposal</h3><input class="input" name="name" required placeholder="Customer full name"><input class="input" name="email" type="email" required placeholder="Customer email"><textarea class="input" name="comment" rows="3" placeholder="Optional comment"></textarea><label class="public-checkbox"><input name="authorized" type="checkbox" required> I confirm I am authorized to accept this proposal.</label><button class="public-btn-primary" type="submit">Accept Proposal</button></form>`));
       document.querySelector('[data-public-reject]')?.addEventListener('click', () => renderModal(`<form data-public-reject-form><h3>Reject Proposal</h3><input class="input" name="name" placeholder="Customer name (optional)"><input class="input" name="email" type="email" placeholder="Customer email (optional)"><textarea class="input" name="reason" rows="4" placeholder="Rejection reason"></textarea><button class="public-btn-outline" type="submit">Reject Proposal</button></form>`));
       document.body.addEventListener('submit', async event => {
