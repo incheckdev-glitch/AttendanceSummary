@@ -1,0 +1,22 @@
+E-Proposal Generate + Three-Dots Actions Fix
+
+Updated files:
+- proposals.js
+- agreements.js
+
+What was fixed:
+1. Proposal three-dots menu actions were blocked by inline event.stopPropagation() on the <details> menu wrapper.
+   This prevented delegated table click handlers from receiving clicks on Edit / Preview / Generate E-Proposal Link / Convert / Delete.
+
+2. Agreement three-dots menu had the same blocker and was fixed the same way.
+
+3. Proposal and Agreement row click handling now ignores clicks on the three-dots menu summary, so opening the menu no longer opens the right-side details drawer.
+
+4. Proposal action clicks now stop row propagation only after the action is detected, then close the opened menu and run the correct action.
+
+5. Generate E-Proposal Link now resolves the internal proposal UUID before calling the Supabase RPC, preventing failures when a visible proposal number/ref is accidentally passed instead of the internal UUID.
+
+After replacing files:
+- Hard refresh the browser.
+- If using Vercel/PWA/service worker, redeploy and clear cached assets or open in incognito once.
+- Make sure the e-proposal SQL migration has already been run in Supabase.

@@ -3459,7 +3459,7 @@ const Proposals = {
         items.push(`<button class="commercial-menu-item danger" type="button" data-proposal-delete="${id}" data-permission-resource="proposals" data-permission-action="delete">Delete</button>`);
       }
       return items.length
-        ? `<details class="commercial-actions-menu" onclick="event.stopPropagation()" onkeydown="event.stopPropagation()"><summary class="commercial-more-btn" aria-label="More proposal actions">⋮</summary><div class="commercial-actions-popover">${items.join('')}</div></details>`
+        ? `<details class="commercial-actions-menu"><summary class="commercial-more-btn" aria-label="More proposal actions">⋮</summary><div class="commercial-actions-popover">${items.join('')}</div></details>`
         : '';
     };
 
@@ -5308,18 +5308,48 @@ const Proposals = {
     }
     throw lastError || new Error('No compatible e-proposal RPC function is available. Run the e-proposal SQL migration first.');
   },
+  isUuidValue(value = '') {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+  },
+  findProposalActionRow(identifier = '') {
+    const target = String(identifier || '').trim();
+    if (!target) return null;
+    const matches = row => [
+      row?.id,
+      row?.proposal_id,
+      row?.proposalId,
+      row?.proposal_number,
+      row?.proposalNumber,
+      row?.ref_number,
+      row?.refNumber
+    ].some(value => String(value || '').trim() === target);
+    return (this.state.rows || []).find(matches) || (this.state.filteredRows || []).find(matches) || null;
+  },
+  resolveProposalUuidForAction(identifier = '') {
+    const target = String(identifier || '').trim();
+    if (this.isUuidValue(target)) return target;
+    const row = this.findProposalActionRow(target);
+    const uuid = String(row?.id || row?.proposal_uuid || row?.proposalUuid || '').trim();
+    return this.isUuidValue(uuid) ? uuid : '';
+  },
   async generateEProposalLink(proposalId, { regenerate = false } = {}) {
     const cleanId = String(proposalId || '').trim();
     if (!cleanId) return UI.toast('Save the proposal first to generate an e-proposal link.');
+    const proposalUuid = this.resolveProposalUuidForAction(cleanId);
+    if (!proposalUuid) {
+      UI.toast('Unable to resolve the internal proposal UUID. Refresh the proposals list and try again.');
+      console.warn('[e-proposal] unable to resolve proposal UUID for', cleanId);
+      return;
+    }
     try {
       const data = await this.callFirstAvailableEProposalRpc([
         {
           name: 'eproposal_generate_link',
-          args: { p_proposal_id: cleanId, p_base_url: window.location.origin }
+          args: { p_proposal_id: proposalUuid, p_base_url: window.location.origin }
         },
         {
           name: 'generate_e_proposal_link',
-          args: { p_proposal_id: cleanId, p_regenerate: !!regenerate }
+          args: { p_proposal_id: proposalUuid, p_regenerate: !!regenerate }
         }
       ]);
       this.showEProposalLinkModal(data);
@@ -5332,10 +5362,11 @@ const Proposals = {
   async disableEProposalLink(proposalId) {
     const cleanId = String(proposalId || '').trim();
     if (!cleanId) return;
+    const proposalUuid = this.resolveProposalUuidForAction(cleanId) || cleanId;
     try {
       const data = await this.callFirstAvailableEProposalRpc([
-        { name: 'eproposal_disable_link', args: { p_proposal_id: cleanId } },
-        { name: 'disable_e_proposal_link', args: { p_proposal_id: cleanId } }
+        { name: 'eproposal_disable_link', args: { p_proposal_id: proposalUuid } },
+        { name: 'disable_e_proposal_link', args: { p_proposal_id: proposalUuid } }
       ]);
       UI.toast('E-proposal link disabled.');
       this.showEProposalLinkModal(data);
@@ -5749,9 +5780,16 @@ const Proposals = {
           const actionEl = event.target?.closest?.(`[${action}]`);
           return String(actionEl?.getAttribute(action) || '').trim();
         };
+        const closeMenu = () => {
+          const menu = event.target?.closest?.('.commercial-actions-menu');
+          if (menu) menu.open = false;
+        };
         const trigger = event.target?.closest?.('button');
         const viewId = getActionValue('data-proposal-view');
         if (viewId) {
+          event.preventDefault();
+          event.stopPropagation();
+          closeMenu();
           this.runRowAction(`view:${viewId}`, trigger, () =>
             this.openProposalFormById(viewId, { readOnly: true, trigger })
           );
@@ -5759,6 +5797,9 @@ const Proposals = {
         }
         const editId = getActionValue('data-proposal-edit');
         if (editId) {
+          event.preventDefault();
+          event.stopPropagation();
+          closeMenu();
           if (!Permissions.canUpdateProposal()) return UI.toast('You do not have permission to edit proposals.');
           this.runRowAction(`edit:${editId}`, trigger, () =>
             this.openProposalFormById(editId, { readOnly: false, trigger })
@@ -5767,16 +5808,25 @@ const Proposals = {
         }
         const previewId = getActionValue('data-proposal-preview');
         if (previewId) {
+          event.preventDefault();
+          event.stopPropagation();
+          closeMenu();
           this.runRowAction(`preview:${previewId}`, trigger, () => this.previewProposalHtml(previewId));
           return;
         }
         const eLinkId = getActionValue('data-proposal-e-link');
         if (eLinkId) {
+          event.preventDefault();
+          event.stopPropagation();
+          closeMenu();
           this.runRowAction(`e-link:${eLinkId}`, trigger, () => this.generateEProposalLink(eLinkId));
           return;
         }
         const convertAgreementId = getActionValue('data-proposal-convert-agreement');
         if (convertAgreementId) {
+          event.preventDefault();
+          event.stopPropagation();
+          closeMenu();
           this.runRowAction(`convert-agreement:${convertAgreementId}`, trigger, async () => {
             if (window.Agreements?.createFromProposalFlow) {
               await window.Agreements.createFromProposalFlow(convertAgreementId);
@@ -5788,15 +5838,20 @@ const Proposals = {
         }
         const deleteId = getActionValue('data-proposal-delete');
         if (deleteId) {
+          event.preventDefault();
+          event.stopPropagation();
+          closeMenu();
           this.runRowAction(`delete:${deleteId}`, trigger, () => this.deleteById(deleteId));
           return;
         }
+        if (event.target?.closest?.('.commercial-actions-menu')) return;
         const detailsRow = event.target?.closest?.('tr[data-proposal-row]');
         const detailsId = detailsRow?.getAttribute('data-proposal-row');
         if (detailsId) this.openDetailsDrawer(detailsId);
       });
       E.proposalsTbody.addEventListener('keydown', event => {
         if (!['Enter', ' '].includes(event.key)) return;
+        if (event.target?.closest?.('.commercial-actions-menu')) return;
         const row = event.target?.closest?.('tr[data-proposal-row]');
         const id = row?.getAttribute('data-proposal-row');
         if (!id) return;

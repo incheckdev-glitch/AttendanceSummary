@@ -3135,7 +3135,7 @@ const Agreements = {
         items.push(`<button class="commercial-menu-item danger" type="button" data-agreement-delete="${id}" data-permission-resource="agreements" data-permission-action="delete">Delete</button>`);
       }
       return items.length
-        ? `<details class="commercial-actions-menu" onclick="event.stopPropagation()" onkeydown="event.stopPropagation()"><summary class="commercial-more-btn" aria-label="More agreement actions">⋮</summary><div class="commercial-actions-popover">${items.join('')}</div></details>`
+        ? `<details class="commercial-actions-menu"><summary class="commercial-more-btn" aria-label="More agreement actions">⋮</summary><div class="commercial-actions-popover">${items.join('')}</div></details>`
         : '';
     };
     E.agreementsTbody.innerHTML = rows.map(row => {
@@ -5084,6 +5084,10 @@ const Agreements = {
     if (E.agreementsTbody) E.agreementsTbody.addEventListener('click', event => {
       const trigger = event.target?.closest?.('button[data-agreement-view], button[data-agreement-edit], button[data-agreement-upload-signed], button[data-agreement-request-technical], button[data-agreement-preview], button[data-agreement-create-invoice], button[data-agreement-delete]');
       if (!trigger) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const menu = trigger.closest?.('.commercial-actions-menu');
+      if (menu) menu.open = false;
       const viewId = trigger.getAttribute('data-agreement-view');
       if (viewId) return this.runRowAction(`view:${viewId}`, trigger, () => this.openAgreementFormById(viewId, { readOnly: true, trigger }));
       const editId = trigger.getAttribute('data-agreement-edit');
@@ -5114,12 +5118,14 @@ const Agreements = {
     });
     if (E.agreementsTbody) E.agreementsTbody.addEventListener('click', event => {
       if (event.target?.closest?.('button')) return;
+      if (event.target?.closest?.('.commercial-actions-menu')) return;
       const detailsRow = event.target?.closest?.('tr[data-agreement-row]');
       const detailsId = detailsRow?.getAttribute('data-agreement-row');
       if (detailsId) this.openDetailsDrawer(detailsId);
     });
     if (E.agreementsTbody) E.agreementsTbody.addEventListener('keydown', event => {
       if (!['Enter', ' '].includes(event.key)) return;
+      if (event.target?.closest?.('.commercial-actions-menu')) return;
       const row = event.target?.closest?.('tr[data-agreement-row]');
       const id = row?.getAttribute('data-agreement-row');
       if (!id) return;
