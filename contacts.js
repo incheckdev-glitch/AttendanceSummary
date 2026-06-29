@@ -602,7 +602,7 @@ const Contacts = {
     const modal = document.getElementById('contactModal');
     modal.style.display = 'flex';
     modal.setAttribute('aria-hidden', 'false');
-    window.ModalScrollLock?.lock?.() || document.body.classList.add('modal-open');
+    document.body.classList.add('modal-open');
 
     this.ensureCompanyOptions(data)
       .then(async () => {
@@ -626,7 +626,7 @@ const Contacts = {
     const modal = document.getElementById('contactModal');
     modal.style.display = 'none';
     modal.setAttribute('aria-hidden', 'true');
-    window.ModalScrollLock?.unlock?.() || document.body.classList.remove('modal-open');
+    document.body.classList.remove('modal-open');
     this.toggleSave(false);
   },
 

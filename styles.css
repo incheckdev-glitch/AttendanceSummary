@@ -7394,12 +7394,8 @@ body { overflow-x: hidden; }
   }
 }
 
-/* =========================================================
-   HARD FIX: CREATE / EDIT MODAL SCROLLING
-   ========================================================= */
-body.modal-open {
-  overflow: hidden !important;
-}
+/* Shared create/edit modal viewport scrolling fix */
+body.modal-open { overflow: hidden; }
 
 .modal.modern-crm-modal[aria-hidden="true"],
 .modal.proposal-modern-modal[aria-hidden="true"],
@@ -7415,185 +7411,155 @@ body.modal-open {
   display: flex !important;
 }
 
-/* Actual overlays used by create/edit modals, plus overlay variants. */
-.modal.modern-crm-modal,
-.modal.proposal-modern-modal,
-.modal.agreement-modern-modal,
-.modal.proposal-catalog-form-modal,
 .modal-overlay,
 .crm-modal-overlay,
 .modern-modal-overlay,
-.modern-crm-modal-overlay,
 .proposal-modal-overlay,
 .agreement-modal-overlay,
-.catalog-modal-overlay,
-[class*="modal-overlay"] {
-  position: fixed !important;
-  inset: 0 !important;
-  z-index: 9999 !important;
-  align-items: center !important;
-  justify-content: center !important;
-  padding: 24px !important;
-  background: rgba(15, 23, 42, 0.45) !important;
-  overflow: hidden !important;
+.modal.modern-crm-modal,
+.modal.proposal-modern-modal,
+.modal.agreement-modern-modal,
+.modal.proposal-catalog-form-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow: hidden;
 }
 
-/* Actual modal boxes used by these forms. */
-#companyModal > .modern-crm-modal-content,
-#contactModal > .modern-crm-modal-content,
-#leadFormModal > .modern-crm-modal-content,
-#dealFormModal > .modern-crm-modal-content,
-#proposalFormModal > .proposal-modern-content,
-#agreementFormModal > .agreement-modern-content,
-#proposalCatalogFormModal > .proposal-catalog-modal-content,
-.modal-content,
-.modal-dialog,
-.form-modal,
-.crm-modal,
+.modern-crm-modal-content,
+.modern-crm-modal .modern-crm-modal-content,
 .modern-modal,
+.proposal-modern-content,
+.agreement-modern-content,
+.proposal-catalog-modal-content,
 .catalog-modern-modal {
-  width: min(96vw, 1200px) !important;
-  max-height: 90vh !important;
-  min-height: 0 !important;
-  display: flex !important;
-  flex-direction: column !important;
-  overflow: hidden !important;
+  width: min(96vw, 1200px);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: #ffffff;
+  border-radius: 20px;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22);
 }
 
-/* Header must not scroll. */
-.modal-header,
-.modern-modal-header,
 .modern-crm-modal-header,
+.modern-modal-header,
 .proposal-modal-header,
 .agreement-modal-header,
-.catalog-modal-header,
-.proposal-catalog-modal-header,
-[class*="modal-header"] {
-  flex: 0 0 auto !important;
+.proposal-catalog-modal-header {
+  flex: 0 0 auto;
 }
 
-/* Forms sit between fixed header and fixed footer. */
 .modern-crm-form,
 .proposal-modern-form,
 .agreement-modern-form,
-.proposal-catalog-form,
-.modal-content > form,
-.modal-dialog > form,
-.form-modal > form,
-.crm-modal > form,
-.modern-modal > form,
-.catalog-modern-modal > form {
-  flex: 1 1 auto !important;
-  min-height: 0 !important;
-  max-height: none !important;
-  display: flex !important;
-  flex-direction: column !important;
-  overflow: hidden !important;
+.proposal-catalog-form {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  max-height: none;
 }
 
-/* Real body wrappers used by the existing create/edit markup. */
-.modal-body,
-.modern-modal-body,
 .modern-crm-modal-body,
 .modern-crm-scroll-body,
+.modern-modal-body,
 .proposal-modal-body,
 .proposal-modal-scroll,
 .agreement-modal-body,
 .agreement-scroll-body,
 .catalog-modal-body,
-.proposal-catalog-form-grid,
-[class*="modal-body"] {
-  flex: 1 1 auto !important;
-  min-height: 0 !important;
-  max-height: none !important;
+.proposal-catalog-form-grid {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto !important;
   overflow-x: hidden !important;
-  -webkit-overflow-scrolling: touch !important;
+  padding: 20px 24px;
+  -webkit-overflow-scrolling: touch;
 }
 
-/* Footer must stay visible. */
-.modal-footer,
-.modern-modal-footer,
 .modern-crm-modal-footer,
+.modern-modal-footer,
 .proposal-modal-footer,
 .agreement-modal-footer,
-.catalog-modal-footer,
-.proposal-catalog-modal-footer,
-[class*="modal-footer"] {
-  flex: 0 0 auto !important;
-  position: sticky !important;
-  bottom: 0 !important;
-  z-index: 5 !important;
-  background: #ffffff !important;
-  border-top: 1px solid #e5e7eb !important;
+.proposal-catalog-modal-footer {
+  flex: 0 0 auto;
+  position: static;
+  border-top: 1px solid #e5e7eb;
+  background: #ffffff;
+  padding: 16px 24px;
 }
 
-.modal-content *,
-.modern-modal *,
-.modern-crm-modal *,
-.proposal-modern-modal *,
-.agreement-modern-modal *,
-.proposal-catalog-form-modal *,
-.catalog-modern-modal * {
-  box-sizing: border-box;
-}
+.proposal-catalog-info-callout { flex: 0 0 auto; }
 
 .modal-table-scroll,
-.proposal-items-scroll,
 .agreement-items-scroll,
-.catalog-table-scroll,
+.proposal-items-scroll,
 .proposal-table-wrap,
-.agreement-table-wrap,
-[class*="items-scroll"],
-[class*="table-scroll"] {
-  width: 100% !important;
-  max-width: 100% !important;
+.agreement-table-wrap {
+  width: 100%;
   overflow-x: auto !important;
-  overflow-y: hidden !important;
-  -webkit-overflow-scrolling: touch !important;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
 }
 
 .modal-table-scroll table,
-.proposal-items-scroll table,
 .agreement-items-scroll table,
+.proposal-items-scroll table,
 .proposal-table-wrap table,
 .agreement-table-wrap table {
-  min-width: 900px !important;
+  min-width: 900px;
 }
 
 @media (max-width: 768px) {
-  .modal.modern-crm-modal,
-  .modal.proposal-modern-modal,
-  .modal.agreement-modern-modal,
-  .modal.proposal-catalog-form-modal,
   .modal-overlay,
   .crm-modal-overlay,
   .modern-modal-overlay,
-  .modern-crm-modal-overlay,
   .proposal-modal-overlay,
   .agreement-modal-overlay,
-  .catalog-modal-overlay,
-  [class*="modal-overlay"] {
-    align-items: stretch !important;
-    padding: 10px !important;
+  .modal.modern-crm-modal,
+  .modal.proposal-modern-modal,
+  .modal.agreement-modern-modal,
+  .modal.proposal-catalog-form-modal {
+    align-items: stretch;
+    padding: 10px;
   }
 
-  #companyModal > .modern-crm-modal-content,
-  #contactModal > .modern-crm-modal-content,
-  #leadFormModal > .modern-crm-modal-content,
-  #dealFormModal > .modern-crm-modal-content,
-  #proposalFormModal > .proposal-modern-content,
-  #agreementFormModal > .agreement-modern-content,
-  #proposalCatalogFormModal > .proposal-catalog-modal-content,
-  .modal-content,
-  .modal-dialog,
-  .form-modal,
-  .crm-modal,
+  .modern-crm-modal-content,
   .modern-modal,
+  .proposal-modern-content,
+  .agreement-modern-content,
+  .proposal-catalog-modal-content,
   .catalog-modern-modal {
     width: 100% !important;
     max-height: calc(100vh - 20px) !important;
-    border-radius: 16px !important;
+    border-radius: 16px;
+  }
+
+  .modern-crm-modal-body,
+  .modern-crm-scroll-body,
+  .modern-modal-body,
+  .proposal-modal-body,
+  .proposal-modal-scroll,
+  .agreement-modal-body,
+  .agreement-scroll-body,
+  .catalog-modal-body,
+  .proposal-catalog-form-grid {
+    padding: 16px;
+  }
+
+  .modern-crm-modal-footer,
+  .modern-modal-footer,
+  .proposal-modal-footer,
+  .agreement-modal-footer,
+  .proposal-catalog-modal-footer {
+    padding: 12px 16px;
   }
 }
