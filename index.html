@@ -3485,13 +3485,13 @@ Sample:
 
   <div id="companyModal" class="modal modern-crm-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="companyModalTitle">
     <div class="modal-content modern-crm-modal-content modern-crm-modal-content--wide">
-      <div class="modern-crm-modal-header">
+      <div class="modal-header modern-crm-modal-header">
         <div class="modern-crm-header-left"><div class="modern-crm-modal-icon">🏢</div><div><h2 id="companyModalTitle" class="modern-crm-modal-title">Create Company</h2><p class="modern-crm-modal-subtitle">Create a new company record with legal, contact, and lifecycle details.</p></div></div>
         <button class="modal-close modern-crm-close" id="companyCloseBtn" aria-label="Close company form">✕</button>
       </div>
       <form id="companyForm" class="modern-crm-form">
         <input id="companyRecordId" type="hidden" />
-        <div class="modern-crm-scroll-body">
+        <div class="modal-body modern-crm-scroll-body">
           <section class="modern-crm-section-card"><h3 class="modern-crm-section-title"><span>1</span>Basic Company Information</h3><div class="modern-crm-form-grid">
             <div class="crm-field"><label for="companyNameInput">Company Name <span class="required-mark">*</span></label><input id="companyNameInput" class="input" type="text" required /></div>
             <div class="crm-field"><label for="companyLegalNameInput">Legal Name</label><input id="companyLegalNameInput" class="input" type="text" /></div>
@@ -3520,30 +3520,30 @@ Sample:
           <section class="modern-crm-section-card"><h3 class="modern-crm-section-title"><span>6</span>Notes</h3><div class="crm-field"><label for="companyNotesInput">Notes</label><textarea id="companyNotesInput" class="input" rows="4"></textarea></div></section>
           <section id="companyDocumentsSection" class="modern-crm-section-card" style="display:none;"><h3 class="modern-crm-section-title"><span>7</span>Company Documents</h3><p id="companyDocumentsCreateNote" class="modern-crm-info-callout">Save the company first before uploading documents.</p><div id="companyDocumentUploadControls" class="stack" style="gap:12px;display:none;"><div class="modern-crm-form-grid"><div class="crm-field"><label for="companyDocumentTitleInput">Document Title (optional)</label><input id="companyDocumentTitleInput" class="input" type="text" /></div><div class="crm-field"><label for="companyDocumentFileInput">Document File</label><input id="companyDocumentFileInput" class="input" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx,application/pdf,image/png,image/jpeg,image/webp,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" /></div></div><div><button id="companyDocumentUploadBtn" class="btn btn-incheck-outline sm" type="button">Upload Document</button></div></div><div id="companyDocumentsList" class="stack" style="gap:8px;"></div><section id="companyVerificationPanel" class="modern-crm-notes-card" style="display:none;"></section></section>
         </div>
-        <div class="modern-crm-modal-footer"><span></span><div class="modern-crm-footer-actions"><button id="companyCancelBtn" type="button" class="btn btn-incheck-outline">Cancel</button><button id="companySaveBtn" type="submit" class="btn btn-incheck-primary">Save Company</button></div></div>
+        <div class="modal-footer modern-crm-modal-footer"><span></span><div class="modern-crm-footer-actions"><button id="companyCancelBtn" type="button" class="btn btn-incheck-outline">Cancel</button><button id="companySaveBtn" type="submit" class="btn btn-incheck-primary">Save Company</button></div></div>
       </form>
     </div>
   </div>
   <div id="contactModal" class="modal modern-crm-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="contactModalTitle">
     <div class="modal-content modern-crm-modal-content">
-      <div class="modern-crm-modal-header"><div class="modern-crm-header-left"><div class="modern-crm-modal-icon">👤</div><div><h2 id="contactModalTitle" class="modern-crm-modal-title">Create Contact</h2><p class="modern-crm-modal-subtitle">Create a new contact and link it to one or multiple companies.</p></div></div><button class="modal-close modern-crm-close" id="contactCloseBtn" aria-label="Close contact form">✕</button></div>
-      <form id="contactForm" class="modern-crm-form"><input id="contactRecordId" type="hidden" /><div class="modern-crm-scroll-body">
+      <div class="modal-header modern-crm-modal-header"><div class="modern-crm-header-left"><div class="modern-crm-modal-icon">👤</div><div><h2 id="contactModalTitle" class="modern-crm-modal-title">Create Contact</h2><p class="modern-crm-modal-subtitle">Create a new contact and link it to one or multiple companies.</p></div></div><button class="modal-close modern-crm-close" id="contactCloseBtn" aria-label="Close contact form">✕</button></div>
+      <form id="contactForm" class="modern-crm-form"><input id="contactRecordId" type="hidden" /><div class="modal-body modern-crm-scroll-body">
         <section class="modern-crm-section-card"><h3 class="modern-crm-section-title"><span>1</span>Company Assignment</h3><div class="crm-field crm-field-full"><label for="contactCompanyInput">Companies <span class="required-mark">*</span></label><select id="contactCompanyInput" class="select crm-multiselect" multiple size="6" required><option value="">Select company</option></select><div id="contactSelectedCompanies" class="crm-chip-row"><span class='muted'>No companies selected</span></div><small>Hold Ctrl/Cmd to assign the contact to multiple companies. The first selected company is kept as the primary company for existing flows.</small></div></section>
         <section class="modern-crm-section-card"><h3 class="modern-crm-section-title"><span>2</span>Personal Details</h3><div class="modern-crm-form-grid"><div class="crm-field"><label for="contactFirstNameInput">First Name</label><input id="contactFirstNameInput" class="input" type="text" /></div><div class="crm-field"><label for="contactLastNameInput">Last Name</label><input id="contactLastNameInput" class="input" type="text" /></div><div class="crm-field"><label for="contactJobTitleInput">Job Title</label><input id="contactJobTitleInput" class="input" type="text" /></div><div class="crm-field"><label for="contactDepartmentInput">Department</label><input id="contactDepartmentInput" class="input" type="text" /></div></div></section>
         <section class="modern-crm-section-card"><h3 class="modern-crm-section-title"><span>3</span>Contact Information</h3><div class="modern-crm-form-grid"><div class="crm-field"><label for="contactEmailInput">Email</label><input id="contactEmailInput" class="input" type="email" /></div><div class="crm-field"><label for="contactPhoneInput">Phone</label><input id="contactPhoneInput" class="input" type="text" /></div><div class="crm-field"><label for="contactMobileInput">Mobile</label><input id="contactMobileInput" class="input" type="text" /></div></div></section>
         <section class="modern-crm-section-card"><h3 class="modern-crm-section-title"><span>4</span>Contact Role &amp; Status</h3><div class="modern-crm-form-grid"><div class="crm-field"><label for="contactDecisionRoleInput">Decision Role</label><select id="contactDecisionRoleInput" class="select"><option value="">—</option><option>Decision Maker</option><option>Influencer</option><option>Finance Contact</option><option>Technical Contact</option><option>Operations Contact</option><option>Procurement Contact</option><option>User</option><option>Other</option></select></div><div class="crm-field"><label for="contactStatusInput">Contact Status</label><select id="contactStatusInput" class="select"><option>Active</option><option>Inactive</option><option>Left Company</option><option>Do Not Contact</option></select></div><div class="crm-field crm-checkbox-field"><label><input id="contactIsPrimaryInput" type="checkbox" /> <span>Primary Contact</span></label></div></div></section>
         <section class="modern-crm-section-card"><h3 class="modern-crm-section-title"><span>5</span>Notes</h3><div class="crm-field"><label for="contactNotesInput">Notes</label><textarea id="contactNotesInput" class="input" rows="4"></textarea></div></section>
-      </div><div class="modern-crm-modal-footer"><span></span><div class="modern-crm-footer-actions"><button id="contactCancelBtn" type="button" class="btn btn-incheck-outline">Cancel</button><button id="contactSaveBtn" type="submit" class="btn btn-incheck-primary">Save Contact</button></div></div></form>
+      </div><div class="modal-footer modern-crm-modal-footer"><span></span><div class="modern-crm-footer-actions"><button id="contactCancelBtn" type="button" class="btn btn-incheck-outline">Cancel</button><button id="contactSaveBtn" type="submit" class="btn btn-incheck-primary">Save Contact</button></div></div></form>
     </div>
   </div>
   <div id="leadFormModal" class="modal modern-crm-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="leadFormTitle">
     <div class="modal-content modern-crm-modal-content modern-crm-modal-content--wide">
-      <div class="modern-crm-modal-header">
+      <div class="modal-header modern-crm-modal-header">
         <div class="modern-crm-header-left"><div class="modern-crm-modal-icon">🎯</div><div><h2 id="leadFormTitle" class="modern-crm-modal-title">Create Lead</h2><p class="modern-crm-modal-subtitle">Create a new lead with customer details, qualification, and follow-up.</p></div></div>
         <button class="modal-close modern-crm-close" id="leadFormCloseBtn" aria-label="Close lead form">✕</button>
       </div>
       <form id="leadForm" class="modern-crm-form">
-        <div class="modern-crm-scroll-body modern-crm-form-grid">
+        <div class="modal-body modern-crm-scroll-body modern-crm-form-grid">
           <div class="crm-field">
             <label class="muted" for="leadFormLeadId">Lead ID</label>
             <input id="leadFormLeadId" class="input" type="text" readonly />
@@ -3663,7 +3663,7 @@ Sample:
             <input id="leadFormUpdatedAt" class="input" type="text" readonly />
           </div>
         </div>
-        <div class="modern-crm-modal-footer">
+        <div class="modal-footer modern-crm-modal-footer">
           <button id="leadFormDeleteBtn" type="button" class="btn btn-incheck-outline" style="display:none;">Delete</button>
           <div style="display:flex;gap:8px;">
             <button id="leadFormCancelBtn" type="button" class="btn btn-incheck-outline">Cancel</button>
@@ -3675,16 +3675,17 @@ Sample:
   </div>
   <div id="dealFormModal" class="modal modern-crm-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="dealFormTitle">
     <div class="modal-content modern-crm-modal-content modern-crm-modal-content--wide">
-      <div class="modern-crm-modal-header">
+      <div class="modal-header modern-crm-modal-header">
         <div class="modern-crm-header-left"><div class="modern-crm-modal-icon">💼</div><div><h2 id="dealFormTitle" class="modern-crm-modal-title">Create Deal</h2><p class="modern-crm-modal-subtitle">Create a new deal with pipeline, owner, value, and conversion details.</p></div></div>
         <button class="modal-close modern-crm-close" id="dealFormCloseBtn" aria-label="Close deal form">✕</button>
       </div>
       <form id="dealForm" class="modern-crm-form">
+        <div class="modal-body modern-crm-scroll-body deal-modal-body">
         <section class="form-section">
           <div class="form-section-header">
             <h3>Deal Information</h3>
           </div>
-          <div class="modern-crm-scroll-body modern-crm-form-grid">
+          <div class="modern-crm-form-grid">
           <div class="crm-field">
             <label class="muted" for="dealFormDealId">Deal ID</label>
             <input id="dealFormDealId" class="input" type="text" readonly />
@@ -3752,7 +3753,7 @@ Sample:
         </section>
         <section class="form-section">
           <div class="form-section-header"><h3>Deal Details</h3></div>
-          <div class="modern-crm-scroll-body modern-crm-form-grid">
+          <div class="modern-crm-form-grid">
                     <div class="crm-field">
             <label class="muted" for="dealFormCompanyName">Company Name</label>
             <input id="dealFormCompanyName" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" />
@@ -3834,7 +3835,8 @@ Sample:
           <div id="dealNotesHistoryList" class="lead-notes-history-list"><div class="muted">No note history yet.</div></div>
         </section>
         </section>
-        <div class="modern-crm-modal-footer">
+        </div>
+        <div class="modal-footer modern-crm-modal-footer">
           <button id="dealFormDeleteBtn" type="button" class="btn btn-incheck-outline" style="display:none;">Delete</button>
           <div style="display:flex;gap:8px;">
             <button id="dealFormCancelBtn" type="button" class="btn btn-incheck-outline">Cancel</button>
@@ -3894,7 +3896,7 @@ Sample:
   <div id="proposalFormModal" class="modal proposal-modern-modal" role="dialog" aria-modal="true"
        aria-labelledby="proposalFormTitle" aria-hidden="true">
     <div class="modal-content proposal-modern-content">
-      <div class="proposal-modal-header">
+      <div class="modal-header proposal-modal-header">
         <div class="proposal-header-mark" aria-hidden="true">🧾</div>
         <div class="proposal-header-copy">
           <h2 id="proposalFormTitle">Create Proposal</h2>
@@ -3903,7 +3905,7 @@ Sample:
         <button class="modal-close proposal-close-btn" id="proposalFormCloseBtn" aria-label="Close proposal form">✕</button>
       </div>
       <form id="proposalForm" class="proposal-modern-form">
-        <div class="proposal-modal-scroll">
+        <div class="modal-body proposal-modal-scroll">
           <section class="proposal-section-card">
             <div class="proposal-section-title"><div class="proposal-section-heading-left"><span class="proposal-section-icon" aria-hidden="true">ℹ️</span><div><h3>Proposal Information</h3><p>Core proposal identifiers, dates, deal reference and status.</p></div></div></div>
             <div class="proposal-form-grid">
@@ -3977,14 +3979,14 @@ Sample:
           <section class="proposal-section-card"><div class="proposal-section-title"><div class="proposal-section-heading-left"><span class="proposal-section-icon" aria-hidden="true">📄</span><div><h3>Terms &amp; Conditions</h3><p>Default proposal terms are added automatically and can be edited before saving.</p></div></div><button id="proposalResetTermsBtn" class="btn btn-incheck-outline sm" type="button">Reset to Default Terms</button></div><div class="filter-row"><label class="muted" for="proposalFormTerms">Terms &amp; Conditions</label><textarea id="proposalFormTerms" class="input" rows="7" placeholder="Default proposal terms are added automatically and can be edited before saving."></textarea></div></section>
 
           <section class="proposal-section-card proposal-items-panel"><div class="proposal-section-title"><div class="proposal-section-heading-left"><span class="proposal-section-icon" aria-hidden="true">🧩</span><div><h3>Proposal Items</h3><p>Add annual SaaS, one-time fee and hardware line items.</p></div></div></div>
-            <div class="proposal-item-group"><div class="proposal-item-heading"><div class="proposal-section-heading-left"><span class="proposal-section-icon" aria-hidden="true">🔁</span><div><h3>Annual SaaS Items</h3><p>Recurring subscription items for this proposal.</p></div></div><button id="proposalAddAnnualRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap proposal-table-wrap modern-table-scroll"><table><thead><tr><th>Location</th><th>License</th><th>License Price / Year</th><th>License / Month</th><th>Service Start Date</th><th>Service End Date</th><th>Discount %</th><th>Total</th><th>Actions</th></tr></thead><tbody id="proposalAnnualItemsTbody"></tbody></table></div><datalist id="proposalCatalogOptions-annual_saas"></datalist></div>
-            <div class="proposal-item-group"><div class="proposal-item-heading"><div class="proposal-section-heading-left"><span class="proposal-section-icon" aria-hidden="true">💵</span><div><h3>One-Time Fee Items</h3><p>Non-recurring services and setup fees for this proposal.</p></div></div><button id="proposalAddOneTimeRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap proposal-table-wrap modern-table-scroll"><table><thead><tr><th>Location</th><th>Item / Service</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead><tbody id="proposalOneTimeItemsTbody"></tbody></table></div><datalist id="proposalCatalogOptions-one_time_fee"></datalist></div>
-            <div class="proposal-item-group"><div class="proposal-item-heading"><div class="proposal-section-heading-left"><span class="proposal-section-icon" aria-hidden="true">🖥️</span><div><h3>Hardware Items</h3><p>Hardware and product items for this proposal.</p></div></div><button id="proposalAddHardwareRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap proposal-table-wrap modern-table-scroll"><table><thead><tr><th>Location</th><th>Hardware / Product</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead><tbody id="proposalHardwareItemsTbody"></tbody></table></div><datalist id="proposalCatalogOptions-hardware"></datalist></div>
+            <div class="proposal-item-group"><div class="proposal-item-heading"><div class="proposal-section-heading-left"><span class="proposal-section-icon" aria-hidden="true">🔁</span><div><h3>Annual SaaS Items</h3><p>Recurring subscription items for this proposal.</p></div></div><button id="proposalAddAnnualRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap modal-table-scroll proposal-items-scroll proposal-table-wrap modern-table-scroll"><table><thead><tr><th>Location</th><th>License</th><th>License Price / Year</th><th>License / Month</th><th>Service Start Date</th><th>Service End Date</th><th>Discount %</th><th>Total</th><th>Actions</th></tr></thead><tbody id="proposalAnnualItemsTbody"></tbody></table></div><datalist id="proposalCatalogOptions-annual_saas"></datalist></div>
+            <div class="proposal-item-group"><div class="proposal-item-heading"><div class="proposal-section-heading-left"><span class="proposal-section-icon" aria-hidden="true">💵</span><div><h3>One-Time Fee Items</h3><p>Non-recurring services and setup fees for this proposal.</p></div></div><button id="proposalAddOneTimeRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap modal-table-scroll proposal-items-scroll proposal-table-wrap modern-table-scroll"><table><thead><tr><th>Location</th><th>Item / Service</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead><tbody id="proposalOneTimeItemsTbody"></tbody></table></div><datalist id="proposalCatalogOptions-one_time_fee"></datalist></div>
+            <div class="proposal-item-group"><div class="proposal-item-heading"><div class="proposal-section-heading-left"><span class="proposal-section-icon" aria-hidden="true">🖥️</span><div><h3>Hardware Items</h3><p>Hardware and product items for this proposal.</p></div></div><button id="proposalAddHardwareRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap modal-table-scroll proposal-items-scroll proposal-table-wrap modern-table-scroll"><table><thead><tr><th>Location</th><th>Hardware / Product</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead><tbody id="proposalHardwareItemsTbody"></tbody></table></div><datalist id="proposalCatalogOptions-hardware"></datalist></div>
           </section>
 
           <section class="proposal-summary-card"><strong>Totals Summary</strong><div><span>SaaS Total</span><b id="proposalSaasTotal">0</b></div><div><span>One-Time Total</span><b id="proposalOneTimeTotal">0</b></div><div><span>Hardware Total</span><b id="proposalHardwareTotal">0</b></div><div class="proposal-grand-total"><span>Grand Total</span><b id="proposalGrandTotal">0</b></div></section>
         </div>
-        <div class="proposal-modal-footer"><button id="proposalFormDeleteBtn" type="button" class="btn proposal-danger-btn" style="display:none;">Delete</button><span class="proposal-footer-spacer"></span><button id="proposalFormCancelBtn" type="button" class="btn btn-incheck-outline">Cancel</button><button id="proposalFormPreviewBtn" type="button" class="btn btn-incheck-outline">Preview Proposal</button><button id="proposalFormSaveBtn" type="submit" class="btn btn-incheck-primary">Save Proposal</button></div>
+        <div class="modal-footer proposal-modal-footer"><button id="proposalFormDeleteBtn" type="button" class="btn proposal-danger-btn" style="display:none;">Delete</button><span class="proposal-footer-spacer"></span><button id="proposalFormCancelBtn" type="button" class="btn btn-incheck-outline">Cancel</button><button id="proposalFormPreviewBtn" type="button" class="btn btn-incheck-outline">Preview Proposal</button><button id="proposalFormSaveBtn" type="submit" class="btn btn-incheck-primary">Save Proposal</button></div>
       </form>
     </div>
   </div>
@@ -4004,7 +4006,7 @@ Sample:
   <div id="proposalCatalogFormModal" class="modal proposal-catalog-form-modal" role="dialog" aria-modal="true"
        aria-labelledby="proposalCatalogFormTitle" aria-hidden="true">
     <div class="modal-content proposal-catalog-modal-content">
-      <div class="proposal-catalog-modal-header">
+      <div class="modal-header proposal-catalog-modal-header">
         <div class="proposal-catalog-modal-heading">
           <div class="proposal-catalog-modal-icon" aria-hidden="true">▦</div>
           <div>
@@ -4016,7 +4018,7 @@ Sample:
       </div>
       <form id="proposalCatalogForm" class="proposal-catalog-form">
         <input type="hidden" id="proposalCatalogFormItemId" />
-        <div class="proposal-catalog-form-grid">
+        <div class="modal-body proposal-catalog-form-grid">
           <div class="proposal-catalog-field">
             <label for="proposalCatalogFormIsActive">Active Status</label>
             <select id="proposalCatalogFormIsActive" class="select">
@@ -4076,7 +4078,7 @@ Sample:
           <span aria-hidden="true">ℹ</span>
           <p>This item will be available for selection when creating proposals and agreements.</p>
         </div>
-        <div class="proposal-catalog-modal-footer">
+        <div class="modal-footer proposal-catalog-modal-footer">
           <button id="proposalCatalogFormDeleteBtn" type="button" class="btn ghost" style="display:none;">Delete</button>
           <div class="proposal-catalog-footer-actions">
             <button id="proposalCatalogFormCancelBtn" type="button" class="btn ghost proposal-catalog-cancel-btn">Cancel</button>
@@ -4090,7 +4092,7 @@ Sample:
 
   <div id="agreementFormModal" class="modal agreement-modern-modal" role="dialog" aria-modal="true" aria-labelledby="agreementFormTitle" aria-hidden="true">
     <div class="modal-content agreement-modern-content">
-      <div class="agreement-modal-header">
+      <div class="modal-header agreement-modal-header">
         <div class="agreement-header-left">
           <div class="agreement-header-icon" aria-hidden="true">✓</div>
           <div><h2 id="agreementFormTitle">Create Agreement</h2><p id="agreementFormSubtitle">Create a new customer agreement with terms, fees, and signatures.</p></div>
@@ -4098,7 +4100,7 @@ Sample:
         <button class="modal-close agreement-close-btn" id="agreementFormCloseBtn" aria-label="Close agreement form" type="button">✕</button>
       </div>
       <form id="agreementForm" class="agreement-modern-form">
-        <div class="agreement-scroll-body">
+        <div class="modal-body agreement-scroll-body">
         <div id="agreementSignedLockMessage" class="agreement-lock-card" style="display:none;">
           <strong>Signed agreement is locked.</strong> Only signed document upload and invoice creation are allowed.
         </div>
@@ -4160,9 +4162,9 @@ Sample:
         </div></section>
 
         <section class="agreement-section-card"><h3 class="agreement-section-title"><span>☰</span> Agreement Items</h3>
-          <div class="agreement-items-panel"><div class="agreement-items-header"><strong>Annual SaaS Items</strong><button id="agreementAddAnnualRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap agreement-table-wrap modern-table-scroll"><table><thead><tr><th>Location</th><th>License</th><th>License Price / Year</th><th>License / Month</th><th>Service Start Date</th><th>Service End Date</th><th>Discount %</th><th>Total</th><th>Invoice Status</th><th>Actions</th></tr></thead><tbody id="agreementAnnualItemsTbody"></tbody></table></div></div>
-          <div class="agreement-items-panel"><div class="agreement-items-header"><strong>One-Time Fee Items</strong><button id="agreementAddOneTimeRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap agreement-table-wrap modern-table-scroll"><table><thead><tr><th>Location</th><th>Item / Service</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead><tbody id="agreementOneTimeItemsTbody"></tbody></table></div></div>
-          <div class="agreement-items-panel"><div class="agreement-items-header"><strong>Hardware Items</strong><button id="agreementAddHardwareRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap agreement-table-wrap modern-table-scroll"><table><thead><tr><th>Location</th><th>Hardware / Product</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead><tbody id="agreementHardwareItemsTbody"></tbody></table></div></div>
+          <div class="agreement-items-panel"><div class="agreement-items-header"><strong>Annual SaaS Items</strong><button id="agreementAddAnnualRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap modal-table-scroll agreement-items-scroll agreement-table-wrap modern-table-scroll"><table><thead><tr><th>Location</th><th>License</th><th>License Price / Year</th><th>License / Month</th><th>Service Start Date</th><th>Service End Date</th><th>Discount %</th><th>Total</th><th>Invoice Status</th><th>Actions</th></tr></thead><tbody id="agreementAnnualItemsTbody"></tbody></table></div></div>
+          <div class="agreement-items-panel"><div class="agreement-items-header"><strong>One-Time Fee Items</strong><button id="agreementAddOneTimeRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap modal-table-scroll agreement-items-scroll agreement-table-wrap modern-table-scroll"><table><thead><tr><th>Location</th><th>Item / Service</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead><tbody id="agreementOneTimeItemsTbody"></tbody></table></div></div>
+          <div class="agreement-items-panel"><div class="agreement-items-header"><strong>Hardware Items</strong><button id="agreementAddHardwareRowBtn" class="btn btn-incheck-primary sm" type="button">+ Add Item</button></div><div class="table-wrap modal-table-scroll agreement-items-scroll agreement-table-wrap modern-table-scroll"><table><thead><tr><th>Location</th><th>Hardware / Product</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th><th>Actions</th></tr></thead><tbody id="agreementHardwareItemsTbody"></tbody></table></div></div>
           <datalist id="agreementCatalogOptions-hardware"></datalist>
           <div class="agreement-summary-card"><strong>Totals Summary</strong><div><span>Subtotal SaaS</span><b id="agreementSaasTotal">0</b></div><div><span>One-Time Fees</span><b id="agreementOneTimeTotal">0</b></div><div><span>Hardware</span><b id="agreementHardwareTotal">0</b></div><div class="agreement-grand-total"><span>Grand Total</span><b id="agreementGrandTotal">0</b></div></div>
         </section>
@@ -4177,7 +4179,7 @@ Sample:
 
         <section id="agreementSignedDocumentSection" class="agreement-section-card" style="display:none;"><h3 class="agreement-section-title"><span>▤</span> Signed Agreement Document</h3><p id="agreementSignedDocumentState" class="muted">Upload the signed agreement document before creating an invoice.</p><div class="actions agreement-doc-actions"><input id="agreementSignedDocumentFile" class="input" type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" aria-label="Signed agreement document" /><button id="agreementSignedDocumentUploadBtn" class="btn btn-incheck-outline sm" type="button">Upload Signed Agreement</button><button id="agreementSignedDocumentOpenBtn" class="btn btn-incheck-outline sm" type="button" style="display:none;">View / Download</button></div></section>
         </div>
-        <div class="agreement-modal-footer"><div><button id="agreementFormDeleteBtn" type="button" class="btn agreement-danger-btn" style="display:none;">Delete</button></div><div class="agreement-footer-actions"><button id="agreementFormCancelBtn" type="button" class="btn btn-incheck-outline">Cancel</button><button id="agreementFormPreviewBtn" type="button" class="btn btn-incheck-outline">View Agreement</button><button id="agreementFormSaveBtn" type="submit" class="btn btn-incheck-primary">Save</button></div></div>
+        <div class="modal-footer agreement-modal-footer"><div><button id="agreementFormDeleteBtn" type="button" class="btn agreement-danger-btn" style="display:none;">Delete</button></div><div class="agreement-footer-actions"><button id="agreementFormCancelBtn" type="button" class="btn btn-incheck-outline">Cancel</button><button id="agreementFormPreviewBtn" type="button" class="btn btn-incheck-outline">View Agreement</button><button id="agreementFormSaveBtn" type="submit" class="btn btn-incheck-primary">Save</button></div></div>
       </form>
     </div>
   </div>

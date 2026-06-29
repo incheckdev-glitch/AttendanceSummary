@@ -1,5 +1,30 @@
 /* ---------- Elements cache ---------- */
 const E = {};
+
+const ModalScrollLock = (() => {
+  const OPEN_SELECTOR = [
+    '.modal[aria-hidden="false"]',
+    '.modal.show',
+    '.modal.open',
+    '.modal-overlay.show',
+    '[class*="modal-overlay"].show'
+  ].join(', ');
+
+  function lock() {
+    document.body?.classList.add('modal-open');
+    return true;
+  }
+
+  function unlock() {
+    const stillOpen = document.querySelector(OPEN_SELECTOR);
+    if (!stillOpen) document.body?.classList.remove('modal-open');
+    return true;
+  }
+
+  return { lock, unlock, OPEN_SELECTOR };
+})();
+window.ModalScrollLock = ModalScrollLock;
+
 function cacheEls() {
   [
     'issuesTable',
