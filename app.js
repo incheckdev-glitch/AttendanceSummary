@@ -8371,6 +8371,7 @@ async function mountResetPasswordView() {
 /* ---------- Bootstrapping ---------- */
 
 document.addEventListener('DOMContentLoaded', async () => {
+  if (/^\/e-proposal\//.test(String(window.location?.pathname || ''))) return;
   cacheEls();
   registerServiceWorkerSafely();
   wirePwaInstallBanner();

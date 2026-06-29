@@ -733,6 +733,7 @@ function cacheEls() {
     'proposalFormSaveBtn',
     'proposalFormDeleteBtn',
     'proposalFormPreviewBtn',
+    'proposalGenerateELinkBtn',
     'proposalFormProposalId',
     'proposalFormTitleField',
     'proposalFormDealId',
