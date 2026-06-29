@@ -6035,103 +6035,144 @@ const Proposals = {
 
 window.Proposals = Proposals;
 
-(function initEProposalGuestPage(){
-  const pathname = String(window.location?.pathname || '');
-  const match = pathname.match(/^\/e-proposal\/([^/?#]+)/);
-  if (!match) return;
-  const token = decodeURIComponent(match[1] || '').trim();
-  document.addEventListener('DOMContentLoaded', async () => {
-    document.body.className = 'e-proposal-guest-body';
-    document.body.innerHTML = '<main id="eProposalGuestRoot" class="e-proposal-guest-root"><div class="e-proposal-unavailable">Loading e-proposal…</div></main>';
-    const root = document.getElementById('eProposalGuestRoot');
-    const unavailable = (message = 'This proposal link is no longer available.') => { root.innerHTML = `<div class="e-proposal-unavailable"><h1>${U.escapeHtml(message)}</h1><p>Please contact the InCheck360 team for an updated proposal link.</p></div>`; };
+function getEProposalTokenFromUrl() {
+  const parts = window.location.pathname.split('/').filter(Boolean);
+  const idx = parts.indexOf('e-proposal');
+  return idx >= 0 ? parts[idx + 1] : null;
+}
+
+function renderPublicEProposalShell() {
+  document.body.className = 'public-eproposal-mode';
+  document.body.innerHTML = `
+    <main id="publicEProposalRoot" class="public-eproposal-page">
+      <div class="public-eproposal-card">
+        <div class="public-eproposal-header">
+          <div class="public-brand">
+            <img src="/assets/incheck360-ui-logo.png" alt="InCheck360" />
+            <div>
+              <h1>InCheck360 Proposal</h1>
+              <p>Review, accept, or reject this proposal securely.</p>
+            </div>
+          </div>
+        </div>
+        <div id="publicEProposalContent">
+          <div class="public-loading">Loading proposal...</div>
+        </div>
+      </div>
+    </main>
+  `;
+}
+
+function bootPublicEProposalPage() {
+  const token = decodeURIComponent(getEProposalTokenFromUrl() || '').trim();
+  renderPublicEProposalShell();
+  const content = document.getElementById('publicEProposalContent');
+  const unavailable = (message = 'This proposal link is no longer available.') => {
+    content.innerHTML = `<section class="public-eproposal-section public-status-message"><h2>${U.escapeHtml(message || 'This proposal link is no longer available.')}</h2><p>Please contact the InCheck360 team for an updated proposal link.</p></section>`;
+  };
+  if (!token) {
+    unavailable();
+    return;
+  }
+
+  const setActionState = disabled => {
+    document.querySelectorAll('[data-public-accept], [data-public-reject]').forEach(btn => { btn.disabled = Boolean(disabled); });
+  };
+
+  const callRpc = async (name, args) => {
+    const client = window.SupabaseClient?.getClient?.() || window.supabase;
+    if (!client?.rpc) throw new Error('Supabase client is not available.');
+    const { data, error } = await client.rpc(name, args || {});
+    if (error) throw error;
+    if (data?.ok === false) {
+      const rpcError = new Error(data?.message || data?.error || 'This proposal link is no longer available.');
+      rpcError.payload = data;
+      throw rpcError;
+    }
+    return data;
+  };
+
+  const money = (value, currency) => {
+    const amount = Number(value || 0);
+    try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: currency || 'EUR' }).format(amount); }
+    catch (_) { return `${U.escapeHtml(currency || 'EUR')} ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; }
+  };
+  const field = (...values) => values.find(value => value !== undefined && value !== null && String(value).trim() !== '');
+  const renderItems = (title, rows, currency) => rows.length ? `
+    <h3>${U.escapeHtml(title)}</h3>
+    <div class="public-table-wrap"><table><thead><tr><th>Item</th><th>Description</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead><tbody>
+      ${rows.map(item => `<tr><td>${U.escapeHtml(field(item.name, item.item_name, item.product_name, 'Item'))}</td><td>${U.escapeHtml(field(item.description, item.item_description, ''))}</td><td>${U.escapeHtml(field(item.quantity, item.qty, 1))}</td><td>${money(field(item.unit_price, item.price, item.monthly_price, 0), currency)}</td><td>${money(field(item.total, item.line_total, item.amount, 0), currency)}</td></tr>`).join('')}
+    </tbody></table></div>` : '';
+
+  const renderModal = html => {
+    let modal = document.getElementById('publicEProposalModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'publicEProposalModal';
+      modal.className = 'public-eproposal-modal';
+      document.body.appendChild(modal);
+    }
+    modal.innerHTML = `<div class="public-eproposal-modal-card">${html}<button class="public-modal-close" type="button" aria-label="Close">×</button></div>`;
+    modal.querySelector('.public-modal-close')?.addEventListener('click', () => modal.remove());
+  };
+
+  (async () => {
     try {
-      const client = window.SupabaseClient?.getClient?.();
-      if (!client?.rpc) throw new Error('Supabase client is not available.');
-      const callGuestRpc = async calls => {
-        let lastError = null;
-        for (const call of calls) {
-          try {
-            const { data, error } = await client.rpc(call.name, call.args || {});
-            if (error) throw error;
-            return data;
-          } catch (error) {
-            lastError = error;
-            if (!Proposals.isEProposalRpcMissing(error)) throw error;
-            console.warn(`[e-proposal] Guest RPC ${call.name} is not available, trying fallback.`, error);
-          }
-        }
-        throw lastError || new Error('No compatible e-proposal guest RPC is available.');
-      };
-      const data = await callGuestRpc([
-        { name: 'eproposal_public_view', args: { p_token: token, p_user_agent: navigator.userAgent } },
-        { name: 'get_e_proposal_by_token', args: { p_token: token } }
-      ]);
+      const data = await callRpc('eproposal_public_view', { p_token: token, p_user_agent: navigator.userAgent });
       const payload = Array.isArray(data) ? data[0] : data;
-      if (payload?.ok === false || payload?.available === false || !payload?.proposal) return unavailable(payload?.error);
-      const proposal = Proposals.normalizeProposal(payload.proposal);
+      if (payload?.ok === false || payload?.available === false || (!payload?.proposal && !payload?.proposal_id && !payload?.proposal_number)) return unavailable();
+      const proposal = Proposals.normalizeProposal(payload.proposal || payload);
       const items = Array.isArray(payload.items) ? payload.items.map(item => Proposals.normalizeItem(item)) : [];
+      const currency = field(proposal.currency, payload.currency, 'EUR');
+      const saasItems = items.filter(item => /saas|subscription|recurring|monthly/i.test(field(item.item_type, item.type, item.category, '')));
+      const hardwareItems = items.filter(item => /hardware|device|equipment/i.test(field(item.item_type, item.type, item.category, '')));
+      const oneTimeItems = items.filter(item => !saasItems.includes(item) && !hardwareItems.includes(item));
       const documentHtml = Proposals.buildProposalDocumentHtml(proposal, items, { mode: 'guest' });
-      root.innerHTML = `<article class="e-proposal-guest-card"><header class="e-proposal-guest-header"><h1>E-Proposal ${U.escapeHtml(proposal.proposal_id || proposal.proposal_number || '')}</h1><p>${U.escapeHtml(proposal.customer_name || '')} · Valid until ${U.escapeHtml(U.fmtDisplayDate(proposal.valid_until || proposal.proposal_valid_until) || '—')}</p></header><section class="e-proposal-guest-content"><iframe id="eProposalGuestFrame" title="E-proposal document" style="width:100%;min-height:72vh;border:1px solid #dbeafe;border-radius:14px;background:#fff;"></iframe><div class="e-proposal-guest-actions"><button class="btn btn-incheck-primary" data-guest-accept type="button">Accept Proposal</button><button class="btn proposal-danger-btn" data-guest-reject type="button">Reject Proposal</button><button class="btn btn-incheck-outline" data-guest-pdf type="button">Download PDF</button></div><div id="eProposalGuestPanel"></div></section></article>`;
-      document.getElementById('eProposalGuestFrame').srcdoc = U.addIncheckDocumentLogo(U.formatPreviewHtmlDates(documentHtml));
-      const panel = document.getElementById('eProposalGuestPanel');
-      document.querySelector('[data-guest-pdf]')?.addEventListener('click', () => document.getElementById('eProposalGuestFrame')?.contentWindow?.print());
-      const showAccept = () => { panel.innerHTML = `<form class="e-proposal-guest-form" data-accept-form><h3>Accept Proposal</h3><input class="input" name="name" required placeholder="Full name" /><input class="input" name="email" type="email" required placeholder="Email" /><textarea class="input" name="comment" rows="3" placeholder="Optional comment"></textarea><label><input name="authorized" type="checkbox" required /> I confirm I am authorized to accept this proposal.</label><button class="btn btn-incheck-primary" type="submit">Accept Proposal</button></form>`; };
-      const showReject = () => { panel.innerHTML = `<form class="e-proposal-guest-form" data-reject-form><h3>Reject Proposal</h3><textarea class="input" name="reason" rows="4" placeholder="Optional rejection reason"></textarea><button class="btn proposal-danger-btn" type="submit">Reject Proposal</button></form>`; };
-      document.querySelector('[data-guest-accept]')?.addEventListener('click', showAccept);
-      document.querySelector('[data-guest-reject]')?.addEventListener('click', showReject);
-      panel.addEventListener('submit', async event => {
-        event.preventDefault();
+      content.innerHTML = `
+        <section class="public-eproposal-section public-proposal-hero">
+          <div><p class="public-kicker">Proposal ${U.escapeHtml(field(proposal.proposal_id, proposal.proposal_number, proposal.number, ''))}</p><h2>${U.escapeHtml(field(proposal.title, proposal.proposal_title, 'Customer Proposal'))}</h2><p>${U.escapeHtml(field(proposal.customer_name, proposal.client_name, proposal.company_name, 'Valued customer'))}</p></div>
+          <span class="public-status-pill">${U.escapeHtml(field(proposal.status, payload.status, 'Pending'))}</span>
+        </section>
+        <section class="public-eproposal-section public-details-grid">
+          <div><strong>Proposal date</strong><span>${U.escapeHtml(U.fmtDisplayDate(field(proposal.proposal_date, proposal.date, proposal.created_at)) || '—')}</span></div>
+          <div><strong>Valid until</strong><span>${U.escapeHtml(U.fmtDisplayDate(field(proposal.valid_until, proposal.proposal_valid_until)) || '—')}</span></div>
+          <div><strong>Currency</strong><span>${U.escapeHtml(currency)}</span></div>
+          <div><strong>Provider</strong><span>InCheck360</span></div>
+        </section>
+        <section class="public-eproposal-section">${renderItems('SaaS items', saasItems, currency)}${renderItems('One-time items', oneTimeItems, currency)}${renderItems('Hardware items', hardwareItems, currency)}</section>
+        <section class="public-eproposal-section public-totals"><div><span>Subtotal</span><strong>${money(field(proposal.subtotal, payload.subtotal, 0), currency)}</strong></div><div><span>Discount</span><strong>${money(field(proposal.discount_total, proposal.discount, payload.discount, 0), currency)}</strong></div><div class="public-grand-total"><span>Grand total</span><strong>${money(field(proposal.grand_total, proposal.total, payload.grand_total, payload.total, 0), currency)}</strong></div></section>
+        <section class="public-eproposal-section"><h3>Terms and conditions</h3><p>${U.escapeHtml(field(proposal.terms_and_conditions, proposal.terms, payload.terms_and_conditions, 'Standard InCheck360 terms and conditions apply.'))}</p></section>
+        <section class="public-eproposal-section public-preview"><h3>Proposal preview</h3><iframe id="publicEProposalFrame" title="Proposal preview"></iframe></section>
+        <div class="public-eproposal-actions"><button class="public-btn-outline" data-public-print type="button">Download / Print Proposal</button><button class="public-btn-outline" data-public-reject type="button">Reject Proposal</button><button class="public-btn-primary" data-public-accept type="button">Accept Proposal</button></div>`;
+      document.getElementById('publicEProposalFrame').srcdoc = U.addIncheckDocumentLogo(U.formatPreviewHtmlDates(documentHtml));
+      document.querySelector('[data-public-print]')?.addEventListener('click', () => document.getElementById('publicEProposalFrame')?.contentWindow?.print());
+      document.querySelector('[data-public-accept]')?.addEventListener('click', () => renderModal(`<form data-public-accept-form><h3>Accept Proposal</h3><input class="input" name="name" required placeholder="Customer full name"><input class="input" name="email" type="email" required placeholder="Customer email"><textarea class="input" name="comment" rows="3" placeholder="Optional comment"></textarea><label class="public-checkbox"><input name="authorized" type="checkbox" required> I confirm I am authorized to accept this proposal.</label><button class="public-btn-primary" type="submit">Accept Proposal</button></form>`));
+      document.querySelector('[data-public-reject]')?.addEventListener('click', () => renderModal(`<form data-public-reject-form><h3>Reject Proposal</h3><input class="input" name="name" placeholder="Customer name (optional)"><input class="input" name="email" type="email" placeholder="Customer email (optional)"><textarea class="input" name="reason" rows="4" placeholder="Rejection reason"></textarea><button class="public-btn-outline" type="submit">Reject Proposal</button></form>`));
+      document.body.addEventListener('submit', async event => {
         const form = event.target;
-        const isAccept = form.matches('[data-accept-form]');
-        if (isAccept) {
-          await callGuestRpc([
-            {
-              name: 'eproposal_accept',
-              args: {
-                p_token: token,
-                p_customer_name: form.name.value,
-                p_customer_email: form.email.value,
-                p_customer_comment: form.comment.value,
-                p_user_agent: navigator.userAgent
-              }
-            },
-            {
-              name: 'accept_e_proposal',
-              args: {
-                p_token: token,
-                p_customer_name: form.name.value,
-                p_customer_email: form.email.value,
-                p_comment: form.comment.value
-              }
-            }
-          ]);
-        } else {
-          await callGuestRpc([
-            {
-              name: 'eproposal_reject',
-              args: {
-                p_token: token,
-                p_customer_name: null,
-                p_customer_email: null,
-                p_rejection_reason: form.reason.value,
-                p_user_agent: navigator.userAgent
-              }
-            },
-            {
-              name: 'reject_e_proposal',
-              args: {
-                p_token: token,
-                p_rejection_reason: form.reason.value
-              }
-            }
-          ]);
+        if (!form.matches('[data-public-accept-form], [data-public-reject-form]')) return;
+        event.preventDefault();
+        const isAccept = form.matches('[data-public-accept-form]');
+        try {
+          if (isAccept) {
+            await callRpc('eproposal_accept', { p_token: token, p_customer_name: form.name.value, p_customer_email: form.email.value, p_customer_comment: form.comment.value, p_user_agent: navigator.userAgent });
+          } else {
+            await callRpc('eproposal_reject', { p_token: token, p_customer_name: form.name.value || null, p_customer_email: form.email.value || null, p_rejection_reason: form.reason.value, p_user_agent: navigator.userAgent });
+          }
+          document.getElementById('publicEProposalModal')?.remove();
+          setActionState(true);
+          content.insertAdjacentHTML('afterbegin', `<section class="public-eproposal-section public-success"><h2>${isAccept ? 'Thank you. This proposal has been accepted.' : 'This proposal has been rejected.'}</h2></section>`);
+        } catch (error) {
+          form.insertAdjacentHTML('beforeend', `<p class="public-form-error">${U.escapeHtml(error?.message || 'Unable to submit response.')}</p>`);
         }
-        root.innerHTML = `<div class="e-proposal-unavailable"><h1>${isAccept ? 'Proposal accepted' : 'Proposal rejected'}</h1><p>Thank you. InCheck360 has recorded your response.</p></div>`;
       });
     } catch (error) {
-      console.error('[e-proposal] guest load failed', error);
-      unavailable(error?.message || 'This proposal link is no longer available.');
+      console.error('[e-proposal] public load failed', error);
+      unavailable(error?.payload?.message || error?.message || 'This proposal link is no longer available.');
     }
-  });
-})();
+  })();
+}
+
+window.getEProposalTokenFromUrl = getEProposalTokenFromUrl;
+window.renderPublicEProposalShell = renderPublicEProposalShell;
+window.bootPublicEProposalPage = bootPublicEProposalPage;

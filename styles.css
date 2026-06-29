@@ -7569,3 +7569,279 @@ body.modal-open { overflow: hidden; }
 .e-proposal-link-header h2{margin:0 0 6px;font-size:22px}.e-proposal-link-header p{margin:0;max-width:620px;color:rgba(255,255,255,.88);line-height:1.45}.e-proposal-link-header .modal-close{color:#fff;background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.25)}
 .e-proposal-link-body{padding:22px 24px;background:#f8fbff}.e-proposal-link-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:18px}.e-proposal-link-meta span{display:flex;flex-direction:column;gap:5px;padding:12px;border:1px solid #dbeafe;border-radius:14px;background:#fff;color:#334155}.e-proposal-link-meta b{font-size:11px;color:#0b5ea8;text-transform:uppercase;letter-spacing:.04em}.e-proposal-link-input{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#fff;border-color:#93c5fd}.e-proposal-link-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}@media(max-width:720px){.e-proposal-link-meta{grid-template-columns:1fr}.e-proposal-link-actions .btn{width:100%}}
 .e-proposal-guest-root{min-height:100vh;background:linear-gradient(180deg,#eff6ff,#fff);padding:32px 16px;color:#0f172a}.e-proposal-guest-card{max-width:1040px;margin:0 auto;background:#fff;border:1px solid #dbeafe;border-radius:24px;box-shadow:0 20px 60px rgba(15,23,42,.12);overflow:hidden}.e-proposal-guest-header{padding:26px;background:linear-gradient(135deg,#073b73,#0b7ec2);color:#fff}.e-proposal-guest-header h1{margin:0 0 6px}.e-proposal-guest-content{padding:24px}.e-proposal-guest-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:18px}.e-proposal-guest-form{display:grid;gap:12px;margin-top:14px;padding:16px;border:1px solid #dbeafe;border-radius:16px;background:#f8fbff}.e-proposal-unavailable{max-width:680px;margin:12vh auto;padding:28px;background:#fff;border:1px solid #fecaca;border-radius:20px;text-align:center;box-shadow:0 20px 60px rgba(15,23,42,.1)}
+
+body.public-eproposal-mode {
+  margin: 0;
+  background: #f8fafc;
+  color: #0f172a;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.public-eproposal-page {
+  min-height: 100vh;
+  padding: 32px 16px;
+  display: flex;
+  justify-content: center;
+}
+
+.public-eproposal-card {
+  width: min(100%, 1100px);
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 22px;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.12);
+  overflow: hidden;
+}
+
+.public-eproposal-header {
+  padding: 24px 28px;
+  border-bottom: 1px solid #e5e7eb;
+  background: linear-gradient(135deg, #eff6ff 0%, #ffffff 65%);
+}
+
+.public-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.public-brand img {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+}
+
+.public-brand h1 {
+  margin: 0;
+  font-size: 24px;
+  color: #0f172a;
+}
+
+.public-brand p {
+  margin: 4px 0 0;
+  color: #64748b;
+}
+
+.public-eproposal-section {
+  padding: 22px 28px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.public-eproposal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 20px 28px;
+  background: #f8fafc;
+}
+
+.public-btn-primary,
+.public-btn-outline {
+  border-radius: 12px;
+  padding: 12px 18px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.public-btn-primary {
+  border: 0;
+  background: #2563eb;
+  color: #ffffff;
+}
+
+.public-btn-outline {
+  border: 1px solid #bfdbfe;
+  background: #ffffff;
+  color: #2563eb;
+}
+
+.public-btn-primary:disabled,
+.public-btn-outline:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.public-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.public-table-wrap table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+.public-table-wrap th,
+.public-table-wrap td {
+  padding: 12px;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: left;
+}
+
+.public-loading,
+.public-status-message {
+  padding: 48px 28px;
+  text-align: center;
+}
+
+.public-proposal-hero,
+.public-details-grid,
+.public-totals {
+  display: grid;
+  gap: 16px;
+}
+
+.public-proposal-hero {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.public-kicker {
+  margin: 0 0 6px;
+  color: #2563eb;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.public-proposal-hero h2 {
+  margin: 0;
+  font-size: clamp(26px, 4vw, 42px);
+}
+
+.public-status-pill {
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-weight: 800;
+  padding: 8px 14px;
+}
+
+.public-details-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.public-details-grid div,
+.public-totals div {
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 14px;
+  background: #f8fafc;
+}
+
+.public-details-grid strong,
+.public-details-grid span,
+.public-totals span,
+.public-totals strong {
+  display: block;
+}
+
+.public-details-grid strong,
+.public-totals span {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.public-totals {
+  margin-left: auto;
+  max-width: 420px;
+}
+
+.public-grand-total {
+  background: #eff6ff !important;
+  border-color: #bfdbfe !important;
+}
+
+.public-grand-total strong {
+  color: #1d4ed8;
+  font-size: 24px;
+}
+
+.public-preview iframe {
+  width: 100%;
+  min-height: 72vh;
+  border: 1px solid #dbeafe;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.public-success {
+  background: #ecfdf5;
+  color: #065f46;
+}
+
+.public-eproposal-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.public-eproposal-modal-card {
+  position: relative;
+  width: min(100%, 520px);
+  padding: 24px;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22);
+}
+
+.public-eproposal-modal-card form {
+  display: grid;
+  gap: 12px;
+}
+
+.public-modal-close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  border: 0;
+  background: transparent;
+  font-size: 26px;
+  cursor: pointer;
+}
+
+.public-checkbox {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  color: #334155;
+}
+
+.public-form-error {
+  color: #b91c1c;
+  font-weight: 700;
+}
+
+@media (max-width: 780px) {
+  .public-details-grid,
+  .public-proposal-hero {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .public-eproposal-page {
+    padding: 12px;
+  }
+
+  .public-eproposal-header,
+  .public-eproposal-section,
+  .public-eproposal-actions {
+    padding: 16px;
+  }
+
+  .public-eproposal-actions {
+    flex-direction: column;
+  }
+
+  .public-btn-primary,
+  .public-btn-outline {
+    width: 100%;
+  }
+}
