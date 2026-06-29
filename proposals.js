@@ -124,7 +124,18 @@ const Proposals = {
     'signed_document_uploaded_at',
     'signed_document_uploaded_by',
     'generated_by',
-    'updated_at'
+    'updated_at',
+    'e_proposal_token',
+    'e_proposal_token_expires_at',
+    'e_proposal_link_enabled',
+    'e_proposal_generated_at',
+    'e_proposal_generated_by',
+    'viewed_at',
+    'accepted_at',
+    'accepted_by_name',
+    'accepted_by_email',
+    'rejected_at',
+    'rejection_reason'
   ],
   state: {
     rows: [],
@@ -3439,6 +3450,7 @@ const Proposals = {
       }
       if (Permissions.canPreviewProposal()) {
         items.push(`<button class="commercial-menu-item" type="button" data-proposal-preview="${id}" data-permission-resource="proposals" data-permission-action="view">Preview</button>`);
+        items.push(`<button class="commercial-menu-item" type="button" data-proposal-e-link="${id}" data-permission-resource="proposals" data-permission-action="view">Generate E-Proposal Link</button>`);
       }
       if (this.canShowConvertToAgreement(row) && !this.isAgreementAlreadyCreated(row)) {
         items.push(`<button class="commercial-menu-item" type="button" data-proposal-convert-agreement="${id}" data-permission-resource="agreements" data-permission-action="create_from_proposal">Convert to Agreement</button>`);
@@ -4724,6 +4736,7 @@ const Proposals = {
     }
     if (E.proposalFormDeleteBtn)
       E.proposalFormDeleteBtn.style.display = mode === 'edit' && !effectiveReadOnly && Permissions.canDeleteProposal() ? '' : 'none';
+    if (E.proposalGenerateELinkBtn) E.proposalGenerateELinkBtn.style.display = mode === 'edit' && Permissions.canPreviewProposal() ? '' : 'none';
     if (E.proposalFormSaveBtn) {
       const canSave = mode === 'edit' ? Permissions.canUpdateProposal() : Permissions.canCreateProposal();
       E.proposalFormSaveBtn.style.display = !effectiveReadOnly && canSave ? '' : 'none';
@@ -4759,6 +4772,7 @@ const Proposals = {
     if (E.proposalFormSaveBtn) E.proposalFormSaveBtn.disabled = busy;
     if (E.proposalFormDeleteBtn) E.proposalFormDeleteBtn.disabled = busy;
     if (E.proposalFormPreviewBtn) E.proposalFormPreviewBtn.disabled = busy;
+    if (E.proposalGenerateELinkBtn) E.proposalGenerateELinkBtn.disabled = busy;
     if (busy) {
       if (E.proposalSignedDocumentUploadBtn) E.proposalSignedDocumentUploadBtn.disabled = true;
       if (E.proposalSignedDocumentOpenBtn) E.proposalSignedDocumentOpenBtn.disabled = true;
@@ -5246,6 +5260,63 @@ const Proposals = {
       this.setFormBusy(false);
     }
   },
+
+  getEProposalPublicUrl(token = '') {
+    const clean = String(token || '').trim();
+    return clean ? `${window.location.origin}/e-proposal/${encodeURIComponent(clean)}` : '';
+  },
+  async callEProposalRpc(name, args = {}) {
+    const client = this.getSupabaseClient();
+    const { data, error } = await client.rpc(name, args);
+    if (error) throw error;
+    return data;
+  },
+  async generateEProposalLink(proposalId, { regenerate = false } = {}) {
+    try {
+      const data = await this.callEProposalRpc('generate_e_proposal_link', { p_proposal_id: proposalId, p_regenerate: !!regenerate });
+      this.showEProposalLinkModal(data);
+      await this.loadAndRefresh({ force: true });
+    } catch (error) {
+      UI.toast(error?.message || 'Unable to generate e-proposal link.');
+    }
+  },
+  async disableEProposalLink(proposalId) {
+    try {
+      const data = await this.callEProposalRpc('disable_e_proposal_link', { p_proposal_id: proposalId });
+      UI.toast('E-proposal link disabled.');
+      this.showEProposalLinkModal(data);
+      await this.loadAndRefresh({ force: true });
+    } catch (error) {
+      UI.toast(error?.message || 'Unable to disable e-proposal link.');
+    }
+  },
+  async logEProposalActivity(proposalId, token, eventType) {
+    try { await this.callEProposalRpc('log_e_proposal_activity', { p_proposal_id: proposalId, p_token: token, p_event_type: eventType }); } catch (e) { console.warn('[e-proposal] audit log failed', e); }
+  },
+  showEProposalLinkModal(data = {}) {
+    const row = Array.isArray(data) ? data[0] : data;
+    const proposalId = String(row?.proposal_id || row?.id || '').trim();
+    const token = String(row?.token || row?.e_proposal_token || '').trim();
+    const link = String(row?.public_link || this.getEProposalPublicUrl(token)).trim();
+    let modal = document.getElementById('eProposalLinkModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'eProposalLinkModal';
+      modal.className = 'modal e-proposal-link-modal';
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-modal', 'true');
+      document.body.appendChild(modal);
+    }
+    modal.innerHTML = `<div class="modal-content e-proposal-link-dialog"><div class="modal-header e-proposal-link-header"><div><h2>E-Proposal Link Generated</h2><p>Share this secure link manually with the customer. The customer can review, accept, or reject the proposal without ERP credentials.</p></div><button class="modal-close" data-e-proposal-close type="button">✕</button></div><div class="e-proposal-link-body"><div class="e-proposal-link-meta"><span><b>Proposal</b>${U.escapeHtml(row?.proposal_number || row?.proposal_id || '—')}</span><span><b>Customer/company</b>${U.escapeHtml(row?.customer_name || '—')}</span><span><b>Valid until</b>${U.escapeHtml(U.fmtDisplayDate(row?.valid_until || row?.proposal_valid_until) || '—')}</span></div><label class="muted" for="eProposalPublicLink">Public link</label><input id="eProposalPublicLink" class="input e-proposal-link-input" readonly value="${U.escapeAttr(link)}" /><div class="e-proposal-link-actions"><button class="btn btn-incheck-primary" data-e-proposal-copy type="button">Copy E-Proposal Link</button><button class="btn btn-incheck-outline" data-e-proposal-open type="button">Open E-Proposal</button><button class="btn btn-incheck-outline" data-e-proposal-regenerate type="button">Regenerate Link</button><button class="btn proposal-danger-btn" data-e-proposal-disable type="button">Disable Link</button></div></div></div>`;
+    const close = () => { modal.style.display = 'none'; modal.setAttribute('aria-hidden', 'true'); };
+    modal.querySelector('[data-e-proposal-close]')?.addEventListener('click', close);
+    modal.addEventListener('click', event => { if (event.target === modal) close(); }, { once: true });
+    modal.querySelector('[data-e-proposal-copy]')?.addEventListener('click', async () => { await navigator.clipboard?.writeText(link); UI.toast('E-proposal link copied.'); this.logEProposalActivity(proposalId, token, 'link_copied'); });
+    modal.querySelector('[data-e-proposal-open]')?.addEventListener('click', () => window.open(link, '_blank', 'noopener,noreferrer'));
+    modal.querySelector('[data-e-proposal-regenerate]')?.addEventListener('click', () => this.generateEProposalLink(proposalId, { regenerate: true }));
+    modal.querySelector('[data-e-proposal-disable]')?.addEventListener('click', () => this.disableEProposalLink(proposalId));
+    modal.style.display = 'flex'; modal.setAttribute('aria-hidden', 'false');
+  },
   extractHtml(response) {
     const candidates = [
       response,
@@ -5636,6 +5707,11 @@ const Proposals = {
           this.runRowAction(`preview:${previewId}`, trigger, () => this.previewProposalHtml(previewId));
           return;
         }
+        const eLinkId = getActionValue('data-proposal-e-link');
+        if (eLinkId) {
+          this.runRowAction(`e-link:${eLinkId}`, trigger, () => this.generateEProposalLink(eLinkId));
+          return;
+        }
         const convertAgreementId = getActionValue('data-proposal-convert-agreement');
         if (convertAgreementId) {
           this.runRowAction(`convert-agreement:${convertAgreementId}`, trigger, async () => {
@@ -5796,6 +5872,13 @@ const Proposals = {
     if (E.proposalSignedDocumentOpenBtn) {
       E.proposalSignedDocumentOpenBtn.addEventListener('click', () => this.openSignedProposalDocument());
     }
+    if (E.proposalGenerateELinkBtn) {
+      E.proposalGenerateELinkBtn.addEventListener('click', () => {
+        const id = String(E.proposalForm?.dataset.id || '').trim();
+        if (!id) return UI.toast('Save the proposal first to generate an e-proposal link.');
+        this.generateEProposalLink(id);
+      });
+    }
     if (E.proposalFormPreviewBtn) {
       E.proposalFormPreviewBtn.addEventListener('click', () => {
         const id = String(E.proposalForm?.dataset.id || '').trim();
@@ -5833,3 +5916,47 @@ const Proposals = {
 };
 
 window.Proposals = Proposals;
+
+(function initEProposalGuestPage(){
+  const pathname = String(window.location?.pathname || '');
+  const match = pathname.match(/^\/e-proposal\/([^/?#]+)/);
+  if (!match) return;
+  const token = decodeURIComponent(match[1] || '').trim();
+  document.addEventListener('DOMContentLoaded', async () => {
+    document.body.className = 'e-proposal-guest-body';
+    document.body.innerHTML = '<main id="eProposalGuestRoot" class="e-proposal-guest-root"><div class="e-proposal-unavailable">Loading e-proposal…</div></main>';
+    const root = document.getElementById('eProposalGuestRoot');
+    const unavailable = (message = 'This proposal link is no longer available.') => { root.innerHTML = `<div class="e-proposal-unavailable"><h1>${U.escapeHtml(message)}</h1><p>Please contact the InCheck360 team for an updated proposal link.</p></div>`; };
+    try {
+      const client = window.SupabaseClient?.getClient?.();
+      const { data, error } = await client.rpc('get_e_proposal_by_token', { p_token: token });
+      if (error) throw error;
+      const payload = Array.isArray(data) ? data[0] : data;
+      if (!payload?.proposal) return unavailable();
+      const proposal = Proposals.normalizeProposal(payload.proposal);
+      const items = Array.isArray(payload.items) ? payload.items.map(item => Proposals.normalizeItem(item)) : [];
+      const documentHtml = Proposals.buildProposalDocumentHtml(proposal, items, { mode: 'guest' });
+      root.innerHTML = `<article class="e-proposal-guest-card"><header class="e-proposal-guest-header"><h1>E-Proposal ${U.escapeHtml(proposal.proposal_id || proposal.proposal_number || '')}</h1><p>${U.escapeHtml(proposal.customer_name || '')} · Valid until ${U.escapeHtml(U.fmtDisplayDate(proposal.valid_until || proposal.proposal_valid_until) || '—')}</p></header><section class="e-proposal-guest-content"><iframe id="eProposalGuestFrame" title="E-proposal document" style="width:100%;min-height:72vh;border:1px solid #dbeafe;border-radius:14px;background:#fff;"></iframe><div class="e-proposal-guest-actions"><button class="btn btn-incheck-primary" data-guest-accept type="button">Accept Proposal</button><button class="btn proposal-danger-btn" data-guest-reject type="button">Reject Proposal</button><button class="btn btn-incheck-outline" data-guest-pdf type="button">Download PDF</button></div><div id="eProposalGuestPanel"></div></section></article>`;
+      document.getElementById('eProposalGuestFrame').srcdoc = U.addIncheckDocumentLogo(U.formatPreviewHtmlDates(documentHtml));
+      const panel = document.getElementById('eProposalGuestPanel');
+      document.querySelector('[data-guest-pdf]')?.addEventListener('click', () => document.getElementById('eProposalGuestFrame')?.contentWindow?.print());
+      const showAccept = () => { panel.innerHTML = `<form class="e-proposal-guest-form" data-accept-form><h3>Accept Proposal</h3><input class="input" name="name" required placeholder="Full name" /><input class="input" name="email" type="email" required placeholder="Email" /><textarea class="input" name="comment" rows="3" placeholder="Optional comment"></textarea><label><input name="authorized" type="checkbox" required /> I confirm I am authorized to accept this proposal.</label><button class="btn btn-incheck-primary" type="submit">Accept Proposal</button></form>`; };
+      const showReject = () => { panel.innerHTML = `<form class="e-proposal-guest-form" data-reject-form><h3>Reject Proposal</h3><textarea class="input" name="reason" rows="4" placeholder="Optional rejection reason"></textarea><button class="btn proposal-danger-btn" type="submit">Reject Proposal</button></form>`; };
+      document.querySelector('[data-guest-accept]')?.addEventListener('click', showAccept);
+      document.querySelector('[data-guest-reject]')?.addEventListener('click', showReject);
+      panel.addEventListener('submit', async event => {
+        event.preventDefault();
+        const form = event.target;
+        const isAccept = form.matches('[data-accept-form]');
+        const body = isAccept ? { p_token: token, p_customer_name: form.name.value, p_customer_email: form.email.value, p_comment: form.comment.value } : { p_token: token, p_rejection_reason: form.reason.value };
+        const fn = isAccept ? 'accept_e_proposal' : 'reject_e_proposal';
+        const { error: actionError } = await client.rpc(fn, body);
+        if (actionError) throw actionError;
+        root.innerHTML = `<div class="e-proposal-unavailable"><h1>${isAccept ? 'Proposal accepted' : 'Proposal rejected'}</h1><p>Thank you. InCheck360 has recorded your response.</p></div>`;
+      });
+    } catch (error) {
+      console.error('[e-proposal] guest load failed', error);
+      unavailable(error?.message || 'This proposal link is no longer available.');
+    }
+  });
+})();
