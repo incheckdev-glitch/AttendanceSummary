@@ -4362,6 +4362,68 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     return null;
   }
 
+
+  const PROPOSAL_AGREEMENT_SIGNATURE_ERROR = 'Please accept/sign the proposal or upload a signed document before converting it to an agreement.';
+
+  function hasProposalAgreementConversionSignature(proposal = {}) {
+    const source = proposal && typeof proposal === 'object' ? proposal : {};
+    const hasManualSignedDocument = Boolean(
+      source.signed_document_url ||
+      source.signed_document_path ||
+      source.signed_document_name
+    );
+    const hasPublicESignature = source.e_signature_confirmed === true &&
+      Boolean(source.e_signature_type) &&
+      Boolean(source.e_signature_signed_at);
+    const hasPublicUploadedSignedDocument =
+      source.e_signature_type === 'signed_document_upload' &&
+      Boolean(source.e_signed_document_data_url);
+    return hasManualSignedDocument || hasPublicESignature || hasPublicUploadedSignedDocument;
+  }
+
+  function getProposalSignatureVerificationPayload(proposal = {}) {
+    const signatureFields = [
+      'e_signature_type',
+      'e_signature_text',
+      'e_signature_image_data_url',
+      'e_signature_customer_name',
+      'e_signature_customer_email',
+      'e_signature_ip_address',
+      'e_signature_signed_at',
+      'e_signature_confirmed',
+      'e_signed_document_data_url',
+      'e_signed_document_file_name',
+      'e_signed_document_mime_type'
+    ];
+    return signatureFields.reduce((payload, field) => {
+      if (proposal[field] !== undefined && proposal[field] !== null && proposal[field] !== '') payload[field] = proposal[field];
+      return payload;
+    }, {});
+  }
+
+  async function carryProposalSignatureVerificationToAgreement(client, proposal = {}, agreement = {}) {
+    const agreementUuid = String(agreement?.id || agreement?.agreement_uuid || agreement?.created_agreement_uuid || '').trim();
+    const agreementNumber = String(agreement?.agreement_id || agreement?.agreement_number || '').trim();
+    let updatePayload = getProposalSignatureVerificationPayload(proposal);
+    if (!Object.keys(updatePayload).length || (!agreementUuid && !agreementNumber)) return agreement;
+    updatePayload.updated_at = new Date().toISOString();
+    while (Object.keys(updatePayload).some(key => key !== 'updated_at')) {
+      const query = client.from('agreements').update(updatePayload).select('*');
+      const { data, error } = agreementUuid
+        ? await query.eq('id', agreementUuid).maybeSingle()
+        : await query.eq('agreement_id', agreementNumber).maybeSingle();
+      if (!error) return data || agreement;
+      const message = String(error.message || error.details || error.hint || '');
+      const missingColumn = Object.keys(updatePayload).find(field => field !== 'updated_at' && message.includes(field));
+      if (!missingColumn) {
+        console.warn('[agreements:create_from_proposal] signature verification carry-forward skipped', error);
+        return agreement;
+      }
+      delete updatePayload[missingColumn];
+    }
+    return agreement;
+  }
+
   async function assertProposalAgreementConversionCompanyVerified(client, proposalUuid) {
     const { data: proposal, error } = await client
       .from('proposals')
@@ -4373,8 +4435,8 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     if (String(proposal.status || '').trim().toLowerCase() !== 'accepted') {
       throw new Error('Proposal must be accepted before converting to agreement.');
     }
-    if (!String(proposal.signed_document_path || '').trim()) {
-      throw new Error('You should upload the signed document before converting it to an agreement.');
+    if (!hasProposalAgreementConversionSignature(proposal)) {
+      throw new Error(PROPOSAL_AGREEMENT_SIGNATURE_ERROR);
     }
     const company = await loadProposalCompanyForAgreementConversion(client, proposal);
     if (!isCompanyVerifiedForAgreementConversion(company)) {
@@ -7440,7 +7502,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       await assertProposalAgreementConversionCompanyVerified(client, proposalUuid);
       const { data: sourceProposal, error: sourceProposalError } = await client
         .from('proposals')
-        .select('id,payment_term,payment_terms,billing_frequency')
+        .select('id,payment_term,payment_terms,billing_frequency,e_signature_type,e_signature_text,e_signature_image_data_url,e_signature_customer_name,e_signature_customer_email,e_signature_ip_address,e_signature_signed_at,e_signature_confirmed,e_signed_document_data_url,e_signed_document_file_name,e_signed_document_mime_type')
         .eq('id', proposalUuid)
         .maybeSingle();
       if (sourceProposalError) throw friendlyError('Unable to load proposal payment term before agreement conversion', sourceProposalError);
@@ -7451,6 +7513,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       if (error) throw friendlyError('Agreement creation from proposal failed', error);
       const createdAgreementUuid = String(data?.id || data?.agreement_uuid || data?.created_agreement_uuid || '').trim();
       const createdAgreementNumber = String(data?.agreement_id || data?.agreement_number || '').trim();
+      data = await carryProposalSignatureVerificationToAgreement(client, sourceProposal, data);
       if (lockedPaymentTerm && (createdAgreementUuid || createdAgreementNumber)) {
         const updatePayload = {
           payment_term: lockedPaymentTerm,

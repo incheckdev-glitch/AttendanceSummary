@@ -29,6 +29,26 @@ function isAgreementSigned(agreement) {
   return hasAllRequiredAgreementSignDates(source);
 }
 
+
+function hasProposalAgreementConversionSignature(proposal = {}) {
+  const source = proposal && typeof proposal === 'object' ? proposal : {};
+  const hasManualSignedDocument = Boolean(
+    source.signed_document_url ||
+    source.signedDocumentUrl ||
+    source.signed_document_path ||
+    source.signedDocumentPath ||
+    source.signed_document_name ||
+    source.signedDocumentName
+  );
+  const hasPublicESignature = source.e_signature_confirmed === true &&
+    Boolean(source.e_signature_type) &&
+    Boolean(source.e_signature_signed_at);
+  const hasPublicUploadedSignedDocument =
+    source.e_signature_type === 'signed_document_upload' &&
+    Boolean(source.e_signed_document_data_url);
+  return hasManualSignedDocument || hasPublicESignature || hasPublicUploadedSignedDocument;
+}
+
 function agreementHasSignedDocument(agreement) {
   return Boolean(
     agreement?.signed_document_url ||
@@ -1643,8 +1663,8 @@ const Agreements = {
       UI.toast('Proposal must be accepted before converting to agreement.');
       return false;
     }
-    if (!String(proposal?.signed_document_path || proposal?.signedDocumentPath || '').trim()) {
-      UI.toast('You should upload the signed document before converting it to an agreement.');
+    if (!hasProposalAgreementConversionSignature(proposal)) {
+      UI.toast('Please accept/sign the proposal or upload a signed document before converting it to an agreement.');
       return false;
     }
     return this.ensureCompanyVerifiedBeforeAgreement(proposal);
@@ -1907,6 +1927,17 @@ const Agreements = {
         source.financial_controller_signed ?? source.financialControllerSigned,
         false
       ),
+      e_signature_type: source.e_signature_type || '',
+      e_signature_text: source.e_signature_text || '',
+      e_signature_image_data_url: source.e_signature_image_data_url || '',
+      e_signature_customer_name: source.e_signature_customer_name || '',
+      e_signature_customer_email: source.e_signature_customer_email || '',
+      e_signature_ip_address: source.e_signature_ip_address || '',
+      e_signature_signed_at: source.e_signature_signed_at || '',
+      e_signature_confirmed: source.e_signature_confirmed === true,
+      e_signed_document_data_url: source.e_signed_document_data_url || '',
+      e_signed_document_file_name: source.e_signed_document_file_name || '',
+      e_signed_document_mime_type: source.e_signed_document_mime_type || '',
       generated_by: String(source.generated_by || source.generatedBy || '').trim(),
       status: 'Draft'
     });
