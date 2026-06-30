@@ -2941,17 +2941,7 @@ const Proposals = {
     const customerSignatory = this.resolveProposalCustomerSignatory(proposalData, proposalContact);
     const customerSignatoryName = String(customerSignatory.name || '').trim();
     const customerSignatoryTitle = String(customerSignatory.title || '').trim();
-    const typedESignatureExists = hasTypedESignature(proposalData);
-    const uploadedESignatureExists = hasUploadedESignature(proposalData);
-    const eSignaturePreviewHtml = renderESignaturePreview(proposalData, {
-      typedClassName: 'document-typed-signature-preview',
-      uploadedWrapperClassName: 'document-signature-image-preview'
-    });
-    const eSignatureHtml = (typedESignatureExists || uploadedESignatureExists) ? `
-            <div><strong>Name:</strong> ${textValue(proposalData.e_signature_customer_name || proposalData.accepted_by_name || customerSignatoryName)}</div>
-            <div><strong>Email:</strong> ${textValue(proposalData.e_signature_customer_email || proposalData.accepted_by_email || proposalData.customer_contact_email)}</div>
-            <div><strong>Signed:</strong> ${dateValue(proposalData.e_signature_signed_at || proposalData.accepted_at || proposalData.customer_sign_date)}</div>
-            ${eSignaturePreviewHtml}` : '';
+    const customerESignatureBlockHtml = renderCustomerESignatureBlock(proposalData);
     const isPoc = this.normalizeTruthy(proposalData.is_poc || proposalData.isPoc);
     const pocDetailsHtml = isPoc ? `
       <section class="info-grid" style="margin-top:14px;grid-template-columns:1fr;">
@@ -3141,12 +3131,17 @@ const Proposals = {
       .proposal-terms-text { margin-top: 8px; white-space: pre-wrap; }
       .terms a { color: inherit; text-decoration: underline; overflow-wrap: anywhere; }
       .signature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 12px; }
+      .customer-signatory-column,
+      .provider-signatory-column { display: flex; flex-direction: column; gap: 12px; }
       .signature-box { border: 1px solid #d7e1ed; min-height: 124px; border-radius: 6px; overflow: hidden; }
       .signature-head { background: #f8fbff; border-bottom: 1px solid #e3eaf3; padding: 8px 10px; font-size: 11px; letter-spacing: 0.08em; font-weight: 700; color: #1e3a5f; }
       .signature-body { padding: 11px; font-size: 12px; line-height: 1.5; }
-      .document-typed-signature-preview { margin-top: 10px; min-height: 46px; padding: 10px 12px; border: 1px solid #bfdbfe; border-radius: 10px; background: #eff6ff; color: #0f172a; font-size: 26px; font-style: italic; font-family: "Brush Script MT", "Segoe Script", "Snell Roundhand", cursive; display: flex; align-items: center; }
-      .document-signature-image-preview { margin-top: 10px; min-height: 60px; padding: 10px 12px; border: 1px solid #bfdbfe; border-radius: 10px; background: #fff; display: flex; align-items: center; }
-      .document-signature-image-preview img { max-width: 240px; max-height: 90px; object-fit: contain; display: block; }
+      .customer-esignature-block { border: 1px solid #dbeafe; border-radius: 12px; background: #f8fbff; padding: 14px 16px; }
+      .customer-esignature-title { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #1d4ed8; margin-bottom: 10px; }
+      .customer-esignature-typed { min-height: 72px; padding: 14px 16px; border: 1px solid #bfdbfe; border-radius: 10px; background: #eff6ff; color: #0f172a; font-size: 30px; font-style: italic; font-family: "Brush Script MT", "Segoe Script", "Snell Roundhand", cursive; display: flex; align-items: center; }
+      .customer-esignature-image-wrap { min-height: 90px; padding: 12px; border: 1px solid #bfdbfe; border-radius: 10px; background: #ffffff; display: flex; align-items: center; justify-content: flex-start; }
+      .customer-esignature-image { max-width: 260px; max-height: 100px; object-fit: contain; display: block; }
+      .customer-esignature-meta { margin-top: 10px; font-size: 12px; color: #475569; }
       .footer-note { margin-top: 16px; font-size: 11px; color: #64748b; border-top: 1px solid #e3eaf3; padding-top: 10px; text-align: center; }
       @page { size: A4; margin: 0; }
       @media print {
@@ -3291,20 +3286,25 @@ const Proposals = {
       </section>
 
       <section class="signature-grid">
-        <div class="signature-box">
-          <div class="signature-head">CUSTOMER SIGNATORY</div>
-          <div class="signature-body">
-            ${(typedESignatureExists || uploadedESignatureExists) ? eSignatureHtml : `<div><strong>Name:</strong> ${textValue(customerSignatoryName)}</div>
-            <div><strong>Title:</strong> ${textValue(customerSignatoryTitle)}</div>
-            <div><strong>Sign Date:</strong> ${dateValue(proposalData.customer_sign_date || proposalData.customer_signed_at)}</div>`}
+        <div class="customer-signatory-column">
+          <div class="signature-box customer-signatory-card">
+            <div class="signature-head">CUSTOMER SIGNATORY</div>
+            <div class="signature-body">
+              <div><strong>Name:</strong> ${textValue(customerSignatoryName)}</div>
+              <div><strong>Title:</strong> ${textValue(customerSignatoryTitle)}</div>
+              <div><strong>Sign Date:</strong> ${dateValue(proposalData.customer_sign_date || proposalData.customer_signed_at)}</div>
+            </div>
           </div>
+          ${customerESignatureBlockHtml}
         </div>
-        <div class="signature-box">
-          <div class="signature-head">PROVIDER SIGNATORY</div>
-          <div class="signature-body">
-            <div><strong>Name:</strong> ${textValue(providerSignatoryName)}</div>
-            <div><strong>Title:</strong> ${textValue(providerSignatoryTitle)}</div>
-            <div><strong>Sign Date:</strong> ${dateValue(proposalData.provider_sign_date)}</div>
+        <div class="provider-signatory-column">
+          <div class="signature-box provider-signatory-card">
+            <div class="signature-head">PROVIDER SIGNATORY</div>
+            <div class="signature-body">
+              <div><strong>Name:</strong> ${textValue(providerSignatoryName)}</div>
+              <div><strong>Title:</strong> ${textValue(providerSignatoryTitle)}</div>
+              <div><strong>Sign Date:</strong> ${dateValue(proposalData.provider_sign_date)}</div>
+            </div>
           </div>
         </div>
       </section>
@@ -6305,6 +6305,56 @@ function hasUploadedESignature(proposal) {
 
 function hasAnyESignature(proposal) {
   return hasTypedESignature(proposal) || hasUploadedESignature(proposal);
+}
+
+
+function renderCustomerESignatureBlock(proposal) {
+  if (!hasAnyESignature(proposal)) return '';
+
+  const signedBy = String(proposal?.e_signature_customer_name || proposal?.accepted_by_name || '').trim();
+  const signedEmail = String(proposal?.e_signature_customer_email || proposal?.accepted_by_email || '').trim();
+  const signedAt = proposal?.e_signature_signed_at || proposal?.accepted_at || '';
+  const signedAtText = signedAt
+    ? (U.fmtDisplayDateTime?.(signedAt) || U.fmtDisplayDate(signedAt) || String(signedAt))
+    : '';
+  const confirmedText = proposal?.e_signature_confirmed === true ? ' · Confirmed' : '';
+  const metaParts = [
+    signedBy ? `Signed by ${U.escapeHtml(signedBy)}` : 'Signed by customer',
+    signedEmail ? ` (${U.escapeHtml(signedEmail)})` : '',
+    signedAtText ? ` on ${U.escapeHtml(signedAtText)}` : '',
+    confirmedText
+  ];
+  const metaHtml = metaParts.join('');
+
+  if (hasUploadedESignature(proposal)) {
+    return `
+      <div class="customer-esignature-block">
+        <div class="customer-esignature-title">Customer E-Signature</div>
+        <div class="customer-esignature-image-wrap">
+          <img
+            src="${U.escapeHtml(proposal.e_signature_image_data_url)}"
+            alt="Customer uploaded signature"
+            class="customer-esignature-image"
+          />
+        </div>
+        <div class="customer-esignature-meta">${metaHtml}</div>
+      </div>
+    `;
+  }
+
+  if (hasTypedESignature(proposal)) {
+    return `
+      <div class="customer-esignature-block">
+        <div class="customer-esignature-title">Customer E-Signature</div>
+        <div class="customer-esignature-typed">
+          ${U.escapeHtml(proposal.e_signature_text)}
+        </div>
+        <div class="customer-esignature-meta">${metaHtml}</div>
+      </div>
+    `;
+  }
+
+  return '';
 }
 
 function renderESignaturePreview(proposal, options = {}) {
