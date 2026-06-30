@@ -79,9 +79,9 @@
     mobile: '+31 97 010280855',
     email: 'Info@incheck360.nl'
   });
-  const DEFAULT_AGREEMENT_TERMS_AND_CONDITIONS = `Provider and Customer hereby agree to abide by and be bound to this Subscription Agreement, Provider’s Terms of Use, and Provider's Privacy Policy. Provider's Terms of Use and Privacy Policy can be found at https://www.incheck360.com/terms-of-use and https://www.incheck360.com/privacy-policy, respectively, and are hereby incorporated into this Agreement. The Subscription Agreement, Provider's Terms of Use, and Privacy Policy form the Agreement between Customer, as listed above, and InCheck 360 Holding B.V.
+  const DEFAULT_AGREEMENT_TERMS_AND_CONDITIONS = `Provider and Customer hereby agree to abide by and be bound by this Subscription Agreement, Provider’s Terms of Use, and Provider’s Privacy Policy. Provider’s Terms of Use and Privacy Policy can be found at https://www.incheck360.com/terms-of-use and https://www.incheck360.com/privacy-policy, respectively, and are hereby incorporated into this Agreement. The Subscription Agreement, Provider’s Terms of Use, and Privacy Policy form the Agreement between Customer, as listed above, and InCheck 360 Holding B.V.
 
-IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by their authorized representatives as of the date of last signature by either party ("Effective Date").`;
+IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by their authorized representatives as of the date of last signature by either party (“Effective Date”).`;
   const DEFAULT_PROPOSAL_TERMS_AND_CONDITIONS = `1. SaaS Cost is an annual recurring cost, while Account Setup is a one-time fee.
 2. Customer Support is continuous during the subscription term with an unlimited quantity of requests.
 3. InCheck's Privacy Policy can be found at https://incheck360.com/privacy-policy
@@ -7514,6 +7514,13 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       const createdAgreementUuid = String(data?.id || data?.agreement_uuid || data?.created_agreement_uuid || '').trim();
       const createdAgreementNumber = String(data?.agreement_id || data?.agreement_number || '').trim();
       data = await carryProposalSignatureVerificationToAgreement(client, sourceProposal, data);
+      const createdAgreementStatus = String(data?.status || '').trim().toLowerCase();
+      const createdAgreementIsSigned = createdAgreementStatus.includes('signed')
+        || createdAgreementStatus === 'active'
+        || Boolean(data?.signed_date)
+        || Boolean(data?.customer_official_sign_date || data?.customer_sign_date)
+        || Boolean(data?.provider_official_signatory_1_sign_date || data?.provider_sign_date)
+        || Boolean(data?.provider_official_signatory_2_sign_date);
       if (lockedPaymentTerm && (createdAgreementUuid || createdAgreementNumber)) {
         const updatePayload = {
           payment_term: lockedPaymentTerm,
@@ -7521,6 +7528,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
           billing_frequency: 'Annual',
           updated_at: new Date().toISOString()
         };
+        if (!createdAgreementIsSigned) updatePayload.terms_conditions = DEFAULT_AGREEMENT_TERMS_AND_CONDITIONS;
         const agreementUpdateQuery = client.from('agreements').update(updatePayload).select('*');
         const { data: updatedAgreement, error: paymentTermSyncError } = createdAgreementUuid
           ? await agreementUpdateQuery.eq('id', createdAgreementUuid).maybeSingle()
