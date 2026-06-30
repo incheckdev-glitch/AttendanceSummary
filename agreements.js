@@ -14,6 +14,40 @@ function hasAllRequiredAgreementSignDates(source = {}) {
   );
 }
 
+
+function hasAgreementCustomerSigned(agreement) {
+  return Boolean(
+    agreement?.customer_signature_confirmed === true ||
+    agreement?.customer_signed_at ||
+    agreement?.customer_accepted_at ||
+    agreement?.accepted_at ||
+    agreement?.e_signature_confirmed === true ||
+    agreement?.e_signature_signed_at ||
+    agreement?.customer_sign_date ||
+    agreement?.customer_signature_date ||
+    agreement?.customer_signed_document_data_url ||
+    agreement?.e_signed_document_data_url ||
+    agreement?.customerSignatureConfirmed === true ||
+    agreement?.customerSignedAt ||
+    agreement?.customerAcceptedAt ||
+    agreement?.acceptedAt ||
+    agreement?.eSignatureConfirmed === true ||
+    agreement?.eSignatureSignedAt ||
+    agreement?.customerSignDate ||
+    agreement?.customerSignatureDate ||
+    agreement?.customerSignedDocumentDataUrl ||
+    agreement?.eSignedDocumentDataUrl ||
+    agreement?.e_agreement_signature_confirmed === true ||
+    agreement?.e_agreement_signature_signed_at ||
+    agreement?.e_agreement_accepted_at ||
+    agreement?.e_agreement_signed_document_data_url ||
+    agreement?.eAgreementSignatureConfirmed === true ||
+    agreement?.eAgreementSignatureSignedAt ||
+    agreement?.eAgreementAcceptedAt ||
+    agreement?.eAgreementSignedDocumentDataUrl
+  );
+}
+
 function isAgreementSigned(agreement) {
   const source = agreement && typeof agreement === "object" ? agreement : { status: agreement };
   const normalized = normalizeAgreementStatus(source?.status);
@@ -180,6 +214,7 @@ const Agreements = {
     'e_agreement_signature_confirmed',
     'customer_signature_confirmed',
     'customer_signed_at',
+    'customer_accepted_at',
     'legacy_agreement_ref',
     'is_imported',
     'is_historical_agreement',
@@ -2161,7 +2196,7 @@ const Agreements = {
   applyProviderSignDateRoleLocks() {
     const formReadOnly = String(E.agreementForm?.dataset?.readOnly || '').trim() === 'true';
     const read = id => document.getElementById(id)?.value || '';
-    const customerDate = this.normalizeDateInputValue(read('agreementFormCustomerOfficialSignDate') || read('agreementFormCustomerSignDate'));
+    const customerDate = this.hasCustomerSignedForInternalSignatures(this.state.currentAgreement || {}) ? 'signed' : this.normalizeDateInputValue(read('agreementFormCustomerOfficialSignDate') || read('agreementFormCustomerSignDate'));
     const sfcDate = this.normalizeDateInputValue(read('agreementFormProviderOfficialSignatory1SignDate'));
     this.getProviderSignDateLockRules().forEach(rule => {
       const el = document.getElementById(rule.inputId);
@@ -2203,7 +2238,7 @@ const Agreements = {
         return false;
       }
     }
-    const customerDate = this.normalizeDateInputValue(document.getElementById('agreementFormCustomerOfficialSignDate')?.value || document.getElementById('agreementFormCustomerSignDate')?.value || '');
+    const customerDate = this.hasCustomerSignedForInternalSignatures(this.state.currentAgreement || {}) ? 'signed' : this.normalizeDateInputValue(document.getElementById('agreementFormCustomerOfficialSignDate')?.value || document.getElementById('agreementFormCustomerSignDate')?.value || '');
     const sfcDate = this.normalizeDateInputValue(document.getElementById('agreementFormProviderOfficialSignatory1SignDate')?.value || '');
     const gmDate = this.normalizeDateInputValue(document.getElementById('agreementFormProviderOfficialSignatory2SignDate')?.value || '');
     const originalSfcDate = this.normalizeDateInputValue(document.getElementById('agreementFormProviderOfficialSignatory1SignDate')?.dataset?.originalValue || '');
@@ -2499,25 +2534,7 @@ const Agreements = {
     };
   },
   hasCustomerSignedForInternalSignatures(agreement = {}) {
-    const confirmed = this.toDbBoolean(
-      agreement.customer_signature_confirmed ??
-      agreement.customerSignatureConfirmed ??
-      agreement.e_agreement_signature_confirmed ??
-      agreement.eAgreementSignatureConfirmed,
-      false
-    ) === true;
-    const signedAt =
-      agreement.customer_signed_at ||
-      agreement.customerSignedAt ||
-      agreement.customer_accepted_at ||
-      agreement.customerAcceptedAt ||
-      agreement.e_agreement_signature_signed_at ||
-      agreement.eAgreementSignatureSignedAt ||
-      agreement.e_agreement_accepted_at ||
-      agreement.eAgreementAcceptedAt ||
-      agreement.customer_sign_date ||
-      agreement.customer_official_sign_date;
-    return confirmed && Boolean(signedAt);
+    return hasAgreementCustomerSigned(agreement && typeof agreement === 'object' ? agreement : {});
   },
   canShowInternalAgreementSignatures(agreement = {}) {
     const data = agreement && typeof agreement === 'object' ? agreement : {};
@@ -2556,11 +2573,11 @@ const Agreements = {
     const canSignGm = customerSigned && !isFullySigned && Boolean(sfcSignature) && this.canCurrentUserSignAgreementRole(currentUser, 'GM');
     const statusNote = !customerSigned
       ? 'Waiting for the customer to accept and sign before internal signatures can be added.'
-      : isFullySigned
-        ? 'All required internal signatures are complete.'
+      : isFullySigned || (sfcSignature && gmSignature)
+        ? 'Agreement fully signed.'
         : sfcSignature
-          ? 'Senior Financial Controller signed. Agreement is waiting for General Manager signature.'
-          : 'Customer signed. Agreement is waiting for Senior Financial Controller signature.';
+          ? 'Senior Financial Controller signed — awaiting General Manager signature.'
+          : 'Customer accepted — awaiting Senior Financial Controller signature.';
     return `
       <section class="agreement-internal-signatures">
         <div class="agreement-internal-signatures-header">
@@ -2599,6 +2616,7 @@ const Agreements = {
     const agreement = this.state.currentAgreement || {};
     if (!['SFC', 'GM'].includes(targetRole)) return;
     if (!this.canCurrentUserSignAgreementRole(this.getCurrentAgreementSigningUser(), targetRole)) return UI.toast('You do not have permission to sign this role.');
+    if (!this.hasCustomerSignedForInternalSignatures(agreement)) return UI.toast('Customer must accept and sign the agreement before internal signing.');
     const sfcSignature = (this.state.currentInternalSignatures || []).find(sig => this.normalizeAgreementSignerRole(sig.signer_role) === 'SFC');
     if (targetRole === 'GM' && !sfcSignature) return UI.toast('Senior Financial Controller must sign first.');
     let modal = document.getElementById('agreementInternalSignModal');
@@ -3191,7 +3209,7 @@ const Agreements = {
   updateInternalSignatureWorkflowUi(snapshot = {}) {
     const sfcDate = String(snapshot.provider_official_signatory_1_sign_date || '').trim();
     const gmDate = String(snapshot.provider_official_signatory_2_sign_date || '').trim();
-    const customerDate = String(snapshot.customer_official_sign_date || snapshot.customer_sign_date || '').trim();
+    const customerDate = this.hasCustomerSignedForInternalSignatures({ ...(this.state.currentAgreement || {}), ...(snapshot || {}) }) ? 'signed' : String(snapshot.customer_official_sign_date || snapshot.customer_sign_date || '').trim();
     const gmInput = document.getElementById('agreementFormProviderOfficialSignatory2SignDate');
     const sfcInput = document.getElementById('agreementFormProviderOfficialSignatory1SignDate');
     let helper = document.getElementById('agreementInternalSignatureWorkflowHelp');
