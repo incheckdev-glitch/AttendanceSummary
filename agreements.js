@@ -2134,10 +2134,16 @@ const Agreements = {
   },
   applyProviderSignDateRoleLocks() {
     const formReadOnly = String(E.agreementForm?.dataset?.readOnly || '').trim() === 'true';
+    const read = id => document.getElementById(id)?.value || '';
+    const customerDate = this.normalizeDateInputValue(read('agreementFormCustomerOfficialSignDate') || read('agreementFormCustomerSignDate'));
+    const sfcDate = this.normalizeDateInputValue(read('agreementFormProviderOfficialSignatory1SignDate'));
     this.getProviderSignDateLockRules().forEach(rule => {
       const el = document.getElementById(rule.inputId);
       if (!el) return;
-      const locked = formReadOnly || !rule.canEdit;
+      const isSfcField = rule.inputId === 'agreementFormProviderOfficialSignatory1SignDate';
+      const isGmField = rule.inputId === 'agreementFormProviderOfficialSignatory2SignDate';
+      const workflowLocked = !this.canUseAdminOverride() && ((isSfcField && !customerDate) || (isGmField && !sfcDate));
+      const locked = formReadOnly || !rule.canEdit || workflowLocked;
       el.disabled = locked;
       el.readOnly = locked;
       el.classList.toggle('locked-field', locked);
@@ -2145,12 +2151,19 @@ const Agreements = {
       if (locked) {
         el.setAttribute('aria-disabled', 'true');
         el.setAttribute('aria-readonly', 'true');
-        el.title = `${rule.label} can only be filled by the ${rule.requiredRoleLabel} role.`;
+        el.title = workflowLocked
+          ? (isSfcField ? 'Customer must accept and sign the agreement before internal signing.' : 'Senior Financial Controller must sign first.')
+          : `${rule.label} can only be filled by the ${rule.requiredRoleLabel} role.`;
       } else {
         el.removeAttribute('aria-disabled');
         el.removeAttribute('aria-readonly');
         el.title = `Only the ${rule.requiredRoleLabel} role should fill this sign date.`;
       }
+    });
+    this.updateInternalSignatureWorkflowUi({
+      customer_official_sign_date: customerDate,
+      provider_official_signatory_1_sign_date: sfcDate,
+      provider_official_signatory_2_sign_date: read('agreementFormProviderOfficialSignatory2SignDate')
     });
   },
   validateProviderSignDateRoleChanges() {
@@ -2163,6 +2176,19 @@ const Agreements = {
         UI.toast(`${rule.label} can only be filled or changed by the ${rule.requiredRoleLabel} role.`);
         return false;
       }
+    }
+    const customerDate = this.normalizeDateInputValue(document.getElementById('agreementFormCustomerOfficialSignDate')?.value || document.getElementById('agreementFormCustomerSignDate')?.value || '');
+    const sfcDate = this.normalizeDateInputValue(document.getElementById('agreementFormProviderOfficialSignatory1SignDate')?.value || '');
+    const gmDate = this.normalizeDateInputValue(document.getElementById('agreementFormProviderOfficialSignatory2SignDate')?.value || '');
+    const originalSfcDate = this.normalizeDateInputValue(document.getElementById('agreementFormProviderOfficialSignatory1SignDate')?.dataset?.originalValue || '');
+    const originalGmDate = this.normalizeDateInputValue(document.getElementById('agreementFormProviderOfficialSignatory2SignDate')?.dataset?.originalValue || '');
+    if (sfcDate !== originalSfcDate && !customerDate) {
+      UI.toast('Customer must accept and sign the agreement before internal signing.');
+      return false;
+    }
+    if (gmDate !== originalGmDate && !sfcDate) {
+      UI.toast('Senior Financial Controller must sign before General Manager.');
+      return false;
     }
     return true;
   },
@@ -2814,11 +2840,19 @@ const Agreements = {
       next.provider_sign_date = dates.provider1;
     }
     if (dates.provider2) next.provider_official_signatory_2_sign_date = dates.provider2;
-    if (this.hasAllAgreementSignatoryDates(next)) {
-      next.status = 'Signed';
-      next.signed_date = next.signed_date || this.getLatestAgreementSignDate(next);
-      next.gm_signed = true;
-      next.financial_controller_signed = true;
+    const hasCustomerSignature = Boolean(dates.customer);
+    const hasSfcSignature = Boolean(dates.provider1);
+    const hasGmSignature = Boolean(dates.provider2);
+    next.financial_controller_signed = hasSfcSignature;
+    next.gm_signed = hasGmSignature;
+    if (hasCustomerSignature) {
+      if (hasSfcSignature && hasGmSignature) {
+        next.status = 'Signed';
+        next.signed_date = next.signed_date || this.getLatestAgreementSignDate(next);
+      } else {
+        next.status = 'Accepted';
+        next.signed_date = '';
+      }
     }
     return next;
   },
@@ -2840,9 +2874,42 @@ const Agreements = {
     const signedDateInput = document.getElementById('agreementFormSignedDate');
     if (customerHidden) customerHidden.value = snapshot.customer_sign_date || '';
     if (providerHidden) providerHidden.value = snapshot.provider_sign_date || '';
-    if (signedDateInput && snapshot.signed_date) signedDateInput.value = snapshot.signed_date;
+    if (signedDateInput) signedDateInput.value = snapshot.signed_date || '';
     const statusInput = document.getElementById('agreementFormStatus');
-    if (statusInput && this.hasAllAgreementSignatoryDates(snapshot)) statusInput.value = 'Signed';
+    if (statusInput && snapshot.status) statusInput.value = snapshot.status;
+    this.updateInternalSignatureWorkflowUi(snapshot);
+  },
+
+  updateInternalSignatureWorkflowUi(snapshot = {}) {
+    const sfcDate = String(snapshot.provider_official_signatory_1_sign_date || '').trim();
+    const gmDate = String(snapshot.provider_official_signatory_2_sign_date || '').trim();
+    const customerDate = String(snapshot.customer_official_sign_date || snapshot.customer_sign_date || '').trim();
+    const gmInput = document.getElementById('agreementFormProviderOfficialSignatory2SignDate');
+    const sfcInput = document.getElementById('agreementFormProviderOfficialSignatory1SignDate');
+    let helper = document.getElementById('agreementInternalSignatureWorkflowHelp');
+    if (!helper && gmInput?.parentElement) {
+      helper = document.createElement('div');
+      helper.id = 'agreementInternalSignatureWorkflowHelp';
+      helper.className = 'muted agreement-field-help';
+      gmInput.parentElement.appendChild(helper);
+    }
+    if (sfcInput && !customerDate && !this.canUseAdminOverride()) {
+      sfcInput.disabled = true;
+      sfcInput.title = 'Customer must accept and sign the agreement before internal signing.';
+    }
+    if (gmInput && !sfcDate && !this.canUseAdminOverride()) {
+      gmInput.disabled = true;
+      gmInput.title = 'Senior Financial Controller must sign first.';
+    }
+    if (helper) {
+      helper.textContent = !customerDate
+        ? 'Customer must accept and sign the agreement before internal signing.'
+        : !sfcDate
+          ? 'Senior Financial Controller must sign first.'
+          : gmDate
+            ? 'Signed'
+            : 'Accepted — awaiting GM signature';
+    }
   },
   getAgreementEndDateValue(agreement = {}) {
     const source = agreement && typeof agreement === 'object' ? agreement : {};
@@ -5705,7 +5772,7 @@ function bootPublicEAgreementPage() {
         : `<h1>${U.escapeHtml(agreement.agreement_id || agreement.agreement_number || 'Agreement')}</h1>`;
       const brandedDocumentHtml = U.addIncheckDocumentLogo ? U.addIncheckDocumentLogo(U.formatPreviewHtmlDates ? U.formatPreviewHtmlDates(documentHtml) : documentHtml) : documentHtml;
       content.innerHTML = `
-        ${accepted ? '<section class="public-eproposal-section public-success"><h2>Thank you. This agreement has been accepted and signed.</h2></section>' : ''}
+        ${accepted ? '<section class="public-eproposal-section public-success"><h2>Agreement accepted successfully. The agreement is now waiting for InCheck360 internal signatures.</h2></section>' : ''}
         ${rejected ? '<section class="public-eproposal-section public-status-message"><h2>This agreement has been rejected.</h2></section>' : ''}
         ${renderEAgreementHero(agreement)}
         <section class="public-eproposal-document" data-public-agreement-document>
@@ -5784,7 +5851,7 @@ function bootPublicEAgreementPage() {
           }
           document.getElementById('publicEAgreementModal')?.remove();
           setActionState(true);
-          content.insertAdjacentHTML('afterbegin', `<section class="public-eproposal-section public-success"><h2>${isAccept ? 'Thank you. This agreement has been accepted and signed.' : 'This agreement has been rejected.'}</h2></section>`);
+          content.insertAdjacentHTML('afterbegin', `<section class="public-eproposal-section public-success"><h2>${isAccept ? 'Agreement accepted successfully. The agreement is now waiting for InCheck360 internal signatures.' : 'This agreement has been rejected.'}</h2></section>`);
         } catch (error) {
           console.error('[e-agreement] public action failed', error);
           form.querySelectorAll('.public-form-error').forEach(errorEl => errorEl.remove());
