@@ -2388,17 +2388,24 @@ const Agreements = {
   },
   async generateAgreementHtml(agreementId) { return Api.generateAgreementHtml(agreementId); },
   normalizeAgreementSignerRole(role) {
-    const value = String(role || '').trim().toLowerCase();
-    if (['sfc', 'senior financial controller', 'senior_financial_controller'].includes(value)) return 'SFC';
-    if (['gm', 'general manager', 'general_manager'].includes(value)) return 'GM';
-    if (value === 'admin') return 'ADMIN';
-    return value.toUpperCase();
+    const raw = String(role || '').trim();
+    const value = raw.toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!value) return '';
+    if (value === 'sfc' || value.includes('senior financial controller') || value.includes('financial controller')) return 'SFC';
+    if (value === 'gm' || value.includes('general manager')) return 'GM';
+    if (value === 'admin' || value.includes('administrator')) return 'ADMIN';
+    return raw.toUpperCase();
   },
   canCurrentUserSignAgreementRole(currentUser, role) {
     const currentRole = this.normalizeAgreementSignerRole(
       currentUser?.role ||
       currentUser?.user_role ||
-      currentUser?.profile_role
+      currentUser?.profile_role ||
+      currentUser?.role_name ||
+      currentUser?.title ||
+      window.Session?.currentUser?.role ||
+      window.currentUser?.role ||
+      window.AppState?.profile?.role
     );
     const targetRole = this.normalizeAgreementSignerRole(role);
     if (targetRole === 'SFC') return currentRole === 'SFC' || currentRole === 'ADMIN';
@@ -2406,11 +2413,33 @@ const Agreements = {
     return false;
   },
   getCurrentAgreementSigningUser() {
-    const user = this.getSignedInUserForAgreement?.() || {};
+    const sessionApi = window.Session || {};
+    const sessionUser = typeof sessionApi.user === 'function' ? sessionApi.user() : {};
+    const sessionState = sessionApi.state || {};
+    const authContext = typeof sessionApi.authContext === 'function' ? sessionApi.authContext() : {};
+    const rawAuthUser = sessionState.user || sessionUser.user || authContext.user || window.AppState?.user || window.Auth?.user || window.currentUser || {};
+    const profile = sessionState.profile || sessionUser.profile || authContext.profile || window.AppState?.profile || rawAuthUser.profile || {};
+    const fallbackUser = this.getSignedInUserForAgreement?.() || {};
+    const firstUseful = (...values) => values.map(v => String(v || '').trim()).find(v => v && !['user','authenticated','null','undefined'].includes(v.toLowerCase())) || '';
+    const email = firstUseful(fallbackUser.email, sessionUser.email, sessionState.email, rawAuthUser.email, profile.email, window.currentUser?.email);
+    const username = firstUseful(fallbackUser.username, sessionUser.username, sessionState.username, profile.username, rawAuthUser.username, window.currentUser?.username);
+    const name = firstUseful(fallbackUser.name, sessionUser.name, sessionState.name, profile.full_name, profile.name, rawAuthUser.name, window.currentUser?.name, username) || (email ? email.split('@')[0] : '');
+    const role = firstUseful(
+      fallbackUser.role,
+      typeof sessionApi.role === 'function' ? sessionApi.role() : '',
+      sessionUser.role,
+      sessionState.role,
+      profile.role,
+      rawAuthUser.role,
+      window.currentUser?.role
+    );
     return {
-      ...user,
-      user_role: user.role,
-      profile_role: user.role
+      ...fallbackUser,
+      name,
+      email,
+      role,
+      user_role: role,
+      profile_role: role
     };
   },
   async loadInternalAgreementSignatures(agreementId) {
@@ -2470,16 +2499,34 @@ const Agreements = {
     };
   },
   hasCustomerSignedForInternalSignatures(agreement = {}) {
-    return this.toDbBoolean(
-      agreement.customer_signature_confirmed ?? agreement.customerSignatureConfirmed ?? agreement.e_agreement_signature_confirmed,
+    const confirmed = this.toDbBoolean(
+      agreement.customer_signature_confirmed ??
+      agreement.customerSignatureConfirmed ??
+      agreement.e_agreement_signature_confirmed ??
+      agreement.eAgreementSignatureConfirmed,
       false
-    ) === true && Boolean(
+    ) === true;
+    const signedAt =
       agreement.customer_signed_at ||
       agreement.customerSignedAt ||
+      agreement.customer_accepted_at ||
+      agreement.customerAcceptedAt ||
       agreement.e_agreement_signature_signed_at ||
+      agreement.eAgreementSignatureSignedAt ||
+      agreement.e_agreement_accepted_at ||
+      agreement.eAgreementAcceptedAt ||
       agreement.customer_sign_date ||
-      agreement.customer_official_sign_date
-    );
+      agreement.customer_official_sign_date;
+    return confirmed && Boolean(signedAt);
+  },
+  canShowInternalAgreementSignatures(agreement = {}) {
+    const data = agreement && typeof agreement === 'object' ? agreement : {};
+    if (!String(data.id || '').trim()) return false;
+    const status = this.normalizeText(data.status);
+    if (['draft', 'sent', 'rejected', 'cancelled', 'canceled'].includes(status)) return false;
+    // Show the internal signing area for accepted / waiting / signed agreements.
+    // This also supports older DB status values like awaiting_provider_signature.
+    return this.hasCustomerSignedForInternalSignatures(data) || ['accepted', 'awaiting_provider_signature', 'awaiting_internal_signature', 'signed'].includes(status);
   },
   renderInternalSignatureCard({ role, title, signature, canSign, buttonText, disabled, helperText }) {
     const signed = !!signature;
@@ -2492,24 +2539,53 @@ const Agreements = {
         <span class="agreement-signature-status ${signed ? 'signed' : 'pending'}">${signed ? 'Signed' : 'Pending'}</span>
         ${signed ? `<div class="agreement-signature-meta"><div><strong>Signed by:</strong> ${U.escapeHtml(signedBy || '—')}</div><div><strong>Signed date:</strong> ${U.escapeHtml(signedAt ? U.fmtDisplayDate(signedAt) : '—')}</div></div>` : ''}
         ${helperText ? `<p class="agreement-signature-helper">${U.escapeHtml(helperText)}</p>` : ''}
-        ${canSign || !signed ? `<button class="agreement-signature-btn" type="button" data-agreement-internal-sign="${U.escapeAttr(role)}" ${buttonDisabled ? 'disabled' : ''}>${U.escapeHtml(buttonText)}</button>` : ''}
+        ${!signed ? `<button class="agreement-signature-btn" type="button" data-agreement-internal-sign="${U.escapeAttr(role)}" ${buttonDisabled ? 'disabled' : ''}>${U.escapeHtml(buttonText)}</button>` : ''}
       </div>`;
   },
   renderInternalAgreementSignatures(agreement, internalSignatures = [], currentUser = {}) {
     const agreementData = agreement && typeof agreement === 'object' ? agreement : {};
-    if (!this.hasCustomerSignedForInternalSignatures(agreementData) || this.normalizeText(agreementData.status) !== 'accepted') return '';
+    if (!String(agreementData.id || '').trim()) return '';
+    if (!this.canShowInternalAgreementSignatures(agreementData)) return '';
     const signatures = Array.isArray(internalSignatures) ? internalSignatures : [];
+    const status = this.normalizeText(agreementData.status);
+    const customerSigned = this.hasCustomerSignedForInternalSignatures(agreementData);
+    const isFullySigned = status === 'signed';
     const sfcSignature = signatures.find(sig => this.normalizeAgreementSignerRole(sig.signer_role) === 'SFC');
     const gmSignature = signatures.find(sig => this.normalizeAgreementSignerRole(sig.signer_role) === 'GM');
+    const canSignSfc = customerSigned && !isFullySigned && this.canCurrentUserSignAgreementRole(currentUser, 'SFC');
+    const canSignGm = customerSigned && !isFullySigned && Boolean(sfcSignature) && this.canCurrentUserSignAgreementRole(currentUser, 'GM');
+    const statusNote = !customerSigned
+      ? 'Waiting for the customer to accept and sign before internal signatures can be added.'
+      : isFullySigned
+        ? 'All required internal signatures are complete.'
+        : sfcSignature
+          ? 'Senior Financial Controller signed. Agreement is waiting for General Manager signature.'
+          : 'Customer signed. Agreement is waiting for Senior Financial Controller signature.';
     return `
       <section class="agreement-internal-signatures">
         <div class="agreement-internal-signatures-header">
           <h3>Provider / Internal Signatures</h3>
-          <p>InCheck360 internal signatories must complete the agreement signature flow.</p>
+          <p>${U.escapeHtml(statusNote)}</p>
         </div>
         <div class="agreement-signature-card-grid">
-          ${this.renderInternalSignatureCard({ role: 'SFC', title: 'Senior Financial Controller', signature: sfcSignature, canSign: this.canCurrentUserSignAgreementRole(currentUser, 'SFC'), buttonText: 'Sign as SFC', disabled: false })}
-          ${this.renderInternalSignatureCard({ role: 'GM', title: 'General Manager', signature: gmSignature, canSign: this.canCurrentUserSignAgreementRole(currentUser, 'GM'), buttonText: 'Sign as GM', disabled: !sfcSignature, helperText: !sfcSignature ? 'Senior Financial Controller must sign first.' : '' })}
+          ${this.renderInternalSignatureCard({
+            role: 'SFC',
+            title: 'Senior Financial Controller',
+            signature: sfcSignature,
+            canSign: canSignSfc,
+            buttonText: 'Sign as SFC',
+            disabled: !customerSigned || isFullySigned,
+            helperText: !customerSigned ? 'Customer must sign first.' : (!canSignSfc && !sfcSignature && !isFullySigned ? 'Only SFC or admin can sign this role.' : '')
+          })}
+          ${this.renderInternalSignatureCard({
+            role: 'GM',
+            title: 'General Manager',
+            signature: gmSignature,
+            canSign: canSignGm,
+            buttonText: 'Sign as GM',
+            disabled: !customerSigned || isFullySigned || !sfcSignature,
+            helperText: !customerSigned ? 'Customer must sign first.' : (!sfcSignature ? 'Senior Financial Controller must sign first.' : (!canSignGm && !gmSignature && !isFullySigned ? 'Only GM or admin can sign this role.' : ''))
+          })}
         </div>
       </section>`;
   },
