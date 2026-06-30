@@ -1462,15 +1462,31 @@ const Agreements = {
   isProposalAcceptedForConversion(proposal = {}) {
     return this.normalizeProposalStatusForConversion(proposal) === 'accepted';
   },
+  normalizeCompanyVerificationValue(value) {
+    if (value === true) return true;
+    return ['true', 'yes', 'verified'].includes(String(value ?? '').trim().toLowerCase());
+  },
+  getCompanyVerificationFields(company = {}) {
+    return {
+      is_verified: company?.is_verified,
+      verified: company?.verified,
+      company_verified: company?.company_verified,
+      authorized_signatory_verified: company?.authorized_signatory_verified,
+      verification_status: company?.verification_status,
+      documents_verified: company?.documents_verified,
+      documents_verification_status: company?.documents_verification_status
+    };
+  },
   isCompanyVerified(company = {}) {
-    const verified = company?.documents_verified === true || company?.documentsVerified === true;
-    const status = String(
-      company?.documents_verification_status ||
-      company?.documentsVerificationStatus ||
-      ''
-    ).trim().toLowerCase();
-
-    return verified && status === 'verified';
+    const normalized = value => this.normalizeCompanyVerificationValue(value);
+    return Boolean(
+      normalized(company?.is_verified) ||
+      normalized(company?.verified) ||
+      normalized(company?.company_verified) ||
+      normalized(company?.authorized_signatory_verified) ||
+      normalized(company?.verification_status) ||
+      (normalized(company?.documents_verified || company?.documentsVerified) && normalized(company?.documents_verification_status || company?.documentsVerificationStatus))
+    );
   },
   getCompanyVerificationBadgeLabel(company = {}) {
     if (!company || typeof company !== 'object' || !Object.keys(company).length) return '';
@@ -1622,6 +1638,58 @@ const Agreements = {
   async getProposalCompanyForVerification(proposal = {}) {
     return this.getCompanyForAgreementVerification(proposal);
   },
+  async refetchLinkedProposalCompany(proposal = {}) {
+    const proposalCompanyId = String(proposal?.company_id || '').trim();
+    if (!proposalCompanyId) return null;
+    const client = window.SupabaseClient?.getClient?.() || window.supabaseClient || window.supabase;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(proposalCompanyId);
+    if (client?.from) {
+      const tryQuery = async column => {
+        const { data, error } = await client.from('companies').select('*').eq(column, proposalCompanyId).limit(1).maybeSingle();
+        if (error) throw error;
+        return data && typeof data === 'object' ? data : null;
+      };
+      if (isUuid) {
+        const byId = await tryQuery('id');
+        if (byId) return byId;
+      }
+      return tryQuery('company_id');
+    }
+    return this.queryCompanyForVerification(isUuid ? 'id' : 'company_id', proposalCompanyId);
+  },
+  getProposalCompanyVerificationDebug(proposal = {}, company = null) {
+    return {
+      proposalId: String(proposal?.id || proposal?.proposal_id || '').trim(),
+      proposalCompanyId: String(proposal?.company_id || '').trim(),
+      linkedCompanyId: String(company?.id || company?.company_id || '').trim(),
+      linkedCompanyName: String(company?.company_name || company?.legal_name || company?.name || '').trim(),
+      verificationFields: company ? this.getCompanyVerificationFields(company) : null
+    };
+  },
+  async ensureLinkedProposalCompanyVerified(proposal = {}) {
+    const company = await this.refetchLinkedProposalCompany(proposal);
+    const debug = this.getProposalCompanyVerificationDebug(proposal, company);
+    if (!company) {
+      console.log('[Agreement Proposal Conversion] company verification blocked', debug);
+      await this.showBlockingDialog('Company Required', 'Proposal is not linked to a valid company. Please reselect the company.');
+      return false;
+    }
+    if (!this.isCompanyVerified(company)) {
+      console.log('[Agreement Proposal Conversion] company verification blocked', debug);
+      const linked = [debug.linkedCompanyName, debug.linkedCompanyId].filter(Boolean).join(' / ');
+      await this.showBlockingDialog('Company Not Verified', `Please verify the linked company before converting to agreement.${linked ? ` Linked company: ${linked}.` : ''}`);
+      return false;
+    }
+    if (!this.hasCompanyAuthorizedSignatory(company)) {
+      console.log('[Agreement Proposal Conversion] company signatory blocked', debug);
+      await this.showBlockingDialog(
+        'Company Authorized Signatory Required',
+        'Company authorized signatory details are missing. Please update the linked company profile before creating the agreement.'
+      );
+      return false;
+    }
+    return true;
+  },
   async ensureCompanyVerifiedBeforeAgreement(companyOrAgreementPayload = {}) {
     const source = companyOrAgreementPayload && typeof companyOrAgreementPayload === 'object' ? companyOrAgreementPayload : {};
     const hasAnyCompanyReference = Boolean(
@@ -1667,7 +1735,7 @@ const Agreements = {
       UI.toast('Please accept/sign the proposal or upload a signed document before converting it to an agreement.');
       return false;
     }
-    return this.ensureCompanyVerifiedBeforeAgreement(proposal);
+    return this.ensureLinkedProposalCompanyVerified(proposal);
   },
   normalizeItem(raw = {}, sectionFallback = '') {
     const source = raw && typeof raw === 'object' ? raw : {};
