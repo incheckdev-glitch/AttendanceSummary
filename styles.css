@@ -6769,6 +6769,135 @@ body.pf-modal-open{overflow:hidden}.pf-activity-modal[hidden],.pf-note-modal[hid
   gap: 14px;
 }
 .proposal-span-2 { grid-column: 1 / -1; }
+.esignature-verification-section {
+  margin-top: 16px;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+  overflow: hidden;
+  page-break-inside: avoid;
+}
+
+.esignature-verification-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #dbeafe;
+  background: #eff6ff;
+}
+
+.esignature-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #2563eb;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  flex: 0 0 auto;
+}
+
+.esignature-verification-header h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  color: #1e3a8a;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.esignature-verification-header p {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: #475569;
+}
+
+.esignature-verification-body {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 18px;
+  padding: 14px;
+}
+
+.esignature-preview-box {
+  min-height: 110px;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+}
+
+.esignature-image {
+  max-width: 260px;
+  max-height: 95px;
+  object-fit: contain;
+  display: block;
+}
+
+.esignature-typed {
+  color: #0f172a;
+  font-size: 30px;
+  font-style: italic;
+  font-family: "Brush Script MT", "Segoe Script", "Snell Roundhand", cursive;
+}
+
+.esignature-details {
+  display: grid;
+  gap: 8px;
+  align-content: center;
+}
+
+.esignature-detail-row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.esignature-detail-row span {
+  color: #64748b;
+}
+
+.esignature-detail-row strong {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.esignature-confirmed-badge {
+  width: fit-content;
+  margin-top: 4px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+@media print {
+  .esignature-verification-section {
+    box-shadow: none;
+    page-break-inside: avoid;
+  }
+}
+
+@media (max-width: 700px) {
+  .esignature-verification-body {
+    grid-template-columns: 1fr;
+  }
+
+  .esignature-detail-row {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
+
 .proposal-modern-modal .filter-row { gap: 7px; }
 .proposal-modern-modal label.muted,
 .proposal-modern-modal .filter-row > label {

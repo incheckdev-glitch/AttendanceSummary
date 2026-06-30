@@ -2941,7 +2941,7 @@ const Proposals = {
     const customerSignatory = this.resolveProposalCustomerSignatory(proposalData, proposalContact);
     const customerSignatoryName = String(customerSignatory.name || '').trim();
     const customerSignatoryTitle = String(customerSignatory.title || '').trim();
-    const customerESignatureBlockHtml = renderCustomerESignatureBlock(proposalData);
+    const electronicSignatureVerificationHtml = renderElectronicSignatureVerification(proposalData);
     const isPoc = this.normalizeTruthy(proposalData.is_poc || proposalData.isPoc);
     const pocDetailsHtml = isPoc ? `
       <section class="info-grid" style="margin-top:14px;grid-template-columns:1fr;">
@@ -3136,15 +3136,28 @@ const Proposals = {
       .signature-box { border: 1px solid #d7e1ed; min-height: 124px; border-radius: 6px; overflow: hidden; }
       .signature-head { background: #f8fbff; border-bottom: 1px solid #e3eaf3; padding: 8px 10px; font-size: 11px; letter-spacing: 0.08em; font-weight: 700; color: #1e3a5f; }
       .signature-body { padding: 11px; font-size: 12px; line-height: 1.5; }
-      .customer-esignature-block { border: 1px solid #dbeafe; border-radius: 12px; background: #f8fbff; padding: 14px 16px; }
-      .customer-esignature-title { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #1d4ed8; margin-bottom: 10px; }
-      .customer-esignature-typed { min-height: 72px; padding: 14px 16px; border: 1px solid #bfdbfe; border-radius: 10px; background: #eff6ff; color: #0f172a; font-size: 30px; font-style: italic; font-family: "Brush Script MT", "Segoe Script", "Snell Roundhand", cursive; display: flex; align-items: center; }
-      .customer-esignature-image-wrap { min-height: 90px; padding: 12px; border: 1px solid #bfdbfe; border-radius: 10px; background: #ffffff; display: flex; align-items: center; justify-content: flex-start; }
-      .customer-esignature-image { max-width: 260px; max-height: 100px; object-fit: contain; display: block; }
-      .customer-esignature-meta { margin-top: 10px; font-size: 12px; color: #475569; }
+      .esignature-verification-section { margin-top: 16px; border: 1px solid #bfdbfe; border-radius: 12px; background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%); overflow: hidden; page-break-inside: avoid; }
+      .esignature-verification-header { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-bottom: 1px solid #dbeafe; background: #eff6ff; }
+      .esignature-icon { width: 24px; height: 24px; border-radius: 999px; background: #2563eb; color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; flex: 0 0 auto; }
+      .esignature-verification-header h4 { margin: 0; font-size: 13px; font-weight: 800; color: #1e3a8a; text-transform: uppercase; letter-spacing: 0.06em; }
+      .esignature-verification-header p { margin: 3px 0 0; font-size: 12px; color: #475569; }
+      .esignature-verification-body { display: grid; grid-template-columns: 300px 1fr; gap: 18px; padding: 14px; }
+      .esignature-preview-box { min-height: 110px; border: 1px solid #dbeafe; border-radius: 10px; background: #ffffff; display: flex; align-items: center; justify-content: center; padding: 12px; }
+      .esignature-image { max-width: 260px; max-height: 95px; object-fit: contain; display: block; }
+      .esignature-typed { color: #0f172a; font-size: 30px; font-style: italic; font-family: "Brush Script MT", "Segoe Script", "Snell Roundhand", cursive; }
+      .esignature-details { display: grid; gap: 8px; align-content: center; }
+      .esignature-detail-row { display: grid; grid-template-columns: 110px 1fr; gap: 10px; font-size: 12px; }
+      .esignature-detail-row span { color: #64748b; }
+      .esignature-detail-row strong { color: #0f172a; font-weight: 700; }
+      .esignature-confirmed-badge { width: fit-content; margin-top: 4px; padding: 5px 10px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 11px; font-weight: 800; }
       .footer-note { margin-top: 16px; font-size: 11px; color: #64748b; border-top: 1px solid #e3eaf3; padding-top: 10px; text-align: center; }
       @page { size: A4; margin: 0; }
       @media print {
+        .esignature-verification-section {
+          box-shadow: none;
+          page-break-inside: avoid;
+        }
+
         body {
           margin: 0;
           padding: 0;
@@ -3160,6 +3173,17 @@ const Proposals = {
           box-shadow: none;
           page-break-after: always;
           border: 0;
+        }
+      }
+
+      @media (max-width: 700px) {
+        .esignature-verification-body {
+          grid-template-columns: 1fr;
+        }
+
+        .esignature-detail-row {
+          grid-template-columns: 1fr;
+          gap: 2px;
         }
       }
     </style>
@@ -3295,7 +3319,6 @@ const Proposals = {
               <div><strong>Sign Date:</strong> ${dateValue(proposalData.customer_sign_date || proposalData.customer_signed_at)}</div>
             </div>
           </div>
-          ${customerESignatureBlockHtml}
         </div>
         <div class="provider-signatory-column">
           <div class="signature-box provider-signatory-card">
@@ -3308,6 +3331,8 @@ const Proposals = {
           </div>
         </div>
       </section>
+
+      ${electronicSignatureVerificationHtml}
 
       <footer class="footer-note">This is an auto-generated system document and is valid without a manual signature unless otherwise required.</footer>
     </div>
@@ -6308,53 +6333,94 @@ function hasAnyESignature(proposal) {
 }
 
 
-function renderCustomerESignatureBlock(proposal) {
-  if (!hasAnyESignature(proposal)) return '';
+function renderElectronicSignatureVerification(proposal) {
+  if (!proposal) return '';
 
-  const signedBy = String(proposal?.e_signature_customer_name || proposal?.accepted_by_name || '').trim();
-  const signedEmail = String(proposal?.e_signature_customer_email || proposal?.accepted_by_email || '').trim();
-  const signedAt = proposal?.e_signature_signed_at || proposal?.accepted_at || '';
-  const signedAtText = signedAt
-    ? (U.fmtDisplayDateTime?.(signedAt) || U.fmtDisplayDate(signedAt) || String(signedAt))
-    : '';
-  const confirmedText = proposal?.e_signature_confirmed === true ? ' · Confirmed' : '';
-  const metaParts = [
-    signedBy ? `Signed by ${U.escapeHtml(signedBy)}` : 'Signed by customer',
-    signedEmail ? ` (${U.escapeHtml(signedEmail)})` : '',
-    signedAtText ? ` on ${U.escapeHtml(signedAtText)}` : '',
-    confirmedText
-  ];
-  const metaHtml = metaParts.join('');
+  const isUploaded =
+    proposal.e_signature_type === 'uploaded' &&
+    proposal.e_signature_image_data_url;
 
-  if (hasUploadedESignature(proposal)) {
-    return `
-      <div class="customer-esignature-block">
-        <div class="customer-esignature-title">Customer E-Signature</div>
-        <div class="customer-esignature-image-wrap">
-          <img
-            src="${U.escapeHtml(proposal.e_signature_image_data_url)}"
-            alt="Customer uploaded signature"
-            class="customer-esignature-image"
-          />
-        </div>
-        <div class="customer-esignature-meta">${metaHtml}</div>
+  const isTyped =
+    proposal.e_signature_type === 'typed' &&
+    proposal.e_signature_text;
+
+  if (!isUploaded && !isTyped) return '';
+
+  const signedBy =
+    proposal.e_signature_customer_name ||
+    proposal.accepted_by_name ||
+    '';
+
+  const signedEmail =
+    proposal.e_signature_customer_email ||
+    proposal.accepted_by_email ||
+    '';
+
+  const signedAt =
+    proposal.e_signature_signed_at ||
+    proposal.accepted_at ||
+    '';
+
+  const formatSignedDateTime = value => {
+    if (!value) return '';
+    return U.fmtDisplayDateTime?.(value) || U.fmtDisplayDate?.(value) || String(value);
+  };
+
+  const signaturePreview = isUploaded
+    ? `
+      <div class="esignature-preview-box">
+        <img
+          class="esignature-image"
+          src="${U.escapeHtml(proposal.e_signature_image_data_url)}"
+          alt="Customer signature"
+        />
+      </div>
+    `
+    : `
+      <div class="esignature-preview-box esignature-typed">
+        ${U.escapeHtml(proposal.e_signature_text)}
       </div>
     `;
-  }
 
-  if (hasTypedESignature(proposal)) {
-    return `
-      <div class="customer-esignature-block">
-        <div class="customer-esignature-title">Customer E-Signature</div>
-        <div class="customer-esignature-typed">
-          ${U.escapeHtml(proposal.e_signature_text)}
+  return `
+    <div class="esignature-verification-section">
+      <div class="esignature-verification-header">
+        <span class="esignature-icon">✓</span>
+        <div>
+          <h4>Electronic Signature Verification</h4>
+          <p>This proposal was accepted and electronically signed by the customer.</p>
         </div>
-        <div class="customer-esignature-meta">${metaHtml}</div>
       </div>
-    `;
-  }
 
-  return '';
+      <div class="esignature-verification-body">
+        <div class="esignature-left">
+          ${signaturePreview}
+        </div>
+
+        <div class="esignature-details">
+          <div class="esignature-detail-row">
+            <span>Signed by</span>
+            <strong>${U.escapeHtml(signedBy)}</strong>
+          </div>
+          <div class="esignature-detail-row">
+            <span>Email</span>
+            <strong>${U.escapeHtml(signedEmail)}</strong>
+          </div>
+          <div class="esignature-detail-row">
+            <span>Signed on</span>
+            <strong>${signedAt ? U.escapeHtml(formatSignedDateTime(signedAt)) : '—'}</strong>
+          </div>
+          <div class="esignature-detail-row">
+            <span>Signature type</span>
+            <strong>${isUploaded ? 'Uploaded signature' : 'Typed signature'}</strong>
+          </div>
+          <div class="esignature-confirmed-badge">
+            Confirmed electronic acceptance
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 function renderESignaturePreview(proposal, options = {}) {
