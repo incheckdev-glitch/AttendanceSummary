@@ -6924,6 +6924,7 @@ function bootPublicEProposalPage() {
         event.preventDefault();
         const isAccept = form.matches('[data-public-accept-form]');
         try {
+          let publicActionResult = null;
           if (isAccept) {
             form.querySelectorAll('.public-form-error').forEach(errorEl => errorEl.remove());
             const errors = [];
@@ -6950,7 +6951,7 @@ function bootPublicEProposalPage() {
             const signedDocumentDataUrl = form.dataset.signedDocumentDataUrl;
             const signedDocumentFileName = form.dataset.signedDocumentFileName;
             const signedDocumentMimeType = form.dataset.signedDocumentMimeType;
-            await callEProposalAction({
+            publicActionResult = await callEProposalAction({
               action: 'accept',
               token,
               customerName,
@@ -6980,12 +6981,13 @@ function bootPublicEProposalPage() {
             });
 
           } else {
-            await callEProposalAction({ action: 'reject', token, customerName: form.name.value || null, customerEmail: null, rejectionReason: form.reason.value || null });
+            publicActionResult = await callEProposalAction({ action: 'reject', token, customerName: form.name.value || null, customerEmail: null, rejectionReason: form.reason.value || null });
           }
           document.getElementById('publicEProposalModal')?.remove();
           setActionState(true);
+          const acceptedAtText = U.escapeHtml(U.fmtDisplayDateTime?.(publicActionResult?.accepted_at) || U.fmtDisplayDate(publicActionResult?.accepted_at) || new Date().toLocaleString());
           const acceptedSignatureHtml = isAccept ? (form.dataset.signatureMode === 'signed_document_upload' ? `<div class="signed-document-actions"><a class="public-btn-outline" href="${U.escapeAttr(form.dataset.signedDocumentDataUrl)}" target="_blank" rel="noopener noreferrer">Open Signed Proposal</a><a class="public-btn-primary" href="${U.escapeAttr(form.dataset.signedDocumentDataUrl)}" download="${U.escapeAttr(form.dataset.signedDocumentFileName || 'signed-proposal')}">Download Signed Proposal</a></div>` : (form.dataset.signatureMode === 'uploaded' || form.dataset.signatureMode === 'drawn' ? renderSignatureImage(form.dataset.signatureMode === 'drawn' ? form.dataset.drawnSignatureDataUrl : form.dataset.uploadedSignatureDataUrl) : renderTypedSignaturePreview(form.typedSignature.value.trim(), '1'))) : '';
-          content.insertAdjacentHTML('afterbegin', `<section class="public-eproposal-section public-success"><h2>${isAccept ? 'Thank you. This proposal has been accepted and signed.' : 'This proposal has been rejected.'}</h2>${isAccept ? `<div class="public-signature-summary"><div class="signature-summary-grid"><div><span>Signed by</span><strong>${U.escapeHtml(form.name.value.trim())}</strong></div><div><span>Signed date/time</span><strong>${U.escapeHtml(new Date().toLocaleString())}</strong></div></div>${acceptedSignatureHtml}</div>` : ''}</section>`);
+          content.insertAdjacentHTML('afterbegin', `<section class="public-eproposal-section public-success"><h2>${isAccept ? 'Thank you. This proposal has been accepted and signed.' : 'This proposal has been rejected.'}</h2>${isAccept ? `<div class="public-signature-summary"><div class="signature-summary-grid"><div><span>Signed by</span><strong>${U.escapeHtml(form.name.value.trim())}</strong></div><div><span>Signed date/time</span><strong>${acceptedAtText}</strong></div></div>${acceptedSignatureHtml}</div>` : ''}</section>`);
         } catch (error) {
           console.error('[e-proposal] public action failed', error);
           form.querySelectorAll('.public-form-error').forEach(errorEl => errorEl.remove());
