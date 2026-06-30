@@ -8736,3 +8736,245 @@ body.public-eproposal-mode {
     align-items: flex-start;
   }
 }
+
+/* =========================================================
+   PUBLIC E-PROPOSAL HERO
+   Matches public E-Agreement hero
+   ========================================================= */
+
+.eproposal-hero {
+  width: 100%;
+  padding: 28px 24px 22px;
+  background:
+    radial-gradient(circle at 92% 24%, rgba(37, 99, 235, 0.13), transparent 34%),
+    linear-gradient(135deg, #ffffff 0%, #f8fbff 52%, #eff6ff 100%);
+  border-bottom: 1px solid #dbeafe;
+}
+
+.eproposal-hero-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  border: 1px solid #dbeafe;
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 96% 20%, rgba(37, 99, 235, 0.12), transparent 34%),
+    rgba(255, 255, 255, 0.92);
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+  padding: 34px;
+  overflow: hidden;
+}
+
+.eproposal-secure-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #2563eb;
+  font-size: 17px;
+  font-weight: 800;
+  margin-bottom: 22px;
+}
+
+.eproposal-secure-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #2563eb;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.eproposal-hero-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 28px;
+}
+
+.eproposal-hero-copy h1 {
+  margin: 0;
+  color: #0f172a;
+  font-size: clamp(42px, 6vw, 72px);
+  line-height: 0.98;
+  letter-spacing: -0.055em;
+  font-weight: 950;
+}
+
+.eproposal-hero-copy p {
+  max-width: 680px;
+  margin: 18px 0 0;
+  color: #334155;
+  font-size: 19px;
+  line-height: 1.55;
+}
+
+.eproposal-summary-card {
+  margin-top: 34px;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+}
+
+.eproposal-summary-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.9fr) 1px minmax(320px, 1.4fr);
+  align-items: stretch;
+}
+
+.eproposal-summary-item {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 26px 30px;
+  min-width: 0;
+}
+
+.eproposal-summary-icon {
+  width: 58px;
+  height: 58px;
+  border-radius: 999px;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+  color: #2563eb;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 27px;
+  flex: 0 0 auto;
+}
+
+.eproposal-summary-label {
+  display: block;
+  color: #475569;
+  font-size: 15px;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.eproposal-summary-value {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  padding: 8px 18px;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 25px;
+  line-height: 1;
+  font-weight: 950;
+  word-break: break-word;
+}
+
+.eproposal-company-name {
+  display: block;
+  color: #0f172a;
+  font-size: clamp(28px, 4vw, 44px);
+  line-height: 1.1;
+  font-weight: 950;
+  letter-spacing: -0.035em;
+  word-break: break-word;
+}
+
+.eproposal-summary-divider {
+  width: 1px;
+  background: #e2e8f0;
+  margin: 24px 0;
+}
+
+.eproposal-review-note {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 28px;
+  border-top: 1px solid #e2e8f0;
+  color: #0f172a;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.eproposal-info-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #2563eb;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 950;
+  font-style: normal;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 820px) {
+  .eproposal-hero {
+    padding: 16px 12px;
+  }
+
+  .eproposal-hero-inner {
+    padding: 22px;
+    border-radius: 18px;
+  }
+
+  .eproposal-secure-label {
+    font-size: 15px;
+  }
+
+  .eproposal-hero-copy h1 {
+    font-size: 44px;
+  }
+
+  .eproposal-hero-copy p {
+    font-size: 16px;
+  }
+
+  .eproposal-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .eproposal-summary-divider {
+    display: none;
+  }
+
+  .eproposal-summary-item {
+    padding: 20px;
+  }
+
+  .eproposal-company-item {
+    border-top: 1px solid #e2e8f0;
+  }
+
+  .eproposal-company-name {
+    font-size: 30px;
+  }
+
+  .eproposal-review-note {
+    align-items: flex-start;
+    padding: 16px 20px;
+    font-size: 15px;
+  }
+}
+
+@media print {
+  .eproposal-hero {
+    padding: 0 0 14px;
+    background: #ffffff;
+  }
+
+  .eproposal-hero-inner {
+    box-shadow: none;
+    border-radius: 12px;
+    padding: 18px;
+  }
+
+  .eproposal-summary-card {
+    box-shadow: none;
+  }
+}

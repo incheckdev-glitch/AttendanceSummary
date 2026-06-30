@@ -6707,20 +6707,79 @@ function renderPublicEProposalShell() {
   document.body.innerHTML = `
     <main id="publicEProposalRoot" class="public-eproposal-page">
       <div class="public-eproposal-card">
-        <div class="public-eproposal-header">
-          <div class="public-brand">
-            <img src="/assets/incheck360-ui-logo.png" alt="InCheck360" />
-            <div>
-              <h1>InCheck360 Proposal</h1>
-              <p>Review, accept, or reject this proposal securely.</p>
-            </div>
-          </div>
-        </div>
         <div id="publicEProposalContent">
           <div class="public-loading">Loading proposal...</div>
         </div>
       </div>
     </main>
+  `;
+}
+
+function renderEProposalHero(proposal = {}) {
+  const escapeHtml = value => (window.U?.escapeHtml ? window.U.escapeHtml(value) : String(value ?? ''));
+  const proposalNumber =
+    proposal.proposal_id ||
+    proposal.proposal_number ||
+    proposal.reference ||
+    '—';
+
+  const companyName =
+    proposal.company_name ||
+    proposal.client_name ||
+    proposal.customer_name ||
+    proposal.legal_name ||
+    '—';
+
+  return `
+    <section class="eproposal-hero">
+      <div class="eproposal-hero-inner">
+        <div class="eproposal-secure-label">
+          <span class="eproposal-secure-icon">✓</span>
+          <span>InCheck360 Secure Proposal</span>
+        </div>
+
+        <div class="eproposal-hero-main">
+          <div class="eproposal-hero-copy">
+            <h1>Review Proposal</h1>
+            <p>
+              Please review the proposal below. You can accept and sign,
+              reject, print, or download a copy.
+            </p>
+          </div>
+        </div>
+
+        <div class="eproposal-summary-card">
+          <div class="eproposal-summary-grid">
+            <div class="eproposal-summary-item">
+              <div class="eproposal-summary-icon">📄</div>
+              <div>
+                <span class="eproposal-summary-label">Proposal Number</span>
+                <strong class="eproposal-summary-value">
+                  ${escapeHtml(String(proposalNumber).replace(/^Proposal#/i, '#'))}
+                </strong>
+              </div>
+            </div>
+
+            <div class="eproposal-summary-divider"></div>
+
+            <div class="eproposal-summary-item eproposal-company-item">
+              <div class="eproposal-summary-icon">🏢</div>
+              <div>
+                <span class="eproposal-summary-label">Company</span>
+                <strong class="eproposal-company-name">
+                  ${escapeHtml(companyName)}
+                </strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="eproposal-review-note">
+            <span class="eproposal-info-icon">i</span>
+            <span>Please review the proposal carefully before signing.</span>
+          </div>
+        </div>
+      </div>
+    </section>
   `;
 }
 
@@ -6868,10 +6927,7 @@ function bootPublicEProposalPage() {
       const signatureSummaryHtml = getSignatureSummaryHtml(previewModel.proposal);
       content.innerHTML = `
         ${acceptedMessageHtml}
-        <section class="public-eproposal-section public-proposal-hero">
-          <div class="public-hero-copy"><p class="public-kicker">Commercial Proposal</p><h2>${display(field(previewModel.proposal.proposal_number, previewModel.proposal.proposal_id, previewModel.proposal.number, 'Proposal'))}</h2><p>${display(field(previewModel.proposal.provider_name, payload.provider_name, 'InCheck 360 Holding BV'))}</p><p class="public-valid-until">Valid until ${dateText(field(previewModel.proposal.valid_until, previewModel.proposal.proposal_valid_until))}</p></div>
-          <span class="public-status-pill">${display(isAccepted ? 'Accepted' : field(previewModel.proposal.status, payload.status, 'Pending'))}</span>
-        </section>
+        ${renderEProposalHero(previewModel.proposal)}
         ${signatureSummaryHtml}
         <section class="public-eproposal-document" data-public-proposal-document>
           <iframe title="Proposal preview" data-public-proposal-frame srcdoc="${iframeSrcdoc}"></iframe>
@@ -7009,4 +7065,5 @@ function bootPublicEProposalPage() {
 
 window.getEProposalTokenFromUrl = getEProposalTokenFromUrl;
 window.renderPublicEProposalShell = renderPublicEProposalShell;
+window.renderEProposalHero = renderEProposalHero;
 window.bootPublicEProposalPage = bootPublicEProposalPage;
