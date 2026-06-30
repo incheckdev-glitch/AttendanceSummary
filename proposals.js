@@ -6775,7 +6775,55 @@ function bootPublicEProposalPage() {
             const errorBox = form.querySelector('.public-validation-errors');
             if (errorBox) errorBox.innerHTML = errors.map(error => `<p class="public-form-error">${U.escapeHtml(error)}</p>`).join('');
             if (errors.length) return;
-            await invokeEProposalPublicFunction('eproposal-accept', { token, customerName: form.name.value, customerEmail: form.email.value, comment: form.comment.value || null, signatureType: signatureMode, signatureText: signatureMode === 'typed' ? form.typedSignature.value : form.name.value, signatureImageDataUrl: signatureMode === 'uploaded' || signatureMode === 'drawn' ? (signatureMode === 'drawn' ? form.dataset.drawnSignatureDataUrl : form.dataset.uploadedSignatureDataUrl) : null, signedDocumentDataUrl: signatureMode === 'signed_document_upload' ? form.dataset.signedDocumentDataUrl : null, signedDocumentFileName: signatureMode === 'signed_document_upload' ? form.dataset.signedDocumentFileName : null, signedDocumentMimeType: signatureMode === 'signed_document_upload' ? form.dataset.signedDocumentMimeType : null });
+            const supabase = window.SupabaseClient?.getClient?.() || window.supabase;
+            if (!supabase?.rpc) throw new Error('Supabase client is not available.');
+            const customerName = form.name.value.trim();
+            const customerEmail = form.email.value.trim();
+            const comment = form.comment.value || null;
+            const typedSignature = form.typedSignature.value.trim();
+            const signatureImageDataUrl = signatureMode === 'drawn'
+              ? form.dataset.drawnSignatureDataUrl
+              : form.dataset.uploadedSignatureDataUrl;
+            const signedDocumentDataUrl = form.dataset.signedDocumentDataUrl;
+            const signedDocumentFileName = form.dataset.signedDocumentFileName;
+            const signedDocumentMimeType = form.dataset.signedDocumentMimeType;
+            const { data, error } = await supabase.rpc('eproposal_accept', {
+              p_token: token,
+              p_customer_name: customerName,
+              p_customer_email: customerEmail,
+              p_customer_comment: comment || null,
+              p_user_agent: navigator.userAgent,
+              p_signature_type: signatureMode,
+              p_signature_text:
+                signatureMode === 'typed'
+                  ? typedSignature
+                  : customerName,
+              p_signature_image_data_url:
+                signatureMode === 'uploaded' || signatureMode === 'drawn'
+                  ? signatureImageDataUrl
+                  : null,
+              p_signed_document_data_url:
+                signatureMode === 'signed_document_upload'
+                  ? signedDocumentDataUrl
+                  : null,
+              p_signed_document_file_name:
+                signatureMode === 'signed_document_upload'
+                  ? signedDocumentFileName
+                  : null,
+              p_signed_document_mime_type:
+                signatureMode === 'signed_document_upload'
+                  ? signedDocumentMimeType
+                  : null
+            });
+
+            if (error) {
+              console.error('eproposal_accept RPC error:', error);
+              throw new Error(error.message || 'Unable to accept proposal.');
+            }
+
+            if (!data?.ok) {
+              throw new Error(data?.error || 'Unable to accept proposal.');
+            }
           } else {
             await invokeEProposalPublicFunction('eproposal-reject', { token, customerName: form.name.value || null, customerEmail: form.email.value || null, rejectionReason: form.reason.value });
           }
