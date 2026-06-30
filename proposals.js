@@ -2941,15 +2941,17 @@ const Proposals = {
     const customerSignatory = this.resolveProposalCustomerSignatory(proposalData, proposalContact);
     const customerSignatoryName = String(customerSignatory.name || '').trim();
     const customerSignatoryTitle = String(customerSignatory.title || '').trim();
-    const eSignatureType = String(proposalData.e_signature_type || '').toLowerCase();
-    const typedESignatureText = String(proposalData.e_signature_text || '').trim();
-    const uploadedESignatureImage = String(proposalData.e_signature_image_data_url || '').trim();
-    const hasSignature = (eSignatureType === 'uploaded' && uploadedESignatureImage) || (eSignatureType === 'typed' && typedESignatureText);
-    const typedESignatureHtml = hasSignature ? `
+    const typedESignatureExists = hasTypedESignature(proposalData);
+    const uploadedESignatureExists = hasUploadedESignature(proposalData);
+    const eSignaturePreviewHtml = renderESignaturePreview(proposalData, {
+      typedClassName: 'document-typed-signature-preview',
+      uploadedWrapperClassName: 'document-signature-image-preview'
+    });
+    const eSignatureHtml = (typedESignatureExists || uploadedESignatureExists) ? `
             <div><strong>Name:</strong> ${textValue(proposalData.e_signature_customer_name || proposalData.accepted_by_name || customerSignatoryName)}</div>
             <div><strong>Email:</strong> ${textValue(proposalData.e_signature_customer_email || proposalData.accepted_by_email || proposalData.customer_contact_email)}</div>
             <div><strong>Signed:</strong> ${dateValue(proposalData.e_signature_signed_at || proposalData.accepted_at || proposalData.customer_sign_date)}</div>
-            ${eSignatureType === 'uploaded' ? `<div class="document-signature-image-preview"><img src="${U.escapeHtml(uploadedESignatureImage)}" alt="Customer signature"></div>` : `<div class="document-typed-signature-preview">${textValue(typedESignatureText)}</div>`}` : '';
+            ${eSignaturePreviewHtml}` : '';
     const isPoc = this.normalizeTruthy(proposalData.is_poc || proposalData.isPoc);
     const pocDetailsHtml = isPoc ? `
       <section class="info-grid" style="margin-top:14px;grid-template-columns:1fr;">
@@ -3292,7 +3294,7 @@ const Proposals = {
         <div class="signature-box">
           <div class="signature-head">CUSTOMER SIGNATORY</div>
           <div class="signature-body">
-            ${hasTypedESignature ? typedESignatureHtml : `<div><strong>Name:</strong> ${textValue(customerSignatoryName)}</div>
+            ${(typedESignatureExists || uploadedESignatureExists) ? eSignatureHtml : `<div><strong>Name:</strong> ${textValue(customerSignatoryName)}</div>
             <div><strong>Title:</strong> ${textValue(customerSignatoryTitle)}</div>
             <div><strong>Sign Date:</strong> ${dateValue(proposalData.customer_sign_date || proposalData.customer_signed_at)}</div>`}
           </div>
@@ -6285,6 +6287,53 @@ const Proposals = {
 
 window.Proposals = Proposals;
 
+function hasTypedESignature(proposal) {
+  return Boolean(
+    proposal &&
+    proposal.e_signature_type === 'typed' &&
+    proposal.e_signature_text
+  );
+}
+
+function hasUploadedESignature(proposal) {
+  return Boolean(
+    proposal &&
+    proposal.e_signature_type === 'uploaded' &&
+    proposal.e_signature_image_data_url
+  );
+}
+
+function hasAnyESignature(proposal) {
+  return hasTypedESignature(proposal) || hasUploadedESignature(proposal);
+}
+
+function renderESignaturePreview(proposal, options = {}) {
+  const uploadedWrapperClassName = options.uploadedWrapperClassName || 'public-signature-preview';
+  const typedClassName = options.typedClassName || 'typed-signature-preview';
+
+  if (hasUploadedESignature(proposal)) {
+    return `
+      <div class="${U.escapeHtml(uploadedWrapperClassName)}">
+        <img
+          class="proposal-signature-image"
+          src="${U.escapeHtml(proposal.e_signature_image_data_url)}"
+          alt="Customer signature"
+        />
+      </div>
+    `;
+  }
+
+  if (hasTypedESignature(proposal)) {
+    return `
+      <div class="${U.escapeHtml(typedClassName)}">
+        ${U.escapeHtml(proposal.e_signature_text)}
+      </div>
+    `;
+  }
+
+  return '';
+}
+
 function getEProposalTokenFromUrl() {
   const parts = window.location.pathname.split('/').filter(Boolean);
   const idx = parts.indexOf('e-proposal');
@@ -6354,12 +6403,9 @@ function bootPublicEProposalPage() {
   const isAllowedSignatureDataUrl = value => /^data:image\/(png|jpe?g|webp);base64,/i.test(String(value || ''));
   const renderSignatureImage = value => isAllowedSignatureDataUrl(value) ? `<div class="signature-image-preview"><img class="proposal-signature-image" src="${U.escapeHtml(value)}" alt="Customer signature"></div>` : '';
   const getSignatureSummaryHtml = proposalData => {
-    const signatureType = String(proposalData?.e_signature_type || 'typed').toLowerCase();
-    const signatureImage = field(proposalData?.e_signature_image_data_url);
-    const signatureText = field(proposalData?.e_signature_text, proposalData?.accepted_by_name, proposalData?.e_signature_customer_name);
-    if (signatureType === 'uploaded' && !signatureImage) return '';
-    if (signatureType !== 'uploaded' && !signatureText) return '';
-    const signatureHtml = signatureType === 'uploaded' ? renderSignatureImage(signatureImage) : renderTypedSignaturePreview(signatureText, proposalData?.e_signature_style);
+    const hasSignature = hasAnyESignature(proposalData);
+    if (!hasSignature) return '';
+    const signatureHtml = renderESignaturePreview(proposalData);
     return `<section class="public-eproposal-section public-signature-summary"><h2>Signature Summary</h2><div class="signature-summary-grid"><div><span>Signed by</span><strong>${display(field(proposalData?.e_signature_customer_name, proposalData?.accepted_by_name, proposalData?.customer_name))}</strong></div><div><span>Email</span><strong>${display(field(proposalData?.e_signature_customer_email, proposalData?.accepted_by_email, proposalData?.customer_email))}</strong></div><div><span>Signed date/time</span><strong>${dateTimeText(field(proposalData?.e_signature_signed_at, proposalData?.accepted_at, proposalData?.customer_sign_date))}</strong></div></div>${signatureHtml}</section>`;
   };
   const readSignatureImageFile = file => new Promise((resolve, reject) => {
