@@ -2605,7 +2605,7 @@ const Agreements = {
         </div></div>
       </section>`;
   },
-  renderInternalSignatureCard({ role, title, signature, canSign, buttonText, disabled, helperText }) {
+  renderInternalSignatureCard({ role, title, signature, canSign, buttonText, disabled, helperText, agreementId }) {
     const signed = !!signature;
     const signedBy = String(signature?.signer_name || signature?.signed_by || signature?.created_by_name || '').trim();
     const signedAt = String(signature?.signed_at || signature?.created_at || '').trim();
@@ -2616,7 +2616,7 @@ const Agreements = {
         <span class="agreement-signature-status ${signed ? 'signed' : 'pending'}">${signed ? 'Signed' : 'Pending'}</span>
         ${signed ? `<div class="agreement-signature-meta"><div><strong>Signed by:</strong> ${U.escapeHtml(signedBy || '—')}</div><div><strong>Signed date:</strong> ${U.escapeHtml(signedAt ? U.fmtDisplayDate(signedAt) : '—')}</div></div>` : ''}
         ${helperText ? `<p class="agreement-signature-helper">${U.escapeHtml(helperText)}</p>` : ''}
-        ${!signed ? `<button class="agreement-signature-btn" type="button" data-agreement-internal-sign="${U.escapeAttr(role)}" ${buttonDisabled ? 'disabled' : ''}>${U.escapeHtml(buttonText)}</button>` : ''}
+        ${!signed ? `<button class="agreement-signature-btn" type="button" data-action="internal-agreement-sign" data-agreement-id="${U.escapeAttr(agreementId || '')}" data-signer-role="${U.escapeAttr(role)}" ${buttonDisabled ? 'disabled aria-disabled="true"' : ''}>${U.escapeHtml(buttonText)}</button>` : ''}
       </div>`;
   },
   renderInternalAgreementSignatures(agreement, internalSignatures = [], currentUser = {}) {
@@ -2652,7 +2652,8 @@ const Agreements = {
             canSign: canSignSfc,
             buttonText: 'Sign as SFC',
             disabled: !customerSigned || isFullySigned,
-            helperText: !customerSigned ? 'Customer must sign first.' : (!canSignSfc && !sfcSignature && !isFullySigned ? 'Only SFC or admin can sign this role.' : '')
+            helperText: !customerSigned ? 'Customer must sign first.' : (!canSignSfc && !sfcSignature && !isFullySigned ? 'Only SFC or admin can sign this role.' : ''),
+            agreementId: agreementData.id
           })}
           ${this.renderInternalSignatureCard({
             role: 'GM',
@@ -2661,7 +2662,8 @@ const Agreements = {
             canSign: canSignGm,
             buttonText: 'Sign as GM',
             disabled: !customerSigned || isFullySigned || !sfcSignature,
-            helperText: !customerSigned ? 'Customer must sign first.' : (!sfcSignature ? 'Senior Financial Controller must sign first.' : (!canSignGm && !gmSignature && !isFullySigned ? 'Only GM or admin can sign this role.' : ''))
+            helperText: !customerSigned ? 'Customer must sign first.' : (!sfcSignature ? 'Senior Financial Controller must sign first.' : (!canSignGm && !gmSignature && !isFullySigned ? 'Only GM or admin can sign this role.' : '')),
+            agreementId: agreementData.id
           })}
         </div>
       </section>`;
@@ -2670,6 +2672,25 @@ const Agreements = {
     const el = typeof target === 'string' ? document.getElementById(target) : target;
     if (!el) return;
     el.innerHTML = this.renderInternalAgreementSignatures(agreement, internalSignatures, this.getCurrentAgreementSigningUser());
+  },
+  async openAgreementInternalSignModal({ agreementId, signerRole } = {}) {
+    const cleanAgreementId = String(agreementId || '').trim();
+    const role = this.normalizeAgreementSignerRole(signerRole);
+    console.log('Opening internal agreement sign modal', { agreementId: cleanAgreementId, signerRole: role });
+    if (!cleanAgreementId || !role) return UI.toast('Missing agreement signing data.');
+    let previewData;
+    try {
+      previewData = await this.loadAgreementPreviewData(cleanAgreementId);
+    } catch (error) {
+      console.error('[agreement internal sign] unable to load agreement', error);
+      return UI.toast('Agreement not found.');
+    }
+    if (!previewData?.agreement) return UI.toast('Agreement not found.');
+    this.state.currentAgreement = previewData.agreement;
+    this.state.currentAgreementId = String(previewData.agreement.id || cleanAgreementId).trim();
+    this.state.currentItems = previewData.items || [];
+    this.state.currentInternalSignatures = previewData.internalSignatures || [];
+    return this.openInternalAgreementSignModal(role);
   },
   openInternalAgreementSignModal(role) {
     const targetRole = this.normalizeAgreementSignerRole(role);
@@ -2775,10 +2796,14 @@ const Agreements = {
       close?.();
       const { agreement, items, internalSignatures } = await this.loadAgreementPreviewData(agreementId);
       this.state.currentAgreement = agreement;
+      this.state.currentAgreementId = String(agreement.id || agreementId).trim();
       this.state.currentItems = items;
       this.state.currentInternalSignatures = internalSignatures;
       this.refreshInternalAgreementSignaturesPanel(E.agreementInternalSignaturesPanel, agreement, internalSignatures);
       this.refreshInternalAgreementSignaturesPanel(E.agreementPreviewInternalSignatures, agreement, internalSignatures);
+      if (E.agreementPreviewFrame && E.agreementPreviewModal?.classList?.contains('open')) {
+        E.agreementPreviewFrame.srcdoc = U.addIncheckDocumentLogo(U.formatPreviewHtmlDates(this.buildAgreementPreviewHtml(agreement, items)));
+      }
       this.loadAndRefresh?.({ force: true });
     } catch (error) {
       console.error('[agreement internal sign] failed', error);
@@ -5951,11 +5976,6 @@ const Agreements = {
         }
       });
       E.agreementForm.addEventListener('click', event => {
-        const signTrigger = event.target?.closest?.('button[data-agreement-internal-sign]');
-        if (signTrigger) {
-          event.preventDefault();
-          return this.openInternalAgreementSignModal(signTrigger.getAttribute('data-agreement-internal-sign'));
-        }
         const trigger = event.target?.closest?.('button[data-item-remove]');
         if (!trigger) return;
         const section = trigger.getAttribute('data-item-remove');
@@ -5992,17 +6012,32 @@ const Agreements = {
       signedDocElements.openBtn.dataset.signedOpenBound = 'true';
     }
 
+    if (!document.documentElement.dataset.internalAgreementSignDelegated) {
+      document.addEventListener('click', async (event) => {
+        const signButton = event.target?.closest?.('[data-action="internal-agreement-sign"]');
+        if (!signButton) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const agreementId = signButton.dataset.agreementId;
+        const signerRole = signButton.dataset.signerRole;
+        console.log('Internal agreement sign button clicked', { agreementId, signerRole });
+        if (!agreementId || !signerRole) {
+          console.error('Missing agreement internal sign button data', { agreementId, signerRole, signButton });
+          UI.toast?.('Missing agreement signing data.');
+          return;
+        }
+        if (signButton.disabled || signButton.getAttribute('aria-disabled') === 'true') return;
+        await this.openAgreementInternalSignModal({ agreementId, signerRole });
+      });
+      document.documentElement.dataset.internalAgreementSignDelegated = 'true';
+    }
+
     if (E.agreementAddAnnualRowBtn) E.agreementAddAnnualRowBtn.addEventListener('click', () => this.addRow('annual_saas'));
     if (E.agreementAddOneTimeRowBtn) E.agreementAddOneTimeRowBtn.addEventListener('click', () => this.addRow('one_time_fee'));
     if (E.agreementAddHardwareRowBtn) E.agreementAddHardwareRowBtn.addEventListener('click', () => this.addRow('hardware'));
     if (E.agreementPreviewExportPdfBtn) E.agreementPreviewExportPdfBtn.addEventListener('click', () => this.exportPreviewPdf());
     if (E.agreementPreviewCloseBtn) E.agreementPreviewCloseBtn.addEventListener('click', () => this.closePreviewModal());
     if (E.agreementPreviewModal) E.agreementPreviewModal.addEventListener('click', event => {
-      const signTrigger = event.target?.closest?.('button[data-agreement-internal-sign]');
-      if (signTrigger) {
-        event.preventDefault();
-        return this.openInternalAgreementSignModal(signTrigger.getAttribute('data-agreement-internal-sign'));
-      }
       if (event.target === E.agreementPreviewModal) this.closePreviewModal();
     });
     this.state.initialized = true;
