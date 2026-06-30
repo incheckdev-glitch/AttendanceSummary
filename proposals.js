@@ -108,6 +108,9 @@ const Proposals = {
     'e_signature_type',
     'e_signature_text',
     'e_signature_image_data_url',
+    'e_signed_document_data_url',
+    'e_signed_document_file_name',
+    'e_signed_document_mime_type',
     'e_signature_signed_at',
     'e_signature_customer_name',
     'e_signature_customer_email',
@@ -3150,6 +3153,13 @@ const Proposals = {
       .esignature-detail-row span { color: #64748b; }
       .esignature-detail-row strong { color: #0f172a; font-weight: 700; }
       .esignature-confirmed-badge { width: fit-content; margin-top: 4px; padding: 5px 10px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 11px; font-weight: 800; }
+      .signed-document-preview { display: grid; gap: 8px; }
+      .signed-document-file-card { border: 1px solid #dbeafe; border-radius: 10px; padding: 8px; background: #ffffff; display: grid; gap: 3px; }
+      .signed-document-file-card span { color: #64748b; font-size: 11px; }
+      .signed-document-pdf-preview { width: 100%; min-height: 190px; border: 1px solid #dbeafe; border-radius: 8px; background: #ffffff; }
+      .signed-document-image-preview { max-width: 100%; max-height: 220px; object-fit: contain; border: 1px solid #dbeafe; border-radius: 8px; background: #ffffff; }
+      .signed-document-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+
       .footer-note { margin-top: 16px; font-size: 11px; color: #64748b; border-top: 1px solid #e3eaf3; padding-top: 10px; text-align: center; }
       @page { size: A4; margin: 0; }
       @media print {
@@ -6323,26 +6333,60 @@ function hasTypedESignature(proposal) {
 function hasUploadedESignature(proposal) {
   return Boolean(
     proposal &&
-    proposal.e_signature_type === 'uploaded' &&
+    ['uploaded', 'drawn'].includes(proposal.e_signature_type) &&
     proposal.e_signature_image_data_url
   );
 }
 
 function hasAnyESignature(proposal) {
-  return hasTypedESignature(proposal) || hasUploadedESignature(proposal);
+  return hasTypedESignature(proposal) || hasUploadedESignature(proposal) || hasSignedDocumentUpload(proposal);
 }
 
+function hasSignedDocumentUpload(proposal) {
+  return Boolean(
+    proposal &&
+    proposal.e_signature_type === 'signed_document_upload' &&
+    proposal.e_signed_document_data_url
+  );
+}
+
+function isSignedDocumentPdf(proposal) {
+  return String(proposal?.e_signed_document_mime_type || '').toLowerCase() === 'application/pdf';
+}
+
+function isSignedDocumentImage(proposal) {
+  return /^image\/(png|jpe?g|webp)$/i.test(String(proposal?.e_signed_document_mime_type || ''));
+}
+
+function renderSignedDocumentActions(proposal, { includeButtons = true } = {}) {
+  if (!hasSignedDocumentUpload(proposal) || !includeButtons) return '';
+  const dataUrl = U.escapeAttr(proposal.e_signed_document_data_url);
+  const fileName = U.escapeAttr(proposal.e_signed_document_file_name || 'signed-proposal');
+  return `<div class="signed-document-actions"><a class="public-btn-outline" href="${dataUrl}" target="_blank" rel="noopener noreferrer">Open Signed Proposal</a><a class="public-btn-primary" href="${dataUrl}" download="${fileName}">Download Signed Proposal</a></div>`;
+}
+
+function renderSignedDocumentPreview(proposal, { includeButtons = false } = {}) {
+  if (!hasSignedDocumentUpload(proposal)) return '';
+  const dataUrl = U.escapeHtml(proposal.e_signed_document_data_url);
+  const fileName = U.escapeHtml(proposal.e_signed_document_file_name || 'Signed proposal');
+  const preview = isSignedDocumentPdf(proposal)
+    ? `<iframe class="signed-document-pdf-preview" src="${dataUrl}" title="Signed proposal PDF preview"></iframe>`
+    : (isSignedDocumentImage(proposal) ? `<img class="signed-document-image-preview" src="${dataUrl}" alt="Signed proposal preview">` : '');
+  return `<div class="signed-document-preview"><div class="signed-document-file-card"><strong>${fileName}</strong><span>${U.escapeHtml(proposal.e_signed_document_mime_type || '')}</span></div>${preview}${renderSignedDocumentActions(proposal, { includeButtons })}</div>`;
+}
 
 function renderElectronicSignatureVerification(proposal) {
   if (!proposal) return '';
 
   const isUploaded =
-    proposal.e_signature_type === 'uploaded' &&
+    ['uploaded', 'drawn'].includes(proposal.e_signature_type) &&
     proposal.e_signature_image_data_url;
 
   const isTyped =
     proposal.e_signature_type === 'typed' &&
     proposal.e_signature_text;
+
+  if (hasSignedDocumentUpload(proposal)) return renderSignedDocumentVerification(proposal);
 
   if (!isUploaded && !isTyped) return '';
 
@@ -6412,7 +6456,7 @@ function renderElectronicSignatureVerification(proposal) {
           </div>
           <div class="esignature-detail-row">
             <span>Signature type</span>
-            <strong>${isUploaded ? 'Uploaded signature' : 'Typed signature'}</strong>
+            <strong>${isUploaded ? (proposal.e_signature_type === 'drawn' ? 'Drawn signature' : 'Uploaded signature') : 'Typed signature'}</strong>
           </div>
           <div class="esignature-confirmed-badge">
             Confirmed electronic acceptance
@@ -6423,9 +6467,20 @@ function renderElectronicSignatureVerification(proposal) {
   `;
 }
 
+function renderSignedDocumentVerification(proposal) {
+  if (!hasSignedDocumentUpload(proposal)) return '';
+  const uploadedBy = proposal.e_signature_customer_name || proposal.accepted_by_name || '';
+  const uploadedEmail = proposal.e_signature_customer_email || proposal.accepted_by_email || '';
+  const uploadedAt = proposal.e_signature_signed_at || proposal.accepted_at || '';
+  const formatSignedDateTime = value => value ? (U.fmtDisplayDateTime?.(value) || U.fmtDisplayDate?.(value) || String(value)) : '—';
+  return `<div class="signed-document-verification-section esignature-verification-section"><div class="esignature-verification-header"><span class="esignature-icon">✓</span><div><h4>Signed Proposal Verification</h4><p>The customer uploaded a manually signed proposal document.</p></div></div><div class="esignature-verification-body"><div class="esignature-left">${renderSignedDocumentPreview(proposal, { includeButtons: true })}</div><div class="esignature-details"><div class="esignature-detail-row"><span>Uploaded by</span><strong>${U.escapeHtml(uploadedBy)}</strong></div><div class="esignature-detail-row"><span>Email</span><strong>${U.escapeHtml(uploadedEmail)}</strong></div><div class="esignature-detail-row"><span>Uploaded on</span><strong>${U.escapeHtml(formatSignedDateTime(uploadedAt))}</strong></div><div class="esignature-detail-row"><span>Signature type</span><strong>Uploaded signed proposal</strong></div><div class="esignature-confirmed-badge">Confirmed electronic acceptance</div></div></div></div>`;
+}
+
 function renderESignaturePreview(proposal, options = {}) {
   const uploadedWrapperClassName = options.uploadedWrapperClassName || 'public-signature-preview';
   const typedClassName = options.typedClassName || 'typed-signature-preview';
+
+  if (hasSignedDocumentUpload(proposal)) return renderSignedDocumentPreview(proposal, { includeButtons: true });
 
   if (hasUploadedESignature(proposal)) {
     return `
@@ -6573,7 +6628,7 @@ function bootPublicEProposalPage() {
       const documentHtml = Proposals.buildProposalDocumentHtml(previewModel.proposal, previewModel.items, { publicView: true });
       const iframeSrcdoc = U.escapeHtml(documentHtml);
       const isAccepted = ['accepted', 'signed', 'converted', 'converted_to_agreement'].includes(String(field(previewModel.proposal.status, payload.status, '') || '').toLowerCase());
-      const acceptedMessageHtml = isAccepted ? '<section class="public-eproposal-section public-success"><h2>Thank you. This proposal has been accepted and electronically signed.</h2></section>' : '';
+      const acceptedMessageHtml = isAccepted ? '<section class="public-eproposal-section public-success"><h2>Thank you. This proposal has been accepted and signed.</h2></section>' : '';
       const signatureSummaryHtml = getSignatureSummaryHtml(previewModel.proposal);
       content.innerHTML = `
         ${acceptedMessageHtml}
@@ -6593,42 +6648,40 @@ function bootPublicEProposalPage() {
       });
       document.querySelector('[data-public-accept]')?.addEventListener('click', () => {
         if (isAccepted) return;
-        renderModal(`<form data-public-accept-form novalidate data-signature-mode="typed"><h2>Accept & Sign Proposal</h2><label>Customer Full Name<input class="input" name="name" required placeholder="Customer full name"></label><label>Customer Email<input class="input" name="email" type="email" required placeholder="Customer email"></label><label>Optional Comment<textarea class="input" name="comment" rows="3" placeholder="Optional comment"></textarea></label><section class="electronic-signature-section"><h3>Electronic Signature</h3><div class="signature-mode-tabs" role="tablist" aria-label="Signature mode"><button class="signature-mode-tab active" type="button" data-signature-mode="typed">Typed Signature</button><button class="signature-mode-tab" type="button" data-signature-mode="uploaded">Upload Signature</button></div><div data-typed-signature-panel><p>Type your full name below. This typed signature will be used as your electronic signature for this proposal.</p><label>Typed Signature<input class="input" name="typedSignature" required placeholder="Type your full name"></label><div class="signature-style-options" role="group" aria-label="Signature style"><button class="signature-style-option active" type="button" data-signature-style="1">Style 1</button><button class="signature-style-option" type="button" data-signature-style="2">Style 2</button><button class="signature-style-option" type="button" data-signature-style="3">Style 3</button></div>${renderTypedSignaturePreview('', '1')}</div><div data-uploaded-signature-panel hidden><div class="signature-upload-box"><input type="file" name="signatureImage" accept="image/png,image/jpeg,image/jpg,image/webp"><p>Upload a clear image of your signature. PNG or JPG, max 2 MB.</p></div><div class="signature-image-preview" data-uploaded-signature-preview></div><button class="public-btn-outline remove-signature-button" type="button" data-remove-signature>Remove Signature</button></div></section><label class="public-checkbox"><input name="authorized" type="checkbox" required> I confirm that I am authorized to accept this proposal and that my electronic signature represents my acceptance of the proposal terms.</label><div class="public-validation-errors" aria-live="polite"></div><button class="public-btn-primary accept-proposal-submit" type="submit" disabled>Accept & Sign Proposal</button></form>`, 'public-action-modal accept-proposal-modal');
+        renderModal(`<form data-public-accept-form novalidate data-signature-mode="typed"><h2>Accept & Sign Proposal</h2><label>Customer Full Name<input class="input" name="name" required placeholder="Customer full name"></label><label>Customer Email<input class="input" name="email" type="email" required placeholder="Customer email"></label><label>Optional Comment<textarea class="input" name="comment" rows="3" placeholder="Optional comment"></textarea></label><section class="electronic-signature-section"><h3>Signature Method</h3><div class="signature-method-tabs" role="tablist" aria-label="Signature method"><button class="signature-method-tab active" type="button" data-signature-mode="typed">Typed</button><button class="signature-method-tab" type="button" data-signature-mode="uploaded">Upload Image</button><button class="signature-method-tab" type="button" data-signature-mode="drawn">Draw</button><button class="signature-method-tab" type="button" data-signature-mode="signed_document_upload">Upload Signed Proposal</button></div><div data-signature-panel="typed"><label>Typed Signature<input class="input" name="typedSignature" required placeholder="Type your full name"></label>${renderTypedSignaturePreview('', '1')}</div><div data-signature-panel="uploaded" hidden><div class="signature-upload-box"><input type="file" name="signatureImage" accept="image/png,image/jpeg,image/jpg,image/webp"><p>Upload a PNG/JPG/WEBP image of your signature. Max 2 MB.</p></div><div class="signature-image-preview" data-uploaded-signature-preview></div></div><div data-signature-panel="drawn" hidden><div class="signature-draw-pad"><canvas class="signature-canvas" width="720" height="220"></canvas></div><button class="signature-clear-btn public-btn-outline" type="button" data-clear-drawn-signature>Clear Signature</button></div><div data-signature-panel="signed_document_upload" hidden><div class="signed-document-upload-box"><button class="public-btn-outline" data-public-print type="button">Download Proposal</button><p>Download the proposal, sign it, then upload the signed PDF or image here.</p><input type="file" name="signedDocument" accept="application/pdf,image/png,image/jpeg,image/jpg,image/webp"></div><div class="signed-document-preview" data-signed-document-preview></div></div></section><label class="public-checkbox"><input name="authorized" type="checkbox" required> I confirm that I am authorized to accept this proposal and that the selected signing method represents my acceptance of the proposal terms.</label><div class="public-validation-errors" aria-live="polite"></div><button class="public-btn-primary accept-proposal-submit" type="submit" disabled>Accept & Sign Proposal</button></form>`, 'public-action-modal accept-proposal-modal');
         const form = document.querySelector('[data-public-accept-form]');
-        const syncAcceptForm = () => {
+        form?.querySelector('[data-public-print]')?.addEventListener('click', () => { const frame = document.querySelector('[data-public-proposal-frame]'); frame?.contentWindow?.focus?.(); frame?.contentWindow?.print?.(); });
+        const canvas = form?.querySelector('.signature-canvas');
+        const ctx = canvas?.getContext('2d');
+        let drawing = false;
+        const resetCanvas = () => { if (!ctx || !canvas) return; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.strokeStyle = '#073b73'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; delete form.dataset.drawnSignatureDataUrl; };
+        const point = e => { const r = canvas.getBoundingClientRect(); const t = e.touches?.[0] || e; return { x: (t.clientX - r.left) * (canvas.width / r.width), y: (t.clientY - r.top) * (canvas.height / r.height) }; };
+        const startDraw = e => { if (!canvas) return; e.preventDefault(); drawing = true; const pt = point(e); ctx.beginPath(); ctx.moveTo(pt.x, pt.y); };
+        const moveDraw = e => { if (!drawing) return; e.preventDefault(); const pt = point(e); ctx.lineTo(pt.x, pt.y); ctx.stroke(); form.dataset.drawnSignatureDataUrl = canvas.toDataURL('image/png'); syncAcceptForm(); };
+        const endDraw = () => { drawing = false; };
+        resetCanvas();
+        canvas?.addEventListener('mousedown', startDraw); canvas?.addEventListener('mousemove', moveDraw); window.addEventListener('mouseup', endDraw);
+        canvas?.addEventListener('touchstart', startDraw, { passive: false }); canvas?.addEventListener('touchmove', moveDraw, { passive: false }); canvas?.addEventListener('touchend', endDraw);
+        const readSignedDocumentFile = file => new Promise((resolve, reject) => { const allowed = ['application/pdf','image/png','image/jpeg','image/jpg','image/webp']; if (!file) return reject(new Error('Signed proposal upload is required.')); if (!allowed.includes(String(file.type || '').toLowerCase())) return reject(new Error('Signed proposal must be a PDF, PNG, JPG, JPEG, or WEBP file.')); if (file.size > 8 * 1024 * 1024) return reject(new Error('Signed proposal must be 8 MB or smaller.')); const reader = new FileReader(); reader.onerror = () => reject(new Error('Unable to read signed proposal.')); reader.onload = () => resolve({ dataUrl: reader.result, fileName: file.name, mimeType: file.type }); reader.readAsDataURL(file); });
+        function syncAcceptForm() {
           if (!form) return;
           const mode = form.dataset.signatureMode || 'typed';
           if (mode === 'typed' && !form.typedSignature.value.trim() && form.name.value.trim()) form.typedSignature.value = form.name.value;
-          const style = form.dataset.signatureStyle || '1';
           const preview = form.querySelector('.typed-signature-preview');
-          if (preview) { preview.className = `typed-signature-preview ${signatureStyleClass(style)}`; preview.textContent = form.typedSignature.value.trim() || 'Typed signature'; }
-          form.querySelector('[data-typed-signature-panel]').hidden = mode !== 'typed';
-          form.querySelector('[data-uploaded-signature-panel]').hidden = mode !== 'uploaded';
-          form.querySelector('.accept-proposal-submit').disabled = !(form.name.value.trim() && form.email.value.trim() && form.authorized.checked && (mode === 'typed' ? form.typedSignature.value.trim() : form.dataset.uploadedSignatureDataUrl));
-        };
+          if (preview) preview.textContent = form.typedSignature.value.trim() || 'Typed signature';
+          form.querySelectorAll('[data-signature-panel]').forEach(panel => { panel.hidden = panel.dataset.signaturePanel !== mode; });
+          const modeOk = mode === 'typed' ? form.typedSignature.value.trim() : mode === 'uploaded' ? form.dataset.uploadedSignatureDataUrl : mode === 'drawn' ? form.dataset.drawnSignatureDataUrl : form.dataset.signedDocumentDataUrl;
+          form.querySelector('.accept-proposal-submit').disabled = !(form.name.value.trim() && form.email.value.trim() && form.authorized.checked && modeOk);
+        }
         form?.addEventListener('input', syncAcceptForm);
         form?.addEventListener('change', syncAcceptForm);
-        form?.querySelectorAll('button[data-signature-mode]').forEach(btn => btn.addEventListener('click', () => { form.dataset.signatureMode = btn.dataset.signatureMode || 'typed'; form.querySelectorAll('.signature-mode-tab').forEach(x => x.classList.toggle('active', x === btn)); syncAcceptForm(); }));
-        form?.signatureImage?.addEventListener('change', async () => {
-          const errorBox = form.querySelector('.public-validation-errors');
-          if (errorBox) errorBox.innerHTML = '';
-          try {
-            const dataUrl = await readSignatureImageFile(form.signatureImage.files?.[0]);
-            form.dataset.uploadedSignatureDataUrl = dataUrl;
-            form.querySelector('[data-uploaded-signature-preview]').innerHTML = `<img src="${U.escapeHtml(dataUrl)}" alt="Uploaded signature">`;
-          } catch (error) {
-            delete form.dataset.uploadedSignatureDataUrl;
-            form.signatureImage.value = '';
-            form.querySelector('[data-uploaded-signature-preview]').innerHTML = '';
-            if (errorBox) errorBox.innerHTML = `<p class="public-form-error">${U.escapeHtml(error.message)}</p>`;
-          }
-          syncAcceptForm();
-        });
-        form?.querySelector('[data-remove-signature]')?.addEventListener('click', () => { delete form.dataset.uploadedSignatureDataUrl; form.signatureImage.value = ''; form.querySelector('[data-uploaded-signature-preview]').innerHTML = ''; syncAcceptForm(); });
-        form?.querySelectorAll('[data-signature-style]').forEach(btn => btn.addEventListener('click', () => { form.dataset.signatureStyle = btn.dataset.signatureStyle || '1'; form.querySelectorAll('[data-signature-style]').forEach(x => x.classList.toggle('active', x === btn)); syncAcceptForm(); }));
+        form?.querySelectorAll('button[data-signature-mode]').forEach(btn => btn.addEventListener('click', () => { form.dataset.signatureMode = btn.dataset.signatureMode || 'typed'; form.querySelectorAll('.signature-method-tab').forEach(x => x.classList.toggle('active', x === btn)); syncAcceptForm(); }));
+        form?.signatureImage?.addEventListener('change', async () => { const errorBox = form.querySelector('.public-validation-errors'); if (errorBox) errorBox.innerHTML = ''; try { const dataUrl = await readSignatureImageFile(form.signatureImage.files?.[0]); form.dataset.uploadedSignatureDataUrl = dataUrl; form.querySelector('[data-uploaded-signature-preview]').innerHTML = `<img src="${U.escapeHtml(dataUrl)}" alt="Uploaded signature">`; } catch (error) { delete form.dataset.uploadedSignatureDataUrl; form.signatureImage.value = ''; form.querySelector('[data-uploaded-signature-preview]').innerHTML = ''; if (errorBox) errorBox.innerHTML = `<p class="public-form-error">${U.escapeHtml(error.message)}</p>`; } syncAcceptForm(); });
+        form?.signedDocument?.addEventListener('change', async () => { const errorBox = form.querySelector('.public-validation-errors'); if (errorBox) errorBox.innerHTML = ''; try { const file = await readSignedDocumentFile(form.signedDocument.files?.[0]); form.dataset.signedDocumentDataUrl = file.dataUrl; form.dataset.signedDocumentFileName = file.fileName; form.dataset.signedDocumentMimeType = file.mimeType; form.querySelector('[data-signed-document-preview]').innerHTML = file.mimeType === 'application/pdf' ? `<div class="signed-document-file-card"><strong>${U.escapeHtml(file.fileName)}</strong><span>PDF uploaded</span></div><iframe class="signed-document-pdf-preview" src="${U.escapeHtml(file.dataUrl)}"></iframe>` : `<div class="signed-document-file-card"><strong>${U.escapeHtml(file.fileName)}</strong><span>${U.escapeHtml(file.mimeType)}</span></div><img class="signed-document-image-preview" src="${U.escapeHtml(file.dataUrl)}" alt="Signed proposal preview">`; } catch (error) { delete form.dataset.signedDocumentDataUrl; form.signedDocument.value = ''; form.querySelector('[data-signed-document-preview]').innerHTML = ''; if (errorBox) errorBox.innerHTML = `<p class="public-form-error">${U.escapeHtml(error.message)}</p>`; } syncAcceptForm(); });
+        form?.querySelector('[data-clear-drawn-signature]')?.addEventListener('click', () => { resetCanvas(); syncAcceptForm(); });
         syncAcceptForm();
       });
-      document.querySelector('[data-public-reject]')?.addEventListener('click', () => renderModal(`<form data-public-reject-form><h2>Reject Proposal</h2><input class="input" name="name" placeholder="Customer name (optional)"><input class="input" name="email" type="email" placeholder="Customer email (optional)"><textarea class="input" name="reason" rows="4" placeholder="Rejection reason"></textarea><button class="public-btn-primary reject-proposal-submit" type="submit">Reject Proposal</button></form>`, 'public-action-modal reject-proposal-modal'));
+            document.querySelector('[data-public-reject]')?.addEventListener('click', () => renderModal(`<form data-public-reject-form><h2>Reject Proposal</h2><input class="input" name="name" placeholder="Customer name (optional)"><input class="input" name="email" type="email" placeholder="Customer email (optional)"><textarea class="input" name="reason" rows="4" placeholder="Rejection reason"></textarea><button class="public-btn-primary reject-proposal-submit" type="submit">Reject Proposal</button></form>`, 'public-action-modal reject-proposal-modal'));
       document.body.addEventListener('submit', async event => {
         const form = event.target;
         if (!form.matches('[data-public-accept-form], [data-public-reject-form]')) return;
@@ -6643,18 +6696,20 @@ function bootPublicEProposalPage() {
             const signatureMode = form.dataset.signatureMode || 'typed';
             if (signatureMode === 'typed' && !form.typedSignature.value.trim()) errors.push('Typed signature is required.');
             if (signatureMode === 'uploaded' && !form.dataset.uploadedSignatureDataUrl) errors.push('Uploaded signature image is required.');
+            if (signatureMode === 'drawn' && !form.dataset.drawnSignatureDataUrl) errors.push('Drawn signature is required.');
+            if (signatureMode === 'signed_document_upload' && !form.dataset.signedDocumentDataUrl) errors.push('Signed proposal upload is required.');
             if (!form.authorized.checked) errors.push('Please confirm authorization before accepting.');
             const errorBox = form.querySelector('.public-validation-errors');
             if (errorBox) errorBox.innerHTML = errors.map(error => `<p class="public-form-error">${U.escapeHtml(error)}</p>`).join('');
             if (errors.length) return;
-            await callRpc('eproposal_accept', { p_token: token, p_customer_name: form.name.value, p_customer_email: form.email.value, p_customer_comment: form.comment.value || null, p_user_agent: navigator.userAgent, p_signature_type: signatureMode, p_signature_text: signatureMode === 'typed' ? form.typedSignature.value : form.name.value, p_signature_image_data_url: signatureMode === 'uploaded' ? form.dataset.uploadedSignatureDataUrl : null });
+            await callRpc('eproposal_accept', { p_token: token, p_customer_name: form.name.value, p_customer_email: form.email.value, p_customer_comment: form.comment.value || null, p_user_agent: navigator.userAgent, p_signature_type: signatureMode, p_signature_text: signatureMode === 'typed' ? form.typedSignature.value : form.name.value, p_signature_image_data_url: signatureMode === 'uploaded' || signatureMode === 'drawn' ? (signatureMode === 'drawn' ? form.dataset.drawnSignatureDataUrl : form.dataset.uploadedSignatureDataUrl) : null, p_signed_document_data_url: signatureMode === 'signed_document_upload' ? form.dataset.signedDocumentDataUrl : null, p_signed_document_file_name: signatureMode === 'signed_document_upload' ? form.dataset.signedDocumentFileName : null, p_signed_document_mime_type: signatureMode === 'signed_document_upload' ? form.dataset.signedDocumentMimeType : null });
           } else {
             await callRpc('eproposal_reject', { p_token: token, p_customer_name: form.name.value || null, p_customer_email: form.email.value || null, p_rejection_reason: form.reason.value, p_user_agent: navigator.userAgent });
           }
           document.getElementById('publicEProposalModal')?.remove();
           setActionState(true);
-          const acceptedSignatureHtml = isAccept && form.dataset.signatureMode === 'uploaded' ? renderSignatureImage(form.dataset.uploadedSignatureDataUrl) : (isAccept ? renderTypedSignaturePreview(form.typedSignature.value.trim(), form.dataset.signatureStyle || '1') : '');
-          content.insertAdjacentHTML('afterbegin', `<section class="public-eproposal-section public-success"><h2>${isAccept ? 'Thank you. This proposal has been accepted and electronically signed.' : 'This proposal has been rejected.'}</h2>${isAccept ? `<div class="public-signature-summary"><div class="signature-summary-grid"><div><span>Signed by</span><strong>${U.escapeHtml(form.name.value.trim())}</strong></div><div><span>Email</span><strong>${U.escapeHtml(form.email.value.trim())}</strong></div><div><span>Signed date/time</span><strong>${U.escapeHtml(new Date().toLocaleString())}</strong></div></div>${acceptedSignatureHtml}</div>` : ''}</section>`);
+          const acceptedSignatureHtml = isAccept ? (form.dataset.signatureMode === 'signed_document_upload' ? `<div class="signed-document-actions"><a class="public-btn-outline" href="${U.escapeAttr(form.dataset.signedDocumentDataUrl)}" target="_blank" rel="noopener noreferrer">Open Signed Proposal</a><a class="public-btn-primary" href="${U.escapeAttr(form.dataset.signedDocumentDataUrl)}" download="${U.escapeAttr(form.dataset.signedDocumentFileName || 'signed-proposal')}">Download Signed Proposal</a></div>` : (form.dataset.signatureMode === 'uploaded' || form.dataset.signatureMode === 'drawn' ? renderSignatureImage(form.dataset.signatureMode === 'drawn' ? form.dataset.drawnSignatureDataUrl : form.dataset.uploadedSignatureDataUrl) : renderTypedSignaturePreview(form.typedSignature.value.trim(), '1'))) : '';
+          content.insertAdjacentHTML('afterbegin', `<section class="public-eproposal-section public-success"><h2>${isAccept ? 'Thank you. This proposal has been accepted and signed.' : 'This proposal has been rejected.'}</h2>${isAccept ? `<div class="public-signature-summary"><div class="signature-summary-grid"><div><span>Signed by</span><strong>${U.escapeHtml(form.name.value.trim())}</strong></div><div><span>Email</span><strong>${U.escapeHtml(form.email.value.trim())}</strong></div><div><span>Signed date/time</span><strong>${U.escapeHtml(new Date().toLocaleString())}</strong></div></div>${acceptedSignatureHtml}</div>` : ''}</section>`);
         } catch (error) {
           form.insertAdjacentHTML('beforeend', `<p class="public-form-error">${U.escapeHtml(error?.message || 'Unable to submit response.')}</p>`);
         }
