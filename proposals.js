@@ -2659,6 +2659,7 @@ const Proposals = {
     };
   },
   buildProposalDocumentHtml(proposal = {}, items = [], options = {}) {
+    const isPublicView = Boolean(options?.publicView);
     const previewModel = this.buildProposalPreviewModel(proposal, items);
     const proposalData = previewModel.proposal;
     const normalizedItems = previewModel.items;
@@ -2745,6 +2746,7 @@ const Proposals = {
     const discountTotal = this.toNumberSafe(previewTotals.discount_total);
     const grandTotal = this.toNumberSafe(previewTotals.grand_total);
     const displayOneTimeFeesSubtotal = oneTimeFeesSubtotal;
+    const publicOneTimeFeesTotal = subtotalOneTime;
     const hardwareSectionHtml = hardwareItems.length ? `
       <section class="section">
         <h2>Hardware Details</h2>
@@ -2771,6 +2773,20 @@ const Proposals = {
       </section>` : '';
 
     const grandTotalInWords = U.formatAmountInWords(grandTotal, currency);
+    const totalsBoxClass = isPublicView ? 'totals-box public-proposal-totals' : 'totals-box';
+    const totalsRowsHtml = isPublicView
+      ? `
+          <div class="totals-row public-total-row"><span>One-Time Fees</span><strong>${money(publicOneTimeFeesTotal)}</strong></div>
+          <div class="totals-row public-total-row"><span>Subscription Fees</span><strong>${money(subtotalLocations)}</strong></div>
+          <div class="totals-row grand public-total-row public-grand-total"><span>Grand Total</span><strong>${money(grandTotal)}</strong></div>`
+      : `
+          <div class="totals-row"><span>One Time Fees</span><strong>${money(displayOneTimeFeesSubtotal)}</strong></div>
+          ${hardwareItems.length ? `<div class="totals-row"><span>Hardware</span><strong>${money(hardwareSubtotal)}</strong></div>` : ''}
+          <div class="totals-row"><span>Subscription Fees</span><strong>${money(subtotalLocations)}</strong></div>
+          <div class="totals-row"><span>Subtotal</span><strong>${money(subtotal)}</strong></div>
+          <div class="totals-row"><span>Total Discount</span><strong>${money(discountTotal)}</strong></div>
+          <div class="totals-row grand"><span>Grand Total</span><strong>${money(grandTotal)}</strong></div>
+          <div class="totals-row grand-total-words-row"><span>Grand Total in Words</span><strong>${U.escapeHtml(grandTotalInWords)}</strong></div>`;
     const providerSignatoryName = this.getProposalProviderSignatoryName(proposalData);
     const providerSignatoryTitle = this.getProposalProviderSignatoryTitle(proposalData);
     const proposalContact = proposalData.contact || {
@@ -2959,6 +2975,13 @@ const Proposals = {
       .totals-row.grand-total-words-row { align-items: flex-start; gap: 12px; background: #f8fbff; color: #334155; font-size: 12px; font-weight: 500; }
       .totals-row.grand-total-words-row span { flex: 0 0 auto; font-weight: 600; white-space: nowrap; }
       .totals-row.grand-total-words-row strong { flex: 1 1 auto; min-width: 0; font-weight: 500; line-height: 1.4; text-align: right; overflow-wrap: anywhere; }
+      .public-proposal-totals { margin-left: auto; width: min(100%, 420px); border: 1px solid #dbeafe; border-radius: 16px; overflow: hidden; background: #fff; }
+      .public-total-row { display: flex; justify-content: space-between; gap: 16px; padding: 14px 16px; border-bottom: 1px solid #e5e7eb; font-size: 14px; }
+      .public-total-row:last-child { border-bottom: 0; }
+      .public-total-row span { color: #64748b; }
+      .public-total-row strong { color: #0f172a; font-weight: 800; }
+      .public-grand-total { background: #eff6ff; border-top: 1px solid #bfdbfe; }
+      .public-grand-total span, .public-grand-total strong { color: #2563eb; font-size: 18px; }
       .terms { margin-top: 16px; font-size: 12.5px; line-height: 1.6; border: 1px solid #d7e1ed; border-radius: 6px; padding: 12px; }
       .proposal-terms-list { margin: 8px 0 0; padding-left: 22px; }
       .proposal-terms-list li + li { margin-top: 5px; }
@@ -3100,14 +3123,7 @@ const Proposals = {
       ${hardwareSectionHtml}
 
       <section class="totals-wrap">
-        <div class="totals-box">
-          <div class="totals-row"><span>One Time Fees</span><strong>${money(displayOneTimeFeesSubtotal)}</strong></div>
-          ${hardwareItems.length ? `<div class="totals-row"><span>Hardware</span><strong>${money(hardwareSubtotal)}</strong></div>` : ''}
-          <div class="totals-row"><span>Subscription Fees</span><strong>${money(subtotalLocations)}</strong></div>
-          <div class="totals-row"><span>Subtotal</span><strong>${money(subtotal)}</strong></div>
-          <div class="totals-row"><span>Total Discount</span><strong>${money(discountTotal)}</strong></div>
-          <div class="totals-row grand"><span>Grand Total</span><strong>${money(grandTotal)}</strong></div>
-          <div class="totals-row grand-total-words-row"><span>Grand Total in Words</span><strong>${U.escapeHtml(grandTotalInWords)}</strong></div>
+        <div class="${totalsBoxClass}">${totalsRowsHtml}
         </div>
       </section>
 
