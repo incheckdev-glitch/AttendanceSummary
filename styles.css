@@ -8516,3 +8516,24 @@ body.public-eproposal-mode {
     height: 160px;
   }
 }
+
+/* Company modal stacking: edit stays below verification when both are open. */
+.company-edit-modal-backdrop,
+.modal-backdrop.company-edit-backdrop {
+  z-index: 4000;
+}
+
+.company-edit-modal,
+.modal.company-edit-modal {
+  z-index: 4010;
+}
+
+.company-verification-modal-backdrop,
+.modal-backdrop.company-verification-backdrop {
+  z-index: 5000;
+}
+
+.company-verification-modal,
+.modal.company-verification-modal {
+  z-index: 5010;
+}
