@@ -8062,3 +8062,17 @@ body.public-eproposal-mode {
   background: #1d4ed8 !important;
   border-color: #1d4ed8 !important;
 }
+
+.public-eproposal-mode .accept-proposal-modal{background:#ffffff!important;color:#0f172a!important}
+.public-eproposal-mode .accept-proposal-modal form{display:grid;gap:14px}
+.public-eproposal-mode .accept-proposal-modal label{display:grid;gap:6px;color:#0f172a;font-weight:700}
+.public-eproposal-mode .accept-proposal-modal input,
+.public-eproposal-mode .accept-proposal-modal textarea{background:#ffffff!important;color:#0f172a!important;border:1px solid #cbd5e1!important;border-radius:12px!important}
+.public-eproposal-mode .accept-proposal-modal input:focus,
+.public-eproposal-mode .accept-proposal-modal textarea:focus{outline:none!important;border-color:#2563eb!important;box-shadow:0 0 0 3px rgba(37,99,235,.14)!important}
+.electronic-signature-section{display:grid;gap:12px;padding:14px;border:1px solid #dbeafe;border-radius:16px;background:#f8fbff;color:#0f172a}
+.electronic-signature-section h3{margin:0;color:#0f172a}.electronic-signature-section p{margin:0;color:#475569;line-height:1.45}
+.typed-signature-preview{min-height:76px;padding:18px 20px;border:1px solid #bfdbfe;border-radius:14px;background:#eff6ff;color:#0f172a;font-size:34px;font-style:italic;font-family:"Brush Script MT","Segoe Script","Snell Roundhand",cursive;display:flex;align-items:center;overflow-wrap:anywhere}
+.typed-signature-preview.signature-style-2{font-family:"Segoe Script","Lucida Handwriting",cursive;letter-spacing:.02em}.typed-signature-preview.signature-style-3{font-family:"Snell Roundhand","Brush Script MT",cursive;font-weight:600}
+.signature-style-options{display:flex;gap:10px;flex-wrap:wrap}.signature-style-option{border:1px solid #cbd5e1;background:#ffffff;color:#0f172a;border-radius:12px;padding:10px 14px;cursor:pointer}.signature-style-option.active{border-color:#2563eb;background:#eff6ff;color:#2563eb}
+.public-validation-errors{display:grid;gap:4px}.public-signature-summary{display:grid;gap:12px}.signature-summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.signature-summary-grid div{padding:12px;border:1px solid #dbeafe;border-radius:12px;background:#fff}.signature-summary-grid span{display:block;color:#64748b;font-size:12px;text-transform:uppercase;font-weight:800}.signature-summary-grid strong{display:block;color:#0f172a;margin-top:4px;overflow-wrap:anywhere}@media(max-width:720px){.signature-summary-grid{grid-template-columns:1fr}}
