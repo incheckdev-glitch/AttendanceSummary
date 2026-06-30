@@ -105,6 +105,12 @@ const Proposals = {
     'customer_signature_title',
     'customer_sign_date',
     'customer_signed_at',
+    'e_signature_type',
+    'e_signature_text',
+    'e_signature_signed_at',
+    'e_signature_customer_name',
+    'e_signature_customer_email',
+    'e_signature_confirmed',
     'provider_signatory_user_id',
     'provider_signatory_name',
     'provider_signatory_title',
@@ -2934,6 +2940,13 @@ const Proposals = {
     const customerSignatory = this.resolveProposalCustomerSignatory(proposalData, proposalContact);
     const customerSignatoryName = String(customerSignatory.name || '').trim();
     const customerSignatoryTitle = String(customerSignatory.title || '').trim();
+    const typedESignatureText = String(proposalData.e_signature_text || '').trim();
+    const hasTypedESignature = String(proposalData.e_signature_type || '').toLowerCase() === 'typed' && typedESignatureText;
+    const typedESignatureHtml = hasTypedESignature ? `
+            <div><strong>Name:</strong> ${textValue(proposalData.e_signature_customer_name || proposalData.accepted_by_name || customerSignatoryName)}</div>
+            <div><strong>Email:</strong> ${textValue(proposalData.e_signature_customer_email || proposalData.accepted_by_email || proposalData.customer_contact_email)}</div>
+            <div><strong>Signed:</strong> ${dateValue(proposalData.e_signature_signed_at || proposalData.accepted_at || proposalData.customer_sign_date)}</div>
+            <div class="document-typed-signature-preview">${textValue(typedESignatureText)}</div>` : '';
     const isPoc = this.normalizeTruthy(proposalData.is_poc || proposalData.isPoc);
     const pocDetailsHtml = isPoc ? `
       <section class="info-grid" style="margin-top:14px;grid-template-columns:1fr;">
@@ -3126,6 +3139,7 @@ const Proposals = {
       .signature-box { border: 1px solid #d7e1ed; min-height: 124px; border-radius: 6px; overflow: hidden; }
       .signature-head { background: #f8fbff; border-bottom: 1px solid #e3eaf3; padding: 8px 10px; font-size: 11px; letter-spacing: 0.08em; font-weight: 700; color: #1e3a5f; }
       .signature-body { padding: 11px; font-size: 12px; line-height: 1.5; }
+      .document-typed-signature-preview { margin-top: 10px; min-height: 46px; padding: 10px 12px; border: 1px solid #bfdbfe; border-radius: 10px; background: #eff6ff; color: #0f172a; font-size: 26px; font-style: italic; font-family: "Brush Script MT", "Segoe Script", "Snell Roundhand", cursive; display: flex; align-items: center; }
       .footer-note { margin-top: 16px; font-size: 11px; color: #64748b; border-top: 1px solid #e3eaf3; padding-top: 10px; text-align: center; }
       @page { size: A4; margin: 0; }
       @media print {
@@ -3273,9 +3287,9 @@ const Proposals = {
         <div class="signature-box">
           <div class="signature-head">CUSTOMER SIGNATORY</div>
           <div class="signature-body">
-            <div><strong>Name:</strong> ${textValue(customerSignatoryName)}</div>
+            ${hasTypedESignature ? typedESignatureHtml : `<div><strong>Name:</strong> ${textValue(customerSignatoryName)}</div>
             <div><strong>Title:</strong> ${textValue(customerSignatoryTitle)}</div>
-            <div><strong>Sign Date:</strong> ${dateValue(proposalData.customer_sign_date || proposalData.customer_signed_at)}</div>
+            <div><strong>Sign Date:</strong> ${dateValue(proposalData.customer_sign_date || proposalData.customer_signed_at)}</div>`}
           </div>
         </div>
         <div class="signature-box">
@@ -6328,7 +6342,15 @@ function bootPublicEProposalPage() {
   }
   const field = (...values) => values.find(value => value !== undefined && value !== null && String(value).trim() !== '');
   const dateText = value => U.escapeHtml(U.fmtDisplayDate(value) || '—');
+  const dateTimeText = value => U.escapeHtml(U.fmtDisplayDateTime?.(value) || U.fmtDisplayDate(value) || '—');
   const display = (value, fallback = '—') => U.escapeHtml(String(safeText(value, fallback)));
+  const signatureStyleClass = value => `signature-style-${['1', '2', '3'].includes(String(value || '1')) ? String(value || '1') : '1'}`;
+  const renderTypedSignaturePreview = (signatureText, style = '1') => `<div class="typed-signature-preview ${signatureStyleClass(style)}">${display(signatureText, 'Typed signature')}</div>`;
+  const getSignatureSummaryHtml = proposalData => {
+    const signatureText = field(proposalData?.e_signature_text, proposalData?.accepted_by_name, proposalData?.e_signature_customer_name);
+    if (String(proposalData?.e_signature_type || '').toLowerCase() !== 'typed' && !signatureText) return '';
+    return `<section class="public-eproposal-section public-signature-summary"><h2>Signature Summary</h2><div class="signature-summary-grid"><div><span>Signed by</span><strong>${display(field(proposalData?.e_signature_customer_name, proposalData?.accepted_by_name, proposalData?.customer_name))}</strong></div><div><span>Email</span><strong>${display(field(proposalData?.e_signature_customer_email, proposalData?.accepted_by_email, proposalData?.customer_email))}</strong></div><div><span>Signed date/time</span><strong>${dateTimeText(field(proposalData?.e_signature_signed_at, proposalData?.accepted_at, proposalData?.customer_sign_date))}</strong></div></div>${renderTypedSignaturePreview(signatureText, proposalData?.e_signature_style)}</section>`;
+  };
   const renderModal = (html, modalClass = 'public-action-modal') => {
     let modal = document.getElementById('publicEProposalModal');
     if (!modal) {
@@ -6354,21 +6376,42 @@ function bootPublicEProposalPage() {
       }
       const documentHtml = Proposals.buildProposalDocumentHtml(previewModel.proposal, previewModel.items, { publicView: true });
       const iframeSrcdoc = U.escapeHtml(documentHtml);
+      const isAccepted = ['accepted', 'signed', 'converted', 'converted_to_agreement'].includes(String(field(previewModel.proposal.status, payload.status, '') || '').toLowerCase());
+      const acceptedMessageHtml = isAccepted ? '<section class="public-eproposal-section public-success"><h2>Thank you. This proposal has been accepted and electronically signed.</h2></section>' : '';
+      const signatureSummaryHtml = getSignatureSummaryHtml(previewModel.proposal);
       content.innerHTML = `
+        ${acceptedMessageHtml}
         <section class="public-eproposal-section public-proposal-hero">
           <div class="public-hero-copy"><p class="public-kicker">Commercial Proposal</p><h2>${display(field(previewModel.proposal.proposal_number, previewModel.proposal.proposal_id, previewModel.proposal.number, 'Proposal'))}</h2><p>${display(field(previewModel.proposal.provider_name, payload.provider_name, 'InCheck 360 Holding BV'))}</p><p class="public-valid-until">Valid until ${dateText(field(previewModel.proposal.valid_until, previewModel.proposal.proposal_valid_until))}</p></div>
-          <span class="public-status-pill">${display(field(previewModel.proposal.status, payload.status, 'Pending'))}</span>
+          <span class="public-status-pill">${display(isAccepted ? 'Accepted' : field(previewModel.proposal.status, payload.status, 'Pending'))}</span>
         </section>
+        ${signatureSummaryHtml}
         <section class="public-eproposal-document" data-public-proposal-document>
           <iframe title="Proposal preview" data-public-proposal-frame srcdoc="${iframeSrcdoc}"></iframe>
         </section>
-        <div class="public-eproposal-actions"><button class="public-btn-outline" data-public-print type="button">Print / Download PDF</button><button class="public-btn-outline" data-public-reject type="button">Reject Proposal</button><button class="public-btn-primary" data-public-accept type="button">Accept Proposal</button></div>`;
+        <div class="public-eproposal-actions"><button class="public-btn-outline" data-public-print type="button">Print / Download PDF</button><button class="public-btn-outline" data-public-reject type="button" ${isAccepted ? 'disabled' : ''}>Reject Proposal</button><button class="public-btn-primary" data-public-accept type="button" ${isAccepted ? 'disabled' : ''}>Accept Proposal</button></div>`;
       document.querySelector('[data-public-print]')?.addEventListener('click', () => {
         const frame = document.querySelector('[data-public-proposal-frame]');
         frame?.contentWindow?.focus?.();
         frame?.contentWindow?.print?.();
       });
-      document.querySelector('[data-public-accept]')?.addEventListener('click', () => renderModal(`<form data-public-accept-form><h2>Accept Proposal</h2><input class="input" name="name" required placeholder="Customer full name"><input class="input" name="email" type="email" required placeholder="Customer email"><textarea class="input" name="comment" rows="3" placeholder="Optional comment"></textarea><label class="public-checkbox"><input name="authorized" type="checkbox" required> I confirm I am authorized to accept this proposal.</label><button class="public-btn-primary accept-proposal-submit" type="submit">Accept Proposal</button></form>`, 'public-action-modal accept-proposal-modal'));
+      document.querySelector('[data-public-accept]')?.addEventListener('click', () => {
+        if (isAccepted) return;
+        renderModal(`<form data-public-accept-form novalidate><h2>Accept & Sign Proposal</h2><label>Customer Full Name<input class="input" name="name" required placeholder="Customer full name"></label><label>Customer Email<input class="input" name="email" type="email" required placeholder="Customer email"></label><label>Optional Comment<textarea class="input" name="comment" rows="3" placeholder="Optional comment"></textarea></label><section class="electronic-signature-section"><h3>Electronic Signature</h3><p>Type your full name below. This typed signature will be used as your electronic signature for this proposal.</p><label>Typed Signature<input class="input" name="typedSignature" required placeholder="Type your full name"></label><div class="signature-style-options" role="group" aria-label="Signature style"><button class="signature-style-option active" type="button" data-signature-style="1">Style 1</button><button class="signature-style-option" type="button" data-signature-style="2">Style 2</button><button class="signature-style-option" type="button" data-signature-style="3">Style 3</button></div>${renderTypedSignaturePreview('', '1')}</section><label class="public-checkbox"><input name="authorized" type="checkbox" required> I confirm that I am authorized to accept this proposal and that my typed electronic signature represents my acceptance of the proposal terms.</label><div class="public-validation-errors" aria-live="polite"></div><button class="public-btn-primary accept-proposal-submit" type="submit" disabled>Accept & Sign Proposal</button></form>`, 'public-action-modal accept-proposal-modal');
+        const form = document.querySelector('[data-public-accept-form]');
+        const syncAcceptForm = () => {
+          if (!form) return;
+          if (!form.typedSignature.value.trim() && form.name.value.trim()) form.typedSignature.value = form.name.value;
+          const style = form.dataset.signatureStyle || '1';
+          const preview = form.querySelector('.typed-signature-preview');
+          if (preview) { preview.className = `typed-signature-preview ${signatureStyleClass(style)}`; preview.textContent = form.typedSignature.value.trim() || 'Typed signature'; }
+          form.querySelector('.accept-proposal-submit').disabled = !(form.name.value.trim() && form.email.value.trim() && form.typedSignature.value.trim() && form.authorized.checked);
+        };
+        form?.addEventListener('input', syncAcceptForm);
+        form?.addEventListener('change', syncAcceptForm);
+        form?.querySelectorAll('[data-signature-style]').forEach(btn => btn.addEventListener('click', () => { form.dataset.signatureStyle = btn.dataset.signatureStyle || '1'; form.querySelectorAll('[data-signature-style]').forEach(x => x.classList.toggle('active', x === btn)); syncAcceptForm(); }));
+        syncAcceptForm();
+      });
       document.querySelector('[data-public-reject]')?.addEventListener('click', () => renderModal(`<form data-public-reject-form><h2>Reject Proposal</h2><input class="input" name="name" placeholder="Customer name (optional)"><input class="input" name="email" type="email" placeholder="Customer email (optional)"><textarea class="input" name="reason" rows="4" placeholder="Rejection reason"></textarea><button class="public-btn-primary reject-proposal-submit" type="submit">Reject Proposal</button></form>`, 'public-action-modal reject-proposal-modal'));
       document.body.addEventListener('submit', async event => {
         const form = event.target;
@@ -6377,13 +6420,22 @@ function bootPublicEProposalPage() {
         const isAccept = form.matches('[data-public-accept-form]');
         try {
           if (isAccept) {
-            await callRpc('eproposal_accept', { p_token: token, p_customer_name: form.name.value, p_customer_email: form.email.value, p_customer_comment: form.comment.value, p_user_agent: navigator.userAgent });
+            form.querySelector('.public-form-error')?.remove();
+            const errors = [];
+            if (!form.name.value.trim()) errors.push('Customer name is required.');
+            if (!form.email.value.trim()) errors.push('Customer email is required.');
+            if (!form.typedSignature.value.trim()) errors.push('Typed signature is required.');
+            if (!form.authorized.checked) errors.push('Please confirm authorization before accepting.');
+            const errorBox = form.querySelector('.public-validation-errors');
+            if (errorBox) errorBox.innerHTML = errors.map(error => `<p class="public-form-error">${U.escapeHtml(error)}</p>`).join('');
+            if (errors.length) return;
+            await callRpc('eproposal_accept', { p_token: token, p_customer_name: form.name.value, p_customer_email: form.email.value, p_customer_comment: form.comment.value, p_user_agent: navigator.userAgent, p_signature_type: 'typed', p_signature_text: form.typedSignature.value });
           } else {
             await callRpc('eproposal_reject', { p_token: token, p_customer_name: form.name.value || null, p_customer_email: form.email.value || null, p_rejection_reason: form.reason.value, p_user_agent: navigator.userAgent });
           }
           document.getElementById('publicEProposalModal')?.remove();
           setActionState(true);
-          content.insertAdjacentHTML('afterbegin', `<section class="public-eproposal-section public-success"><h2>${isAccept ? 'Thank you. This proposal has been accepted.' : 'This proposal has been rejected.'}</h2></section>`);
+          content.insertAdjacentHTML('afterbegin', `<section class="public-eproposal-section public-success"><h2>${isAccept ? 'Thank you. This proposal has been accepted and electronically signed.' : 'This proposal has been rejected.'}</h2>${isAccept ? `<div class="public-signature-summary"><div class="signature-summary-grid"><div><span>Signed by</span><strong>${U.escapeHtml(form.name.value.trim())}</strong></div><div><span>Email</span><strong>${U.escapeHtml(form.email.value.trim())}</strong></div><div><span>Signed date/time</span><strong>${U.escapeHtml(new Date().toLocaleString())}</strong></div></div>${renderTypedSignaturePreview(form.typedSignature.value.trim(), form.dataset.signatureStyle || '1')}</div>` : ''}</section>`);
         } catch (error) {
           form.insertAdjacentHTML('beforeend', `<p class="public-form-error">${U.escapeHtml(error?.message || 'Unable to submit response.')}</p>`);
         }
