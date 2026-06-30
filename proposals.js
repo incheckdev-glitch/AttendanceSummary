@@ -6591,19 +6591,45 @@ function renderPublicEProposalShell() {
 
 
 async function invokeEProposalPublicFunction(functionName, payload = {}) {
-  const client = window.SupabaseClient?.getClient?.();
-  if (client?.functions?.invoke) {
-    const { data, error } = await client.functions.invoke(functionName, { body: payload });
-    if (error) throw error;
-    return data;
+  // Route legacy public e-proposal action names to installed Supabase RPCs.
+  const client = window.SupabaseClient?.getClient?.() || window.supabase;
+  if (!client?.rpc) throw new Error('Supabase client is not available.');
+
+  const rpcMap = {
+    'eproposal-view': {
+      name: 'eproposal_public_view',
+      args: {
+        p_token: payload?.token || payload?.p_token,
+        p_user_agent: navigator.userAgent
+      }
+    },
+    'eproposal-reject': {
+      name: 'eproposal_reject',
+      args: {
+        p_token: payload?.token || payload?.p_token,
+        p_customer_name: payload?.customerName || payload?.p_customer_name || null,
+        p_customer_email: payload?.customerEmail || payload?.p_customer_email || null,
+        p_rejection_reason: payload?.rejectionReason || payload?.p_rejection_reason || null,
+        p_user_agent: navigator.userAgent
+      }
+    }
+  };
+
+  const rpc = rpcMap[functionName];
+  if (!rpc) {
+    throw new Error(`Unsupported public e-proposal action: ${functionName}`);
   }
-  const response = await fetch(`/functions/v1/${functionName}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok || data?.ok === false) throw new Error(data?.error || data?.message || 'Unable to submit e-proposal request.');
+
+  const { data, error } = await client.rpc(rpc.name, rpc.args);
+  if (error) {
+    console.error(`[e-proposal] ${rpc.name} RPC error:`, error);
+    throw new Error(error.message || 'Unable to submit e-proposal request.');
+  }
+  if (data?.ok === false) {
+    const rpcError = new Error(data?.error || data?.message || 'Unable to submit e-proposal request.');
+    rpcError.payload = data;
+    throw rpcError;
+  }
   return data;
 }
 function bootPublicEProposalPage() {
