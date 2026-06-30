@@ -178,6 +178,8 @@ const Agreements = {
     'e_agreement_signature_customer_email',
     'e_agreement_signature_ip_address',
     'e_agreement_signature_confirmed',
+    'customer_signature_confirmed',
+    'customer_signed_at',
     'legacy_agreement_ref',
     'is_imported',
     'is_historical_agreement',
@@ -270,7 +272,8 @@ const Agreements = {
     selectedDetailsId: '',
     selectedAgreementCompanyForVerification: null,
     invoiceBlockedAgreementIds: new Set(),
-    technicalAdminRequests: []
+    technicalAdminRequests: [],
+    currentInternalSignatures: []
   },
   normalizeLocationKey(value = '') {
     return String(value || '').trim().toLowerCase().normalize('NFKC').replace(/\s+/g, ' ');
@@ -2384,6 +2387,48 @@ const Agreements = {
     return Api.createAgreementFromProposal(proposalRef);
   },
   async generateAgreementHtml(agreementId) { return Api.generateAgreementHtml(agreementId); },
+  normalizeAgreementSignerRole(role) {
+    const value = String(role || '').trim().toLowerCase();
+    if (['sfc', 'senior financial controller', 'senior_financial_controller'].includes(value)) return 'SFC';
+    if (['gm', 'general manager', 'general_manager'].includes(value)) return 'GM';
+    if (value === 'admin') return 'ADMIN';
+    return value.toUpperCase();
+  },
+  canCurrentUserSignAgreementRole(currentUser, role) {
+    const currentRole = this.normalizeAgreementSignerRole(
+      currentUser?.role ||
+      currentUser?.user_role ||
+      currentUser?.profile_role
+    );
+    const targetRole = this.normalizeAgreementSignerRole(role);
+    if (targetRole === 'SFC') return currentRole === 'SFC' || currentRole === 'ADMIN';
+    if (targetRole === 'GM') return currentRole === 'GM' || currentRole === 'ADMIN';
+    return false;
+  },
+  getCurrentAgreementSigningUser() {
+    const user = this.getSignedInUserForAgreement?.() || {};
+    return {
+      ...user,
+      user_role: user.role,
+      profile_role: user.role
+    };
+  },
+  async loadInternalAgreementSignatures(agreementId) {
+    const id = String(agreementId || '').trim();
+    if (!id) return [];
+    const client = window.SupabaseClient?.getClient?.();
+    if (!client?.from) return [];
+    const { data, error } = await client
+      .from('agreement_internal_signatures')
+      .select('*')
+      .eq('agreement_id', id)
+      .order('created_at', { ascending: true, nullsFirst: false });
+    if (error) {
+      if (/does not exist|schema cache/i.test(String(error.message || ''))) return [];
+      throw error;
+    }
+    return Array.isArray(data) ? data : [];
+  },
   async loadAgreementPreviewData(agreementUuid) {
     const id = String(agreementUuid || '').trim();
     if (!id) throw new Error('Missing agreement UUID.');
@@ -2417,10 +2462,174 @@ const Agreements = {
       loadedItems = Array.isArray(businessItems) ? businessItems : [];
     }
     const companyHydratedAgreement = await this.applyCompanyIdentityToAgreement(agreement, { allowFallbackToAgreement: true });
+    const internalSignatures = await this.loadInternalAgreementSignatures(agreement.id || id);
     return {
       agreement: this.normalizeAgreement(companyHydratedAgreement),
-      items: loadedItems.map(item => this.normalizeItem(item))
+      items: loadedItems.map(item => this.normalizeItem(item)),
+      internalSignatures
     };
+  },
+  hasCustomerSignedForInternalSignatures(agreement = {}) {
+    return this.toDbBoolean(
+      agreement.customer_signature_confirmed ?? agreement.customerSignatureConfirmed ?? agreement.e_agreement_signature_confirmed,
+      false
+    ) === true && Boolean(
+      agreement.customer_signed_at ||
+      agreement.customerSignedAt ||
+      agreement.e_agreement_signature_signed_at ||
+      agreement.customer_sign_date ||
+      agreement.customer_official_sign_date
+    );
+  },
+  renderInternalSignatureCard({ role, title, signature, canSign, buttonText, disabled, helperText }) {
+    const signed = !!signature;
+    const signedBy = String(signature?.signer_name || signature?.signed_by || signature?.created_by_name || '').trim();
+    const signedAt = String(signature?.signed_at || signature?.created_at || '').trim();
+    const buttonDisabled = signed || !canSign || !!disabled;
+    return `
+      <div class="agreement-signature-card" data-internal-signature-card="${U.escapeAttr(role)}">
+        <h4>${U.escapeHtml(title)}</h4>
+        <span class="agreement-signature-status ${signed ? 'signed' : 'pending'}">${signed ? 'Signed' : 'Pending'}</span>
+        ${signed ? `<div class="agreement-signature-meta"><div><strong>Signed by:</strong> ${U.escapeHtml(signedBy || '—')}</div><div><strong>Signed date:</strong> ${U.escapeHtml(signedAt ? U.fmtDisplayDate(signedAt) : '—')}</div></div>` : ''}
+        ${helperText ? `<p class="agreement-signature-helper">${U.escapeHtml(helperText)}</p>` : ''}
+        ${canSign || !signed ? `<button class="agreement-signature-btn" type="button" data-agreement-internal-sign="${U.escapeAttr(role)}" ${buttonDisabled ? 'disabled' : ''}>${U.escapeHtml(buttonText)}</button>` : ''}
+      </div>`;
+  },
+  renderInternalAgreementSignatures(agreement, internalSignatures = [], currentUser = {}) {
+    const agreementData = agreement && typeof agreement === 'object' ? agreement : {};
+    if (!this.hasCustomerSignedForInternalSignatures(agreementData) || this.normalizeText(agreementData.status) !== 'accepted') return '';
+    const signatures = Array.isArray(internalSignatures) ? internalSignatures : [];
+    const sfcSignature = signatures.find(sig => this.normalizeAgreementSignerRole(sig.signer_role) === 'SFC');
+    const gmSignature = signatures.find(sig => this.normalizeAgreementSignerRole(sig.signer_role) === 'GM');
+    return `
+      <section class="agreement-internal-signatures">
+        <div class="agreement-internal-signatures-header">
+          <h3>Provider / Internal Signatures</h3>
+          <p>InCheck360 internal signatories must complete the agreement signature flow.</p>
+        </div>
+        <div class="agreement-signature-card-grid">
+          ${this.renderInternalSignatureCard({ role: 'SFC', title: 'Senior Financial Controller', signature: sfcSignature, canSign: this.canCurrentUserSignAgreementRole(currentUser, 'SFC'), buttonText: 'Sign as SFC', disabled: false })}
+          ${this.renderInternalSignatureCard({ role: 'GM', title: 'General Manager', signature: gmSignature, canSign: this.canCurrentUserSignAgreementRole(currentUser, 'GM'), buttonText: 'Sign as GM', disabled: !sfcSignature, helperText: !sfcSignature ? 'Senior Financial Controller must sign first.' : '' })}
+        </div>
+      </section>`;
+  },
+  refreshInternalAgreementSignaturesPanel(target, agreement = this.state.currentAgreement || {}, internalSignatures = this.state.currentInternalSignatures || []) {
+    const el = typeof target === 'string' ? document.getElementById(target) : target;
+    if (!el) return;
+    el.innerHTML = this.renderInternalAgreementSignatures(agreement, internalSignatures, this.getCurrentAgreementSigningUser());
+  },
+  openInternalAgreementSignModal(role) {
+    const targetRole = this.normalizeAgreementSignerRole(role);
+    const agreement = this.state.currentAgreement || {};
+    if (!['SFC', 'GM'].includes(targetRole)) return;
+    if (!this.canCurrentUserSignAgreementRole(this.getCurrentAgreementSigningUser(), targetRole)) return UI.toast('You do not have permission to sign this role.');
+    const sfcSignature = (this.state.currentInternalSignatures || []).find(sig => this.normalizeAgreementSignerRole(sig.signer_role) === 'SFC');
+    if (targetRole === 'GM' && !sfcSignature) return UI.toast('Senior Financial Controller must sign first.');
+    let modal = document.getElementById('agreementInternalSignModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'agreementInternalSignModal';
+      modal.className = 'modal agreement-internal-sign-modal';
+      document.body.appendChild(modal);
+    }
+    const user = this.getCurrentAgreementSigningUser();
+    const defaultTitle = targetRole === 'SFC' ? 'Senior Financial Controller' : 'General Manager';
+    const close = () => { modal.classList.remove('open'); modal.setAttribute('aria-hidden', 'true'); };
+    modal.innerHTML = `
+      <div class="modal-content" style="max-width:640px;">
+        <div class="modal-header">
+          <div><h2 style="margin:0;font-size:20px;">Sign Agreement</h2><p class="muted" style="margin:4px 0 0;">${U.escapeHtml(defaultTitle)}</p></div>
+          <button class="modal-close" data-internal-sign-close type="button" aria-label="Close">✕</button>
+        </div>
+        <form class="agreement-internal-sign-form" data-internal-sign-form>
+          <label>Signer name<input class="input" name="signerName" required value="${U.escapeAttr(user.name || '')}"></label>
+          <label>Signer title<input class="input" name="signerTitle" required value="${U.escapeAttr(defaultTitle)}"></label>
+          <div>
+            <div class="muted" style="font-weight:800;margin-bottom:8px;">Signature method</div>
+            <div class="signature-method-tabs">
+              <button class="signature-method-tab active" type="button" data-internal-signature-mode="typed">Typed signature</button>
+              <button class="signature-method-tab" type="button" data-internal-signature-mode="uploaded">Upload signature image</button>
+              <button class="signature-method-tab" type="button" data-internal-signature-mode="drawn">Draw signature</button>
+            </div>
+          </div>
+          <div data-internal-signature-panel="typed"><label>Typed signature<input class="input" name="signatureText" placeholder="Type your signature" value="${U.escapeAttr(user.name || '')}"></label><div class="typed-signature-preview">${U.escapeHtml(user.name || 'Typed signature')}</div></div>
+          <div data-internal-signature-panel="uploaded" hidden><input class="input" type="file" name="signatureImage" accept="image/png,image/jpeg,image/webp"><div data-internal-uploaded-signature-preview></div></div>
+          <div data-internal-signature-panel="drawn" hidden><canvas class="draw-signature-canvas"></canvas><button class="btn btn-incheck-outline sm" data-clear-drawn-agreement-signature type="button">Clear</button></div>
+          <label class="public-checkbox"><input type="checkbox" name="authorized" required> I confirm that I am authorized to sign this agreement on behalf of InCheck360.</label>
+          <div class="public-validation-errors"></div>
+          <div class="actions" style="justify-content:flex-end;"><button class="btn btn-incheck-outline" type="button" data-internal-sign-close>Cancel</button><button class="btn btn-incheck-primary" type="submit">Sign Agreement</button></div>
+        </form>
+      </div>`;
+    modal.querySelectorAll('[data-internal-sign-close]').forEach(btn => btn.addEventListener('click', close));
+    const form = modal.querySelector('[data-internal-sign-form]');
+    const sync = () => {
+      const mode = form.dataset.signatureMode || 'typed';
+      form.querySelectorAll('[data-internal-signature-panel]').forEach(panel => { panel.hidden = panel.dataset.internalSignaturePanel !== mode; });
+      const preview = form.querySelector('.typed-signature-preview');
+      if (preview) preview.textContent = form.signatureText?.value?.trim() || 'Typed signature';
+    };
+    form.dataset.signatureMode = 'typed';
+    form.querySelectorAll('[data-internal-signature-mode]').forEach(btn => btn.addEventListener('click', () => {
+      form.dataset.signatureMode = btn.dataset.internalSignatureMode || 'typed';
+      form.querySelectorAll('.signature-method-tab').forEach(tab => tab.classList.toggle('active', tab === btn));
+      sync();
+    }));
+    form.signatureText?.addEventListener('input', sync);
+    form.signatureImage?.addEventListener('change', async () => {
+      try {
+        const file = await readDataUrlFile(form.signatureImage.files?.[0], { imageOnly: true, maxMb: 4 });
+        form.dataset.uploadedSignatureDataUrl = file.dataUrl;
+        form.querySelector('[data-internal-uploaded-signature-preview]').innerHTML = `<img class="proposal-signature-image" src="${U.escapeAttr(file.dataUrl)}" alt="Uploaded signature">`;
+      } catch (error) {
+        delete form.dataset.uploadedSignatureDataUrl;
+        form.signatureImage.value = '';
+        form.querySelector('.public-validation-errors').innerHTML = `<p class="public-form-error">${U.escapeHtml(error.message)}</p>`;
+      }
+    });
+    setupDrawCanvas(form.querySelector('.draw-signature-canvas'), form, sync);
+    form.addEventListener('submit', event => { event.preventDefault(); this.submitInternalAgreementSignature(targetRole, form, close); });
+    modal.classList.add('open'); modal.setAttribute('aria-hidden', 'false');
+    sync();
+  },
+  async submitInternalAgreementSignature(role, form, close) {
+    const agreementId = String(this.state.currentAgreement?.id || this.state.currentAgreementId || '').trim();
+    if (!agreementId) return UI.toast('Missing agreement id.');
+    const mode = form.dataset.signatureMode || 'typed';
+    const errors = [];
+    if (!form.signerName.value.trim()) errors.push('Signer name is required.');
+    if (!form.signerTitle.value.trim()) errors.push('Signer title is required.');
+    if (mode === 'typed' && !form.signatureText.value.trim()) errors.push('Typed signature is required.');
+    if (mode === 'uploaded' && !form.dataset.uploadedSignatureDataUrl) errors.push('Uploaded signature image is required.');
+    if (mode === 'drawn' && !form.dataset.drawnSignatureDataUrl) errors.push('Drawn signature is required.');
+    if (!form.authorized.checked) errors.push('Authorization confirmation is required.');
+    const errorBox = form.querySelector('.public-validation-errors');
+    if (errors.length) {
+      if (errorBox) errorBox.innerHTML = errors.map(error => `<p class="public-form-error">${U.escapeHtml(error)}</p>`).join('');
+      return;
+    }
+    try {
+      await this.callEAgreementRpc('agreement_internal_sign', {
+        p_agreement_id: agreementId,
+        p_signer_role: role,
+        p_signer_name: form.signerName.value.trim(),
+        p_signer_title: form.signerTitle.value.trim(),
+        p_signature_type: mode,
+        p_signature_text: mode === 'typed' ? form.signatureText.value.trim() : '',
+        p_signature_image_data_url: mode === 'uploaded' ? form.dataset.uploadedSignatureDataUrl : (mode === 'drawn' ? form.dataset.drawnSignatureDataUrl : null)
+      });
+      UI.toast('Agreement signed.');
+      close?.();
+      const { agreement, items, internalSignatures } = await this.loadAgreementPreviewData(agreementId);
+      this.state.currentAgreement = agreement;
+      this.state.currentItems = items;
+      this.state.currentInternalSignatures = internalSignatures;
+      this.refreshInternalAgreementSignaturesPanel(E.agreementInternalSignaturesPanel, agreement, internalSignatures);
+      this.refreshInternalAgreementSignaturesPanel(E.agreementPreviewInternalSignatures, agreement, internalSignatures);
+      this.loadAndRefresh?.({ force: true });
+    } catch (error) {
+      console.error('[agreement internal sign] failed', error);
+      UI.toast(this.getEAgreementRpcErrorMessage(error, 'Unable to sign agreement.'));
+    }
   },
   getItemDescription(item = {}) {
     return String(
@@ -4693,6 +4902,7 @@ const Agreements = {
     this.state.currentAgreementId = String(agreement.id || '').trim();
     this.state.currentAgreement = agreement && typeof agreement === 'object' ? { ...agreement } : null;
     this.state.currentItems = Array.isArray(items) ? [...items] : [];
+    this.refreshInternalAgreementSignaturesPanel(E.agreementInternalSignaturesPanel, agreement, this.state.currentInternalSignatures || []);
     this.assignFormValues(agreement);
     this.syncAgreementCompanySelectorFromRecord(agreement);
     this.resolveAgreementCompanySelectorFromCompanies(agreement).catch(error => console.warn('[Agreement] Company selector sync failed.', error));
@@ -4758,6 +4968,7 @@ const Agreements = {
     this.state.currentAgreementId = '';
     this.state.currentAgreement = null;
     this.state.currentItems = [];
+    this.state.currentInternalSignatures = [];
     this.state.selectedAgreementCompanyForVerification = null;
     this.updateAgreementCompanyVerificationUi(null);
     if (E.agreementSignedLockMessage) E.agreementSignedLockMessage.style.display = 'none';
@@ -4820,6 +5031,7 @@ const Agreements = {
     this.setTriggerBusy(trigger, true);
     console.time('agreement-open');
     const localSummary = this.state.rows.find(row => String(row.id || '').trim() === id);
+    this.state.currentInternalSignatures = [];
     this.openAgreementForm(
       localSummary ? { ...this.emptyAgreement(), ...localSummary, id } : { id },
       [],
@@ -4830,6 +5042,8 @@ const Agreements = {
       // Agreement details and the Create Invoice gate must always use fresh Supabase rows.
       const fresh = await this.reloadAgreementInvoiceGateData(id);
       const agreement = await this.applyCompanyIdentityToAgreement(fresh.agreement, { allowFallbackToAgreement: true });
+      const internalSignatures = await this.loadInternalAgreementSignatures(agreement.id || id);
+      this.state.currentInternalSignatures = internalSignatures;
       this.setCachedDetail(id, agreement, fresh.agreementItems);
       if (String(E.agreementForm?.dataset.id || '').trim() === id) {
         this.openAgreementForm(agreement, fresh.agreementItems, { readOnly });
@@ -5170,7 +5384,10 @@ const Agreements = {
       return;
     }
     try {
-      const { agreement, items } = await this.loadAgreementPreviewData(agreementId);
+      const { agreement, items, internalSignatures } = await this.loadAgreementPreviewData(agreementId);
+      this.state.currentAgreement = agreement;
+      this.state.currentAgreementId = String(agreement.id || agreementId).trim();
+      this.state.currentInternalSignatures = internalSignatures || [];
       const html = this.buildAgreementPreviewHtml(agreement, items);
       if (!html) {
         UI.toast('Unable to build agreement preview.');
@@ -5180,6 +5397,7 @@ const Agreements = {
       const previewLabel = String(agreement?.agreement_id || agreement?.agreement_number || agreement?.id || agreementId).trim();
       if (E.agreementPreviewTitle) E.agreementPreviewTitle.textContent = `Agreement Preview · ${previewLabel}`;
       if (E.agreementPreviewFrame) E.agreementPreviewFrame.srcdoc = brandedHtml;
+      this.refreshInternalAgreementSignaturesPanel(E.agreementPreviewInternalSignatures, agreement, internalSignatures || []);
       if (E.agreementPreviewModal) {
         E.agreementPreviewModal.classList.add('open');
         E.agreementPreviewModal.setAttribute('aria-hidden', 'false');
@@ -5197,6 +5415,7 @@ const Agreements = {
     E.agreementPreviewModal.classList.remove('open');
     E.agreementPreviewModal.setAttribute('aria-hidden', 'true');
     if (E.agreementPreviewFrame) E.agreementPreviewFrame.srcdoc = '';
+    if (E.agreementPreviewInternalSignatures) E.agreementPreviewInternalSignatures.innerHTML = '';
   },
   exportPreviewPdf() {
     const frame = E.agreementPreviewFrame;
@@ -5555,6 +5774,11 @@ const Agreements = {
         }
       });
       E.agreementForm.addEventListener('click', event => {
+        const signTrigger = event.target?.closest?.('button[data-agreement-internal-sign]');
+        if (signTrigger) {
+          event.preventDefault();
+          return this.openInternalAgreementSignModal(signTrigger.getAttribute('data-agreement-internal-sign'));
+        }
         const trigger = event.target?.closest?.('button[data-item-remove]');
         if (!trigger) return;
         const section = trigger.getAttribute('data-item-remove');
@@ -5597,6 +5821,11 @@ const Agreements = {
     if (E.agreementPreviewExportPdfBtn) E.agreementPreviewExportPdfBtn.addEventListener('click', () => this.exportPreviewPdf());
     if (E.agreementPreviewCloseBtn) E.agreementPreviewCloseBtn.addEventListener('click', () => this.closePreviewModal());
     if (E.agreementPreviewModal) E.agreementPreviewModal.addEventListener('click', event => {
+      const signTrigger = event.target?.closest?.('button[data-agreement-internal-sign]');
+      if (signTrigger) {
+        event.preventDefault();
+        return this.openInternalAgreementSignModal(signTrigger.getAttribute('data-agreement-internal-sign'));
+      }
       if (event.target === E.agreementPreviewModal) this.closePreviewModal();
     });
     this.state.initialized = true;

@@ -940,6 +940,8 @@ function cacheEls() {
     'agreementPreviewExportPdfBtn',
     'agreementPreviewCloseBtn',
     'agreementPreviewFrame',
+    'agreementInternalSignaturesPanel',
+    'agreementPreviewInternalSignatures',
     'invoiceSummary',
     'invoicesSearchInput',
     'invoicesStatusFilter',
