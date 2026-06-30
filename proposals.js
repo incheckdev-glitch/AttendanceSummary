@@ -2110,6 +2110,8 @@ const Proposals = {
       category: String(pick(source.category)).trim(),
       type: String(pick(source.type)).trim(),
       billing_frequency: String(pick(source.billing_frequency, source.billingFrequency)).trim(),
+      currency: String(pick(source.currency, source.proposal_currency, source.document_currency, source.billing_currency)).trim(),
+      item_currency: String(pick(source.item_currency, source.itemCurrency)).trim(),
       is_recurring: this.normalizeTruthy(pick(source.is_recurring, source.isRecurring)),
       is_saas: this.normalizeTruthy(pick(source.is_saas, source.isSaas)),
       one_time: this.normalizeTruthy(pick(source.one_time, source.oneTime)),
@@ -2658,6 +2660,143 @@ const Proposals = {
       contact: previewContact
     };
   },
+  normalizeProposalItemSection(item = {}) {
+    const raw = String(
+      item.preview_section ||
+      item.section ||
+      item.item_section ||
+      item.category_section ||
+      item.item_type ||
+      item.type ||
+      item.fee_type ||
+      ''
+    ).toLowerCase();
+
+    const name = String(
+      item.item_name ||
+      item.name ||
+      item.description ||
+      item.catalog_item_name ||
+      ''
+    ).toLowerCase();
+
+    const combined = `${raw} ${name}`;
+
+    if (
+      combined.includes('annual') ||
+      combined.includes('saas') ||
+      combined.includes('subscription') ||
+      combined.includes('license') ||
+      combined.includes('incheck basic')
+    ) {
+      return 'subscription';
+    }
+
+    if (
+      combined.includes('one_time') ||
+      combined.includes('one-time') ||
+      combined.includes('one time') ||
+      combined.includes('setup') ||
+      combined.includes('training') ||
+      combined.includes('support')
+    ) {
+      return 'one_time';
+    }
+
+    if (combined.includes('hardware')) {
+      return 'one_time';
+    }
+
+    return 'one_time';
+  },
+  getProposalItemLineTotal(item = {}) {
+    const storedTotal =
+      item.line_total ??
+      item.total_price ??
+      item.total ??
+      item.amount ??
+      item.final_amount;
+
+    if (storedTotal !== null && storedTotal !== undefined && storedTotal !== '') {
+      return Number(storedTotal) || 0;
+    }
+
+    const unitPrice = Number(
+      item.unit_price ??
+      item.price ??
+      item.catalog_unit_price ??
+      item.default_unit_price ??
+      0
+    );
+
+    const qty = Number(item.quantity ?? item.qty ?? 1);
+    const discount = Number(
+      item.discount_percent ??
+      item.discount_percentage ??
+      item.discount ??
+      0
+    );
+
+    const gross = unitPrice * qty;
+    return gross - gross * (discount / 100);
+  },
+  calculatePublicProposalSummary(proposal = {}, items = []) {
+    let oneTimeFees = 0;
+    let subscriptionFees = 0;
+
+    (items || []).forEach((item) => {
+      const section = this.normalizeProposalItemSection(item);
+      const total = this.getProposalItemLineTotal(item);
+
+      if (section === 'subscription') {
+        subscriptionFees += total;
+      } else {
+        oneTimeFees += total;
+      }
+    });
+
+    const calculatedGrandTotal = oneTimeFees + subscriptionFees;
+
+    const grandTotal = Number(
+      proposal.grand_total ??
+      proposal.total_amount ??
+      proposal.final_total ??
+      proposal.total ??
+      calculatedGrandTotal
+    );
+
+    return {
+      oneTimeFees,
+      subscriptionFees,
+      grandTotal
+    };
+  },
+  getProposalCurrency(proposal = {}, items = []) {
+    return (
+      proposal.currency ||
+      proposal.proposal_currency ||
+      proposal.document_currency ||
+      proposal.billing_currency ||
+      items.find((i) => i.currency)?.currency ||
+      items.find((i) => i.item_currency)?.item_currency ||
+      'USD'
+    );
+  },
+  formatProposalMoney(value, currency) {
+    const n = Number(value || 0);
+    const code = currency || 'USD';
+
+    try {
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: code,
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }).format(n);
+    } catch {
+      return `${code} ${n.toFixed(2)}`;
+    }
+  },
   buildProposalDocumentHtml(proposal = {}, items = [], options = {}) {
     const isPublicView = Boolean(options?.publicView);
     const previewModel = this.buildProposalPreviewModel(proposal, items);
@@ -2746,7 +2885,8 @@ const Proposals = {
     const discountTotal = this.toNumberSafe(previewTotals.discount_total);
     const grandTotal = this.toNumberSafe(previewTotals.grand_total);
     const displayOneTimeFeesSubtotal = oneTimeFeesSubtotal;
-    const publicOneTimeFeesTotal = subtotalOneTime;
+    const publicSummary = this.calculatePublicProposalSummary(proposalData, normalizedItems);
+    const publicCurrency = this.getProposalCurrency(proposalData, normalizedItems);
     const hardwareSectionHtml = hardwareItems.length ? `
       <section class="section">
         <h2>Hardware Details</h2>
@@ -2775,8 +2915,9 @@ const Proposals = {
     const grandTotalInWords = U.formatAmountInWords(grandTotal, currency);
     const totalsRowsHtml = isPublicView
       ? `
-          <div class="totals-row"><span>Total Discount</span><strong>${money(discountTotal)}</strong></div>
-          <div class="totals-row grand"><span>Grand Total</span><strong>${money(grandTotal)}</strong></div>`
+          <div class="public-total-row"><span>One-Time Fees</span><strong>${this.formatProposalMoney(publicSummary.oneTimeFees, publicCurrency)}</strong></div>
+          <div class="public-total-row"><span>Subscription Fees</span><strong>${this.formatProposalMoney(publicSummary.subscriptionFees, publicCurrency)}</strong></div>
+          <div class="public-total-row public-grand-total"><span>Grand Total</span><strong>${this.formatProposalMoney(publicSummary.grandTotal, publicCurrency)}</strong></div>`
       : `
           <div class="totals-row"><span>One Time Fees</span><strong>${money(displayOneTimeFeesSubtotal)}</strong></div>
           ${hardwareItems.length ? `<div class="totals-row"><span>Hardware</span><strong>${money(hardwareSubtotal)}</strong></div>` : ''}
@@ -2973,13 +3114,11 @@ const Proposals = {
       .totals-row.grand-total-words-row { align-items: flex-start; gap: 12px; background: #f8fbff; color: #334155; font-size: 12px; font-weight: 500; }
       .totals-row.grand-total-words-row span { flex: 0 0 auto; font-weight: 600; white-space: nowrap; }
       .totals-row.grand-total-words-row strong { flex: 1 1 auto; min-width: 0; font-weight: 500; line-height: 1.4; text-align: right; overflow-wrap: anywhere; }
-      .public-proposal-totals { margin-left: auto; width: min(100%, 420px); border: 1px solid #dbeafe; border-radius: 16px; overflow: hidden; background: #fff; }
-      .public-total-row { display: flex; justify-content: space-between; gap: 16px; padding: 14px 16px; border-bottom: 1px solid #e5e7eb; font-size: 14px; }
+      .public-proposal-totals { margin-left: auto; width: min(100%, 420px); border: 1px solid #dbeafe; border-radius: 14px; overflow: hidden; background: #ffffff; }
+      .public-total-row { display: flex; justify-content: space-between; gap: 16px; padding: 14px 16px; border-bottom: 1px solid #e5e7eb; }
       .public-total-row:last-child { border-bottom: 0; }
-      .public-total-row span { color: #64748b; }
-      .public-total-row strong { color: #0f172a; font-weight: 800; }
-      .public-grand-total { background: #eff6ff; border-top: 1px solid #bfdbfe; }
-      .public-grand-total span, .public-grand-total strong { color: #2563eb; font-size: 18px; }
+      .public-grand-total { background: #eff6ff; }
+      .public-grand-total span, .public-grand-total strong { color: #2563eb; font-size: 18px; font-weight: 800; }
       .terms { margin-top: 16px; font-size: 12.5px; line-height: 1.6; border: 1px solid #d7e1ed; border-radius: 6px; padding: 12px; }
       .proposal-terms-list { margin: 8px 0 0; padding-left: 22px; }
       .proposal-terms-list li + li { margin-top: 5px; }
@@ -3121,7 +3260,7 @@ const Proposals = {
       ${hardwareSectionHtml}
 
       <section class="totals-wrap">
-        <div class="totals-box">${totalsRowsHtml}
+        <div class="${isPublicView ? 'public-proposal-totals' : 'totals-box'}">${totalsRowsHtml}
         </div>
       </section>
 
