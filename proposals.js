@@ -2946,6 +2946,7 @@ const Proposals = {
     const customerSignatoryName = String(customerSignatory.name || '').trim();
     const customerSignatoryTitle = String(customerSignatory.title || '').trim();
     const electronicSignatureVerificationHtml = renderElectronicSignatureVerification(proposalData);
+    const signedDocumentVerificationHtml = renderSignedDocumentVerification(proposalData);
     const isPoc = this.normalizeTruthy(proposalData.is_poc || proposalData.isPoc);
     const pocDetailsHtml = isPoc ? `
       <section class="info-grid" style="margin-top:14px;grid-template-columns:1fr;">
@@ -3344,6 +3345,7 @@ const Proposals = {
       </section>
 
       ${electronicSignatureVerificationHtml}
+      ${signedDocumentVerificationHtml}
 
       <footer class="footer-note">This is an auto-generated system document and is valid without a manual signature unless otherwise required.</footer>
     </div>
@@ -6443,8 +6445,6 @@ function renderElectronicSignatureVerification(proposal) {
     proposal.e_signature_type === 'typed' &&
     proposal.e_signature_text;
 
-  if (hasSignedDocumentUpload(proposal)) return renderSignedDocumentVerification(proposal);
-
   if (!isUploaded && !isTyped) return '';
 
   const signedBy =
@@ -6535,6 +6535,7 @@ function renderSignedDocumentVerification(proposal) {
 
   const fileName = proposal.e_signed_document_file_name || 'Signed proposal document';
   const mimeType = proposal.e_signed_document_mime_type || 'application/pdf';
+
   const uploadedBy =
     proposal.e_signature_customer_name ||
     proposal.accepted_by_name ||
@@ -6552,100 +6553,112 @@ function renderSignedDocumentVerification(proposal) {
     proposal.accepted_at ||
     '';
 
-  const isPdf = mimeType.includes('pdf');
-  const isImage = mimeType.startsWith('image/');
-  const dataUrl = U.escapeAttr(proposal.e_signed_document_data_url || '');
-  const escapedDataUrl = U.escapeHtml(proposal.e_signed_document_data_url || '');
-  const formattedUploadedOn = uploadedOn
-    ? (U.fmtDisplayDateTime?.(uploadedOn) || U.fmtDisplayDate?.(uploadedOn) || String(uploadedOn))
-    : '';
+  const signedUrl = proposal.e_signed_document_data_url;
+
+  const isPdf = String(mimeType).toLowerCase().includes('pdf');
+  const isImage = String(mimeType).toLowerCase().startsWith('image/');
+  const formatDate = value => U.fmtDisplayDateTime?.(value) || U.fmtDisplayDate?.(value) || String(value);
 
   const previewHtml = isPdf
     ? `
       <iframe
-        class="signed-doc-preview-iframe"
-        src="${dataUrl}#toolbar=0&navpanes=0&scrollbar=0"
+        style="width:100%;height:100%;border:0;display:block;background:#fff;"
+        src="${U.escapeHtml(signedUrl)}#toolbar=0&navpanes=0&scrollbar=0"
         title="Signed proposal preview"
       ></iframe>
     `
     : isImage
       ? `
         <img
-          class="signed-doc-preview-image"
-          src="${escapedDataUrl}"
+          src="${U.escapeHtml(signedUrl)}"
           alt="Signed proposal preview"
+          style="width:100%;height:100%;object-fit:contain;display:block;background:#fff;"
         />
       `
       : `
-        <div class="signed-doc-no-preview">Preview unavailable</div>
+        <div style="height:100%;display:flex;align-items:center;justify-content:center;color:#64748b;font-size:12px;">
+          Preview unavailable
+        </div>
       `;
 
   return `
-    <section class="signed-doc-verification">
-      <div class="signed-doc-header">
-        <div class="signed-doc-check">✓</div>
+    <section class="signed-doc-verification" style="margin:16px 0 0;border:1px solid #bfdbfe;border-radius:12px;background:#fff;overflow:hidden;page-break-inside:avoid;">
+      <div class="signed-doc-header" style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;background:#eff6ff;border-bottom:1px solid #dbeafe;">
+        <div style="width:26px;height:26px;border-radius:999px;background:#2563eb;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:900;line-height:1;flex:0 0 auto;">
+          ✓
+        </div>
         <div>
-          <h4>SIGNED PROPOSAL VERIFICATION</h4>
-          <p>The customer uploaded a manually signed proposal document.</p>
+          <h4 style="margin:0;color:#1e3a8a;font-size:13px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;">
+            SIGNED PROPOSAL VERIFICATION
+          </h4>
+          <p style="margin:3px 0 0;color:#475569;font-size:12px;line-height:1.4;">
+            The customer uploaded a manually signed proposal document.
+          </p>
         </div>
       </div>
 
-      <div class="signed-doc-content">
-        <div class="signed-doc-left">
-          <div class="signed-doc-file-card">
-            <div class="signed-doc-file-icon">PDF</div>
-            <div class="signed-doc-file-meta">
-              <strong>${U.escapeHtml(fileName)}</strong>
-              <span>${U.escapeHtml(mimeType)}</span>
+      <div class="signed-doc-content" style="display:grid;grid-template-columns:minmax(260px,360px) 1fr;gap:18px;padding:14px;align-items:start;">
+        <div style="min-width:0;">
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid #dbeafe;border-radius:10px;background:#f8fbff;margin-bottom:10px;">
+            <div style="width:38px;height:44px;border-radius:8px;background:#fee2e2;color:#dc2626;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex:0 0 auto;">
+              PDF
+            </div>
+            <div style="min-width:0;">
+              <strong style="display:block;color:#0f172a;font-size:13px;font-weight:800;line-height:1.3;word-break:break-word;">
+                ${U.escapeHtml(fileName)}
+              </strong>
+              <span style="display:block;margin-top:2px;color:#64748b;font-size:11px;">
+                ${U.escapeHtml(mimeType)}
+              </span>
             </div>
           </div>
 
-          <div class="signed-doc-preview-box">
+          <div style="height:190px;border:1px solid #dbeafe;border-radius:10px;background:#f8fafc;overflow:hidden;">
             ${previewHtml}
           </div>
         </div>
 
-        <div class="signed-doc-right">
-          <div class="signed-doc-detail">
-            <span>Uploaded by</span>
-            <strong>${U.escapeHtml(uploadedBy)}</strong>
+        <div style="display:grid;align-content:center;gap:0;padding-top:8px;min-width:0;">
+          <div style="display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px;padding:9px 0;border-bottom:1px solid #e5e7eb;font-size:12px;line-height:1.35;">
+            <span style="color:#64748b;">Uploaded by</span>
+            <strong style="color:#0f172a;font-weight:800;word-break:break-word;">${U.escapeHtml(uploadedBy)}</strong>
           </div>
 
-          <div class="signed-doc-detail">
-            <span>Customer IP</span>
-            <strong>${U.escapeHtml(customerIp)}</strong>
+          <div style="display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px;padding:9px 0;border-bottom:1px solid #e5e7eb;font-size:12px;line-height:1.35;">
+            <span style="color:#64748b;">Customer IP</span>
+            <strong style="color:#0f172a;font-weight:800;word-break:break-word;">${U.escapeHtml(customerIp)}</strong>
           </div>
 
-          <div class="signed-doc-detail">
-            <span>Uploaded on</span>
-            <strong>${formattedUploadedOn ? U.escapeHtml(formattedUploadedOn) : '—'}</strong>
+          <div style="display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px;padding:9px 0;border-bottom:1px solid #e5e7eb;font-size:12px;line-height:1.35;">
+            <span style="color:#64748b;">Uploaded on</span>
+            <strong style="color:#0f172a;font-weight:800;word-break:break-word;">${uploadedOn ? U.escapeHtml(formatDate(uploadedOn)) : '—'}</strong>
           </div>
 
-          <div class="signed-doc-detail">
-            <span>Signature type</span>
-            <strong>Uploaded signed proposal</strong>
+          <div style="display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px;padding:9px 0;border-bottom:1px solid #e5e7eb;font-size:12px;line-height:1.35;">
+            <span style="color:#64748b;">Signature type</span>
+            <strong style="color:#0f172a;font-weight:800;word-break:break-word;">Uploaded signed proposal</strong>
           </div>
 
-          <div class="signed-doc-status">
+          <div style="width:fit-content;margin-top:12px;padding:7px 12px;border-radius:999px;background:#dcfce7;color:#166534;font-size:11px;font-weight:900;">
             Confirmed electronic acceptance
           </div>
         </div>
       </div>
 
-      <div class="signed-doc-actions">
+      <div class="signed-doc-actions" style="display:flex;gap:10px;padding:14px;border-top:1px solid #e5e7eb;">
         <a
-          class="signed-doc-action-btn"
-          href="${dataUrl}"
+          href="${U.escapeHtml(signedUrl)}"
           target="_blank"
           rel="noopener noreferrer"
+          style="display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:8px 12px;border:1px solid #bfdbfe;border-radius:10px;background:#fff;color:#2563eb;font-size:12px;font-weight:800;text-decoration:none;"
         >
           Open Signed Proposal
         </a>
 
         <a
-          class="signed-doc-action-btn"
-          href="${dataUrl}"
-          download="${U.escapeAttr(fileName)}"
+          href="${U.escapeHtml(signedUrl)}"
+          download="${U.escapeHtml(fileName)}"
+          style="display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:8px 12px;border:1px solid #bfdbfe;border-radius:10px;background:#fff;color:#2563eb;font-size:12px;font-weight:800;text-decoration:none;"
         >
           Download Signed Proposal
         </a>
