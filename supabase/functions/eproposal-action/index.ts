@@ -12,6 +12,38 @@ const jsonResponse = (body: Record<string, unknown>, status = 200) =>
     headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
   });
 
+const EPROPOSAL_RPC_NAMES = {
+  view: "eproposal_public_view",
+  accept: "eproposal_accept",
+  reject: "eproposal_reject",
+} as const;
+
+const getSupportedRpcArgs = async (supabase: ReturnType<typeof createClient>, rpcName: string) => {
+  const { data, error } = await supabase
+    .schema("pg_catalog")
+    .from("pg_proc")
+    .select("proargnames,pronamespace!inner(nspname)")
+    .eq("proname", rpcName)
+    .eq("pronamespace.nspname", "public")
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !Array.isArray(data?.proargnames)) {
+    console.error("Unable to verify e-proposal RPC arguments:", { rpcName, error });
+    return null;
+  }
+
+  return new Set(data.proargnames.filter((name: unknown) => typeof name === "string" && name.startsWith("p_")));
+};
+
+const filterSupportedArgs = (args: Record<string, unknown>, supportedArgs: Set<string> | null) => {
+  if (!supportedArgs) {
+    const { p_ip_address: _ipAddress, ...fallbackArgs } = args;
+    return fallbackArgs;
+  }
+  return Object.fromEntries(Object.entries(args).filter(([key]) => supportedArgs.has(key)));
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return jsonResponse({ ok: false, error: "Method not allowed." }, 405);
@@ -33,14 +65,12 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-    let rpcName = "";
     let args: Record<string, unknown> = {};
+    const rpcName = EPROPOSAL_RPC_NAMES[action as keyof typeof EPROPOSAL_RPC_NAMES];
 
     if (action === "view") {
-      rpcName = "eproposal_public_view";
       args = { p_token: token, p_user_agent: userAgent, p_ip_address: ipAddress };
     } else if (action === "accept") {
-      rpcName = "eproposal_accept";
       args = {
         p_token: token,
         p_customer_name: body.customerName,
@@ -56,7 +86,6 @@ Deno.serve(async (req) => {
         p_signed_document_mime_type: body.signedDocumentMimeType || null,
       };
     } else {
-      rpcName = "eproposal_reject";
       args = {
         p_token: token,
         p_customer_name: body.customerName || null,
@@ -67,8 +96,17 @@ Deno.serve(async (req) => {
       };
     }
 
-    const { data, error } = await supabase.rpc(rpcName, args);
-    if (error) return jsonResponse({ ok: false, error: error.message || "Unable to complete e-proposal action." }, 400);
+    const supportedArgs = await getSupportedRpcArgs(supabase, rpcName);
+    const rpcArgs = filterSupportedArgs(args, supportedArgs);
+    if (args.p_ip_address && !rpcArgs.p_ip_address) {
+      console.warn("Skipping p_ip_address for e-proposal RPC because the deployed function signature does not support it.", { rpcName });
+    }
+
+    const { data, error } = await supabase.rpc(rpcName, rpcArgs);
+    if (error) {
+      console.error("eproposal-action RPC error:", { rpcName, args: rpcArgs, error });
+      return jsonResponse({ ok: false, error: error.message || "Unable to complete e-proposal action." }, 400);
+    }
     return jsonResponse({ ok: true, data });
   } catch (error) {
     return jsonResponse({ ok: false, error: (error instanceof Error ? error.message : null) || "Unable to complete e-proposal action." }, 400);
