@@ -8373,9 +8373,14 @@ async function mountResetPasswordView() {
 document.addEventListener('DOMContentLoaded', async () => {
   const path = window.location.pathname;
   const isEProposalRoute = path.startsWith('/e-proposal/');
+  const isEAgreementRoute = path.startsWith('/e-agreement/');
 
   if (isEProposalRoute) {
     bootPublicEProposalPage();
+    return;
+  }
+  if (isEAgreementRoute) {
+    bootPublicEAgreementPage();
     return;
   }
   cacheEls();

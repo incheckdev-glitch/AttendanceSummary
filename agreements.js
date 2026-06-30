@@ -135,6 +135,29 @@ const Agreements = {
     'signed_agreement_document_uploaded_at',
     'signed_agreement_document_uploaded_by',
     'signed_agreement_document_url',
+    'e_agreement_token',
+    'e_agreement_token_expires_at',
+    'e_agreement_link_enabled',
+    'e_agreement_generated_at',
+    'e_agreement_generated_by',
+    'e_agreement_viewed_at',
+    'e_agreement_accepted_at',
+    'e_agreement_accepted_by_name',
+    'e_agreement_accepted_by_email',
+    'e_agreement_accepted_comment',
+    'e_agreement_rejected_at',
+    'e_agreement_rejection_reason',
+    'e_agreement_signature_type',
+    'e_agreement_signature_text',
+    'e_agreement_signature_image_data_url',
+    'e_agreement_signed_document_data_url',
+    'e_agreement_signed_document_file_name',
+    'e_agreement_signed_document_mime_type',
+    'e_agreement_signature_signed_at',
+    'e_agreement_signature_customer_name',
+    'e_agreement_signature_customer_email',
+    'e_agreement_signature_ip_address',
+    'e_agreement_signature_confirmed',
     'legacy_agreement_ref',
     'is_imported',
     'is_historical_agreement',
@@ -3031,6 +3054,117 @@ const Agreements = {
     }
   },
 
+
+  canViewEAgreementAuditLog() {
+    const role = String(window.Session?.currentUser?.role || window.currentUser?.role || '').trim().toLowerCase();
+    return ['admin', 'gm', 'general_manager', 'sfc', 'senior_financial_controller', 'accounting', 'accountant'].includes(role) || Permissions.canView('agreements');
+  },
+  getEAgreementPublicUrl(token = '') {
+    const clean = String(token || '').trim();
+    return clean ? `${window.location.origin}/e-agreement/${encodeURIComponent(clean)}` : '';
+  },
+  getEAgreementRpcErrorMessage(error, fallback = 'E-agreement action failed.') {
+    const message = String(error?.message || error?.error_description || error?.details || '').trim();
+    if (!message) return fallback;
+    if (/function .* not found|could not find the function|schema cache/i.test(message)) {
+      return 'E-agreement SQL functions are missing. Run the e-agreement SQL migration first.';
+    }
+    return message;
+  },
+  async callEAgreementRpc(name, args = {}) {
+    const client = window.SupabaseClient?.getClient?.();
+    if (!client?.rpc) throw new Error('Supabase client is not available.');
+    const { data, error } = await client.rpc(name, args);
+    if (error) throw error;
+    return data;
+  },
+  async generateEAgreementLink(agreementId, { regenerate = false } = {}) {
+    const cleanId = String(agreementId || '').trim();
+    if (!cleanId) return UI.toast('Save the agreement first to generate an e-agreement link.');
+    try {
+      const data = await this.callEAgreementRpc('eagreement_generate_link', {
+        p_agreement_id: cleanId,
+        p_base_url: window.location.origin
+      });
+      this.showEAgreementLinkModal(data);
+      UI.toast(regenerate ? 'E-agreement link regenerated.' : 'E-agreement link generated.');
+      this.loadAndRefresh?.({ force: true });
+    } catch (error) {
+      console.error('[e-agreement] generate failed', error);
+      UI.toast(this.getEAgreementRpcErrorMessage(error, 'Unable to generate e-agreement link.'));
+    }
+  },
+  async disableEAgreementLink(agreementId) {
+    const cleanId = String(agreementId || '').trim();
+    if (!cleanId) return UI.toast('Missing agreement id.');
+    try {
+      const data = await this.callEAgreementRpc('eagreement_disable_link', {
+        p_agreement_id: cleanId
+      });
+      this.showEAgreementLinkModal(data);
+      UI.toast('E-agreement link disabled.');
+      this.loadAndRefresh?.({ force: true });
+    } catch (error) {
+      console.error('[e-agreement] disable failed', error);
+      UI.toast(this.getEAgreementRpcErrorMessage(error, 'Unable to disable e-agreement link.'));
+    }
+  },
+  async showEAgreementActivityLog(agreementId) {
+    if (!this.canViewEAgreementAuditLog()) return UI.toast('You do not have permission to view e-agreement audit logs.');
+    const client = window.SupabaseClient?.getClient?.();
+    if (!client) return UI.toast('Supabase client is not available.');
+    const id = String(agreementId || '').trim();
+    let modal = document.getElementById('eAgreementActivityModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'eAgreementActivityModal';
+      modal.className = 'modal e-proposal-activity-modal';
+      document.body.appendChild(modal);
+    }
+    const close = () => { modal.classList.remove('open'); modal.setAttribute('aria-hidden', 'true'); };
+    modal.innerHTML = `<div class="modal-content e-proposal-activity-dialog"><div class="modal-header e-proposal-activity-header"><div><h2>E-Agreement Activity Log</h2><p>Internal audit trail. IP address and user agent are visible only to authorized ERP users.</p></div><button class="modal-close" data-e-agreement-activity-close type="button">✕</button></div><div class="e-proposal-activity-body"><div class="muted">Loading activity…</div></div></div>`;
+    modal.querySelector('[data-e-agreement-activity-close]')?.addEventListener('click', close);
+    modal.classList.add('open'); modal.setAttribute('aria-hidden', 'false');
+    try {
+      const { data: agreement } = await client.from('agreements').select('id,agreement_id,agreement_number').or(`id.eq.${id},agreement_id.eq.${id},agreement_number.eq.${id}`).maybeSingle();
+      const agreementUuid = agreement?.id || id;
+      const { data, error } = await client
+        .from('agreement_guest_activity_logs')
+        .select('*')
+        .eq('agreement_id', agreementUuid)
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      const rows = Array.isArray(data) ? data : [];
+      const formatEvent = value => String(value || '').replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
+      const formatMeta = value => JSON.stringify(value || {}, null, 2);
+      modal.querySelector('.e-proposal-activity-body').innerHTML = rows.length ? `<div class="e-proposal-activity-table-wrap"><table class="e-proposal-activity-table"><thead><tr><th>Event</th><th>Customer name</th><th>IP address</th><th>Date/time</th><th>Signature type</th><th>Details</th></tr></thead><tbody>${rows.map(row => `<tr><td>${U.escapeHtml(formatEvent(row.event_type))}</td><td>${U.escapeHtml(row.customer_name || '—')}</td><td>${U.escapeHtml(row.ip_address || '—')}</td><td>${U.escapeHtml(row.created_at ? new Date(row.created_at).toLocaleString() : '—')}</td><td>${U.escapeHtml(row.metadata?.signature_type || '—')}</td><td><details><summary class="btn btn-incheck-outline sm">Details</summary><div class="e-proposal-activity-user-agent"><strong>User agent</strong><br>${U.escapeHtml(row.user_agent || '—')}</div><pre>${U.escapeHtml(formatMeta(row.metadata))}</pre></details></td></tr>`).join('')}</tbody></table></div>` : '<div class="e-proposal-activity-empty">No e-agreement activity has been logged yet.</div>';
+    } catch (error) {
+      console.error('[e-agreement] activity load failed', error);
+      modal.querySelector('.e-proposal-activity-body').innerHTML = `<div class="e-proposal-activity-empty">Unable to load e-agreement activity: ${U.escapeHtml(error?.message || 'Unknown error')}</div>`;
+    }
+  },
+  showEAgreementLinkModal(data = {}) {
+    const row = data?.agreement || data?.row || data || {};
+    const token = String(data?.token || row?.e_agreement_token || '').trim();
+    const link = String(data?.url || data?.public_url || data?.public_link || this.getEAgreementPublicUrl(token)).trim();
+    const agreementId = String(row?.id || row?.agreement_id || row?.agreement_number || '').trim();
+    let modal = document.getElementById('eAgreementLinkModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'eAgreementLinkModal';
+      modal.className = 'modal e-proposal-link-modal';
+      document.body.appendChild(modal);
+    }
+    const close = () => { modal.classList.remove('open'); modal.setAttribute('aria-hidden', 'true'); };
+    modal.innerHTML = `<div class="modal-content e-proposal-link-dialog"><div class="modal-header e-proposal-link-header"><div><h2>${link ? 'E-Agreement Link Generated' : 'E-Agreement Link Disabled'}</h2><p>${link ? 'Share this secure link manually with the customer. The customer can review, accept, or reject the agreement without ERP credentials.' : 'The previous public e-agreement link is now disabled. Generate a new link when needed.'}</p></div><button class="modal-close" data-e-agreement-close type="button">✕</button></div><div class="e-proposal-link-body"><div class="e-proposal-link-meta"><span><b>Agreement</b>${U.escapeHtml(row?.agreement_id || row?.agreement_number || '—')}</span><span><b>Customer/company</b>${U.escapeHtml(row?.customer_name || row?.customer_legal_name || '—')}</span><span><b>Valid until</b>${U.escapeHtml(U.fmtDisplayDate(row?.e_agreement_token_expires_at || row?.valid_until || row?.expires_at) || '—')}</span></div>${link ? `<label class="muted" for="eAgreementPublicLink">Public link</label><input id="eAgreementPublicLink" class="input e-proposal-link-input" readonly value="${U.escapeAttr(link)}" />` : `<div class="e-proposal-disabled-note">No active public link is currently enabled for this agreement.</div>`}<div class="e-proposal-link-actions">${link ? `<button class="btn btn-incheck-primary" data-e-agreement-copy type="button">Copy E-Agreement Link</button><button class="btn btn-incheck-outline" data-e-agreement-open type="button">Open E-Agreement</button>` : ''}<button class="btn btn-incheck-outline" data-e-agreement-regenerate type="button">${link ? 'Regenerate Link' : 'Generate New Link'}</button>${link ? `<button class="btn proposal-danger-btn" data-e-agreement-disable type="button">Disable Link</button>` : ''}</div></div></div>`;
+    modal.querySelector('[data-e-agreement-close]')?.addEventListener('click', close);
+    modal.querySelector('[data-e-agreement-copy]')?.addEventListener('click', async () => { await navigator.clipboard?.writeText(link); UI.toast('E-agreement link copied.'); });
+    modal.querySelector('[data-e-agreement-open]')?.addEventListener('click', () => window.open(link, '_blank', 'noopener,noreferrer'));
+    modal.querySelector('[data-e-agreement-regenerate]')?.addEventListener('click', () => this.generateEAgreementLink(agreementId, { regenerate: true }));
+    modal.querySelector('[data-e-agreement-disable]')?.addEventListener('click', () => this.disableEAgreementLink(agreementId));
+    modal.classList.add('open'); modal.setAttribute('aria-hidden', 'false');
+  },
   findDetailsRow(id) {
     const target = String(id || '').trim();
     if (!target) return null;
@@ -3082,6 +3216,8 @@ const Agreements = {
         signedRow && Permissions.canUpdateAgreement() && !uploadBlocked ? { label: 'Upload Signed Doc', variant: 'ghost', permissionResource: 'agreements', permissionAction: 'update', onClick: btn => this.openAgreementFormById(id, { readOnly: true, trigger: btn, focusSignedDocument: true }) } : null,
         !signedRow && Permissions.canUpdateAgreement() ? { label: 'Edit', variant: 'ghost', permissionResource: 'agreements', permissionAction: 'update', onClick: btn => this.openAgreementFormById(id, { readOnly: false, trigger: btn }) } : null,
         Permissions.canGenerateAgreementHtml() ? { label: 'View Agreement', variant: 'ghost', permissionResource: 'agreements', permissionAction: 'view', onClick: () => this.previewAgreementHtml(id) } : null,
+        Permissions.canGenerateAgreementHtml() ? { label: 'Generate E-Agreement Link', variant: 'ghost', permissionResource: 'agreements', permissionAction: 'view', onClick: () => this.generateEAgreementLink(id) } : null,
+        this.canViewEAgreementAuditLog() ? { label: 'E-Agreement Activity Log', variant: 'ghost', permissionResource: 'agreements', permissionAction: 'view', onClick: () => this.showEAgreementActivityLog(id) } : null,
         signedRow && Permissions.canCreateInvoiceFromAgreement() && !invoiceBlocked ? { label: 'Create Invoice', variant: 'ghost', permissionResource: 'invoices', permissionAction: 'create_from_agreement', onClick: () => this.createInvoiceFromAgreementFlow(id) } : null,
         Permissions.canDeleteAgreement() ? { label: 'Delete', variant: 'ghost', permissionResource: 'agreements', permissionAction: 'delete', onClick: () => this.deleteById(id) } : null
       ].filter(Boolean)
@@ -3127,6 +3263,8 @@ const Agreements = {
       }
       if (Permissions.canGenerateAgreementHtml()) {
         items.push(`<button class="commercial-menu-item" type="button" data-agreement-preview="${id}" data-permission-resource="agreements" data-permission-action="view">View Agreement</button>`);
+        items.push(`<button class="commercial-menu-item" type="button" data-agreement-e-link="${id}" data-permission-resource="agreements" data-permission-action="view">Generate E-Agreement Link</button>`);
+        if (this.canViewEAgreementAuditLog()) items.push(`<button class="commercial-menu-item" type="button" data-agreement-e-audit="${id}" data-permission-resource="agreements" data-permission-action="view">E-Agreement Activity Log</button>`);
       }
       if (signedRow && Permissions.canCreateInvoiceFromAgreement()) {
         items.push(`<button class="commercial-menu-item${invoiceBlocked ? ' is-disabled' : ''}" type="button" data-agreement-create-invoice="${id}" data-permission-resource="invoices" data-permission-action="create_from_agreement" ${invoiceBlocked ? 'disabled aria-disabled="true"' : ''}>Create Invoice</button>`);
@@ -5082,7 +5220,7 @@ const Agreements = {
       E.agreementsImportOldClientBtn.disabled = true;
     }
     if (E.agreementsTbody) E.agreementsTbody.addEventListener('click', event => {
-      const trigger = event.target?.closest?.('button[data-agreement-view], button[data-agreement-edit], button[data-agreement-upload-signed], button[data-agreement-request-technical], button[data-agreement-preview], button[data-agreement-create-invoice], button[data-agreement-delete]');
+      const trigger = event.target?.closest?.('button[data-agreement-view], button[data-agreement-edit], button[data-agreement-upload-signed], button[data-agreement-request-technical], button[data-agreement-preview], button[data-agreement-e-link], button[data-agreement-e-audit], button[data-agreement-create-invoice], button[data-agreement-delete]');
       if (!trigger) return;
       event.preventDefault();
       event.stopPropagation();
@@ -5109,6 +5247,10 @@ const Agreements = {
       }
       const previewId = trigger.getAttribute('data-agreement-preview');
       if (previewId) { if (!Permissions.canGenerateAgreementHtml()) return UI.toast('You do not have permission to preview agreements.'); return this.runRowAction(`preview:${previewId}`, trigger, () => this.previewAgreementHtml(previewId)); }
+      const eLinkId = trigger.getAttribute('data-agreement-e-link');
+      if (eLinkId) { if (!Permissions.canGenerateAgreementHtml()) return UI.toast('You do not have permission to generate e-agreement links.'); return this.runRowAction(`e-link:${eLinkId}`, trigger, () => this.generateEAgreementLink(eLinkId)); }
+      const eAuditId = trigger.getAttribute('data-agreement-e-audit');
+      if (eAuditId) { return this.runRowAction(`e-audit:${eAuditId}`, trigger, () => this.showEAgreementActivityLog(eAuditId)); }
       const createInvoiceId = trigger.getAttribute('data-agreement-create-invoice');
       if (createInvoiceId) {
         return this.runRowAction(`create-invoice:${createInvoiceId}`, trigger, () => this.createInvoiceFromAgreementFlow(createInvoiceId));
@@ -5238,5 +5380,241 @@ const Agreements = {
     this.state.initialized = true;
   }
 };
+
+
+function getEAgreementTokenFromUrl() {
+  const parts = window.location.pathname.split('/').filter(Boolean);
+  const idx = parts.indexOf('e-agreement');
+  return idx >= 0 ? parts[idx + 1] : '';
+}
+
+function renderPublicEAgreementShell() {
+  document.body.className = 'public-eproposal-mode public-eagreement-mode';
+  document.body.innerHTML = `
+    <main id="publicEAgreementRoot" class="public-eproposal-page">
+      <div class="public-eproposal-card">
+        <div class="public-eproposal-header">
+          <div>
+            <p class="public-eyebrow">InCheck360 Secure Agreement</p>
+            <h1>Review Agreement</h1>
+            <p>Please review the agreement below. You can accept and sign, reject, print, or download a copy.</p>
+          </div>
+        </div>
+        <div id="publicEAgreementContent">
+          <div class="public-loading">Loading agreement...</div>
+        </div>
+      </div>
+    </main>
+  `;
+}
+
+async function callEAgreementAction(body) {
+  const supabase = window.SupabaseClient?.getClient?.() || window.supabase;
+  if (!supabase?.functions?.invoke) throw new Error('Supabase functions client is not available.');
+  const { data, error } = await supabase.functions.invoke('eagreement-action', { body });
+  if (error) {
+    let responseBody = null;
+    try {
+      if (error.context && typeof error.context.clone === 'function') responseBody = await error.context.clone().json();
+    } catch (_) {
+      try { responseBody = await error.context.clone().text(); } catch (_) {}
+    }
+    console.error('eagreement-action invoke error:', { message: error.message, name: error.name, context: error.context, responseBody });
+    throw new Error(responseBody?.error || responseBody?.message || error.message || 'Unable to complete this action.');
+  }
+  if (!data?.ok) {
+    console.error('eagreement-action response error:', data);
+    throw new Error(data?.error || 'Unable to complete this action.');
+  }
+  return data.data || data;
+}
+
+function bootPublicEAgreementPage() {
+  const token = decodeURIComponent(getEAgreementTokenFromUrl() || '').trim();
+  renderPublicEAgreementShell();
+  const content = document.getElementById('publicEAgreementContent');
+  const unavailable = message => {
+    if (content) content.innerHTML = `<section class="public-eproposal-section public-status-message"><h2>${U.escapeHtml(message || 'This agreement link is no longer available.')}</h2></section>`;
+  };
+  if (!token) return unavailable('Missing agreement token.');
+
+  function renderModal(html, modalClass = '') {
+    let modal = document.getElementById('publicEAgreementModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'publicEAgreementModal';
+      modal.className = 'public-eproposal-modal';
+      document.body.appendChild(modal);
+    }
+    modal.innerHTML = `<div class="public-eproposal-modal-card public-modal ${modalClass}">${html}<button class="public-modal-close" type="button" aria-label="Close">×</button></div>`;
+    modal.querySelector('.public-modal-close')?.addEventListener('click', () => modal.remove());
+  }
+
+  function setActionState(disabled) {
+    document.querySelectorAll('[data-public-accept-agreement], [data-public-reject-agreement]').forEach(btn => { btn.disabled = Boolean(disabled); });
+  }
+
+  async function readDataUrlFile(file, { imageOnly = false, maxMb = 8 } = {}) {
+    if (!file) throw new Error('Please select a file.');
+    if (file.size > maxMb * 1024 * 1024) throw new Error(`File size must be ${maxMb} MB or less.`);
+    const allowed = imageOnly
+      ? ['image/png', 'image/jpeg', 'image/webp']
+      : ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
+    if (!allowed.includes(file.type)) throw new Error(imageOnly ? 'Upload a PNG, JPG, or WEBP signature image.' : 'Upload a PDF, PNG, JPG, or WEBP signed agreement.');
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('Unable to read the selected file.'));
+      reader.readAsDataURL(file);
+    });
+    return { dataUrl, fileName: file.name || 'uploaded-file', mimeType: file.type || 'application/octet-stream' };
+  }
+
+  function setupDrawCanvas(canvas, form, sync) {
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let drawing = false;
+    const resize = () => {
+      const ratio = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = Math.max(320, Math.floor(rect.width * ratio));
+      canvas.height = Math.floor(160 * ratio);
+      ctx.scale(ratio, ratio);
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = '#0f172a';
+    };
+    const point = event => {
+      const rect = canvas.getBoundingClientRect();
+      const touch = event.touches?.[0] || event.changedTouches?.[0];
+      const source = touch || event;
+      return { x: source.clientX - rect.left, y: source.clientY - rect.top };
+    };
+    const start = event => { event.preventDefault(); drawing = true; const p = point(event); ctx.beginPath(); ctx.moveTo(p.x, p.y); };
+    const move = event => { if (!drawing) return; event.preventDefault(); const p = point(event); ctx.lineTo(p.x, p.y); ctx.stroke(); form.dataset.drawnSignatureDataUrl = canvas.toDataURL('image/png'); sync(); };
+    const end = () => { drawing = false; form.dataset.drawnSignatureDataUrl = canvas.toDataURL('image/png'); sync(); };
+    resize(); window.addEventListener('resize', resize, { passive: true });
+    canvas.addEventListener('mousedown', start); canvas.addEventListener('mousemove', move); window.addEventListener('mouseup', end);
+    canvas.addEventListener('touchstart', start, { passive: false }); canvas.addEventListener('touchmove', move, { passive: false }); canvas.addEventListener('touchend', end);
+    form.querySelector('[data-clear-drawn-agreement-signature]')?.addEventListener('click', () => { ctx.clearRect(0, 0, canvas.width, canvas.height); delete form.dataset.drawnSignatureDataUrl; sync(); });
+  }
+
+  (async () => {
+    try {
+      const data = await callEAgreementAction({ action: 'view', token });
+      const agreement = data.agreement || data.record || data;
+      const items = Array.isArray(data.items) ? data.items : [];
+      const number = agreement.agreement_id || agreement.agreement_number || 'Agreement';
+      const customer = agreement.customer_name || agreement.customer_legal_name || 'Customer';
+      const accepted = Boolean(agreement.e_agreement_accepted_at || agreement.e_agreement_signature_confirmed);
+      const rejected = Boolean(agreement.e_agreement_rejected_at || String(agreement.status || '').toLowerCase() === 'rejected');
+      const documentHtml = window.Agreements?.buildAgreementPreviewHtml
+        ? window.Agreements.buildAgreementPreviewHtml(agreement, items)
+        : `<h1>${U.escapeHtml(number)}</h1>`;
+      const brandedDocumentHtml = U.addIncheckDocumentLogo ? U.addIncheckDocumentLogo(U.formatPreviewHtmlDates ? U.formatPreviewHtmlDates(documentHtml) : documentHtml) : documentHtml;
+      content.innerHTML = `
+        ${accepted ? '<section class="public-eproposal-section public-success"><h2>Thank you. This agreement has been accepted and signed.</h2></section>' : ''}
+        ${rejected ? '<section class="public-eproposal-section public-status-message"><h2>This agreement has been rejected.</h2></section>' : ''}
+        <section class="public-eproposal-section public-proposal-hero">
+          <p class="public-eyebrow">${U.escapeHtml(number)}</p>
+          <h2>${U.escapeHtml(customer)}</h2>
+          <p>Please review the agreement carefully before signing.</p>
+        </section>
+        <section class="public-eproposal-document" data-public-agreement-document>
+          <iframe title="Agreement preview" srcdoc="${U.escapeAttr(brandedDocumentHtml)}"></iframe>
+        </section>
+        <div class="public-eproposal-actions"><button class="public-btn-outline" data-public-print-agreement type="button">Print / Download PDF</button><button class="public-btn-outline" data-public-reject-agreement type="button" ${accepted || rejected ? 'disabled' : ''}>Reject Agreement</button><button class="public-btn-primary" data-public-accept-agreement type="button" ${accepted || rejected ? 'disabled' : ''}>Accept Agreement</button></div>`;
+
+      document.querySelector('[data-public-print-agreement]')?.addEventListener('click', () => {
+        const frame = document.querySelector('[data-public-agreement-document] iframe');
+        frame?.contentWindow?.focus();
+        frame?.contentWindow?.print();
+      });
+
+      document.querySelector('[data-public-accept-agreement]')?.addEventListener('click', () => {
+        renderModal(`<form data-public-accept-agreement-form><h2>Accept & Sign Agreement</h2><label>Customer full name<input class="input" name="name" placeholder="Full name" required></label><div class="signature-method-tabs"><button class="signature-method-tab active" type="button" data-signature-mode="typed">Typed Signature</button><button class="signature-method-tab" type="button" data-signature-mode="uploaded">Upload Signature Image</button><button class="signature-method-tab" type="button" data-signature-mode="drawn">Draw Signature</button><button class="signature-method-tab" type="button" data-signature-mode="signed_document_upload">Upload Signed Agreement</button></div><div data-signature-panel="typed"><label>Typed signature<input class="input" name="typedSignature" placeholder="Type your signature"></label><div class="typed-signature-preview">Typed signature</div></div><div data-signature-panel="uploaded" hidden><input class="input" type="file" name="signatureImage" accept="image/png,image/jpeg,image/webp"><div data-uploaded-signature-preview></div></div><div data-signature-panel="drawn" hidden><canvas class="draw-signature-canvas"></canvas><button class="public-btn-outline" data-clear-drawn-agreement-signature type="button">Clear</button></div><div data-signature-panel="signed_document_upload" hidden><p class="muted">Download/print the agreement, sign it manually or using DocuSign/Adobe, then upload the signed PDF or image.</p><input class="input" type="file" name="signedDocument" accept="application/pdf,image/png,image/jpeg,image/webp"><div data-signed-document-preview></div></div><label class="public-checkbox"><input type="checkbox" name="authorized" required> I confirm I am authorized to sign this agreement on behalf of the customer.</label><div class="public-validation-errors"></div><button class="public-btn-primary accept-agreement-submit" type="submit" disabled>Accept & Sign Agreement</button></form>`, 'accept-proposal-modal');
+        const form = document.querySelector('[data-public-accept-agreement-form]');
+        function syncAcceptForm() {
+          if (!form) return;
+          const mode = form.dataset.signatureMode || 'typed';
+          if (mode === 'typed' && !form.typedSignature.value.trim() && form.name.value.trim()) form.typedSignature.value = form.name.value;
+          const preview = form.querySelector('.typed-signature-preview');
+          if (preview) preview.textContent = form.typedSignature.value.trim() || 'Typed signature';
+          form.querySelectorAll('[data-signature-panel]').forEach(panel => { panel.hidden = panel.dataset.signaturePanel !== mode; });
+          const modeOk = mode === 'typed' ? form.typedSignature.value.trim() : mode === 'uploaded' ? form.dataset.uploadedSignatureDataUrl : mode === 'drawn' ? form.dataset.drawnSignatureDataUrl : form.dataset.signedDocumentDataUrl;
+          form.querySelector('.accept-agreement-submit').disabled = !(form.name.value.trim() && form.authorized.checked && modeOk);
+        }
+        form.dataset.signatureMode = 'typed';
+        form.addEventListener('input', syncAcceptForm);
+        form.addEventListener('change', syncAcceptForm);
+        form.querySelectorAll('button[data-signature-mode]').forEach(btn => btn.addEventListener('click', () => { form.dataset.signatureMode = btn.dataset.signatureMode || 'typed'; form.querySelectorAll('.signature-method-tab').forEach(x => x.classList.toggle('active', x === btn)); syncAcceptForm(); }));
+        form.signatureImage?.addEventListener('change', async () => { const errorBox = form.querySelector('.public-validation-errors'); if (errorBox) errorBox.innerHTML = ''; try { const file = await readDataUrlFile(form.signatureImage.files?.[0], { imageOnly: true, maxMb: 4 }); form.dataset.uploadedSignatureDataUrl = file.dataUrl; form.querySelector('[data-uploaded-signature-preview]').innerHTML = `<img src="${U.escapeHtml(file.dataUrl)}" alt="Uploaded signature">`; } catch (error) { delete form.dataset.uploadedSignatureDataUrl; form.signatureImage.value = ''; if (errorBox) errorBox.innerHTML = `<p class="public-form-error">${U.escapeHtml(error.message)}</p>`; } syncAcceptForm(); });
+        form.signedDocument?.addEventListener('change', async () => { const errorBox = form.querySelector('.public-validation-errors'); if (errorBox) errorBox.innerHTML = ''; try { const file = await readDataUrlFile(form.signedDocument.files?.[0], { maxMb: 8 }); form.dataset.signedDocumentDataUrl = file.dataUrl; form.dataset.signedDocumentFileName = file.fileName; form.dataset.signedDocumentMimeType = file.mimeType; form.querySelector('[data-signed-document-preview]').innerHTML = file.mimeType === 'application/pdf' ? `<div class="signed-document-file-card"><strong>${U.escapeHtml(file.fileName)}</strong><span>PDF uploaded</span></div><iframe class="signed-document-pdf-preview" src="${U.escapeHtml(file.dataUrl)}"></iframe>` : `<div class="signed-document-file-card"><strong>${U.escapeHtml(file.fileName)}</strong><span>${U.escapeHtml(file.mimeType)}</span></div><img class="signed-document-image-preview" src="${U.escapeHtml(file.dataUrl)}" alt="Signed agreement preview">`; } catch (error) { delete form.dataset.signedDocumentDataUrl; form.signedDocument.value = ''; if (errorBox) errorBox.innerHTML = `<p class="public-form-error">${U.escapeHtml(error.message)}</p>`; } syncAcceptForm(); });
+        setupDrawCanvas(form.querySelector('.draw-signature-canvas'), form, syncAcceptForm);
+        syncAcceptForm();
+      });
+
+      document.querySelector('[data-public-reject-agreement]')?.addEventListener('click', () => renderModal(`<form data-public-reject-agreement-form><h2>Reject Agreement</h2><input class="input" name="name" placeholder="Customer name (optional)"><textarea class="input" name="reason" rows="4" placeholder="Rejection reason"></textarea><button class="public-btn-primary" type="submit">Reject Agreement</button></form>`, 'public-action-modal reject-proposal-modal'));
+
+      document.body.addEventListener('submit', async event => {
+        const form = event.target;
+        if (!form.matches('[data-public-accept-agreement-form], [data-public-reject-agreement-form]')) return;
+        event.preventDefault();
+        const isAccept = form.matches('[data-public-accept-agreement-form]');
+        try {
+          if (isAccept) {
+            form.querySelectorAll('.public-form-error').forEach(errorEl => errorEl.remove());
+            const errors = [];
+            if (!form.name.value.trim()) errors.push('Customer name is required.');
+            const signatureMode = form.dataset.signatureMode || 'typed';
+            if (signatureMode === 'typed' && !form.typedSignature.value.trim()) errors.push('Typed signature is required.');
+            if (signatureMode === 'uploaded' && !form.dataset.uploadedSignatureDataUrl) errors.push('Uploaded signature image is required.');
+            if (signatureMode === 'drawn' && !form.dataset.drawnSignatureDataUrl) errors.push('Drawn signature is required.');
+            if (signatureMode === 'signed_document_upload' && !form.dataset.signedDocumentDataUrl) errors.push('Signed agreement upload is required.');
+            if (!form.authorized.checked) errors.push('Please confirm authorization before accepting.');
+            const errorBox = form.querySelector('.public-validation-errors');
+            if (errorBox) errorBox.innerHTML = errors.map(error => `<p class="public-form-error">${U.escapeHtml(error)}</p>`).join('');
+            if (errors.length) return;
+            const customerName = form.name.value.trim();
+            const customerEmail = agreement.customer_contact_email || agreement.contact_email || agreement.customer_email || 'not-provided@customer.local';
+            const signatureImageDataUrl = signatureMode === 'drawn' ? form.dataset.drawnSignatureDataUrl : form.dataset.uploadedSignatureDataUrl;
+            await callEAgreementAction({
+              action: 'accept',
+              token,
+              customerName,
+              customerEmail,
+              comment: null,
+              signatureType: signatureMode,
+              signatureText: signatureMode === 'typed' ? form.typedSignature.value.trim() : customerName,
+              signatureImageDataUrl: signatureMode === 'uploaded' || signatureMode === 'drawn' ? signatureImageDataUrl : null,
+              signedDocumentDataUrl: signatureMode === 'signed_document_upload' ? form.dataset.signedDocumentDataUrl : null,
+              signedDocumentFileName: signatureMode === 'signed_document_upload' ? form.dataset.signedDocumentFileName : null,
+              signedDocumentMimeType: signatureMode === 'signed_document_upload' ? form.dataset.signedDocumentMimeType : null
+            });
+          } else {
+            await callEAgreementAction({ action: 'reject', token, customerName: form.name.value || null, customerEmail: null, rejectionReason: form.reason.value || null });
+          }
+          document.getElementById('publicEAgreementModal')?.remove();
+          setActionState(true);
+          content.insertAdjacentHTML('afterbegin', `<section class="public-eproposal-section public-success"><h2>${isAccept ? 'Thank you. This agreement has been accepted and signed.' : 'This agreement has been rejected.'}</h2></section>`);
+        } catch (error) {
+          console.error('[e-agreement] public action failed', error);
+          form.querySelectorAll('.public-form-error').forEach(errorEl => errorEl.remove());
+          const messageHtml = `<p class="public-form-error">${U.escapeHtml(error?.message || 'Unable to complete this action.')}</p>`;
+          const errorBox = form.querySelector('.public-validation-errors');
+          if (errorBox) errorBox.innerHTML = messageHtml;
+          else form.insertAdjacentHTML('beforeend', messageHtml);
+        }
+      });
+    } catch (error) {
+      console.error('[e-agreement] public load failed', error);
+      unavailable(error?.payload?.message || error?.message || 'Unable to complete this action. Please try again or contact InCheck360.');
+    }
+  })();
+}
+
+window.getEAgreementTokenFromUrl = getEAgreementTokenFromUrl;
+window.renderPublicEAgreementShell = renderPublicEAgreementShell;
+window.bootPublicEAgreementPage = bootPublicEAgreementPage;
 
 window.Agreements = Agreements;
