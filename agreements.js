@@ -215,6 +215,15 @@ const Agreements = {
     'customer_signature_confirmed',
     'customer_signed_at',
     'customer_accepted_at',
+    'customer_signed_by_name',
+    'customer_signed_by_email',
+    'customer_signature_type',
+    'customer_signature_text',
+    'customer_signature_image_data_url',
+    'customer_signed_document_data_url',
+    'customer_signed_document_file_name',
+    'customer_signed_document_mime_type',
+    'customer_signature_ip_address',
     'legacy_agreement_ref',
     'is_imported',
     'is_historical_agreement',
@@ -2545,6 +2554,57 @@ const Agreements = {
     // This also supports older DB status values like awaiting_provider_signature.
     return this.hasCustomerSignedForInternalSignatures(data) || ['accepted', 'awaiting_provider_signature', 'awaiting_internal_signature', 'signed'].includes(status);
   },
+
+  getAgreementCustomerSignatureData(agreement = {}) {
+    const source = agreement && typeof agreement === 'object' ? agreement : {};
+    return {
+      signedBy: source.customer_signed_by_name || source.accepted_by_name || source.e_signature_customer_name || source.e_agreement_signature_customer_name || source.e_agreement_accepted_by_name || source.customer_name || source.client_name || '—',
+      customerEmail: source.customer_signed_by_email || source.accepted_by_email || source.e_signature_customer_email || source.e_agreement_signature_customer_email || source.e_agreement_accepted_by_email || null,
+      customerIp: source.customer_signature_ip_address || source.e_signature_ip_address || source.e_agreement_signature_ip_address || source.last_guest_ip_address || '—',
+      signedAt: source.customer_signed_at || source.customer_accepted_at || source.accepted_at || source.e_signature_signed_at || source.e_agreement_signature_signed_at || source.e_agreement_accepted_at || source.customer_sign_date || source.customer_signature_date || null,
+      signatureType: source.customer_signature_type || source.e_signature_type || source.e_agreement_signature_type || 'typed',
+      signatureText: source.customer_signature_text || source.e_signature_text || source.e_agreement_signature_text || '',
+      signatureImage: source.customer_signature_image_data_url || source.e_signature_image_data_url || source.e_agreement_signature_image_data_url || '',
+      signedDocumentDataUrl: source.customer_signed_document_data_url || source.e_signed_document_data_url || source.e_agreement_signed_document_data_url || '',
+      signedDocumentFileName: source.customer_signed_document_file_name || source.e_signed_document_file_name || source.e_agreement_signed_document_file_name || 'Signed agreement document',
+      signedDocumentMimeType: source.customer_signed_document_mime_type || source.e_signed_document_mime_type || source.e_agreement_signed_document_mime_type || 'application/pdf',
+      confirmed: source.customer_signature_confirmed === true || source.e_signature_confirmed === true || source.e_agreement_signature_confirmed === true || Boolean(source.customer_signed_at || source.customer_accepted_at || source.accepted_at || source.e_signature_signed_at || source.e_agreement_signature_signed_at || source.e_agreement_accepted_at)
+    };
+  },
+  renderAgreementCustomerSignatureVerification(agreement = {}) {
+    if (!hasAgreementCustomerSigned(agreement)) return '';
+    const sig = this.getAgreementCustomerSignatureData(agreement);
+    const normalizedType = String(sig.signatureType || '').toLowerCase();
+    const documentUrl = String(sig.signedDocumentDataUrl || '').trim();
+    let signaturePreview = '';
+    if (normalizedType === 'typed') {
+      signaturePreview = `<div class="agreement-customer-signature-preview typed">${U.escapeHtml(sig.signatureText || sig.signedBy)}</div>`;
+    } else if (normalizedType === 'uploaded' || normalizedType === 'drawn') {
+      signaturePreview = sig.signatureImage ? `<div class="agreement-customer-signature-preview image"><img src="${U.escapeAttr(sig.signatureImage)}" alt="Customer signature" /></div>` : '';
+    } else if (normalizedType === 'signed_document_upload') {
+      const mime = String(sig.signedDocumentMimeType || '').toLowerCase();
+      const isPdf = mime.includes('pdf');
+      const isImage = mime.startsWith('image/');
+      signaturePreview = `
+        <div class="agreement-signed-doc-file-card"><div class="agreement-signed-doc-file-icon">${isPdf ? 'PDF' : 'FILE'}</div><div><strong>${U.escapeHtml(sig.signedDocumentFileName)}</strong><span>${U.escapeHtml(sig.signedDocumentMimeType)}</span></div></div>
+        <div class="agreement-signed-doc-preview-box">${documentUrl ? (isPdf ? `<iframe src="${U.escapeAttr(documentUrl)}#toolbar=0&navpanes=0&scrollbar=0" title="Signed agreement preview"></iframe>` : isImage ? `<img src="${U.escapeAttr(documentUrl)}" alt="Signed agreement preview" />` : `<div class="agreement-signed-doc-no-preview">Preview unavailable</div>`) : `<div class="agreement-signed-doc-no-preview">Preview unavailable</div>`}</div>
+        ${documentUrl ? `<div class="agreement-signed-doc-actions"><a href="${U.escapeAttr(documentUrl)}" target="_blank" rel="noopener noreferrer">Open Signed Agreement</a><a href="${U.escapeAttr(documentUrl)}" download="${U.escapeAttr(sig.signedDocumentFileName)}">Download Signed Agreement</a></div>` : ''}`;
+    }
+    const signatureTypeLabel = normalizedType === 'typed' ? 'Typed signature' : normalizedType === 'uploaded' ? 'Uploaded signature image' : normalizedType === 'drawn' ? 'Drawn signature' : normalizedType === 'signed_document_upload' ? 'Uploaded signed agreement' : 'Electronic signature';
+    const signedOn = sig.signedAt ? (U.fmtDisplayDate(sig.signedAt) || String(sig.signedAt)) : '—';
+    return `
+      <section class="agreement-customer-signature-verification">
+        <div class="agreement-customer-signature-header"><div class="agreement-customer-signature-check">✓</div><div><h3>CUSTOMER SIGNATURE VERIFICATION</h3><p>The customer accepted and signed this agreement through the secure E-Agreement link.</p></div></div>
+        <div class="agreement-customer-signature-body"><div class="agreement-customer-signature-left">${signaturePreview}</div><div class="agreement-customer-signature-right">
+          <div class="agreement-signature-detail"><span>Signed by</span><strong>${U.escapeHtml(sig.signedBy)}</strong></div>
+          <div class="agreement-signature-detail"><span>Customer IP</span><strong>${U.escapeHtml(sig.customerIp)}</strong></div>
+          <div class="agreement-signature-detail"><span>Signed on</span><strong>${U.escapeHtml(signedOn)}</strong></div>
+          <div class="agreement-signature-detail"><span>Signature type</span><strong>${U.escapeHtml(signatureTypeLabel)}</strong></div>
+          <div class="agreement-signature-detail"><span>Status</span><strong>Confirmed customer acceptance</strong></div>
+          <div class="agreement-signature-status">Confirmed customer acceptance</div>
+        </div></div>
+      </section>`;
+  },
   renderInternalSignatureCard({ role, title, signature, canSign, buttonText, disabled, helperText }) {
     const signed = !!signature;
     const signedBy = String(signature?.signer_name || signature?.signed_by || signature?.created_by_name || '').trim();
@@ -2939,6 +2999,27 @@ const Agreements = {
       .signature-head { background: #f8fbff; border-bottom: 1px solid #e3eaf3; padding: 8px 10px; font-size: 11px; letter-spacing: 0.08em; font-weight: 700; color: #1e3a5f; }
       .signature-body { padding: 11px; font-size: 12px; line-height: 1.5; }
       .footer-note { margin-top: 16px; font-size: 11px; color: #64748b; border-top: 1px solid #e3eaf3; padding-top: 10px; text-align: center; }
+      .agreement-customer-signature-verification { margin-top: 18px; border: 1px solid #bfdbfe; border-radius: 14px; background: #ffffff; overflow: hidden; page-break-inside: avoid; }
+      .agreement-customer-signature-header { display: flex; gap: 10px; align-items: flex-start; padding: 14px 16px; background: #eff6ff; border-bottom: 1px solid #dbeafe; }
+      .agreement-customer-signature-check { width: 28px; height: 28px; border-radius: 999px; background: #2563eb; color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-weight: 900; flex: 0 0 auto; }
+      .agreement-customer-signature-header h3 { margin: 0; color: #1e3a8a; font-size: 14px; font-weight: 900; letter-spacing: 0.08em; }
+      .agreement-customer-signature-header p { margin: 4px 0 0; color: #475569; font-size: 12px; }
+      .agreement-customer-signature-body { display: grid; grid-template-columns: minmax(260px, 360px) 1fr; gap: 18px; padding: 16px; }
+      .agreement-customer-signature-left, .agreement-customer-signature-right { min-width: 0; }
+      .agreement-customer-signature-preview.typed { min-height: 130px; border: 1px dashed #93c5fd; border-radius: 12px; background: #f8fbff; display: flex; align-items: center; justify-content: center; color: #0f172a; font-size: 34px; font-family: "Brush Script MT", "Segoe Script", cursive; padding: 18px; text-align: center; }
+      .agreement-customer-signature-preview.image { height: 150px; border: 1px solid #dbeafe; border-radius: 12px; background: #ffffff; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+      .agreement-customer-signature-preview.image img { max-width: 100%; max-height: 100%; object-fit: contain; }
+      .agreement-signature-detail { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 12px; padding: 9px 0; border-bottom: 1px solid #e5e7eb; font-size: 12px; }
+      .agreement-signature-detail span { color: #64748b; } .agreement-signature-detail strong { color: #0f172a; font-weight: 800; word-break: break-word; }
+      .agreement-signature-status { width: fit-content; margin-top: 12px; padding: 7px 12px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 11px; font-weight: 900; }
+      .agreement-signed-doc-file-card { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #dbeafe; border-radius: 10px; background: #f8fbff; margin-bottom: 10px; }
+      .agreement-signed-doc-file-icon { width: 38px; height: 44px; border-radius: 8px; background: #fee2e2; color: #dc2626; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 900; flex: 0 0 auto; }
+      .agreement-signed-doc-file-card strong { display: block; color: #0f172a; font-size: 13px; font-weight: 800; word-break: break-word; } .agreement-signed-doc-file-card span { display: block; margin-top: 2px; color: #64748b; font-size: 11px; }
+      .agreement-signed-doc-preview-box { height: 190px; border: 1px solid #dbeafe; border-radius: 10px; background: #f8fafc; overflow: hidden; } .agreement-signed-doc-preview-box iframe, .agreement-signed-doc-preview-box img { width: 100%; height: 100%; border: 0; object-fit: contain; display: block; background: #ffffff; }
+      .agreement-signed-doc-no-preview { height: 100%; display: flex; align-items: center; justify-content: center; color: #64748b; font-size: 12px; } .agreement-signed-doc-actions { display: flex; gap: 10px; margin-top: 10px; } .agreement-signed-doc-actions a { display: inline-flex; align-items: center; justify-content: center; min-height: 34px; padding: 8px 12px; border: 1px solid #bfdbfe; border-radius: 10px; background: #ffffff; color: #2563eb; font-size: 12px; font-weight: 800; text-decoration: none; }
+      @media (max-width: 760px) { .agreement-customer-signature-body { grid-template-columns: 1fr; } .agreement-signature-detail { grid-template-columns: 1fr; gap: 3px; } .agreement-signed-doc-actions { flex-direction: column; } }
+      @media print { .agreement-customer-signature-verification { page-break-inside: avoid; } .agreement-signed-doc-actions { display: none; } }
+
       @page { size: A4; margin: 0; }
       @media print { body { margin: 0; padding: 0; background: #fff; } .doc-sheet { width: 210mm; min-height: 297mm; margin: 0; border: 0; box-shadow: none; page-break-after: always; } }
     </style>
@@ -3093,6 +3174,8 @@ const Agreements = {
           </div>
         </div>
       </section>
+
+      ${this.renderAgreementCustomerSignatureVerification(agreementData)}
 
       <footer class="footer-note">This is an auto-generated system document and is valid without a manual signature unless otherwise required.</footer>
     </div>
