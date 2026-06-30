@@ -6733,12 +6733,35 @@ async function callEProposalAction(body) {
   });
 
   if (error) {
-    console.error('Edge Function invoke error:', error);
-    throw new Error(error.message || 'Unable to complete this action.');
+    let responseBody = null;
+
+    try {
+      if (error.context && typeof error.context.clone === 'function') {
+        responseBody = await error.context.clone().json();
+      }
+    } catch (jsonErr) {
+      try {
+        responseBody = await error.context.clone().text();
+      } catch (_) {}
+    }
+
+    console.error('eproposal-action invoke error:', {
+      message: error.message,
+      name: error.name,
+      context: error.context,
+      responseBody
+    });
+
+    throw new Error(
+      responseBody?.error ||
+      responseBody?.message ||
+      error.message ||
+      'Unable to complete this action.'
+    );
   }
 
   if (!data?.ok) {
-    console.error('Edge Function response error:', data);
+    console.error('eproposal-action response error:', data);
     throw new Error(data?.error || 'Unable to complete this action.');
   }
 
@@ -6902,7 +6925,7 @@ function bootPublicEProposalPage() {
         const isAccept = form.matches('[data-public-accept-form]');
         try {
           if (isAccept) {
-            form.querySelector('.public-form-error')?.remove();
+            form.querySelectorAll('.public-form-error').forEach(errorEl => errorEl.remove());
             const errors = [];
             if (!form.name.value.trim()) errors.push('Customer name is required.');
             const signatureMode = form.dataset.signatureMode || 'typed';
@@ -6965,8 +6988,14 @@ function bootPublicEProposalPage() {
           content.insertAdjacentHTML('afterbegin', `<section class="public-eproposal-section public-success"><h2>${isAccept ? 'Thank you. This proposal has been accepted and signed.' : 'This proposal has been rejected.'}</h2>${isAccept ? `<div class="public-signature-summary"><div class="signature-summary-grid"><div><span>Signed by</span><strong>${U.escapeHtml(form.name.value.trim())}</strong></div><div><span>Signed date/time</span><strong>${U.escapeHtml(new Date().toLocaleString())}</strong></div></div>${acceptedSignatureHtml}</div>` : ''}</section>`);
         } catch (error) {
           console.error('[e-proposal] public action failed', error);
-          form.querySelector('.public-form-error')?.remove();
-          form.insertAdjacentHTML('beforeend', `<p class="public-form-error">${U.escapeHtml(error?.message || 'Unable to complete this action.')}</p>`);
+          form.querySelectorAll('.public-form-error').forEach(errorEl => errorEl.remove());
+          const messageHtml = `<p class="public-form-error">${U.escapeHtml(error?.message || 'Unable to complete this action.')}</p>`;
+          const errorBox = form.querySelector('.public-validation-errors');
+          if (errorBox) {
+            errorBox.innerHTML = messageHtml;
+          } else {
+            form.insertAdjacentHTML('beforeend', messageHtml);
+          }
         }
       });
     } catch (error) {
