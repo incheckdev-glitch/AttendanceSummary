@@ -6526,19 +6526,132 @@ function renderElectronicSignatureVerification(proposal) {
 }
 
 function renderSignedDocumentVerification(proposal) {
-  if (!hasSignedDocumentUpload(proposal)) return '';
-  const uploadedBy = proposal.e_signature_customer_name || proposal.accepted_by_name || '';
-  const uploadedAt = proposal.e_signature_signed_at || proposal.accepted_at || '';
-  const customerIp = proposal.e_signature_ip_address || proposal.latest_e_proposal_ip_address || proposal.latest_guest_ip_address || '';
-  const mimeType = proposal.e_signed_document_mime_type || '';
-  const fileName = proposal.e_signed_document_file_name || 'Signed proposal';
-  const fileExt = String(mimeType).includes('pdf') ? 'PDF' : 'IMG';
+  const hasSignedDoc =
+    proposal &&
+    proposal.e_signature_type === 'signed_document_upload' &&
+    proposal.e_signed_document_data_url;
+
+  if (!hasSignedDoc) return '';
+
+  const fileName = proposal.e_signed_document_file_name || 'Signed proposal document';
+  const mimeType = proposal.e_signed_document_mime_type || 'application/pdf';
+  const uploadedBy =
+    proposal.e_signature_customer_name ||
+    proposal.accepted_by_name ||
+    proposal.customer_name ||
+    '—';
+
+  const customerIp =
+    proposal.e_signature_ip_address ||
+    proposal.last_guest_ip_address ||
+    proposal.latest_guest_ip_address ||
+    '—';
+
+  const uploadedOn =
+    proposal.e_signature_signed_at ||
+    proposal.accepted_at ||
+    '';
+
+  const isPdf = mimeType.includes('pdf');
+  const isImage = mimeType.startsWith('image/');
   const dataUrl = U.escapeAttr(proposal.e_signed_document_data_url || '');
-  const preview = isSignedDocumentPdf(proposal)
-    ? `<iframe src="${dataUrl}" title="Signed proposal PDF preview"></iframe>`
-    : (isSignedDocumentImage(proposal) ? `<img src="${dataUrl}" alt="Signed proposal preview">` : '');
-  const formatSignedDateTime = value => value ? (U.fmtDisplayDateTime?.(value) || U.fmtDisplayDate?.(value) || String(value)) : '—';
-  return `<div class="signed-doc-verification"><div class="signed-doc-header"><span class="signed-doc-icon">✓</span><div><h4>SIGNED PROPOSAL VERIFICATION</h4><p>The customer uploaded a manually signed proposal document.</p></div></div><div class="signed-doc-body"><div class="signed-doc-preview-col"><div class="signed-doc-file-card"><div class="signed-doc-file-icon">${U.escapeHtml(fileExt)}</div><div><strong>${U.escapeHtml(fileName)}</strong><span>${U.escapeHtml(mimeType || 'Uploaded signed proposal')}</span></div></div><div class="signed-doc-preview-frame">${preview}</div></div><div class="signed-doc-details-col"><div class="signed-doc-detail-row"><span>Uploaded by</span><strong>${U.escapeHtml(uploadedBy || '—')}</strong></div><div class="signed-doc-detail-row"><span>Customer IP</span><strong>${U.escapeHtml(customerIp || '—')}</strong></div><div class="signed-doc-detail-row"><span>Uploaded on</span><strong>${U.escapeHtml(formatSignedDateTime(uploadedAt))}</strong></div><div class="signed-doc-detail-row"><span>Signature type</span><strong>Uploaded signed proposal</strong></div><div class="signed-doc-status">Confirmed electronic acceptance</div></div></div><div class="signed-doc-actions"><a href="${dataUrl}" target="_blank" rel="noopener noreferrer">Open Signed Proposal</a><a href="${dataUrl}" download="${U.escapeAttr(fileName || 'signed-proposal')}">Download Signed Proposal</a></div></div>`;
+  const escapedDataUrl = U.escapeHtml(proposal.e_signed_document_data_url || '');
+  const formattedUploadedOn = uploadedOn
+    ? (U.fmtDisplayDateTime?.(uploadedOn) || U.fmtDisplayDate?.(uploadedOn) || String(uploadedOn))
+    : '';
+
+  const previewHtml = isPdf
+    ? `
+      <iframe
+        class="signed-doc-preview-iframe"
+        src="${dataUrl}#toolbar=0&navpanes=0&scrollbar=0"
+        title="Signed proposal preview"
+      ></iframe>
+    `
+    : isImage
+      ? `
+        <img
+          class="signed-doc-preview-image"
+          src="${escapedDataUrl}"
+          alt="Signed proposal preview"
+        />
+      `
+      : `
+        <div class="signed-doc-no-preview">Preview unavailable</div>
+      `;
+
+  return `
+    <section class="signed-doc-verification">
+      <div class="signed-doc-header">
+        <div class="signed-doc-check">✓</div>
+        <div>
+          <h4>SIGNED PROPOSAL VERIFICATION</h4>
+          <p>The customer uploaded a manually signed proposal document.</p>
+        </div>
+      </div>
+
+      <div class="signed-doc-content">
+        <div class="signed-doc-left">
+          <div class="signed-doc-file-card">
+            <div class="signed-doc-file-icon">PDF</div>
+            <div class="signed-doc-file-meta">
+              <strong>${U.escapeHtml(fileName)}</strong>
+              <span>${U.escapeHtml(mimeType)}</span>
+            </div>
+          </div>
+
+          <div class="signed-doc-preview-box">
+            ${previewHtml}
+          </div>
+        </div>
+
+        <div class="signed-doc-right">
+          <div class="signed-doc-detail">
+            <span>Uploaded by</span>
+            <strong>${U.escapeHtml(uploadedBy)}</strong>
+          </div>
+
+          <div class="signed-doc-detail">
+            <span>Customer IP</span>
+            <strong>${U.escapeHtml(customerIp)}</strong>
+          </div>
+
+          <div class="signed-doc-detail">
+            <span>Uploaded on</span>
+            <strong>${formattedUploadedOn ? U.escapeHtml(formattedUploadedOn) : '—'}</strong>
+          </div>
+
+          <div class="signed-doc-detail">
+            <span>Signature type</span>
+            <strong>Uploaded signed proposal</strong>
+          </div>
+
+          <div class="signed-doc-status">
+            Confirmed electronic acceptance
+          </div>
+        </div>
+      </div>
+
+      <div class="signed-doc-actions">
+        <a
+          class="signed-doc-action-btn"
+          href="${dataUrl}"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Open Signed Proposal
+        </a>
+
+        <a
+          class="signed-doc-action-btn"
+          href="${dataUrl}"
+          download="${U.escapeAttr(fileName)}"
+        >
+          Download Signed Proposal
+        </a>
+      </div>
+    </section>
+  `;
 }
 
 function renderESignaturePreview(proposal, options = {}) {

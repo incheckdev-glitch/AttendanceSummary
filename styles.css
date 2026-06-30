@@ -8269,4 +8269,250 @@ body.public-eproposal-mode {
 .e-proposal-activity-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:22px 24px;background:linear-gradient(135deg,#073b73,#0b7ec2);color:#fff}.e-proposal-activity-header h2{margin:0 0 6px}.e-proposal-activity-header p{margin:0;max-width:760px;color:rgba(255,255,255,.88);line-height:1.45}.e-proposal-activity-header .modal-close{color:#fff;background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.25)}
 .e-proposal-activity-body{padding:22px 24px;background:#f8fbff}.e-proposal-activity-table-wrap{max-height:68vh;overflow:auto;border:1px solid #dbeafe;border-radius:16px;background:#fff}.e-proposal-activity-table{width:100%;min-width:1060px;border-collapse:collapse}.e-proposal-activity-table th,.e-proposal-activity-table td{padding:10px 12px;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:top}.e-proposal-activity-table th{position:sticky;top:0;background:#eff6ff;color:#0b5ea8;font-size:12px;text-transform:uppercase;letter-spacing:.04em}.e-proposal-activity-user-agent{max-width:260px;word-break:break-word}.e-proposal-activity-table pre{max-width:280px;margin:0;white-space:pre-wrap;word-break:break-word;font-size:12px}.e-proposal-activity-empty{padding:28px;border:1px solid #dbeafe;border-radius:16px;background:#fff;text-align:center;color:#475569}
 
-.signed-doc-verification{margin-top:16px;border:1px solid #bfdbfe;border-radius:12px;background:#ffffff;overflow:hidden;page-break-inside:avoid}.signed-doc-header{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;background:#eff6ff;border-bottom:1px solid #dbeafe}.signed-doc-icon{width:26px;height:26px;border-radius:999px;background:#2563eb;color:#ffffff;display:inline-flex;align-items:center;justify-content:center;font-weight:800;flex:0 0 auto}.signed-doc-header h4{margin:0;color:#1e3a8a;font-size:13px;font-weight:900;letter-spacing:.08em}.signed-doc-header p{margin:3px 0 0;color:#475569;font-size:12px}.signed-doc-body{display:grid;grid-template-columns:minmax(260px,360px) 1fr;gap:18px;padding:14px}.signed-doc-file-card{display:flex;gap:10px;align-items:center;padding:10px 12px;border:1px solid #dbeafe;border-radius:10px;background:#f8fbff;margin-bottom:10px}.signed-doc-file-icon{width:38px;height:44px;border-radius:8px;background:#fee2e2;color:#dc2626;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900}.signed-doc-file-card strong{display:block;color:#0f172a;font-size:13px;word-break:break-word}.signed-doc-file-card span{display:block;margin-top:2px;color:#64748b;font-size:11px}.signed-doc-preview-frame{height:210px;border:1px solid #dbeafe;border-radius:10px;background:#f8fafc;overflow:hidden}.signed-doc-preview-frame iframe,.signed-doc-preview-frame embed{width:100%;height:100%;border:0;display:block}.signed-doc-preview-frame img{width:100%;height:100%;object-fit:contain;display:block;background:#ffffff}.signed-doc-details-col{display:grid;align-content:center;gap:0}.signed-doc-detail-row{display:grid;grid-template-columns:130px 1fr;gap:12px;padding:10px 0;border-bottom:1px solid #e5e7eb;font-size:12px}.signed-doc-detail-row span{color:#64748b}.signed-doc-detail-row strong{color:#0f172a;font-weight:800}.signed-doc-status{width:fit-content;margin-top:12px;padding:7px 12px;border-radius:999px;background:#dcfce7;color:#166534;font-size:11px;font-weight:900}.signed-doc-actions{display:flex;gap:10px;padding:14px;border-top:1px solid #e5e7eb}.signed-doc-actions button,.signed-doc-actions a{display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:8px 12px;border:1px solid #bfdbfe;border-radius:10px;background:#ffffff;color:#2563eb;font-weight:800;font-size:12px;text-decoration:none;cursor:pointer}.signed-doc-actions button:hover,.signed-doc-actions a:hover{background:#eff6ff;border-color:#2563eb}@media(max-width:760px){.signed-doc-body{grid-template-columns:1fr}.signed-doc-detail-row{grid-template-columns:1fr;gap:3px}.signed-doc-actions{flex-direction:column}.signed-doc-actions button,.signed-doc-actions a{width:100%}}@media print{.signed-doc-verification{page-break-inside:avoid}.signed-doc-actions{display:none}.signed-doc-preview-frame{height:180px}}
+
+/* =========================================================
+   SIGNED PROPOSAL VERIFICATION - INTERNAL PREVIEW
+   ========================================================= */
+
+.signed-doc-verification {
+  margin: 16px 0 0;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  background: #ffffff;
+  overflow: hidden;
+  page-break-inside: avoid;
+  font-family: inherit;
+}
+
+.signed-doc-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  background: #eff6ff;
+  border-bottom: 1px solid #dbeafe;
+}
+
+.signed-doc-check {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: #2563eb;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.signed-doc-header h4 {
+  margin: 0;
+  color: #1e3a8a;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.signed-doc-header p {
+  margin: 3px 0 0;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.signed-doc-content {
+  display: grid;
+  grid-template-columns: minmax(260px, 360px) 1fr;
+  gap: 18px;
+  padding: 14px;
+  align-items: start;
+}
+
+.signed-doc-left,
+.signed-doc-right {
+  min-width: 0;
+}
+
+.signed-doc-file-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  background: #f8fbff;
+  margin-bottom: 10px;
+}
+
+.signed-doc-file-icon {
+  width: 38px;
+  height: 44px;
+  border-radius: 8px;
+  background: #fee2e2;
+  color: #dc2626;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 900;
+  flex: 0 0 auto;
+}
+
+.signed-doc-file-meta {
+  min-width: 0;
+}
+
+.signed-doc-file-meta strong {
+  display: block;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.signed-doc-file-meta span {
+  display: block;
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.signed-doc-preview-box {
+  height: 190px;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  background: #f8fafc;
+  overflow: hidden;
+}
+
+.signed-doc-preview-iframe,
+.signed-doc-preview-box iframe,
+.signed-doc-preview-box embed {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  background: #ffffff;
+}
+
+.signed-doc-preview-image,
+.signed-doc-preview-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  background: #ffffff;
+}
+
+.signed-doc-no-preview {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.signed-doc-right {
+  display: grid;
+  align-content: center;
+  gap: 0;
+  padding-top: 8px;
+}
+
+.signed-doc-detail {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.signed-doc-detail span {
+  color: #64748b;
+}
+
+.signed-doc-detail strong {
+  color: #0f172a;
+  font-weight: 800;
+  word-break: break-word;
+}
+
+.signed-doc-status {
+  width: fit-content;
+  margin-top: 12px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.signed-doc-actions {
+  display: flex;
+  gap: 10px;
+  padding: 14px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.signed-doc-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 8px 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #2563eb !important;
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none !important;
+  cursor: pointer;
+}
+
+.signed-doc-action-btn:hover {
+  background: #eff6ff;
+  border-color: #2563eb;
+}
+
+@media (max-width: 760px) {
+  .signed-doc-content {
+    grid-template-columns: 1fr;
+  }
+
+  .signed-doc-detail {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+
+  .signed-doc-actions {
+    flex-direction: column;
+  }
+
+  .signed-doc-action-btn {
+    width: 100%;
+  }
+}
+
+@media print {
+  .signed-doc-verification {
+    page-break-inside: avoid;
+  }
+
+  .signed-doc-actions {
+    display: none;
+  }
+
+  .signed-doc-preview-box {
+    height: 160px;
+  }
+}
