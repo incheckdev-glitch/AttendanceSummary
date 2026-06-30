@@ -5525,18 +5525,80 @@ function renderPublicEAgreementShell() {
   document.body.innerHTML = `
     <main id="publicEAgreementRoot" class="public-eproposal-page">
       <div class="public-eproposal-card">
-        <div class="public-eproposal-header">
-          <div>
-            <p class="public-eyebrow">InCheck360 Secure Agreement</p>
-            <h1>Review Agreement</h1>
-            <p>Please review the agreement below. You can accept and sign, reject, print, or download a copy.</p>
-          </div>
-        </div>
         <div id="publicEAgreementContent">
           <div class="public-loading">Loading agreement...</div>
         </div>
       </div>
     </main>
+  `;
+}
+
+function renderEAgreementHero(agreement = {}) {
+  const escapeHtml = value => (window.U?.escapeHtml ? window.U.escapeHtml(value) : String(value ?? ''));
+  const agreementNumber =
+    agreement.agreement_number ||
+    agreement.agreement_id ||
+    agreement.reference ||
+    '—';
+
+  const companyName =
+    agreement.company_name ||
+    agreement.client_name ||
+    agreement.customer_name ||
+    agreement.legal_name ||
+    agreement.customer_legal_name ||
+    '—';
+
+  return `
+    <section class="eagreement-hero">
+      <div class="eagreement-hero-inner">
+        <div class="eagreement-secure-label">
+          <span class="eagreement-secure-icon">✓</span>
+          <span>InCheck360 Secure Agreement</span>
+        </div>
+
+        <div class="eagreement-hero-main">
+          <div class="eagreement-hero-copy">
+            <h1>Review Agreement</h1>
+            <p>
+              Please review the agreement below. You can accept and sign,
+              reject, print, or download a copy.
+            </p>
+          </div>
+        </div>
+
+        <div class="eagreement-summary-card">
+          <div class="eagreement-summary-grid">
+            <div class="eagreement-summary-item">
+              <div class="eagreement-summary-icon">📄</div>
+              <div>
+                <span class="eagreement-summary-label">Agreement Number</span>
+                <strong class="eagreement-summary-value">
+                  ${escapeHtml(String(agreementNumber).replace(/^Agreement#/i, '#'))}
+                </strong>
+              </div>
+            </div>
+
+            <div class="eagreement-summary-divider"></div>
+
+            <div class="eagreement-summary-item eagreement-company-item">
+              <div class="eagreement-summary-icon">🏢</div>
+              <div>
+                <span class="eagreement-summary-label">Company</span>
+                <strong class="eagreement-company-name">
+                  ${escapeHtml(companyName)}
+                </strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="eagreement-review-note">
+            <span class="eagreement-info-icon">i</span>
+            <span>Please review the agreement carefully before signing.</span>
+          </div>
+        </div>
+      </div>
+    </section>
   `;
 }
 
@@ -5636,22 +5698,16 @@ function bootPublicEAgreementPage() {
       const data = await callEAgreementAction({ action: 'view', token });
       const agreement = data.agreement || data.record || data;
       const items = Array.isArray(data.items) ? data.items : [];
-      const number = agreement.agreement_id || agreement.agreement_number || 'Agreement';
-      const customer = agreement.customer_name || agreement.customer_legal_name || 'Customer';
       const accepted = Boolean(agreement.e_agreement_accepted_at || agreement.e_agreement_signature_confirmed);
       const rejected = Boolean(agreement.e_agreement_rejected_at || String(agreement.status || '').toLowerCase() === 'rejected');
       const documentHtml = window.Agreements?.buildAgreementPreviewHtml
         ? window.Agreements.buildAgreementPreviewHtml(agreement, items)
-        : `<h1>${U.escapeHtml(number)}</h1>`;
+        : `<h1>${U.escapeHtml(agreement.agreement_id || agreement.agreement_number || 'Agreement')}</h1>`;
       const brandedDocumentHtml = U.addIncheckDocumentLogo ? U.addIncheckDocumentLogo(U.formatPreviewHtmlDates ? U.formatPreviewHtmlDates(documentHtml) : documentHtml) : documentHtml;
       content.innerHTML = `
         ${accepted ? '<section class="public-eproposal-section public-success"><h2>Thank you. This agreement has been accepted and signed.</h2></section>' : ''}
         ${rejected ? '<section class="public-eproposal-section public-status-message"><h2>This agreement has been rejected.</h2></section>' : ''}
-        <section class="public-eproposal-section public-proposal-hero">
-          <p class="public-eyebrow">${U.escapeHtml(number)}</p>
-          <h2>${U.escapeHtml(customer)}</h2>
-          <p>Please review the agreement carefully before signing.</p>
-        </section>
+        ${renderEAgreementHero(agreement)}
         <section class="public-eproposal-document" data-public-agreement-document>
           <iframe title="Agreement preview" srcdoc="${U.escapeAttr(brandedDocumentHtml)}"></iframe>
         </section>
