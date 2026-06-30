@@ -784,6 +784,9 @@ const Agreements = {
     return '';
   },
   resolveCompanyAuthorizedSignatory(company = {}) {
+    if (window.CompanyVerification?.getCompanyAuthorizedSignatory) {
+      return window.CompanyVerification.getCompanyAuthorizedSignatory(company);
+    }
     return {
       name: String(
         company?.authorized_signatory_name ||
@@ -1488,7 +1491,10 @@ const Agreements = {
       documents_verification_status: company?.documents_verification_status
     };
   },
-  isCompanyVerified(company = {}) {
+  isCompanyVerified(company = {}, documents = []) {
+    if (window.CompanyVerification?.getCompanyVerificationStatus) {
+      return window.CompanyVerification.getCompanyVerificationStatus(company, documents);
+    }
     const normalizeBool = value => this.normalizeCompanyVerificationValue(value);
     const normalizeStatus = value => this.normalizeCompanyVerificationStatus(value);
     return Boolean(
@@ -1651,6 +1657,18 @@ const Agreements = {
   async getProposalCompanyForVerification(proposal = {}) {
     return this.getCompanyForAgreementVerification(proposal);
   },
+  async refetchCompanyDocuments(company = {}) {
+    const companyUuid = String(company?.id || company?.company_uuid || company?.companyUuid || '').trim();
+    const companyId = String(company?.company_id || company?.companyId || '').trim();
+    const client = window.SupabaseClient?.getClient?.() || window.supabaseClient || window.supabase;
+    if (!client?.from || (!companyUuid && !companyId)) return [];
+    let query = client.from('company_documents').select('*');
+    if (companyUuid) query = query.eq('company_uuid', companyUuid);
+    else query = query.eq('company_id', companyId);
+    const { data, error } = await query;
+    if (error) throw error;
+    return Array.isArray(data) ? data : [];
+  },
   async refetchLinkedProposalCompany(proposal = {}) {
     const proposalCompanyId = String(proposal?.company_id || '').trim();
     if (!proposalCompanyId) return null;
@@ -1662,7 +1680,7 @@ const Agreements = {
     }
     return this.queryCompanyForVerification('id', proposalCompanyId);
   },
-  getProposalCompanyVerificationDebug(proposal = {}, company = null) {
+  getProposalCompanyVerificationDebug(proposal = {}, company = null, documents = []) {
     return {
       proposalId: proposal?.proposal_id,
       proposalCompanyId: proposal?.company_id,
@@ -1682,11 +1700,14 @@ const Agreements = {
         signatory_title: company?.signatory_title,
         customer_signatory_name: company?.customer_signatory_name,
         customer_signatory_title: company?.customer_signatory_title
-      }
+      },
+      documents,
+      computedVerified: this.isCompanyVerified(company || {}, documents),
+      signatory: this.getCompanyAuthorizedSignatory(company || {})
     };
   },
-  logAgreementConversionCompanyValidation(proposal = {}, company = null) {
-    console.log('Agreement conversion company validation', this.getProposalCompanyVerificationDebug(proposal, company));
+  logAgreementConversionCompanyValidation(proposal = {}, company = null, documents = []) {
+    console.log('Agreement conversion validation failed', this.getProposalCompanyVerificationDebug(proposal, company, documents));
   },
   async ensureLinkedProposalCompanyVerified(proposal = {}) {
     const company = await this.refetchLinkedProposalCompany(proposal);
@@ -1695,22 +1716,23 @@ const Agreements = {
       await this.showBlockingDialog('Company Required', 'Proposal is not linked to a valid company. Please reselect the company.');
       return { allowed: false, company: null };
     }
-    const signatory = this.resolveCompanyAuthorizedSignatory(company);
-    if (!this.isCompanyVerified(company)) {
-      this.logAgreementConversionCompanyValidation(proposal, company);
+    const documents = await this.refetchCompanyDocuments(company);
+    const signatory = this.getCompanyAuthorizedSignatory(company);
+    if (!this.isCompanyVerified(company, documents)) {
+      this.logAgreementConversionCompanyValidation(proposal, company, documents);
       const linked = [company?.legal_name || company?.company_name || company?.name, company?.id].filter(Boolean).join(' / ');
       await this.showBlockingDialog('Company Not Verified', `Please verify the linked company before converting to agreement.${linked ? ` Linked company: ${linked}.` : ''}`);
       return { allowed: false, company };
     }
     if (!(signatory.name && signatory.title)) {
-      this.logAgreementConversionCompanyValidation(proposal, company);
+      this.logAgreementConversionCompanyValidation(proposal, company, documents);
       await this.showBlockingDialog(
         'Company Authorized Signatory Required',
         'Company authorized signatory details are missing. Please update the company profile before creating the agreement.'
       );
       return { allowed: false, company };
     }
-    return { allowed: true, company, signatory };
+    return { allowed: true, company, documents, signatory };
   },
   async ensureCompanyVerifiedBeforeAgreement(companyOrAgreementPayload = {}) {
     const source = companyOrAgreementPayload && typeof companyOrAgreementPayload === 'object' ? companyOrAgreementPayload : {};
@@ -1732,7 +1754,8 @@ const Agreements = {
       );
       return false;
     }
-    if (!this.isCompanyVerified(company)) {
+    const documents = await this.refetchCompanyDocuments(company);
+    if (!this.isCompanyVerified(company, documents)) {
       await this.showBlockingDialog(
         'Company Not Verified',
         'The company is still not verified. Please upload the company documents and make sure an admin verifies them before converting this proposal to an agreement.'

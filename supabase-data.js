@@ -844,7 +844,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
   ]);
 
   const COMPANY_COLUMNS = new Set([
-    'company_id','company_name','legal_name','authorized_signatory_full_name','authorized_signatory_title','registration_number','company_type','industry','website','main_email','main_phone','country','city','address','tax_number','company_status','source','owner_name','owner_email','notes','legacy_client_ref','is_imported','is_historical_client','imported_from','imported_at','imported_by','old_client_since','skip_workflow','skip_notifications','skip_onboarding','skip_technical_admin','skip_invoice_creation','skip_receipt_creation','renewed_from_agreement_id','created_by','created_by_email','created_at','updated_at','documents_verified','documents_verification_status','documents_verified_at','documents_verified_by','documents_verification_notes','documents_verified_snapshot','documents_verification_invalidated_at','documents_verification_invalidated_reason'
+    'company_id','company_name','legal_name','authorized_signatory_full_name','authorized_signatory_title','registration_number','company_type','industry','website','main_email','main_phone','country','city','address','tax_number','company_status','source','owner_name','owner_email','notes','legacy_client_ref','is_imported','is_historical_client','imported_from','imported_at','imported_by','old_client_since','skip_workflow','skip_notifications','skip_onboarding','skip_technical_admin','skip_invoice_creation','skip_receipt_creation','renewed_from_agreement_id','created_by','created_by_email','created_at','updated_at','documents_verified','documents_verification_status','documents_verified_at','documents_verified_by','documents_verification_notes','documents_verified_snapshot','documents_verification_invalidated_at','documents_verification_invalidated_reason','is_verified','verified','company_verified','authorized_signatory_verified','verification_status','authorized_signatory_name'
   ]);
   const CONTACT_COLUMNS = new Set([
     'contact_id','company_id','company_name','company_ids','company_names','first_name','last_name','full_name','job_title','department','email','phone','mobile','decision_role','is_primary_contact','contact_status','notes','legacy_contact_ref','is_imported','imported_from','imported_at','imported_by','created_by','created_by_email','created_at','updated_at'
@@ -1508,7 +1508,18 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     'documents_verification_invalidated_at',
     'documentsVerificationInvalidatedAt',
     'documents_verification_invalidated_reason',
-    'documentsVerificationInvalidatedReason'
+    'documentsVerificationInvalidatedReason',
+    'is_verified',
+    'isVerified',
+    'verified',
+    'company_verified',
+    'companyVerified',
+    'authorized_signatory_verified',
+    'authorizedSignatoryVerified',
+    'verification_status',
+    'verificationStatus',
+    'authorized_signatory_name',
+    'authorizedSignatoryName'
   ]);
   function normalizeRoleKey(role) {
     return String(role || '')
@@ -3101,6 +3112,12 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       assign('documents_verified_snapshot', source.documents_verified_snapshot ?? source.documentsVerifiedSnapshot);
       assign('documents_verification_invalidated_at', source.documents_verification_invalidated_at ?? source.documentsVerificationInvalidatedAt);
       assign('documents_verification_invalidated_reason', source.documents_verification_invalidated_reason ?? source.documentsVerificationInvalidatedReason);
+      assign('is_verified', source.is_verified ?? source.isVerified);
+      assign('verified', source.verified);
+      assign('company_verified', source.company_verified ?? source.companyVerified);
+      assign('authorized_signatory_verified', source.authorized_signatory_verified ?? source.authorizedSignatoryVerified);
+      assign('verification_status', source.verification_status ?? source.verificationStatus);
+      assign('authorized_signatory_name', source.authorized_signatory_name ?? source.authorizedSignatoryName);
     }
 
     if (options.mode === 'create' && !output.company_id) delete output.company_id;
@@ -4307,15 +4324,26 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     return '';
   }
 
-  function isCompanyVerifiedForAgreementConversion(company = {}) {
-    const verified = company?.documents_verified === true || company?.documentsVerified === true;
-    const status = String(
-      company?.documents_verification_status ||
-      company?.documentsVerificationStatus ||
-      ''
-    ).trim().toLowerCase();
+  function isVerifiedValue(value) {
+    const normalized = String(value ?? '').trim().toLowerCase();
+    return value === true || normalized === 'true' || normalized === 'yes' || normalized === 'verified' || normalized === 'approved';
+  }
 
-    return verified && status === 'verified';
+  function getCompanyVerificationStatus(company, documents = []) {
+    const helper = global.CompanyVerification?.getCompanyVerificationStatus;
+    if (helper) return helper(company, documents);
+    const hasVerifiedFlag = isVerifiedValue(company?.is_verified) || isVerifiedValue(company?.verified) || isVerifiedValue(company?.company_verified) || isVerifiedValue(company?.authorized_signatory_verified) || isVerifiedValue(company?.verification_status) || isVerifiedValue(company?.documents_verified) || isVerifiedValue(company?.documents_verification_status) || isVerifiedValue(company?.documentsVerificationStatus);
+    const hasVerifiedDocument = (Array.isArray(documents) ? documents : []).some(doc => isVerifiedValue(doc?.is_verified) || isVerifiedValue(doc?.verified) || isVerifiedValue(doc?.status) || isVerifiedValue(doc?.verification_status));
+    return hasVerifiedFlag || hasVerifiedDocument;
+  }
+
+  function getCompanyAuthorizedSignatory(company) {
+    const helper = global.CompanyVerification?.getCompanyAuthorizedSignatory;
+    if (helper) return helper(company);
+    return {
+      name: String(company?.authorized_signatory_name || company?.signatory_name || company?.customer_signatory_name || company?.company_authorized_signatory_name || company?.representative_name || company?.authorized_signatory_full_name || '').trim(),
+      title: String(company?.authorized_signatory_title || company?.signatory_title || company?.customer_signatory_title || company?.company_authorized_signatory_title || company?.representative_title || '').trim()
+    };
   }
 
   async function queryCompanyForAgreementConversion(client, column, value) {
@@ -4328,6 +4356,17 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const { data, error } = await query.maybeSingle();
     if (error) throw friendlyError('Unable to confirm company verification status', error);
     return data && typeof data === 'object' ? data : null;
+  }
+
+  async function loadCompanyDocumentsForAgreementConversion(client, company = {}) {
+    const companyUuid = String(company?.id || company?.company_uuid || company?.companyUuid || '').trim();
+    const companyId = String(company?.company_id || company?.companyId || '').trim();
+    if (!companyUuid && !companyId) return [];
+    let query = client.from('company_documents').select('*');
+    query = companyUuid ? query.eq('company_uuid', companyUuid) : query.eq('company_id', companyId);
+    const { data, error } = await query;
+    if (error) throw friendlyError('Unable to load company documents for agreement conversion', error);
+    return Array.isArray(data) ? data : [];
   }
 
   async function loadProposalCompanyForAgreementConversion(client, proposal = {}) {
@@ -4439,8 +4478,24 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       throw new Error(PROPOSAL_AGREEMENT_SIGNATURE_ERROR);
     }
     const company = await loadProposalCompanyForAgreementConversion(client, proposal);
-    if (!isCompanyVerifiedForAgreementConversion(company)) {
+    const documents = await loadCompanyDocumentsForAgreementConversion(client, company);
+    const computedVerified = getCompanyVerificationStatus(company, documents);
+    const signatory = getCompanyAuthorizedSignatory(company);
+    if (!computedVerified || !(signatory.name && signatory.title)) {
+      console.log('Agreement conversion validation failed', {
+        proposalId: proposal.proposal_id,
+        companyId: proposal.company_id,
+        company,
+        documents,
+        computedVerified,
+        signatory
+      });
+    }
+    if (!computedVerified) {
       throw new Error('Company Not Verified: The company is still not verified. Please upload the company documents and make sure an admin verifies them before converting this proposal to an agreement.');
+    }
+    if (!(signatory.name && signatory.title)) {
+      throw new Error('Company authorized signatory details are missing. Please update the company profile before creating the agreement.');
     }
     return true;
   }
