@@ -8076,3 +8076,60 @@ body.public-eproposal-mode {
 .typed-signature-preview.signature-style-2{font-family:"Segoe Script","Lucida Handwriting",cursive;letter-spacing:.02em}.typed-signature-preview.signature-style-3{font-family:"Snell Roundhand","Brush Script MT",cursive;font-weight:600}
 .signature-style-options{display:flex;gap:10px;flex-wrap:wrap}.signature-style-option{border:1px solid #cbd5e1;background:#ffffff;color:#0f172a;border-radius:12px;padding:10px 14px;cursor:pointer}.signature-style-option.active{border-color:#2563eb;background:#eff6ff;color:#2563eb}
 .public-validation-errors{display:grid;gap:4px}.public-signature-summary{display:grid;gap:12px}.signature-summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.signature-summary-grid div{padding:12px;border:1px solid #dbeafe;border-radius:12px;background:#fff}.signature-summary-grid span{display:block;color:#64748b;font-size:12px;text-transform:uppercase;font-weight:800}.signature-summary-grid strong{display:block;color:#0f172a;margin-top:4px;overflow-wrap:anywhere}@media(max-width:720px){.signature-summary-grid{grid-template-columns:1fr}}
+
+.signature-mode-tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.signature-mode-tab {
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.signature-mode-tab.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.signature-upload-box {
+  border: 1px dashed #93c5fd;
+  background: #eff6ff;
+  border-radius: 14px;
+  padding: 18px;
+  text-align: center;
+}
+
+.signature-upload-box input[type="file"] {
+  width: 100%;
+}
+
+.signature-image-preview {
+  margin-top: 14px;
+  border: 1px solid #bfdbfe;
+  border-radius: 14px;
+  background: #ffffff;
+  padding: 16px;
+  min-height: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.signature-image-preview img,
+.proposal-signature-image {
+  max-width: 280px;
+  max-height: 110px;
+  object-fit: contain;
+  display: block;
+}
+
+.remove-signature-button {
+  margin-top: 10px;
+}
