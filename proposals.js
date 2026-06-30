@@ -6331,7 +6331,7 @@ function bootPublicEProposalPage() {
   const field = (...values) => values.find(value => value !== undefined && value !== null && String(value).trim() !== '');
   const dateText = value => U.escapeHtml(U.fmtDisplayDate(value) || '—');
   const display = (value, fallback = '—') => U.escapeHtml(String(safeText(value, fallback)));
-  const renderModal = html => {
+  const renderModal = (html, modalClass = 'public-action-modal') => {
     let modal = document.getElementById('publicEProposalModal');
     if (!modal) {
       modal = document.createElement('div');
@@ -6339,7 +6339,7 @@ function bootPublicEProposalPage() {
       modal.className = 'public-eproposal-modal';
       document.body.appendChild(modal);
     }
-    modal.innerHTML = `<div class="public-eproposal-modal-card">${html}<button class="public-modal-close" type="button" aria-label="Close">×</button></div>`;
+    modal.innerHTML = `<div class="public-eproposal-modal-card public-modal ${modalClass}">${html}<button class="public-modal-close" type="button" aria-label="Close">×</button></div>`;
     modal.querySelector('.public-modal-close')?.addEventListener('click', () => modal.remove());
   };
 
@@ -6370,8 +6370,8 @@ function bootPublicEProposalPage() {
         frame?.contentWindow?.focus?.();
         frame?.contentWindow?.print?.();
       });
-      document.querySelector('[data-public-accept]')?.addEventListener('click', () => renderModal(`<form data-public-accept-form><h3>Accept Proposal</h3><input class="input" name="name" required placeholder="Customer full name"><input class="input" name="email" type="email" required placeholder="Customer email"><textarea class="input" name="comment" rows="3" placeholder="Optional comment"></textarea><label class="public-checkbox"><input name="authorized" type="checkbox" required> I confirm I am authorized to accept this proposal.</label><button class="public-btn-primary" type="submit">Accept Proposal</button></form>`));
-      document.querySelector('[data-public-reject]')?.addEventListener('click', () => renderModal(`<form data-public-reject-form><h3>Reject Proposal</h3><input class="input" name="name" placeholder="Customer name (optional)"><input class="input" name="email" type="email" placeholder="Customer email (optional)"><textarea class="input" name="reason" rows="4" placeholder="Rejection reason"></textarea><button class="public-btn-outline" type="submit">Reject Proposal</button></form>`));
+      document.querySelector('[data-public-accept]')?.addEventListener('click', () => renderModal(`<form data-public-accept-form><h2>Accept Proposal</h2><input class="input" name="name" required placeholder="Customer full name"><input class="input" name="email" type="email" required placeholder="Customer email"><textarea class="input" name="comment" rows="3" placeholder="Optional comment"></textarea><label class="public-checkbox"><input name="authorized" type="checkbox" required> I confirm I am authorized to accept this proposal.</label><button class="public-btn-primary accept-proposal-submit" type="submit">Accept Proposal</button></form>`, 'public-action-modal accept-proposal-modal'));
+      document.querySelector('[data-public-reject]')?.addEventListener('click', () => renderModal(`<form data-public-reject-form><h2>Reject Proposal</h2><input class="input" name="name" placeholder="Customer name (optional)"><input class="input" name="email" type="email" placeholder="Customer email (optional)"><textarea class="input" name="reason" rows="4" placeholder="Rejection reason"></textarea><button class="public-btn-primary reject-proposal-submit" type="submit">Reject Proposal</button></form>`, 'public-action-modal reject-proposal-modal'));
       document.body.addEventListener('submit', async event => {
         const form = event.target;
         if (!form.matches('[data-public-accept-form], [data-public-reject-form]')) return;
