@@ -6726,29 +6726,25 @@ function renderPublicEProposalShell() {
 
 
 async function callEProposalAction(body) {
-  const client = window.SupabaseClient?.getClient?.() || window.supabase;
-  if (!client?.functions?.invoke) throw new Error('Supabase functions client is not available.');
-  const { data, error } = await client.functions.invoke('eproposal-action', { body });
+  const supabase = window.SupabaseClient?.getClient?.() || window.supabase;
+  if (!supabase?.functions?.invoke) throw new Error('Supabase functions client is not available.');
+  const { data, error } = await supabase.functions.invoke('eproposal-action', {
+    body
+  });
 
   if (error) {
-    console.error('eproposal-action invoke error:', error);
+    console.error('Edge Function invoke error:', error);
     throw new Error(error.message || 'Unable to complete this action.');
   }
 
   if (!data?.ok) {
-    console.error('eproposal-action response error:', data);
-    const actionError = new Error(data?.error || 'Unable to complete this action.');
-    actionError.payload = data;
-    throw actionError;
+    console.error('Edge Function response error:', data);
+    throw new Error(data?.error || 'Unable to complete this action.');
   }
 
   return data.data || data;
 }
 
-async function invokeEProposalPublicFunction(functionName, payload = {}) {
-  const action = payload?.action || functionName;
-  return callEProposalAction({ ...payload, action });
-}
 
 function bootPublicEProposalPage() {
   const token = decodeURIComponent(getEProposalTokenFromUrl() || '').trim();
@@ -6833,7 +6829,7 @@ function bootPublicEProposalPage() {
 
   (async () => {
     try {
-      const data = await invokeEProposalPublicFunction('view', { token });
+      const data = await callEProposalAction({ action: 'view', token });
       const payload = Array.isArray(data) ? data[0] : data;
       if (payload?.ok === false || payload?.available === false || (!payload?.proposal && !payload?.proposal_id && !payload?.proposal_number)) return unavailable();
       const proposal = Proposals.normalizeProposal(payload.proposal || payload);
@@ -6931,7 +6927,7 @@ function bootPublicEProposalPage() {
             const signedDocumentDataUrl = form.dataset.signedDocumentDataUrl;
             const signedDocumentFileName = form.dataset.signedDocumentFileName;
             const signedDocumentMimeType = form.dataset.signedDocumentMimeType;
-            await invokeEProposalPublicFunction('eproposal-action', {
+            await callEProposalAction({
               action: 'accept',
               token,
               customerName,
@@ -6961,7 +6957,7 @@ function bootPublicEProposalPage() {
             });
 
           } else {
-            await invokeEProposalPublicFunction('eproposal-action', { action: 'reject', token, customerName: form.name.value || null, customerEmail: null, rejectionReason: form.reason.value || null });
+            await callEProposalAction({ action: 'reject', token, customerName: form.name.value || null, customerEmail: null, rejectionReason: form.reason.value || null });
           }
           document.getElementById('publicEProposalModal')?.remove();
           setActionState(true);
