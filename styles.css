@@ -8981,10 +8981,15 @@ body.public-eproposal-mode {
 
 .agreement-internal-signatures {
   margin-top: 18px;
+  pointer-events: auto;
   border: 1px solid #dbeafe;
   border-radius: 14px;
   background: #ffffff;
   overflow: hidden;
+}
+
+.agreement-internal-signatures * {
+  pointer-events: auto;
 }
 
 .agreement-internal-signatures-header {
@@ -9057,9 +9062,12 @@ body.public-eproposal-mode {
   cursor: pointer;
 }
 
-.agreement-signature-btn:disabled {
+.agreement-signature-btn:disabled,
+.agreement-signature-btn[aria-disabled="true"] {
   background: #cbd5e1;
+  color: #64748b;
   cursor: not-allowed;
+  opacity: 0.75;
 }
 
 .agreement-signature-meta,
