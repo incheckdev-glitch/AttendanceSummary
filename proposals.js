@@ -2659,6 +2659,7 @@ const Proposals = {
     };
   },
   buildProposalDocumentHtml(proposal = {}, items = [], options = {}) {
+    const isPublicView = Boolean(options?.publicView);
     const previewModel = this.buildProposalPreviewModel(proposal, items);
     const proposalData = previewModel.proposal;
     const normalizedItems = previewModel.items;
@@ -2771,6 +2772,18 @@ const Proposals = {
       </section>` : '';
 
     const grandTotalInWords = U.formatAmountInWords(grandTotal, currency);
+    const totalsRowsHtml = isPublicView
+      ? `
+          <div class="totals-row"><span>Total Discount</span><strong>${money(discountTotal)}</strong></div>
+          <div class="totals-row grand"><span>Grand Total</span><strong>${money(grandTotal)}</strong></div>`
+      : `
+          <div class="totals-row"><span>One Time Fees</span><strong>${money(displayOneTimeFeesSubtotal)}</strong></div>
+          ${hardwareItems.length ? `<div class="totals-row"><span>Hardware</span><strong>${money(hardwareSubtotal)}</strong></div>` : ''}
+          <div class="totals-row"><span>Subscription Fees</span><strong>${money(subtotalLocations)}</strong></div>
+          <div class="totals-row"><span>Subtotal</span><strong>${money(subtotal)}</strong></div>
+          <div class="totals-row"><span>Total Discount</span><strong>${money(discountTotal)}</strong></div>
+          <div class="totals-row grand"><span>Grand Total</span><strong>${money(grandTotal)}</strong></div>
+          <div class="totals-row grand-total-words-row"><span>Grand Total in Words</span><strong>${U.escapeHtml(grandTotalInWords)}</strong></div>`;
     const providerSignatoryName = this.getProposalProviderSignatoryName(proposalData);
     const providerSignatoryTitle = this.getProposalProviderSignatoryTitle(proposalData);
     const proposalContact = proposalData.contact || {
@@ -3100,14 +3113,7 @@ const Proposals = {
       ${hardwareSectionHtml}
 
       <section class="totals-wrap">
-        <div class="totals-box">
-          <div class="totals-row"><span>One Time Fees</span><strong>${money(displayOneTimeFeesSubtotal)}</strong></div>
-          ${hardwareItems.length ? `<div class="totals-row"><span>Hardware</span><strong>${money(hardwareSubtotal)}</strong></div>` : ''}
-          <div class="totals-row"><span>Subscription Fees</span><strong>${money(subtotalLocations)}</strong></div>
-          <div class="totals-row"><span>Subtotal</span><strong>${money(subtotal)}</strong></div>
-          <div class="totals-row"><span>Total Discount</span><strong>${money(discountTotal)}</strong></div>
-          <div class="totals-row grand"><span>Grand Total</span><strong>${money(grandTotal)}</strong></div>
-          <div class="totals-row grand-total-words-row"><span>Grand Total in Words</span><strong>${U.escapeHtml(grandTotalInWords)}</strong></div>
+        <div class="totals-box">${totalsRowsHtml}
         </div>
       </section>
 
