@@ -9370,3 +9370,26 @@ body.public-eproposal-mode {
 .agreement-internal-sign-modal .modal-content {
   z-index: 9001 !important;
 }
+
+.internal-draw-signature-wrap {
+  margin-top: 12px;
+}
+
+.internal-draw-canvas-box {
+  width: 100%;
+  height: 180px;
+  border: 1px dashed #93c5fd;
+  border-radius: 12px;
+  background: #ffffff;
+  overflow: hidden;
+  touch-action: none;
+}
+
+#internalSignatureCanvas {
+  width: 100%;
+  height: 180px;
+  display: block;
+  cursor: crosshair;
+  background: #ffffff;
+  touch-action: none;
+}
