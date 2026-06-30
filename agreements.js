@@ -2616,7 +2616,7 @@ const Agreements = {
         <span class="agreement-signature-status ${signed ? 'signed' : 'pending'}">${signed ? 'Signed' : 'Pending'}</span>
         ${signed ? `<div class="agreement-signature-meta"><div><strong>Signed by:</strong> ${U.escapeHtml(signedBy || '—')}</div><div><strong>Signed date:</strong> ${U.escapeHtml(signedAt ? U.fmtDisplayDate(signedAt) : '—')}</div></div>` : ''}
         ${helperText ? `<p class="agreement-signature-helper">${U.escapeHtml(helperText)}</p>` : ''}
-        ${!signed ? `<button type="button" class="agreement-signature-btn" data-action="internal-agreement-sign" data-agreement-id="${U.escapeAttr(agreementId || '')}" data-signer-role="${U.escapeAttr(role)}" ${buttonDisabled ? 'disabled aria-disabled="true"' : ''}>${U.escapeHtml(buttonText)}</button>` : ''}
+        ${!signed ? `<button type="button" class="agreement-signature-btn" data-action="internal-agreement-sign" data-agreement-id="${U.escapeAttr(agreementId || '')}" data-signer-role="${U.escapeAttr(role)}" onclick="window.Agreements && window.Agreements.handleInternalAgreementSignButtonClick && window.Agreements.handleInternalAgreementSignButtonClick(event, this)" ${buttonDisabled ? 'disabled aria-disabled="true"' : ''}>${U.escapeHtml(buttonText)}</button>` : ''}
       </div>`;
   },
   renderInternalAgreementSignatures(agreement, internalSignatures = [], currentUser = {}) {
@@ -2672,6 +2672,40 @@ const Agreements = {
     const el = typeof target === 'string' ? document.getElementById(target) : target;
     if (!el) return;
     el.innerHTML = this.renderInternalAgreementSignatures(agreement, internalSignatures, this.getCurrentAgreementSigningUser());
+    this.bindInternalAgreementSignButtons(el);
+  },
+  bindInternalAgreementSignButtons(root = document) {
+    const scope = root && typeof root.querySelectorAll === 'function' ? root : document;
+    scope.querySelectorAll('[data-action="internal-agreement-sign"], .agreement-signature-btn').forEach(button => {
+      if (button.dataset.internalAgreementSignBound === 'true') return;
+      button.dataset.internalAgreementSignBound = 'true';
+      button.addEventListener('click', event => this.handleInternalAgreementSignButtonClick(event, button));
+    });
+  },
+  async handleInternalAgreementSignButtonClick(event, button) {
+    const signButton = button || event?.target?.closest?.('[data-action="internal-agreement-sign"], .agreement-signature-btn');
+    if (!signButton) return;
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+
+    if (signButton.disabled || signButton.getAttribute('aria-disabled') === 'true') return;
+    if (signButton.dataset.internalAgreementSignOpening === 'true') return;
+
+    const agreementId = String(signButton.dataset.agreementId || '').trim();
+    const signerRole = String(signButton.dataset.signerRole || '').trim();
+    console.log('Internal agreement sign button clicked', { agreementId, signerRole, button: signButton });
+
+    if (!agreementId || !signerRole) {
+      console.error('Missing internal agreement signing button data', { agreementId, signerRole, dataset: signButton.dataset });
+      return UI.toast('Missing agreement signing data. Please refresh and try again.');
+    }
+
+    signButton.dataset.internalAgreementSignOpening = 'true';
+    try {
+      await this.openAgreementInternalSignModal({ agreementId, signerRole });
+    } finally {
+      delete signButton.dataset.internalAgreementSignOpening;
+    }
   },
   async openAgreementInternalSignModal({ agreementId, signerRole } = {}) {
     const cleanAgreementId = String(agreementId || '').trim();
@@ -6054,10 +6088,11 @@ const Agreements = {
         event.preventDefault();
         event.stopPropagation();
 
-        await this.openAgreementInternalSignModal({ agreementId, signerRole });
+        await this.handleInternalAgreementSignButtonClick(event, signButton);
       }, true);
       document.documentElement.dataset.internalAgreementSignDelegated = 'true';
     }
+    this.bindInternalAgreementSignButtons(document);
 
     if (E.agreementAddAnnualRowBtn) E.agreementAddAnnualRowBtn.addEventListener('click', () => this.addRow('annual_saas'));
     if (E.agreementAddOneTimeRowBtn) E.agreementAddOneTimeRowBtn.addEventListener('click', () => this.addRow('one_time_fee'));
