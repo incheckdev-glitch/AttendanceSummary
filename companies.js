@@ -81,7 +81,7 @@ const Companies = {
   formatCodeFallback(value = '') { return String(value || '').replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase()); },
   formatCompanyType(value = '') { const found = this.state.companyTypeOptions.find(o => o.value === value); return found?.label || this.formatCodeFallback(value); },
   formatCompanyIndustry(value = '') { const found = this.state.companyIndustryOptions.find(o => o.value === value); return found?.label || this.formatCodeFallback(value); },
-  normalize(raw = {}) { return { ...raw, id: raw.id || '', company_id: raw.company_id || raw.companyId || '', company_name: raw.company_name || raw.companyName || '', legal_name: raw.legal_name || raw.legalName || '', legal_company_name: raw.legal_company_name || raw.legalCompanyName || '', authorized_signatory_full_name: raw.authorized_signatory_full_name || raw.authorizedSignatoryFullName || '', authorized_signatory_title: raw.authorized_signatory_title || raw.authorizedSignatoryTitle || '', registration_number: raw.registration_number || raw.registrationNumber || '', company_type: raw.company_type || '', industry: raw.industry || '', website: raw.website || '', main_email: raw.main_email || raw.mainEmail || '', main_phone: raw.main_phone || raw.mainPhone || '', country: raw.country || '', state: raw.state || '', city: raw.city || '', address: raw.address || '', tax_number: raw.tax_number || raw.taxNumber || '', vat_number: raw.vat_number || raw.vatNumber || '', company_status: raw.company_status || raw.companyStatus || raw.status || 'Prospect', notes: raw.notes || '', documents_verified: raw.documents_verified ?? raw.documentsVerified ?? false, documents_verification_status: raw.documents_verification_status || raw.documentsVerificationStatus || 'not_verified', documents_verified_at: raw.documents_verified_at || raw.documentsVerifiedAt || '', documents_verified_by: raw.documents_verified_by || raw.documentsVerifiedBy || '', documents_verification_notes: raw.documents_verification_notes || raw.documentsVerificationNotes || '', documents_verified_snapshot: raw.documents_verified_snapshot ?? raw.documentsVerifiedSnapshot ?? null, documents_verification_invalidated_at: raw.documents_verification_invalidated_at || raw.documentsVerificationInvalidatedAt || '', documents_verification_invalidated_reason: raw.documents_verification_invalidated_reason || raw.documentsVerificationInvalidatedReason || '', created_at: raw.created_at || raw.createdAt || '' }; },
+  normalize(raw = {}) { return { ...raw, id: raw.id || '', company_id: raw.company_id || raw.companyId || '', company_name: raw.company_name || raw.companyName || '', legal_name: raw.legal_name || raw.legalName || '', legal_company_name: raw.legal_company_name || raw.legalCompanyName || '', authorized_signatory_full_name: raw.authorized_signatory_full_name || raw.authorizedSignatoryFullName || '', authorized_signatory_title: raw.authorized_signatory_title || raw.authorizedSignatoryTitle || '', registration_number: raw.registration_number || raw.registrationNumber || '', company_type: raw.company_type || '', industry: raw.industry || '', website: raw.website || '', main_email: raw.main_email || raw.mainEmail || '', main_phone: raw.main_phone || raw.mainPhone || '', country: raw.country || '', state: raw.state || '', city: raw.city || '', address: raw.address || '', tax_number: raw.tax_number || raw.taxNumber || '', vat_number: raw.vat_number || raw.vatNumber || '', company_status: raw.company_status || raw.companyStatus || raw.status || 'Prospect', notes: raw.notes || '', documents_verified: raw.documents_verified ?? raw.documentsVerified ?? false, documents_verification_status: raw.documents_verification_status || raw.documentsVerificationStatus || 'not_verified', documents_verified_at: raw.documents_verified_at || raw.documentsVerifiedAt || '', documents_verified_by: raw.documents_verified_by || raw.documentsVerifiedBy || '', documents_verification_notes: raw.documents_verification_notes || raw.documentsVerificationNotes || '', documents_verified_snapshot: raw.documents_verified_snapshot ?? raw.documentsVerifiedSnapshot ?? null, documents_verification_invalidated_at: raw.documents_verification_invalidated_at || raw.documentsVerificationInvalidatedAt || '', documents_verification_invalidated_reason: raw.documents_verification_invalidated_reason || raw.documentsVerificationInvalidatedReason || '', is_verified: raw.is_verified ?? raw.isVerified ?? false, verified: raw.verified ?? false, company_verified: raw.company_verified ?? raw.companyVerified ?? false, authorized_signatory_verified: raw.authorized_signatory_verified ?? raw.authorizedSignatoryVerified ?? false, verification_status: raw.verification_status || raw.verificationStatus || '', authorized_signatory_name: raw.authorized_signatory_name || raw.authorizedSignatoryName || raw.authorized_signatory_full_name || raw.authorizedSignatoryFullName || '', created_at: raw.created_at || raw.createdAt || '' }; },
   async hydrateOptionSources() {
     const load = async (resource, fallback) => {
       try {
@@ -198,7 +198,7 @@ const Companies = {
         { title: 'Summary', cards: [
           ['Company ID', row.company_id],
           ['Lifecycle Status', this.normalizeLifecycleStatus(row.company_status)],
-          ['Verification', row.documents_verified ? 'Verified' : row.documents_verification_status || 'Not verified'],
+          ['Verification', this.formatCompanyVerificationStatus(row)],
           ['Company Type', this.formatCompanyType(row.company_type)],
           ['Industry', this.formatCompanyIndustry(row.industry)],
           ['Created Date', U.fmtTS(row.created_at)]
@@ -645,7 +645,10 @@ const Companies = {
   },
 
   getCompanyVerificationStatus(company = {}) {
-    return String(company?.documents_verification_status || company?.documentsVerificationStatus || (company?.documents_verified ? 'verified' : 'not_verified') || 'not_verified').trim().toLowerCase();
+    const verified = window.CompanyVerification?.getCompanyVerificationStatus?.(company, this.state.documents);
+    const signatory = window.CompanyVerification?.getCompanyAuthorizedSignatory?.(company) || {};
+    if (verified && signatory.name && signatory.title) return 'verified';
+    return String(company?.documents_verification_status || company?.documentsVerificationStatus || 'not_verified').trim().toLowerCase() === 'verified' ? 'not_verified' : String(company?.documents_verification_status || company?.documentsVerificationStatus || 'not_verified').trim().toLowerCase();
   },
   formatCompanyVerificationStatus(company = {}) {
     const status = this.getCompanyVerificationStatus(company);
@@ -664,7 +667,7 @@ const Companies = {
     if (!company?.id) { panel.style.display = 'none'; panel.innerHTML = ''; return; }
     panel.style.display = '';
     const normalized = this.normalize(company);
-    const status = String(normalized.documents_verification_status || 'not_verified').trim().toLowerCase();
+    const status = this.getCompanyVerificationStatus(normalized);
     const docs = Array.isArray(this.state.documents) ? this.state.documents : [];
     const canVerify = this.canVerifyCompany();
     const actionLabel = status === 'verified' ? 'Mark as Not Verified' : status === 'needs_reverification' ? 'Re-verify Company' : 'Mark as Verified';
@@ -727,7 +730,8 @@ const Companies = {
     const confirmBtn = document.getElementById('companyVerificationConfirmBtn'); if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Verifying…'; }
     const previousStatus = String(company.documents_verification_status || 'not_verified').trim() || 'not_verified';
     const verifiedAt = new Date().toISOString(); const verifiedBy = this.getCurrentUserId(); const snapshot = this.buildCompanyVerificationSnapshot(company); const verificationNotes = String(notes || '').trim() || null;
-    const payload = { documents_verified: true, documents_verification_status: 'verified', documents_verified_at: verifiedAt, documents_verified_by: verifiedBy || null, documents_verification_notes: verificationNotes, documents_verification_invalidated_at: null, documents_verification_invalidated_reason: null, documents_verified_snapshot: snapshot };
+    const resolvedSignatory = window.CompanyVerification?.getCompanyAuthorizedSignatory?.(this.getFormVerificationCompany(company)) || {};
+    const payload = { documents_verified: true, documents_verification_status: 'verified', documents_verified_at: verifiedAt, documents_verified_by: verifiedBy || null, documents_verification_notes: verificationNotes, documents_verification_invalidated_at: null, documents_verification_invalidated_reason: null, documents_verified_snapshot: snapshot, is_verified: true, verified: true, company_verified: true, authorized_signatory_verified: true, verification_status: 'verified', authorized_signatory_name: resolvedSignatory.name || snapshot.authorized_signatory_full_name || null, authorized_signatory_title: resolvedSignatory.title || snapshot.authorized_signatory_title || null };
     try {
       const data = await Api.requestWithSession('companies', 'verify', { id: company.id, updates: payload }, { requireAuth: true });
       const client = this.getSupabaseClient();
@@ -755,7 +759,12 @@ const Companies = {
       documents_verification_notes: null,
       documents_verification_invalidated_at: null,
       documents_verification_invalidated_reason: null,
-      documents_verified_snapshot: null
+      documents_verified_snapshot: null,
+      is_verified: false,
+      verified: false,
+      company_verified: false,
+      authorized_signatory_verified: false,
+      verification_status: 'not_verified'
     };
     try {
       const data = await Api.requestWithSession('companies', 'verify_company', { id: company.id, updates: payload }, { requireAuth: true });
