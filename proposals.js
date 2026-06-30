@@ -114,6 +114,7 @@ const Proposals = {
     'e_signature_signed_at',
     'e_signature_customer_name',
     'e_signature_customer_email',
+    'e_signature_ip_address',
     'e_signature_confirmed',
     'provider_signatory_user_id',
     'provider_signatory_name',
@@ -5578,7 +5579,7 @@ const Proposals = {
       if (!client?.from) throw new Error('Supabase client is not available.');
       const { data, error } = await client
         .from('proposal_guest_activity_logs')
-        .select('event_type,customer_name,customer_email,ip_address,user_agent,metadata,created_at')
+        .select('event_type,customer_name,ip_address,user_agent,metadata,created_at')
         .eq('proposal_id', proposalUuid)
         .order('created_at', { ascending: false })
         .limit(200);
@@ -5590,7 +5591,7 @@ const Proposals = {
         const text = JSON.stringify(metadata, null, 2);
         return text === '{}' ? '—' : text;
       };
-      modal.querySelector('.e-proposal-activity-body').innerHTML = rows.length ? `<div class="e-proposal-activity-table-wrap"><table class="e-proposal-activity-table"><thead><tr><th>Event</th><th>Customer</th><th>Email</th><th>IP address</th><th>User agent</th><th>Date/time</th><th>Signature type</th><th>Metadata</th></tr></thead><tbody>${rows.map(row => `<tr><td>${U.escapeHtml(formatEvent(row.event_type))}</td><td>${U.escapeHtml(row.customer_name || '—')}</td><td>${U.escapeHtml(row.customer_email || '—')}</td><td>${U.escapeHtml(row.ip_address || '—')}</td><td class="e-proposal-activity-user-agent">${U.escapeHtml(row.user_agent || '—')}</td><td>${U.escapeHtml(row.created_at ? new Date(row.created_at).toLocaleString() : '—')}</td><td>${U.escapeHtml(row.metadata?.signature_type || '—')}</td><td><pre>${U.escapeHtml(formatMeta(row.metadata))}</pre></td></tr>`).join('')}</tbody></table></div>` : '<div class="e-proposal-activity-empty">No e-proposal activity has been logged yet.</div>';
+      modal.querySelector('.e-proposal-activity-body').innerHTML = rows.length ? `<div class="e-proposal-activity-table-wrap"><table class="e-proposal-activity-table"><thead><tr><th>Event</th><th>Customer name</th><th>IP address</th><th>Date/time</th><th>Signature type</th><th>Details</th></tr></thead><tbody>${rows.map(row => `<tr><td>${U.escapeHtml(formatEvent(row.event_type))}</td><td>${U.escapeHtml(row.customer_name || '—')}</td><td>${U.escapeHtml(row.ip_address || '—')}</td><td>${U.escapeHtml(row.created_at ? new Date(row.created_at).toLocaleString() : '—')}</td><td>${U.escapeHtml(row.metadata?.signature_type || '—')}</td><td><details><summary class="btn btn-incheck-outline sm">Details</summary><div class="e-proposal-activity-user-agent"><strong>User agent</strong><br>${U.escapeHtml(row.user_agent || '—')}</div><pre>${U.escapeHtml(formatMeta(row.metadata))}</pre></details></td></tr>`).join('')}</tbody></table></div>` : '<div class="e-proposal-activity-empty">No e-proposal activity has been logged yet.</div>';
     } catch (error) {
       console.error('[e-proposal] activity load failed', error);
       modal.querySelector('.e-proposal-activity-body').innerHTML = `<div class="e-proposal-activity-empty">Unable to load e-proposal activity: ${U.escapeHtml(error?.message || 'Unknown error')}</div>`;
@@ -6451,9 +6452,10 @@ function renderElectronicSignatureVerification(proposal) {
     proposal.accepted_by_name ||
     '';
 
-  const signedEmail =
-    proposal.e_signature_customer_email ||
-    proposal.accepted_by_email ||
+  const customerIp =
+    proposal.e_signature_ip_address ||
+    proposal.latest_e_proposal_ip_address ||
+    proposal.latest_guest_ip_address ||
     '';
 
   const signedAt =
@@ -6487,7 +6489,7 @@ function renderElectronicSignatureVerification(proposal) {
       <div class="esignature-verification-header">
         <span class="esignature-icon">✓</span>
         <div>
-          <h4>Electronic Signature Verification</h4>
+          <h4>ELECTRONIC SIGNATURE VERIFICATION</h4>
           <p>This proposal was accepted and electronically signed by the customer.</p>
         </div>
       </div>
@@ -6503,8 +6505,8 @@ function renderElectronicSignatureVerification(proposal) {
             <strong>${U.escapeHtml(signedBy)}</strong>
           </div>
           <div class="esignature-detail-row">
-            <span>Email</span>
-            <strong>${U.escapeHtml(signedEmail)}</strong>
+            <span>Customer IP</span>
+            <strong>${U.escapeHtml(customerIp || '—')}</strong>
           </div>
           <div class="esignature-detail-row">
             <span>Signed on</span>
@@ -6526,10 +6528,17 @@ function renderElectronicSignatureVerification(proposal) {
 function renderSignedDocumentVerification(proposal) {
   if (!hasSignedDocumentUpload(proposal)) return '';
   const uploadedBy = proposal.e_signature_customer_name || proposal.accepted_by_name || '';
-  const uploadedEmail = proposal.e_signature_customer_email || proposal.accepted_by_email || '';
   const uploadedAt = proposal.e_signature_signed_at || proposal.accepted_at || '';
+  const customerIp = proposal.e_signature_ip_address || proposal.latest_e_proposal_ip_address || proposal.latest_guest_ip_address || '';
+  const mimeType = proposal.e_signed_document_mime_type || '';
+  const fileName = proposal.e_signed_document_file_name || 'Signed proposal';
+  const fileExt = String(mimeType).includes('pdf') ? 'PDF' : 'IMG';
+  const dataUrl = U.escapeAttr(proposal.e_signed_document_data_url || '');
+  const preview = isSignedDocumentPdf(proposal)
+    ? `<iframe src="${dataUrl}" title="Signed proposal PDF preview"></iframe>`
+    : (isSignedDocumentImage(proposal) ? `<img src="${dataUrl}" alt="Signed proposal preview">` : '');
   const formatSignedDateTime = value => value ? (U.fmtDisplayDateTime?.(value) || U.fmtDisplayDate?.(value) || String(value)) : '—';
-  return `<div class="signed-document-verification-section esignature-verification-section"><div class="esignature-verification-header"><span class="esignature-icon">✓</span><div><h4>Signed Proposal Verification</h4><p>The customer uploaded a manually signed proposal document.</p></div></div><div class="esignature-verification-body"><div class="esignature-left">${renderSignedDocumentPreview(proposal, { includeButtons: true })}</div><div class="esignature-details"><div class="esignature-detail-row"><span>Uploaded by</span><strong>${U.escapeHtml(uploadedBy)}</strong></div><div class="esignature-detail-row"><span>Email</span><strong>${U.escapeHtml(uploadedEmail)}</strong></div><div class="esignature-detail-row"><span>Uploaded on</span><strong>${U.escapeHtml(formatSignedDateTime(uploadedAt))}</strong></div><div class="esignature-detail-row"><span>Signature type</span><strong>Uploaded signed proposal</strong></div><div class="esignature-confirmed-badge">Confirmed electronic acceptance</div></div></div></div>`;
+  return `<div class="signed-doc-verification"><div class="signed-doc-header"><span class="signed-doc-icon">✓</span><div><h4>SIGNED PROPOSAL VERIFICATION</h4><p>The customer uploaded a manually signed proposal document.</p></div></div><div class="signed-doc-body"><div class="signed-doc-preview-col"><div class="signed-doc-file-card"><div class="signed-doc-file-icon">${U.escapeHtml(fileExt)}</div><div><strong>${U.escapeHtml(fileName)}</strong><span>${U.escapeHtml(mimeType || 'Uploaded signed proposal')}</span></div></div><div class="signed-doc-preview-frame">${preview}</div></div><div class="signed-doc-details-col"><div class="signed-doc-detail-row"><span>Uploaded by</span><strong>${U.escapeHtml(uploadedBy || '—')}</strong></div><div class="signed-doc-detail-row"><span>Customer IP</span><strong>${U.escapeHtml(customerIp || '—')}</strong></div><div class="signed-doc-detail-row"><span>Uploaded on</span><strong>${U.escapeHtml(formatSignedDateTime(uploadedAt))}</strong></div><div class="signed-doc-detail-row"><span>Signature type</span><strong>Uploaded signed proposal</strong></div><div class="signed-doc-status">Confirmed electronic acceptance</div></div></div><div class="signed-doc-actions"><a href="${dataUrl}" target="_blank" rel="noopener noreferrer">Open Signed Proposal</a><a href="${dataUrl}" download="${U.escapeAttr(fileName || 'signed-proposal')}">Download Signed Proposal</a></div></div>`;
 }
 
 function renderESignaturePreview(proposal, options = {}) {
@@ -6591,53 +6600,28 @@ function renderPublicEProposalShell() {
 
 
 async function invokeEProposalPublicFunction(functionName, payload = {}) {
-  // Route legacy public e-proposal action names to installed Supabase RPCs.
   const client = window.SupabaseClient?.getClient?.() || window.supabase;
-  if (!client?.rpc) throw new Error('Supabase client is not available.');
-
-  const rpcMap = {
-    'eproposal-view': {
-      name: 'eproposal_public_view',
-      args: {
-        p_token: payload?.token || payload?.p_token,
-        p_user_agent: navigator.userAgent
-      }
-    },
-    'eproposal-reject': {
-      name: 'eproposal_reject',
-      args: {
-        p_token: payload?.token || payload?.p_token,
-        p_customer_name: payload?.customerName || payload?.p_customer_name || null,
-        p_customer_email: payload?.customerEmail || payload?.p_customer_email || null,
-        p_rejection_reason: payload?.rejectionReason || payload?.p_rejection_reason || null,
-        p_user_agent: navigator.userAgent
-      }
-    }
-  };
-
-  const rpc = rpcMap[functionName];
-  if (!rpc) {
-    throw new Error(`Unsupported public e-proposal action: ${functionName}`);
-  }
-
-  const { data, error } = await client.rpc(rpc.name, rpc.args);
+  if (!client?.functions?.invoke) throw new Error('Supabase functions client is not available.');
+  const action = payload?.action || functionName;
+  const { data, error } = await client.functions.invoke('eproposal-action', { body: { ...payload, action } });
   if (error) {
-    console.error(`[e-proposal] ${rpc.name} RPC error:`, error);
-    throw new Error(error.message || 'Unable to submit e-proposal request.');
+    console.error('[e-proposal] eproposal-action error:', error);
+    throw new Error('Unable to complete this action. Please try again or contact InCheck360.');
   }
   if (data?.ok === false) {
-    const rpcError = new Error(data?.error || data?.message || 'Unable to submit e-proposal request.');
-    rpcError.payload = data;
-    throw rpcError;
+    const actionError = new Error(data?.error || 'Unable to complete this action. Please try again or contact InCheck360.');
+    actionError.payload = data;
+    throw actionError;
   }
-  return data;
+  return data?.data ?? data;
 }
+
 function bootPublicEProposalPage() {
   const token = decodeURIComponent(getEProposalTokenFromUrl() || '').trim();
   renderPublicEProposalShell();
   const content = document.getElementById('publicEProposalContent');
   const unavailable = (message = 'This proposal link is no longer available.') => {
-    content.innerHTML = `<section class="public-eproposal-section public-status-message"><h2>${U.escapeHtml(message || 'This proposal link is no longer available.')}</h2><p>Please contact the InCheck360 team for an updated proposal link.</p></section>`;
+    content.innerHTML = `<section class="public-eproposal-section public-status-message"><h2>${U.escapeHtml(message || 'This proposal link is no longer available.')}</h2><p>Unable to complete this action. Please try again or contact InCheck360.</p></section>`;
   };
   if (!token) {
     unavailable();
@@ -6676,7 +6660,7 @@ function bootPublicEProposalPage() {
     const hasSignature = hasAnyESignature(proposalData);
     if (!hasSignature) return '';
     const signatureHtml = renderESignaturePreview(proposalData);
-    return `<section class="public-eproposal-section public-signature-summary"><h2>Signature Summary</h2><div class="signature-summary-grid"><div><span>Signed by</span><strong>${display(field(proposalData?.e_signature_customer_name, proposalData?.accepted_by_name, proposalData?.customer_name))}</strong></div><div><span>Email</span><strong>${display(field(proposalData?.e_signature_customer_email, proposalData?.accepted_by_email, proposalData?.customer_email))}</strong></div><div><span>Signed date/time</span><strong>${dateTimeText(field(proposalData?.e_signature_signed_at, proposalData?.accepted_at, proposalData?.customer_sign_date))}</strong></div></div>${signatureHtml}</section>`;
+    return `<section class="public-eproposal-section public-signature-summary"><h2>Signature Summary</h2><div class="signature-summary-grid"><div><span>Signed by</span><strong>${display(field(proposalData?.e_signature_customer_name, proposalData?.accepted_by_name, proposalData?.customer_name))}</strong></div><div><span>Signed date/time</span><strong>${dateTimeText(field(proposalData?.e_signature_signed_at, proposalData?.accepted_at, proposalData?.customer_sign_date))}</strong></div></div>${signatureHtml}</section>`;
   };
   const readSignatureImageFile = file => new Promise((resolve, reject) => {
     const allowed = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
@@ -6715,7 +6699,7 @@ function bootPublicEProposalPage() {
 
   (async () => {
     try {
-      const data = await invokeEProposalPublicFunction('eproposal-view', { token });
+      const data = await invokeEProposalPublicFunction('view', { token });
       const payload = Array.isArray(data) ? data[0] : data;
       if (payload?.ok === false || payload?.available === false || (!payload?.proposal && !payload?.proposal_id && !payload?.proposal_number)) return unavailable();
       const proposal = Proposals.normalizeProposal(payload.proposal || payload);
@@ -6780,14 +6764,13 @@ function bootPublicEProposalPage() {
         form?.querySelector('[data-clear-drawn-signature]')?.addEventListener('click', () => { resetCanvas(); syncAcceptForm(); });
         syncAcceptForm();
       });
-            document.querySelector('[data-public-reject]')?.addEventListener('click', () => renderModal(`<form data-public-reject-form><h2>Reject Proposal</h2><input class="input" name="name" placeholder="Customer name (optional)"><input class="input" name="email" type="email" placeholder="Customer email (optional)"><textarea class="input" name="reason" rows="4" placeholder="Rejection reason"></textarea><button class="public-btn-primary reject-proposal-submit" type="submit">Reject Proposal</button></form>`, 'public-action-modal reject-proposal-modal'));
+            document.querySelector('[data-public-reject]')?.addEventListener('click', () => renderModal(`<form data-public-reject-form><h2>Reject Proposal</h2><input class="input" name="name" placeholder="Customer name (optional)"><textarea class="input" name="reason" rows="4" placeholder="Rejection reason"></textarea><button class="public-btn-primary reject-proposal-submit" type="submit">Reject Proposal</button></form>`, 'public-action-modal reject-proposal-modal'));
       document.body.addEventListener('submit', async event => {
         const form = event.target;
         if (!form.matches('[data-public-accept-form], [data-public-reject-form]')) return;
         event.preventDefault();
         const isAccept = form.matches('[data-public-accept-form]');
         try {
-          let acceptedCustomerEmail = '';
           if (isAccept) {
             form.querySelector('.public-form-error')?.remove();
             const errors = [];
@@ -6801,15 +6784,12 @@ function bootPublicEProposalPage() {
             const errorBox = form.querySelector('.public-validation-errors');
             if (errorBox) errorBox.innerHTML = errors.map(error => `<p class="public-form-error">${U.escapeHtml(error)}</p>`).join('');
             if (errors.length) return;
-            const supabase = window.SupabaseClient?.getClient?.() || window.supabase;
-            if (!supabase?.rpc) throw new Error('Supabase client is not available.');
             const customerName = form.name.value.trim();
             const customerEmail = proposal.contact_email ||
               proposal.customer_email ||
               proposal.email ||
               proposal.accepted_by_email ||
               'not-provided@customer.local';
-            acceptedCustomerEmail = customerEmail;
             const typedSignature = form.typedSignature.value.trim();
             const signatureImageDataUrl = signatureMode === 'drawn'
               ? form.dataset.drawnSignatureDataUrl
@@ -6817,57 +6797,49 @@ function bootPublicEProposalPage() {
             const signedDocumentDataUrl = form.dataset.signedDocumentDataUrl;
             const signedDocumentFileName = form.dataset.signedDocumentFileName;
             const signedDocumentMimeType = form.dataset.signedDocumentMimeType;
-            const { data, error } = await supabase.rpc('eproposal_accept', {
-              p_token: token,
-              p_customer_name: customerName,
-              p_customer_email: customerEmail,
-              p_customer_comment: null,
-              p_user_agent: navigator.userAgent,
-              p_signature_type: signatureMode,
-              p_signature_text:
+            await invokeEProposalPublicFunction('eproposal-action', {
+              action: 'accept',
+              token,
+              customerName,
+              customerEmail,
+              comment: null,
+              signatureType: signatureMode,
+              signatureText:
                 signatureMode === 'typed'
                   ? typedSignature
                   : customerName,
-              p_signature_image_data_url:
+              signatureImageDataUrl:
                 signatureMode === 'uploaded' || signatureMode === 'drawn'
                   ? signatureImageDataUrl
                   : null,
-              p_signed_document_data_url:
+              signedDocumentDataUrl:
                 signatureMode === 'signed_document_upload'
                   ? signedDocumentDataUrl
                   : null,
-              p_signed_document_file_name:
+              signedDocumentFileName:
                 signatureMode === 'signed_document_upload'
                   ? signedDocumentFileName
                   : null,
-              p_signed_document_mime_type:
+              signedDocumentMimeType:
                 signatureMode === 'signed_document_upload'
                   ? signedDocumentMimeType
                   : null
             });
 
-            if (error) {
-              console.error('eproposal_accept RPC error:', error);
-              throw new Error(error.message || 'Unable to accept proposal.');
-            }
-
-            if (!data?.ok) {
-              throw new Error(data?.error || 'Unable to accept proposal.');
-            }
           } else {
-            await invokeEProposalPublicFunction('eproposal-reject', { token, customerName: form.name.value || null, customerEmail: form.email.value || null, rejectionReason: form.reason.value });
+            await invokeEProposalPublicFunction('eproposal-action', { action: 'reject', token, customerName: form.name.value || null, customerEmail: null, rejectionReason: form.reason.value || null });
           }
           document.getElementById('publicEProposalModal')?.remove();
           setActionState(true);
           const acceptedSignatureHtml = isAccept ? (form.dataset.signatureMode === 'signed_document_upload' ? `<div class="signed-document-actions"><a class="public-btn-outline" href="${U.escapeAttr(form.dataset.signedDocumentDataUrl)}" target="_blank" rel="noopener noreferrer">Open Signed Proposal</a><a class="public-btn-primary" href="${U.escapeAttr(form.dataset.signedDocumentDataUrl)}" download="${U.escapeAttr(form.dataset.signedDocumentFileName || 'signed-proposal')}">Download Signed Proposal</a></div>` : (form.dataset.signatureMode === 'uploaded' || form.dataset.signatureMode === 'drawn' ? renderSignatureImage(form.dataset.signatureMode === 'drawn' ? form.dataset.drawnSignatureDataUrl : form.dataset.uploadedSignatureDataUrl) : renderTypedSignaturePreview(form.typedSignature.value.trim(), '1'))) : '';
-          content.insertAdjacentHTML('afterbegin', `<section class="public-eproposal-section public-success"><h2>${isAccept ? 'Thank you. This proposal has been accepted and signed.' : 'This proposal has been rejected.'}</h2>${isAccept ? `<div class="public-signature-summary"><div class="signature-summary-grid"><div><span>Signed by</span><strong>${U.escapeHtml(form.name.value.trim())}</strong></div><div><span>Email</span><strong>${U.escapeHtml(acceptedCustomerEmail)}</strong></div><div><span>Signed date/time</span><strong>${U.escapeHtml(new Date().toLocaleString())}</strong></div></div>${acceptedSignatureHtml}</div>` : ''}</section>`);
+          content.insertAdjacentHTML('afterbegin', `<section class="public-eproposal-section public-success"><h2>${isAccept ? 'Thank you. This proposal has been accepted and signed.' : 'This proposal has been rejected.'}</h2>${isAccept ? `<div class="public-signature-summary"><div class="signature-summary-grid"><div><span>Signed by</span><strong>${U.escapeHtml(form.name.value.trim())}</strong></div><div><span>Signed date/time</span><strong>${U.escapeHtml(new Date().toLocaleString())}</strong></div></div>${acceptedSignatureHtml}</div>` : ''}</section>`);
         } catch (error) {
-          form.insertAdjacentHTML('beforeend', `<p class="public-form-error">${U.escapeHtml(error?.message || 'Unable to submit response.')}</p>`);
+          form.insertAdjacentHTML('beforeend', `<p class="public-form-error">${U.escapeHtml('Unable to complete this action. Please try again or contact InCheck360.')}</p>`);
         }
       });
     } catch (error) {
       console.error('[e-proposal] public load failed', error);
-      unavailable(error?.payload?.message || error?.message || 'This proposal link is no longer available.');
+      unavailable(error?.payload?.message || error?.message || 'Unable to complete this action. Please try again or contact InCheck360.');
     }
   })();
 }

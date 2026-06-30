@@ -4,6 +4,12 @@ alter table public.proposal_guest_activity_logs
 add column if not exists ip_address text,
 add column if not exists user_agent text;
 
+alter table public.proposals
+add column if not exists e_signature_ip_address text;
+
+create index if not exists proposal_guest_activity_logs_ip_idx
+on public.proposal_guest_activity_logs (ip_address);
+
 drop policy if exists "Authenticated users can read proposal guest logs" on public.proposal_guest_activity_logs;
 drop policy if exists "Authorized ERP users can read proposal guest logs" on public.proposal_guest_activity_logs;
 create policy "Authorized ERP users can read proposal guest logs"
@@ -154,7 +160,7 @@ begin
       e_signed_document_data_url = case when v_signature_type = 'signed_document_upload' then v_signed_document_data_url else null end,
       e_signed_document_file_name = case when v_signature_type = 'signed_document_upload' then v_signed_document_file_name else null end,
       e_signed_document_mime_type = case when v_signature_type = 'signed_document_upload' then v_signed_document_mime_type else null end,
-      e_signature_signed_at = now(), e_signature_customer_name = btrim(p_customer_name), e_signature_customer_email = btrim(p_customer_email), e_signature_confirmed = true,
+      e_signature_signed_at = now(), e_signature_customer_name = btrim(p_customer_name), e_signature_customer_email = btrim(p_customer_email), e_signature_ip_address = nullif(btrim(coalesce(p_ip_address, '')), ''), e_signature_confirmed = true,
       customer_sign_date = coalesce(customer_sign_date, current_date), customer_signed_at = coalesce(customer_signed_at, current_date), provider_sign_date = coalesce(provider_sign_date, current_date),
       e_proposal_link_enabled = false, status = 'accepted', updated_at = now()
   where id = v_proposal.id;
