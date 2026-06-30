@@ -7958,3 +7958,107 @@ body.public-eproposal-mode {
     display: none;
   }
 }
+
+/* =========================================================
+   PUBLIC E-PROPOSAL MODAL LIGHT THEME FIX
+   ========================================================= */
+
+.public-eproposal-mode .public-modal,
+.public-eproposal-mode .public-action-modal,
+.public-eproposal-mode .accept-proposal-modal,
+.public-eproposal-mode .reject-proposal-modal {
+  background: #ffffff !important;
+  color: #0f172a !important;
+}
+
+.public-eproposal-mode .public-modal input,
+.public-eproposal-mode .public-modal textarea,
+.public-eproposal-mode .public-modal select,
+.public-eproposal-mode .public-action-modal input,
+.public-eproposal-mode .public-action-modal textarea,
+.public-eproposal-mode .public-action-modal select,
+.public-eproposal-mode .accept-proposal-modal input,
+.public-eproposal-mode .accept-proposal-modal textarea,
+.public-eproposal-mode .reject-proposal-modal input,
+.public-eproposal-mode .reject-proposal-modal textarea {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 14px !important;
+  box-shadow: none !important;
+  caret-color: #2563eb !important;
+}
+
+.public-eproposal-mode .public-modal input::placeholder,
+.public-eproposal-mode .public-modal textarea::placeholder,
+.public-eproposal-mode .public-action-modal input::placeholder,
+.public-eproposal-mode .public-action-modal textarea::placeholder,
+.public-eproposal-mode .accept-proposal-modal input::placeholder,
+.public-eproposal-mode .accept-proposal-modal textarea::placeholder,
+.public-eproposal-mode .reject-proposal-modal input::placeholder,
+.public-eproposal-mode .reject-proposal-modal textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+.public-eproposal-mode .public-modal input:focus,
+.public-eproposal-mode .public-modal textarea:focus,
+.public-eproposal-mode .public-action-modal input:focus,
+.public-eproposal-mode .public-action-modal textarea:focus,
+.public-eproposal-mode .accept-proposal-modal input:focus,
+.public-eproposal-mode .accept-proposal-modal textarea:focus,
+.public-eproposal-mode .reject-proposal-modal input:focus,
+.public-eproposal-mode .reject-proposal-modal textarea:focus {
+  outline: none !important;
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14) !important;
+  background: #ffffff !important;
+  color: #0f172a !important;
+}
+
+/* Chrome autofill fix */
+.public-eproposal-mode input:-webkit-autofill,
+.public-eproposal-mode input:-webkit-autofill:hover,
+.public-eproposal-mode input:-webkit-autofill:focus,
+.public-eproposal-mode textarea:-webkit-autofill,
+.public-eproposal-mode textarea:-webkit-autofill:hover,
+.public-eproposal-mode textarea:-webkit-autofill:focus {
+  -webkit-text-fill-color: #0f172a !important;
+  box-shadow: 0 0 0 1000px #ffffff inset !important;
+  transition: background-color 9999s ease-in-out 0s !important;
+}
+
+.public-eproposal-mode .public-modal label,
+.public-eproposal-mode .public-action-modal label,
+.public-eproposal-mode .accept-proposal-modal label,
+.public-eproposal-mode .reject-proposal-modal label {
+  color: #334155 !important;
+}
+
+.public-eproposal-mode .public-modal h2,
+.public-eproposal-mode .public-action-modal h2,
+.public-eproposal-mode .accept-proposal-modal h2,
+.public-eproposal-mode .reject-proposal-modal h2 {
+  color: #0f172a !important;
+}
+
+.public-eproposal-mode .public-modal-close,
+.public-eproposal-mode .public-modal .close,
+.public-eproposal-mode .public-action-modal .close {
+  color: #0f172a !important;
+  background: transparent !important;
+}
+
+.public-eproposal-mode .public-btn-primary,
+.public-eproposal-mode .accept-proposal-submit,
+.public-eproposal-mode .reject-proposal-submit {
+  background: #2563eb !important;
+  color: #ffffff !important;
+  border: 1px solid #2563eb !important;
+}
+
+.public-eproposal-mode .public-btn-primary:hover,
+.public-eproposal-mode .accept-proposal-submit:hover,
+.public-eproposal-mode .reject-proposal-submit:hover {
+  background: #1d4ed8 !important;
+  border-color: #1d4ed8 !important;
+}
