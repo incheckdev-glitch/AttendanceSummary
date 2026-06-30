@@ -9349,3 +9349,24 @@ body.public-eproposal-mode {
 .agreement-internal-sign-modal {
   z-index: 7010;
 }
+
+/* FORCE internal agreement signature buttons clickable even inside read-only agreement form */
+.agreement-internal-signatures,
+.agreement-internal-signatures *,
+#agreementInternalSignaturesPanel,
+#agreementInternalSignaturesPanel * {
+  pointer-events: auto !important;
+}
+.agreement-internal-signatures .agreement-signature-btn:not(:disabled),
+#agreementInternalSignaturesPanel .agreement-signature-btn:not(:disabled) {
+  cursor: pointer !important;
+  position: relative !important;
+  z-index: 9999 !important;
+}
+.agreement-internal-sign-modal.open {
+  display: flex !important;
+  z-index: 9000 !important;
+}
+.agreement-internal-sign-modal .modal-content {
+  z-index: 9001 !important;
+}

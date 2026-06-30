@@ -2616,7 +2616,7 @@ const Agreements = {
         <span class="agreement-signature-status ${signed ? 'signed' : 'pending'}">${signed ? 'Signed' : 'Pending'}</span>
         ${signed ? `<div class="agreement-signature-meta"><div><strong>Signed by:</strong> ${U.escapeHtml(signedBy || '—')}</div><div><strong>Signed date:</strong> ${U.escapeHtml(signedAt ? U.fmtDisplayDate(signedAt) : '—')}</div></div>` : ''}
         ${helperText ? `<p class="agreement-signature-helper">${U.escapeHtml(helperText)}</p>` : ''}
-        ${!signed ? `<button type="button" class="agreement-signature-btn" data-action="internal-agreement-sign" data-agreement-id="${U.escapeAttr(agreementId || '')}" data-signer-role="${U.escapeAttr(role)}" onclick="window.Agreements && window.Agreements.handleInternalAgreementSignButtonClick && window.Agreements.handleInternalAgreementSignButtonClick(event, this)" ${buttonDisabled ? 'disabled aria-disabled="true"' : ''}>${U.escapeHtml(buttonText)}</button>` : ''}
+        ${!signed ? `<button type="button" class="agreement-signature-btn" data-action="internal-agreement-sign" data-agreement-id="${U.escapeAttr(agreementId || '')}" data-signer-role="${U.escapeAttr(role)}" onpointerdown="window.Agreements && window.Agreements.handleInternalAgreementSignButtonClick && window.Agreements.handleInternalAgreementSignButtonClick(event, this)" onclick="window.Agreements && window.Agreements.handleInternalAgreementSignButtonClick && window.Agreements.handleInternalAgreementSignButtonClick(event, this)" ${buttonDisabled ? 'disabled aria-disabled="true"' : ''}>${U.escapeHtml(buttonText)}</button>` : ''}
       </div>`;
   },
   renderInternalAgreementSignatures(agreement, internalSignatures = [], currentUser = {}) {
@@ -2672,39 +2672,70 @@ const Agreements = {
     const el = typeof target === 'string' ? document.getElementById(target) : target;
     if (!el) return;
     el.innerHTML = this.renderInternalAgreementSignatures(agreement, internalSignatures, this.getCurrentAgreementSigningUser());
+    this.repairInternalAgreementSignatureButtons(el, agreement, internalSignatures);
     this.bindInternalAgreementSignButtons(el);
   },
-  bindInternalAgreementSignButtons(root = document) {
-    const scope = root && typeof root.querySelectorAll === 'function' ? root : document;
-    scope.querySelectorAll('[data-action="internal-agreement-sign"], .agreement-signature-btn').forEach(button => {
-      if (button.dataset.internalAgreementSignBound === 'true') return;
-      button.dataset.internalAgreementSignBound = 'true';
-      button.addEventListener('click', event => this.handleInternalAgreementSignButtonClick(event, button));
+  repairInternalAgreementSignatureButtons(root = document, agreement = this.state.currentAgreement || {}, internalSignatures = this.state.currentInternalSignatures || []) {
+    const container = typeof root === 'string' ? document.getElementById(root) : root;
+    if (!container) return;
+    const signatures = Array.isArray(internalSignatures) ? internalSignatures : [];
+    const customerSigned = this.hasCustomerSignedForInternalSignatures(agreement);
+    const isFullySigned = this.normalizeAgreementStatus(this.resolveAgreementStatus(agreement)) === 'signed';
+    const hasSfc = signatures.some(sig => this.normalizeAgreementSignerRole(sig.signer_role) === 'SFC');
+    container.querySelectorAll('[data-action="internal-agreement-sign"], .agreement-signature-btn').forEach(btn => {
+      if (!btn) return;
+      btn.type = 'button';
+      btn.style.pointerEvents = 'auto';
+      btn.style.position = 'relative';
+      btn.style.zIndex = '50';
+      const role = this.normalizeAgreementSignerRole(btn.dataset.signerRole || btn.getAttribute('data-signer-role'));
+      const canSign = customerSigned && !isFullySigned && this.canCurrentUserSignAgreementRole(this.getCurrentAgreementSigningUser(), role) && (role !== 'GM' || hasSfc);
+      if (canSign) {
+        btn.disabled = false;
+        btn.removeAttribute('disabled');
+        btn.removeAttribute('aria-disabled');
+        btn.classList.remove('disabled');
+      }
     });
   },
-  async handleInternalAgreementSignButtonClick(event, button) {
-    const signButton = button || event?.target?.closest?.('[data-action="internal-agreement-sign"], .agreement-signature-btn');
-    if (!signButton) return;
-    event?.preventDefault?.();
-    event?.stopPropagation?.();
-
-    if (signButton.disabled || signButton.getAttribute('aria-disabled') === 'true') return;
-    if (signButton.dataset.internalAgreementSignOpening === 'true') return;
-
-    const agreementId = String(signButton.dataset.agreementId || '').trim();
-    const signerRole = String(signButton.dataset.signerRole || '').trim();
-    console.log('Internal agreement sign button clicked', { agreementId, signerRole, button: signButton });
-
-    if (!agreementId || !signerRole) {
-      console.error('Missing internal agreement signing button data', { agreementId, signerRole, dataset: signButton.dataset });
-      return UI.toast('Missing agreement signing data. Please refresh and try again.');
-    }
-
-    signButton.dataset.internalAgreementSignOpening = 'true';
+  bindInternalAgreementSignButtons(root = document) {
+    const container = typeof root === 'string' ? document.getElementById(root) : root;
+    if (!container) return;
+    container.querySelectorAll('[data-action="internal-agreement-sign"], .agreement-signature-btn').forEach(btn => {
+      if (!btn || btn.dataset.internalSignBound === 'true') return;
+      btn.dataset.internalSignBound = 'true';
+      const handler = event => this.handleInternalAgreementSignButtonClick(event, btn);
+      btn.addEventListener('click', handler, true);
+      btn.addEventListener('pointerdown', handler, true);
+      btn.addEventListener('mousedown', handler, true);
+    });
+  },
+  handleInternalAgreementSignButtonClick(event, button) {
     try {
-      await this.openAgreementInternalSignModal({ agreementId, signerRole });
-    } finally {
-      delete signButton.dataset.internalAgreementSignOpening;
+      if (event) {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        event.stopImmediatePropagation?.();
+      }
+      const btn = button || event?.target?.closest?.('[data-action="internal-agreement-sign"], .agreement-signature-btn');
+      if (!btn) return false;
+      const agreementId = String(btn.dataset.agreementId || btn.getAttribute('data-agreement-id') || this.state.currentAgreement?.id || this.state.currentAgreementId || '').trim();
+      const signerRole = String(btn.dataset.signerRole || btn.getAttribute('data-signer-role') || '').trim();
+      console.log('[Agreement internal sign] forced button handler', { agreementId, signerRole, disabled: btn.disabled, ariaDisabled: btn.getAttribute('aria-disabled') });
+      if (!agreementId || !signerRole) {
+        UI.toast('Missing agreement signing data. Please refresh and try again.');
+        return false;
+      }
+      // Let the backend/RPC enforce final role and order rules. Do not let stale disabled attrs kill the click.
+      this.openAgreementInternalSignModal({ agreementId, signerRole }).catch(error => {
+        console.error('[Agreement internal sign] modal open failed', error);
+        UI.toast(error?.message || 'Unable to open agreement signing modal.');
+      });
+      return false;
+    } catch (error) {
+      console.error('[Agreement internal sign] button handler failed', error);
+      UI.toast(error?.message || 'Unable to open agreement signing modal.');
+      return false;
     }
   },
   async openAgreementInternalSignModal({ agreementId, signerRole } = {}) {
@@ -4938,6 +4969,7 @@ const Agreements = {
       if (el.id === 'agreementFormDeleteBtn') return;
       if (el.id === 'agreementFormSaveBtn') return;
       if (this.isAgreementSignedDocumentControl(el)) return;
+      if (el.closest?.('.agreement-internal-signatures')) return;
       if ('disabled' in el && !/agreementForm(Delete|Save)Btn/.test(el.id)) el.disabled = readOnly;
     });
   },
@@ -5169,6 +5201,7 @@ const Agreements = {
     this.applyAgreementProposalLocks();
     this.applyProviderSignDateRoleLocks();
     this.refreshSignedAgreementDocumentUi(agreement);
+    this.refreshInternalAgreementSignaturesPanel(E.agreementInternalSignaturesPanel, this.state.currentAgreement || agreement, this.state.currentInternalSignatures || []);
     E.agreementFormModal.classList.add('open');
     E.agreementFormModal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('modal-open');
@@ -5181,6 +5214,7 @@ const Agreements = {
       this.applyAgreementProposalLocks();
       this.applyProviderSignDateRoleLocks();
       this.refreshSignedAgreementDocumentUi(this.state.currentAgreement || agreement);
+      this.refreshInternalAgreementSignaturesPanel(E.agreementInternalSignaturesPanel, this.state.currentAgreement || agreement, this.state.currentInternalSignatures || []);
     }, 0);
     if (window.setAppHashRoute && window.buildRecordHashRoute) setAppHashRoute(buildRecordHashRoute('agreements', agreement || {}));
   },
@@ -6088,12 +6122,26 @@ const Agreements = {
         event.preventDefault();
         event.stopPropagation();
 
-        await this.handleInternalAgreementSignButtonClick(event, signButton);
+        await this.openAgreementInternalSignModal({ agreementId, signerRole });
       }, true);
       document.documentElement.dataset.internalAgreementSignDelegated = 'true';
     }
-    this.bindInternalAgreementSignButtons(document);
 
+
+    if (!document.documentElement.dataset.internalAgreementSignForcedGlobal) {
+      const forcedInternalSignHandler = event => {
+        const target = event.target?.nodeType === Node.ELEMENT_NODE ? event.target : event.target?.parentElement;
+        const signButton = target?.closest?.('[data-action="internal-agreement-sign"], .agreement-signature-btn');
+        if (!signButton) return;
+        this.handleInternalAgreementSignButtonClick(event, signButton);
+      };
+      document.addEventListener('pointerdown', forcedInternalSignHandler, true);
+      document.addEventListener('mousedown', forcedInternalSignHandler, true);
+      document.addEventListener('click', forcedInternalSignHandler, true);
+      document.documentElement.dataset.internalAgreementSignForcedGlobal = 'true';
+    }
+
+    this.bindInternalAgreementSignButtons(document);
     if (E.agreementAddAnnualRowBtn) E.agreementAddAnnualRowBtn.addEventListener('click', () => this.addRow('annual_saas'));
     if (E.agreementAddOneTimeRowBtn) E.agreementAddOneTimeRowBtn.addEventListener('click', () => this.addRow('one_time_fee'));
     if (E.agreementAddHardwareRowBtn) E.agreementAddHardwareRowBtn.addEventListener('click', () => this.addRow('hardware'));
