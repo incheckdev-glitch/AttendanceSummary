@@ -6725,21 +6725,29 @@ function renderPublicEProposalShell() {
 }
 
 
-async function invokeEProposalPublicFunction(functionName, payload = {}) {
+async function callEProposalAction(body) {
   const client = window.SupabaseClient?.getClient?.() || window.supabase;
   if (!client?.functions?.invoke) throw new Error('Supabase functions client is not available.');
-  const action = payload?.action || functionName;
-  const { data, error } = await client.functions.invoke('eproposal-action', { body: { ...payload, action } });
+  const { data, error } = await client.functions.invoke('eproposal-action', { body });
+
   if (error) {
-    console.error('[e-proposal] eproposal-action error:', error);
-    throw new Error('Unable to complete this action. Please try again or contact InCheck360.');
+    console.error('eproposal-action invoke error:', error);
+    throw new Error(error.message || 'Unable to complete this action.');
   }
-  if (data?.ok === false) {
-    const actionError = new Error(data?.error || 'Unable to complete this action. Please try again or contact InCheck360.');
+
+  if (!data?.ok) {
+    console.error('eproposal-action response error:', data);
+    const actionError = new Error(data?.error || 'Unable to complete this action.');
     actionError.payload = data;
     throw actionError;
   }
-  return data?.data ?? data;
+
+  return data.data || data;
+}
+
+async function invokeEProposalPublicFunction(functionName, payload = {}) {
+  const action = payload?.action || functionName;
+  return callEProposalAction({ ...payload, action });
 }
 
 function bootPublicEProposalPage() {
@@ -6747,7 +6755,7 @@ function bootPublicEProposalPage() {
   renderPublicEProposalShell();
   const content = document.getElementById('publicEProposalContent');
   const unavailable = (message = 'This proposal link is no longer available.') => {
-    content.innerHTML = `<section class="public-eproposal-section public-status-message"><h2>${U.escapeHtml(message || 'This proposal link is no longer available.')}</h2><p>Unable to complete this action. Please try again or contact InCheck360.</p></section>`;
+    content.innerHTML = `<section class="public-eproposal-section public-status-message"><h2>${U.escapeHtml(message || 'This proposal link is no longer available.')}</h2></section>`;
   };
   if (!token) {
     unavailable();
@@ -6960,7 +6968,9 @@ function bootPublicEProposalPage() {
           const acceptedSignatureHtml = isAccept ? (form.dataset.signatureMode === 'signed_document_upload' ? `<div class="signed-document-actions"><a class="public-btn-outline" href="${U.escapeAttr(form.dataset.signedDocumentDataUrl)}" target="_blank" rel="noopener noreferrer">Open Signed Proposal</a><a class="public-btn-primary" href="${U.escapeAttr(form.dataset.signedDocumentDataUrl)}" download="${U.escapeAttr(form.dataset.signedDocumentFileName || 'signed-proposal')}">Download Signed Proposal</a></div>` : (form.dataset.signatureMode === 'uploaded' || form.dataset.signatureMode === 'drawn' ? renderSignatureImage(form.dataset.signatureMode === 'drawn' ? form.dataset.drawnSignatureDataUrl : form.dataset.uploadedSignatureDataUrl) : renderTypedSignaturePreview(form.typedSignature.value.trim(), '1'))) : '';
           content.insertAdjacentHTML('afterbegin', `<section class="public-eproposal-section public-success"><h2>${isAccept ? 'Thank you. This proposal has been accepted and signed.' : 'This proposal has been rejected.'}</h2>${isAccept ? `<div class="public-signature-summary"><div class="signature-summary-grid"><div><span>Signed by</span><strong>${U.escapeHtml(form.name.value.trim())}</strong></div><div><span>Signed date/time</span><strong>${U.escapeHtml(new Date().toLocaleString())}</strong></div></div>${acceptedSignatureHtml}</div>` : ''}</section>`);
         } catch (error) {
-          form.insertAdjacentHTML('beforeend', `<p class="public-form-error">${U.escapeHtml('Unable to complete this action. Please try again or contact InCheck360.')}</p>`);
+          console.error('[e-proposal] public action failed', error);
+          form.querySelector('.public-form-error')?.remove();
+          form.insertAdjacentHTML('beforeend', `<p class="public-form-error">${U.escapeHtml(error?.message || 'Unable to complete this action.')}</p>`);
         }
       });
     } catch (error) {
