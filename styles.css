@@ -9329,3 +9329,23 @@ body.public-eproposal-mode {
     display: none;
   }
 }
+
+.agreement-internal-signatures,
+.agreement-internal-signatures *,
+.agreement-signature-card,
+.agreement-signature-btn {
+  pointer-events: auto;
+}
+
+.agreement-signature-btn {
+  position: relative;
+  z-index: 5;
+}
+
+.agreement-internal-sign-modal-backdrop {
+  z-index: 7000;
+}
+
+.agreement-internal-sign-modal {
+  z-index: 7010;
+}

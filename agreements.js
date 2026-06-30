@@ -2616,7 +2616,7 @@ const Agreements = {
         <span class="agreement-signature-status ${signed ? 'signed' : 'pending'}">${signed ? 'Signed' : 'Pending'}</span>
         ${signed ? `<div class="agreement-signature-meta"><div><strong>Signed by:</strong> ${U.escapeHtml(signedBy || '—')}</div><div><strong>Signed date:</strong> ${U.escapeHtml(signedAt ? U.fmtDisplayDate(signedAt) : '—')}</div></div>` : ''}
         ${helperText ? `<p class="agreement-signature-helper">${U.escapeHtml(helperText)}</p>` : ''}
-        ${!signed ? `<button class="agreement-signature-btn" type="button" data-action="internal-agreement-sign" data-agreement-id="${U.escapeAttr(agreementId || '')}" data-signer-role="${U.escapeAttr(role)}" ${buttonDisabled ? 'disabled aria-disabled="true"' : ''}>${U.escapeHtml(buttonText)}</button>` : ''}
+        ${!signed ? `<button type="button" class="agreement-signature-btn" data-action="internal-agreement-sign" data-agreement-id="${U.escapeAttr(agreementId || '')}" data-signer-role="${U.escapeAttr(role)}" ${buttonDisabled ? 'disabled aria-disabled="true"' : ''}>${U.escapeHtml(buttonText)}</button>` : ''}
       </div>`;
   },
   renderInternalAgreementSignatures(agreement, internalSignatures = [], currentUser = {}) {
@@ -6014,21 +6014,48 @@ const Agreements = {
 
     if (!document.documentElement.dataset.internalAgreementSignDelegated) {
       document.addEventListener('click', async (event) => {
-        const signButton = event.target?.closest?.('[data-action="internal-agreement-sign"]');
+        const target = event.target?.nodeType === Node.ELEMENT_NODE ? event.target : event.target?.parentElement;
+        const signButton = target?.closest?.('[data-action="internal-agreement-sign"], .agreement-signature-btn');
         if (!signButton) return;
-        event.preventDefault();
-        event.stopPropagation();
+
         const agreementId = signButton.dataset.agreementId;
         const signerRole = signButton.dataset.signerRole;
-        console.log('Internal agreement sign button clicked', { agreementId, signerRole });
+
+        console.log('Internal agreement sign click detected', {
+          agreementId,
+          signerRole,
+          button: signButton
+        });
+
         if (!agreementId || !signerRole) {
-          console.error('Missing agreement internal sign button data', { agreementId, signerRole, signButton });
-          UI.toast?.('Missing agreement signing data.');
+          console.error('Missing internal agreement signing button data', {
+            agreementId,
+            signerRole,
+            dataset: signButton.dataset
+          });
+
+          if (typeof showToast === 'function') {
+            showToast('Missing agreement signing data. Please refresh and try again.', 'error');
+          } else if (UI.toast) {
+            UI.toast('Missing agreement signing data. Please refresh and try again.');
+          } else {
+            alert('Missing agreement signing data. Please refresh and try again.');
+          }
+
           return;
         }
-        if (signButton.disabled || signButton.getAttribute('aria-disabled') === 'true') return;
+
+        if (signButton.disabled || signButton.getAttribute('aria-disabled') === 'true') {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+
         await this.openAgreementInternalSignModal({ agreementId, signerRole });
-      });
+      }, true);
       document.documentElement.dataset.internalAgreementSignDelegated = 'true';
     }
 
