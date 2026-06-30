@@ -392,12 +392,15 @@ $$;
 
 alter table public.proposals add column if not exists e_signature_type text;
 alter table public.proposals add column if not exists e_signature_text text;
+alter table public.proposals add column if not exists e_signature_image_data_url text;
 alter table public.proposals add column if not exists e_signature_signed_at timestamptz;
 alter table public.proposals add column if not exists e_signature_customer_name text;
 alter table public.proposals add column if not exists e_signature_customer_email text;
 alter table public.proposals add column if not exists e_signature_confirmed boolean default false;
 
 drop function if exists public.eproposal_accept(text, text, text, text, text);
+drop function if exists public.eproposal_accept(text, text, text, text, text, text, text);
+drop function if exists public.eproposal_accept(text, text, text, text, text, text, text, text);
 
 create or replace function public.eproposal_accept(
   p_token text,
@@ -406,7 +409,8 @@ create or replace function public.eproposal_accept(
   p_customer_comment text default null,
   p_user_agent text default null,
   p_signature_type text default 'typed',
-  p_signature_text text default null
+  p_signature_text text default null,
+  p_signature_image_data_url text default null
 )
 returns jsonb
 language plpgsql
@@ -415,7 +419,9 @@ set search_path = public
 as $$
 declare
   v_proposal public.proposals%rowtype;
+  v_signature_type text := lower(btrim(coalesce(p_signature_type, 'typed')));
   v_signature_text text := nullif(btrim(coalesce(p_signature_text, '')), '');
+  v_signature_image_data_url text := nullif(btrim(coalesce(p_signature_image_data_url, '')), '');
 begin
   if nullif(btrim(coalesce(p_customer_name, '')), '') is null then
     raise exception 'Full name is required to accept this proposal.';
@@ -425,12 +431,20 @@ begin
     raise exception 'Email is required to accept this proposal.';
   end if;
 
-  if lower(coalesce(p_signature_type, 'typed')) <> 'typed' then
-    raise exception 'Only typed electronic signatures are supported.';
+  if v_signature_type not in ('typed', 'uploaded') then
+    raise exception 'Signature type must be typed or uploaded.';
   end if;
 
-  if v_signature_text is null then
+  if v_signature_type = 'typed' and v_signature_text is null then
     raise exception 'Typed signature is required.';
+  end if;
+
+  if v_signature_type = 'uploaded' and v_signature_image_data_url is null then
+    raise exception 'Uploaded signature image is required.';
+  end if;
+
+  if v_signature_type = 'uploaded' and v_signature_image_data_url !~* '^data:image/(png|jpe?g|webp);base64,' then
+    raise exception 'Uploaded signature must be a PNG, JPG, JPEG, or WEBP data URL.';
   end if;
 
   select * into v_proposal
@@ -457,8 +471,9 @@ begin
       accepted_by_name = btrim(p_customer_name),
       accepted_by_email = btrim(p_customer_email),
       e_proposal_accepted_comment = nullif(btrim(coalesce(p_customer_comment, '')), ''),
-      e_signature_type = 'typed',
+      e_signature_type = v_signature_type,
       e_signature_text = v_signature_text,
+      e_signature_image_data_url = case when v_signature_type = 'uploaded' then v_signature_image_data_url else null end,
       e_signature_signed_at = now(),
       e_signature_customer_name = btrim(p_customer_name),
       e_signature_customer_email = btrim(p_customer_email),
@@ -471,7 +486,7 @@ begin
       updated_at = now()
   where id = v_proposal.id;
 
-  perform public.log_e_proposal_activity(v_proposal.id, 'accepted', p_token, p_customer_name, p_customer_email, jsonb_build_object('comment', p_customer_comment, 'user_agent', p_user_agent, 'signature_type', 'typed'));
+  perform public.log_e_proposal_activity(v_proposal.id, 'accepted', p_token, p_customer_name, p_customer_email, jsonb_build_object('comment', p_customer_comment, 'user_agent', p_user_agent, 'signature_type', v_signature_type));
 
   return jsonb_build_object('ok', true, 'accepted', true, 'proposal_id', v_proposal.id, 'status', 'accepted');
 end;
@@ -557,7 +572,7 @@ revoke all on function public.eproposal_disable_link(uuid) from public;
 revoke all on function public.disable_e_proposal_link(uuid) from public;
 revoke all on function public.eproposal_public_view(text, text) from public;
 revoke all on function public.get_e_proposal_by_token(text) from public;
-revoke all on function public.eproposal_accept(text, text, text, text, text, text, text) from public;
+revoke all on function public.eproposal_accept(text, text, text, text, text, text, text, text) from public;
 revoke all on function public.accept_e_proposal(text, text, text, text) from public;
 revoke all on function public.eproposal_reject(text, text, text, text, text) from public;
 revoke all on function public.reject_e_proposal(text, text) from public;
@@ -570,7 +585,7 @@ grant execute on function public.disable_e_proposal_link(uuid) to authenticated;
 
 grant execute on function public.eproposal_public_view(text, text) to anon, authenticated;
 grant execute on function public.get_e_proposal_by_token(text) to anon, authenticated;
-grant execute on function public.eproposal_accept(text, text, text, text, text, text, text) to anon, authenticated;
+grant execute on function public.eproposal_accept(text, text, text, text, text, text, text, text) to anon, authenticated;
 grant execute on function public.accept_e_proposal(text, text, text, text) to anon, authenticated;
 grant execute on function public.eproposal_reject(text, text, text, text, text) to anon, authenticated;
 grant execute on function public.reject_e_proposal(text, text) to anon, authenticated;
