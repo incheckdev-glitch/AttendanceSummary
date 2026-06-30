@@ -28,7 +28,19 @@ add column if not exists e_agreement_signature_signed_at timestamptz,
 add column if not exists e_agreement_signature_customer_name text,
 add column if not exists e_agreement_signature_customer_email text,
 add column if not exists e_agreement_signature_ip_address text,
-add column if not exists e_agreement_signature_confirmed boolean default false;
+add column if not exists e_agreement_signature_confirmed boolean default false,
+add column if not exists customer_signature_confirmed boolean default false,
+add column if not exists customer_signed_at timestamptz,
+add column if not exists customer_accepted_at timestamptz,
+add column if not exists customer_signed_by_name text,
+add column if not exists customer_signed_by_email text,
+add column if not exists customer_signature_type text,
+add column if not exists customer_signature_text text,
+add column if not exists customer_signature_image_data_url text,
+add column if not exists customer_signed_document_data_url text,
+add column if not exists customer_signed_document_file_name text,
+add column if not exists customer_signed_document_mime_type text,
+add column if not exists customer_signature_ip_address text;
 
 create unique index if not exists agreements_e_agreement_token_uidx
 on public.agreements (e_agreement_token)
@@ -273,6 +285,18 @@ begin
   update public.agreements
   set
     status = v_next_status,
+    customer_signature_confirmed = true,
+    customer_signed_at = v_now,
+    customer_accepted_at = v_now,
+    customer_signed_by_name = btrim(p_customer_name),
+    customer_signed_by_email = btrim(coalesce(p_customer_email, 'not-provided@customer.local')),
+    customer_signature_type = coalesce(nullif(p_signature_type, ''), 'typed'),
+    customer_signature_text = p_signature_text,
+    customer_signature_image_data_url = p_signature_image_data_url,
+    customer_signed_document_data_url = p_signed_document_data_url,
+    customer_signed_document_file_name = p_signed_document_file_name,
+    customer_signed_document_mime_type = p_signed_document_mime_type,
+    customer_signature_ip_address = p_ip_address,
     customer_official_sign_date = coalesce(customer_official_sign_date, v_today),
     customer_sign_date = coalesce(customer_sign_date, v_today),
     signed_date = case when v_next_status = 'signed' then coalesce(signed_date, v_today) else signed_date end,
