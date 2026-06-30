@@ -16,9 +16,8 @@ const internalTotalsStart = documentRenderer.indexOf(': `', publicTotalsStart);
 assert(publicTotalsStart >= 0 && internalTotalsStart > publicTotalsStart, 'public totals branch must be locatable');
 const publicTotalsBranch = documentRenderer.slice(publicTotalsStart, internalTotalsStart);
 
-assert.doesNotMatch(publicTotalsBranch, /<span>Subtotal<\/span>|<span>Total Discount<\/span>|<span>Hardware<\/span>|Grand Total in Words|Total Before Discount/, 'public e-proposal totals must not render subtotal, discount, hardware, or extra totals below grand total');
-assert.match(publicTotalsBranch, /<span>One-Time Fees<\/span>/, 'public e-proposal totals must show the exact One-Time Fees label');
-assert.match(publicTotalsBranch, /<span>Subscription Fees<\/span>/, 'public e-proposal totals must show subscription fees');
+assert.doesNotMatch(publicTotalsBranch, /<span>Subtotal<\/span>|<span>One Time Fees<\/span>|<span>Hardware<\/span>|<span>Subscription Fees<\/span>|Grand Total in Words/, 'public e-proposal totals must not render subtotal, component totals, or extra totals below grand total');
+assert.match(publicTotalsBranch, /<span>Total Discount<\/span>/, 'public e-proposal totals should keep the discount row shown by the ERP preview');
 assert.match(publicTotalsBranch, /<span>Grand Total<\/span>/, 'public e-proposal totals must keep grand total visible');
 
 console.log('E-proposal public totals checks passed.');

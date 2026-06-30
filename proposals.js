@@ -2773,12 +2773,10 @@ const Proposals = {
       </section>` : '';
 
     const grandTotalInWords = U.formatAmountInWords(grandTotal, currency);
-    const totalsBoxClass = isPublicView ? 'totals-box public-proposal-totals' : 'totals-box';
     const totalsRowsHtml = isPublicView
       ? `
-          <div class="totals-row public-total-row"><span>One-Time Fees</span><strong>${money(publicOneTimeFeesTotal)}</strong></div>
-          <div class="totals-row public-total-row"><span>Subscription Fees</span><strong>${money(subtotalLocations)}</strong></div>
-          <div class="totals-row grand public-total-row public-grand-total"><span>Grand Total</span><strong>${money(grandTotal)}</strong></div>`
+          <div class="totals-row"><span>Total Discount</span><strong>${money(discountTotal)}</strong></div>
+          <div class="totals-row grand"><span>Grand Total</span><strong>${money(grandTotal)}</strong></div>`
       : `
           <div class="totals-row"><span>One Time Fees</span><strong>${money(displayOneTimeFeesSubtotal)}</strong></div>
           ${hardwareItems.length ? `<div class="totals-row"><span>Hardware</span><strong>${money(hardwareSubtotal)}</strong></div>` : ''}
@@ -3123,7 +3121,7 @@ const Proposals = {
       ${hardwareSectionHtml}
 
       <section class="totals-wrap">
-        <div class="${totalsBoxClass}">${totalsRowsHtml}
+        <div class="totals-box">${totalsRowsHtml}
         </div>
       </section>
 
