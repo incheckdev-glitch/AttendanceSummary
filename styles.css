@@ -8537,3 +8537,202 @@ body.public-eproposal-mode {
 .modal.company-verification-modal {
   z-index: 5010;
 }
+
+/* =========================================================
+   PUBLIC E-AGREEMENT REVIEW HERO
+   ========================================================= */
+.public-eagreement-mode {
+  background: linear-gradient(180deg, #eaf5ff 0%, #f8fbff 44%, #ffffff 100%);
+}
+
+.public-eagreement-mode .public-eproposal-page {
+  background:
+    radial-gradient(circle at top left, rgba(11, 126, 194, 0.16), transparent 34rem),
+    linear-gradient(180deg, #eaf5ff 0%, #f8fbff 44%, #ffffff 100%);
+}
+
+.eagreement-hero {
+  padding: 28px;
+  border-bottom: 1px solid #dbeafe;
+  background: linear-gradient(135deg, #eff8ff 0%, #f8fbff 48%, #ffffff 100%);
+}
+
+.eagreement-hero-inner {
+  display: grid;
+  gap: 20px;
+  padding: clamp(22px, 4vw, 34px);
+  border: 1px solid rgba(147, 197, 253, 0.72);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 22px 60px rgba(7, 59, 115, 0.12);
+}
+
+.eagreement-secure-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  width: fit-content;
+  padding: 8px 13px;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #075985;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.025em;
+}
+
+.eagreement-secure-icon,
+.eagreement-info-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  font-weight: 900;
+}
+
+.eagreement-secure-icon {
+  width: 20px;
+  height: 20px;
+  background: #0b7ec2;
+  color: #ffffff;
+  font-size: 12px;
+}
+
+.eagreement-hero-main {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.eagreement-hero-copy h1 {
+  margin: 0;
+  color: #073b73;
+  font-size: clamp(30px, 5vw, 52px);
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+}
+
+.eagreement-hero-copy p {
+  max-width: 650px;
+  margin: 12px 0 0;
+  color: #475569;
+  font-size: 17px;
+  line-height: 1.65;
+}
+
+.eagreement-summary-card {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid #dbeafe;
+  border-radius: 22px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.eagreement-summary-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) auto minmax(0, 1.4fr);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.eagreement-summary-item {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 14px;
+}
+
+.eagreement-summary-icon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  flex: 0 0 46px;
+  border-radius: 16px;
+  background: #e0f2fe;
+  font-size: 22px;
+}
+
+.eagreement-summary-label {
+  display: block;
+  margin-bottom: 5px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.eagreement-summary-value,
+.eagreement-company-name {
+  display: block;
+  color: #0f172a;
+  font-size: 20px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.eagreement-summary-divider {
+  width: 1px;
+  background: #dbeafe;
+}
+
+.eagreement-review-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: #eff6ff;
+  color: #0f4c81;
+  font-weight: 700;
+}
+
+.eagreement-info-icon {
+  width: 20px;
+  height: 20px;
+  background: #bfdbfe;
+  color: #075985;
+  font-family: Georgia, serif;
+  font-style: italic;
+}
+
+@media (max-width: 780px) {
+  .eagreement-hero {
+    padding: 18px;
+  }
+
+  .eagreement-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .eagreement-summary-divider {
+    width: 100%;
+    height: 1px;
+  }
+}
+
+@media (max-width: 520px) {
+  .eagreement-hero {
+    padding: 12px;
+  }
+
+  .eagreement-hero-inner,
+  .eagreement-summary-card {
+    border-radius: 20px;
+  }
+
+  .eagreement-hero-inner {
+    padding: 20px;
+  }
+
+  .eagreement-summary-item {
+    align-items: flex-start;
+  }
+
+  .eagreement-review-note {
+    align-items: flex-start;
+  }
+}
