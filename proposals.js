@@ -3663,6 +3663,7 @@ const Proposals = {
         Permissions.canPreviewProposal() ? { label: 'View', variant: 'primary', permissionResource: 'proposals', permissionAction: 'view', onClick: btn => this.openProposalFormById(id, { readOnly: true, trigger: btn }) } : null,
         Permissions.canUpdateProposal() && (!(this.isProposalAccepted(row) || this.isProposalExpired(row)) || this.canUseAdminOverride()) ? { label: (this.isProposalAccepted(row) || this.isProposalExpired(row)) && this.canUseAdminOverride() ? 'Admin Edit' : 'Edit', variant: 'ghost', permissionResource: 'proposals', permissionAction: 'update', onClick: btn => this.openProposalFormById(id, { readOnly: false, trigger: btn }) } : null,
         Permissions.canPreviewProposal() ? { label: 'Preview', variant: 'ghost', permissionResource: 'proposals', permissionAction: 'view', onClick: () => this.previewProposalHtml(id) } : null,
+        this.canViewEProposalAuditLog() ? { label: 'E-Proposal Activity Log', variant: 'ghost', permissionResource: 'proposals', permissionAction: 'view', onClick: () => this.showEProposalActivityLog(id) } : null,
         this.canShowConvertToAgreement(row) && !this.isAgreementAlreadyCreated(row) ? { label: 'Convert to Agreement', variant: 'ghost', permissionResource: 'agreements', permissionAction: 'create_from_proposal', onClick: () => window.Agreements?.createFromProposalFlow?.(id) } : null,
         Permissions.canDeleteProposal() ? { label: 'Delete', variant: 'ghost', permissionResource: 'proposals', permissionAction: 'delete', onClick: () => this.deleteById(id) } : null
       ].filter(Boolean)
@@ -3738,6 +3739,7 @@ const Proposals = {
       if (Permissions.canPreviewProposal()) {
         items.push(`<button class="commercial-menu-item" type="button" data-proposal-preview="${id}" data-permission-resource="proposals" data-permission-action="view">Preview</button>`);
         items.push(`<button class="commercial-menu-item" type="button" data-proposal-e-link="${id}" data-permission-resource="proposals" data-permission-action="view">Generate E-Proposal Link</button>`);
+        if (this.canViewEProposalAuditLog()) items.push(`<button class="commercial-menu-item" type="button" data-proposal-e-audit="${id}" data-permission-resource="proposals" data-permission-action="view">E-Proposal Activity Log</button>`);
       }
       if (this.canShowConvertToAgreement(row) && !this.isAgreementAlreadyCreated(row)) {
         items.push(`<button class="commercial-menu-item" type="button" data-proposal-convert-agreement="${id}" data-permission-resource="agreements" data-permission-action="create_from_proposal">Convert to Agreement</button>`);
@@ -5548,6 +5550,52 @@ const Proposals = {
     }
   },
 
+
+  canViewEProposalAuditLog() {
+    const role = Permissions.normalizeRole?.(Permissions.getCurrentUserRole?.() || Session.role?.() || '') || '';
+    return ['admin', 'gm', 'general_manager', 'sfc', 'senior_fc', 'senior_financial_controller', 'financial_controller', 'audit', 'auditor', 'proposal_audit'].includes(role);
+  },
+  async showEProposalActivityLog(proposalId) {
+    if (!this.canViewEProposalAuditLog()) return UI.toast('You do not have permission to view e-proposal audit logs.');
+    const proposalUuid = this.resolveProposalUuidForAction(proposalId) || String(proposalId || '').trim();
+    if (!proposalUuid) return UI.toast('Unable to resolve proposal for activity log.');
+    let modal = document.getElementById('eProposalActivityLogModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'eProposalActivityLogModal';
+      modal.className = 'modal e-proposal-activity-modal';
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-modal', 'true');
+      document.body.appendChild(modal);
+    }
+    const close = () => { modal.style.display = 'none'; modal.setAttribute('aria-hidden', 'true'); };
+    modal.innerHTML = `<div class="modal-content e-proposal-activity-dialog"><div class="modal-header e-proposal-activity-header"><div><h2>E-Proposal Activity Log</h2><p>Internal audit trail. IP address and user agent are personal data and are visible only to authorized ERP users.</p></div><button class="modal-close" data-e-proposal-activity-close type="button">✕</button></div><div class="e-proposal-activity-body"><div class="muted">Loading activity…</div></div></div>`;
+    modal.style.display = 'flex'; modal.setAttribute('aria-hidden', 'false');
+    modal.querySelector('[data-e-proposal-activity-close]')?.addEventListener('click', close);
+    modal.addEventListener('click', event => { if (event.target === modal) close(); }, { once: true });
+    try {
+      const client = this.getSupabaseClient();
+      if (!client?.from) throw new Error('Supabase client is not available.');
+      const { data, error } = await client
+        .from('proposal_guest_activity_logs')
+        .select('event_type,customer_name,customer_email,ip_address,user_agent,metadata,created_at')
+        .eq('proposal_id', proposalUuid)
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (error) throw error;
+      const rows = Array.isArray(data) ? data : [];
+      const formatEvent = value => String(value || '—').replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
+      const formatMeta = metadata => {
+        if (!metadata || typeof metadata !== 'object') return '—';
+        const text = JSON.stringify(metadata, null, 2);
+        return text === '{}' ? '—' : text;
+      };
+      modal.querySelector('.e-proposal-activity-body').innerHTML = rows.length ? `<div class="e-proposal-activity-table-wrap"><table class="e-proposal-activity-table"><thead><tr><th>Event</th><th>Customer</th><th>Email</th><th>IP address</th><th>User agent</th><th>Date/time</th><th>Signature type</th><th>Metadata</th></tr></thead><tbody>${rows.map(row => `<tr><td>${U.escapeHtml(formatEvent(row.event_type))}</td><td>${U.escapeHtml(row.customer_name || '—')}</td><td>${U.escapeHtml(row.customer_email || '—')}</td><td>${U.escapeHtml(row.ip_address || '—')}</td><td class="e-proposal-activity-user-agent">${U.escapeHtml(row.user_agent || '—')}</td><td>${U.escapeHtml(row.created_at ? new Date(row.created_at).toLocaleString() : '—')}</td><td>${U.escapeHtml(row.metadata?.signature_type || '—')}</td><td><pre>${U.escapeHtml(formatMeta(row.metadata))}</pre></td></tr>`).join('')}</tbody></table></div>` : '<div class="e-proposal-activity-empty">No e-proposal activity has been logged yet.</div>';
+    } catch (error) {
+      console.error('[e-proposal] activity load failed', error);
+      modal.querySelector('.e-proposal-activity-body').innerHTML = `<div class="e-proposal-activity-empty">Unable to load e-proposal activity: ${U.escapeHtml(error?.message || 'Unknown error')}</div>`;
+    }
+  },
   getEProposalPublicUrl(token = '') {
     const clean = String(token || '').trim();
     return clean ? `${window.location.origin}/e-proposal/${encodeURIComponent(clean)}` : '';
@@ -6109,6 +6157,14 @@ const Proposals = {
           this.runRowAction(`e-link:${eLinkId}`, trigger, () => this.generateEProposalLink(eLinkId));
           return;
         }
+        const eAuditId = getActionValue('data-proposal-e-audit');
+        if (eAuditId) {
+          event.preventDefault();
+          event.stopPropagation();
+          closeMenu();
+          this.runRowAction(`e-audit:${eAuditId}`, trigger, () => this.showEProposalActivityLog(eAuditId));
+          return;
+        }
         const convertAgreementId = getActionValue('data-proposal-convert-agreement');
         if (convertAgreementId) {
           event.preventDefault();
@@ -6533,6 +6589,23 @@ function renderPublicEProposalShell() {
   `;
 }
 
+
+async function invokeEProposalPublicFunction(functionName, payload = {}) {
+  const client = window.SupabaseClient?.getClient?.();
+  if (client?.functions?.invoke) {
+    const { data, error } = await client.functions.invoke(functionName, { body: payload });
+    if (error) throw error;
+    return data;
+  }
+  const response = await fetch(`/functions/v1/${functionName}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data?.ok === false) throw new Error(data?.error || data?.message || 'Unable to submit e-proposal request.');
+  return data;
+}
 function bootPublicEProposalPage() {
   const token = decodeURIComponent(getEProposalTokenFromUrl() || '').trim();
   renderPublicEProposalShell();
@@ -6616,7 +6689,7 @@ function bootPublicEProposalPage() {
 
   (async () => {
     try {
-      const data = await callRpc('eproposal_public_view', { p_token: token, p_user_agent: navigator.userAgent });
+      const data = await invokeEProposalPublicFunction('eproposal-view', { token });
       const payload = Array.isArray(data) ? data[0] : data;
       if (payload?.ok === false || payload?.available === false || (!payload?.proposal && !payload?.proposal_id && !payload?.proposal_number)) return unavailable();
       const proposal = Proposals.normalizeProposal(payload.proposal || payload);
@@ -6702,9 +6775,9 @@ function bootPublicEProposalPage() {
             const errorBox = form.querySelector('.public-validation-errors');
             if (errorBox) errorBox.innerHTML = errors.map(error => `<p class="public-form-error">${U.escapeHtml(error)}</p>`).join('');
             if (errors.length) return;
-            await callRpc('eproposal_accept', { p_token: token, p_customer_name: form.name.value, p_customer_email: form.email.value, p_customer_comment: form.comment.value || null, p_user_agent: navigator.userAgent, p_signature_type: signatureMode, p_signature_text: signatureMode === 'typed' ? form.typedSignature.value : form.name.value, p_signature_image_data_url: signatureMode === 'uploaded' || signatureMode === 'drawn' ? (signatureMode === 'drawn' ? form.dataset.drawnSignatureDataUrl : form.dataset.uploadedSignatureDataUrl) : null, p_signed_document_data_url: signatureMode === 'signed_document_upload' ? form.dataset.signedDocumentDataUrl : null, p_signed_document_file_name: signatureMode === 'signed_document_upload' ? form.dataset.signedDocumentFileName : null, p_signed_document_mime_type: signatureMode === 'signed_document_upload' ? form.dataset.signedDocumentMimeType : null });
+            await invokeEProposalPublicFunction('eproposal-accept', { token, customerName: form.name.value, customerEmail: form.email.value, comment: form.comment.value || null, signatureType: signatureMode, signatureText: signatureMode === 'typed' ? form.typedSignature.value : form.name.value, signatureImageDataUrl: signatureMode === 'uploaded' || signatureMode === 'drawn' ? (signatureMode === 'drawn' ? form.dataset.drawnSignatureDataUrl : form.dataset.uploadedSignatureDataUrl) : null, signedDocumentDataUrl: signatureMode === 'signed_document_upload' ? form.dataset.signedDocumentDataUrl : null, signedDocumentFileName: signatureMode === 'signed_document_upload' ? form.dataset.signedDocumentFileName : null, signedDocumentMimeType: signatureMode === 'signed_document_upload' ? form.dataset.signedDocumentMimeType : null });
           } else {
-            await callRpc('eproposal_reject', { p_token: token, p_customer_name: form.name.value || null, p_customer_email: form.email.value || null, p_rejection_reason: form.reason.value, p_user_agent: navigator.userAgent });
+            await invokeEProposalPublicFunction('eproposal-reject', { token, customerName: form.name.value || null, customerEmail: form.email.value || null, rejectionReason: form.reason.value });
           }
           document.getElementById('publicEProposalModal')?.remove();
           setActionState(true);
