@@ -107,6 +107,112 @@ const DEFAULT_AGREEMENT_TERMS_AND_CONDITIONS = `Provider and Customer hereby agr
 
 IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by their authorized representatives as of the date of last signature by either party (“Effective Date”).`;
 
+
+let internalSignatureCanvasReady = false;
+
+function setupInternalSignatureCanvas() {
+  const canvas = document.getElementById('internalSignatureCanvas');
+  if (!canvas || internalSignatureCanvasReady) return;
+
+  internalSignatureCanvasReady = true;
+
+  const ctx = canvas.getContext('2d');
+  let drawing = false;
+
+  function resizeCanvasForDisplay() {
+    const rect = canvas.getBoundingClientRect();
+    const ratio = window.devicePixelRatio || 1;
+
+    canvas.width = Math.max(520, Math.floor(rect.width * ratio));
+    canvas.height = Math.floor(180 * ratio);
+
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#0f172a';
+  }
+
+  function getPoint(event) {
+    const rect = canvas.getBoundingClientRect();
+    const source = event.touches?.[0] || event.changedTouches?.[0] || event;
+
+    return {
+      x: source.clientX - rect.left,
+      y: source.clientY - rect.top
+    };
+  }
+
+  function startDrawing(event) {
+    event.preventDefault();
+    drawing = true;
+
+    const point = getPoint(event);
+    ctx.beginPath();
+    ctx.moveTo(point.x, point.y);
+  }
+
+  function draw(event) {
+    if (!drawing) return;
+
+    event.preventDefault();
+    const point = getPoint(event);
+    ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+
+    canvas.dataset.hasSignature = 'true';
+  }
+
+  function stopDrawing(event) {
+    if (!drawing) return;
+    event.preventDefault();
+    drawing = false;
+  }
+
+  resizeCanvasForDisplay();
+  canvas.dataset.hasSignature = canvas.dataset.hasSignature || 'false';
+
+  canvas.addEventListener('mousedown', startDrawing);
+  canvas.addEventListener('mousemove', draw);
+  canvas.addEventListener('mouseup', stopDrawing);
+  canvas.addEventListener('mouseleave', stopDrawing);
+
+  canvas.addEventListener('touchstart', startDrawing, { passive: false });
+  canvas.addEventListener('touchmove', draw, { passive: false });
+  canvas.addEventListener('touchend', stopDrawing, { passive: false });
+  canvas.addEventListener('touchcancel', stopDrawing, { passive: false });
+
+  const clearBtn = document.getElementById('clearInternalSignatureCanvas');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      canvas.dataset.hasSignature = 'false';
+    });
+  }
+}
+
+function handleInternalSignatureTypeChange() {
+  const type = document.getElementById('internalSignatureType')?.value || 'typed';
+
+  const typedWrap = document.getElementById('internalTypedSignatureWrap');
+  const drawWrap = document.getElementById('internalDrawSignatureWrap');
+  const uploadWrap = document.getElementById('internalUploadSignatureWrap');
+
+  if (typedWrap) typedWrap.style.display = type === 'typed' ? 'block' : 'none';
+  if (drawWrap) drawWrap.style.display = type === 'drawn' ? 'block' : 'none';
+  if (uploadWrap) uploadWrap.style.display = type === 'uploaded' ? 'block' : 'none';
+
+  const form = document.querySelector('[data-internal-sign-form]');
+  if (form) form.dataset.signatureMode = type;
+  document.querySelectorAll('[data-internal-signature-mode]').forEach(tab => {
+    tab.classList.toggle('active', tab.dataset.internalSignatureMode === type);
+  });
+
+  if (type === 'drawn') {
+    setupInternalSignatureCanvas();
+  }
+}
+
 const Agreements = {
   signedDocumentBucket: 'agreement-signed-documents',
   agreementFields: [
@@ -2773,6 +2879,8 @@ const Agreements = {
       document.body.appendChild(modal);
     }
     const user = this.getCurrentAgreementSigningUser();
+    internalSignatureCanvasReady = false;
+    window.internalUploadedSignatureDataUrl = null;
     const defaultTitle = targetRole === 'SFC' ? 'Senior Financial Controller' : 'General Manager';
     const close = () => { modal.classList.remove('open'); modal.setAttribute('aria-hidden', 'true'); };
     modal.innerHTML = `
@@ -2786,15 +2894,28 @@ const Agreements = {
           <label>Signer title<input class="input" name="signerTitle" required value="${U.escapeAttr(defaultTitle)}"></label>
           <div>
             <div class="muted" style="font-weight:800;margin-bottom:8px;">Signature method</div>
+            <select id="internalSignatureType" class="input" name="signatureType" aria-label="Signature method">
+              <option value="typed" selected>Typed signature</option>
+              <option value="uploaded">Upload signature image</option>
+              <option value="drawn">Draw signature</option>
+            </select>
             <div class="signature-method-tabs">
               <button class="signature-method-tab active" type="button" data-internal-signature-mode="typed">Typed signature</button>
               <button class="signature-method-tab" type="button" data-internal-signature-mode="uploaded">Upload signature image</button>
               <button class="signature-method-tab" type="button" data-internal-signature-mode="drawn">Draw signature</button>
             </div>
           </div>
-          <div data-internal-signature-panel="typed"><label>Typed signature<input class="input" name="signatureText" placeholder="Type your signature" value="${U.escapeAttr(user.name || '')}"></label><div class="typed-signature-preview">${U.escapeHtml(user.name || 'Typed signature')}</div></div>
-          <div data-internal-signature-panel="uploaded" hidden><input class="input" type="file" name="signatureImage" accept="image/png,image/jpeg,image/webp"><div data-internal-uploaded-signature-preview></div></div>
-          <div data-internal-signature-panel="drawn" hidden><canvas class="draw-signature-canvas"></canvas><button class="btn btn-incheck-outline sm" data-clear-drawn-agreement-signature type="button">Clear</button></div>
+          <div id="internalTypedSignatureWrap" data-internal-signature-panel="typed"><label>Typed signature<input id="internalSignatureText" class="input" name="signatureText" placeholder="Type your signature" value="${U.escapeAttr(user.name || '')}"></label><div class="typed-signature-preview">${U.escapeHtml(user.name || 'Typed signature')}</div></div>
+          <div id="internalUploadSignatureWrap" data-internal-signature-panel="uploaded" style="display:none;"><input class="input" type="file" name="signatureImage" accept="image/png,image/jpeg,image/webp"><div data-internal-uploaded-signature-preview></div></div>
+          <div id="internalDrawSignatureWrap" class="internal-draw-signature-wrap" style="display:none;">
+            <label>Draw Signature</label>
+            <div class="internal-draw-canvas-box">
+              <canvas id="internalSignatureCanvas" width="520" height="180"></canvas>
+            </div>
+            <button type="button" id="clearInternalSignatureCanvas" class="secondary-btn">
+              Clear Signature
+            </button>
+          </div>
           <label class="public-checkbox"><input type="checkbox" name="authorized" required> I confirm that I am authorized to sign this agreement on behalf of InCheck360.</label>
           <div class="public-validation-errors"></div>
           <div class="actions" style="justify-content:flex-end;"><button class="btn btn-incheck-outline" type="button" data-internal-sign-close>Cancel</button><button class="btn btn-incheck-primary" type="submit">Sign Agreement</button></div>
@@ -2803,15 +2924,15 @@ const Agreements = {
     modal.querySelectorAll('[data-internal-sign-close]').forEach(btn => btn.addEventListener('click', close));
     const form = modal.querySelector('[data-internal-sign-form]');
     const sync = () => {
-      const mode = form.dataset.signatureMode || 'typed';
-      form.querySelectorAll('[data-internal-signature-panel]').forEach(panel => { panel.hidden = panel.dataset.internalSignaturePanel !== mode; });
       const preview = form.querySelector('.typed-signature-preview');
       if (preview) preview.textContent = form.signatureText?.value?.trim() || 'Typed signature';
     };
     form.dataset.signatureMode = 'typed';
+    const signatureTypeSelect = document.getElementById('internalSignatureType');
+    signatureTypeSelect?.addEventListener('change', () => { handleInternalSignatureTypeChange(); sync(); });
     form.querySelectorAll('[data-internal-signature-mode]').forEach(btn => btn.addEventListener('click', () => {
-      form.dataset.signatureMode = btn.dataset.internalSignatureMode || 'typed';
-      form.querySelectorAll('.signature-method-tab').forEach(tab => tab.classList.toggle('active', tab === btn));
+      if (signatureTypeSelect) signatureTypeSelect.value = btn.dataset.internalSignatureMode || 'typed';
+      handleInternalSignatureTypeChange();
       sync();
     }));
     form.signatureText?.addEventListener('input', sync);
@@ -2819,14 +2940,16 @@ const Agreements = {
       try {
         const file = await readDataUrlFile(form.signatureImage.files?.[0], { imageOnly: true, maxMb: 4 });
         form.dataset.uploadedSignatureDataUrl = file.dataUrl;
+        window.internalUploadedSignatureDataUrl = file.dataUrl;
         form.querySelector('[data-internal-uploaded-signature-preview]').innerHTML = `<img class="proposal-signature-image" src="${U.escapeAttr(file.dataUrl)}" alt="Uploaded signature">`;
       } catch (error) {
         delete form.dataset.uploadedSignatureDataUrl;
+        window.internalUploadedSignatureDataUrl = null;
         form.signatureImage.value = '';
         form.querySelector('.public-validation-errors').innerHTML = `<p class="public-form-error">${U.escapeHtml(error.message)}</p>`;
       }
     });
-    setupDrawCanvas(form.querySelector('.draw-signature-canvas'), form, sync);
+    handleInternalSignatureTypeChange();
     form.addEventListener('submit', event => { event.preventDefault(); this.submitInternalAgreementSignature(targetRole, form, close); });
     modal.classList.add('open'); modal.setAttribute('aria-hidden', 'false');
     sync();
@@ -2834,13 +2957,25 @@ const Agreements = {
   async submitInternalAgreementSignature(role, form, close) {
     const agreementId = String(this.state.currentAgreement?.id || this.state.currentAgreementId || '').trim();
     if (!agreementId) return UI.toast('Missing agreement id.');
-    const mode = form.dataset.signatureMode || 'typed';
+    const mode = document.getElementById('internalSignatureType')?.value || form.dataset.signatureMode || 'typed';
+    let signatureText = null;
+    let signatureImageDataUrl = null;
     const errors = [];
     if (!form.signerName.value.trim()) errors.push('Signer name is required.');
     if (!form.signerTitle.value.trim()) errors.push('Signer title is required.');
-    if (mode === 'typed' && !form.signatureText.value.trim()) errors.push('Typed signature is required.');
-    if (mode === 'uploaded' && !form.dataset.uploadedSignatureDataUrl) errors.push('Uploaded signature image is required.');
-    if (mode === 'drawn' && !form.dataset.drawnSignatureDataUrl) errors.push('Drawn signature is required.');
+    if (mode === 'typed') {
+      signatureText = document.getElementById('internalSignatureText')?.value?.trim();
+      if (!signatureText) errors.push('Typed signature is required.');
+    }
+    if (mode === 'uploaded') {
+      signatureImageDataUrl = form.dataset.uploadedSignatureDataUrl || window.internalUploadedSignatureDataUrl || null;
+      if (!signatureImageDataUrl) errors.push('Uploaded signature image is required.');
+    }
+    if (mode === 'drawn') {
+      const canvas = document.getElementById('internalSignatureCanvas');
+      if (!canvas || canvas.dataset.hasSignature !== 'true') errors.push('Please draw your signature before signing.');
+      else signatureImageDataUrl = canvas.toDataURL('image/png');
+    }
     if (!form.authorized.checked) errors.push('Authorization confirmation is required.');
     const errorBox = form.querySelector('.public-validation-errors');
     if (errors.length) {
@@ -2854,8 +2989,8 @@ const Agreements = {
         p_signer_name: form.signerName.value.trim(),
         p_signer_title: form.signerTitle.value.trim(),
         p_signature_type: mode,
-        p_signature_text: mode === 'typed' ? form.signatureText.value.trim() : '',
-        p_signature_image_data_url: mode === 'uploaded' ? form.dataset.uploadedSignatureDataUrl : (mode === 'drawn' ? form.dataset.drawnSignatureDataUrl : null)
+        p_signature_text: signatureText,
+        p_signature_image_data_url: signatureImageDataUrl
       });
       UI.toast('Agreement signed.');
       close?.();
