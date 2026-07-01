@@ -154,3 +154,144 @@
 
 :root:not([data-theme="light"]) :focus-visible,
 :root[data-theme="dark"] :focus-visible{box-shadow:0 0 0 3px rgba(96,165,250,.65)!important;}
+
+/* Modern CRM workspaces had hard-coded light backgrounds. Force them dark. */
+:root:not([data-theme="light"]) #leadsView.leads-modern-workspace,
+:root:not([data-theme="light"]) #dealsView.deals-modern-workspace,
+:root[data-theme="dark"] #leadsView.leads-modern-workspace,
+:root[data-theme="dark"] #dealsView.deals-modern-workspace{background:#020617!important;color:var(--dark-text)!important;}
+
+:root:not([data-theme="light"]) #leadsView .leads-page-shell,
+:root:not([data-theme="light"]) #dealsView .deals-page-shell,
+:root[data-theme="dark"] #leadsView .leads-page-shell,
+:root[data-theme="dark"] #dealsView .deals-page-shell{background:#020617!important;color:var(--dark-text)!important;}
+
+:root:not([data-theme="light"]) #leadsView .leads-kpi-card,
+:root:not([data-theme="light"]) #dealsView .deals-kpi-card,
+:root:not([data-theme="light"]) #leadsView .leads-filter-card,
+:root:not([data-theme="light"]) #dealsView .deals-filter-card,
+:root:not([data-theme="light"]) #leadsView .leads-status-card,
+:root:not([data-theme="light"]) #dealsView .deals-breakdown-card,
+:root:not([data-theme="light"]) #leadsView .leads-table-panel,
+:root:not([data-theme="light"]) #dealsView .deals-table-panel,
+:root[data-theme="dark"] #leadsView .leads-kpi-card,
+:root[data-theme="dark"] #dealsView .deals-kpi-card,
+:root[data-theme="dark"] #leadsView .leads-filter-card,
+:root[data-theme="dark"] #dealsView .deals-filter-card,
+:root[data-theme="dark"] #leadsView .leads-status-card,
+:root[data-theme="dark"] #dealsView .deals-breakdown-card,
+:root[data-theme="dark"] #leadsView .leads-table-panel,
+:root[data-theme="dark"] #dealsView .deals-table-panel{background:#0f172a!important;color:var(--dark-text)!important;border-color:var(--dark-border-soft)!important;box-shadow:0 16px 34px rgba(0,0,0,.28)!important;}
+
+:root:not([data-theme="light"]) #leadsView .leads-page-header h1,
+:root:not([data-theme="light"]) #dealsView .deals-page-header h1,
+:root:not([data-theme="light"]) #leadsView .leads-panel-title h2,
+:root:not([data-theme="light"]) #dealsView .deals-panel-title h2,
+:root:not([data-theme="light"]) #leadsView .leads-kpi-card .value,
+:root:not([data-theme="light"]) #dealsView .deals-kpi-card .value,
+:root:not([data-theme="light"]) #leadsView .lead-id-cell,
+:root:not([data-theme="light"]) #dealsView .deal-id-cell,
+:root[data-theme="dark"] #leadsView .leads-page-header h1,
+:root[data-theme="dark"] #dealsView .deals-page-header h1,
+:root[data-theme="dark"] #leadsView .leads-panel-title h2,
+:root[data-theme="dark"] #dealsView .deals-panel-title h2,
+:root[data-theme="dark"] #leadsView .leads-kpi-card .value,
+:root[data-theme="dark"] #dealsView .deals-kpi-card .value,
+:root[data-theme="dark"] #leadsView .lead-id-cell,
+:root[data-theme="dark"] #dealsView .deal-id-cell{color:#f8fafc!important;}
+
+:root:not([data-theme="light"]) #leadsView .leads-page-header p,
+:root:not([data-theme="light"]) #dealsView .deals-page-header p,
+:root:not([data-theme="light"]) #leadsView .leads-kpi-card .label,
+:root:not([data-theme="light"]) #dealsView .deals-kpi-card .label,
+:root:not([data-theme="light"]) #leadsView .leads-kpi-card .sub,
+:root:not([data-theme="light"]) #dealsView .deals-kpi-card .sub,
+:root:not([data-theme="light"]) #leadsView .leads-page-info,
+:root:not([data-theme="light"]) #dealsView .deals-page-info,
+:root[data-theme="dark"] #leadsView .leads-page-header p,
+:root[data-theme="dark"] #dealsView .deals-page-header p,
+:root[data-theme="dark"] #leadsView .leads-kpi-card .label,
+:root[data-theme="dark"] #dealsView .deals-kpi-card .label,
+:root[data-theme="dark"] #leadsView .leads-kpi-card .sub,
+:root[data-theme="dark"] #dealsView .deals-kpi-card .sub,
+:root[data-theme="dark"] #leadsView .leads-page-info,
+:root[data-theme="dark"] #dealsView .deals-page-info{color:#cbd5e1!important;}
+
+:root:not([data-theme="light"]) #leadsView .leads-filter-field,
+:root:not([data-theme="light"]) #dealsView .deals-filter-field,
+:root:not([data-theme="light"]) #leadsView .leads-status-row,
+:root:not([data-theme="light"]) #dealsView .deals-status-row,
+:root:not([data-theme="light"]) #leadsView .leads-status-label,
+:root:not([data-theme="light"]) #dealsView .deals-status-label,
+:root:not([data-theme="light"]) #leadsView .leads-status-count,
+:root:not([data-theme="light"]) #dealsView .deals-status-count,
+:root:not([data-theme="light"]) #leadsView .leads-status-meta,
+:root:not([data-theme="light"]) #dealsView .deals-status-meta,
+:root[data-theme="dark"] #leadsView .leads-filter-field,
+:root[data-theme="dark"] #dealsView .deals-filter-field,
+:root[data-theme="dark"] #leadsView .leads-status-row,
+:root[data-theme="dark"] #dealsView .deals-status-row,
+:root[data-theme="dark"] #leadsView .leads-status-label,
+:root[data-theme="dark"] #dealsView .deals-status-label,
+:root[data-theme="dark"] #leadsView .leads-status-count,
+:root[data-theme="dark"] #dealsView .deals-status-count,
+:root[data-theme="dark"] #leadsView .leads-status-meta,
+:root[data-theme="dark"] #dealsView .deals-status-meta{color:#e5e7eb!important;}
+
+:root:not([data-theme="light"]) #leadsView .leads-filter-card .input,
+:root:not([data-theme="light"]) #leadsView .leads-filter-card .select,
+:root:not([data-theme="light"]) #dealsView .deals-filter-card .input,
+:root:not([data-theme="light"]) #dealsView .deals-filter-card .select,
+:root[data-theme="dark"] #leadsView .leads-filter-card .input,
+:root[data-theme="dark"] #leadsView .leads-filter-card .select,
+:root[data-theme="dark"] #dealsView .deals-filter-card .input,
+:root[data-theme="dark"] #dealsView .deals-filter-card .select{background:#020617!important;color:#f8fafc!important;border-color:var(--dark-border)!important;box-shadow:none!important;}
+
+:root:not([data-theme="light"]) #leadsView .leads-soft-btn,
+:root:not([data-theme="light"]) #dealsView .deals-soft-btn,
+:root[data-theme="dark"] #leadsView .leads-soft-btn,
+:root[data-theme="dark"] #dealsView .deals-soft-btn{background:#020617!important;color:#f8fafc!important;border-color:var(--dark-border)!important;box-shadow:0 8px 18px rgba(0,0,0,.2)!important;}
+
+:root:not([data-theme="light"]) #leadsView .leads-primary-btn,
+:root:not([data-theme="light"]) #dealsView .deals-primary-btn,
+:root[data-theme="dark"] #leadsView .leads-primary-btn,
+:root[data-theme="dark"] #dealsView .deals-primary-btn{background:linear-gradient(135deg,#2563eb,#1d4ed8)!important;color:#fff!important;border-color:#3b82f6!important;}
+
+:root:not([data-theme="light"]) #leadsView .leads-status-track,
+:root:not([data-theme="light"]) #dealsView .deals-status-track,
+:root[data-theme="dark"] #leadsView .leads-status-track,
+:root[data-theme="dark"] #dealsView .deals-status-track{background:#1e293b!important;}
+
+:root:not([data-theme="light"]) #leadsView .leads-table-wrap,
+:root:not([data-theme="light"]) #dealsView .deals-table-wrap,
+:root:not([data-theme="light"]) #leadsView #leadsTable,
+:root:not([data-theme="light"]) #dealsView #dealsTable,
+:root[data-theme="dark"] #leadsView .leads-table-wrap,
+:root[data-theme="dark"] #dealsView .deals-table-wrap,
+:root[data-theme="dark"] #leadsView #leadsTable,
+:root[data-theme="dark"] #dealsView #dealsTable{background:#0b1120!important;color:#f8fafc!important;}
+
+:root:not([data-theme="light"]) #leadsView #leadsTable thead th,
+:root:not([data-theme="light"]) #dealsView #dealsTable thead th,
+:root[data-theme="dark"] #leadsView #leadsTable thead th,
+:root[data-theme="dark"] #dealsView #dealsTable thead th{background:#020617!important;color:#f8fafc!important;border-color:var(--dark-border)!important;}
+
+:root:not([data-theme="light"]) #leadsView #leadsTable tbody td,
+:root:not([data-theme="light"]) #dealsView #dealsTable tbody td,
+:root[data-theme="dark"] #leadsView #leadsTable tbody td,
+:root[data-theme="dark"] #dealsView #dealsTable tbody td{background:#0f172a!important;color:#e5e7eb!important;border-color:var(--dark-border-soft)!important;}
+
+:root:not([data-theme="light"]) #leadsView #leadsTable tbody tr:hover td,
+:root:not([data-theme="light"]) #dealsView #dealsTable tbody tr:hover td,
+:root[data-theme="dark"] #leadsView #leadsTable tbody tr:hover td,
+:root[data-theme="dark"] #dealsView #dealsTable tbody tr:hover td{background:#172554!important;color:#fff!important;}
+
+:root:not([data-theme="light"]) #leadsView .leads-kpi-card.kpi-filter-active,
+:root:not([data-theme="light"]) #dealsView .deals-kpi-card.kpi-filter-active,
+:root[data-theme="dark"] #leadsView .leads-kpi-card.kpi-filter-active,
+:root[data-theme="dark"] #dealsView .deals-kpi-card.kpi-filter-active{border-color:#60a5fa!important;box-shadow:0 0 0 3px rgba(96,165,250,.24),0 18px 38px rgba(0,0,0,.35)!important;}
+
+:root:not([data-theme="light"]) #leadsView .leads-table-toolbar,
+:root:not([data-theme="light"]) #dealsView .deals-table-toolbar,
+:root[data-theme="dark"] #leadsView .leads-table-toolbar,
+:root[data-theme="dark"] #dealsView .deals-table-toolbar{background:#0f172a!important;border-color:var(--dark-border-soft)!important;}
