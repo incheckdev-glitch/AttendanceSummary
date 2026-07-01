@@ -45,6 +45,7 @@
       latestServerTestResult: null,
       pwaInstallCheck: null,
       activeDeviceRows: [],
+      currentDeviceSubscription: null,
       foregroundBannerTimers: new Map(),
       foregroundBannerDedup: new Map(),
       inAppSoundEnabled: false,
@@ -69,6 +70,9 @@
       diagnosticsText: null,
       pwaInstallStatusMessage: null,
       pwaInstallCheckResult: null,
+      currentDevicePanel: null,
+      currentDeviceState: null,
+      currentDeviceDetails: null,
       activeDevicesPanel: null,
       activeDevicesState: null,
       activeDevicesTbody: null,
@@ -275,6 +279,9 @@
       this.els.diagnosticsText = document.getElementById('pushDiagnosticsText');
       this.els.pwaInstallStatusMessage = document.getElementById('pwaInstallStatusMessage');
       this.els.pwaInstallCheckResult = document.getElementById('pwaInstallCheckResult');
+      this.els.currentDevicePanel = document.getElementById('pushCurrentDevicePanel');
+      this.els.currentDeviceState = document.getElementById('pushCurrentDeviceState');
+      this.els.currentDeviceDetails = document.getElementById('pushCurrentDeviceDetails');
       this.els.activeDevicesPanel = document.getElementById('pushActiveDevicesPanel');
       this.els.activeDevicesState = document.getElementById('pushActiveDevicesState');
       this.els.activeDevicesTbody = document.getElementById('pushActiveDevicesTbody');
@@ -433,6 +440,25 @@
         el.style.display = showBasicControls ? '' : 'none';
         if ('disabled' in el) el.disabled = !showBasicControls;
       });
+    },
+
+    formatErrorForUi(error) {
+      if (!error) return 'Unknown error';
+      const parts = [];
+      const add = (label, value) => {
+        const text = typeof value === 'string' ? value.trim() : '';
+        if (text) parts.push(`${label}: ${text}`);
+      };
+      add('message', error.message);
+      add('details', error.details);
+      add('hint', error.hint);
+      add('code', error.code);
+      if (parts.length) return parts.join(' | ');
+      try {
+        return JSON.stringify(error);
+      } catch (_) {
+        return String(error);
+      }
     },
 
     getEndpointPreview(endpoint = '') {
@@ -614,11 +640,13 @@
 
       if (error) {
         console.error('Failed to register push subscription:', error);
-        throw error;
+        throw new Error(this.formatErrorForUi(error));
       }
 
-      await this.verifySavedPushSubscription(endpoint);
-      return data;
+      const savedRow = await this.verifySavedPushSubscription(endpoint);
+      await this.renderCurrentDeviceSubscription(savedRow);
+      this.setMessage(`Push subscription saved. subscription_id: ${String(savedRow?.id || data?.id || data || '—')}`);
+      return savedRow || data;
     },
 
     async verifySavedPushSubscription(endpoint = '') {
@@ -690,12 +718,12 @@
             return true;
           }
 
-          await this.savePushSubscription(subscription);
+          const savedRow = await this.savePushSubscription(subscription);
           this.setStoredVapidPublicKey(vapidPublicKey);
           await this.logDiagnostics({ source: 'syncExistingSubscription', registration, subscription });
           this.state.enabled = true;
           this.renderButtonLabel();
-          if (!silent) this.setMessage('Push notifications enabled on this device.');
+          if (!silent) this.setMessage(`Push subscription saved. subscription_id: ${String(savedRow?.id || '—')}`);
           return true;
         }
         this.state.enabled = false;
@@ -770,11 +798,11 @@
           });
         }
 
-        await this.savePushSubscription(subscription);
+        const savedRow = await this.savePushSubscription(subscription);
         this.setStoredVapidPublicKey(vapidPublicKey);
         await this.logDiagnostics({ source: 'enablePush', registration, subscription });
         this.state.enabled = true;
-        this.setMessage('Push notifications enabled on this device.');
+        this.setMessage(`Push subscription saved. subscription_id: ${String(savedRow?.id || '—')}`);
       } catch (error) {
         console.warn('[push] Enable failed', error);
         const message = String(error?.message || 'Unknown error');
@@ -853,12 +881,15 @@
           userVisibleOnly: true,
           applicationServerKey: this.urlBase64ToUint8Array(vapidPublicKey)
         });
-        await this.savePushSubscription(newSubscription);
+        const savedRow = await this.savePushSubscription(newSubscription);
         this.setStoredVapidPublicKey(vapidPublicKey);
         this.state.enabled = true;
-        this.setMessage('Push subscription refreshed successfully. Running server push test…');
+        this.setMessage(`Push subscription saved. subscription_id: ${String(savedRow?.id || '—')}`);
         await this.renderDiagnostics({ source: 'refreshPushSubscription' });
-        await this.testServerPush();
+        if (this.canShowPushAdminDiagnostics()) {
+          this.setMessage(`Push subscription saved. subscription_id: ${String(savedRow?.id || '—')}. Running server push test…`);
+          await this.testServerPush();
+        }
       } catch (error) {
         this.setMessage(`Unable to refresh subscription: ${String(error?.message || 'Unknown error')}`);
       } finally {
@@ -1034,6 +1065,84 @@
         `errors: ${errors.length ? JSON.stringify(errors, null, 2) : '[]'}`
       ];
       this.els.deviceTestResult.textContent = lines.join('\n');
+    },
+
+    renderCurrentDeviceCard(row = null, { message = '' } = {}) {
+      if (!this.els.currentDevicePanel) return;
+      const isAuthenticated = Boolean(global.Session?.isAuthenticated?.());
+      this.els.currentDevicePanel.style.display = isAuthenticated ? '' : 'none';
+      this.state.currentDeviceSubscription = row || null;
+
+      if (!isAuthenticated) {
+        if (this.els.currentDeviceState) this.els.currentDeviceState.textContent = 'Log in to view this device subscription.';
+        if (this.els.currentDeviceDetails) this.els.currentDeviceDetails.innerHTML = '';
+        return;
+      }
+
+      if (!row) {
+        if (this.els.currentDeviceState) this.els.currentDeviceState.textContent = message || 'No saved push subscription found for this device.';
+        if (this.els.currentDeviceDetails) this.els.currentDeviceDetails.innerHTML = '';
+        return;
+      }
+
+      if (this.els.currentDeviceState) {
+        this.els.currentDeviceState.textContent = message || `Current device subscription loaded. subscription_id: ${String(row.id || '—')}`;
+      }
+      if (this.els.currentDeviceDetails) {
+        const fields = [
+          ['subscription_id', row.id],
+          ['device_label', row.device_label],
+          ['browser_name', row.browser_name],
+          ['is_active', row.is_active === true ? 'true' : 'false'],
+          ['permission_status', row.permission_status],
+          ['created_at', this.formatDateTime(row.created_at)],
+          ['last_seen_at', this.formatDateTime(row.last_seen_at)]
+        ];
+        this.els.currentDeviceDetails.innerHTML = fields.map(([label, value]) => `
+          <div><strong>${this.escapeHtml(label)}</strong><span>${this.escapeHtml(String(value || '—'))}</span></div>
+        `).join('');
+      }
+    },
+
+    async renderCurrentDeviceSubscription(row = null) {
+      if (!this.els.currentDevicePanel || !global.Session?.isAuthenticated?.()) {
+        this.renderCurrentDeviceCard(null);
+        return null;
+      }
+      if (row?.id) {
+        this.renderCurrentDeviceCard(row);
+        return row;
+      }
+
+      const client = global.SupabaseClient?.getClient?.();
+      if (!client) {
+        this.renderCurrentDeviceCard(null, { message: 'Supabase client unavailable.' });
+        return null;
+      }
+
+      const registration = this.state.supported ? await this.getRegistration().catch(() => null) : null;
+      const subscription = registration?.pushManager ? await registration.pushManager.getSubscription().catch(() => null) : null;
+      const endpoint = String(subscription?.endpoint || '').trim();
+      const userId = String(global.Session?.userId?.() || '').trim();
+      if (!endpoint) {
+        this.renderCurrentDeviceCard(null, { message: 'No browser push subscription exists on this device.' });
+        return null;
+      }
+
+      let query = client
+        .from('user_push_subscriptions')
+        .select('id,user_id,device_label,browser_name,is_active,permission_status,created_at,last_seen_at,endpoint')
+        .eq('endpoint', endpoint)
+        .order('last_seen_at', { ascending: false })
+        .limit(1);
+      if (userId) query = query.eq('user_id', userId);
+      const { data, error } = await query.maybeSingle();
+      if (error) {
+        this.renderCurrentDeviceCard(null, { message: `Unable to load this device subscription: ${this.formatErrorForUi(error)}` });
+        return null;
+      }
+      this.renderCurrentDeviceCard(data || null);
+      return data || null;
     },
 
     async listActiveDeviceSubscriptions() {
@@ -1574,11 +1683,13 @@
       if (!global.Session?.isAuthenticated?.()) {
         this.state.enabled = false;
         this.renderButtonLabel();
+        this.renderCurrentDeviceCard(null);
         this.setMessage('Log in to manage push notifications on this device.');
         return;
       }
       await this.syncExistingSubscription();
       this.applyNotificationHubPermissions();
+      await this.renderCurrentDeviceSubscription();
       await this.renderDiagnostics({ source: 'onAuthStateChanged' });
     },
 
