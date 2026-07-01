@@ -728,10 +728,10 @@
             <div id="pushCurrentDeviceState" style="margin-top:6px;">No saved push subscription found for this device.</div>
             <div id="pushCurrentDeviceDetails" style="margin-top:8px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px 12px;"></div>
           </div>
-          <div id="pushActiveDevicesPanel" class="muted" style="display:none;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:10px;background:rgba(127,127,127,0.06);font-size:12px;line-height:1.5;" data-admin-push-control="true">
+          <div id="pushActiveDevicesPanel" class="muted" style="display:none;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:10px;background:rgba(127,127,127,0.06);font-size:12px;line-height:1.5;" data-user-push-control="true">
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
-              <strong>Active Push Devices</strong>
-              <button id="pushTestAllDevicesBtn" class="btn ghost sm" type="button">Test all my devices</button>
+              <strong>Active devices for current user</strong>
+              <button id="pushTestAllDevicesBtn" class="btn ghost sm" type="button" data-admin-push-control="true">Test all my devices</button>
             </div>
             <div id="pushActiveDevicesState" style="margin-top:6px;">Loading active push subscriptions…</div>
             <div class="table-wrap" style="margin-top:8px;">
@@ -4543,7 +4543,7 @@ Sample:
   <script src="/communication-centre.js?v=20260611-direct-communication"></script>
   <script src="/events.js?v=20260605-cancelled-title1"></script>
   <script src="/notifications.js?v=20260605-cancelled-title1"></script>
-  <script src="/push-notifications.js?v=20260618-final-channel-fallback1"></script>
+  <script src="/push-notifications.js?v=20260701-nonadmin-sw-update1"></script>
   <script src="/workflow.js?v=20260427-allpwa1"></script>
   <script src="/roles-admin.js?v=20260504-cc-final-actions1"></script>
   <script src="/notification-settings.js?v=20260618-final-channel-fallback1"></script>

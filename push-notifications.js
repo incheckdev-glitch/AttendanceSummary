@@ -51,7 +51,9 @@
       inAppSoundEnabled: false,
       inAppSoundUnlocked: false,
       inAppSoundAudio: null,
-      sessionSubscriptionWired: false
+      sessionSubscriptionWired: false,
+      serviceWorkerUpdateCheckStarted: false,
+      serviceWorkerUpdateReloading: false
     },
 
     els: {
@@ -415,6 +417,10 @@
 
     canViewDiagnostics() {
       return this.canShowPushAdminDiagnostics();
+    },
+
+    canViewActiveDevices() {
+      return this.canShowBasicPushControls();
     },
 
     applyNotificationHubPermissions() {
@@ -1146,7 +1152,7 @@
     },
 
     async listActiveDeviceSubscriptions() {
-      const canView = this.canViewDiagnostics();
+      const canView = this.canViewActiveDevices();
       if (!canView || !this.els.activeDevicesPanel) return [];
       this.els.activeDevicesPanel.style.display = '';
       const userId = String(global.Session?.userId?.() || '').trim();
@@ -1301,6 +1307,62 @@
       await this.enablePush();
     },
 
+
+    isFormBeingEdited() {
+      const activeElement = document.activeElement;
+      return Boolean(
+        activeElement &&
+          (activeElement.tagName === 'INPUT' ||
+            activeElement.tagName === 'TEXTAREA' ||
+            activeElement.tagName === 'SELECT' ||
+            activeElement.isContentEditable)
+      );
+    },
+
+    async checkForAuthenticatedServiceWorkerUpdate({ source = 'auth' } = {}) {
+      if (this.state.serviceWorkerUpdateCheckStarted) return;
+      if (!global.Session?.isAuthenticated?.()) return;
+      if (!('serviceWorker' in navigator)) return;
+      this.state.serviceWorkerUpdateCheckStarted = true;
+      try {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map(registration => registration.update().catch(error => {
+          console.warn('[push:pwa] service worker update check failed for registration', { source, error });
+        })));
+
+        const activateWaitingWorker = registration => {
+          const waitingWorker = registration?.waiting;
+          if (!waitingWorker) return false;
+          let reloadTriggered = false;
+          const onControllerChange = () => {
+            if (reloadTriggered || this.state.serviceWorkerUpdateReloading) return;
+            reloadTriggered = true;
+            this.state.serviceWorkerUpdateReloading = true;
+            if (this.isFormBeingEdited()) {
+              this.setMessage('App update activated. Reopen or refresh the app when you finish editing.');
+              return;
+            }
+            global.location.reload();
+          };
+          navigator.serviceWorker.addEventListener('controllerchange', onControllerChange, { once: true });
+          waitingWorker.postMessage({ type: 'SKIP_WAITING' });
+          return true;
+        };
+
+        for (const registration of registrations) {
+          if (activateWaitingWorker(registration)) return;
+          if (registration.installing) {
+            registration.installing.addEventListener('statechange', () => {
+              activateWaitingWorker(registration);
+            });
+          }
+        }
+      } catch (error) {
+        console.warn('[push:pwa] authenticated service worker update check failed', { source, error });
+        this.state.serviceWorkerUpdateCheckStarted = false;
+      }
+    },
+
     async readServiceWorkerDiagnostics() {
       if (!this.requireNotificationAdmin()) return null;
       if (!this.state.supported) return null;
@@ -1343,22 +1405,12 @@
       if (!this.requireNotificationAdmin()) return;
       if (!this.state.supported) return;
       try {
-        const isFormBeingEdited = () => {
-          const activeElement = document.activeElement;
-          return Boolean(
-            activeElement &&
-              (activeElement.tagName === 'INPUT' ||
-                activeElement.tagName === 'TEXTAREA' ||
-                activeElement.tagName === 'SELECT' ||
-                activeElement.isContentEditable)
-          );
-        };
         const registration = await this.getRegistration();
         let reloadTriggered = false;
         const onControllerChange = () => {
           if (reloadTriggered) return;
           reloadTriggered = true;
-          if (isFormBeingEdited()) {
+          if (this.isFormBeingEdited()) {
             this.setMessage('Service worker updated. Reopen the app if push banners still do not appear.');
             return;
           }
@@ -1376,7 +1428,7 @@
             }
           });
         } else if (!navigator.serviceWorker.controller) {
-          if (!isFormBeingEdited()) {
+          if (!this.isFormBeingEdited()) {
             global.location.reload();
             return;
           }
@@ -1681,23 +1733,27 @@
       this.renderIosHint();
       this.applyNotificationHubPermissions();
       if (!global.Session?.isAuthenticated?.()) {
+        this.state.serviceWorkerUpdateCheckStarted = false;
         this.state.enabled = false;
         this.renderButtonLabel();
         this.renderCurrentDeviceCard(null);
         this.setMessage('Log in to manage push notifications on this device.');
         return;
       }
+      await this.checkForAuthenticatedServiceWorkerUpdate({ source: 'onAuthStateChanged' });
       await this.syncExistingSubscription();
       this.applyNotificationHubPermissions();
       await this.renderCurrentDeviceSubscription();
+      await this.listActiveDeviceSubscriptions();
       await this.renderDiagnostics({ source: 'onAuthStateChanged' });
     },
 
     async renderDiagnostics({ source = 'unknown' } = {}) {
       if (!this.els.diagnosticsPanel || !this.els.diagnosticsText) return;
       const canView = this.canViewDiagnostics();
+      const canViewActiveDevices = this.canViewActiveDevices();
       this.els.diagnosticsPanel.style.display = canView ? '' : 'none';
-      if (this.els.activeDevicesPanel) this.els.activeDevicesPanel.style.display = canView ? '' : 'none';
+      if (this.els.activeDevicesPanel) this.els.activeDevicesPanel.style.display = canViewActiveDevices ? '' : 'none';
       if (!canView) return;
 
       try {
@@ -1852,7 +1908,11 @@
       if (!this.state.sessionSubscriptionWired && global.Session?.subscribe) {
         this.state.sessionSubscriptionWired = true;
         global.Session.subscribe(() => {
-          setTimeout(() => this.applyNotificationHubPermissions(), 0);
+          setTimeout(() => {
+            this.onAuthStateChanged().catch(error => {
+              console.warn('[push] auth-ready refresh failed', error);
+            });
+          }, 0);
         });
       }
       document.addEventListener('click', event => {
