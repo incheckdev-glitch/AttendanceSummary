@@ -1,1 +1,0 @@
-Dark mode visual fix 2.
