@@ -1,3 +1,5 @@
+import './pwaVercelTestPatch.js';
+
 function isWebPushChannel(channel = '') {
   return ['pwa', 'push', 'web_push'].includes(String(channel || '').toLowerCase());
 }
