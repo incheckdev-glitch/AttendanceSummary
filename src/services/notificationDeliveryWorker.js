@@ -1,4 +1,4 @@
-import './pwaVercelTestPatch.js';
+import './pwaVercelTestPatch.js?v=20260701-active-device-list1';
 
 function isWebPushChannel(channel = '') {
   return ['pwa', 'push', 'web_push'].includes(String(channel || '').toLowerCase());
