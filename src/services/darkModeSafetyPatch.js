@@ -4,6 +4,6 @@
   const link = document.createElement('link');
   link.id = id;
   link.rel = 'stylesheet';
-  link.href = '/dark-mode-safety.css?v=20260701-clear-dark1';
+  link.href = '/dark-mode-safety.css?v=20260701-clear-dark2';
   document.head.appendChild(link);
 })();
