@@ -1,4 +1,5 @@
 import './pwaVercelTestPatch.js?v=20260701-nonadmin-sw-update1';
+import './pwaActiveDevicesPanelPatch.js?v=20260701-active-devices-panel2';
 
 function isWebPushChannel(channel = '') {
   return ['pwa', 'push', 'web_push'].includes(String(channel || '').toLowerCase());
