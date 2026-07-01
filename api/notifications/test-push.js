@@ -30,22 +30,33 @@ function getCallerRole(profile, user) {
   );
 }
 
-async function getCallerProfile(supabaseAdmin, user) {
-  if (!user?.id && !user?.email) return null;
-  const filters = [];
-  if (user.id) filters.push(`id.eq.${user.id}`, `user_id.eq.${user.id}`, `auth_user_id.eq.${user.id}`);
-  if (user.email) filters.push(`email.eq.${user.email}`);
+async function loadProfileByColumn(supabaseAdmin, column, value) {
+  const normalized = text(value);
+  if (!normalized) return null;
   try {
-    const { data } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from('profiles')
-      .select('id,email,role,role_key,user_role,app_role')
-      .or(filters.join(','))
+      .select('*')
+      .eq(column, normalized)
       .limit(1)
       .maybeSingle();
+    if (error) return null;
     return data || null;
   } catch {
     return null;
   }
+}
+
+async function getCallerProfile(supabaseAdmin, user) {
+  if (!user?.id && !user?.email) return null;
+
+  const byId = await loadProfileByColumn(supabaseAdmin, 'id', user.id);
+  if (byId) return byId;
+
+  const byEmail = await loadProfileByColumn(supabaseAdmin, 'email', user.email);
+  if (byEmail) return byEmail;
+
+  return null;
 }
 
 async function authorize(req, supabaseAdmin) {
@@ -61,8 +72,7 @@ async function authorize(req, supabaseAdmin) {
 
   const profile = await getCallerProfile(supabaseAdmin, data.user);
   const role = getCallerRole(profile, data.user);
-  if (!ADMIN_ROLES.has(role)) return { ok: false, status: 403, error: 'Only admin/dev can run server push tests.' };
-  return { ok: true, type: 'user', userId: data.user.id, role };
+  return { ok: true, type: 'user', userId: data.user.id, role, isAdmin: ADMIN_ROLES.has(role) };
 }
 
 function getBody(req) {
@@ -75,6 +85,12 @@ function normalizeList(value) {
   if (!value) return [];
   if (Array.isArray(value)) return value.map(text).filter(Boolean);
   return String(value).split(',').map(text).filter(Boolean);
+}
+
+function subscriptionBelongsToUser(subscription = {}, userId = '') {
+  const id = text(userId);
+  if (!id) return false;
+  return ['user_id', 'recipient_user_id', 'auth_user_id', 'profile_id'].some(column => text(subscription?.[column]) === id);
 }
 
 export default async function handler(req, res) {
@@ -102,9 +118,23 @@ export default async function handler(req, res) {
 
   try {
     let subscriptions = [];
-    if (subscriptionIds.length) subscriptions = await loadSubscriptionsByIds(supabaseAdmin, subscriptionIds);
-    if (!subscriptions.length && userIds.length) {
-      const groups = await Promise.all(userIds.map(userId => loadActiveSubscriptions(supabaseAdmin, userId)));
+    if (subscriptionIds.length) {
+      subscriptions = await loadSubscriptionsByIds(supabaseAdmin, subscriptionIds);
+      if (auth.type === 'user' && !auth.isAdmin) {
+        const ownSubscriptions = subscriptions.filter(subscription => subscriptionBelongsToUser(subscription, auth.userId));
+        if (ownSubscriptions.length !== subscriptions.length) {
+          return res.status(403).json({ ok: false, error: 'Cannot test another user/device.' });
+        }
+        subscriptions = ownSubscriptions;
+      }
+    }
+
+    const targetUserIds = auth.type === 'user' && !auth.isAdmin
+      ? [auth.userId]
+      : userIds;
+
+    if (!subscriptions.length && targetUserIds.length) {
+      const groups = await Promise.all(targetUserIds.map(userId => loadActiveSubscriptions(supabaseAdmin, userId)));
       subscriptions = groups.flat();
     }
 
