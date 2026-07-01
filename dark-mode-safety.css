@@ -1,0 +1,156 @@
+:root:not([data-theme="light"]),
+:root[data-theme="dark"]{
+  --dark-panel:#0f172a;
+  --dark-panel-strong:#111827;
+  --dark-panel-soft:#1e293b;
+  --dark-border:#334155;
+  --dark-border-soft:rgba(148,163,184,.26);
+  --dark-text:#f8fafc;
+  --dark-text-soft:#cbd5e1;
+  --dark-muted:#94a3b8;
+  --dark-input:#0b1120;
+}
+
+:root:not([data-theme="light"]) body,
+:root[data-theme="dark"] body{background:#020617!important;color:var(--dark-text)!important;}
+
+:root:not([data-theme="light"]) .card,
+:root:not([data-theme="light"]) .section,
+:root:not([data-theme="light"]) .sidebar,
+:root:not([data-theme="light"]) .view-menu,
+:root:not([data-theme="light"]) .modal-content,
+:root:not([data-theme="light"]) .drawer-panel,
+:root[data-theme="dark"] .card,
+:root[data-theme="dark"] .section,
+:root[data-theme="dark"] .sidebar,
+:root[data-theme="dark"] .view-menu,
+:root[data-theme="dark"] .modal-content,
+:root[data-theme="dark"] .drawer-panel{background:rgba(15,23,42,.96)!important;color:var(--dark-text)!important;border-color:var(--dark-border-soft)!important;box-shadow:0 18px 45px rgba(0,0,0,.32)!important;}
+
+:root:not([data-theme="light"]) #appHeader.app-topbar,
+:root[data-theme="dark"] #appHeader.app-topbar{background:rgba(15,23,42,.94)!important;color:var(--dark-text)!important;border-color:var(--dark-border-soft)!important;box-shadow:0 18px 45px rgba(0,0,0,.36)!important;}
+
+:root:not([data-theme="light"]) h1,
+:root:not([data-theme="light"]) h2,
+:root:not([data-theme="light"]) h3,
+:root:not([data-theme="light"]) h4,
+:root:not([data-theme="light"]) strong,
+:root:not([data-theme="light"]) .topbar-brand-text strong,
+:root:not([data-theme="light"]) .view-menu-title,
+:root[data-theme="dark"] h1,
+:root[data-theme="dark"] h2,
+:root[data-theme="dark"] h3,
+:root[data-theme="dark"] h4,
+:root[data-theme="dark"] strong,
+:root[data-theme="dark"] .topbar-brand-text strong,
+:root[data-theme="dark"] .view-menu-title{color:var(--dark-text)!important;}
+
+:root:not([data-theme="light"]) .muted,
+:root:not([data-theme="light"]) small,
+:root:not([data-theme="light"]) .sub,
+:root:not([data-theme="light"]) .label,
+:root:not([data-theme="light"]) .view-menu-subtitle,
+:root:not([data-theme="light"]) .topbar-brand-text span,
+:root[data-theme="dark"] .muted,
+:root[data-theme="dark"] small,
+:root[data-theme="dark"] .sub,
+:root[data-theme="dark"] .label,
+:root[data-theme="dark"] .view-menu-subtitle,
+:root[data-theme="dark"] .topbar-brand-text span{color:var(--dark-text-soft)!important;}
+
+:root:not([data-theme="light"]) .input,
+:root:not([data-theme="light"]) .select,
+:root:not([data-theme="light"]) textarea,
+:root:not([data-theme="light"]) input,
+:root:not([data-theme="light"]) .topbar-search,
+:root[data-theme="dark"] .input,
+:root[data-theme="dark"] .select,
+:root[data-theme="dark"] textarea,
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] .topbar-search{background:var(--dark-input)!important;color:var(--dark-text)!important;border-color:var(--dark-border)!important;}
+
+:root:not([data-theme="light"]) ::placeholder,
+:root[data-theme="dark"] ::placeholder{color:#94a3b8!important;opacity:1!important;}
+
+:root:not([data-theme="light"]) .btn,
+:root:not([data-theme="light"]) .chip-btn,
+:root:not([data-theme="light"]) .topbar-icon-btn,
+:root:not([data-theme="light"]) .topbar-language,
+:root:not([data-theme="light"]) .topbar-profile,
+:root:not([data-theme="light"]) .topbar-logout,
+:root[data-theme="dark"] .btn,
+:root[data-theme="dark"] .chip-btn,
+:root[data-theme="dark"] .topbar-icon-btn,
+:root[data-theme="dark"] .topbar-language,
+:root[data-theme="dark"] .topbar-profile,
+:root[data-theme="dark"] .topbar-logout{background:#111827!important;color:var(--dark-text)!important;border-color:var(--dark-border)!important;}
+
+:root:not([data-theme="light"]) .btn.primary,
+:root:not([data-theme="light"]) .chip-btn.active,
+:root:not([data-theme="light"]) .topbar-menu-btn,
+:root[data-theme="dark"] .btn.primary,
+:root[data-theme="dark"] .chip-btn.active,
+:root[data-theme="dark"] .topbar-menu-btn{background:linear-gradient(135deg,#2563eb,#1d4ed8)!important;color:#fff!important;border-color:#3b82f6!important;}
+
+:root:not([data-theme="light"]) .btn.ghost,
+:root:not([data-theme="light"]) .chip-btn:not(.active),
+:root[data-theme="dark"] .btn.ghost,
+:root[data-theme="dark"] .chip-btn:not(.active){background:#0b1120!important;color:var(--dark-text-soft)!important;border-color:var(--dark-border)!important;}
+
+:root:not([data-theme="light"]) .table-wrap,
+:root:not([data-theme="light"]) table,
+:root:not([data-theme="light"]) pre,
+:root:not([data-theme="light"]) #notificationsDebugBox,
+:root:not([data-theme="light"]) #pushCurrentDevicePanel,
+:root:not([data-theme="light"]) #pushActiveDevicesPanel,
+:root:not([data-theme="light"]) #pushDiagnosticsPanel,
+:root[data-theme="dark"] .table-wrap,
+:root[data-theme="dark"] table,
+:root[data-theme="dark"] pre,
+:root[data-theme="dark"] #notificationsDebugBox,
+:root[data-theme="dark"] #pushCurrentDevicePanel,
+:root[data-theme="dark"] #pushActiveDevicesPanel,
+:root[data-theme="dark"] #pushDiagnosticsPanel{background:#0b1120!important;color:var(--dark-text)!important;border-color:var(--dark-border)!important;}
+
+:root:not([data-theme="light"]) thead th,
+:root:not([data-theme="light"]) th,
+:root[data-theme="dark"] thead th,
+:root[data-theme="dark"] th{background:#111827!important;color:#f8fafc!important;border-color:var(--dark-border)!important;}
+
+:root:not([data-theme="light"]) tbody td,
+:root:not([data-theme="light"]) td,
+:root[data-theme="dark"] tbody td,
+:root[data-theme="dark"] td{background:#0f172a!important;color:#e5e7eb!important;border-color:var(--dark-border-soft)!important;}
+
+:root:not([data-theme="light"]) tbody tr:hover td,
+:root[data-theme="dark"] tbody tr:hover td{background:#172554!important;color:#fff!important;}
+
+:root:not([data-theme="light"]) .notification-preview-panel,
+:root[data-theme="dark"] .notification-preview-panel{background:rgba(15,23,42,.98)!important;color:var(--dark-text)!important;border-color:var(--dark-border-soft)!important;}
+
+:root:not([data-theme="light"]) #pushCurrentDeviceDetails div,
+:root:not([data-theme="light"]) #pushActiveDevicesPanel td,
+:root:not([data-theme="light"]) #pushDeviceTestResult,
+:root:not([data-theme="light"]) #pushServerTestResult,
+:root:not([data-theme="light"]) #pwaInstallCheckResult,
+:root[data-theme="dark"] #pushCurrentDeviceDetails div,
+:root[data-theme="dark"] #pushActiveDevicesPanel td,
+:root[data-theme="dark"] #pushDeviceTestResult,
+:root[data-theme="dark"] #pushServerTestResult,
+:root[data-theme="dark"] #pwaInstallCheckResult{color:#e5e7eb!important;}
+
+:root:not([data-theme="light"]) #pushCurrentDevicePanel,
+:root:not([data-theme="light"]) #pushActiveDevicesPanel,
+:root[data-theme="dark"] #pushCurrentDevicePanel,
+:root[data-theme="dark"] #pushActiveDevicesPanel{box-shadow:inset 0 0 0 1px rgba(96,165,250,.12)!important;}
+
+:root:not([data-theme="light"]) .notification-unread-badge,
+:root:not([data-theme="light"]) .topbar-badge,
+:root[data-theme="dark"] .notification-unread-badge,
+:root[data-theme="dark"] .topbar-badge{background:#ef4444!important;color:#fff!important;border-color:#7f1d1d!important;}
+
+:root:not([data-theme="light"]) a,
+:root[data-theme="dark"] a{color:#93c5fd!important;}
+
+:root:not([data-theme="light"]) :focus-visible,
+:root[data-theme="dark"] :focus-visible{box-shadow:0 0 0 3px rgba(96,165,250,.65)!important;}
