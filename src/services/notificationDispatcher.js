@@ -169,9 +169,42 @@ function installPushNotificationsPatch(attempt = 0) {
   }
 }
 
+function installBusinessNotificationPatch(attempt = 0) {
+  const api = window?.Api;
+  if (api && typeof api.safeSendBusinessPwaPush === 'function' && !api.__incheck360CentralBusinessNotificationPatch) {
+    const originalSafeSendBusinessPwaPush = api.safeSendBusinessPwaPush.bind(api);
+    api.__incheck360CentralBusinessNotificationPatch = true;
+    api.safeSendBusinessPwaPush = async function patchedSafeSendBusinessPwaPush(args = {}) {
+      // api.js marks business events such as leads:lead_created as backend managed and skips
+      // the old direct push fallback. The final notification system must still enter
+      // NotificationService so in-app, email, and PWA queue rows are created.
+      if (window?.NotificationService?.sendBusinessNotification && typeof api.sendBusinessPwaPush === 'function') {
+        try {
+          return await api.sendBusinessPwaPush(args);
+        } catch (error) {
+          console.warn('[business:notification] central notification failed but save will continue', { args, error });
+          return { attempted: true, sent: false, error: String(error?.message || error) };
+        }
+      }
+      return originalSafeSendBusinessPwaPush(args);
+    };
+    return;
+  }
+  if (attempt < 80) {
+    window.setTimeout(() => installBusinessNotificationPatch(attempt + 1), 250);
+  }
+}
+
 if (typeof window !== 'undefined') {
   window.dispatchNotification = dispatchNotification;
   installPushNotificationsPatch();
-  window.addEventListener?.('DOMContentLoaded', () => installPushNotificationsPatch());
-  window.addEventListener?.('load', () => installPushNotificationsPatch());
+  installBusinessNotificationPatch();
+  window.addEventListener?.('DOMContentLoaded', () => {
+    installPushNotificationsPatch();
+    installBusinessNotificationPatch();
+  });
+  window.addEventListener?.('load', () => {
+    installPushNotificationsPatch();
+    installBusinessNotificationPatch();
+  });
 }
