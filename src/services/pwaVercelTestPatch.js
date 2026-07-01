@@ -89,6 +89,107 @@
     } catch (_) {}
   }
 
+  function escapeHtml(value = '') {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function getEndpointPreview(endpoint = '') {
+    const value = String(endpoint || '').trim();
+    if (!value) return '—';
+    if (value.length <= 26) return value;
+    return `${value.slice(0, 12)}…${value.slice(-12)}`;
+  }
+
+  function formatDateTime(push, value = '') {
+    const text = String(value || '').trim();
+    if (!text) return '—';
+    return push?.formatDateTime?.(text) || global.U?.formatAppDateTime?.(text, { fallback: text }) || text;
+  }
+
+  async function getCurrentBrowserEndpoint(push) {
+    try {
+      const registration = await push.getRegistration?.() || await global.navigator?.serviceWorker?.ready;
+      const subscription = await registration?.pushManager?.getSubscription?.();
+      return String(subscription?.endpoint || '').trim();
+    } catch (_) {
+      return '';
+    }
+  }
+
+  async function queryTableByColumn(client, table, column, value) {
+    try {
+      const { data, error } = await client
+        .from(table)
+        .select('*')
+        .eq(column, value)
+        .eq('is_active', true)
+        .order('last_seen_at', { ascending: false, nullsFirst: false });
+      if (error) return [];
+      return Array.isArray(data) ? data.map(row => ({ ...row, __table: table })) : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  async function loadCurrentUserDeviceRows(push) {
+    const client = global.SupabaseClient?.getClient?.();
+    const userId = String(global.Session?.userId?.() || '').trim();
+    if (!client || !userId) return [];
+
+    const endpoint = await getCurrentBrowserEndpoint(push);
+    const tables = ['user_push_subscriptions', 'push_subscriptions'];
+    const userColumns = ['user_id', 'recipient_user_id', 'auth_user_id', 'profile_id'];
+    const groups = [];
+
+    for (const table of tables) {
+      for (const column of userColumns) {
+        groups.push(queryTableByColumn(client, table, column, userId));
+      }
+      if (endpoint) groups.push(queryTableByColumn(client, table, 'endpoint', endpoint));
+    }
+
+    const results = (await Promise.all(groups)).flat();
+    const seen = new Set();
+    return results.filter(row => {
+      const key = String(row.endpoint || row.id || '').trim();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  function renderActiveDeviceRows(push, rows = []) {
+    const activeRows = Array.isArray(rows) ? rows : [];
+    push.state.activeDeviceRows = activeRows;
+
+    if (push.els?.activeDevicesPanel) push.els.activeDevicesPanel.style.display = '';
+    if (push.els?.activeDevicesState) {
+      push.els.activeDevicesState.textContent = `${activeRows.length} active device subscription${activeRows.length === 1 ? '' : 's'} for current user.`;
+    }
+
+    if (!push.els?.activeDevicesTbody) return;
+
+    push.els.activeDevicesTbody.innerHTML = activeRows.length
+      ? activeRows.map(row => `
+        <tr>
+          <td>${escapeHtml(String(row.id || '—'))}</td>
+          <td>${escapeHtml(String(row.device_label || '—'))}</td>
+          <td>${escapeHtml(String(row.browser_name || '—'))}</td>
+          <td>${escapeHtml(String(row.permission_status || '—'))}</td>
+          <td>${escapeHtml(String(row.is_active ?? row.active ?? row.enabled ?? '—'))}</td>
+          <td>${escapeHtml(formatDateTime(push, row.last_seen_at || row.updated_at || row.created_at))}</td>
+          <td>${escapeHtml(getEndpointPreview(row.endpoint || ''))}</td>
+          <td>${row.id ? `<button class="btn ghost xs" type="button" data-test-push-subscription-id="${escapeHtml(String(row.id))}">Test</button>` : '—'}</td>
+        </tr>
+      `).join('')
+      : '<tr><td colspan="8" class="muted">No active push subscriptions found for current user.</td></tr>';
+  }
+
   function patch(attempt = 0) {
     const push = global.PushNotifications;
     if (!push) {
@@ -107,6 +208,9 @@
     const originalRefreshPushSubscription = typeof push.refreshPushSubscription === 'function'
       ? push.refreshPushSubscription.bind(push)
       : null;
+    const originalListActiveDeviceSubscriptions = typeof push.listActiveDeviceSubscriptions === 'function'
+      ? push.listActiveDeviceSubscriptions.bind(push)
+      : null;
 
     push.getVapidPublicKey = function patchedGetVapidPublicKey() {
       return cachedVapidPublicKey || originalGetVapidPublicKey?.() || '';
@@ -115,7 +219,9 @@
     if (originalEnablePush) {
       push.enablePush = async function patchedEnablePush(...args) {
         await loadBackendPushConfig({ force: true });
-        return originalEnablePush(...args);
+        const result = await originalEnablePush(...args);
+        await this.listActiveDeviceSubscriptions?.();
+        return result;
       };
     }
 
@@ -126,7 +232,23 @@
         if (currentKey && backendKey && currentKey !== backendKey) {
           await unsubscribeCurrentBrowserSubscription(this);
         }
-        return originalRefreshPushSubscription(...args);
+        const result = await originalRefreshPushSubscription(...args);
+        await this.listActiveDeviceSubscriptions?.();
+        return result;
+      };
+    }
+
+    if (originalListActiveDeviceSubscriptions) {
+      push.listActiveDeviceSubscriptions = async function patchedListActiveDeviceSubscriptions(...args) {
+        const rows = await loadCurrentUserDeviceRows(this);
+        if (rows.length) {
+          renderActiveDeviceRows(this, rows);
+          return rows;
+        }
+        const originalRows = await originalListActiveDeviceSubscriptions(...args).catch(() => []);
+        const fallbackRows = Array.isArray(originalRows) ? originalRows : [];
+        if (fallbackRows.length) renderActiveDeviceRows(this, fallbackRows);
+        return fallbackRows;
       };
     }
 
