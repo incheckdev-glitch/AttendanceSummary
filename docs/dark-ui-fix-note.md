@@ -1,1 +1,0 @@
-Dark UI fix note.
