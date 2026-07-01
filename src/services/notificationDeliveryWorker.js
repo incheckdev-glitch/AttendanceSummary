@@ -1,3 +1,4 @@
+import './pwaAutoUpdateForUsers.js?v=20260701-all-users-sw-update1';
 import './pwaVercelTestPatch.js?v=20260701-active-device-list1';
 
 function isWebPushChannel(channel = '') {
