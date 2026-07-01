@@ -723,6 +723,11 @@
               Background system banners and sounds are controlled by Android/iOS/browser settings. InCheck360 sends the push and the service worker displays the notification, but the OS may still suppress banners or sounds due to notification channel, focus mode, battery rules, or PWA/browser limitations. In-app banners and sound work while the app is open.
             </div>
           </div>
+          <div id="pushCurrentDevicePanel" class="muted" style="display:none;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:10px;background:rgba(127,127,127,0.06);font-size:12px;line-height:1.5;" data-user-push-control="true">
+            <strong>Current device subscription</strong>
+            <div id="pushCurrentDeviceState" style="margin-top:6px;">No saved push subscription found for this device.</div>
+            <div id="pushCurrentDeviceDetails" style="margin-top:8px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px 12px;"></div>
+          </div>
           <div id="pushActiveDevicesPanel" class="muted" style="display:none;margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:10px;background:rgba(127,127,127,0.06);font-size:12px;line-height:1.5;" data-admin-push-control="true">
             <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
               <strong>Active Push Devices</strong>
