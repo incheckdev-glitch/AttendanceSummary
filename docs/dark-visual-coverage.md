@@ -1,1 +1,0 @@
-Dark visual coverage note.
