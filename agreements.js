@@ -2892,30 +2892,12 @@ const Agreements = {
         <form class="agreement-internal-sign-form" data-internal-sign-form>
           <label>Signer name<input class="input" name="signerName" required value="${U.escapeAttr(user.name || '')}"></label>
           <label>Signer title<input class="input" name="signerTitle" required value="${U.escapeAttr(defaultTitle)}"></label>
-          <div>
-            <div class="muted" style="font-weight:800;margin-bottom:8px;">Signature method</div>
-            <select id="internalSignatureType" class="input" name="signatureType" aria-label="Signature method">
-              <option value="typed" selected>Typed signature</option>
-              <option value="uploaded">Upload signature image</option>
-              <option value="drawn">Draw signature</option>
-            </select>
-            <div class="signature-method-tabs">
-              <button class="signature-method-tab active" type="button" data-internal-signature-mode="typed">Typed signature</button>
-              <button class="signature-method-tab" type="button" data-internal-signature-mode="uploaded">Upload signature image</button>
-              <button class="signature-method-tab" type="button" data-internal-signature-mode="drawn">Draw signature</button>
-            </div>
+          <div class="agreement-signature-upload-only">
+            <div class="muted" style="font-weight:800;margin-bottom:8px;">Signature upload</div>
+            <p class="muted" style="margin:0 0 10px;">Upload a PNG, JPG, or WEBP image of your signature. Typed and draw signature methods are disabled for agreement signing.</p>
+            <input type="hidden" id="internalSignatureType" name="signatureType" value="uploaded">
           </div>
-          <div id="internalTypedSignatureWrap" data-internal-signature-panel="typed"><label>Typed signature<input id="internalSignatureText" class="input" name="signatureText" placeholder="Type your signature" value="${U.escapeAttr(user.name || '')}"></label><div class="typed-signature-preview">${U.escapeHtml(user.name || 'Typed signature')}</div></div>
-          <div id="internalUploadSignatureWrap" data-internal-signature-panel="uploaded" style="display:none;"><input class="input" type="file" name="signatureImage" accept="image/png,image/jpeg,image/webp"><div data-internal-uploaded-signature-preview></div></div>
-          <div id="internalDrawSignatureWrap" class="internal-draw-signature-wrap" style="display:none;">
-            <label>Draw Signature</label>
-            <div class="internal-draw-canvas-box">
-              <canvas id="internalSignatureCanvas" width="520" height="180"></canvas>
-            </div>
-            <button type="button" id="clearInternalSignatureCanvas" class="secondary-btn">
-              Clear Signature
-            </button>
-          </div>
+          <div id="internalUploadSignatureWrap" data-internal-signature-panel="uploaded"><input class="input" type="file" name="signatureImage" accept="image/png,image/jpeg,image/webp"><div data-internal-uploaded-signature-preview></div></div>
           <label class="public-checkbox"><input type="checkbox" name="authorized" required> I confirm that I am authorized to sign this agreement on behalf of InCheck360.</label>
           <div class="public-validation-errors"></div>
           <div class="actions" style="justify-content:flex-end;"><button class="btn btn-incheck-outline" type="button" data-internal-sign-close>Cancel</button><button class="btn btn-incheck-primary" type="submit">Sign Agreement</button></div>
@@ -2927,11 +2909,11 @@ const Agreements = {
       const preview = form.querySelector('.typed-signature-preview');
       if (preview) preview.textContent = form.signatureText?.value?.trim() || 'Typed signature';
     };
-    form.dataset.signatureMode = 'typed';
+    form.dataset.signatureMode = 'uploaded';
     const signatureTypeSelect = document.getElementById('internalSignatureType');
     signatureTypeSelect?.addEventListener('change', () => { handleInternalSignatureTypeChange(); sync(); });
     form.querySelectorAll('[data-internal-signature-mode]').forEach(btn => btn.addEventListener('click', () => {
-      if (signatureTypeSelect) signatureTypeSelect.value = btn.dataset.internalSignatureMode || 'typed';
+      if (signatureTypeSelect) signatureTypeSelect.value = btn.dataset.internalSignatureMode || 'uploaded';
       handleInternalSignatureTypeChange();
       sync();
     }));
@@ -2957,7 +2939,7 @@ const Agreements = {
   async submitInternalAgreementSignature(role, form, close) {
     const agreementId = String(this.state.currentAgreement?.id || this.state.currentAgreementId || '').trim();
     if (!agreementId) return UI.toast('Missing agreement id.');
-    const mode = document.getElementById('internalSignatureType')?.value || form.dataset.signatureMode || 'typed';
+    const mode = document.getElementById('internalSignatureType')?.value || form.dataset.signatureMode || 'uploaded';
     let signatureText = null;
     let signatureImageDataUrl = null;
     const errors = [];
@@ -6496,11 +6478,11 @@ function bootPublicEAgreementPage() {
       });
 
       document.querySelector('[data-public-accept-agreement]')?.addEventListener('click', () => {
-        renderModal(`<form data-public-accept-agreement-form><h2>Accept & Sign Agreement</h2><label>Customer full name<input class="input" name="name" placeholder="Full name" required></label><div class="signature-method-tabs"><button class="signature-method-tab active" type="button" data-signature-mode="typed">Typed Signature</button><button class="signature-method-tab" type="button" data-signature-mode="uploaded">Upload Signature Image</button><button class="signature-method-tab" type="button" data-signature-mode="drawn">Draw Signature</button><button class="signature-method-tab" type="button" data-signature-mode="signed_document_upload">Upload Signed Agreement</button></div><div data-signature-panel="typed"><label>Typed signature<input class="input" name="typedSignature" placeholder="Type your signature"></label><div class="typed-signature-preview">Typed signature</div></div><div data-signature-panel="uploaded" hidden><input class="input" type="file" name="signatureImage" accept="image/png,image/jpeg,image/webp"><div data-uploaded-signature-preview></div></div><div data-signature-panel="drawn" hidden><canvas class="draw-signature-canvas"></canvas><button class="public-btn-outline" data-clear-drawn-agreement-signature type="button">Clear</button></div><div data-signature-panel="signed_document_upload" hidden><p class="muted">Download/print the agreement, sign it manually or using DocuSign/Adobe, then upload the signed PDF or image.</p><input class="input" type="file" name="signedDocument" accept="application/pdf,image/png,image/jpeg,image/webp"><div data-signed-document-preview></div></div><label class="public-checkbox"><input type="checkbox" name="authorized" required> I confirm I am authorized to sign this agreement on behalf of the customer.</label><div class="public-validation-errors"></div><button class="public-btn-primary accept-agreement-submit" type="submit" disabled>Accept & Sign Agreement</button></form>`, 'accept-proposal-modal');
+        renderModal(`<form data-public-accept-agreement-form><h2>Accept & Sign Agreement</h2><label>Customer full name<input class="input" name="name" placeholder="Full name" required></label><section class="electronic-signature-section"><h3>Signature Upload</h3><p class="muted">Typed and draw signature methods are disabled for agreement signing. Please upload a signature image or the signed agreement document.</p><div class="signature-method-tabs"><button class="signature-method-tab active" type="button" data-signature-mode="uploaded">Upload Signature Image</button><button class="signature-method-tab" type="button" data-signature-mode="signed_document_upload">Upload Signed Agreement</button></div><div data-signature-panel="uploaded"><input class="input" type="file" name="signatureImage" accept="image/png,image/jpeg,image/webp"><div data-uploaded-signature-preview></div></div><div data-signature-panel="signed_document_upload" hidden><p class="muted">Download/print the agreement, sign it manually or using DocuSign/Adobe, then upload the signed PDF or image.</p><input class="input" type="file" name="signedDocument" accept="application/pdf,image/png,image/jpeg,image/webp"><div data-signed-document-preview></div></div></section><label class="public-checkbox"><input type="checkbox" name="authorized" required> I confirm I am authorized to sign this agreement on behalf of the customer.</label><div class="public-validation-errors"></div><button class="public-btn-primary accept-agreement-submit" type="submit" disabled>Accept & Sign Agreement</button></form>`, 'accept-proposal-modal');
         const form = document.querySelector('[data-public-accept-agreement-form]');
         function syncAcceptForm() {
           if (!form) return;
-          const mode = form.dataset.signatureMode || 'typed';
+          const mode = form.dataset.signatureMode || 'uploaded';
           if (mode === 'typed' && !form.typedSignature.value.trim() && form.name.value.trim()) form.typedSignature.value = form.name.value;
           const preview = form.querySelector('.typed-signature-preview');
           if (preview) preview.textContent = form.typedSignature.value.trim() || 'Typed signature';
@@ -6508,13 +6490,12 @@ function bootPublicEAgreementPage() {
           const modeOk = mode === 'typed' ? form.typedSignature.value.trim() : mode === 'uploaded' ? form.dataset.uploadedSignatureDataUrl : mode === 'drawn' ? form.dataset.drawnSignatureDataUrl : form.dataset.signedDocumentDataUrl;
           form.querySelector('.accept-agreement-submit').disabled = !(form.name.value.trim() && form.authorized.checked && modeOk);
         }
-        form.dataset.signatureMode = 'typed';
+        form.dataset.signatureMode = 'uploaded';
         form.addEventListener('input', syncAcceptForm);
         form.addEventListener('change', syncAcceptForm);
-        form.querySelectorAll('button[data-signature-mode]').forEach(btn => btn.addEventListener('click', () => { form.dataset.signatureMode = btn.dataset.signatureMode || 'typed'; form.querySelectorAll('.signature-method-tab').forEach(x => x.classList.toggle('active', x === btn)); syncAcceptForm(); }));
+        form.querySelectorAll('button[data-signature-mode]').forEach(btn => btn.addEventListener('click', () => { form.dataset.signatureMode = btn.dataset.signatureMode || 'uploaded'; form.querySelectorAll('.signature-method-tab').forEach(x => x.classList.toggle('active', x === btn)); syncAcceptForm(); }));
         form.signatureImage?.addEventListener('change', async () => { const errorBox = form.querySelector('.public-validation-errors'); if (errorBox) errorBox.innerHTML = ''; try { const file = await readDataUrlFile(form.signatureImage.files?.[0], { imageOnly: true, maxMb: 4 }); form.dataset.uploadedSignatureDataUrl = file.dataUrl; form.querySelector('[data-uploaded-signature-preview]').innerHTML = `<img src="${U.escapeHtml(file.dataUrl)}" alt="Uploaded signature">`; } catch (error) { delete form.dataset.uploadedSignatureDataUrl; form.signatureImage.value = ''; if (errorBox) errorBox.innerHTML = `<p class="public-form-error">${U.escapeHtml(error.message)}</p>`; } syncAcceptForm(); });
         form.signedDocument?.addEventListener('change', async () => { const errorBox = form.querySelector('.public-validation-errors'); if (errorBox) errorBox.innerHTML = ''; try { const file = await readDataUrlFile(form.signedDocument.files?.[0], { maxMb: 8 }); form.dataset.signedDocumentDataUrl = file.dataUrl; form.dataset.signedDocumentFileName = file.fileName; form.dataset.signedDocumentMimeType = file.mimeType; form.querySelector('[data-signed-document-preview]').innerHTML = file.mimeType === 'application/pdf' ? `<div class="signed-document-file-card"><strong>${U.escapeHtml(file.fileName)}</strong><span>PDF uploaded</span></div><iframe class="signed-document-pdf-preview" src="${U.escapeHtml(file.dataUrl)}"></iframe>` : `<div class="signed-document-file-card"><strong>${U.escapeHtml(file.fileName)}</strong><span>${U.escapeHtml(file.mimeType)}</span></div><img class="signed-document-image-preview" src="${U.escapeHtml(file.dataUrl)}" alt="Signed agreement preview">`; } catch (error) { delete form.dataset.signedDocumentDataUrl; form.signedDocument.value = ''; if (errorBox) errorBox.innerHTML = `<p class="public-form-error">${U.escapeHtml(error.message)}</p>`; } syncAcceptForm(); });
-        setupDrawCanvas(form.querySelector('.draw-signature-canvas'), form, syncAcceptForm);
         syncAcceptForm();
       });
 
@@ -6530,7 +6511,7 @@ function bootPublicEAgreementPage() {
             form.querySelectorAll('.public-form-error').forEach(errorEl => errorEl.remove());
             const errors = [];
             if (!form.name.value.trim()) errors.push('Customer name is required.');
-            const signatureMode = form.dataset.signatureMode || 'typed';
+            const signatureMode = form.dataset.signatureMode || 'uploaded';
             if (signatureMode === 'typed' && !form.typedSignature.value.trim()) errors.push('Typed signature is required.');
             if (signatureMode === 'uploaded' && !form.dataset.uploadedSignatureDataUrl) errors.push('Uploaded signature image is required.');
             if (signatureMode === 'drawn' && !form.dataset.drawnSignatureDataUrl) errors.push('Drawn signature is required.');
