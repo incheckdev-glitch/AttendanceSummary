@@ -9611,3 +9611,207 @@ body.public-eagreement-mode .eagreement-info-icon {
   color: #075985 !important;
   -webkit-text-fill-color: #075985 !important;
 }
+
+/* =========================================================
+   PUBLIC E-PROPOSAL UPLOAD-ONLY LIGHT THEME FIX
+   Keeps proposal review header and accept/sign modal readable
+   even when dark/global styles are active.
+   ========================================================= */
+body.public-eproposal-mode,
+body.public-eproposal-mode .public-eproposal-page,
+body.public-eproposal-mode .public-eproposal-card,
+body.public-eproposal-mode #publicEProposalRoot,
+body.public-eproposal-mode #publicEProposalContent {
+  background-color: #f8fbff !important;
+  color: #0f172a !important;
+}
+
+body.public-eproposal-mode .eproposal-hero,
+body.public-eproposal-mode .eproposal-hero * {
+  opacity: 1 !important;
+  text-shadow: none !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+body.public-eproposal-mode .eproposal-hero {
+  background: linear-gradient(135deg, #eff8ff 0%, #f8fbff 48%, #ffffff 100%) !important;
+  border-bottom: 1px solid #dbeafe !important;
+}
+
+body.public-eproposal-mode .eproposal-hero-inner,
+body.public-eproposal-mode .eproposal-summary-card {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #bfdbfe !important;
+}
+
+body.public-eproposal-mode .eproposal-secure-label {
+  background: #eff6ff !important;
+  color: #075985 !important;
+  border: 1px solid #bfdbfe !important;
+  border-radius: 999px !important;
+  padding: 8px 14px !important;
+  -webkit-text-fill-color: #075985 !important;
+}
+
+body.public-eproposal-mode .eproposal-secure-icon {
+  background: #0b7ec2 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+body.public-eproposal-mode .eproposal-hero-copy h1 {
+  color: #073b73 !important;
+  -webkit-text-fill-color: #073b73 !important;
+}
+
+body.public-eproposal-mode .eproposal-hero-copy p {
+  color: #334155 !important;
+  -webkit-text-fill-color: #334155 !important;
+}
+
+body.public-eproposal-mode .eproposal-summary-label {
+  color: #475569 !important;
+  -webkit-text-fill-color: #475569 !important;
+}
+
+body.public-eproposal-mode .eproposal-summary-value,
+body.public-eproposal-mode .eproposal-company-name {
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a !important;
+}
+
+body.public-eproposal-mode .eproposal-summary-icon {
+  background: #e0f2fe !important;
+  color: #075985 !important;
+  -webkit-text-fill-color: #075985 !important;
+}
+
+body.public-eproposal-mode .eproposal-summary-divider {
+  background: #dbeafe !important;
+}
+
+body.public-eproposal-mode .eproposal-review-note {
+  background: #eff6ff !important;
+  color: #0f4c81 !important;
+  -webkit-text-fill-color: #0f4c81 !important;
+}
+
+body.public-eproposal-mode .eproposal-info-icon {
+  background: #bfdbfe !important;
+  color: #075985 !important;
+  -webkit-text-fill-color: #075985 !important;
+}
+
+body.public-eproposal-mode #publicEProposalModal,
+body.public-eproposal-mode #publicEProposalModal * {
+  color-scheme: light !important;
+}
+
+body.public-eproposal-mode #publicEProposalModal .public-eproposal-modal-card,
+body.public-eproposal-mode #publicEProposalModal .public-modal,
+body.public-eproposal-mode #publicEProposalModal .public-action-modal,
+body.public-eproposal-mode #publicEProposalModal .accept-proposal-modal,
+body.public-eproposal-mode #publicEProposalModal .reject-proposal-modal {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+body.public-eproposal-mode #publicEProposalModal h1,
+body.public-eproposal-mode #publicEProposalModal h2,
+body.public-eproposal-mode #publicEProposalModal h3,
+body.public-eproposal-mode #publicEProposalModal label {
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a !important;
+}
+
+body.public-eproposal-mode #publicEProposalModal p,
+body.public-eproposal-mode #publicEProposalModal .muted,
+body.public-eproposal-mode #publicEProposalModal .public-checkbox {
+  color: #475569 !important;
+  -webkit-text-fill-color: #475569 !important;
+}
+
+body.public-eproposal-mode #publicEProposalModal .electronic-signature-section,
+body.public-eproposal-mode #publicEProposalModal .signature-upload-box,
+body.public-eproposal-mode #publicEProposalModal .signed-document-upload-box {
+  background: #f8fbff !important;
+  color: #0f172a !important;
+  border: 1px solid #dbeafe !important;
+  border-radius: 16px !important;
+}
+
+body.public-eproposal-mode #publicEProposalModal input,
+body.public-eproposal-mode #publicEProposalModal textarea,
+body.public-eproposal-mode #publicEProposalModal select {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+  caret-color: #2563eb !important;
+}
+
+body.public-eproposal-mode #publicEProposalModal input::placeholder,
+body.public-eproposal-mode #publicEProposalModal textarea::placeholder {
+  color: #94a3b8 !important;
+  -webkit-text-fill-color: #94a3b8 !important;
+}
+
+body.public-eproposal-mode #publicEProposalModal input:focus,
+body.public-eproposal-mode #publicEProposalModal textarea:focus,
+body.public-eproposal-mode #publicEProposalModal select:focus {
+  outline: none !important;
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14) !important;
+}
+
+body.public-eproposal-mode #publicEProposalModal input[type="file"] {
+  padding: 10px 12px !important;
+  cursor: pointer;
+}
+
+body.public-eproposal-mode #publicEProposalModal input[type="file"]::file-selector-button {
+  margin-right: 12px;
+  border: 1px solid #bfdbfe !important;
+  border-radius: 10px !important;
+  background: #eff6ff !important;
+  color: #1d4ed8 !important;
+  font-weight: 800 !important;
+  padding: 8px 12px !important;
+  cursor: pointer;
+}
+
+body.public-eproposal-mode #publicEProposalModal .signature-method-tab {
+  background: #ffffff !important;
+  color: #1d4ed8 !important;
+  border: 1px solid #bfdbfe !important;
+}
+
+body.public-eproposal-mode #publicEProposalModal .signature-method-tab.active {
+  background: #eff6ff !important;
+  color: #073b73 !important;
+  border-color: #0b7ec2 !important;
+}
+
+body.public-eproposal-mode #publicEProposalModal .public-modal-close,
+body.public-eproposal-mode #publicEProposalModal .close {
+  background: transparent !important;
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a !important;
+}
+
+body.public-eproposal-mode #publicEProposalModal .public-checkbox input {
+  width: auto !important;
+  min-height: auto !important;
+  accent-color: #2563eb !important;
+}
+
+body.public-eproposal-mode #publicEProposalModal .public-btn-primary:disabled,
+body.public-eproposal-mode #publicEProposalModal .accept-proposal-submit:disabled {
+  background: #93b2f5 !important;
+  border-color: #93b2f5 !important;
+  color: #ffffff !important;
+  opacity: 1 !important;
+}
