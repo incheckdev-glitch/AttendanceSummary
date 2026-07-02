@@ -3044,8 +3044,23 @@ const Invoices = {
         const paidAmount = row.amount_paid ?? row.paid_amount ?? row.received_amount ?? row.paid_total ?? 0;
         const balanceAmount = row.pending_amount ?? row.balance_due ?? Math.max(0, this.toNumberSafe(row.invoice_total) - this.toNumberSafe(paidAmount));
         const paymentState = row.payment_state || row.payment_status || (this.toNumberSafe(balanceAmount) <= 0 ? 'Paid' : 'Not Paid');
+        const communicationContext = encodeURIComponent(JSON.stringify({
+          related_module: 'invoice',
+          related_record_id: String(row.id || row.invoice_id || row.invoice_number || row.invoiceId || ''),
+          related_record_ref: String(row.invoice_number || row.invoice_id || ''),
+          related_record_title: [row.invoice_number || row.invoice_id, row.customer_name].filter(Boolean).join(' · '),
+          client_name: String(row.customer_name || ''),
+          company_name: String(row.customer_name || '')
+        }));
+        const actionItems = [
+          Permissions.canUpdateInvoice() ? `<button class="invoice-row-menu-item" type="button" data-invoice-edit="${id}">Edit</button>` : '',
+          Permissions.canPreviewInvoice() ? `<button class="invoice-row-menu-item" type="button" data-invoice-preview="${id}">Preview</button>` : '',
+          Permissions.canCreateReceiptFromInvoice() && this.canCreateReceiptFromInvoice(row) ? `<button class="invoice-row-menu-item" type="button" data-invoice-create-receipt="${id}">Create Receipt</button>` : '',
+          `<button class="invoice-row-menu-item" type="button" data-create-communication="true" data-communication-context="${U.escapeAttr(communicationContext)}">Create Communication</button>`,
+          Permissions.canDeleteInvoice() ? `<button class="invoice-row-menu-item danger" type="button" data-invoice-delete="${id}">Delete</button>` : ''
+        ].filter(Boolean).join('');
         return `<tr class="entity-clickable-row invoice-row${selected ? ' is-selected' : ''}" tabindex="0" data-invoice-row="${id}" aria-label="Open invoice ${U.escapeAttr(row.invoice_number || row.invoice_id || row.customer_name || '')} details">
-          <td><a class="invoice-number-link" href="javascript:void(0)" data-invoice-view="${id}">${textCell(row.invoice_number || row.invoice_id)}</a></td>
+          <td><a class="invoice-number-link" href="javascript:void(0)" data-invoice-row-open="${id}">${textCell(row.invoice_number || row.invoice_id)}</a></td>
           <td>${textCell(row.customer_name)}</td>
           <td>${textCell(this.getInvoiceAgreementDisplay(row))}</td>
           <td>${U.escapeHtml(U.fmtDisplayDate(row.issue_date))}</td>
@@ -3060,10 +3075,12 @@ const Invoices = {
           <td>${U.escapeHtml(U.fmtDisplayDate(row.updated_at))}</td>
           <td><div class="invoice-row-actions">
             <button class="btn ghost sm invoice-action-view" type="button" data-invoice-view="${id}">👁 View</button>
-            ${Permissions.canUpdateInvoice() ? `<button class="btn ghost sm invoice-icon-action" type="button" title="Edit" data-invoice-edit="${id}">✎</button>` : ''}
-            ${Permissions.canPreviewInvoice() ? `<button class="btn ghost sm invoice-icon-action" type="button" title="Preview" data-invoice-preview="${id}">▣</button>` : ''}
-            ${Permissions.canCreateReceiptFromInvoice() && this.canCreateReceiptFromInvoice(row) ? `<button class="btn ghost sm invoice-icon-action" type="button" title="Create Receipt" data-invoice-create-receipt="${id}">＋</button>` : ''}
-            ${Permissions.canDeleteInvoice() ? `<button class="btn ghost sm invoice-icon-action" type="button" title="Delete" data-invoice-delete="${id}">⋮</button>` : ''}
+            <div class="invoice-row-menu">
+              <button class="btn ghost sm invoice-action-more" type="button" title="More actions" aria-label="More invoice actions" aria-expanded="false" data-invoice-menu-toggle="${id}">⋮</button>
+              <div class="invoice-row-menu-panel" role="menu" aria-label="Invoice actions">
+                ${actionItems || '<span class="invoice-row-menu-empty">No actions available</span>'}
+              </div>
+            </div>
           </div></td>
         </tr>`;
       })
@@ -5083,9 +5100,36 @@ const Invoices = {
     }
     if (E.invoicesTbody) {
       E.invoicesTbody.addEventListener('click', event => {
-        const trigger = event.target?.closest?.('[data-invoice-view], [data-invoice-edit], [data-invoice-preview], [data-invoice-create-receipt], [data-invoice-delete]');
-        if (!trigger) return;
-        const viewId = trigger.getAttribute('data-invoice-view');
+        const closeInvoiceMenus = exceptMenu => {
+          document.querySelectorAll('.invoice-row-menu.is-open').forEach(menu => {
+            if (exceptMenu && menu === exceptMenu) return;
+            menu.classList.remove('is-open');
+            menu.querySelector('[data-invoice-menu-toggle]')?.setAttribute('aria-expanded', 'false');
+          });
+        };
+        const toggle = event.target?.closest?.('[data-invoice-menu-toggle]');
+        if (toggle) {
+          event.preventDefault();
+          event.stopPropagation();
+          const menu = toggle.closest('.invoice-row-menu');
+          const shouldOpen = !menu?.classList.contains('is-open');
+          closeInvoiceMenus(menu);
+          if (menu && shouldOpen) {
+            menu.classList.add('is-open');
+            toggle.setAttribute('aria-expanded', 'true');
+          } else if (menu) {
+            menu.classList.remove('is-open');
+            toggle.setAttribute('aria-expanded', 'false');
+          }
+          return;
+        }
+        const trigger = event.target?.closest?.('[data-invoice-view], [data-invoice-row-open], [data-invoice-edit], [data-invoice-preview], [data-invoice-create-receipt], [data-invoice-delete]');
+        if (!trigger) {
+          if (!event.target?.closest?.('.invoice-row-menu')) closeInvoiceMenus();
+          return;
+        }
+        closeInvoiceMenus();
+        const viewId = trigger.getAttribute('data-invoice-view') || trigger.getAttribute('data-invoice-row-open');
         if (viewId) return this.runRowAction(`view:${viewId}`, trigger, () => this.openInvoiceById(viewId, { readOnly: true, trigger }));
         const editId = trigger.getAttribute('data-invoice-edit');
         if (editId) return this.runRowAction(`edit:${editId}`, trigger, () => this.openInvoiceById(editId, { readOnly: false, trigger }));
@@ -5097,7 +5141,7 @@ const Invoices = {
         if (deleteId) return this.runRowAction(`delete:${deleteId}`, trigger, () => this.deleteInvoice(deleteId));
       });
       E.invoicesTbody.addEventListener('click', event => {
-        if (event.target?.closest?.('button')) return;
+        if (event.target?.closest?.('button, a, .invoice-row-menu')) return;
         const detailsRow = event.target?.closest?.('tr[data-invoice-row]');
         const detailsId = detailsRow?.getAttribute('data-invoice-row');
         if (detailsId) this.openDetailsDrawer(detailsId);
