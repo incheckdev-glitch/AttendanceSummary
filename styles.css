@@ -9523,3 +9523,91 @@ body.public-eagreement-mode #publicEAgreementModal .accept-agreement-submit:disa
   color: #ffffff !important;
   opacity: 1 !important;
 }
+
+/* =========================================================
+   PUBLIC E-AGREEMENT HEADER LIGHT THEME FIX
+   Keeps the review header readable even when the app/global
+   dark theme or inherited public proposal styles are active.
+   ========================================================= */
+body.public-eagreement-mode,
+body.public-eagreement-mode .public-eproposal-page,
+body.public-eagreement-mode .public-eproposal-card,
+body.public-eagreement-mode #publicEAgreementRoot,
+body.public-eagreement-mode #publicEAgreementContent {
+  background-color: #f8fbff !important;
+  color: #0f172a !important;
+}
+
+body.public-eagreement-mode .eagreement-hero,
+body.public-eagreement-mode .eagreement-hero * {
+  opacity: 1 !important;
+  text-shadow: none !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+body.public-eagreement-mode .eagreement-hero {
+  background: linear-gradient(135deg, #eff8ff 0%, #f8fbff 48%, #ffffff 100%) !important;
+  border-bottom: 1px solid #dbeafe !important;
+}
+
+body.public-eagreement-mode .eagreement-hero-inner,
+body.public-eagreement-mode .eagreement-summary-card {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #bfdbfe !important;
+}
+
+body.public-eagreement-mode .eagreement-secure-label {
+  background: #eff6ff !important;
+  color: #075985 !important;
+  border-color: #bfdbfe !important;
+}
+
+body.public-eagreement-mode .eagreement-secure-icon {
+  background: #0b7ec2 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+
+body.public-eagreement-mode .eagreement-hero-copy h1 {
+  color: #073b73 !important;
+  -webkit-text-fill-color: #073b73 !important;
+}
+
+body.public-eagreement-mode .eagreement-hero-copy p {
+  color: #334155 !important;
+  -webkit-text-fill-color: #334155 !important;
+}
+
+body.public-eagreement-mode .eagreement-summary-label {
+  color: #475569 !important;
+  -webkit-text-fill-color: #475569 !important;
+}
+
+body.public-eagreement-mode .eagreement-summary-value,
+body.public-eagreement-mode .eagreement-company-name {
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a !important;
+}
+
+body.public-eagreement-mode .eagreement-summary-icon {
+  background: #e0f2fe !important;
+  color: #075985 !important;
+  -webkit-text-fill-color: #075985 !important;
+}
+
+body.public-eagreement-mode .eagreement-summary-divider {
+  background: #dbeafe !important;
+}
+
+body.public-eagreement-mode .eagreement-review-note {
+  background: #eff6ff !important;
+  color: #0f4c81 !important;
+  -webkit-text-fill-color: #0f4c81 !important;
+}
+
+body.public-eagreement-mode .eagreement-info-icon {
+  background: #bfdbfe !important;
+  color: #075985 !important;
+  -webkit-text-fill-color: #075985 !important;
+}
