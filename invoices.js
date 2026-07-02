@@ -2860,22 +2860,88 @@ const Invoices = {
   renderSummary() {
     if (!E.invoiceSummary) return;
     const rows = this.state.filteredRows;
-    const count = label => rows.filter(row => this.normalizeText(row.status) === label.toLowerCase()).length;
+    const statusOf = row => this.normalizeText(row.status || '');
+    const paymentOf = row => this.normalizeText(row.payment_state || row.payment_status || '');
+    const countStatus = label => rows.filter(row => statusOf(row) === this.normalizeText(label)).length;
+    const countPayment = label => rows.filter(row => paymentOf(row) === this.normalizeText(label)).length;
+    const paidCount = countStatus('paid') || countStatus('fully paid') || countPayment('paid') || countPayment('fully paid');
+    const partialCount = countStatus('partially paid') || countPayment('partially paid');
     const cards = [
-      ['Total Invoices', rows.length, 'total'],
-      ['Draft', count('draft'), 'draft'],
-      ['Issued', count('issued'), 'issued'],
-      ['Partially Paid', count('partially paid'), 'partially-paid'],
-      ['Fully Paid', count('paid'), 'paid'],
-      ['Overdue', count('overdue'), 'overdue']
+      { label: 'Total Invoices', value: rows.length, sub: 'All invoices', filter: 'total', icon: '▣', tone: 'blue' },
+      { label: 'Draft', value: countStatus('draft'), sub: 'Draft invoices', filter: 'draft', icon: '✎', tone: 'amber' },
+      { label: 'Issued', value: countStatus('issued'), sub: 'Issued invoices', filter: 'issued', icon: '➤', tone: 'green' },
+      { label: 'Partially Paid', value: partialCount, sub: 'Partially paid', filter: 'partially-paid', icon: '◔', tone: 'purple' },
+      { label: 'Fully Paid', value: paidCount, sub: 'Fully paid', filter: 'paid', icon: '✓', tone: 'green' },
+      { label: 'Overdue', value: countStatus('overdue') || countPayment('overdue'), sub: 'Overdue invoices', filter: 'overdue', icon: '!', tone: 'red' }
     ];
     E.invoiceSummary.innerHTML = cards
-      .map(([label, value, filter]) => {
-        const active = (this.state.kpiFilter || 'total') === filter;
-        return `<div class="card kpi${active ? ' kpi-filter-active' : ''}" data-kpi-filter="${U.escapeAttr(filter)}" role="button" tabindex="0" aria-pressed="${active ? 'true' : 'false'}"><div class="label">${U.escapeHtml(label)}</div><div class="value">${U.escapeHtml(String(value))}</div></div>`;
+      .map(card => {
+        const active = (this.state.kpiFilter || 'total') === card.filter;
+        return `<article class="invoice-kpi-card invoice-kpi-card--${U.escapeAttr(card.tone)}${active ? ' kpi-filter-active' : ''}" data-kpi-filter="${U.escapeAttr(card.filter)}" role="button" tabindex="0" aria-pressed="${active ? 'true' : 'false'}">
+          <span class="invoice-kpi-icon" aria-hidden="true">${U.escapeHtml(card.icon)}</span>
+          <div class="invoice-kpi-copy">
+            <span class="invoice-kpi-label">${U.escapeHtml(card.label)}</span>
+            <strong class="invoice-kpi-value">${U.escapeHtml(String(card.value))}</strong>
+            <span class="invoice-kpi-sub">${U.escapeHtml(card.sub)}</span>
+          </div>
+        </article>`;
       })
       .join('');
+    this.renderInsights();
   },
+
+  renderInsights() {
+    const host = document.getElementById('invoiceInsights');
+    if (!host) return;
+    const rows = this.state.filteredRows || [];
+    const total = Math.max(rows.length, 1);
+    const norm = value => this.normalizeText(value || '');
+    const statusCount = label => rows.filter(row => norm(row.status) === norm(label)).length;
+    const paymentCount = label => rows.filter(row => norm(row.payment_state || row.payment_status) === norm(label)).length;
+    const currencyCount = label => rows.filter(row => norm(row.currency) === norm(label)).length;
+    const pct = value => Math.round((Number(value || 0) / total) * 1000) / 10;
+    const cards = [
+      {
+        title: 'Status Distribution', tone: 'green', totalLabel: rows.length,
+        items: [
+          ['Issued', statusCount('issued'), 'green'],
+          ['Draft', statusCount('draft'), 'blue'],
+          ['Partially Paid', statusCount('partially paid'), 'purple'],
+          ['Overdue', statusCount('overdue'), 'orange'],
+          ['Fully Paid', statusCount('paid') || statusCount('fully paid'), 'slate']
+        ]
+      },
+      {
+        title: 'Payment State Distribution', tone: 'green', totalLabel: rows.length,
+        items: [
+          ['Not Paid', paymentCount('not paid') || rows.filter(row => !String(row.payment_state || row.payment_status || '').trim()).length, 'green'],
+          ['Partially Paid', paymentCount('partially paid'), 'blue'],
+          ['Paid', paymentCount('paid') || paymentCount('fully paid'), 'teal']
+        ]
+      },
+      {
+        title: 'Currency Distribution', tone: 'blue', totalLabel: rows.length,
+        items: [
+          ['USD', currencyCount('usd'), 'blue'],
+          ['EUR', currencyCount('eur'), 'amber'],
+          ['Other', rows.filter(row => !['usd','eur'].includes(norm(row.currency))).length, 'purple']
+        ]
+      }
+    ];
+    host.innerHTML = cards.map(card => {
+      const primary = card.items[0]?.[1] || 0;
+      return `<section class="invoice-insight-card invoice-insight-card--${U.escapeAttr(card.tone)}">
+        <div class="invoice-insight-title">${U.escapeHtml(card.title)}</div>
+        <div class="invoice-insight-body">
+          <div class="invoice-mini-donut" style="--invoice-donut-pct:${Math.max(0, Math.min(100, pct(primary)))};"><strong>${U.escapeHtml(String(card.totalLabel))}</strong><span>Total</span></div>
+          <div class="invoice-insight-list">
+            ${card.items.map(([label, value, tone]) => `<div class="invoice-insight-row"><span><i class="invoice-dot invoice-dot--${U.escapeAttr(tone)}"></i>${U.escapeHtml(label)}</span><strong>${U.escapeHtml(String(value))} (${U.escapeHtml(String(pct(value)))}%)</strong></div>`).join('')}
+          </div>
+        </div>
+      </section>`;
+    }).join('');
+  },
+
   renderFilters() {
     if (E.invoicesSearchInput) E.invoicesSearchInput.value = this.state.search;
     if (E.invoicesStatusFilter) {
@@ -2944,13 +3010,13 @@ const Invoices = {
     if (this.state.loading) {
       this.renderPagination();
       E.invoicesState.textContent = 'Loading invoices…';
-      E.invoicesTbody.innerHTML = '<tr><td colspan="10" class="muted" style="text-align:center;">Loading invoices…</td></tr>';
+      E.invoicesTbody.innerHTML = '<tr><td colspan="14" class="muted" style="text-align:center;">Loading invoices…</td></tr>';
       return;
     }
     if (this.state.loadError) {
       this.renderPagination();
       E.invoicesState.textContent = this.state.loadError;
-      E.invoicesTbody.innerHTML = `<tr><td colspan="10" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(this.state.loadError)}</td></tr>`;
+      E.invoicesTbody.innerHTML = `<tr><td colspan="14" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(this.state.loadError)}</td></tr>`;
       return;
     }
     this.renderSummary();
@@ -2962,30 +3028,42 @@ const Invoices = {
       const emptyMessage = totalRows
         ? 'No invoices match the current search or filters.'
         : 'No invoices found. Create your first invoice to get started.';
-      E.invoicesTbody.innerHTML = `<tr><td colspan="10" class="muted" style="text-align:center;">${U.escapeHtml(emptyMessage)}</td></tr>`;
+      E.invoicesTbody.innerHTML = `<tr><td colspan="14" class="muted" style="text-align:center;">${U.escapeHtml(emptyMessage)}</td></tr>`;
       return;
     }
     const textCell = value => U.escapeHtml(String(value ?? '').trim() || '—');
+    const statusPill = value => {
+      const raw = String(value || '—').trim() || '—';
+      const key = raw.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'unknown';
+      return `<span class="invoice-status-pill invoice-status-pill--${U.escapeAttr(key)}">${U.escapeHtml(raw)}</span>`;
+    };
     E.invoicesTbody.innerHTML = rows
       .map(row => {
         const id = U.escapeAttr(row.id || row.invoice_id || row.invoice_number || row.invoiceId || '');
         const selected = String(this.state.selectedDetailsId || '') === String(row.id || row.invoice_id || row.invoice_number || '');
-        return `<tr class="entity-clickable-row${selected ? ' is-selected' : ''}" tabindex="0" data-invoice-row="${id}" aria-label="Open invoice ${U.escapeAttr(row.invoice_number || row.invoice_id || row.customer_name || '')} details">
-          <td>${textCell(row.invoice_number || row.invoice_id)}</td>
+        const paidAmount = row.amount_paid ?? row.paid_amount ?? row.received_amount ?? row.paid_total ?? 0;
+        const balanceAmount = row.pending_amount ?? row.balance_due ?? Math.max(0, this.toNumberSafe(row.invoice_total) - this.toNumberSafe(paidAmount));
+        const paymentState = row.payment_state || row.payment_status || (this.toNumberSafe(balanceAmount) <= 0 ? 'Paid' : 'Not Paid');
+        return `<tr class="entity-clickable-row invoice-row${selected ? ' is-selected' : ''}" tabindex="0" data-invoice-row="${id}" aria-label="Open invoice ${U.escapeAttr(row.invoice_number || row.invoice_id || row.customer_name || '')} details">
+          <td><a class="invoice-number-link" href="javascript:void(0)" data-invoice-view="${id}">${textCell(row.invoice_number || row.invoice_id)}</a></td>
           <td>${textCell(row.customer_name)}</td>
           <td>${textCell(this.getInvoiceAgreementDisplay(row))}</td>
           <td>${U.escapeHtml(U.fmtDisplayDate(row.issue_date))}</td>
           <td>${U.escapeHtml(U.fmtDisplayDate(row.due_date))}</td>
           <td>${textCell(row.currency)}</td>
-          <td>${this.formatMoney(row.invoice_total)}</td>
-          <td>${textCell(row.status)}</td>
+          <td><strong>${this.formatMoney(row.invoice_total)}</strong></td>
+          <td>${this.formatMoney(paidAmount)}</td>
+          <td class="invoice-balance-cell">${this.formatMoney(balanceAmount)}</td>
+          <td>${statusPill(row.status)}</td>
+          <td>${statusPill(paymentState)}</td>
+          <td>${textCell(row.payment_term || row.billing_frequency)}</td>
           <td>${U.escapeHtml(U.fmtDisplayDate(row.updated_at))}</td>
-          <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
-            <button class="btn ghost sm" type="button" data-invoice-view="${id}">Open</button>
-            ${Permissions.canUpdateInvoice() ? `<button class="btn ghost sm" type="button" data-invoice-edit="${id}">Edit</button>` : ''}
-            ${Permissions.canPreviewInvoice() ? `<button class="btn ghost sm" type="button" data-invoice-preview="${id}">Preview</button>` : ''}
-            ${Permissions.canCreateReceiptFromInvoice() && this.canCreateReceiptFromInvoice(row) ? `<button class="btn ghost sm" type="button" data-invoice-create-receipt="${id}">Create Receipt</button>` : ''}
-            ${Permissions.canDeleteInvoice() ? `<button class="btn ghost sm" type="button" data-invoice-delete="${id}">Delete</button>` : ''}
+          <td><div class="invoice-row-actions">
+            <button class="btn ghost sm invoice-action-view" type="button" data-invoice-view="${id}">👁 View</button>
+            ${Permissions.canUpdateInvoice() ? `<button class="btn ghost sm invoice-icon-action" type="button" title="Edit" data-invoice-edit="${id}">✎</button>` : ''}
+            ${Permissions.canPreviewInvoice() ? `<button class="btn ghost sm invoice-icon-action" type="button" title="Preview" data-invoice-preview="${id}">▣</button>` : ''}
+            ${Permissions.canCreateReceiptFromInvoice() && this.canCreateReceiptFromInvoice(row) ? `<button class="btn ghost sm invoice-icon-action" type="button" title="Create Receipt" data-invoice-create-receipt="${id}">＋</button>` : ''}
+            ${Permissions.canDeleteInvoice() ? `<button class="btn ghost sm invoice-icon-action" type="button" title="Delete" data-invoice-delete="${id}">⋮</button>` : ''}
           </div></td>
         </tr>`;
       })
@@ -4985,6 +5063,18 @@ const Invoices = {
     }
 
     if (E.invoicesRefreshBtn) E.invoicesRefreshBtn.addEventListener('click', () => this.refresh(true));
+    const invoicesClearFiltersBtn = document.getElementById('invoicesClearFiltersBtn');
+    if (invoicesClearFiltersBtn) {
+      invoicesClearFiltersBtn.addEventListener('click', () => {
+        this.state.search = '';
+        this.state.status = 'All';
+        this.state.kpiFilter = 'total';
+        this.state.page = 1;
+        this.applyFilters();
+        this.renderFilters();
+        this.render();
+      });
+    }
     if (E.invoicesCreateBtn) {
       E.invoicesCreateBtn.addEventListener('click', () => {
         if (!Permissions.canCreateInvoice()) return UI.toast('You do not have permission to create invoices.');
@@ -4993,7 +5083,7 @@ const Invoices = {
     }
     if (E.invoicesTbody) {
       E.invoicesTbody.addEventListener('click', event => {
-        const trigger = event.target?.closest?.('button[data-invoice-view], button[data-invoice-edit], button[data-invoice-preview], button[data-invoice-create-receipt], button[data-invoice-delete]');
+        const trigger = event.target?.closest?.('[data-invoice-view], [data-invoice-edit], [data-invoice-preview], [data-invoice-create-receipt], [data-invoice-delete]');
         if (!trigger) return;
         const viewId = trigger.getAttribute('data-invoice-view');
         if (viewId) return this.runRowAction(`view:${viewId}`, trigger, () => this.openInvoiceById(viewId, { readOnly: true, trigger }));

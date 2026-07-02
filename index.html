@@ -26,7 +26,7 @@
   <link rel="mask-icon" href="/icons/maskable-icon.svg" color="#020617" />
 
   <!-- Your app styles -->
-  <link rel="stylesheet" href="/styles.css?v=20260702-proposal-sign-methods-light" />
+  <link rel="stylesheet" href="/styles.css?v=20260702-invoice-ui-v2" />
 
   <!-- Vercel Web Analytics -->
   <script>
@@ -2274,27 +2274,55 @@ Sample:
         </div>
       </section>
 
-      <section id="invoicesView" class="view" role="tabpanel" aria-labelledby="invoicesTab">
-        <div class="grid cols-4" id="invoiceSummary" aria-live="polite"></div>
-        <div class="card" aria-label="Invoices list">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+      <section id="invoicesView" class="view invoices-workspace" role="tabpanel" aria-labelledby="invoicesTab">
+        <div class="invoices-page-header">
+          <div class="invoices-title-block">
+            <span class="invoices-title-icon" aria-hidden="true">▣</span>
             <div>
-              <strong>Invoices</strong>
-              <div class="muted">Invoice records synced from backend invoices resource.</div>
-            </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <input id="invoicesSearchInput" class="input" type="search" placeholder="Search invoice number, customer, agreement..." aria-label="Search invoices" />
-              <select id="invoicesStatusFilter" class="select" aria-label="Filter by invoice status"><option>All</option></select>
-              <button id="invoicesRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
-              <button id="invoicesCreateBtn" class="btn sm" type="button">Create Invoice</button>
+              <h2>Invoices</h2>
+              <p>Create, manage and track customer invoices.</p>
             </div>
           </div>
-          <div id="invoicesState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
-          <div class="table-wrap" role="region" aria-label="Invoices table">
-            <table id="invoicesTable">
+          <div class="invoices-page-actions">
+            <button id="invoicesRefreshBtn" class="btn ghost sm invoice-modern-btn" type="button">↻ Refresh</button>
+            <button id="invoicesCreateBtn" class="btn sm invoice-modern-btn invoice-modern-primary" type="button">＋ Create Invoice</button>
+          </div>
+        </div>
+
+        <div class="invoice-kpi-grid" id="invoiceSummary" aria-live="polite"></div>
+
+        <div class="invoice-filter-card" aria-label="Invoice filters">
+          <div class="invoice-filter-header">
+            <strong>Filters</strong>
+          </div>
+          <div class="invoice-filter-grid">
+            <label class="invoice-filter-field" for="invoicesSearchInput">
+              <span>Search</span>
+              <input id="invoicesSearchInput" class="input invoice-modern-input" type="search" placeholder="Search by invoice number, customer, or agreement..." aria-label="Search invoices" />
+            </label>
+            <label class="invoice-filter-field" for="invoicesStatusFilter">
+              <span>Status</span>
+              <select id="invoicesStatusFilter" class="select invoice-modern-select" aria-label="Filter by invoice status"><option>All</option></select>
+            </label>
+            <button id="invoicesClearFiltersBtn" class="btn ghost invoice-clear-filters-btn" type="button">⌁ Clear Filters</button>
+          </div>
+        </div>
+
+        <div id="invoiceInsights" class="invoice-insight-grid" aria-label="Invoice analytics"></div>
+
+        <div class="invoice-table-card" aria-label="Invoices list">
+          <div class="invoice-table-header">
+            <div>
+              <strong>Invoices</strong>
+              <div id="invoicesState" class="muted">No data loaded.</div>
+            </div>
+            <div class="invoice-table-meta">Rows per page managed by table controls</div>
+          </div>
+          <div class="table-wrap invoice-table-wrap" role="region" aria-label="Invoices table">
+            <table id="invoicesTable" class="invoice-modern-table">
               <thead>
                 <tr>
-                  <th>Invoice #</th><th>Customer</th><th>Agreement #</th><th>Invoice Date</th><th>Due Date</th><th>Currency</th><th>Grand Total</th><th>Status</th><th>Updated At</th><th>Actions</th>
+                  <th>Invoice #</th><th>Customer</th><th>Agreement #</th><th>Invoice Date</th><th>Due Date</th><th>Currency</th><th>Grand Total</th><th>Paid</th><th>Balance</th><th>Status</th><th>Payment State</th><th>Payment Term</th><th>Updated At</th><th>Actions</th>
                 </tr>
               </thead>
               <tbody id="invoicesTbody"></tbody>
@@ -4228,116 +4256,109 @@ Sample:
       </form>
     </div>
   </div>
-  <div id="invoiceFormModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="invoiceFormTitle" aria-hidden="true">
-    <div class="modal-content" style="max-width:1200px;">
-      <div class="header"><h2 id="invoiceFormTitle" style="margin:0;font-size:20px">Invoice</h2><div class="actions"><button class="modal-close" id="invoiceFormCloseBtn" aria-label="Close invoice form">✕</button></div></div>
-      <form id="invoiceForm">
-        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
-          <div class="filter-row"><label class="muted" for="invoiceFormInvoiceId">Invoice ID</label><input id="invoiceFormInvoiceId" class="input" type="text" readonly /></div>
-          <div class="filter-row"><label class="muted" for="invoiceFormInvoiceNumber">Invoice Number</label><input id="invoiceFormInvoiceNumber" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="invoiceFormAgreementId">Agreement #</label><input id="invoiceFormAgreementId" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
-          <input id="invoiceFormAgreementUuid" type="hidden" name="agreement_uuid" />
-          <input id="invoiceFormAgreementNumber" type="hidden" name="agreement_number" />
-          <input id="invoiceFormIsPoc" type="hidden" />
-          <input id="invoiceFormPocLocationCount" type="hidden" />
-          <input id="invoiceFormPocLicenseCount" type="hidden" />
-          <input id="invoiceFormPocLicenseMonths" type="hidden" />
-          <input id="invoiceFormPocServiceStartDate" type="hidden" />
-          <input id="invoiceFormPocServiceEndDate" type="hidden" />
-          <div class="filter-row"><label class="muted" for="invoiceFormStatus">Status</label><select id="invoiceFormStatus" class="select"><option>Draft</option><option>Issued</option><option>Sent</option><option>Unpaid</option><option>Partially Paid</option><option>Paid</option><option>Overdue</option><option>Cancelled</option></select></div>
-          <div class="filter-row"><label class="muted" for="invoiceFormInvoiceDate">Invoice Date</label><input id="invoiceFormInvoiceDate" class="input" type="date" /></div>
-          <div class="filter-row"><label class="muted" for="invoiceFormDueDate">Due Date</label><input id="invoiceFormDueDate" class="input" type="date" /></div>
-          <div class="filter-row"><label class="muted" for="invoiceFormCurrency">Currency</label><input id="invoiceFormCurrency" class="input" type="text" /></div>
-          <div class="filter-row"><label class="muted" for="invoiceFormPaymentTerm">Payment Term</label><select id="invoiceFormPaymentTerm" class="select"><option value="Net 7">Monthly</option><option value="Net 14">Quarterly</option><option value="Net 21">Semi-Annually</option><option value="Net 30">Annually</option><option value="Custom">Custom</option></select></div>
-          <div id="invoiceFormPaymentTermsCustomWrap" class="filter-row" style="grid-column:1 / -1;display:none;"><label class="muted" for="invoiceFormPaymentTermsCustom">Custom Payment Terms</label><input id="invoiceFormPaymentTermsCustom" class="input" type="text" placeholder="e.g. 2 scheduled payments, first 60%, second 40%" /></div>
+  <div id="invoiceFormModal" class="modal invoice-modern-modal" role="dialog" aria-modal="true" aria-labelledby="invoiceFormTitle" aria-hidden="true">
+    <div class="modal-content invoice-modern-form-content">
+      <div class="invoice-form-shell-header">
+        <div class="invoice-form-title-wrap">
+          <span class="invoice-form-title-icon" aria-hidden="true">▣</span>
+          <div>
+            <h2 id="invoiceFormTitle">Create Invoice</h2>
+            <p>Build invoice details, items, totals, and payment schedule in one clean workflow.</p>
+          </div>
         </div>
-        <div class="divider" style="margin:12px 0;"></div>
-        <strong style="display:block;margin-bottom:8px;">Customer</strong>
-        <div class="muted" style="margin:-4px 0 8px;">Customer and contact details are managed from the Company and Contacts modules.</div>
-        <div class="grid crm-party-selector-grid" data-party-selector="invoice" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px;">
-          <div class="filter-row"><label class="muted" for="invoiceFormCompanySelector">Company</label><select id="invoiceFormCompanySelector" class="select"><option value="">Select company</option></select><input id="invoiceFormCompanyId" type="hidden" /><input id="invoiceFormCompanyName" type="hidden" /></div>
-          <div class="filter-row"><label class="muted" for="invoiceFormContactSelector">Contact</label><select id="invoiceFormContactSelector" class="select" disabled><option value="">Select company first</option></select><input id="invoiceFormContactId" type="hidden" /><input id="invoiceFormContactName" type="hidden" /><input id="invoiceFormContactEmail" type="hidden" /><input id="invoiceFormContactPhone" type="hidden" /><input id="invoiceFormContactMobile" type="hidden" /></div>
-        </div>
-        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
-          <div class="filter-row"><label class="muted" for="invoiceFormCustomerName">Customer Name</label><input id="invoiceFormCustomerName" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
-          <div class="filter-row"><label class="muted" for="invoiceFormCustomerLegalName">Customer Legal Name</label><input id="invoiceFormCustomerLegalName" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
-          <div class="filter-row"><label class="muted" for="invoiceFormCustomerContactName">Contact Name</label><input id="invoiceFormCustomerContactName" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
-          <div class="filter-row"><label class="muted" for="invoiceFormCustomerContactEmail">Contact Email</label><input id="invoiceFormCustomerContactEmail" class="input readonly-field locked-field" type="email" readonly aria-readonly="true" /></div>
-          <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="invoiceFormCustomerAddress">Customer Address</label><input id="invoiceFormCustomerAddress" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
-        </div>
-        <div class="divider" style="margin:12px 0;"></div>
-        <div id="invoiceAgreementLocationSelectionSection" class="card" style="display:none;margin:12px 0;">
-          <strong style="display:block;margin-bottom:8px;">Select Locations to Invoice</strong>
-          <div id="invoiceAccountSetupBillingOptions" class="card" style="display:none;margin:0 0 12px;padding:10px;background:#f8fafc;">
-            <strong style="display:block;margin-bottom:6px;">Account Setup Fee Billing:</strong>
-            <label style="display:block;margin:4px 0;"><input type="radio" name="invoiceAccountSetupBillingMode" id="invoiceAccountSetupBillingPerSelected" value="per_selected_locations" checked /> Per selected invoiced locations</label>
-            <label style="display:block;margin:4px 0;"><input type="radio" name="invoiceAccountSetupBillingMode" id="invoiceAccountSetupBillingFullFirst" value="full_first_batch" /> Full account setup fee in first invoice batch</label>
+        <button class="modal-close invoice-form-close" id="invoiceFormCloseBtn" aria-label="Close invoice form" type="button">✕</button>
+      </div>
+      <form id="invoiceForm" class="invoice-modern-form">
+        <section class="invoice-form-section invoice-form-section--info">
+          <div class="invoice-form-section-title"><span aria-hidden="true">▣</span><div><strong>Invoice Information</strong><p>Enter the invoice details and settings.</p></div></div>
+          <div class="invoice-form-grid two">
+            <div class="filter-row"><label class="muted" for="invoiceFormAgreementId">Agreement ID</label><input id="invoiceFormAgreementId" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" placeholder="Select agreement" /></div>
+            <div class="filter-row"><label class="muted" for="invoiceFormInvoiceNumber">Invoice Number</label><input id="invoiceFormInvoiceNumber" class="input" type="text" /></div>
+            <div class="filter-row"><label class="muted" for="invoiceFormInvoiceId">Invoice ID</label><input id="invoiceFormInvoiceId" class="input" type="text" readonly /></div>
+            <input id="invoiceFormAgreementUuid" type="hidden" name="agreement_uuid" />
+            <input id="invoiceFormAgreementNumber" type="hidden" name="agreement_number" />
+            <input id="invoiceFormIsPoc" type="hidden" />
+            <input id="invoiceFormPocLocationCount" type="hidden" />
+            <input id="invoiceFormPocLicenseCount" type="hidden" />
+            <input id="invoiceFormPocLicenseMonths" type="hidden" />
+            <input id="invoiceFormPocServiceStartDate" type="hidden" />
+            <input id="invoiceFormPocServiceEndDate" type="hidden" />
+            <div class="filter-row"><label class="muted" for="invoiceFormStatus">Status</label><select id="invoiceFormStatus" class="select"><option>Draft</option><option>Issued</option><option>Sent</option><option>Unpaid</option><option>Partially Paid</option><option>Paid</option><option>Overdue</option><option>Cancelled</option></select></div>
+            <div class="filter-row"><label class="muted" for="invoiceFormInvoiceDate">Invoice Date</label><input id="invoiceFormInvoiceDate" class="input" type="date" /></div>
+            <div class="filter-row"><label class="muted" for="invoiceFormDueDate">Due Date</label><input id="invoiceFormDueDate" class="input" type="date" /></div>
+            <div class="filter-row"><label class="muted" for="invoiceFormCurrency">Currency</label><input id="invoiceFormCurrency" class="input" type="text" /></div>
+            <div class="filter-row"><label class="muted" for="invoiceFormPaymentTerm">Payment Term</label><select id="invoiceFormPaymentTerm" class="select"><option value="Net 7">Monthly</option><option value="Net 14">Quarterly</option><option value="Net 21">Semi-Annually</option><option value="Net 30">Annually</option><option value="Custom">Custom</option></select></div>
+            <div id="invoiceFormPaymentTermsCustomWrap" class="filter-row invoice-span-2" style="display:none;"><label class="muted" for="invoiceFormPaymentTermsCustom">Custom Payment Terms</label><input id="invoiceFormPaymentTermsCustom" class="input" type="text" placeholder="e.g. 2 scheduled payments, first 60%, second 40%" /></div>
+          </div>
+        </section>
+
+        <section class="invoice-form-section invoice-form-section--customer">
+          <div class="invoice-form-section-title"><span aria-hidden="true">♙</span><div><strong>Customer</strong><p>Select the customer and contact details.</p></div></div>
+          <div class="invoice-form-grid two crm-party-selector-grid" data-party-selector="invoice">
+            <div class="filter-row"><label class="muted" for="invoiceFormCompanySelector">Customer</label><select id="invoiceFormCompanySelector" class="select"><option value="">Select customer</option></select><input id="invoiceFormCompanyId" type="hidden" /><input id="invoiceFormCompanyName" type="hidden" /></div>
+            <div class="filter-row"><label class="muted" for="invoiceFormContactSelector">Contact</label><select id="invoiceFormContactSelector" class="select" disabled><option value="">Select company first</option></select><input id="invoiceFormContactId" type="hidden" /><input id="invoiceFormContactName" type="hidden" /><input id="invoiceFormContactEmail" type="hidden" /><input id="invoiceFormContactPhone" type="hidden" /><input id="invoiceFormContactMobile" type="hidden" /></div>
+          </div>
+          <div class="invoice-customer-summary">
+            <div class="filter-row"><label class="muted" for="invoiceFormCustomerName">Customer Name</label><input id="invoiceFormCustomerName" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="filter-row"><label class="muted" for="invoiceFormCustomerLegalName">Customer Legal Name</label><input id="invoiceFormCustomerLegalName" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="filter-row"><label class="muted" for="invoiceFormCustomerContactName">Contact Name</label><input id="invoiceFormCustomerContactName" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+            <div class="filter-row"><label class="muted" for="invoiceFormCustomerContactEmail">Contact Email</label><input id="invoiceFormCustomerContactEmail" class="input readonly-field locked-field" type="email" readonly aria-readonly="true" /></div>
+            <div class="filter-row invoice-span-2"><label class="muted" for="invoiceFormCustomerAddress">Customer Address</label><input id="invoiceFormCustomerAddress" class="input readonly-field locked-field" type="text" readonly aria-readonly="true" /></div>
+          </div>
+        </section>
+
+        <section id="invoiceAgreementLocationSelectionSection" class="invoice-form-section" style="display:none;">
+          <div class="invoice-form-section-title"><span aria-hidden="true">⌖</span><div><strong>Select Locations to Invoice</strong><p>Choose the agreement locations or items that should be invoiced now.</p></div></div>
+          <div id="invoiceAccountSetupBillingOptions" class="invoice-sub-card" style="display:none;">
+            <strong>Account Setup Fee Billing</strong>
+            <label><input type="radio" name="invoiceAccountSetupBillingMode" id="invoiceAccountSetupBillingPerSelected" value="per_selected_locations" checked /> Per selected invoiced locations</label>
+            <label><input type="radio" name="invoiceAccountSetupBillingMode" id="invoiceAccountSetupBillingFullFirst" value="full_first_batch" /> Full account setup fee in first invoice batch</label>
             <div id="invoiceAccountSetupBillingNote" class="muted" style="display:none;margin-top:6px;"></div>
           </div>
-          <div class="table-wrap"><table><thead><tr><th>Select</th><th>Location / Item</th><th>License / Month</th><th>Service Start Date</th><th>Service End Date</th><th>Amount</th><th>Invoice Status</th></tr></thead><tbody id="invoiceAgreementLocationSelectionBody"></tbody></table></div>
-        </div>
-        <strong style="display:block;margin-bottom:8px;">Invoice Items</strong>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-          <strong>Annual SaaS Rows</strong>
-          <button id="invoiceAddAnnualRowBtn" class="btn ghost sm" type="button" style="display:none;">Add Row</button>
-        </div>
-        <div class="table-wrap"><table><thead><tr><th>Location</th><th>License</th><th>License Price / Year</th><th>License / Month</th><th>Service Start Date</th><th>Service End Date</th><th>Discount %</th><th>Total</th></tr></thead><tbody id="invoiceAnnualItemsTbody"></tbody></table></div>
-        <datalist id="invoiceCatalogOptions-annual_saas"></datalist>
+          <div class="table-wrap invoice-form-table-wrap"><table><thead><tr><th>Select</th><th>Location / Item</th><th>License / Month</th><th>Service Start Date</th><th>Service End Date</th><th>Amount</th><th>Invoice Status</th></tr></thead><tbody id="invoiceAgreementLocationSelectionBody"></tbody></table></div>
+        </section>
 
-        <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px;">
-          <strong>One-time Fee Rows</strong>
-          <button id="invoiceAddOneTimeRowBtn" class="btn ghost sm" type="button" style="display:none;">Add Row</button>
-        </div>
-        <div class="table-wrap"><table><thead><tr><th>Location</th><th>Item / Service</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th></tr></thead><tbody id="invoiceOneTimeItemsTbody"></tbody></table></div>
-        <datalist id="invoiceCatalogOptions-one_time_fee"></datalist>
+        <section class="invoice-form-section invoice-form-section--items">
+          <div class="invoice-form-section-title"><span aria-hidden="true">▾</span><div><strong>Invoice Items</strong><p>Add the items and services to be invoiced.</p></div></div>
+          <div class="invoice-items-block"><div class="invoice-table-section-head"><strong>Annual SaaS Rows</strong><button id="invoiceAddAnnualRowBtn" class="btn ghost sm" type="button" style="display:none;">＋ Add Row</button></div><div class="table-wrap invoice-form-table-wrap"><table><thead><tr><th>Location</th><th>License</th><th>License Price / Year</th><th>License / Month</th><th>Service Start Date</th><th>Service End Date</th><th>Discount %</th><th>Total</th></tr></thead><tbody id="invoiceAnnualItemsTbody"></tbody></table></div><datalist id="invoiceCatalogOptions-annual_saas"></datalist></div>
+          <div class="invoice-items-block"><div class="invoice-table-section-head"><strong>One-time Fee Rows</strong><button id="invoiceAddOneTimeRowBtn" class="btn ghost sm" type="button" style="display:none;">＋ Add Row</button></div><div class="table-wrap invoice-form-table-wrap"><table><thead><tr><th>Location</th><th>Item / Service</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th></tr></thead><tbody id="invoiceOneTimeItemsTbody"></tbody></table></div><datalist id="invoiceCatalogOptions-one_time_fee"></datalist></div>
+          <div class="invoice-items-block"><div class="invoice-table-section-head"><strong>Hardware Rows</strong><button id="invoiceAddHardwareRowBtn" class="btn ghost sm" type="button" style="display:none;">＋ Add Row</button></div><div class="table-wrap invoice-form-table-wrap"><table><thead><tr><th>Location</th><th>Hardware / Product</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th></tr></thead><tbody id="invoiceHardwareItemsTbody"></tbody></table></div><datalist id="invoiceCatalogOptions-hardware"></datalist></div>
+        </section>
 
-        <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px;">
-          <strong>Hardware Rows</strong>
-          <button id="invoiceAddHardwareRowBtn" class="btn ghost sm" type="button" style="display:none;">Add Row</button>
-        </div>
-        <div class="table-wrap"><table><thead><tr><th>Location</th><th>Hardware / Product</th><th>Unit Price</th><th>Discount %</th><th>Qty</th><th>Total</th></tr></thead><tbody id="invoiceHardwareItemsTbody"></tbody></table></div>
-        <datalist id="invoiceCatalogOptions-hardware"></datalist>
+        <section class="invoice-form-section invoice-form-section--totals">
+          <div class="invoice-form-section-title"><span aria-hidden="true">▤</span><div><strong>Totals</strong><p>Review the calculated totals.</p></div></div>
+          <div class="invoice-form-grid two invoice-totals-grid">
+            <div class="filter-row"><label class="muted" for="invoiceFormSubtotalSubscription">Subscription Subtotal</label><input id="invoiceFormSubtotalSubscription" class="input" type="number" step="0.01" /></div>
+            <div class="filter-row"><label class="muted" for="invoiceFormSubtotalOneTime">One-time Subtotal</label><input id="invoiceFormSubtotalOneTime" class="input" type="number" step="0.01" /></div>
+            <div class="filter-row"><label class="muted" for="invoiceFormOldPaidTotal">Paid Total</label><input id="invoiceFormOldPaidTotal" class="input" type="number" step="0.01" min="0" readonly /></div>
+            <div class="filter-row"><label class="muted" for="invoiceFormGrandTotal">Grand Total</label><input id="invoiceFormGrandTotal" class="input invoice-grand-total-input" type="number" step="0.01" readonly /></div>
+            <div class="filter-row"><label class="muted" for="invoiceFormPaidNow">Paid Now</label><input id="invoiceFormPaidNow" class="input" type="number" step="0.01" min="0" /></div>
+            <div id="invoiceFormAmountPaidWrap" class="filter-row"><label class="muted" for="invoiceFormAmountPaid">Amount Paid (Cumulative)</label><input id="invoiceFormAmountPaid" class="input" type="number" step="0.01" min="0" readonly /></div>
+            <div id="invoiceFormPendingAmountWrap" class="filter-row"><label class="muted" for="invoiceFormPendingAmount">Pending Amount</label><input id="invoiceFormPendingAmount" class="input" type="number" step="0.01" readonly /></div>
+            <div class="filter-row"><label class="muted" for="invoiceFormPaymentState">Payment State</label><input id="invoiceFormPaymentState" class="input" type="text" readonly /></div>
+            <div class="filter-row"><label class="muted">Payment Conclusion</label><div id="invoicePaymentConclusion" class="input invoice-conclusion-field">Pending Settlement</div></div>
+            <div class="filter-row"><label class="muted" for="invoiceFormAmountInWords">Amount in Words</label><input id="invoiceFormAmountInWords" class="input" type="text" /></div>
+          </div>
+        </section>
 
-        <div class="divider" style="margin:12px 0;"></div>
-        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
-          <div class="filter-row"><label class="muted" for="invoiceFormSubtotalSubscription">Subtotal Subscription</label><input id="invoiceFormSubtotalSubscription" class="input" type="number" step="0.01" /></div>
-          <div class="filter-row"><label class="muted" for="invoiceFormSubtotalOneTime">Subtotal One Time</label><input id="invoiceFormSubtotalOneTime" class="input" type="number" step="0.01" /></div>
-          <div class="filter-row"><label class="muted" for="invoiceFormGrandTotal">Grand Total</label><input id="invoiceFormGrandTotal" class="input" type="number" step="0.01" readonly /></div>
-          <div class="filter-row"><label class="muted" for="invoiceFormOldPaidTotal">Old Paid Total</label><input id="invoiceFormOldPaidTotal" class="input" type="number" step="0.01" min="0" readonly /></div>
-          <div class="filter-row"><label class="muted" for="invoiceFormPaidNow">Paid Now</label><input id="invoiceFormPaidNow" class="input" type="number" step="0.01" min="0" /></div>
-          <div id="invoiceFormAmountPaidWrap" class="filter-row"><label class="muted" for="invoiceFormAmountPaid">Amount Paid (Cumulative)</label><input id="invoiceFormAmountPaid" class="input" type="number" step="0.01" min="0" readonly /></div>
-          <div id="invoiceFormPendingAmountWrap" class="filter-row"><label class="muted" for="invoiceFormPendingAmount">Pending Amount</label><input id="invoiceFormPendingAmount" class="input" type="number" step="0.01" readonly /></div>
-          <div class="filter-row"><label class="muted" for="invoiceFormPaymentState">Payment State</label><input id="invoiceFormPaymentState" class="input" type="text" readonly /></div>
-          <div class="filter-row"><label class="muted">Payment Conclusion</label><div id="invoicePaymentConclusion" class="input" style="display:flex;align-items:center;">Pending Settlement</div></div>
-          <div class="filter-row"><label class="muted" for="invoiceFormAmountInWords">Amount in Words</label><input id="invoiceFormAmountInWords" class="input" type="text" /></div>
-          <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="invoiceFormNotes">Notes</label><textarea id="invoiceFormNotes" class="input" rows="3"></textarea></div>
-        </div>
-        <div class="divider" style="margin:12px 0;"></div>
-        <strong style="display:block;margin-bottom:8px;">Payment Schedule</strong>
-        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:8px;">
-          <div class="filter-row"><label class="muted" for="invoiceFormPaymentScheduleMode">Schedule Mode</label><select id="invoiceFormPaymentScheduleMode" class="select"><option value="auto">Auto</option><option value="manual">Manual</option></select></div>
-          <div class="filter-row" style="justify-content:end;"><label class="muted">Manual Rows</label><button id="invoicePaymentScheduleAddRowBtn" class="btn ghost sm" type="button" style="display:none;align-self:start;">Add Scheduled Payment</button></div>
-        </div>
-        <div id="invoicePaymentScheduleState" class="muted" style="margin-bottom:8px;">No payment schedule found yet.</div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Due Date</th>
-                <th>%</th>
-                <th>Scheduled Amount</th>
-                <th>Paid Amount</th>
-                <th>Balance Due</th>
-                <th>Status</th>
-                <th>Receipts</th>
-                <th>Reminder</th>
-              </tr>
-            </thead>
-            <tbody id="invoicePaymentScheduleTbody"></tbody>
-          </table>
-        </div>
-        <div class="actions" style="justify-content:space-between;gap:8px;margin-top:12px;"><div style="display:flex;gap:8px;"><button id="invoiceFormDeleteBtn" type="button" class="btn ghost" style="display:none;">Delete</button><button id="invoiceFormPreviewBtn" type="button" class="btn ghost">Preview Invoice</button></div><div style="display:flex;gap:8px;"><button id="invoiceFormCancelBtn" type="button" class="btn ghost">Cancel</button><button id="invoiceFormSaveBtn" type="submit" class="btn">Save</button></div></div>
+        <section class="invoice-form-section invoice-form-section--notes">
+          <div class="invoice-form-section-title"><span aria-hidden="true">☰</span><div><strong>Notes</strong><p>Add any additional notes or comments.</p></div></div>
+          <textarea id="invoiceFormNotes" class="input" rows="3" placeholder="Enter notes or comments (optional)..."></textarea>
+        </section>
+
+        <section class="invoice-form-section invoice-form-section--schedule">
+          <div class="invoice-form-section-title"><span aria-hidden="true">▣</span><div><strong>Payment Schedule</strong><p>Define the payment schedule for this invoice.</p></div></div>
+          <div class="invoice-form-grid two invoice-schedule-control-grid">
+            <div class="filter-row"><label class="muted" for="invoiceFormPaymentScheduleMode">Schedule Mode</label><select id="invoiceFormPaymentScheduleMode" class="select"><option value="auto">Auto</option><option value="manual">Manual</option></select></div>
+            <div class="filter-row invoice-manual-row"><label class="muted">Manual Rows</label><button id="invoicePaymentScheduleAddRowBtn" class="btn ghost sm" type="button" style="display:none;align-self:start;">Add Scheduled Payment</button></div>
+          </div>
+          <div id="invoicePaymentScheduleState" class="muted invoice-schedule-state">No payment schedule found yet.</div>
+          <div class="table-wrap invoice-form-table-wrap">
+            <table><thead><tr><th>#</th><th>Due Date</th><th>%</th><th>Scheduled Amount</th><th>Paid Amount</th><th>Balance Due</th><th>Status</th><th>Receipts</th><th>Reminder</th></tr></thead><tbody id="invoicePaymentScheduleTbody"></tbody></table>
+          </div>
+        </section>
+
+        <div class="invoice-form-footer-actions"><div><button id="invoiceFormDeleteBtn" type="button" class="btn ghost" style="display:none;">Delete</button><button id="invoiceFormPreviewBtn" type="button" class="btn ghost">👁 Preview Invoice</button></div><div><button id="invoiceFormCancelBtn" type="button" class="btn ghost">Cancel</button><button id="invoiceFormSaveBtn" type="submit" class="btn invoice-modern-primary">Save</button></div></div>
       </form>
     </div>
   </div>
@@ -4531,7 +4552,7 @@ Sample:
   <script src="/proposals.js?v=20260630-public-eproposal-totals"></script>
   <script src="/agreements.js?v=20260630-e-agreement-link"></script>
   <script src="/operations-onboarding.js?v=20260427-allpwa1"></script>
-  <script src="/invoices.js?v=20260512-final-isPoc-click-fix"></script>
+  <script src="/invoices.js?v=20260702-invoice-ui-v2"></script>
   <script src="/receipts.js?v=20260427-allpwa1"></script>
   <script src="/credit-notes.js?v=20260604-credit-notes1"></script>
   <script src="/payment-forecast.js?v=20260605-followup-activity2"></script>
