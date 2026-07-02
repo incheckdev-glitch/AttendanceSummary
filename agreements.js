@@ -2875,7 +2875,7 @@ const Agreements = {
     if (!modal) {
       modal = document.createElement('div');
       modal.id = 'agreementInternalSignModal';
-      modal.className = 'modal agreement-internal-sign-modal';
+      modal.className = 'modal agreement-internal-sign-modal agreement-upload-sign-light-modal';
       document.body.appendChild(modal);
     }
     const user = this.getCurrentAgreementSigningUser();
@@ -2884,7 +2884,7 @@ const Agreements = {
     const defaultTitle = targetRole === 'SFC' ? 'Senior Financial Controller' : 'General Manager';
     const close = () => { modal.classList.remove('open'); modal.setAttribute('aria-hidden', 'true'); };
     modal.innerHTML = `
-      <div class="modal-content" style="max-width:640px;">
+      <div class="modal-content" style="max-width:640px;background:#ffffff;color:#0f172a;color-scheme:light;">
         <div class="modal-header">
           <div><h2 style="margin:0;font-size:20px;">Sign Agreement</h2><p class="muted" style="margin:4px 0 0;">${U.escapeHtml(defaultTitle)}</p></div>
           <button class="modal-close" data-internal-sign-close type="button" aria-label="Close">✕</button>
@@ -2894,7 +2894,7 @@ const Agreements = {
           <label>Signer title<input class="input" name="signerTitle" required value="${U.escapeAttr(defaultTitle)}"></label>
           <div class="agreement-signature-upload-only">
             <div class="muted" style="font-weight:800;margin-bottom:8px;">Signature upload</div>
-            <p class="muted" style="margin:0 0 10px;">Upload a PNG, JPG, or WEBP image of your signature. Typed and draw signature methods are disabled for agreement signing.</p>
+            <p class="muted" style="margin:0 0 10px;">Upload a PNG, JPG, or WEBP image of your signature.</p>
             <input type="hidden" id="internalSignatureType" name="signatureType" value="uploaded">
           </div>
           <div id="internalUploadSignatureWrap" data-internal-signature-panel="uploaded"><input class="input" type="file" name="signatureImage" accept="image/png,image/jpeg,image/webp"><div data-internal-uploaded-signature-preview></div></div>
@@ -6478,7 +6478,7 @@ function bootPublicEAgreementPage() {
       });
 
       document.querySelector('[data-public-accept-agreement]')?.addEventListener('click', () => {
-        renderModal(`<form data-public-accept-agreement-form><h2>Accept & Sign Agreement</h2><label>Customer full name<input class="input" name="name" placeholder="Full name" required></label><section class="electronic-signature-section"><h3>Signature Upload</h3><p class="muted">Typed and draw signature methods are disabled for agreement signing. Please upload a signature image or the signed agreement document.</p><div class="signature-method-tabs"><button class="signature-method-tab active" type="button" data-signature-mode="uploaded">Upload Signature Image</button><button class="signature-method-tab" type="button" data-signature-mode="signed_document_upload">Upload Signed Agreement</button></div><div data-signature-panel="uploaded"><input class="input" type="file" name="signatureImage" accept="image/png,image/jpeg,image/webp"><div data-uploaded-signature-preview></div></div><div data-signature-panel="signed_document_upload" hidden><p class="muted">Download/print the agreement, sign it manually or using DocuSign/Adobe, then upload the signed PDF or image.</p><input class="input" type="file" name="signedDocument" accept="application/pdf,image/png,image/jpeg,image/webp"><div data-signed-document-preview></div></div></section><label class="public-checkbox"><input type="checkbox" name="authorized" required> I confirm I am authorized to sign this agreement on behalf of the customer.</label><div class="public-validation-errors"></div><button class="public-btn-primary accept-agreement-submit" type="submit" disabled>Accept & Sign Agreement</button></form>`, 'accept-proposal-modal');
+        renderModal(`<form data-public-accept-agreement-form><h2>Accept & Sign Agreement</h2><label>Customer full name<input class="input" name="name" placeholder="Full name" required></label><section class="electronic-signature-section"><h3>Signature Upload</h3><p class="muted">Please upload a signature image or the signed agreement document.</p><div class="signature-method-tabs"><button class="signature-method-tab active" type="button" data-signature-mode="uploaded">Upload Signature Image</button><button class="signature-method-tab" type="button" data-signature-mode="signed_document_upload">Upload Signed Agreement</button></div><div data-signature-panel="uploaded"><input class="input" type="file" name="signatureImage" accept="image/png,image/jpeg,image/webp"><div data-uploaded-signature-preview></div></div><div data-signature-panel="signed_document_upload" hidden><p class="muted">Download/print the agreement, sign it manually or using DocuSign/Adobe, then upload the signed PDF or image.</p><input class="input" type="file" name="signedDocument" accept="application/pdf,image/png,image/jpeg,image/webp"><div data-signed-document-preview></div></div></section><label class="public-checkbox"><input type="checkbox" name="authorized" required> I confirm I am authorized to sign this agreement on behalf of the customer.</label><div class="public-validation-errors"></div><button class="public-btn-primary accept-agreement-submit" type="submit" disabled>Accept & Sign Agreement</button></form>`, 'public-action-modal accept-proposal-modal agreement-accept-sign-modal');
         const form = document.querySelector('[data-public-accept-agreement-form]');
         function syncAcceptForm() {
           if (!form) return;
