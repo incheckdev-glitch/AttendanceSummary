@@ -9613,9 +9613,9 @@ body.public-eagreement-mode .eagreement-info-icon {
 }
 
 /* =========================================================
-   PUBLIC E-PROPOSAL UPLOAD-ONLY LIGHT THEME FIX
+   PUBLIC E-PROPOSAL LIGHT THEME FIX
    Keeps proposal review header and accept/sign modal readable
-   even when dark/global styles are active.
+   while preserving Typed, Upload Image, Draw, and Signed Proposal signing methods.
    ========================================================= */
 body.public-eproposal-mode,
 body.public-eproposal-mode .public-eproposal-page,
@@ -9806,6 +9806,41 @@ body.public-eproposal-mode #publicEProposalModal .public-checkbox input {
   width: auto !important;
   min-height: auto !important;
   accent-color: #2563eb !important;
+}
+
+
+
+body.public-eproposal-mode #publicEProposalModal .typed-signature-preview,
+body.public-eproposal-mode #publicEProposalModal .signature-draw-pad,
+body.public-eproposal-mode #publicEProposalModal .signature-canvas,
+body.public-eproposal-mode #publicEProposalModal .signed-document-file-card,
+body.public-eproposal-mode #publicEProposalModal .signed-document-pdf-preview,
+body.public-eproposal-mode #publicEProposalModal .signed-document-image-preview,
+body.public-eproposal-mode #publicEProposalModal .signature-image-preview {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #bfdbfe !important;
+  -webkit-text-fill-color: #0f172a !important;
+}
+
+body.public-eproposal-mode #publicEProposalModal .signature-canvas {
+  touch-action: none !important;
+}
+
+body.public-eproposal-mode #publicEProposalModal .public-btn-outline,
+body.public-eproposal-mode #publicEProposalModal .signature-clear-btn {
+  background: #ffffff !important;
+  color: #1d4ed8 !important;
+  border-color: #bfdbfe !important;
+  -webkit-text-fill-color: #1d4ed8 !important;
+}
+
+body.public-eproposal-mode #publicEProposalModal .public-btn-outline:hover,
+body.public-eproposal-mode #publicEProposalModal .signature-clear-btn:hover {
+  background: #eff6ff !important;
+  color: #073b73 !important;
+  border-color: #0b7ec2 !important;
+  -webkit-text-fill-color: #073b73 !important;
 }
 
 body.public-eproposal-mode #publicEProposalModal .public-btn-primary:disabled,
