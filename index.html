@@ -2340,26 +2340,44 @@ Sample:
       </section>
 
       <section id="creditNotesView" class="view" role="tabpanel" aria-labelledby="creditNotesTab">
-        <div class="grid cols-4" id="creditNotesSummary" aria-live="polite"></div>
-        <div class="card" aria-label="Credit notes list">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+        <div class="credit-notes-page-shell">
+          <header class="credit-notes-header">
             <div>
-              <strong>Credit Notes</strong>
-              <div class="muted">Credit adjustments against issued invoices. Credit notes reduce invoice balance without increasing receipts.</div>
+              <p class="credit-notes-eyebrow">Finance Controls</p>
+              <h1>Credit Notes</h1>
+              <p>Credit adjustments against issued invoices. Credit notes reduce invoice balance without increasing receipts.</p>
             </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <input id="creditNotesSearchInput" class="input" type="search" placeholder="Credit note #, invoice #, customer..." aria-label="Search credit notes" />
-              <select id="creditNotesStatusFilter" class="select" aria-label="Filter credit note status"><option>All</option></select>
-              <button id="creditNotesRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
-              <button id="creditNotesCreateBtn" class="btn sm" type="button" data-permission-resource="credit_notes" data-permission-action="create">New Credit Note</button>
+          </header>
+
+          <div class="credit-notes-kpi-grid" id="creditNotesSummary" aria-live="polite"></div>
+
+          <div class="credit-notes-toolbar" aria-label="Credit notes filters and actions">
+            <div class="credit-notes-search-wrap">
+              <span aria-hidden="true">⌕</span>
+              <input id="creditNotesSearchInput" class="credit-notes-input" type="search" placeholder="Search credit notes, customers, invoices..." aria-label="Search credit notes, customers, invoices" />
             </div>
+            <select id="creditNotesStatusFilter" class="credit-notes-select" aria-label="Filter credit notes by status"><option value="All">All Statuses</option></select>
+            <button id="creditNotesRefreshBtn" class="credit-notes-action-btn" type="button">↻ Refresh</button>
+            <button id="creditNotesCreateBtn" class="credit-notes-primary-btn" type="button" data-permission-resource="credit_notes" data-permission-action="create">+ New Credit Note</button>
           </div>
-          <div id="creditNotesState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
-          <div class="table-wrap" role="region" aria-label="Credit notes table">
-            <table id="creditNotesTable">
-              <thead><tr><th>Credit Note #</th><th>Date</th><th>Client / Customer</th><th>Invoice #</th><th>Description</th><th>Currency</th><th>Credit Amount</th><th>Status</th><th>Actions</th></tr></thead>
-              <tbody id="creditNotesTbody"></tbody>
-            </table>
+
+          <div class="credit-notes-table-card" aria-label="Credit notes list">
+            <div class="credit-notes-table-header">
+              <div>
+                <h2>Credit Note Records</h2>
+                <div id="creditNotesState" class="credit-notes-state">No data loaded.</div>
+              </div>
+            </div>
+            <div class="credit-notes-table-wrap" role="region" aria-label="Credit notes table">
+              <table id="creditNotesTable" class="credit-notes-table">
+                <thead>
+                  <tr><th data-cn-sort="credit_note_no" tabindex="0">Credit Note #</th><th data-cn-sort="credit_note_date" tabindex="0">Date</th><th data-cn-sort="customer" tabindex="0">Customer</th><th data-cn-sort="invoice_no" tabindex="0">Invoice #</th><th data-cn-sort="description" tabindex="0">Description</th><th data-cn-sort="currency" tabindex="0">Currency</th><th data-cn-sort="amount" tabindex="0">Amount</th><th data-cn-sort="status" tabindex="0">Status</th><th>Actions</th></tr>
+                  <tr class="credit-notes-filter-row"><th><input data-cn-filter="credit_note_no" aria-label="Filter by credit note number" placeholder="Filter #" /></th><th><input data-cn-filter="credit_note_date" aria-label="Filter by date" placeholder="YYYY-MM-DD" /></th><th><input data-cn-filter="customer" aria-label="Filter by customer" placeholder="Customer" /></th><th><input data-cn-filter="invoice_no" aria-label="Filter by invoice number" placeholder="Invoice" /></th><th><input data-cn-filter="description" aria-label="Filter by description" placeholder="Description" /></th><th><input data-cn-filter="currency" aria-label="Filter by currency" placeholder="Currency" /></th><th><div class="credit-notes-amount-filters"><input data-cn-filter="amount_min" type="number" aria-label="Minimum amount" placeholder="Min" /><input data-cn-filter="amount_max" type="number" aria-label="Maximum amount" placeholder="Max" /></div></th><th><select data-cn-filter="status" aria-label="Filter by row status"><option value="">All</option><option value="draft">Draft</option><option value="issued">Issued</option><option value="cancelled">Cancelled</option></select></th><th></th></tr>
+                </thead>
+                <tbody id="creditNotesTbody"></tbody>
+              </table>
+            </div>
+            <div id="creditNotesPagination" class="credit-notes-pagination" aria-label="Credit notes pagination"></div>
           </div>
         </div>
       </section>
@@ -4380,21 +4398,25 @@ Sample:
     </div>
   </div>
 
-  <div id="creditNoteFormModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="creditNoteFormTitle" aria-hidden="true">
-    <div class="modal-content" style="max-width:980px;">
-      <div class="header"><h2 id="creditNoteFormTitle" style="margin:0;font-size:20px">Credit Note</h2><div class="actions"><button class="modal-close" id="creditNoteFormCloseBtn" aria-label="Close credit note form">✕</button></div></div>
-      <form id="creditNoteForm">
+  <div id="creditNoteFormModal" class="modal credit-note-modal" role="dialog" aria-modal="true" aria-labelledby="creditNoteFormTitle" aria-hidden="true">
+    <div class="credit-note-modal-shell">
+      <div class="credit-note-modal-header">
+        <div class="credit-note-modal-icon" aria-hidden="true">↩</div>
+        <div><h2 id="creditNoteFormTitle">Create Credit Note</h2><p>Create a credit note to adjust an existing invoice.</p></div>
+        <button class="credit-note-close-btn" id="creditNoteFormCloseBtn" aria-label="Close credit note form" type="button">✕</button>
+      </div>
+      <form id="creditNoteForm" novalidate>
         <input id="creditNoteFormId" type="hidden" />
-        <div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
-          <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="creditNoteFormInvoiceSelect">Unsettled Invoice *</label><select id="creditNoteFormInvoiceSelect" class="select" required><option value="">Select unsettled invoice</option></select></div>
-          <div class="filter-row"><label class="muted" for="creditNoteFormDate">Credit Note Date *</label><input id="creditNoteFormDate" class="input" type="date" required /></div>
-          <div class="filter-row"><label class="muted" for="creditNoteFormAmount">Credit Amount *</label><input id="creditNoteFormAmount" class="input" type="number" min="0.01" step="0.01" required /></div>
-          <div class="filter-row" style="grid-column:1 / -1;"><label class="muted" for="creditNoteFormDescription">Description *</label><textarea id="creditNoteFormDescription" class="input" rows="3" required></textarea></div>
+        <div class="credit-note-form-grid">
+          <div class="credit-note-form-main">
+            <section class="credit-note-form-section"><h3>Credit Note Information</h3><div class="credit-note-fields"><label>Credit Note Number<input id="creditNoteFormNumber" class="credit-note-input" placeholder="Auto generated" /></label><label>Date *<input id="creditNoteFormDate" class="credit-note-input" type="date" required /></label><label>Status<select id="creditNoteFormStatus" class="credit-note-input"><option value="issued">Issued</option><option value="draft">Draft</option></select></label><label>Reason<input id="creditNoteFormReason" class="credit-note-input" placeholder="Reason for credit" /></label></div></section>
+            <section class="credit-note-form-section"><h3>Invoice & Customer Context</h3><div class="credit-note-fields"><label class="credit-note-field-wide">Related Invoice *<select id="creditNoteFormInvoiceSelect" class="credit-note-input" required><option value="">Select unsettled invoice</option></select></label><label>Invoice Date<input id="creditNoteFormInvoiceDate" class="credit-note-input" readonly /></label><label>Customer<input id="creditNoteFormCustomer" class="credit-note-input" readonly /></label><label>Currency<input id="creditNoteFormCurrency" class="credit-note-input" readonly /></label></div><div id="creditNoteInvoiceInfo" class="credit-note-mini-grid" aria-live="polite"></div></section>
+            <section class="credit-note-form-section"><h3>Amount Details</h3><div class="credit-note-fields"><label>Credit Amount *<input id="creditNoteFormAmount" class="credit-note-input" type="number" min="0.01" step="0.01" required /></label><label>Tax optional<input id="creditNoteFormTax" class="credit-note-input" type="number" min="0" step="0.01" value="0" /></label><label>Total Credit Amount<input id="creditNoteFormTotal" class="credit-note-input" readonly /></label><label>Credit Method<select id="creditNoteFormMethod" class="credit-note-input"><option value="invoice_adjustment">Invoice adjustment</option><option value="balance_credit">Balance credit</option></select></label></div></section>
+            <section class="credit-note-form-section"><h3>Additional Details</h3><div class="credit-note-fields"><label class="credit-note-field-wide">Description *<textarea id="creditNoteFormDescription" class="credit-note-input" rows="3" required></textarea></label><label class="credit-note-field-wide">Notes optional<textarea id="creditNoteFormNotes" class="credit-note-input" rows="2"></textarea></label></div></section>
+          </div>
+          <aside class="credit-note-summary-panel" id="creditNoteSummaryPanel" aria-live="polite"></aside>
         </div>
-        <div class="divider" style="margin:12px 0;"></div>
-        <strong style="display:block;margin-bottom:8px;">Selected Invoice</strong>
-        <div id="creditNoteInvoiceInfo" class="grid cols-4" aria-live="polite"></div>
-        <div class="actions" style="justify-content:flex-end;gap:8px;margin-top:12px;"><button id="creditNoteFormPreviewBtn" type="button" class="btn ghost" style="display:none;">View / Print</button><button id="creditNoteFormCancelBtn" type="button" class="btn ghost">Cancel</button><button id="creditNoteFormSaveBtn" type="submit" class="btn">Save</button></div>
+        <div class="credit-note-sticky-footer"><button id="creditNoteFormPreviewBtn" type="button" class="credit-note-secondary-btn" style="display:none;">Preview</button><button id="creditNoteFormCancelBtn" type="button" class="credit-note-secondary-btn">Cancel</button><button id="creditNoteFormSaveBtn" type="submit" class="credit-note-save-btn">Save Credit Note</button></div>
       </form>
     </div>
   </div>

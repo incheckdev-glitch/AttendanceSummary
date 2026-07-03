@@ -26,7 +26,11 @@ const CreditNotes = {
     error: '',
     invoiceError: '',
     saving: false,
-    requestKey: ''
+    requestKey: '',
+    columnFilters: {},
+    sort: { key: 'credit_note_date', direction: 'desc' },
+    page: 1,
+    pageSize: 10
   },
   money(value, currency = 'USD') { return `${String(currency || 'USD').toUpperCase()} ${U.fmtNumber(Number(value || 0))}`; },
   n(value) { const num = Number(value); return Number.isFinite(num) ? num : 0; },
@@ -36,6 +40,13 @@ const CreditNotes = {
     if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
     return `credit-note-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   },
+
+  getCreditNoteDisplayNumber(row = {}) { return this.text(row.credit_note_number || row.credit_note_no || row.credit_note_ref || row.credit_note_id || row.id || '—'); },
+  getCreditNoteDate(row = {}) { return this.text(row.credit_note_date || row.date || row.created_at || ''); },
+  getCreditNoteCustomer(row = {}) { return this.text(row.customer_name || row.client_name || row.customer_legal_name || row.company_name || '—'); },
+  getCreditNoteInvoiceNumber(row = {}) { return this.text(row.invoice_number || row.invoice_no || row.invoice_id || '—'); },
+  getCreditNoteAmount(row = {}) { return this.n(row.credit_amount ?? row.total_amount ?? row.amount); },
+  getCreditNoteStatus(row = {}) { return this.normalizeStatus(row.status || 'issued'); },
   isCancelledCreditNote(note = {}) { return ['cancelled', 'canceled'].includes(this.text(note.status).toLowerCase()); },
   isUuid(value) { return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim()); },
   invoiceTotal(row = {}) { return this.n(row.invoice_total ?? row.grand_total ?? row.total_amount ?? row.amount_due ?? row.total); },
@@ -70,11 +81,11 @@ const CreditNotes = {
     return {
       ...row,
       id,
-      credit_note_number: row.credit_note_number || row.credit_note_id || id || '',
+      credit_note_number: row.credit_note_number || row.credit_note_no || row.credit_note_ref || row.credit_note_id || id || '',
       customer_name: row.customer_name || row.client_name || row.customer_legal_name || row.company_name || '',
       client_name: row.client_name || row.customer_name || row.customer_legal_name || row.company_name || '',
       status: this.normalizeStatus(row.status),
-      credit_amount: this.n(row.credit_amount)
+      credit_amount: this.getCreditNoteAmount(row)
     };
   },
   normalizeInvoice(row = {}) {
@@ -165,22 +176,56 @@ const CreditNotes = {
       this.render();
     }
   },
+  filterValue(row, key) {
+    const map = {
+      credit_note_no: this.getCreditNoteDisplayNumber(row),
+      credit_note_date: this.getCreditNoteDate(row).slice(0, 10),
+      customer: this.getCreditNoteCustomer(row),
+      invoice_no: this.getCreditNoteInvoiceNumber(row),
+      description: row.description,
+      currency: row.currency,
+      status: this.getCreditNoteStatus(row),
+      amount: this.getCreditNoteAmount(row)
+    };
+    return map[key];
+  },
   filteredRows() {
     const q = this.state.search.toLowerCase().trim();
     const selectedStatus = this.text(this.state.status || 'All').toLowerCase();
-    return this.state.rows.filter(row => {
-      const rowStatus = this.normalizeStatus(row.status);
-      if (selectedStatus && selectedStatus !== 'all' && rowStatus !== selectedStatus) return false;
-      if (!q) return true;
-      return [row.credit_note_number, row.credit_note_id, row.invoice_number, row.customer_name, row.client_name, row.company_name, row.description, row.currency, row.status]
-        .some(value => this.text(value).toLowerCase().includes(q));
+    let rows = [...this.state.rows];
+    if (q) rows = rows.filter(row => [this.getCreditNoteDisplayNumber(row), row.credit_note_id, this.getCreditNoteInvoiceNumber(row), this.getCreditNoteCustomer(row), row.description, row.currency, row.status]
+      .some(value => this.text(value).toLowerCase().includes(q)));
+    const filters = this.state.columnFilters || {};
+    rows = rows.filter(row => {
+      for (const [key, value] of Object.entries(filters)) {
+        const needle = this.text(value).toLowerCase();
+        if (!needle) continue;
+        if (key === 'amount_min' && this.getCreditNoteAmount(row) < Number(value)) return false;
+        if (key === 'amount_max' && this.getCreditNoteAmount(row) > Number(value)) return false;
+        if (!['amount_min','amount_max'].includes(key) && !this.text(this.filterValue(row, key)).toLowerCase().includes(needle)) return false;
+      }
+      return true;
     });
+    if (selectedStatus && selectedStatus !== 'all') rows = rows.filter(row => this.getCreditNoteStatus(row) === selectedStatus);
+    const { key, direction } = this.state.sort || {};
+    if (key) rows.sort((a, b) => {
+      const av = key === 'amount' ? this.getCreditNoteAmount(a) : this.text(this.filterValue(a, key)).toLowerCase();
+      const bv = key === 'amount' ? this.getCreditNoteAmount(b) : this.text(this.filterValue(b, key)).toLowerCase();
+      return (av > bv ? 1 : av < bv ? -1 : 0) * (direction === 'asc' ? 1 : -1);
+    });
+    return rows;
+  },
+  pagedRows(rows = this.filteredRows()) {
+    const totalPages = Math.max(1, Math.ceil(rows.length / this.state.pageSize));
+    if (this.state.page > totalPages) this.state.page = totalPages;
+    const start = (this.state.page - 1) * this.state.pageSize;
+    return rows.slice(start, start + this.state.pageSize);
   },
   populateStatusFilter() {
     if (!E.creditNotesStatusFilter) return;
     const current = this.text(E.creditNotesStatusFilter.value || this.state.status || 'All').toLowerCase();
     const statuses = [
-      ['All', 'All'],
+      ['All', 'All Statuses'],
       ['issued', 'Issued'],
       ['draft', 'Draft'],
       ['cancelled', 'Cancelled']
@@ -191,46 +236,62 @@ const CreditNotes = {
   },
   renderSummary(rows = this.filteredRows()) {
     if (!E.creditNotesSummary) return;
-    const issuedRows = rows.filter(row => this.text(row.status).toLowerCase() === 'issued');
-    const total = issuedRows.reduce((sum, row) => sum + this.n(row.credit_amount), 0);
-    E.creditNotesSummary.innerHTML = [
-      ['Credit Notes', rows.length],
-      ['Issued', issuedRows.length],
-      ['Total Credited', this.money(total, rows[0]?.currency || 'USD')],
-      ['Unsettled Invoices', this.state.invoices.length]
-    ].map(([label, value]) => `<div class="card"><div class="label">${U.escapeHtml(label)}</div><div class="value">${U.escapeHtml(String(value))}</div></div>`).join('');
+    if (this.state.loading) {
+      E.creditNotesSummary.innerHTML = Array.from({ length: 4 }, () => '<article class="credit-notes-kpi-card"><div class="credit-notes-skeleton-row" style="width:100%"><span></span></div></article>').join('');
+      return;
+    }
+    const issuedRows = rows.filter(row => this.getCreditNoteStatus(row) === 'issued');
+    const total = issuedRows.reduce((sum, row) => sum + this.getCreditNoteAmount(row), 0);
+    const cards = [
+      ['🧾', 'Total Credit Notes', rows.length],
+      ['✅', 'Issued', issuedRows.length],
+      ['💳', 'Total Credited', this.money(total, rows[0]?.currency || 'USD')],
+      ['📌', 'Unsettled Invoices', this.state.invoices.length]
+    ];
+    E.creditNotesSummary.innerHTML = cards.map(([icon, label, value]) => `<article class="credit-notes-kpi-card"><div class="credit-notes-kpi-icon">${icon}</div><div><div class="credit-notes-kpi-label">${U.escapeHtml(label)}</div><div class="credit-notes-kpi-value">${U.escapeHtml(String(value))}</div></div></article>`).join('');
+  },
+  renderPagination(rows) {
+    const el = document.getElementById('creditNotesPagination');
+    if (!el) return;
+    const total = rows.length;
+    const start = total ? (this.state.page - 1) * this.state.pageSize + 1 : 0;
+    const end = Math.min(total, this.state.page * this.state.pageSize);
+    const totalPages = Math.max(1, Math.ceil(total / this.state.pageSize));
+    el.innerHTML = `<div>Showing ${start} to ${end} of ${total} credit notes</div><div class="credit-notes-page-controls"><button type="button" data-cn-page="prev" ${this.state.page <= 1 ? 'disabled' : ''}>Previous</button><span>${this.state.page} / ${totalPages}</span><button type="button" data-cn-page="next" ${this.state.page >= totalPages ? 'disabled' : ''}>Next</button><select data-cn-page-size aria-label="Rows per page"><option>10</option><option>25</option><option>50</option><option>100</option></select></div>`;
+    const sel = el.querySelector('[data-cn-page-size]'); if (sel) sel.value = String(this.state.pageSize);
   },
   render() {
     if (!E.creditNotesTbody || !E.creditNotesState) return;
     if (E.creditNotesCreateBtn) E.creditNotesCreateBtn.style.display = this.canCreate() ? '' : 'none';
-    TableUtils?.ensureHeaders?.('credit_notes', E.creditNotesTbody?.closest('table'), this.tableColumns);
-    const rows = TableUtils?.processRows ? TableUtils.processRows('credit_notes', this.filteredRows(), this.columnMap) : this.filteredRows();
-    this.renderSummary(rows);
-    const messages = [];
-    if (this.state.loading) messages.push('Loading credit notes…');
-    else messages.push(`${rows.length} of ${this.state.rows.length} credit note(s). ${this.state.invoices.length} unsettled invoice(s) available.`);
-    if (this.state.error) messages.push(`Credit notes setup/load warning: ${this.state.error}`);
-    if (this.state.invoiceError) messages.push(`Invoice load warning: ${this.state.invoiceError}`);
-    E.creditNotesState.textContent = messages.join(' ');
+    const allFiltered = this.filteredRows();
+    const rows = this.pagedRows(allFiltered);
+    this.renderSummary(allFiltered);
+    if (this.state.error) E.creditNotesState.textContent = 'Unable to load credit notes. Please refresh.';
+    else if (this.state.loading) E.creditNotesState.textContent = 'Loading credit notes…';
+    else E.creditNotesState.textContent = `${allFiltered.length} of ${this.state.rows.length} credit notes. ${this.state.invoices.length} unsettled invoices available.`;
     if (this.state.loading) {
-      E.creditNotesTbody.innerHTML = '<tr><td colspan="9" class="muted" style="text-align:center;">Loading credit notes…</td></tr>';
-      return;
+      E.creditNotesTbody.innerHTML = Array.from({ length: 6 }, () => `<tr class="credit-notes-skeleton-row"><td colspan="9"><span></span></td></tr>`).join('');
+      this.renderPagination([]); return;
+    }
+    if (this.state.error && !this.state.rows.length) {
+      E.creditNotesTbody.innerHTML = '<tr><td colspan="9"><div class="credit-notes-empty-state">Unable to load credit notes. Please refresh.</div></td></tr>'; this.renderPagination([]); return;
     }
     if (!this.state.rows.length) {
-      E.creditNotesTbody.innerHTML = '<tr><td colspan="9" class="muted" style="text-align:center;">No credit notes found yet. Use New Credit Note to create one from an unsettled invoice.</td></tr>';
-      return;
+      E.creditNotesTbody.innerHTML = '<tr><td colspan="9"><div class="credit-notes-empty-state">No credit notes found.</div></td></tr>'; this.renderPagination([]); return;
     }
     E.creditNotesTbody.innerHTML = rows.length ? rows.map(row => {
       const id = U.escapeAttr(row.id || row.credit_note_id || '');
-      const canCancel = this.canCancel() && this.text(row.status).toLowerCase() === 'issued';
+      const status = this.getCreditNoteStatus(row);
+      const canCancel = this.canCancel() && status === 'issued';
       return `<tr>
-        <td>${U.escapeHtml(row.credit_note_number || '—')}</td><td>${U.escapeHtml(String(row.credit_note_date || '').slice(0,10) || '—')}</td>
-        <td>${U.escapeHtml(row.customer_legal_name || row.customer_name || row.client_name || row.company_name || '—')}</td><td>${U.escapeHtml(row.invoice_number || '—')}</td>
-        <td>${U.escapeHtml(row.description || '—')}</td><td>${U.escapeHtml(row.currency || 'USD')}</td><td>${U.escapeHtml(U.fmtNumber(row.credit_amount || 0))}</td>
-        <td><span class="pill status-${U.toStatusClass(row.status || 'issued')}">${U.escapeHtml(row.status || 'issued')}</span></td>
-        <td>${this.canPrint() ? `<button class="btn ghost sm" data-credit-note-preview="${id}">View / Print</button>` : '—'}${canCancel ? ` <button class="btn ghost sm" data-credit-note-cancel="${id}">Cancel</button>` : ''}</td>
+        <td><strong>${U.escapeHtml(this.getCreditNoteDisplayNumber(row))}</strong></td><td>${U.escapeHtml(this.getCreditNoteDate(row).slice(0,10) || '—')}</td>
+        <td>${U.escapeHtml(this.getCreditNoteCustomer(row))}</td><td>${U.escapeHtml(this.getCreditNoteInvoiceNumber(row))}</td>
+        <td>${U.escapeHtml(row.description || '—')}</td><td>${U.escapeHtml(row.currency || 'USD')}</td><td>${U.escapeHtml(U.fmtNumber(this.getCreditNoteAmount(row)))}</td>
+        <td><span class="cn-status-badge cn-status-${status}">${U.escapeHtml(status)}</span></td>
+        <td><div class="credit-notes-row-actions">${this.canPrint() ? `<button class="credit-notes-action-btn" data-credit-note-preview="${id}">View / Print</button>` : '—'}<div class="credit-notes-menu"><button type="button" class="credit-notes-menu-btn" aria-label="More actions for ${U.escapeAttr(this.getCreditNoteDisplayNumber(row))}" aria-haspopup="true" aria-expanded="false">⋯</button><div class="credit-notes-menu-list" role="menu"><button type="button" role="menuitem" data-credit-note-communication="${id}">Create Communication</button>${canCancel ? `<button type="button" role="menuitem" data-credit-note-cancel="${id}">Cancel</button>` : ''}</div></div></div></td>
       </tr>`;
-    }).join('') : '<tr><td colspan="9" class="muted" style="text-align:center;">No credit notes match the current search or status filter.</td></tr>';
+    }).join('') : '<tr><td colspan="9"><div class="credit-notes-empty-state">No credit notes match your filters.</div></td></tr>';
+    this.renderPagination(allFiltered);
   },
   populateInvoiceDropdown() {
     if (!E.creditNoteFormInvoiceSelect) return;
@@ -242,21 +303,43 @@ const CreditNotes = {
   },
   renderInvoiceInfo() {
     const inv = this.state.selectedInvoice;
-    if (!E.creditNoteInvoiceInfo) return;
-    const rows = inv ? [
-      ['Client / Customer', inv.customer_legal_name || inv.customer_name || inv.client_name || inv.company_name || '—'],
-      ['Invoice #', inv.invoice_number || '—'],
-      ['Invoice Date', inv.issue_date || inv.invoice_date || '—'],
-      ['Due Date', inv.due_date || '—'],
-      ['Grand Total', this.money(this.invoiceTotal(inv), inv.currency)],
-      ['Amount Paid', this.money(this.amountPaid(inv), inv.currency)],
-      ['Existing Credit Notes', this.money(this.creditAmount(inv), inv.currency)],
-      ['Open Balance', this.money(this.balanceDue(inv), inv.currency)],
-      ['Creditable Amount', this.money(this.creditableAmount(inv), inv.currency)],
-      ['Currency', inv.currency || 'USD']
-    ] : [['Select invoice', this.state.invoices.length ? 'Choose an unsettled invoice to show its current balance.' : 'No unsettled invoices were loaded. Confirm the SQL setup and invoice balances.']];
-    E.creditNoteInvoiceInfo.innerHTML = rows.map(([label, value]) => `<div class="card"><div class="label">${U.escapeHtml(label)}</div><div class="value" style="font-size:15px;">${U.escapeHtml(String(value))}</div></div>`).join('');
+    if (E.creditNoteFormInvoiceDate) E.creditNoteFormInvoiceDate.value = inv ? String(inv.issue_date || inv.invoice_date || '').slice(0, 10) : '';
+    if (E.creditNoteFormCustomer) E.creditNoteFormCustomer.value = inv ? (inv.customer_legal_name || inv.customer_name || inv.client_name || inv.company_name || '') : '';
+    if (E.creditNoteFormCurrency) E.creditNoteFormCurrency.value = inv ? (inv.currency || 'USD') : '';
+    if (E.creditNoteInvoiceInfo) {
+      const rows = inv ? [
+        ['Invoice Amount', this.money(this.invoiceTotal(inv), inv.currency)],
+        ['Amount Paid', this.money(this.amountPaid(inv), inv.currency)],
+        ['Outstanding Balance', this.money(this.balanceDue(inv), inv.currency)],
+        ['Customer', inv.customer_legal_name || inv.customer_name || inv.client_name || inv.company_name || '—']
+      ] : [['Select invoice', this.state.invoices.length ? 'Choose an unsettled invoice to show its current balance.' : 'No unsettled invoices were loaded.']];
+      E.creditNoteInvoiceInfo.innerHTML = rows.map(([label, value]) => `<div class="credit-note-mini-card"><span>${U.escapeHtml(label)}</span><strong>${U.escapeHtml(String(value))}</strong></div>`).join('');
+    }
+    this.renderFormSummary();
   },
+  renderFormSummary() {
+    const panel = document.getElementById('creditNoteSummaryPanel');
+    if (!panel) return;
+    const inv = this.state.selectedInvoice || {};
+    const currency = E.creditNoteFormCurrency?.value || inv.currency || 'USD';
+    const credit = this.n(E.creditNoteFormAmount?.value);
+    const tax = this.n(document.getElementById('creditNoteFormTax')?.value);
+    const total = credit + tax;
+    if (document.getElementById('creditNoteFormTotal')) document.getElementById('creditNoteFormTotal').value = this.money(total, currency);
+    const customer = E.creditNoteFormCustomer?.value || inv.customer_legal_name || inv.customer_name || inv.client_name || inv.company_name || '—';
+    const address = inv.customer_address || inv.billing_address || inv.address || inv.location || '—';
+    const phoneEmail = [inv.phone, inv.email].filter(Boolean).join(' · ') || '—';
+    const items = [
+      ['Customer', customer], ['Address / Location', address], ['Phone / Email', phoneEmail],
+      ['Related Invoice', inv.invoice_number || inv.invoice_ref || '—'], ['Invoice Date', String(inv.issue_date || inv.invoice_date || '').slice(0, 10) || '—'],
+      ['Invoice Amount', this.money(this.invoiceTotal(inv), currency)], ['Amount Paid', this.money(this.amountPaid(inv), currency)], ['Outstanding Balance', this.money(this.balanceDue(inv), currency)],
+      ['Credit Amount', this.money(credit, currency)], ['Tax', this.money(tax, currency)], ['Total Credit Amount', this.money(total, currency)],
+      ['Currency', currency], ['Status', document.getElementById('creditNoteFormStatus')?.value || 'issued'], ['Reason', document.getElementById('creditNoteFormReason')?.value || '—']
+    ];
+    panel.innerHTML = `<h3>Credit Note Summary</h3>${items.map(([k,v]) => `<div class="credit-note-summary-row"><span>${U.escapeHtml(k)}</span><strong>${U.escapeHtml(String(v))}</strong></div>`).join('')}<div class="credit-note-summary-info">After saving, you can preview or send this credit note to your customer.</div>`;
+  },
+  clearFormErrors() { document.querySelectorAll('.credit-note-field-error').forEach(el => el.remove()); document.querySelectorAll('.credit-note-input-error').forEach(el => el.classList.remove('credit-note-input-error')); },
+  setFieldError(el, message) { if (!el) return; el.classList.add('credit-note-input-error'); el.insertAdjacentHTML('afterend', `<div class="credit-note-field-error">${U.escapeHtml(message)}</div>`); },
   async openCreate() {
     if (!this.canCreate()) return UI.toast('You do not have permission to create credit notes.');
     this.state.invoiceError = '';
@@ -268,7 +351,8 @@ const CreditNotes = {
     this.populateInvoiceDropdown();
     if (E.creditNoteForm) E.creditNoteForm.reset();
     if (E.creditNoteFormDate) E.creditNoteFormDate.value = this.today();
-    if (E.creditNoteFormPreviewBtn) E.creditNoteFormPreviewBtn.style.display = 'none';
+    if (E.creditNoteFormPreviewBtn) E.creditNoteFormPreviewBtn.style.display = '';
+    this.clearFormErrors();
     this.renderInvoiceInfo();
     E.creditNoteFormModal?.classList.add('open');
     E.creditNoteFormModal?.setAttribute('aria-hidden','false');
@@ -284,7 +368,7 @@ const CreditNotes = {
     const button = E.creditNoteFormSaveBtn;
     if (!button) return;
     button.disabled = this.state.saving;
-    button.textContent = this.state.saving ? 'Saving...' : 'Save';
+    button.textContent = this.state.saving ? 'Saving...' : 'Save Credit Note';
     button.setAttribute('aria-busy', String(this.state.saving));
   },
   onInvoiceSelected() {
@@ -293,18 +377,29 @@ const CreditNotes = {
     if (E.creditNoteFormAmount && this.state.selectedInvoice) E.creditNoteFormAmount.max = String(this.creditableAmount(this.state.selectedInvoice));
     this.renderInvoiceInfo();
   },
+  openCommunication(id) {
+    const row = this.state.rows.find(item => String(item.id || item.credit_note_id) === String(id)) || {};
+    const context = { related_module: 'credit_notes', related_record_id: id, related_record_ref: this.getCreditNoteDisplayNumber(row), related_record_title: this.getCreditNoteCustomer(row) };
+    if (window.CommunicationCentre?.openCreateForRecord) window.CommunicationCentre.openCreateForRecord(context);
+    else UI.toast('Communication Centre is unavailable.');
+  },
   validateForm() {
+    this.clearFormErrors();
     const invoice = this.state.selectedInvoice;
     const amount = this.n(E.creditNoteFormAmount?.value);
     const description = this.text(E.creditNoteFormDescription?.value);
     const date = this.text(E.creditNoteFormDate?.value);
-    if (!invoice?.id) throw new Error('Unsettled invoice is required.');
-    if (!this.isUuid(invoice.id)) throw new Error('A valid invoice UUID is required to create a credit note.');
-    if (!date) throw new Error('Credit note date is required.');
-    if (!description) throw new Error('Description is required.');
-    if (amount <= 0) throw new Error('Credit amount must be greater than 0.');
-    const creditable = this.creditableAmount(invoice);
-    if (amount > creditable + 0.0001) throw new Error(`Credit amount cannot exceed the creditable amount (${this.money(creditable, invoice.currency)}).`);
+    const errors = [];
+    if (!document.getElementById('creditNoteFormNumber')?.value && false) errors.push([document.getElementById('creditNoteFormNumber'), 'Credit note number is required.']);
+    if (!invoice?.id) errors.push([E.creditNoteFormInvoiceSelect, 'Related invoice is required.']);
+    if (invoice?.id && !this.isUuid(invoice.id)) errors.push([E.creditNoteFormInvoiceSelect, 'A valid invoice UUID is required to create a credit note.']);
+    if (!date) errors.push([E.creditNoteFormDate, 'Credit note date is required.']);
+    if (!E.creditNoteFormCurrency?.value && !invoice?.currency) errors.push([E.creditNoteFormCurrency, 'Currency is required.']);
+    if (amount <= 0) errors.push([E.creditNoteFormAmount, 'Credit amount must be greater than 0.']);
+    const creditable = invoice ? this.creditableAmount(invoice) : 0;
+    if (invoice && amount > creditable + 0.0001) errors.push([E.creditNoteFormAmount, `Credit amount cannot exceed the creditable amount (${this.money(creditable, invoice.currency)}).`]);
+    if (!description) errors.push([E.creditNoteFormDescription, 'Description is required.']);
+    if (errors.length) { errors.forEach(([el, msg]) => this.setFieldError(el, msg)); throw new Error(errors[0][1]); }
     return { invoice, amount, description, date };
   },
   buildPayload(invoice, amount, description, date) {
@@ -329,6 +424,17 @@ const CreditNotes = {
       status: 'issued',
       credit_note_request_key: this.state.requestKey
     };
+  },
+  previewDraft() {
+    try {
+      const { invoice, amount, description, date } = this.validateForm();
+      const note = this.buildPayload(invoice, amount, description, date);
+      note.credit_note_number = document.getElementById('creditNoteFormNumber')?.value || 'Draft Credit Note';
+      const html = U.addIncheckDocumentLogo(U.formatPreviewHtmlDates(this.buildPreviewHtml(note, invoice)));
+      const win = window.open('', '_blank');
+      if (!win) return UI.toast('Unable to open preview window.');
+      win.document.open(); win.document.write(html); win.document.close();
+    } catch (error) { UI.toast(error.message || 'Unable to preview credit note.'); }
   },
   async save(event) {
     event?.preventDefault?.();
@@ -416,21 +522,30 @@ const CreditNotes = {
     this._bound = true;
     byId('creditNotesRefreshBtn')?.addEventListener('click', () => this.refresh(true));
     createBtn.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); this.openCreate(); });
-    byId('creditNotesSearchInput')?.addEventListener('input', e => { this.state.search = e.target.value || ''; this.render(); });
-    byId('creditNotesStatusFilter')?.addEventListener('change', e => { this.state.status = e.target.value || 'All'; this.render(); });
+    byId('creditNotesSearchInput')?.addEventListener('input', e => { this.state.search = e.target.value || ''; this.state.page = 1; this.render(); });
+    byId('creditNotesStatusFilter')?.addEventListener('change', e => { this.state.status = e.target.value || 'All'; this.state.page = 1; this.render(); });
     byId('creditNotesTbody')?.addEventListener('click', e => {
       const preview = e.target.closest('[data-credit-note-preview]')?.dataset.creditNotePreview;
       const cancel = e.target.closest('[data-credit-note-cancel]')?.dataset.creditNoteCancel;
+      const comm = e.target.closest('[data-credit-note-communication]')?.dataset.creditNoteCommunication;
       if (preview) this.preview(preview);
       if (cancel) this.cancelCreditNote(cancel);
+      if (comm) this.openCommunication(comm);
     });
     byId('creditNoteFormInvoiceSelect')?.addEventListener('change', () => this.onInvoiceSelected());
+    document.querySelectorAll('[data-cn-filter]').forEach(el => el.addEventListener('input', e => { this.state.columnFilters[e.target.dataset.cnFilter] = e.target.value; this.state.page = 1; this.render(); }));
+    byId('creditNotesTable')?.addEventListener('click', e => { const th = e.target.closest('[data-cn-sort]'); if (!th) return; const key = th.dataset.cnSort; this.state.sort = { key, direction: this.state.sort.key === key && this.state.sort.direction === 'asc' ? 'desc' : 'asc' }; this.render(); });
+    byId('creditNotesTable')?.addEventListener('keydown', e => { if (!['Enter',' '].includes(e.key)) return; const th = e.target.closest('[data-cn-sort]'); if (!th) return; e.preventDefault(); th.click(); });
+    byId('creditNotesPagination')?.addEventListener('click', e => { const action = e.target.closest('[data-cn-page]')?.dataset.cnPage; if (!action) return; this.state.page += action === 'next' ? 1 : -1; this.render(); });
+    byId('creditNotesPagination')?.addEventListener('change', e => { if (!e.target.matches('[data-cn-page-size]')) return; this.state.pageSize = Number(e.target.value) || 10; this.state.page = 1; this.render(); });
+    ['creditNoteFormAmount','creditNoteFormTax','creditNoteFormReason','creditNoteFormStatus','creditNoteFormDescription'].forEach(id => byId(id)?.addEventListener('input', () => this.renderFormSummary()));
     const creditNoteForm = byId('creditNoteForm');
     this._saveSubmitHandler ||= event => this.save(event);
     creditNoteForm?.removeEventListener('submit', this._saveSubmitHandler);
     creditNoteForm?.addEventListener('submit', this._saveSubmitHandler);
     byId('creditNoteFormCloseBtn')?.addEventListener('click', () => this.closeForm());
     byId('creditNoteFormCancelBtn')?.addEventListener('click', () => this.closeForm());
+    byId('creditNoteFormPreviewBtn')?.addEventListener('click', () => this.previewDraft());
     byId('creditNotePreviewCloseBtn')?.addEventListener('click', () => this.closePreview());
     byId('creditNotePreviewBackBtn')?.addEventListener('click', () => this.closePreview());
     byId('creditNotePreviewExportPdfBtn')?.addEventListener('click', () => this.exportPreviewPdf());
