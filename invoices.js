@@ -3005,7 +3005,86 @@ const Invoices = {
     });
     this.render();
   },
+  closeInvoiceActionsMenu() {
+    if (this.state?.openInvoiceActionsMenu) {
+      this.state.openInvoiceActionsMenu.remove();
+      this.state.openInvoiceActionsMenu = null;
+    }
+    if (this.state?.openInvoiceActionsTrigger) {
+      this.state.openInvoiceActionsTrigger.setAttribute('aria-expanded', 'false');
+      this.state.openInvoiceActionsTrigger = null;
+    }
+    document.removeEventListener('click', this.boundInvoiceActionsOutsideClick, true);
+    document.removeEventListener('keydown', this.boundInvoiceActionsEscape, true);
+    window.removeEventListener('resize', this.boundInvoiceActionsReposition, true);
+    window.removeEventListener('scroll', this.boundInvoiceActionsReposition, true);
+  },
+  positionInvoiceActionsMenu(triggerBtn, menu) {
+    if (!triggerBtn || !menu) return;
+    const rect = triggerBtn.getBoundingClientRect();
+    const menuWidth = Math.min(220, Math.max(190, menu.offsetWidth || 190));
+    const menuHeight = Math.max(menu.offsetHeight || 0, 260);
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    let top = rect.bottom + 8;
+    if (top + menuHeight > viewportHeight - 12) top = Math.max(12, rect.top - menuHeight - 8);
+    let left = rect.right - menuWidth;
+    left = Math.max(12, Math.min(left, viewportWidth - menuWidth - 12));
+    menu.style.top = `${top}px`;
+    menu.style.left = `${left}px`;
+    menu.style.width = `${menuWidth}px`;
+  },
+  openInvoiceActionsMenu(triggerBtn) {
+    const invoiceId = triggerBtn?.dataset?.id || triggerBtn?.getAttribute?.('data-invoice-menu-toggle') || '';
+    const sourcePanel = triggerBtn?.closest?.('.invoice-row-menu')?.querySelector?.('.invoice-row-menu-panel');
+    this.closeInvoiceActionsMenu();
+    const menu = document.createElement('div');
+    menu.className = 'invoice-actions-menu invoice-row-menu-panel floating';
+    menu.dataset.invoiceId = invoiceId;
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', 'Invoice actions');
+    menu.innerHTML = sourcePanel?.innerHTML || '<span class="invoice-row-menu-empty">No actions available</span>';
+    menu.addEventListener('click', event => this.handleInvoiceActionMenuClick(event));
+    document.body.appendChild(menu);
+    this.state.openInvoiceActionsMenu = menu;
+    this.state.openInvoiceActionsTrigger = triggerBtn;
+    triggerBtn?.setAttribute?.('aria-expanded', 'true');
+    this.positionInvoiceActionsMenu(triggerBtn, menu);
+    requestAnimationFrame(() => {
+      document.addEventListener('click', this.boundInvoiceActionsOutsideClick, true);
+      document.addEventListener('keydown', this.boundInvoiceActionsEscape, true);
+      window.addEventListener('resize', this.boundInvoiceActionsReposition, true);
+      window.addEventListener('scroll', this.boundInvoiceActionsReposition, true);
+    });
+  },
+  handleInvoiceActionsOutsideClick(event) {
+    const menu = this.state.openInvoiceActionsMenu;
+    if (!menu) return;
+    if (!menu.contains(event.target) && !event.target?.closest?.('[data-action="toggle-invoice-actions"], [data-invoice-menu-toggle]')) this.closeInvoiceActionsMenu();
+  },
+  handleInvoiceActionsEscape(event) {
+    if (event.key === 'Escape') this.closeInvoiceActionsMenu();
+  },
+  repositionInvoiceActionsMenu() {
+    if (this.state.openInvoiceActionsMenu && this.state.openInvoiceActionsTrigger) this.positionInvoiceActionsMenu(this.state.openInvoiceActionsTrigger, this.state.openInvoiceActionsMenu);
+  },
+  handleInvoiceActionMenuClick(event) {
+    const trigger = event.target?.closest?.('[data-invoice-edit], [data-invoice-preview], [data-invoice-create-receipt], [data-invoice-delete], [data-create-communication]');
+    if (!trigger) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.closeInvoiceActionsMenu();
+    const editId = trigger.getAttribute('data-invoice-edit');
+    if (editId) return this.runRowAction(`edit:${editId}`, trigger, () => this.openInvoiceById(editId, { readOnly: false, trigger }));
+    const previewId = trigger.getAttribute('data-invoice-preview');
+    if (previewId) return this.runRowAction(`preview:${previewId}`, trigger, () => this.previewInvoice(previewId));
+    const createReceiptId = trigger.getAttribute('data-invoice-create-receipt');
+    if (createReceiptId) return this.runRowAction(`create-receipt:${createReceiptId}`, trigger, () => this.createReceiptFromInvoice(createReceiptId));
+    const deleteId = trigger.getAttribute('data-invoice-delete');
+    if (deleteId) return this.runRowAction(`delete:${deleteId}`, trigger, () => this.deleteInvoice(deleteId));
+  },
   render() {
+    this.closeInvoiceActionsMenu();
     if (!E.invoicesState || !E.invoicesTbody) return;
     if (this.state.loading) {
       this.renderPagination();
@@ -3073,10 +3152,10 @@ const Invoices = {
           <td>${statusPill(paymentState)}</td>
           <td>${textCell(row.payment_term || row.billing_frequency)}</td>
           <td>${U.escapeHtml(U.fmtDisplayDate(row.updated_at))}</td>
-          <td><div class="invoice-row-actions">
+          <td class="invoice-actions-cell"><div class="invoice-row-actions">
             <button class="btn ghost sm invoice-action-view" type="button" data-invoice-view="${id}">👁 View</button>
             <div class="invoice-row-menu">
-              <button class="btn ghost sm invoice-action-more" type="button" title="More actions" aria-label="More invoice actions" aria-expanded="false" data-invoice-menu-toggle="${id}">⋮</button>
+              <button class="btn ghost sm invoice-action-more invoice-actions-trigger invoice-actions-more-btn invoice-row-menu-trigger" type="button" title="More actions" aria-label="More invoice actions" aria-expanded="false" data-action="toggle-invoice-actions" data-id="${id}" data-invoice-menu-toggle="${id}">⋮</button>
               <div class="invoice-row-menu-panel" role="menu" aria-label="Invoice actions">
                 ${actionItems || '<span class="invoice-row-menu-empty">No actions available</span>'}
               </div>
@@ -5048,6 +5127,9 @@ const Invoices = {
   },
   init() {
     if (this.state.initialized) return;
+    this.boundInvoiceActionsOutsideClick = event => this.handleInvoiceActionsOutsideClick(event);
+    this.boundInvoiceActionsEscape = event => this.handleInvoiceActionsEscape(event);
+    this.boundInvoiceActionsReposition = () => this.repositionInvoiceActionsMenu();
     const bindState = (el, key) => {
       if (!el) return;
       const sync = () => {
@@ -5100,27 +5182,13 @@ const Invoices = {
     }
     if (E.invoicesTbody) {
       E.invoicesTbody.addEventListener('click', event => {
-        const closeInvoiceMenus = exceptMenu => {
-          document.querySelectorAll('.invoice-row-menu.is-open').forEach(menu => {
-            if (exceptMenu && menu === exceptMenu) return;
-            menu.classList.remove('is-open');
-            menu.querySelector('[data-invoice-menu-toggle]')?.setAttribute('aria-expanded', 'false');
-          });
-        };
-        const toggle = event.target?.closest?.('[data-invoice-menu-toggle]');
+        const closeInvoiceMenus = () => this.closeInvoiceActionsMenu();
+        const toggle = event.target?.closest?.('[data-action="toggle-invoice-actions"], [data-invoice-menu-toggle]');
         if (toggle) {
           event.preventDefault();
           event.stopPropagation();
-          const menu = toggle.closest('.invoice-row-menu');
-          const shouldOpen = !menu?.classList.contains('is-open');
-          closeInvoiceMenus(menu);
-          if (menu && shouldOpen) {
-            menu.classList.add('is-open');
-            toggle.setAttribute('aria-expanded', 'true');
-          } else if (menu) {
-            menu.classList.remove('is-open');
-            toggle.setAttribute('aria-expanded', 'false');
-          }
+          if (this.state.openInvoiceActionsTrigger === toggle && this.state.openInvoiceActionsMenu) this.closeInvoiceActionsMenu();
+          else this.openInvoiceActionsMenu(toggle);
           return;
         }
         const trigger = event.target?.closest?.('[data-invoice-view], [data-invoice-row-open], [data-invoice-edit], [data-invoice-preview], [data-invoice-create-receipt], [data-invoice-delete]');
