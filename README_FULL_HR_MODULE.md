@@ -1,6 +1,6 @@
 # Full HR Module Added
 
-This package adds a complete HR workspace to the ERP:
+This package adds a complete HR workspace to the ERP, now extended with the full Phase 2/3 HR workflow:
 
 - HR Dashboard
 - Employee Directory
@@ -11,6 +11,14 @@ This package adds a complete HR workspace to the ERP:
 - Payslip preview with browser Print / Save as PDF
 - Employee Documents and expiry tracking
 - HR Settings
+- Employee Self-Service portal
+- Department Manager Team View
+- Leave Balance tracking by year and leave type
+- Attendance Correction approval workflow
+- Overtime approval workflow
+- HR notification feed
+- Transportation allowance per working day, deducted automatically for sick/leave/absent/no-attendance days
+- Payroll locking flow: Draft → Reviewed → Approved → Paid → Locked
 - CSV export for Attendance and Payroll
 
 ## Files Added
@@ -50,12 +58,13 @@ Monthly Payroll uses:
 
 ```text
 Basic Salary
-+ Allowances
-+ Overtime Amount
-- Absence Deduction
-- Unpaid Leave Deduction
-- Late Deduction
++ Fixed Monthly Allowances
++ Expected Transportation Allowance
++ Approved Overtime Amount
+- Absence / Unpaid Leave Deduction
+- Late / Early Leave Deduction
 - Fixed Deductions
+- Transportation Deduction for sick, leave, absent, half-day and no-attendance days
 = Net Salary
 ```
 
@@ -71,3 +80,14 @@ Attendance source fields used:
 ## Recommended Next Step
 
 After deployment, create real employees, assign shifts, record attendance for a few days, approve leaves, then generate the monthly payroll report and preview payslips.
+
+## Transportation Rule
+
+Set `Transportation Per Working Day` on each employee. Payroll calculates expected monthly transportation as working days × transportation/day, then deducts transportation for days not physically worked, including sick leave, annual leave, unpaid leave, absence, half-day portion, and missing attendance. Approved paid leave does not deduct base salary, but transportation is still deducted unless the leave request is set to `Deduct Transportation = No`.
+
+## New Approval Workflows
+
+- Leave requests: pending manager / pending HR / approved / rejected / cancelled.
+- Attendance corrections: pending manager / pending HR / approved / applied / rejected.
+- Overtime: requested hours are not paid until approved; payroll uses approved overtime only.
+- Payroll: draft / reviewed / approved / paid / locked.

@@ -196,6 +196,30 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     update: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources'],
     approve: ['admin', 'hr', 'hr_manager', 'human_resources', 'general_manager', 'gm', 'hoo', 'head_of_operations']
   }),
+  hr_self_service: Object.freeze({
+    view: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources', 'general_manager', 'gm', 'employee', 'viewer'],
+    create: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources', 'employee']
+  }),
+  hr_team: Object.freeze({
+    view: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources', 'general_manager', 'gm', 'hoo', 'head_of_operations', 'manager', 'department_manager']
+  }),
+  hr_leave_balance: Object.freeze({
+    view: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources', 'general_manager', 'gm', 'hoo', 'head_of_operations'],
+    update: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources']
+  }),
+  hr_attendance_correction: Object.freeze({
+    view: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources', 'general_manager', 'gm', 'hoo', 'head_of_operations', 'manager', 'department_manager'],
+    create: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources', 'employee'],
+    approve: ['admin', 'hr', 'hr_manager', 'human_resources', 'general_manager', 'gm', 'hoo', 'head_of_operations', 'manager', 'department_manager']
+  }),
+  hr_overtime: Object.freeze({
+    view: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources', 'general_manager', 'gm', 'hoo', 'head_of_operations', 'manager', 'department_manager', 'sfc', 'accounting'],
+    create: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources', 'employee'],
+    approve: ['admin', 'hr', 'hr_manager', 'human_resources', 'general_manager', 'gm', 'hoo', 'head_of_operations', 'manager', 'department_manager']
+  }),
+  hr_notifications: Object.freeze({
+    view: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources', 'general_manager', 'gm', 'hoo', 'head_of_operations']
+  }),
   hr_payroll: Object.freeze({
     view: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources', 'general_manager', 'gm', 'senior_financial_controller', 'senior_fc', 'sfc', 'accountant', 'accounting'],
     list: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources', 'general_manager', 'gm', 'senior_financial_controller', 'senior_fc', 'sfc', 'accountant', 'accounting'],
@@ -478,6 +502,12 @@ const Permissions = {
     const normalizedResource = String(resource || '').trim().toLowerCase();
     if (normalizedResource === 'csm') return ['csm', 'csm_activities'];
     if (['hr','human_resources','human-resources','hr_employees'].includes(normalizedResource)) return ['hr', 'hr_employees'];
+    if (['hr_self_service','self_service','self-service'].includes(normalizedResource)) return ['hr_self_service','hr'];
+    if (['hr_team','team'].includes(normalizedResource)) return ['hr_team','hr'];
+    if (['hr_leave_balance','leave_balance','leave-balances'].includes(normalizedResource)) return ['hr_leave_balance','hr_leave'];
+    if (['hr_attendance_correction','attendance_correction','corrections'].includes(normalizedResource)) return ['hr_attendance_correction','hr_attendance'];
+    if (['hr_overtime','overtime'].includes(normalizedResource)) return ['hr_overtime','hr_payroll'];
+    if (['hr_notifications'].includes(normalizedResource)) return ['hr_notifications','hr'];
     if (['hr_attendance','attendance'].includes(normalizedResource)) return ['hr_attendance'];
     if (['hr_payroll','payroll','payslips'].includes(normalizedResource)) return ['hr_payroll'];
     if (normalizedResource === 'csm_activities') return ['csm_activities', 'csm'];
@@ -1228,7 +1258,7 @@ async function handleExpiredSession(message = 'Session expired. Please log in ag
 
 
 const PermissionAudit = {
-  resources: ['tickets','events','ai_insights','companies','contacts','leads','deals','proposals','agreements','operations_onboarding','invoices','receipts','credit_notes','payment_forecast','monthly_renewal_forecast','biners','hr','hr_attendance','hr_leave','hr_payroll','hr_documents','hr_settings','clients','analytics','notifications','notification_settings','workflow','users','role_permissions'],
+  resources: ['tickets','events','ai_insights','companies','contacts','leads','deals','proposals','agreements','operations_onboarding','invoices','receipts','credit_notes','payment_forecast','monthly_renewal_forecast','biners','hr','hr_attendance','hr_leave','hr_self_service','hr_team','hr_leave_balance','hr_attendance_correction','hr_overtime','hr_notifications','hr_payroll','hr_documents','hr_settings','clients','analytics','notifications','notification_settings','workflow','users','role_permissions'],
   actions: ['list','get','create','update','delete','export','manage','approve','reject','convert_to_deal','create_from_deal','create_from_proposal','create_from_agreement','create_from_invoice','cancel','print','export','assign_csm','update_status','view_renewals','view_statement','statement_view','statement_export','create_receipt','schedule_payment','record_payment','view_details','mark_renewed','mark_no_renewal_needed','undo_override','create_renewal_invoice','generate','review','pay','manage_attendance'],
   inspect(resource, action) {
     const role = Permissions.normalizeRole(Session.role());

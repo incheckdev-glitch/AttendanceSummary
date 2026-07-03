@@ -1,6 +1,7 @@
 -- InCheck360 Full HR Module
 -- Creates HR, Attendance, Leave, Payroll, Payslip, Documents and HR Settings tables.
 -- Safe to re-run.
+-- Permissions are seeded only for role_key values that already exist in public.roles to avoid FK errors.
 
 create extension if not exists pgcrypto;
 
@@ -247,11 +248,191 @@ begin
     ) as t(resource, action, roles_csv)
   loop
     insert into public.role_permissions (permission_id, role_key, resource, action, is_allowed, is_active, allowed_roles, created_at, updated_at)
-    select gen_random_uuid(), trim(role_key), item.resource, item.action, true, true, array[trim(role_key)]::text[], now(), now()
-    from regexp_split_to_table(item.roles_csv, ',') as role_key
+    select gen_random_uuid(), trim(split_role.role_key), item.resource, item.action, true, true, array[trim(split_role.role_key)]::text[], now(), now()
+    from regexp_split_to_table(item.roles_csv, ',') as split_role(role_key)
+    join public.roles existing_role on existing_role.role_key = trim(split_role.role_key)
+    where trim(split_role.role_key) <> ''
     on conflict (role_key, resource, action)
     do update set is_allowed = true, is_active = true, allowed_roles = excluded.allowed_roles, updated_at = now();
   end loop;
 exception when undefined_table then
   raise notice 'role_permissions table not found; HR permissions were added to frontend base matrix only.';
+end $$;
+
+-- HR Phase 2/3 additions: self-service, approvals, leave balance, overtime, transport-per-day payroll, notifications.
+alter table public.hr_employees add column if not exists manager_email text;
+alter table public.hr_employees add column if not exists transportation_per_day numeric(14,2) not null default 0;
+
+alter table public.hr_leave_requests add column if not exists deduct_transportation boolean not null default true;
+alter table public.hr_leave_requests add column if not exists document_url text;
+alter table public.hr_leave_requests add column if not exists manager_approved_by text;
+alter table public.hr_leave_requests add column if not exists manager_approved_at timestamptz;
+alter table public.hr_leave_requests add column if not exists hr_approved_by text;
+alter table public.hr_leave_requests add column if not exists hr_approved_at timestamptz;
+
+alter table public.hr_payroll_runs add column if not exists locked_at timestamptz;
+alter table public.hr_payroll_runs add column if not exists reviewed_at timestamptz;
+alter table public.hr_payroll_runs add column if not exists reviewed_by text;
+
+alter table public.hr_payroll_items add column if not exists detected_overtime_hours numeric(10,2) not null default 0;
+alter table public.hr_payroll_items add column if not exists transportation_per_day numeric(14,2) not null default 0;
+alter table public.hr_payroll_items add column if not exists transportation_days numeric(10,2) not null default 0;
+alter table public.hr_payroll_items add column if not exists transportation_allowance numeric(14,2) not null default 0;
+alter table public.hr_payroll_items add column if not exists transportation_deduction numeric(14,2) not null default 0;
+alter table public.hr_payroll_items add column if not exists leave_transport_deduct_days numeric(10,2) not null default 0;
+alter table public.hr_payroll_items add column if not exists leave_transport_paid_days numeric(10,2) not null default 0;
+alter table public.hr_payroll_items add column if not exists absence_deduction numeric(14,2) not null default 0;
+alter table public.hr_payroll_items add column if not exists late_deduction numeric(14,2) not null default 0;
+alter table public.hr_payroll_items add column if not exists early_leave_deduction numeric(14,2) not null default 0;
+alter table public.hr_payroll_items add column if not exists fixed_deductions numeric(14,2) not null default 0;
+alter table public.hr_payroll_items add column if not exists details jsonb not null default '{}'::jsonb;
+
+create table if not exists public.hr_leave_balances (
+  id uuid primary key default gen_random_uuid(),
+  employee_id uuid not null references public.hr_employees(id) on delete cascade,
+  leave_type text not null,
+  year integer not null,
+  entitlement_days numeric(10,2) not null default 0,
+  carry_forward_days numeric(10,2) not null default 0,
+  adjustment_days numeric(10,2) not null default 0,
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(employee_id, leave_type, year)
+);
+
+create table if not exists public.hr_attendance_correction_requests (
+  id uuid primary key default gen_random_uuid(),
+  employee_id uuid not null references public.hr_employees(id) on delete cascade,
+  attendance_date date not null,
+  requested_check_in text,
+  requested_check_out text,
+  status text not null default 'pending_manager' check (status in ('pending_manager','pending_hr','approved','rejected','applied','cancelled')),
+  reason text,
+  requested_by text,
+  approved_by text,
+  approved_at timestamptz,
+  applied_by text,
+  applied_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.hr_overtime_requests (
+  id uuid primary key default gen_random_uuid(),
+  employee_id uuid not null references public.hr_employees(id) on delete cascade,
+  overtime_date date not null,
+  requested_hours numeric(10,2) not null default 0,
+  approved_hours numeric(10,2) not null default 0,
+  status text not null default 'pending_manager' check (status in ('pending_manager','pending_hr','approved','rejected','cancelled')),
+  reason text,
+  requested_by text,
+  approved_by text,
+  approved_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.hr_employee_requests (
+  id uuid primary key default gen_random_uuid(),
+  employee_id uuid references public.hr_employees(id) on delete set null,
+  request_type text not null,
+  subject text,
+  description text,
+  status text not null default 'pending' check (status in ('pending','approved','rejected','completed','cancelled')),
+  requested_by text,
+  assigned_to text,
+  resolved_by text,
+  resolved_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.hr_notifications (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  message text,
+  type text not null default 'info',
+  entity_type text,
+  entity_id text,
+  is_read boolean not null default false,
+  created_by text,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.hr_holidays (
+  id uuid primary key default gen_random_uuid(),
+  holiday_date date not null,
+  name text not null,
+  country text,
+  is_paid boolean not null default true,
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(holiday_date, name)
+);
+
+create index if not exists idx_hr_leave_balances_employee_year on public.hr_leave_balances(employee_id, year);
+create index if not exists idx_hr_corrections_status on public.hr_attendance_correction_requests(status);
+create index if not exists idx_hr_overtime_status on public.hr_overtime_requests(status);
+create index if not exists idx_hr_employee_requests_status on public.hr_employee_requests(status);
+create index if not exists idx_hr_notifications_created on public.hr_notifications(created_at);
+create index if not exists idx_hr_holidays_date on public.hr_holidays(holiday_date);
+
+alter table public.hr_leave_balances enable row level security;
+alter table public.hr_attendance_correction_requests enable row level security;
+alter table public.hr_overtime_requests enable row level security;
+alter table public.hr_employee_requests enable row level security;
+alter table public.hr_notifications enable row level security;
+alter table public.hr_holidays enable row level security;
+
+do $$
+declare
+  table_name text;
+begin
+  foreach table_name in array array['hr_leave_balances','hr_attendance_correction_requests','hr_overtime_requests','hr_employee_requests','hr_notifications','hr_holidays'] loop
+    execute format('drop policy if exists %I on public.%I', table_name || '_authenticated_select', table_name);
+    execute format('drop policy if exists %I on public.%I', table_name || '_authenticated_insert', table_name);
+    execute format('drop policy if exists %I on public.%I', table_name || '_authenticated_update', table_name);
+    execute format('drop policy if exists %I on public.%I', table_name || '_authenticated_delete', table_name);
+    execute format('create policy %I on public.%I for select using (auth.role() = ''authenticated'')', table_name || '_authenticated_select', table_name);
+    execute format('create policy %I on public.%I for insert with check (auth.role() = ''authenticated'')', table_name || '_authenticated_insert', table_name);
+    execute format('create policy %I on public.%I for update using (auth.role() = ''authenticated'') with check (auth.role() = ''authenticated'')', table_name || '_authenticated_update', table_name);
+    execute format('create policy %I on public.%I for delete using (auth.role() = ''authenticated'')', table_name || '_authenticated_delete', table_name);
+  end loop;
+end $$;
+
+-- Extra permissions for phase 2/3 resources. Again: only inserts existing role keys.
+do $$
+declare
+  item record;
+begin
+  for item in
+    select * from (values
+      ('hr_self_service','view','admin,dev,developer,hr,hr_manager,human_resources,general_manager,gm,senior_financial_controller,senior_fc,sfc,accountant,accounting,hoo,head_of_operations,employee,viewer'),
+      ('hr_self_service','create','admin,dev,developer,hr,hr_manager,human_resources,employee'),
+      ('hr_team','view','admin,dev,developer,hr,hr_manager,human_resources,general_manager,gm,hoo,head_of_operations,manager,department_manager'),
+      ('hr_leave_balance','view','admin,dev,developer,hr,hr_manager,human_resources,general_manager,gm,hoo,head_of_operations'),
+      ('hr_leave_balance','update','admin,dev,developer,hr,hr_manager,human_resources'),
+      ('hr_attendance_correction','view','admin,dev,developer,hr,hr_manager,human_resources,general_manager,gm,hoo,head_of_operations,manager,department_manager'),
+      ('hr_attendance_correction','create','admin,dev,developer,hr,hr_manager,human_resources,employee'),
+      ('hr_attendance_correction','approve','admin,hr,hr_manager,human_resources,general_manager,gm,hoo,head_of_operations,manager,department_manager'),
+      ('hr_overtime','view','admin,dev,developer,hr,hr_manager,human_resources,general_manager,gm,hoo,head_of_operations,manager,department_manager,sfc,accounting'),
+      ('hr_overtime','create','admin,dev,developer,hr,hr_manager,human_resources,employee'),
+      ('hr_overtime','approve','admin,hr,hr_manager,human_resources,general_manager,gm,hoo,head_of_operations,manager,department_manager'),
+      ('hr_notifications','view','admin,dev,developer,hr,hr_manager,human_resources,general_manager,gm,hoo,head_of_operations'),
+      ('hr_requests','view','admin,dev,developer,hr,hr_manager,human_resources,general_manager,gm,hoo,head_of_operations'),
+      ('hr_requests','create','admin,dev,developer,hr,hr_manager,human_resources,employee')
+    ) as t(resource, action, roles_csv)
+  loop
+    insert into public.role_permissions (permission_id, role_key, resource, action, is_allowed, is_active, allowed_roles, created_at, updated_at)
+    select gen_random_uuid(), trim(split_role.role_key), item.resource, item.action, true, true, array[trim(split_role.role_key)]::text[], now(), now()
+    from regexp_split_to_table(item.roles_csv, ',') as split_role(role_key)
+    join public.roles existing_role on existing_role.role_key = trim(split_role.role_key)
+    where trim(split_role.role_key) <> ''
+    on conflict (role_key, resource, action)
+    do update set is_allowed = true, is_active = true, allowed_roles = excluded.allowed_roles, updated_at = now();
+  end loop;
+exception when undefined_table then
+  raise notice 'role_permissions table not found; phase 2/3 HR permissions were added to frontend base matrix only.';
 end $$;
