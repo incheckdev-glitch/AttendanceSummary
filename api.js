@@ -166,9 +166,6 @@ const Api = {
     if (safeOptions.updated_after !== undefined && safeOptions.updated_after !== null && safeOptions.updated_after !== '') {
       payload.updated_after = safeOptions.updated_after;
     }
-    if (safeOptions.column_filters && typeof safeOptions.column_filters === 'object') {
-      payload.column_filters = safeOptions.column_filters;
-    }
     return payload;
   },
   mapPagedListResponse(response) {

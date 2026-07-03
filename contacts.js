@@ -949,8 +949,8 @@ const Contacts = {
     const canCreateLead = Permissions.canCreate('leads');
     const permissions = { canEdit, canDelete, canCreateLead };
     this.renderContactSummaryCards();
-    window.TableUtils?.ensureHeaders?.('contacts', b.closest('table'), this.tableColumns);
-    const contactRows = window.TableUtils?.processRows ? window.TableUtils.processRows('contacts', this.state.rows, this.columnMap) : this.state.rows;
+    TableUtils?.ensureHeaders?.('contacts', b.closest('table'), this.tableColumns);
+    const contactRows = TableUtils?.processRows ? TableUtils.processRows('contacts', this.state.rows, this.columnMap) : this.state.rows;
     b.innerHTML = contactRows.map(r => {
       const selected = String(this.state.selectedDetailsId || '') === String(r.id || r.contact_id || '');
       return `<tr class='entity-clickable-row contact-row${selected ? ' is-selected' : ''}' tabindex='0' data-contact-row='${U.escapeAttr(r.id || r.contact_id || '')}' aria-label='Open contact ${U.escapeAttr(this.getContactFullName(r))} details'>

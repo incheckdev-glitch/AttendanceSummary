@@ -48,30 +48,6 @@
       return rowValue.includes(value);
     }));
   }
-
-  function getPaginatedTableRows({ rows, filters, filterFn, sortState, columnMap, currentPage, pageSize }) {
-    const allRows = Array.isArray(rows) ? rows : [];
-    const safePageSize = Math.max(1, Number(pageSize) || allRows.length || 1);
-    const filteredRows = typeof filterFn === 'function'
-      ? allRows.filter(row => filterFn(row, filters))
-      : allRows;
-    const sortedRows = sortRows(filteredRows, sortState, columnMap);
-    const totalRows = sortedRows.length;
-    const totalPages = Math.max(1, Math.ceil(totalRows / safePageSize));
-    const safePage = Math.min(Math.max(1, Number(currentPage) || 1), totalPages);
-    const start = (safePage - 1) * safePageSize;
-    const end = start + safePageSize;
-    return {
-      rows: sortedRows.slice(start, end),
-      filteredRows,
-      sortedRows,
-      totalRows,
-      totalPages,
-      currentPage: safePage,
-      startItem: totalRows === 0 ? 0 : start + 1,
-      endItem: Math.min(start + safePageSize, totalRows)
-    };
-  }
   function nextSortDirection(currentSort, key) {
     if (!currentSort || currentSort.key !== key) return { key, direction: 'asc' };
     if (currentSort.direction === 'asc') return { key, direction: 'desc' };
@@ -96,8 +72,7 @@
   function rerenderTable(tableName) {
     const map = { invoices: global.Invoices, receipts: global.Receipts, proposals: global.Proposals, agreements: global.Agreements, companies: global.Companies, contacts: global.Contacts, leads: global.Leads, deals: global.Deals, credit_notes: global.CreditNotes, creditNotes: global.CreditNotes, payment_forecast: global.PaymentForecast, paymentForecast: global.PaymentForecast, biners: global.Biners };
     const mod = map[tableName];
-    if (mod?.refresh) return mod.refresh(true);
-    if (mod?.loadAndRefresh) return mod.loadAndRefresh({ force: true });
+    if (mod?.loadAndRefresh && (tableName === 'companies')) return mod.loadAndRefresh({ force: true });
     if (mod?.renderActiveTab) return mod.renderActiveTab();
     if (mod?.render) return mod.render();
     if (mod?.rerenderVisibleTable) return mod.rerenderVisibleTable();
@@ -144,8 +119,5 @@
     global.tableColumnFilters[tableName][filter.dataset.tableFilter] = filter.value;
     resetTablePage(tableName); rerenderTable(tableName);
   });
-  global.TableUtils = { getValueByPath, normalizeSortValue, sortRows, applyColumnFilters, getPaginatedTableRows, nextSortDirection, renderSortableHeader, sortState, columnFilters, processRows, ensureHeaders, handleTableSort };
-  global.sortRows = global.sortRows || sortRows;
-  global.renderSortableHeader = global.renderSortableHeader || renderSortableHeader;
-  global.getPaginatedTableRows = global.getPaginatedTableRows || getPaginatedTableRows;
+  global.TableUtils = { getValueByPath, normalizeSortValue, sortRows, applyColumnFilters, nextSortDirection, renderSortableHeader, sortState, processRows, ensureHeaders, handleTableSort };
 })(window);

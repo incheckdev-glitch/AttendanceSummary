@@ -1028,12 +1028,10 @@ const Clients = {
     const cachedAgreements = this.getCachedClientDetailRows_(clientId, 'agreements');
     if (cachedAgreements.length) return cachedAgreements;
     const matchedAgreements = (Array.isArray(this.state.agreements) ? this.state.agreements : []).filter(Boolean).filter(item => this.matchesClientAgreement_(item, client));
-    if (window.ClientsService?.DEBUG_CLIENTS) {
-      console.log('[AgreementMapping] matched agreements for client', {
-        clientName: client?.client_name || client?.company_name || client?.name || client?.customer_name,
-        matched: matchedAgreements.length
-      });
-    }
+    console.log('[AgreementMapping] matched agreements for client', {
+      clientName: client?.client_name || client?.company_name || client?.name || client?.customer_name,
+      matched: matchedAgreements.length
+    });
     return matchedAgreements;
   },
   getAgreementMatchKeys_(agreement = {}) {
@@ -3067,8 +3065,8 @@ const Clients = {
         if (tabName === 'statement') btn.style.display = this.canViewClientStatement() ? '' : 'none';
         if (tabName === 'renewals') btn.style.display = this.canViewClientRenewals() ? '' : 'none';
         const selected = tabName === this.state.activeDetailTab;
-        btn.classList.toggle('is-active', selected);
-        btn.setAttribute('aria-selected', selected ? 'true' : 'false');
+        btn.classList.toggle('primary', selected);
+        btn.classList.toggle('ghost', !selected);
       });
     }
     if (!options.skipLoad && this.state.selectedClientId && this.state.activeDetailTab !== 'overview') {
@@ -3554,13 +3552,13 @@ const Clients = {
         ['Total Balance Due', this.formatMoneyWithCurrency_(totalBalance, rows[0]?.currency || currency)],
         ['Overdue Balance', this.formatMoneyWithCurrency_(overdueBalance, rows[0]?.currency || currency)],
         ['Next Due Date', U.fmtDisplayDate(nextDueDate) || '—']
-      ].map(([label, value], index) => `<div class="client-kpi-card"><div class="client-kpi-icon">${['📍','📄','🧾','💵','📈','✅','⚠️','◔','📅'][index % 9]}</div><div><div class="label">${U.escapeHtml(label)}</div><div class="value">${U.escapeHtml(String(value))}</div><small>Live client snapshot</small></div></div>`).join('');
+      ].map(([label, value]) => `<div class="card kpi"><div class="label">${U.escapeHtml(label)}</div><div class="value">${U.escapeHtml(String(value))}</div></div>`).join('');
     }
     if (E.clientScheduledPaymentFilters) {
       E.clientScheduledPaymentFilters.querySelectorAll('[data-scheduled-payment-filter]').forEach(btn => {
         const selected = btn.getAttribute('data-scheduled-payment-filter') === (this.state.scheduledPaymentsFilter || 'all');
-        btn.classList.toggle('is-active', selected);
-        btn.setAttribute('aria-selected', selected ? 'true' : 'false');
+        btn.classList.toggle('primary', selected);
+        btn.classList.toggle('ghost', !selected);
       });
     }
     if (E.clientScheduledPaymentsTbody) {
@@ -3618,11 +3616,9 @@ const Clients = {
         ['Last Payment Date', U.fmtDisplayDate(lastPayment) || '—'],
         ['Next Renewal Date', U.fmtDisplayDate(nextRenewal) || '—']
       ]
-        .map(([label, value], index) => `<div class="client-kpi-card"><div class="client-kpi-icon">${['📍','📄','🧾','💵','📈','✅','⚠️','◔'][index % 8]}</div><div><div class="label">${U.escapeHtml(label)}</div><div class="value">${U.escapeHtml(String(value))}</div><small>Live client snapshot</small></div></div>`)
+        .map(([label, value]) => `<div class="card kpi"><div class="label">${U.escapeHtml(label)}</div><div class="value">${U.escapeHtml(String(value))}</div></div>`)
         .join('');
     }
-    const statementSummaryMount = document.getElementById('clientStatementSummaryStrip');
-    if (statementSummaryMount) statementSummaryMount.innerHTML = `<div><span>Total Debits</span><strong>${U.escapeHtml(this.formatMoneyWithCurrency_(totalInvoiced, clientCurrency))}</strong></div><div><span>Total Credits</span><strong>${U.escapeHtml(this.formatMoneyWithCurrency_(totalPaid, clientCurrency))}</strong></div><div><span>Balance</span><strong>${U.escapeHtml(this.formatMoneyWithCurrency_(totalDue, clientCurrency))}</strong></div>`;
     if (E.clientStatementTbody) {
       const emptyMessage = detailData.statementError
         ? 'Unable to load statement data.'
@@ -3636,11 +3632,11 @@ const Clients = {
               <td>${U.escapeHtml(row.type || '—')}</td>
               <td>${U.escapeHtml(this.getStatementDisplayDocumentNo_(row))}</td>
               <td>${U.escapeHtml(row.currency || 'USD')}</td>
-              <td class="amount-cell">${U.escapeHtml(this.formatMoneyWithCurrency_(row.debit || 0, row.currency || clientCurrency))}</td>
-              <td class="amount-cell">${U.escapeHtml(this.formatMoneyWithCurrency_(row.credit || 0, row.currency || clientCurrency))}</td>
-              <td class="amount-cell">${U.escapeHtml(this.formatMoneyWithCurrency_(row.running_balance || 0, row.currency || clientCurrency))}</td>
+              <td>${U.escapeHtml(this.formatMoneyWithCurrency_(row.debit || 0, row.currency || clientCurrency))}</td>
+              <td>${U.escapeHtml(this.formatMoneyWithCurrency_(row.credit || 0, row.currency || clientCurrency))}</td>
+              <td>${U.escapeHtml(this.formatMoneyWithCurrency_(row.running_balance || 0, row.currency || clientCurrency))}</td>
               <td>${U.escapeHtml(U.fmtDisplayDate(row.due_date) || '—')}</td>
-              <td><span class="chip ${this.getStatementRowStatus(row).toLowerCase().includes('overdue') ? 'danger' : this.getStatementRowStatus(row).toLowerCase().includes('draft') ? '' : 'ok'}">${U.escapeHtml(this.getStatementRowStatus(row))}</span></td>
+              <td>${U.escapeHtml(this.getStatementRowStatus(row))}</td>
             </tr>`)
             .join('')
         : `<tr><td colspan="9" class="muted" style="text-align:center;">${U.escapeHtml(emptyMessage)}</td></tr>`;
@@ -3662,7 +3658,7 @@ const Clients = {
             <td style="text-align:right;">${U.escapeHtml(U.fmtNumber(row.credit || 0))}</td>
             <td style="text-align:right;">${U.escapeHtml(U.fmtNumber(row.running_balance || 0))}</td>
             <td>${U.escapeHtml(U.fmtDisplayDate(row.due_date) || '—')}</td>
-            <td><span class="chip ${this.getStatementRowStatus(row).toLowerCase().includes('overdue') ? 'danger' : this.getStatementRowStatus(row).toLowerCase().includes('draft') ? '' : 'ok'}">${U.escapeHtml(this.getStatementRowStatus(row))}</span></td>
+            <td>${U.escapeHtml(this.getStatementRowStatus(row))}</td>
           </tr>`)
           .join('')
       : '<tr><td colspan="9" style="text-align:center;">No statement rows found.</td></tr>';
@@ -3975,25 +3971,8 @@ const Clients = {
     const subtitle = String(linkedCompany?.company_name || linkedCompany?.companyName || '').trim();
     const subtitleValue = subtitle && this.normalizeText(subtitle) !== this.normalizeText(title) ? subtitle : '';
     if (E.clientDetailName) E.clientDetailName.textContent = title;
-    const breadcrumbName = document.getElementById('clientDetailBreadcrumbName');
-    if (breadcrumbName) breadcrumbName.textContent = title;
-    const latestAgreementForMeta = this.resolveLatestAgreementContext_(client.client_id).preferred;
-    const latestInvoiceForMeta = this.listClientRelatedInvoices_(client.client_id)[0] || {};
-    const billingMeta = client.billing_frequency || client.billingFrequency || latestAgreementForMeta?.billing_frequency || latestInvoiceForMeta?.billing_frequency || '—';
-    const metaItems = [
-      ['👤', 'Contact', this.buildContactPersonName(primaryContact) || '—'],
-      ['✉️', 'Email', (String(primaryContact?.email || primaryContact?.contact_email || '').trim()) || '—'],
-      ['☎️', 'Phone', (String(primaryContact?.phone || primaryContact?.mobile || primaryContact?.contact_phone || '').trim()) || '—'],
-      ['🌍', 'Country', linkedCompany?.country || client.country || '—'],
-      ['🏙️', 'City', linkedCompany?.city || client.city || '—'],
-      ['📍', 'Address', linkedCompany?.address || client.customer_address || client.address || '—'],
-      ['💳', 'Billing', billingMeta],
-      ['🔎', 'Source', linkedCompany?.source || linkedCompany?.lead_source || client.source || '—'],
-      ['📧', 'Main Email', linkedCompany?.main_email || linkedCompany?.email || client.main_email || client.contact_email || '—'],
-      ['📞', 'Contact Phone', linkedCompany?.main_phone || linkedCompany?.phone || client.contact_phone || client.phone || '—']
-    ];
-    if (E.clientDetailMeta) E.clientDetailMeta.innerHTML = metaItems.map(([icon, label, value]) => `<span class="client-meta-pill"><span>${U.escapeHtml(icon)}</span><strong>${U.escapeHtml(label)}</strong><em>${U.escapeHtml(String(value))}</em></span>`).join('');
-    if (E.clientDetailStatus) { E.clientDetailStatus.textContent = client.status || 'Unknown'; E.clientDetailStatus.classList.toggle('inactive', !String(client.status || '').toLowerCase().includes('active')); }
+    if (E.clientDetailMeta) E.clientDetailMeta.textContent = `${subtitleValue || client.customer_legal_name || 'No legal name'} • ${this.buildContactPersonName(primaryContact) || 'No contact'} • ${(String(primaryContact?.email || primaryContact?.contact_email || '').trim()) || '—'}`;
+    if (E.clientDetailStatus) E.clientDetailStatus.textContent = client.status || 'Unknown';
     const communicationContext = { related_module: 'client', related_record_id: client.client_id, related_record_ref: client.client_id, related_record_title: title, client_name: title, company_name: subtitleValue || title, contact_name: this.buildContactPersonName(primaryContact) || '' };
     const communicationButton = document.getElementById('clientCreateCommunicationBtn');
     if (communicationButton) {
@@ -4016,13 +3995,14 @@ const Clients = {
       ['Locations', analytics.active_locations === null || analytics.active_locations === undefined
         ? `${analytics.total_locations || 0}`
         : `${analytics.total_locations || 0} (${analytics.active_locations || 0} active)`],
-      ['Agreements', `${analytics.total_agreements || 0} (${analytics.signed_agreements || 0} signed)`],
-      ['Invoices', `${analytics.total_invoices_count || 0}`],
-      ['Receipts', `${analytics.total_receipts_count || 0}`],
+      ['Current Agreements', `${analytics.total_agreements || 0} (${analytics.signed_agreements || 0} total signed)`],
+      ['Agreement Value', this.formatMoneyWithCurrency_(analytics.total_agreement_value || 0, displayCurrency)],
       ['Total Invoiced', this.formatMoneyWithCurrency_(analytics.total_invoiced_value || 0, displayCurrency)],
       ['Total Paid', this.formatMoneyWithCurrency_(analytics.total_paid_amount || 0, displayCurrency)],
+      ['Total Credited', this.formatMoneyWithCurrency_(analytics.total_credited_amount || 0, displayCurrency)],
       ['Total Due', this.formatMoneyWithCurrency_(analytics.total_due_amount || 0, displayCurrency)],
-      ['Status Mix', `${analytics.total_credit_notes_count || 0} credit notes`]
+      ['Invoices / Receipts / Credit Notes', `${analytics.total_invoices_count || 0} / ${analytics.total_receipts_count || 0} / ${analytics.total_credit_notes_count || 0}`],
+      ['Next Renewal', U.fmtDisplayDate(analytics.next_renewal_date) || '—']
     ];
     if (E.clientAnalyticsCards) {
       E.clientAnalyticsCards.innerHTML = analyticsCards
@@ -4038,7 +4018,7 @@ const Clients = {
         ? agreements
             .map(item => `<tr>
               <td>${U.escapeHtml(item.agreement_number || item.agreement_id || '—')}</td>
-              <td><span class="chip">${U.escapeHtml(item.status || '—')}</span></td>
+              <td>${U.escapeHtml(item.status || '—')}</td>
               <td>${U.escapeHtml(this.formatMoneyWithCurrency_(item.grand_total || 0, item.currency || displayCurrency))}</td>
               <td>${U.escapeHtml(U.fmtDisplayDate(item.service_start_date) || '—')}</td>
               <td>${U.escapeHtml(U.fmtDisplayDate(item.service_end_date) || '—')}</td>
@@ -4066,7 +4046,7 @@ const Clients = {
         ? receipts
             .map(item => `<tr>
               <td>${U.escapeHtml(item.receipt_number || item.receipt_id || item.id || '—')}</td>
-              <td><span class="chip ok">${U.escapeHtml(item.payment_state || item.status || '—')}</span></td>
+              <td>${U.escapeHtml(item.payment_state || item.status || '—')}</td>
               <td>${U.escapeHtml(this.formatMoneyWithCurrency_(this.pickAmount_(item, ['received_amount', 'amount_paid', 'paid_amount', 'amount', 'total_amount']), item.currency || displayCurrency))}</td>
               <td>${U.escapeHtml(this.formatMoneyWithCurrency_(this.pickAmount_(item, ['pending_amount', 'balance_due', 'amount_due']), item.currency || displayCurrency))}</td>
               <td>${item.id && Permissions.canView('receipts') ? `<button class="btn ghost sm" type="button" data-permission-resource="receipts" data-permission-action="view" data-receipt-view="${U.escapeAttr(item.id)}">Open</button>` : '—'}</td>
@@ -4079,13 +4059,11 @@ const Clients = {
       const timeline = (detailData.timeline || this.buildTimeline_(client.client_id)).slice(0, 20);
       E.clientTimeline.innerHTML = timeline.length
         ? timeline
-            .map(item => `<li><span class="client-timeline-dot">•</span><div><strong>${U.escapeHtml(item.label || item.title || item.type || 'Activity')}</strong><p>${U.escapeHtml(item.reference || item.subtitle || item.module || 'Client activity')}</p><time>${U.escapeHtml(U.fmtDisplayDate(item.date || item.event_date) || '—')}</time></div></li>`)
+            .map(item => `<li><strong>${U.escapeHtml(U.fmtDisplayDate(item.date || item.event_date) || '—')}</strong> — ${U.escapeHtml(item.label || item.title || item.type || 'Activity')}</li>`)
             .join('')
         : '<li class="muted">No timeline activity yet.</li>';
     }
     const loadedTabs = this.state.loadedTabsByClient.get(client.client_id) || new Set(['overview']);
-    const summaryMount = document.getElementById('clientOverviewStatementSummary');
-    if (summaryMount) summaryMount.innerHTML = `<div><span>Total Invoiced</span><strong>${U.escapeHtml(this.formatMoneyWithCurrency_(analytics.total_invoiced_value || 0, displayCurrency))}</strong></div><div><span>Total Paid</span><strong>${U.escapeHtml(this.formatMoneyWithCurrency_(analytics.total_paid_amount || 0, displayCurrency))}</strong></div><div><span>Balance</span><strong>${U.escapeHtml(this.formatMoneyWithCurrency_(analytics.total_due_amount || 0, displayCurrency))}</strong></div>`;
     if (this.state.activeDetailTab === 'statement' || loadedTabs.has('statement')) this.renderStatementSection_(detailData);
     if (this.state.activeDetailTab === 'renewals' || loadedTabs.has('renewals')) this.renderRenewalsSection_(detailData, client);
     if (this.state.activeDetailTab === 'scheduledPayments' || loadedTabs.has('scheduledPayments')) this.renderScheduledPaymentsSection_(detailData, client);

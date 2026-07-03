@@ -93,44 +93,18 @@ const Companies = {
   formatCompanyType(value = '') { const found = this.state.companyTypeOptions.find(o => o.value === value); return found?.label || this.formatCodeFallback(value); },
   formatCompanyIndustry(value = '') { const found = this.state.companyIndustryOptions.find(o => o.value === value); return found?.label || this.formatCodeFallback(value); },
   normalize(raw = {}) { return { ...raw, id: raw.id || '', company_id: raw.company_id || raw.companyId || '', company_name: raw.company_name || raw.companyName || '', legal_name: raw.legal_name || raw.legalName || '', legal_company_name: raw.legal_company_name || raw.legalCompanyName || '', authorized_signatory_full_name: raw.authorized_signatory_full_name || raw.authorizedSignatoryFullName || '', authorized_signatory_title: raw.authorized_signatory_title || raw.authorizedSignatoryTitle || '', registration_number: raw.registration_number || raw.registrationNumber || '', company_type: raw.company_type || '', industry: raw.industry || '', website: raw.website || '', main_email: raw.main_email || raw.mainEmail || '', main_phone: raw.main_phone || raw.mainPhone || '', country: raw.country || '', state: raw.state || '', city: raw.city || '', address: raw.address || '', tax_number: raw.tax_number || raw.taxNumber || '', vat_number: raw.vat_number || raw.vatNumber || '', company_status: raw.company_status || raw.companyStatus || raw.status || 'Prospect', notes: raw.notes || '', documents_verified: raw.documents_verified ?? raw.documentsVerified ?? false, documents_verification_status: raw.documents_verification_status || raw.documentsVerificationStatus || 'not_verified', documents_verified_at: raw.documents_verified_at || raw.documentsVerifiedAt || '', documents_verified_by: raw.documents_verified_by || raw.documentsVerifiedBy || '', documents_verification_notes: raw.documents_verification_notes || raw.documentsVerificationNotes || '', documents_verified_snapshot: raw.documents_verified_snapshot ?? raw.documentsVerifiedSnapshot ?? null, documents_verification_invalidated_at: raw.documents_verification_invalidated_at || raw.documentsVerificationInvalidatedAt || '', documents_verification_invalidated_reason: raw.documents_verification_invalidated_reason || raw.documentsVerificationInvalidatedReason || '', is_verified: raw.is_verified ?? raw.isVerified ?? false, verified: raw.verified ?? false, company_verified: raw.company_verified ?? raw.companyVerified ?? false, authorized_signatory_verified: raw.authorized_signatory_verified ?? raw.authorizedSignatoryVerified ?? false, verification_status: raw.verification_status || raw.verificationStatus || '', authorized_signatory_name: raw.authorized_signatory_name || raw.authorizedSignatoryName || raw.authorized_signatory_full_name || raw.authorizedSignatoryFullName || '', created_at: raw.created_at || raw.createdAt || '' }; },
-  mapOptionRows(rows = [], fallback = []) {
-    const mapped = (Array.isArray(rows) ? rows : [])
-      .map(r => ({ value: String(r.value || r.option_value || r.code || r.id || '').trim(), label: String(r.label || r.option_label || r.name || r.value || r.option_value || r.code || '').trim() }))
-      .filter(r => r.value && r.label);
-    return mapped.length ? mapped : fallback;
-  },
-  async loadOptionTable(tableName, fallback) {
-    const client = window.SupabaseClient?.getClient?.() || window.supabase;
-    if (client?.from) {
-      try {
-        const { data, error } = await client.from(tableName).select('*').limit(100);
-        if (!error) {
-          const rows = (Array.isArray(data) ? data : [])
-            .filter(row => row?.is_active === undefined || row?.is_active === null || row?.is_active === true)
-            .sort((a, b) => {
-              const aSort = a?.sort_order ?? a?.name ?? a?.label ?? a?.created_at ?? '';
-              const bSort = b?.sort_order ?? b?.name ?? b?.label ?? b?.created_at ?? '';
-              return String(aSort).localeCompare(String(bSort), undefined, { numeric: true });
-            });
-          return this.mapOptionRows(rows, fallback);
-        }
-        console.warn(`[Options] ${tableName} load failed`, error);
-      } catch (error) {
-        console.warn(`[Options] ${tableName} load failed`, error);
-      }
-    }
-    try {
-      const res = await Api.requestWithSession(tableName, 'list', { filters: {}, limit: 100 }, { requireAuth: true });
-      return this.mapOptionRows(Array.isArray(res?.rows) ? res.rows : Array.isArray(res) ? res : [], fallback);
-    } catch (error) {
-      console.warn(`[Options] ${tableName} final fallback failed`, error);
-      return fallback;
-    }
-  },
   async hydrateOptionSources() {
+    const load = async (resource, fallback) => {
+      try {
+        const res = await Api.requestWithSession(resource, 'list', { filters: { is_active: true }, sortBy: 'sort_order', sortDir: 'asc', limit: 100 }, { requireAuth: true });
+        const rows = Array.isArray(res?.rows) ? res.rows : Array.isArray(res) ? res : [];
+        const mapped = rows.map(r => ({ value: String(r.value || r.option_value || r.code || '').trim(), label: String(r.label || r.option_label || r.name || '').trim() })).filter(r => r.value && r.label);
+        return mapped.length ? mapped : fallback;
+      } catch (_) { return fallback; }
+    };
     [this.state.companyTypeOptions, this.state.companyIndustryOptions] = await Promise.all([
-      this.loadOptionTable('company_type_options', COMPANY_TYPE_FALLBACK_OPTIONS),
-      this.loadOptionTable('company_industry_options', COMPANY_INDUSTRY_FALLBACK_OPTIONS)
+      load('company_type_options', COMPANY_TYPE_FALLBACK_OPTIONS),
+      load('company_industry_options', COMPANY_INDUSTRY_FALLBACK_OPTIONS)
     ]);
   },
   renderSelectOptions(id, options, placeholder) {
@@ -414,8 +388,8 @@ const Companies = {
     const canEdit = Permissions.canEdit('companies'), canDelete = Permissions.canDelete('companies'); const canCreateLead = Permissions.canCreate('leads');
     const permissions = { canEdit, canDelete, canCreateLead };
     this.renderCompanySummaryCards();
-    window.TableUtils?.ensureHeaders?.('companies', body.closest('table'), this.tableColumns);
-    const companyRows = window.TableUtils?.processRows ? window.TableUtils.processRows('companies', this.state.rows, this.columnMap) : this.state.rows;
+    TableUtils?.ensureHeaders?.('companies', body.closest('table'), this.tableColumns);
+    const companyRows = TableUtils?.processRows ? TableUtils.processRows('companies', this.state.rows, this.columnMap) : this.state.rows;
     body.innerHTML = companyRows.map(r => {
       const selected = String(this.state.selectedDetailsId || '') === String(r.id || r.company_id || '');
       return `<tr class='entity-clickable-row company-row${selected ? ' is-selected' : ''}' tabindex='0' data-company-row='${U.escapeAttr(r.id || r.company_id || '')}' aria-label='Open company ${U.escapeAttr(r.company_name || r.company_id || '')} details'>

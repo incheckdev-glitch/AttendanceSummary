@@ -1,8 +1,9 @@
-const STATIC_CACHE_NAME = 'incheck360-monitorcore-static-v18-module-hotfix-inject';
+const STATIC_CACHE_NAME = 'incheck360-monitorcore-static-v14-proposal-sign-methods-light';
 const PUSH_DIAGNOSTICS_CACHE_NAME = 'incheck360-monitorcore-push-diagnostics-v1';
 const PUSH_DIAGNOSTICS_PREFIX = '/__incheck360_push_diagnostics__/';
-const MODULE_HOTFIX_SCRIPT = '<script src="/module-hotfix.js?v=20260703-module-blank-screen-fix1"></script>';
 const STATIC_ASSETS = [
+  '/',
+  '/index.html',
   '/offline.html',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
@@ -39,7 +40,7 @@ self.addEventListener('activate', event => {
       .then(keys =>
         Promise.all(
           keys
-            .filter(key => key !== STATIC_CACHE_NAME && key !== PUSH_DIAGNOSTICS_CACHE_NAME)
+            .filter(key => key !== STATIC_CACHE_NAME)
             .map(key => caches.delete(key))
         )
       )
@@ -91,42 +92,6 @@ async function readAllPushDiagnostics() {
   };
 }
 
-function shouldInjectHotfix(requestUrl, request) {
-  if (request.method !== 'GET') return false;
-  if (requestUrl.origin !== self.location.origin) return false;
-  const pathname = (requestUrl.pathname || '').toLowerCase();
-  const accept = String(request.headers.get('accept') || '').toLowerCase();
-  return request.mode === 'navigate' || pathname === '/' || pathname.endsWith('/index.html') || accept.includes('text/html');
-}
-
-async function fetchHtmlWithModuleHotfix(request) {
-  try {
-    const networkResponse = await fetch(request, { cache: 'no-store' });
-    const contentType = String(networkResponse.headers.get('content-type') || '');
-    if (!networkResponse.ok || !contentType.includes('text/html')) return networkResponse;
-
-    let html = await networkResponse.text();
-    if (!html.includes('/module-hotfix.js')) {
-      html = html.includes('</body>')
-        ? html.replace('</body>', `${MODULE_HOTFIX_SCRIPT}\n</body>`)
-        : `${html}\n${MODULE_HOTFIX_SCRIPT}`;
-    }
-
-    const headers = new Headers(networkResponse.headers);
-    headers.set('cache-control', 'no-store, no-cache, must-revalidate');
-    headers.set('x-incheck360-module-hotfix', 'injected');
-    return new Response(html, {
-      status: networkResponse.status,
-      statusText: networkResponse.statusText,
-      headers
-    });
-  } catch (error) {
-    const cached = await caches.match('/offline.html');
-    if (cached) return cached;
-    throw error;
-  }
-}
-
 function isBlockedRequest(requestUrl, requestMethod) {
   if (requestMethod !== 'GET') return true;
 
@@ -135,20 +100,6 @@ function isBlockedRequest(requestUrl, requestMethod) {
   const lowerPath = pathname.toLowerCase();
 
   if (host.includes('supabase.co')) return true;
-
-  // Critical ERP shell/module files must never be served stale from the PWA cache.
-  if (requestUrl.origin === self.location.origin) {
-    if (
-      lowerPath === '/' ||
-      lowerPath.endsWith('/index.html') ||
-      lowerPath.endsWith('.html') ||
-      lowerPath.endsWith('.js') ||
-      lowerPath.endsWith('.css')
-    ) {
-      return true;
-    }
-  }
-
   if (lowerPath.includes('/api/')) return true;
   if (lowerPath.includes('/proxy')) return true;
   if (lowerPath.includes('auth/session')) return true;
@@ -172,11 +123,6 @@ function isBlockedRequest(requestUrl, requestMethod) {
 self.addEventListener('fetch', event => {
   const { request } = event;
   const requestUrl = new URL(request.url);
-
-  if (shouldInjectHotfix(requestUrl, request)) {
-    event.respondWith(fetchHtmlWithModuleHotfix(request));
-    return;
-  }
 
   if (isBlockedRequest(requestUrl, request.method)) {
     return;
@@ -273,61 +219,104 @@ self.addEventListener('push', (event) => {
 
     const options = {
       body,
-      icon: '/icons/icon-192.png',
-      badge: '/icons/icon-192.png',
+      icon: payload.icon || '/icons/icon-192.png',
+      badge: payload.badge || '/icons/icon-192.png',
       tag,
+      renotify: true,
+      requireInteraction: true,
+      silent: false,
+      vibrate: [200, 100, 200],
+      timestamp: Date.now(),
       data: {
-        url,
-        payload,
-        receivedAt: new Date().toISOString()
+        ...payload,
+        ...(payload.data || {}),
+        deep_link: payload?.deep_link || dataPayload?.deep_link || url,
+        url
       }
     };
 
+    console.log('[SW push]', payload);
+
+    await savePushDiagnostic('lastPushReceivedAt', new Date().toISOString());
+    await savePushDiagnostic('lastPushPayload', payload);
+
     try {
-      await savePushDiagnostic('lastPushReceivedAt', new Date().toISOString());
-      await savePushDiagnostic('lastPushPayload', payload);
       await self.registration.showNotification(title, options);
       await savePushDiagnostic('lastShowNotificationAt', new Date().toISOString());
       await savePushDiagnostic('lastShowNotificationError', null);
-      pushDebugLog('notification shown', { title, url, tag });
     } catch (error) {
-      await savePushDiagnostic('lastShowNotificationError', error?.message || String(error));
-      pushDebugLog('showNotification failed', error);
-      throw error;
+      await savePushDiagnostic(
+        'lastShowNotificationError',
+        error && error.message ? error.message : String(error)
+      );
     }
-  })());
-});
 
-self.addEventListener('notificationclick', event => {
-  event.notification.close();
-  const rawUrl = event.notification?.data?.url || '/';
-  const targetUrl = new URL(rawUrl, self.location.origin).toString();
+    pushDebugLog('push received', {
+      hasEventData: Boolean(event.data),
+      permission: self.Notification?.permission || 'unknown',
+      title,
+      tag,
+      url
+    });
 
-  event.waitUntil((async () => {
-    const windowClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    for (const client of windowClients) {
-      try {
-        const clientUrl = new URL(client.url);
-        if (clientUrl.origin === self.location.origin && 'focus' in client) {
-          if ('navigate' in client) await client.navigate(targetUrl);
-          await client.focus();
-          return;
+    const allClients = await self.clients.matchAll({
+      type: 'window',
+      includeUncontrolled: true
+    });
+
+    for (const client of allClients) {
+      client.postMessage({
+        type: 'INCHECK360_PUSH_RECEIVED',
+        payload: {
+          title,
+          body: options.body,
+          url,
+          data: options.data
         }
-      } catch {}
+      });
     }
-    if (self.clients.openWindow) await self.clients.openWindow(targetUrl);
   })());
 });
 
 self.addEventListener('message', event => {
-  const type = event.data && event.data.type;
-  if (type === 'GET_PUSH_DIAGNOSTICS') {
+  const data = event?.data || {};
+  if (data?.type === 'INCHECK360_READ_PUSH_DIAGNOSTICS') {
     event.waitUntil((async () => {
       const diagnostics = await readAllPushDiagnostics();
-      event.source?.postMessage?.({
-        type: 'PUSH_DIAGNOSTICS',
-        diagnostics
+      event.source?.postMessage({
+        type: 'INCHECK360_PUSH_DIAGNOSTICS',
+        payload: diagnostics
       });
     })());
+    return;
   }
+
+  if (data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  const url = event.notification?.data?.url || event.notification?.data?.deep_link || '/';
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if ('focus' in client) {
+          client.focus();
+          client.postMessage({
+            type: 'OPEN_NOTIFICATION_URL',
+            url,
+          });
+          return;
+        }
+      }
+
+      if (clients.openWindow) {
+        return clients.openWindow(url);
+      }
+    })
+  );
 });

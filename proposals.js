@@ -3697,8 +3697,8 @@ const Proposals = {
       return;
     }
 
-    window.TableUtils?.ensureHeaders?.('proposals', E.proposalsTbody?.closest('table'), this.tableColumns);
-    const rows = window.TableUtils?.processRows ? window.TableUtils.processRows('proposals', this.state.filteredRows, this.columnMap) : this.state.filteredRows;
+    TableUtils?.ensureHeaders?.('proposals', E.proposalsTbody?.closest('table'), this.tableColumns);
+    const rows = TableUtils?.processRows ? TableUtils.processRows('proposals', this.state.filteredRows, this.columnMap) : this.state.filteredRows;
     this.renderProposalAnalytics(this.computeProposalAnalytics(rows));
     E.proposalsState.textContent = `${rows.length} proposal${rows.length === 1 ? '' : 's'} · page ${this.state.page}`;
     const paginationHost = U.ensurePaginationHost({ hostId: 'proposalsPaginationControls', anchor: E.proposalsState });

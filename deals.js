@@ -1245,8 +1245,8 @@ const Deals = {
       return;
     }
 
-    window.TableUtils?.ensureHeaders?.('deals', E.dealsTbody?.closest('table'), this.tableColumns);
-    const rows = window.TableUtils?.processRows ? window.TableUtils.processRows('deals', this.state.filteredRows, this.columnMap) : this.state.filteredRows;
+    TableUtils?.ensureHeaders?.('deals', E.dealsTbody?.closest('table'), this.tableColumns);
+    const rows = TableUtils?.processRows ? TableUtils.processRows('deals', this.state.filteredRows, this.columnMap) : this.state.filteredRows;
     this.renderDealAnalytics(this.computeDealAnalytics(rows));
     const shownFrom = rows.length ? (Number(this.state.offset) || 0) + 1 : 0;
     const shownTo = rows.length ? (Number(this.state.offset) || 0) + rows.length : 0;
