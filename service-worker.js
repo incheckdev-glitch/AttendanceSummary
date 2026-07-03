@@ -1,9 +1,8 @@
-const STATIC_CACHE_NAME = 'incheck360-monitorcore-static-v17-force-network-modules';
+const STATIC_CACHE_NAME = 'incheck360-monitorcore-static-v18-module-hotfix-inject';
 const PUSH_DIAGNOSTICS_CACHE_NAME = 'incheck360-monitorcore-push-diagnostics-v1';
 const PUSH_DIAGNOSTICS_PREFIX = '/__incheck360_push_diagnostics__/';
+const MODULE_HOTFIX_SCRIPT = '<script src="/module-hotfix.js?v=20260703-module-blank-screen-fix1"></script>';
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
   '/offline.html',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
@@ -40,7 +39,7 @@ self.addEventListener('activate', event => {
       .then(keys =>
         Promise.all(
           keys
-            .filter(key => key !== STATIC_CACHE_NAME)
+            .filter(key => key !== STATIC_CACHE_NAME && key !== PUSH_DIAGNOSTICS_CACHE_NAME)
             .map(key => caches.delete(key))
         )
       )
@@ -92,6 +91,42 @@ async function readAllPushDiagnostics() {
   };
 }
 
+function shouldInjectHotfix(requestUrl, request) {
+  if (request.method !== 'GET') return false;
+  if (requestUrl.origin !== self.location.origin) return false;
+  const pathname = (requestUrl.pathname || '').toLowerCase();
+  const accept = String(request.headers.get('accept') || '').toLowerCase();
+  return request.mode === 'navigate' || pathname === '/' || pathname.endsWith('/index.html') || accept.includes('text/html');
+}
+
+async function fetchHtmlWithModuleHotfix(request) {
+  try {
+    const networkResponse = await fetch(request, { cache: 'no-store' });
+    const contentType = String(networkResponse.headers.get('content-type') || '');
+    if (!networkResponse.ok || !contentType.includes('text/html')) return networkResponse;
+
+    let html = await networkResponse.text();
+    if (!html.includes('/module-hotfix.js')) {
+      html = html.includes('</body>')
+        ? html.replace('</body>', `${MODULE_HOTFIX_SCRIPT}\n</body>`)
+        : `${html}\n${MODULE_HOTFIX_SCRIPT}`;
+    }
+
+    const headers = new Headers(networkResponse.headers);
+    headers.set('cache-control', 'no-store, no-cache, must-revalidate');
+    headers.set('x-incheck360-module-hotfix', 'injected');
+    return new Response(html, {
+      status: networkResponse.status,
+      statusText: networkResponse.statusText,
+      headers
+    });
+  } catch (error) {
+    const cached = await caches.match('/offline.html');
+    if (cached) return cached;
+    throw error;
+  }
+}
+
 function isBlockedRequest(requestUrl, requestMethod) {
   if (requestMethod !== 'GET') return true;
 
@@ -102,16 +137,13 @@ function isBlockedRequest(requestUrl, requestMethod) {
   if (host.includes('supabase.co')) return true;
 
   // Critical ERP shell/module files must never be served stale from the PWA cache.
-  // A stale cached JS/CSS/index file can make modules appear stuck after deployment.
   if (requestUrl.origin === self.location.origin) {
-    const accept = String(requestUrl.searchParams.get('accept') || '');
     if (
       lowerPath === '/' ||
       lowerPath.endsWith('/index.html') ||
       lowerPath.endsWith('.html') ||
       lowerPath.endsWith('.js') ||
-      lowerPath.endsWith('.css') ||
-      accept.includes('text/html')
+      lowerPath.endsWith('.css')
     ) {
       return true;
     }
@@ -140,6 +172,11 @@ function isBlockedRequest(requestUrl, requestMethod) {
 self.addEventListener('fetch', event => {
   const { request } = event;
   const requestUrl = new URL(request.url);
+
+  if (shouldInjectHotfix(requestUrl, request)) {
+    event.respondWith(fetchHtmlWithModuleHotfix(request));
+    return;
+  }
 
   if (isBlockedRequest(requestUrl, request.method)) {
     return;
