@@ -1,4 +1,6 @@
 const ClientsService = {
+  DEBUG_CLIENTS: false,
+  skippedInvalidClientIds: new Set(),
   CLIENT_COLUMNS: new Set([
     'client_id','client_name','company_name','primary_email','primary_phone','billing_frequency','payment_term',
     'status','company_id','source_agreement_id','total_agreements','total_locations','total_value','total_paid','total_due','created_by','updated_by'
@@ -21,6 +23,13 @@ const ClientsService = {
     return Number.isFinite(parsed) ? parsed : 0;
   },
   normalizeText(value) { return String(value || '').trim().toLowerCase(); },
+  isUuid(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(String(value || '').trim());
+  },
+  rememberSkippedClientId_(id) {
+    const key = String(id || '').trim();
+    if (key) this.skippedInvalidClientIds.add(key);
+  },
   normalizeMatchValue(value) {
     return String(value || '').trim().toLowerCase().replace(/s\.?a\.?l\.?/gi, 'sal').replace(/\s+/g, ' ');
   },
@@ -1504,6 +1513,15 @@ const ClientsService = {
   async updateClient(clientUuid, updates = {}, options = {}) {
     const id = String(clientUuid || '').trim();
     if (!id) throw new Error('Client UUID is required for update.');
+    if (this.skippedInvalidClientIds.has(id)) return null;
+    if (!this.isUuid(id)) {
+      this.rememberSkippedClientId_(id);
+      if (options?.softFail === true) {
+        console.warn('[ClientsService] skipped client id update because id is not UUID', id);
+        return null;
+      }
+      throw new Error('Client UUID is required for update.');
+    }
     const db = this.getDb();
     const payload = this.sanitizeClientPayload(updates, { includeCreatedBy: false });
     const { data, error } = await db.from('clients').update(payload).eq('id', id).select('*').maybeSingle();
@@ -1517,6 +1535,7 @@ const ClientsService = {
       }
       if (options?.softFail === true) {
         console.warn('[ClientsService] client update skipped after backend error', { id, error });
+        this.rememberSkippedClientId_(id);
         return null;
       }
       throw this.friendlyError('Unable to update client', error);
@@ -1545,6 +1564,10 @@ const ClientsService = {
   async deleteClient(clientUuid) {
     const id = String(clientUuid || '').trim();
     if (!id) throw new Error('Client UUID is required for delete.');
+    if (!this.isUuid(id)) {
+      this.rememberSkippedClientId_(id);
+      throw new Error('Client UUID is required for delete.');
+    }
     const db = this.getDb();
     const { error } = await db.from('clients').delete().eq('id', id);
     if (error) throw this.friendlyError('Unable to delete client', error);
@@ -1574,10 +1597,10 @@ const ClientsService = {
     if (companiesRes?.error) console.warn('[ClientsService] companies lookup query failed; client analytics will fallback to raw ids/names.', companiesRes.error);
     this.rebuildCompanyLookupMaps(this.coerceLinkedRows_(companiesRes, 'companies'));
     agreementRows = this.coerceLinkedRows_(agreementsRes, 'agreements');
-    console.log('[AgreementMapping] loaded agreements', agreementRows.length);
+    if (this.DEBUG_CLIENTS) console.log('[AgreementMapping] loaded agreements', agreementRows.length);
     itemRows = this.coerceLinkedRows_(itemsRes, 'agreement_items');
-    console.log('[ClientsService] agreement_items count', itemRows.length, itemRows.slice(0, 5));
-    console.log('[ClientsService] agreement_items sample dates', itemRows.slice(0, 5).map(row => ({
+    if (this.DEBUG_CLIENTS) console.log('[ClientsService] agreement_items count', itemRows.length, itemRows.slice(0, 5));
+    if (this.DEBUG_CLIENTS) console.log('[ClientsService] agreement_items sample dates', itemRows.slice(0, 5).map(row => ({
       id: row.id,
       section: row.section,
       location_name: row.location_name,
