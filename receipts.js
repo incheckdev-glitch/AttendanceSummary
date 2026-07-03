@@ -981,7 +981,10 @@ const Receipts = {
     set('receiptFormPaymentReferenceDisplay', receipt.payment_reference);
     set('receiptFormDueDateDisplay', invoiceSource.due_date || invoiceSource.payment_due_date || receipt.due_date);
     if (E.receiptForm) E.receiptForm.dataset.id = receipt.id || '';
-    if (E.receiptFormTitle) E.receiptFormTitle.textContent = receipt.id ? 'Edit Receipt' : 'Create Receipt';
+    if (E.receiptFormTitle) {
+      const label = String(receipt.receipt_number || receipt.receipt_id || receipt.invoice_number || '').trim();
+      E.receiptFormTitle.textContent = `${receipt.id ? 'Edit Receipt' : 'Create Receipt'}${label ? ` · ${label}` : ''}`;
+    }
     if (E.receiptFormIdBadge) {
       const badgeText = receipt.receipt_number || receipt.receipt_id || '';
       E.receiptFormIdBadge.textContent = badgeText ? `Receipt # ${badgeText}` : '';
@@ -1592,7 +1595,7 @@ const Receipts = {
       E.receiptFormTitle.textContent = `Create Receipt · ${label}`;
     }
     if (E.receiptFormDeleteBtn) E.receiptFormDeleteBtn.style.display = 'none';
-    if (E.receiptFormPreviewBtn) E.receiptFormPreviewBtn.style.display = 'none';
+    if (E.receiptFormPreviewBtn) E.receiptFormPreviewBtn.style.display = '';
     if (E.receiptFormSaveBtn) E.receiptFormSaveBtn.style.display = Permissions.canCreateReceiptFromInvoice() ? '' : 'none';
   },
   resolveReceiptUuid(ref) {
@@ -2430,9 +2433,25 @@ const Receipts = {
 </html>`;
     return U.stripInternalDocumentLinks(html);
   },
+  previewReceiptFromDraft(receiptDraft = null) {
+    const draft = receiptDraft || this.collectUpdates();
+    const items = Array.isArray(this.state.items) ? this.state.items : [];
+    const html = this.buildReceiptPreviewHtml(draft, items, null, [], []);
+    const brandedHtml = U.addIncheckDocumentLogo(U.formatPreviewHtmlDates(html));
+    const label = this.receiptDisplayId(draft) || draft.invoice_number || 'Draft';
+    if (E.receiptPreviewTitle) E.receiptPreviewTitle.textContent = `RECEIPT VOUCHER · ${label}`;
+    if (E.receiptPreviewFrame) E.receiptPreviewFrame.srcdoc = brandedHtml;
+    if (E.receiptPreviewModal) {
+      E.receiptPreviewModal.classList.add('open');
+      E.receiptPreviewModal.setAttribute('aria-hidden', 'false');
+    }
+  },
   async previewReceipt(receiptId) {
     const id = this.resolveReceiptUuid(receiptId);
-    if (!id) return;
+    if (!id) {
+      this.previewReceiptFromDraft(this.collectUpdates());
+      return;
+    }
     try {
       const { receipt, items, invoice, invoiceItems, invoiceReceipts } = await this.loadReceiptPreviewData(id);
       const html = this.buildReceiptPreviewHtml(receipt, items, invoice, invoiceItems, invoiceReceipts);
@@ -2609,7 +2628,12 @@ const Receipts = {
     if (E.receiptFormCloseBtn) E.receiptFormCloseBtn.addEventListener('click', () => this.closeForm());
     if (E.receiptFormCancelBtn) E.receiptFormCancelBtn.addEventListener('click', () => this.closeForm());
     if (E.receiptFormDeleteBtn) E.receiptFormDeleteBtn.addEventListener('click', () => this.deleteReceipt(E.receiptForm?.dataset.id || ''));
-    if (E.receiptFormPreviewBtn) E.receiptFormPreviewBtn.addEventListener('click', () => this.previewReceipt(E.receiptForm?.dataset.id || ''));
+    if (E.receiptFormPreviewBtn) E.receiptFormPreviewBtn.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      const receiptDraft = this.collectUpdates();
+      this.previewReceiptFromDraft(receiptDraft);
+    });
     if (E.receiptFormModal) E.receiptFormModal.addEventListener('click', event => {
       if (event.target === E.receiptFormModal) this.closeForm();
     });
