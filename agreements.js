@@ -393,7 +393,7 @@ const Agreements = {
   },
 
   columnMap: {
-    agreement_id:{accessor:r=>r.agreement_id}, agreement_number:{accessor:r=>r.agreement_number}, title:{accessor:r=>r.title||r.agreement_title}, customer:{accessor:r=>r.customer_name||r.company_name}, proposal_id:{accessor:r=>r.proposal_id}, deal_id:{accessor:r=>r.deal_id}, start_date:{accessor:r=>r.start_date||r.agreement_start_date}, agreement_length:{accessor:r=>r.agreement_length||r.license_months}, billing_frequency:{accessor:r=>r.billing_frequency}, payment_term:{accessor:r=>r.payment_term}, currency:{accessor:r=>r.currency}, grand_total:{accessor:r=>r.grand_total||r.agreement_total}, status:{accessor:r=>r.status}, updated_at:{accessor:r=>r.updated_at}
+    agreement_id:{accessor:r=>r.agreement_id, serverField:'agreement_id'}, agreement_number:{accessor:r=>r.agreement_number, serverField:'agreement_number'}, title:{accessor:r=>r.title||r.agreement_title, serverField:'agreement_title'}, customer:{accessor:r=>r.customer_name||r.company_name, serverField:'customer_name'}, proposal_id:{accessor:r=>r.proposal_id, serverField:'proposal_id'}, deal_id:{accessor:r=>r.deal_id, serverField:'deal_id'}, start_date:{accessor:r=>r.start_date||r.agreement_start_date, serverField:'service_start_date'}, agreement_length:{accessor:r=>r.agreement_length||r.license_months, serverField:'agreement_length'}, billing_frequency:{accessor:r=>r.billing_frequency, serverField:'billing_frequency'}, payment_term:{accessor:r=>r.payment_term, serverField:'payment_term'}, currency:{accessor:r=>r.currency, serverField:'currency'}, grand_total:{accessor:r=>r.grand_total||r.agreement_total, serverField:'grand_total'}, status:{accessor:r=>r.status, serverField:'status'}, updated_at:{accessor:r=>r.updated_at, serverField:'updated_at'}
   },
   tableColumns: ['Agreement ID','Agreement Number','Title','Customer','Proposal ID','Deal ID','Start Date','Agreement Length','Billing Frequency','Payment Term','Currency','Grand Total','Status','Updated At'].map(label => ({ key: label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''), label })).concat([null]),
   state: {
@@ -3778,8 +3778,8 @@ const Agreements = {
   applyKpiFilter(filter) {
     const nextFilter = String(filter || 'total').trim() || 'total';
     this.state.kpiFilter = this.state.kpiFilter === nextFilter ? 'total' : nextFilter;
-    this.applyFilters();
-    this.render();
+    this.state.page = 1;
+    this.loadAndRefresh({ force: true });
   },
   renderAgreementDistribution(el, entries = [], total = 0) {
     if (!el) return;
@@ -5963,8 +5963,8 @@ const Agreements = {
       const response = await this.listAgreements({
         limit: this.state.limit,
         page: this.state.page,
-        sort_by: 'updated_at',
-        sort_dir: 'desc',
+        ...(TableUtils?.getServerSort?.('agreements', this.columnMap) || { sort_by: 'updated_at', sort_dir: 'desc' }),
+        ...(TableUtils?.getServerColumnFilters?.('agreements', this.columnMap) || {}),
         search: this.state.search || '',
         summary_only: true,
         forceRefresh: force

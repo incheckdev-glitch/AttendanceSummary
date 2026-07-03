@@ -109,15 +109,15 @@ const Receipts = {
   ],
 
   columnMap: {
-    receipt_no: { accessor: row => row.receipt_number || row.receipt_no || row.receipt_id },
-    invoice_no: { accessor: row => row.invoice_number || row.invoice_no || row.invoice_id },
-    customer: { accessor: row => row.customer_name || row.company_name || row.client_name },
-    receipt_date: { accessor: row => row.receipt_date },
-    currency: { accessor: row => row.currency },
-    received: { accessor: row => row.amount_received || row.received_amount || row.amount || row.invoice_total },
-    payment_state: { accessor: row => row.payment_state || row.payment_status },
-    status: { accessor: row => row.status },
-    updated_at: { accessor: row => row.updated_at }
+    receipt_no: { accessor: row => row.receipt_number || row.receipt_no || row.receipt_id, serverField: 'receipt_number' },
+    invoice_no: { accessor: row => row.invoice_number || row.invoice_no || row.invoice_id, serverField: 'invoice_number' },
+    customer: { accessor: row => row.customer_name || row.company_name || row.client_name, serverField: 'customer_name' },
+    receipt_date: { accessor: row => row.receipt_date, serverField: 'receipt_date' },
+    currency: { accessor: row => row.currency, serverField: 'currency' },
+    received: { accessor: row => row.amount_received || row.received_amount || row.amount || row.invoice_total, serverField: 'received_amount' },
+    payment_state: { accessor: row => row.payment_state || row.payment_status, serverField: 'payment_state' },
+    status: { accessor: row => row.status, serverField: 'status' },
+    updated_at: { accessor: row => row.updated_at, serverField: 'updated_at' }
   },
   tableColumns: [
     { key: 'receipt_no', label: 'Receipt #' }, { key: 'invoice_no', label: 'Invoice #' }, { key: 'customer', label: 'Customer' },
@@ -643,8 +643,8 @@ const Receipts = {
   applyKpiFilter(filter) {
     const nextFilter = String(filter || 'total').trim() || 'total';
     this.state.kpiFilter = this.state.kpiFilter === nextFilter ? 'total' : nextFilter;
-    this.applyFilters();
-    this.render();
+    this.state.page = 1;
+    this.refresh(true);
   },
   isFullyPaidReceipt(receipt = {}, linkedInvoice = null) {
     const paymentState = this.normalizeText(this.normalizeReceiptPaymentState(receipt, linkedInvoice || receipt));
@@ -2554,8 +2554,8 @@ const Receipts = {
     this.state.loadError = '';
     this.render();
     try {
-      const filters = {};
-      if (this.state.search) filters.receipt_number = this.state.search;
+      const filters = { ...(TableUtils?.getServerColumnFilters?.('receipts', this.columnMap) || {}) };
+      if (this.state.search) filters.search = this.state.search;
       if (this.state.invoiceNumber) filters.invoice_number = this.state.invoiceNumber;
       if (this.state.customerName) filters.customer_name = this.state.customerName;
       if (this.state.status && this.state.status !== 'All') filters.status = this.state.status;
@@ -2563,7 +2563,8 @@ const Receipts = {
         limit: this.state.limit,
         page: this.state.page,
         summary_only: true,
-        forceRefresh: force
+        forceRefresh: force,
+        ...(TableUtils?.getServerSort?.('receipts', this.columnMap) || {})
       });
       const normalized = this.extractListResult(response);
       this.state.rows = normalized.rows.map(row => this.normalizeReceipt(row));

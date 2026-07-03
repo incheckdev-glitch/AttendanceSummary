@@ -119,19 +119,19 @@ const Invoices = {
   },
 
   columnMap: {
-    invoice_no: { accessor: row => row.invoice_number || row.invoice_no || row.invoice_id },
-    customer: { accessor: row => row.customer_name || row.company_name || row.client_name },
-    agreement_no: { accessor: row => row.agreement_number || row.agreement_id },
-    invoice_date: { accessor: row => row.issue_date || row.invoice_date },
-    due_date: { accessor: row => row.due_date },
-    currency: { accessor: row => row.currency },
-    grand_total: { accessor: row => row.invoice_total || row.grand_total },
-    paid: { accessor: row => row.paid_total || row.paid_amount || row.amount_paid || row.received_amount },
-    balance: { accessor: row => row.pending_amount || row.balance_due },
-    status: { accessor: row => row.status },
-    payment_state: { accessor: row => row.payment_state || row.payment_status },
-    payment_term: { accessor: row => row.payment_term || row.billing_frequency },
-    updated_at: { accessor: row => row.updated_at }
+    invoice_no: { accessor: row => row.invoice_number || row.invoice_no || row.invoice_id, serverField: 'invoice_number' },
+    customer: { accessor: row => row.customer_name || row.company_name || row.client_name, serverField: 'customer_name' },
+    agreement_no: { accessor: row => row.agreement_number || row.agreement_id, serverField: 'agreement_id' },
+    invoice_date: { accessor: row => row.issue_date || row.invoice_date, serverField: 'issue_date' },
+    due_date: { accessor: row => row.due_date, serverField: 'due_date' },
+    currency: { accessor: row => row.currency, serverField: 'currency' },
+    grand_total: { accessor: row => row.invoice_total || row.grand_total, serverField: 'invoice_total' },
+    paid: { accessor: row => row.paid_total || row.paid_amount || row.amount_paid || row.received_amount, serverField: 'amount_paid' },
+    balance: { accessor: row => row.pending_amount || row.balance_due, serverField: 'pending_amount' },
+    status: { accessor: row => row.status, serverField: 'status' },
+    payment_state: { accessor: row => row.payment_state || row.payment_status, serverField: 'payment_state' },
+    payment_term: { accessor: row => row.payment_term || row.billing_frequency, serverField: 'payment_term' },
+    updated_at: { accessor: row => row.updated_at, serverField: 'updated_at' }
   },
   tableColumns: [
     { key: 'invoice_no', label: 'Invoice #' }, { key: 'customer', label: 'Customer' }, { key: 'agreement_no', label: 'Agreement #' },
@@ -2856,8 +2856,8 @@ const Invoices = {
   applyKpiFilter(filter) {
     const nextFilter = String(filter || 'total').trim() || 'total';
     this.state.kpiFilter = this.state.kpiFilter === nextFilter ? 'total' : nextFilter;
-    this.applyFilters();
-    this.render();
+    this.state.page = 1;
+    this.refresh(true);
   },
   upsertLocalRow(row) {
     const normalized = this.normalizeInvoice(row);
@@ -5155,7 +5155,7 @@ const Invoices = {
     this.state.loadError = '';
     this.render();
     try {
-      const filters = {};
+      const filters = { ...(TableUtils?.getServerColumnFilters?.('invoices', this.columnMap) || {}) };
       const status = String(this.state.status || '').trim();
       const search = String(this.state.search || '').trim();
       if (status && status !== 'All') filters.status = status;
@@ -5164,7 +5164,8 @@ const Invoices = {
         limit: this.state.limit,
         page: this.state.page,
         summary_only: true,
-        forceRefresh: force
+        forceRefresh: force,
+        ...(TableUtils?.getServerSort?.('invoices', this.columnMap) || {})
       });
       const normalized = this.extractListResult(response);
       this.state.rows = normalized.rows.map(row => this.normalizeInvoice(row));
