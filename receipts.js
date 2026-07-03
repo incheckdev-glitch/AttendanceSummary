@@ -131,7 +131,9 @@ const Receipts = {
     detailCacheTtlMs: 90 * 1000,
     openingReceiptIds: new Set(),
     rowActionInFlight: new Set(),
-    selectedDetailsId: ''
+    selectedDetailsId: '',
+    openReceiptActionsMenu: null,
+    openReceiptActionsTrigger: null
   },
   toNumberSafe(value) {
     return U.toMoneyNumber(value);
@@ -641,17 +643,39 @@ const Receipts = {
     const issued = this.state.rows.filter(r => this.normalizeText(r.status) === 'issued').length;
     const paid = this.state.rows.filter(r => this.isFullyPaidReceipt(r)).length;
     const totalAmount = this.state.rows.reduce((sum, row) => sum + this.toNumberSafe(row.invoice_total), 0);
-    E.receiptSummary.innerHTML = [
-      { label: 'Total Receipts', value: total, filter: 'total' },
-      { label: 'Issued', value: issued, filter: 'issued' },
-      { label: 'Fully Paid', value: paid, filter: 'paid' },
-      { label: 'Grand Total', value: this.formatMoney(totalAmount), filter: 'grand-total' }
-    ]
-      .map(card => {
-        const active = (this.state.kpiFilter || 'total') === card.filter;
-        return `<div class="card kpi${active ? ' kpi-filter-active' : ''}" data-kpi-filter="${U.escapeAttr(card.filter)}" role="button" tabindex="0" aria-pressed="${active ? 'true' : 'false'}"><div class="label">${U.escapeHtml(card.label)}</div><div class="value">${U.escapeHtml(String(card.value))}</div></div>`;
-      })
-      .join('');
+    const cards = [
+      { label: 'Total Receipts', value: total, filter: 'total', icon: '🧾', tone: 'blue', sub: 'All receipt vouchers' },
+      { label: 'Issued', value: issued, filter: 'issued', icon: '✓', tone: 'green', sub: 'Issued receipts' },
+      { label: 'Fully Paid', value: paid, filter: 'paid', icon: '●', tone: 'purple', sub: 'Settled records' },
+      { label: 'Grand Total', value: this.formatMoney(totalAmount), filter: 'grand-total', icon: '$', tone: 'amber', sub: 'Invoice total value' }
+    ];
+    E.receiptSummary.innerHTML = cards.map(card => {
+      const active = (this.state.kpiFilter || 'total') === card.filter;
+      return `<div class="receipt-kpi-card receipt-kpi-card--${U.escapeAttr(card.tone)}${active ? ' kpi-filter-active' : ''}" data-kpi-filter="${U.escapeAttr(card.filter)}" role="button" tabindex="0" aria-pressed="${active ? 'true' : 'false'}"><span class="receipt-kpi-icon">${U.escapeHtml(card.icon)}</span><div class="receipt-kpi-copy"><span class="receipt-kpi-label">${U.escapeHtml(card.label)}</span><strong class="receipt-kpi-value">${U.escapeHtml(String(card.value))}</strong><span class="receipt-kpi-sub">${U.escapeHtml(card.sub)}</span></div></div>`;
+    }).join('');
+    this.renderDistributions();
+  },
+  renderDistributions() {
+    const rows = this.state.rows || [];
+    const renderProgress = (items, total) => items.map(item => {
+      const pct = total ? Math.round((item.value / total) * 100) : 0;
+      return `<div class="receipt-progress-row"><div><span>${U.escapeHtml(item.label)}</span><strong>${U.escapeHtml(String(item.value))}</strong></div><div class="receipt-progress-track"><span style="width:${pct}%"></span></div></div>`;
+    }).join('');
+    if (E.receiptsStatusDistribution) {
+      const countStatus = label => rows.filter(r => this.normalizeText(r.status) === this.normalizeText(label)).length;
+      E.receiptsStatusDistribution.innerHTML = renderProgress([
+        { label: 'Issued', value: countStatus('Issued') },
+        { label: 'Received', value: countStatus('Received') },
+        { label: 'Cancelled', value: countStatus('Cancelled') }
+      ], rows.length) || '<div class="muted">No receipts loaded.</div>';
+    }
+    if (E.receiptsTypeDistribution) {
+      const settlement = rows.filter(r => this.isSettlementReceipt(r) || this.normalizeText(this.normalizeReceiptPaymentState(r, r)) === 'settlement').length;
+      E.receiptsTypeDistribution.innerHTML = renderProgress([
+        { label: 'Settlement', value: settlement },
+        { label: 'Receipt', value: Math.max(rows.length - settlement, 0) }
+      ], rows.length) || '<div class="muted">No receipts loaded.</div>';
+    }
   },
   renderFilters() {
     if (!E.receiptsStatusFilter) return;
@@ -712,6 +736,90 @@ const Receipts = {
     });
     this.render();
   },
+  receiptPill(label, kind = 'status') {
+    const text = String(label || '—').trim() || '—';
+    const slug = this.normalizeText(text).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'default';
+    return `<span class="receipt-status-pill receipt-status-pill--${U.escapeAttr(slug)} receipt-status-pill--${U.escapeAttr(kind)}">${U.escapeHtml(text)}</span>`;
+  },
+  buildReceiptRowActionItems(row, id) {
+    const communicationContext = JSON.stringify({ related_module: 'receipts', related_record_id: id, related_record_ref: row.receipt_number || row.receipt_id || id, related_record_title: row.customer_name || row.receipt_number || row.receipt_id || '' });
+    return [
+      Permissions.canUpdateReceipt() ? `<button class="invoice-row-menu-item" type="button" data-receipt-edit="${U.escapeAttr(id)}">Edit</button>` : '',
+      Permissions.canPreviewReceipt() ? `<button class="invoice-row-menu-item" type="button" data-receipt-preview="${U.escapeAttr(id)}">Preview</button>` : '',
+      `<button class="invoice-row-menu-item" type="button" data-create-communication="true" data-communication-context="${U.escapeAttr(communicationContext)}">Create Communication</button>`,
+      Permissions.canDeleteReceipt() ? `<button class="invoice-row-menu-item danger" type="button" data-receipt-delete="${U.escapeAttr(id)}">Delete</button>` : ''
+    ].filter(Boolean).join('') || '<span class="invoice-row-menu-empty">No actions available</span>';
+  },
+  positionReceiptActionsMenu(triggerBtn, menu) {
+    if (!triggerBtn || !menu) return;
+    const rect = triggerBtn.getBoundingClientRect();
+    const menuWidth = 210;
+    const menuHeight = Math.max(menu.offsetHeight || 180, 160);
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    let top = rect.bottom + 8;
+    if (top + menuHeight > viewportHeight - 12) top = Math.max(12, rect.top - menuHeight - 8);
+    let left = rect.right - menuWidth;
+    left = Math.max(12, Math.min(left, viewportWidth - menuWidth - 12));
+    menu.style.top = `${top}px`; menu.style.left = `${left}px`; menu.style.width = `${menuWidth}px`;
+  },
+  closeReceiptActionsMenu() {
+    if (this.state.openReceiptActionsMenu?.parentNode) this.state.openReceiptActionsMenu.parentNode.removeChild(this.state.openReceiptActionsMenu);
+    this.state.openReceiptActionsTrigger?.setAttribute?.('aria-expanded', 'false');
+    this.state.openReceiptActionsMenu = null; this.state.openReceiptActionsTrigger = null;
+    document.removeEventListener('click', this.boundReceiptActionsOutsideClick, true);
+    document.removeEventListener('keydown', this.boundReceiptActionsEscape, true);
+    window.removeEventListener('resize', this.boundReceiptActionsReposition, true);
+    window.removeEventListener('scroll', this.boundReceiptActionsReposition, true);
+  },
+  openReceiptActionsMenu(triggerBtn) {
+    const sourcePanel = triggerBtn?.closest?.('.invoice-row-menu')?.querySelector?.('.invoice-row-menu-panel');
+    this.closeReceiptActionsMenu();
+    const menu = document.createElement('div');
+    menu.className = 'invoice-actions-menu invoice-row-menu-panel floating receipt-actions-floating';
+    menu.setAttribute('role', 'menu'); menu.setAttribute('aria-label', 'Receipt actions');
+    menu.innerHTML = sourcePanel?.innerHTML || '<span class="invoice-row-menu-empty">No actions available</span>';
+    menu.addEventListener('click', event => this.handleReceiptActionMenuClick(event));
+    document.body.appendChild(menu);
+    this.state.openReceiptActionsMenu = menu; this.state.openReceiptActionsTrigger = triggerBtn;
+    triggerBtn?.setAttribute?.('aria-expanded', 'true'); this.positionReceiptActionsMenu(triggerBtn, menu);
+    requestAnimationFrame(() => {
+      document.addEventListener('click', this.boundReceiptActionsOutsideClick, true);
+      document.addEventListener('keydown', this.boundReceiptActionsEscape, true);
+      window.addEventListener('resize', this.boundReceiptActionsReposition, true);
+      window.addEventListener('scroll', this.boundReceiptActionsReposition, true);
+    });
+  },
+  handleReceiptActionsOutsideClick(event) {
+    const menu = this.state.openReceiptActionsMenu;
+    if (menu && !menu.contains(event.target) && !event.target?.closest?.('[data-receipt-menu-toggle]')) this.closeReceiptActionsMenu();
+  },
+  handleReceiptActionsEscape(event) { if (event.key === 'Escape') this.closeReceiptActionsMenu(); },
+  repositionReceiptActionsMenu() { if (this.state.openReceiptActionsMenu && this.state.openReceiptActionsTrigger) this.positionReceiptActionsMenu(this.state.openReceiptActionsTrigger, this.state.openReceiptActionsMenu); },
+  handleReceiptActionMenuClick(event) {
+    const trigger = event.target?.closest?.('[data-receipt-edit], [data-receipt-preview], [data-receipt-delete], [data-create-communication]');
+    if (!trigger) return;
+    this.closeReceiptActionsMenu();
+    const editId = trigger.getAttribute('data-receipt-edit'); if (editId) return this.runRowAction(`edit:${editId}`, trigger, () => this.openReceiptById(editId, { readOnly: false, trigger }));
+    const previewId = trigger.getAttribute('data-receipt-preview'); if (previewId) return this.runRowAction(`preview:${previewId}`, trigger, () => this.previewReceipt(previewId));
+    const deleteId = trigger.getAttribute('data-receipt-delete'); if (deleteId) return this.runRowAction(`delete:${deleteId}`, trigger, () => this.deleteReceipt(deleteId));
+    if (trigger.hasAttribute('data-create-communication')) {
+      try {
+        const raw = trigger.getAttribute('data-communication-context') || '';
+        const context = raw ? JSON.parse(raw) : null;
+        if (context && window.CommunicationCentre?.openCreateForRecord) window.CommunicationCentre.openCreateForRecord(context);
+        else UI.toast('Communication Centre is unavailable.');
+      } catch (_error) { UI.toast('Unable to open Communication Centre for this receipt.'); }
+    }
+  },
+  exportCsv() {
+    const rows = this.state.filteredRows || [];
+    const headers = ['Receipt #','Invoice #','Customer','Receipt Date','Currency','Received','Payment State','Status','Updated At'];
+    const esc = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const csv = [headers.map(esc).join(','), ...rows.map(row => [row.receipt_number || row.receipt_id, row.invoice_number || row.invoice_id, row.customer_name, U.fmtDisplayDate(row.receipt_date), row.currency, this.formatMoney(row.amount_received ?? row.invoice_total), this.normalizeReceiptPaymentState(row, row), row.status, U.fmtDisplayDate(row.updated_at)].map(esc).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `receipts-${new Date().toISOString().slice(0,10)}.csv`; a.click(); URL.revokeObjectURL(a.href);
+  },
   render() {
     if (!E.receiptsTbody || !E.receiptsState) return;
     if (this.state.loading) {
@@ -737,25 +845,22 @@ const Receipts = {
     E.receiptsTbody.innerHTML = rows
       .map(row => {
         const rowUuid = U.escapeAttr(row.id || row.receipt_id || '');
-        const typeLabel = this.receiptTypeLabel(row);
         const paymentState = this.normalizeReceiptPaymentState(row, row);
-        const settlementBadge = this.isSettlementReceipt({ ...row, payment_state: paymentState }) ? ' <span class="pill">Settlement</span>' : '';
         const selected = String(this.state.selectedDetailsId || '') === String(row.id || row.receipt_id || row.receipt_number || '');
+        const actions = this.buildReceiptRowActionItems(row, row.id || row.receipt_id || '');
         return `<tr class="entity-clickable-row${selected ? ' is-selected' : ''}" tabindex="0" data-receipt-row="${rowUuid}" aria-label="Open receipt ${U.escapeAttr(row.receipt_number || row.receipt_id || row.customer_name || '')} details">
-          <td><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;"><span>${U.escapeHtml(row.receipt_number || row.receipt_id || '—')}</span><span class="pill">${U.escapeHtml(typeLabel)}</span>${settlementBadge}</div></td>
+          <td><a class="receipt-number-link" href="javascript:void(0)" data-receipt-view="${rowUuid}">${U.escapeHtml(row.receipt_number || row.receipt_id || '—')}</a></td>
           <td>${U.escapeHtml(row.invoice_number || row.invoice_id || '—')}</td>
           <td>${U.escapeHtml(row.customer_name || '—')}</td>
           <td>${U.escapeHtml(U.fmtDisplayDate(row.receipt_date))}</td>
           <td>${U.escapeHtml(row.currency || '—')}</td>
           <td>${this.formatMoney(row.amount_received ?? row.invoice_total)}</td>
-          <td>${U.escapeHtml(paymentState || '—')}</td>
-          <td>${U.escapeHtml(row.status || '—')}</td>
+          <td>${this.receiptPill(paymentState || '—', 'payment')}</td>
+          <td>${this.receiptPill(row.status || '—', 'status')}</td>
           <td>${U.escapeHtml(U.fmtDisplayDate(row.updated_at))}</td>
-          <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
-            <button class="btn ghost sm" type="button" data-receipt-view="${rowUuid}">View</button>
-            ${Permissions.canUpdateReceipt() ? `<button class="btn ghost sm" type="button" data-receipt-edit="${rowUuid}">Edit</button>` : ''}
-            ${Permissions.canPreviewReceipt() ? `<button class="btn ghost sm" type="button" data-receipt-preview="${rowUuid}">Preview</button>` : ''}
-            ${Permissions.canDeleteReceipt() ? `<button class="btn ghost sm" type="button" data-receipt-delete="${rowUuid}">Delete</button>` : ''}
+          <td class="invoice-actions-cell receipt-actions-cell"><div class="invoice-row-actions receipt-row-actions">
+            <button class="btn ghost sm invoice-action-view receipt-action-view" type="button" data-receipt-view="${rowUuid}">View</button>
+            <span class="invoice-row-menu receipt-row-menu"><button class="btn ghost sm invoice-action-more receipt-action-more invoice-row-menu-trigger" type="button" title="More actions" aria-label="More receipt actions" aria-expanded="false" data-receipt-menu-toggle="${rowUuid}">⋮</button><div class="invoice-row-menu-panel" role="menu" aria-label="Receipt actions">${actions}</div></span>
           </div></td>
         </tr>`;
       })
@@ -830,6 +935,10 @@ const Receipts = {
         ? hardware.map(renderOneTimeRow).join('')
         : '<tr><td colspan="8" class="muted cell-center">No hardware rows.</td></tr>';
     }
+    const subtotal = rows => rows.reduce((sum, item) => sum + this.toNumberSafe(item.line_total ?? item.amount ?? 0), 0);
+    if (E.receiptLocationSubtotal) E.receiptLocationSubtotal.textContent = `Location Subtotal ${this.formatMoney(subtotal(locations))}`;
+    if (E.receiptOneTimeSubtotal) E.receiptOneTimeSubtotal.textContent = `One-time Fees Subtotal ${this.formatMoney(subtotal(oneTime))}`;
+    if (E.receiptHardwareSubtotal) E.receiptHardwareSubtotal.textContent = `Hardware Subtotal ${this.formatMoney(subtotal(hardware))}`;
   },
   populateForm(receipt, items, readOnly = false, linkedInvoice = null, invoiceReceipts = null) {
     const set = (id, value) => {
@@ -866,9 +975,18 @@ const Receipts = {
     set('receiptFormPaymentState', effectivePaymentState);
     set('receiptFormPaymentConclusion', effectivePaymentConclusion);
     set('receiptFormPaymentNotes', receipt.payment_notes);
-    set('receiptFormSupportEmail', receipt.support_email);
+    set('receiptFormSupportEmail', receipt.support_email || receipt.contact_email);
+    set('receiptFormContactPhoneDisplay', receipt.contact_phone || receipt.contact_mobile);
+    set('receiptFormPaymentMethodDisplay', receipt.payment_method);
+    set('receiptFormPaymentReferenceDisplay', receipt.payment_reference);
+    set('receiptFormDueDateDisplay', invoiceSource.due_date || invoiceSource.payment_due_date || receipt.due_date);
     if (E.receiptForm) E.receiptForm.dataset.id = receipt.id || '';
-    if (E.receiptFormTitle) E.receiptFormTitle.textContent = receipt.receipt_id ? `Receipt · ${receipt.receipt_id}` : 'Create Receipt';
+    if (E.receiptFormTitle) E.receiptFormTitle.textContent = receipt.id ? 'Edit Receipt' : 'Create Receipt';
+    if (E.receiptFormIdBadge) {
+      const badgeText = receipt.receipt_number || receipt.receipt_id || '';
+      E.receiptFormIdBadge.textContent = badgeText ? `Receipt # ${badgeText}` : '';
+      E.receiptFormIdBadge.style.display = badgeText ? '' : 'none';
+    }
     if (E.receiptFormDeleteBtn) E.receiptFormDeleteBtn.style.display = !readOnly && receipt.id && Permissions.canDeleteReceipt() ? '' : 'none';
     if (E.receiptFormSaveBtn) E.receiptFormSaveBtn.style.display = !readOnly && Permissions.canUpdateReceipt() ? '' : 'none';
     this.renderItems(items);
@@ -2428,10 +2546,25 @@ const Receipts = {
       });
     }
 
+    this.boundReceiptActionsOutsideClick = event => this.handleReceiptActionsOutsideClick(event);
+    this.boundReceiptActionsEscape = event => this.handleReceiptActionsEscape(event);
+    this.boundReceiptActionsReposition = () => this.repositionReceiptActionsMenu();
     if (E.receiptsRefreshBtn) E.receiptsRefreshBtn.addEventListener('click', () => this.refresh(true));
+    if (E.receiptsExportCsvBtn) E.receiptsExportCsvBtn.addEventListener('click', () => this.exportCsv());
+    if (E.receiptsClearFiltersBtn) E.receiptsClearFiltersBtn.addEventListener('click', () => {
+      this.state.search = ''; this.state.invoiceNumber = ''; this.state.customerName = ''; this.state.status = 'All'; this.state.kpiFilter = 'total'; this.state.page = 1;
+      if (E.receiptsSearchInput) E.receiptsSearchInput.value = '';
+      if (E.receiptsInvoiceFilter) E.receiptsInvoiceFilter.value = '';
+      if (E.receiptsCustomerFilter) E.receiptsCustomerFilter.value = '';
+      if (E.receiptsStatusFilter) E.receiptsStatusFilter.value = 'All';
+      this.refresh(true);
+    });
+    if (E.receiptsCreateBtn) E.receiptsCreateBtn.addEventListener('click', () => UI.toast('Create receipts from an invoice to keep backend receipt calculations intact.'));
     if (E.receiptsTbody) {
       E.receiptsTbody.addEventListener('click', event => {
-        const trigger = event.target?.closest?.('button[data-receipt-view],button[data-receipt-edit],button[data-receipt-preview],button[data-receipt-delete]');
+        const menuToggle = event.target?.closest?.('[data-receipt-menu-toggle]');
+        if (menuToggle) { event.preventDefault(); event.stopPropagation(); if (this.state.openReceiptActionsTrigger === menuToggle && this.state.openReceiptActionsMenu) this.closeReceiptActionsMenu(); else this.openReceiptActionsMenu(menuToggle); return; }
+        const trigger = event.target?.closest?.('[data-receipt-view],button[data-receipt-edit],button[data-receipt-preview],button[data-receipt-delete]');
         if (!trigger) return;
         const viewId = trigger.getAttribute('data-receipt-view');
         if (viewId) return this.runRowAction(`view:${viewId}`, trigger, () => this.openReceiptById(viewId, { readOnly: true, trigger }));
@@ -2443,7 +2576,7 @@ const Receipts = {
         if (deleteId) return this.runRowAction(`delete:${deleteId}`, trigger, () => this.deleteReceipt(deleteId));
       });
       E.receiptsTbody.addEventListener('click', event => {
-        if (event.target?.closest?.('button')) return;
+        if (event.target?.closest?.('button, a, .invoice-row-menu')) return;
         const detailsRow = event.target?.closest?.('tr[data-receipt-row]');
         const detailsId = detailsRow?.getAttribute('data-receipt-row');
         if (detailsId) this.openDetailsDrawer(detailsId);
