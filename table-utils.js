@@ -64,6 +64,47 @@
   function processRows(tableName, rows, columnMap) {
     return sortRows(applyColumnFilters(rows, columnFilters(tableName), columnMap), sortState(tableName), columnMap);
   }
+  function getPaginatedTableRows({ rows, filters, filterFn, sortState, columnMap, currentPage, pageSize }) {
+    const allRows = Array.isArray(rows) ? rows : [];
+    const filteredRows = typeof filterFn === 'function'
+      ? allRows.filter(row => filterFn(row, filters))
+      : allRows;
+    const sortedRows = sortRows(filteredRows, sortState, columnMap);
+    const safePageSize = Math.max(1, Number(pageSize) || 50);
+    const totalRows = sortedRows.length;
+    const totalPages = Math.max(1, Math.ceil(totalRows / safePageSize));
+    const safePage = Math.min(Math.max(1, Number(currentPage) || 1), totalPages);
+    const start = (safePage - 1) * safePageSize;
+    const end = start + safePageSize;
+    return {
+      rows: sortedRows.slice(start, end),
+      filteredRows,
+      sortedRows,
+      totalRows,
+      totalPages,
+      currentPage: safePage,
+      startItem: totalRows === 0 ? 0 : start + 1,
+      endItem: Math.min(start + safePageSize, totalRows)
+    };
+  }
+  function getServerSort(tableName, columnMap, fallback = { sort_by: 'updated_at', sort_dir: 'desc' }) {
+    const state = sortState(tableName);
+    const column = state?.key ? columnMap?.[state.key] : null;
+    const serverField = column?.serverField || (typeof column?.accessor === 'string' ? column.accessor : null);
+    if (!serverField || !state?.direction) return fallback || {};
+    return { sort_by: serverField, sort_dir: state.direction === 'asc' ? 'asc' : 'desc' };
+  }
+  function getServerColumnFilters(tableName, columnMap) {
+    const filters = columnFilters(tableName);
+    return Object.entries(filters || {}).reduce((acc, [key, value]) => {
+      const clean = String(value || '').trim();
+      if (!clean) return acc;
+      const column = columnMap?.[key];
+      const serverField = column?.serverField || (typeof column?.accessor === 'string' ? column.accessor : null);
+      if (serverField) acc[serverField] = clean;
+      return acc;
+    }, {});
+  }
   function resetTablePage(tableName) {
     const map = { invoices: global.Invoices, receipts: global.Receipts, proposals: global.Proposals, agreements: global.Agreements, companies: global.Companies, contacts: global.Contacts, leads: global.Leads, deals: global.Deals, credit_notes: global.CreditNotes, creditNotes: global.CreditNotes, payment_forecast: global.PaymentForecast, paymentForecast: global.PaymentForecast, biners: global.Biners };
     const mod = map[tableName];
@@ -72,7 +113,8 @@
   function rerenderTable(tableName) {
     const map = { invoices: global.Invoices, receipts: global.Receipts, proposals: global.Proposals, agreements: global.Agreements, companies: global.Companies, contacts: global.Contacts, leads: global.Leads, deals: global.Deals, credit_notes: global.CreditNotes, creditNotes: global.CreditNotes, payment_forecast: global.PaymentForecast, paymentForecast: global.PaymentForecast, biners: global.Biners };
     const mod = map[tableName];
-    if (mod?.loadAndRefresh && (tableName === 'companies')) return mod.loadAndRefresh({ force: true });
+    if (mod?.refresh) return mod.refresh(true);
+    if (mod?.loadAndRefresh) return mod.loadAndRefresh({ force: true });
     if (mod?.renderActiveTab) return mod.renderActiveTab();
     if (mod?.render) return mod.render();
     if (mod?.rerenderVisibleTable) return mod.rerenderVisibleTable();
@@ -119,5 +161,5 @@
     global.tableColumnFilters[tableName][filter.dataset.tableFilter] = filter.value;
     resetTablePage(tableName); rerenderTable(tableName);
   });
-  global.TableUtils = { getValueByPath, normalizeSortValue, sortRows, applyColumnFilters, nextSortDirection, renderSortableHeader, sortState, processRows, ensureHeaders, handleTableSort };
+  global.TableUtils = { getValueByPath, normalizeSortValue, sortRows, applyColumnFilters, nextSortDirection, renderSortableHeader, sortState, processRows, getPaginatedTableRows, getServerSort, getServerColumnFilters, ensureHeaders, handleTableSort };
 })(window);
