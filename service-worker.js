@@ -1,4 +1,4 @@
-const STATIC_CACHE_NAME = 'incheck360-monitorcore-static-v16-final-module-load-fix';
+const STATIC_CACHE_NAME = 'incheck360-monitorcore-static-v17-force-network-modules';
 const PUSH_DIAGNOSTICS_CACHE_NAME = 'incheck360-monitorcore-push-diagnostics-v1';
 const PUSH_DIAGNOSTICS_PREFIX = '/__incheck360_push_diagnostics__/';
 const STATIC_ASSETS = [
@@ -100,6 +100,23 @@ function isBlockedRequest(requestUrl, requestMethod) {
   const lowerPath = pathname.toLowerCase();
 
   if (host.includes('supabase.co')) return true;
+
+  // Critical ERP shell/module files must never be served stale from the PWA cache.
+  // A stale cached JS/CSS/index file can make modules appear stuck after deployment.
+  if (requestUrl.origin === self.location.origin) {
+    const accept = String(requestUrl.searchParams.get('accept') || '');
+    if (
+      lowerPath === '/' ||
+      lowerPath.endsWith('/index.html') ||
+      lowerPath.endsWith('.html') ||
+      lowerPath.endsWith('.js') ||
+      lowerPath.endsWith('.css') ||
+      accept.includes('text/html')
+    ) {
+      return true;
+    }
+  }
+
   if (lowerPath.includes('/api/')) return true;
   if (lowerPath.includes('/proxy')) return true;
   if (lowerPath.includes('auth/session')) return true;
@@ -219,104 +236,61 @@ self.addEventListener('push', (event) => {
 
     const options = {
       body,
-      icon: payload.icon || '/icons/icon-192.png',
-      badge: payload.badge || '/icons/icon-192.png',
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
       tag,
-      renotify: true,
-      requireInteraction: true,
-      silent: false,
-      vibrate: [200, 100, 200],
-      timestamp: Date.now(),
       data: {
-        ...payload,
-        ...(payload.data || {}),
-        deep_link: payload?.deep_link || dataPayload?.deep_link || url,
-        url
+        url,
+        payload,
+        receivedAt: new Date().toISOString()
       }
     };
 
-    console.log('[SW push]', payload);
-
-    await savePushDiagnostic('lastPushReceivedAt', new Date().toISOString());
-    await savePushDiagnostic('lastPushPayload', payload);
-
     try {
+      await savePushDiagnostic('lastPushReceivedAt', new Date().toISOString());
+      await savePushDiagnostic('lastPushPayload', payload);
       await self.registration.showNotification(title, options);
       await savePushDiagnostic('lastShowNotificationAt', new Date().toISOString());
       await savePushDiagnostic('lastShowNotificationError', null);
+      pushDebugLog('notification shown', { title, url, tag });
     } catch (error) {
-      await savePushDiagnostic(
-        'lastShowNotificationError',
-        error && error.message ? error.message : String(error)
-      );
-    }
-
-    pushDebugLog('push received', {
-      hasEventData: Boolean(event.data),
-      permission: self.Notification?.permission || 'unknown',
-      title,
-      tag,
-      url
-    });
-
-    const allClients = await self.clients.matchAll({
-      type: 'window',
-      includeUncontrolled: true
-    });
-
-    for (const client of allClients) {
-      client.postMessage({
-        type: 'INCHECK360_PUSH_RECEIVED',
-        payload: {
-          title,
-          body: options.body,
-          url,
-          data: options.data
-        }
-      });
+      await savePushDiagnostic('lastShowNotificationError', error?.message || String(error));
+      pushDebugLog('showNotification failed', error);
+      throw error;
     }
   })());
 });
 
-self.addEventListener('message', event => {
-  const data = event?.data || {};
-  if (data?.type === 'INCHECK360_READ_PUSH_DIAGNOSTICS') {
-    event.waitUntil((async () => {
-      const diagnostics = await readAllPushDiagnostics();
-      event.source?.postMessage({
-        type: 'INCHECK360_PUSH_DIAGNOSTICS',
-        payload: diagnostics
-      });
-    })());
-    return;
-  }
-
-  if (data?.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
-});
-
-self.addEventListener('notificationclick', (event) => {
+self.addEventListener('notificationclick', event => {
   event.notification.close();
+  const rawUrl = event.notification?.data?.url || '/';
+  const targetUrl = new URL(rawUrl, self.location.origin).toString();
 
-  const url = event.notification?.data?.url || event.notification?.data?.deep_link || '/';
-
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
-        if ('focus' in client) {
-          client.focus();
-          client.postMessage({
-            type: 'OPEN_NOTIFICATION_URL',
-            url,
-          });
+  event.waitUntil((async () => {
+    const windowClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of windowClients) {
+      try {
+        const clientUrl = new URL(client.url);
+        if (clientUrl.origin === self.location.origin && 'focus' in client) {
+          if ('navigate' in client) await client.navigate(targetUrl);
+          await client.focus();
           return;
         }
-      }
+      } catch {}
+    }
+    if (self.clients.openWindow) await self.clients.openWindow(targetUrl);
+  })());
+});
 
-      if (clients.openWindow) {
-        return clients.openWindow(url);
-      }
-    })
-  );
+self.addEventListener('message', event => {
+  const type = event.data && event.data.type;
+  if (type === 'GET_PUSH_DIAGNOSTICS') {
+    event.waitUntil((async () => {
+      const diagnostics = await readAllPushDiagnostics();
+      event.source?.postMessage?.({
+        type: 'PUSH_DIAGNOSTICS',
+        diagnostics
+      });
+    })());
+  }
 });
