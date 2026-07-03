@@ -1807,130 +1807,54 @@ Sample:
             </table>
           </div>
         </div>
-        <div class="card" style="margin-top:12px;" aria-label="Client detail panel">
-          <div id="clientsDetailEmpty" class="muted">Select a client to view full analytics, related records, and quick actions.</div>
+        <div class="client-detail-shell" aria-label="Client detail panel">
+          <div id="clientsDetailEmpty" class="client-empty-state">Select a client to view full analytics, related records, and quick actions.</div>
           <div id="clientsDetailPanel" style="display:none;">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">
-              <div>
-                <h3 id="clientDetailName" style="margin:0 0 2px;">—</h3>
-                <div id="clientDetailMeta" class="muted">—</div>
+            <section class="client-hero">
+              <div class="client-hero-main">
+                <div class="client-breadcrumb"><span>Clients</span><span>›</span><span id="clientDetailBreadcrumbName">Client</span></div>
+                <div class="client-title-row">
+                  <h3 id="clientDetailName">—</h3>
+                  <span id="clientDetailStatus" class="client-status-badge">Unknown</span>
+                </div>
+                <div id="clientDetailMeta" class="client-meta-grid">—</div>
               </div>
-              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-                <span id="clientDetailStatus" class="chip">Unknown</span>
+              <div class="client-hero-actions">
                 <button id="clientCreateCommunicationBtn" class="btn ghost sm" type="button" data-create-communication hidden>Create Communication</button>
-                <button id="clientActionProposalBtn" class="btn ghost sm" type="button">New Proposal</button>
+                <button id="clientActionProposalBtn" class="btn primary sm" type="button">New Proposal</button>
                 <button id="clientActionAgreementBtn" class="btn ghost sm" type="button">New Agreement</button>
                 <button id="clientActionInvoiceBtn" class="btn ghost sm" type="button">Issue Invoice</button>
                 <button id="clientActionCloneBtn" class="btn ghost sm" type="button">Create From Previous Agreement</button>
               </div>
+            </section>
+            <div id="clientDetailOverview" class="sr-only"></div>
+            <section class="client-communications-card communication-related-section">
+              <div class="client-card-heading"><div class="client-icon-bubble">💬</div><div><h3>Communications</h3><p>No communications linked to this record yet.</p></div></div>
+              <div id="clientRelatedCommunications" class="client-communications-body muted">Select a client to view communications.</div>
+            </section>
+            <div id="clientDetailTabButtons" class="client-segmented-tabs">
+              <button type="button" data-client-detail-tab="overview">Overview</button>
+              <button type="button" data-permission-resource="clients" data-permission-action="view_renewals" data-client-detail-tab="renewals">Renewals &amp; Payments</button>
+              <button type="button" data-client-detail-tab="scheduledPayments">Scheduled Payments</button>
+              <button type="button" data-permission-resource="clients" data-permission-action="view_statement" data-client-detail-tab="statement">Statement of Account</button>
             </div>
-            <div id="clientDetailOverview" class="muted" style="margin:10px 0 14px;"></div>
-            <section class="card communication-related-section" style="margin:10px 0 14px;"><div class="header"><h3 style="margin:0">Communications</h3></div><div id="clientRelatedCommunications" class="muted">Select a client to view communications.</div></section>
-            <div id="clientDetailTabButtons" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-              <button class="btn ghost sm" type="button" data-client-detail-tab="overview">Overview</button>
-              <button class="btn ghost sm" type="button" data-permission-resource="clients" data-permission-action="view_renewals" data-client-detail-tab="renewals">Renewals &amp; Payments</button>
-              <button class="btn ghost sm" type="button" data-client-detail-tab="scheduledPayments">Scheduled Payments</button>
-              <button class="btn ghost sm" type="button" data-permission-resource="clients" data-permission-action="view_statement" data-client-detail-tab="statement">Statement of Account</button>
-            </div>
-            <section id="clientOverviewSection">
-              <details open>
-                <summary><strong>Analytics</strong></summary>
-                <div id="clientAnalyticsCards" class="grid cols-4" style="margin-top:8px;"></div>
-              </details>
-              <div style="margin-top:14px;">
-                <strong>Related Agreements</strong>
-                <div class="table-wrap" style="margin-top:6px;">
-                  <table>
-                    <thead><tr><th>Agreement #</th><th>Status</th><th>Value</th><th>Start Date</th><th>End Date</th><th>Actions</th></tr></thead>
-                    <tbody id="clientRelatedAgreementsTbody"></tbody>
-                  </table>
+            <section id="clientOverviewSection" class="client-tab-panel">
+              <div id="clientAnalyticsCards" class="client-kpi-grid"></div>
+              <div class="client-overview-grid">
+                <div class="client-overview-main">
+                  <div class="client-modern-card"><div class="client-card-title"><strong>Related Agreements</strong><a href="#agreementsView">View all</a></div><div class="table-wrap client-table-wrap"><table><thead><tr><th>Agreement #</th><th>Status</th><th class="amount-cell">Value</th><th>Start Date</th><th>End Date</th><th>Actions</th></tr></thead><tbody id="clientRelatedAgreementsTbody"></tbody></table></div></div>
+                  <div class="client-modern-card"><div class="client-card-title"><strong>Related Invoices</strong><a href="#invoicesView">View all</a></div><div class="table-wrap client-table-wrap"><table><thead><tr><th>Invoice #</th><th>Status</th><th class="amount-cell">Grand Total</th><th class="amount-cell">Amount Paid</th><th class="amount-cell">Pending Amount</th><th>Actions</th></tr></thead><tbody id="clientRelatedInvoicesTbody"></tbody></table></div></div>
+                  <div class="client-modern-card"><div class="client-card-title"><strong>Related Receipts</strong><a href="#receiptsView">View all</a></div><div class="table-wrap client-table-wrap"><table><thead><tr><th>Receipt #</th><th>Payment State</th><th class="amount-cell">Received Amount</th><th class="amount-cell">Pending Amount</th><th>Actions</th></tr></thead><tbody id="clientRelatedReceiptsTbody"></tbody></table></div></div>
+                  <div class="client-modern-card"><div class="client-card-title"><strong>Statement Summary</strong><a data-client-detail-tab="statement" href="#">View statement</a></div><div id="clientOverviewStatementSummary" class="client-summary-strip"></div></div>
                 </div>
-              </div>
-              <div style="margin-top:14px;">
-                <strong>Related Invoices</strong>
-                <div class="table-wrap" style="margin-top:6px;">
-                  <table>
-                    <thead><tr><th>Invoice #</th><th>Status</th><th>Grand Total</th><th>Amount Paid</th><th>Pending Amount</th><th>Actions</th></tr></thead>
-                    <tbody id="clientRelatedInvoicesTbody"></tbody>
-                  </table>
-                </div>
-              </div>
-              <div style="margin-top:14px;">
-                <strong>Related Receipts</strong>
-                <div class="table-wrap" style="margin-top:6px;">
-                  <table>
-                    <thead><tr><th>Receipt #</th><th>Payment State</th><th>Received Amount</th><th>Pending Amount</th><th>Actions</th></tr></thead>
-                    <tbody id="clientRelatedReceiptsTbody"></tbody>
-                  </table>
-                </div>
-              </div>
-              <div style="margin-top:14px;">
-                <strong>Timeline</strong>
-                <ul id="clientTimeline" style="margin:8px 0 0 18px;"></ul>
+                <aside class="client-modern-card client-timeline-card"><div class="client-card-title"><strong>Timeline / Tracker</strong></div><ul id="clientTimeline" class="client-timeline"></ul></aside>
               </div>
             </section>
-            <section id="clientStatementSection" style="display:none;">
-              <div id="clientStatementCards" class="grid cols-5" style="gap:8px;"></div>
-              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
-                <select id="clientStatementFiltersStatus" class="select">
-                  <option value="all">All</option>
-                  <option value="open">Open Only</option>
-                  <option value="overdue">Overdue Only</option>
-                </select>
-                <input id="clientStatementDateFrom" class="input" type="date" />
-                <input id="clientStatementDateTo" class="input" type="date" />
-                <input id="clientStatementSearchDoc" class="input" type="search" placeholder="Search document #" />
-                <button id="clientStatementApplyFiltersBtn" class="btn ghost sm" type="button">Apply</button>
-                <button id="clientStatementResetFiltersBtn" class="btn ghost sm" type="button">Reset</button>
-                <button id="clientStatementExportPdfBtn" class="btn ghost sm" data-permission-resource="clients" data-permission-action="statement_export" type="button">Preview</button>
-              </div>
-              <div class="table-wrap" style="margin-top:8px;">
-                <table>
-                  <thead><tr><th>Date</th><th>Type</th><th>Document No</th><th>Currency</th><th>Debit</th><th>Credit</th><th>Running Balance</th><th>Due Date</th><th>Status</th></tr></thead>
-                  <tbody id="clientStatementTbody"></tbody>
-                </table>
-              </div>
-            </section>
-
-            <section id="clientScheduledPaymentsSection" style="display:none;">
-              <div id="clientScheduledPaymentCards" class="grid cols-5" style="gap:8px;"></div>
-              <div id="clientScheduledPaymentFilters" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;" aria-label="Scheduled payment filters">
-                <button class="btn primary sm" type="button" data-scheduled-payment-filter="all">All</button>
-                <button class="btn ghost sm" type="button" data-scheduled-payment-filter="upcoming">Upcoming</button>
-                <button class="btn ghost sm" type="button" data-scheduled-payment-filter="due7">Due in 7 Days</button>
-                <button class="btn ghost sm" type="button" data-scheduled-payment-filter="due14">Due in 14 Days</button>
-                <button class="btn ghost sm" type="button" data-scheduled-payment-filter="due30">Due in 30 Days</button>
-                <button class="btn ghost sm" type="button" data-scheduled-payment-filter="overdue">Overdue</button>
-                <button class="btn ghost sm" type="button" data-scheduled-payment-filter="paid">Paid</button>
-                <button class="btn ghost sm" type="button" data-scheduled-payment-filter="open">Unpaid / Open Balance</button>
-              </div>
-              <div class="table-wrap" style="margin-top:8px;">
-                <table>
-                  <thead><tr><th>Invoice</th><th>Payment</th><th>Due Date</th><th>Scheduled</th><th>%</th><th>Paid</th><th>Balance</th><th>Status</th><th>Reminders</th><th>Invoice Status</th><th>Actions</th></tr></thead>
-                  <tbody id="clientScheduledPaymentsTbody"></tbody>
-                </table>
-              </div>
-            </section>
-            <section id="clientRenewalsSection" style="display:none;">
-              <div id="clientRenewalEvents" class="grid cols-4" style="gap:8px;"></div>
-              <div id="clientRenewalBuckets" class="grid cols-5" style="gap:8px;margin-top:8px;"></div>
-              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
-                <input id="clientRenewalsDateFrom" class="input" type="date" />
-                <input id="clientRenewalsDateTo" class="input" type="date" />
-                <button id="clientRenewalsApplyFiltersBtn" class="btn ghost sm" type="button">Apply</button>
-                <button id="clientRenewalsResetFiltersBtn" class="btn ghost sm" type="button">Reset</button>
-              </div>
-              <div class="table-wrap" style="margin-top:8px;">
-                <table>
-                  <thead><tr><th></th><th>Location</th><th>Agreement</th><th>Invoice</th><th>Service Start Date</th><th>Service End Date</th><th>Renewal Due Date</th><th>Payment Status</th><th>Renewal Status</th><th>Amount</th><th>Action</th></tr></thead>
-                  <tbody id="clientRenewalsTbody"></tbody>
-                </table>
-              </div>
-            </section>
+            <section id="clientStatementSection" class="client-tab-panel" style="display:none;"><div id="clientStatementCards" class="client-kpi-grid compact"></div><div class="client-filter-bar"><select id="clientStatementFiltersStatus" class="select"><option value="all">All</option><option value="open">Invoice / Open</option><option value="received">Receipt / Received</option><option value="overdue">Overdue Only</option></select><input id="clientStatementDateFrom" class="input" type="date" /><input id="clientStatementDateTo" class="input" type="date" /><input id="clientStatementSearchDoc" class="input" type="search" placeholder="Search document #" /><button id="clientStatementApplyFiltersBtn" class="btn primary sm" type="button">Apply</button><button id="clientStatementResetFiltersBtn" class="btn ghost sm" type="button">Reset</button><button id="clientStatementExportPdfBtn" class="btn ghost sm" data-permission-resource="clients" data-permission-action="statement_export" type="button">Preview</button></div><div id="clientStatementSummaryStrip" class="client-summary-strip"></div><div class="table-wrap client-table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Document No</th><th>Currency</th><th class="amount-cell">Debit</th><th class="amount-cell">Credit</th><th class="amount-cell">Running Balance</th><th>Due Date</th><th>Status</th></tr></thead><tbody id="clientStatementTbody"></tbody></table></div></section>
+            <section id="clientScheduledPaymentsSection" class="client-tab-panel" style="display:none;"><div id="clientScheduledPaymentCards" class="client-kpi-grid compact"></div><div id="clientScheduledPaymentFilters" class="client-chip-filters" aria-label="Scheduled payment filters"><button type="button" data-scheduled-payment-filter="all">All</button><button type="button" data-scheduled-payment-filter="upcoming">Upcoming</button><button type="button" data-scheduled-payment-filter="due7">Due in 7 Days</button><button type="button" data-scheduled-payment-filter="due14">Due in 14 Days</button><button type="button" data-scheduled-payment-filter="due30">Due in 30 Days</button><button type="button" data-scheduled-payment-filter="overdue">Overdue</button><button type="button" data-scheduled-payment-filter="paid">Paid</button><button type="button" data-scheduled-payment-filter="open">Unpaid / Open Balance</button></div><div class="table-wrap client-table-wrap"><table><thead><tr><th>Invoice</th><th>Payment</th><th>Due Date</th><th class="amount-cell">Scheduled</th><th>%</th><th class="amount-cell">Paid</th><th class="amount-cell">Balance</th><th>Status</th><th>Reminders</th><th>Invoice Status</th><th>Actions</th></tr></thead><tbody id="clientScheduledPaymentsTbody"></tbody></table></div></section>
+            <section id="clientRenewalsSection" class="client-tab-panel" style="display:none;"><div id="clientRenewalEvents" class="client-kpi-grid compact"></div><div id="clientRenewalBuckets" class="client-kpi-grid compact"></div><div class="client-filter-bar"><input id="clientRenewalsDateFrom" class="input" type="date" /><input id="clientRenewalsDateTo" class="input" type="date" /><button id="clientRenewalsApplyFiltersBtn" class="btn primary sm" type="button">Apply</button><button id="clientRenewalsResetFiltersBtn" class="btn ghost sm" type="button">Reset</button></div><div class="table-wrap client-table-wrap"><table><thead><tr><th></th><th>Location</th><th>Agreement</th><th>Invoice</th><th>Service Start Date</th><th>Service End Date</th><th>Renewal Due Date</th><th>Payment Status</th><th>Renewal Status</th><th class="amount-cell">Amount</th><th>Action</th></tr></thead><tbody id="clientRenewalsTbody"></tbody></table></div></section>
           </div>
         </div>
-      </section>
-
       <div id="newClientModal" class="modal" aria-hidden="true">
         <div class="modal-content" style="max-width:760px;">
           <div class="header">
