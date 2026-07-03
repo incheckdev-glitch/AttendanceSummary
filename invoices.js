@@ -117,6 +117,29 @@ const Invoices = {
     accountSetupBillingMode: 'per_selected_locations',
     agreementInvoiceSelection: null
   },
+
+  columnMap: {
+    invoice_no: { accessor: row => row.invoice_number || row.invoice_no || row.invoice_id },
+    customer: { accessor: row => row.customer_name || row.company_name || row.client_name },
+    agreement_no: { accessor: row => row.agreement_number || row.agreement_id },
+    invoice_date: { accessor: row => row.issue_date || row.invoice_date },
+    due_date: { accessor: row => row.due_date },
+    currency: { accessor: row => row.currency },
+    grand_total: { accessor: row => row.invoice_total || row.grand_total },
+    paid: { accessor: row => row.paid_total || row.paid_amount || row.amount_paid || row.received_amount },
+    balance: { accessor: row => row.pending_amount || row.balance_due },
+    status: { accessor: row => row.status },
+    payment_state: { accessor: row => row.payment_state || row.payment_status },
+    payment_term: { accessor: row => row.payment_term || row.billing_frequency },
+    updated_at: { accessor: row => row.updated_at }
+  },
+  tableColumns: [
+    { key: 'invoice_no', label: 'Invoice #' }, { key: 'customer', label: 'Customer' }, { key: 'agreement_no', label: 'Agreement #' },
+    { key: 'invoice_date', label: 'Invoice Date' }, { key: 'due_date', label: 'Due Date' }, { key: 'currency', label: 'Currency' },
+    { key: 'grand_total', label: 'Grand Total' }, { key: 'paid', label: 'Paid' }, { key: 'balance', label: 'Balance' },
+    { key: 'status', label: 'Status' }, { key: 'payment_state', label: 'Payment State' }, { key: 'payment_term', label: 'Payment Term' },
+    { key: 'updated_at', label: 'Updated At' }, null
+  ],
   statusOptions: ['Draft', 'Issued', 'Sent', 'Not Paid', 'Partially Paid', 'Fully Paid', 'Overdue', 'Cancelled'],
   isRenewalInvoice(invoiceOrContext) {
     return Boolean(
@@ -3098,9 +3121,10 @@ const Invoices = {
       E.invoicesTbody.innerHTML = `<tr><td colspan="14" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(this.state.loadError)}</td></tr>`;
       return;
     }
+    TableUtils?.ensureHeaders?.('invoices', E.invoicesTbody?.closest('table'), this.tableColumns);
     this.renderSummary();
+    const rows = TableUtils?.processRows ? TableUtils.processRows('invoices', this.state.filteredRows, this.columnMap) : this.state.filteredRows;
     this.renderPagination();
-    const rows = this.state.filteredRows;
     const totalRows = Number(this.state.total || 0);
     E.invoicesState.textContent = `${rows.length} item(s) • Page ${this.state.page}${totalRows ? ` • ${totalRows} total` : ''}`;
     if (!rows.length) {

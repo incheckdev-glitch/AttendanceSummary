@@ -6,6 +6,11 @@ const Leads = {
     priority: ['High', 'Medium', 'Low'],
     currency: ['USD', 'EUR', 'GBP', 'AED']
   },
+
+  columnMap: {
+    lead_id:{accessor:r=>r.lead_id}, created_at:{accessor:r=>r.created_at}, contact_name:{accessor:r=>r.contact_name}, company_name:{accessor:r=>r.company_name}, phone:{accessor:r=>r.phone}, email:{accessor:r=>r.email}, country:{accessor:r=>r.country}, lead_source:{accessor:r=>r.lead_source}, service_interest:{accessor:r=>r.service_interest}, status:{accessor:r=>r.status}, priority:{accessor:r=>r.priority}, estimated_value:{accessor:r=>r.estimated_value}, currency:{accessor:r=>r.currency}, assigned_to:{accessor:r=>r.assigned_to}, next_follow_up:{accessor:r=>r.next_follow_up_date}, last_contact:{accessor:r=>r.last_contacted_date}, notes:{accessor:r=>r.notes}, updated_at:{accessor:r=>r.updated_at}
+  },
+  tableColumns: ['Lead ID','Created At','Contact Name','Company Name','Phone','Email','Country','Lead Source','Service Interest','Status','Priority','Estimated Value','Currency','Assigned To','Next Follow-up','Last Contact','Notes','Updated At'].map(label => ({ key: label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''), label })).concat([null]),
   state: {
     rows: [],
     filteredRows: [],
@@ -1437,7 +1442,8 @@ const Leads = {
       return;
     }
 
-    const rows = this.state.filteredRows;
+    TableUtils?.ensureHeaders?.('leads', E.leadsTbody?.closest('table'), this.tableColumns);
+    const rows = TableUtils?.processRows ? TableUtils.processRows('leads', this.state.filteredRows, this.columnMap) : this.state.filteredRows;
     this.renderLeadAnalytics(this.computeLeadAnalytics(rows));
     const shownFrom = rows.length ? (Number(this.state.offset) || 0) + 1 : 0;
     const shownTo = rows.length ? (Number(this.state.offset) || 0) + rows.length : 0;

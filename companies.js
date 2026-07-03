@@ -77,6 +77,17 @@ if (typeof window !== 'undefined') {
 }
 
 const Companies = {
+
+  columnMap: {
+    company_id: { accessor: row => row.company_id }, verification: { accessor: row => row.verification_status || row.is_verified }, company_name: { accessor: row => row.company_name },
+    company_type: { accessor: row => row.company_type }, industry: { accessor: row => row.industry }, company_status: { accessor: row => row.company_status },
+    email: { accessor: row => row.main_email }, phone: { accessor: row => row.main_phone }, country: { accessor: row => row.country }, city: { accessor: row => row.city }, created_at: { accessor: row => row.created_at }
+  },
+  tableColumns: [
+    { key: 'company_id', label: 'Company ID' }, { key: 'verification', label: 'Verification' }, { key: 'company_name', label: 'Company Name' },
+    { key: 'company_type', label: 'Type' }, { key: 'industry', label: 'Industry' }, { key: 'company_status', label: 'Status' },
+    { key: 'email', label: 'Email' }, { key: 'phone', label: 'Phone' }, { key: 'country', label: 'Country' }, { key: 'city', label: 'City' }, { key: 'created_at', label: 'Created At' }, null
+  ],
   state: { rows: [], page: 1, limit: 50, total: 0, search: '', filters: { company_status: '', company_type: '', industry: '', country: '', city: '', created_from: '', created_to: '' }, sortBy: 'created_at', sortDir: 'desc', companyTypeOptions: COMPANY_TYPE_FALLBACK_OPTIONS, companyIndustryOptions: COMPANY_INDUSTRY_FALLBACK_OPTIONS, currentCompany: null, documents: [], selectedDetailsId: '', summary: { totalCompanies: 0, verified: 0, activeClients: 0, prospects: 0 } },
   formatCodeFallback(value = '') { return String(value || '').replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase()); },
   formatCompanyType(value = '') { const found = this.state.companyTypeOptions.find(o => o.value === value); return found?.label || this.formatCodeFallback(value); },
@@ -377,7 +388,9 @@ const Companies = {
     const canEdit = Permissions.canEdit('companies'), canDelete = Permissions.canDelete('companies'); const canCreateLead = Permissions.canCreate('leads');
     const permissions = { canEdit, canDelete, canCreateLead };
     this.renderCompanySummaryCards();
-    body.innerHTML = this.state.rows.map(r => {
+    TableUtils?.ensureHeaders?.('companies', body.closest('table'), this.tableColumns);
+    const companyRows = TableUtils?.processRows ? TableUtils.processRows('companies', this.state.rows, this.columnMap) : this.state.rows;
+    body.innerHTML = companyRows.map(r => {
       const selected = String(this.state.selectedDetailsId || '') === String(r.id || r.company_id || '');
       return `<tr class='entity-clickable-row company-row${selected ? ' is-selected' : ''}' tabindex='0' data-company-row='${U.escapeAttr(r.id || r.company_id || '')}' aria-label='Open company ${U.escapeAttr(r.company_name || r.company_id || '')} details'>
         <td class="company-id-cell">${U.escapeHtml(r.company_id || '—')}</td>

@@ -107,6 +107,23 @@ const Receipts = {
     'created_at',
     'updated_at'
   ],
+
+  columnMap: {
+    receipt_no: { accessor: row => row.receipt_number || row.receipt_no || row.receipt_id },
+    invoice_no: { accessor: row => row.invoice_number || row.invoice_no || row.invoice_id },
+    customer: { accessor: row => row.customer_name || row.company_name || row.client_name },
+    receipt_date: { accessor: row => row.receipt_date },
+    currency: { accessor: row => row.currency },
+    received: { accessor: row => row.amount_received || row.received_amount || row.amount || row.invoice_total },
+    payment_state: { accessor: row => row.payment_state || row.payment_status },
+    status: { accessor: row => row.status },
+    updated_at: { accessor: row => row.updated_at }
+  },
+  tableColumns: [
+    { key: 'receipt_no', label: 'Receipt #' }, { key: 'invoice_no', label: 'Invoice #' }, { key: 'customer', label: 'Customer' },
+    { key: 'receipt_date', label: 'Receipt Date' }, { key: 'currency', label: 'Currency' }, { key: 'received', label: 'Received' },
+    { key: 'payment_state', label: 'Payment State' }, { key: 'status', label: 'Status' }, { key: 'updated_at', label: 'Updated At' }, null
+  ],
   state: {
     rows: [],
     filteredRows: [],
@@ -834,9 +851,10 @@ const Receipts = {
       E.receiptsTbody.innerHTML = `<tr><td colspan="10" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(this.state.loadError)}</td></tr>`;
       return;
     }
+    TableUtils?.ensureHeaders?.('receipts', E.receiptsTbody?.closest('table'), this.tableColumns);
     this.renderSummary();
+    const rows = TableUtils?.processRows ? TableUtils.processRows('receipts', this.state.filteredRows, this.columnMap) : this.state.filteredRows;
     this.renderPagination();
-    const rows = this.state.filteredRows;
     E.receiptsState.textContent = `${rows.length} item(s) • Page ${this.state.page}${this.state.total ? ` • ${this.state.total} total` : ''}`;
     if (!rows.length) {
       E.receiptsTbody.innerHTML = '<tr><td colspan="10" class="muted" style="text-align:center;">No receipts found.</td></tr>';

@@ -30,6 +30,11 @@ const Deals = {
     priority: ['High', 'Medium', 'Low'],
     currency: ['USD', 'EUR', 'GBP', 'AED']
   },
+
+  columnMap: {
+    deal_id:{accessor:r=>r.deal_id}, lead_id:{accessor:r=>r.lead_id}, contact_name:{accessor:r=>r.contact_name}, company_name:{accessor:r=>r.company_name}, phone:{accessor:r=>r.phone}, email:{accessor:r=>r.email}, country:{accessor:r=>r.country}, lead_source:{accessor:r=>r.lead_source}, service_interest:{accessor:r=>r.service_interest}, stage:{accessor:r=>r.stage||r.deal_stage}, next_follow_up:{accessor:r=>r.next_follow_up_date}, last_contacted:{accessor:r=>r.last_contacted_date}, priority:{accessor:r=>r.priority}, estimated_value:{accessor:r=>r.estimated_value}, currency:{accessor:r=>r.currency}, assigned_to:{accessor:r=>r.assigned_to}, converted_at:{accessor:r=>r.converted_at}, converted_by:{accessor:r=>r.converted_by}, notes:{accessor:r=>r.notes}, created_at:{accessor:r=>r.created_at}, updated_at:{accessor:r=>r.updated_at}
+  },
+  tableColumns: ['Deal ID','Lead ID','Contact Name','Company Name','Phone','Email','Country','Lead Source','Service Interest','Stage','Next Follow-up','Last Contacted','Priority','Estimated Value','Currency','Assigned To','Converted At','Converted By','Notes','Created At','Updated At'].map(label => ({ key: label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''), label })).concat([null]),
   state: {
     rows: [],
     filteredRows: [],
@@ -1240,7 +1245,8 @@ const Deals = {
       return;
     }
 
-    const rows = this.state.filteredRows;
+    TableUtils?.ensureHeaders?.('deals', E.dealsTbody?.closest('table'), this.tableColumns);
+    const rows = TableUtils?.processRows ? TableUtils.processRows('deals', this.state.filteredRows, this.columnMap) : this.state.filteredRows;
     this.renderDealAnalytics(this.computeDealAnalytics(rows));
     const shownFrom = rows.length ? (Number(this.state.offset) || 0) + 1 : 0;
     const shownTo = rows.length ? (Number(this.state.offset) || 0) + rows.length : 0;

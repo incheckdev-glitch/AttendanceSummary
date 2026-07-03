@@ -4,6 +4,11 @@ function canCreateContact(currentUser) {
 }
 
 const Contacts = {
+
+  columnMap: {
+    contact_id:{accessor:r=>r.contact_id}, full_name:{accessor:r=>[r.first_name,r.last_name].filter(Boolean).join(' ')||r.full_name}, company:{accessor:r=>r.company_names||r.company_name}, job_title:{accessor:r=>r.job_title}, department:{accessor:r=>r.department}, email:{accessor:r=>r.email}, phone:{accessor:r=>r.phone||r.mobile}, primary_contact:{accessor:r=>r.is_primary}, status:{accessor:r=>r.contact_status}
+  },
+  tableColumns: ['Contact ID','Full Name','Company','Job Title','Department','Email','Phone','Primary Contact','Status'].map(label => ({ key: label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''), label })).concat([null]),
   state: {
     rows: [],
     page: 1,
@@ -944,7 +949,9 @@ const Contacts = {
     const canCreateLead = Permissions.canCreate('leads');
     const permissions = { canEdit, canDelete, canCreateLead };
     this.renderContactSummaryCards();
-    b.innerHTML = this.state.rows.map(r => {
+    TableUtils?.ensureHeaders?.('contacts', b.closest('table'), this.tableColumns);
+    const contactRows = TableUtils?.processRows ? TableUtils.processRows('contacts', this.state.rows, this.columnMap) : this.state.rows;
+    b.innerHTML = contactRows.map(r => {
       const selected = String(this.state.selectedDetailsId || '') === String(r.id || r.contact_id || '');
       return `<tr class='entity-clickable-row contact-row${selected ? ' is-selected' : ''}' tabindex='0' data-contact-row='${U.escapeAttr(r.id || r.contact_id || '')}' aria-label='Open contact ${U.escapeAttr(this.getContactFullName(r))} details'>
         <td class="contact-id-cell">${U.escapeHtml(r.contact_id || '—')}</td>
