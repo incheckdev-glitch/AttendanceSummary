@@ -1028,10 +1028,12 @@ const Clients = {
     const cachedAgreements = this.getCachedClientDetailRows_(clientId, 'agreements');
     if (cachedAgreements.length) return cachedAgreements;
     const matchedAgreements = (Array.isArray(this.state.agreements) ? this.state.agreements : []).filter(Boolean).filter(item => this.matchesClientAgreement_(item, client));
-    console.log('[AgreementMapping] matched agreements for client', {
-      clientName: client?.client_name || client?.company_name || client?.name || client?.customer_name,
-      matched: matchedAgreements.length
-    });
+    if (window.ClientsService?.DEBUG_CLIENTS) {
+      console.log('[AgreementMapping] matched agreements for client', {
+        clientName: client?.client_name || client?.company_name || client?.name || client?.customer_name,
+        matched: matchedAgreements.length
+      });
+    }
     return matchedAgreements;
   },
   getAgreementMatchKeys_(agreement = {}) {

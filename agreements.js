@@ -1261,20 +1261,31 @@ const Agreements = {
     if (!client?.from) return withDirectRef;
 
     const proposalMap = new Map();
+    const selectAttempts = [
+      'id,proposal_id,proposal_number',
+      'id,proposal_number',
+      'id'
+    ];
     try {
-      const { data, error } = await client
-        .from('proposals')
-        .select('id,proposal_number,proposal_ref,display_id,reference_number,proposal_code')
-        .in('id', proposalIds);
-      if (error) throw error;
-      (Array.isArray(data) ? data : []).forEach(proposal => {
-        const id = String(proposal?.id || '').trim();
-        if (!id) return;
-        const displayRef = this.buildProposalDisplayRefFromProposal(proposal);
-        if (displayRef) proposalMap.set(id, displayRef);
-      });
+      for (const select of selectAttempts) {
+        const { data, error } = await client
+          .from('proposals')
+          .select(select)
+          .in('id', proposalIds);
+        if (error) {
+          console.warn('[Agreements] proposal enrichment select failed', { select, error });
+          continue;
+        }
+        (Array.isArray(data) ? data : []).forEach(proposal => {
+          const id = String(proposal?.id || '').trim();
+          if (!id) return;
+          const displayRef = String(proposal?.proposal_id || proposal?.proposal_number || proposal?.id || '').trim();
+          if (displayRef) proposalMap.set(id, displayRef);
+        });
+        break;
+      }
     } catch (error) {
-      console.warn('[Agreements] unable to enrich proposal display references', error);
+      console.warn('[Agreements] optional proposal enrichment skipped', error);
       return withDirectRef;
     }
 
