@@ -1,4 +1,20 @@
 const CreditNotes = {
+
+  columnMap: {
+    credit_note_no: { accessor: row => row.credit_note_number || row.credit_note_id },
+    credit_note_date: { accessor: row => row.credit_note_date },
+    customer: { accessor: row => row.customer_legal_name || row.customer_name || row.client_name || row.company_name },
+    invoice_no: { accessor: row => row.invoice_number },
+    description: { accessor: row => row.description },
+    currency: { accessor: row => row.currency },
+    amount: { accessor: row => row.credit_amount },
+    status: { accessor: row => row.status }
+  },
+  tableColumns: [
+    { key: 'credit_note_no', label: 'Credit Note #' }, { key: 'credit_note_date', label: 'Date' }, { key: 'customer', label: 'Customer' },
+    { key: 'invoice_no', label: 'Invoice #' }, { key: 'description', label: 'Description' }, { key: 'currency', label: 'Currency' },
+    { key: 'amount', label: 'Amount' }, { key: 'status', label: 'Status' }, null
+  ],
   state: {
     rows: [],
     invoices: [],
@@ -187,7 +203,8 @@ const CreditNotes = {
   render() {
     if (!E.creditNotesTbody || !E.creditNotesState) return;
     if (E.creditNotesCreateBtn) E.creditNotesCreateBtn.style.display = this.canCreate() ? '' : 'none';
-    const rows = this.filteredRows();
+    TableUtils?.ensureHeaders?.('credit_notes', E.creditNotesTbody?.closest('table'), this.tableColumns);
+    const rows = TableUtils?.processRows ? TableUtils.processRows('credit_notes', this.filteredRows(), this.columnMap) : this.filteredRows();
     this.renderSummary(rows);
     const messages = [];
     if (this.state.loading) messages.push('Loading credit notes…');

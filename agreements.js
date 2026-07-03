@@ -391,6 +391,11 @@ const Agreements = {
       reason.includes('save blocked until workflow is reachable') ||
       reason.includes('validation unavailable');
   },
+
+  columnMap: {
+    agreement_id:{accessor:r=>r.agreement_id}, agreement_number:{accessor:r=>r.agreement_number}, title:{accessor:r=>r.title||r.agreement_title}, customer:{accessor:r=>r.customer_name||r.company_name}, proposal_id:{accessor:r=>r.proposal_id}, deal_id:{accessor:r=>r.deal_id}, start_date:{accessor:r=>r.start_date||r.agreement_start_date}, agreement_length:{accessor:r=>r.agreement_length||r.license_months}, billing_frequency:{accessor:r=>r.billing_frequency}, payment_term:{accessor:r=>r.payment_term}, currency:{accessor:r=>r.currency}, grand_total:{accessor:r=>r.grand_total||r.agreement_total}, status:{accessor:r=>r.status}, updated_at:{accessor:r=>r.updated_at}
+  },
+  tableColumns: ['Agreement ID','Agreement Number','Title','Customer','Proposal ID','Deal ID','Start Date','Agreement Length','Billing Frequency','Payment Term','Currency','Grand Total','Status','Updated At'].map(label => ({ key: label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''), label })).concat([null]),
   state: {
     rows: [],
     filteredRows: [],
@@ -3794,7 +3799,8 @@ const Agreements = {
   },
   renderSummary() {
     if (!E.agreementsSummary) return;
-    const rows = this.state.filteredRows;
+    TableUtils?.ensureHeaders?.('agreements', E.agreementsTbody?.closest('table'), this.tableColumns);
+    const rows = TableUtils?.processRows ? TableUtils.processRows('agreements', this.state.filteredRows, this.columnMap) : this.state.filteredRows;
     const countBy = fn => rows.filter(fn).length;
     const statusMatch = (row, tokens) => tokens.some(t => this.normalizeText(this.resolveAgreementStatus(row)).includes(t));
     const sentReviewAwaiting = countBy(row => statusMatch(row, ['sent', 'under review', 'awaiting signature']));
@@ -4040,7 +4046,8 @@ const Agreements = {
       E.agreementsTbody.innerHTML = `<tr><td colspan="15" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(this.state.loadError)}</td></tr>`;
       return;
     }
-    const rows = this.state.filteredRows;
+    TableUtils?.ensureHeaders?.('agreements', E.agreementsTbody?.closest('table'), this.tableColumns);
+    const rows = TableUtils?.processRows ? TableUtils.processRows('agreements', this.state.filteredRows, this.columnMap) : this.state.filteredRows;
     E.agreementsState.textContent = `${rows.length} agreement${rows.length === 1 ? '' : 's'} · page ${this.state.page}`;
     this.renderSummary();
     if (!rows.length) {
