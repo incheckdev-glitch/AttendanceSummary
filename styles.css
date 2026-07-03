@@ -10134,3 +10134,98 @@ body.public-eproposal-mode #publicEProposalModal .accept-proposal-submit:disable
   .invoice-form-footer-actions .btn{width:100%;justify-content:center;}
   .invoice-form-table-wrap{max-height:220px;}
 }
+
+/* Invoice actions dropdown must escape table/card clipping and stack above rows. */
+.invoice-table-card,
+.invoice-table-panel,
+.invoice-table-container,
+.invoice-table-wrapper,
+.invoice-list-shell,
+.invoice-card,
+.invoice-grid-card,
+.invoice-list-card,
+.crm-table-card{
+  position:relative;
+  overflow:visible!important;
+}
+.invoice-table-wrap,
+.invoice-table-scroll,
+.invoice-table-responsive,
+.table-responsive{
+  overflow-x:auto!important;
+  overflow-y:visible!important;
+  position:relative;
+}
+.invoice-modern-table tbody,
+.invoice-modern-table tr,
+.invoice-modern-table td,
+.invoice-actions-cell{
+  overflow:visible!important;
+}
+.invoice-actions-cell{
+  position:relative;
+  z-index:5;
+}
+.invoice-actions-trigger,
+.invoice-actions-more-btn,
+.invoice-row-menu-trigger{
+  position:relative;
+  z-index:20;
+}
+.invoice-actions-dropdown,
+.invoice-actions-menu,
+.row-actions-dropdown{
+  position:absolute;
+  top:calc(100% + 8px);
+  right:0;
+  min-width:190px;
+  background:#ffffff;
+  border:1px solid #dbe3f0;
+  border-radius:14px;
+  box-shadow:0 18px 42px rgba(15,23,42,0.18);
+  padding:8px;
+  z-index:9999;
+  overflow:hidden;
+}
+.invoice-actions-menu.floating,
+.invoice-row-menu-panel.floating{
+  position:fixed!important;
+  right:auto!important;
+  top:auto;
+  display:grid!important;
+  gap:2px;
+  z-index:99999!important;
+}
+.invoice-actions-dropdown button,
+.invoice-actions-menu button,
+.row-actions-dropdown button,
+.invoice-actions-dropdown a,
+.invoice-actions-menu a,
+.row-actions-dropdown a{
+  display:flex;
+  align-items:center;
+  width:100%;
+  min-height:40px;
+  padding:10px 12px;
+  border:0;
+  background:transparent;
+  border-radius:10px;
+  text-align:left;
+  font-size:13px;
+  font-weight:600;
+  color:#1e293b;
+  cursor:pointer;
+}
+.invoice-actions-dropdown button:hover,
+.invoice-actions-menu button:hover,
+.row-actions-dropdown button:hover,
+.invoice-actions-dropdown a:hover,
+.invoice-actions-menu a:hover,
+.row-actions-dropdown a:hover{
+  background:#f8fbff;
+}
+.invoice-actions-dropdown .danger,
+.invoice-actions-menu .danger,
+.row-actions-dropdown .danger{
+  color:#dc2626;
+}
