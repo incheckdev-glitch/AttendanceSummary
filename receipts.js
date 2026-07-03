@@ -867,29 +867,64 @@ const Receipts = {
       .join('');
   },
   renderPagination() {
+    const tableCard = E.receiptsTbody?.closest?.('.receipt-table-card, .module-table-card');
+    const tableWrap = E.receiptsTbody?.closest?.('.receipt-table-wrap, .table-wrap, .table-responsive');
     const host = U.ensurePaginationHost({
       hostId: 'receiptsPagination',
-      anchor: E.receiptsState?.closest?.('.card')
+      anchor: tableWrap || tableCard || E.receiptsState?.closest?.('.card'),
+      className: 'module-table-footer receipt-table-footer'
     });
-    U.renderPaginationControls({
-      host,
-      moduleKey: 'receipts',
-      page: this.state.page,
-      pageSize: this.state.limit,
-      hasMore: this.state.hasMore,
-      returned: this.state.returned,
-      loading: this.state.loading,
-      pageSizeOptions: [25, 50, 100],
-      countText: this.state.total ? `${this.state.total} total` : '',
-      onPageChange: nextPage => {
-        this.state.page = U.normalizePageNumber(nextPage, this.state.page);
-        this.refresh(true);
-      },
-      onPageSizeChange: nextSize => {
-        this.state.limit = U.normalizePageSize(nextSize, 50, 200);
-        this.state.page = 1;
-        this.refresh(true);
-      }
+    if (!host) return;
+    host.className = 'module-table-footer receipt-table-footer';
+
+    const currentPage = U.normalizePageNumber(this.state.page, 1);
+    const pageSize = U.normalizePageSize(this.state.limit, 50, 200);
+    const totalReceipts = Math.max(0, Number(this.state.total) || 0);
+    const returned = Math.max(0, Number(this.state.returned || this.state.filteredRows?.length) || 0);
+    const totalPages = Math.max(1, totalReceipts ? Math.ceil(totalReceipts / pageSize) : (this.state.hasMore ? currentPage + 1 : currentPage));
+    const startItem = totalReceipts || returned ? ((currentPage - 1) * pageSize) + 1 : 0;
+    const endItem = totalReceipts ? Math.min(currentPage * pageSize, totalReceipts) : ((currentPage - 1) * pageSize) + returned;
+
+    host.innerHTML = `
+      <div class="module-table-count">
+        Showing ${U.escapeHtml(String(startItem))} to ${U.escapeHtml(String(endItem))} of ${U.escapeHtml(String(totalReceipts))} receipts
+      </div>
+
+      <div class="module-pagination" role="group" aria-label="Receipt pagination">
+        <select class="module-page-size" data-action="receipt-page-size" ${this.state.loading ? 'disabled' : ''}>
+          ${[10, 25, 50].map(size => `<option value="${size}" ${size === pageSize ? 'selected' : ''}>${size} / page</option>`).join('')}
+        </select>
+
+        <button type="button" data-action="receipt-prev-page" ${this.state.loading || currentPage <= 1 ? 'disabled' : ''}>
+          Previous
+        </button>
+
+        <span class="module-page-indicator">
+          Page ${U.escapeHtml(String(currentPage))} of ${U.escapeHtml(String(totalPages))}
+        </span>
+
+        <button type="button" data-action="receipt-next-page" ${this.state.loading || currentPage >= totalPages ? 'disabled' : ''}>
+          Next
+        </button>
+      </div>
+    `;
+
+    host.querySelector('[data-action="receipt-prev-page"]')?.addEventListener('click', event => {
+      event.preventDefault();
+      if (currentPage <= 1) return;
+      this.state.page = currentPage - 1;
+      this.refresh(true);
+    });
+    host.querySelector('[data-action="receipt-next-page"]')?.addEventListener('click', event => {
+      event.preventDefault();
+      if (currentPage >= totalPages) return;
+      this.state.page = currentPage + 1;
+      this.refresh(true);
+    });
+    host.querySelector('[data-action="receipt-page-size"]')?.addEventListener('change', event => {
+      this.state.limit = U.normalizePageSize(event.target.value || 10, 10, 200);
+      this.state.page = 1;
+      this.refresh(true);
     });
   },
   renderItems(items = []) {
