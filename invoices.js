@@ -3121,7 +3121,7 @@ const Invoices = {
       E.invoicesTbody.innerHTML = `<tr><td colspan="14" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(this.state.loadError)}</td></tr>`;
       return;
     }
-    TableUtils?.ensureHeaders?.('invoices', E.invoicesTbody?.closest('table'), this.tableColumns);
+    window.TableUtils?.ensureHeaders?.('invoices', E.invoicesTbody?.closest('table'), this.tableColumns);
     this.renderSummary();
     const rows = this.state.filteredRows || [];
     this.renderPagination();

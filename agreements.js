@@ -3799,7 +3799,7 @@ const Agreements = {
   },
   renderSummary() {
     if (!E.agreementsSummary) return;
-    TableUtils?.ensureHeaders?.('agreements', E.agreementsTbody?.closest('table'), this.tableColumns);
+    window.TableUtils?.ensureHeaders?.('agreements', E.agreementsTbody?.closest('table'), this.tableColumns);
     const rows = this.state.filteredRows || [];
     const countBy = fn => rows.filter(fn).length;
     const statusMatch = (row, tokens) => tokens.some(t => this.normalizeText(this.resolveAgreementStatus(row)).includes(t));
@@ -4046,7 +4046,7 @@ const Agreements = {
       E.agreementsTbody.innerHTML = `<tr><td colspan="15" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(this.state.loadError)}</td></tr>`;
       return;
     }
-    TableUtils?.ensureHeaders?.('agreements', E.agreementsTbody?.closest('table'), this.tableColumns);
+    window.TableUtils?.ensureHeaders?.('agreements', E.agreementsTbody?.closest('table'), this.tableColumns);
     const rows = this.state.filteredRows || [];
     E.agreementsState.textContent = Number(this.state.total || 0) ? `Showing ${((this.state.page - 1) * this.state.limit) + 1} to ${Math.min(this.state.page * this.state.limit, Number(this.state.total || 0))} of ${Number(this.state.total || 0)} filtered agreements` : 'No agreements found';
     this.renderSummary();

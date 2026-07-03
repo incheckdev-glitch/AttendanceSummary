@@ -203,8 +203,8 @@ const CreditNotes = {
   render() {
     if (!E.creditNotesTbody || !E.creditNotesState) return;
     if (E.creditNotesCreateBtn) E.creditNotesCreateBtn.style.display = this.canCreate() ? '' : 'none';
-    TableUtils?.ensureHeaders?.('credit_notes', E.creditNotesTbody?.closest('table'), this.tableColumns);
-    const rows = TableUtils?.processRows ? TableUtils.processRows('credit_notes', this.filteredRows(), this.columnMap) : this.filteredRows();
+    window.TableUtils?.ensureHeaders?.('credit_notes', E.creditNotesTbody?.closest('table'), this.tableColumns);
+    const rows = window.TableUtils?.processRows ? window.TableUtils.processRows('credit_notes', this.filteredRows(), this.columnMap) : this.filteredRows();
     this.renderSummary(rows);
     const messages = [];
     if (this.state.loading) messages.push('Loading credit notes…');
