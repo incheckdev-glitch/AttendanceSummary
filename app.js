@@ -2922,6 +2922,7 @@ function normalizeViewKey(view) {
   if (['payment_forecast', 'payment-forecast', 'paymentforecast', 'Payment Forecast', 'Receivables Forecast', 'receivables_forecast', 'paymentForecast'].includes(key)) return 'paymentForecast';
   if (['renewal_forecast', 'renewal-forecast', 'renewalforecast', 'Monthly Renewal Forecast', 'renewalForecast'].includes(key)) return 'renewalForecast';
   if (['biners', 'Biners', 'biners_module', 'biners-module', 'outsourcing', 'payables'].includes(key)) return 'biners';
+  if (['hr', 'HR', 'human_resources', 'human-resources', 'payroll', 'attendance', 'hr_payroll', 'hr-payroll'].includes(key)) return 'hr';
   return key;
 }
 
@@ -2953,7 +2954,7 @@ window.shouldShowTicketFilters = shouldShowTicketFilters;
 
 function setActiveView(view) {
  view = normalizeViewKey(view);
- const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'renewalForecast', 'biners', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
+ const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'renewalForecast', 'biners', 'hr', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
  const requestedView = view;
  const firstAllowedView = names.find(name => Permissions.canAccessTab(name)) || '';
  if (!Permissions.canAccessTab(view)) {
@@ -2998,6 +2999,8 @@ function setActiveView(view) {
         ? E.renewalForecastTab
         : name === 'biners'
         ? E.binersTab
+        : name === 'hr'
+        ? E.hrTab
         : name === 'lifecycleAnalytics'
         ? E.lifecycleAnalyticsTab
         : name === 'clients'
@@ -3052,6 +3055,8 @@ function setActiveView(view) {
         ? E.renewalForecastView
         : name === 'biners'
         ? E.binersView
+        : name === 'hr'
+        ? E.hrView
         : name === 'lifecycleAnalytics'
         ? E.lifecycleAnalyticsView
         : name === 'clients'
@@ -3163,6 +3168,7 @@ function setActiveView(view) {
   if ((view === 'paymentForecast' || view === 'payment_forecast') && window.PaymentForecast?.refresh) runViewLoader('payment forecast', () => PaymentForecast.refresh());
   if (view === 'renewalForecast' && window.RenewalForecast?.refresh) runViewLoader('monthly renewal forecast', () => RenewalForecast.refresh());
   if (view === 'biners' && window.Biners?.refresh) runViewLoader('biners', () => { Biners.init?.(); return Biners.refresh(); });
+  if (view === 'hr' && window.HRModule?.init) runViewLoader('HR & Payroll', () => HRModule.init());
   if (view === 'lifecycleAnalytics' && window.LifecycleAnalytics?.init) runViewLoader('lifecycle analytics', () => LifecycleAnalytics.init());
   if (view === 'clients' && window.Clients?.loadAndRefresh) runViewLoader('clients', () => Clients.loadAndRefresh());
   if (view === 'proposalCatalog' && window.ProposalCatalog?.loadAndRefresh) runViewLoader('proposal catalog', () => ProposalCatalog.loadAndRefresh());
@@ -5384,6 +5390,7 @@ function wireCore() {
     E.paymentForecastTab,
     E.renewalForecastTab,
     E.binersTab,
+    E.hrTab,
     E.lifecycleAnalyticsTab,
     E.clientsTab,
     E.proposalCatalogTab,
@@ -5515,6 +5522,9 @@ function wireCore() {
       if (E.binersView?.classList.contains('active') && window.Biners?.refresh) {
         Biners.init?.();
         Biners.refresh(true);
+      }
+      if (E.hrView?.classList.contains('active') && window.HRModule?.refresh) {
+        HRModule.refresh(true);
       }
       if (E.clientsView?.classList.contains('active') && window.Clients?.loadAndRefresh)
         Clients.loadAndRefresh({ force: true });
@@ -5865,6 +5875,7 @@ function buildRecordHashRoute(resource = '', record = {}) {
   if (normalizedResource === 'clients') { const id = getRecordValue(record, ['client_id', 'clientId', 'company_id', 'companyId', 'id']); return id ? `#clients?id=${safeEncodeRouteId(id)}` : '#clients'; }
   if (normalizedResource === 'events') { const id = getRecordValue(record, ['event_id', 'eventId', 'event_code', 'eventCode', 'id']); return id ? `#events?id=${safeEncodeRouteId(id)}` : '#events'; }
   if (normalizedResource === 'operations_onboarding') { const id = getRecordValue(record, ['onboarding_id', 'onboardingId', 'agreement_id', 'agreementId', 'id']); return id ? `#operations-onboarding?onboarding_id=${safeEncodeRouteId(id)}` : '#operations-onboarding'; }
+  if (['hr','hr_employees','hr_attendance','hr_payroll','hr_documents'].includes(normalizedResource)) { const id = getRecordValue(record, ['employee_no', 'employee_id', 'id']); return id ? `#hr?id=${safeEncodeRouteId(id)}` : '#hr'; }
   if (normalizedResource === 'workflow') { const id = getRecordValue(record, ['approval_id', 'approvalId', 'workflow_approval_id', 'workflowApprovalId', 'id']); return id ? `#workflow?approval_id=${safeEncodeRouteId(id)}` : '#workflow'; }
   return `#${encodeURIComponent(normalizedResource)}`;
 }
@@ -5889,6 +5900,7 @@ function getAppHashForView(view = '') {
     renewalForecast: '#clients?tab=renewal_forecast',
     payment_forecast: '#finance?tab=payment_forecast',
     biners: '#biners',
+    hr: '#hr',
     clients: '#clients',
     insights: '#analytics',
     notificationSetup: '#notification-settings',
@@ -5903,7 +5915,7 @@ function getAppHashForView(view = '') {
 function isNotificationDeepLinkHash(hash = '') {
   const value = String(hash || '').trim();
   if (!value || value === '#loginSection') return false;
-  return /^#(tickets|workflow|operations-onboarding|crm|finance|leads|deals|proposals|agreements|invoices|receipts|credit_notes|credit-notes|payment_forecast|payment-forecast|renewal_forecast|renewal-forecast|biners|communication_centre|communication-centre|communication_center)/i.test(value);
+  return /^#(tickets|workflow|operations-onboarding|crm|finance|leads|deals|proposals|agreements|invoices|receipts|credit_notes|credit-notes|payment_forecast|payment-forecast|renewal_forecast|renewal-forecast|biners|hr|human-resources|attendance|payroll|communication_centre|communication-centre|communication_center)/i.test(value);
 }
 
 function capturePendingDeepLink() {
@@ -5948,6 +5960,7 @@ function parseAppHashRoute(hash = '') {
   if (route === 'crm') return { module: 'crm', resource: params.get('tab') || '', id: params.get('id') || '' };
   if (route === 'finance') return { module: 'finance', resource: params.get('tab') || '', id: params.get('id') || '' };
   if (route === 'clients' && params.get('tab') === 'renewal_forecast') return { module: 'clients', resource: 'renewal_forecast', id: '' };
+  if (['hr','human-resources','attendance','payroll'].includes(route)) return { module: 'hr', resource: 'hr', id: params.get('id') || '' };
   if (['communication_centre', 'communication-centre', 'communication_center', 'communicationCentre'].includes(route)) return { module: 'communication_centre', resource: 'communication_centre', id: params.get('conversation_id') || params.get('conversationId') || params.get('id') || '' };
   return { module: route, resource: route, id: params.get('id') || '' };
 }
@@ -6031,7 +6044,7 @@ function wireDashboardGate() {
     return 'issues';
   };
   const getFirstAllowedView = preferredView => {
-    const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'renewalForecast', 'biners', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
+    const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'renewalForecast', 'biners', 'hr', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
     const preferred = String(preferredView || '').trim();
     if (preferred && Permissions.canAccessTab(preferred)) return preferred;
     return names.find(name => Permissions.canAccessTab(name)) || 'issues';
@@ -8447,6 +8460,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (window.Invoices?.init) Invoices.init();
   if (window.Receipts?.init) Receipts.init();
   if (window.RenewalForecast?.wire) RenewalForecast.wire();
+  if (window.HRModule?.wire) HRModule.wire();
   if (window.Clients?.wire) Clients.wire();
   if (window.ProposalCatalog?.wire) ProposalCatalog.wire();
   if (window.Workflow?.wire) Workflow.wire();
@@ -8501,6 +8515,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         view === 'paymentForecast' ||
         view === 'renewalForecast' ||
         view === 'biners' ||
+        view === 'hr' ||
         view === 'proposalCatalog' ||
         view === 'notifications' ||
         view === 'notificationSetup' ||

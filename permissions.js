@@ -172,6 +172,51 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     export: ['admin', 'dev', 'developer', 'general_manager', 'gm', 'senior_financial_controller', 'senior_fc', 'sfc', 'accountant', 'accounting', 'hod', 'head_of_department'],
     manage: ['admin', 'dev', 'developer', 'general_manager', 'gm', 'senior_financial_controller', 'senior_fc', 'sfc', 'accountant', 'accounting', 'hod', 'head_of_department']
   }),
+  hr: Object.freeze({
+    view: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources', 'general_manager', 'gm', 'senior_financial_controller', 'senior_fc', 'sfc', 'accountant', 'accounting', 'hoo', 'head_of_operations'],
+    list: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources', 'general_manager', 'gm', 'senior_financial_controller', 'senior_fc', 'sfc', 'accountant', 'accounting', 'hoo', 'head_of_operations'],
+    get: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources', 'general_manager', 'gm', 'senior_financial_controller', 'senior_fc', 'sfc', 'accountant', 'accounting', 'hoo', 'head_of_operations'],
+    create: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources'],
+    update: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources'],
+    manage: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources'],
+    export: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources', 'general_manager', 'gm', 'senior_financial_controller', 'senior_fc', 'sfc', 'accountant', 'accounting'],
+    manage_attendance: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources', 'hoo', 'head_of_operations']
+  }),
+  hr_attendance: Object.freeze({
+    view: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources', 'general_manager', 'gm', 'hoo', 'head_of_operations'],
+    list: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources', 'general_manager', 'gm', 'hoo', 'head_of_operations'],
+    create: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources', 'hoo', 'head_of_operations'],
+    update: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources', 'hoo', 'head_of_operations'],
+    export: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources', 'general_manager', 'gm']
+  }),
+  hr_leave: Object.freeze({
+    view: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources', 'general_manager', 'gm', 'hoo', 'head_of_operations'],
+    list: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources', 'general_manager', 'gm', 'hoo', 'head_of_operations'],
+    create: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources', 'hoo', 'head_of_operations'],
+    update: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources'],
+    approve: ['admin', 'hr', 'hr_manager', 'human_resources', 'general_manager', 'gm', 'hoo', 'head_of_operations']
+  }),
+  hr_payroll: Object.freeze({
+    view: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources', 'general_manager', 'gm', 'senior_financial_controller', 'senior_fc', 'sfc', 'accountant', 'accounting'],
+    list: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources', 'general_manager', 'gm', 'senior_financial_controller', 'senior_fc', 'sfc', 'accountant', 'accounting'],
+    generate: ['admin', 'hr', 'hr_manager', 'human_resources'],
+    review: ['admin', 'senior_financial_controller', 'senior_fc', 'sfc', 'accountant', 'accounting'],
+    approve: ['admin', 'general_manager', 'gm', 'senior_financial_controller', 'senior_fc', 'sfc'],
+    pay: ['admin', 'accountant', 'accounting', 'senior_financial_controller', 'senior_fc', 'sfc'],
+    export: ['admin', 'hr', 'hr_manager', 'human_resources', 'general_manager', 'gm', 'senior_financial_controller', 'senior_fc', 'sfc', 'accountant', 'accounting'],
+    manage: ['admin', 'hr', 'hr_manager', 'human_resources']
+  }),
+  hr_documents: Object.freeze({
+    view: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources', 'general_manager', 'gm'],
+    list: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources', 'general_manager', 'gm'],
+    create: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources'],
+    update: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources']
+  }),
+  hr_settings: Object.freeze({
+    view: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources'],
+    update: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources'],
+    manage: ['admin', 'dev', 'developer', 'hr', 'hr_manager', 'human_resources']
+  }),
   clients: Object.freeze({
     list: ['admin', 'dev', 'viewer', 'hoo'],
     get: ['admin', 'dev', 'viewer', 'hoo'],
@@ -250,6 +295,7 @@ const Permissions = {
     paymentForecast: [{ resource: 'payment_forecast', action: 'view' }],
     renewalForecast: [{ resource: 'monthly_renewal_forecast', action: 'view' }],
     biners: [{ resource: 'biners', action: 'view' }],
+    hr: [{ resource: 'hr', action: 'view' }],
     lifecycleAnalytics: [{ resource: 'analytics', action: 'list' }],
     clients: [{ resource: 'clients', action: 'list' }],
     proposalCatalog: [{ resource: 'proposal_catalog', action: 'list' }],
@@ -280,6 +326,7 @@ const Permissions = {
     paymentForecast: 'payment_forecast',
     renewalForecast: 'monthly_renewal_forecast',
     biners: 'biners',
+    hr: 'hr',
     lifecycleAnalytics: 'analytics',
     clients: 'clients',
     proposalCatalog: 'proposal_catalog',
@@ -430,6 +477,9 @@ const Permissions = {
   resourceAliases(resource) {
     const normalizedResource = String(resource || '').trim().toLowerCase();
     if (normalizedResource === 'csm') return ['csm', 'csm_activities'];
+    if (['hr','human_resources','human-resources','hr_employees'].includes(normalizedResource)) return ['hr', 'hr_employees'];
+    if (['hr_attendance','attendance'].includes(normalizedResource)) return ['hr_attendance'];
+    if (['hr_payroll','payroll','payslips'].includes(normalizedResource)) return ['hr_payroll'];
     if (normalizedResource === 'csm_activities') return ['csm_activities', 'csm'];
     if (['contacts', 'crm_contacts'].includes(normalizedResource)) return ['contacts', 'crm_contacts'];
     if (['communicationcentre', 'communication-center', 'communication-centre', 'communication_center'].includes(normalizedResource)) return ['communication_centre'];
@@ -1178,8 +1228,8 @@ async function handleExpiredSession(message = 'Session expired. Please log in ag
 
 
 const PermissionAudit = {
-  resources: ['tickets','events','ai_insights','companies','contacts','leads','deals','proposals','agreements','operations_onboarding','invoices','receipts','credit_notes','payment_forecast','monthly_renewal_forecast','biners','clients','analytics','notifications','notification_settings','workflow','users','role_permissions'],
-  actions: ['list','get','create','update','delete','export','manage','approve','reject','convert_to_deal','create_from_deal','create_from_proposal','create_from_agreement','create_from_invoice','cancel','print','export','assign_csm','update_status','view_renewals','view_statement','statement_view','statement_export','create_receipt','schedule_payment','record_payment','view_details','mark_renewed','mark_no_renewal_needed','undo_override','create_renewal_invoice'],
+  resources: ['tickets','events','ai_insights','companies','contacts','leads','deals','proposals','agreements','operations_onboarding','invoices','receipts','credit_notes','payment_forecast','monthly_renewal_forecast','biners','hr','hr_attendance','hr_leave','hr_payroll','hr_documents','hr_settings','clients','analytics','notifications','notification_settings','workflow','users','role_permissions'],
+  actions: ['list','get','create','update','delete','export','manage','approve','reject','convert_to_deal','create_from_deal','create_from_proposal','create_from_agreement','create_from_invoice','cancel','print','export','assign_csm','update_status','view_renewals','view_statement','statement_view','statement_export','create_receipt','schedule_payment','record_payment','view_details','mark_renewed','mark_no_renewal_needed','undo_override','create_renewal_invoice','generate','review','pay','manage_attendance'],
   inspect(resource, action) {
     const role = Permissions.normalizeRole(Session.role());
     const matchedRows = Permissions.getMatchedRows(resource, action, role, { includeDenied: true });

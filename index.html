@@ -27,6 +27,7 @@
 
   <!-- Your app styles -->
   <link rel="stylesheet" href="/styles.css?v=20260702-invoice-ui-v2" />
+  <link rel="stylesheet" href="/hr.css?v=20260703-full-hr-module" />
 
   <!-- Vercel Web Analytics -->
   <script>
@@ -249,6 +250,19 @@
               <button id="lifecycleAnalyticsTab" class="view-tab" data-view="lifecycleAnalytics"
                       role="tab" aria-selected="false" aria-controls="lifecycleAnalyticsView">
                 <span class="icon" aria-hidden="true">📊</span> Lifecycle Analytics
+              </button>
+              </div>
+            </div>
+
+            <div class="view-menu-group" role="group" aria-label="HR modules" data-menu-group="hr">
+              <button class="view-menu-group-title view-menu-group-toggle" type="button" data-menu-group-toggle aria-expanded="false" aria-controls="hrMenuGroupBody">
+                <span class="view-menu-group-label"><span class="view-menu-group-icon" aria-hidden="true">👥</span><span>HR</span></span>
+                <span class="view-menu-group-chevron" aria-hidden="true">▾</span>
+              </button>
+              <div id="hrMenuGroupBody" class="view-menu-group-body">
+              <button id="hrTab" class="view-tab" data-view="hr" data-permission-resource="hr" data-permission-action="view"
+                      role="tab" aria-selected="false" aria-controls="hrView">
+                <span class="icon" aria-hidden="true">👥</span> HR &amp; Payroll
               </button>
               </div>
             </div>
@@ -1761,6 +1775,18 @@ Sample:
               </table>
             </div>
           </section>
+        </div>
+      </section>
+
+      <section id="hrView" class="view hr-module" role="tabpanel" aria-labelledby="hrTab">
+        <div id="hrRoot" class="hr-root" aria-live="polite">
+          <div class="hr-page-header">
+            <div>
+              <span class="hr-eyebrow">People · Attendance · Payroll</span>
+              <h2>HR &amp; Payroll</h2>
+              <p class="muted">Loading HR workspace…</p>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -4542,6 +4568,7 @@ Sample:
   <script src="/payment-forecast.js?v=20260605-followup-activity2"></script>
   <script src="/renewal-forecast.js?v=20260611-admin-guard1"></script>
   <script src="/biners.js?v=20260611-entry-save-fix"></script>
+  <script src="/hr.js?v=20260703-full-hr-module"></script>
   <script src="/lifecycle-analytics.js?v=20260610-lifecycle-metrics-source-truth"></script>
   <script src="/clients.js?v=20260611-direct-communication"></script>
   <script src="/proposal-catalog.js?v=20260626-modern-product-catalog-ui"></script>

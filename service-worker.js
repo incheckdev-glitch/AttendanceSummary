@@ -1,4 +1,4 @@
-const STATIC_CACHE_NAME = 'incheck360-monitorcore-static-v14-proposal-sign-methods-light';
+const STATIC_CACHE_NAME = 'incheck360-monitorcore-static-v15-full-hr-module';
 const PUSH_DIAGNOSTICS_CACHE_NAME = 'incheck360-monitorcore-push-diagnostics-v1';
 const PUSH_DIAGNOSTICS_PREFIX = '/__incheck360_push_diagnostics__/';
 const STATIC_ASSETS = [
@@ -11,7 +11,9 @@ const STATIC_ASSETS = [
   '/icons/maskable-icon-512.png',
   '/icons/apple-touch-icon.png',
   '/favicon.ico',
-  '/assets/incheck360-ui-logo.png'
+  '/assets/incheck360-ui-logo.png',
+  '/hr.css',
+  '/hr.js'
 ];
 
 const DEBUG_PUSH =
