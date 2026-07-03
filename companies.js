@@ -388,8 +388,8 @@ const Companies = {
     const canEdit = Permissions.canEdit('companies'), canDelete = Permissions.canDelete('companies'); const canCreateLead = Permissions.canCreate('leads');
     const permissions = { canEdit, canDelete, canCreateLead };
     this.renderCompanySummaryCards();
-    TableUtils?.ensureHeaders?.('companies', body.closest('table'), this.tableColumns);
-    const companyRows = TableUtils?.processRows ? TableUtils.processRows('companies', this.state.rows, this.columnMap) : this.state.rows;
+    window.TableUtils?.ensureHeaders?.('companies', body.closest('table'), this.tableColumns);
+    const companyRows = window.TableUtils?.processRows ? window.TableUtils.processRows('companies', this.state.rows, this.columnMap) : this.state.rows;
     body.innerHTML = companyRows.map(r => {
       const selected = String(this.state.selectedDetailsId || '') === String(r.id || r.company_id || '');
       return `<tr class='entity-clickable-row company-row${selected ? ' is-selected' : ''}' tabindex='0' data-company-row='${U.escapeAttr(r.id || r.company_id || '')}' aria-label='Open company ${U.escapeAttr(r.company_name || r.company_id || '')} details'>

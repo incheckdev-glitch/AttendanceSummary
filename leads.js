@@ -1442,8 +1442,8 @@ const Leads = {
       return;
     }
 
-    TableUtils?.ensureHeaders?.('leads', E.leadsTbody?.closest('table'), this.tableColumns);
-    const rows = TableUtils?.processRows ? TableUtils.processRows('leads', this.state.filteredRows, this.columnMap) : this.state.filteredRows;
+    window.TableUtils?.ensureHeaders?.('leads', E.leadsTbody?.closest('table'), this.tableColumns);
+    const rows = window.TableUtils?.processRows ? window.TableUtils.processRows('leads', this.state.filteredRows, this.columnMap) : this.state.filteredRows;
     this.renderLeadAnalytics(this.computeLeadAnalytics(rows));
     const shownFrom = rows.length ? (Number(this.state.offset) || 0) + 1 : 0;
     const shownTo = rows.length ? (Number(this.state.offset) || 0) + rows.length : 0;

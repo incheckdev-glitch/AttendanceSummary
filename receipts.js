@@ -851,7 +851,7 @@ const Receipts = {
       E.receiptsTbody.innerHTML = `<tr><td colspan="10" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(this.state.loadError)}</td></tr>`;
       return;
     }
-    TableUtils?.ensureHeaders?.('receipts', E.receiptsTbody?.closest('table'), this.tableColumns);
+    window.TableUtils?.ensureHeaders?.('receipts', E.receiptsTbody?.closest('table'), this.tableColumns);
     this.renderSummary();
     const rows = this.state.filteredRows || [];
     this.renderPagination();

@@ -145,4 +145,7 @@
     resetTablePage(tableName); rerenderTable(tableName);
   });
   global.TableUtils = { getValueByPath, normalizeSortValue, sortRows, applyColumnFilters, getPaginatedTableRows, nextSortDirection, renderSortableHeader, sortState, columnFilters, processRows, ensureHeaders, handleTableSort };
+  global.sortRows = global.sortRows || sortRows;
+  global.renderSortableHeader = global.renderSortableHeader || renderSortableHeader;
+  global.getPaginatedTableRows = global.getPaginatedTableRows || getPaginatedTableRows;
 })(window);
