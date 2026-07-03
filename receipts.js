@@ -109,13 +109,13 @@ const Receipts = {
   ],
 
   columnMap: {
-    receipt_no: { accessor: row => row.receipt_number || row.receipt_no || row.receipt_id },
-    invoice_no: { accessor: row => row.invoice_number || row.invoice_no || row.invoice_id },
-    customer: { accessor: row => row.customer_name || row.company_name || row.client_name },
+    receipt_no: { accessor: row => row.receipt_number || row.receipt_no || row.receipt_id, serverColumn: 'receipt_number' },
+    invoice_no: { accessor: row => row.invoice_number || row.invoice_no || row.invoice_id, serverColumn: 'invoice_number' },
+    customer: { accessor: row => row.customer_name || row.company_name || row.client_name, serverColumn: 'customer_name' },
     receipt_date: { accessor: row => row.receipt_date },
     currency: { accessor: row => row.currency },
-    received: { accessor: row => row.amount_received || row.received_amount || row.amount || row.invoice_total },
-    payment_state: { accessor: row => row.payment_state || row.payment_status },
+    received: { accessor: row => row.amount_received || row.received_amount || row.amount || row.invoice_total, serverColumn: 'amount_received' },
+    payment_state: { accessor: row => row.payment_state || row.payment_status, serverColumn: 'payment_state' },
     status: { accessor: row => row.status },
     updated_at: { accessor: row => row.updated_at }
   },
@@ -853,9 +853,10 @@ const Receipts = {
     }
     TableUtils?.ensureHeaders?.('receipts', E.receiptsTbody?.closest('table'), this.tableColumns);
     this.renderSummary();
-    const rows = TableUtils?.processRows ? TableUtils.processRows('receipts', this.state.filteredRows, this.columnMap) : this.state.filteredRows;
+    const rows = this.state.filteredRows || [];
     this.renderPagination();
-    E.receiptsState.textContent = `${rows.length} item(s) • Page ${this.state.page}${this.state.total ? ` • ${this.state.total} total` : ''}`;
+    const totalRows = Number(this.state.total || 0);
+    E.receiptsState.textContent = totalRows ? `Showing ${((this.state.page - 1) * this.state.limit) + 1} to ${Math.min(this.state.page * this.state.limit, totalRows)} of ${totalRows} filtered receipts` : 'No receipts found';
     if (!rows.length) {
       E.receiptsTbody.innerHTML = '<tr><td colspan="10" class="muted" style="text-align:center;">No receipts found.</td></tr>';
       return;
@@ -2555,13 +2556,19 @@ const Receipts = {
     this.render();
     try {
       const filters = {};
-      if (this.state.search) filters.receipt_number = this.state.search;
+      if (this.state.search) filters.search = this.state.search;
       if (this.state.invoiceNumber) filters.invoice_number = this.state.invoiceNumber;
       if (this.state.customerName) filters.customer_name = this.state.customerName;
       if (this.state.status && this.state.status !== 'All') filters.status = this.state.status;
+      const tableSort = window.TableUtils?.sortState?.('receipts') || {};
+      const rawColumnFilters = window.TableUtils?.columnFilters?.('receipts') || {};
+      const tableColumnFilters = Object.fromEntries(Object.entries(rawColumnFilters).map(([key, value]) => [this.columnMap?.[key]?.serverColumn || key, value]));
       const response = await Api.listReceipts(filters, {
         limit: this.state.limit,
         page: this.state.page,
+        sort_by: this.columnMap?.[tableSort.key]?.serverColumn || (typeof this.columnMap?.[tableSort.key]?.accessor === 'string' ? this.columnMap?.[tableSort.key]?.accessor : tableSort.key) || 'updated_at',
+        sort_dir: tableSort.direction || 'desc',
+        column_filters: tableColumnFilters,
         summary_only: true,
         forceRefresh: force
       });

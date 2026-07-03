@@ -119,17 +119,17 @@ const Invoices = {
   },
 
   columnMap: {
-    invoice_no: { accessor: row => row.invoice_number || row.invoice_no || row.invoice_id },
-    customer: { accessor: row => row.customer_name || row.company_name || row.client_name },
-    agreement_no: { accessor: row => row.agreement_number || row.agreement_id },
-    invoice_date: { accessor: row => row.issue_date || row.invoice_date },
+    invoice_no: { accessor: row => row.invoice_number || row.invoice_no || row.invoice_id, serverColumn: 'invoice_number' },
+    customer: { accessor: row => row.customer_name || row.company_name || row.client_name, serverColumn: 'customer_name' },
+    agreement_no: { accessor: row => row.agreement_number || row.agreement_id, serverColumn: 'agreement_number' },
+    invoice_date: { accessor: row => row.issue_date || row.invoice_date, serverColumn: 'issue_date' },
     due_date: { accessor: row => row.due_date },
     currency: { accessor: row => row.currency },
-    grand_total: { accessor: row => row.invoice_total || row.grand_total },
-    paid: { accessor: row => row.paid_total || row.paid_amount || row.amount_paid || row.received_amount },
-    balance: { accessor: row => row.pending_amount || row.balance_due },
+    grand_total: { accessor: row => row.invoice_total || row.grand_total, serverColumn: 'invoice_total' },
+    paid: { accessor: row => row.paid_total || row.paid_amount || row.amount_paid || row.received_amount, serverColumn: 'amount_paid' },
+    balance: { accessor: row => row.pending_amount || row.balance_due, serverColumn: 'pending_amount' },
     status: { accessor: row => row.status },
-    payment_state: { accessor: row => row.payment_state || row.payment_status },
+    payment_state: { accessor: row => row.payment_state || row.payment_status, serverColumn: 'payment_state' },
     payment_term: { accessor: row => row.payment_term || row.billing_frequency },
     updated_at: { accessor: row => row.updated_at }
   },
@@ -3123,10 +3123,10 @@ const Invoices = {
     }
     TableUtils?.ensureHeaders?.('invoices', E.invoicesTbody?.closest('table'), this.tableColumns);
     this.renderSummary();
-    const rows = TableUtils?.processRows ? TableUtils.processRows('invoices', this.state.filteredRows, this.columnMap) : this.state.filteredRows;
+    const rows = this.state.filteredRows || [];
     this.renderPagination();
     const totalRows = Number(this.state.total || 0);
-    E.invoicesState.textContent = `${rows.length} item(s) • Page ${this.state.page}${totalRows ? ` • ${totalRows} total` : ''}`;
+    E.invoicesState.textContent = totalRows ? `Showing ${this.state.total ? (((this.state.page - 1) * this.state.limit) + 1) : 0} to ${Math.min(this.state.page * this.state.limit, totalRows)} of ${totalRows} filtered invoices` : 'No invoices found';
     if (!rows.length) {
       const emptyMessage = totalRows
         ? 'No invoices match the current search or filters.'
@@ -5160,9 +5160,15 @@ const Invoices = {
       const search = String(this.state.search || '').trim();
       if (status && status !== 'All') filters.status = status;
       if (search) filters.search = search;
+      const tableSort = window.TableUtils?.sortState?.('invoices') || {};
+      const rawColumnFilters = window.TableUtils?.columnFilters?.('invoices') || {};
+      const tableColumnFilters = Object.fromEntries(Object.entries(rawColumnFilters).map(([key, value]) => [this.columnMap?.[key]?.serverColumn || key, value]));
       const response = await Api.listInvoices(filters, {
         limit: this.state.limit,
         page: this.state.page,
+        sort_by: this.columnMap?.[tableSort.key]?.serverColumn || (typeof this.columnMap?.[tableSort.key]?.accessor === 'string' ? this.columnMap?.[tableSort.key]?.accessor : tableSort.key) || 'updated_at',
+        sort_dir: tableSort.direction || 'desc',
+        column_filters: tableColumnFilters,
         summary_only: true,
         forceRefresh: force
       });
@@ -5228,9 +5234,7 @@ const Invoices = {
         this.state.status = 'All';
         this.state.kpiFilter = 'total';
         this.state.page = 1;
-        this.applyFilters();
-        this.renderFilters();
-        this.render();
+        this.refresh(true);
       });
     }
     if (E.invoicesCreateBtn) {

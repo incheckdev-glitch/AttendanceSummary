@@ -393,7 +393,7 @@ const Agreements = {
   },
 
   columnMap: {
-    agreement_id:{accessor:r=>r.agreement_id}, agreement_number:{accessor:r=>r.agreement_number}, title:{accessor:r=>r.title||r.agreement_title}, customer:{accessor:r=>r.customer_name||r.company_name}, proposal_id:{accessor:r=>r.proposal_id}, deal_id:{accessor:r=>r.deal_id}, start_date:{accessor:r=>r.start_date||r.agreement_start_date}, agreement_length:{accessor:r=>r.agreement_length||r.license_months}, billing_frequency:{accessor:r=>r.billing_frequency}, payment_term:{accessor:r=>r.payment_term}, currency:{accessor:r=>r.currency}, grand_total:{accessor:r=>r.grand_total||r.agreement_total}, status:{accessor:r=>r.status}, updated_at:{accessor:r=>r.updated_at}
+    agreement_id:{accessor:r=>r.agreement_id, serverColumn:'agreement_id'}, agreement_number:{accessor:r=>r.agreement_number, serverColumn:'agreement_number'}, title:{accessor:r=>r.title||r.agreement_title, serverColumn:'agreement_title'}, customer:{accessor:r=>r.customer_name||r.company_name, serverColumn:'customer_name'}, proposal_id:{accessor:r=>r.proposal_id, serverColumn:'proposal_id'}, deal_id:{accessor:r=>r.deal_id, serverColumn:'deal_id'}, start_date:{accessor:r=>r.start_date||r.agreement_start_date, serverColumn:'service_start_date'}, agreement_length:{accessor:r=>r.agreement_length||r.license_months, serverColumn:'agreement_length'}, billing_frequency:{accessor:r=>r.billing_frequency, serverColumn:'billing_frequency'}, payment_term:{accessor:r=>r.payment_term, serverColumn:'payment_term'}, currency:{accessor:r=>r.currency, serverColumn:'currency'}, grand_total:{accessor:r=>r.grand_total||r.agreement_total, serverColumn:'grand_total'}, status:{accessor:r=>r.status, serverColumn:'status'}, updated_at:{accessor:r=>r.updated_at, serverColumn:'updated_at'}
   },
   tableColumns: ['Agreement ID','Agreement Number','Title','Customer','Proposal ID','Deal ID','Start Date','Agreement Length','Billing Frequency','Payment Term','Currency','Grand Total','Status','Updated At'].map(label => ({ key: label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''), label })).concat([null]),
   state: {
@@ -3800,7 +3800,7 @@ const Agreements = {
   renderSummary() {
     if (!E.agreementsSummary) return;
     TableUtils?.ensureHeaders?.('agreements', E.agreementsTbody?.closest('table'), this.tableColumns);
-    const rows = TableUtils?.processRows ? TableUtils.processRows('agreements', this.state.filteredRows, this.columnMap) : this.state.filteredRows;
+    const rows = this.state.filteredRows || [];
     const countBy = fn => rows.filter(fn).length;
     const statusMatch = (row, tokens) => tokens.some(t => this.normalizeText(this.resolveAgreementStatus(row)).includes(t));
     const sentReviewAwaiting = countBy(row => statusMatch(row, ['sent', 'under review', 'awaiting signature']));
@@ -4047,8 +4047,8 @@ const Agreements = {
       return;
     }
     TableUtils?.ensureHeaders?.('agreements', E.agreementsTbody?.closest('table'), this.tableColumns);
-    const rows = TableUtils?.processRows ? TableUtils.processRows('agreements', this.state.filteredRows, this.columnMap) : this.state.filteredRows;
-    E.agreementsState.textContent = `${rows.length} agreement${rows.length === 1 ? '' : 's'} · page ${this.state.page}`;
+    const rows = this.state.filteredRows || [];
+    E.agreementsState.textContent = Number(this.state.total || 0) ? `Showing ${((this.state.page - 1) * this.state.limit) + 1} to ${Math.min(this.state.page * this.state.limit, Number(this.state.total || 0))} of ${Number(this.state.total || 0)} filtered agreements` : 'No agreements found';
     this.renderSummary();
     if (!rows.length) {
       E.agreementsTbody.innerHTML = '<tr><td colspan="15" class="muted" style="text-align:center;">No agreements found.</td></tr>';
@@ -5963,9 +5963,10 @@ const Agreements = {
       const response = await this.listAgreements({
         limit: this.state.limit,
         page: this.state.page,
-        sort_by: 'updated_at',
-        sort_dir: 'desc',
+        sort_by: this.columnMap?.[window.TableUtils?.sortState?.('agreements')?.key]?.serverColumn || (typeof this.columnMap?.[window.TableUtils?.sortState?.('agreements')?.key]?.accessor === 'string' ? this.columnMap?.[window.TableUtils?.sortState?.('agreements')?.key]?.accessor : window.TableUtils?.sortState?.('agreements')?.key) || 'updated_at',
+        sort_dir: window.TableUtils?.sortState?.('agreements')?.direction || 'desc',
         search: this.state.search || '',
+        column_filters: Object.fromEntries(Object.entries(window.TableUtils?.columnFilters?.('agreements') || {}).map(([key, value]) => [this.columnMap?.[key]?.serverColumn || key, value])),
         summary_only: true,
         forceRefresh: force
       });

@@ -977,7 +977,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     'page', 'pageSize', 'perPage', 'limit', 'offset',
     'sort', 'sortBy', 'sortDir', 'sort_by', 'sort_dir',
     'search', 'q', 'mode', 'tab', 'view',
-    'summary_only', 'fields',
+    'summary_only', 'fields', 'column_filters',
     'resource', 'action', 'authToken', 'token', 'session', 'from', 'to', 'filters', 'order',
     ...LEGACY_RESOURCE_FIELD_KEYS, 'updates', 'item'
   ]);
@@ -1086,6 +1086,8 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
   };
   const LIST_SEARCH_COLUMNS_BY_RESOURCE = {
     agreements: ['agreement_id', 'agreement_number', 'agreement_title', 'customer_name', 'customer_legal_name', 'customer_contact_name', 'status'],
+    invoices: ['invoice_id', 'invoice_number', 'customer_name', 'customer_legal_name', 'agreement_number', 'status', 'payment_state', 'payment_conclusion', 'currency', 'issue_date', 'due_date'],
+    receipts: ['receipt_id', 'receipt_number', 'invoice_number', 'customer_name', 'customer_legal_name', 'status', 'payment_state', 'payment_conclusion', 'currency', 'receipt_date'],
     operations_onboarding: ['onboarding_id', 'agreement_id', 'agreement_number', 'client_name', 'request_type', 'request_status', 'technical_request_status', 'invoice_number', 'source_invoice_number', 'proposal_reference', 'onboarding_type', 'source_type', 'invoiced_location_names', 'csm_assigned_to', 'go_live_target_date'],
     technical_admin_requests: ['request_id', 'technical_request_id', 'agreement_id', 'agreement_number', 'client_name', 'request_status', 'request_message', 'request_details', 'proposal_reference', 'request_type', 'onboarding_type'],
     credit_notes: ['credit_note_id', 'credit_note_number', 'invoice_number', 'customer_name', 'client_name', 'company_name', 'customer_legal_name', 'description', 'currency', 'status']
@@ -4670,6 +4672,14 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     if (resource === 'contacts') return applyContactsListFilters(query, dbFilters, String(controls.search ?? controls.q ?? ''));
     if (resource === 'tickets') return applyTicketListFilters(query, dbFilters, String(controls.search ?? controls.q ?? ''));
     const allowedColumns = LIST_COLUMNS_BY_RESOURCE[resource];
+    const applyTextContainsFilter = (key, value) => {
+      const text = String(value ?? '').trim();
+      if (!text) return;
+      if (allowedColumns && !allowedColumns.has(key)) return;
+      query = query.ilike(key, `%${escapePostgrestFilterValue(text)}%`);
+    };
+    const columnFilters = controls.column_filters && typeof controls.column_filters === 'object' ? controls.column_filters : {};
+    Object.entries(columnFilters).forEach(([key, value]) => applyTextContainsFilter(key, value));
     Object.entries(dbFilters || {}).forEach(([key, value]) => {
       if (value === undefined || value === null || value === '') return;
       if (resource === 'credit_notes' && (key === 'status' || key === 'credit_note_status')) {
