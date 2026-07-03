@@ -120,7 +120,7 @@ const Companies = {
       }
     }
     try {
-      const res = await Api.requestWithSession(tableName, 'list', { filters: {}, sortBy: 'created_at', sortDir: 'asc', limit: 100 }, { requireAuth: true });
+      const res = await Api.requestWithSession(tableName, 'list', { filters: {}, limit: 100 }, { requireAuth: true });
       return this.mapOptionRows(Array.isArray(res?.rows) ? res.rows : Array.isArray(res) ? res : [], fallback);
     } catch (error) {
       console.warn(`[Options] ${tableName} final fallback failed`, error);

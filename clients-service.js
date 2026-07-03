@@ -655,7 +655,14 @@ const ClientsService = {
       const signedPayload = this.buildSignedClientFromAgreement(agreement);
       if (!signedPayload.source_agreement_id) continue;
       const existing = this.findMatchingClientForAgreement(agreement, clients);
-      const existingUuid = String(existing?.id || '').trim();
+      const existingRawId = String(existing?.id || '').trim();
+      const existingUuid = this.isUuid(existingRawId) ? existingRawId : '';
+      if (existing && !existingUuid) {
+        // Some unified/client-panel rows use display ids like Company#00032 as UI identifiers.
+        // Never send those values to clients.id because clients.id is UUID in Supabase.
+        this.rememberSkippedClientId_(existingRawId);
+        continue;
+      }
       if (existingUuid) {
         const mergedPayload = this.mergeSignedClient(existing, signedPayload);
         const updated = await this.updateClient(existingUuid, mergedPayload, { softFail: true });
@@ -1629,9 +1636,10 @@ const ClientsService = {
       this.listClients(options)
     ]);
     const panelBaseClients = this.buildClientPanelClientsFromSignedBase_(signedClients, clientsList.rows || [], agreements, invoices, receipts);
-    const allowClientMutations = options.allowClientMutations !== undefined
-      ? Boolean(options.allowClientMutations)
-      : Boolean(window.Permissions?.canEdit?.('clients'));
+    const allowClientMutations = options.allowClientMutations === true;
+    // Client detail/dashboard totals are computed client-side from agreements/invoices/receipts.
+    // Do not persist them automatically during module load: optional writes can hit RLS or display ids
+    // such as Company#00032 and cause repeated 400 errors that make modules appear stuck.
     const syncedClients = allowClientMutations
       ? await this.syncSignedAgreementsToClients(agreements, panelBaseClients)
       : panelBaseClients;
@@ -1649,7 +1657,16 @@ const ClientsService = {
       };
     });
     const updates = clients
-      .filter(row => String(row.id || '').trim())
+      .filter(row => {
+        const id = String(row.id || '').trim();
+        if (!id) return false;
+        if (!this.isUuid(id)) {
+          this.rememberSkippedClientId_(id);
+          return false;
+        }
+        if (this.skippedInvalidClientIds.has(id)) return false;
+        return true;
+      })
       .map(row => {
         const persisted = (clientsList.rows || []).find(source => String(source.id || '').trim() === String(row.id || '').trim()) || {};
         const next = {
@@ -1660,23 +1677,18 @@ const ClientsService = {
           total_due: this.toNumber(row.total_due)
         };
         const unchanged = Object.keys(next).every(key => this.toNumber(persisted[key]) === next[key]);
-        return unchanged ? null : { id: row.id, ...next };
+        return unchanged ? null : { id: String(row.id || '').trim(), ...next };
       })
       .filter(Boolean);
     if (allowClientMutations && updates.length) {
       const persistedUpdates = await Promise.all(
-        updates.map(update =>
-          db
-            .from('clients')
-            .update({
-              total_agreements: update.total_agreements,
-              total_locations: update.total_locations,
-              total_value: update.total_value,
-              total_paid: update.total_paid,
-              total_due: update.total_due
-            })
-            .eq('id', update.id)
-        )
+        updates.map(update => this.updateClient(update.id, {
+          total_agreements: update.total_agreements,
+          total_locations: update.total_locations,
+          total_value: update.total_value,
+          total_paid: update.total_paid,
+          total_due: update.total_due
+        }, { softFail: true }))
       );
       const failedUpdate = persistedUpdates.find(result => result?.error);
       if (failedUpdate?.error) {
