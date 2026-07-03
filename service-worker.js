@@ -1,4 +1,4 @@
-const STATIC_CACHE_NAME = 'incheck360-monitorcore-static-v14-proposal-sign-methods-light';
+const STATIC_CACHE_NAME = 'incheck360-monitorcore-static-v15-module-load-fix';
 const PUSH_DIAGNOSTICS_CACHE_NAME = 'incheck360-monitorcore-push-diagnostics-v1';
 const PUSH_DIAGNOSTICS_PREFIX = '/__incheck360_push_diagnostics__/';
 const STATIC_ASSETS = [

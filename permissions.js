@@ -394,6 +394,72 @@ const Permissions = {
       offset
     };
   },
+  buildBaseFallbackRowsForRole(role = Session.role()) {
+    const normalizedRole = this.normalizeRole(role);
+    if (!normalizedRole) return [];
+    const rows = [];
+    Object.entries(this.baseMatrix || {}).forEach(([resource, actions]) => {
+      if (!actions || typeof actions !== 'object') return;
+      Object.entries(actions).forEach(([action, allowedRoles]) => {
+        if (!Array.isArray(allowedRoles)) return;
+        const normalizedAllowedRoles = allowedRoles.map(value => this.normalizeRole(value)).filter(Boolean);
+        if (!normalizedAllowedRoles.includes(normalizedRole)) return;
+        rows.push({
+          role_key: normalizedRole,
+          resource: String(resource || '').trim().toLowerCase(),
+          action: String(action || '').trim().toLowerCase(),
+          is_allowed: true,
+          is_active: true,
+          allowed_roles: [normalizedRole],
+          source: 'base_fallback'
+        });
+      });
+    });
+    return rows;
+  },
+  applyBaseFallbackMatrix(reason = 'runtime permission matrix unavailable', error = null, role = Session.role()) {
+    const roleKey = this.normalizeRole(role);
+    const rows = this.buildBaseFallbackRowsForRole(roleKey);
+    const { matrix, totalActiveRows, totalDeniedRows } = this.buildMatrixFromRows(rows);
+    this.state.rows = rows;
+    this.state.total = rows.length;
+    this.state.returned = rows.length;
+    this.state.hasMore = false;
+    this.state.page = 1;
+    this.state.limit = Number(this.state.limit || 50);
+    this.state.offset = 0;
+    this.state.matrix = matrix;
+    this.state.loaded = true;
+    this.state.error = error || null;
+    this.state.runtimeFallback = true;
+    console.warn('[Permissions] using base fallback matrix', {
+      reason,
+      roleKey,
+      rowsCount: rows.length,
+      totalActiveRows,
+      totalDeniedRows,
+      message: error?.message || null
+    });
+    return rows;
+  },
+  canUseBaseFallback(resource, action, role = Session.role()) {
+    const normalizedRole = this.normalizeRole(role);
+    const normalizedResource = String(resource || '').trim().toLowerCase();
+    const normalizedAction = String(action || '').trim().toLowerCase();
+    if (!normalizedRole || !normalizedResource || !normalizedAction) return false;
+    const allowedRoles = this.getBaseAllowedRoles(normalizedResource, normalizedAction);
+    return allowedRoles.includes(normalizedRole);
+  },
+  withTimeout(promise, timeoutMs = 8000, label = 'operation') {
+    const ms = Number(timeoutMs);
+    if (!Number.isFinite(ms) || ms <= 0) return promise;
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+      })
+    ]);
+  },
   normalizeAllowedRoles(row = {}) {
     const normalizedFromArray = Array.isArray(row.allowed_roles)
       ? row.allowed_roles.map(v => this.normalizeRole(v)).filter(Boolean)
@@ -485,14 +551,23 @@ const Permissions = {
       const limit = Number(this.state.limit || 50);
       const client = window.SupabaseClient?.getClient?.();
       if (!client || typeof client.rpc !== 'function') {
-        throw new Error('Supabase RPC client is unavailable for get_my_role_permissions');
+        return this.applyBaseFallbackMatrix('Supabase RPC client is unavailable for get_my_role_permissions', null, currentRole);
       }
-      const { data, error } = await client.rpc('get_my_role_permissions');
-      if (error) throw error;
+      const { data, error } = await this.withTimeout(
+        client.rpc('get_my_role_permissions'),
+        8000,
+        'get_my_role_permissions'
+      );
+      if (error) {
+        return this.applyBaseFallbackMatrix('get_my_role_permissions failed', error, currentRole);
+      }
       rows = this.extractRows(data);
       total = rows.length;
       const roleKey = this.normalizeRole(currentRole);
       rows = rows.filter(row => this.normalizeRole(row.role_key) === roleKey && this.toBoolean(row.is_active, true) === true);
+      if (!rows.length) {
+        return this.applyBaseFallbackMatrix('get_my_role_permissions returned no active rows for current role', null, currentRole);
+      }
       const { matrix, totalActiveRows, totalDeniedRows } = this.buildMatrixFromRows(rows);
       this.state.rows = rows;
       this.state.total = total;
@@ -502,6 +577,7 @@ const Permissions = {
       this.state.limit = limit;
       this.state.offset = 0;
       this.state.matrix = matrix;
+      this.state.runtimeFallback = false;
       console.log('[Permissions] loaded matrix for role', {
         roleKey,
         rowsCount: rows.length,
@@ -552,7 +628,7 @@ const Permissions = {
         roleKey: this.normalizeRole(Session.role()),
         error
       });
-      return [];
+      return this.applyBaseFallbackMatrix('loadMatrix exception', error, Session.role());
     } finally {
       this.state.loading = false;
     }
@@ -563,6 +639,7 @@ const Permissions = {
     this.state.rows = [];
     this.state.matrix = new Map();
     this.state.error = null;
+    this.state.runtimeFallback = false;
   },
   isReady() {
     return Boolean(this.state.loaded) && !this.state.loading;
@@ -676,7 +753,7 @@ const Permissions = {
     if (!currentRole || !normalizedResource || !normalizedAction) return false;
 
     if (!this.isReady()) {
-      return false;
+      return this.canUseBaseFallback(normalizedResource, normalizedAction, currentRole);
     }
 
     const matchedRows = this.getMatchedRows(normalizedResource, normalizedAction, currentRole, { includeDenied: true });
