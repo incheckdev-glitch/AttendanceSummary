@@ -85,3 +85,13 @@
   body.accounting-print-active .accounting-table-wrap { overflow:visible; border:1px solid #d1d5db; }
   body.accounting-print-active .accounting-table { min-width:0; font-size:11px; }
 }
+
+/* Accounting Phase 4 - advanced accounting */
+.accounting-badge.pending { background:#fef3c7; color:#92400e; }
+.accounting-badge.recognized,.accounting-badge.matched,.accounting-badge.open { background:#dcfce7; color:#166534; }
+.accounting-badge.closed { background:#e0e7ff; color:#3730a3; }
+.accounting-badge.difference { background:#fee2e2; color:#991b1b; }
+.accounting-badge.paid { background:#dcfce7; color:#166534; }
+.accounting-badge.approved { background:#dbeafe; color:#1d4ed8; }
+.accounting-card .accounting-two-col > .accounting-card { box-shadow:none; }
+.accounting-report-controls .accounting-toolbar { margin:0; }

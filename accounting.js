@@ -1,7 +1,7 @@
 (function initAccountingModule(global) {
   'use strict';
 
-  const STORAGE_KEY = 'incheck360_accounting_phase3_v1';
+  const STORAGE_KEY = 'incheck360_accounting_phase4_v1';
   const $ = id => document.getElementById(id);
   const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[ch]));
   const norm = value => String(value ?? '').trim().toLowerCase();
@@ -28,18 +28,27 @@
     bankAccounts: 'accounting_bank_accounts',
     journals: 'accounting_journal_entries',
     journalLines: 'accounting_journal_lines',
-    ledgerEntries: 'accounting_ledger_entries'
+    ledgerEntries: 'accounting_ledger_entries',
+    taxRates: 'accounting_tax_rates',
+    expenses: 'accounting_expenses',
+    costCenters: 'accounting_cost_centers',
+    closingPeriods: 'accounting_closing_periods',
+    revenueSchedules: 'accounting_revenue_schedules',
+    bankReconciliations: 'accounting_bank_reconciliations',
+    auditLog: 'accounting_audit_log'
   };
 
   const ACCOUNT_TYPES = ['Asset', 'Liability', 'Equity', 'Revenue', 'Expense'];
   const POSTABLE_TYPES = ['invoices','receipts','credit_notes','biners_payables','biners_payments','hr_payroll','hr_salary_receipts'];
   const REPORT_TABS = ['trial_balance','profit_loss','balance_sheet','cash_flow','ar_aging','ap_aging','customer_statement','vendor_statement','payroll_expense'];
+  const ADVANCED_TABS = ['deferred_revenue','expenses','tax','cost_centers','closing','reconciliation','audit'];
 
   const state = {
     initialized: false,
     activeTab: 'dashboard',
     activeSourceTab: 'invoices',
     activeReportTab: 'trial_balance',
+    activeAdvancedTab: 'deferred_revenue',
     dataSource: 'local',
     loading: false,
     editingJournalId: '',
@@ -47,9 +56,11 @@
     filters: {
       ledgerAccountId: 'all', ledgerFrom: '', ledgerTo: '', ledgerSource: 'all', journalStatus: 'all',
       sourceSearch: '', sourceFrom: '', sourceTo: '', sourceStatus: 'unposted',
-      reportFrom: '', reportTo: '', reportAsOf: today(), reportSearch: ''
+      reportFrom: '', reportTo: '', reportAsOf: today(), reportSearch: '',
+      advancedSearch: '', expenseFrom: '', expenseTo: '', expenseStatus: 'all', deferredStatus: 'pending', reconciliationAccountId: 'all', reconciliationDate: today(), statementBalance: ''
     },
     accounts: [], bankAccounts: [], journals: [], journalLines: [], ledgerEntries: [],
+    taxRates: [], expenses: [], costCenters: [], closingPeriods: [], revenueSchedules: [], bankReconciliations: [], auditLog: [],
     sources: { invoices: [], receipts: [], creditNotes: [], binersSchedules: [], payrollItems: [], salaryReceipts: [], hrEmployees: [] }
   };
 
@@ -63,11 +74,11 @@
   function defaultAccounts() {
     const now = new Date().toISOString();
     return [
-      ['1000','Assets','Asset'], ['1100','Cash on Hand','Asset'], ['1200','Bank Account','Asset'], ['1300','Accounts Receivable','Asset'],
-      ['2000','Liabilities','Liability'], ['2100','Accounts Payable','Liability'], ['2200','Payroll Payable','Liability'], ['2300','VAT Payable','Liability'],
+      ['1000','Assets','Asset'], ['1100','Cash on Hand','Asset'], ['1200','Bank Account','Asset'], ['1300','Accounts Receivable','Asset'], ['1400','VAT Receivable','Asset'],
+      ['2000','Liabilities','Liability'], ['2100','Accounts Payable','Liability'], ['2200','Payroll Payable','Liability'], ['2300','VAT Payable','Liability'], ['2400','Deferred Revenue','Liability'],
       ['3000','Equity','Equity'],
       ['4000','Revenue','Revenue'], ['4100','SaaS Revenue','Revenue'], ['4200','Setup Fees Revenue','Revenue'], ['4900','Credit Notes / Revenue Contra','Revenue'],
-      ['5000','Expenses','Expense'], ['5100','Payroll Expense','Expense'], ['5200','Outsourcing / Biners Expense','Expense'], ['5300','Hosting & Software Expense','Expense'], ['5400','General Operating Expense','Expense']
+      ['5000','Expenses','Expense'], ['5100','Payroll Expense','Expense'], ['5200','Outsourcing / Biners Expense','Expense'], ['5300','Hosting & Software Expense','Expense'], ['5400','General Operating Expense','Expense'], ['5500','Other Operating Expense','Expense'], ['5600','Bank Charges / Finance Fees','Expense']
     ].map(([account_code, account_name, account_type]) => ({
       id: uid('acct'), account_code, account_name, account_type, parent_account_id: null, currency: 'USD', opening_balance: 0, is_active: true, notes: '', created_at: now
     }));
@@ -80,12 +91,19 @@
       accounts,
       bankAccounts: [{ id: uid('bank'), account_name: 'Main Bank USD', account_type: 'Bank', currency: 'USD', account_number: '', opening_balance: 0, current_balance: 0, linked_account_id: bankAccount?.id || null, is_active: true, notes: '', created_at: new Date().toISOString() }],
       journals: [], journalLines: [], ledgerEntries: [],
+      taxRates: [{ id: uid('tax'), tax_name: 'VAT 0%', tax_rate: 0, tax_type: 'both', is_active: true, notes: '', created_at: new Date().toISOString() }],
+      expenses: [], costCenters: [], closingPeriods: [], revenueSchedules: [], bankReconciliations: [], auditLog: [],
       sources: { invoices: [], receipts: [], creditNotes: [], binersSchedules: [], payrollItems: [], salaryReceipts: [], hrEmployees: [] }
     };
   }
 
   function plainState() {
-    return { accounts: state.accounts, bankAccounts: state.bankAccounts, journals: state.journals, journalLines: state.journalLines, ledgerEntries: state.ledgerEntries, sources: state.sources };
+    return {
+      accounts: state.accounts, bankAccounts: state.bankAccounts, journals: state.journals, journalLines: state.journalLines, ledgerEntries: state.ledgerEntries,
+      taxRates: state.taxRates, expenses: state.expenses, costCenters: state.costCenters, closingPeriods: state.closingPeriods,
+      revenueSchedules: state.revenueSchedules, bankReconciliations: state.bankReconciliations, auditLog: state.auditLog,
+      sources: state.sources
+    };
   }
 
   function saveLocal() {
@@ -95,7 +113,7 @@
 
   function loadLocal() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('incheck360_accounting_phase2_v1') || localStorage.getItem('incheck360_accounting_phase1_v1');
+      const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('incheck360_accounting_phase3_v1') || localStorage.getItem('incheck360_accounting_phase2_v1') || localStorage.getItem('incheck360_accounting_phase1_v1');
       if (raw) { Object.assign(state, buildSampleData(), JSON.parse(raw)); return; }
     } catch (error) { console.warn('[Accounting] local load failed', error); }
     Object.assign(state, buildSampleData());
@@ -136,10 +154,11 @@
   }
 
   async function loadRemote() {
-    const [accounts, bankAccounts, journals, journalLines, ledgerEntries] = await Promise.all([
-      fetchTable(TABLES.accounts), fetchTable(TABLES.bankAccounts), fetchTable(TABLES.journals), fetchTable(TABLES.journalLines), fetchTable(TABLES.ledgerEntries)
+    const [accounts, bankAccounts, journals, journalLines, ledgerEntries, taxRates, expenses, costCenters, closingPeriods, revenueSchedules, bankReconciliations, auditLog] = await Promise.all([
+      fetchTable(TABLES.accounts), fetchTable(TABLES.bankAccounts), fetchTable(TABLES.journals), fetchTable(TABLES.journalLines), fetchTable(TABLES.ledgerEntries),
+      safeFetchTable(TABLES.taxRates), safeFetchTable(TABLES.expenses), safeFetchTable(TABLES.costCenters), safeFetchTable(TABLES.closingPeriods), safeFetchTable(TABLES.revenueSchedules), safeFetchTable(TABLES.bankReconciliations), safeFetchTable(TABLES.auditLog)
     ]);
-    Object.assign(state, { accounts, bankAccounts, journals, journalLines, ledgerEntries, dataSource: 'supabase' });
+    Object.assign(state, { accounts, bankAccounts, journals, journalLines, ledgerEntries, taxRates, expenses, costCenters, closingPeriods, revenueSchedules, bankReconciliations, auditLog, dataSource: 'supabase' });
     await loadIntegrationSources();
   }
 
@@ -292,7 +311,11 @@
     const liabilities = ledgerRows.filter(row => norm(row.account.account_type) === 'liability').reduce((sum,row) => sum + num(row.balance), 0);
     const revenue = ledgerRows.filter(row => norm(row.account.account_type) === 'revenue').reduce((sum,row) => sum + num(row.balance), 0);
     const expense = ledgerRows.filter(row => norm(row.account.account_type) === 'expense').reduce((sum,row) => sum + num(row.balance), 0);
-    return { totalDebit, totalCredit, bankCash, posted, draft, assets, liabilities, revenue, expense, netProfit: revenue - expense };
+    const deferredRevenue = ledgerRows.filter(row => String(row.account.account_code) === '2400').reduce((sum,row) => sum + num(row.balance), 0);
+    const vatPayable = ledgerRows.filter(row => String(row.account.account_code) === '2300').reduce((sum,row) => sum + num(row.balance), 0);
+    const vatReceivable = ledgerRows.filter(row => String(row.account.account_code) === '1400').reduce((sum,row) => sum + num(row.balance), 0);
+    const openExpenses = state.expenses.filter(row => !['paid','locked','cancelled'].includes(norm(row.payment_status || row.status))).length;
+    return { totalDebit, totalCredit, bankCash, posted, draft, assets, liabilities, revenue, expense, netProfit: revenue - expense, deferredRevenue, vatPayable, vatReceivable, openExpenses };
   }
 
   function sourceChip() {
@@ -305,7 +328,7 @@
         <div>
           <span class="accounting-eyebrow">Finance · Ledger · Controls</span>
           <h2>Accounting Workspace</h2>
-          <p class="muted">Admin-only accounting with Phase 3 financial reports, source sync, ledger controls, and bank/cash tracking.</p>
+          <p class="muted">Admin-only accounting with Phase 4 deferred revenue, expenses, tax, cost centers, closing controls, audit log, reports, and source sync.</p>
         </div>
         <div class="accounting-actions">
           ${sourceChip()}
@@ -315,7 +338,7 @@
       </div>
       <div class="accounting-tabs" role="tablist">
         ${[
-          ['dashboard','Dashboard'],['accounts','Chart of Accounts'],['integrations','Module Sync'],['journals','Journal Entries'],['ledger','General Ledger'],['bank','Bank & Cash'],['reports','Financial Reports']
+          ['dashboard','Dashboard'],['accounts','Chart of Accounts'],['integrations','Module Sync'],['journals','Journal Entries'],['ledger','General Ledger'],['bank','Bank & Cash'],['reports','Financial Reports'],['advanced','Advanced Controls']
         ].map(([key,label]) => `<button class="accounting-tab ${state.activeTab === key ? 'active' : ''}" type="button" data-accounting-tab="${key}">${label}</button>`).join('')}
       </div>
       ${content}
@@ -332,9 +355,10 @@
         <div class="accounting-kpi"><div class="label">Bank / Cash Balance</div><div class="value">${money(m.bankCash)}</div><div class="hint">From ledger bank/cash accounts</div></div>
         <div class="accounting-kpi"><div class="label">Posted Journals</div><div class="value">${m.posted}</div><div class="hint">Posted or locked entries</div></div>
         <div class="accounting-kpi"><div class="label">Unposted Sources</div><div class="value">${sourceStats.unposted}</div><div class="hint">Invoices, receipts, payroll, payables</div></div>
-        <div class="accounting-kpi"><div class="label">Revenue</div><div class="value">${money(m.revenue)}</div><div class="hint">Posted ledger revenue</div></div>
-        <div class="accounting-kpi"><div class="label">Expenses</div><div class="value">${money(m.expense)}</div><div class="hint">Posted ledger expenses</div></div>
-        <div class="accounting-kpi"><div class="label">Net Profit</div><div class="value">${money(m.netProfit)}</div><div class="hint">Revenue minus expenses</div></div>
+        <div class="accounting-kpi"><div class="label">Revenue</div><div class="value">${money(m.revenue)}</div><div class="hint">Posted recognized revenue</div></div>
+        <div class="accounting-kpi"><div class="label">Deferred Revenue</div><div class="value">${money(m.deferredRevenue)}</div><div class="hint">Annual SaaS not recognized yet</div></div>
+        <div class="accounting-kpi"><div class="label">Expenses</div><div class="value">${money(m.expense)}</div><div class="hint">Posted ledger expenses · ${m.openExpenses} open</div></div>
+        <div class="accounting-kpi"><div class="label">Net Profit</div><div class="value">${money(m.netProfit)}</div><div class="hint">Recognized revenue minus expenses</div></div>
         <div class="accounting-kpi"><div class="label">Trial Balance</div><div class="value">${Math.abs(m.totalDebit - m.totalCredit) < 0.01 ? 'Balanced' : 'Mismatch'}</div><div class="hint">Debit ${money(m.totalDebit)} · Credit ${money(m.totalCredit)}</div></div>
       </div>
       <div class="accounting-source-grid" style="margin-top:12px;">
@@ -842,7 +866,7 @@
 
   function describeSourceEntry(type) {
     const map = {
-      invoices: 'Dr Accounts Receivable · Cr SaaS/Setup Revenue',
+      invoices: 'Dr Accounts Receivable · Cr Deferred Revenue / Setup Revenue',
       receipts: 'Dr Bank/Cash · Cr Accounts Receivable',
       credit_notes: 'Dr Credit Notes Contra Revenue · Cr Accounts Receivable',
       biners_payables: 'Dr Outsourcing Expense · Cr Accounts Payable',
@@ -867,6 +891,7 @@
     const ar = requiredAccount('1300', 'Accounts Receivable');
     const bank = bankLedgerAccount();
     const revenue = requiredAccount('4100', 'SaaS Revenue');
+    const deferredRevenue = requiredAccount('2400', 'Deferred Revenue');
     const setupRevenue = requiredAccount('4200', 'Setup Fees Revenue');
     const creditContra = requiredAccount('4900', 'Credit Notes / Revenue Contra');
     const ap = requiredAccount('2100', 'Accounts Payable');
@@ -878,7 +903,7 @@
       const setup = Math.max(0, Math.min(amount, num(row.subtotal_one_time || row.one_time_total || row.setup_total || 0)));
       const saas = Math.max(0, amount - setup);
       const rows = [line(ar, amount, 0, `Invoice ${sourceReference(type,row)} · ${sourceCounterparty(type,row)}`)];
-      if (saas > 0) rows.push(line(revenue, 0, saas, `SaaS revenue · ${sourceReference(type,row)}`));
+      if (saas > 0) rows.push(line(deferredRevenue || revenue, 0, saas, `Deferred SaaS revenue · ${sourceReference(type,row)}`));
       if (setup > 0) rows.push(line(setupRevenue, 0, setup, `Setup fees revenue · ${sourceReference(type,row)}`));
       return rows;
     }
@@ -897,7 +922,7 @@
     const lines = sourceLines(type, row).filter(l => l.account_id && (l.debit > 0 || l.credit > 0));
     const amount = sourceAmount(type, row);
     if (lines.length < 2 || amount <= 0) return toast('Unable to build a balanced journal for this source. Check amount and accounts.');
-    await postBalancedJournal({
+    const journal = await postBalancedJournal({
       sourceModule: type,
       sourceTable: sourceTableName(type),
       sourceId: row.id || null,
@@ -909,6 +934,7 @@
       referenceNo: sourceReference(type, row),
       lines
     });
+    if (journal && type === 'invoices' && saasAmount(row) > 0) await generateRevenueScheduleForInvoice(row, false);
   }
 
   function sourceTableName(type) {
@@ -916,6 +942,7 @@
   }
 
   async function postBalancedJournal({ sourceModule, sourceTable, sourceId, sourceReference, sourceLabel, date, currency, description, referenceNo, lines }) {
+    if (isPeriodClosed(date || today())) { toast('This accounting period is closed. Reopen it before posting.'); return null; }
     const validLines = lines.filter(l => l.account_id && (num(l.debit) > 0 || num(l.credit) > 0));
     const totalDebit = validLines.reduce((sum,line) => sum + num(line.debit), 0);
     const totalCredit = validLines.reduce((sum,line) => sum + num(line.credit), 0);
@@ -952,7 +979,9 @@
     }
     saveLocal();
     toast(`${sourceLabel || sourceModule} posted to ledger.`);
+    await recordAudit('post_journal', sourceModule || 'journal', sourceReference || journal.id, `Posted journal ${journal.journal_no}: ${description}.`, { totalDebit, totalCredit });
     render();
+    return journal;
   }
 
   async function syncVisibleSources() {
@@ -961,6 +990,404 @@
     for (const row of rows) await postSource(state.activeSourceTab, row);
     await refresh(true);
     toast(`Posted ${rows.length} visible ${sourceLabel(state.activeSourceTab)} record(s).`);
+  }
+
+
+
+  // ---------------- Accounting Phase 4 - advanced controls ----------------
+  function advancedTabLabel(key) {
+    return ({ deferred_revenue:'Deferred Revenue', expenses:'Expenses', tax:'Tax / VAT', cost_centers:'Cost Centers', closing:'Closing Periods', reconciliation:'Bank Reconciliation', audit:'Audit Log' })[key] || key;
+  }
+
+  function renderAdvanced() {
+    const body = state.activeAdvancedTab === 'deferred_revenue' ? renderDeferredRevenue()
+      : state.activeAdvancedTab === 'expenses' ? renderExpenses()
+      : state.activeAdvancedTab === 'tax' ? renderTaxVat()
+      : state.activeAdvancedTab === 'cost_centers' ? renderCostCenters()
+      : state.activeAdvancedTab === 'closing' ? renderClosingPeriods()
+      : state.activeAdvancedTab === 'reconciliation' ? renderReconciliation()
+      : state.activeAdvancedTab === 'audit' ? renderAuditLog()
+      : renderDeferredRevenue();
+    return `<div class="accounting-card">
+      <div class="accounting-card-header"><div><h3>Advanced Accounting Controls</h3><p class="muted">Phase 4: deferred revenue, monthly recognition, expenses, tax, cost centers, period closing, reconciliation, and audit history.</p></div><span class="accounting-chip">${esc(advancedTabLabel(state.activeAdvancedTab))}</span></div>
+      <div class="accounting-tabs compact">${ADVANCED_TABS.map(key => `<button class="accounting-tab ${state.activeAdvancedTab === key ? 'active':''}" type="button" data-accounting-advanced-tab="${esc(key)}">${esc(advancedTabLabel(key))}</button>`).join('')}</div>
+      <div style="margin-top:14px;">${body}</div>
+    </div>`;
+  }
+
+  function saasAmount(row) {
+    const amount = sourceAmount('invoices', row);
+    const setup = Math.max(0, Math.min(amount, num(row.subtotal_one_time || row.one_time_total || row.setup_total || row.account_setup_total || 0)));
+    return Math.max(0, amount - setup);
+  }
+
+  function serviceDate(row, kind) {
+    const candidates = kind === 'start'
+      ? [row.service_start_date, row.start_service_date, row.service_start, row.period_start, row.subscription_start, row.invoice_date, row.issue_date, row.created_at]
+      : [row.service_end_date, row.end_service_date, row.service_end, row.period_end, row.subscription_end];
+    return dateKey(candidates.find(Boolean)) || '';
+  }
+
+  function addMonths(dateValue, months) {
+    const d = new Date(`${dateKey(dateValue)}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return '';
+    d.setMonth(d.getMonth() + months);
+    return d.toISOString().slice(0,10);
+  }
+
+  function monthStart(dateValue) {
+    const d = new Date(`${dateKey(dateValue)}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return today().slice(0,8) + '01';
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`;
+  }
+
+  function monthlyRecognitionDates(start, end) {
+    const dates = [];
+    let cursor = monthStart(start || today());
+    const limit = dateKey(end) || addMonths(cursor, 11);
+    for (let i = 0; i < 36; i += 1) {
+      if (cursor > limit) break;
+      dates.push(cursor);
+      cursor = addMonths(cursor, 1);
+    }
+    return dates.length ? dates : [monthStart(today())];
+  }
+
+  function scheduleRowsForInvoice(row) {
+    const invoiceRef = sourceReference('invoices', row);
+    const amount = saasAmount(row);
+    if (!invoiceRef || amount <= 0) return [];
+    const start = serviceDate(row, 'start') || sourceDate('invoices', row) || today();
+    const end = serviceDate(row, 'end') || addMonths(start, 11);
+    const dates = monthlyRecognitionDates(start, end);
+    const monthly = Math.floor((amount / dates.length) * 100) / 100;
+    let remaining = amount;
+    const now = new Date().toISOString();
+    return dates.map((recognitionDate, index) => {
+      const value = index === dates.length - 1 ? Number(remaining.toFixed(2)) : monthly;
+      remaining -= value;
+      return {
+        id: uid('revsch'), source_invoice_ref: invoiceRef, source_invoice_id: isUuid(row.id) ? row.id : null, customer_name: sourceCounterparty('invoices', row),
+        recognition_date: recognitionDate, service_start_date: dateKey(start), service_end_date: dateKey(end), amount: value, currency: sourceCurrency(row),
+        status: 'pending', journal_id: null, recognized_at: null, recognized_by: null,
+        description: `Monthly SaaS revenue recognition · ${invoiceRef} · ${sourceCounterparty('invoices', row)}`,
+        created_at: now, updated_at: now
+      };
+    });
+  }
+
+  function schedulesForInvoiceRef(ref) {
+    return state.revenueSchedules.filter(row => String(row.source_invoice_ref || '') === String(ref));
+  }
+
+  async function generateRevenueScheduleForInvoice(row, showToast = true) {
+    const invoiceRef = sourceReference('invoices', row);
+    if (!invoiceRef) return showToast ? toast('Invoice reference is missing.') : null;
+    if (schedulesForInvoiceRef(invoiceRef).length) return showToast ? toast('Revenue schedule already exists for this invoice.') : null;
+    const rows = scheduleRowsForInvoice(row);
+    if (!rows.length) return showToast ? toast('No SaaS amount found to defer for this invoice.') : null;
+    state.revenueSchedules.push(...rows);
+    try { await upsertRemote(TABLES.revenueSchedules, rows); }
+    catch (error) { state.dataSource = 'local'; console.warn('[Accounting] revenue schedule remote save failed', error); }
+    await recordAudit('generate_revenue_schedule', 'invoice', invoiceRef, `Generated ${rows.length} monthly revenue schedule row(s) for ${invoiceRef}.`, { invoiceRef, amount: rows.reduce((s,r)=>s+num(r.amount),0) });
+    saveLocal();
+    if (showToast) { toast(`Generated ${rows.length} monthly revenue recognition rows.`); render(); }
+    return rows;
+  }
+
+  async function recognizeRevenueSchedule(row) {
+    if (!row || norm(row.status) === 'recognized') return toast('This revenue schedule is already recognized.');
+    if (isPeriodClosed(row.recognition_date)) return toast('This recognition date is in a closed accounting period. Reopen the period first.');
+    const deferred = requiredAccount('2400', 'Deferred Revenue');
+    const revenue = requiredAccount('4100', 'SaaS Revenue');
+    if (!deferred || !revenue) return;
+    const journal = await postBalancedJournal({
+      sourceModule: 'revenue_recognition', sourceTable: TABLES.revenueSchedules, sourceId: row.id, sourceReference: `${row.source_invoice_ref}-${row.recognition_date}`,
+      sourceLabel: row.customer_name || row.source_invoice_ref, date: row.recognition_date || today(), currency: row.currency || 'USD',
+      description: row.description || `Monthly SaaS revenue recognition · ${row.source_invoice_ref}`, referenceNo: row.source_invoice_ref,
+      lines: [line(deferred, num(row.amount), 0, `Release deferred revenue · ${row.source_invoice_ref}`), line(revenue, 0, num(row.amount), `Recognize SaaS revenue · ${row.source_invoice_ref}`)]
+    });
+    if (!journal) return;
+    Object.assign(row, { status: 'recognized', journal_id: journal.id, recognized_at: new Date().toISOString(), recognized_by: authName(), updated_at: new Date().toISOString() });
+    try { await upsertRemote(TABLES.revenueSchedules, row); } catch (error) { state.dataSource = 'local'; console.warn('[Accounting] schedule update failed', error); }
+    await recordAudit('recognize_revenue', 'revenue_schedule', row.id, `Recognized SaaS revenue ${money(row.amount,row.currency)} for ${row.source_invoice_ref}.`, { invoiceRef: row.source_invoice_ref, recognitionDate: row.recognition_date });
+    saveLocal(); render();
+  }
+
+  async function recognizeDueRevenue() {
+    const asOf = state.filters.reportAsOf || today();
+    const due = filteredRevenueSchedules().filter(row => norm(row.status || 'pending') === 'pending' && dateKey(row.recognition_date) <= asOf).slice(0, 60);
+    if (!due.length) return toast('No due deferred revenue rows to recognize.');
+    for (const row of due) await recognizeRevenueSchedule(row);
+    await refresh(true);
+    toast(`Recognized ${due.length} revenue schedule row(s).`);
+  }
+
+  function filteredRevenueSchedules() {
+    const search = norm(state.filters.advancedSearch);
+    return state.revenueSchedules.filter(row => {
+      if (state.filters.deferredStatus !== 'all' && norm(row.status || 'pending') !== state.filters.deferredStatus) return false;
+      if (state.filters.expenseFrom && dateKey(row.recognition_date) < state.filters.expenseFrom) return false;
+      if (state.filters.expenseTo && dateKey(row.recognition_date) > state.filters.expenseTo) return false;
+      if (search && !norm([row.source_invoice_ref,row.customer_name,row.description,row.status].join(' ')).includes(search)) return false;
+      return true;
+    }).sort((a,b)=>String(a.recognition_date || '').localeCompare(String(b.recognition_date || '')));
+  }
+
+  function renderAdvancedFilters(extra = '') {
+    return `<div class="accounting-report-controls">
+      <div class="accounting-form-grid">
+        <label class="accounting-field">Search<input id="accountingAdvancedSearch" value="${esc(state.filters.advancedSearch)}" placeholder="reference, vendor, account, name" /></label>
+        <label class="accounting-field">From<input type="date" id="accountingAdvancedFrom" value="${esc(state.filters.expenseFrom)}" /></label>
+        <label class="accounting-field">To<input type="date" id="accountingAdvancedTo" value="${esc(state.filters.expenseTo)}" /></label>
+        ${extra}
+        <div class="accounting-toolbar"><button class="btn ghost" type="button" data-accounting-action="clear-advanced-filters">Clear</button></div>
+      </div>
+    </div>`;
+  }
+
+  function renderDeferredRevenue() {
+    const invoiceRows = getSourceRows('invoices').filter(row => saasAmount(row) > 0).slice(0, 250);
+    const scheduleRows = filteredRevenueSchedules();
+    const pending = scheduleRows.filter(row => norm(row.status || 'pending') === 'pending').reduce((s,r)=>s+num(r.amount),0);
+    const recognized = scheduleRows.filter(row => norm(row.status) === 'recognized').reduce((s,r)=>s+num(r.amount),0);
+    const extra = `<label class="accounting-field">Status<select id="accountingDeferredStatus"><option value="all">All</option><option value="pending" ${state.filters.deferredStatus==='pending'?'selected':''}>Pending</option><option value="recognized" ${state.filters.deferredStatus==='recognized'?'selected':''}>Recognized</option><option value="cancelled" ${state.filters.deferredStatus==='cancelled'?'selected':''}>Cancelled</option></select></label>`;
+    return `${renderAdvancedFilters(extra)}
+      <div class="accounting-grid compact"><div class="accounting-kpi"><div class="label">Pending Deferred Revenue</div><div class="value">${money(pending)}</div></div><div class="accounting-kpi"><div class="label">Recognized From Schedule</div><div class="value">${money(recognized)}</div></div><div class="accounting-kpi"><div class="label">Schedule Rows</div><div class="value">${scheduleRows.length}</div></div></div>
+      <div class="accounting-toolbar"><button class="btn" type="button" data-accounting-action="recognize-due-revenue">Recognize Due Revenue</button><button class="btn ghost" type="button" data-accounting-action="export-deferred-revenue">Export Deferred CSV</button></div>
+      <h4>Invoices Available for Revenue Schedule</h4>${renderInvoiceScheduleTable(invoiceRows)}
+      <h4>Monthly Revenue Recognition Schedule</h4>${renderRevenueScheduleTable(scheduleRows)}`;
+  }
+
+  function renderInvoiceScheduleTable(rows) {
+    if (!rows.length) return '<div class="accounting-empty">No SaaS invoices found from source sync.</div>';
+    return `<div class="accounting-table-wrap"><table class="accounting-table"><thead><tr><th>Invoice</th><th>Client</th><th>Service Period</th><th class="num">SaaS Amount</th><th>Schedule</th><th>Action</th></tr></thead><tbody>${rows.map(row => {
+      const ref = sourceReference('invoices', row);
+      const schedule = schedulesForInvoiceRef(ref);
+      const recognized = schedule.filter(item => norm(item.status) === 'recognized').reduce((s,item)=>s+num(item.amount),0);
+      return `<tr><td><strong>${esc(ref)}</strong><div class="muted">${fmtDate(sourceDate('invoices',row))}</div></td><td>${esc(sourceCounterparty('invoices',row))}</td><td>${fmtDate(serviceDate(row,'start'))} → ${fmtDate(serviceDate(row,'end') || addMonths(serviceDate(row,'start') || sourceDate('invoices',row),11))}</td><td class="num">${money(saasAmount(row), sourceCurrency(row))}</td><td>${schedule.length ? `${schedule.length} months · recognized ${money(recognized, sourceCurrency(row))}` : '<span class="muted">Not generated</span>'}</td><td>${schedule.length ? '<span class="muted">Generated</span>' : `<button class="btn sm" type="button" data-accounting-generate-schedule="${esc(row.__acct_key)}">Generate Schedule</button>`}</td></tr>`;
+    }).join('')}</tbody></table></div>`;
+  }
+
+  function renderRevenueScheduleTable(rows) {
+    if (!rows.length) return '<div class="accounting-empty">No deferred revenue schedule rows match the filters.</div>';
+    return `<div class="accounting-table-wrap"><table class="accounting-table"><thead><tr><th>Recognition Date</th><th>Invoice</th><th>Customer</th><th class="num">Amount</th><th>Status</th><th>Journal</th><th>Action</th></tr></thead><tbody>${rows.map(row => `<tr><td>${fmtDate(row.recognition_date)}</td><td><strong>${esc(row.source_invoice_ref)}</strong></td><td>${esc(row.customer_name || '—')}</td><td class="num">${money(row.amount,row.currency)}</td><td><span class="accounting-badge ${esc(norm(row.status || 'pending'))}">${esc(row.status || 'pending')}</span></td><td>${esc(state.journals.find(j=>j.id===row.journal_id)?.journal_no || '—')}</td><td>${norm(row.status)==='recognized' ? '<span class="muted">Posted</span>' : `<button class="btn sm" type="button" data-accounting-recognize-revenue="${esc(row.id)}">Recognize</button>`}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+
+  function taxRateOptions(selected = '') {
+    return '<option value="">No tax</option>' + state.taxRates.filter(t => t.is_active !== false).map(t => `<option value="${esc(t.id)}" ${t.id===selected?'selected':''}>${esc(t.tax_name)} · ${num(t.tax_rate)}%</option>`).join('');
+  }
+
+  function costCenterOptions(selected = '') {
+    return '<option value="">No cost center</option>' + state.costCenters.filter(c => c.is_active !== false).map(c => `<option value="${esc(c.id)}" ${c.id===selected?'selected':''}>${esc(c.code || '')} · ${esc(c.name || '')}</option>`).join('');
+  }
+
+  function renderExpenses() {
+    const rows = filteredExpenses();
+    const total = rows.reduce((s,r)=>s+num(r.total_amount || r.amount),0);
+    const posted = rows.filter(r => r.journal_id).reduce((s,r)=>s+num(r.total_amount || r.amount),0);
+    const statusExtra = `<label class="accounting-field">Status<select id="accountingExpenseStatus"><option value="all">All</option><option value="draft" ${state.filters.expenseStatus==='draft'?'selected':''}>Draft</option><option value="approved" ${state.filters.expenseStatus==='approved'?'selected':''}>Approved</option><option value="paid" ${state.filters.expenseStatus==='paid'?'selected':''}>Paid</option><option value="locked" ${state.filters.expenseStatus==='locked'?'selected':''}>Locked</option></select></label>`;
+    return `${renderAdvancedFilters(statusExtra)}
+      <div class="accounting-grid compact"><div class="accounting-kpi"><div class="label">Filtered Expenses</div><div class="value">${money(total)}</div></div><div class="accounting-kpi"><div class="label">Posted Expenses</div><div class="value">${money(posted)}</div></div><div class="accounting-kpi"><div class="label">Expense Count</div><div class="value">${rows.length}</div></div></div>
+      <div class="accounting-two-col"><div>${renderExpensesTable(rows)}</div><div class="accounting-card"><h3>New / Edit Expense</h3>${renderExpenseForm()}</div></div>`;
+  }
+
+  function filteredExpenses() {
+    const search = norm(state.filters.advancedSearch);
+    return state.expenses.filter(row => {
+      const date = dateKey(row.expense_date || row.created_at);
+      if (state.filters.expenseStatus !== 'all' && norm(row.payment_status || row.status || 'draft') !== state.filters.expenseStatus) return false;
+      if (state.filters.expenseFrom && date < state.filters.expenseFrom) return false;
+      if (state.filters.expenseTo && date > state.filters.expenseTo) return false;
+      if (search && !norm([row.expense_no,row.vendor_name,row.category,row.description,row.payment_status].join(' ')).includes(search)) return false;
+      return true;
+    }).sort((a,b)=>String(b.expense_date || '').localeCompare(String(a.expense_date || '')));
+  }
+
+  function nextExpenseNo() {
+    const year = new Date().getFullYear();
+    const max = state.expenses.reduce((acc,row)=>Math.max(acc, num(String(row.expense_no || '').match(/(\d+)$/)?.[1] || 0)),0);
+    return `EXP/${year}/${String(max+1).padStart(4,'0')}`;
+  }
+
+  function renderExpenseForm() {
+    return `<form id="accountingExpenseForm"><input type="hidden" id="accountingExpenseId" />
+      <div class="accounting-form-grid">
+        <label class="accounting-field">Expense No.<input id="accountingExpenseNo" value="${esc(nextExpenseNo())}" /></label>
+        <label class="accounting-field">Date<input id="accountingExpenseDate" type="date" value="${esc(today())}" /></label>
+        <label class="accounting-field">Vendor<input id="accountingExpenseVendor" placeholder="Vendor / supplier" /></label>
+        <label class="accounting-field">Category<input id="accountingExpenseCategory" placeholder="Hosting, office, travel..." /></label>
+        <label class="accounting-field">Expense Account<select id="accountingExpenseAccount">${accountOptions(accountByCode('5400')?.id || '', true)}</select></label>
+        <label class="accounting-field">Cost Center<select id="accountingExpenseCostCenter">${costCenterOptions('')}</select></label>
+        <label class="accounting-field">Net Amount<input id="accountingExpenseAmount" type="number" step="0.01" value="0" /></label>
+        <label class="accounting-field">Tax Rate<select id="accountingExpenseTaxRate">${taxRateOptions('')}</select></label>
+        <label class="accounting-field">Currency<input id="accountingExpenseCurrency" value="USD" /></label>
+        <label class="accounting-field">Status<select id="accountingExpenseStatusInput"><option value="draft">Draft</option><option value="approved">Approved / Payable</option><option value="paid">Paid</option><option value="locked">Locked</option></select></label>
+        <label class="accounting-field">Paid From<select id="accountingExpenseBankAccount"><option value="">Use default bank/cash</option>${state.bankAccounts.map(b=>`<option value="${esc(b.id)}">${esc(b.account_name)} · ${esc(b.currency)}</option>`).join('')}</select></label>
+        <label class="accounting-field wide">Description<textarea id="accountingExpenseDescription"></textarea></label>
+        <div class="accounting-toolbar wide"><button class="btn" type="submit">Save Expense</button><button class="btn ghost" type="button" data-accounting-action="reset-expense-form">Clear</button></div>
+      </div></form>`;
+  }
+
+  function renderExpensesTable(rows) {
+    if (!rows.length) return '<div class="accounting-empty">No expenses match the filters.</div>';
+    return `<div class="accounting-table-wrap"><table class="accounting-table"><thead><tr><th>No.</th><th>Date</th><th>Vendor</th><th>Category</th><th>Status</th><th class="num">Net</th><th class="num">Tax</th><th class="num">Total</th><th>Journal</th><th>Actions</th></tr></thead><tbody>${rows.map(row=>`<tr><td><strong>${esc(row.expense_no)}</strong></td><td>${fmtDate(row.expense_date)}</td><td>${esc(row.vendor_name || '—')}</td><td>${esc(row.category || '—')}</td><td><span class="accounting-badge ${esc(norm(row.payment_status || row.status || 'draft'))}">${esc(row.payment_status || row.status || 'draft')}</span></td><td class="num">${money(row.amount,row.currency)}</td><td class="num">${money(row.tax_amount,row.currency)}</td><td class="num">${money(row.total_amount || row.amount,row.currency)}</td><td>${esc(state.journals.find(j=>j.id===row.journal_id)?.journal_no || '—')}</td><td><button class="btn ghost sm" type="button" data-accounting-edit-expense="${esc(row.id)}">Edit</button> ${row.journal_id ? '<span class="muted">Posted</span>' : `<button class="btn sm" type="button" data-accounting-post-expense="${esc(row.id)}">Post</button>`}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+
+  async function saveExpenseForm() {
+    const id = $('accountingExpenseId')?.value || uid('expense');
+    const existing = state.expenses.find(row => row.id === id) || {};
+    const taxRate = state.taxRates.find(t => t.id === $('accountingExpenseTaxRate')?.value);
+    const amount = num($('accountingExpenseAmount')?.value);
+    const taxAmount = Number((amount * num(taxRate?.tax_rate) / 100).toFixed(2));
+    const row = {
+      ...existing, id, expense_no: $('accountingExpenseNo')?.value?.trim() || existing.expense_no || nextExpenseNo(), expense_date: $('accountingExpenseDate')?.value || today(),
+      vendor_name: $('accountingExpenseVendor')?.value?.trim() || '', category: $('accountingExpenseCategory')?.value?.trim() || '', description: $('accountingExpenseDescription')?.value?.trim() || '',
+      expense_account_id: $('accountingExpenseAccount')?.value || accountByCode('5400')?.id || null, cost_center_id: $('accountingExpenseCostCenter')?.value || null,
+      amount, tax_rate_id: taxRate?.id || null, tax_amount: taxAmount, total_amount: Number((amount + taxAmount).toFixed(2)), currency: ($('accountingExpenseCurrency')?.value || 'USD').trim().toUpperCase(),
+      payment_status: $('accountingExpenseStatusInput')?.value || 'draft', payment_account_id: $('accountingExpenseBankAccount')?.value || defaultBankAccount()?.id || null,
+      created_by: existing.created_by || authName(), created_at: existing.created_at || new Date().toISOString(), updated_at: new Date().toISOString()
+    };
+    if (!row.vendor_name) return toast('Vendor is required.');
+    if (row.amount <= 0) return toast('Expense amount must be above zero.');
+    await persistRow('expenses', TABLES.expenses, row);
+    await recordAudit('save_expense', 'expense', row.id, `Saved expense ${row.expense_no}.`, { amount: row.total_amount, status: row.payment_status });
+    toast('Expense saved.'); render();
+  }
+
+  function editExpense(id) {
+    const row = state.expenses.find(item => item.id === id); if (!row) return;
+    state.activeTab = 'advanced'; state.activeAdvancedTab = 'expenses'; render();
+    $('accountingExpenseId').value = row.id; $('accountingExpenseNo').value = row.expense_no || ''; $('accountingExpenseDate').value = dateKey(row.expense_date) || today(); $('accountingExpenseVendor').value = row.vendor_name || ''; $('accountingExpenseCategory').value = row.category || ''; $('accountingExpenseAccount').value = row.expense_account_id || accountByCode('5400')?.id || ''; $('accountingExpenseCostCenter').value = row.cost_center_id || ''; $('accountingExpenseAmount').value = row.amount || 0; $('accountingExpenseTaxRate').value = row.tax_rate_id || ''; $('accountingExpenseCurrency').value = row.currency || 'USD'; $('accountingExpenseStatusInput').value = row.payment_status || 'draft'; $('accountingExpenseBankAccount').value = row.payment_account_id || ''; $('accountingExpenseDescription').value = row.description || '';
+  }
+
+  async function postExpense(id) {
+    const row = state.expenses.find(item => item.id === id); if (!row) return toast('Expense not found.');
+    if (row.journal_id) return toast('Expense already posted.');
+    if (isPeriodClosed(row.expense_date)) return toast('This expense date is in a closed period. Reopen the period first.');
+    const expenseAccount = accountById(row.expense_account_id) || requiredAccount('5400','General Operating Expense');
+    const vatReceivable = requiredAccount('1400','VAT Receivable');
+    const bank = accountById(state.bankAccounts.find(b => b.id === row.payment_account_id)?.linked_account_id) || bankLedgerAccount();
+    const ap = requiredAccount('2100','Accounts Payable');
+    const paid = norm(row.payment_status) === 'paid' || norm(row.payment_status) === 'locked';
+    const lines = [line(expenseAccount, num(row.amount), 0, `Expense · ${row.expense_no} · ${row.vendor_name}`)];
+    if (num(row.tax_amount) > 0 && vatReceivable) lines.push(line(vatReceivable, num(row.tax_amount), 0, `Purchase VAT · ${row.expense_no}`));
+    lines.push(line(paid ? bank : ap, 0, num(row.total_amount || row.amount), paid ? `Expense paid · ${row.expense_no}` : `Expense payable · ${row.expense_no}`));
+    const journal = await postBalancedJournal({ sourceModule: 'expenses', sourceTable: TABLES.expenses, sourceId: row.id, sourceReference: row.expense_no, sourceLabel: row.vendor_name, date: row.expense_date, currency: row.currency, description: `Expense ${row.expense_no} · ${row.vendor_name}`, referenceNo: row.expense_no, lines });
+    if (!journal) return;
+    Object.assign(row, { journal_id: journal.id, posted_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+    try { await upsertRemote(TABLES.expenses, row); } catch (error) { state.dataSource = 'local'; console.warn('[Accounting] expense update failed', error); }
+    await recordAudit('post_expense', 'expense', row.id, `Posted expense ${row.expense_no}.`, { total: row.total_amount, journalNo: journal.journal_no });
+    saveLocal(); render();
+  }
+
+  function renderTaxVat() {
+    const salesVat = ledgerByAccount().find(row => String(row.account.account_code) === '2300')?.balance || 0;
+    const purchaseVat = ledgerByAccount().find(row => String(row.account.account_code) === '1400')?.balance || 0;
+    const netVat = num(salesVat) - num(purchaseVat);
+    return `<div class="accounting-grid compact"><div class="accounting-kpi"><div class="label">VAT Payable</div><div class="value">${money(salesVat)}</div></div><div class="accounting-kpi"><div class="label">VAT Receivable</div><div class="value">${money(purchaseVat)}</div></div><div class="accounting-kpi"><div class="label">Net VAT Position</div><div class="value">${money(netVat)}</div></div></div>
+      <div class="accounting-two-col"><div>${renderTaxTable()}</div><div class="accounting-card"><h3>Tax Rate</h3>${renderTaxForm()}</div></div>`;
+  }
+
+  function renderTaxTable() {
+    if (!state.taxRates.length) return '<div class="accounting-empty">No tax rates yet.</div>';
+    return `<div class="accounting-table-wrap"><table class="accounting-table"><thead><tr><th>Name</th><th>Rate</th><th>Type</th><th>Status</th><th>Notes</th><th>Action</th></tr></thead><tbody>${state.taxRates.map(row=>`<tr><td><strong>${esc(row.tax_name)}</strong></td><td>${num(row.tax_rate)}%</td><td>${esc(row.tax_type || 'both')}</td><td><span class="accounting-badge">${row.is_active===false?'Inactive':'Active'}</span></td><td>${esc(row.notes || '')}</td><td><button class="btn ghost sm" type="button" data-accounting-edit-tax="${esc(row.id)}">Edit</button></td></tr>`).join('')}</tbody></table></div>`;
+  }
+
+  function renderTaxForm() {
+    return `<form id="accountingTaxForm"><input type="hidden" id="accountingTaxId" />
+      <div class="accounting-form-grid"><label class="accounting-field">Name<input id="accountingTaxName" placeholder="VAT 11%" /></label><label class="accounting-field">Rate %<input id="accountingTaxRate" type="number" step="0.01" value="0" /></label><label class="accounting-field">Type<select id="accountingTaxType"><option value="both">Both</option><option value="sales">Sales</option><option value="purchase">Purchase</option></select></label><label class="accounting-field">Active<select id="accountingTaxActive"><option value="true">Active</option><option value="false">Inactive</option></select></label><label class="accounting-field wide">Notes<textarea id="accountingTaxNotes"></textarea></label><div class="accounting-toolbar wide"><button class="btn" type="submit">Save Tax Rate</button><button class="btn ghost" type="button" data-accounting-action="reset-tax-form">Clear</button></div></div></form>`;
+  }
+
+  async function saveTaxForm() {
+    const id = $('accountingTaxId')?.value || uid('tax');
+    const existing = state.taxRates.find(t=>t.id===id) || {};
+    const row = { ...existing, id, tax_name: $('accountingTaxName')?.value?.trim() || '', tax_rate: num($('accountingTaxRate')?.value), tax_type: $('accountingTaxType')?.value || 'both', is_active: $('accountingTaxActive')?.value !== 'false', notes: $('accountingTaxNotes')?.value || '', created_at: existing.created_at || new Date().toISOString(), updated_at: new Date().toISOString() };
+    if (!row.tax_name) return toast('Tax name is required.');
+    await persistRow('taxRates', TABLES.taxRates, row); await recordAudit('save_tax_rate','tax_rate',row.id,`Saved tax rate ${row.tax_name}.`,{ rate: row.tax_rate }); toast('Tax rate saved.'); render();
+  }
+
+  function editTax(id) { const row = state.taxRates.find(t=>t.id===id); if (!row) return; state.activeTab='advanced'; state.activeAdvancedTab='tax'; render(); $('accountingTaxId').value=row.id; $('accountingTaxName').value=row.tax_name||''; $('accountingTaxRate').value=row.tax_rate||0; $('accountingTaxType').value=row.tax_type||'both'; $('accountingTaxActive').value=row.is_active===false?'false':'true'; $('accountingTaxNotes').value=row.notes||''; }
+
+  function renderCostCenters() {
+    return `<div class="accounting-two-col"><div>${renderCostCenterTable()}</div><div class="accounting-card"><h3>Cost Center</h3>${renderCostCenterForm()}</div></div>`;
+  }
+
+  function renderCostCenterTable() {
+    const rows = state.costCenters.filter(row => !state.filters.advancedSearch || norm([row.code,row.name,row.manager_name,row.notes].join(' ')).includes(norm(state.filters.advancedSearch))).sort((a,b)=>String(a.code||'').localeCompare(String(b.code||'')));
+    if (!rows.length) return '<div class="accounting-empty">No cost centers yet.</div>';
+    return `<div class="accounting-table-wrap"><table class="accounting-table"><thead><tr><th>Code</th><th>Name</th><th>Manager</th><th>Status</th><th>Notes</th><th>Action</th></tr></thead><tbody>${rows.map(row=>`<tr><td><strong>${esc(row.code)}</strong></td><td>${esc(row.name)}</td><td>${esc(row.manager_name || '—')}</td><td><span class="accounting-badge">${row.is_active===false?'Inactive':'Active'}</span></td><td>${esc(row.notes || '')}</td><td><button class="btn ghost sm" type="button" data-accounting-edit-cost-center="${esc(row.id)}">Edit</button></td></tr>`).join('')}</tbody></table></div>`;
+  }
+
+  function renderCostCenterForm() {
+    return `<form id="accountingCostCenterForm"><input type="hidden" id="accountingCostCenterId" /><div class="accounting-form-grid"><label class="accounting-field">Code<input id="accountingCostCenterCode" placeholder="DEV" /></label><label class="accounting-field">Name<input id="accountingCostCenterName" placeholder="Development" /></label><label class="accounting-field">Manager<input id="accountingCostCenterManager" /></label><label class="accounting-field">Active<select id="accountingCostCenterActive"><option value="true">Active</option><option value="false">Inactive</option></select></label><label class="accounting-field wide">Notes<textarea id="accountingCostCenterNotes"></textarea></label><div class="accounting-toolbar wide"><button class="btn" type="submit">Save Cost Center</button><button class="btn ghost" type="button" data-accounting-action="reset-cost-center-form">Clear</button></div></div></form>`;
+  }
+
+  async function saveCostCenterForm() {
+    const id = $('accountingCostCenterId')?.value || uid('cc');
+    const existing = state.costCenters.find(c=>c.id===id) || {};
+    const row = { ...existing, id, code: $('accountingCostCenterCode')?.value?.trim() || '', name: $('accountingCostCenterName')?.value?.trim() || '', manager_name: $('accountingCostCenterManager')?.value?.trim() || '', is_active: $('accountingCostCenterActive')?.value !== 'false', notes: $('accountingCostCenterNotes')?.value || '', created_at: existing.created_at || new Date().toISOString(), updated_at: new Date().toISOString() };
+    if (!row.code || !row.name) return toast('Cost center code and name are required.');
+    await persistRow('costCenters', TABLES.costCenters, row); await recordAudit('save_cost_center','cost_center',row.id,`Saved cost center ${row.code}.`,{}); toast('Cost center saved.'); render();
+  }
+
+  function editCostCenter(id) { const row = state.costCenters.find(c=>c.id===id); if (!row) return; state.activeTab='advanced'; state.activeAdvancedTab='cost_centers'; render(); $('accountingCostCenterId').value=row.id; $('accountingCostCenterCode').value=row.code||''; $('accountingCostCenterName').value=row.name||''; $('accountingCostCenterManager').value=row.manager_name||''; $('accountingCostCenterActive').value=row.is_active===false?'false':'true'; $('accountingCostCenterNotes').value=row.notes||''; }
+
+  function periodKey(dateValue) { return dateKey(dateValue).slice(0,7); }
+  function isPeriodClosed(dateValue) {
+    const key = periodKey(dateValue);
+    const row = state.closingPeriods.find(p => p.period_key === key);
+    return row && ['closed','locked'].includes(norm(row.status));
+  }
+
+  function renderClosingPeriods() {
+    return `<div class="accounting-two-col"><div>${renderClosingTable()}</div><div class="accounting-card"><h3>Close / Reopen Period</h3>${renderClosingForm()}<p class="muted">Closed or locked periods block new posting until admin reopens them.</p></div></div>`;
+  }
+
+  function renderClosingTable() {
+    const rows = state.closingPeriods.slice().sort((a,b)=>String(b.period_key||'').localeCompare(String(a.period_key||'')));
+    if (!rows.length) return '<div class="accounting-empty">No closing periods yet.</div>';
+    return `<div class="accounting-table-wrap"><table class="accounting-table"><thead><tr><th>Period</th><th>Dates</th><th>Status</th><th>Closed By</th><th>Notes</th><th>Action</th></tr></thead><tbody>${rows.map(row=>`<tr><td><strong>${esc(row.period_key)}</strong></td><td>${fmtDate(row.start_date)} → ${fmtDate(row.end_date)}</td><td><span class="accounting-badge ${esc(norm(row.status))}">${esc(row.status)}</span></td><td>${esc(row.closed_by || '—')}<div class="muted">${row.closed_at ? fmtDate(row.closed_at) : ''}</div></td><td>${esc(row.notes || '')}</td><td><button class="btn ghost sm" type="button" data-accounting-edit-closing="${esc(row.id)}">Edit</button></td></tr>`).join('')}</tbody></table></div>`;
+  }
+
+  function renderClosingForm() {
+    return `<form id="accountingClosingForm"><input type="hidden" id="accountingClosingId" /><div class="accounting-form-grid"><label class="accounting-field">Period Month<input id="accountingClosingMonth" type="month" value="${esc(today().slice(0,7))}" /></label><label class="accounting-field">Status<select id="accountingClosingStatus"><option value="open">Open</option><option value="closed">Closed</option><option value="locked">Locked</option></select></label><label class="accounting-field wide">Notes<textarea id="accountingClosingNotes"></textarea></label><div class="accounting-toolbar wide"><button class="btn" type="submit">Save Period</button><button class="btn ghost" type="button" data-accounting-action="reset-closing-form">Clear</button></div></div></form>`;
+  }
+
+  function periodBounds(key) { const start = `${key}-01`; const end = addMonths(start, 1); const d = new Date(`${end}T00:00:00`); d.setDate(d.getDate()-1); return { start, end: d.toISOString().slice(0,10) }; }
+  async function saveClosingForm() {
+    const id = $('accountingClosingId')?.value || uid('period'); const key = $('accountingClosingMonth')?.value || today().slice(0,7); const existing = state.closingPeriods.find(p=>p.id===id) || state.closingPeriods.find(p=>p.period_key===key) || {}; const bounds = periodBounds(key); const status = $('accountingClosingStatus')?.value || 'open';
+    const row = { ...existing, id: existing.id || id, period_key: key, start_date: bounds.start, end_date: bounds.end, status, closed_by: status==='open' ? null : (existing.closed_by || authName()), closed_at: status==='open' ? null : (existing.closed_at || new Date().toISOString()), notes: $('accountingClosingNotes')?.value || '', created_at: existing.created_at || new Date().toISOString(), updated_at: new Date().toISOString() };
+    await persistRow('closingPeriods', TABLES.closingPeriods, row); await recordAudit('save_closing_period','closing_period',row.id,`Saved accounting period ${row.period_key} as ${row.status}.`,{}); toast('Closing period saved.'); render();
+  }
+
+  function editClosing(id) { const row = state.closingPeriods.find(p=>p.id===id); if (!row) return; state.activeTab='advanced'; state.activeAdvancedTab='closing'; render(); $('accountingClosingId').value=row.id; $('accountingClosingMonth').value=row.period_key || today().slice(0,7); $('accountingClosingStatus').value=row.status || 'open'; $('accountingClosingNotes').value=row.notes || ''; }
+
+  function renderReconciliation() {
+    const accountId = state.filters.reconciliationAccountId === 'all' ? bankLedgerAccount()?.id : state.filters.reconciliationAccountId;
+    const asOf = state.filters.reconciliationDate || today();
+    const erpBalance = ledgerByAccountFor(state.ledgerEntries.filter(row => row.account_id === accountId && dateKey(row.entry_date) <= asOf), true).find(row => row.account.id === accountId)?.balance || 0;
+    const statement = num(state.filters.statementBalance);
+    const diff = erpBalance - statement;
+    return `<div class="accounting-report-controls"><div class="accounting-form-grid"><label class="accounting-field">Bank/Cash Account<select id="accountingReconciliationAccount"><option value="all">Default bank/cash</option>${accountOptions(accountId || '', false)}</select></label><label class="accounting-field">Statement Date<input type="date" id="accountingReconciliationDate" value="${esc(asOf)}" /></label><label class="accounting-field">Statement Balance<input id="accountingStatementBalance" type="number" step="0.01" value="${esc(state.filters.statementBalance)}" /></label><div class="accounting-toolbar"><button class="btn" type="button" data-accounting-action="save-reconciliation">Save Reconciliation</button></div></div></div><div class="accounting-grid compact"><div class="accounting-kpi"><div class="label">ERP Balance</div><div class="value">${money(erpBalance)}</div></div><div class="accounting-kpi"><div class="label">Statement Balance</div><div class="value">${money(statement)}</div></div><div class="accounting-kpi"><div class="label">Difference</div><div class="value">${money(diff)}</div></div></div>${renderReconciliationTable()}`;
+  }
+
+  async function saveReconciliation() { const accountId = $('accountingReconciliationAccount')?.value === 'all' ? bankLedgerAccount()?.id : $('accountingReconciliationAccount')?.value; const asOf = $('accountingReconciliationDate')?.value || today(); const statement = num($('accountingStatementBalance')?.value); const erpBalance = ledgerByAccountFor(state.ledgerEntries.filter(row => row.account_id === accountId && dateKey(row.entry_date) <= asOf), true).find(row => row.account.id === accountId)?.balance || 0; const row = { id: uid('recon'), bank_account_id: accountId, statement_date: asOf, statement_balance: statement, erp_balance: erpBalance, difference: erpBalance - statement, status: Math.abs(erpBalance - statement) < 0.01 ? 'matched':'difference', reconciled_by: authName(), notes: '', created_at: new Date().toISOString(), updated_at: new Date().toISOString() }; state.bankReconciliations.push(row); try { await upsertRemote(TABLES.bankReconciliations,row); } catch(error) { state.dataSource='local'; console.warn('[Accounting] reconciliation save failed', error); } await recordAudit('save_reconciliation','bank_reconciliation',row.id,`Saved bank reconciliation with difference ${money(row.difference)}.`,{}); saveLocal(); toast('Reconciliation saved.'); render(); }
+
+  function renderReconciliationTable() { const rows = state.bankReconciliations.slice().sort((a,b)=>String(b.statement_date||'').localeCompare(String(a.statement_date||''))); if (!rows.length) return '<div class="accounting-empty">No saved reconciliations yet.</div>'; return `<div class="accounting-table-wrap"><table class="accounting-table"><thead><tr><th>Date</th><th>Account</th><th class="num">ERP</th><th class="num">Statement</th><th class="num">Difference</th><th>Status</th><th>By</th></tr></thead><tbody>${rows.map(row=>`<tr><td>${fmtDate(row.statement_date)}</td><td>${esc(accountById(row.bank_account_id)?.account_name || accountById(row.bank_account_id)?.account_code || '—')}</td><td class="num">${money(row.erp_balance)}</td><td class="num">${money(row.statement_balance)}</td><td class="num">${money(row.difference)}</td><td><span class="accounting-badge ${Math.abs(num(row.difference))<0.01?'posted':'draft'}">${esc(row.status || 'saved')}</span></td><td>${esc(row.reconciled_by || '')}</td></tr>`).join('')}</tbody></table></div>`; }
+
+  function renderAuditLog() {
+    const search = norm(state.filters.advancedSearch);
+    const rows = state.auditLog.filter(row => !search || norm([row.action,row.entity_type,row.entity_id,row.message,row.created_by].join(' ')).includes(search)).sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))).slice(0, 300);
+    return `${renderAdvancedFilters('')} ${rows.length ? `<div class="accounting-table-wrap"><table class="accounting-table"><thead><tr><th>Date</th><th>Action</th><th>Entity</th><th>Message</th><th>User</th></tr></thead><tbody>${rows.map(row=>`<tr><td>${fmtDate(row.created_at)}</td><td><strong>${esc(row.action)}</strong></td><td>${esc(row.entity_type || '')}<div class="muted">${esc(row.entity_id || '')}</div></td><td>${esc(row.message || '')}</td><td>${esc(row.created_by || '')}</td></tr>`).join('')}</tbody></table></div>` : '<div class="accounting-empty">No audit activity yet.</div>'}`;
+  }
+
+  async function recordAudit(action, entityType, entityId, message, metadata = {}) {
+    const row = { id: uid('audit'), action, entity_type: entityType || '', entity_id: String(entityId || ''), message: message || '', metadata, created_by: authName(), created_at: new Date().toISOString() };
+    state.auditLog.push(row);
+    try { await upsertRemote(TABLES.auditLog, row); } catch (error) { state.dataSource = 'local'; }
+    saveLocal();
+    return row;
   }
 
   function bindFilters() {
@@ -993,6 +1420,22 @@
     if (reportAsOfInput) reportAsOfInput.addEventListener('change', event => { state.filters.reportAsOf = event.target.value || today(); render(); });
     const reportSearchInput = $('accountingReportSearch');
     if (reportSearchInput) reportSearchInput.addEventListener('input', event => { state.filters.reportSearch = event.target.value || ''; render(); });
+    const advancedSearch = $('accountingAdvancedSearch');
+    if (advancedSearch) advancedSearch.addEventListener('input', event => { state.filters.advancedSearch = event.target.value || ''; render(); });
+    const advancedFrom = $('accountingAdvancedFrom');
+    if (advancedFrom) advancedFrom.addEventListener('change', event => { state.filters.expenseFrom = event.target.value || ''; render(); });
+    const advancedTo = $('accountingAdvancedTo');
+    if (advancedTo) advancedTo.addEventListener('change', event => { state.filters.expenseTo = event.target.value || ''; render(); });
+    const expenseStatus = $('accountingExpenseStatus');
+    if (expenseStatus) expenseStatus.addEventListener('change', event => { state.filters.expenseStatus = event.target.value || 'all'; render(); });
+    const deferredStatus = $('accountingDeferredStatus');
+    if (deferredStatus) deferredStatus.addEventListener('change', event => { state.filters.deferredStatus = event.target.value || 'pending'; render(); });
+    const reconAccount = $('accountingReconciliationAccount');
+    if (reconAccount) reconAccount.addEventListener('change', event => { state.filters.reconciliationAccountId = event.target.value || 'all'; render(); });
+    const reconDate = $('accountingReconciliationDate');
+    if (reconDate) reconDate.addEventListener('change', event => { state.filters.reconciliationDate = event.target.value || today(); render(); });
+    const statementBalance = $('accountingStatementBalance');
+    if (statementBalance) statementBalance.addEventListener('input', event => { state.filters.statementBalance = event.target.value || ''; render(); });
     bindJournalLineInputs();
   }
 
@@ -1063,6 +1506,7 @@
     if (!journal.description) return toast('Journal description is required.');
     if (lines.length < 2) return toast('Journal needs at least two lines.');
     if (Math.abs(totalDebit - totalCredit) >= 0.01 || totalDebit <= 0) return toast('Journal must be balanced before saving/posting.');
+    if (status === 'posted' && isPeriodClosed(journal.entry_date)) return toast('This accounting period is closed. Reopen it before posting.');
     const jIdx = state.journals.findIndex(j => j.id === journal.id); if (jIdx >= 0) state.journals[jIdx] = journal; else state.journals.push(journal);
     state.journalLines = state.journalLines.filter(line => line.journal_id !== journal.id).concat(lines);
     if (status === 'posted') {
@@ -1070,7 +1514,7 @@
     }
     try { await upsertRemote(TABLES.journals, journal); await deleteRemote(TABLES.journalLines, 'journal_id', journal.id); await upsertRemote(TABLES.journalLines, lines); if (status === 'posted') { const ledgerRows = state.ledgerEntries.filter(entry => entry.journal_id === journal.id); await deleteRemote(TABLES.ledgerEntries, 'journal_id', journal.id); await upsertRemote(TABLES.ledgerEntries, ledgerRows); } }
     catch (error) { state.dataSource = 'local'; console.warn('[Accounting] journal remote save failed', error); toast('Journal saved locally. Run Accounting SQL migration to enable Supabase sync.'); }
-    saveLocal(); state.editingJournalId = journal.id; state.journalLinesDraft = lines.map(line => ({ ...line })); toast(status === 'posted' ? 'Journal posted and ledger updated.' : 'Journal saved as draft.'); render();
+    saveLocal(); state.editingJournalId = journal.id; state.journalLinesDraft = lines.map(line => ({ ...line })); await recordAudit(status === 'posted' ? 'post_manual_journal' : 'save_journal_draft', 'journal', journal.id, `${status === 'posted' ? 'Posted' : 'Saved'} journal ${journal.journal_no}.`, { totalDebit, totalCredit }); toast(status === 'posted' ? 'Journal posted and ledger updated.' : 'Journal saved as draft.'); render();
   }
 
   function editJournal(id) {
@@ -1109,6 +1553,8 @@
     if (sourceTab) { state.activeSourceTab = sourceTab.getAttribute('data-accounting-source-tab'); render(); return; }
     const reportTab = event.target.closest('[data-accounting-report-tab]');
     if (reportTab) { state.activeReportTab = reportTab.getAttribute('data-accounting-report-tab') || 'trial_balance'; render(); return; }
+    const advancedTab = event.target.closest('[data-accounting-advanced-tab]');
+    if (advancedTab) { state.activeAdvancedTab = advancedTab.getAttribute('data-accounting-advanced-tab') || 'deferred_revenue'; render(); return; }
     const actionBtn = event.target.closest('[data-accounting-action]');
     if (actionBtn) {
       const action = actionBtn.getAttribute('data-accounting-action');
@@ -1126,7 +1572,26 @@
       if (action === 'export-report') { exportCsv(`accounting_${state.activeReportTab}_report.csv`, currentReportCsvRows()); return; }
       if (action === 'print-report') { printCurrentReport(); return; }
       if (action === 'sync-visible-sources') { syncVisibleSources(); return; }
+      if (action === 'clear-advanced-filters') { state.filters.advancedSearch = ''; state.filters.expenseFrom = ''; state.filters.expenseTo = ''; state.filters.expenseStatus = 'all'; state.filters.deferredStatus = 'pending'; render(); return; }
+      if (action === 'recognize-due-revenue') { recognizeDueRevenue(); return; }
+      if (action === 'export-deferred-revenue') { exportCsv('accounting_deferred_revenue_schedule.csv', filteredRevenueSchedules()); return; }
+      if (action === 'reset-expense-form' || action === 'reset-tax-form' || action === 'reset-cost-center-form' || action === 'reset-closing-form') { render(); return; }
+      if (action === 'save-reconciliation') { saveReconciliation(); return; }
     }
+    const generateScheduleBtn = event.target.closest('[data-accounting-generate-schedule]');
+    if (generateScheduleBtn) { generateRevenueScheduleForInvoice(sourceByKey('invoices', generateScheduleBtn.getAttribute('data-accounting-generate-schedule')), true); return; }
+    const recognizeRevenueBtn = event.target.closest('[data-accounting-recognize-revenue]');
+    if (recognizeRevenueBtn) { recognizeRevenueSchedule(state.revenueSchedules.find(row => row.id === recognizeRevenueBtn.getAttribute('data-accounting-recognize-revenue'))); return; }
+    const postExpenseBtn = event.target.closest('[data-accounting-post-expense]');
+    if (postExpenseBtn) { postExpense(postExpenseBtn.getAttribute('data-accounting-post-expense')); return; }
+    const editExpenseBtn = event.target.closest('[data-accounting-edit-expense]');
+    if (editExpenseBtn) { editExpense(editExpenseBtn.getAttribute('data-accounting-edit-expense')); return; }
+    const editTaxBtn = event.target.closest('[data-accounting-edit-tax]');
+    if (editTaxBtn) { editTax(editTaxBtn.getAttribute('data-accounting-edit-tax')); return; }
+    const editCostCenterBtn = event.target.closest('[data-accounting-edit-cost-center]');
+    if (editCostCenterBtn) { editCostCenter(editCostCenterBtn.getAttribute('data-accounting-edit-cost-center')); return; }
+    const editClosingBtn = event.target.closest('[data-accounting-edit-closing]');
+    if (editClosingBtn) { editClosing(editClosingBtn.getAttribute('data-accounting-edit-closing')); return; }
     const postSourceBtn = event.target.closest('[data-accounting-post-source]');
     if (postSourceBtn) { postSource(postSourceBtn.getAttribute('data-accounting-post-source'), sourceByKey(postSourceBtn.getAttribute('data-accounting-post-source'), postSourceBtn.getAttribute('data-source-key'))); return; }
     const editAccountBtn = event.target.closest('[data-accounting-edit-account]');
@@ -1157,11 +1622,16 @@
       : state.activeTab === 'ledger' ? renderLedger()
       : state.activeTab === 'bank' ? renderBank()
       : state.activeTab === 'reports' ? renderReports()
+      : state.activeTab === 'advanced' ? renderAdvanced()
       : renderDashboard();
     root.innerHTML = shell(body);
     bindFilters();
     const accountForm = $('accountingAccountForm'); if (accountForm) accountForm.addEventListener('submit', event => { event.preventDefault(); saveAccountForm(); });
     const bankForm = $('accountingBankForm'); if (bankForm) bankForm.addEventListener('submit', event => { event.preventDefault(); saveBankForm(); });
+    const expenseForm = $('accountingExpenseForm'); if (expenseForm) expenseForm.addEventListener('submit', event => { event.preventDefault(); saveExpenseForm(); });
+    const taxForm = $('accountingTaxForm'); if (taxForm) taxForm.addEventListener('submit', event => { event.preventDefault(); saveTaxForm(); });
+    const costCenterForm = $('accountingCostCenterForm'); if (costCenterForm) costCenterForm.addEventListener('submit', event => { event.preventDefault(); saveCostCenterForm(); });
+    const closingForm = $('accountingClosingForm'); if (closingForm) closingForm.addEventListener('submit', event => { event.preventDefault(); saveClosingForm(); });
   }
 
   async function refresh(force = false) {
