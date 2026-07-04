@@ -1,93 +1,122 @@
-# Full HR Module Added
+# InCheck360 HR & Payroll Module — Admin-Only Version
 
-This package adds a complete HR workspace to the ERP, now extended with the full Phase 2/3 HR workflow:
+This update changes the HR module to match the requested operational flow.
+
+## Current access rule
+
+For now, **only Admin** has access to HR. Employees do not have self-service access, no employee check-in/check-out, and no employee portal is active.
+
+Other roles can be added later by updating `role_permissions` or the frontend permission matrix.
+
+## Included HR sections
 
 - HR Dashboard
-- Employee Directory
-- Attendance with check-in/check-out, absent marking, late minutes, worked hours, and overtime
-- Shift Management
-- Leave Management with approvals
-- Monthly Payroll Report generation
-- Payslip preview with browser Print / Save as PDF
-- Employee Documents and expiry tracking
+- Employees
+- Attendance
+- Leave Management
+- Leave Balance
+- Holidays Calendar
+- Monthly Payroll Report
+- Payslips
+- Salary Receipts
+- Employee Documents
 - HR Settings
-- Employee Self-Service portal
-- Department Manager Team View
-- Leave Balance tracking by year and leave type
-- Attendance Correction approval workflow
-- Overtime approval workflow
-- HR notification feed
-- Transportation allowance per working day, deducted automatically for sick/leave/absent/no-attendance days
-- Payroll locking flow: Draft → Reviewed → Approved → Paid → Locked
-- CSV export for Attendance and Payroll
 
-## Files Added
+## Attendance logic
 
-- `hr.js`
-- `hr.css`
-- `sql/migrations/20260703_full_hr_module.sql`
-- `README_FULL_HR_MODULE.md`
+Employees are considered **present by default** on working days.
 
-## Files Updated
+The system does not require check-in/check-out.
 
-- `index.html`
-  - Added HR menu group and HR view.
-  - Added `hr.css` and `hr.js` includes.
-- `app.js`
-  - Added HR route, tab loader, refresh handler, and hash support.
-- `ui.js`
-  - Added HR tab/view to element cache and permission-aware tab registry.
-- `permissions.js`
-  - Added HR, attendance, leave, payroll, document and HR settings permissions.
-- `service-worker.js`
-  - Bumped cache version and added HR assets.
+A day becomes non-payable for transport only when:
 
-## Supabase Setup
+- It is an approved leave day
+- It is a sick leave day
+- It is manually marked absent by Admin
+- It is manually marked half day by Admin
 
-Run this migration in Supabase SQL editor:
+Saturday and Sunday are always non-working days.
 
-```sql
+Holidays added in the Holidays Calendar are also excluded from working days.
+
+## Salary and transportation logic
+
+Each employee has:
+
+- Fixed monthly salary
+- Fixed monthly allowances
+- Monthly transportation allowance
+- Fixed admin deductions
+
+Monthly salary is fixed and is not reduced just because there is no check-in/check-out.
+
+Transportation is calculated as:
+
+```text
+Monthly transportation allowance / working days in the selected month
+```
+
+Then paid only for eligible working days.
+
+Example:
+
+```text
+Monthly transport: 100 USD
+Working days: 20
+Transport/day: 5 USD
+Employee absent/leave/sick: 2 days
+Transport paid: 18 × 5 = 90 USD
+Transport not paid: 10 USD
+```
+
+## Leave balance logic
+
+Annual Leave is configured as:
+
+```text
+15 days per year
+1.25 days accrued per month
+```
+
+Admin can always manually adjust:
+
+- Entitlement days
+- Carry-forward days
+- Adjustment days
+- Notes
+
+## Salary receipts
+
+Admin can generate salary receipts when an employee receives salary fully or partially.
+
+Each payroll item shows:
+
+- Net salary
+- Paid amount
+- Remaining salary rest
+
+Salary receipts support partial payment.
+
+## Required Supabase SQL
+
+Run this file in Supabase SQL Editor:
+
+```text
 sql/migrations/20260703_full_hr_module.sql
 ```
 
-Until the migration is applied, the HR module will work in local browser storage mode and show a yellow `Local mode` badge. After applying the migration, the module will sync to Supabase.
+The migration is safe to re-run.
 
-## Payroll Calculation Logic
-
-Monthly Payroll uses:
+## Updated files
 
 ```text
-Basic Salary
-+ Fixed Monthly Allowances
-+ Expected Transportation Allowance
-+ Approved Overtime Amount
-- Absence / Unpaid Leave Deduction
-- Late / Early Leave Deduction
-- Fixed Deductions
-- Transportation Deduction for sick, leave, absent, half-day and no-attendance days
-= Net Salary
+README_FULL_HR_MODULE.md
+app.js
+hr.css
+hr.js
+index.html
+permissions.js
+service-worker.js
+sql/migrations/20260703_full_hr_module.sql
+ui.js
 ```
-
-Attendance source fields used:
-
-- Present days
-- Absent days
-- Paid leave days
-- Unpaid leave days
-- Late minutes
-- Overtime hours
-
-## Recommended Next Step
-
-After deployment, create real employees, assign shifts, record attendance for a few days, approve leaves, then generate the monthly payroll report and preview payslips.
-
-## Transportation Rule
-
-Set `Transportation Per Working Day` on each employee. Payroll calculates expected monthly transportation as working days × transportation/day, then deducts transportation for days not physically worked, including sick leave, annual leave, unpaid leave, absence, half-day portion, and missing attendance. Approved paid leave does not deduct base salary, but transportation is still deducted unless the leave request is set to `Deduct Transportation = No`.
-
-## New Approval Workflows
-
-- Leave requests: pending manager / pending HR / approved / rejected / cancelled.
-- Attendance corrections: pending manager / pending HR / approved / applied / rejected.
-- Overtime: requested hours are not paid until approved; payroll uses approved overtime only.
-- Payroll: draft / reviewed / approved / paid / locked.
