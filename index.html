@@ -28,6 +28,7 @@
   <!-- Your app styles -->
   <link rel="stylesheet" href="/styles.css?v=20260702-invoice-ui-v2" />
   <link rel="stylesheet" href="/hr.css?v=20260703-hr-admin-payroll-v3" />
+  <link rel="stylesheet" href="/accounting.css?v=20260704-accounting-phase1-admin1" />
 
   <!-- Vercel Web Analytics -->
   <script>
@@ -267,6 +268,7 @@
               </div>
             </div>
 
+
             <div class="view-menu-group" role="group" aria-label="CRM modules" data-menu-group="crm">
               <button class="view-menu-group-title view-menu-group-toggle" type="button" data-menu-group-toggle aria-expanded="false" aria-controls="crmMenuGroupBody">
                 <span class="view-menu-group-label"><span class="view-menu-group-icon" aria-hidden="true">🤝</span><span>CRM</span></span>
@@ -310,6 +312,10 @@
                 <span class="view-menu-group-chevron" aria-hidden="true">▾</span>
               </button>
               <div id="accountingMenuGroupBody" class="view-menu-group-body">
+              <button id="accountingTab" class="view-tab" data-view="accounting" data-permission-resource="accounting" data-permission-action="view"
+                      role="tab" aria-selected="false" aria-controls="accountingView">
+                <span class="icon" aria-hidden="true">📒</span> Accounting Foundation
+              </button>
               <button id="clientsTab" class="view-tab" data-view="clients"
                       role="tab" aria-selected="false" aria-controls="clientsView">
                 <span class="icon" aria-hidden="true">🏢</span> Clients
@@ -1785,6 +1791,18 @@ Sample:
               <span class="hr-eyebrow">People · Attendance · Payroll</span>
               <h2>HR &amp; Payroll</h2>
               <p class="muted">Loading HR workspace…</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="accountingView" class="view accounting-module" role="tabpanel" aria-labelledby="accountingTab">
+        <div id="accountingRoot" class="accounting-root" aria-live="polite">
+          <div class="accounting-page-header">
+            <div>
+              <span class="accounting-eyebrow">Finance · Ledger · Controls</span>
+              <h2>Accounting</h2>
+              <p class="muted">Loading Accounting workspace…</p>
             </div>
           </div>
         </div>
@@ -4569,6 +4587,7 @@ Sample:
   <script src="/renewal-forecast.js?v=20260611-admin-guard1"></script>
   <script src="/biners.js?v=20260611-entry-save-fix"></script>
   <script src="/hr.js?v=20260703-hr-admin-payroll-v3"></script>
+  <script src="/accounting.js?v=20260704-accounting-phase1-admin1"></script>
   <script src="/lifecycle-analytics.js?v=20260610-lifecycle-metrics-source-truth"></script>
   <script src="/clients.js?v=20260611-direct-communication"></script>
   <script src="/proposal-catalog.js?v=20260626-modern-product-catalog-ui"></script>

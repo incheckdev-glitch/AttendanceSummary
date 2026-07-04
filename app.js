@@ -2923,6 +2923,7 @@ function normalizeViewKey(view) {
   if (['renewal_forecast', 'renewal-forecast', 'renewalforecast', 'Monthly Renewal Forecast', 'renewalForecast'].includes(key)) return 'renewalForecast';
   if (['biners', 'Biners', 'biners_module', 'biners-module', 'outsourcing', 'payables'].includes(key)) return 'biners';
   if (['hr', 'HR', 'human_resources', 'human-resources', 'payroll', 'attendance', 'hr_payroll', 'hr-payroll'].includes(key)) return 'hr';
+  if (['accounting', 'Accounting', 'accounts', 'chart_of_accounts', 'chart-of-accounts', 'general_ledger', 'general-ledger', 'ledger', 'journal_entries', 'journal-entries'].includes(key)) return 'accounting';
   return key;
 }
 
@@ -2954,7 +2955,7 @@ window.shouldShowTicketFilters = shouldShowTicketFilters;
 
 function setActiveView(view) {
  view = normalizeViewKey(view);
- const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'renewalForecast', 'biners', 'hr', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
+ const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'renewalForecast', 'biners', 'hr', 'accounting', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
  const requestedView = view;
  const firstAllowedView = names.find(name => Permissions.canAccessTab(name)) || '';
  if (!Permissions.canAccessTab(view)) {
@@ -3001,6 +3002,8 @@ function setActiveView(view) {
         ? E.binersTab
         : name === 'hr'
         ? E.hrTab
+        : name === 'accounting'
+        ? E.accountingTab
         : name === 'lifecycleAnalytics'
         ? E.lifecycleAnalyticsTab
         : name === 'clients'
@@ -3057,6 +3060,8 @@ function setActiveView(view) {
         ? E.binersView
         : name === 'hr'
         ? E.hrView
+        : name === 'accounting'
+        ? E.accountingView
         : name === 'lifecycleAnalytics'
         ? E.lifecycleAnalyticsView
         : name === 'clients'
@@ -3169,6 +3174,7 @@ function setActiveView(view) {
   if (view === 'renewalForecast' && window.RenewalForecast?.refresh) runViewLoader('monthly renewal forecast', () => RenewalForecast.refresh());
   if (view === 'biners' && window.Biners?.refresh) runViewLoader('biners', () => { Biners.init?.(); return Biners.refresh(); });
   if (view === 'hr' && window.HRModule?.init) runViewLoader('HR & Payroll', () => HRModule.init());
+  if (view === 'accounting' && window.AccountingModule?.init) runViewLoader('Accounting', () => AccountingModule.init());
   if (view === 'lifecycleAnalytics' && window.LifecycleAnalytics?.init) runViewLoader('lifecycle analytics', () => LifecycleAnalytics.init());
   if (view === 'clients' && window.Clients?.loadAndRefresh) runViewLoader('clients', () => Clients.loadAndRefresh());
   if (view === 'proposalCatalog' && window.ProposalCatalog?.loadAndRefresh) runViewLoader('proposal catalog', () => ProposalCatalog.loadAndRefresh());
@@ -6044,7 +6050,7 @@ function wireDashboardGate() {
     return 'issues';
   };
   const getFirstAllowedView = preferredView => {
-    const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'renewalForecast', 'biners', 'hr', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
+    const names = ['issues', 'calendar', 'insights', 'csm', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'renewalForecast', 'biners', 'hr', 'accounting', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
     const preferred = String(preferredView || '').trim();
     if (preferred && Permissions.canAccessTab(preferred)) return preferred;
     return names.find(name => Permissions.canAccessTab(name)) || 'issues';

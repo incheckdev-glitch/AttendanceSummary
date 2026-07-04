@@ -260,6 +260,31 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     create: ['admin'],
     approve: ['admin']
   }),
+  accounting: Object.freeze({
+    view: ['admin'],
+    list: ['admin'],
+    get: ['admin'],
+    create: ['admin'],
+    update: ['admin'],
+    delete: ['admin'],
+    manage: ['admin'],
+    export: ['admin']
+  }),
+  accounting_accounts: Object.freeze({
+    view: ['admin'], list: ['admin'], create: ['admin'], update: ['admin'], delete: ['admin']
+  }),
+  accounting_journals: Object.freeze({
+    view: ['admin'], list: ['admin'], create: ['admin'], update: ['admin'], delete: ['admin'], post: ['admin']
+  }),
+  accounting_ledger: Object.freeze({
+    view: ['admin'], list: ['admin'], export: ['admin']
+  }),
+  accounting_bank: Object.freeze({
+    view: ['admin'], list: ['admin'], create: ['admin'], update: ['admin'], delete: ['admin']
+  }),
+  accounting_reports: Object.freeze({
+    view: ['admin'], export: ['admin']
+  }),
   clients: Object.freeze({
     list: ['admin', 'dev', 'viewer', 'hoo'],
     get: ['admin', 'dev', 'viewer', 'hoo'],
@@ -339,6 +364,7 @@ const Permissions = {
     renewalForecast: [{ resource: 'monthly_renewal_forecast', action: 'view' }],
     biners: [{ resource: 'biners', action: 'view' }],
     hr: [{ resource: 'hr', action: 'view' }],
+    accounting: [{ resource: 'accounting', action: 'view' }],
     lifecycleAnalytics: [{ resource: 'analytics', action: 'list' }],
     clients: [{ resource: 'clients', action: 'list' }],
     proposalCatalog: [{ resource: 'proposal_catalog', action: 'list' }],
@@ -370,6 +396,7 @@ const Permissions = {
     renewalForecast: 'monthly_renewal_forecast',
     biners: 'biners',
     hr: 'hr',
+    accounting: 'accounting',
     lifecycleAnalytics: 'analytics',
     clients: 'clients',
     proposalCatalog: 'proposal_catalog',
@@ -521,6 +548,12 @@ const Permissions = {
     const normalizedResource = String(resource || '').trim().toLowerCase();
     if (normalizedResource === 'csm') return ['csm', 'csm_activities'];
     if (['hr','human_resources','human-resources','hr_employees'].includes(normalizedResource)) return ['hr', 'hr_employees'];
+    if (['accounting','accounts','chart_of_accounts','chart-of-accounts'].includes(normalizedResource)) return ['accounting','accounting_accounts'];
+    if (['accounting_accounts','coa','chart'].includes(normalizedResource)) return ['accounting_accounts','accounting'];
+    if (['accounting_journals','journal_entries','journal-entries','journals'].includes(normalizedResource)) return ['accounting_journals','accounting'];
+    if (['accounting_ledger','general_ledger','general-ledger','ledger'].includes(normalizedResource)) return ['accounting_ledger','accounting'];
+    if (['accounting_bank','bank_cash','bank-cash','cash_bank'].includes(normalizedResource)) return ['accounting_bank','accounting'];
+    if (['accounting_reports','trial_balance','trial-balance'].includes(normalizedResource)) return ['accounting_reports','accounting'];
     if (['hr_self_service','self_service','self-service'].includes(normalizedResource)) return ['hr_self_service','hr'];
     if (['hr_team','team'].includes(normalizedResource)) return ['hr_team','hr'];
     if (['hr_leave_balance','leave_balance','leave-balances'].includes(normalizedResource)) return ['hr_leave_balance','hr_leave'];
