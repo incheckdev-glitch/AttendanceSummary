@@ -56,3 +56,32 @@
 .accounting-badge.cancelled,.accounting-badge.failed { background:#fee2e2; color:#991b1b; }
 .accounting-badge.skipped { background:#e0f2fe; color:#075985; }
 .accounting-source-note { border:1px dashed var(--acct-line); background:#f8fafc; border-radius:14px; padding:10px 12px; color:var(--acct-muted); }
+
+/* Accounting Phase 3 - financial reports */
+.accounting-report-card { overflow:hidden; }
+.accounting-report-controls { border:1px solid var(--acct-line); border-radius:16px; padding:12px; background:#f8fafc; margin-bottom:14px; }
+.accounting-report-title { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; flex-wrap:wrap; margin:4px 0 14px; padding-bottom:10px; border-bottom:1px solid var(--acct-line); }
+.accounting-report-title h3 { margin:0; }
+.accounting-report-title p { margin:3px 0 0; color:var(--acct-muted); }
+.accounting-grid.compact { grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); margin:12px 0; }
+.accounting-print-area h4 { margin:16px 0 8px; color:#0f172a; }
+@media print {
+  body.accounting-print-active .accounting-print-area {
+    position:absolute;
+    left:0;
+    top:0;
+    right:0;
+    width:100%;
+    min-height:100%;
+    background:#fff;
+    padding:28px;
+    box-shadow:none;
+  }
+  body.accounting-print-active .accounting-report-controls,
+  body.accounting-print-active .accounting-page-header,
+  body.accounting-print-active .accounting-tabs:not(.compact),
+  body.accounting-print-active .accounting-card-header > .accounting-chip,
+  body.accounting-print-active .accounting-actions { display:none !important; }
+  body.accounting-print-active .accounting-table-wrap { overflow:visible; border:1px solid #d1d5db; }
+  body.accounting-print-active .accounting-table { min-width:0; font-size:11px; }
+}

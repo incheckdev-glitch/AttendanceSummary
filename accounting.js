@@ -1,7 +1,7 @@
 (function initAccountingModule(global) {
   'use strict';
 
-  const STORAGE_KEY = 'incheck360_accounting_phase2_v1';
+  const STORAGE_KEY = 'incheck360_accounting_phase3_v1';
   const $ = id => document.getElementById(id);
   const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[ch]));
   const norm = value => String(value ?? '').trim().toLowerCase();
@@ -33,18 +33,21 @@
 
   const ACCOUNT_TYPES = ['Asset', 'Liability', 'Equity', 'Revenue', 'Expense'];
   const POSTABLE_TYPES = ['invoices','receipts','credit_notes','biners_payables','biners_payments','hr_payroll','hr_salary_receipts'];
+  const REPORT_TABS = ['trial_balance','profit_loss','balance_sheet','cash_flow','ar_aging','ap_aging','customer_statement','vendor_statement','payroll_expense'];
 
   const state = {
     initialized: false,
     activeTab: 'dashboard',
     activeSourceTab: 'invoices',
+    activeReportTab: 'trial_balance',
     dataSource: 'local',
     loading: false,
     editingJournalId: '',
     journalLinesDraft: [],
     filters: {
       ledgerAccountId: 'all', ledgerFrom: '', ledgerTo: '', ledgerSource: 'all', journalStatus: 'all',
-      sourceSearch: '', sourceFrom: '', sourceTo: '', sourceStatus: 'unposted'
+      sourceSearch: '', sourceFrom: '', sourceTo: '', sourceStatus: 'unposted',
+      reportFrom: '', reportTo: '', reportAsOf: today(), reportSearch: ''
     },
     accounts: [], bankAccounts: [], journals: [], journalLines: [], ledgerEntries: [],
     sources: { invoices: [], receipts: [], creditNotes: [], binersSchedules: [], payrollItems: [], salaryReceipts: [], hrEmployees: [] }
@@ -92,7 +95,7 @@
 
   function loadLocal() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('incheck360_accounting_phase1_v1');
+      const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('incheck360_accounting_phase2_v1') || localStorage.getItem('incheck360_accounting_phase1_v1');
       if (raw) { Object.assign(state, buildSampleData(), JSON.parse(raw)); return; }
     } catch (error) { console.warn('[Accounting] local load failed', error); }
     Object.assign(state, buildSampleData());
@@ -172,7 +175,7 @@
   function accountByCode(code) { return state.accounts.find(account => String(account.account_code) === String(code)) || null; }
   function requiredAccount(code, label) {
     const account = accountByCode(code);
-    if (!account) toast(`Missing account ${code} ${label || ''}. Run Accounting Phase 2 SQL migration.`);
+    if (!account) toast(`Missing account ${code} ${label || ''}. Run Accounting SQL migration.`);
     return account;
   }
   function defaultBankAccount() { return state.bankAccounts.find(b => b.is_active !== false && b.linked_account_id) || state.bankAccounts.find(b => b.is_active !== false) || state.bankAccounts[0] || null; }
@@ -209,6 +212,58 @@
       if (state.filters.ledgerTo && String(entry.entry_date || '').slice(0,10) > state.filters.ledgerTo) return false;
       return true;
     }).sort((a,b) => String(b.entry_date || '').localeCompare(String(a.entry_date || '')) || String(b.created_at || '').localeCompare(String(a.created_at || '')));
+  }
+
+  function dateKey(value) { return value ? String(value).slice(0, 10) : ''; }
+  function reportAsOf() { return state.filters.reportAsOf || state.filters.reportTo || today(); }
+  function reportFrom() { return state.filters.reportFrom || ''; }
+  function reportTo() { return state.filters.reportTo || reportAsOf(); }
+  function inReportRange(dateValue) {
+    const date = dateKey(dateValue);
+    if (reportFrom() && date < reportFrom()) return false;
+    if (reportTo() && date > reportTo()) return false;
+    return true;
+  }
+  function upToAsOf(dateValue) {
+    const date = dateKey(dateValue);
+    return !reportAsOf() || !date || date <= reportAsOf();
+  }
+  function daysBetween(start, end) {
+    const a = new Date(`${dateKey(start)}T00:00:00`);
+    const b = new Date(`${dateKey(end)}T00:00:00`);
+    if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return 0;
+    return Math.floor((b - a) / 86400000);
+  }
+  function periodLedgerEntries() { return state.ledgerEntries.filter(entry => inReportRange(entry.entry_date)); }
+  function asOfLedgerEntries() { return state.ledgerEntries.filter(entry => upToAsOf(entry.entry_date)); }
+  function accountNaturalBalance(account, debit, credit) {
+    const naturalCredit = ['liability', 'equity', 'revenue'].includes(norm(account.account_type));
+    return num(account.opening_balance) + (naturalCredit ? num(credit) - num(debit) : num(debit) - num(credit));
+  }
+  function ledgerByAccountFor(entries, includeOpening = true) {
+    const map = new Map();
+    state.accounts.forEach(account => map.set(account.id, { account, debit: 0, credit: 0, balance: includeOpening ? num(account.opening_balance) : 0 }));
+    entries.forEach(entry => {
+      const account = accountById(entry.account_id) || { id: entry.account_id, account_code: entry.account_code, account_name: entry.account_name, account_type: 'Asset', currency: entry.currency || 'USD', opening_balance: 0 };
+      const row = map.get(entry.account_id) || { account, debit: 0, credit: 0, balance: includeOpening ? num(account.opening_balance) : 0 };
+      row.debit += num(entry.debit);
+      row.credit += num(entry.credit);
+      const baseOpening = includeOpening ? num(account.opening_balance) : 0;
+      const naturalCredit = ['liability', 'equity', 'revenue'].includes(norm(account.account_type));
+      row.balance = baseOpening + (naturalCredit ? row.credit - row.debit : row.debit - row.credit);
+      map.set(entry.account_id, row);
+    });
+    return [...map.values()].sort((a,b) => String(a.account.account_code || '').localeCompare(String(b.account.account_code || '')));
+  }
+  function reportRowsByAccountTypes(types, entries = periodLedgerEntries(), includeOpening = false) {
+    const allowed = new Set(types.map(t => norm(t)));
+    return ledgerByAccountFor(entries, includeOpening).filter(row => allowed.has(norm(row.account.account_type)) && (Math.abs(row.debit) > 0.004 || Math.abs(row.credit) > 0.004 || Math.abs(row.balance) > 0.004));
+  }
+  function reportSearchText() { return norm(state.filters.reportSearch); }
+  function rowMatchesReportSearch(row, fields) {
+    const search = reportSearchText();
+    if (!search) return true;
+    return norm(fields.map(key => row?.[key] ?? '').join(' ')).includes(search);
   }
 
   function ledgerByAccount() {
@@ -250,7 +305,7 @@
         <div>
           <span class="accounting-eyebrow">Finance · Ledger · Controls</span>
           <h2>Accounting Workspace</h2>
-          <p class="muted">Admin-only accounting with Phase 2 source sync for invoices, receipts, credit notes, Biners, and HR payroll.</p>
+          <p class="muted">Admin-only accounting with Phase 3 financial reports, source sync, ledger controls, and bank/cash tracking.</p>
         </div>
         <div class="accounting-actions">
           ${sourceChip()}
@@ -260,7 +315,7 @@
       </div>
       <div class="accounting-tabs" role="tablist">
         ${[
-          ['dashboard','Dashboard'],['accounts','Chart of Accounts'],['integrations','Module Sync'],['journals','Journal Entries'],['ledger','General Ledger'],['bank','Bank & Cash'],['reports','Trial Balance']
+          ['dashboard','Dashboard'],['accounts','Chart of Accounts'],['integrations','Module Sync'],['journals','Journal Entries'],['ledger','General Ledger'],['bank','Bank & Cash'],['reports','Financial Reports']
         ].map(([key,label]) => `<button class="accounting-tab ${state.activeTab === key ? 'active' : ''}" type="button" data-accounting-tab="${key}">${label}</button>`).join('')}
       </div>
       ${content}
@@ -460,11 +515,216 @@
     return `<div class="accounting-table-wrap"><table class="accounting-table"><thead><tr><th>Date</th><th>Journal</th><th>Account</th><th>Description</th><th>Source</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead><tbody>${rows.map(row => `<tr><td>${fmtDate(row.entry_date)}</td><td><strong>${esc(row.journal_no || '')}</strong><div class="muted">${esc(row.reference_no || '')}</div></td><td>${esc(row.account_code)} · ${esc(row.account_name)}</td><td>${esc(row.description || '')}</td><td>${esc(row.source_module || 'manual')}<div class="muted">${esc(row.source_reference || '')}</div></td><td class="num">${row.debit ? money(row.debit,row.currency) : '—'}</td><td class="num">${row.credit ? money(row.credit,row.currency) : '—'}</td></tr>`).join('')}</tbody></table></div>`;
   }
 
+  function reportTabLabel(key) {
+    return ({ trial_balance:'Trial Balance', profit_loss:'Profit & Loss', balance_sheet:'Balance Sheet', cash_flow:'Cash Flow', ar_aging:'AR Aging', ap_aging:'AP Aging', customer_statement:'Customer Statement', vendor_statement:'Vendor Statement', payroll_expense:'Payroll Expense' })[key] || key;
+  }
+
+  function renderReportFilters() {
+    return `<div class="accounting-report-controls">
+      <div class="accounting-tabs compact">${REPORT_TABS.map(key => `<button class="accounting-tab ${state.activeReportTab === key ? 'active':''}" type="button" data-accounting-report-tab="${esc(key)}">${esc(reportTabLabel(key))}</button>`).join('')}</div>
+      <div class="accounting-form-grid" style="margin-top:10px;">
+        <label class="accounting-field">From<input type="date" id="accountingReportFrom" value="${esc(state.filters.reportFrom)}" /></label>
+        <label class="accounting-field">To<input type="date" id="accountingReportTo" value="${esc(state.filters.reportTo)}" /></label>
+        <label class="accounting-field">As of<input type="date" id="accountingReportAsOf" value="${esc(reportAsOf())}" /></label>
+        <label class="accounting-field">Search<input id="accountingReportSearch" value="${esc(state.filters.reportSearch)}" placeholder="client, vendor, employee, account, reference" /></label>
+        <div class="accounting-toolbar"><button class="btn ghost" type="button" data-accounting-action="clear-report-filters">Clear</button><button class="btn ghost" type="button" data-accounting-action="print-report">Print</button><button class="btn" type="button" data-accounting-action="export-report">Export Report CSV</button></div>
+      </div>
+    </div>`;
+  }
+
   function renderReports() {
-    const rows = ledgerByAccount();
-    const debit = state.ledgerEntries.reduce((sum,row) => sum + num(row.debit), 0);
-    const credit = state.ledgerEntries.reduce((sum,row) => sum + num(row.credit), 0);
-    return `<div class="accounting-card"><div class="accounting-card-header"><div><h3>Trial Balance</h3><p class="muted">Debit and credit totals must match.</p></div><div class="accounting-total-pill ${Math.abs(debit-credit)<0.01?'ok':'bad'}">Difference ${money(debit-credit)}</div></div><div class="accounting-table-wrap"><table class="accounting-table"><thead><tr><th>Account</th><th>Type</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr></thead><tbody>${rows.map(row => `<tr><td><strong>${esc(row.account.account_code)}</strong> · ${esc(row.account.account_name)}</td><td>${esc(row.account.account_type)}</td><td class="num">${money(row.debit,row.account.currency)}</td><td class="num">${money(row.credit,row.account.currency)}</td><td class="num">${money(row.balance,row.account.currency)}</td></tr>`).join('')}</tbody></table></div></div>`;
+    const body = state.activeReportTab === 'trial_balance' ? renderTrialBalanceReport()
+      : state.activeReportTab === 'profit_loss' ? renderProfitLossReport()
+      : state.activeReportTab === 'balance_sheet' ? renderBalanceSheetReport()
+      : state.activeReportTab === 'cash_flow' ? renderCashFlowReport()
+      : state.activeReportTab === 'ar_aging' ? renderArAgingReport()
+      : state.activeReportTab === 'ap_aging' ? renderApAgingReport()
+      : state.activeReportTab === 'customer_statement' ? renderCustomerStatementReport()
+      : state.activeReportTab === 'vendor_statement' ? renderVendorStatementReport()
+      : state.activeReportTab === 'payroll_expense' ? renderPayrollExpenseReport()
+      : renderTrialBalanceReport();
+    return `<div class="accounting-card accounting-report-card"><div class="accounting-card-header"><div><h3>Financial Reports</h3><p class="muted">Reports are built from posted ledger entries and synced source data.</p></div><span class="accounting-chip">${esc(reportTabLabel(state.activeReportTab))}</span></div>${renderReportFilters()}<div id="accountingPrintableReport" class="accounting-print-area">${body}</div></div>`;
+  }
+
+  function renderTrialBalanceReport() {
+    const rows = ledgerByAccountFor(periodLedgerEntries(), true).filter(row => Math.abs(row.debit) > 0.004 || Math.abs(row.credit) > 0.004 || Math.abs(row.balance) > 0.004);
+    const debit = rows.reduce((sum,row) => sum + num(row.debit), 0);
+    const credit = rows.reduce((sum,row) => sum + num(row.credit), 0);
+    const visible = rows.filter(row => rowMatchesReportSearch({ text:`${row.account.account_code} ${row.account.account_name} ${row.account.account_type}` }, ['text']));
+    return `<div class="accounting-report-title"><h3>Trial Balance</h3><p>Period: ${esc(reportFrom() || 'Start')} to ${esc(reportTo())}</p><span class="accounting-total-pill ${Math.abs(debit-credit)<0.01?'ok':'bad'}">Difference ${money(debit-credit)}</span></div>${reportTable(['Account','Type','Debit','Credit','Balance'], visible.map(row => [accountCell(row.account), row.account.account_type, money(row.debit,row.account.currency), money(row.credit,row.account.currency), money(row.balance,row.account.currency)]), [2,3,4])}`;
+  }
+
+  function renderProfitLossReport() {
+    const revenueRows = reportRowsByAccountTypes(['Revenue'], periodLedgerEntries(), false).filter(row => rowMatchesReportSearch({ text:`${row.account.account_code} ${row.account.account_name}` }, ['text']));
+    const expenseRows = reportRowsByAccountTypes(['Expense'], periodLedgerEntries(), false).filter(row => rowMatchesReportSearch({ text:`${row.account.account_code} ${row.account.account_name}` }, ['text']));
+    const revenue = revenueRows.reduce((sum,row) => sum + num(row.credit) - num(row.debit), 0);
+    const expense = expenseRows.reduce((sum,row) => sum + num(row.debit) - num(row.credit), 0);
+    const net = revenue - expense;
+    return `<div class="accounting-report-title"><h3>Profit & Loss</h3><p>Period: ${esc(reportFrom() || 'Start')} to ${esc(reportTo())}</p><span class="accounting-total-pill ${net >= 0 ? 'ok':'bad'}">Net Profit ${money(net)}</span></div>
+      <div class="accounting-grid compact"><div class="accounting-kpi"><div class="label">Revenue</div><div class="value">${money(revenue)}</div></div><div class="accounting-kpi"><div class="label">Expenses</div><div class="value">${money(expense)}</div></div><div class="accounting-kpi"><div class="label">Net Profit</div><div class="value">${money(net)}</div></div></div>
+      <h4>Revenue</h4>${reportTable(['Account','Debit','Credit','Revenue Balance'], revenueRows.map(row => [accountCell(row.account), money(row.debit,row.account.currency), money(row.credit,row.account.currency), money(num(row.credit)-num(row.debit), row.account.currency)]), [1,2,3])}
+      <h4>Expenses</h4>${reportTable(['Account','Debit','Credit','Expense Balance'], expenseRows.map(row => [accountCell(row.account), money(row.debit,row.account.currency), money(row.credit,row.account.currency), money(num(row.debit)-num(row.credit), row.account.currency)]), [1,2,3])}`;
+  }
+
+  function renderBalanceSheetReport() {
+    const rows = ledgerByAccountFor(asOfLedgerEntries(), true);
+    const assets = rows.filter(row => norm(row.account.account_type) === 'asset' && rowMatchesReportSearch({ text:`${row.account.account_code} ${row.account.account_name}` }, ['text']));
+    const liabilities = rows.filter(row => norm(row.account.account_type) === 'liability' && rowMatchesReportSearch({ text:`${row.account.account_code} ${row.account.account_name}` }, ['text']));
+    const equity = rows.filter(row => norm(row.account.account_type) === 'equity' && rowMatchesReportSearch({ text:`${row.account.account_code} ${row.account.account_name}` }, ['text']));
+    const rev = rows.filter(row => norm(row.account.account_type) === 'revenue').reduce((sum,row)=>sum+num(row.balance),0);
+    const exp = rows.filter(row => norm(row.account.account_type) === 'expense').reduce((sum,row)=>sum+num(row.balance),0);
+    const currentEarnings = rev - exp;
+    const assetTotal = assets.reduce((sum,row)=>sum+num(row.balance),0);
+    const liabilityTotal = liabilities.reduce((sum,row)=>sum+num(row.balance),0);
+    const equityTotal = equity.reduce((sum,row)=>sum+num(row.balance),0) + currentEarnings;
+    return `<div class="accounting-report-title"><h3>Balance Sheet</h3><p>As of ${esc(reportAsOf())}</p><span class="accounting-total-pill ${Math.abs(assetTotal - liabilityTotal - equityTotal) < 0.01 ? 'ok':'bad'}">Check ${money(assetTotal - liabilityTotal - equityTotal)}</span></div>
+      <div class="accounting-grid compact"><div class="accounting-kpi"><div class="label">Assets</div><div class="value">${money(assetTotal)}</div></div><div class="accounting-kpi"><div class="label">Liabilities</div><div class="value">${money(liabilityTotal)}</div></div><div class="accounting-kpi"><div class="label">Equity + Earnings</div><div class="value">${money(equityTotal)}</div></div></div>
+      <h4>Assets</h4>${reportTable(['Account','Balance'], assets.map(row => [accountCell(row.account), money(row.balance,row.account.currency)]), [1])}
+      <h4>Liabilities</h4>${reportTable(['Account','Balance'], liabilities.map(row => [accountCell(row.account), money(row.balance,row.account.currency)]), [1])}
+      <h4>Equity</h4>${reportTable(['Account','Balance'], equity.map(row => [accountCell(row.account), money(row.balance,row.account.currency)]).concat([['Current Earnings (calculated)', money(currentEarnings)]]), [1])}`;
+  }
+
+  function renderCashFlowReport() {
+    const bankCodes = new Set(['1100','1200']);
+    const rows = periodLedgerEntries().filter(entry => bankCodes.has(String(entry.account_code || accountById(entry.account_id)?.account_code || '')));
+    const map = new Map();
+    rows.forEach(entry => {
+      const key = entry.source_module || 'manual_journal';
+      const row = map.get(key) || { source:key, inflow:0, outflow:0, net:0 };
+      row.inflow += num(entry.debit);
+      row.outflow += num(entry.credit);
+      row.net = row.inflow - row.outflow;
+      map.set(key,row);
+    });
+    const grouped = [...map.values()].filter(row => rowMatchesReportSearch(row, ['source']));
+    const inflow = grouped.reduce((s,r)=>s+r.inflow,0), outflow = grouped.reduce((s,r)=>s+r.outflow,0);
+    return `<div class="accounting-report-title"><h3>Cash Flow</h3><p>Period: ${esc(reportFrom() || 'Start')} to ${esc(reportTo())}</p><span class="accounting-total-pill ${inflow-outflow >= 0 ? 'ok':'bad'}">Net Cash ${money(inflow-outflow)}</span></div>${reportTable(['Source','Cash In','Cash Out','Net'], grouped.map(row => [sourceLabel(row.source) || row.source, money(row.inflow), money(row.outflow), money(row.net)]), [1,2,3])}`;
+  }
+
+  function sourceRefFields(row) {
+    return [row.invoice_number,row.invoice_no,row.invoice_id,row.receipt_number,row.receipt_no,row.receipt_id,row.credit_note_number,row.credit_note_no,row.reference_no,row.linked_invoice_no,row.related_invoice_no,row.invoice_reference,row.notes,row.description].filter(Boolean).map(String);
+  }
+  function sourceMatchesReference(row, reference) {
+    const ref = norm(reference);
+    if (!ref) return false;
+    return sourceRefFields(row).some(value => norm(value) === ref || norm(value).includes(ref));
+  }
+  function agingBucket(days) {
+    if (days <= 0) return 'current';
+    if (days <= 30) return '1_30';
+    if (days <= 60) return '31_60';
+    if (days <= 90) return '61_90';
+    return '90_plus';
+  }
+  function emptyAgingTotals() { return { current:0, '1_30':0, '31_60':0, '61_90':0, '90_plus':0 }; }
+
+  function arAgingRows() {
+    const asOf = reportAsOf();
+    const rows = state.sources.invoices.map(invoice => {
+      const ref = sourceReference('invoices', invoice);
+      const amount = sourceAmount('invoices', invoice);
+      const receipts = state.sources.receipts.filter(row => sourceMatchesReference(row, ref)).reduce((sum,row) => sum + sourceAmount('receipts', row), 0);
+      const credits = state.sources.creditNotes.filter(row => sourceMatchesReference(row, ref)).reduce((sum,row) => sum + sourceAmount('credit_notes', row), 0);
+      const outstanding = amount - receipts - credits;
+      const due = dateKey(invoice.due_date || invoice.payment_due_date || invoice.due_at || sourceDate('invoices', invoice));
+      const days = daysBetween(due, asOf);
+      return { reference: ref || invoice.id, client: sourceCounterparty('invoices', invoice), date: dateKey(sourceDate('invoices', invoice)), due, amount, paid: receipts, credited: credits, outstanding, days, bucket: agingBucket(days), currency: sourceCurrency(invoice) };
+    }).filter(row => row.outstanding > 0.01 && rowMatchesReportSearch(row, ['reference','client']));
+    return rows.sort((a,b)=>b.days-a.days);
+  }
+
+  function renderArAgingReport() {
+    const rows = arAgingRows();
+    const totals = emptyAgingTotals(); rows.forEach(row => totals[row.bucket] += row.outstanding);
+    const total = rows.reduce((s,r)=>s+r.outstanding,0);
+    return `<div class="accounting-report-title"><h3>Accounts Receivable Aging</h3><p>As of ${esc(reportAsOf())}</p><span class="accounting-total-pill">Outstanding ${money(total)}</span></div>${agingCards(totals)}${reportTable(['Invoice','Client','Invoice Date','Due Date','Days','Original','Paid/Credited','Outstanding'], rows.map(row => [row.reference,row.client,fmtDate(row.date),fmtDate(row.due),String(Math.max(row.days,0)),money(row.amount,row.currency),money(row.paid+row.credited,row.currency),money(row.outstanding,row.currency)]), [4,5,6,7])}`;
+  }
+
+  function apAgingRows() {
+    const asOf = reportAsOf();
+    const biners = state.sources.binersSchedules.map(row => {
+      const amount = sourceAmount('biners_payables', row);
+      const paid = sourceAmount('biners_payments', row);
+      const outstanding = amount - paid;
+      const due = dateKey(row.due_date || sourceDate('biners_payables', row));
+      const days = daysBetween(due, asOf);
+      return { reference: sourceReference('biners_payables', row), vendor: sourceCounterparty('biners_payables', row), type:'Biners', due, amount, paid, outstanding, days, bucket: agingBucket(days), currency: sourceCurrency(row) };
+    }).filter(row => row.outstanding > 0.01);
+    const salaryReceipts = state.sources.salaryReceipts;
+    const payroll = state.sources.payrollItems.map(item => {
+      const employee = employeeName(item.employee_id);
+      const amount = sourceAmount('hr_payroll', item);
+      const keyMonth = dateKey(item.payroll_month || item.month || item.created_at).slice(0,7);
+      const paid = salaryReceipts.filter(r => String(r.employee_id || '') === String(item.employee_id || '') && (!keyMonth || dateKey(r.payment_date || r.created_at).slice(0,7) === keyMonth)).reduce((sum,r)=>sum+sourceAmount('hr_salary_receipts', r),0);
+      const outstanding = amount - paid;
+      const due = dateKey(item.payment_due_date || item.payroll_month || item.created_at);
+      const days = daysBetween(due, asOf);
+      return { reference: sourceReference('hr_payroll', item), vendor: employee, type:'Payroll', due, amount, paid, outstanding, days, bucket: agingBucket(days), currency: sourceCurrency(item) };
+    }).filter(row => row.outstanding > 0.01);
+    return biners.concat(payroll).filter(row => rowMatchesReportSearch(row, ['reference','vendor','type'])).sort((a,b)=>b.days-a.days);
+  }
+
+  function renderApAgingReport() {
+    const rows = apAgingRows();
+    const totals = emptyAgingTotals(); rows.forEach(row => totals[row.bucket] += row.outstanding);
+    const total = rows.reduce((s,r)=>s+r.outstanding,0);
+    return `<div class="accounting-report-title"><h3>Accounts Payable Aging</h3><p>As of ${esc(reportAsOf())}</p><span class="accounting-total-pill">Outstanding ${money(total)}</span></div>${agingCards(totals)}${reportTable(['Reference','Vendor / Employee','Type','Due Date','Days','Original','Paid','Outstanding'], rows.map(row => [row.reference,row.vendor,row.type,fmtDate(row.due),String(Math.max(row.days,0)),money(row.amount,row.currency),money(row.paid,row.currency),money(row.outstanding,row.currency)]), [4,5,6,7])}`;
+  }
+
+  function agingCards(totals) {
+    return `<div class="accounting-source-grid" style="margin:12px 0;">${[['current','Current'],['1_30','1-30'],['31_60','31-60'],['61_90','61-90'],['90_plus','90+']].map(([key,label]) => `<div class="accounting-mini-card"><div class="label">${label}</div><div class="value">${money(totals[key] || 0)}</div></div>`).join('')}</div>`;
+  }
+
+  function renderCustomerStatementReport() {
+    return renderStatementReport('1300', 'Customer Statement', 'Accounts Receivable', row => num(row.debit) - num(row.credit));
+  }
+  function renderVendorStatementReport() {
+    return renderStatementReport('2100', 'Vendor Statement', 'Accounts Payable', row => num(row.credit) - num(row.debit));
+  }
+  function renderStatementReport(accountCode, title, accountName, movementFn) {
+    let balance = 0;
+    const rows = periodLedgerEntries().filter(entry => String(entry.account_code || accountById(entry.account_id)?.account_code || '') === accountCode).sort((a,b)=>String(a.entry_date||'').localeCompare(String(b.entry_date||''))).map(entry => {
+      balance += movementFn(entry);
+      return { date: dateKey(entry.entry_date), journal: entry.journal_no, name: entry.source_label || entry.source_reference || entry.reference_no || '', reference: entry.reference_no || entry.source_reference || '', description: entry.description || '', debit: num(entry.debit), credit: num(entry.credit), balance, currency: entry.currency || 'USD' };
+    }).filter(row => rowMatchesReportSearch(row, ['journal','name','reference','description']));
+    return `<div class="accounting-report-title"><h3>${esc(title)}</h3><p>${esc(accountName)} · Period: ${esc(reportFrom() || 'Start')} to ${esc(reportTo())}</p><span class="accounting-total-pill">Ending Balance ${money(rows.length ? rows[rows.length-1].balance : 0)}</span></div>${reportTable(['Date','Journal','Name','Reference','Description','Debit','Credit','Running Balance'], rows.map(row => [fmtDate(row.date),row.journal,row.name,row.reference,row.description,money(row.debit,row.currency),money(row.credit,row.currency),money(row.balance,row.currency)]), [5,6,7])}`;
+  }
+
+  function renderPayrollExpenseReport() {
+    const rows = state.sources.payrollItems.map(item => {
+      const employee = employeeName(item.employee_id);
+      const payrollMonth = dateKey(item.payroll_month || item.month || item.created_at).slice(0,7) || dateKey(item.created_at).slice(0,7);
+      const gross = num(item.gross_salary ?? item.basic_salary ?? item.monthly_salary ?? item.net_salary);
+      const net = sourceAmount('hr_payroll', item);
+      const paid = state.sources.salaryReceipts.filter(r => String(r.employee_id || '') === String(item.employee_id || '') && (!payrollMonth || dateKey(r.payment_date || r.created_at).slice(0,7) === payrollMonth)).reduce((sum,r)=>sum+sourceAmount('hr_salary_receipts', r),0);
+      return { employee, payrollMonth, gross, net, paid, rest: net - paid, status: item.status || item.payroll_status || '', currency: sourceCurrency(item) };
+    }).filter(row => (!reportFrom() || `${row.payrollMonth}-01` >= reportFrom()) && (!reportTo() || `${row.payrollMonth}-01` <= reportTo()) && rowMatchesReportSearch(row, ['employee','payrollMonth','status']));
+    const net = rows.reduce((s,r)=>s+r.net,0), paid = rows.reduce((s,r)=>s+r.paid,0);
+    return `<div class="accounting-report-title"><h3>Payroll Expense Report</h3><p>Period: ${esc(reportFrom() || 'Start')} to ${esc(reportTo())}</p><span class="accounting-total-pill">Net Payroll ${money(net)}</span><span class="accounting-total-pill">Paid ${money(paid)}</span><span class="accounting-total-pill ${net-paid <= 0.01 ? 'ok':'bad'}">Rest ${money(net-paid)}</span></div>${reportTable(['Employee','Month','Gross Salary','Net Salary','Paid','Rest','Status'], rows.map(row => [row.employee,row.payrollMonth,money(row.gross,row.currency),money(row.net,row.currency),money(row.paid,row.currency),money(row.rest,row.currency),row.status]), [2,3,4,5])}`;
+  }
+
+  function accountCell(account) { return `<strong>${esc(account.account_code)}</strong> · ${esc(account.account_name)}`; }
+  function reportTable(headers, rows, numericIndexes = []) {
+    if (!rows.length) return '<div class="accounting-empty">No report rows match the selected filters.</div>';
+    return `<div class="accounting-table-wrap"><table class="accounting-table"><thead><tr>${headers.map((h,i)=>`<th class="${numericIndexes.includes(i)?'num':''}">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map((cell,i)=>`<td class="${numericIndexes.includes(i)?'num':''}">${String(cell ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  }
+
+  function currentReportCsvRows() {
+    const clean = value => String(value ?? '').replace(/<[^>]+>/g, '').replace(/&amp;/g,'&').replace(/&middot;/g,'·');
+    if (state.activeReportTab === 'trial_balance') return ledgerByAccountFor(periodLedgerEntries(), true).map(row => ({ account_code: row.account.account_code, account_name: row.account.account_name, type: row.account.account_type, debit: row.debit, credit: row.credit, balance: row.balance }));
+    if (state.activeReportTab === 'profit_loss') return reportRowsByAccountTypes(['Revenue','Expense'], periodLedgerEntries(), false).map(row => ({ account_code: row.account.account_code, account_name: row.account.account_name, type: row.account.account_type, debit: row.debit, credit: row.credit, balance: row.balance }));
+    if (state.activeReportTab === 'balance_sheet') return ledgerByAccountFor(asOfLedgerEntries(), true).filter(row => ['asset','liability','equity'].includes(norm(row.account.account_type))).map(row => ({ account_code: row.account.account_code, account_name: row.account.account_name, type: row.account.account_type, balance: row.balance }));
+    if (state.activeReportTab === 'cash_flow') return periodLedgerEntries().filter(entry => ['1100','1200'].includes(String(entry.account_code || accountById(entry.account_id)?.account_code || ''))).map(entry => ({ date: entry.entry_date, source: entry.source_module, reference: entry.reference_no, debit_cash_in: entry.debit, credit_cash_out: entry.credit, description: entry.description }));
+    if (state.activeReportTab === 'ar_aging') return arAgingRows();
+    if (state.activeReportTab === 'ap_aging') return apAgingRows();
+    if (state.activeReportTab === 'payroll_expense') return state.sources.payrollItems.map(item => ({ employee: employeeName(item.employee_id), month: dateKey(item.payroll_month || item.month || item.created_at).slice(0,7), net_salary: sourceAmount('hr_payroll', item), status: item.status || item.payroll_status || '' }));
+    const code = state.activeReportTab === 'vendor_statement' ? '2100' : '1300';
+    return periodLedgerEntries().filter(entry => String(entry.account_code || accountById(entry.account_id)?.account_code || '') === code).map(entry => ({ date: entry.entry_date, journal: entry.journal_no, name: entry.source_label, reference: entry.reference_no || entry.source_reference, debit: entry.debit, credit: entry.credit, description: entry.description }));
+  }
+
+  function printCurrentReport() {
+    document.body.classList.add('accounting-print-active');
+    setTimeout(() => { window.print(); setTimeout(() => document.body.classList.remove('accounting-print-active'), 250); }, 50);
   }
 
   function renderIntegrations() {
@@ -725,6 +985,14 @@
     if (sourceFrom) sourceFrom.addEventListener('change', event => { state.filters.sourceFrom = event.target.value || ''; render(); });
     const sourceTo = $('accountingSourceTo');
     if (sourceTo) sourceTo.addEventListener('change', event => { state.filters.sourceTo = event.target.value || ''; render(); });
+    const reportFromInput = $('accountingReportFrom');
+    if (reportFromInput) reportFromInput.addEventListener('change', event => { state.filters.reportFrom = event.target.value || ''; render(); });
+    const reportToInput = $('accountingReportTo');
+    if (reportToInput) reportToInput.addEventListener('change', event => { state.filters.reportTo = event.target.value || ''; render(); });
+    const reportAsOfInput = $('accountingReportAsOf');
+    if (reportAsOfInput) reportAsOfInput.addEventListener('change', event => { state.filters.reportAsOf = event.target.value || today(); render(); });
+    const reportSearchInput = $('accountingReportSearch');
+    if (reportSearchInput) reportSearchInput.addEventListener('input', event => { state.filters.reportSearch = event.target.value || ''; render(); });
     bindJournalLineInputs();
   }
 
@@ -839,6 +1107,8 @@
     if (tabBtn) { state.activeTab = tabBtn.getAttribute('data-accounting-tab'); render(); return; }
     const sourceTab = event.target.closest('[data-accounting-source-tab]');
     if (sourceTab) { state.activeSourceTab = sourceTab.getAttribute('data-accounting-source-tab'); render(); return; }
+    const reportTab = event.target.closest('[data-accounting-report-tab]');
+    if (reportTab) { state.activeReportTab = reportTab.getAttribute('data-accounting-report-tab') || 'trial_balance'; render(); return; }
     const actionBtn = event.target.closest('[data-accounting-action]');
     if (actionBtn) {
       const action = actionBtn.getAttribute('data-accounting-action');
@@ -852,6 +1122,9 @@
       if (action === 'post-journal-form') { saveJournal('posted'); return; }
       if (action === 'clear-ledger-filters') { state.filters.ledgerAccountId = 'all'; state.filters.ledgerFrom = ''; state.filters.ledgerTo = ''; state.filters.ledgerSource = 'all'; render(); return; }
       if (action === 'clear-source-filters') { state.filters.sourceSearch = ''; state.filters.sourceFrom = ''; state.filters.sourceTo = ''; state.filters.sourceStatus = 'unposted'; render(); return; }
+      if (action === 'clear-report-filters') { state.filters.reportFrom = ''; state.filters.reportTo = ''; state.filters.reportAsOf = today(); state.filters.reportSearch = ''; render(); return; }
+      if (action === 'export-report') { exportCsv(`accounting_${state.activeReportTab}_report.csv`, currentReportCsvRows()); return; }
+      if (action === 'print-report') { printCurrentReport(); return; }
       if (action === 'sync-visible-sources') { syncVisibleSources(); return; }
     }
     const postSourceBtn = event.target.closest('[data-accounting-post-source]');
