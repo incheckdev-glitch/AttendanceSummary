@@ -120,3 +120,11 @@ service-worker.js
 sql/migrations/20260703_full_hr_module.sql
 ui.js
 ```
+
+## Latest HR Receipt Update
+
+- Salary receipts now have a print-ready receipt layout.
+- Salary Receipts tab includes filters by employee, from payment date, and to payment date.
+- The receipt form includes **Save & Print**.
+- Existing receipts now show a **Print** action from the receipts table.
+

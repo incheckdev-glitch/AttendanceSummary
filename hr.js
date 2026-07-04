@@ -51,7 +51,7 @@
       attendanceDate: today(), attendanceDepartment: 'all',
       leaveStatus: 'all', balanceYear: String(new Date().getFullYear()),
       holidayYear: String(new Date().getFullYear()), payrollMonth: currentMonth(),
-      payslipRunId: '', receiptMonth: currentMonth(), documentStatus: 'all'
+      payslipRunId: '', receiptMonth: currentMonth(), receiptEmployee: 'all', receiptFrom: '', receiptTo: '', documentStatus: 'all'
     },
     employees: [], shifts: [], attendance: [], leaveRequests: [], leaveTypes: [], leaveBalances: [], holidays: [],
     payrollRuns: [], payrollItems: [], salaryReceipts: [], documents: [], hrNotifications: []
@@ -649,14 +649,34 @@
     return `<div class="hr-payslip-preview" id="hrPayslipPreview"><div class="hr-payslip-header"><div><div class="hr-payslip-title">Payslip</div><div class="muted">InCheck360 Payroll</div></div><div style="text-align:right"><strong>${esc(monthName(run.payroll_month))}</strong><div>${statusChip(run.status || 'draft')}</div></div></div><div class="hr-payslip-grid"><div><strong>Employee</strong><div>${esc(emp.full_name || '—')}</div><div class="muted">${esc(emp.employee_no || '')} · ${esc(emp.job_title || '')}</div></div><div><strong>Department</strong><div>${esc(emp.department || '—')}</div><div class="muted">Payment: ${esc(emp.payment_method || '—')}</div></div></div><table class="hr-payslip-table"><thead><tr><th>Earnings</th><th>Amount</th></tr></thead><tbody><tr><td>Fixed Monthly Salary</td><td>${money(item.basic_salary, item.currency)}</td></tr><tr><td>Fixed Allowances</td><td>${money(item.allowances, item.currency)}</td></tr><tr><td>Transportation Paid</td><td>${money(item.transportation_allowance, item.currency)}</td></tr><tr><td><strong>Gross Salary</strong></td><td><strong>${money(item.gross_salary, item.currency)}</strong></td></tr></tbody></table><table class="hr-payslip-table"><thead><tr><th>Deductions / Balance</th><th>Amount</th></tr></thead><tbody><tr><td>Fixed Admin Deductions</td><td>${money(item.deductions, item.currency)}</td></tr><tr><td>Transportation Not Paid for Leave/Sick/Absent</td><td>${money(item.transportation_deduction, item.currency)}</td></tr><tr><td>Salary Receipts Paid</td><td>${money(rs.paid, item.currency)}</td></tr><tr><td>Remaining Salary Rest</td><td>${money(rs.remaining, item.currency)}</td></tr></tbody></table><div class="hr-payslip-grid"><div><strong>Attendance Basis</strong><div>Working ${num(item.working_days)} · Present ${num(item.present_days)}</div><div class="muted">Leave ${num(item.paid_leave_days) + num(item.unpaid_leave_days)} · Manual absent ${num(item.absent_days)} · Transport days ${num(item.transportation_days)}</div></div><div><strong>Transport Calculation</strong><div>${money(item.transportation_monthly || (num(item.transportation_allowance) + num(item.transportation_deduction)), item.currency)} monthly</div><div class="muted">${money(item.transportation_per_day, item.currency)} per eligible working day</div></div></div><div class="hr-payslip-total"><span>Net Salary</span><span>${money(item.net_salary, item.currency)}</span></div>${receiptRows.length ? `<div class="hr-dashboard-list" style="margin-top:12px">${receiptRows.map(r => `<div class="hr-dashboard-item"><div><strong>${esc(r.receipt_no)}</strong><div class="muted">${fmtDate(r.payment_date)} · ${esc(r.payment_method || '')}</div></div><span>${money(r.amount, r.currency || item.currency)}</span></div>`).join('')}</div>` : ''}${includeAction ? `<div class="hr-toolbar" style="margin-top:14px; justify-content:flex-end"><button class="btn ghost sm" type="button" data-hr-add-receipt="${esc(item.id)}">Add Receipt</button><button class="btn sm" type="button" data-hr-print-payslip="${esc(item.id)}">Print / Save PDF</button></div>` : ''}</div>`;
   }
 
+  function filteredSalaryReceipts() {
+    return state.salaryReceipts.filter(row => {
+      const paymentDate = String(row.payment_date || '').slice(0,10);
+      if (state.filters.receiptEmployee !== 'all' && String(row.employee_id) !== String(state.filters.receiptEmployee)) return false;
+      if (state.filters.receiptFrom && paymentDate < state.filters.receiptFrom) return false;
+      if (state.filters.receiptTo && paymentDate > state.filters.receiptTo) return false;
+      if (!state.filters.receiptFrom && !state.filters.receiptTo && state.filters.receiptMonth && String(row.payroll_month || '').slice(0,7) !== state.filters.receiptMonth) return false;
+      return true;
+    }).sort((a,b) => String(b.payment_date).localeCompare(String(a.payment_date)) || String(b.receipt_no || '').localeCompare(String(a.receipt_no || '')));
+  }
+
+  function receiptFilterSummary(rows) {
+    const total = rows.reduce((sum, row) => sum + num(row.amount), 0);
+    const currency = rows.find(row => row.currency)?.currency || 'USD';
+    const label = state.filters.receiptFrom || state.filters.receiptTo
+      ? `${state.filters.receiptFrom || 'Start'} → ${state.filters.receiptTo || 'Today'}`
+      : monthName(state.filters.receiptMonth);
+    return `<div class="hr-grid-3" style="margin-bottom:14px">${metric('Receipts', String(rows.length), label)}${metric('Total Paid', money(total, currency), 'Filtered salary receipts')}${metric('Employee Filter', state.filters.receiptEmployee === 'all' ? 'All' : (getEmployee(state.filters.receiptEmployee)?.full_name || 'Selected'), 'Payment date based')}</div>`;
+  }
+
   function renderSalaryReceipts() {
-    const rows = state.salaryReceipts.filter(row => String(row.payroll_month || '').slice(0,7) === state.filters.receiptMonth).sort((a,b) => String(b.payment_date).localeCompare(String(a.payment_date)));
-    return `<section class="hr-panel"><div class="hr-panel-head"><div><h3>Salary Receipts</h3><p class="muted">Record full or partial salary payments and keep remaining salary rest visible.</p></div><div class="hr-toolbar"><input id="hrReceiptMonth" class="input" type="month" value="${esc(state.filters.receiptMonth)}"><button class="btn sm" type="button" data-hr-action="new-receipt">New Salary Receipt</button></div></div><div class="hr-table-wrap"><table class="hr-table"><thead><tr><th>Receipt</th><th>Employee</th><th>Payroll Month</th><th>Date</th><th>Amount</th><th>Method</th><th>Reference</th><th>Notes</th><th>Actions</th></tr></thead><tbody>${rows.length ? rows.map(receiptRow).join('') : `<tr><td colspan="9">${empty('No salary receipts for this month.')}</td></tr>`}</tbody></table></div></section>`;
+    const rows = filteredSalaryReceipts();
+    return `<section class="hr-panel"><div class="hr-panel-head"><div><h3>Salary Receipts</h3><p class="muted">Record full or partial salary payments, print each receipt, and track remaining salary rest.</p></div><div class="hr-toolbar"><button class="btn sm" type="button" data-hr-action="new-receipt">New Salary Receipt</button></div></div><div class="hr-filter-grid"><label><span class="muted">Month</span><input id="hrReceiptMonth" class="input" type="month" value="${esc(state.filters.receiptMonth)}"></label><label><span class="muted">Employee</span><select id="hrReceiptEmployeeFilter" class="select"><option value="all" ${state.filters.receiptEmployee === 'all' ? 'selected' : ''}>All employees</option>${employeeOptions(state.filters.receiptEmployee).replace('<option value="">Select employee...</option>', '')}</select></label><label><span class="muted">From payment date</span><input id="hrReceiptFrom" class="input" type="date" value="${esc(state.filters.receiptFrom)}"></label><label><span class="muted">To payment date</span><input id="hrReceiptTo" class="input" type="date" value="${esc(state.filters.receiptTo)}"></label><label><span class="muted">Reset</span><button class="btn ghost sm" type="button" data-hr-reset-receipt-filters>Clear Date Filter</button></label></div>${receiptFilterSummary(rows)}<div class="hr-table-wrap"><table class="hr-table"><thead><tr><th>Receipt</th><th>Employee</th><th>Payroll Month</th><th>Date</th><th>Amount</th><th>Method</th><th>Reference</th><th>Notes</th><th>Actions</th></tr></thead><tbody>${rows.length ? rows.map(receiptRow).join('') : `<tr><td colspan="9">${empty('No salary receipts match the selected filters.')}</td></tr>`}</tbody></table></div></section>`;
   }
 
   function receiptRow(row) {
     const emp = getEmployee(row.employee_id) || {};
-    return `<tr><td><strong>${esc(row.receipt_no || '')}</strong></td><td>${esc(emp.full_name || '—')}<div class="muted">${esc(emp.employee_no || '')}</div></td><td>${esc(monthName(row.payroll_month))}</td><td>${fmtDate(row.payment_date)}</td><td>${money(row.amount, row.currency)}</td><td>${esc(row.payment_method || '')}</td><td>${esc(row.reference_no || '')}</td><td>${esc(row.notes || '')}</td><td><button class="btn ghost xs" type="button" data-hr-edit-receipt="${esc(row.id)}">Edit</button></td></tr>`;
+    return `<tr><td><strong>${esc(row.receipt_no || '')}</strong></td><td>${esc(emp.full_name || '—')}<div class="muted">${esc(emp.employee_no || '')}</div></td><td>${esc(monthName(row.payroll_month))}</td><td>${fmtDate(row.payment_date)}</td><td>${money(row.amount, row.currency)}</td><td>${esc(row.payment_method || '')}</td><td>${esc(row.reference_no || '')}</td><td>${esc(row.notes || '')}</td><td><div class="hr-row-actions"><button class="btn ghost xs" type="button" data-hr-print-receipt="${esc(row.id)}">Print</button><button class="btn ghost xs" type="button" data-hr-edit-receipt="${esc(row.id)}">Edit</button></div></td></tr>`;
   }
 
   function renderDocuments() {
@@ -680,7 +700,7 @@
       <div id="hrLeaveModal" class="hr-modal" role="dialog" aria-modal="true" hidden><button class="hr-modal-backdrop" data-hr-close-modal type="button"></button><form id="hrLeaveForm" class="hr-dialog"><header><div><span class="hr-eyebrow">HR</span><h3>Leave</h3></div><button class="btn ghost sm" data-hr-close-modal type="button">Close</button></header><div class="hr-dialog-body"><div class="hr-form-grid">${leaveFields()}</div></div><footer class="hr-dialog-footer"><button class="btn ghost sm" data-hr-close-modal type="button">Cancel</button><button class="btn sm" type="submit">Save Leave</button></footer></form></div>
       <div id="hrBalanceModal" class="hr-modal" role="dialog" aria-modal="true" hidden><button class="hr-modal-backdrop" data-hr-close-modal type="button"></button><form id="hrBalanceForm" class="hr-dialog"><header><div><span class="hr-eyebrow">HR</span><h3>Adjust Leave Balance</h3></div><button class="btn ghost sm" data-hr-close-modal type="button">Close</button></header><div class="hr-dialog-body"><div class="hr-form-grid">${balanceFields()}</div></div><footer class="hr-dialog-footer"><button class="btn ghost sm" data-hr-close-modal type="button">Cancel</button><button class="btn sm" type="submit">Save Adjustment</button></footer></form></div>
       <div id="hrHolidayModal" class="hr-modal" role="dialog" aria-modal="true" hidden><button class="hr-modal-backdrop" data-hr-close-modal type="button"></button><form id="hrHolidayForm" class="hr-dialog"><header><div><span class="hr-eyebrow">HR</span><h3>Holiday</h3></div><button class="btn ghost sm" data-hr-close-modal type="button">Close</button></header><div class="hr-dialog-body"><div class="hr-form-grid">${holidayFields()}</div></div><footer class="hr-dialog-footer"><button class="btn ghost sm" data-hr-close-modal type="button">Cancel</button><button class="btn sm" type="submit">Save Holiday</button></footer></form></div>
-      <div id="hrReceiptModal" class="hr-modal" role="dialog" aria-modal="true" hidden><button class="hr-modal-backdrop" data-hr-close-modal type="button"></button><form id="hrReceiptForm" class="hr-dialog"><header><div><span class="hr-eyebrow">Payroll</span><h3>Salary Receipt</h3></div><button class="btn ghost sm" data-hr-close-modal type="button">Close</button></header><div class="hr-dialog-body"><div class="hr-form-grid">${receiptFields()}</div></div><footer class="hr-dialog-footer"><button class="btn ghost sm" data-hr-close-modal type="button">Cancel</button><button class="btn sm" type="submit">Save Receipt</button></footer></form></div>
+      <div id="hrReceiptModal" class="hr-modal" role="dialog" aria-modal="true" hidden><button class="hr-modal-backdrop" data-hr-close-modal type="button"></button><form id="hrReceiptForm" class="hr-dialog"><header><div><span class="hr-eyebrow">Payroll</span><h3>Salary Receipt</h3></div><button class="btn ghost sm" data-hr-close-modal type="button">Close</button></header><div class="hr-dialog-body"><div class="hr-form-grid">${receiptFields()}</div></div><footer class="hr-dialog-footer"><button class="btn ghost sm" data-hr-close-modal type="button">Cancel</button><button class="btn ghost sm" type="submit">Save Receipt</button><button class="btn sm" type="submit" data-hr-save-print-receipt="true">Save & Print</button></footer></form></div>
       <div id="hrDocumentModal" class="hr-modal" role="dialog" aria-modal="true" hidden><button class="hr-modal-backdrop" data-hr-close-modal type="button"></button><form id="hrDocumentForm" class="hr-dialog"><header><div><span class="hr-eyebrow">HR</span><h3>Document</h3></div><button class="btn ghost sm" data-hr-close-modal type="button">Close</button></header><div class="hr-dialog-body"><div class="hr-form-grid">${documentFields()}</div></div><footer class="hr-dialog-footer"><button class="btn ghost sm" data-hr-close-modal type="button">Cancel</button><button class="btn sm" type="submit">Save Document</button></footer></form></div>
     `;
   }
@@ -855,6 +875,7 @@
 
   async function saveReceipt(event) {
     event.preventDefault();
+    const shouldPrint = Boolean(event.submitter?.dataset?.hrSavePrintReceipt);
     const id = value('hrReceiptId') || uid('receipt');
     const existing = state.salaryReceipts.find(row => row.id === id) || {};
     const item = state.payrollItems.find(row => String(row.id) === String(value('hrReceiptPayrollItem')));
@@ -867,6 +888,7 @@
     await syncUpsert(TABLES.salaryReceipts, row);
     await pushHrNotification('Salary receipt saved', `${getEmployee(row.employee_id)?.full_name || 'Employee'} · ${money(row.amount, row.currency)}`, 'receipt', 'salary_receipt', row.id);
     closeModals(); renderRoot(); toast(`Salary receipt saved. Rest: ${money(receiptStatus(item).remaining, item.currency)}`);
+    if (shouldPrint) setTimeout(() => printSalaryReceipt(row.id), 150);
   }
 
   function openDocumentModal(id = '') {
@@ -923,6 +945,26 @@
     w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 350);
   }
 
+
+  function receiptHtml(receiptId) {
+    const receipt = state.salaryReceipts.find(row => String(row.id) === String(receiptId));
+    if (!receipt) return '';
+    const item = state.payrollItems.find(row => String(row.id) === String(receipt.payroll_item_id)) || {};
+    const run = state.payrollRuns.find(row => String(row.id) === String(receipt.payroll_run_id || item.run_id)) || {};
+    const emp = getEmployee(receipt.employee_id || item.employee_id) || {};
+    const status = item.id ? receiptStatus(item) : { paid: num(receipt.amount), remaining: 0, status: 'paid' };
+    return `<div class="hr-receipt-preview" id="hrSalaryReceiptPreview"><div class="hr-receipt-header"><div><div class="hr-receipt-title">Salary Receipt</div><div class="muted">InCheck360 HR & Payroll</div></div><div style="text-align:right"><strong>${esc(receipt.receipt_no || '')}</strong><div class="muted">${fmtDate(receipt.payment_date)}</div></div></div><div class="hr-payslip-grid"><div><strong>Received By</strong><div>${esc(emp.full_name || '—')}</div><div class="muted">${esc(emp.employee_no || '')} · ${esc(emp.job_title || '')}</div></div><div><strong>Payroll Month</strong><div>${esc(monthName(receipt.payroll_month || run.payroll_month))}</div><div class="muted">Department: ${esc(emp.department || '—')}</div></div></div><table class="hr-payslip-table"><tbody><tr><td>Amount Received</td><td><strong>${money(receipt.amount, receipt.currency || item.currency)}</strong></td></tr><tr><td>Payment Method</td><td>${esc(receipt.payment_method || '—')}</td></tr><tr><td>Reference</td><td>${esc(receipt.reference_no || '—')}</td></tr><tr><td>Net Salary</td><td>${item.id ? money(item.net_salary, item.currency) : '—'}</td></tr><tr><td>Total Paid for This Payslip</td><td>${money(status.paid, receipt.currency || item.currency)}</td></tr><tr><td>Remaining Salary Rest</td><td>${money(status.remaining, receipt.currency || item.currency)}</td></tr></tbody></table>${receipt.notes ? `<div class="hr-receipt-note"><strong>Notes</strong><div>${esc(receipt.notes)}</div></div>` : ''}<div class="hr-signature-grid"><div><span>Prepared By</span><strong>${esc(receipt.created_by || authName())}</strong></div><div><span>Employee Signature</span><strong>&nbsp;</strong></div></div><div class="hr-receipt-footer">This receipt confirms salary payment received for the payroll period shown above. Partial payments remain open until the salary rest reaches zero.</div></div>`;
+  }
+
+  function printSalaryReceipt(receiptId) {
+    const htmlBody = receiptHtml(receiptId);
+    if (!htmlBody) return toast('Salary receipt not found.');
+    const html = `<!DOCTYPE html><html><head><title>Salary Receipt</title><style>body{font-family:Inter,Arial,sans-serif;background:#f8fafc;padding:24px}.hr-receipt-preview{background:#fff;max-width:820px;margin:auto;padding:28px;border:1px solid #cbd5e1;border-radius:18px}.hr-receipt-header{display:flex;justify-content:space-between;border-bottom:2px solid #0f172a;padding-bottom:14px;margin-bottom:14px}.hr-receipt-title{font-size:26px;font-weight:900}.muted{color:#64748b}.hr-payslip-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0}.hr-payslip-table{width:100%;border-collapse:collapse;margin-top:12px}.hr-payslip-table th,.hr-payslip-table td{padding:10px;border-bottom:1px solid #e2e8f0;text-align:left}.hr-receipt-note{margin-top:12px;padding:12px;border:1px solid #e2e8f0;border-radius:12px;background:#f8fafc}.hr-signature-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:40px}.hr-signature-grid div{border-top:1px solid #0f172a;padding-top:10px}.hr-signature-grid span{display:block;color:#64748b;font-size:12px}.hr-receipt-footer{margin-top:20px;color:#64748b;font-size:12px;text-align:center}@media print{body{background:#fff;padding:0}.hr-receipt-preview{border:0;border-radius:0;max-width:none}}</style></head><body>${htmlBody}</body></html>`;
+    const w = global.open('', '_blank');
+    if (!w) return toast('Popup blocked. Allow popups to print salary receipt.');
+    w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 350);
+  }
+
   function wire() {
     if (state.initialized) return;
     state.initialized = true;
@@ -970,6 +1012,9 @@
       if (addReceipt) openReceiptModal('', addReceipt);
       const editReceipt = event.target.closest?.('[data-hr-edit-receipt]')?.dataset.hrEditReceipt;
       if (editReceipt) openReceiptModal(editReceipt);
+      const printReceipt = event.target.closest?.('[data-hr-print-receipt]')?.dataset.hrPrintReceipt;
+      if (printReceipt) printSalaryReceipt(printReceipt);
+      if (event.target.closest?.('[data-hr-reset-receipt-filters]')) { state.filters.receiptFrom = ''; state.filters.receiptTo = ''; renderBody(); }
       const printId = event.target.closest?.('[data-hr-print-payslip]')?.dataset.hrPrintPayslip;
       if (printId) printPayslip(printId);
       const editDoc = event.target.closest?.('[data-hr-edit-document]')?.dataset.hrEditDocument;
@@ -990,6 +1035,9 @@
       if (id === 'hrPayrollMonth') { state.filters.payrollMonth = event.target.value || currentMonth(); state.selectedPayslip = ''; renderRoot(); }
       if (id === 'hrPayslipRunFilter') { state.filters.payslipRunId = event.target.value; state.selectedPayslip = ''; renderBody(); }
       if (id === 'hrReceiptMonth') { state.filters.receiptMonth = event.target.value || currentMonth(); renderBody(); }
+      if (id === 'hrReceiptEmployeeFilter') { state.filters.receiptEmployee = event.target.value || 'all'; renderBody(); }
+      if (id === 'hrReceiptFrom') { state.filters.receiptFrom = event.target.value || ''; renderBody(); }
+      if (id === 'hrReceiptTo') { state.filters.receiptTo = event.target.value || ''; renderBody(); }
       if (id === 'hrDocumentStatusFilter') { state.filters.documentStatus = event.target.value; renderBody(); }
     });
     document.addEventListener('submit', event => {
