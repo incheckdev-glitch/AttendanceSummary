@@ -5397,6 +5397,7 @@ function wireCore() {
     E.renewalForecastTab,
     E.binersTab,
     E.hrTab,
+    E.accountingTab,
     E.lifecycleAnalyticsTab,
     E.clientsTab,
     E.proposalCatalogTab,
@@ -5408,6 +5409,17 @@ function wireCore() {
     E.usersTab,
     E.rolePermissionsTab
   ].forEach(bindViewTab);
+
+  // Robust fallback for newly added module tabs. This keeps new workspaces clickable
+  // even if a tab was missed in the static E.* binding list.
+  document.addEventListener('click', event => {
+    const tab = event.target?.closest?.('.view-tab[data-view], .view-tab[data-tab], .view-tab[href^="#"]');
+    if (!tab || tab.dataset.viewClickBound === 'true') return;
+    const viewKey = tab.dataset.view || tab.dataset.tab || tab.getAttribute('href')?.replace(/^#/, '');
+    if (!viewKey) return;
+    event.preventDefault();
+    setActiveView(viewKey);
+  });
 
   document.addEventListener('click', event => {
     const tab = event.target?.closest?.('#communicationCentreTab,[data-view="communication_centre"],[data-tab="communication_centre"],[href="#communication_centre"]');

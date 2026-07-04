@@ -1,4 +1,4 @@
-const STATIC_CACHE_NAME = 'incheck360-monitorcore-static-v17-accounting-phase1-admin1';
+const STATIC_CACHE_NAME = 'incheck360-monitorcore-static-v18-accounting-clickfix';
 const PUSH_DIAGNOSTICS_CACHE_NAME = 'incheck360-monitorcore-push-diagnostics-v1';
 const PUSH_DIAGNOSTICS_PREFIX = '/__incheck360_push_diagnostics__/';
 const STATIC_ASSETS = [
@@ -15,7 +15,8 @@ const STATIC_ASSETS = [
   '/hr.css',
   '/hr.js',
   '/accounting.css',
-  '/accounting.js'
+  '/accounting.js',
+  '/app.js'
 ];
 
 const DEBUG_PUSH =
