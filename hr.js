@@ -47,6 +47,7 @@
     loading: false,
     selectedPayslip: '',
     filters: {
+      globalEmployee: 'all', globalFrom: '', globalTo: '',
       employeeSearch: '', department: 'all', employeeStatus: 'active',
       attendanceDate: today(), attendanceDepartment: 'all',
       leaveStatus: 'all', balanceYear: String(new Date().getFullYear()),
@@ -355,7 +356,7 @@
   }
 
   function summarize() {
-    const active = state.employees.filter(emp => norm(emp.status || 'active') === 'active');
+    const active = globalFilteredEmployees({ activeOnly: true });
     const date = state.filters.attendanceDate || today();
     const todayStats = active.map(emp => computedDayStatus(emp, date));
     const run = latestPayrollRun();
@@ -365,7 +366,7 @@
       presentToday: todayStats.filter(s => norm(s.status) === 'present').length,
       absentToday: todayStats.filter(s => norm(s.status) === 'absent').length,
       onLeaveToday: todayStats.filter(s => norm(s.status) === 'on_leave').length,
-      pendingLeaves: state.leaveRequests.filter(row => norm(row.status).startsWith('pending')).length,
+      pendingLeaves: state.leaveRequests.filter(row => matchesGlobalEmployee(row.employee_id) && dateOverlapsGlobal(row.start_date, row.end_date) && norm(row.status).startsWith('pending')).length,
       payrollStatus: run?.status || 'not generated',
       netPayroll: runItems.reduce((sum, item) => sum + num(item.net_salary), 0),
       remainingPayroll: runItems.reduce((sum, item) => sum + receiptStatus(item).remaining, 0)
@@ -398,6 +399,7 @@
       <nav class="hr-tabs" aria-label="HR sections">
         ${['dashboard','employees','attendance','leaves','leave_balances','holidays','payroll','payslips','salary_receipts','documents','settings'].map(tab => `<button type="button" class="${state.activeTab === tab ? 'active' : ''}" data-hr-tab="${tab}">${tabLabel(tab)}</button>`).join('')}
       </nav>
+      ${globalFilterBar()}
       <div id="hrSummary" class="hr-summary-grid"></div>
       <div id="hrBody"></div>
       ${modalMarkup()}
@@ -438,6 +440,51 @@
     return `<option value="">Select employee...</option>${state.employees.map(emp => `<option value="${esc(emp.id)}" ${String(selected) === String(emp.id) ? 'selected' : ''}>${esc(emp.employee_no || '')} · ${esc(emp.full_name || '')}</option>`).join('')}`;
   }
 
+  function globalEmployeeOptions(selected = 'all') {
+    return `<option value="all" ${selected === 'all' ? 'selected' : ''}>All employees</option>${state.employees.map(emp => `<option value="${esc(emp.id)}" ${String(selected) === String(emp.id) ? 'selected' : ''}>${esc(emp.employee_no || '')} · ${esc(emp.full_name || '')}</option>`).join('')}`;
+  }
+
+  function matchesGlobalEmployee(employeeId) {
+    return state.filters.globalEmployee === 'all' || String(employeeId || '') === String(state.filters.globalEmployee);
+  }
+
+  function selectedDateFrom() { return state.filters.globalFrom || ''; }
+  function selectedDateTo() { return state.filters.globalTo || ''; }
+  function globalRangeLabel() {
+    if (selectedDateFrom() || selectedDateTo()) return `${selectedDateFrom() || 'Start'} → ${selectedDateTo() || 'Today'}`;
+    return 'All dates';
+  }
+
+  function dateOverlapsGlobal(startDate, endDate = startDate) {
+    const from = selectedDateFrom();
+    const to = selectedDateTo();
+    if (!from && !to) return true;
+    const start = String(startDate || '').slice(0, 10);
+    const end = String(endDate || startDate || '').slice(0, 10);
+    if (!start && !end) return true;
+    if (from && end && end < from) return false;
+    if (to && start && start > to) return false;
+    return true;
+  }
+
+  function monthInGlobalRange(month) {
+    const value = String(month || '').slice(0, 7);
+    if (!value) return true;
+    return dateOverlapsGlobal(`${value}-01`, `${value}-${String(daysInMonth(value)).padStart(2, '0')}`);
+  }
+
+  function globalFilteredEmployees(options = {}) {
+    const activeOnly = options.activeOnly !== false;
+    return state.employees.filter(emp => {
+      if (activeOnly && norm(emp.status || 'active') !== 'active') return false;
+      return matchesGlobalEmployee(emp.id);
+    });
+  }
+
+  function globalFilterBar() {
+    return `<section class="hr-panel hr-global-filter-panel"><div class="hr-panel-head"><div><h3>HR Filters</h3><p class="muted">These filters apply across the HR tabs wherever employee/date data exists.</p></div><button class="btn ghost sm" type="button" data-hr-reset-global-filters>Clear Filters</button></div><div class="hr-filter-grid"><label><span class="muted">Employee</span><select id="hrGlobalEmployeeFilter" class="select">${globalEmployeeOptions(state.filters.globalEmployee)}</select></label><label><span class="muted">From date</span><input id="hrGlobalFrom" class="input" type="date" value="${esc(state.filters.globalFrom)}"></label><label><span class="muted">To date</span><input id="hrGlobalTo" class="input" type="date" value="${esc(state.filters.globalTo)}"></label><label><span class="muted">Active range</span><input class="input" readonly value="${esc(globalRangeLabel())}"></label></div></section>`;
+  }
+
   function shiftOptions(selected = '') {
     return state.shifts.map(shift => `<option value="${esc(shift.id)}" ${String(selected) === String(shift.id) ? 'selected' : ''}>${esc(shift.name)}</option>`).join('');
   }
@@ -445,7 +492,7 @@
   function renderDashboard() {
     const s = summarize();
     const run = latestPayrollRun();
-    const holidaysThisYear = state.holidays.filter(row => String(row.holiday_date || '').slice(0,4) === String(state.filters.holidayYear)).length;
+    const holidaysThisYear = state.holidays.filter(row => String(row.holiday_date || '').slice(0,4) === String(state.filters.holidayYear) && dateOverlapsGlobal(row.holiday_date)).length;
     return `
       <div class="hr-grid-2">
         <section class="hr-panel"><div class="hr-panel-head"><div><h3>Admin HR Overview</h3><p class="muted">No employee portal/check-in is enabled. Admin controls all HR records.</p></div></div>
@@ -474,13 +521,14 @@
   }
 
   function notificationFeed(limit = 6) {
-    const rows = state.hrNotifications.slice(0, limit);
+    const rows = state.hrNotifications.filter(row => dateOverlapsGlobal(row.created_at)).slice(0, limit);
     return rows.length ? rows.map(row => `<div class="hr-dashboard-item"><div><strong>${esc(row.title)}</strong><div class="muted">${esc(row.message || '')}</div></div><small>${fmtDate(row.created_at)}</small></div>`).join('') : empty('No HR activity yet.');
   }
 
   function filteredEmployees() {
     const search = norm(state.filters.employeeSearch);
     return state.employees.filter(emp => {
+      if (!matchesGlobalEmployee(emp.id)) return false;
       if (state.filters.employeeStatus !== 'all' && norm(emp.status || 'active') !== state.filters.employeeStatus) return false;
       if (state.filters.department !== 'all' && emp.department !== state.filters.department) return false;
       if (!search) return true;
@@ -513,25 +561,40 @@
     return `<tr><td><strong>${esc(emp.full_name || '—')}</strong><div class="muted">${esc(emp.employee_no || '')} · ${esc(emp.email || '')}</div></td><td>${esc(emp.department || '—')}<div class="muted">${esc(emp.job_title || '')}</div></td><td>${esc(shift.name || '—')}<div class="muted">Mon-Fri · Sat/Sun off</div></td><td>${money(emp.base_salary, emp.currency)}<div class="muted">Allowances ${money(emp.allowances, emp.currency)}</div></td><td>${money(transport, emp.currency)}<div class="muted">≈ ${money(perDay, emp.currency)} / working day</div></td><td>${statusChip(emp.status || 'active')}</td><td><div class="hr-row-actions"><button class="btn ghost xs" type="button" data-hr-edit-employee="${esc(emp.id)}">Edit</button><button class="btn ghost xs" type="button" data-hr-attendance-employee="${esc(emp.id)}">Attendance</button></div></td></tr>`;
   }
 
+  function attendanceDatesForCurrentFilters() {
+    const from = selectedDateFrom();
+    const to = selectedDateTo();
+    if (!from && !to) return [state.filters.attendanceDate || today()];
+    const start = from || to || today();
+    const end = to || from || start;
+    const dates = [];
+    for (let d = dateObj(start); isoDate(d) <= end && dates.length < 370; d = addDays(d, 1)) dates.push(isoDate(d));
+    return dates;
+  }
+
   function renderAttendance() {
-    const employees = state.employees.filter(emp => norm(emp.status || 'active') === 'active' && (state.filters.attendanceDepartment === 'all' || emp.department === state.filters.attendanceDepartment));
+    const employees = state.employees.filter(emp => norm(emp.status || 'active') === 'active' && matchesGlobalEmployee(emp.id) && (state.filters.attendanceDepartment === 'all' || emp.department === state.filters.attendanceDepartment));
+    const dates = attendanceDatesForCurrentFilters();
+    const rows = [];
+    employees.forEach(emp => dates.forEach(date => rows.push({ emp, date })));
     return `
       <section class="hr-panel">
-        <div class="hr-panel-head"><div><h3>Attendance</h3><p class="muted">No check-in/check-out. Employees are present by default on working days unless leave/holiday/weekend or admin marks absent.</p></div><div class="hr-toolbar"><button class="btn sm" type="button" data-hr-action="new-attendance">Add Manual Status</button></div></div>
+        <div class="hr-panel-head"><div><h3>Attendance</h3><p class="muted">No check-in/check-out. Employees are present by default on working days unless leave/holiday/weekend or admin marks absent. Global date range shows a full range; otherwise this tab uses the selected attendance date.</p></div><div class="hr-toolbar"><button class="btn sm" type="button" data-hr-action="new-attendance">Add Manual Status</button></div></div>
         <div class="hr-filter-grid"><input id="hrAttendanceDate" class="input" type="date" value="${esc(state.filters.attendanceDate)}"><select id="hrAttendanceDepartmentFilter" class="select">${departmentOptions(state.filters.attendanceDepartment)}</select></div>
-        <div class="hr-table-wrap"><table class="hr-table"><thead><tr><th>Employee</th><th>Date</th><th>Status</th><th>Source</th><th>Transport</th><th>Notes</th><th>Actions</th></tr></thead><tbody>${employees.length ? employees.map(attendanceRow).join('') : `<tr><td colspan="7">${empty('No active employees found.')}</td></tr>`}</tbody></table></div>
+        <div class="hr-source-banner">Showing ${esc(String(rows.length))} attendance row(s) for ${esc(globalRangeLabel())}.</div>
+        <div class="hr-table-wrap"><table class="hr-table"><thead><tr><th>Employee</th><th>Date</th><th>Status</th><th>Source</th><th>Transport</th><th>Notes</th><th>Actions</th></tr></thead><tbody>${rows.length ? rows.map(row => attendanceRow(row.emp, row.date)).join('') : `<tr><td colspan="7">${empty('No active employees found for the selected filters.')}</td></tr>`}</tbody></table></div>
       </section>
     `;
   }
 
-  function attendanceRow(emp) {
-    const computed = computedDayStatus(emp, state.filters.attendanceDate);
-    const manual = attendanceException(emp.id, state.filters.attendanceDate);
-    return `<tr><td><strong>${esc(emp.full_name)}</strong><div class="muted">${esc(emp.employee_no || '')}</div></td><td>${fmtDate(state.filters.attendanceDate)}</td><td>${statusChip(computed.status)}<div class="muted">${esc(computed.label)}</div></td><td>${esc(computed.source)}</td><td>${computed.transport ? 'Eligible' : 'Not eligible'}</td><td>${esc(manual?.notes || '')}</td><td><div class="hr-row-actions">${manual ? `<button class="btn ghost xs" type="button" data-hr-edit-attendance="${esc(manual.id)}">Edit</button><button class="btn ghost xs" type="button" data-hr-clear-attendance="${esc(manual.id)}">Clear</button>` : isWorkingDay(state.filters.attendanceDate, getShift(emp.shift_id)) ? `<button class="btn ghost xs" type="button" data-hr-absent="${esc(emp.id)}">Mark Absent</button><button class="btn ghost xs" type="button" data-hr-halfday="${esc(emp.id)}">Half Day</button>` : `<span class="muted">Auto</span>`}</div></td></tr>`;
+  function attendanceRow(emp, dateValue = state.filters.attendanceDate) {
+    const computed = computedDayStatus(emp, dateValue);
+    const manual = attendanceException(emp.id, dateValue);
+    return `<tr><td><strong>${esc(emp.full_name)}</strong><div class="muted">${esc(emp.employee_no || '')}</div></td><td>${fmtDate(dateValue)}</td><td>${statusChip(computed.status)}<div class="muted">${esc(computed.label)}</div></td><td>${esc(computed.source)}</td><td>${computed.transport ? 'Eligible' : 'Not eligible'}</td><td>${esc(manual?.notes || '')}</td><td><div class="hr-row-actions">${manual ? `<button class="btn ghost xs" type="button" data-hr-edit-attendance="${esc(manual.id)}">Edit</button><button class="btn ghost xs" type="button" data-hr-clear-attendance="${esc(manual.id)}">Clear</button>` : isWorkingDay(dateValue, getShift(emp.shift_id)) ? `<button class="btn ghost xs" type="button" data-hr-absent="${esc(emp.id)}" data-hr-absent-date="${esc(dateValue)}">Mark Absent</button><button class="btn ghost xs" type="button" data-hr-halfday="${esc(emp.id)}" data-hr-halfday-date="${esc(dateValue)}">Half Day</button>` : `<span class="muted">Auto</span>`}</div></td></tr>`;
   }
 
   function renderLeaves() {
-    const rows = state.leaveRequests.filter(row => state.filters.leaveStatus === 'all' || norm(row.status) === state.filters.leaveStatus);
+    const rows = state.leaveRequests.filter(row => matchesGlobalEmployee(row.employee_id) && dateOverlapsGlobal(row.start_date, row.end_date) && (state.filters.leaveStatus === 'all' || norm(row.status) === state.filters.leaveStatus));
     return `<section class="hr-panel"><div class="hr-panel-head"><div><h3>Leave Management</h3><p class="muted">Admin creates/approves leave. Approved leave is automatically reflected in attendance and payroll transport deduction.</p></div><div class="hr-toolbar"><button class="btn sm" type="button" data-hr-action="new-leave">New Leave</button></div></div><div class="hr-filter-grid"><select id="hrLeaveStatusFilter" class="select"><option value="all">All leave statuses</option>${['pending','approved','rejected','cancelled'].map(s => `<option value="${s}" ${state.filters.leaveStatus === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div><div class="hr-table-wrap"><table class="hr-table"><thead><tr><th>Employee</th><th>Type</th><th>Dates</th><th>Working Days</th><th>Paid</th><th>Transport</th><th>Status</th><th>Actions</th></tr></thead><tbody>${rows.length ? rows.map(leaveRow).join('') : `<tr><td colspan="8">${empty('No leave requests found.')}</td></tr>`}</tbody></table></div></section>`;
   }
 
@@ -543,12 +606,12 @@
   function renderLeaveBalances() {
     const year = state.filters.balanceYear;
     const rows = [];
-    state.employees.filter(emp => norm(emp.status || 'active') === 'active').forEach(emp => state.leaveTypes.forEach(type => rows.push({ emp, type, balance: leaveBalanceFor(emp.id, type.name, year) })));
+    state.employees.filter(emp => norm(emp.status || 'active') === 'active' && matchesGlobalEmployee(emp.id)).forEach(emp => state.leaveTypes.forEach(type => rows.push({ emp, type, balance: leaveBalanceFor(emp.id, type.name, year) })));
     return `<section class="hr-panel"><div class="hr-panel-head"><div><h3>Leave Balance</h3><p class="muted">Annual leave accrues 1.25 days/month, 15 days/year. Admin can always adjust entitlement, carry-forward, and adjustment days.</p></div><div class="hr-toolbar"><input id="hrBalanceYear" class="input" type="number" min="2020" max="2100" value="${esc(year)}"></div></div><div class="hr-table-wrap"><table class="hr-table"><thead><tr><th>Employee</th><th>Leave Type</th><th>Entitlement</th><th>Carry</th><th>Adjustment</th><th>Used</th><th>Remaining</th><th>Action</th></tr></thead><tbody>${rows.length ? rows.map(({emp,type,balance}) => `<tr><td><strong>${esc(emp.full_name)}</strong><div class="muted">${esc(emp.employee_no || '')}</div></td><td>${esc(type.name)}${norm(type.name) === 'annual leave' ? '<div class="muted">1.25/month accrual</div>' : ''}</td><td>${num(balance.entitlement)}</td><td>${num(balance.carry)}</td><td>${num(balance.adjustment)}</td><td>${num(balance.used)}</td><td><strong>${num(balance.remaining)}</strong></td><td><button class="btn ghost xs" type="button" data-hr-adjust-balance="${esc(emp.id)}" data-leave-type="${esc(type.name)}">Adjust</button></td></tr>`).join('') : `<tr><td colspan="8">${empty('No balance rows found.')}</td></tr>`}</tbody></table></div></section>`;
   }
 
   function renderHolidays() {
-    const rows = state.holidays.filter(row => String(row.holiday_date || '').slice(0,4) === String(state.filters.holidayYear)).sort((a,b) => String(a.holiday_date).localeCompare(String(b.holiday_date)));
+    const rows = state.holidays.filter(row => String(row.holiday_date || '').slice(0,4) === String(state.filters.holidayYear) && dateOverlapsGlobal(row.holiday_date)).sort((a,b) => String(a.holiday_date).localeCompare(String(b.holiday_date)));
     return `<section class="hr-panel"><div class="hr-panel-head"><div><h3>Holidays Calendar</h3><p class="muted">Holidays are excluded from monthly working days and transport calculation.</p></div><div class="hr-toolbar"><input id="hrHolidayYear" class="input" type="number" min="2020" max="2100" value="${esc(state.filters.holidayYear)}"><button class="btn sm" type="button" data-hr-action="new-holiday">Add Holiday</button></div></div><div class="hr-table-wrap"><table class="hr-table"><thead><tr><th>Date</th><th>Name</th><th>Country</th><th>Paid</th><th>Notes</th><th>Actions</th></tr></thead><tbody>${rows.length ? rows.map(row => `<tr><td>${fmtDate(row.holiday_date)}</td><td><strong>${esc(row.name)}</strong></td><td>${esc(row.country || '')}</td><td>${row.is_paid === false ? 'No' : 'Yes'}</td><td>${esc(row.notes || '')}</td><td><button class="btn ghost xs" type="button" data-hr-edit-holiday="${esc(row.id)}">Edit</button></td></tr>`).join('') : `<tr><td colspan="6">${empty('No holidays added for this year.')}</td></tr>`}</tbody></table></div></section>`;
   }
 
@@ -621,7 +684,7 @@
 
   function renderPayroll() {
     const run = latestPayrollRun();
-    const rows = run ? state.payrollItems.filter(item => String(item.run_id) === String(run.id)) : [];
+    const rows = run && monthInGlobalRange(run.payroll_month) ? state.payrollItems.filter(item => String(item.run_id) === String(run.id) && matchesGlobalEmployee(item.employee_id)) : [];
     const totals = payrollTotals(rows);
     return `<section class="hr-panel"><div class="hr-panel-head"><div><h3>Monthly Payroll Report</h3><p class="muted">Fixed monthly salary + prorated transportation. Admin can regenerate/edit any month.</p></div><div class="hr-toolbar"><input id="hrPayrollMonth" class="input" type="month" value="${esc(state.filters.payrollMonth)}"><button class="btn sm" type="button" data-hr-action="generate-payroll">Generate / Recalculate</button></div></div>${run ? `<div class="hr-grid-3" style="margin-bottom:14px">${metric('Status', String(run.status || 'draft').replace(/_/g,' '), monthName(run.payroll_month))}${metric('Net Salary', money(totals.net, totals.currency), `${rows.length} employees`)}${metric('Remaining', money(totals.remaining, totals.currency), `Paid ${money(totals.paid, totals.currency)}`)}</div><div class="hr-toolbar" style="margin-bottom:12px"><button class="btn ghost sm" type="button" data-hr-payroll-status="reviewed">Mark Reviewed</button><button class="btn ghost sm" type="button" data-hr-payroll-status="approved">Approve</button><button class="btn ghost sm" type="button" data-hr-payroll-status="paid">Mark Paid</button><button class="btn ghost sm" type="button" data-hr-payroll-status="locked">Lock</button></div>` : `<div class="hr-source-banner">No payroll generated for ${monthName(state.filters.payrollMonth)} yet.</div>`}<div class="hr-table-wrap"><table class="hr-table"><thead><tr><th>Employee</th><th>Days</th><th>Fixed Salary</th><th>Transport</th><th>Deductions</th><th>Net</th><th>Paid</th><th>Rest</th><th>Status</th><th>Actions</th></tr></thead><tbody>${rows.length ? rows.map(payrollRow).join('') : `<tr><td colspan="10">${empty('Generate payroll to show monthly salary report.')}</td></tr>`}</tbody></table></div></section>`;
   }
@@ -633,12 +696,12 @@
   }
 
   function renderPayslips() {
-    const runs = state.payrollRuns.slice().sort((a,b) => String(b.payroll_month).localeCompare(String(a.payroll_month)));
-    const runId = state.filters.payslipRunId || runs[0]?.id || '';
-    const items = state.payrollItems.filter(item => String(item.run_id) === String(runId));
-    const selected = state.selectedPayslip || items[0]?.id || '';
+    const runs = state.payrollRuns.slice().filter(run => monthInGlobalRange(run.payroll_month)).sort((a,b) => String(b.payroll_month).localeCompare(String(a.payroll_month)));
+    const runId = state.filters.payslipRunId && runs.some(run => String(run.id) === String(state.filters.payslipRunId)) ? state.filters.payslipRunId : (runs[0]?.id || '');
+    const items = state.payrollItems.filter(item => String(item.run_id) === String(runId) && matchesGlobalEmployee(item.employee_id));
+    const selected = state.selectedPayslip && items.some(item => String(item.id) === String(state.selectedPayslip)) ? state.selectedPayslip : (items[0]?.id || '');
     const item = state.payrollItems.find(row => String(row.id) === String(selected));
-    return `<section class="hr-panel"><div class="hr-panel-head"><div><h3>Payslips</h3><p class="muted">Monthly payslip with transport calculation and salary receipt balance.</p></div><div class="hr-toolbar"><select id="hrPayslipRunFilter" class="select">${runs.map(run => `<option value="${esc(run.id)}" ${runId === run.id ? 'selected' : ''}>${esc(monthName(run.payroll_month))} · ${esc(run.status)}</option>`).join('')}</select></div></div><div class="hr-grid-2"><div class="hr-table-wrap"><table class="hr-table"><thead><tr><th>Employee</th><th>Month</th><th>Net</th><th>Rest</th><th>Action</th></tr></thead><tbody>${items.length ? items.map(item => { const emp = getEmployee(item.employee_id) || {}; const run = state.payrollRuns.find(r => r.id === item.run_id) || {}; const rs = receiptStatus(item); return `<tr><td>${esc(emp.full_name || '—')}<div class="muted">${esc(emp.employee_no || '')}</div></td><td>${esc(monthName(run.payroll_month))}</td><td>${money(item.net_salary, item.currency)}</td><td>${money(rs.remaining, item.currency)}</td><td><button class="btn ghost xs" type="button" data-hr-select-payslip="${esc(item.id)}">Preview</button></td></tr>`; }).join('') : `<tr><td colspan="5">${empty('No payslips found. Generate payroll first.')}</td></tr>`}</tbody></table></div><div>${item ? payslipHtml(item, true) : empty('Select a payslip to preview.')}</div></div></section>`;
+    return `<section class="hr-panel"><div class="hr-panel-head"><div><h3>Payslips</h3><p class="muted">Monthly payslip with transport calculation and salary receipt balance. Global employee/date filters apply here.</p></div><div class="hr-toolbar"><select id="hrPayslipRunFilter" class="select">${runs.map(run => `<option value="${esc(run.id)}" ${runId === run.id ? 'selected' : ''}>${esc(monthName(run.payroll_month))} · ${esc(run.status)}</option>`).join('')}</select></div></div><div class="hr-grid-2"><div class="hr-table-wrap"><table class="hr-table"><thead><tr><th>Employee</th><th>Month</th><th>Net</th><th>Rest</th><th>Action</th></tr></thead><tbody>${items.length ? items.map(item => { const emp = getEmployee(item.employee_id) || {}; const run = state.payrollRuns.find(r => r.id === item.run_id) || {}; const rs = receiptStatus(item); return `<tr><td>${esc(emp.full_name || '—')}<div class="muted">${esc(emp.employee_no || '')}</div></td><td>${esc(monthName(run.payroll_month))}</td><td>${money(item.net_salary, item.currency)}</td><td>${money(rs.remaining, item.currency)}</td><td><button class="btn ghost xs" type="button" data-hr-select-payslip="${esc(item.id)}">Preview</button></td></tr>`; }).join('') : `<tr><td colspan="5">${empty('No payslips match the selected filters. Generate payroll first or clear filters.')}</td></tr>`}</tbody></table></div><div>${item ? payslipHtml(item, true) : empty('Select a payslip to preview.')}</div></div></section>`;
   }
 
   function payslipHtml(item, includeAction = false) {
@@ -652,10 +715,13 @@
   function filteredSalaryReceipts() {
     return state.salaryReceipts.filter(row => {
       const paymentDate = String(row.payment_date || '').slice(0,10);
-      if (state.filters.receiptEmployee !== 'all' && String(row.employee_id) !== String(state.filters.receiptEmployee)) return false;
-      if (state.filters.receiptFrom && paymentDate < state.filters.receiptFrom) return false;
-      if (state.filters.receiptTo && paymentDate > state.filters.receiptTo) return false;
-      if (!state.filters.receiptFrom && !state.filters.receiptTo && state.filters.receiptMonth && String(row.payroll_month || '').slice(0,7) !== state.filters.receiptMonth) return false;
+      const employeeFilter = state.filters.receiptEmployee !== 'all' ? state.filters.receiptEmployee : state.filters.globalEmployee;
+      const fromFilter = state.filters.receiptFrom || state.filters.globalFrom;
+      const toFilter = state.filters.receiptTo || state.filters.globalTo;
+      if (employeeFilter !== 'all' && String(row.employee_id) !== String(employeeFilter)) return false;
+      if (fromFilter && paymentDate < fromFilter) return false;
+      if (toFilter && paymentDate > toFilter) return false;
+      if (!fromFilter && !toFilter && state.filters.receiptMonth && String(row.payroll_month || '').slice(0,7) !== state.filters.receiptMonth) return false;
       return true;
     }).sort((a,b) => String(b.payment_date).localeCompare(String(a.payment_date)) || String(b.receipt_no || '').localeCompare(String(a.receipt_no || '')));
   }
@@ -663,10 +729,12 @@
   function receiptFilterSummary(rows) {
     const total = rows.reduce((sum, row) => sum + num(row.amount), 0);
     const currency = rows.find(row => row.currency)?.currency || 'USD';
-    const label = state.filters.receiptFrom || state.filters.receiptTo
-      ? `${state.filters.receiptFrom || 'Start'} → ${state.filters.receiptTo || 'Today'}`
-      : monthName(state.filters.receiptMonth);
-    return `<div class="hr-grid-3" style="margin-bottom:14px">${metric('Receipts', String(rows.length), label)}${metric('Total Paid', money(total, currency), 'Filtered salary receipts')}${metric('Employee Filter', state.filters.receiptEmployee === 'all' ? 'All' : (getEmployee(state.filters.receiptEmployee)?.full_name || 'Selected'), 'Payment date based')}</div>`;
+    const fromFilter = state.filters.receiptFrom || state.filters.globalFrom;
+    const toFilter = state.filters.receiptTo || state.filters.globalTo;
+    const employeeFilter = state.filters.receiptEmployee !== 'all' ? state.filters.receiptEmployee : state.filters.globalEmployee;
+    const label = fromFilter || toFilter ? `${fromFilter || 'Start'} → ${toFilter || 'Today'}` : monthName(state.filters.receiptMonth);
+    const employeeLabel = employeeFilter === 'all' ? 'All' : (getEmployee(employeeFilter)?.full_name || 'Selected');
+    return `<div class="hr-grid-3" style="margin-bottom:14px">${metric('Receipts', String(rows.length), label)}${metric('Total Paid', money(total, currency), 'Filtered salary receipts')}${metric('Employee Filter', employeeLabel, 'Global + receipt filter')}</div>`;
   }
 
   function renderSalaryReceipts() {
@@ -680,7 +748,7 @@
   }
 
   function renderDocuments() {
-    const rows = state.documents.filter(doc => state.filters.documentStatus === 'all' || norm(doc.status || 'valid') === state.filters.documentStatus);
+    const rows = state.documents.filter(doc => matchesGlobalEmployee(doc.employee_id) && dateOverlapsGlobal(doc.expiry_date) && (state.filters.documentStatus === 'all' || norm(doc.status || 'valid') === state.filters.documentStatus));
     return `<section class="hr-panel"><div class="hr-panel-head"><div><h3>Employee Documents</h3><p class="muted">Admin-managed employee documents and expiry tracking.</p></div><div class="hr-toolbar"><button class="btn sm" type="button" data-hr-action="new-document">Add Document</button></div></div><div class="hr-filter-grid"><select id="hrDocumentStatusFilter" class="select"><option value="all">All documents</option>${['valid','missing','expired'].map(s => `<option value="${s}" ${state.filters.documentStatus === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div><div class="hr-table-wrap"><table class="hr-table"><thead><tr><th>Employee</th><th>Type</th><th>Document</th><th>Expiry</th><th>Status</th><th>Notes</th><th>Actions</th></tr></thead><tbody>${rows.length ? rows.map(documentRow).join('') : `<tr><td colspan="7">${empty('No employee documents found.')}</td></tr>`}</tbody></table></div></section>`;
   }
 
@@ -780,9 +848,9 @@
     closeModals(); renderRoot(); toast('Manual attendance status saved.');
   }
 
-  async function quickManualAttendance(employeeId, status) {
-    const existing = attendanceException(employeeId, state.filters.attendanceDate);
-    const row = { ...(existing || {}), id: existing?.id || uid('att'), employee_id: employeeId, attendance_date: state.filters.attendanceDate, check_in_time: null, check_out_time: null, worked_hours: 0, late_minutes: 0, early_leave_minutes: 0, overtime_hours: 0, status, method:'Manual', notes: status === 'absent' ? 'Marked absent by admin' : 'Marked half day by admin', approved_by: authName(), updated_at: new Date().toISOString(), created_at: existing?.created_at || new Date().toISOString() };
+  async function quickManualAttendance(employeeId, status, dateValue = state.filters.attendanceDate) {
+    const existing = attendanceException(employeeId, dateValue);
+    const row = { ...(existing || {}), id: existing?.id || uid('att'), employee_id: employeeId, attendance_date: dateValue, check_in_time: null, check_out_time: null, worked_hours: 0, late_minutes: 0, early_leave_minutes: 0, overtime_hours: 0, status, method:'Manual', notes: status === 'absent' ? 'Marked absent by admin' : 'Marked half day by admin', approved_by: authName(), updated_at: new Date().toISOString(), created_at: existing?.created_at || new Date().toISOString() };
     const index = state.attendance.findIndex(item => item.id === row.id);
     if (index >= 0) state.attendance[index] = row; else state.attendance.unshift(row);
     await syncUpsert(TABLES.attendance, row);
@@ -923,17 +991,19 @@
   function exportCsv(type) {
     let rows = [];
     if (type === 'attendance') {
-      rows = state.employees.filter(emp => norm(emp.status || 'active') === 'active').map(emp => ({ employee_no: emp.employee_no, employee: emp.full_name, date: state.filters.attendanceDate, status: computedDayStatus(emp, state.filters.attendanceDate).status, source: computedDayStatus(emp, state.filters.attendanceDate).source }));
+      const employees = state.employees.filter(emp => norm(emp.status || 'active') === 'active' && matchesGlobalEmployee(emp.id));
+      const dates = attendanceDatesForCurrentFilters();
+      employees.forEach(emp => dates.forEach(date => rows.push({ employee_no: emp.employee_no, employee: emp.full_name, date, status: computedDayStatus(emp, date).status, source: computedDayStatus(emp, date).source })));
     } else {
       const run = latestPayrollRun();
-      rows = run ? state.payrollItems.filter(item => item.run_id === run.id).map(item => ({ employee: getEmployee(item.employee_id)?.full_name || '', month: run.payroll_month, net_salary: item.net_salary, paid: receiptStatus(item).paid, remaining: receiptStatus(item).remaining })) : [];
+      rows = run && monthInGlobalRange(run.payroll_month) ? state.payrollItems.filter(item => item.run_id === run.id && matchesGlobalEmployee(item.employee_id)).map(item => ({ employee: getEmployee(item.employee_id)?.full_name || '', month: run.payroll_month, net_salary: item.net_salary, paid: receiptStatus(item).paid, remaining: receiptStatus(item).remaining })) : [];
     }
     if (!rows.length) return toast('No rows to export.');
     const columns = Array.from(new Set(rows.flatMap(row => Object.keys(row))));
     const csv = [columns.join(','), ...rows.map(row => columns.map(col => `"${String(row[col] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
     const blob = new Blob([csv], { type:'text/csv;charset=utf-8' });
     const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob); link.download = `hr-${type}-${type === 'payroll' ? state.filters.payrollMonth : state.filters.attendanceDate}.csv`; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(link.href);
+    link.href = URL.createObjectURL(blob); link.download = `hr-${type}-${type === 'payroll' ? state.filters.payrollMonth : (state.filters.globalFrom || state.filters.attendanceDate)}.csv`; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(link.href);
   }
 
   function printPayslip(itemId) {
@@ -980,16 +1050,19 @@
       if (action === 'new-document') openDocumentModal();
       if (action === 'new-receipt') openReceiptModal();
       if (action === 'generate-payroll') await generatePayroll();
+      if (event.target.closest?.('[data-hr-reset-global-filters]')) { state.filters.globalEmployee = 'all'; state.filters.globalFrom = ''; state.filters.globalTo = ''; renderRoot(); return; }
       const editEmp = event.target.closest?.('[data-hr-edit-employee]')?.dataset.hrEditEmployee;
       if (editEmp) openEmployeeModal(editEmp);
       const attEmp = event.target.closest?.('[data-hr-attendance-employee]')?.dataset.hrAttendanceEmployee;
       if (attEmp) { state.activeTab = 'attendance'; state.filters.attendanceDepartment = getEmployee(attEmp)?.department || 'all'; renderRoot(); }
       const editAtt = event.target.closest?.('[data-hr-edit-attendance]')?.dataset.hrEditAttendance;
       if (editAtt) openAttendanceModal(editAtt);
-      const absent = event.target.closest?.('[data-hr-absent]')?.dataset.hrAbsent;
-      if (absent) await quickManualAttendance(absent, 'absent');
-      const halfday = event.target.closest?.('[data-hr-halfday]')?.dataset.hrHalfday;
-      if (halfday) await quickManualAttendance(halfday, 'half_day');
+      const absentBtn = event.target.closest?.('[data-hr-absent]');
+      const absent = absentBtn?.dataset.hrAbsent;
+      if (absent) await quickManualAttendance(absent, 'absent', absentBtn?.dataset.hrAbsentDate);
+      const halfdayBtn = event.target.closest?.('[data-hr-halfday]');
+      const halfday = halfdayBtn?.dataset.hrHalfday;
+      if (halfday) await quickManualAttendance(halfday, 'half_day', halfdayBtn?.dataset.hrHalfdayDate);
       const clearAtt = event.target.closest?.('[data-hr-clear-attendance]')?.dataset.hrClearAttendance;
       if (clearAtt) await clearAttendance(clearAtt);
       const editLeave = event.target.closest?.('[data-hr-edit-leave]')?.dataset.hrEditLeave;
@@ -1025,6 +1098,9 @@
     });
     document.addEventListener('change', event => {
       const id = event.target.id;
+      if (id === 'hrGlobalEmployeeFilter') { state.filters.globalEmployee = event.target.value || 'all'; state.selectedPayslip = ''; renderRoot(); }
+      if (id === 'hrGlobalFrom') { state.filters.globalFrom = event.target.value || ''; state.selectedPayslip = ''; renderRoot(); }
+      if (id === 'hrGlobalTo') { state.filters.globalTo = event.target.value || ''; state.selectedPayslip = ''; renderRoot(); }
       if (id === 'hrDepartmentFilter') { state.filters.department = event.target.value; renderBody(); }
       if (id === 'hrEmployeeStatusFilter') { state.filters.employeeStatus = event.target.value; renderBody(); }
       if (id === 'hrAttendanceDate') { state.filters.attendanceDate = event.target.value || today(); renderRoot(); }
