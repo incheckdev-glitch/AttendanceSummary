@@ -1,12 +1,13 @@
 (function initAccountingModule(global) {
   'use strict';
 
-  const STORAGE_KEY = 'incheck360_accounting_phase1_v1';
+  const STORAGE_KEY = 'incheck360_accounting_phase2_v1';
   const $ = id => document.getElementById(id);
   const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[ch]));
   const norm = value => String(value ?? '').trim().toLowerCase();
   const today = () => new Date().toISOString().slice(0, 10);
   const uid = prefix => (global.crypto?.randomUUID?.() || `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const isUuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
   const num = value => {
     if (value === null || value === undefined || value === '') return 0;
     const parsed = Number(String(value).replace(/[^0-9.-]/g, ''));
@@ -31,15 +32,22 @@
   };
 
   const ACCOUNT_TYPES = ['Asset', 'Liability', 'Equity', 'Revenue', 'Expense'];
+  const POSTABLE_TYPES = ['invoices','receipts','credit_notes','biners_payables','biners_payments','hr_payroll','hr_salary_receipts'];
+
   const state = {
     initialized: false,
     activeTab: 'dashboard',
+    activeSourceTab: 'invoices',
     dataSource: 'local',
     loading: false,
     editingJournalId: '',
     journalLinesDraft: [],
-    filters: { ledgerAccountId: 'all', ledgerFrom: '', ledgerTo: '', journalStatus: 'all' },
-    accounts: [], bankAccounts: [], journals: [], journalLines: [], ledgerEntries: []
+    filters: {
+      ledgerAccountId: 'all', ledgerFrom: '', ledgerTo: '', ledgerSource: 'all', journalStatus: 'all',
+      sourceSearch: '', sourceFrom: '', sourceTo: '', sourceStatus: 'unposted'
+    },
+    accounts: [], bankAccounts: [], journals: [], journalLines: [], ledgerEntries: [],
+    sources: { invoices: [], receipts: [], creditNotes: [], binersSchedules: [], payrollItems: [], salaryReceipts: [], hrEmployees: [] }
   };
 
   function client() {
@@ -52,22 +60,14 @@
   function defaultAccounts() {
     const now = new Date().toISOString();
     return [
-      { id: uid('acct'), account_code: '1000', account_name: 'Assets', account_type: 'Asset', parent_account_id: null, currency: 'USD', opening_balance: 0, is_active: true, notes: '', created_at: now },
-      { id: uid('acct'), account_code: '1100', account_name: 'Cash on Hand', account_type: 'Asset', parent_account_id: null, currency: 'USD', opening_balance: 0, is_active: true, notes: '', created_at: now },
-      { id: uid('acct'), account_code: '1200', account_name: 'Bank Account', account_type: 'Asset', parent_account_id: null, currency: 'USD', opening_balance: 0, is_active: true, notes: '', created_at: now },
-      { id: uid('acct'), account_code: '1300', account_name: 'Accounts Receivable', account_type: 'Asset', parent_account_id: null, currency: 'USD', opening_balance: 0, is_active: true, notes: '', created_at: now },
-      { id: uid('acct'), account_code: '2000', account_name: 'Liabilities', account_type: 'Liability', parent_account_id: null, currency: 'USD', opening_balance: 0, is_active: true, notes: '', created_at: now },
-      { id: uid('acct'), account_code: '2100', account_name: 'Accounts Payable', account_type: 'Liability', parent_account_id: null, currency: 'USD', opening_balance: 0, is_active: true, notes: '', created_at: now },
-      { id: uid('acct'), account_code: '2200', account_name: 'Payroll Payable', account_type: 'Liability', parent_account_id: null, currency: 'USD', opening_balance: 0, is_active: true, notes: '', created_at: now },
-      { id: uid('acct'), account_code: '3000', account_name: 'Equity', account_type: 'Equity', parent_account_id: null, currency: 'USD', opening_balance: 0, is_active: true, notes: '', created_at: now },
-      { id: uid('acct'), account_code: '4000', account_name: 'Revenue', account_type: 'Revenue', parent_account_id: null, currency: 'USD', opening_balance: 0, is_active: true, notes: '', created_at: now },
-      { id: uid('acct'), account_code: '4100', account_name: 'SaaS Revenue', account_type: 'Revenue', parent_account_id: null, currency: 'USD', opening_balance: 0, is_active: true, notes: '', created_at: now },
-      { id: uid('acct'), account_code: '4200', account_name: 'Setup Fees Revenue', account_type: 'Revenue', parent_account_id: null, currency: 'USD', opening_balance: 0, is_active: true, notes: '', created_at: now },
-      { id: uid('acct'), account_code: '5000', account_name: 'Expenses', account_type: 'Expense', parent_account_id: null, currency: 'USD', opening_balance: 0, is_active: true, notes: '', created_at: now },
-      { id: uid('acct'), account_code: '5100', account_name: 'Payroll Expense', account_type: 'Expense', parent_account_id: null, currency: 'USD', opening_balance: 0, is_active: true, notes: '', created_at: now },
-      { id: uid('acct'), account_code: '5200', account_name: 'Outsourcing / Biners Expense', account_type: 'Expense', parent_account_id: null, currency: 'USD', opening_balance: 0, is_active: true, notes: '', created_at: now },
-      { id: uid('acct'), account_code: '5300', account_name: 'Hosting & Software Expense', account_type: 'Expense', parent_account_id: null, currency: 'USD', opening_balance: 0, is_active: true, notes: '', created_at: now }
-    ];
+      ['1000','Assets','Asset'], ['1100','Cash on Hand','Asset'], ['1200','Bank Account','Asset'], ['1300','Accounts Receivable','Asset'],
+      ['2000','Liabilities','Liability'], ['2100','Accounts Payable','Liability'], ['2200','Payroll Payable','Liability'], ['2300','VAT Payable','Liability'],
+      ['3000','Equity','Equity'],
+      ['4000','Revenue','Revenue'], ['4100','SaaS Revenue','Revenue'], ['4200','Setup Fees Revenue','Revenue'], ['4900','Credit Notes / Revenue Contra','Revenue'],
+      ['5000','Expenses','Expense'], ['5100','Payroll Expense','Expense'], ['5200','Outsourcing / Biners Expense','Expense'], ['5300','Hosting & Software Expense','Expense'], ['5400','General Operating Expense','Expense']
+    ].map(([account_code, account_name, account_type]) => ({
+      id: uid('acct'), account_code, account_name, account_type, parent_account_id: null, currency: 'USD', opening_balance: 0, is_active: true, notes: '', created_at: now
+    }));
   }
 
   function buildSampleData() {
@@ -76,12 +76,13 @@
     return {
       accounts,
       bankAccounts: [{ id: uid('bank'), account_name: 'Main Bank USD', account_type: 'Bank', currency: 'USD', account_number: '', opening_balance: 0, current_balance: 0, linked_account_id: bankAccount?.id || null, is_active: true, notes: '', created_at: new Date().toISOString() }],
-      journals: [], journalLines: [], ledgerEntries: []
+      journals: [], journalLines: [], ledgerEntries: [],
+      sources: { invoices: [], receipts: [], creditNotes: [], binersSchedules: [], payrollItems: [], salaryReceipts: [], hrEmployees: [] }
     };
   }
 
   function plainState() {
-    return { accounts: state.accounts, bankAccounts: state.bankAccounts, journals: state.journals, journalLines: state.journalLines, ledgerEntries: state.ledgerEntries };
+    return { accounts: state.accounts, bankAccounts: state.bankAccounts, journals: state.journals, journalLines: state.journalLines, ledgerEntries: state.ledgerEntries, sources: state.sources };
   }
 
   function saveLocal() {
@@ -91,7 +92,7 @@
 
   function loadLocal() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('incheck360_accounting_phase1_v1');
       if (raw) { Object.assign(state, buildSampleData(), JSON.parse(raw)); return; }
     } catch (error) { console.warn('[Accounting] local load failed', error); }
     Object.assign(state, buildSampleData());
@@ -106,11 +107,37 @@
     return Array.isArray(data) ? data : [];
   }
 
+  async function safeFetchTable(tableName) {
+    try { return await fetchTable(tableName); }
+    catch (error) { console.warn(`[Accounting] source table ${tableName} unavailable`, error?.message || error); return []; }
+  }
+
+  async function loadIntegrationSources() {
+    const [invoices, receipts, creditNotes, binersSchedules, payrollItems, salaryReceipts, hrEmployees] = await Promise.all([
+      safeFetchTable('invoices'), safeFetchTable('receipts'), safeFetchTable('credit_notes'), safeFetchTable('biners_payment_schedules'),
+      safeFetchTable('hr_payroll_items'), safeFetchTable('hr_salary_receipts'), safeFetchTable('hr_employees')
+    ]);
+    state.sources = {
+      invoices: addSourceKeys(invoices, 'invoice'),
+      receipts: addSourceKeys(receipts, 'receipt'),
+      creditNotes: addSourceKeys(creditNotes, 'credit_note'),
+      binersSchedules: addSourceKeys(binersSchedules, 'biners'),
+      payrollItems: addSourceKeys(payrollItems, 'payroll'),
+      salaryReceipts: addSourceKeys(salaryReceipts, 'salary_receipt'),
+      hrEmployees: addSourceKeys(hrEmployees, 'employee')
+    };
+  }
+
+  function addSourceKeys(rows, prefix) {
+    return (Array.isArray(rows) ? rows : []).map((row, index) => ({ ...row, __acct_key: String(row.id || row[`${prefix}_id`] || row[`${prefix}_no`] || row[`${prefix}_number`] || `${prefix}-${index}`) }));
+  }
+
   async function loadRemote() {
     const [accounts, bankAccounts, journals, journalLines, ledgerEntries] = await Promise.all([
       fetchTable(TABLES.accounts), fetchTable(TABLES.bankAccounts), fetchTable(TABLES.journals), fetchTable(TABLES.journalLines), fetchTable(TABLES.ledgerEntries)
     ]);
     Object.assign(state, { accounts, bankAccounts, journals, journalLines, ledgerEntries, dataSource: 'supabase' });
+    await loadIntegrationSources();
   }
 
   async function upsertRemote(table, rowOrRows) {
@@ -137,11 +164,19 @@
     if (idx >= 0) state[collection][idx] = { ...state[collection][idx], ...row };
     else state[collection].push(row);
     try { await upsertRemote(table, row); }
-    catch (error) { state.dataSource = 'local'; console.warn('[Accounting] remote save failed', error); toast('Accounting saved locally. Run Accounting Phase 1 SQL migration to enable Supabase sync.'); }
+    catch (error) { state.dataSource = 'local'; console.warn('[Accounting] remote save failed', error); toast('Accounting saved locally. Run Accounting SQL migration to enable Supabase sync.'); }
     saveLocal();
   }
 
   function accountById(id) { return state.accounts.find(account => account.id === id) || null; }
+  function accountByCode(code) { return state.accounts.find(account => String(account.account_code) === String(code)) || null; }
+  function requiredAccount(code, label) {
+    const account = accountByCode(code);
+    if (!account) toast(`Missing account ${code} ${label || ''}. Run Accounting Phase 2 SQL migration.`);
+    return account;
+  }
+  function defaultBankAccount() { return state.bankAccounts.find(b => b.is_active !== false && b.linked_account_id) || state.bankAccounts.find(b => b.is_active !== false) || state.bankAccounts[0] || null; }
+  function bankLedgerAccount() { return accountById(defaultBankAccount()?.linked_account_id) || requiredAccount('1200', 'Bank Account'); }
   function activeAccounts() { return state.accounts.filter(a => a.is_active !== false).sort((a,b) => String(a.account_code || '').localeCompare(String(b.account_code || ''))); }
   function accountOptions(selected = '', includeBlank = true) {
     const blank = includeBlank ? '<option value="">Select account</option>' : '';
@@ -153,17 +188,27 @@
   function typeOptions(selected = 'Asset') {
     return ACCOUNT_TYPES.map(type => `<option value="${type}" ${type === selected ? 'selected' : ''}>${type}</option>`).join('');
   }
-  function nextJournalNo() {
+  function nextJournalNo(prefix = 'AJ') {
     const year = new Date().getFullYear();
     const max = state.journals.reduce((acc, row) => {
       const match = String(row.journal_no || '').match(/(\d+)$/);
       return Math.max(acc, match ? Number(match[1]) : 0);
     }, 0);
-    return `AJ/${year}/${String(max + 1).padStart(4, '0')}`;
+    return `${prefix}/${year}/${String(max + 1).padStart(4, '0')}`;
   }
 
   function journalLinesFor(journalId) {
     return state.journalLines.filter(line => line.journal_id === journalId).sort((a,b) => num(a.line_no) - num(b.line_no));
+  }
+
+  function filteredLedgerEntries() {
+    return state.ledgerEntries.filter(entry => {
+      if (state.filters.ledgerAccountId !== 'all' && entry.account_id !== state.filters.ledgerAccountId) return false;
+      if (state.filters.ledgerSource !== 'all' && norm(entry.source_module) !== state.filters.ledgerSource) return false;
+      if (state.filters.ledgerFrom && String(entry.entry_date || '').slice(0,10) < state.filters.ledgerFrom) return false;
+      if (state.filters.ledgerTo && String(entry.entry_date || '').slice(0,10) > state.filters.ledgerTo) return false;
+      return true;
+    }).sort((a,b) => String(b.entry_date || '').localeCompare(String(a.entry_date || '')) || String(b.created_at || '').localeCompare(String(a.created_at || '')));
   }
 
   function ledgerByAccount() {
@@ -185,7 +230,7 @@
     const ledgerRows = ledgerByAccount();
     const totalDebit = state.ledgerEntries.reduce((sum,row) => sum + num(row.debit), 0);
     const totalCredit = state.ledgerEntries.reduce((sum,row) => sum + num(row.credit), 0);
-    const bankCash = state.bankAccounts.filter(b => b.is_active !== false).reduce((sum,b) => sum + num(b.current_balance ?? b.opening_balance), 0);
+    const bankCash = ledgerRows.filter(row => ['1100','1200'].includes(String(row.account.account_code))).reduce((sum,row) => sum + num(row.balance), 0) || state.bankAccounts.filter(b => b.is_active !== false).reduce((sum,b) => sum + num(b.current_balance ?? b.opening_balance), 0);
     const posted = state.journals.filter(j => ['posted','locked'].includes(norm(j.status))).length;
     const draft = state.journals.filter(j => norm(j.status || 'draft') === 'draft').length;
     const assets = ledgerRows.filter(row => norm(row.account.account_type) === 'asset').reduce((sum,row) => sum + num(row.balance), 0);
@@ -204,8 +249,8 @@
       <div class="accounting-page-header">
         <div>
           <span class="accounting-eyebrow">Finance · Ledger · Controls</span>
-          <h2>Accounting Phase 1</h2>
-          <p class="muted">Admin-only accounting foundation: chart of accounts, journals, ledger, and bank/cash accounts.</p>
+          <h2>Accounting Workspace</h2>
+          <p class="muted">Admin-only accounting with Phase 2 source sync for invoices, receipts, credit notes, Biners, and HR payroll.</p>
         </div>
         <div class="accounting-actions">
           ${sourceChip()}
@@ -215,7 +260,7 @@
       </div>
       <div class="accounting-tabs" role="tablist">
         ${[
-          ['dashboard','Dashboard'],['accounts','Chart of Accounts'],['journals','Journal Entries'],['ledger','General Ledger'],['bank','Bank & Cash'],['reports','Trial Balance']
+          ['dashboard','Dashboard'],['accounts','Chart of Accounts'],['integrations','Module Sync'],['journals','Journal Entries'],['ledger','General Ledger'],['bank','Bank & Cash'],['reports','Trial Balance']
         ].map(([key,label]) => `<button class="accounting-tab ${state.activeTab === key ? 'active' : ''}" type="button" data-accounting-tab="${key}">${label}</button>`).join('')}
       </div>
       ${content}
@@ -224,23 +269,52 @@
 
   function renderDashboard() {
     const m = dashboardMetrics();
+    const sourceStats = getSourceStats();
     const recentJournals = state.journals.slice().sort((a,b) => String(b.entry_date || '').localeCompare(String(a.entry_date || ''))).slice(0, 6);
     return `
       <div class="accounting-grid">
         <div class="accounting-kpi"><div class="label">Total Accounts</div><div class="value">${state.accounts.length}</div><div class="hint">Chart of accounts</div></div>
-        <div class="accounting-kpi"><div class="label">Bank / Cash Balance</div><div class="value">${money(m.bankCash)}</div><div class="hint">Manual bank balances for Phase 1</div></div>
+        <div class="accounting-kpi"><div class="label">Bank / Cash Balance</div><div class="value">${money(m.bankCash)}</div><div class="hint">From ledger bank/cash accounts</div></div>
         <div class="accounting-kpi"><div class="label">Posted Journals</div><div class="value">${m.posted}</div><div class="hint">Posted or locked entries</div></div>
-        <div class="accounting-kpi"><div class="label">Draft Journals</div><div class="value">${m.draft}</div><div class="hint">Need review/posting</div></div>
-        <div class="accounting-kpi"><div class="label">Revenue</div><div class="value">${money(m.revenue)}</div><div class="hint">From posted ledger entries</div></div>
-        <div class="accounting-kpi"><div class="label">Expenses</div><div class="value">${money(m.expense)}</div><div class="hint">From posted ledger entries</div></div>
+        <div class="accounting-kpi"><div class="label">Unposted Sources</div><div class="value">${sourceStats.unposted}</div><div class="hint">Invoices, receipts, payroll, payables</div></div>
+        <div class="accounting-kpi"><div class="label">Revenue</div><div class="value">${money(m.revenue)}</div><div class="hint">Posted ledger revenue</div></div>
+        <div class="accounting-kpi"><div class="label">Expenses</div><div class="value">${money(m.expense)}</div><div class="hint">Posted ledger expenses</div></div>
         <div class="accounting-kpi"><div class="label">Net Profit</div><div class="value">${money(m.netProfit)}</div><div class="hint">Revenue minus expenses</div></div>
         <div class="accounting-kpi"><div class="label">Trial Balance</div><div class="value">${Math.abs(m.totalDebit - m.totalCredit) < 0.01 ? 'Balanced' : 'Mismatch'}</div><div class="hint">Debit ${money(m.totalDebit)} · Credit ${money(m.totalCredit)}</div></div>
       </div>
+      <div class="accounting-source-grid" style="margin-top:12px;">
+        ${renderSourceMiniCard('Invoices', sourceStats.invoices)}
+        ${renderSourceMiniCard('Receipts', sourceStats.receipts)}
+        ${renderSourceMiniCard('Credit Notes', sourceStats.credit_notes)}
+        ${renderSourceMiniCard('Biners', sourceStats.biners)}
+        ${renderSourceMiniCard('HR Payroll', sourceStats.hr_payroll)}
+        ${renderSourceMiniCard('Salary Receipts', sourceStats.hr_salary_receipts)}
+      </div>
       <div class="accounting-card" style="margin-top:12px;">
-        <div class="accounting-card-header"><div><h3>Recent Journal Entries</h3><p class="muted">Latest accounting activity.</p></div><button class="btn sm" data-accounting-tab="journals" type="button">New Journal</button></div>
+        <div class="accounting-card-header"><div><h3>Recent Journal Entries</h3><p class="muted">Latest accounting activity.</p></div><button class="btn sm" data-accounting-tab="integrations" type="button">Review Source Sync</button></div>
         ${renderJournalTable(recentJournals, true)}
       </div>
     `;
+  }
+
+  function renderSourceMiniCard(label, stats) {
+    return `<div class="accounting-mini-card"><div class="label">${esc(label)}</div><div class="value">${stats?.posted || 0}/${stats?.total || 0}</div><div class="hint">Posted / total</div></div>`;
+  }
+
+  function getSourceStats() {
+    const groups = {
+      invoices: getSourceRows('invoices'), receipts: getSourceRows('receipts'), credit_notes: getSourceRows('credit_notes'),
+      biners: getSourceRows('biners_payables').concat(getSourceRows('biners_payments')),
+      hr_payroll: getSourceRows('hr_payroll'), hr_salary_receipts: getSourceRows('hr_salary_receipts')
+    };
+    const stats = { unposted: 0 };
+    Object.keys(groups).forEach(key => {
+      const rows = groups[key];
+      const posted = rows.filter(row => row.posted).length;
+      stats[key] = { total: rows.length, posted, unposted: rows.length - posted };
+      stats.unposted += rows.length - posted;
+    });
+    return stats;
   }
 
   function renderAccounts() {
@@ -262,10 +336,7 @@
             <label class="accounting-field">Opening Balance<input id="accountingOpeningBalance" type="number" step="0.01" value="0" /></label>
             <label class="accounting-field">Active<select id="accountingAccountActive"><option value="true">Active</option><option value="false">Inactive</option></select></label>
             <label class="accounting-field wide">Notes<textarea id="accountingAccountNotes"></textarea></label>
-            <div class="accounting-toolbar wide">
-              <button class="btn" type="submit">Save Account</button>
-              <button class="btn ghost" type="button" data-accounting-action="reset-account-form">Clear</button>
-            </div>
+            <div class="accounting-toolbar wide"><button class="btn" type="submit">Save Account</button><button class="btn ghost" type="button" data-accounting-action="reset-account-form">Clear</button></div>
           </form>
         </div>
       </div>
@@ -276,22 +347,14 @@
     const sorted = rows.slice().sort((a,b) => String(a.account_code || '').localeCompare(String(b.account_code || '')));
     if (!sorted.length) return '<div class="accounting-empty">No accounts yet.</div>';
     return `<div class="accounting-table-wrap"><table class="accounting-table"><thead><tr><th>Code</th><th>Name</th><th>Type</th><th>Currency</th><th>Status</th><th class="num">Opening</th><th>Actions</th></tr></thead><tbody>${sorted.map(row => `
-      <tr>
-        <td><strong>${esc(row.account_code)}</strong></td>
-        <td>${esc(row.account_name)}</td>
-        <td>${esc(row.account_type)}</td>
-        <td>${esc(row.currency || 'USD')}</td>
-        <td><span class="accounting-badge">${row.is_active === false ? 'Inactive' : 'Active'}</span></td>
-        <td class="num">${money(row.opening_balance, row.currency)}</td>
-        <td><button class="btn ghost sm" type="button" data-accounting-edit-account="${esc(row.id)}">Edit</button></td>
-      </tr>`).join('')}</tbody></table></div>`;
+      <tr><td><strong>${esc(row.account_code)}</strong></td><td>${esc(row.account_name)}</td><td>${esc(row.account_type)}</td><td>${esc(row.currency || 'USD')}</td><td><span class="accounting-badge">${row.is_active === false ? 'Inactive' : 'Active'}</span></td><td class="num">${money(row.opening_balance, row.currency)}</td><td><button class="btn ghost sm" type="button" data-accounting-edit-account="${esc(row.id)}">Edit</button></td></tr>`).join('')}</tbody></table></div>`;
   }
 
   function renderBank() {
     return `
       <div class="accounting-two-col">
         <div class="accounting-card">
-          <div class="accounting-card-header"><div><h3>Bank & Cash Accounts</h3><p class="muted">Phase 1 manual balances. Later receipts/payments will update these automatically.</p></div></div>
+          <div class="accounting-card-header"><div><h3>Bank & Cash Accounts</h3><p class="muted">Receipts and salary payments post to the linked GL account.</p></div></div>
           ${renderBankTable()}
         </div>
         <div class="accounting-card">
@@ -330,24 +393,19 @@
           <div class="accounting-card-header"><div><h3>Journal Entries</h3><p class="muted">Create balanced accounting journals. Posting creates ledger entries.</p></div><select id="accountingJournalStatusFilter" class="select"><option value="all">All statuses</option><option value="draft">Draft</option><option value="posted">Posted</option><option value="locked">Locked</option></select></div>
           ${renderJournalTable(rows)}
         </div>
-        <div class="accounting-card">
-          <h3>${state.editingJournalId ? 'Edit Journal' : 'New Journal'}</h3>
-          ${renderJournalForm()}
-        </div>
+        <div class="accounting-card"><h3>${state.editingJournalId ? 'Edit Journal' : 'New Journal'}</h3>${renderJournalForm()}</div>
       </div>
     `;
   }
 
   function renderJournalTable(rows, compact = false) {
     if (!rows.length) return '<div class="accounting-empty">No journal entries yet.</div>';
-    return `<div class="accounting-table-wrap"><table class="accounting-table"><thead><tr><th>No.</th><th>Date</th><th>Description</th><th>Status</th><th class="num">Debit</th><th class="num">Credit</th>${compact ? '' : '<th>Actions</th>'}</tr></thead><tbody>${rows.map(row => `<tr>
-      <td><strong>${esc(row.journal_no)}</strong></td><td>${fmtDate(row.entry_date)}</td><td>${esc(row.description || '—')}<div class="muted">${esc(row.reference_no || '')}</div></td><td><span class="accounting-badge ${esc(norm(row.status || 'draft'))}">${esc(row.status || 'Draft')}</span></td><td class="num">${money(row.total_debit,row.currency || 'USD')}</td><td class="num">${money(row.total_credit,row.currency || 'USD')}</td>${compact ? '' : `<td><button class="btn ghost sm" type="button" data-accounting-edit-journal="${esc(row.id)}">Edit</button> <button class="btn sm" type="button" data-accounting-post-journal="${esc(row.id)}">Post</button> <button class="btn ghost sm" type="button" data-accounting-delete-journal="${esc(row.id)}">Delete</button></td>`}</tr>`).join('')}</tbody></table></div>`;
+    return `<div class="accounting-table-wrap"><table class="accounting-table"><thead><tr><th>No.</th><th>Date</th><th>Description</th><th>Source</th><th>Status</th><th class="num">Debit</th><th class="num">Credit</th>${compact ? '' : '<th>Actions</th>'}</tr></thead><tbody>${rows.map(row => `<tr>
+      <td><strong>${esc(row.journal_no)}</strong></td><td>${fmtDate(row.entry_date)}</td><td>${esc(row.description || '—')}<div class="muted">${esc(row.reference_no || '')}</div></td><td>${esc(row.source_module || 'manual')}</td><td><span class="accounting-badge ${esc(norm(row.status || 'draft'))}">${esc(row.status || 'Draft')}</span></td><td class="num">${money(row.total_debit,row.currency || 'USD')}</td><td class="num">${money(row.total_credit,row.currency || 'USD')}</td>${compact ? '' : `<td><button class="btn ghost sm" type="button" data-accounting-edit-journal="${esc(row.id)}">Edit</button> <button class="btn sm" type="button" data-accounting-post-journal="${esc(row.id)}">Post</button> <button class="btn ghost sm" type="button" data-accounting-delete-journal="${esc(row.id)}">Delete</button></td>`}</tr>`).join('')}</tbody></table></div>`;
   }
 
   function currentDraftLines() {
-    if (!state.journalLinesDraft.length) {
-      state.journalLinesDraft = [{ account_id:'', debit:'', credit:'', description:'' }, { account_id:'', debit:'', credit:'', description:'' }];
-    }
+    if (!state.journalLinesDraft.length) state.journalLinesDraft = [{ account_id:'', debit:'', credit:'', description:'' }, { account_id:'', debit:'', credit:'', description:'' }];
     return state.journalLinesDraft;
   }
 
@@ -376,66 +434,276 @@
           <button class="btn ghost sm" type="button" data-accounting-remove-line="${index}">Remove</button>
         </div>`).join('')}
       </div>
-      <div class="accounting-journal-totals"><span class="accounting-total-pill">Debit ${money(debit)}</span><span class="accounting-total-pill">Credit ${money(credit)}</span><span class="accounting-total-pill ${balanced ? 'ok' : 'bad'}">${balanced ? 'Balanced' : 'Not Balanced'}</span></div>
-      <div class="accounting-toolbar"><button class="btn ghost" type="button" data-accounting-action="reset-journal-form">New</button><button class="btn" type="button" data-accounting-action="save-journal-draft">Save Draft</button><button class="btn" type="button" data-accounting-action="post-journal-form">Post Journal</button></div>
+      <div class="accounting-journal-totals"><span class="accounting-total-pill">Debit ${money(debit)}</span><span class="accounting-total-pill">Credit ${money(credit)}</span><span class="accounting-total-pill ${balanced ? 'ok':'bad'}">${balanced ? 'Balanced':'Not Balanced'}</span></div>
+      <div class="accounting-toolbar"><button class="btn ghost" type="button" data-accounting-action="save-journal-draft">Save Draft</button><button class="btn" type="button" data-accounting-action="post-journal-form">Post Journal</button><button class="btn ghost" type="button" data-accounting-action="reset-journal-form">Clear</button></div>
     </form>`;
   }
 
   function renderLedger() {
-    const rows = filteredLedgerRows();
-    return `<div class="accounting-card"><div class="accounting-card-header"><div><h3>General Ledger</h3><p class="muted">Posted journal lines by account and date.</p></div></div>
-      <div class="accounting-toolbar"><select id="accountingLedgerAccountFilter" class="select"><option value="all">All accounts</option>${accountOptions(state.filters.ledgerAccountId, false)}</select><input id="accountingLedgerFrom" class="input" type="date" value="${esc(state.filters.ledgerFrom)}" /><input id="accountingLedgerTo" class="input" type="date" value="${esc(state.filters.ledgerTo)}" /><button class="btn ghost sm" type="button" data-accounting-action="clear-ledger-filters">Clear</button></div>
+    const rows = filteredLedgerEntries();
+    const sourceOptions = ['all', ...new Set(state.ledgerEntries.map(e => norm(e.source_module || 'manual_journal')).filter(Boolean))];
+    return `<div class="accounting-card">
+      <div class="accounting-card-header"><div><h3>General Ledger</h3><p class="muted">Posted manual journals and synced module transactions.</p></div></div>
+      <div class="accounting-form-grid">
+        <label class="accounting-field">Account<select id="accountingLedgerAccountFilter"><option value="all">All accounts</option>${accountOptions(state.filters.ledgerAccountId, false)}</select></label>
+        <label class="accounting-field">Source<select id="accountingLedgerSourceFilter">${sourceOptions.map(s => `<option value="${esc(s)}" ${state.filters.ledgerSource === s ? 'selected':''}>${s === 'all' ? 'All sources' : esc(s)}</option>`).join('')}</select></label>
+        <label class="accounting-field">From<input type="date" id="accountingLedgerFrom" value="${esc(state.filters.ledgerFrom)}" /></label>
+        <label class="accounting-field">To<input type="date" id="accountingLedgerTo" value="${esc(state.filters.ledgerTo)}" /></label>
+        <div class="accounting-toolbar"><button class="btn ghost" type="button" data-accounting-action="clear-ledger-filters">Clear</button></div>
+      </div>
       ${renderLedgerTable(rows)}
     </div>`;
   }
 
-  function filteredLedgerRows() {
-    return state.ledgerEntries.filter(row => {
-      const date = String(row.entry_date || '').slice(0,10);
-      if (state.filters.ledgerAccountId !== 'all' && row.account_id !== state.filters.ledgerAccountId) return false;
-      if (state.filters.ledgerFrom && date < state.filters.ledgerFrom) return false;
-      if (state.filters.ledgerTo && date > state.filters.ledgerTo) return false;
-      return true;
-    }).sort((a,b) => String(a.entry_date || '').localeCompare(String(b.entry_date || '')) || String(a.account_code || '').localeCompare(String(b.account_code || '')));
-  }
-
   function renderLedgerTable(rows) {
-    if (!rows.length) return '<div class="accounting-empty">No ledger entries yet. Post a journal to create ledger movement.</div>';
-    return `<div class="accounting-table-wrap"><table class="accounting-table"><thead><tr><th>Date</th><th>Journal</th><th>Account</th><th>Description</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead><tbody>${rows.map(row => `<tr><td>${fmtDate(row.entry_date)}</td><td>${esc(row.journal_no || '')}</td><td><strong>${esc(row.account_code)}</strong> · ${esc(row.account_name)}</td><td>${esc(row.description || '')}<div class="muted">${esc(row.reference_no || '')}</div></td><td class="num">${money(row.debit,row.currency)}</td><td class="num">${money(row.credit,row.currency)}</td></tr>`).join('')}</tbody></table></div>`;
+    if (!rows.length) return '<div class="accounting-empty">No ledger entries match the filters.</div>';
+    return `<div class="accounting-table-wrap"><table class="accounting-table"><thead><tr><th>Date</th><th>Journal</th><th>Account</th><th>Description</th><th>Source</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead><tbody>${rows.map(row => `<tr><td>${fmtDate(row.entry_date)}</td><td><strong>${esc(row.journal_no || '')}</strong><div class="muted">${esc(row.reference_no || '')}</div></td><td>${esc(row.account_code)} · ${esc(row.account_name)}</td><td>${esc(row.description || '')}</td><td>${esc(row.source_module || 'manual')}<div class="muted">${esc(row.source_reference || '')}</div></td><td class="num">${row.debit ? money(row.debit,row.currency) : '—'}</td><td class="num">${row.credit ? money(row.credit,row.currency) : '—'}</td></tr>`).join('')}</tbody></table></div>`;
   }
 
   function renderReports() {
     const rows = ledgerByAccount();
-    const totalDebit = rows.reduce((sum,row) => sum + num(row.debit), 0);
-    const totalCredit = rows.reduce((sum,row) => sum + num(row.credit), 0);
-    return `<div class="accounting-card"><div class="accounting-card-header"><div><h3>Trial Balance</h3><p class="muted">Opening balances plus posted ledger movement.</p></div><span class="accounting-total-pill ${Math.abs(totalDebit-totalCredit) < 0.01 ? 'ok' : 'bad'}">Debit ${money(totalDebit)} · Credit ${money(totalCredit)}</span></div>
-      <div class="accounting-table-wrap"><table class="accounting-table"><thead><tr><th>Code</th><th>Account</th><th>Type</th><th class="num">Debit Movement</th><th class="num">Credit Movement</th><th class="num">Balance</th></tr></thead><tbody>${rows.map(row => `<tr><td><strong>${esc(row.account.account_code)}</strong></td><td>${esc(row.account.account_name)}</td><td>${esc(row.account.account_type)}</td><td class="num">${money(row.debit,row.account.currency)}</td><td class="num">${money(row.credit,row.account.currency)}</td><td class="num"><strong>${money(row.balance,row.account.currency)}</strong></td></tr>`).join('')}</tbody></table></div>
+    const debit = state.ledgerEntries.reduce((sum,row) => sum + num(row.debit), 0);
+    const credit = state.ledgerEntries.reduce((sum,row) => sum + num(row.credit), 0);
+    return `<div class="accounting-card"><div class="accounting-card-header"><div><h3>Trial Balance</h3><p class="muted">Debit and credit totals must match.</p></div><div class="accounting-total-pill ${Math.abs(debit-credit)<0.01?'ok':'bad'}">Difference ${money(debit-credit)}</div></div><div class="accounting-table-wrap"><table class="accounting-table"><thead><tr><th>Account</th><th>Type</th><th class="num">Debit</th><th class="num">Credit</th><th class="num">Balance</th></tr></thead><tbody>${rows.map(row => `<tr><td><strong>${esc(row.account.account_code)}</strong> · ${esc(row.account.account_name)}</td><td>${esc(row.account.account_type)}</td><td class="num">${money(row.debit,row.account.currency)}</td><td class="num">${money(row.credit,row.account.currency)}</td><td class="num">${money(row.balance,row.account.currency)}</td></tr>`).join('')}</tbody></table></div></div>`;
+  }
+
+  function renderIntegrations() {
+    const rows = filteredSourceRows(state.activeSourceTab);
+    return `<div class="accounting-card">
+      <div class="accounting-card-header">
+        <div><h3>Module Sync</h3><p class="muted">Admin reviews source records before posting them into accounting. Duplicate posting is blocked by source reference.</p></div>
+        <div class="accounting-actions"><button class="btn ghost sm" type="button" data-accounting-action="refresh-sources">Refresh Sources</button><button class="btn sm" type="button" data-accounting-action="sync-visible-sources">Post Visible Unposted</button></div>
+      </div>
+      <div class="accounting-tabs compact">${POSTABLE_TYPES.map(key => `<button class="accounting-tab ${state.activeSourceTab === key ? 'active':''}" type="button" data-accounting-source-tab="${esc(key)}">${esc(sourceLabel(key))}</button>`).join('')}</div>
+      <div class="accounting-form-grid" style="margin-top:10px;">
+        <label class="accounting-field">Search<input id="accountingSourceSearch" value="${esc(state.filters.sourceSearch)}" placeholder="invoice #, employee, client, reference" /></label>
+        <label class="accounting-field">Status<select id="accountingSourceStatus"><option value="all">All</option><option value="unposted" ${state.filters.sourceStatus==='unposted'?'selected':''}>Unposted only</option><option value="posted" ${state.filters.sourceStatus==='posted'?'selected':''}>Posted only</option></select></label>
+        <label class="accounting-field">From<input type="date" id="accountingSourceFrom" value="${esc(state.filters.sourceFrom)}" /></label>
+        <label class="accounting-field">To<input type="date" id="accountingSourceTo" value="${esc(state.filters.sourceTo)}" /></label>
+        <div class="accounting-toolbar"><button class="btn ghost" type="button" data-accounting-action="clear-source-filters">Clear</button></div>
+      </div>
+      ${renderSourceTable(rows, state.activeSourceTab)}
     </div>`;
   }
 
-  function render() {
-    const root = $('accountingRoot');
-    if (!root) return;
-    if (!isAdmin()) {
-      root.innerHTML = '<div class="accounting-card"><h2>Accounting</h2><p class="muted">Accounting is admin-only for now.</p></div>';
-      return;
-    }
-    let content = '';
-    if (state.activeTab === 'dashboard') content = renderDashboard();
-    else if (state.activeTab === 'accounts') content = renderAccounts();
-    else if (state.activeTab === 'journals') content = renderJournals();
-    else if (state.activeTab === 'ledger') content = renderLedger();
-    else if (state.activeTab === 'bank') content = renderBank();
-    else content = renderReports();
-    root.innerHTML = shell(content);
-    bindRenderedForms();
+  function sourceLabel(type) {
+    return ({ invoices:'Invoices', receipts:'Receipts', credit_notes:'Credit Notes', biners_payables:'Biners Payables', biners_payments:'Biners Payments', hr_payroll:'HR Payroll', hr_salary_receipts:'Salary Receipts' })[type] || type;
   }
 
-  function bindRenderedForms() {
-    const accountForm = $('accountingAccountForm');
-    if (accountForm) accountForm.addEventListener('submit', event => { event.preventDefault(); saveAccountForm(); });
-    const bankForm = $('accountingBankForm');
-    if (bankForm) bankForm.addEventListener('submit', event => { event.preventDefault(); saveBankForm(); });
+  function employeeName(employeeId) {
+    const emp = state.sources.hrEmployees.find(row => String(row.id) === String(employeeId));
+    return emp ? (emp.full_name || emp.employee_name || emp.name || emp.email || employeeId) : employeeId;
+  }
+
+  function sourceDate(type, row) {
+    if (type === 'invoices') return row.issue_date || row.invoice_date || row.created_at;
+    if (type === 'receipts') return row.receipt_date || row.payment_date || row.created_at;
+    if (type === 'credit_notes') return row.credit_note_date || row.note_date || row.created_at;
+    if (type.startsWith('biners')) return row.due_date || row.payment_date || row.created_at;
+    if (type === 'hr_payroll') return row.created_at || row.updated_at;
+    if (type === 'hr_salary_receipts') return row.payment_date || row.created_at;
+    return row.created_at || today();
+  }
+
+  function sourceReference(type, row) {
+    if (type === 'invoices') return String(row.invoice_number || row.invoice_no || row.invoice_id || row.id || '').trim();
+    if (type === 'receipts') return String(row.receipt_number || row.receipt_no || row.receipt_id || row.id || '').trim();
+    if (type === 'credit_notes') return String(row.credit_note_number || row.credit_note_no || row.id || '').trim();
+    if (type === 'biners_payables') return String(row.schedule_no ? `BINER-PAYABLE-${row.entry_id || row.biners_entry_id || ''}-${row.schedule_no}` : row.id || '').trim();
+    if (type === 'biners_payments') return String(row.schedule_no ? `BINER-PAYMENT-${row.entry_id || row.biners_entry_id || ''}-${row.schedule_no}` : row.id || '').trim();
+    if (type === 'hr_payroll') return String(row.id || `${row.run_id || ''}-${row.employee_id || ''}`).trim();
+    if (type === 'hr_salary_receipts') return String(row.receipt_no || row.receipt_number || row.id || '').trim();
+    return String(row.id || row.__acct_key || '').trim();
+  }
+
+  function sourceAmount(type, row) {
+    if (type === 'invoices') return num(row.invoice_total ?? row.grand_total ?? row.total_amount ?? row.amount_due ?? row.total);
+    if (type === 'receipts') return num(row.amount_received ?? row.received_amount ?? row.paid_now ?? row.amount ?? row.total_amount);
+    if (type === 'credit_notes') return num(row.credit_amount ?? row.amount ?? row.total_amount ?? row.total);
+    if (type === 'biners_payables') return num(row.scheduled_amount ?? row.amount ?? row.gross_payable_amount ?? row.payable_amount);
+    if (type === 'biners_payments') return num(row.paid_amount ?? row.amount_paid ?? 0);
+    if (type === 'hr_payroll') return num(row.net_salary ?? row.gross_salary ?? row.basic_salary);
+    if (type === 'hr_salary_receipts') return num(row.amount ?? row.paid_amount ?? row.received_amount);
+    return 0;
+  }
+
+  function sourceCounterparty(type, row) {
+    if (type === 'invoices') return row.customer_name || row.company_name || row.client_name || row.customer_legal_name || 'Customer';
+    if (type === 'receipts') return row.customer_name || row.company_name || row.client_name || row.invoice_number || 'Customer Receipt';
+    if (type === 'credit_notes') return row.customer_name || row.company_name || row.client_name || row.invoice_number || 'Credit Note';
+    if (type.startsWith('biners')) return row.client_name || row.company_name || row.vendor_name || row.location_name || 'Biners';
+    if (type === 'hr_payroll') return employeeName(row.employee_id) || 'Employee Payroll';
+    if (type === 'hr_salary_receipts') return employeeName(row.employee_id) || 'Employee Salary Receipt';
+    return '—';
+  }
+
+  function sourceCurrency(row) { return String(row.currency || row.currency_code || 'USD').toUpperCase(); }
+
+  function postedSource(type, row) {
+    const ref = sourceReference(type, row);
+    return state.ledgerEntries.some(entry => norm(entry.source_module) === norm(type) && String(entry.source_reference || '') === ref);
+  }
+
+  function getSourceRows(type) {
+    const map = {
+      invoices: state.sources.invoices,
+      receipts: state.sources.receipts,
+      credit_notes: state.sources.creditNotes,
+      biners_payables: state.sources.binersSchedules.filter(row => sourceAmount('biners_payables', row) > 0),
+      biners_payments: state.sources.binersSchedules.filter(row => sourceAmount('biners_payments', row) > 0),
+      hr_payroll: state.sources.payrollItems,
+      hr_salary_receipts: state.sources.salaryReceipts
+    };
+    return (map[type] || []).map(row => ({ ...row, posted: postedSource(type, row) }));
+  }
+
+  function filteredSourceRows(type) {
+    const search = norm(state.filters.sourceSearch);
+    return getSourceRows(type).filter(row => {
+      const date = String(sourceDate(type,row) || '').slice(0,10);
+      const haystack = norm([sourceReference(type,row), sourceCounterparty(type,row), row.invoice_number, row.receipt_no, row.status, row.notes].join(' '));
+      if (search && !haystack.includes(search)) return false;
+      if (state.filters.sourceStatus === 'posted' && !row.posted) return false;
+      if (state.filters.sourceStatus === 'unposted' && row.posted) return false;
+      if (state.filters.sourceFrom && date < state.filters.sourceFrom) return false;
+      if (state.filters.sourceTo && date > state.filters.sourceTo) return false;
+      return sourceAmount(type,row) > 0;
+    }).sort((a,b) => String(sourceDate(type,b) || '').localeCompare(String(sourceDate(type,a) || '')));
+  }
+
+  function renderSourceTable(rows, type) {
+    if (!rows.length) return `<div class="accounting-empty">No ${esc(sourceLabel(type))} records match the filters.</div>`;
+    return `<div class="accounting-table-wrap" style="margin-top:12px;"><table class="accounting-table"><thead><tr><th>Reference</th><th>Date</th><th>Client / Employee / Vendor</th><th>Status</th><th class="num">Amount</th><th>Accounting Entry</th><th>Action</th></tr></thead><tbody>${rows.map(row => {
+      const posted = row.posted;
+      const entryText = describeSourceEntry(type, row);
+      return `<tr><td><strong>${esc(sourceReference(type,row) || '—')}</strong><div class="muted">${esc(row.id || row.__acct_key || '')}</div></td><td>${fmtDate(sourceDate(type,row))}</td><td>${esc(sourceCounterparty(type,row))}</td><td><span class="accounting-badge ${posted ? 'posted':'draft'}">${posted ? 'Posted':'Unposted'}</span></td><td class="num">${money(sourceAmount(type,row), sourceCurrency(row))}</td><td>${entryText}</td><td>${posted ? '<span class="muted">Already in ledger</span>' : `<button class="btn sm" type="button" data-accounting-post-source="${esc(type)}" data-source-key="${esc(row.__acct_key)}">Post to Ledger</button>`}</td></tr>`;
+    }).join('')}</tbody></table></div>`;
+  }
+
+  function describeSourceEntry(type) {
+    const map = {
+      invoices: 'Dr Accounts Receivable · Cr SaaS/Setup Revenue',
+      receipts: 'Dr Bank/Cash · Cr Accounts Receivable',
+      credit_notes: 'Dr Credit Notes Contra Revenue · Cr Accounts Receivable',
+      biners_payables: 'Dr Outsourcing Expense · Cr Accounts Payable',
+      biners_payments: 'Dr Accounts Payable · Cr Bank/Cash',
+      hr_payroll: 'Dr Payroll Expense · Cr Payroll Payable',
+      hr_salary_receipts: 'Dr Payroll Payable · Cr Bank/Cash'
+    };
+    return `<span class="muted">${esc(map[type] || 'Auto ledger entry')}</span>`;
+  }
+
+  function sourceByKey(type, key) {
+    return getSourceRows(type).find(row => String(row.__acct_key) === String(key));
+  }
+
+  function line(account, debit, credit, description) {
+    return { account_id: account.id, account_code: account.account_code, account_name: account.account_name, debit: num(debit), credit: num(credit), description: description || account.account_name };
+  }
+
+  function sourceLines(type, row) {
+    const amount = sourceAmount(type, row);
+    const currency = sourceCurrency(row);
+    const ar = requiredAccount('1300', 'Accounts Receivable');
+    const bank = bankLedgerAccount();
+    const revenue = requiredAccount('4100', 'SaaS Revenue');
+    const setupRevenue = requiredAccount('4200', 'Setup Fees Revenue');
+    const creditContra = requiredAccount('4900', 'Credit Notes / Revenue Contra');
+    const ap = requiredAccount('2100', 'Accounts Payable');
+    const payrollPayable = requiredAccount('2200', 'Payroll Payable');
+    const payrollExpense = requiredAccount('5100', 'Payroll Expense');
+    const binersExpense = requiredAccount('5200', 'Outsourcing / Biners Expense');
+    if (amount <= 0) return [];
+    if (type === 'invoices') {
+      const setup = Math.max(0, Math.min(amount, num(row.subtotal_one_time || row.one_time_total || row.setup_total || 0)));
+      const saas = Math.max(0, amount - setup);
+      const rows = [line(ar, amount, 0, `Invoice ${sourceReference(type,row)} · ${sourceCounterparty(type,row)}`)];
+      if (saas > 0) rows.push(line(revenue, 0, saas, `SaaS revenue · ${sourceReference(type,row)}`));
+      if (setup > 0) rows.push(line(setupRevenue, 0, setup, `Setup fees revenue · ${sourceReference(type,row)}`));
+      return rows;
+    }
+    if (type === 'receipts') return [line(bank, amount, 0, `Receipt ${sourceReference(type,row)}`), line(ar, 0, amount, `Customer payment · ${sourceReference(type,row)}`)];
+    if (type === 'credit_notes') return [line(creditContra, amount, 0, `Credit note ${sourceReference(type,row)}`), line(ar, 0, amount, `Credit note applied · ${sourceReference(type,row)}`)];
+    if (type === 'biners_payables') return [line(binersExpense, amount, 0, `Biners payable ${sourceReference(type,row)}`), line(ap, 0, amount, `Biners payable accrued · ${sourceReference(type,row)}`)];
+    if (type === 'biners_payments') return [line(ap, amount, 0, `Biners payment ${sourceReference(type,row)}`), line(bank, 0, amount, `Bank/Cash payment · ${sourceReference(type,row)}`)];
+    if (type === 'hr_payroll') return [line(payrollExpense, amount, 0, `Payroll expense · ${sourceCounterparty(type,row)}`), line(payrollPayable, 0, amount, `Payroll payable · ${sourceCounterparty(type,row)}`)];
+    if (type === 'hr_salary_receipts') return [line(payrollPayable, amount, 0, `Salary receipt ${sourceReference(type,row)}`), line(bank, 0, amount, `Salary paid · ${sourceCounterparty(type,row)}`)];
+    return [];
+  }
+
+  async function postSource(type, row) {
+    if (!row) return toast('Source record not found. Refresh sources and try again.');
+    if (postedSource(type, row)) return toast('This source is already posted to the ledger.');
+    const lines = sourceLines(type, row).filter(l => l.account_id && (l.debit > 0 || l.credit > 0));
+    const amount = sourceAmount(type, row);
+    if (lines.length < 2 || amount <= 0) return toast('Unable to build a balanced journal for this source. Check amount and accounts.');
+    await postBalancedJournal({
+      sourceModule: type,
+      sourceTable: sourceTableName(type),
+      sourceId: row.id || null,
+      sourceReference: sourceReference(type, row),
+      sourceLabel: sourceCounterparty(type, row),
+      date: String(sourceDate(type, row) || today()).slice(0,10),
+      currency: sourceCurrency(row),
+      description: `${sourceLabel(type)} sync · ${sourceReference(type,row)} · ${sourceCounterparty(type,row)}`,
+      referenceNo: sourceReference(type, row),
+      lines
+    });
+  }
+
+  function sourceTableName(type) {
+    return ({ invoices:'invoices', receipts:'receipts', credit_notes:'credit_notes', biners_payables:'biners_payment_schedules', biners_payments:'biners_payment_schedules', hr_payroll:'hr_payroll_items', hr_salary_receipts:'hr_salary_receipts' })[type] || type;
+  }
+
+  async function postBalancedJournal({ sourceModule, sourceTable, sourceId, sourceReference, sourceLabel, date, currency, description, referenceNo, lines }) {
+    const validLines = lines.filter(l => l.account_id && (num(l.debit) > 0 || num(l.credit) > 0));
+    const totalDebit = validLines.reduce((sum,line) => sum + num(line.debit), 0);
+    const totalCredit = validLines.reduce((sum,line) => sum + num(line.credit), 0);
+    if (Math.abs(totalDebit - totalCredit) >= 0.01 || totalDebit <= 0) return toast('Auto journal is not balanced. Posting stopped.');
+    const journalId = uid('journal');
+    const now = new Date().toISOString();
+    const journal = {
+      id: journalId, journal_no: nextJournalNo('AS'), entry_date: date || today(), description, reference_no: referenceNo || sourceReference || '', status: 'posted', currency: currency || 'USD',
+      total_debit: totalDebit, total_credit: totalCredit, created_by: authName(), posted_by: authName(), posted_at: now, created_at: now, updated_at: now,
+      source_module: sourceModule, source_id: isUuid(sourceId) ? sourceId : null, source_reference: sourceReference || '', source_table: sourceTable || '', auto_generated: true
+    };
+    const journalLines = validLines.map((item, index) => ({
+      id: uid('line'), journal_id: journalId, line_no: index + 1, account_id: item.account_id, account_code: item.account_code, account_name: item.account_name,
+      debit: num(item.debit), credit: num(item.credit), currency: currency || 'USD', description: item.description || description, created_at: now, updated_at: now
+    }));
+    const ledgerRows = journalLines.map(item => ({
+      id: uid('ledger'), journal_id: journalId, journal_line_id: item.id, journal_no: journal.journal_no, entry_date: journal.entry_date,
+      account_id: item.account_id, account_code: item.account_code, account_name: item.account_name, debit: item.debit, credit: item.credit, currency: journal.currency,
+      description: item.description || journal.description, reference_no: journal.reference_no, source_module: sourceModule, source_id: isUuid(sourceId) ? sourceId : null,
+      source_reference: sourceReference || '', source_table: sourceTable || '', source_label: sourceLabel || '', status: 'posted', synced_at: now, created_at: now, updated_at: now
+    }));
+    state.journals.push(journal);
+    state.journalLines.push(...journalLines);
+    state.ledgerEntries.push(...ledgerRows);
+    try {
+      await upsertRemote(TABLES.journals, journal);
+      await upsertRemote(TABLES.journalLines, journalLines);
+      await upsertRemote(TABLES.ledgerEntries, ledgerRows);
+      state.dataSource = 'supabase';
+    } catch (error) {
+      console.warn('[Accounting] source post remote failed', error);
+      state.dataSource = 'local';
+      toast('Posted locally. Run Accounting Phase 2 SQL migration if Supabase rejected source columns.');
+    }
+    saveLocal();
+    toast(`${sourceLabel || sourceModule} posted to ledger.`);
+    render();
+  }
+
+  async function syncVisibleSources() {
+    const rows = filteredSourceRows(state.activeSourceTab).filter(row => !row.posted).slice(0, 50);
+    if (!rows.length) return toast('No visible unposted records to sync.');
+    for (const row of rows) await postSource(state.activeSourceTab, row);
+    await refresh(true);
+    toast(`Posted ${rows.length} visible ${sourceLabel(state.activeSourceTab)} record(s).`);
+  }
+
+  function bindFilters() {
     const journalStatus = $('accountingJournalStatusFilter');
     if (journalStatus) {
       journalStatus.value = state.filters.journalStatus;
@@ -443,10 +711,20 @@
     }
     const ledgerAccount = $('accountingLedgerAccountFilter');
     if (ledgerAccount) ledgerAccount.addEventListener('change', event => { state.filters.ledgerAccountId = event.target.value || 'all'; render(); });
+    const ledgerSource = $('accountingLedgerSourceFilter');
+    if (ledgerSource) ledgerSource.addEventListener('change', event => { state.filters.ledgerSource = event.target.value || 'all'; render(); });
     const ledgerFrom = $('accountingLedgerFrom');
     if (ledgerFrom) ledgerFrom.addEventListener('change', event => { state.filters.ledgerFrom = event.target.value || ''; render(); });
     const ledgerTo = $('accountingLedgerTo');
     if (ledgerTo) ledgerTo.addEventListener('change', event => { state.filters.ledgerTo = event.target.value || ''; render(); });
+    const sourceSearch = $('accountingSourceSearch');
+    if (sourceSearch) sourceSearch.addEventListener('input', event => { state.filters.sourceSearch = event.target.value || ''; render(); });
+    const sourceStatus = $('accountingSourceStatus');
+    if (sourceStatus) sourceStatus.addEventListener('change', event => { state.filters.sourceStatus = event.target.value || 'unposted'; render(); });
+    const sourceFrom = $('accountingSourceFrom');
+    if (sourceFrom) sourceFrom.addEventListener('change', event => { state.filters.sourceFrom = event.target.value || ''; render(); });
+    const sourceTo = $('accountingSourceTo');
+    if (sourceTo) sourceTo.addEventListener('change', event => { state.filters.sourceTo = event.target.value || ''; render(); });
     bindJournalLineInputs();
   }
 
@@ -473,74 +751,28 @@
 
   async function saveAccountForm() {
     const id = $('accountingAccountId')?.value || uid('acct');
-    const row = {
-      id,
-      account_code: $('accountingAccountCode')?.value?.trim() || '',
-      account_name: $('accountingAccountName')?.value?.trim() || '',
-      account_type: $('accountingAccountType')?.value || 'Asset',
-      parent_account_id: $('accountingParentAccountId')?.value || null,
-      currency: ($('accountingAccountCurrency')?.value || 'USD').trim().toUpperCase(),
-      opening_balance: num($('accountingOpeningBalance')?.value),
-      is_active: $('accountingAccountActive')?.value !== 'false',
-      notes: $('accountingAccountNotes')?.value || '',
-      created_at: state.accounts.find(a => a.id === id)?.created_at || new Date().toISOString()
-    };
+    const row = { id, account_code: $('accountingAccountCode')?.value?.trim() || '', account_name: $('accountingAccountName')?.value?.trim() || '', account_type: $('accountingAccountType')?.value || 'Asset', parent_account_id: $('accountingParentAccountId')?.value || null, currency: ($('accountingAccountCurrency')?.value || 'USD').trim().toUpperCase(), opening_balance: num($('accountingOpeningBalance')?.value), is_active: $('accountingAccountActive')?.value !== 'false', notes: $('accountingAccountNotes')?.value || '', created_at: state.accounts.find(a => a.id === id)?.created_at || new Date().toISOString() };
     if (!row.account_code || !row.account_name) return toast('Account code and name are required.');
-    await persistRow('accounts', TABLES.accounts, row);
-    toast('Account saved.');
-    render();
+    await persistRow('accounts', TABLES.accounts, row); toast('Account saved.'); render();
   }
 
   async function saveBankForm() {
     const id = $('accountingBankId')?.value || uid('bank');
-    const row = {
-      id,
-      account_name: $('accountingBankName')?.value?.trim() || '',
-      account_type: $('accountingBankType')?.value || 'Bank',
-      currency: ($('accountingBankCurrency')?.value || 'USD').trim().toUpperCase(),
-      account_number: $('accountingBankNumber')?.value || '',
-      opening_balance: num($('accountingBankOpening')?.value),
-      current_balance: num($('accountingBankCurrent')?.value),
-      linked_account_id: $('accountingBankLinkedAccount')?.value || null,
-      is_active: $('accountingBankActive')?.value !== 'false',
-      notes: $('accountingBankNotes')?.value || '',
-      created_at: state.bankAccounts.find(a => a.id === id)?.created_at || new Date().toISOString()
-    };
+    const row = { id, account_name: $('accountingBankName')?.value?.trim() || '', account_type: $('accountingBankType')?.value || 'Bank', currency: ($('accountingBankCurrency')?.value || 'USD').trim().toUpperCase(), account_number: $('accountingBankNumber')?.value || '', opening_balance: num($('accountingBankOpening')?.value), current_balance: num($('accountingBankCurrent')?.value), linked_account_id: $('accountingBankLinkedAccount')?.value || null, is_active: $('accountingBankActive')?.value !== 'false', notes: $('accountingBankNotes')?.value || '', created_at: state.bankAccounts.find(a => a.id === id)?.created_at || new Date().toISOString() };
     if (!row.account_name) return toast('Bank/cash account name is required.');
-    await persistRow('bankAccounts', TABLES.bankAccounts, row);
-    toast('Bank/Cash account saved.');
-    render();
+    await persistRow('bankAccounts', TABLES.bankAccounts, row); toast('Bank/Cash account saved.'); render();
   }
 
   function editAccount(id) {
-    const row = state.accounts.find(item => item.id === id);
-    if (!row) return;
+    const row = state.accounts.find(item => item.id === id); if (!row) return;
     state.activeTab = 'accounts'; render();
-    $('accountingAccountId').value = row.id;
-    $('accountingAccountCode').value = row.account_code || '';
-    $('accountingAccountName').value = row.account_name || '';
-    $('accountingAccountType').value = row.account_type || 'Asset';
-    $('accountingParentAccountId').value = row.parent_account_id || '';
-    $('accountingAccountCurrency').value = row.currency || 'USD';
-    $('accountingOpeningBalance').value = row.opening_balance || 0;
-    $('accountingAccountActive').value = row.is_active === false ? 'false' : 'true';
-    $('accountingAccountNotes').value = row.notes || '';
+    $('accountingAccountId').value = row.id; $('accountingAccountCode').value = row.account_code || ''; $('accountingAccountName').value = row.account_name || ''; $('accountingAccountType').value = row.account_type || 'Asset'; $('accountingParentAccountId').value = row.parent_account_id || ''; $('accountingAccountCurrency').value = row.currency || 'USD'; $('accountingOpeningBalance').value = row.opening_balance || 0; $('accountingAccountActive').value = row.is_active === false ? 'false' : 'true'; $('accountingAccountNotes').value = row.notes || '';
   }
 
   function editBank(id) {
-    const row = state.bankAccounts.find(item => item.id === id);
-    if (!row) return;
+    const row = state.bankAccounts.find(item => item.id === id); if (!row) return;
     state.activeTab = 'bank'; render();
-    $('accountingBankId').value = row.id;
-    $('accountingBankName').value = row.account_name || '';
-    $('accountingBankType').value = row.account_type || 'Bank';
-    $('accountingBankCurrency').value = row.currency || 'USD';
-    $('accountingBankNumber').value = row.account_number || '';
-    $('accountingBankOpening').value = row.opening_balance || 0;
-    $('accountingBankCurrent').value = row.current_balance || 0;
-    $('accountingBankLinkedAccount').value = row.linked_account_id || '';
-    $('accountingBankActive').value = row.is_active === false ? 'false' : 'true';
-    $('accountingBankNotes').value = row.notes || '';
+    $('accountingBankId').value = row.id; $('accountingBankName').value = row.account_name || ''; $('accountingBankType').value = row.account_type || 'Bank'; $('accountingBankCurrency').value = row.currency || 'USD'; $('accountingBankNumber').value = row.account_number || ''; $('accountingBankOpening').value = row.opening_balance || 0; $('accountingBankCurrent').value = row.current_balance || 0; $('accountingBankLinkedAccount').value = row.linked_account_id || ''; $('accountingBankActive').value = row.is_active === false ? 'false' : 'true'; $('accountingBankNotes').value = row.notes || '';
   }
 
   function readJournalForm(status) {
@@ -549,29 +781,12 @@
     const currency = ($('accountingJournalCurrency')?.value || 'USD').trim().toUpperCase();
     const validLines = currentDraftLines().map((line, index) => {
       const account = accountById(line.account_id);
-      return {
-        id: line.id || uid('line'), journal_id: id, line_no: index + 1, account_id: line.account_id || '', account_code: account?.account_code || '', account_name: account?.account_name || '', debit: num(line.debit), credit: num(line.credit), currency, description: line.description || '', created_at: line.created_at || new Date().toISOString()
-      };
+      return { id: line.id || uid('line'), journal_id: id, line_no: index + 1, account_id: line.account_id || '', account_code: account?.account_code || '', account_name: account?.account_name || '', debit: num(line.debit), credit: num(line.credit), currency, description: line.description || '', created_at: line.created_at || new Date().toISOString(), updated_at: new Date().toISOString() };
     }).filter(line => line.account_id && (line.debit > 0 || line.credit > 0));
     const totalDebit = validLines.reduce((sum,line) => sum + num(line.debit), 0);
     const totalCredit = validLines.reduce((sum,line) => sum + num(line.credit), 0);
     const existing = state.journals.find(j => j.id === id) || {};
-    const journal = {
-      id,
-      journal_no: $('accountingJournalNo')?.value?.trim() || existing.journal_no || nextJournalNo(),
-      entry_date: $('accountingJournalDate')?.value || today(),
-      description: $('accountingJournalDescription')?.value?.trim() || '',
-      reference_no: $('accountingJournalReference')?.value?.trim() || '',
-      status,
-      currency,
-      total_debit: totalDebit,
-      total_credit: totalCredit,
-      created_by: existing.created_by || authName(),
-      posted_by: status === 'posted' ? authName() : existing.posted_by || null,
-      posted_at: status === 'posted' ? new Date().toISOString() : existing.posted_at || null,
-      created_at: existing.created_at || new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
+    const journal = { id, journal_no: $('accountingJournalNo')?.value?.trim() || existing.journal_no || nextJournalNo(), entry_date: $('accountingJournalDate')?.value || today(), description: $('accountingJournalDescription')?.value?.trim() || '', reference_no: $('accountingJournalReference')?.value?.trim() || '', status, currency, total_debit: totalDebit, total_credit: totalCredit, created_by: existing.created_by || authName(), posted_by: status === 'posted' ? authName() : existing.posted_by || null, posted_at: status === 'posted' ? new Date().toISOString() : existing.posted_at || null, created_at: existing.created_at || new Date().toISOString(), updated_at: new Date().toISOString(), source_module: existing.source_module || 'manual_journal', source_reference: existing.source_reference || '', source_table: existing.source_table || '', auto_generated: existing.auto_generated || false };
     return { journal, lines: validLines, totalDebit, totalCredit };
   }
 
@@ -580,52 +795,27 @@
     if (!journal.description) return toast('Journal description is required.');
     if (lines.length < 2) return toast('Journal needs at least two lines.');
     if (Math.abs(totalDebit - totalCredit) >= 0.01 || totalDebit <= 0) return toast('Journal must be balanced before saving/posting.');
-    const jIdx = state.journals.findIndex(j => j.id === journal.id);
-    if (jIdx >= 0) state.journals[jIdx] = journal; else state.journals.push(journal);
+    const jIdx = state.journals.findIndex(j => j.id === journal.id); if (jIdx >= 0) state.journals[jIdx] = journal; else state.journals.push(journal);
     state.journalLines = state.journalLines.filter(line => line.journal_id !== journal.id).concat(lines);
     if (status === 'posted') {
-      state.ledgerEntries = state.ledgerEntries.filter(entry => entry.journal_id !== journal.id).concat(lines.map(line => ({
-        id: uid('ledger'), journal_id: journal.id, journal_line_id: line.id, journal_no: journal.journal_no, entry_date: journal.entry_date, account_id: line.account_id, account_code: line.account_code, account_name: line.account_name, debit: line.debit, credit: line.credit, currency: journal.currency, description: line.description || journal.description, reference_no: journal.reference_no, source_module: 'manual_journal', source_id: journal.id, status: 'posted', created_at: new Date().toISOString()
-      })));
+      state.ledgerEntries = state.ledgerEntries.filter(entry => entry.journal_id !== journal.id).concat(lines.map(line => ({ id: uid('ledger'), journal_id: journal.id, journal_line_id: line.id, journal_no: journal.journal_no, entry_date: journal.entry_date, account_id: line.account_id, account_code: line.account_code, account_name: line.account_name, debit: line.debit, credit: line.credit, currency: journal.currency, description: line.description || journal.description, reference_no: journal.reference_no, source_module: journal.source_module || 'manual_journal', source_id: null, source_reference: journal.source_reference || journal.journal_no, source_table: journal.source_table || 'accounting_journal_entries', source_label: 'Manual Journal', status: 'posted', created_at: new Date().toISOString(), updated_at: new Date().toISOString() })));
     }
-    try {
-      await upsertRemote(TABLES.journals, journal);
-      await deleteRemote(TABLES.journalLines, 'journal_id', journal.id);
-      await upsertRemote(TABLES.journalLines, lines);
-      if (status === 'posted') {
-        const ledgerRows = state.ledgerEntries.filter(entry => entry.journal_id === journal.id);
-        await deleteRemote(TABLES.ledgerEntries, 'journal_id', journal.id);
-        await upsertRemote(TABLES.ledgerEntries, ledgerRows);
-      }
-    } catch (error) {
-      state.dataSource = 'local';
-      console.warn('[Accounting] journal remote save failed', error);
-      toast('Journal saved locally. Run Accounting SQL migration to enable Supabase sync.');
-    }
-    saveLocal();
-    state.editingJournalId = journal.id;
-    state.journalLinesDraft = lines.map(line => ({ ...line }));
-    toast(status === 'posted' ? 'Journal posted and ledger updated.' : 'Journal saved as draft.');
-    render();
+    try { await upsertRemote(TABLES.journals, journal); await deleteRemote(TABLES.journalLines, 'journal_id', journal.id); await upsertRemote(TABLES.journalLines, lines); if (status === 'posted') { const ledgerRows = state.ledgerEntries.filter(entry => entry.journal_id === journal.id); await deleteRemote(TABLES.ledgerEntries, 'journal_id', journal.id); await upsertRemote(TABLES.ledgerEntries, ledgerRows); } }
+    catch (error) { state.dataSource = 'local'; console.warn('[Accounting] journal remote save failed', error); toast('Journal saved locally. Run Accounting SQL migration to enable Supabase sync.'); }
+    saveLocal(); state.editingJournalId = journal.id; state.journalLinesDraft = lines.map(line => ({ ...line })); toast(status === 'posted' ? 'Journal posted and ledger updated.' : 'Journal saved as draft.'); render();
   }
 
   function editJournal(id) {
-    const journal = state.journals.find(j => j.id === id);
-    if (!journal) return;
-    state.editingJournalId = id;
-    state.journalLinesDraft = journalLinesFor(id).map(line => ({ ...line }));
+    const journal = state.journals.find(j => j.id === id); if (!journal) return;
+    state.editingJournalId = id; state.journalLinesDraft = journalLinesFor(id).map(line => ({ ...line }));
     if (!state.journalLinesDraft.length) state.journalLinesDraft = [{ account_id:'', debit:'', credit:'', description:'' }, { account_id:'', debit:'', credit:'', description:'' }];
-    state.activeTab = 'journals';
-    render();
+    state.activeTab = 'journals'; render();
   }
 
   async function deleteJournal(id) {
-    const journal = state.journals.find(j => j.id === id);
-    if (!journal) return;
+    const journal = state.journals.find(j => j.id === id); if (!journal) return;
     if (!confirm(`Delete journal ${journal.journal_no}?`)) return;
-    state.journals = state.journals.filter(j => j.id !== id);
-    state.journalLines = state.journalLines.filter(line => line.journal_id !== id);
-    state.ledgerEntries = state.ledgerEntries.filter(entry => entry.journal_id !== id);
+    state.journals = state.journals.filter(j => j.id !== id); state.journalLines = state.journalLines.filter(line => line.journal_id !== id); state.ledgerEntries = state.ledgerEntries.filter(entry => entry.journal_id !== id);
     try { await deleteRemote(TABLES.ledgerEntries, 'journal_id', id); await deleteRemote(TABLES.journalLines, 'journal_id', id); await deleteRemote(TABLES.journals, 'id', id); }
     catch (error) { console.warn('[Accounting] remote delete failed', error); state.dataSource = 'local'; }
     if (state.editingJournalId === id) { state.editingJournalId = ''; state.journalLinesDraft = []; }
@@ -640,27 +830,32 @@
     const headers = rows.length ? Object.keys(rows[0]) : [];
     const csv = [headers.join(','), ...rows.map(row => headers.map(key => `"${String(row[key] ?? '').replace(/"/g,'""')}"`).join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const url = URL.createObjectURL(blob); const a = document.createElement('a');
     a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
   }
 
   function handleClick(event) {
     const tabBtn = event.target.closest('[data-accounting-tab]');
     if (tabBtn) { state.activeTab = tabBtn.getAttribute('data-accounting-tab'); render(); return; }
+    const sourceTab = event.target.closest('[data-accounting-source-tab]');
+    if (sourceTab) { state.activeSourceTab = sourceTab.getAttribute('data-accounting-source-tab'); render(); return; }
     const actionBtn = event.target.closest('[data-accounting-action]');
     if (actionBtn) {
       const action = actionBtn.getAttribute('data-accounting-action');
-      if (action === 'refresh') { refresh(true); return; }
-      if (action === 'export-ledger') { exportCsv('accounting_general_ledger.csv', state.ledgerEntries); return; }
+      if (action === 'refresh' || action === 'refresh-sources') { refresh(true); return; }
+      if (action === 'export-ledger') { exportCsv('accounting_general_ledger.csv', filteredLedgerEntries()); return; }
       if (action === 'reset-account-form') { resetAccountForm(); return; }
       if (action === 'reset-bank-form') { resetBankForm(); return; }
       if (action === 'reset-journal-form') { resetJournalForm(); return; }
       if (action === 'add-journal-line') { currentDraftLines().push({ account_id:'', debit:'', credit:'', description:'' }); render(); return; }
       if (action === 'save-journal-draft') { saveJournal('draft'); return; }
       if (action === 'post-journal-form') { saveJournal('posted'); return; }
-      if (action === 'clear-ledger-filters') { state.filters.ledgerAccountId = 'all'; state.filters.ledgerFrom = ''; state.filters.ledgerTo = ''; render(); return; }
+      if (action === 'clear-ledger-filters') { state.filters.ledgerAccountId = 'all'; state.filters.ledgerFrom = ''; state.filters.ledgerTo = ''; state.filters.ledgerSource = 'all'; render(); return; }
+      if (action === 'clear-source-filters') { state.filters.sourceSearch = ''; state.filters.sourceFrom = ''; state.filters.sourceTo = ''; state.filters.sourceStatus = 'unposted'; render(); return; }
+      if (action === 'sync-visible-sources') { syncVisibleSources(); return; }
     }
+    const postSourceBtn = event.target.closest('[data-accounting-post-source]');
+    if (postSourceBtn) { postSource(postSourceBtn.getAttribute('data-accounting-post-source'), sourceByKey(postSourceBtn.getAttribute('data-accounting-post-source'), postSourceBtn.getAttribute('data-source-key'))); return; }
     const editAccountBtn = event.target.closest('[data-accounting-edit-account]');
     if (editAccountBtn) { editAccount(editAccountBtn.getAttribute('data-accounting-edit-account')); return; }
     const editBankBtn = event.target.closest('[data-accounting-edit-bank]');
@@ -675,6 +870,27 @@
     if (removeLineBtn) { const idx = Number(removeLineBtn.getAttribute('data-accounting-remove-line')); state.journalLinesDraft.splice(idx, 1); render(); }
   }
 
+  function render() {
+    const root = $('accountingRoot');
+    if (!root) return;
+    if (!isAdmin()) {
+      root.innerHTML = '<div class="accounting-empty"><strong>Admin only.</strong><br/>Accounting is restricted to admin users for now.</div>';
+      return;
+    }
+    const body = state.activeTab === 'dashboard' ? renderDashboard()
+      : state.activeTab === 'accounts' ? renderAccounts()
+      : state.activeTab === 'integrations' ? renderIntegrations()
+      : state.activeTab === 'journals' ? renderJournals()
+      : state.activeTab === 'ledger' ? renderLedger()
+      : state.activeTab === 'bank' ? renderBank()
+      : state.activeTab === 'reports' ? renderReports()
+      : renderDashboard();
+    root.innerHTML = shell(body);
+    bindFilters();
+    const accountForm = $('accountingAccountForm'); if (accountForm) accountForm.addEventListener('submit', event => { event.preventDefault(); saveAccountForm(); });
+    const bankForm = $('accountingBankForm'); if (bankForm) bankForm.addEventListener('submit', event => { event.preventDefault(); saveBankForm(); });
+  }
+
   async function refresh(force = false) {
     if (!isAdmin()) { render(); return; }
     if (force || state.dataSource !== 'supabase') {
@@ -686,7 +902,6 @@
   }
 
   async function init() {
-    if (!isAdmin()) { render(); return; }
     if (!state.initialized) {
       const root = $('accountingRoot');
       if (root) root.addEventListener('click', handleClick);
@@ -696,5 +911,5 @@
     await refresh(true);
   }
 
-  global.AccountingModule = { init, refresh, state };
+  global.AccountingModule = { init, refresh, state, postSource };
 })(window);

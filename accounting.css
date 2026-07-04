@@ -45,3 +45,14 @@
 .accounting-two-col { display:grid; grid-template-columns:minmax(0,1fr) minmax(320px,.55fr); gap:12px; align-items:start; }
 @media (max-width:900px){ .accounting-two-col{grid-template-columns:1fr;} .accounting-journal-line{grid-template-columns:1fr 1fr;} .accounting-journal-line .wide-mobile{grid-column:1 / -1;} }
 @media print { body.accounting-print-active * { visibility:hidden !important; } body.accounting-print-active .accounting-print-area, body.accounting-print-active .accounting-print-area * { visibility:visible !important; } body.accounting-print-active .accounting-print-area { position:absolute; inset:0; width:100%; background:#fff; padding:24px; } }
+
+/* Accounting Phase 2 - module sync */
+.accounting-tabs.compact { margin-top:6px; }
+.accounting-source-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; }
+.accounting-mini-card { background:linear-gradient(180deg,#ffffff,#f8fafc); border:1px solid var(--acct-line); border-radius:16px; padding:13px; box-shadow:0 8px 20px rgba(15,23,42,.04); }
+.accounting-mini-card .label { color:var(--acct-muted); font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
+.accounting-mini-card .value { color:#0f172a; font-size:22px; font-weight:900; margin-top:3px; }
+.accounting-mini-card .hint { color:var(--acct-muted); font-size:12px; margin-top:3px; }
+.accounting-badge.cancelled,.accounting-badge.failed { background:#fee2e2; color:#991b1b; }
+.accounting-badge.skipped { background:#e0f2fe; color:#075985; }
+.accounting-source-note { border:1px dashed var(--acct-line); background:#f8fafc; border-radius:14px; padding:10px 12px; color:var(--acct-muted); }
