@@ -114,7 +114,7 @@ const Receipts = {
     customer: { accessor: row => row.customer_name || row.company_name || row.client_name, serverField: 'customer_name' },
     receipt_date: { accessor: row => row.receipt_date, serverField: 'receipt_date' },
     currency: { accessor: row => row.currency, serverField: 'currency' },
-    received: { accessor: row => row.amount_received || row.received_amount || row.amount || row.invoice_total, serverField: 'received_amount' },
+    received: { accessor: row => row.amount_received || row.received_amount || row.paid_now || row.receipt_amount || row.payment_amount || row.amount || 0, serverField: 'received_amount' },
     payment_state: { accessor: row => row.payment_state || row.payment_status, serverField: 'payment_state' },
     status: { accessor: row => row.status, serverField: 'status' },
     updated_at: { accessor: row => row.updated_at, serverField: 'updated_at' }
@@ -338,7 +338,11 @@ const Receipts = {
     const amountReceived = this.getReceiptAmountValue({
       amount_received: normalized.amount_received,
       received_amount: normalized.received_amount,
-      paid_now: normalized.paid_now
+      paid_now: normalized.paid_now,
+      receipt_amount: source.receipt_amount,
+      payment_amount: source.payment_amount,
+      amount_paid: source.amount_paid,
+      amount: source.amount
     });
     normalized.old_paid_total = this.toNumberSafe(normalized.old_paid_total);
     normalized.paid_now = this.toNumberSafe(
@@ -359,7 +363,11 @@ const Receipts = {
     const receivedAmountValue = this.getReceiptAmountValue({
       amount_received: normalized.amount_received,
       received_amount: normalized.received_amount,
-      paid_now: normalized.paid_now
+      paid_now: normalized.paid_now,
+      receipt_amount: source.receipt_amount,
+      payment_amount: source.payment_amount,
+      amount_paid: source.amount_paid,
+      amount: source.amount
     });
     normalized.amount_received = this.toNumberSafe(receivedAmountValue || normalized.paid_now);
     normalized.received_amount = normalized.amount_received;
@@ -1108,6 +1116,10 @@ const Receipts = {
     const parsed = Number(normalized);
     return Number.isFinite(parsed) ? parsed : null;
   },
+  hasValidCurrencyPrecision(value) {
+    const raw = String(value ?? '').trim().replace(/,/g, '');
+    return /^\d+(?:\.\d{1,2})?$/.test(raw);
+  },
   todayInputValue() {
     const now = new Date();
     const yyyy = now.getFullYear();
@@ -1441,6 +1453,32 @@ const Receipts = {
     const invoiceId = String(invoice?.id || invoice?.invoice_id || '').trim();
     const invoiceNumber = String(invoice?.invoice_number || '').trim();
     return this.fetchInvoiceReceiptsLedger({ invoiceId, invoiceNumber });
+  },
+  async syncInvoicePaymentSummaryFromReceipts(invoiceId, invoice = null) {
+    const id = String(invoiceId || '').trim();
+    if (!id) return null;
+    const linkedInvoice = invoice || await this.hydrateInvoiceReceiptDraft({ id }).then(result => result?.invoice || null).catch(() => null);
+    const invoiceTotal = this.toNumberSafe(linkedInvoice?.invoice_total ?? linkedInvoice?.grand_total ?? linkedInvoice?.total_amount);
+    const receipts = await this.fetchReceiptsForInvoice({
+      id,
+      invoice_number: linkedInvoice?.invoice_number
+    }).catch(() => []);
+    const totalPaid = (Array.isArray(receipts) ? receipts : [])
+      .filter(row => !this.isReceiptVoided(row))
+      .reduce((sum, row) => sum + this.getReceiptAmountValue(row), 0);
+    const pendingAmount = Math.max(invoiceTotal - totalPaid, 0);
+    const paymentStatus = totalPaid <= 0 ? 'Unpaid' : pendingAmount > 0 ? 'Partially Paid' : 'Paid';
+    const payload = {
+      amount_paid: totalPaid,
+      received_amount: totalPaid,
+      pending_amount: pendingAmount,
+      balance_due: pendingAmount,
+      payment_status: paymentStatus,
+      payment_state: paymentStatus,
+      payment_conclusion: pendingAmount <= 0 ? 'Settled' : 'Pending Settlement'
+    };
+    if (typeof Api?.updateInvoice === 'function') await Api.updateInvoice(id, payload);
+    return payload;
   },
   normalizeInvoiceScheduleRow(row = {}) {
     const scheduled = this.toNumberSafe(row.scheduled_amount);
@@ -1784,9 +1822,13 @@ const Receipts = {
       { ...linkedInvoice, ...existing, ...formValues }
     );
     const normalizedPaidNow = this.getReceiptAmountValue({
-      received_amount: formValues.received_amount,
+      paid_now: formValues.paid_now,
       amount_received: formValues.amount_received,
-      paid_now: formValues.paid_now
+      received_amount: formValues.received_amount,
+      receipt_amount: formValues.receipt_amount,
+      payment_amount: formValues.payment_amount,
+      amount_paid: formValues.amount_paid,
+      amount: formValues.amount
     });
     const mergedReceipt = {
       ...existing,
@@ -1838,10 +1880,10 @@ const Receipts = {
     const maxAllowedPaidNow = Math.max(
       balanceBeforeThisReceipt,
       linkedInvoiceBalanceDue,
-      this.toNumberSafe(paymentSnapshot.paid_now),
       this.toNumberSafe(existing.paid_now ?? existing.received_amount ?? existing.amount_received)
     );
     if (
+      !this.canUseAdminOverride() &&
       invoiceTotalForValidation > 0 &&
       normalizedPaidNow > maxAllowedPaidNow + 0.0001
     ) {
@@ -1887,7 +1929,7 @@ const Receipts = {
       customer_name: customerLegalName || null,
       customer_legal_name: customerLegalName || null,
       customer_address: String(linkedInvoice?.customer_address || formValues.customer_address || existing.customer_address || '').trim() || null,
-      amount_in_words: String(formValues.amount_in_words || existing.amount_in_words || '').trim() || null,
+      amount_in_words: this.receiptAmountInWords('', String(formValues.currency || existing.currency || '').trim() || 'USD', normalizedPaidNow),
       invoice_total: paymentSnapshot.invoice_total,
       old_paid_total: paymentSnapshot.old_paid_total,
       paid_now: paymentSnapshot.paid_now,
@@ -1917,8 +1959,8 @@ const Receipts = {
         UI.toast('Invoice UUID is required to create a receipt.');
         return;
       }
-      if (normalizedAmount === null || normalizedAmount < 0) {
-        UI.toast('Paid Now must be a valid non-negative amount before saving the receipt.');
+      if (normalizedAmount === null || normalizedAmount <= 0 || !this.hasValidCurrencyPrecision(updates.paid_now)) {
+        UI.toast('Paid Now must be greater than 0 and have no more than 2 decimal places before saving the receipt.');
         return;
       }
       this.state.saveInFlight = true;
@@ -1926,6 +1968,14 @@ const Receipts = {
       console.time('entity-save');
       try {
         const snapshot = await this.computeReceiptSnapshot(invoiceUuid, normalizedAmount);
+        const balanceBeforeReceipt = Math.max(
+          this.toNumberSafe(snapshot.invoice_total) - this.toNumberSafe(snapshot.old_paid_total),
+          0
+        );
+        if (!this.canUseAdminOverride() && normalizedAmount > balanceBeforeReceipt + 0.0001) {
+          UI.toast(`Receipt amount cannot exceed current invoice pending amount (${U.fmtNumber(balanceBeforeReceipt)}).`);
+          return;
+        }
         const selectedReceiptDate = this.normalizeDateValue(updates.receipt_date) || this.todayInputValue();
         const response = await Api.createReceiptFromInvoice(invoiceUuid, {
           amount: normalizedAmount,
@@ -1995,6 +2045,7 @@ const Receipts = {
         }
         const refreshedInvoiceId = String(normalized?.invoice_uuid || normalized?.invoice_id || receipt?.invoice_uuid || receipt?.invoice_id || invoiceUuid).trim();
         if (refreshedInvoiceId) {
+          await this.syncInvoicePaymentSummaryFromReceipts(refreshedInvoiceId).catch(error => console.warn('[receipts] invoice payment summary sync failed', error));
           await window.Invoices?.syncAfterReceiptMutation?.({ invoiceId: refreshedInvoiceId, receipt: normalized || receipt });
         }
         if (refreshedInvoiceId) {
@@ -2037,8 +2088,8 @@ const Receipts = {
       UI.toast('Linked invoice is required before saving the receipt.');
       return;
     }
-    if (paidNowValue === null || paidNowValue < 0) {
-      UI.toast('Paid Now must be a valid non-negative amount.');
+    if (paidNowValue === null || paidNowValue <= 0 || !this.hasValidCurrencyPrecision(updates.paid_now)) {
+      UI.toast('Paid Now must be greater than 0 and have no more than 2 decimal places.');
       E.receiptFormPaidNow?.focus();
       return;
     }
@@ -2083,7 +2134,9 @@ const Receipts = {
         this.state.selectedReceipt = normalized;
         this.state.items = parsed?.items || this.state.items;
       }
-      await window.Invoices?.syncAfterReceiptMutation?.({ invoiceId: normalized?.invoice_id || persisted?.invoice_id, receipt: normalized });
+      const updatedInvoiceId = normalized?.invoice_id || persisted?.invoice_id;
+      if (updatedInvoiceId) await this.syncInvoicePaymentSummaryFromReceipts(updatedInvoiceId, linkedInvoice).catch(error => console.warn('[receipts] invoice payment summary sync failed', error));
+      await window.Invoices?.syncAfterReceiptMutation?.({ invoiceId: updatedInvoiceId, receipt: normalized });
       await this.refresh(true);
       window.dispatchEvent(new CustomEvent('clients:refresh-totals', { detail: { reason: 'receipt-saved' } }));
       UI.toast(`Receipt ${this.receiptDisplayId(normalized || persisted) || id} saved.`);
@@ -2111,7 +2164,10 @@ const Receipts = {
       await Api.deleteReceipt(id);
       delete this.state.detailCacheById[id];
       this.removeLocalRow(id);
-      if (deletedInvoiceId) await window.Invoices?.syncAfterReceiptMutation?.({ invoiceId: deletedInvoiceId });
+      if (deletedInvoiceId) {
+        await this.syncInvoicePaymentSummaryFromReceipts(deletedInvoiceId).catch(error => console.warn('[receipts] invoice payment summary sync failed', error));
+        await window.Invoices?.syncAfterReceiptMutation?.({ invoiceId: deletedInvoiceId });
+      }
       UI.toast(`Receipt ${displayId} deleted.`);
       if (String(E.receiptForm?.dataset.id || '').trim() === id) this.closeForm();
     } catch (error) {
@@ -2284,14 +2340,15 @@ const Receipts = {
     const pendingAmount = resolvedSnapshot.pending_amount;
     const paymentState = this.normalizeReceiptPaymentState({ ...r, ...resolvedSnapshot }, invoice || r);
     const receiptPaymentAmountSource = pickDefined(
-      r.received_amount,
+      r.paid_now,
       r.amount_received,
-      r.grand_total,
-      r.total_amount,
+      r.received_amount,
+      r.receipt_amount,
+      r.payment_amount,
+      r.amount_paid,
       r.amount,
-      r.total,
-      resolvedSnapshot.received_amount,
-      resolvedSnapshot.paid_now
+      resolvedSnapshot.paid_now,
+      resolvedSnapshot.received_amount
     );
     const receiptPaymentAmount = this.toNumberSafe(receiptPaymentAmountSource);
     const amountInWords = this.receiptAmountInWords('', currency, receiptPaymentAmount);
