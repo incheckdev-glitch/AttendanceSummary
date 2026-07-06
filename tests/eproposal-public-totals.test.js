@@ -29,7 +29,7 @@ assert.match(publicTotalsBranch, /<span>Grand Total<\/span>/, 'public e-proposal
 assert.doesNotMatch(internalTotalsBranch, /<span>Subtotal<\/span>/, 'internal proposal preview totals must not render the subtotal row');
 assert.match(internalTotalsBranch, /<span>One Time Fees<\/span>/, 'internal proposal preview totals must show one-time fees');
 assert.match(internalTotalsBranch, /<span>Subscription Fees<\/span>/, 'internal proposal preview totals must show subscription fees');
-assert.match(internalTotalsBranch, /<span>Total Discount<\/span>/, 'internal proposal preview totals must show total discount');
+assert.doesNotMatch(internalTotalsBranch, /<span>Total Discount<\/span>/, 'internal proposal preview totals must not render total discount');
 assert.match(internalTotalsBranch, /<span>Grand Total<\/span>/, 'internal proposal preview totals must keep grand total visible');
 assert.match(internalTotalsBranch, /<span>Grand Total in Words<\/span>/, 'internal proposal preview totals must keep grand total in words visible');
 
