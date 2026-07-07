@@ -43,7 +43,8 @@
       retention_monthly: 12,
       notes: ''
     },
-    filters: { type: 'all', status: 'all', from: '', to: '', search: '' }
+    filters: { type: 'all', status: 'all', from: '', to: '', search: '' },
+    oneClickRunning: false
   };
 
   function client() {
@@ -207,7 +208,8 @@
         <div class="backup-actions">
           <button class="btn" type="button" data-backup-action="refresh">Refresh</button>
           <button class="btn" type="button" data-backup-action="download-guide">Download Guide</button>
-          <button class="btn primary" type="button" data-backup-tab-open="new-log">Add Backup Log</button>
+          <button class="btn primary" type="button" data-backup-action="download-one-click" ${state.oneClickRunning ? 'disabled' : ''}>${state.oneClickRunning ? 'Preparing ZIP…' : 'Download Backup ZIP'}</button>
+          <button class="btn" type="button" data-backup-tab-open="new-log">Add Backup Log</button>
         </div>
       </div>
       <div class="backup-tabs" role="tablist" aria-label="Backup Center tabs">
@@ -242,6 +244,17 @@
           <li>Store the ZIP outside Supabase, such as Google Drive, OneDrive, external disk, or private object storage.</li>
           <li>Add a backup log here after confirming the backup file exists.</li>
         </ol>
+      </div>
+      <div class="backup-card backup-one-click">
+        <div class="backup-card-header">
+          <div>
+            <h3>One-click ERP backup</h3>
+            <p class="muted">Downloads one ZIP containing public ERP database data as JSON plus Supabase Storage bucket files.</p>
+          </div>
+          <button class="btn primary" type="button" data-backup-action="download-one-click" ${state.oneClickRunning ? 'disabled' : ''}>${state.oneClickRunning ? 'Preparing ZIP…' : 'Download Backup ZIP'}</button>
+        </div>
+        <div class="backup-success-note"><strong>What it includes:</strong> table data exported as JSON, storage bucket files, and a manifest file.</div>
+        <div class="backup-warning"><strong>Important:</strong> This needs Vercel environment variables <code>SUPABASE_URL</code> and <code>SUPABASE_SERVICE_ROLE_KEY</code>. For a full PostgreSQL schema/roles dump, keep using the manual CLI backup guide.</div>
       </div>
       ${renderHistory(true)}
     `;
@@ -381,6 +394,64 @@
     finally { state.loading = false; render(); }
   }
 
+
+  async function getAccessToken() {
+    const sb = client();
+    if (!sb?.auth?.getSession) return '';
+    const { data, error } = await sb.auth.getSession();
+    if (error) throw error;
+    return data?.session?.access_token || '';
+  }
+
+  function getFileNameFromDisposition(disposition) {
+    const value = String(disposition || '');
+    const utf = value.match(/filename\*=UTF-8''([^;]+)/i);
+    if (utf?.[1]) return decodeURIComponent(utf[1].replace(/"/g, ''));
+    const plain = value.match(/filename="?([^";]+)"?/i);
+    return plain?.[1] || `InCheck360_ERP_Backup_${today()}.zip`;
+  }
+
+  async function downloadOneClickBackup() {
+    if (state.oneClickRunning) return;
+    if (!isAdmin()) { toast('Backup download is admin-only.'); return; }
+    state.oneClickRunning = true;
+    render();
+    try {
+      const token = await getAccessToken();
+      if (!token) throw new Error('Please sign in again before downloading a backup.');
+      const response = await fetch('/api/backup/download', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!response.ok) {
+        let message = `Backup download failed (${response.status}).`;
+        try {
+          const payload = await response.json();
+          if (payload?.error) message = payload.error;
+        } catch (_) {}
+        throw new Error(message);
+      }
+      const blob = await response.blob();
+      const fileName = getFileNameFromDisposition(response.headers.get('Content-Disposition'));
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast('Backup ZIP download started. Store it outside Supabase.');
+      setTimeout(() => refresh(), 1200);
+    } catch (error) {
+      console.error('[BackupCenter] one-click backup failed', error);
+      toast(error.message || 'Unable to download backup ZIP.');
+    } finally {
+      state.oneClickRunning = false;
+      render();
+    }
+  }
+
   function exportCsv() {
     const rows = filteredLogs();
     const headers = ['Date','Type','Status','File','Location','Size MB','Created By','Created At','Notes'];
@@ -453,6 +524,7 @@
       if (action === 'export-csv') { exportCsv(); return; }
       if (action === 'print-history') { printHistory(); return; }
       if (action === 'download-guide') { downloadGuide(); return; }
+      if (action === 'download-one-click') { await downloadOneClickBackup(); return; }
       if (action === 'copy-commands') {
         try { await navigator.clipboard.writeText(backupCommandText()); toast('Backup commands copied.'); }
         catch { toast('Could not copy commands. You can select and copy manually.'); }
@@ -503,5 +575,5 @@
     }
   }
 
-  global.BackupCenter = { init, refresh, render };
+  global.BackupCenter = { init, refresh, render, downloadOneClickBackup };
 })(window);

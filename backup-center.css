@@ -45,3 +45,6 @@
 .backup-checklist { margin:0; padding-left:18px; color:#334155; }
 .backup-checklist li { margin:6px 0; }
 @media print { body.backup-print-active * { visibility:hidden !important; } body.backup-print-active .backup-print-area, body.backup-print-active .backup-print-area * { visibility:visible !important; } body.backup-print-active .backup-print-area { position:absolute; inset:0; width:100%; background:#fff; padding:24px; } }
+.backup-one-click { border-color:#bfdbfe; background:linear-gradient(180deg,#eff6ff,#ffffff); }
+.backup-one-click code { background:#dbeafe; color:#1e3a8a; border-radius:6px; padding:1px 5px; font-size:12px; }
+.backup-actions .btn[disabled], .backup-card .btn[disabled] { opacity:.65; cursor:not-allowed; }
