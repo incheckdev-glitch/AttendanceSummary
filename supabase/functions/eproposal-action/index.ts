@@ -1,6 +1,36 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+
+function sanitizeSignedDocumentFileName(name = "signed-document") {
+  return String(name || "signed-document")
+    .trim()
+    .replace(/[^\w.\-]+/g, "_")
+    .replace(/_+/g, "_")
+    .slice(0, 120) || "signed-document";
+}
+
+function buildSignedDocumentStoragePath({ module, recordId, businessNo, fileName }: { module: "proposals" | "agreements"; recordId?: string | null; businessNo?: string | null; fileName?: string | null }) {
+  const safeModule = module === "agreements" ? "agreements" : "proposals";
+  const safeRecord = String(recordId || businessNo || "unknown").trim().replace(/[^\w.\-]+/g, "_");
+  const safeFileName = sanitizeSignedDocumentFileName(fileName || "signed-document");
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return `${safeModule}/signed-documents/${safeRecord}/${timestamp}-${uniqueSuffix}-${safeFileName}`;
+}
+
+function dataUrlToBlob(dataUrl: string, fallbackMimeType = "application/octet-stream") {
+  const match = String(dataUrl || "").match(/^data:([^;,]+)?(;base64)?,(.*)$/s);
+  if (!match) throw new Error("Invalid signed document upload data.");
+  const mimeType = match[1] || fallbackMimeType;
+  const isBase64 = Boolean(match[2]);
+  const payload = match[3] || "";
+  const binary = isBase64 ? atob(payload) : decodeURIComponent(payload);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mimeType });
+}
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -76,6 +106,32 @@ serve(async (req) => {
 
     const userAgent = req.headers.get("user-agent") || null;
 
+    let uploadedSignedDocumentUrl = signedDocumentDataUrl || null;
+
+    if (action === "accept" && signatureType === "signed_document_upload" && signedDocumentDataUrl) {
+      const { data: record, error: recordError } = await supabase
+        .from("proposals")
+        .select("id,proposal_id,ref_number")
+        .eq("e_proposal_token", token)
+        .maybeSingle();
+      if (recordError) throw recordError;
+      if (!record?.id) throw new Error("Cannot upload signed document: missing proposal/agreement id.");
+      const businessNo = String(record.proposal_id || record.ref_number || record.agreement_id || record.agreement_number || "").trim();
+      const storagePath = buildSignedDocumentStoragePath({ module: "proposals", recordId: record.id, businessNo, fileName: signedDocumentFileName });
+      const blob = dataUrlToBlob(signedDocumentDataUrl, signedDocumentMimeType || "application/octet-stream");
+      const { error: uploadError } = await supabase.storage
+        .from("proposal-signed-documents")
+        .upload(storagePath, blob, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: signedDocumentMimeType || blob.type || "application/octet-stream"
+        });
+      if (uploadError) throw uploadError;
+      const { data: publicUrlData } = supabase.storage.from("proposal-signed-documents").getPublicUrl(storagePath);
+      uploadedSignedDocumentUrl = publicUrlData?.publicUrl || storagePath;
+      console.info("[SignedDocumentUpload] saved", { module: "proposals", recordId: record.id, storagePath, fileName: signedDocumentFileName });
+    }
+
     let rpcName = "";
     let rpcPayload: Record<string, unknown> = {};
 
@@ -98,7 +154,7 @@ serve(async (req) => {
         p_signature_type: signatureType,
         p_signature_text: signatureText || customerName,
         p_signature_image_data_url: signatureImageDataUrl || null,
-        p_signed_document_data_url: signedDocumentDataUrl || null,
+        p_signed_document_data_url: uploadedSignedDocumentUrl || null,
         p_signed_document_file_name: signedDocumentFileName || null,
         p_signed_document_mime_type: signedDocumentMimeType || null
       };
