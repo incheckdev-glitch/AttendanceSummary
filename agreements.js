@@ -3988,7 +3988,7 @@ const Agreements = {
     const rowTotals = this.calculateTotalsFromAgreementRecord(row);
     const signedRow = this.isAgreementLockedAsSigned(row);
     const invoiceBlocked = signedRow && this.state.invoiceBlockedAgreementIds.has(String(row?.id || '').trim());
-    const uploadBlocked = this.hasSignedDocument(row);
+    const uploadBlocked = false;
     this.state.selectedDetailsId = id;
     window.RecordDetailsDrawer.open({
       eyebrow: 'Commercial · Agreement',
@@ -4023,7 +4023,7 @@ const Agreements = {
       ],
       actions: [
         Permissions.canView('agreements') ? { label: 'View', variant: 'primary', permissionResource: 'agreements', permissionAction: 'view', onClick: btn => this.openAgreementFormById(id, { readOnly: true, trigger: btn }) } : null,
-        signedRow && Permissions.canUpdateAgreement() && !uploadBlocked ? { label: 'Upload Signed Doc', variant: 'ghost', permissionResource: 'agreements', permissionAction: 'update', onClick: btn => this.openAgreementFormById(id, { readOnly: true, trigger: btn, focusSignedDocument: true }) } : null,
+        signedRow && Permissions.canUpdateAgreement() && !uploadBlocked ? { label: this.hasSignedDocument(row) ? 'Replace Signed Document' : 'Upload Signed Doc', variant: 'ghost', permissionResource: 'agreements', permissionAction: 'update', onClick: btn => this.openAgreementFormById(id, { readOnly: true, trigger: btn, focusSignedDocument: true }) } : null,
         !signedRow && Permissions.canUpdateAgreement() ? { label: 'Edit', variant: 'ghost', permissionResource: 'agreements', permissionAction: 'update', onClick: btn => this.openAgreementFormById(id, { readOnly: false, trigger: btn }) } : null,
         Permissions.canGenerateAgreementHtml() ? { label: 'View Agreement', variant: 'ghost', permissionResource: 'agreements', permissionAction: 'view', onClick: () => this.previewAgreementHtml(id) } : null,
         Permissions.canGenerateAgreementHtml() ? { label: 'Generate E-Agreement Link', variant: 'ghost', permissionResource: 'agreements', permissionAction: 'view', onClick: () => this.generateEAgreementLink(id) } : null,
@@ -4067,7 +4067,7 @@ const Agreements = {
     const actionsMenu = (row, id, signedRow, uploadBlocked, invoiceBlocked) => {
       const items = [];
       if (signedRow && Permissions.canUpdateAgreement()) {
-        items.push(`<button class="commercial-menu-item${uploadBlocked ? ' is-disabled' : ''}" type="button" data-agreement-upload-signed="${id}" data-permission-resource="agreements" data-permission-action="update" ${uploadBlocked ? 'disabled aria-disabled="true"' : ''}>${uploadBlocked ? 'Signed Doc Uploaded' : 'Upload Signed Doc'}</button>`);
+        items.push(`<button class="commercial-menu-item${uploadBlocked ? ' is-disabled' : ''}" type="button" data-agreement-upload-signed="${id}" data-permission-resource="agreements" data-permission-action="update" ${uploadBlocked ? 'disabled aria-disabled="true"' : ''}>${this.hasSignedDocument(row) ? 'Replace Signed Document' : 'Upload Signed Doc'}</button>`);
       }
       if (!signedRow && Permissions.canUpdateAgreement()) {
         items.push(`<button class="commercial-menu-item" type="button" data-agreement-edit="${id}" data-permission-resource="agreements" data-permission-action="update">Edit</button>`);
@@ -4096,7 +4096,7 @@ const Agreements = {
         : '';
       const invoiceBlocked = signedRow && this.state.invoiceBlockedAgreementIds.has(String(row?.id || '').trim());
       const signedDocUploaded = this.hasSignedDocument(row);
-      const uploadBlocked = signedDocUploaded;
+      const uploadBlocked = false;
       const selected = String(this.state.selectedDetailsId || '') === String(row.id || row.agreement_id || row.agreement_number || '');
       const statusLabel = this.resolveAgreementStatus(row);
       const customerInitial = String(row.customer_name || row.agreement_title || 'A').trim().charAt(0).toUpperCase() || 'A';
@@ -4912,18 +4912,21 @@ const Agreements = {
     const hasDocument = this.agreementHasSignedDocument(snapshot);
     section.style.display = signed ? '' : 'none';
     if (elements.file) elements.file.disabled = !signed || !persisted;
-    const uploadBlocked = hasDocument || !signed || !persisted;
+    const uploadBlocked = !signed || !persisted;
     if (elements.uploadBtn) {
       elements.uploadBtn.disabled = uploadBlocked;
       elements.uploadBtn.setAttribute('aria-disabled', uploadBlocked ? 'true' : 'false');
       elements.uploadBtn.classList.toggle('is-disabled', uploadBlocked);
       elements.uploadBtn.classList.toggle('is-blocked', uploadBlocked);
-      elements.uploadBtn.textContent = hasDocument ? 'Signed Doc Uploaded' : 'Upload Signed Agreement';
+      elements.uploadBtn.textContent = hasDocument ? 'Replace Signed Document' : 'Upload Signed Agreement';
       elements.uploadBtn.title = hasDocument
-        ? 'Signed document has already been uploaded.'
+        ? 'Replace signed document for this agreement only.'
         : 'Upload signed document';
     }
-    if (elements.openBtn) elements.openBtn.style.display = hasDocument ? '' : 'none';
+    if (elements.openBtn) {
+      elements.openBtn.style.display = hasDocument ? '' : 'none';
+      elements.openBtn.textContent = 'View Signed Document';
+    }
     if (elements.state) {
       if (!signed) {
         elements.state.textContent = 'Signed agreement document upload is available only after status is Signed.';
@@ -4953,18 +4956,28 @@ const Agreements = {
       }
     }, 150);
   },
-  getSignedDocumentTimestamp(date = new Date()) {
-    return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, '');
+  sanitizeSignedDocumentFileName(name = 'signed-document') {
+    return String(name || 'signed-document')
+      .trim()
+      .replace(/[^\w.\-]+/g, '_')
+      .replace(/_+/g, '_')
+      .slice(0, 120) || 'signed-document';
   },
-  getFileExtension(fileName = '') {
-    const cleanName = String(fileName || '').split(/[\\/]/).pop() || '';
-    const match = cleanName.match(/\.([A-Za-z0-9]{1,16})$/);
-    return match ? match[1].toLowerCase() : 'pdf';
+  buildSignedDocumentStoragePath({ module = 'agreements', recordId, businessNo, fileName } = {}) {
+    const safeModule = module === 'agreements' ? 'agreements' : 'proposals';
+    const safeRecord = String(recordId || businessNo || 'unknown')
+      .trim()
+      .replace(/[^\w.\-]+/g, '_');
+    const safeFileName = this.sanitizeSignedDocumentFileName(fileName);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    return `${safeModule}/signed-documents/${safeRecord}/${timestamp}-${uniqueSuffix}-${safeFileName}`;
   },
   buildSignedAgreementDocumentPath(agreement = {}, file = {}) {
-    const agreementBusinessId = String(agreement.agreement_id || agreement.agreement_number || agreement.id || '').trim();
-    if (!agreementBusinessId) throw new Error('Agreement ID is required to upload the signed agreement document.');
-    return `agreements/${agreementBusinessId}/signed-agreement-${this.getSignedDocumentTimestamp()}.${this.getFileExtension(file.name || 'pdf')}`;
+    const recordId = String(agreement.id || this.state.currentAgreementId || E.agreementForm?.dataset?.id || '').trim();
+    const businessNo = String(agreement.agreement_id || agreement.agreement_number || '').trim();
+    if (!recordId && !businessNo) throw new Error('Cannot upload signed document: missing proposal/agreement id.');
+    return this.buildSignedDocumentStoragePath({ module: 'agreements', recordId, businessNo, fileName: file.name });
   },
   async getCurrentUserIdForSignedAgreementDocument(client = null) {
     const sessionApi = window.Session || {};
@@ -4988,7 +5001,6 @@ const Agreements = {
     const agreement = this.getSignedDocumentAgreementSnapshot(this.state.currentAgreement || {});
     if (!agreement.id) { UI.toast('Save this agreement before uploading the signed agreement document.'); return; }
     if (!this.isAgreementSigned(agreement)) { UI.toast('Upload the signed agreement document only after the agreement status is signed.'); return; }
-    if (this.hasSignedDocument(agreement)) { return; }
     const elements = this.ensureSignedAgreementDocumentSection();
     const file = elements.file?.files?.[0];
     if (!file) { UI.toast('Choose a signed agreement document to upload.'); return; }
@@ -5003,12 +5015,18 @@ const Agreements = {
         UI.toast('Upload the signed agreement document only after the agreement status is signed.');
         return;
       }
-      if (this.hasSignedDocument(latestAgreement)) return;
       const path = this.buildSignedAgreementDocumentPath(latestAgreement, file);
       const { error: uploadError } = await client.storage
         .from(this.signedDocumentBucket)
-        .upload(path, file, { upsert: true });
+        .upload(path, file, {
+          cacheControl: '3600',
+          upsert: false,
+          contentType: file.type || 'application/octet-stream'
+        });
       if (uploadError) throw uploadError;
+      if (window.location?.hostname === 'localhost' || window.location?.hostname === '127.0.0.1') {
+        console.info('[SignedDocumentUpload] saved', { module: 'agreements', recordId: agreement.id, storagePath: path, fileName: file.name });
+      }
       const updates = {
         signed_document_path: path,
         signed_document_name: file.name,

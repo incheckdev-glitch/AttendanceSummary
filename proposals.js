@@ -5100,9 +5100,16 @@ const Proposals = {
     const isAccepted = this.isProposalAccepted(snapshot) && !this.isProposalExpired(snapshot);
     const hasDocument = Boolean(snapshot.signed_document_path);
     E.proposalSignedDocumentSection.style.display = isPersisted ? '' : 'none';
-    if (E.proposalSignedDocumentUploadBtn) E.proposalSignedDocumentUploadBtn.disabled = !isPersisted || !isAccepted;
+    if (E.proposalSignedDocumentUploadBtn) {
+      E.proposalSignedDocumentUploadBtn.disabled = !isPersisted || !isAccepted;
+      E.proposalSignedDocumentUploadBtn.textContent = hasDocument ? 'Replace Signed Document' : 'Upload Signed Document';
+      E.proposalSignedDocumentUploadBtn.title = hasDocument ? 'Replace signed document for this proposal only.' : 'Upload signed document';
+    }
     if (E.proposalSignedDocumentFile) E.proposalSignedDocumentFile.disabled = !isPersisted || !isAccepted;
-    if (E.proposalSignedDocumentOpenBtn) E.proposalSignedDocumentOpenBtn.style.display = hasDocument ? '' : 'none';
+    if (E.proposalSignedDocumentOpenBtn) {
+      E.proposalSignedDocumentOpenBtn.style.display = hasDocument ? '' : 'none';
+      E.proposalSignedDocumentOpenBtn.textContent = 'View Signed Document';
+    }
     if (E.proposalSignedDocumentState) {
       if (!isPersisted) {
         E.proposalSignedDocumentState.textContent = 'Save this proposal before uploading a signed document.';
@@ -5116,19 +5123,28 @@ const Proposals = {
       }
     }
   },
-  getSignedDocumentTimestamp(date = new Date()) {
-    return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, '');
+  sanitizeSignedDocumentFileName(name = 'signed-document') {
+    return String(name || 'signed-document')
+      .trim()
+      .replace(/[^\w.\-]+/g, '_')
+      .replace(/_+/g, '_')
+      .slice(0, 120) || 'signed-document';
   },
-  getFileExtension(fileName = '') {
-    const cleanName = String(fileName || '').split(/[\\/]/).pop() || '';
-    const match = cleanName.match(/\.([A-Za-z0-9]{1,16})$/);
-    return match ? match[1].toLowerCase() : 'pdf';
+  buildSignedDocumentStoragePath({ module = 'proposals', recordId, businessNo, fileName } = {}) {
+    const safeModule = module === 'agreements' ? 'agreements' : 'proposals';
+    const safeRecord = String(recordId || businessNo || 'unknown')
+      .trim()
+      .replace(/[^\w.\-]+/g, '_');
+    const safeFileName = this.sanitizeSignedDocumentFileName(fileName);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const uniqueSuffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    return `${safeModule}/signed-documents/${safeRecord}/${timestamp}-${uniqueSuffix}-${safeFileName}`;
   },
   buildSignedDocumentPath(proposal = {}, file = {}) {
-    const proposalBusinessId = String(proposal.proposal_id || E.proposalFormProposalId?.value || '').trim();
-    if (!proposalBusinessId) throw new Error('Proposal ID is required to upload the signed document.');
-    const extension = this.getFileExtension(file.name || 'pdf');
-    return `proposals/${proposalBusinessId}/signed-proposal-${this.getSignedDocumentTimestamp()}.${extension}`;
+    const recordId = String(proposal.id || this.state.currentProposalId || E.proposalForm?.dataset?.id || '').trim();
+    const businessNo = String(proposal.proposal_id || E.proposalFormProposalId?.value || '').trim();
+    if (!recordId && !businessNo) throw new Error('Cannot upload signed document: missing proposal/agreement id.');
+    return this.buildSignedDocumentStoragePath({ module: 'proposals', recordId, businessNo, fileName: file.name });
   },
   async getCurrentUserIdForSignedDocument(client = null) {
     const localUser = this.getSignedInUserForProposal();
@@ -5152,7 +5168,7 @@ const Proposals = {
       const { data: latestProposal, error: latestError } = await client
         .from('proposals')
         .select('*')
-        .eq('proposal_id', proposal.proposal_id)
+        .eq('id', proposal.id)
         .maybeSingle();
       if (latestError) throw latestError;
       if (!this.isProposalAccepted(latestProposal || proposal) || this.isProposalExpired(latestProposal || proposal)) {
@@ -5162,8 +5178,15 @@ const Proposals = {
       const path = this.buildSignedDocumentPath(latestProposal || proposal, file);
       const { error: uploadError } = await client.storage
         .from(this.signedDocumentBucket)
-        .upload(path, file, { upsert: true });
+        .upload(path, file, {
+          cacheControl: '3600',
+          upsert: false,
+          contentType: file.type || 'application/octet-stream'
+        });
       if (uploadError) throw uploadError;
+      if (window.location?.hostname === 'localhost' || window.location?.hostname === '127.0.0.1') {
+        console.info('[SignedDocumentUpload] saved', { module: 'proposals', recordId: proposal.id, storagePath: path, fileName: file.name });
+      }
       const updates = {
         signed_document_path: path,
         signed_document_name: file.name,
@@ -5173,7 +5196,7 @@ const Proposals = {
       const { data, error: updateError } = await client
         .from('proposals')
         .update(updates)
-        .eq('proposal_id', proposal.proposal_id)
+        .eq('id', proposal.id)
         .select('*')
         .maybeSingle();
       if (updateError) throw updateError;
