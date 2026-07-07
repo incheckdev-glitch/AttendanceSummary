@@ -103,6 +103,34 @@ function agreementHasSignedDocument(agreement) {
     agreement?.signed_agreement_document_url
   );
 }
+
+function getAgreementsPaginatedRows({
+  rows,
+  filterFn,
+  sortFn,
+  page,
+  pageSize
+}) {
+  const allRows = Array.isArray(rows) ? rows : [];
+  const filteredRows = filterFn ? allRows.filter(filterFn) : allRows;
+  const sortedRows = sortFn ? [...filteredRows].sort(sortFn) : filteredRows;
+  const safePageSize = Math.max(1, Number(pageSize) || 50);
+  const totalRows = sortedRows.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / safePageSize));
+  const safePage = Math.min(Math.max(1, Number(page) || 1), totalPages);
+  const start = (safePage - 1) * safePageSize;
+  const end = start + safePageSize;
+
+  return {
+    rows: sortedRows.slice(start, end),
+    totalRows,
+    totalPages,
+    page: safePage,
+    startItem: totalRows ? start + 1 : 0,
+    endItem: Math.min(end, totalRows)
+  };
+}
+
 const DEFAULT_AGREEMENT_TERMS_AND_CONDITIONS = `Provider and Customer hereby agree to abide by and be bound by this Subscription Agreement, Provider’s Terms of Use, and Provider’s Privacy Policy. Provider’s Terms of Use and Privacy Policy can be found at https://www.incheck360.com/terms-of-use and https://www.incheck360.com/privacy-policy, respectively, and are hereby incorporated into this Agreement. The Subscription Agreement, Provider’s Terms of Use, and Privacy Policy form the Agreement between Customer, as listed above, and InCheck 360 Holding B.V.
 
 IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by their authorized representatives as of the date of last signature by either party (“Effective Date”).`;
@@ -4034,22 +4062,74 @@ const Agreements = {
     });
     this.render();
   },
+  renderAgreementPagination(pagination) {
+    const host = document.getElementById('agreementsPagination') || U.ensurePaginationHost({
+      hostId: 'agreementsPagination',
+      anchor: E.agreementsTbody?.closest?.('.agreements-table-wrap'),
+      className: 'agreements-pagination-footer'
+    });
+    if (!host) return;
+    host.className = 'agreements-pagination-footer';
+    const page = Number(pagination?.page || 1);
+    const totalPages = Number(pagination?.totalPages || 1);
+    const pageSize = Number(this.state.limit || 50);
+    host.innerHTML = `
+      <div class="agreements-pagination-info">Showing ${pagination?.startItem || 0} to ${pagination?.endItem || 0} of ${pagination?.totalRows || 0} agreements</div>
+      <div class="agreements-pagination-controls">
+        <button type="button" data-agreement-page="prev" ${page <= 1 || this.state.loading ? 'disabled' : ''}>Previous</button>
+        <span>Page ${page} of ${totalPages}</span>
+        <button type="button" data-agreement-page="next" ${page >= totalPages || this.state.loading ? 'disabled' : ''}>Next</button>
+      </div>
+      <label class="agreements-page-size">
+        Rows per page
+        <select data-agreement-page-size ${this.state.loading ? 'disabled' : ''}>
+          ${[10, 25, 50, 100].map(size => `<option value="${size}" ${size === pageSize ? 'selected' : ''}>${size}</option>`).join('')}
+        </select>
+      </label>`;
+    host.querySelector('[data-agreement-page="prev"]')?.addEventListener('click', () => {
+      this.state.page = Math.max(1, page - 1);
+      this.render();
+    });
+    host.querySelector('[data-agreement-page="next"]')?.addEventListener('click', () => {
+      this.state.page = Math.min(totalPages, page + 1);
+      this.render();
+    });
+    host.querySelector('[data-agreement-page-size]')?.addEventListener('change', event => {
+      this.state.limit = U.normalizePageSize(event.target.value, 50, 100);
+      this.state.page = 1;
+      this.render();
+    });
+  },
   render() {
     if (!E.agreementsState || !E.agreementsTbody) return;
+    const emptyPagination = { rows: [], totalRows: 0, totalPages: 1, page: 1, startItem: 0, endItem: 0 };
     if (this.state.loading) {
       E.agreementsState.textContent = 'Loading agreements…';
       E.agreementsTbody.innerHTML = '<tr><td colspan="15" class="muted" style="text-align:center;">Loading agreements…</td></tr>';
+      this.renderAgreementPagination({ ...emptyPagination, totalRows: this.state.total || 0, endItem: 0 });
       return;
     }
     if (this.state.loadError) {
       E.agreementsState.textContent = this.state.loadError;
       E.agreementsTbody.innerHTML = `<tr><td colspan="15" class="muted" style="text-align:center;color:#ffb4b4;">${U.escapeHtml(this.state.loadError)}</td></tr>`;
+      this.renderAgreementPagination(emptyPagination);
       return;
     }
     TableUtils?.ensureHeaders?.('agreements', E.agreementsTbody?.closest('table'), this.tableColumns);
-    const rows = TableUtils?.processRows ? TableUtils.processRows('agreements', this.state.filteredRows, this.columnMap) : this.state.filteredRows;
-    E.agreementsState.textContent = `${rows.length} agreement${rows.length === 1 ? '' : 's'} · page ${this.state.page}`;
+    const processedRows = TableUtils?.processRows ? TableUtils.processRows('agreements', this.state.filteredRows, this.columnMap) : this.state.filteredRows;
+    const pagination = getAgreementsPaginatedRows({
+      rows: processedRows,
+      page: this.state.page,
+      pageSize: this.state.limit
+    });
+    this.state.page = pagination.page;
+    this.state.returned = pagination.rows.length;
+    this.state.total = pagination.totalRows;
+    this.state.hasMore = pagination.page < pagination.totalPages;
+    const rows = pagination.rows;
+    E.agreementsState.textContent = `${pagination.totalRows} agreement${pagination.totalRows === 1 ? '' : 's'} · page ${pagination.page} of ${pagination.totalPages}`;
     this.renderSummary();
+    this.renderAgreementPagination(pagination);
     if (!rows.length) {
       E.agreementsTbody.innerHTML = '<tr><td colspan="15" class="muted" style="text-align:center;">No agreements found.</td></tr>';
       return;
@@ -4121,29 +4201,6 @@ const Agreements = {
         </div></td>
       </tr>`;
     }).join('');
-    const paginationHost = U.ensurePaginationHost({
-      hostId: 'agreementsPagination',
-      anchor: E.agreementsTbody?.closest?.('.table-wrap')
-    });
-    U.renderPaginationControls({
-      host: paginationHost,
-      moduleKey: 'agreements',
-      page: this.state.page,
-      pageSize: this.state.limit,
-      hasMore: this.state.hasMore,
-      returned: this.state.returned,
-      loading: this.state.loading,
-      pageSizeOptions: [25, 50, 100],
-      onPageChange: nextPage => {
-        this.state.page = U.normalizePageNumber(nextPage, 1);
-        this.loadAndRefresh({ force: true });
-      },
-      onPageSizeChange: nextSize => {
-        this.state.limit = U.normalizePageSize(nextSize, 50, 200);
-        this.state.page = 1;
-        this.loadAndRefresh({ force: true });
-      }
-    });
   },
   collectFormValues() {
     const pocToggle = document.getElementById('agreementFormIsPocToggle');
@@ -5979,11 +6036,10 @@ const Agreements = {
       this.safeRender('loading');
 
       const response = await this.listAgreements({
-        limit: this.state.limit,
-        page: this.state.page,
-        ...(TableUtils?.getServerSort?.('agreements', this.columnMap) || { sort_by: 'updated_at', sort_dir: 'desc' }),
-        ...(TableUtils?.getServerColumnFilters?.('agreements', this.columnMap) || {}),
-        search: this.state.search || '',
+        limit: 5000,
+        page: 1,
+        sort_by: 'updated_at',
+        sort_dir: 'desc',
         summary_only: true,
         forceRefresh: force
       });
@@ -5994,9 +6050,8 @@ const Agreements = {
       this.state.total = normalized.total;
       this.state.returned = normalized.returned;
       this.state.hasMore = normalized.hasMore;
-      this.state.page = normalized.page;
-      this.state.limit = normalized.limit;
-      this.state.offset = normalized.offset;
+      this.state.page = Math.max(1, Number(this.state.page) || 1);
+      this.state.offset = 0;
       this.state.loaded = true;
       this.state.lastLoadedAt = Date.now();
     } catch (error) {

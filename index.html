@@ -2266,13 +2266,13 @@ Sample:
             </article>
           </div>
 
-          <section class="commercial-table-panel" aria-label="Agreements table panel">
+          <section class="commercial-table-panel agreements-table-card" aria-label="Agreements table panel">
             <div class="commercial-table-toolbar">
               <div class="commercial-table-toolbar-left"><span id="agreementsState" class="commercial-page-info">No data loaded.</span></div>
               <div class="commercial-table-toolbar-right"><span class="muted">Rows per page managed by table controls</span></div>
             </div>
-            <div class="commercial-table-wrap modern-table-scroll" role="region" aria-label="Agreements table">
-              <table id="agreementsTable" class="commercial-table">
+            <div class="commercial-table-wrap modern-table-scroll agreements-table-wrap" role="region" aria-label="Agreements table">
+              <table id="agreementsTable" class="commercial-table agreements-table">
                 <thead>
                   <tr>
                     <th>Agreement ID</th><th>Agreement Number</th><th>Title</th><th>Customer</th><th>Proposal ID</th><th>Deal ID</th><th>Start Date</th><th>Agreement Length</th><th>Billing Frequency</th><th>Payment Term</th><th>Currency</th><th>Grand Total</th><th>Status</th><th>Updated At</th><th>Actions</th>
@@ -2281,6 +2281,7 @@ Sample:
                 <tbody id="agreementsTbody"></tbody>
               </table>
             </div>
+            <div id="agreementsPagination" class="agreements-pagination-footer" aria-label="Agreement pagination"></div>
           </section>
         </div>
       </section>
