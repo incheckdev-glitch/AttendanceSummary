@@ -228,6 +228,65 @@ async function listBucketFiles(supabaseAdmin, bucketName, prefix = '', state = {
   return files;
 }
 
+
+async function listStorageObjectsFromMetadata(supabaseAdmin) {
+  if (typeof supabaseAdmin.schema !== 'function') {
+    throw new Error('Supabase client does not support schema("storage") metadata listing.');
+  }
+
+  const maxObjects = Number(process.env.BACKUP_MAX_STORAGE_OBJECTS || DEFAULT_MAX_OBJECTS);
+  const limit = 1000;
+  let from = 0;
+  const objects = [];
+  const storageSchema = supabaseAdmin.schema('storage');
+
+  while (objects.length < maxObjects) {
+    const to = Math.min(from + limit - 1, maxObjects - 1);
+    const { data, error } = await storageSchema
+      .from('objects')
+      .select('bucket_id,name,metadata,created_at,updated_at,last_accessed_at')
+      .order('bucket_id', { ascending: true })
+      .order('name', { ascending: true })
+      .range(from, to);
+
+    if (error) throw new Error(`Storage metadata list failed: ${error.message || error}`);
+    const rows = Array.isArray(data) ? data : [];
+    if (!rows.length) break;
+
+    for (const row of rows) {
+      const bucket = text(row.bucket_id);
+      const path = text(row.name);
+      if (!bucket || !path || path.endsWith('/.emptyFolderPlaceholder') || path === '.emptyFolderPlaceholder') continue;
+      objects.push({
+        bucket,
+        path,
+        size: Number(row.metadata?.size || row.metadata?.contentLength || 0),
+        metadata: row.metadata || null,
+        created_at: row.created_at || null,
+        updated_at: row.updated_at || null,
+        last_accessed_at: row.last_accessed_at || null
+      });
+      if (objects.length >= maxObjects) break;
+    }
+
+    if (rows.length < limit) break;
+    from += limit;
+  }
+
+  return objects;
+}
+
+function groupStorageObjectsByBucket(objects) {
+  const grouped = new Map();
+  for (const object of objects || []) {
+    const bucket = text(object.bucket);
+    if (!bucket) continue;
+    if (!grouped.has(bucket)) grouped.set(bucket, []);
+    grouped.get(bucket).push(object);
+  }
+  return grouped;
+}
+
 async function exportStorageFiles(supabaseAdmin, manifest) {
   const zipFiles = [];
   const maxBytes = Number(process.env.BACKUP_MAX_STORAGE_BYTES || DEFAULT_MAX_STORAGE_BYTES);
@@ -237,17 +296,44 @@ async function exportStorageFiles(supabaseAdmin, manifest) {
   const { data: buckets, error } = await supabaseAdmin.storage.listBuckets();
   if (error) throw new Error(`Unable to list Storage buckets: ${error.message || error}`);
 
+  const bucketMap = new Map();
   for (const bucket of buckets || []) {
     const bucketName = text(bucket.name || bucket.id);
-    if (!bucketName) continue;
-    let files = [];
-    try {
-      files = await listBucketFiles(supabaseAdmin, bucketName);
-    } catch (error) {
-      skipped.push({ bucket: bucketName, reason: error.message || String(error) });
-      continue;
-    }
+    if (bucketName) bucketMap.set(bucketName, bucket);
+  }
 
+  let groupedFiles = new Map();
+  try {
+    const metadataObjects = await listStorageObjectsFromMetadata(supabaseAdmin);
+    groupedFiles = groupStorageObjectsByBucket(metadataObjects);
+    manifest.storage.list_mode = 'storage.objects metadata';
+    manifest.storage.inventory = metadataObjects.map(item => ({
+      bucket: item.bucket,
+      path: item.path,
+      size: item.size,
+      created_at: item.created_at,
+      updated_at: item.updated_at
+    }));
+  } catch (metadataError) {
+    manifest.storage.list_mode = 'Storage API recursive fallback';
+    manifest.storage.metadata_list_error = metadataError.message || String(metadataError);
+    for (const bucket of buckets || []) {
+      const bucketName = text(bucket.name || bucket.id);
+      if (!bucketName) continue;
+      try {
+        groupedFiles.set(bucketName, await listBucketFiles(supabaseAdmin, bucketName));
+      } catch (error) {
+        skipped.push({ bucket: bucketName, reason: error.message || String(error) });
+      }
+    }
+  }
+
+  for (const [bucketName, files] of groupedFiles.entries()) {
+    if (!bucketMap.has(bucketName)) bucketMap.set(bucketName, { name: bucketName, public: null });
+  }
+
+  for (const [bucketName, bucket] of bucketMap.entries()) {
+    const files = groupedFiles.get(bucketName) || [];
     manifest.storage.buckets.push({ bucket: bucketName, file_count: files.length, public: Boolean(bucket.public) });
 
     for (const file of files) {
@@ -268,6 +354,7 @@ async function exportStorageFiles(supabaseAdmin, manifest) {
     }
   }
 
+  zipFiles.push({ name: 'storage/storage_inventory.json', data: JSON.stringify(manifest.storage.inventory || manifest.storage.files || [], null, 2) });
   manifest.storage.total_file_bytes = totalBytes;
   manifest.storage.skipped = skipped;
   return zipFiles;
@@ -331,7 +418,8 @@ export default async function handler(req, res) {
       generated_by: auth.email || auth.userId || auth.type,
       notes: [
         'This one-click backup includes public ERP table data as JSON plus Supabase Storage bucket files.',
-        'It is not a pg_dump replacement for roles, RLS policies, functions, or extensions. Keep manual CLI backups for full disaster recovery.'
+        'It is not a pg_dump replacement for roles, RLS policies, functions, or extensions. Keep manual CLI backups for full disaster recovery.',
+        'Storage files are listed from storage.objects metadata first, so proposal/agreement buckets include all object paths instead of only the latest document path saved in public tables.'
       ],
       database: {
         format: 'json',
