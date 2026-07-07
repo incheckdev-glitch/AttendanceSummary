@@ -91,3 +91,9 @@
 .dark .hr-receipt-title { color:#e5e7eb; }
 .dark .hr-receipt-note { background:#0f172a; }
 @media print { #hrSalaryReceiptPreview, #hrSalaryReceiptPreview * { visibility:visible; } #hrSalaryReceiptPreview { position:absolute; left:0; top:0; width:100%; border:0; box-shadow:none; } }
+
+/* HR documents + employee statement update */
+.hr-statement-print { border:1px solid rgba(148,163,184,0.22); border-radius:18px; padding:22px; background:#fff; max-width:1100px; margin:auto; }
+.hr-document-file-meta { display:flex; flex-direction:column; gap:4px; }
+.dark .hr-statement-print { background:#101827; border-color:rgba(148,163,184,0.22); color:#e5e7eb; }
+@media print { #hrEmployeeStatementPrint, #hrEmployeeStatementPrint * { visibility:visible; } #hrEmployeeStatementPrint { position:absolute; left:0; top:0; width:100%; border:0; box-shadow:none; } }

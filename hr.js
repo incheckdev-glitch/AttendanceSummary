@@ -40,6 +40,9 @@
     hrNotifications: 'hr_notifications'
   };
 
+  const HR_DOCUMENTS_BUCKET = 'hr-employee-documents';
+  const MAX_DOCUMENT_PDF_SIZE = 10 * 1024 * 1024;
+
   const state = {
     initialized: false,
     activeTab: 'dashboard',
@@ -52,7 +55,7 @@
       attendanceDate: today(), attendanceDepartment: 'all',
       leaveStatus: 'all', balanceYear: String(new Date().getFullYear()),
       holidayYear: String(new Date().getFullYear()), payrollMonth: currentMonth(),
-      payslipRunId: '', receiptMonth: currentMonth(), receiptEmployee: 'all', receiptFrom: '', receiptTo: '', documentStatus: 'all'
+      payslipRunId: '', receiptMonth: currentMonth(), receiptEmployee: 'all', receiptFrom: '', receiptTo: '', documentStatus: 'all', statementStatus: 'All'
     },
     employees: [], shifts: [], attendance: [], leaveRequests: [], leaveTypes: [], leaveBalances: [], holidays: [],
     payrollRuns: [], payrollItems: [], salaryReceipts: [], documents: [], hrNotifications: []
@@ -336,6 +339,38 @@
     return { paid, remaining: 0, status: 'paid' };
   }
 
+
+  function displayPaymentStatus(item) {
+    const rs = receiptStatus(item);
+    if (rs.status === 'paid') return 'Paid';
+    if (rs.status === 'partial') return 'Partially Paid';
+    return 'Unpaid';
+  }
+
+  function payrollMonthDate(month) {
+    const value = String(month || '').slice(0, 7);
+    return /^\d{4}-\d{2}$/.test(value) ? `${value}-01` : today();
+  }
+
+  function documentTitle(row) {
+    return row?.document_title || row?.document_name || row?.document_type || 'Employee Document';
+  }
+
+  function documentExpiryStatus(row) {
+    if (norm(row?.status) === 'missing') return 'missing';
+    const expiry = String(row?.expiry_date || '').slice(0, 10);
+    if (!expiry) return row?.file_path || row?.file_url ? 'valid' : (row?.status || 'valid');
+    const now = today();
+    if (expiry < now) return 'expired';
+    const warning = isoDate(addDays(dateObj(now), 30));
+    if (expiry <= warning) return 'expiring soon';
+    return row?.status || 'valid';
+  }
+
+  function documentFileStatus(row) {
+    return row?.file_path || row?.file_url ? 'PDF uploaded' : 'No file uploaded';
+  }
+
   function receiptNo() {
     const max = state.salaryReceipts.reduce((highest, row) => {
       const match = String(row.receipt_no || '').match(/(\d+)$/);
@@ -397,7 +432,7 @@
         </div>
       </div>
       <nav class="hr-tabs" aria-label="HR sections">
-        ${['dashboard','employees','attendance','leaves','leave_balances','holidays','payroll','payslips','salary_receipts','documents','settings'].map(tab => `<button type="button" class="${state.activeTab === tab ? 'active' : ''}" data-hr-tab="${tab}">${tabLabel(tab)}</button>`).join('')}
+        ${['dashboard','employees','attendance','leaves','leave_balances','holidays','payroll','payslips','salary_receipts','employee_statement','documents','settings'].map(tab => `<button type="button" class="${state.activeTab === tab ? 'active' : ''}" data-hr-tab="${tab}">${tabLabel(tab)}</button>`).join('')}
       </nav>
       ${globalFilterBar()}
       <div id="hrSummary" class="hr-summary-grid"></div>
@@ -409,7 +444,7 @@
   }
 
   function tabLabel(tab) {
-    return ({ dashboard:'Dashboard', employees:'Employees', attendance:'Attendance', leaves:'Leave Management', leave_balances:'Leave Balance', holidays:'Holidays Calendar', payroll:'Monthly Payroll', payslips:'Payslips', salary_receipts:'Salary Receipts', documents:'Documents', settings:'HR Settings' })[tab] || tab;
+    return ({ dashboard:'Dashboard', employees:'Employees', attendance:'Attendance', leaves:'Leave Management', leave_balances:'Leave Balance', holidays:'Holidays Calendar', payroll:'Monthly Payroll', payslips:'Payslips', salary_receipts:'Salary Receipts', employee_statement:'Employee Statement', documents:'Documents', settings:'HR Settings' })[tab] || tab;
   }
 
   function renderSummary() {
@@ -427,7 +462,7 @@
   function renderBody() {
     const body = $('hrBody');
     if (!body) return;
-    const renderers = { dashboard: renderDashboard, employees: renderEmployees, attendance: renderAttendance, leaves: renderLeaves, leave_balances: renderLeaveBalances, holidays: renderHolidays, payroll: renderPayroll, payslips: renderPayslips, salary_receipts: renderSalaryReceipts, documents: renderDocuments, settings: renderSettings };
+    const renderers = { dashboard: renderDashboard, employees: renderEmployees, attendance: renderAttendance, leaves: renderLeaves, leave_balances: renderLeaveBalances, holidays: renderHolidays, payroll: renderPayroll, payslips: renderPayslips, salary_receipts: renderSalaryReceipts, employee_statement: renderEmployeeStatement, documents: renderDocuments, settings: renderSettings };
     body.innerHTML = (renderers[state.activeTab] || renderDashboard)();
   }
 
@@ -747,14 +782,144 @@
     return `<tr><td><strong>${esc(row.receipt_no || '')}</strong></td><td>${esc(emp.full_name || '—')}<div class="muted">${esc(emp.employee_no || '')}</div></td><td>${esc(monthName(row.payroll_month))}</td><td>${fmtDate(row.payment_date)}</td><td>${money(row.amount, row.currency)}</td><td>${esc(row.payment_method || '')}</td><td>${esc(row.reference_no || '')}</td><td>${esc(row.notes || '')}</td><td><div class="hr-row-actions"><button class="btn ghost xs" type="button" data-hr-print-receipt="${esc(row.id)}">Print</button><button class="btn ghost xs" type="button" data-hr-edit-receipt="${esc(row.id)}">Edit</button></div></td></tr>`;
   }
 
+
+  function statementStatusFilterMatches(item) {
+    const wanted = state.filters.statementStatus || 'All';
+    if (wanted === 'All') return true;
+    return norm(displayPaymentStatus(item)) === norm(wanted);
+  }
+
+  function buildEmployeeStatementRows() {
+    const rows = [];
+    state.payrollItems.forEach(item => {
+      const run = state.payrollRuns.find(row => String(row.id) === String(item.run_id)) || {};
+      const emp = getEmployee(item.employee_id) || {};
+      if (!matchesGlobalEmployee(item.employee_id)) return;
+      if (!statementStatusFilterMatches(item)) return;
+      const generatedDate = payrollMonthDate(run.payroll_month || item.payroll_month);
+      if (!dateOverlapsGlobal(generatedDate)) return;
+      rows.push({
+        employee_id: item.employee_id,
+        employee: emp.full_name || '—',
+        employee_no: emp.employee_no || '',
+        date: generatedDate,
+        reference: `PAY-${run.payroll_month || ''}`,
+        source_table: 'hr_payroll_items',
+        source_id: item.id,
+        type: 'Salary Generated',
+        description: `Monthly salary generated for ${monthName(run.payroll_month)}`,
+        debit: num(item.net_salary),
+        credit: 0,
+        currency: item.currency || emp.currency || 'USD',
+        payroll_month: run.payroll_month || '',
+        status: displayPaymentStatus(item),
+        sort: `${generatedDate}-0-${item.created_at || ''}`
+      });
+    });
+    state.salaryReceipts.forEach(receipt => {
+      const item = state.payrollItems.find(row => String(row.id) === String(receipt.payroll_item_id)) || {};
+      const empId = receipt.employee_id || item.employee_id;
+      const emp = getEmployee(empId) || {};
+      if (!matchesGlobalEmployee(empId)) return;
+      const relatedStatus = item.id ? displayPaymentStatus(item) : 'Paid';
+      const wanted = state.filters.statementStatus || 'All';
+      if (wanted !== 'All' && norm(relatedStatus) !== norm(wanted)) return;
+      const paymentDate = String(receipt.payment_date || receipt.created_at || today()).slice(0, 10);
+      if (!dateOverlapsGlobal(paymentDate)) return;
+      rows.push({
+        employee_id: empId,
+        employee: emp.full_name || '—',
+        employee_no: emp.employee_no || '',
+        date: paymentDate,
+        reference: receipt.receipt_no || 'SALARY-RECEIPT',
+        source_table: 'hr_salary_receipts',
+        source_id: receipt.id,
+        type: 'Salary Payment',
+        description: `Salary receipt/payment for ${monthName(receipt.payroll_month || item.payroll_month)}`,
+        debit: 0,
+        credit: num(receipt.amount),
+        currency: receipt.currency || item.currency || emp.currency || 'USD',
+        payroll_month: receipt.payroll_month || '',
+        status: relatedStatus,
+        sort: `${paymentDate}-1-${receipt.created_at || ''}`
+      });
+    });
+    const byEmployee = new Map();
+    rows.sort((a,b) => String(a.employee).localeCompare(String(b.employee)) || String(a.sort).localeCompare(String(b.sort)) || String(a.reference).localeCompare(String(b.reference)));
+    rows.forEach(row => {
+      const key = String(row.employee_id || '');
+      const balance = (byEmployee.get(key) || 0) + num(row.debit) - num(row.credit);
+      byEmployee.set(key, balance);
+      row.balance = Number(balance.toFixed(2));
+    });
+    return rows;
+  }
+
+  function statementTotals(rows) {
+    const totalGenerated = rows.reduce((sum, row) => sum + num(row.debit), 0);
+    const totalPaid = rows.reduce((sum, row) => sum + num(row.credit), 0);
+    const relevantItems = state.payrollItems.filter(item => matchesGlobalEmployee(item.employee_id) && statementStatusFilterMatches(item) && dateOverlapsGlobal(payrollMonthDate((state.payrollRuns.find(run => String(run.id) === String(item.run_id)) || {}).payroll_month)));
+    const paidMonths = relevantItems.filter(item => receiptStatus(item).status === 'paid').length;
+    const openMonths = relevantItems.filter(item => receiptStatus(item).status !== 'paid').length;
+    const currency = rows.find(row => row.currency)?.currency || 'USD';
+    return { totalGenerated, totalPaid, remaining: totalGenerated - totalPaid, paidMonths, openMonths, currency };
+  }
+
+  function renderEmployeeStatement() {
+    const rows = buildEmployeeStatementRows();
+    const totals = statementTotals(rows);
+    return `<section class="hr-panel"><div class="hr-panel-head"><div><h3>Employee Statement of Account</h3><p class="muted">Salary generated is Debit. Salary receipts/payments are Credit. Balance is salary still unpaid by employee.</p></div><div class="hr-toolbar"><button class="btn ghost sm" type="button" data-hr-print-statement>Print Statement</button><button class="btn ghost sm" type="button" data-hr-export-statement>Export CSV</button><button class="btn sm" type="button" id="hrRefreshBtn">Refresh</button></div></div><div class="hr-filter-grid"><label><span class="muted">Status</span><select id="hrStatementStatusFilter" class="select">${['All','Paid','Partially Paid','Unpaid'].map(status => `<option value="${status}" ${state.filters.statementStatus === status ? 'selected' : ''}>${status}</option>`).join('')}</select></label><label><span class="muted">Employee</span><input class="input" readonly value="${esc(state.filters.globalEmployee === 'all' ? 'All employees' : (getEmployee(state.filters.globalEmployee)?.full_name || 'Selected'))}"></label><label><span class="muted">From</span><input class="input" readonly value="${esc(state.filters.globalFrom || 'Start')}"></label><label><span class="muted">To</span><input class="input" readonly value="${esc(state.filters.globalTo || 'Today')}"></label><label><span class="muted">Global filters</span><input class="input" readonly value="Use HR Filters above"></label></div><div class="hr-grid-3" style="margin-bottom:14px">${metric('Total Salary Generated', money(totals.totalGenerated, totals.currency), 'Debit')}${metric('Total Paid', money(totals.totalPaid, totals.currency), 'Credit')}${metric('Remaining Balance', money(totals.remaining, totals.currency), `${totals.paidMonths} paid · ${totals.openMonths} unpaid/partial`)}</div><div class="hr-table-wrap"><table class="hr-table"><thead><tr><th>Date</th><th>Reference</th><th>Employee</th><th>Type</th><th>Description</th><th>Debit</th><th>Credit</th><th>Balance</th><th>Status</th><th>Actions</th></tr></thead><tbody>${rows.length ? rows.map(statementRow).join('') : `<tr><td colspan="10">${empty('No salary statement rows match the selected filters.')}</td></tr>`}</tbody></table></div></section>`;
+  }
+
+  function statementRow(row) {
+    const action = row.source_table === 'hr_payroll_items'
+      ? `<button class="btn ghost xs" type="button" data-hr-payslip-item="${esc(row.source_id)}">Open Payslip</button>`
+      : `<button class="btn ghost xs" type="button" data-hr-print-receipt="${esc(row.source_id)}">Open Receipt</button>`;
+    return `<tr><td>${fmtDate(row.date)}</td><td><strong>${esc(row.reference)}</strong></td><td>${esc(row.employee)}<div class="muted">${esc(row.employee_no)}</div></td><td>${esc(row.type)}</td><td>${esc(row.description)}</td><td>${row.debit ? money(row.debit, row.currency) : '—'}</td><td>${row.credit ? money(row.credit, row.currency) : '—'}</td><td><strong>${money(row.balance, row.currency)}</strong></td><td>${statusChip(row.status)}</td><td>${action}</td></tr>`;
+  }
+
+  function employeeStatementHtml(rows = buildEmployeeStatementRows()) {
+    const totals = statementTotals(rows);
+    const empLabel = state.filters.globalEmployee === 'all' ? 'All employees' : (getEmployee(state.filters.globalEmployee)?.full_name || 'Selected employee');
+    return `<div id="hrEmployeeStatementPrint" class="hr-statement-print"><div class="hr-receipt-header"><div><div class="hr-receipt-title">Employee Statement of Account</div><div class="muted">InCheck360 HR & Payroll</div></div><div style="text-align:right"><strong>${esc(empLabel)}</strong><div class="muted">${esc(globalRangeLabel())}</div><div class="muted">Generated ${fmtDate(today())} · ${esc(authName())}</div></div></div><div class="hr-grid-3" style="margin-bottom:14px">${metric('Salary Generated', money(totals.totalGenerated, totals.currency), 'Debit')}${metric('Paid', money(totals.totalPaid, totals.currency), 'Credit')}${metric('Remaining', money(totals.remaining, totals.currency), 'Balance')}</div><table class="hr-payslip-table"><thead><tr><th>Date</th><th>Reference</th><th>Employee</th><th>Type</th><th>Description</th><th>Debit</th><th>Credit</th><th>Balance</th><th>Status</th></tr></thead><tbody>${rows.map(row => `<tr><td>${fmtDate(row.date)}</td><td>${esc(row.reference)}</td><td>${esc(row.employee)}</td><td>${esc(row.type)}</td><td>${esc(row.description)}</td><td>${row.debit ? money(row.debit, row.currency) : '—'}</td><td>${row.credit ? money(row.credit, row.currency) : '—'}</td><td>${money(row.balance, row.currency)}</td><td>${esc(row.status)}</td></tr>`).join('')}</tbody></table><div class="hr-receipt-footer">This statement is generated from HR payroll and salary receipts only. It is not a customer accounting statement.</div></div>`;
+  }
+
+  function printEmployeeStatement() {
+    const rows = buildEmployeeStatementRows();
+    if (!rows.length) return toast('No statement rows to print.');
+    const html = `<!DOCTYPE html><html><head><title>Employee Statement of Account</title><style>body{font-family:Inter,Arial,sans-serif;background:#f8fafc;padding:24px}.hr-statement-print{background:#fff;max-width:1100px;margin:auto;padding:28px;border:1px solid #cbd5e1;border-radius:18px}.hr-receipt-header{display:flex;justify-content:space-between;border-bottom:2px solid #0f172a;padding-bottom:14px;margin-bottom:14px}.hr-receipt-title{font-size:26px;font-weight:900}.muted{color:#64748b}.hr-grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.hr-metric{padding:12px;border:1px solid #e2e8f0;border-radius:12px}.hr-metric span{display:block;color:#64748b;font-size:12px;font-weight:800}.hr-metric strong{display:block;margin-top:6px;font-size:20px}.hr-metric small{display:block;color:#64748b}.hr-payslip-table{width:100%;border-collapse:collapse;margin-top:12px}.hr-payslip-table th,.hr-payslip-table td{padding:9px;border-bottom:1px solid #e2e8f0;text-align:left;font-size:12px}.hr-receipt-footer{margin-top:20px;color:#64748b;font-size:12px;text-align:center}@media print{body{background:#fff;padding:0}.hr-statement-print{border:0;border-radius:0;max-width:none}}</style></head><body>${employeeStatementHtml(rows)}</body></html>`;
+    const w = global.open('', '_blank');
+    if (!w) return toast('Popup blocked. Allow popups to print employee statement.');
+    w.document.write(html); w.document.close(); w.focus(); setTimeout(() => w.print(), 350);
+  }
+
+  function exportEmployeeStatementCsv() {
+    const rows = buildEmployeeStatementRows();
+    if (!rows.length) return toast('No statement rows to export.');
+    const columns = ['date','reference','employee_no','employee','type','description','debit','credit','balance','status','payroll_month'];
+    const csv = [columns.join(','), ...rows.map(row => columns.map(col => `"${String(row[col] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
+    const blob = new Blob([csv], { type:'text/csv;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob); link.download = `hr-employee-statement-${state.filters.globalFrom || 'start'}-${state.filters.globalTo || 'today'}.csv`; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(link.href);
+  }
+
   function renderDocuments() {
-    const rows = state.documents.filter(doc => matchesGlobalEmployee(doc.employee_id) && dateOverlapsGlobal(doc.expiry_date) && (state.filters.documentStatus === 'all' || norm(doc.status || 'valid') === state.filters.documentStatus));
-    return `<section class="hr-panel"><div class="hr-panel-head"><div><h3>Employee Documents</h3><p class="muted">Admin-managed employee documents and expiry tracking.</p></div><div class="hr-toolbar"><button class="btn sm" type="button" data-hr-action="new-document">Add Document</button></div></div><div class="hr-filter-grid"><select id="hrDocumentStatusFilter" class="select"><option value="all">All documents</option>${['valid','missing','expired'].map(s => `<option value="${s}" ${state.filters.documentStatus === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div><div class="hr-table-wrap"><table class="hr-table"><thead><tr><th>Employee</th><th>Type</th><th>Document</th><th>Expiry</th><th>Status</th><th>Notes</th><th>Actions</th></tr></thead><tbody>${rows.length ? rows.map(documentRow).join('') : `<tr><td colspan="7">${empty('No employee documents found.')}</td></tr>`}</tbody></table></div></section>`;
+    const rows = state.documents.filter(doc => {
+      const derived = documentExpiryStatus(doc);
+      if (!matchesGlobalEmployee(doc.employee_id)) return false;
+      if (!dateOverlapsGlobal(doc.expiry_date || doc.uploaded_at || doc.created_at)) return false;
+      if (state.filters.documentStatus === 'all') return true;
+      return norm(derived) === norm(state.filters.documentStatus);
+    });
+    return `<section class="hr-panel"><div class="hr-panel-head"><div><h3>Employee Documents</h3><p class="muted">Admin-managed employee documents, PDF upload, PDF view/download and expiry tracking.</p></div><div class="hr-toolbar"><button class="btn sm" type="button" data-hr-action="new-document">Add Document</button></div></div><div class="hr-filter-grid"><select id="hrDocumentStatusFilter" class="select"><option value="all">All documents</option>${['valid','expiring soon','missing','expired'].map(s => `<option value="${s}" ${state.filters.documentStatus === s ? 'selected' : ''}>${s}</option>`).join('')}</select></div><div class="hr-table-wrap"><table class="hr-table"><thead><tr><th>Employee</th><th>Type</th><th>Document</th><th>PDF</th><th>Expiry</th><th>Status</th><th>Notes</th><th>Actions</th></tr></thead><tbody>${rows.length ? rows.map(documentRow).join('') : `<tr><td colspan="8">${empty('No employee documents found.')}</td></tr>`}</tbody></table></div></section>`;
   }
 
   function documentRow(row) {
     const emp = getEmployee(row.employee_id) || {};
-    return `<tr><td><strong>${esc(emp.full_name || '—')}</strong><div class="muted">${esc(emp.employee_no || '')}</div></td><td>${esc(row.document_type || '—')}</td><td>${esc(row.document_name || '—')}</td><td>${fmtDate(row.expiry_date)}</td><td>${statusChip(row.status || 'valid')}</td><td>${esc(row.notes || '')}</td><td><button class="btn ghost xs" type="button" data-hr-edit-document="${esc(row.id)}">Edit</button></td></tr>`;
+    const hasPdf = Boolean(row.file_path || row.file_url);
+    const status = documentExpiryStatus(row);
+    const size = row.file_size ? `${(num(row.file_size) / 1024 / 1024).toFixed(2)} MB` : '';
+    return `<tr><td><strong>${esc(emp.full_name || '—')}</strong><div class="muted">${esc(emp.employee_no || '')}</div></td><td>${esc(row.document_type || '—')}</td><td><strong>${esc(documentTitle(row))}</strong><div class="muted">Issued ${fmtDate(row.issue_date)}${row.file_name ? ` · ${esc(row.file_name)}` : ''}</div></td><td>${hasPdf ? `<span class="hr-chip success">PDF uploaded</span><div class="muted">${esc(size)}${row.uploaded_at ? ` · ${fmtDate(row.uploaded_at)}` : ''}</div>` : `<span class="hr-chip warning">No file uploaded</span>`}</td><td>${fmtDate(row.expiry_date)}</td><td>${statusChip(status)}</td><td>${esc(row.notes || '')}</td><td><div class="hr-row-actions"><button class="btn ghost xs" type="button" data-hr-edit-document="${esc(row.id)}">Edit / Replace PDF</button>${hasPdf ? `<button class="btn ghost xs" type="button" data-hr-view-document="${esc(row.id)}">View PDF</button><button class="btn ghost xs" type="button" data-hr-download-document="${esc(row.id)}">Download</button><button class="btn ghost xs" type="button" data-hr-remove-document-pdf="${esc(row.id)}">Remove PDF</button>` : ''}</div></td></tr>`;
   }
 
   function renderSettings() {
@@ -799,7 +964,7 @@
   }
 
   function documentFields() {
-    return `<input type="hidden" id="hrDocumentId"><label>Employee<select id="hrDocumentEmployee" class="select" required>${employeeOptions()}</select></label><label>Document Type<select id="hrDocumentType" class="select"><option>Contract</option><option>ID / Passport</option><option>Work Permit</option><option>Certificate</option><option>NDA</option><option>Bank Details</option><option>Insurance</option><option>Other</option></select></label><label>Document Name<input id="hrDocumentName" class="input" required></label><label>Expiry Date<input id="hrDocumentExpiry" class="input" type="date"></label><label>Status<select id="hrDocumentStatus" class="select"><option value="valid">Valid</option><option value="missing">Missing</option><option value="expired">Expired</option></select></label><label class="full">Notes<textarea id="hrDocumentNotes" class="input"></textarea></label>`;
+    return `<input type="hidden" id="hrDocumentId"><label>Employee<select id="hrDocumentEmployee" class="select" required>${employeeOptions()}</select></label><label>Document Type<select id="hrDocumentType" class="select"><option>Contract</option><option>ID / Passport</option><option>Work Permit</option><option>Certificate</option><option>NDA</option><option>Bank Details</option><option>Insurance</option><option>Other</option></select></label><label>Document Title<input id="hrDocumentName" class="input" required></label><label>Issue Date<input id="hrDocumentIssue" class="input" type="date"></label><label>Expiry Date<input id="hrDocumentExpiry" class="input" type="date"></label><label>Status<select id="hrDocumentStatus" class="select"><option value="valid">Valid</option><option value="missing">Missing</option><option value="expired">Expired</option></select></label><label class="full">PDF File (optional, max 10 MB)<input id="hrDocumentPdf" class="input" type="file" accept="application/pdf,.pdf"><span class="muted">Only PDF files are accepted. Use Replace PDF from the document row to update an existing file.</span></label><label class="full">Notes<textarea id="hrDocumentNotes" class="input"></textarea></label>`;
   }
 
   function openModal(id) { const modal = $(id); if (modal) { modal.hidden = false; global.ModalScrollLock?.lock?.(); } }
@@ -961,20 +1126,112 @@
 
   function openDocumentModal(id = '') {
     renderRoot();
-    const row = state.documents.find(item => String(item.id) === String(id)) || { id:'', employee_id:'', document_type:'Contract', document_name:'', expiry_date:'', status:'valid', notes:'' };
-    setValue('hrDocumentId', row.id); setValue('hrDocumentEmployee', row.employee_id); setValue('hrDocumentType', row.document_type || 'Contract'); setValue('hrDocumentName', row.document_name); setValue('hrDocumentExpiry', row.expiry_date); setValue('hrDocumentStatus', row.status || 'valid'); setValue('hrDocumentNotes', row.notes || '');
+    const row = state.documents.find(item => String(item.id) === String(id)) || { id:'', employee_id:'', document_type:'Contract', document_name:'', document_title:'', issue_date:'', expiry_date:'', status:'valid', notes:'' };
+    setValue('hrDocumentId', row.id); setValue('hrDocumentEmployee', row.employee_id); setValue('hrDocumentType', row.document_type || 'Contract'); setValue('hrDocumentName', documentTitle(row)); setValue('hrDocumentIssue', row.issue_date || ''); setValue('hrDocumentExpiry', row.expiry_date || ''); setValue('hrDocumentStatus', row.status || 'valid'); setValue('hrDocumentNotes', row.notes || '');
+    const fileInput = $('hrDocumentPdf');
+    if (fileInput) fileInput.value = '';
     openModal('hrDocumentModal');
+  }
+
+  async function uploadDocumentPdf(documentId, employeeId, existing = {}) {
+    const input = $('hrDocumentPdf');
+    const file = input?.files?.[0];
+    if (!file) return {};
+    if (file.type !== 'application/pdf' && !String(file.name || '').toLowerCase().endsWith('.pdf')) {
+      toast('Only PDF files are allowed for employee documents.');
+      throw new Error('Invalid document file type');
+    }
+    if (file.size > MAX_DOCUMENT_PDF_SIZE) {
+      toast('PDF is too large. Maximum size is 10 MB.');
+      throw new Error('PDF file too large');
+    }
+    const supabase = client();
+    if (!supabase?.storage?.from) {
+      toast('Supabase Storage is unavailable. Run the HR document SQL migration and deploy with Supabase enabled.');
+      throw new Error('Supabase Storage unavailable');
+    }
+    if (existing.file_path) {
+      try { await supabase.storage.from(HR_DOCUMENTS_BUCKET).remove([existing.file_path]); }
+      catch (error) { console.warn('[HR] old PDF removal failed', error); }
+    }
+    const safeName = String(file.name || 'document.pdf').replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'document.pdf';
+    const path = `hr-documents/${employeeId}/${documentId}/${Date.now()}-${safeName}`;
+    const { data, error } = await supabase.storage.from(HR_DOCUMENTS_BUCKET).upload(path, file, { contentType: 'application/pdf', upsert: true });
+    if (error) {
+      console.warn('[HR] PDF upload failed', error);
+      toast('PDF upload failed. Make sure the hr-employee-documents bucket/migration exists.');
+      throw error;
+    }
+    let uploadedBy = null;
+    try { uploadedBy = (await supabase.auth?.getUser?.())?.data?.user?.id || null; } catch {}
+    return {
+      file_name: file.name,
+      file_path: data?.path || path,
+      file_mime_type: 'application/pdf',
+      file_size: file.size,
+      uploaded_at: new Date().toISOString(),
+      uploaded_by: uploadedBy
+    };
   }
 
   async function saveDocument(event) {
     event.preventDefault();
     const id = value('hrDocumentId') || uid('doc');
     const existing = state.documents.find(row => row.id === id) || {};
-    const row = { ...existing, id, employee_id: value('hrDocumentEmployee'), document_type: value('hrDocumentType'), document_name: value('hrDocumentName'), expiry_date: value('hrDocumentExpiry') || null, status: value('hrDocumentStatus') || 'valid', notes: value('hrDocumentNotes'), updated_at: new Date().toISOString(), created_at: existing.created_at || new Date().toISOString() };
+    const employeeId = value('hrDocumentEmployee');
+    if (!employeeId) return toast('Select an employee first.');
+    let pdfMeta = {};
+    try { pdfMeta = await uploadDocumentPdf(id, employeeId, existing); }
+    catch { return; }
+    const title = value('hrDocumentName');
+    const row = { ...existing, ...pdfMeta, id, employee_id: employeeId, document_type: value('hrDocumentType'), document_name: title, document_title: title, issue_date: value('hrDocumentIssue') || null, expiry_date: value('hrDocumentExpiry') || null, status: value('hrDocumentStatus') || 'valid', notes: value('hrDocumentNotes'), updated_at: new Date().toISOString(), created_at: existing.created_at || new Date().toISOString() };
     const index = state.documents.findIndex(item => item.id === id);
     if (index >= 0) state.documents[index] = row; else state.documents.unshift(row);
     await syncUpsert(TABLES.documents, row);
-    closeModals(); renderRoot(); toast('Document saved.');
+    closeModals(); renderRoot(); toast(pdfMeta.file_path ? 'Document and PDF saved.' : 'Document saved.');
+  }
+
+  async function signedDocumentUrl(row, download = false) {
+    if (row.file_url) return row.file_url;
+    if (!row.file_path) return '';
+    const supabase = client();
+    if (!supabase?.storage?.from) throw new Error('Supabase Storage unavailable');
+    const options = download ? { download: row.file_name || 'employee-document.pdf' } : undefined;
+    const { data, error } = await supabase.storage.from(HR_DOCUMENTS_BUCKET).createSignedUrl(row.file_path, 300, options);
+    if (error) throw error;
+    return data?.signedUrl || '';
+  }
+
+  async function openDocumentPdf(id, download = false) {
+    const row = state.documents.find(item => String(item.id) === String(id));
+    if (!row?.file_path && !row?.file_url) return toast('No PDF uploaded for this document.');
+    try {
+      const url = await signedDocumentUrl(row, download);
+      if (!url) return toast('Could not create PDF link.');
+      if (download) {
+        const link = document.createElement('a');
+        link.href = url; link.download = row.file_name || `${documentTitle(row)}.pdf`; document.body.appendChild(link); link.click(); link.remove();
+      } else {
+        global.open(url, '_blank');
+      }
+    } catch (error) {
+      console.warn('[HR] PDF open/download failed', error);
+      toast('Could not open PDF. Run the latest HR document migration and check Storage policies.');
+    }
+  }
+
+  async function removeDocumentPdf(id) {
+    const row = state.documents.find(item => String(item.id) === String(id));
+    if (!row) return;
+    if (!confirm('Remove the uploaded PDF from this employee document?')) return;
+    const supabase = client();
+    if (row.file_path && supabase?.storage?.from) {
+      try { await supabase.storage.from(HR_DOCUMENTS_BUCKET).remove([row.file_path]); }
+      catch (error) { console.warn('[HR] PDF storage removal failed', error); }
+    }
+    Object.assign(row, { file_name:null, file_path:null, file_url:null, file_mime_type:null, file_size:null, uploaded_at:null, uploaded_by:null, updated_at:new Date().toISOString() });
+    await syncUpsert(TABLES.documents, row);
+    renderRoot(); toast('PDF removed from document.');
   }
 
   async function saveShift(event) {
@@ -1092,6 +1349,14 @@
       if (printId) printPayslip(printId);
       const editDoc = event.target.closest?.('[data-hr-edit-document]')?.dataset.hrEditDocument;
       if (editDoc) openDocumentModal(editDoc);
+      const viewDoc = event.target.closest?.('[data-hr-view-document]')?.dataset.hrViewDocument;
+      if (viewDoc) await openDocumentPdf(viewDoc, false);
+      const downloadDoc = event.target.closest?.('[data-hr-download-document]')?.dataset.hrDownloadDocument;
+      if (downloadDoc) await openDocumentPdf(downloadDoc, true);
+      const removeDocPdf = event.target.closest?.('[data-hr-remove-document-pdf]')?.dataset.hrRemoveDocumentPdf;
+      if (removeDocPdf) await removeDocumentPdf(removeDocPdf);
+      if (event.target.closest?.('[data-hr-print-statement]')) printEmployeeStatement();
+      if (event.target.closest?.('[data-hr-export-statement]')) exportEmployeeStatementCsv();
     });
     document.addEventListener('input', event => {
       if (event.target.id === 'hrEmployeeSearch') { state.filters.employeeSearch = event.target.value; renderBody(); }
@@ -1115,6 +1380,7 @@
       if (id === 'hrReceiptFrom') { state.filters.receiptFrom = event.target.value || ''; renderBody(); }
       if (id === 'hrReceiptTo') { state.filters.receiptTo = event.target.value || ''; renderBody(); }
       if (id === 'hrDocumentStatusFilter') { state.filters.documentStatus = event.target.value; renderBody(); }
+      if (id === 'hrStatementStatusFilter') { state.filters.statementStatus = event.target.value || 'All'; renderBody(); }
     });
     document.addEventListener('submit', event => {
       if (event.target.id === 'hrEmployeeForm') saveEmployee(event);
