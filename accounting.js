@@ -63,7 +63,7 @@
       advancedSearch: '', expenseFrom: '', expenseTo: '', expenseStatus: 'all', deferredStatus: 'pending', reconciliationAccountId: 'all', reconciliationDate: today(), statementBalance: '', vendorSearch: '', vendorStatus: 'all', vendorBillStatus: 'all', vendorPaymentStatus: 'all'
     },
     accounts: [], bankAccounts: [], journals: [], journalLines: [], ledgerEntries: [],
-    taxRates: [], expenses: [], costCenters: [], closingPeriods: [], revenueSchedules: [], bankReconciliations: [], auditLog: [], vendors: [], vendorBills: [], vendorPayments: [], vendors: [], vendorBills: [], vendorPayments: [],
+    taxRates: [], expenses: [], costCenters: [], closingPeriods: [], revenueSchedules: [], bankReconciliations: [], auditLog: [], vendors: [], vendorBills: [], vendorPayments: [],
     sources: { invoices: [], receipts: [], creditNotes: [], binersSchedules: [], payrollItems: [], salaryReceipts: [], hrEmployees: [] }
   };
 
@@ -758,6 +758,15 @@
 
   function vendorById(id) { return state.vendors.find(vendor => vendor.id === id) || null; }
   function vendorName(id) { return vendorById(id)?.vendor_name || '—'; }
+  function expenseVendorDisplay(row = {}) {
+    const linkedVendor = vendorById(row.vendor_id);
+    return linkedVendor?.vendor_name || row.vendor_name || '—';
+  }
+  function expenseVendorId(row = {}) {
+    if (row.vendor_id) return row.vendor_id;
+    const legacyName = norm(row.vendor_name);
+    return state.vendors.find(v => norm(v.vendor_name) === legacyName)?.id || '';
+  }
   function vendorOptions(selected = '') {
     const rows = state.vendors.filter(v => v.is_active !== false).sort((a,b)=>String(a.vendor_name||'').localeCompare(String(b.vendor_name||'')));
     return '<option value="">Select vendor / supplier</option>' + rows.map(v => `<option value="${esc(v.id)}" ${v.id === selected ? 'selected' : ''}>${esc(v.vendor_code || '')} · ${esc(v.vendor_name || '')}</option>`).join('');
@@ -1428,7 +1437,7 @@
       if (state.filters.expenseStatus !== 'all' && norm(row.payment_status || row.status || 'draft') !== state.filters.expenseStatus) return false;
       if (state.filters.expenseFrom && date < state.filters.expenseFrom) return false;
       if (state.filters.expenseTo && date > state.filters.expenseTo) return false;
-      if (search && !norm([row.expense_no,row.vendor_name,row.category,row.description,row.payment_status].join(' ')).includes(search)) return false;
+      if (search && !norm([row.expense_no,expenseVendorDisplay(row),row.vendor_name,row.category,row.description,row.payment_status].join(' ')).includes(search)) return false;
       return true;
     }).sort((a,b)=>String(b.expense_date || '').localeCompare(String(a.expense_date || '')));
   }
@@ -1444,7 +1453,7 @@
       <div class="accounting-form-grid">
         <label class="accounting-field">Expense No.<input id="accountingExpenseNo" value="${esc(nextExpenseNo())}" /></label>
         <label class="accounting-field">Date<input id="accountingExpenseDate" type="date" value="${esc(today())}" /></label>
-        <label class="accounting-field">Vendor<input id="accountingExpenseVendor" placeholder="Vendor / supplier" /></label>
+        <label class="accounting-field">Vendor / Supplier<select id="accountingExpenseVendorId" required>${vendorOptions('')}</select><span class="muted">Create suppliers in Vendors / Suppliers first.</span></label>
         <label class="accounting-field">Category<input id="accountingExpenseCategory" placeholder="Hosting, office, travel..." /></label>
         <label class="accounting-field">Expense Account<select id="accountingExpenseAccount">${accountOptions(accountByCode('5400')?.id || '', true)}</select></label>
         <label class="accounting-field">Cost Center<select id="accountingExpenseCostCenter">${costCenterOptions('')}</select></label>
@@ -1460,7 +1469,7 @@
 
   function renderExpensesTable(rows) {
     if (!rows.length) return '<div class="accounting-empty">No expenses match the filters.</div>';
-    return `<div class="accounting-table-wrap"><table class="accounting-table"><thead><tr><th>No.</th><th>Date</th><th>Vendor</th><th>Category</th><th>Status</th><th class="num">Net</th><th class="num">Tax</th><th class="num">Total</th><th>Journal</th><th>Actions</th></tr></thead><tbody>${rows.map(row=>`<tr><td><strong>${esc(row.expense_no)}</strong></td><td>${fmtDate(row.expense_date)}</td><td>${esc(row.vendor_name || '—')}</td><td>${esc(row.category || '—')}</td><td><span class="accounting-badge ${esc(norm(row.payment_status || row.status || 'draft'))}">${esc(row.payment_status || row.status || 'draft')}</span></td><td class="num">${money(row.amount,row.currency)}</td><td class="num">${money(row.tax_amount,row.currency)}</td><td class="num">${money(row.total_amount || row.amount,row.currency)}</td><td>${esc(state.journals.find(j=>j.id===row.journal_id)?.journal_no || '—')}</td><td><button class="btn ghost sm" type="button" data-accounting-edit-expense="${esc(row.id)}">Edit</button> ${row.journal_id ? '<span class="muted">Posted</span>' : `<button class="btn sm" type="button" data-accounting-post-expense="${esc(row.id)}">Post</button>`}</td></tr>`).join('')}</tbody></table></div>`;
+    return `<div class="accounting-table-wrap"><table class="accounting-table"><thead><tr><th>No.</th><th>Date</th><th>Vendor</th><th>Category</th><th>Status</th><th class="num">Net</th><th class="num">Tax</th><th class="num">Total</th><th>Journal</th><th>Actions</th></tr></thead><tbody>${rows.map(row=>`<tr><td><strong>${esc(row.expense_no)}</strong></td><td>${fmtDate(row.expense_date)}</td><td>${esc(expenseVendorDisplay(row))}</td><td>${esc(row.category || '—')}</td><td><span class="accounting-badge ${esc(norm(row.payment_status || row.status || 'draft'))}">${esc(row.payment_status || row.status || 'draft')}</span></td><td class="num">${money(row.amount,row.currency)}</td><td class="num">${money(row.tax_amount,row.currency)}</td><td class="num">${money(row.total_amount || row.amount,row.currency)}</td><td>${esc(state.journals.find(j=>j.id===row.journal_id)?.journal_no || '—')}</td><td><button class="btn ghost sm" type="button" data-accounting-edit-expense="${esc(row.id)}">Edit</button> ${row.journal_id ? '<span class="muted">Posted</span>' : `<button class="btn sm" type="button" data-accounting-post-expense="${esc(row.id)}">Post</button>`}</td></tr>`).join('')}</tbody></table></div>`;
   }
 
   async function saveExpenseForm() {
@@ -1469,15 +1478,17 @@
     const taxRate = state.taxRates.find(t => t.id === $('accountingExpenseTaxRate')?.value);
     const amount = num($('accountingExpenseAmount')?.value);
     const taxAmount = Number((amount * num(taxRate?.tax_rate) / 100).toFixed(2));
+    const vendorId = $('accountingExpenseVendorId')?.value || existing.vendor_id || '';
+    const selectedVendor = vendorById(vendorId);
     const row = {
       ...existing, id, expense_no: $('accountingExpenseNo')?.value?.trim() || existing.expense_no || nextExpenseNo(), expense_date: $('accountingExpenseDate')?.value || today(),
-      vendor_name: $('accountingExpenseVendor')?.value?.trim() || '', category: $('accountingExpenseCategory')?.value?.trim() || '', description: $('accountingExpenseDescription')?.value?.trim() || '',
-      expense_account_id: $('accountingExpenseAccount')?.value || accountByCode('5400')?.id || null, cost_center_id: $('accountingExpenseCostCenter')?.value || null,
+      vendor_id: vendorId || null, vendor_name: selectedVendor?.vendor_name || existing.vendor_name || '', category: $('accountingExpenseCategory')?.value?.trim() || '', description: $('accountingExpenseDescription')?.value?.trim() || '',
+      expense_account_id: $('accountingExpenseAccount')?.value || selectedVendor?.default_expense_account_id || accountByCode('5400')?.id || null, cost_center_id: $('accountingExpenseCostCenter')?.value || null,
       amount, tax_rate_id: taxRate?.id || null, tax_amount: taxAmount, total_amount: Number((amount + taxAmount).toFixed(2)), currency: ($('accountingExpenseCurrency')?.value || 'USD').trim().toUpperCase(),
       payment_status: $('accountingExpenseStatusInput')?.value || 'draft', payment_account_id: $('accountingExpenseBankAccount')?.value || defaultBankAccount()?.id || null,
       created_by: existing.created_by || authName(), created_at: existing.created_at || new Date().toISOString(), updated_at: new Date().toISOString()
     };
-    if (!row.vendor_name) return toast('Vendor is required.');
+    if (!row.vendor_id) return toast('Vendor / Supplier is required. Create it first in Vendors / Suppliers.');
     if (row.amount <= 0) return toast('Expense amount must be above zero.');
     await persistRow('expenses', TABLES.expenses, row);
     await recordAudit('save_expense', 'expense', row.id, `Saved expense ${row.expense_no}.`, { amount: row.total_amount, status: row.payment_status });
@@ -1487,7 +1498,7 @@
   function editExpense(id) {
     const row = state.expenses.find(item => item.id === id); if (!row) return;
     state.activeTab = 'advanced'; state.activeAdvancedTab = 'expenses'; render();
-    $('accountingExpenseId').value = row.id; $('accountingExpenseNo').value = row.expense_no || ''; $('accountingExpenseDate').value = dateKey(row.expense_date) || today(); $('accountingExpenseVendor').value = row.vendor_name || ''; $('accountingExpenseCategory').value = row.category || ''; $('accountingExpenseAccount').value = row.expense_account_id || accountByCode('5400')?.id || ''; $('accountingExpenseCostCenter').value = row.cost_center_id || ''; $('accountingExpenseAmount').value = row.amount || 0; $('accountingExpenseTaxRate').value = row.tax_rate_id || ''; $('accountingExpenseCurrency').value = row.currency || 'USD'; $('accountingExpenseStatusInput').value = row.payment_status || 'draft'; $('accountingExpenseBankAccount').value = row.payment_account_id || ''; $('accountingExpenseDescription').value = row.description || '';
+    $('accountingExpenseId').value = row.id; $('accountingExpenseNo').value = row.expense_no || ''; $('accountingExpenseDate').value = dateKey(row.expense_date) || today(); $('accountingExpenseVendorId').value = expenseVendorId(row); $('accountingExpenseCategory').value = row.category || ''; $('accountingExpenseAccount').value = row.expense_account_id || accountByCode('5400')?.id || ''; $('accountingExpenseCostCenter').value = row.cost_center_id || ''; $('accountingExpenseAmount').value = row.amount || 0; $('accountingExpenseTaxRate').value = row.tax_rate_id || ''; $('accountingExpenseCurrency').value = row.currency || 'USD'; $('accountingExpenseStatusInput').value = row.payment_status || 'draft'; $('accountingExpenseBankAccount').value = row.payment_account_id || ''; $('accountingExpenseDescription').value = row.description || '';
   }
 
   async function postExpense(id) {
@@ -1499,10 +1510,10 @@
     const bank = accountById(state.bankAccounts.find(b => b.id === row.payment_account_id)?.linked_account_id) || bankLedgerAccount();
     const ap = requiredAccount('2100','Accounts Payable');
     const paid = norm(row.payment_status) === 'paid' || norm(row.payment_status) === 'locked';
-    const lines = [line(expenseAccount, num(row.amount), 0, `Expense · ${row.expense_no} · ${row.vendor_name}`)];
+    const lines = [line(expenseAccount, num(row.amount), 0, `Expense · ${row.expense_no} · ${expenseVendorDisplay(row)}`)];
     if (num(row.tax_amount) > 0 && vatReceivable) lines.push(line(vatReceivable, num(row.tax_amount), 0, `Purchase VAT · ${row.expense_no}`));
     lines.push(line(paid ? bank : ap, 0, num(row.total_amount || row.amount), paid ? `Expense paid · ${row.expense_no}` : `Expense payable · ${row.expense_no}`));
-    const journal = await postBalancedJournal({ sourceModule: 'expenses', sourceTable: TABLES.expenses, sourceId: row.id, sourceReference: row.expense_no, sourceLabel: row.vendor_name, date: row.expense_date, currency: row.currency, description: `Expense ${row.expense_no} · ${row.vendor_name}`, referenceNo: row.expense_no, lines });
+    const journal = await postBalancedJournal({ sourceModule: 'expenses', sourceTable: TABLES.expenses, sourceId: row.id, sourceReference: row.expense_no, sourceLabel: expenseVendorDisplay(row), date: row.expense_date, currency: row.currency, description: `Expense ${row.expense_no} · ${expenseVendorDisplay(row)}`, referenceNo: row.expense_no, lines });
     if (!journal) return;
     Object.assign(row, { journal_id: journal.id, posted_at: new Date().toISOString(), updated_at: new Date().toISOString() });
     try { await upsertRemote(TABLES.expenses, row); } catch (error) { state.dataSource = 'local'; console.warn('[Accounting] expense update failed', error); }
@@ -1657,6 +1668,15 @@
     if (advancedTo) advancedTo.addEventListener('change', event => { state.filters.expenseTo = event.target.value || ''; render(); });
     const expenseStatus = $('accountingExpenseStatus');
     if (expenseStatus) expenseStatus.addEventListener('change', event => { state.filters.expenseStatus = event.target.value || 'all'; render(); });
+    const expenseVendor = $('accountingExpenseVendorId');
+    if (expenseVendor) expenseVendor.addEventListener('change', event => {
+      const vendor = vendorById(event.target.value);
+      if (!vendor) return;
+      const currencyInput = $('accountingExpenseCurrency');
+      const expenseAccountSelect = $('accountingExpenseAccount');
+      if (currencyInput && vendor.currency) currencyInput.value = vendor.currency;
+      if (expenseAccountSelect && vendor.default_expense_account_id) expenseAccountSelect.value = vendor.default_expense_account_id;
+    });
     const deferredStatus = $('accountingDeferredStatus');
     if (deferredStatus) deferredStatus.addEventListener('change', event => { state.filters.deferredStatus = event.target.value || 'pending'; render(); });
     const reconAccount = $('accountingReconciliationAccount');
