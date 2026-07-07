@@ -11316,3 +11316,124 @@ body.public-eproposal-mode #publicEProposalModal .accept-proposal-submit:disable
 @media (max-width:767px){.renewal-forecast-page{padding:10px}.renewal-forecast-page .renewal-forecast-header{flex-direction:column}.renewal-forecast-page .renewal-forecast-header-actions{width:100%;display:grid;grid-template-columns:1fr 1fr}.renewal-forecast-page .renewal-forecast-kpi-grid,.renewal-forecast-page .rf-filter-grid{grid-template-columns:1fr}.renewal-forecast-page .rf-action-btn,.renewal-forecast-page .rf-primary-btn,.renewal-forecast-page .rf-ghost-btn{width:100%;text-align:center}.renewal-forecast-page .rf-actions{display:grid;grid-template-columns:1fr 1fr}.renewal-forecast-page .rf-pagination{display:grid;grid-template-columns:1fr;text-align:center}.renewal-forecast-page .rf-pagination-showing{margin:0}.renewal-forecast-details-panel .rf-detail-summary{grid-template-columns:1fr}.renewal-forecast-details-panel .rf-actions{display:grid;grid-template-columns:1fr 1fr}.renewal-forecast-details-panel .rf-action-btn,.renewal-forecast-details-panel .rf-primary-btn,.renewal-forecast-details-panel .rf-ghost-btn{width:100%}}
 @media (max-width:520px){.renewal-forecast-page .renewal-forecast-header,.renewal-forecast-page .rf-filter-card,.renewal-forecast-page .rf-table-heading,.renewal-forecast-page .rf-kpi-card{padding:12px}.renewal-forecast-page .rf-kpi-helper{display:none}.renewal-forecast-page .renewal-forecast-header-actions,.renewal-forecast-page .rf-actions{grid-template-columns:1fr}.renewal-forecast-page .rf-table th,.renewal-forecast-page .rf-table td{padding:9px 8px}.renewal-forecast-page .rf-kpi-card{min-height:96px}}
 .renewal-forecast-details-panel .rf-table th{background:var(--rf-card-soft,rgba(148,163,184,.08));color:var(--rf-muted,#94a3b8);font-size:11px;text-align:left;text-transform:uppercase;letter-spacing:.06em}.renewal-forecast-details-panel .rf-table th,.renewal-forecast-details-panel .rf-table td{padding:12px 10px;border-bottom:1px solid var(--rf-border,#1f2937);vertical-align:top;color:var(--rf-text,#e5e7eb)}.renewal-forecast-details-panel .rf-money{font-weight:950;white-space:nowrap}.renewal-forecast-details-panel .rf-status-badge{display:inline-flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:950;white-space:nowrap}.renewal-forecast-details-panel .rf-status-renewed{background:var(--rf-success-soft,rgba(22,163,74,.15));color:var(--rf-success,#16a34a);border-color:rgba(22,163,74,.28)}.renewal-forecast-details-panel .rf-status-pending,.renewal-forecast-details-panel .rf-status-upcoming{background:var(--rf-primary-soft,rgba(37,99,235,.16));color:var(--rf-primary,#2563eb);border-color:rgba(37,99,235,.25)}.renewal-forecast-details-panel .rf-status-overdue{background:var(--rf-danger-soft,rgba(220,38,38,.14));color:var(--rf-danger,#dc2626);border-color:rgba(220,38,38,.28)}.renewal-forecast-details-panel .rf-status-no-renewal,.renewal-forecast-details-panel .rf-status-canceled{background:var(--rf-warning-soft,rgba(245,158,11,.16));color:var(--rf-warning,#f59e0b);border-color:rgba(245,158,11,.3)}.renewal-forecast-details-panel .rf-empty{padding:28px;text-align:center;color:var(--rf-muted,#94a3b8)}.renewal-forecast-details-panel .rf-pagination{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap;padding:14px;color:var(--rf-muted,#94a3b8)}.renewal-forecast-details-panel .rf-pagination-showing{margin-right:auto;color:var(--rf-text,#e5e7eb);font-weight:900}.renewal-forecast-details-panel .rf-page-number{color:var(--rf-text,#e5e7eb);font-weight:800}
+
+/* Agreement pagination: keep controls visible outside the table scroll area. */
+.agreements-table-card {
+  overflow: hidden;
+}
+
+.agreements-table-wrap {
+  max-width: 100%;
+  overflow: auto;
+}
+
+.agreements-pagination-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--card);
+  position: relative;
+  z-index: 2;
+  flex-wrap: wrap;
+}
+
+.agreements-pagination-info,
+.agreements-page-size {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.agreements-pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.agreements-pagination-controls span {
+  color: var(--text);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.agreements-pagination-controls button {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.agreements-pagination-controls button:not(:disabled):hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.agreements-pagination-controls button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.agreements-page-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.agreements-page-size select {
+  min-height: 36px;
+  min-width: 82px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--text);
+  padding: 0 10px;
+}
+
+:root[data-theme="light"] .agreements-pagination-footer {
+  background: #ffffff;
+  color: #0f172a;
+  border-top: 1px solid #dbe3f0;
+}
+
+:root[data-theme="light"] .agreements-pagination-info,
+:root[data-theme="light"] .agreements-page-size {
+  color: #475569;
+}
+
+:root[data-theme="light"] .agreements-pagination-controls button {
+  background: #ffffff;
+  color: #0f172a;
+  border: 1px solid #cbd5e1;
+}
+
+:root[data-theme="light"] .agreements-pagination-controls button:not(:disabled):hover {
+  background: #eff6ff;
+  color: #2563eb;
+  border-color: #93c5fd;
+}
+
+@media (max-width: 767px) {
+  .agreements-pagination-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .agreements-pagination-controls {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .agreements-page-size {
+    width: 100%;
+  }
+
+  .agreements-page-size select {
+    width: 100%;
+  }
+}
