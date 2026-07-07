@@ -35,7 +35,10 @@
     closingPeriods: 'accounting_closing_periods',
     revenueSchedules: 'accounting_revenue_schedules',
     bankReconciliations: 'accounting_bank_reconciliations',
-    auditLog: 'accounting_audit_log'
+    auditLog: 'accounting_audit_log',
+    vendors: 'accounting_vendors',
+    vendorBills: 'accounting_vendor_bills',
+    vendorPayments: 'accounting_vendor_payments'
   };
 
   const ACCOUNT_TYPES = ['Asset', 'Liability', 'Equity', 'Revenue', 'Expense'];
@@ -57,10 +60,10 @@
       ledgerAccountId: 'all', ledgerFrom: '', ledgerTo: '', ledgerSource: 'all', journalStatus: 'all',
       sourceSearch: '', sourceFrom: '', sourceTo: '', sourceStatus: 'unposted',
       reportFrom: '', reportTo: '', reportAsOf: today(), reportSearch: '',
-      advancedSearch: '', expenseFrom: '', expenseTo: '', expenseStatus: 'all', deferredStatus: 'pending', reconciliationAccountId: 'all', reconciliationDate: today(), statementBalance: ''
+      advancedSearch: '', expenseFrom: '', expenseTo: '', expenseStatus: 'all', deferredStatus: 'pending', reconciliationAccountId: 'all', reconciliationDate: today(), statementBalance: '', vendorSearch: '', vendorStatus: 'all', vendorBillStatus: 'all', vendorPaymentStatus: 'all'
     },
     accounts: [], bankAccounts: [], journals: [], journalLines: [], ledgerEntries: [],
-    taxRates: [], expenses: [], costCenters: [], closingPeriods: [], revenueSchedules: [], bankReconciliations: [], auditLog: [],
+    taxRates: [], expenses: [], costCenters: [], closingPeriods: [], revenueSchedules: [], bankReconciliations: [], auditLog: [], vendors: [], vendorBills: [], vendorPayments: [], vendors: [], vendorBills: [], vendorPayments: [],
     sources: { invoices: [], receipts: [], creditNotes: [], binersSchedules: [], payrollItems: [], salaryReceipts: [], hrEmployees: [] }
   };
 
@@ -92,7 +95,7 @@
       bankAccounts: [{ id: uid('bank'), account_name: 'Main Bank USD', account_type: 'Bank', currency: 'USD', account_number: '', opening_balance: 0, current_balance: 0, linked_account_id: bankAccount?.id || null, is_active: true, notes: '', created_at: new Date().toISOString() }],
       journals: [], journalLines: [], ledgerEntries: [],
       taxRates: [{ id: uid('tax'), tax_name: 'VAT 0%', tax_rate: 0, tax_type: 'both', is_active: true, notes: '', created_at: new Date().toISOString() }],
-      expenses: [], costCenters: [], closingPeriods: [], revenueSchedules: [], bankReconciliations: [], auditLog: [],
+      expenses: [], costCenters: [], closingPeriods: [], revenueSchedules: [], bankReconciliations: [], auditLog: [], vendors: [], vendorBills: [], vendorPayments: [],
       sources: { invoices: [], receipts: [], creditNotes: [], binersSchedules: [], payrollItems: [], salaryReceipts: [], hrEmployees: [] }
     };
   }
@@ -101,7 +104,7 @@
     return {
       accounts: state.accounts, bankAccounts: state.bankAccounts, journals: state.journals, journalLines: state.journalLines, ledgerEntries: state.ledgerEntries,
       taxRates: state.taxRates, expenses: state.expenses, costCenters: state.costCenters, closingPeriods: state.closingPeriods,
-      revenueSchedules: state.revenueSchedules, bankReconciliations: state.bankReconciliations, auditLog: state.auditLog,
+      revenueSchedules: state.revenueSchedules, bankReconciliations: state.bankReconciliations, auditLog: state.auditLog, vendors: state.vendors, vendorBills: state.vendorBills, vendorPayments: state.vendorPayments,
       sources: state.sources
     };
   }
@@ -154,11 +157,12 @@
   }
 
   async function loadRemote() {
-    const [accounts, bankAccounts, journals, journalLines, ledgerEntries, taxRates, expenses, costCenters, closingPeriods, revenueSchedules, bankReconciliations, auditLog] = await Promise.all([
+    const [accounts, bankAccounts, journals, journalLines, ledgerEntries, taxRates, expenses, costCenters, closingPeriods, revenueSchedules, bankReconciliations, auditLog, vendors, vendorBills, vendorPayments] = await Promise.all([
       fetchTable(TABLES.accounts), fetchTable(TABLES.bankAccounts), fetchTable(TABLES.journals), fetchTable(TABLES.journalLines), fetchTable(TABLES.ledgerEntries),
-      safeFetchTable(TABLES.taxRates), safeFetchTable(TABLES.expenses), safeFetchTable(TABLES.costCenters), safeFetchTable(TABLES.closingPeriods), safeFetchTable(TABLES.revenueSchedules), safeFetchTable(TABLES.bankReconciliations), safeFetchTable(TABLES.auditLog)
+      safeFetchTable(TABLES.taxRates), safeFetchTable(TABLES.expenses), safeFetchTable(TABLES.costCenters), safeFetchTable(TABLES.closingPeriods), safeFetchTable(TABLES.revenueSchedules), safeFetchTable(TABLES.bankReconciliations), safeFetchTable(TABLES.auditLog),
+      safeFetchTable(TABLES.vendors), safeFetchTable(TABLES.vendorBills), safeFetchTable(TABLES.vendorPayments)
     ]);
-    Object.assign(state, { accounts, bankAccounts, journals, journalLines, ledgerEntries, taxRates, expenses, costCenters, closingPeriods, revenueSchedules, bankReconciliations, auditLog, dataSource: 'supabase' });
+    Object.assign(state, { accounts, bankAccounts, journals, journalLines, ledgerEntries, taxRates, expenses, costCenters, closingPeriods, revenueSchedules, bankReconciliations, auditLog, vendors, vendorBills, vendorPayments, dataSource: 'supabase' });
     await loadIntegrationSources();
   }
 
@@ -338,7 +342,7 @@
       </div>
       <div class="accounting-tabs" role="tablist">
         ${[
-          ['dashboard','Dashboard'],['accounts','Chart of Accounts'],['integrations','Module Sync'],['journals','Journal Entries'],['ledger','General Ledger'],['bank','Bank & Cash'],['reports','Financial Reports'],['advanced','Advanced Controls']
+          ['dashboard','Dashboard'],['accounts','Chart of Accounts'],['vendors','Vendors / Suppliers'],['integrations','Module Sync'],['journals','Journal Entries'],['ledger','General Ledger'],['bank','Bank & Cash'],['reports','Financial Reports'],['advanced','Advanced Controls']
         ].map(([key,label]) => `<button class="accounting-tab ${state.activeTab === key ? 'active' : ''}" type="button" data-accounting-tab="${key}">${label}</button>`).join('')}
       </div>
       ${content}
@@ -749,6 +753,231 @@
   function printCurrentReport() {
     document.body.classList.add('accounting-print-active');
     setTimeout(() => { window.print(); setTimeout(() => document.body.classList.remove('accounting-print-active'), 250); }, 50);
+  }
+
+
+  function vendorById(id) { return state.vendors.find(vendor => vendor.id === id) || null; }
+  function vendorName(id) { return vendorById(id)?.vendor_name || '—'; }
+  function vendorOptions(selected = '') {
+    const rows = state.vendors.filter(v => v.is_active !== false).sort((a,b)=>String(a.vendor_name||'').localeCompare(String(b.vendor_name||'')));
+    return '<option value="">Select vendor / supplier</option>' + rows.map(v => `<option value="${esc(v.id)}" ${v.id === selected ? 'selected' : ''}>${esc(v.vendor_code || '')} · ${esc(v.vendor_name || '')}</option>`).join('');
+  }
+  function nextVendorCode() {
+    const max = state.vendors.reduce((acc, row) => { const match = String(row.vendor_code || '').match(/(\d+)$/); return Math.max(acc, match ? Number(match[1]) : 0); }, 0);
+    return `VEND-${String(max + 1).padStart(4, '0')}`;
+  }
+  function nextVendorBillNo() {
+    const year = new Date().getFullYear();
+    const max = state.vendorBills.reduce((acc, row) => { const match = String(row.bill_no || '').match(/(\d+)$/); return Math.max(acc, match ? Number(match[1]) : 0); }, 0);
+    return `VB/${year}/${String(max + 1).padStart(4, '0')}`;
+  }
+  function nextVendorPaymentNo() {
+    const year = new Date().getFullYear();
+    const max = state.vendorPayments.reduce((acc, row) => { const match = String(row.payment_no || '').match(/(\d+)$/); return Math.max(acc, match ? Number(match[1]) : 0); }, 0);
+    return `VP/${year}/${String(max + 1).padStart(4, '0')}`;
+  }
+  function vendorBillPaidAmount(billId) { return state.vendorPayments.filter(p => p.vendor_bill_id === billId && !['cancelled','void'].includes(norm(p.status))).reduce((sum,p)=>sum + num(p.amount), 0); }
+  function vendorBillBalance(row) { return Math.max(0, num(row.total_amount || row.amount) - vendorBillPaidAmount(row.id)); }
+  function vendorBillComputedStatus(row) {
+    if (['cancelled','void'].includes(norm(row.status))) return 'cancelled';
+    const total = num(row.total_amount || row.amount);
+    const paid = vendorBillPaidAmount(row.id);
+    if (total > 0 && paid >= total - 0.01) return 'paid';
+    if (paid > 0) return 'partially_paid';
+    return row.status || 'draft';
+  }
+  function filteredVendors() {
+    const search = norm(state.filters.vendorSearch);
+    return state.vendors.filter(row => {
+      const haystack = norm([row.vendor_code,row.vendor_name,row.vendor_type,row.email,row.phone,row.tax_number,row.notes].join(' '));
+      if (search && !haystack.includes(search)) return false;
+      if (state.filters.vendorStatus !== 'all' && String(row.is_active === false ? 'inactive' : 'active') !== state.filters.vendorStatus) return false;
+      return true;
+    }).sort((a,b)=>String(a.vendor_name || '').localeCompare(String(b.vendor_name || '')));
+  }
+  function filteredVendorBills() {
+    const search = norm(state.filters.vendorSearch);
+    return state.vendorBills.filter(row => {
+      const status = vendorBillComputedStatus(row);
+      const haystack = norm([row.bill_no,row.reference_no,vendorName(row.vendor_id),row.description,status].join(' '));
+      if (search && !haystack.includes(search)) return false;
+      if (state.filters.vendorBillStatus !== 'all' && status !== state.filters.vendorBillStatus) return false;
+      return true;
+    }).sort((a,b)=>String(b.bill_date || '').localeCompare(String(a.bill_date || '')));
+  }
+  function filteredVendorPayments() {
+    const search = norm(state.filters.vendorSearch);
+    return state.vendorPayments.filter(row => {
+      const haystack = norm([row.payment_no,row.reference_no,vendorName(row.vendor_id),row.status,row.notes].join(' '));
+      if (search && !haystack.includes(search)) return false;
+      if (state.filters.vendorPaymentStatus !== 'all' && norm(row.status || 'draft') !== state.filters.vendorPaymentStatus) return false;
+      return true;
+    }).sort((a,b)=>String(b.payment_date || '').localeCompare(String(a.payment_date || '')));
+  }
+  function renderVendors() {
+    const totalPayable = filteredVendorBills().reduce((sum,row)=>sum + vendorBillBalance(row), 0);
+    return `
+      <div class="accounting-grid">
+        <div class="accounting-kpi"><div class="label">Vendors / Suppliers</div><div class="value">${state.vendors.length}</div><div class="hint">Master records</div></div>
+        <div class="accounting-kpi"><div class="label">Open Vendor Bills</div><div class="value">${filteredVendorBills().filter(row=>vendorBillBalance(row)>0).length}</div><div class="hint">Unpaid or partial</div></div>
+        <div class="accounting-kpi"><div class="label">Vendor Payable</div><div class="value">${money(totalPayable)}</div><div class="hint">Filtered remaining balance</div></div>
+        <div class="accounting-kpi"><div class="label">Vendor Payments</div><div class="value">${state.vendorPayments.length}</div><div class="hint">Payment records</div></div>
+      </div>
+      <div class="accounting-card" style="margin-top:12px;">
+        <div class="accounting-card-header"><div><h3>Vendor / Supplier Filters</h3><p class="muted">Search master records, bills, and payments together.</p></div><button class="btn ghost sm" type="button" data-accounting-action="clear-vendor-filters">Clear Filters</button></div>
+        <div class="accounting-filter-row">
+          <label>Search<input id="accountingVendorSearch" type="search" value="${esc(state.filters.vendorSearch)}" placeholder="vendor, supplier, bill, reference"></label>
+          <label>Vendor Status<select id="accountingVendorStatus"><option value="all" ${state.filters.vendorStatus==='all'?'selected':''}>All</option><option value="active" ${state.filters.vendorStatus==='active'?'selected':''}>Active</option><option value="inactive" ${state.filters.vendorStatus==='inactive'?'selected':''}>Inactive</option></select></label>
+          <label>Bill Status<select id="accountingVendorBillStatus"><option value="all" ${state.filters.vendorBillStatus==='all'?'selected':''}>All</option><option value="draft" ${state.filters.vendorBillStatus==='draft'?'selected':''}>Draft</option><option value="approved" ${state.filters.vendorBillStatus==='approved'?'selected':''}>Approved</option><option value="partially_paid" ${state.filters.vendorBillStatus==='partially_paid'?'selected':''}>Partially Paid</option><option value="paid" ${state.filters.vendorBillStatus==='paid'?'selected':''}>Paid</option><option value="cancelled" ${state.filters.vendorBillStatus==='cancelled'?'selected':''}>Cancelled</option></select></label>
+          <label>Payment Status<select id="accountingVendorPaymentStatus"><option value="all" ${state.filters.vendorPaymentStatus==='all'?'selected':''}>All</option><option value="draft" ${state.filters.vendorPaymentStatus==='draft'?'selected':''}>Draft</option><option value="paid" ${state.filters.vendorPaymentStatus==='paid'?'selected':''}>Paid</option><option value="cancelled" ${state.filters.vendorPaymentStatus==='cancelled'?'selected':''}>Cancelled</option></select></label>
+        </div>
+      </div>
+      <div class="accounting-two-col" style="margin-top:12px;">
+        <div class="accounting-card"><div class="accounting-card-header"><div><h3>Vendor / Supplier Master</h3><p class="muted">Create suppliers used for expenses, vendor bills, and payments.</p></div></div>${renderVendorForm()}${renderVendorTable()}</div>
+        <div class="accounting-card"><div class="accounting-card-header"><div><h3>Vendor Bills</h3><p class="muted">Record supplier invoices/bills and post payable entries.</p></div></div>${renderVendorBillForm()}${renderVendorBillTable()}</div>
+      </div>
+      <div class="accounting-card" style="margin-top:12px;"><div class="accounting-card-header"><div><h3>Vendor Payments</h3><p class="muted">Record payments against vendors or bills and post bank/cash movement.</p></div></div>${renderVendorPaymentForm()}${renderVendorPaymentTable()}</div>
+    `;
+  }
+  function renderVendorForm() {
+    return `<form id="accountingVendorForm" class="accounting-form">
+      <input id="accountingVendorId" type="hidden"><div class="accounting-form-grid">
+        <label>Vendor Code<input id="accountingVendorCode" value="${esc(nextVendorCode())}"></label>
+        <label>Vendor Name<input id="accountingVendorName" required placeholder="Supplier legal/name"></label>
+        <label>Type<select id="accountingVendorType"><option>Supplier</option><option>Contractor</option><option>Service Provider</option><option>Government</option><option>Other</option></select></label>
+        <label>Email<input id="accountingVendorEmail" type="email"></label>
+        <label>Phone<input id="accountingVendorPhone"></label>
+        <label>Currency<input id="accountingVendorCurrency" value="USD"></label>
+        <label>Payment Terms<input id="accountingVendorPaymentTerms" placeholder="Net 30, Cash, Transfer..."></label>
+        <label>Tax/VAT Number<input id="accountingVendorTaxNumber"></label>
+        <label>Opening Balance<input id="accountingVendorOpeningBalance" type="number" step="0.01" value="0"></label>
+        <label>Status<select id="accountingVendorActive"><option value="true">Active</option><option value="false">Inactive</option></select></label>
+        <label class="full">Address<input id="accountingVendorAddress"></label>
+        <label class="full">Notes<textarea id="accountingVendorNotes" rows="2"></textarea></label>
+      </div><div class="accounting-actions"><button class="btn sm" type="submit">Save Vendor</button><button class="btn ghost sm" type="button" data-accounting-action="reset-vendor-form">Reset</button></div>
+    </form>`;
+  }
+  function renderVendorTable() {
+    const rows = filteredVendors();
+    if (!rows.length) return '<div class="accounting-empty">No vendors/suppliers found.</div>';
+    return `<div class="accounting-table-wrap"><table class="accounting-table"><thead><tr><th>Code</th><th>Name</th><th>Contact</th><th>Status</th><th class="num">Opening</th><th></th></tr></thead><tbody>${rows.map(row=>`<tr><td>${esc(row.vendor_code||'')}</td><td><strong>${esc(row.vendor_name||'')}</strong><div class="muted">${esc(row.vendor_type||'Supplier')}</div></td><td>${esc(row.email||'')}<div class="muted">${esc(row.phone||'')}</div></td><td><span class="accounting-badge ${row.is_active===false?'draft':'posted'}">${row.is_active===false?'Inactive':'Active'}</span></td><td class="num">${money(row.opening_balance,row.currency)}</td><td><button class="btn ghost sm" type="button" data-accounting-edit-vendor="${esc(row.id)}">Edit</button></td></tr>`).join('')}</tbody></table></div>`;
+  }
+  function renderVendorBillForm() {
+    return `<form id="accountingVendorBillForm" class="accounting-form"><input id="accountingVendorBillId" type="hidden"><div class="accounting-form-grid">
+      <label>Bill No<input id="accountingVendorBillNo" value="${esc(nextVendorBillNo())}"></label>
+      <label>Vendor<select id="accountingVendorBillVendor" required>${vendorOptions()}</select></label>
+      <label>Bill Date<input id="accountingVendorBillDate" type="date" value="${today()}"></label>
+      <label>Due Date<input id="accountingVendorBillDueDate" type="date" value="${today()}"></label>
+      <label>Reference<input id="accountingVendorBillReference" placeholder="Supplier invoice/ref"></label>
+      <label>Expense Account<select id="accountingVendorBillExpenseAccount">${accountOptions(accountByCode('5400')?.id || '', false)}</select></label>
+      <label>Cost Center<select id="accountingVendorBillCostCenter"><option value="">No cost center</option>${state.costCenters.filter(c=>c.is_active!==false).map(c=>`<option value="${esc(c.id)}">${esc(c.code)} · ${esc(c.name)}</option>`).join('')}</select></label>
+      <label>Amount<input id="accountingVendorBillAmount" type="number" step="0.01" value="0"></label>
+      <label>Tax Amount<input id="accountingVendorBillTax" type="number" step="0.01" value="0"></label>
+      <label>Currency<input id="accountingVendorBillCurrency" value="USD"></label>
+      <label>Status<select id="accountingVendorBillStatusInput"><option value="draft">Draft</option><option value="approved">Approved</option><option value="cancelled">Cancelled</option></select></label>
+      <label class="full">Description<textarea id="accountingVendorBillDescription" rows="2"></textarea></label>
+    </div><div class="accounting-actions"><button class="btn sm" type="submit">Save Bill</button><button class="btn ghost sm" type="button" data-accounting-action="reset-vendor-bill-form">Reset</button></div></form>`;
+  }
+  function renderVendorBillTable() {
+    const rows = filteredVendorBills();
+    if (!rows.length) return '<div class="accounting-empty">No vendor bills found.</div>';
+    return `<div class="accounting-table-wrap"><table class="accounting-table"><thead><tr><th>Bill</th><th>Vendor</th><th>Date</th><th>Status</th><th class="num">Total</th><th class="num">Balance</th><th>Ledger</th><th></th></tr></thead><tbody>${rows.map(row=>`<tr><td><strong>${esc(row.bill_no||'')}</strong><div class="muted">${esc(row.reference_no||'')}</div></td><td>${esc(vendorName(row.vendor_id))}</td><td>${fmtDate(row.bill_date)}<div class="muted">Due ${fmtDate(row.due_date)}</div></td><td><span class="accounting-badge ${vendorBillComputedStatus(row)==='paid'?'posted':'draft'}">${esc(vendorBillComputedStatus(row).replace('_',' '))}</span></td><td class="num">${money(row.total_amount||row.amount,row.currency)}</td><td class="num">${money(vendorBillBalance(row),row.currency)}</td><td>${row.journal_id?'<span class="accounting-badge posted">Posted</span>':`<button class="btn sm" type="button" data-accounting-post-vendor-bill="${esc(row.id)}">Post</button>`}</td><td><button class="btn ghost sm" type="button" data-accounting-edit-vendor-bill="${esc(row.id)}">Edit</button></td></tr>`).join('')}</tbody></table></div>`;
+  }
+  function renderVendorPaymentForm() {
+    return `<form id="accountingVendorPaymentForm" class="accounting-form"><input id="accountingVendorPaymentId" type="hidden"><div class="accounting-form-grid">
+      <label>Payment No<input id="accountingVendorPaymentNo" value="${esc(nextVendorPaymentNo())}"></label>
+      <label>Vendor<select id="accountingVendorPaymentVendor" required>${vendorOptions()}</select></label>
+      <label>Related Bill<select id="accountingVendorPaymentBill"><option value="">No specific bill</option>${state.vendorBills.map(b=>`<option value="${esc(b.id)}">${esc(b.bill_no)} · ${esc(vendorName(b.vendor_id))} · ${money(vendorBillBalance(b),b.currency)}</option>`).join('')}</select></label>
+      <label>Payment Date<input id="accountingVendorPaymentDate" type="date" value="${today()}"></label>
+      <label>Amount<input id="accountingVendorPaymentAmount" type="number" step="0.01" value="0"></label>
+      <label>Currency<input id="accountingVendorPaymentCurrency" value="USD"></label>
+      <label>Paid From<select id="accountingVendorPaymentBank">${state.bankAccounts.filter(b=>b.is_active!==false).map(b=>`<option value="${esc(b.id)}">${esc(b.account_name)} · ${esc(b.currency||'USD')}</option>`).join('')}</select></label>
+      <label>Reference<input id="accountingVendorPaymentReference" placeholder="Transfer / cash reference"></label>
+      <label>Status<select id="accountingVendorPaymentStatusInput"><option value="draft">Draft</option><option value="paid">Paid</option><option value="cancelled">Cancelled</option></select></label>
+      <label class="full">Notes<textarea id="accountingVendorPaymentNotes" rows="2"></textarea></label>
+    </div><div class="accounting-actions"><button class="btn sm" type="submit">Save Payment</button><button class="btn ghost sm" type="button" data-accounting-action="reset-vendor-payment-form">Reset</button></div></form>`;
+  }
+  function renderVendorPaymentTable() {
+    const rows = filteredVendorPayments();
+    if (!rows.length) return '<div class="accounting-empty">No vendor payments found.</div>';
+    return `<div class="accounting-table-wrap"><table class="accounting-table"><thead><tr><th>Payment</th><th>Vendor</th><th>Date</th><th>Status</th><th class="num">Amount</th><th>Ledger</th><th></th></tr></thead><tbody>${rows.map(row=>`<tr><td><strong>${esc(row.payment_no||'')}</strong><div class="muted">${esc(row.reference_no||'')}</div></td><td>${esc(vendorName(row.vendor_id))}</td><td>${fmtDate(row.payment_date)}</td><td><span class="accounting-badge ${norm(row.status)==='paid'?'posted':'draft'}">${esc(row.status||'draft')}</span></td><td class="num">${money(row.amount,row.currency)}</td><td>${row.journal_id?'<span class="accounting-badge posted">Posted</span>':`<button class="btn sm" type="button" data-accounting-post-vendor-payment="${esc(row.id)}">Post</button>`}</td><td><button class="btn ghost sm" type="button" data-accounting-edit-vendor-payment="${esc(row.id)}">Edit</button></td></tr>`).join('')}</tbody></table></div>`;
+  }
+  async function saveVendorForm() {
+    const id = $('accountingVendorId')?.value || uid('vendor');
+    const existing = vendorById(id) || {};
+    const row = { ...existing, id, vendor_code: $('accountingVendorCode')?.value?.trim() || existing.vendor_code || nextVendorCode(), vendor_name: $('accountingVendorName')?.value?.trim() || '', vendor_type: $('accountingVendorType')?.value || 'Supplier', email: $('accountingVendorEmail')?.value?.trim() || '', phone: $('accountingVendorPhone')?.value?.trim() || '', address: $('accountingVendorAddress')?.value?.trim() || '', tax_number: $('accountingVendorTaxNumber')?.value?.trim() || '', payment_terms: $('accountingVendorPaymentTerms')?.value?.trim() || '', currency: ($('accountingVendorCurrency')?.value || 'USD').trim().toUpperCase(), opening_balance: num($('accountingVendorOpeningBalance')?.value), is_active: $('accountingVendorActive')?.value !== 'false', notes: $('accountingVendorNotes')?.value?.trim() || '', created_at: existing.created_at || new Date().toISOString(), updated_at: new Date().toISOString() };
+    if (!row.vendor_name) return toast('Vendor name is required.');
+    await persistRow('vendors', TABLES.vendors, row);
+    await recordAudit('save_vendor', 'vendor', row.id, `Saved vendor ${row.vendor_code} · ${row.vendor_name}.`, {});
+    toast('Vendor saved.'); render();
+  }
+  function editVendor(id) {
+    const row = vendorById(id); if (!row) return;
+    state.activeTab='vendors'; render();
+    $('accountingVendorId').value=row.id; $('accountingVendorCode').value=row.vendor_code||''; $('accountingVendorName').value=row.vendor_name||''; $('accountingVendorType').value=row.vendor_type||'Supplier'; $('accountingVendorEmail').value=row.email||''; $('accountingVendorPhone').value=row.phone||''; $('accountingVendorAddress').value=row.address||''; $('accountingVendorTaxNumber').value=row.tax_number||''; $('accountingVendorPaymentTerms').value=row.payment_terms||''; $('accountingVendorCurrency').value=row.currency||'USD'; $('accountingVendorOpeningBalance').value=row.opening_balance||0; $('accountingVendorActive').value=row.is_active===false?'false':'true'; $('accountingVendorNotes').value=row.notes||'';
+  }
+  function resetVendorForm() { state.activeTab='vendors'; render(); }
+  async function saveVendorBillForm() {
+    const id = $('accountingVendorBillId')?.value || uid('vendorbill');
+    const existing = state.vendorBills.find(row=>row.id===id) || {};
+    const amount = num($('accountingVendorBillAmount')?.value); const taxAmount = num($('accountingVendorBillTax')?.value);
+    const row = { ...existing, id, bill_no: $('accountingVendorBillNo')?.value?.trim() || existing.bill_no || nextVendorBillNo(), vendor_id: $('accountingVendorBillVendor')?.value || '', bill_date: $('accountingVendorBillDate')?.value || today(), due_date: $('accountingVendorBillDueDate')?.value || $('accountingVendorBillDate')?.value || today(), reference_no: $('accountingVendorBillReference')?.value?.trim() || '', expense_account_id: $('accountingVendorBillExpenseAccount')?.value || accountByCode('5400')?.id || null, cost_center_id: $('accountingVendorBillCostCenter')?.value || null, amount, tax_amount: taxAmount, total_amount: Number((amount + taxAmount).toFixed(2)), currency: ($('accountingVendorBillCurrency')?.value || 'USD').trim().toUpperCase(), status: $('accountingVendorBillStatusInput')?.value || 'draft', description: $('accountingVendorBillDescription')?.value?.trim() || '', created_by: existing.created_by || authName(), created_at: existing.created_at || new Date().toISOString(), updated_at: new Date().toISOString() };
+    if (!row.vendor_id) return toast('Vendor is required.'); if (row.total_amount <= 0) return toast('Bill amount must be above zero.');
+    await persistRow('vendorBills', TABLES.vendorBills, row);
+    await recordAudit('save_vendor_bill', 'vendor_bill', row.id, `Saved vendor bill ${row.bill_no}.`, { total: row.total_amount });
+    toast('Vendor bill saved.'); render();
+  }
+  function editVendorBill(id) {
+    const row = state.vendorBills.find(item=>item.id===id); if (!row) return;
+    state.activeTab='vendors'; render();
+    $('accountingVendorBillId').value=row.id; $('accountingVendorBillNo').value=row.bill_no||''; $('accountingVendorBillVendor').value=row.vendor_id||''; $('accountingVendorBillDate').value=dateKey(row.bill_date)||today(); $('accountingVendorBillDueDate').value=dateKey(row.due_date)||today(); $('accountingVendorBillReference').value=row.reference_no||''; $('accountingVendorBillExpenseAccount').value=row.expense_account_id||accountByCode('5400')?.id||''; $('accountingVendorBillCostCenter').value=row.cost_center_id||''; $('accountingVendorBillAmount').value=row.amount||0; $('accountingVendorBillTax').value=row.tax_amount||0; $('accountingVendorBillCurrency').value=row.currency||'USD'; $('accountingVendorBillStatusInput').value=row.status||'draft'; $('accountingVendorBillDescription').value=row.description||'';
+  }
+  function resetVendorBillForm() { state.activeTab='vendors'; render(); }
+  async function saveVendorPaymentForm() {
+    const id = $('accountingVendorPaymentId')?.value || uid('vendorpayment');
+    const existing = state.vendorPayments.find(row=>row.id===id) || {};
+    const row = { ...existing, id, payment_no: $('accountingVendorPaymentNo')?.value?.trim() || existing.payment_no || nextVendorPaymentNo(), vendor_id: $('accountingVendorPaymentVendor')?.value || '', vendor_bill_id: $('accountingVendorPaymentBill')?.value || null, payment_date: $('accountingVendorPaymentDate')?.value || today(), amount: num($('accountingVendorPaymentAmount')?.value), currency: ($('accountingVendorPaymentCurrency')?.value || 'USD').trim().toUpperCase(), bank_account_id: $('accountingVendorPaymentBank')?.value || defaultBankAccount()?.id || null, reference_no: $('accountingVendorPaymentReference')?.value?.trim() || '', status: $('accountingVendorPaymentStatusInput')?.value || 'draft', notes: $('accountingVendorPaymentNotes')?.value?.trim() || '', created_by: existing.created_by || authName(), created_at: existing.created_at || new Date().toISOString(), updated_at: new Date().toISOString() };
+    if (!row.vendor_id) return toast('Vendor is required.'); if (row.amount <= 0) return toast('Payment amount must be above zero.');
+    await persistRow('vendorPayments', TABLES.vendorPayments, row);
+    await recordAudit('save_vendor_payment', 'vendor_payment', row.id, `Saved vendor payment ${row.payment_no}.`, { amount: row.amount });
+    toast('Vendor payment saved.'); render();
+  }
+  function editVendorPayment(id) {
+    const row = state.vendorPayments.find(item=>item.id===id); if (!row) return;
+    state.activeTab='vendors'; render();
+    $('accountingVendorPaymentId').value=row.id; $('accountingVendorPaymentNo').value=row.payment_no||''; $('accountingVendorPaymentVendor').value=row.vendor_id||''; $('accountingVendorPaymentBill').value=row.vendor_bill_id||''; $('accountingVendorPaymentDate').value=dateKey(row.payment_date)||today(); $('accountingVendorPaymentAmount').value=row.amount||0; $('accountingVendorPaymentCurrency').value=row.currency||'USD'; $('accountingVendorPaymentBank').value=row.bank_account_id||''; $('accountingVendorPaymentReference').value=row.reference_no||''; $('accountingVendorPaymentStatusInput').value=row.status||'draft'; $('accountingVendorPaymentNotes').value=row.notes||'';
+  }
+  function resetVendorPaymentForm() { state.activeTab='vendors'; render(); }
+  async function postVendorBill(id) {
+    const row = state.vendorBills.find(item=>item.id===id); if (!row) return toast('Vendor bill not found.');
+    if (row.journal_id) return toast('Vendor bill already posted.');
+    if (isPeriodClosed(row.bill_date)) return toast('This bill date is in a closed period. Reopen it first.');
+    const expenseAccount = accountById(row.expense_account_id) || requiredAccount('5400','General Operating Expense');
+    const vatReceivable = requiredAccount('1400','VAT Receivable');
+    const ap = requiredAccount('2100','Accounts Payable');
+    const lines = [line(expenseAccount, num(row.amount), 0, `Vendor bill ${row.bill_no} · ${vendorName(row.vendor_id)}`)];
+    if (num(row.tax_amount) > 0 && vatReceivable) lines.push(line(vatReceivable, num(row.tax_amount), 0, `Purchase VAT · ${row.bill_no}`));
+    lines.push(line(ap, 0, num(row.total_amount || row.amount), `Vendor payable · ${row.bill_no}`));
+    const journal = await postBalancedJournal({ sourceModule:'vendor_bills', sourceTable: TABLES.vendorBills, sourceId: row.id, sourceReference: row.bill_no, sourceLabel: vendorName(row.vendor_id), date: row.bill_date, currency: row.currency, description: `Vendor bill ${row.bill_no} · ${vendorName(row.vendor_id)}`, referenceNo: row.bill_no, lines });
+    if (!journal) return;
+    Object.assign(row, { journal_id: journal.id, status: row.status === 'draft' ? 'approved' : row.status, posted_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+    try { await upsertRemote(TABLES.vendorBills, row); } catch (error) { state.dataSource='local'; console.warn('[Accounting] vendor bill update failed', error); }
+    await recordAudit('post_vendor_bill', 'vendor_bill', row.id, `Posted vendor bill ${row.bill_no}.`, { total: row.total_amount, journalNo: journal.journal_no });
+    render();
+  }
+  async function postVendorPayment(id) {
+    const row = state.vendorPayments.find(item=>item.id===id); if (!row) return toast('Vendor payment not found.');
+    if (row.journal_id) return toast('Vendor payment already posted.');
+    if (isPeriodClosed(row.payment_date)) return toast('This payment date is in a closed period. Reopen it first.');
+    const ap = requiredAccount('2100','Accounts Payable');
+    const bank = accountById(state.bankAccounts.find(b=>b.id===row.bank_account_id)?.linked_account_id) || bankLedgerAccount();
+    const lines = [line(ap, row.amount, 0, `Vendor payment ${row.payment_no} · ${vendorName(row.vendor_id)}`), line(bank, 0, row.amount, `Bank/Cash payment · ${row.payment_no}`)];
+    const journal = await postBalancedJournal({ sourceModule:'vendor_payments', sourceTable: TABLES.vendorPayments, sourceId: row.id, sourceReference: row.payment_no, sourceLabel: vendorName(row.vendor_id), date: row.payment_date, currency: row.currency, description: `Vendor payment ${row.payment_no} · ${vendorName(row.vendor_id)}`, referenceNo: row.payment_no, lines });
+    if (!journal) return;
+    Object.assign(row, { journal_id: journal.id, status: 'paid', posted_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+    try { await upsertRemote(TABLES.vendorPayments, row); } catch (error) { state.dataSource='local'; console.warn('[Accounting] vendor payment update failed', error); }
+    await recordAudit('post_vendor_payment', 'vendor_payment', row.id, `Posted vendor payment ${row.payment_no}.`, { amount: row.amount, journalNo: journal.journal_no });
+    render();
   }
 
   function renderIntegrations() {
@@ -1436,6 +1665,14 @@
     if (reconDate) reconDate.addEventListener('change', event => { state.filters.reconciliationDate = event.target.value || today(); render(); });
     const statementBalance = $('accountingStatementBalance');
     if (statementBalance) statementBalance.addEventListener('input', event => { state.filters.statementBalance = event.target.value || ''; render(); });
+    const vendorSearch = $('accountingVendorSearch');
+    if (vendorSearch) vendorSearch.addEventListener('input', event => { state.filters.vendorSearch = event.target.value || ''; render(); });
+    const vendorStatus = $('accountingVendorStatus');
+    if (vendorStatus) vendorStatus.addEventListener('change', event => { state.filters.vendorStatus = event.target.value || 'all'; render(); });
+    const vendorBillStatus = $('accountingVendorBillStatus');
+    if (vendorBillStatus) vendorBillStatus.addEventListener('change', event => { state.filters.vendorBillStatus = event.target.value || 'all'; render(); });
+    const vendorPaymentStatus = $('accountingVendorPaymentStatus');
+    if (vendorPaymentStatus) vendorPaymentStatus.addEventListener('change', event => { state.filters.vendorPaymentStatus = event.target.value || 'all'; render(); });
     bindJournalLineInputs();
   }
 
@@ -1562,6 +1799,10 @@
       if (action === 'export-ledger') { exportCsv('accounting_general_ledger.csv', filteredLedgerEntries()); return; }
       if (action === 'reset-account-form') { resetAccountForm(); return; }
       if (action === 'reset-bank-form') { resetBankForm(); return; }
+      if (action === 'reset-vendor-form') { resetVendorForm(); return; }
+      if (action === 'reset-vendor-bill-form') { resetVendorBillForm(); return; }
+      if (action === 'reset-vendor-payment-form') { resetVendorPaymentForm(); return; }
+      if (action === 'clear-vendor-filters') { state.filters.vendorSearch = ''; state.filters.vendorStatus = 'all'; state.filters.vendorBillStatus = 'all'; state.filters.vendorPaymentStatus = 'all'; render(); return; }
       if (action === 'reset-journal-form') { resetJournalForm(); return; }
       if (action === 'add-journal-line') { currentDraftLines().push({ account_id:'', debit:'', credit:'', description:'' }); render(); return; }
       if (action === 'save-journal-draft') { saveJournal('draft'); return; }
@@ -1578,6 +1819,16 @@
       if (action === 'reset-expense-form' || action === 'reset-tax-form' || action === 'reset-cost-center-form' || action === 'reset-closing-form') { render(); return; }
       if (action === 'save-reconciliation') { saveReconciliation(); return; }
     }
+    const editVendorBtn = event.target.closest('[data-accounting-edit-vendor]');
+    if (editVendorBtn) { editVendor(editVendorBtn.getAttribute('data-accounting-edit-vendor')); return; }
+    const editVendorBillBtn = event.target.closest('[data-accounting-edit-vendor-bill]');
+    if (editVendorBillBtn) { editVendorBill(editVendorBillBtn.getAttribute('data-accounting-edit-vendor-bill')); return; }
+    const postVendorBillBtn = event.target.closest('[data-accounting-post-vendor-bill]');
+    if (postVendorBillBtn) { postVendorBill(postVendorBillBtn.getAttribute('data-accounting-post-vendor-bill')); return; }
+    const editVendorPaymentBtn = event.target.closest('[data-accounting-edit-vendor-payment]');
+    if (editVendorPaymentBtn) { editVendorPayment(editVendorPaymentBtn.getAttribute('data-accounting-edit-vendor-payment')); return; }
+    const postVendorPaymentBtn = event.target.closest('[data-accounting-post-vendor-payment]');
+    if (postVendorPaymentBtn) { postVendorPayment(postVendorPaymentBtn.getAttribute('data-accounting-post-vendor-payment')); return; }
     const generateScheduleBtn = event.target.closest('[data-accounting-generate-schedule]');
     if (generateScheduleBtn) { generateRevenueScheduleForInvoice(sourceByKey('invoices', generateScheduleBtn.getAttribute('data-accounting-generate-schedule')), true); return; }
     const recognizeRevenueBtn = event.target.closest('[data-accounting-recognize-revenue]');
@@ -1617,6 +1868,7 @@
     }
     const body = state.activeTab === 'dashboard' ? renderDashboard()
       : state.activeTab === 'accounts' ? renderAccounts()
+      : state.activeTab === 'vendors' ? renderVendors()
       : state.activeTab === 'integrations' ? renderIntegrations()
       : state.activeTab === 'journals' ? renderJournals()
       : state.activeTab === 'ledger' ? renderLedger()
@@ -1628,6 +1880,9 @@
     bindFilters();
     const accountForm = $('accountingAccountForm'); if (accountForm) accountForm.addEventListener('submit', event => { event.preventDefault(); saveAccountForm(); });
     const bankForm = $('accountingBankForm'); if (bankForm) bankForm.addEventListener('submit', event => { event.preventDefault(); saveBankForm(); });
+    const vendorForm = $('accountingVendorForm'); if (vendorForm) vendorForm.addEventListener('submit', event => { event.preventDefault(); saveVendorForm(); });
+    const vendorBillForm = $('accountingVendorBillForm'); if (vendorBillForm) vendorBillForm.addEventListener('submit', event => { event.preventDefault(); saveVendorBillForm(); });
+    const vendorPaymentForm = $('accountingVendorPaymentForm'); if (vendorPaymentForm) vendorPaymentForm.addEventListener('submit', event => { event.preventDefault(); saveVendorPaymentForm(); });
     const expenseForm = $('accountingExpenseForm'); if (expenseForm) expenseForm.addEventListener('submit', event => { event.preventDefault(); saveExpenseForm(); });
     const taxForm = $('accountingTaxForm'); if (taxForm) taxForm.addEventListener('submit', event => { event.preventDefault(); saveTaxForm(); });
     const costCenterForm = $('accountingCostCenterForm'); if (costCenterForm) costCenterForm.addEventListener('submit', event => { event.preventDefault(); saveCostCenterForm(); });
