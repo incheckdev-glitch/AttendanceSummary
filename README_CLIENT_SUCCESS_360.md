@@ -59,3 +59,14 @@ Excluded by design:
 - Pending amounts
 - Collection follow-ups
 - Accounting visibility
+
+## Decimal Completion Fix
+
+If the CS module was already installed and decimals are rejected in Location Completion, run this migration after the previous CS migrations:
+
+```sql
+sql/migrations/20260708_client_success_360_completion_decimal_fix.sql
+```
+
+Frontend change included: Location Completion inputs now use `step="0.01"`, accept comma or dot decimals, and display percentages with two digits after the decimal.
+

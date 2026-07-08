@@ -83,6 +83,18 @@
     return Number.isFinite(n) ? n : fallback;
   }
 
+  function safeDecimal(value, fallback = 0) {
+    const normalized = String(value ?? '').trim().replace(',', '.');
+    if (!normalized) return fallback;
+    const n = Number(normalized);
+    return Number.isFinite(n) ? Math.round(n * 100) / 100 : fallback;
+  }
+
+  function formatDecimal(value) {
+    const n = safeDecimal(value);
+    return Number.isInteger(n) ? String(n) : n.toFixed(2);
+  }
+
   function companyName(row = {}) {
     return String(row.legal_name || row.legal_company_name || row.company_name || row.customer_legal_name || row.customer_name || row.client_name || row.name || 'Unnamed Client').trim();
   }
@@ -319,10 +331,10 @@
   }
 
   function countPct(count, total) {
-    const c = Math.max(0, safeNumber(count));
-    const t = Math.max(0, safeNumber(total));
+    const c = Math.max(0, safeDecimal(count));
+    const t = Math.max(0, safeDecimal(total));
     const pct = t ? (c / t) * 100 : 0;
-    return `${c} (${pct.toFixed(2)}%)`;
+    return `${formatDecimal(c)} (${pct.toFixed(2)}%)`;
   }
 
   function severityRank(value) { return { Critical:4, High:3, Medium:2, Low:1 }[String(value || '')] || 0; }
@@ -935,10 +947,10 @@
     const rowsHtml = locations.map((location, index) => `
       <tr class="cs-completion-input-row" data-location-name="${attr(location)}">
         <td>${esc(location)}</td>
-        <td><input class="input" type="number" min="0" step="1" data-completion-field="done_on_time" value="0" /></td>
-        <td><input class="input" type="number" min="0" step="1" data-completion-field="done_late" value="0" /></td>
-        <td><input class="input" type="number" min="0" step="1" data-completion-field="partially_done" value="0" /></td>
-        <td><input class="input" type="number" min="0" step="1" data-completion-field="missed" value="0" /></td>
+        <td><input class="input" type="number" min="0" step="0.01" inputmode="decimal" data-completion-field="done_on_time" value="0" /></td>
+        <td><input class="input" type="number" min="0" step="0.01" inputmode="decimal" data-completion-field="done_late" value="0" /></td>
+        <td><input class="input" type="number" min="0" step="0.01" inputmode="decimal" data-completion-field="partially_done" value="0" /></td>
+        <td><input class="input" type="number" min="0" step="0.01" inputmode="decimal" data-completion-field="missed" value="0" /></td>
         <td class="cs-completion-preview">0 (0.00%)</td>
       </tr>`).join('');
     openModal('Add Location Completion', `<form class="cs-form" id="csCompletionForm">
@@ -975,7 +987,7 @@
   function readCompletionInputRow(row) {
     const out = { location_name: row.dataset.locationName || '', done_on_time: 0, done_late: 0, partially_done: 0, missed: 0 };
     row.querySelectorAll('[data-completion-field]').forEach(input => {
-      out[input.dataset.completionField] = Math.max(0, Math.round(safeNumber(input.value)));
+      out[input.dataset.completionField] = Math.max(0, safeDecimal(input.value));
     });
     return out;
   }
