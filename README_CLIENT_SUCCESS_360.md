@@ -221,3 +221,20 @@ Run:
 ```text
 sql/migrations/20260708_client_success_360_brand_layer_admin_only.sql
 ```
+
+
+## 2026-07-08 Brand/Sub-group Report Enhancement
+
+Clarified usage:
+- Use CS Brands as sub-groups inside a client group.
+- Example: `Kcal Group` can be divided into `Kcal KSA` and `Kcal UAE`.
+- Assign each active location to the correct brand/sub-group.
+- Group completion export now includes an extra `Brand Completion Insights` page before the location details.
+- Brand insights show:
+  - top performing brand
+  - lowest performing brand
+  - completion gap between brands
+  - brand-level Done On-Time / Done Late / Partially Done / Missed / Completion
+  - weak locations under each brand needing extra CS effort
+
+No new SQL is required if the brand layer migration is already installed.

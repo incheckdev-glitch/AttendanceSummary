@@ -1341,6 +1341,44 @@
       };
     });
 
+    const hydrateCompletionTargets = targets => targets.map(target => {
+      const directKey = completionTargetKey(target);
+      const nameKey = ['name', normalize(target.company_name), normalize(target.location_name)].join('|');
+      const saved = recordByTarget.get(directKey) || recordByTarget.get(nameKey) || {};
+      return {
+        company_id: target.company_id,
+        company_name: target.company_name,
+        location_name: target.location_name,
+        service_start_date: target.service_start_date || saved.service_start_date || '',
+        service_end_date: target.service_end_date || saved.service_end_date || '',
+        done_on_time: saved.done_on_time ?? 0,
+        done_late: saved.done_late ?? 0,
+        partially_done: saved.partially_done ?? 0,
+        missed: saved.missed ?? 0,
+        review_type: saved.review_type || rawRecords[0]?.review_type || 'weekly',
+        period_start: saved.period_start || rawRecords[0]?.period_start || '',
+        period_end: saved.period_end || rawRecords[0]?.period_end || '',
+        source_note: saved.source_note || ''
+      };
+    });
+
+    const brandCandidates = isBrandReport
+      ? [selectedBrand].filter(Boolean)
+      : (isGroupReport ? brandsForGroup(selectedGroup) : brandsForCompany(selectedCompany));
+    const brandRows = brandCandidates.map(brand => {
+      const brandTargets = brandCompletionTargets(brand);
+      const targetKeySet = new Set(targetRows.map(completionTargetKey));
+      const scopedTargets = brandTargets.filter(target => !targetKeySet.size || targetKeySet.has(completionTargetKey(target)));
+      const brandLocations = hydrateCompletionTargets(scopedTargets);
+      const brandStats = averageCompletionMetrics(brandLocations);
+      const bestLocation = brandLocations.length ? brandLocations.slice().sort((a,b) => completionCount(b) - completionCount(a))[0] : null;
+      const weakLocations = brandLocations.filter(row => completionCount(row) < 80).sort((a,b) => completionCount(a) - completionCount(b)).slice(0, 3);
+      return { brand, brand_name: brandName(brand), scope: brandScopeLabel(brand), locations: brandLocations, stats: brandStats, bestLocation, weakLocations };
+    }).filter(item => item.locations.length);
+    const bestBrand = brandRows.length ? brandRows.slice().sort((a,b) => b.stats.completion - a.stats.completion)[0] : null;
+    const weakestBrand = brandRows.length ? brandRows.slice().sort((a,b) => a.stats.completion - b.stats.completion)[0] : null;
+    const brandGap = bestBrand && weakestBrand ? Math.max(0, bestBrand.stats.completion - weakestBrand.stats.completion) : 0;
+
     const stats = averageCompletionMetrics(rows);
     const reportType = rawRecords[0]?.review_type || rows[0]?.review_type || 'weekly';
     const periodStart = rawRecords[0]?.period_start || rows[0]?.period_start || '';
@@ -1396,6 +1434,7 @@
   .summary-card .summary-line{display:grid;grid-template-columns:24px 1fr auto;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}.mini-icon{width:22px;height:22px;border-radius:8px;background:#eef5ff;color:var(--brand);display:flex;align-items:center;justify-content:center;font-weight:900}.summary-line strong{font-size:15px}.summary-total{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;margin-top:12px}.summary-total .big{font-size:26px;color:var(--good);font-weight:950}.tiny{font-size:10px;color:var(--muted)}
   .insights{display:grid;grid-template-columns:repeat(3,1fr);gap:5mm;margin-top:5mm}.insight{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff;display:grid;grid-template-columns:30px 1fr;gap:10px;min-height:72px}.insight.good-bg{background:linear-gradient(135deg,#f4fbf6,#fff)}.insight.warn-bg{background:linear-gradient(135deg,#fff7ed,#fff)}.insight.info-bg{background:linear-gradient(135deg,#f3f7ff,#fff)}.insight .big-icon{font-size:22px}.insight h3{margin:0 0 5px;color:var(--ink);font-size:12px}.insight p{margin:0;color:var(--text);font-size:11px;line-height:1.4}
   .table-page{overflow:visible}.table-page .report-header{margin-bottom:4mm}.table-wrap{border:1px solid var(--line);border-radius:14px;overflow:hidden}.report-table{width:100%;border-collapse:collapse;table-layout:fixed}.report-table thead{display:table-header-group}.report-table tr{break-inside:avoid;page-break-inside:avoid}.report-table th{background:var(--brand);color:#fff;text-align:left;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;padding:7px 8px}.report-table td{padding:7px 8px;border-bottom:1px solid var(--line);font-size:10.8px;line-height:1.25;vertical-align:middle}.report-table tbody tr:nth-child(even){background:#fbfdff}.report-table .num{width:32px;text-align:center}.report-table .client-col{width:25%}.report-table .location-col{width:17%}.report-table .pct{text-align:right;white-space:nowrap}.report-table .completion-cell{font-weight:950;color:var(--good)}
+  .brand-page .brand-overview{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5mm;margin-bottom:5mm}.brand-insight{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff;min-height:76px}.brand-insight h3{margin:0 0 6px;color:var(--ink);font-size:12px}.brand-insight .big{font-size:24px;font-weight:950;color:var(--brand)}.brand-insight.good{background:linear-gradient(135deg,#f0fdf4,#fff)}.brand-insight.warn{background:linear-gradient(135deg,#fff7ed,#fff)}.brand-insight.info{background:linear-gradient(135deg,#eff6ff,#fff)}.brand-table .brand-name{font-weight:950;color:var(--ink)}.brand-table .brand-scope{display:block;color:var(--muted);font-size:9.5px;margin-top:2px}.brand-table .low{color:var(--miss);font-weight:950}.brand-table .ok{color:var(--good);font-weight:950}.brand-mini-list{margin:6px 0 0;padding-left:16px;color:var(--text);font-size:10.5px;line-height:1.45}
   .footer{display:flex;justify-content:space-between;color:var(--muted);font-size:10px;margin-top:5mm;padding-top:3mm;border-top:1px solid var(--line)}
   @media screen{.report-page{box-shadow:0 14px 40px rgba(18,42,88,.10)}}
   @media print{html,body{width:297mm;background:#fff}.actions{display:none!important}.report-document{padding:0}.report-page{width:auto;min-height:auto;margin:0;border:0;border-radius:0;box-shadow:none;padding:0;page-break-after:always;break-after:page;overflow:visible}.report-page:last-child{page-break-after:auto;break-after:auto}.report-header{break-inside:avoid;page-break-inside:avoid}.kpis,.summary-grid,.insights,.panel{break-inside:avoid;page-break-inside:avoid}.summary-page{height:194mm}.table-page{height:auto}.report-table th{font-size:9px;padding:6px 7px}.report-table td{font-size:10px;padding:6px 7px}.stack{height:58px}.stack-svg{height:58px}}
@@ -1463,16 +1502,41 @@
     <div class="insights">
       <div class="insight good-bg"><div class="big-icon">🏆</div><div><h3>Best performing location</h3><p>${best ? `${esc(best.company_name || reportName)} — ${esc(best.location_name)}<br/>Completion: <strong>${formatPct(completionCount(best))}</strong>` : 'No location data available yet.'}</p></div></div>
       <div class="insight warn-bg"><div class="big-icon">⚠</div><div><h3>Locations needing extra CS effort</h3><p>${weak.length ? weak.map(row => `${esc(row.company_name || reportName)} — ${esc(row.location_name)} (${formatPct(completionCount(row))})`).join('<br/>') : 'No low-completion locations for the selected period.'}</p></div></div>
-      <div class="insight info-bg"><div class="big-icon">ⓘ</div><div><h3>Notes</h3><p>${esc(sourceNote)}<br/>${isBrandReport ? 'Brand result is auto-calculated from assigned brand location rows.' : (isGroupReport ? 'Group result is auto-calculated from all location rows.' : 'Client result is auto-calculated from all location rows.')}<br/>Generated on ${esc(generatedAt.toLocaleString())}.</p></div></div>
+      <div class="insight info-bg"><div class="big-icon">ⓘ</div><div><h3>Notes</h3><p>${esc(sourceNote)}<br/>${isBrandReport ? 'Brand result is auto-calculated from assigned brand location rows.' : (isGroupReport ? 'Group result includes brand/sub-group completion when brands are configured.' : 'Client result is auto-calculated from all location rows.')}<br/>Generated on ${esc(generatedAt.toLocaleString())}.</p></div></div>
     </div>
     <div class="footer"><span>InCheck 360 · Customer Success 360</span><span>Summary · ${esc(generatedAt.toLocaleDateString())}</span></div>
   </section>
+
+  ${brandRows.length ? `<section class="report-page brand-page">
+    <div class="report-header">
+      <div class="brand"><div data-incheck360-doc-logo-slot></div><div class="brand-fallback" style="display:none;">InCheck <span>360</span></div></div>
+      <div class="header-main">
+        <div class="header-row"><div class="title"><h1>Brand Completion Insights</h1><div class="subtitle">${esc(reportName)} · Brands such as Kcal KSA / Kcal UAE are calculated from their assigned locations.</div></div></div>
+        <div class="meta-grid">
+          <div class="meta"><div class="k">Brands</div><div class="v">${brandRows.length}</div></div>
+          <div class="meta"><div class="k">Best Brand</div><div class="v">${bestBrand ? esc(bestBrand.brand_name) : '—'}</div></div>
+          <div class="meta"><div class="k">Lowest Brand</div><div class="v">${weakestBrand ? esc(weakestBrand.brand_name) : '—'}</div></div>
+          <div class="meta"><div class="k">Gap</div><div class="v">${brandGap.toFixed(2)}%</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="brand-overview">
+      <div class="brand-insight good"><h3>Top performing brand</h3><div class="big">${bestBrand ? `${bestBrand.stats.completion.toFixed(2)}%` : '—'}</div><p>${bestBrand ? `${esc(bestBrand.brand_name)} · ${bestBrand.locations.length} locations` : 'No brand data yet.'}</p></div>
+      <div class="brand-insight warn"><h3>Needs extra CS effort</h3><div class="big">${weakestBrand ? `${weakestBrand.stats.completion.toFixed(2)}%` : '—'}</div><p>${weakestBrand ? `${esc(weakestBrand.brand_name)} · ${weakestBrand.weakLocations.length} low-completion locations` : 'No brand data yet.'}</p></div>
+      <div class="brand-insight info"><h3>Brand performance gap</h3><div class="big">${brandGap.toFixed(2)}%</div><p>${brandGap >= 15 ? 'Large gap: review playbook/training by brand.' : 'Gap is within normal monitoring range.'}</p></div>
+    </div>
+    <div class="table-wrap"><table class="report-table brand-table">
+      <thead><tr><th class="num">#</th><th class="client-col">Brand / Sub-group</th><th>Locations</th><th>Done On-Time</th><th>Done Late</th><th>Partially Done</th><th>Missed</th><th>Completion</th><th>Insight</th></tr></thead>
+      <tbody>${brandRows.map((item, index) => `<tr><td class="num">${index + 1}</td><td><span class="brand-name">${esc(item.brand_name)}</span><span class="brand-scope">${esc(item.scope)}</span></td><td class="pct">${item.locations.length}</td><td class="pct">${item.stats.done_on_time.toFixed(2)}%</td><td class="pct">${item.stats.done_late.toFixed(2)}%</td><td class="pct">${item.stats.partially_done.toFixed(2)}%</td><td class="pct">${item.stats.missed.toFixed(2)}%</td><td class="pct ${item.stats.completion < 80 ? 'low' : 'ok'}">${item.stats.completion.toFixed(2)}%</td><td>${item.stats.completion < 80 ? 'Needs extra CS effort' : 'On track'}${item.weakLocations.length ? `<ul class="brand-mini-list">${item.weakLocations.map(row => `<li>${esc(row.location_name)} · ${formatPct(completionCount(row))}</li>`).join('')}</ul>` : ''}</td></tr>`).join('')}</tbody>
+    </table></div>
+    <div class="footer"><span>InCheck 360 · Customer Success 360</span><span>Brand insights · ${esc(generatedAt.toLocaleDateString())}</span></div>
+  </section>` : ''}
 
   <section class="report-page table-page">
     <div class="report-header">
       <div class="brand"><div data-incheck360-doc-logo-slot></div><div class="brand-fallback" style="display:none;">InCheck <span>360</span></div></div>
       <div class="header-main">
-        <div class="header-row"><div class="title"><h1>Location Completion Details</h1><div class="subtitle">${esc(reportName)} · ${esc(periodLabel)} · ${rows.length} active location${rows.length === 1 ? '' : 's'} · no duplicate locations</div></div></div>
+        <div class="header-row"><div class="title"><h1>Location Completion Details</h1><div class="subtitle">${esc(reportName)} · ${esc(periodLabel)} · ${rows.length} active location${rows.length === 1 ? '' : 's'} · no duplicate locations · brand page included when configured</div></div></div>
         <div class="meta-grid">
           <div class="meta"><div class="k">Completion</div><div class="v">${stats.completion.toFixed(2)}%</div></div>
           <div class="meta"><div class="k">Done On-Time</div><div class="v">${stats.done_on_time.toFixed(2)}%</div></div>
