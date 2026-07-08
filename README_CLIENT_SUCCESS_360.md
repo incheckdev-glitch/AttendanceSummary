@@ -238,3 +238,19 @@ Clarified usage:
   - weak locations under each brand needing extra CS effort
 
 No new SQL is required if the brand layer migration is already installed.
+
+
+## 2026-07-08 Brand Location Move Fix
+
+Fixes:
+- Brand tab action buttons now render as real buttons, not raw HTML text.
+- Brand location manager now supports adding, moving, and removing locations.
+- A group/client can be divided into multiple brands, but each location belongs to only one brand within the same group/client scope.
+- Adding a location to another brand automatically moves it from the previous brand in that same scope.
+- Added assigned-locations table inside the brand location manager.
+
+Run this SQL if the brand layer is already installed:
+
+```text
+sql/migrations/20260708_client_success_360_brand_location_move_unique_fix.sql
+```

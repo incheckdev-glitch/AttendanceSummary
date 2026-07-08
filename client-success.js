@@ -1149,35 +1149,52 @@
 
   function renderBrands(company) {
     const brands = brandsForCompany(company);
-    const rows = [];
-    brands.forEach(brand => {
+    const brandSummaries = brands.map(brand => {
       const targets = brandCompletionTargets(brand);
       const targetKeys = new Set(targets.map(completionTargetKey));
       const latestRows = aggregateCompletionRows((STATE.rows.completions || []).filter(row => targetKeys.has([String(row.company_id || '').trim(), normalize(row.location_name)].join('|'))));
       const avg = averageCompletionMetrics(latestRows.length ? latestRows : targets);
-      rows.push([
-        brandName(brand),
-        brandScopeLabel(brand),
-        targets.length,
-        `${avg.completion.toFixed(2)}%`,
-        `${avg.done_on_time.toFixed(2)}%`,
-        `${avg.done_late.toFixed(2)}%`,
-        `<button class="btn ghost sm" type="button" data-cs-action="brand-location" data-brand-id="${attr(brandId(brand))}">Assign Locations</button> <button class="btn ghost sm" type="button" data-cs-action="brand-export" data-brand-id="${attr(brandId(brand))}">Export</button>`
-      ]);
+      const assigned = brandLocationRows(brand);
+      return { brand, targets, assigned, avg };
     });
-    const cards = brands.length
-      ? brands.map(brand => {
-          const targets = brandCompletionTargets(brand);
-          const targetKeys = new Set(targets.map(completionTargetKey));
-          const latestRows = aggregateCompletionRows((STATE.rows.completions || []).filter(row => targetKeys.has([String(row.company_id || '').trim(), normalize(row.location_name)].join('|'))));
-          const avg = averageCompletionMetrics(latestRows.length ? latestRows : targets);
-          return `<article class="cs-info-box"><div class="cs-info-label">${esc(brandScopeLabel(brand))}</div><div class="cs-info-value">${esc(brandName(brand))}</div><div class="cs-kpi-sub">${targets.length} location${targets.length === 1 ? '' : 's'} · Completion ${avg.completion.toFixed(2)}%</div></article>`;
+    const cards = brandSummaries.length
+      ? brandSummaries.map(({ brand, targets, assigned, avg }) => {
+          const assignedText = assigned.length ? `${assigned.length} assigned` : 'No assigned locations yet';
+          return `<article class="cs-info-box">
+            <div class="cs-info-label">${esc(brandScopeLabel(brand))}</div>
+            <div class="cs-info-value">${esc(brandName(brand))}</div>
+            <div class="cs-kpi-sub">${targets.length} location${targets.length === 1 ? '' : 's'} · ${assignedText} · Completion ${avg.completion.toFixed(2)}%</div>
+          </article>`;
         }).join('')
-      : `<div class="cs-empty">No brands assigned yet. Create brands to split this client/group into operational brand layers.</div>`;
-    return `<div class="cs-section-title"><div><h4>Brands</h4><div class="cs-kpi-sub">Third layer: Client / Group → Brand → Locations. Brand completion is auto-calculated from the locations assigned to each brand.</div></div><div><button class="btn sm" type="button" data-cs-action="brand">+ New Brand</button> <button class="btn ghost sm" type="button" data-cs-action="brand-location">+ Assign Location to Brand</button></div></div>
+      : `<div class="cs-empty">No brands assigned yet. Create brands to split this client/group into operational brand layers, such as Kcal KSA and Kcal UAE.</div>`;
+
+    const rowsHtml = brandSummaries.length ? brandSummaries.map(({ brand, targets, avg }, index) => {
+      const bid = attr(brandId(brand));
+      return `<tr>
+        <td>${index + 1}</td>
+        <td><strong>${esc(brandName(brand))}</strong><div class="cs-kpi-sub">${esc(brandScopeLabel(brand))}</div></td>
+        <td>${targets.length}</td>
+        <td><strong>${avg.completion.toFixed(2)}%</strong></td>
+        <td>${avg.done_on_time.toFixed(2)}%</td>
+        <td>${avg.done_late.toFixed(2)}%</td>
+        <td>
+          <button class="btn ghost sm" type="button" data-cs-action="brand-location" data-brand-id="${bid}">Manage Locations</button>
+          <button class="btn ghost sm" type="button" data-cs-action="brand-export" data-brand-id="${bid}">Export</button>
+        </td>
+      </tr>`;
+    }).join('') : '';
+
+    const tableHtml = rowsHtml
+      ? `<div class="cs-table-wrap"><table class="cs-table"><thead><tr><th>#</th><th>Brand</th><th>Locations</th><th>Completion</th><th>Done On-Time</th><th>Done Late</th><th>Actions</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>`
+      : '<div class="cs-empty">No brand completion to show yet.</div>';
+
+    return `<div class="cs-section-title">
+        <div><h4>Brands</h4><div class="cs-kpi-sub">Third layer: Client / Group → Brand → Locations. A client or group can be divided into multiple brands, and each location can be moved from one brand to another.</div></div>
+        <div><button class="btn sm" type="button" data-cs-action="brand">+ New Brand</button> <button class="btn ghost sm" type="button" data-cs-action="brand-location">+ Manage Brand Locations</button></div>
+      </div>
       <div class="cs-info-grid">${cards}</div>
       <div style="margin-top:14px;" class="cs-section-title"><h4>Brand Completion</h4></div>
-      ${rows.length ? table(['Brand','Scope','Locations','Completion','Done On-Time','Done Late','Actions'], rows) : '<div class="cs-empty">No brand completion to show yet.</div>'}`;
+      ${tableHtml}`;
   }
 
   function renderCompletion(company) {
@@ -1573,6 +1590,7 @@
     if (action === 'group-activity') openGroupActivityForm();
     if (action === 'brand') openBrandForm();
     if (action === 'brand-location') openBrandLocationForm(event.target?.closest?.('[data-brand-id]')?.dataset?.brandId || '');
+    if (action === 'brand-location-remove') removeBrandLocation(event.target?.closest?.('[data-brand-location-id]')?.dataset?.brandLocationId || '');
     if (action === 'brand-export') exportCompletionReport(event.target?.closest?.('[data-brand-id]')?.dataset?.brandId || '');
     if (action === 'review') openReviewForm();
     if (action === 'task') openTaskForm();
@@ -1977,11 +1995,40 @@
     toggle();
   }
 
+  function brandScopeTargets(brand) {
+    if (brand?.group_id) return groupCompletionTargets(groupById(brand.group_id) || {});
+    if (brand?.company_id) {
+      const company = STATE.rows.companies.find(c => companyId(c) === String(brand.company_id || '').trim()) || getSelectedCompany();
+      return currentClientCompletionTargets(company);
+    }
+    const firstGroup = groupsForCompany(getSelectedCompany())[0];
+    return firstGroup ? groupCompletionTargets(firstGroup) : currentClientCompletionTargets(getSelectedCompany());
+  }
+
+  function brandLocationScopeMatches(row, brand) {
+    if (!row || !brand) return false;
+    if (brand.group_id) return String(row.group_id || '').trim() === String(brand.group_id || '').trim();
+    return !String(row.group_id || '').trim() && String(row.company_id || '').trim() === String(brand.company_id || '').trim();
+  }
+
+  function brandOwnerForTarget(brand, target) {
+    const locationKey = normalize(target?.location_name || '');
+    const companyKey = String(target?.company_id || '').trim();
+    const row = (STATE.rows.brandLocations || []).find(item => {
+      if (!brandLocationScopeMatches(item, brand)) return false;
+      return String(item.company_id || '').trim() === companyKey && normalize(item.location_name) === locationKey && !['inactive','archived','deleted'].includes(String(item.status || '').trim().toLowerCase());
+    });
+    if (!row) return null;
+    return brandById(row.brand_id) || { id: row.brand_id, brand_name: row.brand_name_snapshot || 'Unknown Brand' };
+  }
+
   function brandLocationOptions(brand) {
-    const targets = brand.group_id ? groupCompletionTargets(groupById(brand.group_id) || {}) : (brand.company_id ? currentClientCompletionTargets(STATE.rows.companies.find(c => companyId(c) === String(brand.company_id || '').trim()) || getSelectedCompany()) : groupCompletionTargets(groupsForCompany(getSelectedCompany())[0] || {}));
+    const targets = brandScopeTargets(brand);
     return targets.map(target => {
+      const currentOwner = brandOwnerForTarget(brand, target);
       const value = [target.company_id, target.company_name, target.location_name, target.service_start_date || '', target.service_end_date || ''].map(v => encodeURIComponent(String(v || ''))).join('|');
-      return `<option value="${attr(value)}">${esc(target.company_name)} · ${esc(target.location_name)}</option>`;
+      const ownerLabel = currentOwner ? ` · currently in ${brandName(currentOwner)}` : ' · unassigned';
+      return `<option value="${attr(value)}">${esc(target.company_name)} · ${esc(target.location_name)}${esc(ownerLabel)}</option>`;
     }).join('');
   }
 
@@ -1990,30 +2037,68 @@
     return { company_id, company_name, location_name, service_start_date, service_end_date };
   }
 
+  function assignedBrandLocationRows(brand) {
+    return brandLocationRows(brand).sort((a,b) => `${a.company_name_snapshot || ''} ${a.location_name || ''}`.localeCompare(`${b.company_name_snapshot || ''} ${b.location_name || ''}`));
+  }
+
+  function renderAssignedBrandLocations(brand) {
+    if (!brand) return '<div class="cs-empty">Select a brand.</div>';
+    const rows = assignedBrandLocationRows(brand);
+    if (!rows.length) return '<div class="cs-empty">No locations assigned to this brand yet.</div>';
+    return `<div class="cs-table-wrap"><table class="cs-table"><thead><tr><th>Client</th><th>Location</th><th>Status</th><th>Action</th></tr></thead><tbody>${rows.map(row => `<tr>
+      <td>${esc(row.company_name_snapshot || '')}</td>
+      <td>${esc(row.location_name || '')}</td>
+      <td>${esc(row.status || 'Active')}</td>
+      <td><button class="btn ghost sm" type="button" data-cs-action="brand-location-remove" data-brand-location-id="${attr(row.id)}">Remove</button></td>
+    </tr>`).join('')}</tbody></table></div>`;
+  }
+
+  async function removeBrandLocation(rowId = '') {
+    const id = String(rowId || '').trim();
+    if (!id) return;
+    const row = (STATE.rows.brandLocations || []).find(item => String(item.id || '').trim() === id);
+    const label = row ? `${row.location_name || 'this location'} from ${row.brand_name_snapshot || 'this brand'}` : 'this brand location';
+    if (!confirm(`Remove ${label}?`)) return;
+    const { error } = await supabase().from(TABLES.brandLocations).delete().eq('id', id);
+    if (error) { toast(`Unable to remove location: ${error.message}`); return; }
+    await loadData();
+    toast('Location removed from brand.');
+  }
+
   function openBrandLocationForm(preselectedBrandId = '') {
     const company = getSelectedCompany();
     const brands = activeBrandsForSelect(company);
     if (!brands.length) { toast('Create a brand first.'); openBrandForm(); return; }
     const selectedBrand = brandById(preselectedBrandId) || brands[0];
     const brandOpts = brands.map(brand => `<option value="${attr(brandId(brand))}" ${brandId(brand) === brandId(selectedBrand) ? 'selected' : ''}>${esc(brandName(brand))} · ${esc(brandScopeLabel(brand))}</option>`).join('');
-    openModal('Assign Location to Brand', `<form class="cs-form" id="csBrandLocationForm">
+    openModal('Manage Brand Locations', `<form class="cs-form" id="csBrandLocationForm">
       <div class="cs-form-grid">
         <div class="cs-form-field"><label>Brand</label><select name="brand_id" class="select" required>${brandOpts}</select></div>
-        <div class="cs-form-field"><label>Location</label><select name="location_payload" class="select" required></select></div>
+        <div class="cs-form-field"><label>Location to Add / Move</label><select name="location_payload" class="select" required></select></div>
         ${selectField('status','Status',['Active','Inactive'],'Active')}
         <div class="cs-form-field cs-form-field--full"><label>Notes</label><textarea name="notes" class="input" placeholder="Optional"></textarea></div>
       </div>
-      <div class="cs-modal-actions"><button type="button" class="btn ghost" onclick="document.getElementById('csModalClose').click()">Cancel</button><button type="submit" class="btn primary">Assign Location</button></div>
+      <div class="cs-kpi-sub">Adding a location to this brand will automatically move it from any other brand in the same client/group scope.</div>
+      <div class="cs-section-title" style="margin-top:12px;"><h4>Assigned Locations</h4><span class="cs-chip">Remove or move between brands</span></div>
+      <div id="csBrandAssignedLocations"></div>
+      <div class="cs-modal-actions"><button type="button" class="btn ghost" onclick="document.getElementById('csModalClose').click()">Cancel</button><button type="submit" class="btn primary">Add / Move Location</button></div>
     </form>`, async form => {
       const fd = new FormData(form);
       const brand = brandById(fd.get('brand_id'));
       const target = parseBrandLocationOption(fd.get('location_payload'));
       if (!brand || !target.company_id || !target.location_name) { toast('Select a valid brand and location.'); return; }
+      const groupIdValue = brand.group_id || null;
+      let deleteQuery = supabase().from(TABLES.brandLocations).delete()
+        .eq('company_id', target.company_id)
+        .eq('location_name', target.location_name);
+      if (groupIdValue) deleteQuery = deleteQuery.eq('group_id', groupIdValue);
+      else deleteQuery = deleteQuery.is('group_id', null);
+      await deleteQuery;
       const payload = {
         brand_id: brandId(brand),
         brand_name_snapshot: brandName(brand),
-        group_id: brand.group_id || null,
-        group_name_snapshot: brand.group_id ? groupName(groupById(brand.group_id) || {}) : null,
+        group_id: groupIdValue,
+        group_name_snapshot: groupIdValue ? groupName(groupById(groupIdValue) || {}) : null,
         company_id: target.company_id,
         company_name_snapshot: target.company_name,
         location_name: target.location_name,
@@ -2024,13 +2109,15 @@
       };
       const { error } = await supabase().from(TABLES.brandLocations).upsert(payload, { onConflict: 'brand_id,company_id,location_name' });
       if (error) { toast(`Unable to assign location: ${error.message}`); return; }
-      closeModal(); await loadData(); toast('Location assigned to brand.');
+      closeModal(); await loadData(); toast(`Location moved to ${brandName(brand)}.`);
     });
     const form = $('csBrandLocationForm');
     const rebuild = () => {
       const brand = brandById(form?.brand_id?.value) || brands[0];
       const options = brand ? brandLocationOptions(brand) : '';
       if (form?.location_payload) form.location_payload.innerHTML = options || '<option value="">No active locations found for this brand scope</option>';
+      const assignedHost = $('csBrandAssignedLocations');
+      if (assignedHost) assignedHost.innerHTML = renderAssignedBrandLocations(brand);
     };
     form?.brand_id?.addEventListener('change', rebuild);
     rebuild();
