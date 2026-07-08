@@ -1220,62 +1220,124 @@
       const showInside = width >= 56;
       return `<g><rect x="${x.toFixed(2)}" y="0" width="${width.toFixed(2)}" height="58" fill="${part.color}"></rect>${showInside ? `<text x="${textX.toFixed(2)}" y="34" text-anchor="middle" dominant-baseline="middle" fill="#ffffff" font-size="15" font-weight="800">${label}</text>` : ''}</g>`;
     }).join('');
-    const stackSvgMarkers = stackParts.map(part => {
-      if (part.value * 10 >= 56) return '';
-      const priorWidth = stackParts.slice(0, stackParts.indexOf(part)).reduce((sum, item) => sum + item.value * 10, 0);
-      const x = Math.max(18, Math.min(982, priorWidth + (part.value * 5)));
-      return `<text x="${x.toFixed(2)}" y="76" text-anchor="middle" fill="#24324b" font-size="11" font-weight="800">${part.value.toFixed(2)}%</text>`;
-    }).join('');
+    const stackSvgMarkers = '';
     const stackSvg = `<svg class="stack-svg" viewBox="0 0 1000 86" preserveAspectRatio="none" role="img" aria-label="Completion breakdown"><rect x="0" y="0" width="1000" height="58" rx="10" ry="10" fill="#eef2f7"></rect>${stackSvgSegments}${stackSvgMarkers}</svg>`;
-    const donutStyle = `background: conic-gradient(var(--good) 0 ${safeWidth(stats.done_on_time)}, var(--late) ${safeWidth(stats.done_on_time)} ${safeWidth(stats.done_on_time + stats.done_late)}, var(--partial) ${safeWidth(stats.done_on_time + stats.done_late)} ${safeWidth(stats.done_on_time + stats.done_late + stats.partially_done)}, var(--miss) ${safeWidth(stats.done_on_time + stats.done_late + stats.partially_done)} 100%);`;
+    const completionDonutStyle = `background: conic-gradient(var(--good) 0 ${safeWidth(stats.completion)}, #e8eef7 ${safeWidth(stats.completion)} 100%);`;
 
     const reportHtml = `<!DOCTYPE html>
 <html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Completion Report - ${esc(reportName)}</title>
 <style>
-  :root{--brand:#0b4ea2;--brand2:#276ef1;--ink:#071a44;--text:#24324b;--muted:#667085;--line:#dfe7f2;--soft:#f5f8fc;--card:#fff;--good:#42a642;--late:#ef7d17;--partial:#7d55b4;--miss:#d93545;--shadow:0 14px 38px rgba(18,42,88,.08)}
-  *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact} body{margin:0;background:#ffffff;color:var(--text);font-family:Inter,Segoe UI,Arial,sans-serif}.page{max-width:1280px;margin:0 auto;padding:28px 36px 34px}.brand{display:flex;align-items:center;gap:14px;margin-bottom:18px;min-height:28mm}.brand [data-incheck360-doc-logo-slot],.brand [data-incheck360-doc-logo]{display:flex;align-items:center;justify-content:flex-start}.brand .incheck360-doc-logo-wrap{width:40mm;max-width:40mm;height:24mm;max-height:24mm}.brand .incheck360-doc-logo{max-width:32mm;max-height:20mm;width:auto;height:auto;object-fit:contain;object-position:left center}.brand-fallback{font-size:22px;font-weight:900;letter-spacing:.04em;color:var(--ink)}.brand-fallback span{color:var(--brand2)}
-  .header{display:grid;grid-template-columns:1.3fr repeat(4,minmax(150px,.65fr));gap:18px;align-items:end;border-bottom:1px solid var(--line);padding-bottom:22px}.title h1{margin:0;color:var(--ink);font-size:36px;letter-spacing:.03em}.title .subtitle{margin-top:8px;color:var(--muted);font-size:13px}.meta{border-left:1px solid var(--line);padding-left:18px;min-height:44px}.meta .k{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px}.meta .v{font-weight:800;color:var(--ink);font-size:14px;line-height:1.25}
-  .actions{display:flex;justify-content:flex-end;gap:10px;margin:16px 0}.btn{border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-weight:800;cursor:pointer;background:#fff;color:var(--brand)}.btn.primary{background:var(--brand);color:#fff;border-color:var(--brand)}
-  .kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:16px;margin:18px 0}.kpi{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;box-shadow:var(--shadow);min-height:104px}.kpi .icon{width:38px;height:38px;border-radius:999px;background:#eef5ff;color:var(--brand);display:flex;align-items:center;justify-content:center;font-weight:900;margin-bottom:8px}.kpi .label{font-size:12px;font-weight:750;color:var(--ink);line-height:1.25}.kpi .value{font-size:25px;font-weight:900;margin-top:8px;color:var(--brand)}.kpi .value.good{color:var(--good)}.kpi .value.late{color:var(--late)}.kpi .value.partial{color:var(--partial)}.kpi .value.miss{color:var(--miss)}
-  .panel{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow)}.analytics{display:grid;grid-template-columns:.55fr 1fr;gap:0;margin-top:18px}.donut-box{padding:22px;border-right:1px solid var(--line)}.breakdown{padding:22px}.section-title{display:flex;align-items:center;justify-content:space-between;margin:0 0 16px}.section-title h2{margin:0;color:var(--ink);font-size:18px}.section-title .note{color:var(--muted);font-size:12px}.donut-wrap{display:flex;align-items:center;gap:28px}.donut{width:190px;height:190px;border-radius:50%;position:relative;box-shadow:inset 0 0 0 1px rgba(0,0,0,.03)}.donut:after{content:"";position:absolute;inset:42px;background:#fff;border-radius:50%;box-shadow:0 0 0 1px var(--line)}.donut-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:2;text-align:center;color:var(--ink);font-weight:900;font-size:26px}.donut-center span{font-size:12px;color:var(--muted);font-weight:700;margin-top:6px}.legend{display:grid;gap:12px;min-width:210px}.legend-row{display:grid;grid-template-columns:14px 1fr auto;gap:10px;align-items:center;font-size:13px}.dot{width:10px;height:10px;border-radius:50%}.dot.good,.stack-segment.good{background:var(--good)}.dot.late,.stack-segment.late{background:var(--late)}.dot.partial,.stack-segment.partial{background:var(--partial)}.dot.miss,.stack-segment.miss{background:var(--miss)}
-  .stack{height:86px;border-radius:10px;overflow:visible;margin:28px 4px 10px}.stack-svg{display:block;width:100%;height:86px;overflow:visible}.axis{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;border-top:1px solid var(--line);padding-top:9px;margin:0 4px}.stack-legend{display:flex;gap:28px;flex-wrap:wrap;margin-top:22px;color:var(--text);font-size:13px}.stack-legend span{display:flex;gap:8px;align-items:center}
-  .middle{display:grid;grid-template-columns:1fr 360px;gap:20px;margin-top:18px}.table-card{padding:18px}.summary-card{padding:20px}.table-wrap{border:1px solid var(--line);border-radius:12px;overflow:hidden}.report-table{width:100%;border-collapse:collapse}.report-table th{background:var(--brand);color:#fff;text-align:left;font-size:11px;letter-spacing:.04em;text-transform:uppercase;padding:12px 10px}.report-table td{padding:11px 10px;border-bottom:1px solid var(--line);font-size:12.5px}.report-table tbody tr:nth-child(even){background:#fbfdff}.report-table .completion-cell{font-weight:900;color:var(--good)}.summary-line{display:grid;grid-template-columns:32px 1fr auto;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid var(--line)}.mini-icon{width:28px;height:28px;border-radius:8px;background:#eef5ff;color:var(--brand);display:flex;align-items:center;justify-content:center;font-weight:900}.summary-line strong{font-size:18px}.summary-total{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-top:18px}.summary-total .big{font-size:32px;color:var(--good);font-weight:950}.tiny{font-size:11px;color:var(--muted)}
-  .insights{display:grid;grid-template-columns:1fr 1fr 1.2fr;gap:14px;margin-top:18px}.insight{border:1px solid var(--line);border-radius:16px;padding:16px 18px;background:#fff;box-shadow:var(--shadow);display:grid;grid-template-columns:42px 1fr;gap:14px;align-items:start}.insight.good-bg{background:linear-gradient(135deg,#f4fbf6,#fff)}.insight.warn-bg{background:linear-gradient(135deg,#fff5f5,#fff)}.insight.info-bg{background:linear-gradient(135deg,#f3f7ff,#fff)}.insight .big-icon{font-size:26px}.insight h3{margin:0 0 7px;color:var(--ink);font-size:14px}.insight p{margin:0;color:var(--text);font-size:13px;line-height:1.55}.footer{display:flex;justify-content:space-between;color:var(--muted);font-size:11px;margin-top:18px;padding-top:12px;border-top:1px solid var(--line)}
-  @media print{body{background:#fff}.page{padding:16px;max-width:none}.actions{display:none}.panel,.kpi,.insight{box-shadow:none}.middle{grid-template-columns:1fr 330px}.report-table th,.report-table td{padding:8px 7px}.kpis{gap:10px}.kpi{padding:12px}.kpi .value{font-size:21px}.stack{height:86px;break-inside:avoid}.stack-svg{height:86px}.analytics,.breakdown,.donut-box{break-inside:avoid;page-break-inside:avoid}}
+  @page{size:A4 landscape;margin:7mm}
+  :root{--brand:#0b4ea2;--brand2:#276ef1;--ink:#071a44;--text:#24324b;--muted:#667085;--line:#dfe7f2;--soft:#f5f8fc;--card:#fff;--good:#42a642;--late:#276ef1;--partial:#ef7d17;--miss:#d93545;--shadow:0 12px 28px rgba(18,42,88,.07)}
+  *{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}
+  html,body{margin:0;background:#eef3f8;color:var(--text);font-family:Inter,Segoe UI,Arial,sans-serif}
+  body{font-size:12px}
+  .report-document{width:100%;padding:14px}
+  .report-page{width:281mm;min-height:194mm;margin:0 auto 14px;background:#fff;border:1px solid var(--line);border-radius:18px;padding:10mm;box-shadow:var(--shadow);page-break-after:always;break-after:page;overflow:hidden}
+  .report-page:last-child{page-break-after:auto;break-after:auto}
+  .report-header{display:grid;grid-template-columns:42mm 1fr;gap:10mm;align-items:start;border-bottom:1px solid var(--line);padding-bottom:6mm;margin-bottom:5mm}
+  .brand{min-height:24mm;display:flex;align-items:flex-start}.brand [data-incheck360-doc-logo-slot],.brand [data-incheck360-doc-logo]{display:flex;align-items:flex-start;justify-content:flex-start}.brand .incheck360-doc-logo-wrap{width:40mm!important;max-width:40mm!important;height:24mm!important;max-height:24mm!important}.brand .incheck360-doc-logo{max-width:32mm!important;max-height:20mm!important;width:auto!important;height:auto!important;object-fit:contain;object-position:left top;display:block}.brand-fallback{font-size:20px;font-weight:900;color:var(--ink)}.brand-fallback span{color:var(--brand2)}
+  .header-main{min-width:0}.header-row{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.title h1{margin:0;color:var(--ink);font-size:28px;line-height:1.05;letter-spacing:.02em}.title .subtitle{margin-top:5px;color:var(--muted);font-size:11.5px;line-height:1.35}.meta-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:10px}.meta{border:1px solid var(--line);border-radius:12px;background:#fbfdff;padding:8px 10px;min-height:42px}.meta .k{font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px}.meta .v{font-weight:900;color:var(--ink);font-size:12px;line-height:1.25}
+  .actions{width:281mm;margin:0 auto 10px;display:flex;justify-content:flex-end;gap:10px}.btn{border:1px solid var(--line);border-radius:12px;padding:9px 13px;font-weight:900;cursor:pointer;background:#fff;color:var(--brand)}.btn.primary{background:var(--brand);color:#fff;border-color:var(--brand)}.print-hint{margin-right:auto;color:var(--muted);font-size:12px;align-self:center}
+  .kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-bottom:5mm}.kpi{border:1px solid var(--line);border-radius:14px;padding:9px 10px;background:#fff;min-height:64px}.kpi .label{font-size:9.5px;font-weight:850;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.kpi .value{font-size:20px;font-weight:950;margin-top:6px;color:var(--brand)}.kpi .value.good{color:var(--good)}.kpi .value.late{color:var(--late)}.kpi .value.partial{color:var(--partial)}.kpi .value.miss{color:var(--miss)}
+  .summary-grid{display:grid;grid-template-columns:.95fr 1.25fr .85fr;gap:5mm}.panel{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden}.panel-inner{padding:13px}.section-title{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin:0 0 12px}.section-title h2{margin:0;color:var(--ink);font-size:15px}.section-title .note{color:var(--muted);font-size:10.5px}
+  .donut-wrap{display:flex;align-items:center;gap:18px}.donut{width:120px;height:120px;border-radius:50%;position:relative;flex:0 0 auto}.donut:after{content:"";position:absolute;inset:28px;background:#fff;border-radius:50%;box-shadow:0 0 0 1px var(--line)}.donut-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:2;text-align:center;color:var(--ink);font-weight:950;font-size:20px}.donut-center span{font-size:10px;color:var(--muted);font-weight:800;margin-top:4px}.legend{display:grid;gap:8px;min-width:160px}.legend-row{display:grid;grid-template-columns:10px 1fr auto;gap:8px;align-items:center;font-size:11.5px}.dot{width:8px;height:8px;border-radius:50%}.dot.good{background:var(--good)}.dot.late{background:var(--late)}.dot.partial{background:var(--partial)}.dot.miss{background:var(--miss)}
+  .stack{height:64px;border-radius:10px;overflow:visible;margin:16px 0 7px}.stack-svg{display:block;width:100%;height:64px;overflow:visible}.axis{display:flex;justify-content:space-between;color:var(--muted);font-size:10px;border-top:1px solid var(--line);padding-top:6px}.stack-legend{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 14px;margin-top:10px;color:var(--text);font-size:11px}.stack-legend span{display:flex;gap:7px;align-items:center;justify-content:space-between}.stack-legend span i{flex:0 0 auto}.stack-legend b{margin-left:auto}
+  .summary-card .summary-line{display:grid;grid-template-columns:24px 1fr auto;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}.mini-icon{width:22px;height:22px;border-radius:8px;background:#eef5ff;color:var(--brand);display:flex;align-items:center;justify-content:center;font-weight:900}.summary-line strong{font-size:15px}.summary-total{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;margin-top:12px}.summary-total .big{font-size:26px;color:var(--good);font-weight:950}.tiny{font-size:10px;color:var(--muted)}
+  .insights{display:grid;grid-template-columns:repeat(3,1fr);gap:5mm;margin-top:5mm}.insight{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff;display:grid;grid-template-columns:30px 1fr;gap:10px;min-height:72px}.insight.good-bg{background:linear-gradient(135deg,#f4fbf6,#fff)}.insight.warn-bg{background:linear-gradient(135deg,#fff7ed,#fff)}.insight.info-bg{background:linear-gradient(135deg,#f3f7ff,#fff)}.insight .big-icon{font-size:22px}.insight h3{margin:0 0 5px;color:var(--ink);font-size:12px}.insight p{margin:0;color:var(--text);font-size:11px;line-height:1.4}
+  .table-page{overflow:visible}.table-page .report-header{margin-bottom:4mm}.table-wrap{border:1px solid var(--line);border-radius:14px;overflow:hidden}.report-table{width:100%;border-collapse:collapse;table-layout:fixed}.report-table thead{display:table-header-group}.report-table tr{break-inside:avoid;page-break-inside:avoid}.report-table th{background:var(--brand);color:#fff;text-align:left;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;padding:7px 8px}.report-table td{padding:7px 8px;border-bottom:1px solid var(--line);font-size:10.8px;line-height:1.25;vertical-align:middle}.report-table tbody tr:nth-child(even){background:#fbfdff}.report-table .num{width:32px;text-align:center}.report-table .client-col{width:25%}.report-table .location-col{width:17%}.report-table .pct{text-align:right;white-space:nowrap}.report-table .completion-cell{font-weight:950;color:var(--good)}
+  .footer{display:flex;justify-content:space-between;color:var(--muted);font-size:10px;margin-top:5mm;padding-top:3mm;border-top:1px solid var(--line)}
+  @media screen{.report-page{box-shadow:0 14px 40px rgba(18,42,88,.10)}}
+  @media print{html,body{width:297mm;background:#fff}.actions{display:none!important}.report-document{padding:0}.report-page{width:auto;min-height:auto;margin:0;border:0;border-radius:0;box-shadow:none;padding:0;page-break-after:always;break-after:page;overflow:visible}.report-page:last-child{page-break-after:auto;break-after:auto}.report-header{break-inside:avoid;page-break-inside:avoid}.kpis,.summary-grid,.insights,.panel{break-inside:avoid;page-break-inside:avoid}.summary-page{height:194mm}.table-page{height:auto}.report-table th{font-size:9px;padding:6px 7px}.report-table td{font-size:10px;padding:6px 7px}.stack{height:58px}.stack-svg{height:58px}}
 </style></head><body>
-<div class="page">
-  <div class="brand"><div data-incheck360-doc-logo-slot></div><div class="brand-fallback" style="display:none;">InCheck <span>360</span></div></div>
-  <div class="header">
-    <div class="title"><h1>Completion Report</h1><div class="subtitle">${esc(reportTitleSuffix)} · Completion = Done On-Time + Done Late · Values are percentages.</div></div>
-    <div class="meta"><div class="k">${isGroupReport ? 'Group' : 'Client'}</div><div class="v">${esc(reportName)}</div></div>
-    <div class="meta"><div class="k">Scope</div><div class="v">${esc(clientLabel)}</div></div>
-    <div class="meta"><div class="k">Review Type</div><div class="v">${esc(String(reportType || 'weekly').replace(/^./, c => c.toUpperCase()))}</div></div>
-    <div class="meta"><div class="k">Period</div><div class="v">${esc(periodLabel)}</div></div>
-  </div>
-  <div class="actions"><button class="btn" onclick="window.close()">Close</button><button class="btn primary" onclick="window.print()">Print / Save PDF</button></div>
-  <div class="kpis">
-    <div class="kpi"><div class="icon">↗</div><div class="label">Average Completion %</div><div class="value">${stats.completion.toFixed(2)}%</div></div>
-    <div class="kpi"><div class="icon">✓</div><div class="label">Average Done On-Time %</div><div class="value good">${stats.done_on_time.toFixed(2)}%</div></div>
-    <div class="kpi"><div class="icon">◷</div><div class="label">Average Done Late %</div><div class="value late">${stats.done_late.toFixed(2)}%</div></div>
-    <div class="kpi"><div class="icon">◔</div><div class="label">Average Partially Done %</div><div class="value partial">${stats.partially_done.toFixed(2)}%</div></div>
-    <div class="kpi"><div class="icon">×</div><div class="label">Average Missed %</div><div class="value miss">${stats.missed.toFixed(2)}%</div></div>
-    <div class="kpi"><div class="icon">⌖</div><div class="label">Total Active Locations</div><div class="value">${rows.length}</div></div>
-  </div>
-  <div class="panel analytics">
-    <div class="donut-box"><div class="section-title"><h2>Overall Completion</h2><span class="note">Average of active rows</span></div><div class="donut-wrap"><div class="donut" style="${donutStyle}"><div class="donut-center">${stats.completion.toFixed(2)}%<span>Average<br/>Completion</span></div></div><div class="legend"><div class="legend-row"><i class="dot good"></i><span>Done On-Time</span><strong>${stats.done_on_time.toFixed(2)}%</strong></div><div class="legend-row"><i class="dot late"></i><span>Done Late</span><strong>${stats.done_late.toFixed(2)}%</strong></div><div class="legend-row"><i class="dot partial"></i><span>Partially Done</span><strong>${stats.partially_done.toFixed(2)}%</strong></div><div class="legend-row"><i class="dot miss"></i><span>Missed</span><strong>${stats.missed.toFixed(2)}%</strong></div></div></div></div>
-    <div class="breakdown"><div class="section-title"><h2>Completion Breakdown</h2><span class="note">Done On-Time + Done Late = Completion</span></div><div class="stack">${stackSvg}</div><div class="axis"><span>0%</span><span>20%</span><span>40%</span><span>60%</span><span>80%</span><span>100%</span></div><div class="stack-legend"><span><i class="dot good"></i>Done On-Time</span><span><i class="dot late"></i>Done Late</span><span><i class="dot partial"></i>Partially Done</span><span><i class="dot miss"></i>Missed</span></div></div>
-  </div>
-  <div class="middle">
-    <div class="panel table-card"><div class="section-title"><h2>Location Completion Details</h2><span class="note">No duplicate locations · latest active rows</span></div><div class="table-wrap"><table class="report-table"><thead><tr><th>#</th><th>Client</th><th>Location</th><th>Done On-Time</th><th>Done Late</th><th>Partially Done</th><th>Missed</th><th>Completion</th></tr></thead><tbody>${rows.map((row, index) => `<tr><td>${index + 1}</td><td>${esc(row.company_name || reportName)}</td><td>${esc(row.location_name)}</td><td>${formatPct(row.done_on_time)}</td><td>${formatPct(row.done_late)}</td><td>${formatPct(row.partially_done)}</td><td>${formatPct(row.missed)}</td><td class="completion-cell">${formatPct(completionCount(row))}</td></tr>`).join('')}</tbody></table></div></div>
-    <div class="panel summary-card"><div class="section-title"><h2>${isGroupReport ? 'All Group Locations' : 'All Client Locations'}</h2></div><div class="tiny">Average of ${rows.length} active location${rows.length === 1 ? '' : 's'}</div><div class="summary-line"><span class="mini-icon">✓</span><span>Done On-Time</span><strong style="color:var(--good)">${stats.done_on_time.toFixed(2)}%</strong></div><div class="summary-line"><span class="mini-icon">◷</span><span>Done Late</span><strong style="color:var(--late)">${stats.done_late.toFixed(2)}%</strong></div><div class="summary-line"><span class="mini-icon">◔</span><span>Partially Done</span><strong style="color:var(--partial)">${stats.partially_done.toFixed(2)}%</strong></div><div class="summary-line"><span class="mini-icon">×</span><span>Missed</span><strong style="color:var(--miss)">${stats.missed.toFixed(2)}%</strong></div><div class="summary-total"><div><strong>Completion</strong><div class="tiny">Done On-Time + Done Late</div></div><div class="big">${stats.completion.toFixed(2)}%</div></div></div>
-  </div>
-  <div class="insights">
-    <div class="insight good-bg"><div class="big-icon">🏆</div><div><h3>Best performing location</h3><p>${best ? `${esc(best.company_name || reportName)} — ${esc(best.location_name)}<br/>Completion: <strong>${formatPct(completionCount(best))}</strong>` : 'No location data available yet.'}</p></div></div>
-    <div class="insight warn-bg"><div class="big-icon">⚠</div><div><h3>Locations needing extra CS effort</h3><p>${weak.length ? weak.map(row => `${esc(row.company_name || reportName)} — ${esc(row.location_name)} (${formatPct(completionCount(row))})`).join('<br/>') : 'No low-completion locations for the selected period.'}</p></div></div>
-    <div class="insight info-bg"><div class="big-icon">ⓘ</div><div><h3>Notes</h3><p>${esc(sourceNote)}<br/>${isGroupReport ? 'Group result is auto-calculated from all location rows.' : 'Client result is auto-calculated from all location rows.'}<br/>Generated on ${esc(generatedAt.toLocaleString())}. Health reference: ${esc(String(health))} · CS effort: ${esc(effort)}.</p></div></div>
-  </div>
-  <div class="footer"><span>InCheck 360 · Customer Success 360</span><span>Completion export · ${esc(generatedAt.toLocaleDateString())}</span></div>
+<div class="actions"><span class="print-hint">PDF layout is optimized for A4 Landscape. In Chrome print settings, use Landscape + A4 and turn off Headers and Footers.</span><button class="btn" onclick="window.close()">Close</button><button class="btn primary" onclick="window.print()">Print / Save PDF</button></div>
+<div class="report-document">
+  <section class="report-page summary-page">
+    <div class="report-header">
+      <div class="brand"><div data-incheck360-doc-logo-slot></div><div class="brand-fallback" style="display:none;">InCheck <span>360</span></div></div>
+      <div class="header-main">
+        <div class="header-row">
+          <div class="title"><h1>Completion Report</h1><div class="subtitle">${esc(reportTitleSuffix)} · Completion = Done On-Time + Done Late · Values are percentages.</div></div>
+        </div>
+        <div class="meta-grid">
+          <div class="meta"><div class="k">${isGroupReport ? 'Group' : 'Client'}</div><div class="v">${esc(reportName)}</div></div>
+          <div class="meta"><div class="k">Scope</div><div class="v">${esc(clientLabel)}</div></div>
+          <div class="meta"><div class="k">Review Type</div><div class="v">${esc(String(reportType || 'weekly').replace(/^./, c => c.toUpperCase()))}</div></div>
+          <div class="meta"><div class="k">Period</div><div class="v">${esc(periodLabel)}</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi"><div class="label">Average Completion</div><div class="value">${stats.completion.toFixed(2)}%</div></div>
+      <div class="kpi"><div class="label">Done On-Time</div><div class="value good">${stats.done_on_time.toFixed(2)}%</div></div>
+      <div class="kpi"><div class="label">Done Late</div><div class="value late">${stats.done_late.toFixed(2)}%</div></div>
+      <div class="kpi"><div class="label">Partially Done</div><div class="value partial">${stats.partially_done.toFixed(2)}%</div></div>
+      <div class="kpi"><div class="label">Missed</div><div class="value miss">${stats.missed.toFixed(2)}%</div></div>
+      <div class="kpi"><div class="label">Active Locations</div><div class="value">${rows.length}</div></div>
+    </div>
+
+    <div class="summary-grid">
+      <div class="panel"><div class="panel-inner">
+        <div class="section-title"><h2>Overall Completion</h2><span class="note">average</span></div>
+        <div class="donut-wrap"><div class="donut" style="${completionDonutStyle}"><div class="donut-center">${stats.completion.toFixed(2)}%<span>Completion</span></div></div>
+        <div class="legend">
+          <div class="legend-row"><i class="dot good"></i><span>Completion</span><strong>${stats.completion.toFixed(2)}%</strong></div>
+          <div class="legend-row"><i class="dot miss" style="background:#e8eef7"></i><span>Remaining</span><strong>${(100 - clamp(stats.completion, 0, 100)).toFixed(2)}%</strong></div>
+        </div></div>
+      </div></div>
+
+      <div class="panel"><div class="panel-inner">
+        <div class="section-title"><h2>Completion Breakdown</h2><span class="note">Done On-Time + Done Late = Completion</span></div>
+        <div class="stack">${stackSvg}</div>
+        <div class="axis"><span>0%</span><span>20%</span><span>40%</span><span>60%</span><span>80%</span><span>100%</span></div>
+        <div class="stack-legend">
+          <span><i class="dot good"></i>Done On-Time <b>${stats.done_on_time.toFixed(2)}%</b></span>
+          <span><i class="dot late"></i>Done Late <b>${stats.done_late.toFixed(2)}%</b></span>
+          <span><i class="dot partial"></i>Partially Done <b>${stats.partially_done.toFixed(2)}%</b></span>
+          <span><i class="dot miss"></i>Missed <b>${stats.missed.toFixed(2)}%</b></span>
+        </div>
+      </div></div>
+
+      <div class="panel summary-card"><div class="panel-inner">
+        <div class="section-title"><h2>${isGroupReport ? 'All Group Locations' : 'All Client Locations'}</h2></div>
+        <div class="tiny">Average of ${rows.length} active location${rows.length === 1 ? '' : 's'}</div>
+        <div class="summary-line"><span class="mini-icon">✓</span><span>Done On-Time</span><strong style="color:var(--good)">${stats.done_on_time.toFixed(2)}%</strong></div>
+        <div class="summary-line"><span class="mini-icon">◷</span><span>Done Late</span><strong style="color:var(--late)">${stats.done_late.toFixed(2)}%</strong></div>
+        <div class="summary-line"><span class="mini-icon">◔</span><span>Partially Done</span><strong style="color:var(--partial)">${stats.partially_done.toFixed(2)}%</strong></div>
+        <div class="summary-line"><span class="mini-icon">×</span><span>Missed</span><strong style="color:var(--miss)">${stats.missed.toFixed(2)}%</strong></div>
+        <div class="summary-total"><div><strong>Completion</strong><div class="tiny">Done On-Time + Done Late</div></div><div class="big">${stats.completion.toFixed(2)}%</div></div>
+      </div></div>
+    </div>
+
+    <div class="insights">
+      <div class="insight good-bg"><div class="big-icon">🏆</div><div><h3>Best performing location</h3><p>${best ? `${esc(best.company_name || reportName)} — ${esc(best.location_name)}<br/>Completion: <strong>${formatPct(completionCount(best))}</strong>` : 'No location data available yet.'}</p></div></div>
+      <div class="insight warn-bg"><div class="big-icon">⚠</div><div><h3>Locations needing extra CS effort</h3><p>${weak.length ? weak.map(row => `${esc(row.company_name || reportName)} — ${esc(row.location_name)} (${formatPct(completionCount(row))})`).join('<br/>') : 'No low-completion locations for the selected period.'}</p></div></div>
+      <div class="insight info-bg"><div class="big-icon">ⓘ</div><div><h3>Notes</h3><p>${esc(sourceNote)}<br/>${isGroupReport ? 'Group result is auto-calculated from all location rows.' : 'Client result is auto-calculated from all location rows.'}<br/>Generated on ${esc(generatedAt.toLocaleString())}.</p></div></div>
+    </div>
+    <div class="footer"><span>InCheck 360 · Customer Success 360</span><span>Summary · ${esc(generatedAt.toLocaleDateString())}</span></div>
+  </section>
+
+  <section class="report-page table-page">
+    <div class="report-header">
+      <div class="brand"><div data-incheck360-doc-logo-slot></div><div class="brand-fallback" style="display:none;">InCheck <span>360</span></div></div>
+      <div class="header-main">
+        <div class="header-row"><div class="title"><h1>Location Completion Details</h1><div class="subtitle">${esc(reportName)} · ${esc(periodLabel)} · ${rows.length} active location${rows.length === 1 ? '' : 's'} · no duplicate locations</div></div></div>
+        <div class="meta-grid">
+          <div class="meta"><div class="k">Completion</div><div class="v">${stats.completion.toFixed(2)}%</div></div>
+          <div class="meta"><div class="k">Done On-Time</div><div class="v">${stats.done_on_time.toFixed(2)}%</div></div>
+          <div class="meta"><div class="k">Done Late</div><div class="v">${stats.done_late.toFixed(2)}%</div></div>
+          <div class="meta"><div class="k">Generated</div><div class="v">${esc(generatedAt.toLocaleDateString())}</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="table-wrap"><table class="report-table">
+      <thead><tr><th class="num">#</th><th class="client-col">Client</th><th class="location-col">Location</th><th>Done On-Time</th><th>Done Late</th><th>Partially Done</th><th>Missed</th><th>Completion</th></tr></thead>
+      <tbody>${rows.map((row, index) => `<tr><td class="num">${index + 1}</td><td>${esc(row.company_name || reportName)}</td><td>${esc(row.location_name)}</td><td class="pct">${formatPct(row.done_on_time)}</td><td class="pct">${formatPct(row.done_late)}</td><td class="pct">${formatPct(row.partially_done)}</td><td class="pct">${formatPct(row.missed)}</td><td class="pct completion-cell">${formatPct(completionCount(row))}</td></tr>`).join('')}</tbody>
+    </table></div>
+    <div class="footer"><span>InCheck 360 · Customer Success 360</span><span>Location details · ${esc(generatedAt.toLocaleDateString())}</span></div>
+  </section>
 </div></body></html>`;
 
     const brandedReportHtml = window.Utils?.addIncheckDocumentLogo
