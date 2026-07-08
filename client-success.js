@@ -1008,81 +1008,236 @@
     });
   }
 
+  function completionTargetKey(target) {
+    return [String(target.company_id || '').trim(), normalize(target.location_name)].join('|');
+  }
+
+  function currentClientCompletionTargets(company) {
+    return getClientLocations(company).map(location => ({
+      company_id: companyId(company),
+      company_name: companyName(company),
+      location_name: location
+    })).filter(target => target.company_id && target.location_name);
+  }
+
+  function groupCompletionTargets(group) {
+    const byKey = new Map();
+    groupMemberCompanies(group).forEach(member => {
+      currentClientCompletionTargets(member).forEach(target => {
+        const key = completionTargetKey(target);
+        if (!byKey.has(key)) byKey.set(key, target);
+      });
+    });
+    return Array.from(byKey.values()).sort((a,b) => `${a.company_name} ${a.location_name}`.localeCompare(`${b.company_name} ${b.location_name}`));
+  }
+
+  function completionTargetsForForm(form) {
+    const company = getSelectedCompany();
+    const scope = String(form?.completion_scope?.value || 'client');
+    if (scope === 'group') {
+      const group = groupById(form?.group_id?.value);
+      return group ? groupCompletionTargets(group) : [];
+    }
+    return currentClientCompletionTargets(company);
+  }
+
+  function completionInputFieldsHtml(prefix = '') {
+    const tag = prefix ? `data-${prefix}-completion-field` : 'data-completion-field';
+    return `
+      <td><input class="input" type="number" min="0" step="0.01" inputmode="decimal" ${tag}="done_on_time" value="0" /></td>
+      <td><input class="input" type="number" min="0" step="0.01" inputmode="decimal" ${tag}="done_late" value="0" /></td>
+      <td><input class="input" type="number" min="0" step="0.01" inputmode="decimal" ${tag}="partially_done" value="0" /></td>
+      <td><input class="input" type="number" min="0" step="0.01" inputmode="decimal" ${tag}="missed" value="0" /></td>`;
+  }
+
+  function readCompletionFields(root, selector = '[data-completion-field]') {
+    const out = { done_on_time: 0, done_late: 0, partially_done: 0, missed: 0 };
+    root?.querySelectorAll(selector).forEach(input => {
+      const field = input.dataset.completionField || input.dataset.groupCompletionField;
+      if (field) out[field] = Math.max(0, safeDecimal(input.value));
+    });
+    return out;
+  }
+
+  function completionPreviewText(data) {
+    const total = safeDecimal(data.done_on_time) + safeDecimal(data.done_late) + safeDecimal(data.partially_done) + safeDecimal(data.missed);
+    const done = safeDecimal(data.done_on_time) + safeDecimal(data.done_late);
+    return countPct(done, total);
+  }
+
+  function renderCompletionTargetsTable(targets, sharedData = null, editable = true) {
+    if (!targets.length) return '<tr><td colspan="7" class="cs-empty">No signed client locations found.</td></tr>';
+    return targets.map(target => {
+      const rowData = sharedData || { done_on_time: 0, done_late: 0, partially_done: 0, missed: 0 };
+      const attrs = `data-company-id="${attr(target.company_id)}" data-company-name="${attr(target.company_name)}" data-location-name="${attr(target.location_name)}"`;
+      if (editable) {
+        return `<tr class="cs-completion-input-row" ${attrs}>
+          <td>${esc(target.company_name)}</td>
+          <td>${esc(target.location_name)}</td>
+          ${completionInputFieldsHtml()}
+          <td class="cs-completion-preview">${completionPreviewText(rowData)}</td>
+        </tr>`;
+      }
+      return `<tr class="cs-completion-preview-row" ${attrs}>
+        <td>${esc(target.company_name)}</td>
+        <td>${esc(target.location_name)}</td>
+        <td data-preview-field="done_on_time">${formatDecimal(rowData.done_on_time)}</td>
+        <td data-preview-field="done_late">${formatDecimal(rowData.done_late)}</td>
+        <td data-preview-field="partially_done">${formatDecimal(rowData.partially_done)}</td>
+        <td data-preview-field="missed">${formatDecimal(rowData.missed)}</td>
+        <td class="cs-completion-preview">${completionPreviewText(rowData)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function activeCompletionGroupsForSelect(company) {
+    const own = groupsForCompany(company);
+    const ids = new Set(own.map(groupId));
+    activeGroups().forEach(group => ids.add(groupId(group)));
+    return activeGroups().filter(group => ids.has(groupId(group))).sort((a,b) => groupName(a).localeCompare(groupName(b)));
+  }
+
   function openCompletionForm() {
     const [periodStart, periodEnd] = periodDefaults('weekly');
     const company = getSelectedCompany();
-    const locations = getClientLocations(company);
-    const rowsHtml = locations.map((location, index) => `
-      <tr class="cs-completion-input-row" data-location-name="${attr(location)}">
-        <td>${esc(location)}</td>
-        <td><input class="input" type="number" min="0" step="0.01" inputmode="decimal" data-completion-field="done_on_time" value="0" /></td>
-        <td><input class="input" type="number" min="0" step="0.01" inputmode="decimal" data-completion-field="done_late" value="0" /></td>
-        <td><input class="input" type="number" min="0" step="0.01" inputmode="decimal" data-completion-field="partially_done" value="0" /></td>
-        <td><input class="input" type="number" min="0" step="0.01" inputmode="decimal" data-completion-field="missed" value="0" /></td>
-        <td class="cs-completion-preview">0 (0.00%)</td>
-      </tr>`).join('');
+    const groups = activeCompletionGroupsForSelect(company);
+    const groupOptions = groups.length
+      ? groups.map(group => `<option value="${attr(groupId(group))}">${esc(groupName(group))}</option>`).join('')
+      : '<option value="">No CS groups yet</option>';
+    const initialTargets = currentClientCompletionTargets(company);
+
     openModal('Add Location Completion', `<form class="cs-form" id="csCompletionForm">
       <div class="cs-form-grid">${selectedCompanyInput()}
+        <div class="cs-form-field"><label>Completion Scope</label><select name="completion_scope" class="select"><option value="client">Current Client</option><option value="group" ${groups.length ? '' : 'disabled'}>CS Client Group</option></select></div>
+        <div class="cs-form-field" id="csCompletionGroupField" style="display:none;"><label>CS Client Group</label><select name="group_id" class="select">${groupOptions}</select></div>
         <div class="cs-form-field"><label>Review Type</label><select name="review_type" class="select"><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></div>
         <div class="cs-form-field"><label>Period Start</label><input name="period_start" class="input" type="date" value="${periodStart}" required /></div>
         <div class="cs-form-field"><label>Period End</label><input name="period_end" class="input" type="date" value="${periodEnd}" required /></div>
         <div class="cs-form-field"><label>Source / Notes</label><input name="source_note" class="input" type="text" placeholder="e.g. weekly checklist report" /></div>
       </div>
+
+      <div id="csGroupCompletionEntry" style="display:none;">
+        <div class="cs-section-title"><h4>Group Result Counts</h4><span class="cs-chip">One entry applies to every group location</span></div>
+        <div class="cs-table-wrap"><table class="cs-table cs-edit-table"><thead><tr><th>Apply To</th><th>Done On-Time</th><th>Done Late</th><th>Partially Done</th><th>Missed</th><th>Completion</th></tr></thead><tbody>
+          <tr class="cs-group-completion-row">
+            <td>All Group Locations</td>
+            ${completionInputFieldsHtml('group')}
+            <td class="cs-group-completion-preview">0 (0.00%)</td>
+          </tr>
+        </tbody></table></div>
+      </div>
+
       <div class="cs-section-title"><h4>Location Result Counts</h4><span class="cs-chip">Completion = Done On-Time + Done Late</span></div>
-      <div class="cs-table-wrap"><table class="cs-table cs-edit-table"><thead><tr><th>Location</th><th>Done On-Time</th><th>Done Late</th><th>Partially Done</th><th>Missed</th><th>Completion</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>
+      <div class="cs-kpi-sub" id="csCompletionHint">For current client scope, you can edit each location separately.</div>
+      <div class="cs-table-wrap"><table class="cs-table cs-edit-table"><thead><tr><th>Client</th><th>Location</th><th>Done On-Time</th><th>Done Late</th><th>Partially Done</th><th>Missed</th><th>Completion</th></tr></thead><tbody id="csCompletionRowsBody">${renderCompletionTargetsTable(initialTargets, null, true)}</tbody></table></div>
       <div class="cs-modal-actions"><button type="button" class="btn ghost" onclick="document.getElementById('csModalClose').click()">Cancel</button><button type="submit" class="btn primary">Save Completion</button></div>
     </form>`, saveCompletion);
+
     const form = $('csCompletionForm');
     form?.review_type?.addEventListener('change', () => {
       const [s,e] = periodDefaults(form.review_type.value);
       form.period_start.value = s;
       form.period_end.value = e;
     });
+    form?.completion_scope?.addEventListener('change', () => rebuildCompletionRows(form));
+    form?.group_id?.addEventListener('change', () => rebuildCompletionRows(form));
     form?.addEventListener('input', () => refreshCompletionRows(form));
+    rebuildCompletionRows(form);
+  }
+
+  function rebuildCompletionRows(form) {
+    if (!form) return;
+    const scope = String(form.completion_scope?.value || 'client');
+    const isGroup = scope === 'group';
+    const targets = completionTargetsForForm(form);
+    const groupField = $('csCompletionGroupField');
+    const groupEntry = $('csGroupCompletionEntry');
+    const hint = $('csCompletionHint');
+    const body = $('csCompletionRowsBody');
+    if (groupField) groupField.style.display = isGroup ? '' : 'none';
+    if (groupEntry) groupEntry.style.display = isGroup ? '' : 'none';
+    if (hint) hint.textContent = isGroup
+      ? 'For group scope, enter the result once. Every company/location line below is auto-calculated and saved with the same counts.'
+      : 'For current client scope, you can edit each location separately.';
+    const sharedData = isGroup ? readCompletionFields(form, '[data-group-completion-field]') : null;
+    if (body) body.innerHTML = renderCompletionTargetsTable(targets, sharedData, !isGroup);
     refreshCompletionRows(form);
   }
 
   function refreshCompletionRows(form) {
+    const isGroup = String(form?.completion_scope?.value || 'client') === 'group';
+    const sharedData = readCompletionFields(form, '[data-group-completion-field]');
+    const groupPreview = form?.querySelector('.cs-group-completion-preview');
+    if (groupPreview) groupPreview.textContent = completionPreviewText(sharedData);
+
+    if (isGroup) {
+      form?.querySelectorAll('.cs-completion-preview-row').forEach(row => {
+        ['done_on_time','done_late','partially_done','missed'].forEach(field => {
+          const cell = row.querySelector(`[data-preview-field="${field}"]`);
+          if (cell) cell.textContent = formatDecimal(sharedData[field]);
+        });
+        const preview = row.querySelector('.cs-completion-preview');
+        if (preview) preview.textContent = completionPreviewText(sharedData);
+      });
+      return;
+    }
+
     form?.querySelectorAll('.cs-completion-input-row').forEach(row => {
       const data = readCompletionInputRow(row);
-      const total = data.done_on_time + data.done_late + data.partially_done + data.missed;
-      const done = data.done_on_time + data.done_late;
       const preview = row.querySelector('.cs-completion-preview');
-      if (preview) preview.textContent = countPct(done, total);
+      if (preview) preview.textContent = completionPreviewText(data);
     });
   }
 
   function readCompletionInputRow(row) {
     const out = { location_name: row.dataset.locationName || '', done_on_time: 0, done_late: 0, partially_done: 0, missed: 0 };
-    row.querySelectorAll('[data-completion-field]').forEach(input => {
-      out[input.dataset.completionField] = Math.max(0, safeDecimal(input.value));
-    });
+    Object.assign(out, readCompletionFields(row, '[data-completion-field]'));
     return out;
+  }
+
+  function buildCompletionPayload(fd, target, data) {
+    return {
+      company_id: target.company_id,
+      company_name_snapshot: target.company_name,
+      location_name: target.location_name,
+      review_type: fd.get('review_type') || 'weekly',
+      period_start: fd.get('period_start'),
+      period_end: fd.get('period_end'),
+      done_on_time: data.done_on_time,
+      done_late: data.done_late,
+      partially_done: data.partially_done,
+      missed: data.missed,
+      source_note: fd.get('source_note') || null
+    };
   }
 
   async function saveCompletion(form) {
     const fd = new FormData(form);
-    const company = getSelectedCompany();
-    const payloads = Array.from(form.querySelectorAll('.cs-completion-input-row')).map(row => {
-      const data = readCompletionInputRow(row);
-      return {
-        company_id: companyId(company),
-        company_name_snapshot: companyName(company),
-        location_name: data.location_name,
-        review_type: fd.get('review_type') || 'weekly',
-        period_start: fd.get('period_start'),
-        period_end: fd.get('period_end'),
-        done_on_time: data.done_on_time,
-        done_late: data.done_late,
-        partially_done: data.partially_done,
-        missed: data.missed,
-        source_note: fd.get('source_note') || null
-      };
-    }).filter(row => row.location_name);
+    const scope = String(fd.get('completion_scope') || 'client');
+    let payloads = [];
+
+    if (scope === 'group') {
+      const group = groupById(fd.get('group_id'));
+      if (!group) { toast('Select a valid CS client group.'); return; }
+      const targets = groupCompletionTargets(group);
+      const data = readCompletionFields(form, '[data-group-completion-field]');
+      payloads = targets.map(target => buildCompletionPayload(fd, target, data));
+    } else {
+      payloads = Array.from(form.querySelectorAll('.cs-completion-input-row')).map(row => {
+        const data = readCompletionInputRow(row);
+        return buildCompletionPayload(fd, {
+          company_id: row.dataset.companyId,
+          company_name: row.dataset.companyName,
+          location_name: data.location_name
+        }, data);
+      });
+    }
+
+    payloads = payloads.filter(row => row.company_id && row.location_name);
     if (!payloads.length) { toast('No locations found to save completion.'); return; }
     const { error } = await supabase().from(TABLES.completions).upsert(payloads, { onConflict: 'company_id,location_name,review_type,period_start,period_end' });
     if (error) { toast(`Unable to save completion: ${error.message}`); return; }
-    closeModal(); await loadData(); toast('Location completion saved.');
+    closeModal(); await loadData(); toast(scope === 'group' ? `Group completion saved for ${payloads.length} location line${payloads.length === 1 ? '' : 's'}.` : 'Location completion saved.');
   }
 
   function openReviewForm() {
