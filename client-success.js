@@ -91,8 +91,15 @@
   }
 
   function formatDecimal(value) {
-    const n = safeDecimal(value);
-    return Number.isInteger(n) ? String(n) : n.toFixed(2);
+    return safeDecimal(value).toFixed(2);
+  }
+
+  function clampPercent(value) {
+    return clamp(safeDecimal(value), 0, 100);
+  }
+
+  function formatPercent(value) {
+    return `${clampPercent(value).toFixed(2)}%`;
   }
 
   function companyName(row = {}) {
@@ -454,29 +461,52 @@
     rows.forEach(row => {
       const name = locationNameFromRow(row) || 'Unknown Location';
       const key = normalize(name);
-      if (!byLocation.has(key)) byLocation.set(key, { location_name: name, done_on_time: 0, done_late: 0, partially_done: 0, missed: 0, review_type: row.review_type, period_start: row.period_start, period_end: row.period_end });
+      if (!byLocation.has(key)) byLocation.set(key, { location_name: name, done_on_time: 0, done_late: 0, partially_done: 0, missed: 0, review_type: row.review_type, period_start: row.period_start, period_end: row.period_end, _row_count: 0 });
       const acc = byLocation.get(key);
-      acc.done_on_time += safeNumber(row.done_on_time);
-      acc.done_late += safeNumber(row.done_late);
-      acc.partially_done += safeNumber(row.partially_done);
-      acc.missed += safeNumber(row.missed);
+      acc.done_on_time += clampPercent(row.done_on_time);
+      acc.done_late += clampPercent(row.done_late);
+      acc.partially_done += clampPercent(row.partially_done);
+      acc.missed += clampPercent(row.missed);
+      acc._row_count += 1;
     });
-    return Array.from(byLocation.values()).sort((a,b) => a.location_name.localeCompare(b.location_name));
+    return Array.from(byLocation.values()).map(row => {
+      const count = row._row_count || 1;
+      return {
+        ...row,
+        done_on_time: row.done_on_time / count,
+        done_late: row.done_late / count,
+        partially_done: row.partially_done / count,
+        missed: row.missed / count
+      };
+    }).sort((a,b) => a.location_name.localeCompare(b.location_name));
+  }
+
+  function completionPercent(row) {
+    return clampPercent(safeDecimal(row?.done_on_time) + safeDecimal(row?.done_late));
   }
 
   function completionTotal(row) {
-    return safeNumber(row.done_on_time) + safeNumber(row.done_late) + safeNumber(row.partially_done) + safeNumber(row.missed);
+    return clampPercent(safeDecimal(row?.done_on_time) + safeDecimal(row?.done_late) + safeDecimal(row?.partially_done) + safeDecimal(row?.missed));
   }
 
   function completionCount(row) {
-    return safeNumber(row.done_on_time) + safeNumber(row.done_late);
+    return completionPercent(row);
   }
 
-  function countPct(count, total) {
-    const c = Math.max(0, safeDecimal(count));
-    const t = Math.max(0, safeDecimal(total));
-    const pct = t ? (c / t) * 100 : 0;
-    return `${formatDecimal(c)} (${pct.toFixed(2)}%)`;
+  function averageCompletionPercent(rows) {
+    if (!rows || !rows.length) return 0;
+    return rows.reduce((sum, row) => sum + completionPercent(row), 0) / rows.length;
+  }
+
+  function averagePercentRows(rows) {
+    const source = Array.from(rows || []);
+    const count = source.length || 1;
+    return {
+      done_on_time: source.reduce((sum, row) => sum + clampPercent(row.done_on_time), 0) / count,
+      done_late: source.reduce((sum, row) => sum + clampPercent(row.done_late), 0) / count,
+      partially_done: source.reduce((sum, row) => sum + clampPercent(row.partially_done), 0) / count,
+      missed: source.reduce((sum, row) => sum + clampPercent(row.missed), 0) / count
+    };
   }
 
   function severityRank(value) { return { Critical:4, High:3, Medium:2, Low:1 }[String(value || '')] || 0; }
@@ -523,8 +553,7 @@
     else if (daysNoActivity > 30) score -= 18;
     else if (daysNoActivity > 14) score -= 8;
     if (latestCompletions.length) {
-      const totals = latestCompletions.reduce((acc, row) => { acc.done += completionCount(row); acc.total += completionTotal(row); return acc; }, { done: 0, total: 0 });
-      const completionRate = totals.total ? (totals.done / totals.total) * 100 : 0;
+      const completionRate = averageCompletionPercent(latestCompletions);
       if (completionRate < 50) score -= 15;
       else if (completionRate < 75) score -= 8;
     }
@@ -759,8 +788,7 @@
     const openRisks = openRows(STATE.rows.risks).length;
     const overdueTasks = STATE.rows.tasks.filter(t => t.due_date && t.due_date < isoToday() && !['Done','Canceled'].includes(t.status)).length;
     const latestCompletionRows = companies.flatMap(c => aggregateCompletionRows(latestCompletionPeriodRows(c)));
-    const completionTotals = latestCompletionRows.reduce((acc, row) => { acc.done += completionCount(row); acc.total += completionTotal(row); return acc; }, { done: 0, total: 0 });
-    const completionRate = completionTotals.total ? Math.round((completionTotals.done / completionTotals.total) * 100) : 0;
+    const completionRate = latestCompletionRows.length ? Math.round(averageCompletionPercent(latestCompletionRows)) : 0;
     const items = [
       ['Active Clients', companies.length, 'Companies with signed agreements'],
       ['Client Groups', activeGroups().length, 'CS parent groups / account families'],
@@ -883,9 +911,7 @@
   function latestCompletionSummary(company) {
     const rows = aggregateCompletionRows(latestCompletionPeriodRows(company));
     if (!rows.length) return 'No data';
-    const totals = rows.reduce((acc, row) => { acc.done += completionCount(row); acc.total += completionTotal(row); return acc; }, { done: 0, total: 0 });
-    const pct = totals.total ? (totals.done / totals.total) * 100 : 0;
-    return `${totals.done}/${totals.total} (${pct.toFixed(2)}%)`;
+    return formatPercent(averageCompletionPercent(rows));
   }
 
 
@@ -917,22 +943,16 @@
     const byLocation = new Map(records.map(row => [normalize(row.location_name), row]));
     const rows = locations.map(location => byLocation.get(normalize(location)) || { location_name: location, done_on_time: 0, done_late: 0, partially_done: 0, missed: 0 });
     const period = records[0] ? `${records[0].review_type || 'weekly'} · ${fmtDate(records[0].period_start)} → ${fmtDate(records[0].period_end)}` : 'No period saved yet';
-    const tableRows = rows.map(row => {
-      const total = completionTotal(row);
-      const doneOnTime = safeNumber(row.done_on_time);
-      const doneLate = safeNumber(row.done_late);
-      const doneTotal = doneOnTime + doneLate;
-      return [
-        row.location_name,
-        countPct(doneOnTime, total),
-        countPct(doneLate, total),
-        countPct(doneTotal, total),
-        countPct(row.partially_done, total),
-        countPct(row.missed, total)
-      ];
-    });
-    return `<div class="cs-section-title"><div><h4>Location Completion</h4><div class="cs-kpi-sub">Completion = Done On-Time + Done Late. Current view: ${esc(period)}</div></div><button class="btn sm" type="button" data-cs-action="completion">+ Add Completion</button></div>
-      ${table(['Location','Done On-Time','Done Late','Completion','Partially Done','Missed'], tableRows)}`;
+    const tableRows = rows.map(row => ([
+      row.location_name,
+      formatPercent(row.done_on_time),
+      formatPercent(row.done_late),
+      formatPercent(completionPercent(row)),
+      formatPercent(row.partially_done),
+      formatPercent(row.missed)
+    ]));
+    return `<div class="cs-section-title"><div><h4>Location Completion</h4><div class="cs-kpi-sub">Completion % = Done On-Time % + Done Late %. Current view: ${esc(period)}</div></div><button class="btn sm" type="button" data-cs-action="completion">+ Add Completion</button></div>
+      ${table(['Location','Done On-Time %','Done Late %','Completion %','Partially Done %','Missed %'], tableRows)}`;
   }
 
   function renderPulse(company) {
@@ -1149,25 +1169,23 @@
   function completionInputFieldsHtml(prefix = '') {
     const tag = prefix ? `data-${prefix}-completion-field` : 'data-completion-field';
     return `
-      <td><input class="input" type="number" min="0" step="0.01" inputmode="decimal" ${tag}="done_on_time" value="0" /></td>
-      <td><input class="input" type="number" min="0" step="0.01" inputmode="decimal" ${tag}="done_late" value="0" /></td>
-      <td><input class="input" type="number" min="0" step="0.01" inputmode="decimal" ${tag}="partially_done" value="0" /></td>
-      <td><input class="input" type="number" min="0" step="0.01" inputmode="decimal" ${tag}="missed" value="0" /></td>`;
+      <td><input class="input" type="number" min="0" max="100" step="0.01" inputmode="decimal" ${tag}="done_on_time" value="0" /></td>
+      <td><input class="input" type="number" min="0" max="100" step="0.01" inputmode="decimal" ${tag}="done_late" value="0" /></td>
+      <td><input class="input" type="number" min="0" max="100" step="0.01" inputmode="decimal" ${tag}="partially_done" value="0" /></td>
+      <td><input class="input" type="number" min="0" max="100" step="0.01" inputmode="decimal" ${tag}="missed" value="0" /></td>`;
   }
 
   function readCompletionFields(root, selector = '[data-completion-field]') {
     const out = { done_on_time: 0, done_late: 0, partially_done: 0, missed: 0 };
     root?.querySelectorAll(selector).forEach(input => {
       const field = input.dataset.completionField || input.dataset.groupCompletionField;
-      if (field) out[field] = Math.max(0, safeDecimal(input.value));
+      if (field) out[field] = clampPercent(input.value);
     });
     return out;
   }
 
   function completionPreviewText(data) {
-    const total = safeDecimal(data.done_on_time) + safeDecimal(data.done_late) + safeDecimal(data.partially_done) + safeDecimal(data.missed);
-    const done = safeDecimal(data.done_on_time) + safeDecimal(data.done_late);
-    return countPct(done, total);
+    return formatPercent(completionPercent(data));
   }
 
   function renderCompletionTargetsTable(targets, sharedData = null, editable = true) {
@@ -1186,10 +1204,10 @@
       return `<tr class="cs-completion-preview-row" ${attrs}>
         <td>${esc(target.company_name)}</td>
         <td>${esc(target.location_name)}</td>
-        <td data-preview-field="done_on_time">${formatDecimal(rowData.done_on_time)}</td>
-        <td data-preview-field="done_late">${formatDecimal(rowData.done_late)}</td>
-        <td data-preview-field="partially_done">${formatDecimal(rowData.partially_done)}</td>
-        <td data-preview-field="missed">${formatDecimal(rowData.missed)}</td>
+        <td data-preview-field="done_on_time">${formatPercent(rowData.done_on_time)}</td>
+        <td data-preview-field="done_late">${formatPercent(rowData.done_late)}</td>
+        <td data-preview-field="partially_done">${formatPercent(rowData.partially_done)}</td>
+        <td data-preview-field="missed">${formatPercent(rowData.missed)}</td>
         <td class="cs-completion-preview">${completionPreviewText(rowData)}</td>
       </tr>`;
     }).join('');
@@ -1222,22 +1240,22 @@
       </div>
 
       <div id="csGroupCompletionEntry" style="display:none;">
-        <div class="cs-section-title"><h4>Group Result Counts</h4><span class="cs-chip">Auto-calculated from all location rows below</span></div>
-        <div class="cs-table-wrap"><table class="cs-table cs-edit-table"><thead><tr><th>Apply To</th><th>Done On-Time</th><th>Done Late</th><th>Partially Done</th><th>Missed</th><th>Completion</th></tr></thead><tbody>
+        <div class="cs-section-title"><h4>Group Result %</h4><span class="cs-chip">Average of all location rows below</span></div>
+        <div class="cs-table-wrap"><table class="cs-table cs-edit-table"><thead><tr><th>Apply To</th><th>Done On-Time %</th><th>Done Late %</th><th>Partially Done %</th><th>Missed %</th><th>Completion %</th></tr></thead><tbody>
           <tr class="cs-group-completion-row">
             <td>All Group Locations</td>
-            <td data-group-total-field="done_on_time">0</td>
-            <td data-group-total-field="done_late">0</td>
-            <td data-group-total-field="partially_done">0</td>
-            <td data-group-total-field="missed">0</td>
-            <td class="cs-group-completion-preview">0 (0.00%)</td>
+            <td data-group-total-field="done_on_time">0.00%</td>
+            <td data-group-total-field="done_late">0.00%</td>
+            <td data-group-total-field="partially_done">0.00%</td>
+            <td data-group-total-field="missed">0.00%</td>
+            <td class="cs-group-completion-preview">0.00%</td>
           </tr>
         </tbody></table></div>
       </div>
 
-      <div class="cs-section-title"><h4>Location Result Counts</h4><span class="cs-chip">Completion = Done On-Time + Done Late</span></div>
-      <div class="cs-kpi-sub" id="csCompletionHint">For current client scope, you can edit each location separately.</div>
-      <div class="cs-table-wrap"><table class="cs-table cs-edit-table"><thead><tr><th>Client</th><th>Location</th><th>Done On-Time</th><th>Done Late</th><th>Partially Done</th><th>Missed</th><th>Completion</th></tr></thead><tbody id="csCompletionRowsBody">${renderCompletionTargetsTable(initialTargets, null, true)}</tbody></table></div>
+      <div class="cs-section-title"><h4>Location Result %</h4><span class="cs-chip">Completion % = Done On-Time % + Done Late %</span></div>
+      <div class="cs-kpi-sub" id="csCompletionHint">For current client scope, enter percentage values for each location.</div>
+      <div class="cs-table-wrap"><table class="cs-table cs-edit-table"><thead><tr><th>Client</th><th>Location</th><th>Done On-Time %</th><th>Done Late %</th><th>Partially Done %</th><th>Missed %</th><th>Completion %</th></tr></thead><tbody id="csCompletionRowsBody">${renderCompletionTargetsTable(initialTargets, null, true)}</tbody></table></div>
       <div class="cs-modal-actions"><button type="button" class="btn ghost" onclick="document.getElementById('csModalClose').click()">Cancel</button><button type="submit" class="btn primary">Save Completion</button></div>
     </form>`, saveCompletion);
 
@@ -1265,24 +1283,25 @@
     if (groupField) groupField.style.display = isGroup ? '' : 'none';
     if (groupEntry) groupEntry.style.display = isGroup ? '' : 'none';
     if (hint) hint.textContent = isGroup
-      ? 'For group scope, enter each company/location below one time from the same screen. The All Group Locations line above is auto-calculated from all entered rows.'
-      : 'For current client scope, you can edit each location separately.';
+      ? 'For group scope, enter percentage values for each company/location. The All Group Locations line above is the average of all entered location percentages.'
+      : 'For current client scope, enter percentage values for each location.';
     if (body) body.innerHTML = renderCompletionTargetsTable(targets, null, true);
     refreshCompletionRows(form);
   }
 
   function refreshCompletionRows(form) {
-    const totals = { done_on_time: 0, done_late: 0, partially_done: 0, missed: 0 };
+    const rows = [];
     form?.querySelectorAll('.cs-completion-input-row').forEach(row => {
       const data = readCompletionInputRow(row);
-      ['done_on_time','done_late','partially_done','missed'].forEach(field => { totals[field] += safeDecimal(data[field]); });
+      rows.push(data);
       const preview = row.querySelector('.cs-completion-preview');
       if (preview) preview.textContent = completionPreviewText(data);
     });
 
+    const totals = averagePercentRows(rows);
     ['done_on_time','done_late','partially_done','missed'].forEach(field => {
       const cell = form?.querySelector(`[data-group-total-field="${field}"]`);
-      if (cell) cell.textContent = formatDecimal(totals[field]);
+      if (cell) cell.textContent = formatPercent(totals[field]);
     });
     const groupPreview = form?.querySelector('.cs-group-completion-preview');
     if (groupPreview) groupPreview.textContent = completionPreviewText(totals);
@@ -1319,8 +1338,11 @@
       const group = groupById(fd.get('group_id'));
       if (!group) { toast('Select a valid CS client group.'); return; }
     }
+    const invalidRows = [];
     payloads = Array.from(form.querySelectorAll('.cs-completion-input-row')).map(row => {
       const data = readCompletionInputRow(row);
+      const totalPercent = safeDecimal(data.done_on_time) + safeDecimal(data.done_late) + safeDecimal(data.partially_done) + safeDecimal(data.missed);
+      if (totalPercent > 100.01) invalidRows.push(`${row.dataset.companyName || ''} - ${data.location_name || ''}`.trim());
       return buildCompletionPayload(fd, {
         company_id: row.dataset.companyId,
         company_name: row.dataset.companyName,
@@ -1328,6 +1350,7 @@
       }, data);
     });
 
+    if (invalidRows.length) { toast(`Each location total must be 100% or less. Check: ${invalidRows.slice(0,3).join(', ')}${invalidRows.length > 3 ? '...' : ''}`); return; }
     payloads = payloads.filter(row => row.company_id && row.location_name);
     if (!payloads.length) { toast('No locations found to save completion.'); return; }
     const { error } = await supabase().from(TABLES.completions).upsert(payloads, { onConflict: 'company_id,location_name,review_type,period_start,period_end' });
