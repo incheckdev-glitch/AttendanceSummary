@@ -1127,7 +1127,7 @@
 <title>Completion Report - ${esc(reportName)}</title>
 <style>
   :root{--brand:#0b4ea2;--brand2:#276ef1;--ink:#071a44;--text:#24324b;--muted:#667085;--line:#dfe7f2;--soft:#f5f8fc;--card:#fff;--good:#42a642;--late:#ef7d17;--partial:#7d55b4;--miss:#d93545;--shadow:0 14px 38px rgba(18,42,88,.08)}
-  *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact} body{margin:0;background:#ffffff;color:var(--text);font-family:Inter,Segoe UI,Arial,sans-serif}.page{max-width:1280px;margin:0 auto;padding:28px 36px 34px}.brand{display:flex;align-items:center;gap:14px;margin-bottom:18px}.brand img{height:38px;max-width:210px;object-fit:contain}.brand-fallback{font-size:22px;font-weight:900;letter-spacing:.04em;color:var(--ink)}.brand-fallback span{color:var(--brand2)}
+  *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact} body{margin:0;background:#ffffff;color:var(--text);font-family:Inter,Segoe UI,Arial,sans-serif}.page{max-width:1280px;margin:0 auto;padding:28px 36px 34px}.brand{display:flex;align-items:center;gap:14px;margin-bottom:18px;min-height:28mm}.brand [data-incheck360-doc-logo-slot],.brand [data-incheck360-doc-logo]{display:flex;align-items:center;justify-content:flex-start}.brand .incheck360-doc-logo-wrap{width:40mm;max-width:40mm;height:24mm;max-height:24mm}.brand .incheck360-doc-logo{max-width:32mm;max-height:20mm;width:auto;height:auto;object-fit:contain;object-position:left center}.brand-fallback{font-size:22px;font-weight:900;letter-spacing:.04em;color:var(--ink)}.brand-fallback span{color:var(--brand2)}
   .header{display:grid;grid-template-columns:1.3fr repeat(4,minmax(150px,.65fr));gap:18px;align-items:end;border-bottom:1px solid var(--line);padding-bottom:22px}.title h1{margin:0;color:var(--ink);font-size:36px;letter-spacing:.03em}.title .subtitle{margin-top:8px;color:var(--muted);font-size:13px}.meta{border-left:1px solid var(--line);padding-left:18px;min-height:44px}.meta .k{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px}.meta .v{font-weight:800;color:var(--ink);font-size:14px;line-height:1.25}
   .actions{display:flex;justify-content:flex-end;gap:10px;margin:16px 0}.btn{border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-weight:800;cursor:pointer;background:#fff;color:var(--brand)}.btn.primary{background:var(--brand);color:#fff;border-color:var(--brand)}
   .kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:16px;margin:18px 0}.kpi{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;box-shadow:var(--shadow);min-height:104px}.kpi .icon{width:38px;height:38px;border-radius:999px;background:#eef5ff;color:var(--brand);display:flex;align-items:center;justify-content:center;font-weight:900;margin-bottom:8px}.kpi .label{font-size:12px;font-weight:750;color:var(--ink);line-height:1.25}.kpi .value{font-size:25px;font-weight:900;margin-top:8px;color:var(--brand)}.kpi .value.good{color:var(--good)}.kpi .value.late{color:var(--late)}.kpi .value.partial{color:var(--partial)}.kpi .value.miss{color:var(--miss)}
@@ -1138,7 +1138,7 @@
   @media print{body{background:#fff}.page{padding:16px;max-width:none}.actions{display:none}.panel,.kpi,.insight{box-shadow:none}.middle{grid-template-columns:1fr 330px}.report-table th,.report-table td{padding:8px 7px}.kpis{gap:10px}.kpi{padding:12px}.kpi .value{font-size:21px}.stack{height:86px;break-inside:avoid}.stack-svg{height:86px}.analytics,.breakdown,.donut-box{break-inside:avoid;page-break-inside:avoid}}
 </style></head><body>
 <div class="page">
-  <div class="brand"><img src="assets/incheck360-ui-logo.png" alt="InCheck 360" onerror="this.style.display='none';this.nextElementSibling.style.display='block';" /><div class="brand-fallback" style="display:none;">InCheck <span>360</span></div></div>
+  <div class="brand"><div data-incheck360-doc-logo-slot></div><div class="brand-fallback" style="display:none;">InCheck <span>360</span></div></div>
   <div class="header">
     <div class="title"><h1>Completion Report</h1><div class="subtitle">${esc(reportTitleSuffix)} · Completion = Done On-Time + Done Late · Values are percentages.</div></div>
     <div class="meta"><div class="k">${isGroupReport ? 'Group' : 'Client'}</div><div class="v">${esc(reportName)}</div></div>
@@ -1171,10 +1171,13 @@
   <div class="footer"><span>InCheck 360 · Customer Success 360</span><span>Completion export · ${esc(generatedAt.toLocaleDateString())}</span></div>
 </div></body></html>`;
 
+    const brandedReportHtml = window.Utils?.addIncheckDocumentLogo
+      ? window.Utils.addIncheckDocumentLogo(reportHtml)
+      : reportHtml;
     const win = window.open('', '_blank');
     if (!win) { toast('Popup blocked. Please allow popups and try again.'); return; }
     win.document.open();
-    win.document.write(reportHtml);
+    win.document.write(brandedReportHtml);
     win.document.close();
   }
 
