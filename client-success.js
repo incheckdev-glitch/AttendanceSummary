@@ -91,15 +91,8 @@
   }
 
   function formatDecimal(value) {
-    return safeDecimal(value).toFixed(2);
-  }
-
-  function clampPercent(value) {
-    return clamp(safeDecimal(value), 0, 100);
-  }
-
-  function formatPercent(value) {
-    return `${clampPercent(value).toFixed(2)}%`;
+    const n = safeDecimal(value);
+    return Number.isInteger(n) ? String(n) : n.toFixed(2);
   }
 
   function companyName(row = {}) {
@@ -461,52 +454,61 @@
     rows.forEach(row => {
       const name = locationNameFromRow(row) || 'Unknown Location';
       const key = normalize(name);
-      if (!byLocation.has(key)) byLocation.set(key, { location_name: name, done_on_time: 0, done_late: 0, partially_done: 0, missed: 0, review_type: row.review_type, period_start: row.period_start, period_end: row.period_end, _row_count: 0 });
+      if (!byLocation.has(key)) byLocation.set(key, { location_name: name, done_on_time: 0, done_late: 0, partially_done: 0, missed: 0, review_type: row.review_type, period_start: row.period_start, period_end: row.period_end });
       const acc = byLocation.get(key);
-      acc.done_on_time += clampPercent(row.done_on_time);
-      acc.done_late += clampPercent(row.done_late);
-      acc.partially_done += clampPercent(row.partially_done);
-      acc.missed += clampPercent(row.missed);
-      acc._row_count += 1;
+      acc.done_on_time += safeNumber(row.done_on_time);
+      acc.done_late += safeNumber(row.done_late);
+      acc.partially_done += safeNumber(row.partially_done);
+      acc.missed += safeNumber(row.missed);
     });
-    return Array.from(byLocation.values()).map(row => {
-      const count = row._row_count || 1;
-      return {
-        ...row,
-        done_on_time: row.done_on_time / count,
-        done_late: row.done_late / count,
-        partially_done: row.partially_done / count,
-        missed: row.missed / count
-      };
-    }).sort((a,b) => a.location_name.localeCompare(b.location_name));
-  }
-
-  function completionPercent(row) {
-    return clampPercent(safeDecimal(row?.done_on_time) + safeDecimal(row?.done_late));
+    return Array.from(byLocation.values()).sort((a,b) => a.location_name.localeCompare(b.location_name));
   }
 
   function completionTotal(row) {
-    return clampPercent(safeDecimal(row?.done_on_time) + safeDecimal(row?.done_late) + safeDecimal(row?.partially_done) + safeDecimal(row?.missed));
+    return safeDecimal(row.done_on_time) + safeDecimal(row.done_late) + safeDecimal(row.partially_done) + safeDecimal(row.missed);
   }
 
   function completionCount(row) {
-    return completionPercent(row);
+    return clamp(safeDecimal(row.done_on_time) + safeDecimal(row.done_late), 0, 100);
   }
 
-  function averageCompletionPercent(rows) {
-    if (!rows || !rows.length) return 0;
-    return rows.reduce((sum, row) => sum + completionPercent(row), 0) / rows.length;
+  function formatPct(value) {
+    return `${clamp(safeDecimal(value), 0, 100).toFixed(2)}%`;
   }
 
-  function averagePercentRows(rows) {
-    const source = Array.from(rows || []);
-    const count = source.length || 1;
+  function countPct(count, total) {
+    const c = Math.max(0, safeDecimal(count));
+    const t = Math.max(0, safeDecimal(total));
+    return t ? `${c.toFixed(2)}%` : `${c.toFixed(2)}%`;
+  }
+
+  function averageCompletionMetrics(rows) {
+    const list = Array.isArray(rows) ? rows : [];
+    if (!list.length) return { done_on_time: 0, done_late: 0, partially_done: 0, missed: 0, completion: 0, row_count: 0 };
+    const acc = list.reduce((sum, row) => {
+      sum.done_on_time += clamp(safeDecimal(row.done_on_time), 0, 100);
+      sum.done_late += clamp(safeDecimal(row.done_late), 0, 100);
+      sum.partially_done += clamp(safeDecimal(row.partially_done), 0, 100);
+      sum.missed += clamp(safeDecimal(row.missed), 0, 100);
+      return sum;
+    }, { done_on_time: 0, done_late: 0, partially_done: 0, missed: 0 });
+    const rowCount = list.length || 1;
+    const done_on_time = acc.done_on_time / rowCount;
+    const done_late = acc.done_late / rowCount;
+    const partially_done = acc.partially_done / rowCount;
+    const missed = acc.missed / rowCount;
     return {
-      done_on_time: source.reduce((sum, row) => sum + clampPercent(row.done_on_time), 0) / count,
-      done_late: source.reduce((sum, row) => sum + clampPercent(row.done_late), 0) / count,
-      partially_done: source.reduce((sum, row) => sum + clampPercent(row.partially_done), 0) / count,
-      missed: source.reduce((sum, row) => sum + clampPercent(row.missed), 0) / count
+      done_on_time,
+      done_late,
+      partially_done,
+      missed,
+      completion: clamp(done_on_time + done_late, 0, 100),
+      row_count: list.length
     };
+  }
+
+  function completionRowIsValid(row) {
+    return completionTotal(row) <= 100.0001;
   }
 
   function severityRank(value) { return { Critical:4, High:3, Medium:2, Low:1 }[String(value || '')] || 0; }
@@ -553,7 +555,7 @@
     else if (daysNoActivity > 30) score -= 18;
     else if (daysNoActivity > 14) score -= 8;
     if (latestCompletions.length) {
-      const completionRate = averageCompletionPercent(latestCompletions);
+      const completionRate = averageCompletionMetrics(latestCompletions).completion;
       if (completionRate < 50) score -= 15;
       else if (completionRate < 75) score -= 8;
     }
@@ -788,7 +790,7 @@
     const openRisks = openRows(STATE.rows.risks).length;
     const overdueTasks = STATE.rows.tasks.filter(t => t.due_date && t.due_date < isoToday() && !['Done','Canceled'].includes(t.status)).length;
     const latestCompletionRows = companies.flatMap(c => aggregateCompletionRows(latestCompletionPeriodRows(c)));
-    const completionRate = latestCompletionRows.length ? Math.round(averageCompletionPercent(latestCompletionRows)) : 0;
+    const completionRate = Math.round(averageCompletionMetrics(latestCompletionRows).completion);
     const items = [
       ['Active Clients', companies.length, 'Companies with signed agreements'],
       ['Client Groups', activeGroups().length, 'CS parent groups / account families'],
@@ -911,7 +913,8 @@
   function latestCompletionSummary(company) {
     const rows = aggregateCompletionRows(latestCompletionPeriodRows(company));
     if (!rows.length) return 'No data';
-    return formatPercent(averageCompletionPercent(rows));
+    const avg = averageCompletionMetrics(rows);
+    return `${avg.completion.toFixed(2)}% avg`;
   }
 
 
@@ -943,16 +946,18 @@
     const byLocation = new Map(records.map(row => [normalize(row.location_name), row]));
     const rows = locations.map(location => byLocation.get(normalize(location)) || { location_name: location, done_on_time: 0, done_late: 0, partially_done: 0, missed: 0 });
     const period = records[0] ? `${records[0].review_type || 'weekly'} · ${fmtDate(records[0].period_start)} → ${fmtDate(records[0].period_end)}` : 'No period saved yet';
-    const tableRows = rows.map(row => ([
+    const avg = averageCompletionMetrics(rows);
+    const tableRows = rows.map(row => [
       row.location_name,
-      formatPercent(row.done_on_time),
-      formatPercent(row.done_late),
-      formatPercent(completionPercent(row)),
-      formatPercent(row.partially_done),
-      formatPercent(row.missed)
-    ]));
-    return `<div class="cs-section-title"><div><h4>Location Completion</h4><div class="cs-kpi-sub">Completion % = Done On-Time % + Done Late %. Current view: ${esc(period)}</div></div><button class="btn sm" type="button" data-cs-action="completion">+ Add Completion</button></div>
-      ${table(['Location','Done On-Time %','Done Late %','Completion %','Partially Done %','Missed %'], tableRows)}`;
+      formatPct(row.done_on_time),
+      formatPct(row.done_late),
+      formatPct(completionCount(row)),
+      formatPct(row.partially_done),
+      formatPct(row.missed)
+    ]);
+    return `<div class="cs-section-title"><div><h4>Location Completion</h4><div class="cs-kpi-sub">Entered values are percentages. Completion = Done On-Time + Done Late. Current view: ${esc(period)} · Export uses selected group filter when a CS group is selected.</div></div><div><button class="btn ghost sm" type="button" data-cs-action="completion-export">Export Advanced Report</button> <button class="btn sm" type="button" data-cs-action="completion">+ Add Completion</button></div></div>
+      <div class="cs-info-grid" style="margin-bottom:12px;"><div class="cs-info-box"><div class="cs-info-label">Average Completion</div><div class="cs-info-value">${avg.completion.toFixed(2)}%</div></div><div class="cs-info-box"><div class="cs-info-label">Average Done On-Time</div><div class="cs-info-value">${avg.done_on_time.toFixed(2)}%</div></div><div class="cs-info-box"><div class="cs-info-label">Average Done Late</div><div class="cs-info-value">${avg.done_late.toFixed(2)}%</div></div><div class="cs-info-box"><div class="cs-info-label">Average Missed</div><div class="cs-info-value">${avg.missed.toFixed(2)}%</div></div></div>
+      ${table(['Location','Done On-Time','Done Late','Completion','Partially Done','Missed'], tableRows)}`;
   }
 
   function renderPulse(company) {
@@ -1013,10 +1018,149 @@
   }
   function progress(value) { const v = clamp(safeNumber(value),0,100); return `<div class="cs-progress" title="${v}%"><span style="width:${v}%"></span></div><div class="cs-kpi-sub">${v}%</div>`; }
 
+
+  function exportCompletionReport() {
+    const selectedCompany = getSelectedCompany();
+    if (!selectedCompany) { toast('Select a client first.'); return; }
+
+    const selectedGroupId = String(STATE.filters.group || '').trim();
+    const selectedGroup = selectedGroupId && !['All','Ungrouped'].includes(selectedGroupId) ? groupById(selectedGroupId) : null;
+    const isGroupReport = Boolean(selectedGroup);
+    const generatedAt = new Date();
+
+    const completionKey = row => [row.review_type || 'weekly', String(row.period_start || '').slice(0,10), String(row.period_end || '').slice(0,10)].join('|');
+    const sortCompletionRows = rows => rows.slice().sort((a,b) => String(b.period_end || b.updated_at || b.created_at || '').localeCompare(String(a.period_end || a.updated_at || a.created_at || '')));
+
+    let reportName = companyName(selectedCompany);
+    let clientLabel = companyName(selectedCompany);
+    let groupLabel = groupsForCompany(selectedCompany).map(groupName).join(', ') || 'Ungrouped';
+    let targetRows = currentClientCompletionTargets(selectedCompany);
+    let rawRecords = latestCompletionPeriodRows(selectedCompany).map(row => ({ ...row, company_name: companyName(selectedCompany) }));
+    let activePeriodKey = rawRecords[0] ? completionKey(rawRecords[0]) : '';
+
+    if (isGroupReport) {
+      const members = groupMemberCompanies(selectedGroup);
+      const memberIds = new Set(members.map(companyId));
+      const memberNames = new Set(members.map(c => normalize(companyName(c))));
+      reportName = groupName(selectedGroup);
+      groupLabel = groupName(selectedGroup);
+      clientLabel = `${members.length} signed client${members.length === 1 ? '' : 's'}`;
+      targetRows = groupCompletionTargets(selectedGroup);
+      const allGroupRecords = (STATE.rows.completions || []).filter(row => {
+        const rowCompanyId = String(row.company_id || '').trim();
+        const rowCompanyName = normalize(row.company_name_snapshot || row.company_name || row.client_name || '');
+        return (rowCompanyId && memberIds.has(rowCompanyId)) || (rowCompanyName && memberNames.has(rowCompanyName));
+      });
+      const sorted = sortCompletionRows(allGroupRecords);
+      activePeriodKey = sorted[0] ? completionKey(sorted[0]) : '';
+      rawRecords = activePeriodKey ? sorted.filter(row => completionKey(row) === activePeriodKey) : [];
+    }
+
+    const recordByTarget = new Map();
+    rawRecords.forEach(row => {
+      const key = [String(row.company_id || '').trim(), normalize(row.location_name)].join('|');
+      if (key !== '|') recordByTarget.set(key, row);
+      const fallbackKey = ['name', normalize(row.company_name_snapshot || row.company_name || ''), normalize(row.location_name)].join('|');
+      recordByTarget.set(fallbackKey, row);
+    });
+
+    const rows = targetRows.map(target => {
+      const directKey = completionTargetKey(target);
+      const nameKey = ['name', normalize(target.company_name), normalize(target.location_name)].join('|');
+      const saved = recordByTarget.get(directKey) || recordByTarget.get(nameKey) || {};
+      return {
+        company_id: target.company_id,
+        company_name: target.company_name,
+        location_name: target.location_name,
+        service_start_date: target.service_start_date || saved.service_start_date || '',
+        service_end_date: target.service_end_date || saved.service_end_date || '',
+        done_on_time: saved.done_on_time ?? 0,
+        done_late: saved.done_late ?? 0,
+        partially_done: saved.partially_done ?? 0,
+        missed: saved.missed ?? 0,
+        review_type: saved.review_type || rawRecords[0]?.review_type || 'weekly',
+        period_start: saved.period_start || rawRecords[0]?.period_start || '',
+        period_end: saved.period_end || rawRecords[0]?.period_end || '',
+        source_note: saved.source_note || ''
+      };
+    });
+
+    const stats = averageCompletionMetrics(rows);
+    const reportType = rawRecords[0]?.review_type || rows[0]?.review_type || 'weekly';
+    const periodStart = rawRecords[0]?.period_start || rows[0]?.period_start || '';
+    const periodEnd = rawRecords[0]?.period_end || rows[0]?.period_end || '';
+    const periodLabel = periodStart || periodEnd ? `${fmtDate(periodStart)} to ${fmtDate(periodEnd)}` : 'No period saved yet';
+    const best = rows.length ? rows.slice().sort((a,b) => completionCount(b) - completionCount(a))[0] : null;
+    const weak = rows.slice().filter(row => completionCount(row) < 80).sort((a,b) => completionCount(a) - completionCount(b)).slice(0, 3);
+    const health = computeHealth(selectedCompany);
+    const effort = isGroupReport ? 'Group Review' : computeEffort(selectedCompany);
+    const reportTitleSuffix = isGroupReport ? 'Group Completion Report' : 'Client Completion Report';
+    const sourceNote = rawRecords.find(r => r.source_note)?.source_note || 'Completion values are entered as percentages.';
+    const safeWidth = value => `${clamp(safeDecimal(value), 0, 100).toFixed(2)}%`;
+    const segment = (label, value, className) => `<div class="stack-segment ${className}" style="width:${safeWidth(value)}"><span>${Number(value || 0).toFixed(2)}%</span></div>`;
+    const donutStyle = `background: conic-gradient(var(--good) 0 ${safeWidth(stats.done_on_time)}, var(--late) ${safeWidth(stats.done_on_time)} ${safeWidth(stats.done_on_time + stats.done_late)}, var(--partial) ${safeWidth(stats.done_on_time + stats.done_late)} ${safeWidth(stats.done_on_time + stats.done_late + stats.partially_done)}, var(--miss) ${safeWidth(stats.done_on_time + stats.done_late + stats.partially_done)} 100%);`;
+
+    const reportHtml = `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Completion Report - ${esc(reportName)}</title>
+<style>
+  :root{--brand:#0b4ea2;--brand2:#276ef1;--ink:#071a44;--text:#24324b;--muted:#667085;--line:#dfe7f2;--soft:#f5f8fc;--card:#fff;--good:#42a642;--late:#ef7d17;--partial:#7d55b4;--miss:#d93545;--shadow:0 14px 38px rgba(18,42,88,.08)}
+  *{box-sizing:border-box} body{margin:0;background:#ffffff;color:var(--text);font-family:Inter,Segoe UI,Arial,sans-serif}.page{max-width:1280px;margin:0 auto;padding:28px 36px 34px}.brand{display:flex;align-items:center;gap:14px;margin-bottom:18px}.brand img{height:38px;max-width:210px;object-fit:contain}.brand-fallback{font-size:22px;font-weight:900;letter-spacing:.04em;color:var(--ink)}.brand-fallback span{color:var(--brand2)}
+  .header{display:grid;grid-template-columns:1.3fr repeat(4,minmax(150px,.65fr));gap:18px;align-items:end;border-bottom:1px solid var(--line);padding-bottom:22px}.title h1{margin:0;color:var(--ink);font-size:36px;letter-spacing:.03em}.title .subtitle{margin-top:8px;color:var(--muted);font-size:13px}.meta{border-left:1px solid var(--line);padding-left:18px;min-height:44px}.meta .k{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px}.meta .v{font-weight:800;color:var(--ink);font-size:14px;line-height:1.25}
+  .actions{display:flex;justify-content:flex-end;gap:10px;margin:16px 0}.btn{border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-weight:800;cursor:pointer;background:#fff;color:var(--brand)}.btn.primary{background:var(--brand);color:#fff;border-color:var(--brand)}
+  .kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:16px;margin:18px 0}.kpi{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;box-shadow:var(--shadow);min-height:104px}.kpi .icon{width:38px;height:38px;border-radius:999px;background:#eef5ff;color:var(--brand);display:flex;align-items:center;justify-content:center;font-weight:900;margin-bottom:8px}.kpi .label{font-size:12px;font-weight:750;color:var(--ink);line-height:1.25}.kpi .value{font-size:25px;font-weight:900;margin-top:8px;color:var(--brand)}.kpi .value.good{color:var(--good)}.kpi .value.late{color:var(--late)}.kpi .value.partial{color:var(--partial)}.kpi .value.miss{color:var(--miss)}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow)}.analytics{display:grid;grid-template-columns:.55fr 1fr;gap:0;margin-top:18px}.donut-box{padding:22px;border-right:1px solid var(--line)}.breakdown{padding:22px}.section-title{display:flex;align-items:center;justify-content:space-between;margin:0 0 16px}.section-title h2{margin:0;color:var(--ink);font-size:18px}.section-title .note{color:var(--muted);font-size:12px}.donut-wrap{display:flex;align-items:center;gap:28px}.donut{width:190px;height:190px;border-radius:50%;position:relative;box-shadow:inset 0 0 0 1px rgba(0,0,0,.03)}.donut:after{content:"";position:absolute;inset:42px;background:#fff;border-radius:50%;box-shadow:0 0 0 1px var(--line)}.donut-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:2;text-align:center;color:var(--ink);font-weight:900;font-size:26px}.donut-center span{font-size:12px;color:var(--muted);font-weight:700;margin-top:6px}.legend{display:grid;gap:12px;min-width:210px}.legend-row{display:grid;grid-template-columns:14px 1fr auto;gap:10px;align-items:center;font-size:13px}.dot{width:10px;height:10px;border-radius:50%}.dot.good,.stack-segment.good{background:var(--good)}.dot.late,.stack-segment.late{background:var(--late)}.dot.partial,.stack-segment.partial{background:var(--partial)}.dot.miss,.stack-segment.miss{background:var(--miss)}
+  .stack{height:58px;display:flex;border-radius:10px;overflow:hidden;background:#eef2f7;margin:34px 4px 18px}.stack-segment{min-width:4px;height:100%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:900}.axis{display:flex;justify-content:space-between;color:var(--muted);font-size:12px;border-top:1px solid var(--line);padding-top:9px;margin:0 4px}.stack-legend{display:flex;gap:28px;flex-wrap:wrap;margin-top:22px;color:var(--text);font-size:13px}.stack-legend span{display:flex;gap:8px;align-items:center}
+  .middle{display:grid;grid-template-columns:1fr 360px;gap:20px;margin-top:18px}.table-card{padding:18px}.summary-card{padding:20px}.table-wrap{border:1px solid var(--line);border-radius:12px;overflow:hidden}.report-table{width:100%;border-collapse:collapse}.report-table th{background:var(--brand);color:#fff;text-align:left;font-size:11px;letter-spacing:.04em;text-transform:uppercase;padding:12px 10px}.report-table td{padding:11px 10px;border-bottom:1px solid var(--line);font-size:12.5px}.report-table tbody tr:nth-child(even){background:#fbfdff}.report-table .completion-cell{font-weight:900;color:var(--good)}.summary-line{display:grid;grid-template-columns:32px 1fr auto;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid var(--line)}.mini-icon{width:28px;height:28px;border-radius:8px;background:#eef5ff;color:var(--brand);display:flex;align-items:center;justify-content:center;font-weight:900}.summary-line strong{font-size:18px}.summary-total{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-top:18px}.summary-total .big{font-size:32px;color:var(--good);font-weight:950}.tiny{font-size:11px;color:var(--muted)}
+  .insights{display:grid;grid-template-columns:1fr 1fr 1.2fr;gap:14px;margin-top:18px}.insight{border:1px solid var(--line);border-radius:16px;padding:16px 18px;background:#fff;box-shadow:var(--shadow);display:grid;grid-template-columns:42px 1fr;gap:14px;align-items:start}.insight.good-bg{background:linear-gradient(135deg,#f4fbf6,#fff)}.insight.warn-bg{background:linear-gradient(135deg,#fff5f5,#fff)}.insight.info-bg{background:linear-gradient(135deg,#f3f7ff,#fff)}.insight .big-icon{font-size:26px}.insight h3{margin:0 0 7px;color:var(--ink);font-size:14px}.insight p{margin:0;color:var(--text);font-size:13px;line-height:1.55}.footer{display:flex;justify-content:space-between;color:var(--muted);font-size:11px;margin-top:18px;padding-top:12px;border-top:1px solid var(--line)}
+  @media print{body{background:#fff}.page{padding:16px;max-width:none}.actions{display:none}.panel,.kpi,.insight{box-shadow:none}.middle{grid-template-columns:1fr 330px}.report-table th,.report-table td{padding:8px 7px}.kpis{gap:10px}.kpi{padding:12px}.kpi .value{font-size:21px}}
+</style></head><body>
+<div class="page">
+  <div class="brand"><img src="assets/incheck360-ui-logo.png" alt="InCheck 360" onerror="this.style.display='none';this.nextElementSibling.style.display='block';" /><div class="brand-fallback" style="display:none;">InCheck <span>360</span></div></div>
+  <div class="header">
+    <div class="title"><h1>Completion Report</h1><div class="subtitle">${esc(reportTitleSuffix)} · Completion = Done On-Time + Done Late · Values are percentages.</div></div>
+    <div class="meta"><div class="k">${isGroupReport ? 'Group' : 'Client'}</div><div class="v">${esc(reportName)}</div></div>
+    <div class="meta"><div class="k">Scope</div><div class="v">${esc(clientLabel)}</div></div>
+    <div class="meta"><div class="k">Review Type</div><div class="v">${esc(String(reportType || 'weekly').replace(/^./, c => c.toUpperCase()))}</div></div>
+    <div class="meta"><div class="k">Period</div><div class="v">${esc(periodLabel)}</div></div>
+  </div>
+  <div class="actions"><button class="btn" onclick="window.close()">Close</button><button class="btn primary" onclick="window.print()">Print / Save PDF</button></div>
+  <div class="kpis">
+    <div class="kpi"><div class="icon">↗</div><div class="label">Average Completion %</div><div class="value">${stats.completion.toFixed(2)}%</div></div>
+    <div class="kpi"><div class="icon">✓</div><div class="label">Average Done On-Time %</div><div class="value good">${stats.done_on_time.toFixed(2)}%</div></div>
+    <div class="kpi"><div class="icon">◷</div><div class="label">Average Done Late %</div><div class="value late">${stats.done_late.toFixed(2)}%</div></div>
+    <div class="kpi"><div class="icon">◔</div><div class="label">Average Partially Done %</div><div class="value partial">${stats.partially_done.toFixed(2)}%</div></div>
+    <div class="kpi"><div class="icon">×</div><div class="label">Average Missed %</div><div class="value miss">${stats.missed.toFixed(2)}%</div></div>
+    <div class="kpi"><div class="icon">⌖</div><div class="label">Total Active Locations</div><div class="value">${rows.length}</div></div>
+  </div>
+  <div class="panel analytics">
+    <div class="donut-box"><div class="section-title"><h2>Overall Completion</h2><span class="note">Average of active rows</span></div><div class="donut-wrap"><div class="donut" style="${donutStyle}"><div class="donut-center">${stats.completion.toFixed(2)}%<span>Average<br/>Completion</span></div></div><div class="legend"><div class="legend-row"><i class="dot good"></i><span>Done On-Time</span><strong>${stats.done_on_time.toFixed(2)}%</strong></div><div class="legend-row"><i class="dot late"></i><span>Done Late</span><strong>${stats.done_late.toFixed(2)}%</strong></div><div class="legend-row"><i class="dot partial"></i><span>Partially Done</span><strong>${stats.partially_done.toFixed(2)}%</strong></div><div class="legend-row"><i class="dot miss"></i><span>Missed</span><strong>${stats.missed.toFixed(2)}%</strong></div></div></div></div>
+    <div class="breakdown"><div class="section-title"><h2>Completion Breakdown</h2><span class="note">Done On-Time + Done Late = Completion</span></div><div class="stack">${segment('Done On-Time', stats.done_on_time, 'good')}${segment('Done Late', stats.done_late, 'late')}${segment('Partially Done', stats.partially_done, 'partial')}${segment('Missed', stats.missed, 'miss')}</div><div class="axis"><span>0%</span><span>20%</span><span>40%</span><span>60%</span><span>80%</span><span>100%</span></div><div class="stack-legend"><span><i class="dot good"></i>Done On-Time</span><span><i class="dot late"></i>Done Late</span><span><i class="dot partial"></i>Partially Done</span><span><i class="dot miss"></i>Missed</span></div></div>
+  </div>
+  <div class="middle">
+    <div class="panel table-card"><div class="section-title"><h2>Location Completion Details</h2><span class="note">No duplicate locations · latest active rows</span></div><div class="table-wrap"><table class="report-table"><thead><tr><th>#</th><th>Client</th><th>Location</th><th>Done On-Time</th><th>Done Late</th><th>Partially Done</th><th>Missed</th><th>Completion</th></tr></thead><tbody>${rows.map((row, index) => `<tr><td>${index + 1}</td><td>${esc(row.company_name || reportName)}</td><td>${esc(row.location_name)}</td><td>${formatPct(row.done_on_time)}</td><td>${formatPct(row.done_late)}</td><td>${formatPct(row.partially_done)}</td><td>${formatPct(row.missed)}</td><td class="completion-cell">${formatPct(completionCount(row))}</td></tr>`).join('')}</tbody></table></div></div>
+    <div class="panel summary-card"><div class="section-title"><h2>${isGroupReport ? 'All Group Locations' : 'All Client Locations'}</h2></div><div class="tiny">Average of ${rows.length} active location${rows.length === 1 ? '' : 's'}</div><div class="summary-line"><span class="mini-icon">✓</span><span>Done On-Time</span><strong style="color:var(--good)">${stats.done_on_time.toFixed(2)}%</strong></div><div class="summary-line"><span class="mini-icon">◷</span><span>Done Late</span><strong style="color:var(--late)">${stats.done_late.toFixed(2)}%</strong></div><div class="summary-line"><span class="mini-icon">◔</span><span>Partially Done</span><strong style="color:var(--partial)">${stats.partially_done.toFixed(2)}%</strong></div><div class="summary-line"><span class="mini-icon">×</span><span>Missed</span><strong style="color:var(--miss)">${stats.missed.toFixed(2)}%</strong></div><div class="summary-total"><div><strong>Completion</strong><div class="tiny">Done On-Time + Done Late</div></div><div class="big">${stats.completion.toFixed(2)}%</div></div></div>
+  </div>
+  <div class="insights">
+    <div class="insight good-bg"><div class="big-icon">🏆</div><div><h3>Best performing location</h3><p>${best ? `${esc(best.company_name || reportName)} — ${esc(best.location_name)}<br/>Completion: <strong>${formatPct(completionCount(best))}</strong>` : 'No location data available yet.'}</p></div></div>
+    <div class="insight warn-bg"><div class="big-icon">⚠</div><div><h3>Locations needing extra CS effort</h3><p>${weak.length ? weak.map(row => `${esc(row.company_name || reportName)} — ${esc(row.location_name)} (${formatPct(completionCount(row))})`).join('<br/>') : 'No low-completion locations for the selected period.'}</p></div></div>
+    <div class="insight info-bg"><div class="big-icon">ⓘ</div><div><h3>Notes</h3><p>${esc(sourceNote)}<br/>${isGroupReport ? 'Group result is auto-calculated from all location rows.' : 'Client result is auto-calculated from all location rows.'}<br/>Generated on ${esc(generatedAt.toLocaleString())}. Health reference: ${esc(String(health))} · CS effort: ${esc(effort)}.</p></div></div>
+  </div>
+  <div class="footer"><span>InCheck 360 · Customer Success 360</span><span>Completion export · ${esc(generatedAt.toLocaleDateString())}</span></div>
+</div></body></html>`;
+
+    const win = window.open('', '_blank');
+    if (!win) { toast('Popup blocked. Please allow popups and try again.'); return; }
+    win.document.open();
+    win.document.write(reportHtml);
+    win.document.close();
+  }
+
   document.addEventListener('click', event => {
     const action = event.target?.closest?.('[data-cs-action]')?.dataset?.csAction;
     if (!action) return;
     if (action === 'completion') openCompletionForm();
+    if (action === 'completion-export') exportCompletionReport();
     if (action === 'group') openGroupForm();
     if (action === 'group-member') openGroupMemberForm();
     if (action === 'group-activity') openGroupActivityForm();
@@ -1169,23 +1313,23 @@
   function completionInputFieldsHtml(prefix = '') {
     const tag = prefix ? `data-${prefix}-completion-field` : 'data-completion-field';
     return `
-      <td><input class="input" type="number" min="0" max="100" step="0.01" inputmode="decimal" ${tag}="done_on_time" value="0" /></td>
-      <td><input class="input" type="number" min="0" max="100" step="0.01" inputmode="decimal" ${tag}="done_late" value="0" /></td>
-      <td><input class="input" type="number" min="0" max="100" step="0.01" inputmode="decimal" ${tag}="partially_done" value="0" /></td>
-      <td><input class="input" type="number" min="0" max="100" step="0.01" inputmode="decimal" ${tag}="missed" value="0" /></td>`;
+      <td><input class="input" type="number" min="0" step="0.01" inputmode="decimal" ${tag}="done_on_time" value="0" /></td>
+      <td><input class="input" type="number" min="0" step="0.01" inputmode="decimal" ${tag}="done_late" value="0" /></td>
+      <td><input class="input" type="number" min="0" step="0.01" inputmode="decimal" ${tag}="partially_done" value="0" /></td>
+      <td><input class="input" type="number" min="0" step="0.01" inputmode="decimal" ${tag}="missed" value="0" /></td>`;
   }
 
   function readCompletionFields(root, selector = '[data-completion-field]') {
     const out = { done_on_time: 0, done_late: 0, partially_done: 0, missed: 0 };
     root?.querySelectorAll(selector).forEach(input => {
       const field = input.dataset.completionField || input.dataset.groupCompletionField;
-      if (field) out[field] = clampPercent(input.value);
+      if (field) out[field] = Math.max(0, safeDecimal(input.value));
     });
     return out;
   }
 
   function completionPreviewText(data) {
-    return formatPercent(completionPercent(data));
+    return formatPct(completionCount(data));
   }
 
   function renderCompletionTargetsTable(targets, sharedData = null, editable = true) {
@@ -1204,10 +1348,10 @@
       return `<tr class="cs-completion-preview-row" ${attrs}>
         <td>${esc(target.company_name)}</td>
         <td>${esc(target.location_name)}</td>
-        <td data-preview-field="done_on_time">${formatPercent(rowData.done_on_time)}</td>
-        <td data-preview-field="done_late">${formatPercent(rowData.done_late)}</td>
-        <td data-preview-field="partially_done">${formatPercent(rowData.partially_done)}</td>
-        <td data-preview-field="missed">${formatPercent(rowData.missed)}</td>
+        <td data-preview-field="done_on_time">${formatDecimal(rowData.done_on_time)}</td>
+        <td data-preview-field="done_late">${formatDecimal(rowData.done_late)}</td>
+        <td data-preview-field="partially_done">${formatDecimal(rowData.partially_done)}</td>
+        <td data-preview-field="missed">${formatDecimal(rowData.missed)}</td>
         <td class="cs-completion-preview">${completionPreviewText(rowData)}</td>
       </tr>`;
     }).join('');
@@ -1240,22 +1384,22 @@
       </div>
 
       <div id="csGroupCompletionEntry" style="display:none;">
-        <div class="cs-section-title"><h4>Group Result %</h4><span class="cs-chip">Average of all location rows below</span></div>
-        <div class="cs-table-wrap"><table class="cs-table cs-edit-table"><thead><tr><th>Apply To</th><th>Done On-Time %</th><th>Done Late %</th><th>Partially Done %</th><th>Missed %</th><th>Completion %</th></tr></thead><tbody>
+        <div class="cs-section-title"><h4>Group Result Counts</h4><span class="cs-chip">Auto-calculated from all location rows below</span></div>
+        <div class="cs-table-wrap"><table class="cs-table cs-edit-table"><thead><tr><th>Apply To</th><th>Done On-Time</th><th>Done Late</th><th>Partially Done</th><th>Missed</th><th>Completion</th></tr></thead><tbody>
           <tr class="cs-group-completion-row">
             <td>All Group Locations</td>
-            <td data-group-total-field="done_on_time">0.00%</td>
-            <td data-group-total-field="done_late">0.00%</td>
-            <td data-group-total-field="partially_done">0.00%</td>
-            <td data-group-total-field="missed">0.00%</td>
-            <td class="cs-group-completion-preview">0.00%</td>
+            <td data-group-total-field="done_on_time">0</td>
+            <td data-group-total-field="done_late">0</td>
+            <td data-group-total-field="partially_done">0</td>
+            <td data-group-total-field="missed">0</td>
+            <td class="cs-group-completion-preview">0 (0.00%)</td>
           </tr>
         </tbody></table></div>
       </div>
 
-      <div class="cs-section-title"><h4>Location Result %</h4><span class="cs-chip">Completion % = Done On-Time % + Done Late %</span></div>
-      <div class="cs-kpi-sub" id="csCompletionHint">For current client scope, enter percentage values for each location.</div>
-      <div class="cs-table-wrap"><table class="cs-table cs-edit-table"><thead><tr><th>Client</th><th>Location</th><th>Done On-Time %</th><th>Done Late %</th><th>Partially Done %</th><th>Missed %</th><th>Completion %</th></tr></thead><tbody id="csCompletionRowsBody">${renderCompletionTargetsTable(initialTargets, null, true)}</tbody></table></div>
+      <div class="cs-section-title"><h4>Location Result Counts</h4><span class="cs-chip">Completion = Done On-Time + Done Late</span></div>
+      <div class="cs-kpi-sub" id="csCompletionHint">For current client scope, you can edit each location separately.</div>
+      <div class="cs-table-wrap"><table class="cs-table cs-edit-table"><thead><tr><th>Client</th><th>Location</th><th>Done On-Time</th><th>Done Late</th><th>Partially Done</th><th>Missed</th><th>Completion</th></tr></thead><tbody id="csCompletionRowsBody">${renderCompletionTargetsTable(initialTargets, null, true)}</tbody></table></div>
       <div class="cs-modal-actions"><button type="button" class="btn ghost" onclick="document.getElementById('csModalClose').click()">Cancel</button><button type="submit" class="btn primary">Save Completion</button></div>
     </form>`, saveCompletion);
 
@@ -1283,8 +1427,8 @@
     if (groupField) groupField.style.display = isGroup ? '' : 'none';
     if (groupEntry) groupEntry.style.display = isGroup ? '' : 'none';
     if (hint) hint.textContent = isGroup
-      ? 'For group scope, enter percentage values for each company/location. The All Group Locations line above is the average of all entered location percentages.'
-      : 'For current client scope, enter percentage values for each location.';
+      ? 'For group scope, enter each company/location below one time from the same screen. The All Group Locations line above is auto-calculated from all entered rows.'
+      : 'For current client scope, you can edit each location separately.';
     if (body) body.innerHTML = renderCompletionTargetsTable(targets, null, true);
     refreshCompletionRows(form);
   }
@@ -1296,15 +1440,18 @@
       rows.push(data);
       const preview = row.querySelector('.cs-completion-preview');
       if (preview) preview.textContent = completionPreviewText(data);
+      const total = completionTotal(data);
+      row.classList.toggle('cs-row-error', total > 100.0001);
+      row.title = total > 100.0001 ? 'Total percentage cannot exceed 100% for one location.' : '';
     });
 
-    const totals = averagePercentRows(rows);
+    const avg = averageCompletionMetrics(rows);
     ['done_on_time','done_late','partially_done','missed'].forEach(field => {
       const cell = form?.querySelector(`[data-group-total-field="${field}"]`);
-      if (cell) cell.textContent = formatPercent(totals[field]);
+      if (cell) cell.textContent = formatPct(avg[field]);
     });
     const groupPreview = form?.querySelector('.cs-group-completion-preview');
-    if (groupPreview) groupPreview.textContent = completionPreviewText(totals);
+    if (groupPreview) groupPreview.textContent = formatPct(avg.completion);
   }
 
   function readCompletionInputRow(row) {
@@ -1338,11 +1485,8 @@
       const group = groupById(fd.get('group_id'));
       if (!group) { toast('Select a valid CS client group.'); return; }
     }
-    const invalidRows = [];
     payloads = Array.from(form.querySelectorAll('.cs-completion-input-row')).map(row => {
       const data = readCompletionInputRow(row);
-      const totalPercent = safeDecimal(data.done_on_time) + safeDecimal(data.done_late) + safeDecimal(data.partially_done) + safeDecimal(data.missed);
-      if (totalPercent > 100.01) invalidRows.push(`${row.dataset.companyName || ''} - ${data.location_name || ''}`.trim());
       return buildCompletionPayload(fd, {
         company_id: row.dataset.companyId,
         company_name: row.dataset.companyName,
@@ -1350,9 +1494,10 @@
       }, data);
     });
 
-    if (invalidRows.length) { toast(`Each location total must be 100% or less. Check: ${invalidRows.slice(0,3).join(', ')}${invalidRows.length > 3 ? '...' : ''}`); return; }
     payloads = payloads.filter(row => row.company_id && row.location_name);
     if (!payloads.length) { toast('No locations found to save completion.'); return; }
+    const invalid = payloads.find(row => !completionRowIsValid(row));
+    if (invalid) { toast(`Total percentage for ${invalid.location_name} cannot exceed 100%.`); return; }
     const { error } = await supabase().from(TABLES.completions).upsert(payloads, { onConflict: 'company_id,location_name,review_type,period_start,period_end' });
     if (error) { toast(`Unable to save completion: ${error.message}`); return; }
     closeModal(); await loadData(); toast(scope === 'group' ? `Group completion saved for ${payloads.length} location line${payloads.length === 1 ? '' : 's'}.` : 'Location completion saved.');
