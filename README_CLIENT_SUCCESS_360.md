@@ -85,3 +85,139 @@ If you already installed the previous CS module, run only:
 ```sql
 sql/migrations/20260708_client_success_360_csm_group_contacts_sync.sql
 ```
+
+## v6 updates
+
+- Location Completion now supports **Current Client** or **CS Client Group** scope.
+- When **CS Client Group** is selected, the user enters Done On-Time, Done Late, Partially Done, and Missed **one time only**.
+- All group company/location lines are generated automatically.
+- Every location line auto-calculates Completion using:
+
+`Completion = Done On-Time + Done Late`
+
+- No SQL migration is required for this v6 change if the previous CS migrations are already installed.
+- Still Admin-only and still excludes all payment/accounting data.
+
+## v7 updates
+
+- Group Location Completion changed to the requested behavior:
+  - Select **CS Client Group** once.
+  - Enter results for each company/location in the group from one screen.
+  - The **All Group Locations** line is read-only and auto-calculated from all rows below.
+  - The top group totals are the sum of Done On-Time, Done Late, Partially Done, and Missed from all displayed locations.
+  - Group Completion remains: `Done On-Time + Done Late`.
+- Removed editable/duplicate pseudo location rows like **All locations** from the saved location target list.
+- Active client locations are now deduplicated by normalized location name.
+- For duplicated locations across older agreements, the latest service period row is used.
+- Active locations are preferred from `invoice_items` Annual SaaS service rows because they represent the actually invoiced/live locations. This is used only for location/service-date detection, not for payments, totals, receipts, collections, or accounting.
+- No SQL migration is required for this v7 change.
+
+## v8 updates
+
+- Location Completion values are now handled as **percentages**, not counts.
+- Validation added so that for each location:
+  - `Done On-Time + Done Late + Partially Done + Missed` cannot exceed **100%**.
+- In group scope:
+  - The **All Group Locations** line is auto-calculated as the **average percentage** from all location rows below.
+  - Group Completion is the average of `(Done On-Time + Done Late)` across all listed group locations.
+- Added **Export Completion Report** button in the Location Completion tab.
+- The export opens a branded, UI-friendly **InCheck 360 Completion Report** with:
+  - InCheck 360 logo
+  - client details
+  - period / group chips
+  - summary cards
+  - completion breakdown bars
+  - location-level completion table
+  - print / save PDF support
+- No SQL migration is required for this v8 export/update if previous CS migrations are already installed.
+
+## v9 updates
+
+- Upgraded **Export Advanced Report** for Location Completion.
+- The exported report is no longer a plain Excel-style table. It now opens a branded InCheck 360 report page with:
+  - InCheck 360 logo / fallback wordmark
+  - Completion Report header
+  - Scope metadata: client or selected CS group, review type, period, generated date
+  - KPI cards for Completion, Done On-Time, Done Late, Partially Done, Missed, and active locations
+  - Overall completion donut chart
+  - Completion breakdown stacked bar
+  - All Client/Group Locations auto-calculated summary card
+  - Location Completion Details table with client, location, Done On-Time, Done Late, Partially Done, Missed, and Completion
+  - Best performing location callout
+  - Locations needing extra CS effort callout
+  - Notes section explaining percentage logic
+  - Print / Save PDF support
+- Report logic remains:
+
+`Completion % = Done On-Time % + Done Late %`
+
+- If a CS group is selected in the Customer Success group filter, the export uses the selected group and averages all group location rows.
+- If no group is selected, the export uses the current selected client.
+- No SQL migration is required for this v9 export improvement.
+
+## v10 updates
+
+- Fixed the **Completion Breakdown** section in the exported report when using browser **Print / Save PDF**.
+- Replaced the CSS flex stacked bar with a print-safe inline SVG stacked bar so the colored segments display correctly in saved PDF, not only in the web preview.
+- Added print color preservation rules:
+  - `-webkit-print-color-adjust: exact`
+  - `print-color-adjust: exact`
+- Completion report logic remains unchanged:
+
+`Completion % = Done On-Time % + Done Late %`
+
+- No SQL migration is required for this v10 export/PDF fix.
+
+- Completion export report now uses the same official InCheck 360 document logo used in proposals and agreements.
+
+
+## 2026-07-08 UI Refresh
+
+Updated the Client Success 360 workspace UI to match the approved modern dashboard mockup:
+- cleaner hero header and action buttons
+- 6 modern KPI cards
+- completion breakdown card with percentage stack
+- average completion trend card
+- completion-by-status donut card
+- AI-style insights / quick-action panel
+- compact client/group overview table
+- export report button remains available from the dashboard
+
+
+## 2026-07-08 Landscape A4 Export Fix
+
+Completion export is now optimized for A4 landscape:
+- adds `@page { size: A4 landscape }`
+- separates the export into a summary page and a location-details page
+- removes web-only cramped side panels from table pages
+- repeats the official document logo on report pages
+- repeats table headers on page breaks
+- avoids overlapping small percentage labels in the breakdown chart
+- adds an on-screen print hint to use A4 Landscape and disable browser headers/footers
+
+
+## 2026-07-08 Brand Layer
+
+Added a third Customer Success layer:
+
+```text
+Client Group / Client
+└── Brand
+    └── Locations
+```
+
+What changed:
+- New Brands tab in Client Success 360
+- New `+ Brand` and `+ Brand Location` actions
+- Brands can be scoped to the current client or to a CS client group
+- Locations can be assigned to a brand
+- Completion entry now supports `CS Brand` scope
+- Brand result line is auto-calculated from assigned brand locations
+- Brand completion export is available from the Brands tab
+- Admin-only access remains
+
+Run:
+
+```text
+sql/migrations/20260708_client_success_360_brand_layer_admin_only.sql
+```
