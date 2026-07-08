@@ -663,8 +663,8 @@
     STATE.booted = true;
     root.className = 'client-success-root';
     root.innerHTML = `
-      <div class="cs-page-header">
-        <div>
+      <div class="cs-page-header cs-hero-header">
+        <div class="cs-hero-copy">
           <span class="cs-eyebrow">Customer Success · Admin Only</span>
           <h2>Client Success 360</h2>
           <p>Monitor signed-agreement clients, location completion, satisfaction, weekly/monthly pulse reviews, extra CS effort, risks, tasks, onboarding follow-up, renewals, QBRs, contacts, and activity. No payment, invoice, receipt, collection, or accounting data is used.</p>
@@ -672,7 +672,7 @@
         <div class="cs-header-actions">
           <span class="cs-admin-chip">Admin access only</span>
           <button id="csRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
-          <button id="csAddCompletionBtn" class="btn sm" type="button">+ Location Completion</button>
+          <button id="csAddCompletionBtn" class="btn sm primary" type="button">+ Location Completion</button>
           <button id="csAddGroupBtn" class="btn ghost sm" type="button">+ Client Group</button>
           <button id="csAddGroupMemberBtn" class="btn ghost sm" type="button">+ Add to Group</button>
           <button id="csAddReviewBtn" class="btn ghost sm" type="button">+ Pulse Review</button>
@@ -683,7 +683,8 @@
         </div>
       </div>
       <div id="csState" class="cs-state">Loading Client Success 360…</div>
-      <div id="csKpis" class="cs-kpi-grid"></div>
+      <div id="csKpis" class="cs-kpi-grid cs-kpi-grid--modern"></div>
+      <div id="csDashboard" class="cs-dashboard"></div>
       <div class="cs-layout">
         <aside class="cs-sidebar">
           <div class="cs-filter-grid">
@@ -768,6 +769,7 @@
     if (!canAccess()) { renderAccessDenied(); return; }
     renderGroupFilterOptions();
     renderKpis();
+    renderDashboard();
     renderClientList();
     renderDetail();
     const missing = Array.from(STATE.tablesMissing).filter(t => Object.values(TABLES).includes(t));
@@ -782,28 +784,133 @@
     const healthScores = companies.map(c => computeHealth(c));
     const atRisk = healthScores.filter(s => s < 60).length;
     const weeklyMissing = companies.filter(c => reviewMissing(c, 'weekly')).length;
-    const monthlyMissing = companies.filter(c => reviewMissing(c, 'monthly')).length;
-    const extraEffort = companies.filter(c => ['High Touch','Recovery Required','Needs Attention'].includes(computeEffort(c))).length;
-    const unsatisfied = STATE.rows.reviews.filter(r => ['Unsatisfied','Critical'].includes(r.satisfaction_level)).length;
-    const avgCompletionRows = STATE.rows.reviews.filter(r => r.status !== 'Draft');
-    const avgCompletion = avgCompletionRows.length ? Math.round(avgCompletionRows.reduce((sum, r) => sum + safeNumber(r.review_completion_percent), 0) / avgCompletionRows.length) : 0;
-    const openRisks = openRows(STATE.rows.risks).length;
-    const overdueTasks = STATE.rows.tasks.filter(t => t.due_date && t.due_date < isoToday() && !['Done','Canceled'].includes(t.status)).length;
     const latestCompletionRows = companies.flatMap(c => aggregateCompletionRows(latestCompletionPeriodRows(c)));
-    const completionRate = Math.round(averageCompletionMetrics(latestCompletionRows).completion);
+    const completionRate = averageCompletionMetrics(latestCompletionRows).completion;
+    const openRisks = openRows(STATE.rows.risks).length;
     const items = [
-      ['Active Clients', companies.length, 'Companies with signed agreements'],
-      ['Client Groups', activeGroups().length, 'CS parent groups / account families'],
-      ['Clients at Risk', atRisk, 'Health score below 60'],
-      ['Weekly Reviews Missing', weeklyMissing, 'Current week not completed'],
-      ['Monthly Reviews Missing', monthlyMissing, 'Current month not completed'],
-      ['Need Extra CS Effort', extraEffort, 'Needs Attention / High Touch / Recovery'],
-      ['Unsatisfied Signals', unsatisfied, 'Unsatisfied or critical review entries'],
-      ['Open Risks', openRisks, 'Open / in progress / escalated risks'],
-      ['Location Completion', `${completionRate}%`, 'Done On-Time + Done Late'],
-      ['Avg Review Quality', `${avgCompletion}%`, `${overdueTasks} overdue task${overdueTasks === 1 ? '' : 's'}`]
+      { label: 'Active Clients', value: companies.length, sub: '+ signed agreements', icon: '👥', tone: 'blue' },
+      { label: 'Client Groups', value: activeGroups().length, sub: 'account families', icon: '🔗', tone: 'blue' },
+      { label: 'Clients at Risk', value: atRisk, sub: atRisk ? 'needs action' : 'no critical action', icon: '⚠', tone: atRisk ? 'warn' : 'green' },
+      { label: 'Weekly Reviews Missing', value: weeklyMissing, sub: 'current week', icon: '📅', tone: weeklyMissing ? 'red' : 'green' },
+      { label: 'Location Completion', value: `${completionRate.toFixed(0)}%`, sub: 'Done On-Time + Done Late', icon: '✓', tone: 'green' },
+      { label: 'Open Risks', value: openRisks, sub: openRisks ? 'open / escalated' : 'no change', icon: '🛡', tone: openRisks ? 'red' : 'green' }
     ];
-    $('csKpis').innerHTML = items.map(([label, value, sub]) => `<article class="cs-kpi-card"><div class="cs-kpi-label">${esc(label)}</div><div class="cs-kpi-value">${esc(value)}</div><div class="cs-kpi-sub">${esc(sub)}</div></article>`).join('');
+    const toneClass = tone => `cs-kpi-card--${tone || 'blue'}`;
+    $('csKpis').innerHTML = items.map(item => `<article class="cs-kpi-card ${toneClass(item.tone)}"><div class="cs-kpi-icon">${esc(item.icon)}</div><div class="cs-kpi-label">${esc(item.label)}</div><div class="cs-kpi-value">${esc(item.value)}</div><div class="cs-kpi-sub">${esc(item.sub)}</div></article>`).join('');
+  }
+
+  function renderDashboard() {
+    const root = $('csDashboard');
+    if (!root) return;
+    const companies = STATE.rows.companies;
+    const latestRows = companies.flatMap(c => aggregateCompletionRows(latestCompletionPeriodRows(c)));
+    const stats = averageCompletionMetrics(latestRows);
+    const openRisks = openRows(STATE.rows.risks).length;
+    const atRisk = companies.filter(c => computeHealth(c) < 60).length;
+    const weeklyMissing = companies.filter(c => reviewMissing(c, 'weekly')).length;
+    const best = latestRows.length ? latestRows.slice().sort((a,b) => completionCount(b) - completionCount(a))[0] : null;
+    const weak = latestRows.slice().filter(row => completionCount(row) < 80).sort((a,b) => completionCount(a) - completionCount(b)).slice(0, 3);
+
+    const normalizePct = value => clamp(safeDecimal(value), 0, 100);
+    const segment = (label, value, className) => {
+      const width = normalizePct(value);
+      return `<span class="cs-breakdown-seg ${className}" style="width:${width.toFixed(2)}%"><b>${width >= 8 ? `${width.toFixed(2)}%` : ''}</b><em>${esc(label)}</em></span>`;
+    };
+
+    const trendMap = new Map();
+    STATE.rows.completions.forEach(row => {
+      const key = String(row.period_end || row.period_start || '').slice(0, 10);
+      if (!key) return;
+      if (!trendMap.has(key)) trendMap.set(key, []);
+      trendMap.get(key).push(row);
+    });
+    const trendEntries = Array.from(trendMap.entries()).sort((a,b) => a[0].localeCompare(b[0])).slice(-6);
+    const trendValues = trendEntries.map(([, rows]) => averageCompletionMetrics(aggregateCompletionRows(rows)).completion);
+    const spark = (() => {
+      if (!trendValues.length) return '<div class="cs-empty cs-mini-empty">No trend data yet</div>';
+      const w = 460, h = 130, pad = 18;
+      const denom = Math.max(1, trendValues.length - 1);
+      const points = trendValues.map((v, i) => {
+        const x = pad + (i * (w - pad * 2) / denom);
+        const y = h - pad - (normalizePct(v) * (h - pad * 2) / 100);
+        return [x, y];
+      });
+      const d = points.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+      const circles = points.map((p, i) => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="4"><title>${esc(trendEntries[i]?.[0] || '')}: ${trendValues[i].toFixed(2)}%</title></circle>`).join('');
+      const labels = trendEntries.map(([date], i) => {
+        const x = pad + (i * (w - pad * 2) / denom);
+        return `<text x="${x.toFixed(1)}" y="${h - 2}" text-anchor="middle">${esc(fmtDate(date).replace(/,.*$/, ''))}</text>`;
+      }).join('');
+      return `<svg class="cs-trend-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="Average completion trend"><line x1="${pad}" y1="${h-pad}" x2="${w-pad}" y2="${h-pad}" class="axis"/><line x1="${pad}" y1="${pad}" x2="${pad}" y2="${h-pad}" class="axis"/><path d="${d}" class="line"/><g class="points">${circles}</g><g class="labels">${labels}</g></svg>`;
+    })();
+
+    const donutStyle = `background: conic-gradient(var(--cs-good) 0 ${normalizePct(stats.done_on_time).toFixed(2)}%, var(--cs-blue-accent) ${normalizePct(stats.done_on_time).toFixed(2)}% ${normalizePct(stats.done_on_time + stats.done_late).toFixed(2)}%, var(--cs-orange) ${normalizePct(stats.done_on_time + stats.done_late).toFixed(2)}% ${normalizePct(stats.done_on_time + stats.done_late + stats.partially_done).toFixed(2)}%, var(--cs-red) ${normalizePct(stats.done_on_time + stats.done_late + stats.partially_done).toFixed(2)}% 100%);`;
+
+    const quickRows = [
+      ['New Group Completion', 'completion'],
+      ['New Weekly Review', 'review'],
+      ['Add Extra CS Effort', 'task'],
+      ['Add Risk', 'risk'],
+      ['Schedule QBR', 'qbr']
+    ];
+
+    root.innerHTML = `
+      <div class="cs-dashboard-top">
+        <section class="cs-analytics-card cs-analytics-card--wide">
+          <div class="cs-section-title"><h4>Completion Breakdown <small>(Percentages)</small></h4><span>Completion = Done On-Time + Done Late</span></div>
+          <div class="cs-breakdown-stack">
+            ${segment('Done On-Time', stats.done_on_time, 'done')}
+            ${segment('Done Late', stats.done_late, 'late')}
+            ${segment('Partially Done', stats.partially_done, 'partial')}
+            ${segment('Missed', stats.missed, 'missed')}
+          </div>
+          <div class="cs-breakdown-axis"><span>0%</span><span>20%</span><span>40%</span><span>60%</span><span>80%</span><span>100%</span></div>
+          <div class="cs-breakdown-legend"><span><i class="done"></i>Done On-Time</span><span><i class="late"></i>Done Late</span><span><i class="partial"></i>Partially Done</span><span><i class="missed"></i>Missed</span></div>
+        </section>
+        <section class="cs-analytics-card">
+          <div class="cs-section-title"><h4>Average Completion Trend</h4><span>last periods</span></div>
+          ${spark}
+        </section>
+        <section class="cs-analytics-card cs-status-card">
+          <div class="cs-section-title"><h4>Completion by Status</h4><span>${latestRows.length} locations</span></div>
+          <div class="cs-donut-mini" style="${donutStyle}"><strong>${stats.completion.toFixed(0)}%</strong><span>Completion</span></div>
+          <div class="cs-status-lines">
+            <div><i class="done"></i><span>Done On-Time</span><b>${stats.done_on_time.toFixed(2)}%</b></div>
+            <div><i class="late"></i><span>Done Late</span><b>${stats.done_late.toFixed(2)}%</b></div>
+            <div><i class="partial"></i><span>Partially Done</span><b>${stats.partially_done.toFixed(2)}%</b></div>
+            <div><i class="missed"></i><span>Missed</span><b>${stats.missed.toFixed(2)}%</b></div>
+          </div>
+        </section>
+        <aside class="cs-analytics-card cs-insights-card">
+          <div class="cs-section-title"><h4>Insights</h4><span>CS signals</span></div>
+          <div class="cs-insight-row good"><b>Great job!</b><span>${best ? `${esc(best.location_name)} leads completion at ${formatPct(completionCount(best))}.` : 'Add completion rows to start insights.'}</span></div>
+          <div class="cs-insight-row warn"><b>Reviews missed</b><span>${weeklyMissing} weekly review${weeklyMissing === 1 ? '' : 's'} not completed.</span></div>
+          <div class="cs-insight-row danger"><b>Clients at risk</b><span>${atRisk} client${atRisk === 1 ? '' : 's'} at risk. ${openRisks} open risk${openRisks === 1 ? '' : 's'}.</span></div>
+          <button class="btn ghost sm cs-full-width" type="button" data-cs-action="completion-export">View / Export Report</button>
+        </aside>
+      </div>
+      <div class="cs-dashboard-bottom">
+        <section class="cs-analytics-card cs-table-preview">
+          <div class="cs-section-title"><h4>Client / Group Overview</h4><span>latest active rows</span></div>
+          <div class="cs-compact-table-wrap">
+            <table class="cs-compact-table">
+              <thead><tr><th>Client / Group</th><th>Locations</th><th>Completion</th><th>Status</th><th>Risk</th></tr></thead>
+              <tbody>${companies.slice(0, 6).map(company => {
+                const groups = groupsForCompany(company).map(g => g.group_name).join(', ') || 'Ungrouped';
+                const rows = aggregateCompletionRows(latestCompletionPeriodRows(company));
+                const metrics = averageCompletionMetrics(rows);
+                const score = computeHealth(company);
+                return `<tr><td><strong>${esc(companyName(company))}</strong><small>${esc(groups)}</small></td><td>${rows.length || '—'}</td><td><b>${metrics.completion.toFixed(0)}%</b></td><td>${esc(getProfile(company).client_status || mapCompanyStatus(company.company_status))}</td><td class="${score < 60 ? 'danger' : 'good'}">${score < 60 ? 'Yes' : 'No'}</td></tr>`;
+              }).join('')}</tbody>
+            </table>
+          </div>
+        </section>
+        <aside class="cs-analytics-card cs-quick-card">
+          <div class="cs-section-title"><h4>Quick Actions</h4><span>CS flow</span></div>
+          ${quickRows.map(([label, action]) => `<button type="button" data-cs-action="${attr(action)}"><span>＋</span>${esc(label)}</button>`).join('')}
+          <div class="cs-mini-note">${weak.length ? `Extra attention: ${weak.map(r => esc(r.location_name)).join(', ')}` : 'No low-completion locations for the latest period.'}</div>
+        </aside>
+      </div>`;
   }
 
   function renderClientList() {
