@@ -6970,7 +6970,9 @@ const CSMActivity = {
   isLoading: false,
   isSaving: false,
   isLoadingClientOptions: false,
+  isLoadingGroupOptions: false,
   clientOptions: [],
+  groupOptions: [],
   loadError: '',
   page: 1,
   limit: 50,
@@ -7009,9 +7011,24 @@ const CSMActivity = {
       .toLowerCase()
       .replace(/\s+/g, ' ');
   },
+  normalizeActivityContextForUi(value) {
+    const key = String(value || '').trim();
+    if (key === 'manual_client') return 'manual_client';
+    if (key === 'cs_group') return 'cs_group';
+    return 'agreement_client';
+  },
   backendToView(raw = {}) {
     const timestamp = String(raw.timestamp || raw.date || raw.created_at || '').trim();
     const parsedDate = timestamp ? new Date(timestamp) : null;
+    const activityContext = this.normalizeActivityContextForUi(raw.activity_context || raw.activityContext || 'agreement_client');
+    const csGroupName = String(raw.cs_group_name || raw.csGroupName || '').trim();
+    const manualClientName = String(raw.manual_client_name || raw.manualClientName || '').trim();
+    const baseClientName = String(raw.client_name || raw.clientName || raw.client || raw.company_name || raw.companyName || '').trim();
+    const displayClient = activityContext === 'manual_client'
+      ? manualClientName || baseClientName
+      : activityContext === 'cs_group'
+      ? csGroupName || baseClientName
+      : baseClientName;
     return {
       id: String(raw.id || '').trim(),
       timestamp,
@@ -7021,18 +7038,20 @@ const CSMActivity = {
       csmEmail: String(raw.csm_email || raw.csmEmail || '').trim(),
       clientId: String(raw.client_id || raw.clientId || '').trim(),
       companyId: String(raw.company_id || raw.companyId || '').trim(),
-      activityContext: String(raw.activity_context || raw.activityContext || 'agreement_client').trim() === 'manual_client' ? 'manual_client' : 'agreement_client',
-      manualClientName: String(raw.manual_client_name || raw.manualClientName || '').trim(),
+      activityContext,
+      manualClientName,
       manualLocationName: String(raw.manual_location_name || raw.manualLocationName || '').trim(),
-      clientName: String(raw.client_name || raw.clientName || raw.client || raw.company_name || raw.companyName || raw.manual_client_name || raw.manualClientName || '').trim(),
-      companyName: String(raw.company_name || raw.companyName || raw.client_name || raw.client || raw.clientName || raw.manual_client_name || raw.manualClientName || '').trim(),
+      csGroupId: String(raw.cs_group_id || raw.csGroupId || '').trim(),
+      csGroupName,
+      clientName: displayClient,
+      companyName: activityContext === 'cs_group' ? (csGroupName || displayClient) : String(raw.company_name || raw.companyName || displayClient).trim(),
       agreementId: String(raw.agreement_id || raw.agreementId || '').trim(),
       agreementNumber: String(raw.agreement_number || raw.agreementNumber || '').trim(),
       onboardingId: String(raw.onboarding_id || raw.onboardingId || '').trim(),
       invoiceId: String(raw.invoice_id || raw.invoiceId || '').trim(),
       locationId: String(raw.location_id || raw.locationId || '').trim(),
       locationName: String(raw.location_name || raw.locationName || raw.manual_location_name || raw.manualLocationName || '').trim(),
-      client: String(raw.client || raw.client_name || raw.clientName || raw.company_name || raw.companyName || raw.manual_client_name || raw.manualClientName || '').trim(),
+      client: displayClient,
       timeSpentMinutes: Number.parseFloat(raw.time_spent_minutes ?? raw.timeSpentMinutes ?? 0) || 0,
       supportType: String(raw.type_of_support || raw.supportType || '').trim(),
       effortRequirement: String(raw.effort_requirement || raw.effortRequirement || '').trim(),
@@ -7044,10 +7063,15 @@ const CSMActivity = {
     };
   },
   viewToBackendActivity(row = {}) {
-    const activityContext = row.activityContext === 'manual_client' ? 'manual_client' : 'agreement_client';
+    const activityContext = this.normalizeActivityContextForUi(row.activityContext);
     const manualClientName = String(row.manualClientName || '').trim();
     const manualLocationName = String(row.manualLocationName || row.locationName || '').trim();
-    const clientName = activityContext === 'manual_client' ? manualClientName : String(row.clientName || row.companyName || row.client || '').trim();
+    const csGroupName = String(row.csGroupName || '').trim();
+    const clientName = activityContext === 'manual_client'
+      ? manualClientName
+      : activityContext === 'cs_group'
+      ? csGroupName
+      : String(row.clientName || row.companyName || row.client || '').trim();
     return {
       csm_name: String(row.csmName || '').trim(),
       csm_user_id: String(row.csmUserId || '').trim(),
@@ -7055,16 +7079,18 @@ const CSMActivity = {
       activity_context: activityContext,
       manual_client_name: activityContext === 'manual_client' ? manualClientName : null,
       manual_location_name: activityContext === 'manual_client' ? manualLocationName || null : null,
+      cs_group_id: activityContext === 'cs_group' ? String(row.csGroupId || '').trim() : null,
+      cs_group_name: activityContext === 'cs_group' ? csGroupName : null,
       client: clientName,
-      client_id: activityContext === 'manual_client' ? null : String(row.clientId || '').trim(),
+      client_id: activityContext === 'agreement_client' ? String(row.clientId || '').trim() : '',
       client_name: clientName,
-      company_id: activityContext === 'manual_client' ? null : String(row.companyId || '').trim(),
-      company_name: String(row.companyName || clientName).trim(),
-      agreement_id: activityContext === 'manual_client' ? null : String(row.agreementId || '').trim(),
-      agreement_number: activityContext === 'manual_client' ? null : String(row.agreementNumber || '').trim(),
-      invoice_id: activityContext === 'manual_client' ? null : String(row.invoiceId || '').trim(),
-      location_id: activityContext === 'manual_client' ? null : String(row.locationId || '').trim(),
-      location_name: activityContext === 'manual_client' ? manualLocationName || null : String(row.locationName || '').trim(),
+      company_id: activityContext === 'agreement_client' ? String(row.companyId || '').trim() : '',
+      company_name: activityContext === 'cs_group' ? csGroupName : String(row.companyName || clientName).trim(),
+      agreement_id: activityContext === 'agreement_client' ? String(row.agreementId || '').trim() : '',
+      agreement_number: activityContext === 'agreement_client' ? String(row.agreementNumber || '').trim() : '',
+      invoice_id: activityContext === 'agreement_client' ? String(row.invoiceId || '').trim() : '',
+      location_id: activityContext === 'agreement_client' ? String(row.locationId || '').trim() : '',
+      location_name: activityContext === 'manual_client' ? manualLocationName || null : (activityContext === 'agreement_client' ? String(row.locationName || '').trim() : null),
       time_spent_minutes: Number(row.timeSpentMinutes) || 0,
       type_of_support: String(row.supportType || '').trim(),
       effort_requirement: String(row.effortRequirement || '').trim(),
@@ -7105,6 +7131,70 @@ const CSMActivity = {
     E.csmFormClientState.textContent = this.clientOptions.length
       ? ''
       : 'No clients found. Please add the client first or check Operations Onboarding.';
+  },
+  async ensureGroupOptions() {
+    if (this.groupOptions.length) return this.groupOptions;
+    this.isLoadingGroupOptions = true;
+    this.renderGroupOptionsState();
+    try {
+      const client = window.SupabaseClient?.getClient?.();
+      if (!client?.from) return [];
+      const { data, error } = await client
+        .from('cs_client_groups')
+        .select('id,group_name,group_code,status,description')
+        .neq('status', 'Archived')
+        .order('group_name', { ascending: true });
+      if (error) throw error;
+      this.groupOptions = (Array.isArray(data) ? data : []).map(row => ({
+        value: String(row.id || '').trim(),
+        group_id: String(row.id || '').trim(),
+        group_name: String(row.group_name || row.name || '').trim(),
+        label: String(row.group_name || row.name || '').trim(),
+        search_text: [row.group_name, row.group_code, row.status, row.description].map(v => String(v || '').toLowerCase()).join(' ')
+      })).filter(row => row.value && row.label);
+      return this.groupOptions;
+    } catch (error) {
+      console.warn('[CSM Activity] unable to load CS groups', error);
+      return [];
+    } finally {
+      this.isLoadingGroupOptions = false;
+      this.renderGroupOptionsState();
+    }
+  },
+  renderGroupOptionsState() {
+    if (!E.csmFormGroupState) return;
+    if (this.isLoadingGroupOptions) {
+      E.csmFormGroupState.textContent = 'Loading CS groups…';
+      return;
+    }
+    E.csmFormGroupState.textContent = this.groupOptions.length
+      ? ''
+      : 'No CS client groups found. Create a group in Client Success 360 first.';
+  },
+  populateGroupSelect(selectedValue = '') {
+    if (!E.csmFormGroup) return;
+    const normalizedSelected = String(selectedValue || '').trim();
+    E.csmFormGroup.innerHTML = [
+      '<option value="">Select Group</option>',
+      ...this.groupOptions.map(option => `<option value="${U.escapeHtml(option.value || '')}">${U.escapeHtml(option.label || option.group_name || '')}</option>`)
+    ].join('');
+    if (normalizedSelected) E.csmFormGroup.value = normalizedSelected;
+  },
+  findSelectedGroupOption(rawValue = '') {
+    const value = String(rawValue || '').trim();
+    if (!value) return null;
+    return this.groupOptions.find(option => String(option.value || '').trim() === value) || null;
+  },
+  findGroupOptionForRow(row = null) {
+    if (!row) return null;
+    const rowGroupId = String(row.csGroupId || row.cs_group_id || '').trim();
+    if (rowGroupId) {
+      const byId = this.groupOptions.find(option => String(option.group_id || option.value || '').trim() === rowGroupId);
+      if (byId) return byId;
+    }
+    const rowName = this.normalizeClientName(row.csGroupName || row.cs_group_name || row.client || row.clientName || row.companyName || '');
+    if (!rowName) return null;
+    return this.groupOptions.find(option => this.normalizeClientName(option.group_name || option.label) === rowName) || null;
   },
   getMatchingClientOptions(term = '') {
     const q = String(term || '').trim().toLowerCase();
@@ -7170,7 +7260,7 @@ const CSMActivity = {
       inlineSubmitBtn.disabled = !!v;
       inlineSubmitBtn.textContent = v ? 'Saving…' : 'Create Activity';
     }
-    ['csmFormCsmName','csmFormClientSearch','csmFormClient','csmFormCompanyName','csmFormManualClientName','csmFormManualLocationName','csmFormMinutes','csmFormSupportType','csmFormEffort','csmFormChannel','csmFormNotes']
+    ['csmFormCsmName','csmFormActivityScope','csmFormClientSearch','csmFormClient','csmFormCompanyName','csmFormGroup','csmFormManualClientName','csmFormManualLocationName','csmFormMinutes','csmFormSupportType','csmFormEffort','csmFormChannel','csmFormNotes']
       .forEach(id => { if (E[id]) E[id].disabled = !!v; });
     ['csmInlineTimestamp','csmInlineCsmName','csmInlineClient','csmInlineMinutes','csmInlineSupportType','csmInlineEffort','csmInlineChannel','csmInlineNotes']
       .forEach(id => { if (E[id]) E[id].disabled = !!v; });
@@ -7328,14 +7418,22 @@ const CSMActivity = {
     URL.revokeObjectURL(url);
   },
   getClientDisplayName(row = {}) {
-    return String(row.activityContext === 'manual_client' ? row.manualClientName || row.client || row.clientName || row.companyName : row.client || row.clientName || row.companyName || '').trim();
+    const context = this.normalizeActivityContextForUi(row.activityContext);
+    if (context === 'manual_client') return String(row.manualClientName || row.client || row.clientName || row.companyName || '').trim();
+    if (context === 'cs_group') return String(row.csGroupName || row.client || row.clientName || row.companyName || '').trim();
+    return String(row.client || row.clientName || row.companyName || '').trim();
   },
   getAgreementDisplayName(row = {}) {
-    if (row.activityContext === 'manual_client') return 'No Agreement';
+    const context = this.normalizeActivityContextForUi(row.activityContext);
+    if (context === 'manual_client') return 'No Agreement';
+    if (context === 'cs_group') return 'CS Group Activity';
     return String(row.agreementNumber || row.agreementId || '').trim() || '—';
   },
   getLocationDisplayName(row = {}) {
-    return String(row.activityContext === 'manual_client' ? row.manualLocationName || row.locationName : row.locationName || '').trim() || '—';
+    const context = this.normalizeActivityContextForUi(row.activityContext);
+    if (context === 'manual_client') return String(row.manualLocationName || row.locationName || '').trim() || '—';
+    if (context === 'cs_group') return 'Group Level';
+    return String(row.locationName || '').trim() || '—';
   },
   exportCsmActivityCsv() {
     if (!Permissions.canExportCsmActivity()) {
@@ -7918,31 +8016,36 @@ const CSMActivity = {
   async openForm(row = null, options = {}) {
     if (!E.csmFormModal || !E.csmForm) return;
     const identity = this.getCurrentCsmIdentity();
-    const requestedContext = options.activityContext === 'manual_client' ? 'manual_client' : 'agreement_client';
-    const activityContext = row ? (row.activityContext === 'manual_client' ? 'manual_client' : 'agreement_client') : requestedContext;
-    if (activityContext !== 'manual_client') await this.ensureClientOptions();
+    const requestedContext = this.normalizeActivityContextForUi(options.activityContext || 'agreement_client');
+    const activityContext = row ? this.normalizeActivityContextForUi(row.activityContext) : requestedContext;
+    if (activityContext === 'agreement_client') await this.ensureClientOptions();
+    if (activityContext === 'cs_group') await this.ensureGroupOptions();
     E.csmForm.dataset.mode = row ? 'edit' : 'create';
     E.csmForm.dataset.id = row?.id || '';
     E.csmForm.dataset.csmActivityUuid = row?.id || '';
     E.csmForm.dataset.timestamp = row?.timestamp || '';
     E.csmForm.dataset.activityContext = activityContext;
-    if (E.csmFormTitle) E.csmFormTitle.textContent = row ? 'Edit CSM Daily Activity Tracker' : (activityContext === 'manual_client' ? 'Add Activity Without Agreement' : 'CSM Daily Activity Tracker');
+    if (E.csmFormActivityScope) E.csmFormActivityScope.value = activityContext;
+    if (E.csmFormTitle) E.csmFormTitle.textContent = row ? 'Edit CSM Daily Activity Tracker' : (activityContext === 'manual_client' ? 'Add Activity Without Agreement' : activityContext === 'cs_group' ? 'Add CSM Activity to CS Group' : 'CSM Daily Activity Tracker');
     const shouldKeepRowCsm = row?.csmName && row.csmName.trim();
     if (E.csmFormCsmName) E.csmFormCsmName.value = shouldKeepRowCsm ? row.csmName : identity.csmName;
     if (E.csmFormCsmName) E.csmFormCsmName.readOnly = !this.isAdminUser();
     E.csmForm.dataset.csmUserId = row?.csmUserId || identity.csmUserId;
     E.csmForm.dataset.csmEmail = row?.csmEmail || identity.csmEmail;
     const isManualClient = activityContext === 'manual_client';
-    if (E.csmFormAgreementClientFields) E.csmFormAgreementClientFields.style.display = isManualClient ? 'none' : 'contents';
+    const isGroup = activityContext === 'cs_group';
+    if (E.csmFormAgreementClientFields) E.csmFormAgreementClientFields.style.display = (!isManualClient && !isGroup) ? 'contents' : 'none';
+    if (E.csmFormGroupFields) E.csmFormGroupFields.style.display = isGroup ? 'grid' : 'none';
     if (E.csmFormManualClientFields) E.csmFormManualClientFields.style.display = isManualClient ? 'grid' : 'none';
-    if (E.csmFormClient) E.csmFormClient.required = !isManualClient;
-    if (E.csmFormCompanyName) E.csmFormCompanyName.required = !isManualClient;
+    if (E.csmFormClient) E.csmFormClient.required = !isManualClient && !isGroup;
+    if (E.csmFormCompanyName) E.csmFormCompanyName.required = !isManualClient && !isGroup;
+    if (E.csmFormGroup) E.csmFormGroup.required = isGroup;
     if (E.csmFormManualClientName) { E.csmFormManualClientName.required = isManualClient; E.csmFormManualClientName.value = isManualClient ? (row?.manualClientName || row?.client || row?.clientName || row?.companyName || '') : ''; }
     if (E.csmFormManualLocationName) E.csmFormManualLocationName.value = isManualClient ? (row?.manualLocationName || row?.locationName || '') : '';
-    const selectedOption = isManualClient ? null : this.findClientOptionForRow(row);
+    const selectedOption = (!isManualClient && !isGroup) ? this.findClientOptionForRow(row) : null;
     const selectedClientValue = selectedOption?.value || '';
     const selectedClientName = selectedOption?.client_name || selectedOption?.company_name || selectedOption?.client || row?.client || row?.clientName || row?.companyName || '';
-    if (!isManualClient && !selectedOption && selectedClientName) {
+    if (!isManualClient && !isGroup && !selectedOption && selectedClientName) {
       const normalizedSelectedName = this.normalizeClientName(selectedClientName);
       const exists = this.clientOptions.some(option =>
         this.normalizeClientName(option.client_name || option.company_name || option.client || option.label) === normalizedSelectedName
@@ -7960,14 +8063,23 @@ const CSMActivity = {
         });
       }
     }
-    if (!isManualClient) {
+    if (!isManualClient && !isGroup) {
       this.populateClientSelect(selectedClientValue || this.normalizeClientName(selectedClientName), selectedClientName);
-      this.applySelectedClientToForm(
-        selectedOption || (selectedClientName ? { client_name: selectedClientName, value: this.normalizeClientName(selectedClientName) } : null)
-      );
+      this.applySelectedClientToForm(selectedOption || (selectedClientName ? { client_name: selectedClientName, value: this.normalizeClientName(selectedClientName) } : null));
     } else {
       this.populateClientSelect('', '');
       this.applySelectedClientToForm(null);
+    }
+    if (isGroup) {
+      const requestedGroupId = String(options.groupId || row?.csGroupId || '').trim();
+      const requestedGroupName = String(options.groupName || row?.csGroupName || row?.clientName || row?.client || '').trim();
+      let selectedGroup = requestedGroupId ? this.groupOptions.find(option => option.value === requestedGroupId) : null;
+      if (!selectedGroup && requestedGroupName) {
+        selectedGroup = this.groupOptions.find(option => this.normalizeClientName(option.group_name || option.label) === this.normalizeClientName(requestedGroupName));
+      }
+      this.populateGroupSelect(selectedGroup?.value || requestedGroupId || '');
+    } else {
+      this.populateGroupSelect('');
     }
     if (E.csmFormCompanyName) E.csmFormCompanyName.readOnly = true;
     if (E.csmFormMinutes) E.csmFormMinutes.value = row ? String(Math.round(Number(row.timeSpentMinutes) || 0)) : '';
@@ -7986,21 +8098,19 @@ const CSMActivity = {
     E.csmFormModal.setAttribute('aria-hidden', 'true');
   },
   readFormValues() {
-    const activityContext = E.csmForm?.dataset.activityContext === 'manual_client' ? 'manual_client' : 'agreement_client';
+    const activityContext = this.normalizeActivityContextForUi(E.csmForm?.dataset.activityContext || E.csmFormActivityScope?.value || 'agreement_client');
     const isManualClient = activityContext === 'manual_client';
+    const isGroup = activityContext === 'cs_group';
     const selectedClientValue = String(E.csmFormClient?.value || '').trim();
-    const selectedOption = isManualClient ? {} : this.findSelectedClientOption(selectedClientValue) || {};
-    console.log('[csm activity] selected client', selectedOption);
+    const selectedOption = (!isManualClient && !isGroup) ? (this.findSelectedClientOption(selectedClientValue) || {}) : {};
+    const selectedGroupValue = String(E.csmFormGroup?.value || '').trim();
+    const selectedGroup = isGroup ? (this.findSelectedGroupOption(selectedGroupValue) || {}) : {};
+    console.log('[csm activity] selected client/group', isGroup ? selectedGroup : selectedOption);
     const selectedClientName = isManualClient
       ? String(E.csmFormManualClientName?.value || '').trim()
-      : String(
-          selectedOption.client_name ||
-          selectedOption.company_name ||
-          selectedOption.client ||
-          selectedOption.label ||
-          ''
-        ).trim();
-    console.log('[csm activity] selected client name', selectedClientName);
+      : isGroup
+      ? String(selectedGroup.group_name || selectedGroup.label || '').trim()
+      : String(selectedOption.client_name || selectedOption.company_name || selectedOption.client || selectedOption.label || '').trim();
     const syncedCompanyName = selectedClientName;
     const activity = {
       csmName: String(E.csmFormCsmName?.value || '').trim(),
@@ -8009,8 +8119,10 @@ const CSMActivity = {
       activityContext,
       manualClientName: isManualClient ? selectedClientName : '',
       manualLocationName: isManualClient ? String(E.csmFormManualLocationName?.value || '').trim() : '',
+      csGroupId: isGroup ? String(selectedGroup.group_id || selectedGroup.value || '').trim() : '',
+      csGroupName: isGroup ? selectedClientName : '',
       client: selectedClientName,
-      clientId: isManualClient ? '' : String(selectedOption.client_id || '').trim(),
+      clientId: (!isManualClient && !isGroup) ? String(selectedOption.client_id || '').trim() : '',
       clientName: selectedClientName,
       companyName: syncedCompanyName,
       timeSpentMinutes: Number(E.csmFormMinutes?.value || 0),
@@ -8043,8 +8155,12 @@ const CSMActivity = {
     }
   },
   validateForm(activity) {
-    const activityContext = activity.activityContext === 'manual_client' ? 'manual_client' : 'agreement_client';
-    const hasClientName = activityContext === 'manual_client' ? String(activity.manualClientName || activity.client || '').trim() : String(activity.client || '').trim();
+    const activityContext = this.normalizeActivityContextForUi(activity.activityContext);
+    const hasClientName = activityContext === 'manual_client'
+      ? String(activity.manualClientName || activity.client || '').trim()
+      : activityContext === 'cs_group'
+      ? String(activity.csGroupName || activity.client || '').trim()
+      : String(activity.client || '').trim();
     if (!activity.csmName || !hasClientName || !activity.supportType || !activity.effortRequirement || !activity.supportChannel) {
       return 'Please complete all required fields.';
     }
@@ -8145,6 +8261,8 @@ const CSMActivity = {
   }
 };
 
+window.CSMActivity = CSMActivity;
+
 function wireCSMActivity() {
   CSMActivity.hydrateOptions();
   CSMActivity.refresh();
@@ -8236,6 +8354,27 @@ function wireCSMActivity() {
       CSMActivity.submitForm();
     });
   }
+  if (E.csmFormActivityScope) {
+    E.csmFormActivityScope.addEventListener('change', async () => {
+      const context = CSMActivity.normalizeActivityContextForUi(E.csmFormActivityScope.value);
+      const existing = {
+        supportType: E.csmFormSupportType?.value || '',
+        effortRequirement: E.csmFormEffort?.value || '',
+        supportChannel: E.csmFormChannel?.value || '',
+        notes: E.csmFormNotes?.value || '',
+        timeSpentMinutes: Number(E.csmFormMinutes?.value || 0) || 0,
+        csmName: E.csmFormCsmName?.value || ''
+      };
+      await CSMActivity.openForm(null, { activityContext: context });
+      if (E.csmFormSupportType) E.csmFormSupportType.value = existing.supportType;
+      if (E.csmFormEffort) E.csmFormEffort.value = existing.effortRequirement;
+      if (E.csmFormChannel) E.csmFormChannel.value = existing.supportChannel;
+      if (E.csmFormNotes) E.csmFormNotes.value = existing.notes;
+      if (E.csmFormMinutes && existing.timeSpentMinutes) E.csmFormMinutes.value = String(existing.timeSpentMinutes);
+      if (E.csmFormCsmName && existing.csmName) E.csmFormCsmName.value = existing.csmName;
+    });
+  }
+
   if (E.csmFormClientSearch) {
     E.csmFormClientSearch.addEventListener('input', () => {
       CSMActivity.populateClientSelect(E.csmFormClient?.value || '', E.csmFormClientSearch.value);

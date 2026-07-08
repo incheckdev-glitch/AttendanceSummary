@@ -30,7 +30,7 @@
   <link rel="stylesheet" href="/hr.css?v=20260705-hr-documents-statement-v1" />
   <link rel="stylesheet" href="/accounting.css?v=20260707-accounting-vendors-expense-dropdown1" />
   <link rel="stylesheet" href="/backup-center.css?v=20260707-backup-center-oneclick1" />
-  <link rel="stylesheet" href="/client-success.css?v=20260708-client-success-360-admin3" />
+  <link rel="stylesheet" href="/client-success.css?v=20260708-client-success-360-admin5" />
 
   <!-- Vercel Web Analytics -->
   <script>
@@ -242,10 +242,6 @@
                       role="tab" aria-selected="false" aria-controls="insightsView">
                 <span class="icon" aria-hidden="true">🤖</span> AI Insights
               </button>
-              <button id="csmTab" class="view-tab" data-view="csm"
-                      role="tab" aria-selected="false" aria-controls="csmView">
-                <span class="icon" aria-hidden="true">🧑‍💼</span> CSM Daily Activity
-              </button>
               <button id="operationsOnboardingTab" class="view-tab" data-view="operationsOnboarding"
                       role="tab" aria-selected="false" aria-controls="operationsOnboardingView">
                 <span class="icon" aria-hidden="true">🧭</span> Operations Onboarding
@@ -266,6 +262,10 @@
               <button id="clientSuccessTab" class="view-tab" data-view="clientSuccess" data-permission-resource="client_success" data-permission-action="view"
                       role="tab" aria-selected="false" aria-controls="clientSuccessView">
                 <span class="icon" aria-hidden="true">💚</span> Client Success 360
+              </button>
+              <button id="csmTab" class="view-tab" data-view="csm"
+                      role="tab" aria-selected="false" aria-controls="csmView">
+                <span class="icon" aria-hidden="true">🧑‍💼</span> CSM Daily Activity
               </button>
               </div>
             </div>
@@ -3529,6 +3529,23 @@ Sample:
             <label class="muted" for="csmFormCsmName">CSM Name *</label>
             <input id="csmFormCsmName" class="input" type="text" required readonly />
           </div>
+          <div class="filter-row">
+            <label class="muted" for="csmFormActivityScope">Activity Scope *</label>
+            <select id="csmFormActivityScope" class="select" required>
+              <option value="agreement_client">Signed Client</option>
+              <option value="cs_group">CS Client Group</option>
+              <option value="manual_client">Manual Client</option>
+            </select>
+          </div>
+          <div id="csmFormGroupFields" class="grid cols-2" style="display:none;grid-column:1 / -1;">
+            <div class="filter-row">
+              <label class="muted" for="csmFormGroup">CS Client Group *</label>
+              <select id="csmFormGroup" class="select">
+                <option value="">Select Group</option>
+              </select>
+              <div id="csmFormGroupState" class="muted" style="font-size:12px;margin-top:4px;"></div>
+            </div>
+          </div>
           <div id="csmFormAgreementClientFields" class="grid cols-2" style="display:contents;">
             <div class="filter-row">
               <label class="muted" for="csmFormClientSearch">Search Client</label>
@@ -4633,7 +4650,7 @@ Sample:
   <script src="/hr.js?v=20260705-hr-documents-statement-v1"></script>
   <script src="/accounting.js?v=20260707-accounting-vendors-expense-dropdown1"></script>
   <script src="/backup-center.js?v=20260707-backup-center-oneclick1"></script>
-  <script src="/client-success.js?v=20260708-client-success-360-admin3"></script>
+  <script src="/client-success.js?v=20260708-client-success-360-admin5"></script>
   <script src="/lifecycle-analytics.js?v=20260610-lifecycle-metrics-source-truth"></script>
   <script src="/clients.js?v=20260611-direct-communication"></script>
   <script src="/proposal-catalog.js?v=20260626-modern-product-catalog-ui"></script>
@@ -4646,7 +4663,7 @@ Sample:
   <script src="/notification-settings.js?v=20260618-final-channel-fallback1"></script>
   <script src="/users.js?v=20260427-allpwa1"></script>
   <script src="/events-service.js?v=20260427-events-pwa1"></script>
-  <script src="/csm-service.js?v=20260605-csm-uuid-update"></script>
+  <script src="/csm-service.js?v=20260708-csm-group-activity1"></script>
   <script src="/ai-insights-service.js?v=20260427-allpwa1"></script>
   <script src="/ai-assistant.js?v=20260526-ai-assistant-v1"></script>
   <script src="/app.js?v=20260708-client-success-360-admin3"></script>

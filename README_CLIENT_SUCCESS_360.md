@@ -70,3 +70,18 @@ sql/migrations/20260708_client_success_360_completion_decimal_fix.sql
 
 Frontend change included: Location Completion inputs now use `step="0.01"`, accept comma or dot decimals, and display percentages with two digits after the decimal.
 
+
+
+## v5 updates
+
+- Moved **CSM Daily Activity** under the **Customer Success** menu group, directly below **Client Success 360**.
+- Added CSM Daily Activity scope: **Signed Client**, **CS Client Group**, or **Manual Client**.
+- Added group-level activity creation from the Client Success 360 Groups tab.
+- Customer Success contacts now come from the main **Contacts** module.
+- Creating a contact from Client Success 360 also creates it in the main **Contacts** module, then adds CS-specific relationship metadata.
+
+If you already installed the previous CS module, run only:
+
+```sql
+sql/migrations/20260708_client_success_360_csm_group_contacts_sync.sql
+```

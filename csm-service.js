@@ -24,6 +24,8 @@
     'activity_context',
     'manual_client_name',
     'manual_location_name',
+    'cs_group_id',
+    'cs_group_name',
     'time_spent_minutes',
     'type_of_support',
     'effort_requirement',
@@ -204,7 +206,10 @@
   }
 
   function normalizeActivityContext(value) {
-    return cleanString(value) === 'manual_client' ? 'manual_client' : 'agreement_client';
+    const key = cleanString(value);
+    if (key === 'manual_client') return 'manual_client';
+    if (key === 'cs_group') return 'cs_group';
+    return 'agreement_client';
   }
 
   function parseDateValue(value) {
@@ -232,11 +237,17 @@
     const activityContext = normalizeActivityContext(raw.activity_context || raw.activityContext);
     const manualClientName = cleanString(raw.manual_client_name || raw.manualClientName);
     const manualLocationName = cleanString(raw.manual_location_name || raw.manualLocationName || raw.location_name || raw.locationName);
+    const csGroupId = cleanString(raw.cs_group_id || raw.csGroupId);
+    const csGroupName = cleanString(raw.cs_group_name || raw.csGroupName);
     const displayClientName = activityContext === 'manual_client'
       ? manualClientName
+      : activityContext === 'cs_group'
+      ? csGroupName || cleanString(raw.client_name || raw.clientName || raw.client || raw.company_name || raw.companyName)
       : cleanString(raw.client_name || raw.clientName || raw.client || raw.company_name || raw.companyName);
     const displayCompanyName = activityContext === 'manual_client'
       ? manualClientName
+      : activityContext === 'cs_group'
+      ? csGroupName || displayClientName
       : cleanString(raw.company_name || raw.companyName || raw.client_name || raw.client || raw.clientName);
 
     return {
@@ -279,6 +290,10 @@
       manualClientName,
       manual_location_name: manualLocationName,
       manualLocationName,
+      cs_group_id: csGroupId,
+      csGroupId,
+      cs_group_name: csGroupName,
+      csGroupName,
       onboarding_id: cleanString(raw.onboarding_id || raw.onboardingId),
       onboardingId: cleanString(raw.onboarding_id || raw.onboardingId),
       time_spent_minutes: Number.parseFloat(raw.time_spent_minutes ?? raw.timeSpentMinutes ?? 0) || 0,
@@ -332,8 +347,12 @@
     const activityContext = normalizeActivityContext(input.activity_context ?? input.activityContext);
     const manualClientName = toReadableClientName(input.manual_client_name ?? input.manualClientName);
     const manualLocationName = toReadableClientName(input.manual_location_name ?? input.manualLocationName ?? input.location_name ?? input.locationName);
+    const csGroupId = nullableUuid(input.cs_group_id ?? input.csGroupId);
+    const csGroupName = toReadableClientName(input.cs_group_name ?? input.csGroupName);
     const selectedClientName = activityContext === 'manual_client'
       ? manualClientName
+      : activityContext === 'cs_group'
+      ? csGroupName
       : cleanString(input.client_name ?? input.clientName ?? input.company_name ?? input.companyName ?? input.client);
     const mapped = {
       csm_user_id: (input.csm_user_id ?? input.csmUserId ?? identity.csm_user_id) || undefined,
@@ -342,16 +361,18 @@
       activity_context: activityContext,
       manual_client_name: activityContext === 'manual_client' ? manualClientName : null,
       manual_location_name: activityContext === 'manual_client' ? manualLocationName || null : null,
+      cs_group_id: activityContext === 'cs_group' ? csGroupId : null,
+      cs_group_name: activityContext === 'cs_group' ? csGroupName : null,
       client: selectedClientName,
-      client_id: activityContext === 'manual_client' ? null : nullableUuid(input.client_id ?? input.clientId),
+      client_id: activityContext === 'agreement_client' ? nullableUuid(input.client_id ?? input.clientId) : null,
       client_name: selectedClientName,
-      company_id: activityContext === 'manual_client' ? null : nullableUuid(input.company_id ?? input.companyId),
-      company_name: input.company_name ?? input.companyName ?? selectedClientName,
-      agreement_id: activityContext === 'manual_client' ? null : nullableUuid(input.agreement_id ?? input.agreementId),
-      agreement_number: activityContext === 'manual_client' ? null : (input.agreement_number ?? input.agreementNumber ?? null),
-      invoice_id: activityContext === 'manual_client' ? null : nullableUuid(input.invoice_id ?? input.invoiceId),
-      location_id: activityContext === 'manual_client' ? null : nullableUuid(input.location_id ?? input.locationId),
-      location_name: activityContext === 'manual_client' ? manualLocationName || null : (input.location_name ?? input.locationName ?? null),
+      company_id: activityContext === 'agreement_client' ? nullableUuid(input.company_id ?? input.companyId) : null,
+      company_name: activityContext === 'cs_group' ? csGroupName : (input.company_name ?? input.companyName ?? selectedClientName),
+      agreement_id: activityContext === 'agreement_client' ? nullableUuid(input.agreement_id ?? input.agreementId) : null,
+      agreement_number: activityContext === 'agreement_client' ? (input.agreement_number ?? input.agreementNumber ?? null) : null,
+      invoice_id: activityContext === 'agreement_client' ? nullableUuid(input.invoice_id ?? input.invoiceId) : null,
+      location_id: activityContext === 'agreement_client' ? nullableUuid(input.location_id ?? input.locationId) : null,
+      location_name: activityContext === 'manual_client' ? manualLocationName || null : (activityContext === 'agreement_client' ? (input.location_name ?? input.locationName ?? null) : null),
       time_spent_minutes: input.time_spent_minutes ?? input.timeSpentMinutes,
       type_of_support: input.type_of_support ?? input.supportType,
       effort_requirement: input.effort_requirement ?? input.effortRequirement,
@@ -370,8 +391,12 @@
     const activityContext = normalizeActivityContext(input.activity_context ?? input.activityContext);
     const manualClientName = toReadableClientName(input.manual_client_name ?? input.manualClientName);
     const manualLocationName = toReadableClientName(input.manual_location_name ?? input.manualLocationName ?? input.location_name ?? input.locationName);
+    const csGroupId = nullableUuid(input.cs_group_id ?? input.csGroupId);
+    const csGroupName = toReadableClientName(input.cs_group_name ?? input.csGroupName);
     const selectedClientName = activityContext === 'manual_client'
       ? manualClientName
+      : activityContext === 'cs_group'
+      ? csGroupName
       : cleanString(input.client_name ?? input.clientName ?? input.company_name ?? input.companyName ?? input.client);
     const mapped = {
       csm_user_id: (input.csm_user_id ?? input.csmUserId ?? identity.csm_user_id) || undefined,
@@ -380,16 +405,18 @@
       activity_context: activityContext,
       manual_client_name: activityContext === 'manual_client' ? manualClientName : null,
       manual_location_name: activityContext === 'manual_client' ? manualLocationName || null : null,
+      cs_group_id: activityContext === 'cs_group' ? csGroupId : null,
+      cs_group_name: activityContext === 'cs_group' ? csGroupName : null,
       client: selectedClientName || undefined,
-      client_id: activityContext === 'manual_client' ? null : nullableUuid(input.client_id ?? input.clientId),
+      client_id: activityContext === 'agreement_client' ? nullableUuid(input.client_id ?? input.clientId) : null,
       client_name: selectedClientName || undefined,
-      company_id: activityContext === 'manual_client' ? null : nullableUuid(input.company_id ?? input.companyId),
-      company_name: (input.company_name ?? input.companyName ?? selectedClientName) || undefined,
-      agreement_id: activityContext === 'manual_client' ? null : nullableUuid(input.agreement_id ?? input.agreementId),
-      agreement_number: activityContext === 'manual_client' ? null : (input.agreement_number ?? input.agreementNumber ?? null),
-      invoice_id: activityContext === 'manual_client' ? null : nullableUuid(input.invoice_id ?? input.invoiceId),
-      location_id: activityContext === 'manual_client' ? null : nullableUuid(input.location_id ?? input.locationId),
-      location_name: activityContext === 'manual_client' ? manualLocationName || null : (input.location_name ?? input.locationName ?? null),
+      company_id: activityContext === 'agreement_client' ? nullableUuid(input.company_id ?? input.companyId) : null,
+      company_name: activityContext === 'cs_group' ? csGroupName : ((input.company_name ?? input.companyName ?? selectedClientName) || undefined),
+      agreement_id: activityContext === 'agreement_client' ? nullableUuid(input.agreement_id ?? input.agreementId) : null,
+      agreement_number: activityContext === 'agreement_client' ? (input.agreement_number ?? input.agreementNumber ?? null) : null,
+      invoice_id: activityContext === 'agreement_client' ? nullableUuid(input.invoice_id ?? input.invoiceId) : null,
+      location_id: activityContext === 'agreement_client' ? nullableUuid(input.location_id ?? input.locationId) : null,
+      location_name: activityContext === 'manual_client' ? manualLocationName || null : (activityContext === 'agreement_client' ? (input.location_name ?? input.locationName ?? null) : null),
       time_spent_minutes: input.time_spent_minutes ?? input.timeSpentMinutes,
       type_of_support: input.type_of_support ?? input.supportType,
       effort_requirement: input.effort_requirement ?? input.effortRequirement,

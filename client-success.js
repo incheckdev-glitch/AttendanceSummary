@@ -49,7 +49,7 @@
     filters: { search: '', status: 'All', health: 'All', effort: 'All', group: 'All' },
     tablesMissing: new Set(),
     rows: {
-      companies: [], allCompanies: [], profiles: [], reviews: [], tasks: [], risks: [], qbrs: [], contacts: [], activities: [], onboarding: [], agreements: [], agreementItems: [], completions: [], tickets: [], groups: [], groupMembers: []
+      companies: [], allCompanies: [], profiles: [], reviews: [], tasks: [], risks: [], qbrs: [], contacts: [], mainContacts: [], activities: [], onboarding: [], agreements: [], agreementItems: [], completions: [], tickets: [], groups: [], groupMembers: []
     },
     templateQuestions: { weekly: [], monthly: [] }
   };
@@ -167,8 +167,11 @@
     return (STATE.rows[kind] || []).filter(row => {
       const rowCompanyId = String(row.company_id || row.companyId || row.company_uuid || row.client_id || row.customer_id || row.customer_company_id || '').trim();
       if (rowCompanyId && rowCompanyId === id) return true;
-      const rowName = normalize(row.company_name || row.companyName || row.legal_company_name || row.client_name || row.clientName || row.client || row.customer_name || row.customer_legal_name || row.manual_client_name || row.manualClientName || '');
-      return Boolean(rowName && nameKey && rowName === nameKey);
+      const idsRaw = row.company_ids || row.companyIds || [];
+      const ids = Array.isArray(idsRaw) ? idsRaw.map(v => String(v || '').trim()) : String(idsRaw || '').replace(/[{}"]/g, '').split(',').map(v => v.trim());
+      if (id && ids.includes(id)) return true;
+      const rowName = normalize(row.company_name || row.companyName || row.legal_company_name || row.client_name || row.clientName || row.client || row.company_names || row.companyNames || row.customer_name || row.customer_legal_name || row.manual_client_name || row.manualClientName || '');
+      return Boolean(rowName && nameKey && (rowName === nameKey || rowName.split(',').map(v => normalize(v)).includes(nameKey)));
     });
   }
 
@@ -204,7 +207,46 @@
   function taskRows(company) { return rowsForCompany('tasks', company).sort((a,b) => String(a.due_date || '').localeCompare(String(b.due_date || ''))); }
   function riskRows(company) { return rowsForCompany('risks', company).sort((a,b) => severityRank(b.severity) - severityRank(a.severity)); }
   function qbrRows(company) { return rowsForCompany('qbrs', company).sort((a,b) => String(b.meeting_date || b.created_at || '').localeCompare(String(a.meeting_date || a.created_at || ''))); }
-  function contactRows(company) { return rowsForCompany('contacts', company).sort((a,b) => String(a.name || '').localeCompare(String(b.name || ''))); }
+  function mainContactName(row = {}) { return String(row.full_name || [row.first_name, row.last_name].filter(Boolean).join(' ') || row.name || row.contact_name || '').trim(); }
+  function contactRows(company) {
+    const metadata = rowsForCompany('contacts', company);
+    const mainRows = rowsForCompany('mainContacts', company);
+    const metaByContactId = new Map();
+    const metaByEmail = new Map();
+    const metaByName = new Map();
+    metadata.forEach(meta => {
+      const cid = String(meta.contact_id || '').trim();
+      const email = normalize(meta.email || '');
+      const name = normalize(meta.contact_name_snapshot || meta.name || '');
+      if (cid) metaByContactId.set(cid, meta);
+      if (email) metaByEmail.set(email, meta);
+      if (name) metaByName.set(name, meta);
+    });
+    const merged = [];
+    const usedMeta = new Set();
+    mainRows.forEach(contact => {
+      const cid = String(contact.id || contact.contact_id || '').trim();
+      const email = normalize(contact.email || '');
+      const name = normalize(mainContactName(contact));
+      const meta = (cid && metaByContactId.get(cid)) || (email && metaByEmail.get(email)) || (name && metaByName.get(name)) || {};
+      if (meta.id) usedMeta.add(String(meta.id));
+      merged.push({
+        ...meta,
+        contact_id: cid || meta.contact_id || '',
+        name: mainContactName(contact) || meta.name || meta.contact_name_snapshot || 'Unnamed Contact',
+        title: contact.job_title || meta.title || '',
+        email: contact.email || meta.email || '',
+        phone: contact.phone || contact.mobile || meta.phone || '',
+        role: meta.role || contact.decision_role || 'Daily User',
+        influence_level: meta.influence_level || 'Medium',
+        relationship_status: meta.relationship_status || 'Normal',
+        notes: meta.notes || contact.notes || '',
+        source: 'Contacts Module'
+      });
+    });
+    metadata.filter(meta => !usedMeta.has(String(meta.id || ''))).forEach(meta => merged.push({ ...meta, name: meta.name || meta.contact_name_snapshot || 'Unnamed Contact', source: 'CS Metadata' }));
+    return merged.sort((a,b) => String(a.name || '').localeCompare(String(b.name || '')));
+  }
   function onboardingRows(company) { return rowsForCompany('onboarding', company); }
   function agreementRows(company) { return rowsForCompany('agreements', company); }
   function ticketRows(company) { return rowsForCompany('tickets', company); }
@@ -450,7 +492,7 @@
     const client = supabase();
     if (!client) { renderError('Supabase client is not available.'); return; }
 
-    const [allCompanies, profiles, reviews, tasks, risks, qbrs, contacts, activities, onboarding, agreements, agreementItems, completions, tickets, groups, groupMembers, templateQuestions] = await Promise.all([
+    const [allCompanies, profiles, reviews, tasks, risks, qbrs, contacts, mainContacts, activities, onboarding, agreements, agreementItems, completions, tickets, groups, groupMembers, templateQuestions] = await Promise.all([
       fetchTable('companies', '*', { column: 'company_name', ascending: true }, 1500),
       fetchTable(TABLES.profiles),
       fetchTable(TABLES.reviews),
@@ -458,6 +500,7 @@
       fetchTable(TABLES.risks),
       fetchTable(TABLES.qbrs),
       fetchTable(TABLES.contacts),
+      fetchTable('contacts', '*', { column: 'created_at', ascending: false }, 3000),
       fetchTable('csm_activities', '*', { column: 'created_at', ascending: false }, 1500),
       fetchTable('operations_onboarding', '*', { column: 'created_at', ascending: false }, 1500),
       fetchTable('agreements', '*', { column: 'created_at', ascending: false }, 1500),
@@ -470,7 +513,7 @@
     ]);
 
     const companies = toSignedClientCompanies(allCompanies, agreements);
-    STATE.rows = { companies, allCompanies, profiles, reviews, tasks, risks, qbrs, contacts, activities, onboarding, agreements, agreementItems, completions, tickets, groups, groupMembers };
+    STATE.rows = { companies, allCompanies, profiles, reviews, tasks, risks, qbrs, contacts, mainContacts, activities, onboarding, agreements, agreementItems, completions, tickets, groups, groupMembers };
     STATE.templateQuestions.weekly = templateQuestions.filter(q => q.cs_review_templates?.review_type === 'weekly').map(q => [q.question_key, q.question_label]);
     STATE.templateQuestions.monthly = templateQuestions.filter(q => q.cs_review_templates?.review_type === 'monthly').map(q => [q.question_key, q.question_label]);
     if (!STATE.templateQuestions.weekly.length) STATE.templateQuestions.weekly = QUESTION_BANK.weekly;
@@ -760,7 +803,7 @@
         memberRows.push([groupName(group), companyName(member), healthLabel(score) + ' · ' + score, computeEffort(member), latestCompletionSummary(member)]);
       });
     });
-    return `<div class="cs-section-title"><div><h4>Client Groups</h4><div class="cs-kpi-sub">Use groups to manage several signed-agreement companies under one CS parent account.</div></div><div><button class="btn sm" type="button" data-cs-action="group">+ New Group</button> <button class="btn ghost sm" type="button" data-cs-action="group-member">+ Add Current Client</button></div></div>
+    return `<div class="cs-section-title"><div><h4>Client Groups</h4><div class="cs-kpi-sub">Use groups to manage several signed-agreement companies under one CS parent account.</div></div><div><button class="btn sm" type="button" data-cs-action="group">+ New Group</button> <button class="btn ghost sm" type="button" data-cs-action="group-member">+ Add Current Client</button> <button class="btn ghost sm" type="button" data-cs-action="group-activity">+ Group Activity</button></div></div>
       <div class="cs-info-grid">${summary}</div>
       <div style="margin-top:14px;" class="cs-section-title"><h4>Companies in Same Group</h4></div>
       ${memberRows.length ? table(['Group','Client Company','Health','CS Effort','Completion'], memberRows) : '<div class="cs-empty">No grouped companies to show yet.</div>'}`;
@@ -829,7 +872,7 @@
 
   function renderContacts(company) {
     const rows = contactRows(company);
-    return `<div class="cs-section-title"><h4>Client Contacts & Champions</h4><button class="btn sm" type="button" data-cs-action="contact">+ New Contact</button></div>${rows.length ? table(['Name','Title','Role','Influence','Relationship','Email / Phone'], rows.map(r => [r.name, r.title || '—', r.role, r.influence_level, r.relationship_status, [r.email, r.phone].filter(Boolean).join(' / ') || '—'])) : '<div class="cs-empty">No CS contacts/champions added.</div>'}`;
+    return `<div class="cs-section-title"><h4>Client Contacts & Champions</h4><div><button class="btn sm" type="button" data-cs-action="contact-assign">+ Assign Existing Contact</button> <button class="btn ghost sm" type="button" data-cs-action="contact">+ Create Contact</button></div></div>${rows.length ? table(['Name','Title','Role','Influence','Relationship','Email / Phone','Source'], rows.map(r => [r.name, r.title || '—', r.role, r.influence_level, r.relationship_status, [r.email, r.phone].filter(Boolean).join(' / ') || '—', r.source || '—'])) : '<div class="cs-empty">No contacts assigned yet. Assign from Contacts module or create one here.</div>'}`;
   }
 
   function renderTimeline(company) {
@@ -854,11 +897,13 @@
     if (action === 'completion') openCompletionForm();
     if (action === 'group') openGroupForm();
     if (action === 'group-member') openGroupMemberForm();
+    if (action === 'group-activity') openGroupActivityForm();
     if (action === 'review') openReviewForm();
     if (action === 'task') openTaskForm();
     if (action === 'risk') openRiskForm();
     if (action === 'qbr') openQbrForm();
     if (action === 'contact') openContactForm();
+    if (action === 'contact-assign') openAssignExistingContactForm();
   });
 
   function selectedCompanyInput() {
@@ -937,6 +982,29 @@
       const { error } = await supabase().from(TABLES.groupMembers).upsert(payload, { onConflict: 'group_id,company_id' });
       if (error) { toast(`Unable to add client to group: ${error.message}`); return; }
       closeModal(); await loadData(); toast('Client added to CS group.');
+    });
+  }
+
+  function openGroupActivityForm() {
+    const company = getSelectedCompany();
+    const groups = groupsForCompany(company);
+    const candidates = groups.length ? groups : activeGroups();
+    if (!candidates.length) { toast('Create a CS client group first.'); openGroupForm(); return; }
+    const opts = candidates.map(group => `<option value="${attr(groupId(group))}">${esc(groupName(group))}</option>`).join('');
+    openModal('Create CSM Activity for Group', `<form class="cs-form" id="csGroupActivityForm">
+      <div class="cs-form-grid">
+        <div class="cs-form-field cs-form-field--full"><label>CS Client Group</label><select name="group_id" class="select" required>${opts}</select></div>
+        <div class="cs-form-field cs-form-field--full"><p class="cs-kpi-sub">This opens the CSM Daily Activity form with Activity Scope = CS Client Group.</p></div>
+      </div>
+      <div class="cs-modal-actions"><button type="button" class="btn ghost" onclick="document.getElementById('csModalClose').click()">Cancel</button><button type="submit" class="btn primary">Open Activity Form</button></div>
+    </form>`, async form => {
+      const group = groupById(new FormData(form).get('group_id'));
+      closeModal();
+      if (global.CSMActivity?.openForm) {
+        await global.CSMActivity.openForm(null, { activityContext: 'cs_group', groupId: groupId(group), groupName: groupName(group) });
+      } else {
+        toast('CSM Activity form is not available on this page load. Open CSM Daily Activity once and try again.');
+      }
     });
   }
 
@@ -1097,9 +1165,135 @@
   function openQbrForm() { openSimpleForm('New QBR / Business Review', TABLES.qbrs, [
     ['meeting_date','Meeting Date','date', true, isoToday()], ['status','Status','select:Planned|Completed|Canceled', false, 'Completed'], ['attendees','Attendees','text'], ['next_qbr_date','Next QBR Date','date'], ['topics_discussed','Topics Discussed','textarea'], ['usage_summary','Usage Summary','textarea'], ['issues','Issues','textarea'], ['client_feedback','Client Feedback','textarea'], ['renewal_discussion','Renewal Discussion','textarea'], ['opportunities','Opportunities','textarea'], ['decisions','Decisions','textarea'], ['action_items','Action Items','textarea']
   ], 'QBR saved.'); }
-  function openContactForm() { openSimpleForm('New Client Contact / Champion', TABLES.contacts, [
-    ['name','Name','text', true], ['title','Title','text'], ['email','Email','email'], ['phone','Phone','text'], ['role','Role','select:Decision Maker|Champion|Operations Contact|Daily User|Escalation Contact|Training Contact|Technical Contact', false, 'Daily User'], ['influence_level','Influence Level','select:Low|Medium|High', false, 'Medium'], ['relationship_status','Relationship Status','select:Strong|Normal|Weak|At Risk', false, 'Normal'], ['notes','Notes','textarea']
-  ], 'Client contact saved.'); }
+  async function openAssignExistingContactForm() {
+    const company = getSelectedCompany();
+    const assigned = new Set(contactRows(company).map(row => String(row.contact_id || '').trim()).filter(Boolean));
+    const options = rowsForCompany('mainContacts', company)
+      .filter(row => !assigned.has(String(row.id || row.contact_id || '').trim()))
+      .map(row => `<option value="${attr(row.id || row.contact_id || '')}">${esc(mainContactName(row) || row.email || 'Unnamed Contact')}</option>`)
+      .join('');
+    if (!options) { toast('No unassigned contacts found for this client. Create a contact first.'); openContactForm(); return; }
+    openModal('Assign Existing Contact to CS', `<form class="cs-form" id="csAssignContactForm">
+      <div class="cs-form-grid">${selectedCompanyInput()}
+        <div class="cs-form-field cs-form-field--full"><label>Contact from Contacts Module</label><select name="contact_id" class="select" required>${options}</select></div>
+        ${selectField('role','CS Role',['Decision Maker','Champion','Operations Contact','Daily User','Escalation Contact','Training Contact','Technical Contact'],'Daily User')}
+        ${selectField('influence_level','Influence Level',['Low','Medium','High'],'Medium')}
+        ${selectField('relationship_status','Relationship Status',['Strong','Normal','Weak','At Risk'],'Normal')}
+        <div class="cs-form-field cs-form-field--full"><label>CS Notes</label><textarea name="notes" class="input"></textarea></div>
+      </div>
+      <div class="cs-modal-actions"><button type="button" class="btn ghost" onclick="document.getElementById('csModalClose').click()">Cancel</button><button type="submit" class="btn primary">Assign Contact</button></div>
+    </form>`, async form => {
+      const fd = new FormData(form);
+      const contact = (STATE.rows.mainContacts || []).find(row => String(row.id || row.contact_id || '').trim() === String(fd.get('contact_id') || '').trim()) || {};
+      await saveCsContactMetadata(company, contact, Object.fromEntries(fd.entries()));
+      closeModal(); await loadData(); toast('Contact assigned to Customer Success.');
+    });
+  }
+
+  function openContactForm() {
+    openModal('Create Contact / Champion', `<form class="cs-form" id="csCreateContactForm">
+      <div class="cs-form-grid">${selectedCompanyInput()}
+        <div class="cs-form-field"><label>Full Name</label><input name="name" class="input" type="text" required /></div>
+        <div class="cs-form-field"><label>Title</label><input name="title" class="input" type="text" /></div>
+        <div class="cs-form-field"><label>Email</label><input name="email" class="input" type="email" /></div>
+        <div class="cs-form-field"><label>Phone</label><input name="phone" class="input" type="text" /></div>
+        ${selectField('role','CS Role',['Decision Maker','Champion','Operations Contact','Daily User','Escalation Contact','Training Contact','Technical Contact'],'Daily User')}
+        ${selectField('influence_level','Influence Level',['Low','Medium','High'],'Medium')}
+        ${selectField('relationship_status','Relationship Status',['Strong','Normal','Weak','At Risk'],'Normal')}
+        <div class="cs-form-field cs-form-field--full"><label>Notes</label><textarea name="notes" class="input"></textarea></div>
+      </div>
+      <div class="cs-modal-actions"><button type="button" class="btn ghost" onclick="document.getElementById('csModalClose').click()">Cancel</button><button type="submit" class="btn primary">Create Contact</button></div>
+    </form>`, async form => {
+      const fd = Object.fromEntries(new FormData(form).entries());
+      const company = getSelectedCompany();
+      const contact = await createContactsModuleContact(company, fd);
+      await saveCsContactMetadata(company, contact, fd);
+      closeModal(); await loadData(); toast('Contact created in Contacts module and assigned to Customer Success.');
+    });
+  }
+
+  function splitContactName(name = '') {
+    const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+    if (parts.length <= 1) return { first_name: parts[0] || '', last_name: '' };
+    return { first_name: parts.slice(0, -1).join(' '), last_name: parts.slice(-1)[0] };
+  }
+
+  function getUnsupportedColumn(message = '') {
+    const text = String(message || '');
+    const patterns = [/column\s+"([^"]+)"/i, /column\s+'([^']+)'/i, /Could not find the ['"]?([^'"\s]+)['"]?\s+column/i];
+    for (const pattern of patterns) { const m = text.match(pattern); if (m?.[1]) return m[1]; }
+    return '';
+  }
+
+  async function insertWithColumnFallback(tableName, payload) {
+    const working = { ...payload };
+    for (let attempt = 0; attempt < 24; attempt += 1) {
+      const { data, error } = await supabase().from(tableName).insert(working).select('*').single();
+      if (!error) return data || working;
+      const unsupported = getUnsupportedColumn(error.message || '');
+      if (unsupported && Object.prototype.hasOwnProperty.call(working, unsupported)) { delete working[unsupported]; continue; }
+      throw error;
+    }
+    const { data, error } = await supabase().from(tableName).insert(working).select('*').single();
+    if (error) throw error;
+    return data || working;
+  }
+
+  async function resolveContactCompanyFkValue(companyId) {
+    try {
+      return await global.CrmCompanyContactSelectors?.getCompanyContactFkValue?.(companyId) || companyId;
+    } catch { return companyId; }
+  }
+
+  async function createContactsModuleContact(company, fd) {
+    const name = String(fd.name || '').trim();
+    const split = splitContactName(name);
+    const canonicalCompanyId = companyId(company);
+    const contactCompanyFk = await resolveContactCompanyFkValue(canonicalCompanyId);
+    const payload = {
+      company_id: contactCompanyFk,
+      company_name: companyName(company),
+      company_ids: [canonicalCompanyId],
+      company_names: companyName(company),
+      first_name: split.first_name,
+      last_name: split.last_name,
+      full_name: name,
+      job_title: fd.title || null,
+      email: fd.email || null,
+      phone: fd.phone || null,
+      decision_role: fd.role || 'Daily User',
+      contact_status: 'Active',
+      notes: fd.notes || null
+    };
+    const contact = await insertWithColumnFallback('contacts', payload);
+    const contactId = String(contact.id || contact.contact_id || '').trim();
+    if (contactId) {
+      try { await supabase().from('contact_company_assignments').upsert({ contact_id: contactId, company_id: canonicalCompanyId, is_primary: false }, { onConflict: 'contact_id,company_id' }); } catch (error) { console.warn('[ClientSuccess360] contact assignment link skipped', error); }
+    }
+    return { ...contact, id: contactId, full_name: name, email: fd.email || '', phone: fd.phone || '', job_title: fd.title || '' };
+  }
+
+  async function saveCsContactMetadata(company, contact, fd) {
+    const contactId = String(contact.id || contact.contact_id || fd.contact_id || '').trim();
+    const payload = {
+      company_id: companyId(company),
+      contact_id: contactId || null,
+      contact_name_snapshot: mainContactName(contact) || fd.name || '',
+      name: mainContactName(contact) || fd.name || '',
+      title: contact.job_title || fd.title || null,
+      email: contact.email || fd.email || null,
+      phone: contact.phone || contact.mobile || fd.phone || null,
+      role: fd.role || contact.decision_role || 'Daily User',
+      influence_level: fd.influence_level || 'Medium',
+      relationship_status: fd.relationship_status || 'Normal',
+      notes: fd.notes || null
+    };
+    Object.keys(payload).forEach(k => { if (payload[k] === '') payload[k] = null; });
+    const conflict = contactId ? 'company_id,contact_id' : undefined;
+    const query = conflict ? supabase().from(TABLES.contacts).upsert(payload, { onConflict: conflict }) : supabase().from(TABLES.contacts).insert(payload);
+    const { error } = await query;
+    if (error) throw error;
+  }
 
   function openSimpleForm(title, tableName, fields, successMessage) {
     openModal(title, `<form class="cs-form"><div class="cs-form-grid">${selectedCompanyInput()}${fields.map(renderField).join('')}</div><div class="cs-modal-actions"><button type="button" class="btn ghost" onclick="document.getElementById('csModalClose').click()">Cancel</button><button type="submit" class="btn primary">Save</button></div></form>`, async form => {
