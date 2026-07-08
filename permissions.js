@@ -38,10 +38,13 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
   }),
   cs_client_profiles: Object.freeze({ view: ['admin'], list: ['admin'], get: ['admin'], create: ['admin'], update: ['admin'], delete: ['admin'], manage: ['admin'] }),
   cs_client_reviews: Object.freeze({ view: ['admin'], list: ['admin'], get: ['admin'], create: ['admin'], update: ['admin'], delete: ['admin'], manage: ['admin'], export: ['admin'] }),
+  cs_location_completions: Object.freeze({ view: ['admin'], list: ['admin'], get: ['admin'], create: ['admin'], update: ['admin'], delete: ['admin'], manage: ['admin'], export: ['admin'] }),
   cs_tasks: Object.freeze({ view: ['admin'], list: ['admin'], get: ['admin'], create: ['admin'], update: ['admin'], delete: ['admin'], manage: ['admin'] }),
   cs_risks: Object.freeze({ view: ['admin'], list: ['admin'], get: ['admin'], create: ['admin'], update: ['admin'], delete: ['admin'], manage: ['admin'] }),
   cs_qbrs: Object.freeze({ view: ['admin'], list: ['admin'], get: ['admin'], create: ['admin'], update: ['admin'], delete: ['admin'], manage: ['admin'] }),
   cs_client_contacts: Object.freeze({ view: ['admin'], list: ['admin'], get: ['admin'], create: ['admin'], update: ['admin'], delete: ['admin'], manage: ['admin'] }),
+  cs_client_groups: Object.freeze({ view: ['admin'], list: ['admin'], get: ['admin'], create: ['admin'], update: ['admin'], delete: ['admin'], manage: ['admin'] }),
+  cs_client_group_members: Object.freeze({ view: ['admin'], list: ['admin'], get: ['admin'], create: ['admin'], update: ['admin'], delete: ['admin'], manage: ['admin'] }),
   csm: Object.freeze({
     list: ['admin', 'viewer', 'hoo', 'head_of_operations', 'head_operations', 'operations_head', 'csm', 'customer_success', 'customer_success_manager'],
     get: ['admin', 'viewer', 'hoo', 'head_of_operations', 'head_operations', 'operations_head', 'csm', 'customer_success', 'customer_success_manager'],
@@ -577,7 +580,7 @@ const Permissions = {
   },
   resourceAliases(resource) {
     const normalizedResource = String(resource || '').trim().toLowerCase();
-    if (normalizedResource === 'client_success') return ['client_success', 'cs_client_profiles', 'cs_client_reviews', 'cs_tasks', 'cs_risks', 'cs_qbrs', 'cs_client_contacts'];
+    if (normalizedResource === 'client_success') return ['client_success', 'cs_client_profiles', 'cs_client_reviews', 'cs_location_completions', 'cs_tasks', 'cs_risks', 'cs_qbrs', 'cs_client_contacts', 'cs_client_groups', 'cs_client_group_members'];
     if (normalizedResource === 'csm') return ['csm', 'csm_activities'];
     if (['hr','human_resources','human-resources','hr_employees'].includes(normalizedResource)) return ['hr', 'hr_employees'];
     if (['accounting','accounts','chart_of_accounts','chart-of-accounts'].includes(normalizedResource)) return ['accounting','accounting_accounts'];
@@ -596,7 +599,7 @@ const Permissions = {
     if (['hr_notifications'].includes(normalizedResource)) return ['hr_notifications','hr'];
     if (['hr_attendance','attendance'].includes(normalizedResource)) return ['hr_attendance'];
     if (['hr_payroll','payroll','payslips'].includes(normalizedResource)) return ['hr_payroll'];
-    if (['cs_client_profiles','cs_client_reviews','cs_tasks','cs_risks','cs_qbrs','cs_client_contacts'].includes(normalizedResource)) return [normalizedResource, 'client_success'];
+    if (['cs_client_profiles','cs_client_reviews','cs_location_completions','cs_tasks','cs_risks','cs_qbrs','cs_client_contacts','cs_client_groups','cs_client_group_members'].includes(normalizedResource)) return [normalizedResource, 'client_success'];
     if (normalizedResource === 'csm_activities') return ['csm_activities', 'csm'];
     if (['contacts', 'crm_contacts'].includes(normalizedResource)) return ['contacts', 'crm_contacts'];
     if (['communicationcentre', 'communication-center', 'communication-centre', 'communication_center'].includes(normalizedResource)) return ['communication_centre'];

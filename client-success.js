@@ -10,7 +10,10 @@
     qbrs: 'cs_qbrs',
     contacts: 'cs_client_contacts',
     templates: 'cs_review_templates',
-    templateQuestions: 'cs_review_template_questions'
+    templateQuestions: 'cs_review_template_questions',
+    completions: 'cs_location_completions',
+    groups: 'cs_client_groups',
+    groupMembers: 'cs_client_group_members'
   };
 
   const QUESTION_BANK = {
@@ -43,10 +46,10 @@
     loading: false,
     selectedCompanyId: '',
     activeTab: 'overview',
-    filters: { search: '', status: 'All', health: 'All', effort: 'All' },
+    filters: { search: '', status: 'All', health: 'All', effort: 'All', group: 'All' },
     tablesMissing: new Set(),
     rows: {
-      companies: [], profiles: [], reviews: [], tasks: [], risks: [], qbrs: [], contacts: [], activities: [], onboarding: [], agreements: [], tickets: []
+      companies: [], allCompanies: [], profiles: [], reviews: [], tasks: [], risks: [], qbrs: [], contacts: [], activities: [], onboarding: [], agreements: [], agreementItems: [], completions: [], tickets: [], groups: [], groupMembers: []
     },
     templateQuestions: { weekly: [], monthly: [] }
   };
@@ -88,6 +91,59 @@
     return String(row.id || row.company_id || '').trim();
   }
 
+
+  function agreementCompanyId(row = {}) {
+    return String(row.company_id || row.company_uuid || row.client_id || row.customer_id || row.customer_company_id || row.companyId || row.clientId || '').trim();
+  }
+
+  function agreementCompanyName(row = {}) {
+    return String(row.company_name || row.legal_company_name || row.customer_legal_name || row.customer_name || row.client_name || row.customer || '').trim();
+  }
+
+  function agreementKey(row = {}) {
+    return String(row.id || row.agreement_uuid || row.agreement_id || row.agreement_number || row.parent_id || row.parent_number || '').trim();
+  }
+
+  function agreementKeys(row = {}) {
+    return [row.id, row.agreement_uuid, row.agreement_id, row.agreement_number, row.parent_id, row.parent_number]
+      .map(v => String(v || '').trim())
+      .filter(Boolean);
+  }
+
+  function isSignedAgreement(row = {}) {
+    const raw = String(row.status || row.agreement_status || row.lifecycle_status || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+    if (['signed','active','executed','signed_active','signedactive'].includes(raw)) return true;
+    if ((raw.includes('signed') || raw.includes('active') || raw.includes('executed')) && !raw.includes('unsigned') && !raw.includes('draft') && !raw.includes('cancel')) return true;
+    return Boolean(
+      row.signed_date || row.customer_signed_at || row.customer_sign_date || row.customer_official_sign_date ||
+      row.e_signature_signed_at || row.e_agreement_signature_signed_at || row.signed_document_url ||
+      row.signed_agreement_document_url || row.signed_document_path || row.signed_agreement_document_path
+    );
+  }
+
+  function signedAgreementRows() {
+    return (STATE.rows.agreements || []).filter(isSignedAgreement);
+  }
+
+  function companyHasSignedAgreement(company) {
+    const id = companyId(company);
+    const nameKey = normalize(companyName(company));
+    return signedAgreementRows().some(row => {
+      const rowCompanyId = agreementCompanyId(row);
+      if (id && rowCompanyId && id === rowCompanyId) return true;
+      const rowName = normalize(agreementCompanyName(row));
+      return Boolean(nameKey && rowName && nameKey === rowName);
+    });
+  }
+
+  function toSignedClientCompanies(companies, agreements) {
+    const previous = STATE.rows.agreements;
+    STATE.rows.agreements = Array.isArray(agreements) ? agreements : [];
+    const out = (Array.isArray(companies) ? companies : []).filter(companyHasSignedAgreement);
+    STATE.rows.agreements = previous;
+    return out;
+  }
+
   function getSelectedCompany() {
     const id = STATE.selectedCompanyId || companyId(STATE.rows.companies[0] || {});
     return STATE.rows.companies.find(c => companyId(c) === id) || STATE.rows.companies[0] || null;
@@ -97,9 +153,9 @@
     const id = companyId(company);
     const nameKey = normalize(companyName(company));
     return (STATE.rows[kind] || []).filter(row => {
-      const rowCompanyId = String(row.company_id || row.companyId || '').trim();
+      const rowCompanyId = String(row.company_id || row.companyId || row.company_uuid || row.client_id || row.customer_id || row.customer_company_id || '').trim();
       if (rowCompanyId && rowCompanyId === id) return true;
-      const rowName = normalize(row.company_name || row.companyName || row.client_name || row.clientName || row.client || row.customer_name || row.customer_legal_name || row.manual_client_name || row.manualClientName || '');
+      const rowName = normalize(row.company_name || row.companyName || row.legal_company_name || row.client_name || row.clientName || row.client || row.customer_name || row.customer_legal_name || row.manual_client_name || row.manualClientName || '');
       return Boolean(rowName && nameKey && rowName === nameKey);
     });
   }
@@ -141,6 +197,134 @@
   function agreementRows(company) { return rowsForCompany('agreements', company); }
   function ticketRows(company) { return rowsForCompany('tickets', company); }
 
+  function completionRows(company) { return rowsForCompany('completions', company).sort((a,b) => String(b.period_end || b.created_at || '').localeCompare(String(a.period_end || a.created_at || ''))); }
+
+  function agreementItemRows(company) {
+    const signed = agreementRows(company).filter(isSignedAgreement);
+    const keys = new Set();
+    signed.forEach(agreement => agreementKeys(agreement).forEach(k => keys.add(k)));
+    return (STATE.rows.agreementItems || []).filter(item => {
+      const itemCompanyId = String(item.company_id || item.companyId || item.company_uuid || item.client_id || item.customer_id || '').trim();
+      if (itemCompanyId && itemCompanyId === companyId(company)) return true;
+      const itemName = normalize(item.company_name || item.client_name || item.customer_name || item.customer_legal_name || '');
+      if (itemName && itemName === normalize(companyName(company))) return true;
+      const itemKeys = [item.agreement_id, item.agreement_uuid, item.parent_id, item.parent_number, item.agreement_number]
+        .map(v => String(v || '').trim())
+        .filter(Boolean);
+      return itemKeys.some(k => keys.has(k));
+    });
+  }
+
+  function locationNameFromRow(row = {}) {
+    return String(row.location_name || row.location || row.branch_name || row.store_name || row.site_name || row.outlet_name || row.locationName || row.branchName || '').trim();
+  }
+
+  function getClientLocations(company) {
+    const map = new Map();
+    const add = value => {
+      const name = String(value || '').trim();
+      if (!name) return;
+      const key = normalize(name);
+      if (!map.has(key)) map.set(key, name);
+    };
+    agreementItemRows(company).forEach(row => add(locationNameFromRow(row)));
+    agreementRows(company).filter(isSignedAgreement).forEach(row => add(locationNameFromRow(row)));
+    onboardingRows(company).forEach(row => add(locationNameFromRow(row)));
+    completionRows(company).forEach(row => add(locationNameFromRow(row)));
+    if (!map.size) add(companyName(company));
+    return Array.from(map.values()).sort((a,b) => a.localeCompare(b));
+  }
+
+
+  function groupName(row = {}) {
+    return String(row.group_name || row.name || row.group_label || 'Unnamed Group').trim();
+  }
+
+  function groupId(row = {}) {
+    return String(row.id || row.group_id || '').trim();
+  }
+
+  function activeGroups() {
+    return (STATE.rows.groups || []).filter(group => !['archived','inactive','deleted'].includes(String(group.status || '').trim().toLowerCase()));
+  }
+
+  function groupById(id) {
+    const gid = String(id || '').trim();
+    return activeGroups().find(group => groupId(group) === gid) || null;
+  }
+
+  function groupMembershipRows(company) {
+    const id = companyId(company);
+    return (STATE.rows.groupMembers || []).filter(row => String(row.company_id || '').trim() === id);
+  }
+
+  function groupsForCompany(company) {
+    return groupMembershipRows(company)
+      .map(row => groupById(row.group_id) || { id: row.group_id, group_name: row.group_name_snapshot || row.group_name || 'Unknown Group', status: 'Active' })
+      .filter(Boolean)
+      .sort((a,b) => groupName(a).localeCompare(groupName(b)));
+  }
+
+  function groupLabelForCompany(company) {
+    const groups = groupsForCompany(company).map(groupName);
+    return groups.length ? groups.join(', ') : 'Ungrouped';
+  }
+
+  function groupMemberCompanies(group) {
+    const gid = groupId(group);
+    const ids = new Set((STATE.rows.groupMembers || []).filter(row => String(row.group_id || '').trim() === gid).map(row => String(row.company_id || '').trim()).filter(Boolean));
+    return STATE.rows.companies.filter(company => ids.has(companyId(company))).sort((a,b) => companyName(a).localeCompare(companyName(b)));
+  }
+
+  function renderGroupFilterOptions() {
+    const select = $('csGroupFilter');
+    if (!select) return;
+    const current = STATE.filters.group || select.value || 'All';
+    const options = ['<option value="All">All Groups</option>', '<option value="Ungrouped">Ungrouped</option>']
+      .concat(activeGroups().map(group => `<option value="${attr(groupId(group))}">${esc(groupName(group))}</option>`));
+    select.innerHTML = options.join('');
+    select.value = Array.from(select.options).some(opt => opt.value === current) ? current : 'All';
+    STATE.filters.group = select.value;
+  }
+
+  function latestCompletionPeriodRows(company) {
+    const rows = completionRows(company);
+    if (!rows.length) return [];
+    const key = row => [row.review_type || 'weekly', String(row.period_start || '').slice(0,10), String(row.period_end || '').slice(0,10)].join('|');
+    const latestKey = key(rows[0]);
+    return rows.filter(row => key(row) === latestKey);
+  }
+
+  function aggregateCompletionRows(rows) {
+    const byLocation = new Map();
+    rows.forEach(row => {
+      const name = locationNameFromRow(row) || 'Unknown Location';
+      const key = normalize(name);
+      if (!byLocation.has(key)) byLocation.set(key, { location_name: name, done_on_time: 0, done_late: 0, partially_done: 0, missed: 0, review_type: row.review_type, period_start: row.period_start, period_end: row.period_end });
+      const acc = byLocation.get(key);
+      acc.done_on_time += safeNumber(row.done_on_time);
+      acc.done_late += safeNumber(row.done_late);
+      acc.partially_done += safeNumber(row.partially_done);
+      acc.missed += safeNumber(row.missed);
+    });
+    return Array.from(byLocation.values()).sort((a,b) => a.location_name.localeCompare(b.location_name));
+  }
+
+  function completionTotal(row) {
+    return safeNumber(row.done_on_time) + safeNumber(row.done_late) + safeNumber(row.partially_done) + safeNumber(row.missed);
+  }
+
+  function completionCount(row) {
+    return safeNumber(row.done_on_time) + safeNumber(row.done_late);
+  }
+
+  function countPct(count, total) {
+    const c = Math.max(0, safeNumber(count));
+    const t = Math.max(0, safeNumber(total));
+    const pct = t ? (c / t) * 100 : 0;
+    return `${c} (${pct.toFixed(2)}%)`;
+  }
+
   function severityRank(value) { return { Critical:4, High:3, Medium:2, Low:1 }[String(value || '')] || 0; }
 
   function reviewMissing(company, type) {
@@ -170,6 +354,7 @@
     const risks = openRows(riskRows(company));
     const tasks = openRows(taskRows(company));
     const tickets = openRows(ticketRows(company));
+    const latestCompletions = aggregateCompletionRows(latestCompletionPeriodRows(company));
     const onboarding = onboardingRows(company);
     const nextRenewal = firstFutureDate(agreementRows(company), ['service_end_date', 'end_date', 'serviceEndDate', 'agreement_end_date']);
 
@@ -183,6 +368,12 @@
     if (daysNoActivity === null) score -= 12;
     else if (daysNoActivity > 30) score -= 18;
     else if (daysNoActivity > 14) score -= 8;
+    if (latestCompletions.length) {
+      const totals = latestCompletions.reduce((acc, row) => { acc.done += completionCount(row); acc.total += completionTotal(row); return acc; }, { done: 0, total: 0 });
+      const completionRate = totals.total ? (totals.done / totals.total) * 100 : 0;
+      if (completionRate < 50) score -= 15;
+      else if (completionRate < 75) score -= 8;
+    }
     risks.forEach(r => { score -= { Critical:25, High:15, Medium:8, Low:3 }[r.severity] || 5; });
     tasks.filter(t => t.due_date && t.due_date < isoToday() && !['Done','Canceled'].includes(t.status)).forEach(() => { score -= 4; });
     tickets.forEach(t => { score -= String(t.priority || '').toLowerCase().includes('high') ? 5 : 2; });
@@ -247,7 +438,7 @@
     const client = supabase();
     if (!client) { renderError('Supabase client is not available.'); return; }
 
-    const [companies, profiles, reviews, tasks, risks, qbrs, contacts, activities, onboarding, agreements, tickets, templateQuestions] = await Promise.all([
+    const [allCompanies, profiles, reviews, tasks, risks, qbrs, contacts, activities, onboarding, agreements, agreementItems, completions, tickets, groups, groupMembers, templateQuestions] = await Promise.all([
       fetchTable('companies', '*', { column: 'company_name', ascending: true }, 1500),
       fetchTable(TABLES.profiles),
       fetchTable(TABLES.reviews),
@@ -258,11 +449,16 @@
       fetchTable('csm_activities', '*', { column: 'created_at', ascending: false }, 1500),
       fetchTable('operations_onboarding', '*', { column: 'created_at', ascending: false }, 1500),
       fetchTable('agreements', '*', { column: 'created_at', ascending: false }, 1500),
+      fetchTable('agreement_items', '*', { column: 'created_at', ascending: false }, 3000),
+      fetchTable(TABLES.completions, '*', { column: 'period_end', ascending: false }, 3000),
       fetchTable('tickets', '*', { column: 'created_at', ascending: false }, 1500),
+      fetchTable(TABLES.groups, '*', { column: 'group_name', ascending: true }, 1000),
+      fetchTable(TABLES.groupMembers, '*', { column: 'created_at', ascending: false }, 3000),
       fetchTable(TABLES.templateQuestions, '*, cs_review_templates(review_type)', { column: 'sort_order', ascending: true }, 200)
     ]);
 
-    STATE.rows = { companies, profiles, reviews, tasks, risks, qbrs, contacts, activities, onboarding, agreements, tickets };
+    const companies = toSignedClientCompanies(allCompanies, agreements);
+    STATE.rows = { companies, allCompanies, profiles, reviews, tasks, risks, qbrs, contacts, activities, onboarding, agreements, agreementItems, completions, tickets, groups, groupMembers };
     STATE.templateQuestions.weekly = templateQuestions.filter(q => q.cs_review_templates?.review_type === 'weekly').map(q => [q.question_key, q.question_label]);
     STATE.templateQuestions.monthly = templateQuestions.filter(q => q.cs_review_templates?.review_type === 'monthly').map(q => [q.question_key, q.question_label]);
     if (!STATE.templateQuestions.weekly.length) STATE.templateQuestions.weekly = QUESTION_BANK.weekly;
@@ -283,12 +479,15 @@
         <div>
           <span class="cs-eyebrow">Customer Success · Admin Only</span>
           <h2>Client Success 360</h2>
-          <p>Monitor client satisfaction, weekly/monthly pulse review completion, extra CS effort, risks, tasks, onboarding follow-up, renewals, QBRs, contacts, and activity. No payment, invoice, receipt, collection, or accounting data is used.</p>
+          <p>Monitor signed-agreement clients, location completion, satisfaction, weekly/monthly pulse reviews, extra CS effort, risks, tasks, onboarding follow-up, renewals, QBRs, contacts, and activity. No payment, invoice, receipt, collection, or accounting data is used.</p>
         </div>
         <div class="cs-header-actions">
           <span class="cs-admin-chip">Admin access only</span>
           <button id="csRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
-          <button id="csAddReviewBtn" class="btn sm" type="button">+ Pulse Review</button>
+          <button id="csAddCompletionBtn" class="btn sm" type="button">+ Location Completion</button>
+          <button id="csAddGroupBtn" class="btn ghost sm" type="button">+ Client Group</button>
+          <button id="csAddGroupMemberBtn" class="btn ghost sm" type="button">+ Add to Group</button>
+          <button id="csAddReviewBtn" class="btn ghost sm" type="button">+ Pulse Review</button>
           <button id="csAddTaskBtn" class="btn ghost sm" type="button">+ Task</button>
           <button id="csAddRiskBtn" class="btn ghost sm" type="button">+ Risk</button>
           <button id="csAddQbrBtn" class="btn ghost sm" type="button">+ QBR</button>
@@ -304,6 +503,7 @@
             <select id="csStatusFilter" class="select"><option>All</option><option>Onboarding</option><option>Live</option><option>Watch</option><option>At Risk</option><option>Suspended</option><option>Churned</option></select>
             <select id="csHealthFilter" class="select"><option>All</option><option>Healthy</option><option>Watch</option><option>At Risk</option><option>Critical</option></select>
             <select id="csEffortFilter" class="select"><option>All</option><option>Normal Care</option><option>Needs Attention</option><option>High Touch</option><option>Recovery Required</option></select>
+            <select id="csGroupFilter" class="select"><option value="All">All Groups</option></select>
           </div>
           <div id="csClientList" class="cs-list"></div>
         </aside>
@@ -320,6 +520,9 @@
 
   function wire() {
     $('csRefreshBtn')?.addEventListener('click', () => loadData());
+    $('csAddCompletionBtn')?.addEventListener('click', () => openCompletionForm());
+    $('csAddGroupBtn')?.addEventListener('click', () => openGroupForm());
+    $('csAddGroupMemberBtn')?.addEventListener('click', () => openGroupMemberForm());
     $('csAddReviewBtn')?.addEventListener('click', () => openReviewForm());
     $('csAddTaskBtn')?.addEventListener('click', () => openTaskForm());
     $('csAddRiskBtn')?.addEventListener('click', () => openRiskForm());
@@ -327,11 +530,12 @@
     $('csAddContactBtn')?.addEventListener('click', () => openContactForm());
     $('csModalClose')?.addEventListener('click', closeModal);
     $('csModal')?.addEventListener('click', ev => { if (ev.target?.id === 'csModal') closeModal(); });
-    ['csSearch','csStatusFilter','csHealthFilter','csEffortFilter'].forEach(id => $(id)?.addEventListener('input', () => {
+    ['csSearch','csStatusFilter','csHealthFilter','csEffortFilter','csGroupFilter'].forEach(id => $(id)?.addEventListener('input', () => {
       STATE.filters.search = $('csSearch')?.value || '';
       STATE.filters.status = $('csStatusFilter')?.value || 'All';
       STATE.filters.health = $('csHealthFilter')?.value || 'All';
       STATE.filters.effort = $('csEffortFilter')?.value || 'All';
+      STATE.filters.group = $('csGroupFilter')?.value || 'All';
       renderClientList();
     }));
   }
@@ -359,6 +563,8 @@
       if (STATE.filters.status !== 'All' && status !== STATE.filters.status) return false;
       if (STATE.filters.health !== 'All' && health !== STATE.filters.health) return false;
       if (STATE.filters.effort !== 'All' && effort !== STATE.filters.effort) return false;
+      if (STATE.filters.group === 'Ungrouped' && groupsForCompany(company).length) return false;
+      if (STATE.filters.group && !['All','Ungrouped'].includes(STATE.filters.group) && !groupMembershipRows(company).some(row => String(row.group_id || '').trim() === STATE.filters.group)) return false;
       return true;
     });
   }
@@ -372,13 +578,14 @@
 
   function render() {
     if (!canAccess()) { renderAccessDenied(); return; }
+    renderGroupFilterOptions();
     renderKpis();
     renderClientList();
     renderDetail();
     const missing = Array.from(STATE.tablesMissing).filter(t => Object.values(TABLES).includes(t));
     const stateText = missing.length
       ? `Run SQL migration first. Missing CS tables: ${missing.join(', ')}`
-      : `${STATE.rows.companies.length} clients loaded · Admin-only CS workspace`;
+      : `${STATE.rows.companies.length} signed-agreement clients loaded · Admin-only CS workspace`;
     $('csState') && ($('csState').textContent = stateText);
   }
 
@@ -394,15 +601,20 @@
     const avgCompletion = avgCompletionRows.length ? Math.round(avgCompletionRows.reduce((sum, r) => sum + safeNumber(r.review_completion_percent), 0) / avgCompletionRows.length) : 0;
     const openRisks = openRows(STATE.rows.risks).length;
     const overdueTasks = STATE.rows.tasks.filter(t => t.due_date && t.due_date < isoToday() && !['Done','Canceled'].includes(t.status)).length;
+    const latestCompletionRows = companies.flatMap(c => aggregateCompletionRows(latestCompletionPeriodRows(c)));
+    const completionTotals = latestCompletionRows.reduce((acc, row) => { acc.done += completionCount(row); acc.total += completionTotal(row); return acc; }, { done: 0, total: 0 });
+    const completionRate = completionTotals.total ? Math.round((completionTotals.done / completionTotals.total) * 100) : 0;
     const items = [
-      ['Active Clients', companies.length, 'Clients visible from Companies'],
+      ['Active Clients', companies.length, 'Companies with signed agreements'],
+      ['Client Groups', activeGroups().length, 'CS parent groups / account families'],
       ['Clients at Risk', atRisk, 'Health score below 60'],
       ['Weekly Reviews Missing', weeklyMissing, 'Current week not completed'],
       ['Monthly Reviews Missing', monthlyMissing, 'Current month not completed'],
       ['Need Extra CS Effort', extraEffort, 'Needs Attention / High Touch / Recovery'],
       ['Unsatisfied Signals', unsatisfied, 'Unsatisfied or critical review entries'],
       ['Open Risks', openRisks, 'Open / in progress / escalated risks'],
-      ['Avg Review Completion', `${avgCompletion}%`, `${overdueTasks} overdue task${overdueTasks === 1 ? '' : 's'}`]
+      ['Location Completion', `${completionRate}%`, 'Done On-Time + Done Late'],
+      ['Avg Review Quality', `${avgCompletion}%`, `${overdueTasks} overdue task${overdueTasks === 1 ? '' : 's'}`]
     ];
     $('csKpis').innerHTML = items.map(([label, value, sub]) => `<article class="cs-kpi-card"><div class="cs-kpi-label">${esc(label)}</div><div class="cs-kpi-value">${esc(value)}</div><div class="cs-kpi-sub">${esc(sub)}</div></article>`).join('');
   }
@@ -426,6 +638,7 @@
           ${healthChip(score)}
           <span class="cs-chip cs-chip--blue">${esc(status)}</span>
           <span class="cs-chip cs-chip--violet">${esc(computeEffort(company))}</span>
+          <span class="cs-chip">${esc(groupLabelForCompany(company))}</span>
         </div>
         <div class="cs-kpi-sub">Last review: ${fmtDate(latest.review_date)} · Last activity: ${fmtDate(latestDate(activityRows(company), ['timestamp','created_at']))}</div>
       </button>`;
@@ -449,14 +662,16 @@
         <div class="cs-detail-title"><h3>${esc(companyName(company))}</h3><p>${esc(company.city || '')}${company.city && company.country ? ', ' : ''}${esc(company.country || '')} · ${esc(profile.lifecycle_stage || status)}</p></div>
         <div class="cs-health-ring"><div class="cs-health-score">${score}</div><div class="cs-health-label">${esc(healthLabel(score))}</div></div>
       </div>
-      <div class="cs-tabs">${['overview','pulse','activity','tasks','risks','onboarding','renewals','qbr','contacts','timeline'].map(tab => `<button class="cs-tab-btn ${STATE.activeTab === tab ? 'is-active' : ''}" type="button" data-cs-tab="${tab}">${tabLabel(tab)}</button>`).join('')}</div>
+      <div class="cs-tabs">${['overview','groups','completion','pulse','activity','tasks','risks','onboarding','renewals','qbr','contacts','timeline'].map(tab => `<button class="cs-tab-btn ${STATE.activeTab === tab ? 'is-active' : ''}" type="button" data-cs-tab="${tab}">${tabLabel(tab)}</button>`).join('')}</div>
       <div id="csTabPanel" class="cs-tab-panel is-active">${renderActivePanel(company)}</div>`;
     host.querySelectorAll('[data-cs-tab]').forEach(btn => btn.addEventListener('click', () => { STATE.activeTab = btn.dataset.csTab || 'overview'; renderDetail(); }));
   }
 
-  function tabLabel(tab) { return ({ overview:'Overview', pulse:'Pulse Review', activity:'Activity', tasks:'Tasks', risks:'Risks', onboarding:'Onboarding', renewals:'Renewals', qbr:'QBR', contacts:'Contacts', timeline:'Timeline' }[tab] || tab); }
+  function tabLabel(tab) { return ({ overview:'Overview', groups:'Groups', completion:'Completion', pulse:'Pulse Review', activity:'Activity', tasks:'Tasks', risks:'Risks', onboarding:'Onboarding', renewals:'Renewals', qbr:'QBR', contacts:'Contacts', timeline:'Timeline' }[tab] || tab); }
   function renderActivePanel(company) {
     switch (STATE.activeTab) {
+      case 'groups': return renderGroups(company);
+      case 'completion': return renderCompletion(company);
       case 'pulse': return renderPulse(company);
       case 'activity': return renderActivity(company);
       case 'tasks': return renderTasks(company);
@@ -479,10 +694,12 @@
       ['Client Status', profile.client_status || mapCompanyStatus(company.company_status)],
       ['Lifecycle Stage', profile.lifecycle_stage || 'Live'],
       ['Assigned CSM', profile.assigned_csm_name || '—'],
+      ['Client Group(s)', groupLabelForCompany(company)],
       ['Satisfaction', latestReview.satisfaction_level || profile.manual_sentiment || 'Unknown'],
       ['Adoption Level', latestReview.adoption_level || profile.adoption_level || 'Unknown'],
       ['Relationship', latestReview.relationship_status || profile.relationship_status || 'Normal'],
       ['CS Effort Level', computeEffort(company)],
+      ['Location Completion', latestCompletionSummary(company)],
       ['Last Activity', fmtDate(latestDate(activityRows(company), ['timestamp','created_at']))],
       ['Next Follow-up', fmtDate(latestReview.next_follow_up_date || firstFutureDate(taskRows(company), ['due_date']))],
       ['Next Renewal', fmtDate(nextRenewal)],
@@ -506,10 +723,65 @@
     return `<div class="cs-info-box"><div class="cs-info-value">${missing.map(m => `• ${esc(m)}`).join('<br>')}</div></div>`;
   }
 
+  function latestCompletionSummary(company) {
+    const rows = aggregateCompletionRows(latestCompletionPeriodRows(company));
+    if (!rows.length) return 'No data';
+    const totals = rows.reduce((acc, row) => { acc.done += completionCount(row); acc.total += completionTotal(row); return acc; }, { done: 0, total: 0 });
+    const pct = totals.total ? (totals.done / totals.total) * 100 : 0;
+    return `${totals.done}/${totals.total} (${pct.toFixed(2)}%)`;
+  }
+
+
+  function renderGroups(company) {
+    const groups = groupsForCompany(company);
+    const currentClient = companyName(company);
+    const summary = groups.length
+      ? groups.map(group => {
+          const members = groupMemberCompanies(group);
+          return `<article class="cs-info-box"><div class="cs-info-label">${esc(groupName(group))}</div><div class="cs-info-value">${members.length} signed client${members.length === 1 ? '' : 's'}</div><div class="cs-kpi-sub">${esc(group.description || group.group_code || 'CS parent group')}</div></article>`;
+        }).join('')
+      : `<div class="cs-empty">${esc(currentClient)} is not assigned to a CS client group yet.</div>`;
+    const memberRows = [];
+    groups.forEach(group => {
+      groupMemberCompanies(group).forEach(member => {
+        const score = computeHealth(member);
+        memberRows.push([groupName(group), companyName(member), healthLabel(score) + ' · ' + score, computeEffort(member), latestCompletionSummary(member)]);
+      });
+    });
+    return `<div class="cs-section-title"><div><h4>Client Groups</h4><div class="cs-kpi-sub">Use groups to manage several signed-agreement companies under one CS parent account.</div></div><div><button class="btn sm" type="button" data-cs-action="group">+ New Group</button> <button class="btn ghost sm" type="button" data-cs-action="group-member">+ Add Current Client</button></div></div>
+      <div class="cs-info-grid">${summary}</div>
+      <div style="margin-top:14px;" class="cs-section-title"><h4>Companies in Same Group</h4></div>
+      ${memberRows.length ? table(['Group','Client Company','Health','CS Effort','Completion'], memberRows) : '<div class="cs-empty">No grouped companies to show yet.</div>'}`;
+  }
+
+  function renderCompletion(company) {
+    const locations = getClientLocations(company);
+    const records = aggregateCompletionRows(latestCompletionPeriodRows(company));
+    const byLocation = new Map(records.map(row => [normalize(row.location_name), row]));
+    const rows = locations.map(location => byLocation.get(normalize(location)) || { location_name: location, done_on_time: 0, done_late: 0, partially_done: 0, missed: 0 });
+    const period = records[0] ? `${records[0].review_type || 'weekly'} · ${fmtDate(records[0].period_start)} → ${fmtDate(records[0].period_end)}` : 'No period saved yet';
+    const tableRows = rows.map(row => {
+      const total = completionTotal(row);
+      const doneOnTime = safeNumber(row.done_on_time);
+      const doneLate = safeNumber(row.done_late);
+      const doneTotal = doneOnTime + doneLate;
+      return [
+        row.location_name,
+        countPct(doneOnTime, total),
+        countPct(doneLate, total),
+        countPct(doneTotal, total),
+        countPct(row.partially_done, total),
+        countPct(row.missed, total)
+      ];
+    });
+    return `<div class="cs-section-title"><div><h4>Location Completion</h4><div class="cs-kpi-sub">Completion = Done On-Time + Done Late. Current view: ${esc(period)}</div></div><button class="btn sm" type="button" data-cs-action="completion">+ Add Completion</button></div>
+      ${table(['Location','Done On-Time','Done Late','Completion','Partially Done','Missed'], tableRows)}`;
+  }
+
   function renderPulse(company) {
     const rows = reviewRows(company);
     return `<div class="cs-section-title"><h4>Weekly / Monthly Client Pulse Reviews</h4><button class="btn sm" type="button" data-cs-action="review">+ New Review</button></div>
-      ${rows.length ? table(['Type','Period','Satisfaction','Effort','Completion','Status','Next Action'], rows.map(r => [r.review_type, `${fmtDate(r.review_period_start)} → ${fmtDate(r.review_period_end)}`, r.satisfaction_level, r.cs_effort_level, progress(r.review_completion_percent), r.status, r.next_action || '—'])) : '<div class="cs-empty">No pulse reviews yet. Add weekly/monthly reviews to monitor satisfaction and CS effort.</div>'}`;
+      ${rows.length ? table(['Type','Period','Satisfaction','Effort','Review Quality','Status','Next Action'], rows.map(r => [r.review_type, `${fmtDate(r.review_period_start)} → ${fmtDate(r.review_period_end)}`, r.satisfaction_level, r.cs_effort_level, progress(r.review_completion_percent), r.status, r.next_action || '—'])) : '<div class="cs-empty">No pulse reviews yet. Add weekly/monthly reviews to monitor satisfaction and CS effort.</div>'}`;
   }
 
   function renderActivity(company) {
@@ -567,6 +839,9 @@
   document.addEventListener('click', event => {
     const action = event.target?.closest?.('[data-cs-action]')?.dataset?.csAction;
     if (!action) return;
+    if (action === 'completion') openCompletionForm();
+    if (action === 'group') openGroupForm();
+    if (action === 'group-member') openGroupMemberForm();
     if (action === 'review') openReviewForm();
     if (action === 'task') openTaskForm();
     if (action === 'risk') openRiskForm();
@@ -604,6 +879,132 @@
     return [s.toISOString().slice(0,10), e.toISOString().slice(0,10)];
   }
 
+
+  function openGroupForm() {
+    openModal('New CS Client Group', `<form class="cs-form" id="csGroupForm">
+      <div class="cs-form-grid">
+        <div class="cs-form-field"><label>Group Name</label><input name="group_name" class="input" type="text" placeholder="e.g. Kcal Group" required /></div>
+        <div class="cs-form-field"><label>Group Code</label><input name="group_code" class="input" type="text" placeholder="Optional internal code" /></div>
+        <div class="cs-form-field"><label>Owner / CSM</label><input name="owner_name" class="input" type="text" placeholder="Optional" /></div>
+        ${selectField('status','Status',['Active','Watch','At Risk','Archived'],'Active')}
+        <div class="cs-form-field cs-form-field--full"><label>Description</label><textarea name="description" class="input" placeholder="Why these companies are grouped together"></textarea></div>
+      </div>
+      <div class="cs-modal-actions"><button type="button" class="btn ghost" onclick="document.getElementById('csModalClose').click()">Cancel</button><button type="submit" class="btn primary">Save Group</button></div>
+    </form>`, async form => {
+      const payload = Object.fromEntries(new FormData(form).entries());
+      Object.keys(payload).forEach(k => { if (payload[k] === '') payload[k] = null; });
+      const { error } = await supabase().from(TABLES.groups).insert(payload);
+      if (error) { toast(`Unable to save group: ${error.message}`); return; }
+      closeModal(); await loadData(); toast('CS client group saved.');
+    });
+  }
+
+  function openGroupMemberForm() {
+    const company = getSelectedCompany();
+    const groups = activeGroups();
+    if (!groups.length) { openGroupForm(); toast('Create a CS client group first, then add companies to it.'); return; }
+    const opts = groups.map(group => `<option value="${attr(groupId(group))}">${esc(groupName(group))}</option>`).join('');
+    openModal('Add Current Client to Group', `<form class="cs-form" id="csGroupMemberForm">
+      <div class="cs-form-grid">${selectedCompanyInput()}
+        <div class="cs-form-field"><label>Client Group</label><select name="group_id" class="select" required>${opts}</select></div>
+        <div class="cs-form-field"><label>Member Role</label><input name="member_role" class="input" type="text" placeholder="e.g. Parent, Branch, Related Brand" /></div>
+        <div class="cs-form-field cs-form-field--full"><label>Notes</label><textarea name="notes" class="input" placeholder="Optional grouping notes"></textarea></div>
+      </div>
+      <div class="cs-modal-actions"><button type="button" class="btn ghost" onclick="document.getElementById('csModalClose').click()">Cancel</button><button type="submit" class="btn primary">Add to Group</button></div>
+    </form>`, async form => {
+      const fd = new FormData(form);
+      const group = groupById(fd.get('group_id')) || {};
+      const payload = {
+        group_id: fd.get('group_id'),
+        company_id: companyId(company),
+        group_name_snapshot: groupName(group),
+        company_name_snapshot: companyName(company),
+        member_role: fd.get('member_role') || null,
+        notes: fd.get('notes') || null
+      };
+      const { error } = await supabase().from(TABLES.groupMembers).upsert(payload, { onConflict: 'group_id,company_id' });
+      if (error) { toast(`Unable to add client to group: ${error.message}`); return; }
+      closeModal(); await loadData(); toast('Client added to CS group.');
+    });
+  }
+
+  function openCompletionForm() {
+    const [periodStart, periodEnd] = periodDefaults('weekly');
+    const company = getSelectedCompany();
+    const locations = getClientLocations(company);
+    const rowsHtml = locations.map((location, index) => `
+      <tr class="cs-completion-input-row" data-location-name="${attr(location)}">
+        <td>${esc(location)}</td>
+        <td><input class="input" type="number" min="0" step="1" data-completion-field="done_on_time" value="0" /></td>
+        <td><input class="input" type="number" min="0" step="1" data-completion-field="done_late" value="0" /></td>
+        <td><input class="input" type="number" min="0" step="1" data-completion-field="partially_done" value="0" /></td>
+        <td><input class="input" type="number" min="0" step="1" data-completion-field="missed" value="0" /></td>
+        <td class="cs-completion-preview">0 (0.00%)</td>
+      </tr>`).join('');
+    openModal('Add Location Completion', `<form class="cs-form" id="csCompletionForm">
+      <div class="cs-form-grid">${selectedCompanyInput()}
+        <div class="cs-form-field"><label>Review Type</label><select name="review_type" class="select"><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></div>
+        <div class="cs-form-field"><label>Period Start</label><input name="period_start" class="input" type="date" value="${periodStart}" required /></div>
+        <div class="cs-form-field"><label>Period End</label><input name="period_end" class="input" type="date" value="${periodEnd}" required /></div>
+        <div class="cs-form-field"><label>Source / Notes</label><input name="source_note" class="input" type="text" placeholder="e.g. weekly checklist report" /></div>
+      </div>
+      <div class="cs-section-title"><h4>Location Result Counts</h4><span class="cs-chip">Completion = Done On-Time + Done Late</span></div>
+      <div class="cs-table-wrap"><table class="cs-table cs-edit-table"><thead><tr><th>Location</th><th>Done On-Time</th><th>Done Late</th><th>Partially Done</th><th>Missed</th><th>Completion</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>
+      <div class="cs-modal-actions"><button type="button" class="btn ghost" onclick="document.getElementById('csModalClose').click()">Cancel</button><button type="submit" class="btn primary">Save Completion</button></div>
+    </form>`, saveCompletion);
+    const form = $('csCompletionForm');
+    form?.review_type?.addEventListener('change', () => {
+      const [s,e] = periodDefaults(form.review_type.value);
+      form.period_start.value = s;
+      form.period_end.value = e;
+    });
+    form?.addEventListener('input', () => refreshCompletionRows(form));
+    refreshCompletionRows(form);
+  }
+
+  function refreshCompletionRows(form) {
+    form?.querySelectorAll('.cs-completion-input-row').forEach(row => {
+      const data = readCompletionInputRow(row);
+      const total = data.done_on_time + data.done_late + data.partially_done + data.missed;
+      const done = data.done_on_time + data.done_late;
+      const preview = row.querySelector('.cs-completion-preview');
+      if (preview) preview.textContent = countPct(done, total);
+    });
+  }
+
+  function readCompletionInputRow(row) {
+    const out = { location_name: row.dataset.locationName || '', done_on_time: 0, done_late: 0, partially_done: 0, missed: 0 };
+    row.querySelectorAll('[data-completion-field]').forEach(input => {
+      out[input.dataset.completionField] = Math.max(0, Math.round(safeNumber(input.value)));
+    });
+    return out;
+  }
+
+  async function saveCompletion(form) {
+    const fd = new FormData(form);
+    const company = getSelectedCompany();
+    const payloads = Array.from(form.querySelectorAll('.cs-completion-input-row')).map(row => {
+      const data = readCompletionInputRow(row);
+      return {
+        company_id: companyId(company),
+        company_name_snapshot: companyName(company),
+        location_name: data.location_name,
+        review_type: fd.get('review_type') || 'weekly',
+        period_start: fd.get('period_start'),
+        period_end: fd.get('period_end'),
+        done_on_time: data.done_on_time,
+        done_late: data.done_late,
+        partially_done: data.partially_done,
+        missed: data.missed,
+        source_note: fd.get('source_note') || null
+      };
+    }).filter(row => row.location_name);
+    if (!payloads.length) { toast('No locations found to save completion.'); return; }
+    const { error } = await supabase().from(TABLES.completions).upsert(payloads, { onConflict: 'company_id,location_name,review_type,period_start,period_end' });
+    if (error) { toast(`Unable to save completion: ${error.message}`); return; }
+    closeModal(); await loadData(); toast('Location completion saved.');
+  }
+
   function openReviewForm() {
     const [weekStart, weekEnd] = periodDefaults('weekly');
     const questions = STATE.templateQuestions.weekly || QUESTION_BANK.weekly;
@@ -625,7 +1026,7 @@
         <div class="cs-form-field"><label>Next Action</label><input name="next_action" class="input" type="text" placeholder="e.g. Schedule training" /></div>
         <div class="cs-form-field"><label>Next Follow-up Date</label><input name="next_follow_up_date" class="input" type="date" /></div>
       </div>
-      <div class="cs-section-title"><h4>Review Questions</h4><span id="csCompletionPreview" class="cs-chip">Completion 0%</span></div>
+      <div class="cs-section-title"><h4>Review Questions</h4><span id="csCompletionPreview" class="cs-chip">Review Quality 0%</span></div>
       <div id="csQuestionGrid" class="cs-question-grid">${renderQuestionInputs(questions)}</div>
       <div class="cs-modal-actions"><button type="button" class="btn ghost" onclick="document.getElementById('csModalClose').click()">Cancel</button><button type="submit" class="btn primary">Save Review</button></div>
     </form>`, saveReview);
@@ -642,7 +1043,7 @@
     refreshCompletionPreview(form);
   }
 
-  function refreshCompletionPreview(form) { const pct = calculateCompletion(form); const el = $('csCompletionPreview'); if (el) el.textContent = `Completion ${pct}%`; }
+  function refreshCompletionPreview(form) { const pct = calculateCompletion(form); const el = $('csCompletionPreview'); if (el) el.textContent = `Review Quality ${pct}%`; }
   function renderQuestionInputs(questions) { return questions.map(([key,label]) => `<label class="cs-question-row"><span>${esc(label)}</span><select class="select" data-review-answer data-question-key="${attr(key)}" data-question-label="${attr(label)}"><option value="">Select</option><option>Yes</option><option>No</option><option>N/A</option><option>Unknown</option><option>Partially</option></select></label>`).join(''); }
 
   function selectField(name, label, options, selected) {

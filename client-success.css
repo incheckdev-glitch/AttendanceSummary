@@ -97,3 +97,7 @@
 body.dark .client-success-module, .dark .client-success-module { --cs-bg:#020617; --cs-card:#0f172a; --cs-border:rgba(148,163,184,.22); --cs-text:#e5e7eb; --cs-muted:#94a3b8; --cs-soft:#111827; }
 body.dark .cs-client-card, body.dark .cs-info-box, body.dark .cs-modal-card, body.dark .cs-table td, body.dark .cs-health-ring, body.dark .cs-timeline-item { background:#0f172a; color:#e5e7eb; }
 body.dark .cs-table th, body.dark .cs-empty { background:#111827; }
+
+.cs-edit-table input.input { min-width: 92px; padding: 8px 9px; }
+.cs-completion-preview { font-weight: 900; color: var(--cs-text); white-space: nowrap; }
+.cs-table td:nth-child(2), .cs-table td:nth-child(3), .cs-table td:nth-child(4), .cs-table td:nth-child(5), .cs-table td:nth-child(6) { white-space: nowrap; }

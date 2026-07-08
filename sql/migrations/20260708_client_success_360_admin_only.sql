@@ -88,6 +88,29 @@ create table if not exists public.cs_client_review_answers (
   unique(review_id, question_key)
 );
 
+
+create table if not exists public.cs_location_completions (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null,
+  company_name_snapshot text,
+  location_name text not null,
+  review_type text not null default 'weekly' check (review_type in ('weekly','monthly')),
+  period_start date not null,
+  period_end date not null,
+  done_on_time integer not null default 0 check (done_on_time >= 0),
+  done_late integer not null default 0 check (done_late >= 0),
+  partially_done integer not null default 0 check (partially_done >= 0),
+  missed integer not null default 0 check (missed >= 0),
+  source_note text,
+  created_by uuid default auth.uid(),
+  updated_by uuid default auth.uid(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(company_id, location_name, review_type, period_start, period_end)
+);
+
+create index if not exists cs_location_completions_company_period_idx on public.cs_location_completions(company_id, review_type, period_start, period_end);
+
 create table if not exists public.cs_tasks (
   id uuid primary key default gen_random_uuid(),
   company_id uuid not null,
@@ -172,6 +195,44 @@ create table if not exists public.cs_client_contacts (
 
 create index if not exists cs_client_contacts_company_idx on public.cs_client_contacts(company_id, role);
 
+
+create table if not exists public.cs_client_groups (
+  id uuid primary key default gen_random_uuid(),
+  group_name text not null,
+  group_code text,
+  owner_user_id uuid,
+  owner_name text,
+  owner_email text,
+  status text not null default 'Active' check (status in ('Active','Watch','At Risk','Archived')),
+  description text,
+  created_by uuid default auth.uid(),
+  updated_by uuid default auth.uid(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(group_name)
+);
+
+create index if not exists cs_client_groups_status_idx on public.cs_client_groups(status, group_name);
+
+create table if not exists public.cs_client_group_members (
+  id uuid primary key default gen_random_uuid(),
+  group_id uuid not null references public.cs_client_groups(id) on delete cascade,
+  company_id uuid not null,
+  group_name_snapshot text,
+  company_name_snapshot text,
+  member_role text,
+  notes text,
+  created_by uuid default auth.uid(),
+  updated_by uuid default auth.uid(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(group_id, company_id)
+);
+
+create index if not exists cs_client_group_members_group_idx on public.cs_client_group_members(group_id);
+create index if not exists cs_client_group_members_company_idx on public.cs_client_group_members(company_id);
+
+
 create table if not exists public.cs_review_templates (
   id uuid primary key default gen_random_uuid(),
   review_type text not null unique check (review_type in ('weekly','monthly')),
@@ -247,7 +308,7 @@ $$;
 do $$
 declare t text;
 begin
-  foreach t in array array['cs_client_profiles','cs_client_reviews','cs_client_review_answers','cs_tasks','cs_risks','cs_qbrs','cs_client_contacts','cs_review_templates','cs_review_template_questions'] loop
+  foreach t in array array['cs_client_profiles','cs_client_reviews','cs_client_review_answers','cs_location_completions','cs_tasks','cs_risks','cs_qbrs','cs_client_contacts','cs_client_groups','cs_client_group_members','cs_review_templates','cs_review_template_questions'] loop
     execute format('drop trigger if exists %I on public.%I', 'set_' || t || '_updated_at', t);
     execute format('create trigger %I before update on public.%I for each row execute function public.set_client_success_updated_at()', 'set_' || t || '_updated_at', t);
   end loop;
@@ -256,7 +317,7 @@ end $$;
 do $$
 declare t text;
 begin
-  foreach t in array array['cs_client_profiles','cs_client_reviews','cs_client_review_answers','cs_tasks','cs_risks','cs_qbrs','cs_client_contacts','cs_review_templates','cs_review_template_questions'] loop
+  foreach t in array array['cs_client_profiles','cs_client_reviews','cs_client_review_answers','cs_location_completions','cs_tasks','cs_risks','cs_qbrs','cs_client_contacts','cs_client_groups','cs_client_group_members','cs_review_templates','cs_review_template_questions'] loop
     execute format('alter table public.%I enable row level security', t);
     execute format('drop policy if exists %I on public.%I', t || '_admin_select', t);
     execute format('drop policy if exists %I on public.%I', t || '_admin_all', t);
@@ -268,17 +329,20 @@ end $$;
 grant select, insert, update, delete on public.cs_client_profiles to authenticated;
 grant select, insert, update, delete on public.cs_client_reviews to authenticated;
 grant select, insert, update, delete on public.cs_client_review_answers to authenticated;
+grant select, insert, update, delete on public.cs_location_completions to authenticated;
 grant select, insert, update, delete on public.cs_tasks to authenticated;
 grant select, insert, update, delete on public.cs_risks to authenticated;
 grant select, insert, update, delete on public.cs_qbrs to authenticated;
 grant select, insert, update, delete on public.cs_client_contacts to authenticated;
+grant select, insert, update, delete on public.cs_client_groups to authenticated;
+grant select, insert, update, delete on public.cs_client_group_members to authenticated;
 grant select, insert, update, delete on public.cs_review_templates to authenticated;
 grant select, insert, update, delete on public.cs_review_template_questions to authenticated;
 
 -- Runtime permission matrix seed: Admin only.
 do $$
 declare
-  resources text[] := array['client_success','cs_client_profiles','cs_client_reviews','cs_tasks','cs_risks','cs_qbrs','cs_client_contacts','cs_review_templates','cs_review_template_questions'];
+  resources text[] := array['client_success','cs_client_profiles','cs_client_reviews','cs_location_completions','cs_tasks','cs_risks','cs_qbrs','cs_client_contacts','cs_client_groups','cs_client_group_members','cs_review_templates','cs_review_template_questions'];
   actions text[] := array['view','list','get','create','update','delete','manage','export'];
   r text;
   a text;
