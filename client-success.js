@@ -49,7 +49,7 @@
     filters: { search: '', status: 'All', health: 'All', effort: 'All', group: 'All' },
     tablesMissing: new Set(),
     rows: {
-      companies: [], allCompanies: [], profiles: [], reviews: [], tasks: [], risks: [], qbrs: [], contacts: [], mainContacts: [], activities: [], onboarding: [], agreements: [], agreementItems: [], completions: [], tickets: [], groups: [], groupMembers: []
+      companies: [], allCompanies: [], profiles: [], reviews: [], tasks: [], risks: [], qbrs: [], contacts: [], mainContacts: [], activities: [], onboarding: [], agreements: [], agreementItems: [], invoices: [], invoiceItems: [], completions: [], tickets: [], groups: [], groupMembers: []
     },
     templateQuestions: { weekly: [], monthly: [] }
   };
@@ -270,23 +270,123 @@
   }
 
   function locationNameFromRow(row = {}) {
-    return String(row.location_name || row.location || row.branch_name || row.store_name || row.site_name || row.outlet_name || row.locationName || row.branchName || '').trim();
+    return String(row.location_name || row.location || row.branch_name || row.store_name || row.site_name || row.outlet_name || row.locationName || row.branchName || row.site || row.branch || row.store || '').trim();
+  }
+
+  function serviceStartFromRow(row = {}) {
+    return String(row.service_start_date || row.serviceStartDate || row.start_date || row.startDate || row.agreement_start_date || row.agreementStartDate || row.start || '').slice(0, 10);
+  }
+
+  function serviceEndFromRow(row = {}) {
+    return String(row.service_end_date || row.serviceEndDate || row.end_date || row.endDate || row.agreement_end_date || row.agreementEndDate || row.end || '').slice(0, 10);
+  }
+
+  function timestampFromRow(row = {}) {
+    return String(row.updated_at || row.modified_at || row.created_at || row.createdAt || '').trim();
+  }
+
+  function rowRankTime(row = {}) {
+    const end = serviceEndFromRow(row);
+    const start = serviceStartFromRow(row);
+    const updated = timestampFromRow(row);
+    return [end || '', start || '', updated || ''].join('|');
+  }
+
+  function isPseudoAllLocation(value) {
+    const key = normalize(value);
+    return ['all location','all locations','all branches','all outlets','all stores','all sites'].includes(key);
+  }
+
+  function isAnnualSaasItem(row = {}) {
+    const text = normalize([row.section, row.section_name, row.category, row.item_type, row.product_type, row.item_name, row.itemName, row.license, row.module_name, row.product_name, row.service_name, row.description].join(' '));
+    if (!text) return false;
+    if (text.includes('one time') || text.includes('one-time') || text.includes('setup') || text.includes('hardware')) return false;
+    return text.includes('annual') || text.includes('saas') || text.includes('license') || text.includes('subscription') || text.includes('basic');
+  }
+
+  function isCurrentServiceRow(row = {}) {
+    const start = serviceStartFromRow(row);
+    const end = serviceEndFromRow(row);
+    const today = isoToday();
+    if (start && start > today) return false;
+    if (end && end < today) return false;
+    return true;
+  }
+
+  function isActiveInvoice(row = {}) {
+    const status = String(row.status || row.invoice_status || row.state || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+    if (!status) return true;
+    return !['draft','void','voided','cancelled','canceled','failed','error','deleted'].includes(status);
+  }
+
+  function invoiceRows(company) { return rowsForCompany('invoices', company); }
+
+  function invoiceKeys(row = {}) {
+    return [row.id, row.invoice_id, row.invoice_uuid, row.invoice_no, row.invoice_number, row.number]
+      .map(v => String(v || '').trim())
+      .filter(Boolean);
+  }
+
+  function invoiceItemRows(company) {
+    const invoices = invoiceRows(company).filter(isActiveInvoice);
+    const keys = new Set();
+    invoices.forEach(invoice => invoiceKeys(invoice).forEach(k => keys.add(k)));
+    return (STATE.rows.invoiceItems || []).filter(item => {
+      const itemCompanyId = String(item.company_id || item.companyId || item.company_uuid || item.client_id || item.customer_id || '').trim();
+      if (itemCompanyId && itemCompanyId === companyId(company)) return true;
+      const itemName = normalize(item.company_name || item.client_name || item.customer_name || item.customer_legal_name || item.client || '');
+      if (itemName && itemName === normalize(companyName(company))) return true;
+      const itemKeys = [item.invoice_id, item.invoice_uuid, item.invoice_no, item.invoice_number, item.parent_id, item.parent_number]
+        .map(v => String(v || '').trim())
+        .filter(Boolean);
+      return itemKeys.some(k => keys.has(k));
+    });
+  }
+
+  function addLatestLocationRow(map, company, row, source) {
+    const name = locationNameFromRow(row);
+    if (!name || isPseudoAllLocation(name)) return;
+    const key = normalize(name);
+    const candidate = {
+      company_id: companyId(company),
+      company_name: companyName(company),
+      location_name: name,
+      service_start_date: serviceStartFromRow(row),
+      service_end_date: serviceEndFromRow(row),
+      source,
+      rank: rowRankTime(row)
+    };
+    const existing = map.get(key);
+    if (!existing || candidate.rank >= existing.rank) map.set(key, candidate);
+  }
+
+  function getClientLocationRows(company) {
+    const map = new Map();
+
+    // Prefer actual invoiced Annual SaaS location rows because they represent active client locations.
+    invoiceItemRows(company)
+      .filter(row => isAnnualSaasItem(row) && isCurrentServiceRow(row))
+      .forEach(row => addLatestLocationRow(map, company, row, 'Invoice Item'));
+
+    // Fallback to latest signed agreement rows when invoice_items are not available yet.
+    if (!map.size) {
+      agreementItemRows(company)
+        .filter(row => isAnnualSaasItem(row) && isCurrentServiceRow(row))
+        .forEach(row => addLatestLocationRow(map, company, row, 'Agreement Item'));
+    }
+
+    // Last fallback keeps older data visible, but still removes duplicate/pseudo “All locations”.
+    if (!map.size) {
+      onboardingRows(company).forEach(row => addLatestLocationRow(map, company, row, 'Onboarding'));
+      completionRows(company).forEach(row => addLatestLocationRow(map, company, row, 'Completion History'));
+    }
+
+    if (!map.size) map.set(normalize(companyName(company)), { company_id: companyId(company), company_name: companyName(company), location_name: companyName(company), service_start_date: '', service_end_date: '', source: 'Client', rank: '' });
+    return Array.from(map.values()).sort((a,b) => a.location_name.localeCompare(b.location_name));
   }
 
   function getClientLocations(company) {
-    const map = new Map();
-    const add = value => {
-      const name = String(value || '').trim();
-      if (!name) return;
-      const key = normalize(name);
-      if (!map.has(key)) map.set(key, name);
-    };
-    agreementItemRows(company).forEach(row => add(locationNameFromRow(row)));
-    agreementRows(company).filter(isSignedAgreement).forEach(row => add(locationNameFromRow(row)));
-    onboardingRows(company).forEach(row => add(locationNameFromRow(row)));
-    completionRows(company).forEach(row => add(locationNameFromRow(row)));
-    if (!map.size) add(companyName(company));
-    return Array.from(map.values()).sort((a,b) => a.localeCompare(b));
+    return getClientLocationRows(company).map(row => row.location_name);
   }
 
 
@@ -492,7 +592,7 @@
     const client = supabase();
     if (!client) { renderError('Supabase client is not available.'); return; }
 
-    const [allCompanies, profiles, reviews, tasks, risks, qbrs, contacts, mainContacts, activities, onboarding, agreements, agreementItems, completions, tickets, groups, groupMembers, templateQuestions] = await Promise.all([
+    const [allCompanies, profiles, reviews, tasks, risks, qbrs, contacts, mainContacts, activities, onboarding, agreements, agreementItems, invoices, invoiceItems, completions, tickets, groups, groupMembers, templateQuestions] = await Promise.all([
       fetchTable('companies', '*', { column: 'company_name', ascending: true }, 1500),
       fetchTable(TABLES.profiles),
       fetchTable(TABLES.reviews),
@@ -505,6 +605,8 @@
       fetchTable('operations_onboarding', '*', { column: 'created_at', ascending: false }, 1500),
       fetchTable('agreements', '*', { column: 'created_at', ascending: false }, 1500),
       fetchTable('agreement_items', '*', { column: 'created_at', ascending: false }, 3000),
+      fetchTable('invoices', '*', { column: 'created_at', ascending: false }, 2000),
+      fetchTable('invoice_items', '*', { column: 'created_at', ascending: false }, 5000),
       fetchTable(TABLES.completions, '*', { column: 'period_end', ascending: false }, 3000),
       fetchTable('tickets', '*', { column: 'created_at', ascending: false }, 1500),
       fetchTable(TABLES.groups, '*', { column: 'group_name', ascending: true }, 1000),
@@ -513,7 +615,7 @@
     ]);
 
     const companies = toSignedClientCompanies(allCompanies, agreements);
-    STATE.rows = { companies, allCompanies, profiles, reviews, tasks, risks, qbrs, contacts, mainContacts, activities, onboarding, agreements, agreementItems, completions, tickets, groups, groupMembers };
+    STATE.rows = { companies, allCompanies, profiles, reviews, tasks, risks, qbrs, contacts, mainContacts, activities, onboarding, agreements, agreementItems, invoices, invoiceItems, completions, tickets, groups, groupMembers };
     STATE.templateQuestions.weekly = templateQuestions.filter(q => q.cs_review_templates?.review_type === 'weekly').map(q => [q.question_key, q.question_label]);
     STATE.templateQuestions.monthly = templateQuestions.filter(q => q.cs_review_templates?.review_type === 'monthly').map(q => [q.question_key, q.question_label]);
     if (!STATE.templateQuestions.weekly.length) STATE.templateQuestions.weekly = QUESTION_BANK.weekly;
@@ -1013,11 +1115,14 @@
   }
 
   function currentClientCompletionTargets(company) {
-    return getClientLocations(company).map(location => ({
+    return getClientLocationRows(company).map(location => ({
       company_id: companyId(company),
       company_name: companyName(company),
-      location_name: location
-    })).filter(target => target.company_id && target.location_name);
+      location_name: location.location_name,
+      service_start_date: location.service_start_date,
+      service_end_date: location.service_end_date,
+      source: location.source
+    })).filter(target => target.company_id && target.location_name && !isPseudoAllLocation(target.location_name));
   }
 
   function groupCompletionTargets(group) {
@@ -1117,11 +1222,14 @@
       </div>
 
       <div id="csGroupCompletionEntry" style="display:none;">
-        <div class="cs-section-title"><h4>Group Result Counts</h4><span class="cs-chip">One entry applies to every group location</span></div>
+        <div class="cs-section-title"><h4>Group Result Counts</h4><span class="cs-chip">Auto-calculated from all location rows below</span></div>
         <div class="cs-table-wrap"><table class="cs-table cs-edit-table"><thead><tr><th>Apply To</th><th>Done On-Time</th><th>Done Late</th><th>Partially Done</th><th>Missed</th><th>Completion</th></tr></thead><tbody>
           <tr class="cs-group-completion-row">
             <td>All Group Locations</td>
-            ${completionInputFieldsHtml('group')}
+            <td data-group-total-field="done_on_time">0</td>
+            <td data-group-total-field="done_late">0</td>
+            <td data-group-total-field="partially_done">0</td>
+            <td data-group-total-field="missed">0</td>
             <td class="cs-group-completion-preview">0 (0.00%)</td>
           </tr>
         </tbody></table></div>
@@ -1157,36 +1265,27 @@
     if (groupField) groupField.style.display = isGroup ? '' : 'none';
     if (groupEntry) groupEntry.style.display = isGroup ? '' : 'none';
     if (hint) hint.textContent = isGroup
-      ? 'For group scope, enter the result once. Every company/location line below is auto-calculated and saved with the same counts.'
+      ? 'For group scope, enter each company/location below one time from the same screen. The All Group Locations line above is auto-calculated from all entered rows.'
       : 'For current client scope, you can edit each location separately.';
-    const sharedData = isGroup ? readCompletionFields(form, '[data-group-completion-field]') : null;
-    if (body) body.innerHTML = renderCompletionTargetsTable(targets, sharedData, !isGroup);
+    if (body) body.innerHTML = renderCompletionTargetsTable(targets, null, true);
     refreshCompletionRows(form);
   }
 
   function refreshCompletionRows(form) {
-    const isGroup = String(form?.completion_scope?.value || 'client') === 'group';
-    const sharedData = readCompletionFields(form, '[data-group-completion-field]');
-    const groupPreview = form?.querySelector('.cs-group-completion-preview');
-    if (groupPreview) groupPreview.textContent = completionPreviewText(sharedData);
-
-    if (isGroup) {
-      form?.querySelectorAll('.cs-completion-preview-row').forEach(row => {
-        ['done_on_time','done_late','partially_done','missed'].forEach(field => {
-          const cell = row.querySelector(`[data-preview-field="${field}"]`);
-          if (cell) cell.textContent = formatDecimal(sharedData[field]);
-        });
-        const preview = row.querySelector('.cs-completion-preview');
-        if (preview) preview.textContent = completionPreviewText(sharedData);
-      });
-      return;
-    }
-
+    const totals = { done_on_time: 0, done_late: 0, partially_done: 0, missed: 0 };
     form?.querySelectorAll('.cs-completion-input-row').forEach(row => {
       const data = readCompletionInputRow(row);
+      ['done_on_time','done_late','partially_done','missed'].forEach(field => { totals[field] += safeDecimal(data[field]); });
       const preview = row.querySelector('.cs-completion-preview');
       if (preview) preview.textContent = completionPreviewText(data);
     });
+
+    ['done_on_time','done_late','partially_done','missed'].forEach(field => {
+      const cell = form?.querySelector(`[data-group-total-field="${field}"]`);
+      if (cell) cell.textContent = formatDecimal(totals[field]);
+    });
+    const groupPreview = form?.querySelector('.cs-group-completion-preview');
+    if (groupPreview) groupPreview.textContent = completionPreviewText(totals);
   }
 
   function readCompletionInputRow(row) {
@@ -1219,19 +1318,15 @@
     if (scope === 'group') {
       const group = groupById(fd.get('group_id'));
       if (!group) { toast('Select a valid CS client group.'); return; }
-      const targets = groupCompletionTargets(group);
-      const data = readCompletionFields(form, '[data-group-completion-field]');
-      payloads = targets.map(target => buildCompletionPayload(fd, target, data));
-    } else {
-      payloads = Array.from(form.querySelectorAll('.cs-completion-input-row')).map(row => {
-        const data = readCompletionInputRow(row);
-        return buildCompletionPayload(fd, {
-          company_id: row.dataset.companyId,
-          company_name: row.dataset.companyName,
-          location_name: data.location_name
-        }, data);
-      });
     }
+    payloads = Array.from(form.querySelectorAll('.cs-completion-input-row')).map(row => {
+      const data = readCompletionInputRow(row);
+      return buildCompletionPayload(fd, {
+        company_id: row.dataset.companyId,
+        company_name: row.dataset.companyName,
+        location_name: data.location_name
+      }, data);
+    });
 
     payloads = payloads.filter(row => row.company_id && row.location_name);
     if (!payloads.length) { toast('No locations found to save completion.'); return; }
