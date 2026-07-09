@@ -320,3 +320,11 @@ Fixed export not opening:
 - Added validation for group/brand export selections
 - Added user-friendly toast if no locations are found for the selected export type
 - Added try/catch around the report popup generation
+
+
+## 2026-07-09 Export Wording Update
+
+Export report changes:
+- Removed the `Scope` card from the export header.
+- Replaced `Locations needing extra CS effort` with `Locations needing operational attention`.
+- Adjusted export meta layout so remaining header cards stay balanced.
