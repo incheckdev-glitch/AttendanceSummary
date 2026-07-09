@@ -109,8 +109,7 @@ window.CONFIG = {
   WORKFLOW_RULES_TABLE: runtimeConfig.WORKFLOW_RULES_TABLE || 'workflow_rules',
   WORKFLOW_APPROVALS_TABLE: runtimeConfig.WORKFLOW_APPROVALS_TABLE || 'workflow_approvals',
   WORKFLOW_AUDIT_LOG_TABLE: runtimeConfig.WORKFLOW_AUDIT_LOG_TABLE || 'workflow_audit_log',
-  OPERATIONS_ONBOARDING_TABLE:
-    runtimeConfig.OPERATIONS_ONBOARDING_TABLE || 'operations_onboarding',
+  OPERATIONS_ONBOARDING_TABLE: '',
 
   ISSUE_API_URL: runtimeConfig.ISSUE_API_URL || '',
   PUSH_VAPID_PUBLIC_KEY:

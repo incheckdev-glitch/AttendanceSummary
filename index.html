@@ -242,10 +242,6 @@
                       role="tab" aria-selected="false" aria-controls="insightsView">
                 <span class="icon" aria-hidden="true">🤖</span> AI Insights
               </button>
-              <button id="operationsOnboardingTab" class="view-tab" data-view="operationsOnboarding"
-                      role="tab" aria-selected="false" aria-controls="operationsOnboardingView">
-                <span class="icon" aria-hidden="true">🧭</span> Operations Onboarding
-              </button>
               <button id="lifecycleAnalyticsTab" class="view-tab" data-view="lifecycleAnalytics"
                       role="tab" aria-selected="false" aria-controls="lifecycleAnalyticsView">
                 <span class="icon" aria-hidden="true">📊</span> Lifecycle Analytics
@@ -917,7 +913,6 @@ Sample:
               <option value="agreements">Agreements</option>
               <option value="invoices">Invoices</option>
               <option value="receipts">Receipts</option>
-              <option value="operations_onboarding">Operations Onboarding</option>
               <option value="events">Events</option>
               <option value="workflow">Workflow</option>
               <option value="communication_centre">Communication Centre</option>
@@ -2309,56 +2304,6 @@ Sample:
             </div>
             <div id="agreementsPagination" class="agreements-pagination-footer" aria-label="Agreement pagination"></div>
           </section>
-        </div>
-      </section>
-
-      <section id="operationsOnboardingView" class="view" role="tabpanel" aria-labelledby="operationsOnboardingTab">
-        <div class="grid cols-4" id="operationsOnboardingSummary" aria-live="polite"></div>
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin:8px 0;flex-wrap:wrap;">
-          <div id="operationsOnboardingDrilldownState" class="muted">No drilldown filter active.</div>
-          <button id="operationsOnboardingClearDrilldownBtn" class="btn ghost sm" type="button">Clear Drilldown</button>
-        </div>
-
-        <div id="operationsOnboardingAnalytics" class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px;">
-          <article class="card"><strong>Status distribution</strong><div id="operationsOnboardingStatusDistribution" class="deals-status-bars" style="margin-top:8px;"></div></article>
-          <article class="card"><strong>Agreements vs Clients vs Locations</strong><div id="operationsOnboardingComparativeChart" style="margin-top:8px;"></div></article>
-          <article class="card"><strong>Locations by client</strong><div id="operationsOnboardingLocationsByClient" class="deals-status-bars" style="margin-top:8px;"></div></article>
-          <article class="card"><strong>Agreements by client</strong><div id="operationsOnboardingAgreementsByClient" class="deals-status-bars" style="margin-top:8px;"></div></article>
-          <article class="card"><strong>CSM workload</strong><div id="operationsOnboardingCsmChart" class="deals-status-bars" style="margin-top:8px;"></div></article>
-          <article class="card" style="grid-column:1/-1;"><strong>Trend over time (week/month)</strong><div id="operationsOnboardingTrendChart" style="margin-top:8px;"></div></article>
-        </div>
-
-        <div id="operationsOnboardingAnalyticsTables" class="grid" style="grid-template-columns:1fr;gap:12px;margin-bottom:12px;">
-          <article class="card"><strong>Client rollup</strong><div class="table-wrap" role="region" aria-label="Operations onboarding client rollup"><table><thead><tr><th>Client</th><th>Unique Client Key</th><th>Agreements</th><th>Locations</th><th>Active Onboardings</th><th>Completed</th><th>Assigned CSM</th><th>Overdue</th><th>Last Request Date</th></tr></thead><tbody id="operationsOnboardingClientRollupBody"></tbody></table></div></article>
-          <article class="card"><strong>Agreement rollup</strong><div class="table-wrap" role="region" aria-label="Operations onboarding agreement rollup"><table><thead><tr><th>Agreement No</th><th>Client</th><th>Locations</th><th>Onboarding Status</th><th>Assigned CSM</th><th>Requested At</th><th>Days Open</th></tr></thead><tbody id="operationsOnboardingAgreementRollupBody"></tbody></table></div></article>
-          <article class="card"><strong>Overdue / stuck</strong><div class="table-wrap" role="region" aria-label="Operations onboarding overdue"><table><thead><tr><th>Agreement No</th><th>Client</th><th>Locations</th><th>Status</th><th>Assigned CSM</th><th>Days Open</th><th>Notes</th></tr></thead><tbody id="operationsOnboardingOverdueBody"></tbody></table></div></article>
-          <article class="card"><strong>CSM workload table</strong><div class="table-wrap" role="region" aria-label="Operations onboarding csm workload"><table><thead><tr><th>CSM Name</th><th>Active Agreements</th><th>Unique Clients</th><th>Total Locations</th><th>Completed Agreements</th><th>Overdue Items</th><th>Avg Completion Days</th></tr></thead><tbody id="operationsOnboardingCsmWorkloadBody"></tbody></table></div></article>
-        </div>
-
-        <div class="card" aria-label="Operations onboarding list">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
-            <div>
-              <strong>Operations Onboarding</strong>
-              <div class="muted">Track onboarding status and CSM handovers tied to signed Agreements.</div>
-            </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <input id="operationsOnboardingSearchInput" class="input" type="search" placeholder="Search onboarding, agreement, client..." aria-label="Search operations onboarding" />
-              <select id="operationsOnboardingStatusFilter" class="select" aria-label="Filter by onboarding status"><option>All</option></select>
-              <select id="operationsOnboardingCsmFilter" class="select" aria-label="Filter by assigned CSM"><option>All</option></select>
-              <button id="operationsOnboardingRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
-            </div>
-          </div>
-          <div id="operationsOnboardingState" class="muted" style="margin-bottom:8px;">No data loaded.</div>
-          <div class="table-wrap" role="region" aria-label="Operations onboarding table">
-            <table>
-              <thead>
-                <tr>
-                  <th>Onboarding ID</th><th>Agreement ID</th><th>Agreement Number</th><th>Client Name</th><th>Signed Date</th><th>Onboarding Status</th><th>Requested By</th><th>Requested At</th><th>Assigned CSM</th><th>Number of Locations</th><th>Service Start Date</th><th>Service End Date</th><th>Billing Frequency</th><th>Payment Term</th><th>Updated At</th><th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="operationsOnboardingTbody"></tbody>
-            </table>
-          </div>
         </div>
       </section>
 
@@ -4328,38 +4273,6 @@ Sample:
     </div>
   </div>
 
-  <div id="operationsOnboardingDetailsModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true">
-    <div class="modal-content" style="max-width:820px;">
-      <div class="header">
-        <h2 style="margin:0;font-size:20px;">Onboarding Details</h2>
-        <div class="actions"><button class="modal-close" id="operationsOnboardingDetailsCloseBtn" aria-label="Close onboarding details">✕</button></div>
-      </div>
-      <div id="operationsOnboardingDetailsContent" class="muted"></div>
-    </div>
-  </div>
-
-  <div id="operationsAssignCsmModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true">
-    <div class="modal-content" style="max-width:720px;">
-      <div class="header"><h2 style="margin:0;font-size:20px;">Assign to CSM</h2><div class="actions"><button class="modal-close" id="operationsAssignCsmCloseBtn" aria-label="Close assign CSM">✕</button></div></div>
-      <form id="operationsAssignCsmForm">
-        <div class="filter-row"><label class="muted" for="operationsAssignCsmName">CSM Name</label><select id="operationsAssignCsmName" class="input" required><option value="">Select CSM</option></select></div>
-        <div id="operationsAssignCsmNoUsers" class="muted" style="min-height:18px;"></div>
-        <div class="filter-row"><label class="muted" for="operationsAssignCsmHandoverNote">Handover Note</label><textarea id="operationsAssignCsmHandoverNote" class="input" rows="4"></textarea></div>
-        <div class="actions" style="justify-content:flex-end;gap:8px;margin-top:12px;"><button id="operationsAssignCsmCancelBtn" type="button" class="btn ghost">Cancel</button><button type="submit" class="btn">Assign</button></div>
-      </form>
-    </div>
-  </div>
-
-  <div id="operationsUpdateStatusModal" class="modal" role="dialog" aria-modal="true" aria-hidden="true">
-    <div class="modal-content" style="max-width:720px;">
-      <div class="header"><h2 style="margin:0;font-size:20px;">Update Onboarding Status</h2><div class="actions"><button class="modal-close" id="operationsUpdateStatusCloseBtn" aria-label="Close onboarding status">✕</button></div></div>
-      <form id="operationsUpdateStatusForm">
-        <div class="filter-row"><label class="muted" for="operationsUpdateStatusValue">Onboarding Status</label><input id="operationsUpdateStatusValue" class="input" type="text" required /></div>
-        <div class="filter-row"><label class="muted" for="operationsUpdateStatusNotes">Notes</label><textarea id="operationsUpdateStatusNotes" class="input" rows="4"></textarea></div>
-        <div class="actions" style="justify-content:flex-end;gap:8px;margin-top:12px;"><button id="operationsUpdateStatusCancelBtn" type="button" class="btn ghost">Cancel</button><button type="submit" class="btn">Update</button></div>
-      </form>
-    </div>
-  </div>
   <div id="invoiceFormModal" class="modal invoice-modern-modal" role="dialog" aria-modal="true" aria-labelledby="invoiceFormTitle" aria-hidden="true">
     <div class="modal-content invoice-modern-form-content">
       <div class="invoice-form-shell-header">
@@ -4640,7 +4553,6 @@ Sample:
   <script src="/deals.js?v=20260608-company-options-fresh"></script>
   <script src="/proposals.js?v=20260630-public-eproposal-totals"></script>
   <script src="/agreements.js?v=20260630-e-agreement-link"></script>
-  <script src="/operations-onboarding.js?v=20260427-allpwa1"></script>
   <script src="/invoices.js?v=20260702-invoice-ui-v2"></script>
   <script src="/receipts.js?v=20260427-allpwa1"></script>
   <script src="/credit-notes.js?v=20260604-credit-notes1"></script>
