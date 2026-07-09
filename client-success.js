@@ -73,8 +73,26 @@
     return Math.floor((new Date(to).setHours(0,0,0,0) - d.setHours(0,0,0,0)) / 86400000);
   };
   const normalize = value => String(value || '').trim().toLowerCase().replace(/[^a-z0-9\u0600-\u06ff]+/g, ' ').replace(/\s+/g, ' ').trim();
-  const roleKey = () => String(global.Permissions?.getCurrentUserRole?.() || global.Session?.role?.() || '').trim().toLowerCase().replace(/[-\s]+/g, '_');
-  const FULL_ACCESS_ROLES = new Set(['admin', 'csm', 'gm', 'general_manager', 'sfc', 'senior_financial_controller']);
+  function normalizeRoleKey(value) {
+    return String(value || '').trim().toLowerCase().replace(/[-\s]+/g, '_');
+  }
+
+  const roleKey = () => {
+    const auth = global.Session?.authContext?.() || {};
+    const profile = auth.profile || auth.user?.profile || {};
+    return normalizeRoleKey(
+      global.Permissions?.getCurrentUserRole?.() ||
+      auth.role_key ||
+      auth.role ||
+      profile.role_key ||
+      profile.role ||
+      global.Session?.state?.role_key ||
+      global.Session?.state?.role ||
+      global.Session?.role?.() ||
+      ''
+    );
+  };
+  const FULL_ACCESS_ROLES = new Set(['admin', 'csm', 'customer_success', 'customer_success_manager', 'gm', 'general_manager', 'sfc', 'senior_financial_controller']);
   const VIEW_ONLY_ROLES = new Set(['viewer']);
   const isAdmin = () => roleKey() === 'admin' || Boolean(global.AdminOverride?.canOverride?.());
   const canManage = () => Boolean(global.AdminOverride?.canOverride?.()) || FULL_ACCESS_ROLES.has(roleKey()) || Boolean(global.Permissions?.can?.('client_success', 'manage'));

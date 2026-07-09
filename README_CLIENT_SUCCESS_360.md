@@ -421,3 +421,30 @@ Run:
 ```text
 sql/migrations/20260709_client_success_360_role_access_csm_gm_sfc_viewer.sql
 ```
+
+
+## 2026-07-09 Customer Success Role Access Hard Fix
+
+Use this if Customer Success 360 still opens only for Admin.
+
+Fixes included:
+- frontend role detection now checks `role_key`, `role`, `Session.authContext()`, and profile fields
+- `permissions.js` now includes the `client_success` resource and tab aliases
+- SQL now reads `profiles.role_key` safely using JSON, so it works even when `profiles.role` does not exist
+- SQL drops old admin-only CS table policies before recreating role-based policies
+- SQL seeds `role_permissions` for `client_success`
+
+Run this SQL:
+
+```text
+sql/migrations/20260709_client_success_360_role_access_hard_fix.sql
+```
+
+Then replace:
+
+```text
+client-success.js
+client-success.css
+permissions.js
+README_CLIENT_SUCCESS_360.md
+```
