@@ -550,3 +550,29 @@ body.dark .cs-table th, body.dark .cs-empty { background:#111827; }
 .cs-brand-location-table .btn {
   pointer-events: auto;
 }
+
+
+/* Customer Success role access */
+.client-success-root.is-readonly [data-cs-write-action],
+.client-success-root.is-readonly [data-cs-action="completion"],
+.client-success-root.is-readonly [data-cs-action="group"],
+.client-success-root.is-readonly [data-cs-action="group-member"],
+.client-success-root.is-readonly [data-cs-action="group-activity"],
+.client-success-root.is-readonly [data-cs-action="brand"],
+.client-success-root.is-readonly [data-cs-action="brand-location"],
+.client-success-root.is-readonly [data-cs-action="brand-location-assign"],
+.client-success-root.is-readonly [data-cs-action="brand-location-remove"],
+.client-success-root.is-readonly [data-cs-action="brand-location-move"],
+.client-success-root.is-readonly [data-cs-action="review"],
+.client-success-root.is-readonly [data-cs-action="task"],
+.client-success-root.is-readonly [data-cs-action="risk"],
+.client-success-root.is-readonly [data-cs-action="qbr"],
+.client-success-root.is-readonly [data-cs-action="contact"],
+.client-success-root.is-readonly [data-cs-action="contact-assign"] {
+  display: none !important;
+}
+.client-success-root.is-readonly .cs-admin-chip {
+  background: #eef2ff;
+  color: #3730a3;
+  border-color: #c7d2fe;
+}

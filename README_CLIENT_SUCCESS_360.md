@@ -388,3 +388,36 @@ Export fixes:
 - Enlarged the official InCheck 360 document logo in the top-left header area.
 - Fixed the `Needs operational attention` brand insight card so it shows the count of locations needing attention, not the weak brand completion percentage.
 - The card now shows, for example: `3 locations` and `3 of 6 locations (50.00%) need operational attention`.
+
+
+## 2026-07-09 Customer Success Role Access
+
+Access model updated:
+
+```text
+Full access:
+- admin
+- csm
+- gm / general_manager
+- sfc / senior_financial_controller
+
+View-only:
+- viewer
+```
+
+Viewer can:
+- open Customer Success 360
+- view clients, groups, brands, completion, pulse reviews, tasks, risks, QBR, contacts, timeline
+- export reports
+
+Viewer cannot:
+- create/edit/delete completion
+- create/edit groups or brands
+- assign/move/remove brand locations
+- create pulse reviews, tasks, risks, QBRs, or contacts
+
+Run:
+
+```text
+sql/migrations/20260709_client_success_360_role_access_csm_gm_sfc_viewer.sql
+```

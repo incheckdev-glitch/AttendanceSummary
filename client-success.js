@@ -74,8 +74,13 @@
   };
   const normalize = value => String(value || '').trim().toLowerCase().replace(/[^a-z0-9\u0600-\u06ff]+/g, ' ').replace(/\s+/g, ' ').trim();
   const roleKey = () => String(global.Permissions?.getCurrentUserRole?.() || global.Session?.role?.() || '').trim().toLowerCase().replace(/[-\s]+/g, '_');
+  const FULL_ACCESS_ROLES = new Set(['admin', 'csm', 'gm', 'general_manager', 'sfc', 'senior_financial_controller']);
+  const VIEW_ONLY_ROLES = new Set(['viewer']);
   const isAdmin = () => roleKey() === 'admin' || Boolean(global.AdminOverride?.canOverride?.());
-  const canAccess = () => isAdmin() || Boolean(global.Permissions?.can?.('client_success', 'view') || global.Permissions?.can?.('client_success', 'manage'));
+  const canManage = () => Boolean(global.AdminOverride?.canOverride?.()) || FULL_ACCESS_ROLES.has(roleKey()) || Boolean(global.Permissions?.can?.('client_success', 'manage'));
+  const canViewOnly = () => VIEW_ONLY_ROLES.has(roleKey()) || Boolean(global.Permissions?.can?.('client_success', 'view'));
+  const canAccess = () => canManage() || canViewOnly();
+  const accessLabel = () => canManage() ? 'Full access' : 'View only';
   const supabase = () => global.SupabaseClient?.getClient?.();
 
   function toast(message) { global.UI?.toast?.(message); }
@@ -754,27 +759,27 @@
     if (!root) return;
     if (STATE.booted) return;
     STATE.booted = true;
-    root.className = 'client-success-root';
+    root.className = `client-success-root ${canManage() ? 'is-full-access' : 'is-readonly'}`;
     root.innerHTML = `
       <div class="cs-page-header cs-hero-header">
         <div class="cs-hero-copy">
-          <span class="cs-eyebrow">Customer Success · Admin Only</span>
+          <span class="cs-eyebrow">Customer Success</span>
           <h2>Client Success 360</h2>
           <p>Monitor signed-agreement clients, location completion, satisfaction, weekly/monthly pulse reviews, extra CS effort, risks, tasks, onboarding follow-up, renewals, QBRs, contacts, and activity. No payment, invoice, receipt, collection, or accounting data is used.</p>
         </div>
         <div class="cs-header-actions">
-          <span class="cs-admin-chip">Admin access only</span>
+          <span class="cs-admin-chip">${esc(accessLabel())}</span>
           <button id="csRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
-          <button id="csAddCompletionBtn" class="btn sm primary" type="button">+ Location Completion</button>
-          <button id="csAddGroupBtn" class="btn ghost sm" type="button">+ Client Group</button>
-          <button id="csAddGroupMemberBtn" class="btn ghost sm" type="button">+ Add to Group</button>
-          <button id="csAddBrandBtn" class="btn ghost sm" type="button">+ Brand</button>
-          <button id="csAddBrandLocationBtn" class="btn ghost sm" type="button">+ Brand Location</button>
-          <button id="csAddReviewBtn" class="btn ghost sm" type="button">+ Pulse Review</button>
-          <button id="csAddTaskBtn" class="btn ghost sm" type="button">+ Task</button>
-          <button id="csAddRiskBtn" class="btn ghost sm" type="button">+ Risk</button>
-          <button id="csAddQbrBtn" class="btn ghost sm" type="button">+ QBR</button>
-          <button id="csAddContactBtn" class="btn ghost sm" type="button">+ Contact</button>
+          <button id="csAddCompletionBtn" data-cs-write-action class="btn sm primary" type="button">+ Location Completion</button>
+          <button id="csAddGroupBtn" data-cs-write-action class="btn ghost sm" type="button">+ Client Group</button>
+          <button id="csAddGroupMemberBtn" data-cs-write-action class="btn ghost sm" type="button">+ Add to Group</button>
+          <button id="csAddBrandBtn" data-cs-write-action class="btn ghost sm" type="button">+ Brand</button>
+          <button id="csAddBrandLocationBtn" data-cs-write-action class="btn ghost sm" type="button">+ Brand Location</button>
+          <button id="csAddReviewBtn" data-cs-write-action class="btn ghost sm" type="button">+ Pulse Review</button>
+          <button id="csAddTaskBtn" data-cs-write-action class="btn ghost sm" type="button">+ Task</button>
+          <button id="csAddRiskBtn" data-cs-write-action class="btn ghost sm" type="button">+ Risk</button>
+          <button id="csAddQbrBtn" data-cs-write-action class="btn ghost sm" type="button">+ QBR</button>
+          <button id="csAddContactBtn" data-cs-write-action class="btn ghost sm" type="button">+ Contact</button>
         </div>
       </div>
       <div id="csState" class="cs-state">Loading Client Success 360…</div>
@@ -803,17 +808,18 @@
   }
 
   function wire() {
+    const writeAction = handler => () => { if (!canManage()) { toast('View-only access. You can view/export Customer Success data, but cannot create or edit.'); return; } handler(); };
     $('csRefreshBtn')?.addEventListener('click', () => loadData());
-    $('csAddCompletionBtn')?.addEventListener('click', () => openCompletionForm());
-    $('csAddGroupBtn')?.addEventListener('click', () => openGroupForm());
-    $('csAddGroupMemberBtn')?.addEventListener('click', () => openGroupMemberForm());
-    $('csAddBrandBtn')?.addEventListener('click', () => openBrandForm());
-    $('csAddBrandLocationBtn')?.addEventListener('click', () => openBrandLocationForm());
-    $('csAddReviewBtn')?.addEventListener('click', () => openReviewForm());
-    $('csAddTaskBtn')?.addEventListener('click', () => openTaskForm());
-    $('csAddRiskBtn')?.addEventListener('click', () => openRiskForm());
-    $('csAddQbrBtn')?.addEventListener('click', () => openQbrForm());
-    $('csAddContactBtn')?.addEventListener('click', () => openContactForm());
+    $('csAddCompletionBtn')?.addEventListener('click', writeAction(openCompletionForm));
+    $('csAddGroupBtn')?.addEventListener('click', writeAction(openGroupForm));
+    $('csAddGroupMemberBtn')?.addEventListener('click', writeAction(openGroupMemberForm));
+    $('csAddBrandBtn')?.addEventListener('click', writeAction(openBrandForm));
+    $('csAddBrandLocationBtn')?.addEventListener('click', writeAction(openBrandLocationForm));
+    $('csAddReviewBtn')?.addEventListener('click', writeAction(openReviewForm));
+    $('csAddTaskBtn')?.addEventListener('click', writeAction(openTaskForm));
+    $('csAddRiskBtn')?.addEventListener('click', writeAction(openRiskForm));
+    $('csAddQbrBtn')?.addEventListener('click', writeAction(openQbrForm));
+    $('csAddContactBtn')?.addEventListener('click', writeAction(openContactForm));
     $('csModalClose')?.addEventListener('click', closeModal);
     $('csModal')?.addEventListener('click', ev => { if (ev.target?.id === 'csModal') closeModal(); });
     ['csSearch','csStatusFilter','csHealthFilter','csEffortFilter','csGroupFilter'].forEach(id => $(id)?.addEventListener('input', () => {
@@ -830,7 +836,7 @@
     mount();
     const root = $('clientSuccessRoot');
     if (!root) return;
-    root.innerHTML = `<div class="cs-page-header"><div><span class="cs-eyebrow">Customer Success</span><h2>Client Success 360</h2><p class="cs-danger">Access denied. This module is Admin-only for now.</p></div></div>`;
+    root.innerHTML = `<div class="cs-page-header"><div><span class="cs-eyebrow">Customer Success</span><h2>Client Success 360</h2><p class="cs-danger">Access denied. This module is available to CSM, GM, Senior Financial Controller, Admin, and Viewer roles.</p></div></div>`;
   }
 
   function renderLoading() { $('csState') && ($('csState').textContent = 'Loading Client Success data…'); }
@@ -872,7 +878,7 @@
     const missing = Array.from(STATE.tablesMissing).filter(t => Object.values(TABLES).includes(t));
     const stateText = missing.length
       ? `Run SQL migration first. Missing CS tables: ${missing.join(', ')}`
-      : `${STATE.rows.companies.length} signed-agreement clients loaded · Admin-only CS workspace`;
+      : `${STATE.rows.companies.length} signed-agreement clients loaded · Customer Success workspace`;
     $('csState') && ($('csState').textContent = stateText);
   }
 
@@ -1743,6 +1749,13 @@
   document.addEventListener('click', event => {
     const action = event.target?.closest?.('[data-cs-action]')?.dataset?.csAction;
     if (!action) return;
+    const viewActions = new Set(['completion-export', 'brand-export']);
+    if (!canManage() && !viewActions.has(action)) {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      toast('View-only access. You can view/export Customer Success data, but cannot create or edit.');
+      return;
+    }
     if (action === 'completion') openCompletionForm();
     if (action === 'completion-export') openCompletionExportForm();
     if (action === 'group') openGroupForm();
