@@ -106,14 +106,6 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     assign_csm: ['admin', 'hoo'],
     update_onboarding_status: ['admin', 'hoo']
   }),
-  operations_onboarding: Object.freeze({
-    list: ['admin', 'dev', 'viewer', 'hoo', 'head_of_operations', 'operations_manager'],
-    get: ['admin', 'dev', 'viewer', 'hoo', 'head_of_operations', 'operations_manager'],
-    create: ['admin', 'hoo', 'head_of_operations', 'operations_manager'],
-    update: ['admin', 'hoo', 'head_of_operations', 'operations_manager'],
-    assign_csm: ['admin', 'hoo', 'head_of_operations', 'operations_manager'],
-    delete: ['admin']
-  }),
   invoices: Object.freeze({
     list: ['admin', 'dev', 'viewer', 'hoo'],
     get: ['admin', 'dev', 'viewer', 'hoo'],
@@ -379,7 +371,6 @@ const Permissions = {
     deals: [{ resource: 'deals', action: 'list' }],
     proposals: [{ resource: 'proposals', action: 'list' }],
     agreements: [{ resource: 'agreements', action: 'list' }],
-    operationsOnboarding: [{ resource: 'operations_onboarding', action: 'list' }],
     invoices: [{ resource: 'invoices', action: 'list' }],
     receipts: [{ resource: 'receipts', action: 'list' }],
     creditNotes: [{ resource: 'credit_notes', action: 'view' }],
@@ -414,7 +405,6 @@ const Permissions = {
     deals: 'deals',
     proposals: 'proposals',
     agreements: 'agreements',
-    operationsOnboarding: 'operations_onboarding',
     invoices: 'invoices',
     receipts: 'receipts',
     creditNotes: 'credit_notes',
@@ -1098,9 +1088,6 @@ const Permissions = {
       this.canPerformAction('agreements', 'create_from_proposal') ||
       this.canCreate('agreements');
   },
-  canViewOperationsOnboarding() {
-    return this.canView('operations_onboarding');
-  },
   canViewTechnicalAdmin() {
     return false;
   },
@@ -1118,9 +1105,6 @@ const Permissions = {
   },
   canManageTechnicalAdmin() {
     return false;
-  },
-  canManageOperationsOnboarding() {
-    return this.canEdit('operations_onboarding');
   },
   canSendAgreementToOperations() {
     return this.canPerformAction('agreements', 'send_to_operations');
@@ -1340,7 +1324,7 @@ async function handleExpiredSession(message = 'Session expired. Please log in ag
 
 
 const PermissionAudit = {
-  resources: ['tickets','events','ai_insights','companies','contacts','leads','deals','proposals','agreements','operations_onboarding','invoices','receipts','credit_notes','payment_forecast','monthly_renewal_forecast','biners','hr','hr_attendance','hr_leave','hr_self_service','hr_team','hr_leave_balance','hr_attendance_correction','hr_overtime','hr_notifications','hr_holidays','hr_payroll','hr_salary_receipts','hr_documents','hr_settings','clients','analytics','notifications','notification_settings','workflow','users','role_permissions'],
+  resources: ['tickets','events','ai_insights','companies','contacts','leads','deals','proposals','agreements','invoices','receipts','credit_notes','payment_forecast','monthly_renewal_forecast','biners','hr','hr_attendance','hr_leave','hr_self_service','hr_team','hr_leave_balance','hr_attendance_correction','hr_overtime','hr_notifications','hr_holidays','hr_payroll','hr_salary_receipts','hr_documents','hr_settings','clients','analytics','notifications','notification_settings','workflow','users','role_permissions'],
   actions: ['list','get','create','update','delete','export','manage','approve','reject','convert_to_deal','create_from_deal','create_from_proposal','create_from_agreement','create_from_invoice','cancel','print','export','assign_csm','update_status','view_renewals','view_statement','statement_view','statement_export','create_receipt','schedule_payment','record_payment','view_details','mark_renewed','mark_no_renewal_needed','undo_override','create_renewal_invoice','generate','review','pay','manage_attendance'],
   inspect(resource, action) {
     const role = Permissions.normalizeRole(Session.role());

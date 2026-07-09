@@ -2957,7 +2957,7 @@ window.shouldShowTicketFilters = shouldShowTicketFilters;
 
 function setActiveView(view) {
  view = normalizeViewKey(view);
- const names = ['issues', 'calendar', 'insights', 'csm', 'clientSuccess', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'renewalForecast', 'biners', 'hr', 'accounting', 'backupCenter', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
+ const names = ['issues', 'calendar', 'insights', 'csm', 'clientSuccess', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'renewalForecast', 'biners', 'hr', 'accounting', 'backupCenter', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
  const requestedView = view;
  const firstAllowedView = names.find(name => Permissions.canAccessTab(name)) || '';
  if (!Permissions.canAccessTab(view)) {
@@ -2990,8 +2990,6 @@ function setActiveView(view) {
         ? E.proposalsTab
         : name === 'agreements'
         ? E.agreementsTab
-        : name === 'operationsOnboarding'
-        ? E.operationsOnboardingTab
         : name === 'invoices'
         ? E.invoicesTab
         : name === 'receipts'
@@ -3052,8 +3050,6 @@ function setActiveView(view) {
         ? E.proposalsView
         : name === 'agreements'
         ? E.agreementsView
-        : name === 'operationsOnboarding'
-        ? E.operationsOnboardingView
         : name === 'invoices'
         ? E.invoicesView
         : name === 'receipts'
@@ -3177,7 +3173,6 @@ function setActiveView(view) {
   if (view === 'deals' && window.Deals?.loadAndRefresh) runViewLoader('deals', () => Deals.loadAndRefresh());
   if (view === 'proposals' && window.Proposals?.loadAndRefresh) runViewLoader('proposals', () => Proposals.loadAndRefresh());
   if (view === 'agreements' && window.Agreements?.loadAndRefresh) runViewLoader('agreements', () => window.Agreements.loadAndRefresh());
-  if (view === 'operationsOnboarding' && window.OperationsOnboarding?.loadAndRefresh) runViewLoader('operations onboarding', () => OperationsOnboarding.loadAndRefresh());
   if (view === 'invoices' && window.Invoices?.refresh) runViewLoader('invoices', () => Invoices.refresh());
   if (view === 'receipts' && window.Receipts?.refresh) runViewLoader('receipts', () => Receipts.refresh());
   if ((view === 'creditNotes' || view === 'credit_notes') && window.CreditNotes?.refresh) runViewLoader('credit notes', () => CreditNotes.refresh());
@@ -5401,7 +5396,6 @@ function wireCore() {
     E.dealsTab,
     E.proposalsTab,
     E.agreementsTab,
-    E.operationsOnboardingTab,
     E.invoicesTab,
     E.receiptsTab,
     E.creditNotesTab,
@@ -5905,7 +5899,7 @@ function buildRecordHashRoute(resource = '', record = {}) {
   if (normalizedResource === 'credit_notes') { const id = getRecordValue(record, ['credit_note_id', 'creditNoteId', 'credit_note_number', 'creditNoteNumber', 'id']); return id ? `#finance?tab=credit_notes&id=${safeEncodeRouteId(id)}` : '#finance?tab=credit_notes'; }
   if (normalizedResource === 'clients') { const id = getRecordValue(record, ['client_id', 'clientId', 'company_id', 'companyId', 'id']); return id ? `#clients?id=${safeEncodeRouteId(id)}` : '#clients'; }
   if (normalizedResource === 'events') { const id = getRecordValue(record, ['event_id', 'eventId', 'event_code', 'eventCode', 'id']); return id ? `#events?id=${safeEncodeRouteId(id)}` : '#events'; }
-  if (normalizedResource === 'operations_onboarding') { const id = getRecordValue(record, ['onboarding_id', 'onboardingId', 'agreement_id', 'agreementId', 'id']); return id ? `#operations-onboarding?onboarding_id=${safeEncodeRouteId(id)}` : '#operations-onboarding'; }
+  if (normalizedResource === 'operations_onboarding') return '#clients';
   if (['hr','hr_employees','hr_attendance','hr_payroll','hr_documents'].includes(normalizedResource)) { const id = getRecordValue(record, ['employee_no', 'employee_id', 'id']); return id ? `#hr?id=${safeEncodeRouteId(id)}` : '#hr'; }
   if (normalizedResource === 'workflow') { const id = getRecordValue(record, ['approval_id', 'approvalId', 'workflow_approval_id', 'workflowApprovalId', 'id']); return id ? `#workflow?approval_id=${safeEncodeRouteId(id)}` : '#workflow'; }
   return `#${encodeURIComponent(normalizedResource)}`;
@@ -5918,7 +5912,6 @@ function getAppHashForView(view = '') {
     issues: '#tickets',
     calendar: '#events',
     workflow: '#workflow',
-    operationsOnboarding: '#operations-onboarding',
     leads: '#crm?tab=leads',
     deals: '#crm?tab=deals',
     proposals: '#crm?tab=proposals',
@@ -5948,7 +5941,7 @@ function getAppHashForView(view = '') {
 function isNotificationDeepLinkHash(hash = '') {
   const value = String(hash || '').trim();
   if (!value || value === '#loginSection') return false;
-  return /^#(tickets|workflow|operations-onboarding|crm|finance|leads|deals|proposals|agreements|invoices|receipts|credit_notes|credit-notes|payment_forecast|payment-forecast|renewal_forecast|renewal-forecast|biners|hr|human-resources|attendance|payroll|backup-center|backup_center|backup|backups|client-success|client_success|client-success-360|communication_centre|communication-centre|communication_center)/i.test(value);
+  return /^#(tickets|workflow|crm|finance|leads|deals|proposals|agreements|invoices|receipts|credit_notes|credit-notes|payment_forecast|payment-forecast|renewal_forecast|renewal-forecast|biners|hr|human-resources|attendance|payroll|backup-center|backup_center|backup|backups|client-success|client_success|client-success-360|communication_centre|communication-centre|communication_center)/i.test(value);
 }
 
 function capturePendingDeepLink() {
@@ -5988,7 +5981,7 @@ function parseAppHashRoute(hash = '') {
   if (route === 'tickets') return { module: 'tickets', resource: 'tickets', id: params.get('ticket_id') || params.get('id') || '' };
   if (route === 'events') return { module: 'events', resource: 'events', id: params.get('id') || params.get('event_id') || '' };
   if (route === 'workflow') return { module: 'workflow', resource: 'workflow', id: params.get('approval_id') || params.get('id') || '' };
-  if (route === 'operations-onboarding') return { module: 'operations_onboarding', resource: 'operations_onboarding', id: params.get('onboarding_id') || params.get('id') || '' };
+  if (['operations-onboarding', 'operations_onboarding'].includes(route)) return { module: 'clients', resource: 'clients', id: '', redirect: '#clients' };
   if (['technical-admin', 'technical-admin-requests', 'technical_admin', 'technical_admin_requests'].includes(route)) return { module: 'tickets', resource: 'tickets', id: '', unavailable: true };
   if (route === 'crm') return { module: 'crm', resource: params.get('tab') || '', id: params.get('id') || '' };
   if (route === 'finance') return { module: 'finance', resource: params.get('tab') || '', id: params.get('id') || '' };
@@ -6028,6 +6021,11 @@ async function routeAppHashAfterReady() {
   const target = parseAppHashRoute(hash);
   if (!target || !target.resource) return false;
   console.info('[router] parsed hash target', target);
+  if (target.redirect) {
+    history.replaceState(null, '', `${window.location.pathname}${target.redirect}`);
+    setActiveView('clients');
+    return true;
+  }
   if (target.unavailable) {
     history.replaceState(null, '', `${window.location.pathname}#tickets`);
     UI.toast?.('Page not available.');
@@ -6086,7 +6084,7 @@ function wireDashboardGate() {
     return 'issues';
   };
   const getFirstAllowedView = preferredView => {
-    const names = ['issues', 'calendar', 'insights', 'csm', 'clientSuccess', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'operationsOnboarding', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'renewalForecast', 'biners', 'hr', 'accounting', 'backupCenter', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
+    const names = ['issues', 'calendar', 'insights', 'csm', 'clientSuccess', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'renewalForecast', 'biners', 'hr', 'accounting', 'backupCenter', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
     const preferred = String(preferredView || '').trim();
     if (preferred && Permissions.canAccessTab(preferred)) return preferred;
     return names.find(name => Permissions.canAccessTab(name)) || 'issues';
@@ -7130,7 +7128,7 @@ const CSMActivity = {
     }
     E.csmFormClientState.textContent = this.clientOptions.length
       ? ''
-      : 'No clients found. Please add the client first or check Operations Onboarding.';
+      : 'No clients found. Please add the client first.';
   },
   async ensureGroupOptions() {
     if (this.groupOptions.length) return this.groupOptions;
@@ -8637,7 +8635,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (window.Deals?.wire) Deals.wire();
   if (window.Proposals?.wire) Proposals.wire();
   if (window.Agreements?.wire) window.Agreements.wire();
-  if (window.OperationsOnboarding?.wire) OperationsOnboarding.wire();
   if (window.Invoices?.init) Invoices.init();
   if (window.Receipts?.init) Receipts.init();
   if (window.RenewalForecast?.wire) RenewalForecast.wire();

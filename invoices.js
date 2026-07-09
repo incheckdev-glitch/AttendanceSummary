@@ -4210,10 +4210,7 @@ const Invoices = {
     const shared = {
       agreement_id: agreementUuid || null,
       agreement_number: agreementNumber || null,
-      // Do not send client_id here. operations_onboarding.client_id has a FK to public.clients,
-      // while invoices/companies may carry a company UUID or legacy client reference. Sending it
-      // can block the invoice-created onboarding row with operations_onboarding_client_id_fkey.
-      // Client visibility is carried by client_name for this invoice-batch workflow.
+      // Keep client visibility on this historical seed by client_name only.
       client_name: clientName || null,
       location_count: locationNames.length,
       locations_count: locationNames.length,
@@ -4272,126 +4269,12 @@ const Invoices = {
     };
   },
   async ensureOperationsOnboardingForIssuedInvoice(invoice = {}, items = []) {
-    const normalizedInvoice = this.normalizeInvoice(invoice || {});
-    if (this.isRenewalInvoice({ ...invoice, ...normalizedInvoice })) {
-      console.info('[Renewal] Skipping Operations Onboarding for renewal invoice.');
-      return null;
-    }
-    if (!this.isIssuedInvoice(normalizedInvoice)) return null;
-
-    const invoiceIdCandidate = this.invoiceDbId(normalizedInvoice.id) || String(normalizedInvoice.id || '').trim();
-    const invoiceId = this.isUuid(invoiceIdCandidate) ? invoiceIdCandidate : '';
-    const invoiceNumber = String(normalizedInvoice.invoice_number || normalizedInvoice.invoice_id || '').trim();
-
-    if (!invoiceId) {
-      console.warn('[Invoice] Cannot create Operations onboarding for issued invoice because the internal invoice UUID is missing.', { invoiceNumber, invoiceIdCandidate });
-      return null;
-    }
-
-    const client = this.getSupabaseClient?.();
-    if (client) {
-      try {
-        let existingQuery = client
-          .from('operations_onboarding')
-          .select('id,onboarding_id,invoice_id,source_invoice_id,invoice_number,source_invoice_number')
-          .limit(1);
-
-        existingQuery = existingQuery.or(`invoice_id.eq.${invoiceId},source_invoice_id.eq.${invoiceId}`);
-
-        const { data: existingRows, error: existingError } = await existingQuery;
-        if (!existingError && Array.isArray(existingRows) && existingRows.length) {
-          console.info('[Invoice] Operations onboarding already exists for issued invoice.', existingRows[0]);
-          return existingRows[0];
-        }
-        if (existingError) {
-          console.warn('[Invoice] Unable to check existing Operations onboarding row before create.', existingError);
-        }
-      } catch (checkError) {
-        console.warn('[Invoice] Existing Operations onboarding check failed.', checkError);
-      }
-    }
-
-    let invoiceItems = Array.isArray(items) ? items.map(item => this.normalizeItem(item)) : [];
-
-    if (!invoiceItems.length && invoiceId && client) {
-      try {
-        const { data, error } = await client
-          .from('invoice_items')
-          .select('*')
-          .eq('invoice_id', invoiceId)
-          .order('created_at', { ascending: true });
-
-        if (error) throw error;
-        invoiceItems = Array.isArray(data) ? data.map(item => this.normalizeItem(item)) : [];
-      } catch (loadError) {
-        console.warn('[Invoice] Unable to load invoice_items for issued invoice Operations onboarding.', loadError);
-      }
-    }
-
-    const annualItems = invoiceItems.filter(item => this.isSubscriptionSection(item?.section));
-    if (!annualItems.length) {
-      console.info('[Invoice] Issued invoice has no Annual SaaS/subscription invoice items. Operations onboarding was not created.');
-      return null;
-    }
-
-    const selectedAgreementItemIds = annualItems
-      .map(item => String(item.source_agreement_item_id || item.sourceAgreementItemId || '').trim())
-      .filter(Boolean);
-    const setupAgreementItemIds = invoiceItems
-      .filter(item => this.isOneTimeFeeItem(item))
-      .map(item => String(item.source_agreement_item_id || item.sourceAgreementItemId || '').trim())
-      .filter(Boolean);
-
-    const created = await this.createOperationsAndTechnicalForInvoicedLocations(
-      normalizedInvoice,
-      normalizedInvoice,
-      invoiceItems,
-      selectedAgreementItemIds
-    );
-
-    const agreementItemIdsToMark = this.getUniqueTextList([...selectedAgreementItemIds, ...setupAgreementItemIds]);
-    if (invoiceId && agreementItemIdsToMark.length) {
-      await this.markSelectedAgreementItemsInvoiced(invoiceId, agreementItemIdsToMark).catch(error => {
-        console.warn('[Invoice] Agreement item invoice-status update failed after issued invoice Operations row creation.', error);
-        UI.toast('Operations onboarding was created, but agreement item invoice flags could not be updated.');
-      });
-    }
-
-    return created;
+    console.info('[Operations Onboarding Removed] Skipping automatic Operations onboarding creation for issued invoice.');
+    return null;
   },
   async createOperationsAndTechnicalForInvoicedLocations(invoice = {}, persistedInvoice = {}, items = [], selectedAgreementItemIds = []) {
-    const seed = this.buildInvoiceOperationsTechnicalSeed(invoice, persistedInvoice, items, selectedAgreementItemIds);
-    if (!seed) {
-      console.info('[Invoice] No invoiced Annual SaaS locations found; Operations/Technical request was not created.');
-      return null;
-    }
-    let onboardingRecord = null;
-    try {
-      const onboardingResponse = await Api.saveOperationsOnboarding(seed.operationPayload);
-      onboardingRecord = Api.unwrapApiPayload?.(onboardingResponse) || onboardingResponse || null;
-      if (window.OperationsOnboarding?.upsertLocalRow) {
-        const returnedRecord = onboardingRecord && typeof onboardingRecord === 'object' ? onboardingRecord : {};
-        window.OperationsOnboarding.upsertLocalRow({
-          ...returnedRecord,
-          ...seed.operationPayload,
-          id: returnedRecord.id || returnedRecord.db_id || seed.operationPayload.id || '',
-          db_id: returnedRecord.db_id || returnedRecord.id || seed.operationPayload.db_id || '',
-          onboarding_id: returnedRecord.onboarding_id || seed.operationPayload.onboarding_id
-        });
-      }
-    } catch (error) {
-      console.warn('[Invoice] Unable to create Operations onboarding row for invoiced locations.', error);
-      UI.toast('Invoice created, but Operations onboarding row was not created: ' + (error?.message || 'Unknown error'));
-      return null;
-    }
-
-    // Important: do NOT create a Technical Admin request automatically here.
-    // The Operations user must click "Technical Admin Request" manually on the invoice-batch row.
-    if (window.OperationsOnboarding?.loadAndRefresh) {
-      Api.clearApiCache?.('operations_onboarding:list');
-      window.OperationsOnboarding.loadAndRefresh({ force: true }).catch(error => console.warn('[Invoice] Operations refresh failed after invoiced-location request.', error));
-    }
-    return { ...seed, onboardingRecord, technicalPayload: null };
+    console.info('[Operations Onboarding Removed] Operations onboarding module is removed; no operations row will be created.');
+    return null;
   },
   async markSelectedAgreementItemsInvoiced(invoiceId, itemIds = []) {
     const ids = [...new Set((Array.isArray(itemIds) ? itemIds : []).map(id => String(id || '').trim()).filter(Boolean))];

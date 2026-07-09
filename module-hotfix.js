@@ -23,8 +23,6 @@
     agreements: { section: 'agreementsView', loader: () => window.Agreements?.loadAndRefresh?.({ force: true }) || window.Agreements?.refresh?.({ force: true }) },
     proposalCatalog: { section: 'proposalCatalogView', loader: () => window.ProposalCatalog?.loadAndRefresh?.({ force: true }) },
     proposal_catalog: { section: 'proposalCatalogView', view: 'proposalCatalog', loader: () => window.ProposalCatalog?.loadAndRefresh?.({ force: true }) },
-    operationsOnboarding: { section: 'operationsOnboardingView', loader: () => window.OperationsOnboarding?.loadAndRefresh?.({ force: true }) },
-    operations_onboarding: { section: 'operationsOnboardingView', view: 'operationsOnboarding', loader: () => window.OperationsOnboarding?.loadAndRefresh?.({ force: true }) },
     invoices: { section: 'invoicesView', loader: () => window.Invoices?.refresh?.({ force: true }) || window.Invoices?.refresh?.(true) },
     receipts: { section: 'receiptsView', loader: () => window.Receipts?.refresh?.({ force: true }) || window.Receipts?.refresh?.(true) },
     creditNotes: { section: 'creditNotesView', loader: () => window.CreditNotes?.refresh?.({ force: true }) || window.CreditNotes?.refresh?.(true) },

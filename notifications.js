@@ -283,7 +283,7 @@ const Notifications = {
   isOperations(item = {}) {
     const t = String(item.type || '');
     const r = String(item.resource || '');
-    return t.includes('operation') || r.includes('operations_onboarding');
+    return t.includes('operation') && !r.includes('operations_onboarding');
   },
   isTicket(item = {}) {
     const t = String(item.type || '');
@@ -980,8 +980,8 @@ const Notifications = {
         invoice: 'invoices',
         receipts: 'receipts',
         receipt: 'receipts',
-        operations_onboarding: 'operations_onboarding',
-        onboarding: 'operations_onboarding',
+        operations_onboarding: 'clients',
+        onboarding: 'clients',
         technical_admin: 'technical_admin',
         technical_admin_requests: 'technical_admin',
         clients: 'clients',
@@ -1012,7 +1012,7 @@ const Notifications = {
       if (route.includes('agreement')) return 'agreements';
       if (route.includes('invoice')) return 'invoices';
       if (route.includes('receipt')) return 'receipts';
-      if (route.includes('onboarding')) return 'operations_onboarding';
+      if (route.includes('onboarding')) return 'clients';
       if (route.includes('technical_admin') || route.includes('technical-admin')) return 'technical_admin';
       if (route.includes('client')) return 'clients';
       if (route.includes('lead')) return 'leads';
@@ -1218,7 +1218,7 @@ const Notifications = {
       receipts: 'receipts',
       credit_notes: 'creditNotes',
       payment_forecast: 'paymentForecast',
-      operations_onboarding: 'operationsOnboarding',
+      operations_onboarding: 'clients',
       technical_admin: 'issues',
       clients: 'clients',
       leads: 'leads',
@@ -1245,7 +1245,6 @@ const Notifications = {
     if (tabKey === 'agreements' && window.Agreements?.loadAndRefresh) await Agreements.loadAndRefresh({ force: true });
     if (tabKey === 'invoices' && window.Invoices?.refresh) await Invoices.refresh({ force: true });
     if (tabKey === 'receipts' && window.Receipts?.refresh) await Receipts.refresh({ force: true });
-    if (tabKey === 'operations_onboarding' && window.OperationsOnboarding?.loadAndRefresh) await OperationsOnboarding.loadAndRefresh({ force: true });
     if (tabKey === 'clients' && window.Clients?.loadAndRefresh) await Clients.loadAndRefresh({ force: true });
     if (tabKey === 'leads' && window.Leads?.loadAndRefresh) await Leads.loadAndRefresh({ force: true });
     if (tabKey === 'deals' && window.Deals?.loadAndRefresh) await Deals.loadAndRefresh({ force: true });
@@ -1290,7 +1289,6 @@ const Notifications = {
       invoices: [['invoices','view'],['invoices','get'],['invoices','list']],
       receipts: [['receipts','view'],['receipts','get'],['receipts','list']],
       technical_admin_requests: [['technical_admin_requests','view'],['technical_admin_requests','get'],['technical_admin_requests','list']],
-      operations_onboarding: [['operations_onboarding','view'],['operations_onboarding','get'],['operations_onboarding','list']],
       insights: [['insights','preview'],['insights','view'],['insights','get'],['insights','list'],['insights','manage']],
       communication_centre: [['communication_centre','view'],['communication_centre','list'],['communication_centre','get'],['communication_centre','manage']]
     };
@@ -1442,13 +1440,10 @@ async routeToResourceTarget(resource, targetId, notification) {
       return true;
     }
     if (normalizedResource === 'operations_onboarding') {
-      const opened = await this.openModuleTab('operations_onboarding');
+      const opened = await this.openModuleTab('clients');
       if (!opened) return false;
-      if (targetId) this.setRouteHash(`#operations-onboarding?onboarding_id=${encodeURIComponent(String(targetId).trim())}`);
-      if (targetId && window.OperationsOnboarding?.openOnboardingDetails) {
-        await OperationsOnboarding.openOnboardingDetails(targetId, String(notification?.meta?.agreement_id || '').trim());
-      }
-      return targetId ? this.highlightRowById(targetId) || true : true;
+      this.setRouteHash('#clients');
+      return true;
     }
     if (normalizedResource === 'technical_admin' || normalizedResource === 'technical_admin_requests') {
       UI.toast('Page not available.');
