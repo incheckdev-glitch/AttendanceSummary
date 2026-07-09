@@ -1189,7 +1189,7 @@
       : '<div class="cs-empty">No brand completion to show yet.</div>';
 
     return `<div class="cs-section-title">
-        <div><h4>Brands</h4><div class="cs-kpi-sub">Third layer: Client / Group → Brand → Locations. A client or group can be divided into multiple brands, and each location can be moved from one brand to another.</div></div>
+        <div><h4>Brands</h4><div class="cs-kpi-sub">Third layer: Client / Group → Brand → Locations. First create the brand name, then Manage Locations shows all locations for that brand scope so you can assign, remove, or move them.</div></div>
         <div><button class="btn sm" type="button" data-cs-action="brand">+ New Brand</button> <button class="btn ghost sm" type="button" data-cs-action="brand-location">+ Manage Brand Locations</button></div>
       </div>
       <div class="cs-info-grid">${cards}</div>
@@ -1590,7 +1590,22 @@
     if (action === 'group-activity') openGroupActivityForm();
     if (action === 'brand') openBrandForm();
     if (action === 'brand-location') openBrandLocationForm(event.target?.closest?.('[data-brand-id]')?.dataset?.brandId || '');
+    if (action === 'brand-location-assign') {
+      const btn = event.target?.closest?.('[data-location-payload]');
+      const form = $('csBrandLocationForm');
+      assignLocationToBrand(
+        brandById(btn?.dataset?.brandId || form?.brand_id?.value || ''),
+        parseBrandLocationOption(btn?.dataset?.locationPayload || ''),
+        form?.status?.value || 'Active',
+        form?.notes?.value || ''
+      );
+    }
     if (action === 'brand-location-remove') removeBrandLocation(event.target?.closest?.('[data-brand-location-id]')?.dataset?.brandLocationId || '');
+    if (action === 'brand-location-move') {
+      const rowId = event.target?.closest?.('[data-brand-location-id]')?.dataset?.brandLocationId || '';
+      const select = document.querySelector(`[data-brand-location-move-select="${rowId.replace(/"/g, '\\"')}"]`);
+      moveBrandLocation(rowId, select?.value || '');
+    }
     if (action === 'brand-export') exportCompletionReport(event.target?.closest?.('[data-brand-id]')?.dataset?.brandId || '');
     if (action === 'review') openReviewForm();
     if (action === 'task') openTaskForm();
@@ -1957,23 +1972,30 @@
 
   function openBrandForm() {
     const company = getSelectedCompany();
+    const companyGroups = groupsForCompany(company);
+    const selectedGroupId = String(STATE.filters.group || '').trim();
+    const selectedGroup = selectedGroupId && !['All','Ungrouped'].includes(selectedGroupId) ? groupById(selectedGroupId) : null;
+    const defaultGroup = selectedGroup || (companyGroups.length === 1 ? companyGroups[0] : null);
     const groups = activeGroups();
-    const groupOpts = groups.map(group => `<option value="${attr(groupId(group))}">${esc(groupName(group))}</option>`).join('');
-    openModal('New CS Brand', `<form class="cs-form" id="csBrandForm">
-      <div class="cs-form-grid">${selectedCompanyInput()}
-        <div class="cs-form-field"><label>Brand Name</label><input name="brand_name" class="input" type="text" placeholder="e.g. Kcal Healthy, Parkers, Virtual Brand" required /></div>
+    const defaultScope = defaultGroup ? 'group' : 'company';
+    const groupOpts = groups.map(group => `<option value="${attr(groupId(group))}" ${defaultGroup && groupId(group) === groupId(defaultGroup) ? 'selected' : ''}>${esc(groupName(group))}</option>`).join('');
+    openModal('Create Brand Name', `<form class="cs-form" id="csBrandForm">
+      <div class="cs-form-grid">
+        <div class="cs-form-field cs-form-field--full"><label>Brand Flow</label><div class="cs-mini-note">First create the brand name only. Then use <strong>Manage Locations</strong> to assign or move locations to this brand.</div></div>
+        <div class="cs-form-field"><label>Brand Name</label><input name="brand_name" class="input" type="text" placeholder="e.g. Kcal KSA, Kcal UAE" required /></div>
         <div class="cs-form-field"><label>Brand Code</label><input name="brand_code" class="input" type="text" placeholder="Optional" /></div>
-        <div class="cs-form-field"><label>Brand Scope</label><select name="brand_scope" class="select"><option value="company">Current Client</option><option value="group" ${groups.length ? '' : 'disabled'}>CS Client Group</option></select></div>
+        <div class="cs-form-field"><label>Initial Scope</label><select name="brand_scope" class="select"><option value="company" ${defaultScope === 'company' ? 'selected' : ''}>Current Client only</option><option value="group" ${groups.length ? '' : 'disabled'} ${defaultScope === 'group' ? 'selected' : ''}>CS Client Group</option></select></div>
         <div class="cs-form-field" id="csBrandGroupField" style="display:none;"><label>CS Client Group</label><select name="group_id" class="select">${groupOpts || '<option value="">No groups yet</option>'}</select></div>
         ${selectField('status','Status',['Active','Watch','At Risk','Archived'],'Active')}
         <div class="cs-form-field"><label>Owner / CSM</label><input name="owner_name" class="input" type="text" placeholder="Optional" /></div>
         <div class="cs-form-field cs-form-field--full"><label>Description</label><textarea name="description" class="input" placeholder="Optional brand notes"></textarea></div>
       </div>
-      <div class="cs-modal-actions"><button type="button" class="btn ghost" onclick="document.getElementById('csModalClose').click()">Cancel</button><button type="submit" class="btn primary">Save Brand</button></div>
+      <div class="cs-modal-actions"><button type="button" class="btn ghost" onclick="document.getElementById('csModalClose').click()">Cancel</button><button type="submit" class="btn primary">Save Brand Name</button></div>
     </form>`, async form => {
       const fd = new FormData(form);
       const scope = fd.get('brand_scope') || 'company';
       const group = scope === 'group' ? groupById(fd.get('group_id')) : null;
+      if (scope === 'group' && !group) { toast('Select a valid CS client group.'); return; }
       const payload = {
         brand_name: fd.get('brand_name'),
         brand_code: fd.get('brand_code') || null,
@@ -1987,7 +2009,7 @@
       };
       const { error } = await supabase().from(TABLES.brands).insert(payload);
       if (error) { toast(`Unable to save brand: ${error.message}`); return; }
-      closeModal(); await loadData(); toast('CS brand saved.');
+      closeModal(); await loadData(); toast('Brand name created. Now assign locations from Manage Locations.');
     });
     const form = $('csBrandForm');
     const toggle = () => { const isGroup = form?.brand_scope?.value === 'group'; const field = $('csBrandGroupField'); if (field) field.style.display = isGroup ? '' : 'none'; };
@@ -2022,14 +2044,10 @@
     return brandById(row.brand_id) || { id: row.brand_id, brand_name: row.brand_name_snapshot || 'Unknown Brand' };
   }
 
-  function brandLocationOptions(brand) {
-    const targets = brandScopeTargets(brand);
-    return targets.map(target => {
-      const currentOwner = brandOwnerForTarget(brand, target);
-      const value = [target.company_id, target.company_name, target.location_name, target.service_start_date || '', target.service_end_date || ''].map(v => encodeURIComponent(String(v || ''))).join('|');
-      const ownerLabel = currentOwner ? ` · currently in ${brandName(currentOwner)}` : ' · unassigned';
-      return `<option value="${attr(value)}">${esc(target.company_name)} · ${esc(target.location_name)}${esc(ownerLabel)}</option>`;
-    }).join('');
+  function encodeBrandLocationTarget(target = {}) {
+    return [target.company_id, target.company_name, target.location_name, target.service_start_date || '', target.service_end_date || '']
+      .map(v => encodeURIComponent(String(v || '')))
+      .join('|');
   }
 
   function parseBrandLocationOption(value = '') {
@@ -2041,16 +2059,54 @@
     return brandLocationRows(brand).sort((a,b) => `${a.company_name_snapshot || ''} ${a.location_name || ''}`.localeCompare(`${b.company_name_snapshot || ''} ${b.location_name || ''}`));
   }
 
+  function renderAvailableBrandLocations(brand) {
+    if (!brand) return '<div class="cs-empty">Select a brand first.</div>';
+    const targets = brandScopeTargets(brand);
+    if (!targets.length) return '<div class="cs-empty">No active locations found for this brand scope.</div>';
+    const scopeText = brand.group_id
+      ? `Group scope: ${esc(groupName(groupById(brand.group_id) || {}))}`
+      : `Client scope: ${esc(brand.company_name_snapshot || companyName(getSelectedCompany()))}`;
+    return `<div class="cs-kpi-sub" style="margin-bottom:8px;">${scopeText} · showing ${targets.length} active location${targets.length === 1 ? '' : 's'}</div>
+      <div class="cs-table-wrap cs-brand-location-table"><table class="cs-table"><thead><tr><th>Client</th><th>Location</th><th>Current Brand</th><th>Action</th></tr></thead><tbody>${targets.map(target => {
+        const owner = brandOwnerForTarget(brand, target);
+        const isHere = owner && brandId(owner) === brandId(brand);
+        const payload = encodeBrandLocationTarget(target);
+        const current = owner ? brandName(owner) : 'Unassigned';
+        const actionLabel = isHere ? 'Already Assigned' : (owner ? 'Move Here' : 'Assign');
+        return `<tr>
+          <td>${esc(target.company_name)}</td>
+          <td><strong>${esc(target.location_name)}</strong></td>
+          <td><span class="cs-chip ${isHere ? 'cs-chip--healthy' : owner ? 'cs-chip--watch' : ''}">${esc(current)}</span></td>
+          <td>${isHere
+            ? `<button class="btn ghost sm" type="button" disabled>Assigned</button>`
+            : `<button class="btn sm" type="button" data-cs-action="brand-location-assign" data-brand-id="${attr(brandId(brand))}" data-location-payload="${attr(payload)}">${esc(actionLabel)}</button>`}</td>
+        </tr>`;
+      }).join('')}</tbody></table></div>`;
+  }
+
   function renderAssignedBrandLocations(brand) {
     if (!brand) return '<div class="cs-empty">Select a brand.</div>';
     const rows = assignedBrandLocationRows(brand);
-    if (!rows.length) return '<div class="cs-empty">No locations assigned to this brand yet.</div>';
-    return `<div class="cs-table-wrap"><table class="cs-table"><thead><tr><th>Client</th><th>Location</th><th>Status</th><th>Action</th></tr></thead><tbody>${rows.map(row => `<tr>
-      <td>${esc(row.company_name_snapshot || '')}</td>
-      <td>${esc(row.location_name || '')}</td>
-      <td>${esc(row.status || 'Active')}</td>
-      <td><button class="btn ghost sm" type="button" data-cs-action="brand-location-remove" data-brand-location-id="${attr(row.id)}">Remove</button></td>
-    </tr>`).join('')}</tbody></table></div>`;
+    if (!rows.length) return '<div class="cs-empty">No locations assigned to this brand yet. Use the Available Locations table above.</div>';
+    return `<div class="cs-table-wrap cs-brand-location-table"><table class="cs-table"><thead><tr><th>Client</th><th>Location</th><th>Status</th><th>Move To</th><th>Action</th></tr></thead><tbody>${rows.map(row => {
+      const rowGroupId = String(row.group_id || '').trim();
+      const rowCompanyId = String(row.company_id || '').trim();
+      const moveOptions = activeBrands().filter(other => {
+        if (brandId(other) === brandId(brand)) return false;
+        if (rowGroupId) return String(other.group_id || '').trim() === rowGroupId;
+        return !String(other.group_id || '').trim() && String(other.company_id || '').trim() === rowCompanyId;
+      }).sort((a,b) => brandName(a).localeCompare(brandName(b))).map(other => `<option value="${attr(brandId(other))}">${esc(brandName(other))}</option>`).join('');
+      return `<tr>
+        <td>${esc(row.company_name_snapshot || '')}</td>
+        <td><strong>${esc(row.location_name || '')}</strong></td>
+        <td>${esc(row.status || 'Active')}</td>
+        <td>${moveOptions ? `<select class="select" data-brand-location-move-select="${attr(row.id)}">${moveOptions}</select>` : '<span class="cs-kpi-sub">No other brand in same scope</span>'}</td>
+        <td>
+          ${moveOptions ? `<button class="btn ghost sm" type="button" data-cs-action="brand-location-move" data-brand-location-id="${attr(row.id)}">Move</button>` : ''}
+          <button class="btn ghost sm" type="button" data-cs-action="brand-location-remove" data-brand-location-id="${attr(row.id)}">Remove</button>
+        </td>
+      </tr>`;
+    }).join('')}</tbody></table></div>`;
   }
 
   async function removeBrandLocation(rowId = '') {
@@ -2061,62 +2117,77 @@
     if (!confirm(`Remove ${label}?`)) return;
     const { error } = await supabase().from(TABLES.brandLocations).delete().eq('id', id);
     if (error) { toast(`Unable to remove location: ${error.message}`); return; }
+    closeModal();
     await loadData();
     toast('Location removed from brand.');
   }
 
+  async function assignLocationToBrand(brand, target, status = 'Active', notes = '') {
+    if (!brand || !target?.company_id || !target?.location_name) { toast('Select a valid brand and location.'); return; }
+    const groupIdValue = brand.group_id || null;
+    let deleteQuery = supabase().from(TABLES.brandLocations).delete()
+      .eq('company_id', target.company_id)
+      .eq('location_name', target.location_name);
+    if (groupIdValue) deleteQuery = deleteQuery.eq('group_id', groupIdValue);
+    else deleteQuery = deleteQuery.is('group_id', null);
+    await deleteQuery;
+    const payload = {
+      brand_id: brandId(brand),
+      brand_name_snapshot: brandName(brand),
+      group_id: groupIdValue,
+      group_name_snapshot: groupIdValue ? groupName(groupById(groupIdValue) || {}) : null,
+      company_id: target.company_id,
+      company_name_snapshot: target.company_name,
+      location_name: target.location_name,
+      service_start_date: target.service_start_date || null,
+      service_end_date: target.service_end_date || null,
+      status: status || 'Active',
+      notes: notes || null
+    };
+    const { error } = await supabase().from(TABLES.brandLocations).upsert(payload, { onConflict: 'brand_id,company_id,location_name' });
+    if (error) { toast(`Unable to assign location: ${error.message}`); return; }
+    closeModal();
+    await loadData();
+    toast(`${target.location_name} assigned to ${brandName(brand)}.`);
+  }
+
+  async function moveBrandLocation(rowId = '', targetBrandId = '') {
+    const row = (STATE.rows.brandLocations || []).find(item => String(item.id || '').trim() === String(rowId || '').trim());
+    const targetBrand = brandById(targetBrandId);
+    if (!row || !targetBrand) { toast('Select a valid location and destination brand.'); return; }
+    await assignLocationToBrand(targetBrand, {
+      company_id: row.company_id,
+      company_name: row.company_name_snapshot,
+      location_name: row.location_name,
+      service_start_date: row.service_start_date,
+      service_end_date: row.service_end_date
+    }, row.status || 'Active', row.notes || '');
+  }
+
   function openBrandLocationForm(preselectedBrandId = '') {
-    const company = getSelectedCompany();
-    const brands = activeBrandsForSelect(company);
+    const brands = activeBrandsForSelect(getSelectedCompany());
     if (!brands.length) { toast('Create a brand first.'); openBrandForm(); return; }
     const selectedBrand = brandById(preselectedBrandId) || brands[0];
     const brandOpts = brands.map(brand => `<option value="${attr(brandId(brand))}" ${brandId(brand) === brandId(selectedBrand) ? 'selected' : ''}>${esc(brandName(brand))} · ${esc(brandScopeLabel(brand))}</option>`).join('');
     openModal('Manage Brand Locations', `<form class="cs-form" id="csBrandLocationForm">
       <div class="cs-form-grid">
         <div class="cs-form-field"><label>Brand</label><select name="brand_id" class="select" required>${brandOpts}</select></div>
-        <div class="cs-form-field"><label>Location to Add / Move</label><select name="location_payload" class="select" required></select></div>
-        ${selectField('status','Status',['Active','Inactive'],'Active')}
-        <div class="cs-form-field cs-form-field--full"><label>Notes</label><textarea name="notes" class="input" placeholder="Optional"></textarea></div>
+        ${selectField('status','Status for New Assignment',['Active','Inactive'],'Active')}
+        <div class="cs-form-field cs-form-field--full"><label>Notes for New Assignment</label><textarea name="notes" class="input" placeholder="Optional"></textarea></div>
       </div>
-      <div class="cs-kpi-sub">Adding a location to this brand will automatically move it from any other brand in the same client/group scope.</div>
+      <div class="cs-kpi-sub">If the selected brand is group-scoped, all group locations appear below. If it is client-scoped, only that client’s locations appear.</div>
+      <div class="cs-section-title" style="margin-top:12px;"><h4>Available Locations</h4><span class="cs-chip">Assign or move here</span></div>
+      <div id="csBrandAvailableLocations"></div>
       <div class="cs-section-title" style="margin-top:12px;"><h4>Assigned Locations</h4><span class="cs-chip">Remove or move between brands</span></div>
       <div id="csBrandAssignedLocations"></div>
-      <div class="cs-modal-actions"><button type="button" class="btn ghost" onclick="document.getElementById('csModalClose').click()">Cancel</button><button type="submit" class="btn primary">Add / Move Location</button></div>
-    </form>`, async form => {
-      const fd = new FormData(form);
-      const brand = brandById(fd.get('brand_id'));
-      const target = parseBrandLocationOption(fd.get('location_payload'));
-      if (!brand || !target.company_id || !target.location_name) { toast('Select a valid brand and location.'); return; }
-      const groupIdValue = brand.group_id || null;
-      let deleteQuery = supabase().from(TABLES.brandLocations).delete()
-        .eq('company_id', target.company_id)
-        .eq('location_name', target.location_name);
-      if (groupIdValue) deleteQuery = deleteQuery.eq('group_id', groupIdValue);
-      else deleteQuery = deleteQuery.is('group_id', null);
-      await deleteQuery;
-      const payload = {
-        brand_id: brandId(brand),
-        brand_name_snapshot: brandName(brand),
-        group_id: groupIdValue,
-        group_name_snapshot: groupIdValue ? groupName(groupById(groupIdValue) || {}) : null,
-        company_id: target.company_id,
-        company_name_snapshot: target.company_name,
-        location_name: target.location_name,
-        service_start_date: target.service_start_date || null,
-        service_end_date: target.service_end_date || null,
-        status: fd.get('status') || 'Active',
-        notes: fd.get('notes') || null
-      };
-      const { error } = await supabase().from(TABLES.brandLocations).upsert(payload, { onConflict: 'brand_id,company_id,location_name' });
-      if (error) { toast(`Unable to assign location: ${error.message}`); return; }
-      closeModal(); await loadData(); toast(`Location moved to ${brandName(brand)}.`);
-    });
+      <div class="cs-modal-actions"><button type="button" class="btn ghost" onclick="document.getElementById('csModalClose').click()">Close</button></div>
+    </form>`, async () => {});
     const form = $('csBrandLocationForm');
     const rebuild = () => {
       const brand = brandById(form?.brand_id?.value) || brands[0];
-      const options = brand ? brandLocationOptions(brand) : '';
-      if (form?.location_payload) form.location_payload.innerHTML = options || '<option value="">No active locations found for this brand scope</option>';
+      const availableHost = $('csBrandAvailableLocations');
       const assignedHost = $('csBrandAssignedLocations');
+      if (availableHost) availableHost.innerHTML = renderAvailableBrandLocations(brand);
       if (assignedHost) assignedHost.innerHTML = renderAssignedBrandLocations(brand);
     };
     form?.brand_id?.addEventListener('change', rebuild);

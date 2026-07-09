@@ -271,3 +271,17 @@ Behavior:
 - If the brand is created under one client, the assignment screen shows only that client’s locations.
 - A client or group can be divided into multiple brands.
 - Moving a location to another brand automatically removes it from the previous brand in the same client/group scope.
+
+
+## 2026-07-08 Brand Location Visibility Fix
+
+Changed Manage Brand Locations from a single dropdown into two clear tables:
+
+- Available Locations: shows all locations in the selected brand scope immediately
+- Assigned Locations: shows locations already assigned to the selected brand
+
+Rules:
+- Group-scoped brand: shows all group locations
+- Client-scoped brand: shows only that client’s locations
+- Each available location shows whether it is unassigned, assigned here, or currently in another brand
+- You can Assign, Move Here, Remove, or Move to another brand

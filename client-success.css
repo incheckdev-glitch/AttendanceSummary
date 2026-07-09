@@ -533,3 +533,10 @@ body.dark .cs-table th, body.dark .cs-empty { background:#111827; }
 
 .cs-table td .select[data-brand-location-move-select] { min-width: 160px; }
 .cs-mini-note strong { color: var(--cs-text); }
+
+
+.cs-brand-location-table .cs-table { min-width: 860px; }
+.cs-brand-location-table td strong { color: var(--cs-text); }
+.cs-modal-card { width: min(1180px, 96vw); }
+.cs-table button[disabled] { opacity: .55; cursor: not-allowed; }
+.cs-mini-note strong { color: var(--cs-text); }
