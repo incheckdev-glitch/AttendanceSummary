@@ -285,3 +285,12 @@ Rules:
 - Client-scoped brand: shows only that client’s locations
 - Each available location shows whether it is unassigned, assigned here, or currently in another brand
 - You can Assign, Move Here, Remove, or Move to another brand
+
+
+## 2026-07-08 Assign Button Click Fix
+
+Fixed Brand Location assignment buttons:
+- Added direct click binding inside the Manage Brand Locations modal
+- Assign / Move Here now uses `getAttribute` instead of fragile dataset parsing
+- Added error handling so assignment failures show a toast instead of silently doing nothing
+- Prevented form/table click propagation issues inside the modal

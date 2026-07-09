@@ -1591,20 +1591,27 @@
     if (action === 'brand') openBrandForm();
     if (action === 'brand-location') openBrandLocationForm(event.target?.closest?.('[data-brand-id]')?.dataset?.brandId || '');
     if (action === 'brand-location-assign') {
+      event.preventDefault?.();
+      event.stopPropagation?.();
       const btn = event.target?.closest?.('[data-location-payload]');
       const form = $('csBrandLocationForm');
       assignLocationToBrand(
-        brandById(btn?.dataset?.brandId || form?.brand_id?.value || ''),
-        parseBrandLocationOption(btn?.dataset?.locationPayload || ''),
-        form?.status?.value || 'Active',
-        form?.notes?.value || ''
+        brandById(btn?.getAttribute?.('data-brand-id') || form?.elements?.brand_id?.value || ''),
+        parseBrandLocationOption(btn?.getAttribute?.('data-location-payload') || ''),
+        form?.elements?.status?.value || 'Active',
+        form?.elements?.notes?.value || ''
       );
+      return;
     }
     if (action === 'brand-location-remove') removeBrandLocation(event.target?.closest?.('[data-brand-location-id]')?.dataset?.brandLocationId || '');
     if (action === 'brand-location-move') {
-      const rowId = event.target?.closest?.('[data-brand-location-id]')?.dataset?.brandLocationId || '';
-      const select = document.querySelector(`[data-brand-location-move-select="${rowId.replace(/"/g, '\\"')}"]`);
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      const rowId = event.target?.closest?.('[data-brand-location-id]')?.getAttribute?.('data-brand-location-id') || '';
+      const safeRowId = window.CSS?.escape ? CSS.escape(rowId) : String(rowId).replace(/"/g, '\\"');
+      const select = document.querySelector(`[data-brand-location-move-select="${safeRowId}"]`);
       moveBrandLocation(rowId, select?.value || '');
+      return;
     }
     if (action === 'brand-export') exportCompletionReport(event.target?.closest?.('[data-brand-id]')?.dataset?.brandId || '');
     if (action === 'review') openReviewForm();
@@ -2079,7 +2086,7 @@
           <td><span class="cs-chip ${isHere ? 'cs-chip--healthy' : owner ? 'cs-chip--watch' : ''}">${esc(current)}</span></td>
           <td>${isHere
             ? `<button class="btn ghost sm" type="button" disabled>Assigned</button>`
-            : `<button class="btn sm" type="button" data-cs-action="brand-location-assign" data-brand-id="${attr(brandId(brand))}" data-location-payload="${attr(payload)}">${esc(actionLabel)}</button>`}</td>
+            : `<button class="btn sm" type="button" data-cs-action="brand-location-assign" class="cs-brand-assign-btn" data-brand-id="${attr(brandId(brand))}" data-location-payload="${attr(payload)}">${esc(actionLabel)}</button>`}</td>
         </tr>`;
       }).join('')}</tbody></table></div>`;
   }
@@ -2123,32 +2130,39 @@
   }
 
   async function assignLocationToBrand(brand, target, status = 'Active', notes = '') {
-    if (!brand || !target?.company_id || !target?.location_name) { toast('Select a valid brand and location.'); return; }
-    const groupIdValue = brand.group_id || null;
-    let deleteQuery = supabase().from(TABLES.brandLocations).delete()
-      .eq('company_id', target.company_id)
-      .eq('location_name', target.location_name);
-    if (groupIdValue) deleteQuery = deleteQuery.eq('group_id', groupIdValue);
-    else deleteQuery = deleteQuery.is('group_id', null);
-    await deleteQuery;
-    const payload = {
-      brand_id: brandId(brand),
-      brand_name_snapshot: brandName(brand),
-      group_id: groupIdValue,
-      group_name_snapshot: groupIdValue ? groupName(groupById(groupIdValue) || {}) : null,
-      company_id: target.company_id,
-      company_name_snapshot: target.company_name,
-      location_name: target.location_name,
-      service_start_date: target.service_start_date || null,
-      service_end_date: target.service_end_date || null,
-      status: status || 'Active',
-      notes: notes || null
-    };
-    const { error } = await supabase().from(TABLES.brandLocations).upsert(payload, { onConflict: 'brand_id,company_id,location_name' });
-    if (error) { toast(`Unable to assign location: ${error.message}`); return; }
-    closeModal();
-    await loadData();
-    toast(`${target.location_name} assigned to ${brandName(brand)}.`);
+    try {
+      if (!brand || !target?.company_id || !target?.location_name) { toast('Select a valid brand and location.'); return; }
+      const groupIdValue = brand.group_id || null;
+      let deleteQuery = supabase().from(TABLES.brandLocations).delete()
+        .eq('company_id', target.company_id)
+        .eq('location_name', target.location_name);
+      if (groupIdValue) deleteQuery = deleteQuery.eq('group_id', groupIdValue);
+      else deleteQuery = deleteQuery.is('group_id', null);
+      const { error: deleteError } = await deleteQuery;
+      if (deleteError) { toast(`Unable to prepare location move: ${deleteError.message}`); return; }
+
+      const payload = {
+        brand_id: brandId(brand),
+        brand_name_snapshot: brandName(brand),
+        group_id: groupIdValue,
+        group_name_snapshot: groupIdValue ? groupName(groupById(groupIdValue) || {}) : null,
+        company_id: target.company_id,
+        company_name_snapshot: target.company_name,
+        location_name: target.location_name,
+        service_start_date: target.service_start_date || null,
+        service_end_date: target.service_end_date || null,
+        status: status || 'Active',
+        notes: notes || null
+      };
+      const { error } = await supabase().from(TABLES.brandLocations).upsert(payload, { onConflict: 'brand_id,company_id,location_name' });
+      if (error) { toast(`Unable to assign location: ${error.message}`); return; }
+      closeModal();
+      await loadData();
+      toast(`${target.location_name} assigned to ${brandName(brand)}.`);
+    } catch (error) {
+      console.error('[ClientSuccess360] brand location assign failed', error);
+      toast(`Unable to assign location: ${error.message || error}`);
+    }
   }
 
   async function moveBrandLocation(rowId = '', targetBrandId = '') {
@@ -2191,6 +2205,41 @@
       if (assignedHost) assignedHost.innerHTML = renderAssignedBrandLocations(brand);
     };
     form?.brand_id?.addEventListener('change', rebuild);
+
+    // Direct modal binding: prevents silent failures from global event delegation inside the modal table.
+    form?.addEventListener('click', ev => {
+      const assignBtn = ev.target?.closest?.('[data-cs-action="brand-location-assign"]');
+      if (assignBtn) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        assignLocationToBrand(
+          brandById(assignBtn.getAttribute('data-brand-id') || form.elements.brand_id?.value || ''),
+          parseBrandLocationOption(assignBtn.getAttribute('data-location-payload') || ''),
+          form.elements.status?.value || 'Active',
+          form.elements.notes?.value || ''
+        );
+        return;
+      }
+
+      const moveBtn = ev.target?.closest?.('[data-cs-action="brand-location-move"]');
+      if (moveBtn) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const rowId = moveBtn.getAttribute('data-brand-location-id') || '';
+        const safeRowId = window.CSS?.escape ? CSS.escape(rowId) : String(rowId).replace(/"/g, '\\"');
+        const select = form.querySelector(`[data-brand-location-move-select="${safeRowId}"]`);
+        moveBrandLocation(rowId, select?.value || '');
+        return;
+      }
+
+      const removeBtn = ev.target?.closest?.('[data-cs-action="brand-location-remove"]');
+      if (removeBtn) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        removeBrandLocation(removeBtn.getAttribute('data-brand-location-id') || '');
+      }
+    });
+
     rebuild();
   }
 
