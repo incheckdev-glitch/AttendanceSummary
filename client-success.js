@@ -92,25 +92,61 @@
       ''
     );
   };
-  const isAdmin = () => roleKey() === 'admin' || Boolean(global.AdminOverride?.canOverride?.());
+  const isAdmin = () => roleKey() === 'admin';
+
+  function csPermissionRows() {
+    const rows = global.Permissions?.state?.rows;
+    return Array.isArray(rows) ? rows : [];
+  }
+
+  function rowBool(value, defaultValue = true) {
+    if (value === undefined || value === null || value === '') return defaultValue;
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value !== 0;
+    const normalized = String(value).trim().toLowerCase();
+    if (['true','1','yes','y'].includes(normalized)) return true;
+    if (['false','0','no','n'].includes(normalized)) return false;
+    return defaultValue;
+  }
+
+  function actionCandidates(action) {
+    const key = String(action || '').trim().toLowerCase();
+    if (!key) return [];
+    if (['view','list','get','export'].includes(key)) return [key, 'view', 'list', 'get', 'export', 'manage'];
+    if (['create','insert','add'].includes(key)) return [key, 'create', 'insert', 'add', 'manage'];
+    if (['update','edit','move'].includes(key)) return [key, 'update', 'edit', 'move', 'manage'];
+    if (['delete','remove'].includes(key)) return [key, 'delete', 'remove', 'manage'];
+    return [key, 'manage'];
+  }
+
+  function rowMatchesCurrentRole(row) {
+    const currentRole = roleKey();
+    return normalizeRoleKey(row?.role_key) === currentRole;
+  }
+
+  function rowMatchesCsResource(row) {
+    const resource = String(row?.resource || '').trim().toLowerCase();
+    return resource === 'client_success' || resource === 'customer_success';
+  }
 
   function hasCsPermission(action) {
-    const normalizedAction = String(action || '').trim().toLowerCase();
-    if (!normalizedAction) return false;
+    const candidates = actionCandidates(action);
+    if (!candidates.length) return false;
     if (isAdmin()) return true;
 
-    const permissions = global.Permissions;
-    const checks = [
-      () => permissions?.canPerformAction?.('client_success', normalizedAction),
-      () => permissions?.canPerformAction?.('customer_success', normalizedAction),
-      () => permissions?.can?.('client_success', normalizedAction),
-      () => permissions?.can?.('customer_success', normalizedAction)
-    ];
+    const matched = csPermissionRows().filter(row =>
+      rowMatchesCurrentRole(row) &&
+      rowMatchesCsResource(row) &&
+      candidates.includes(String(row.action || '').trim().toLowerCase()) &&
+      rowBool(row.is_active, true)
+    );
 
-    return checks.some(fn => {
-      try { return Boolean(fn()); }
-      catch (_) { return false; }
-    });
+    // Strict rule: explicit deny wins for this role/action.
+    if (matched.some(row => rowBool(row.is_allowed, true) === false)) return false;
+
+    // Strict rule: only exact role_key rows count. This prevents one broad/global row
+    // from accidentally giving all roles create/update/delete access.
+    return matched.some(row => rowBool(row.is_allowed, true) === true);
   }
 
   const canManage = () => hasCsPermission('manage');
@@ -871,7 +907,7 @@
   }
 
   function wire() {
-    const writeAction = handler => () => { if (!canCreate()) { toast('No Customer Success create permission for your role. Update role permissions to allow this action.'); return; } handler(); };
+    const writeAction = handler => () => { if (!canCreate()) { toast('No Customer Success create permission for your role.'); return; } handler(); };
     $('csRefreshBtn')?.addEventListener('click', () => loadData());
     $('csAddCompletionBtn')?.addEventListener('click', writeAction(openCompletionForm));
     $('csAddGroupBtn')?.addEventListener('click', writeAction(openGroupForm));
@@ -1816,7 +1852,7 @@
       event.preventDefault?.();
       event.stopPropagation?.();
       const needed = requiredCsPermissionForAction(action);
-      toast(`No Customer Success ${needed} permission for your role. Update role permissions to allow this action.`);
+      toast(`No Customer Success ${needed} permission for your role.`);
       return;
     }
     if (action === 'completion') openCompletionForm();

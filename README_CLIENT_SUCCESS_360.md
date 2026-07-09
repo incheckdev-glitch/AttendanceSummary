@@ -519,3 +519,22 @@ Run:
 ```text
 sql/migrations/20260709_client_success_360_customizable_role_permissions.sql
 ```
+
+
+## 2026-07-09 Strict Custom Permissions Enforcement
+
+Fix for the issue where all roles could do everything.
+
+Changes:
+- Customer Success frontend now checks exact `role_key` rows from `role_permissions`.
+- It no longer trusts broad/global permission rows or admin override for CS write actions.
+- SQL now deletes old `client_success` / `customer_success` permission rows and recreates strict per-role rows.
+- GM/SFC/Viewer get explicit `create/update/delete = false` by default.
+- Admin and CSM get full access by default.
+- Later customization is still possible by editing the exact role row/action.
+
+Run:
+
+```text
+sql/migrations/20260709_client_success_360_strict_custom_permissions_fix.sql
+```
