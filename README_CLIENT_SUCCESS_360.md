@@ -254,3 +254,20 @@ Run this SQL if the brand layer is already installed:
 ```text
 sql/migrations/20260708_client_success_360_brand_location_move_unique_fix.sql
 ```
+
+
+## 2026-07-08 Brand Flow Refinement
+
+Brand flow is now:
+
+```text
+1. Create brand name only
+2. Open Manage Locations / Assign Location to Brand
+3. Assign, remove, or move locations between brands
+```
+
+Behavior:
+- If the brand is created under a CS group, the assignment screen shows all locations from that group.
+- If the brand is created under one client, the assignment screen shows only that client’s locations.
+- A client or group can be divided into multiple brands.
+- Moving a location to another brand automatically removes it from the previous brand in the same client/group scope.
