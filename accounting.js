@@ -60,7 +60,7 @@
       ledgerAccountId: 'all', ledgerFrom: '', ledgerTo: '', ledgerSource: 'all', journalStatus: 'all',
       sourceSearch: '', sourceFrom: '', sourceTo: '', sourceStatus: 'unposted',
       reportFrom: '', reportTo: '', reportAsOf: today(), reportSearch: '',
-      advancedSearch: '', expenseFrom: '', expenseTo: '', expenseStatus: 'all', deferredStatus: 'pending', reconciliationAccountId: 'all', reconciliationDate: today(), statementBalance: '', vendorSearch: '', vendorStatus: 'all', vendorBillStatus: 'all', vendorPaymentStatus: 'all'
+      advancedSearch: '', expenseFrom: '', expenseTo: '', expenseStatus: 'all', expenseType: 'all', deferredStatus: 'pending', reconciliationAccountId: 'all', reconciliationDate: today(), statementBalance: '', vendorSearch: '', vendorStatus: 'all', vendorBillStatus: 'all', vendorPaymentStatus: 'all'
     },
     accounts: [], bankAccounts: [], journals: [], journalLines: [], ledgerEntries: [],
     taxRates: [], expenses: [], costCenters: [], closingPeriods: [], revenueSchedules: [], bankReconciliations: [], auditLog: [], vendors: [], vendorBills: [], vendorPayments: [],
@@ -1424,7 +1424,7 @@
     const rows = filteredExpenses();
     const total = rows.reduce((s,r)=>s+num(r.total_amount || r.amount),0);
     const posted = rows.filter(r => r.journal_id).reduce((s,r)=>s+num(r.total_amount || r.amount),0);
-    const statusExtra = `<label class="accounting-field">Status<select id="accountingExpenseStatus"><option value="all">All</option><option value="draft" ${state.filters.expenseStatus==='draft'?'selected':''}>Draft</option><option value="approved" ${state.filters.expenseStatus==='approved'?'selected':''}>Approved</option><option value="paid" ${state.filters.expenseStatus==='paid'?'selected':''}>Paid</option><option value="locked" ${state.filters.expenseStatus==='locked'?'selected':''}>Locked</option></select></label>`;
+    const statusExtra = `<label class="accounting-field">Status<select id="accountingExpenseStatus"><option value="all">All</option><option value="draft" ${state.filters.expenseStatus==='draft'?'selected':''}>Draft</option><option value="approved" ${state.filters.expenseStatus==='approved'?'selected':''}>Approved</option><option value="paid" ${state.filters.expenseStatus==='paid'?'selected':''}>Paid</option><option value="locked" ${state.filters.expenseStatus==='locked'?'selected':''}>Locked</option></select></label><label class="accounting-field">Type<select id="accountingExpenseTypeFilter"><option value="all" ${state.filters.expenseType==='all'?'selected':''}>All</option><option value="expense" ${state.filters.expenseType==='expense'?'selected':''}>Expenses</option><option value="refund_credit" ${state.filters.expenseType==='refund_credit'?'selected':''}>Refunds / Credits</option></select></label>`;
     return `${renderAdvancedFilters(statusExtra)}
       <div class="accounting-grid compact"><div class="accounting-kpi"><div class="label">Filtered Expenses</div><div class="value">${money(total)}</div></div><div class="accounting-kpi"><div class="label">Posted Expenses</div><div class="value">${money(posted)}</div></div><div class="accounting-kpi"><div class="label">Expense Count</div><div class="value">${rows.length}</div></div></div>
       <div class="accounting-two-col"><div>${renderExpensesTable(rows)}</div><div class="accounting-card"><h3>New / Edit Expense</h3>${renderExpenseForm()}</div></div>`;
@@ -1435,12 +1435,16 @@
     return state.expenses.filter(row => {
       const date = dateKey(row.expense_date || row.created_at);
       if (state.filters.expenseStatus !== 'all' && norm(row.payment_status || row.status || 'draft') !== state.filters.expenseStatus) return false;
+      if (state.filters.expenseType !== 'all' && expenseTypeOf(row) !== state.filters.expenseType) return false;
       if (state.filters.expenseFrom && date < state.filters.expenseFrom) return false;
       if (state.filters.expenseTo && date > state.filters.expenseTo) return false;
-      if (search && !norm([row.expense_no,expenseVendorDisplay(row),row.vendor_name,row.category,row.description,row.payment_status].join(' ')).includes(search)) return false;
+      if (search && !norm([row.expense_no,expenseVendorDisplay(row),row.vendor_name,row.category,row.description,row.payment_status,expenseTypeLabel(expenseTypeOf(row))].join(' ')).includes(search)) return false;
       return true;
     }).sort((a,b)=>String(b.expense_date || '').localeCompare(String(a.expense_date || '')));
   }
+
+  function expenseTypeOf(row = {}) { return norm(row.expense_type) === 'refund_credit' || num(row.amount) < 0 || num(row.total_amount) < 0 ? 'refund_credit' : 'expense'; }
+  function expenseTypeLabel(type) { return type === 'refund_credit' ? 'Refund / Credit' : 'Expense'; }
 
   function nextExpenseNo() {
     const year = new Date().getFullYear();
@@ -1457,7 +1461,8 @@
         <label class="accounting-field">Category<input id="accountingExpenseCategory" placeholder="Hosting, office, travel..." /></label>
         <label class="accounting-field">Expense Account<select id="accountingExpenseAccount">${accountOptions(accountByCode('5400')?.id || '', true)}</select></label>
         <label class="accounting-field">Cost Center<select id="accountingExpenseCostCenter">${costCenterOptions('')}</select></label>
-        <label class="accounting-field">Net Amount<input id="accountingExpenseAmount" type="number" step="0.01" value="0" /></label>
+        <label class="accounting-field">Expense Type<select id="accountingExpenseType"><option value="expense" selected>Expense</option><option value="refund_credit">Expense Refund / Credit</option></select></label>
+        <label class="accounting-field">Net Amount<input id="accountingExpenseAmount" type="number" step="0.01" value="0" placeholder="100.00" /><span class="muted" id="accountingExpenseAmountHint">Use Expense Refund / Credit for negative expenses.</span></label>
         <label class="accounting-field">Tax Rate<select id="accountingExpenseTaxRate">${taxRateOptions('')}</select></label>
         <label class="accounting-field">Currency<input id="accountingExpenseCurrency" value="USD" /></label>
         <label class="accounting-field">Status<select id="accountingExpenseStatusInput"><option value="draft">Draft</option><option value="approved">Approved / Payable</option><option value="paid">Paid</option><option value="locked">Locked</option></select></label>
@@ -1469,14 +1474,34 @@
 
   function renderExpensesTable(rows) {
     if (!rows.length) return '<div class="accounting-empty">No expenses match the filters.</div>';
-    return `<div class="accounting-table-wrap"><table class="accounting-table"><thead><tr><th>No.</th><th>Date</th><th>Vendor</th><th>Category</th><th>Status</th><th class="num">Net</th><th class="num">Tax</th><th class="num">Total</th><th>Journal</th><th>Actions</th></tr></thead><tbody>${rows.map(row=>`<tr><td><strong>${esc(row.expense_no)}</strong></td><td>${fmtDate(row.expense_date)}</td><td>${esc(expenseVendorDisplay(row))}</td><td>${esc(row.category || '—')}</td><td><span class="accounting-badge ${esc(norm(row.payment_status || row.status || 'draft'))}">${esc(row.payment_status || row.status || 'draft')}</span></td><td class="num">${money(row.amount,row.currency)}</td><td class="num">${money(row.tax_amount,row.currency)}</td><td class="num">${money(row.total_amount || row.amount,row.currency)}</td><td>${esc(state.journals.find(j=>j.id===row.journal_id)?.journal_no || '—')}</td><td><button class="btn ghost sm" type="button" data-accounting-edit-expense="${esc(row.id)}">Edit</button> ${row.journal_id ? '<span class="muted">Posted</span>' : `<button class="btn sm" type="button" data-accounting-post-expense="${esc(row.id)}">Post</button>`}</td></tr>`).join('')}</tbody></table></div>`;
+    return `<div class="accounting-table-wrap"><table class="accounting-table"><thead><tr><th>No.</th><th>Date</th><th>Vendor</th><th>Category</th><th>Type</th><th>Status</th><th class="num">Net</th><th class="num">Tax</th><th class="num">Total</th><th>Journal</th><th>Actions</th></tr></thead><tbody>${rows.map(row=>`<tr><td><strong>${esc(row.expense_no)}</strong></td><td>${fmtDate(row.expense_date)}</td><td>${esc(expenseVendorDisplay(row))}</td><td>${esc(row.category || '—')}</td><td><span class="accounting-badge ${expenseTypeOf(row)==='refund_credit'?'draft':'posted'}">${esc(expenseTypeLabel(expenseTypeOf(row)))}</span></td><td><span class="accounting-badge ${esc(norm(row.payment_status || row.status || 'draft'))}">${esc(row.payment_status || row.status || 'draft')}</span></td><td class="num">${money(row.amount,row.currency)}</td><td class="num">${money(row.tax_amount,row.currency)}</td><td class="num">${money(row.total_amount || row.amount,row.currency)}</td><td>${esc(state.journals.find(j=>j.id===row.journal_id)?.journal_no || '—')}</td><td><button class="btn ghost sm" type="button" data-accounting-edit-expense="${esc(row.id)}">Edit</button> ${row.journal_id ? '<span class="muted">Posted</span>' : `<button class="btn sm" type="button" data-accounting-post-expense="${esc(row.id)}">Post</button>`}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+
+
+  function updateExpenseAmountHint() {
+    const type = $('accountingExpenseType')?.value === 'refund_credit' ? 'refund_credit' : 'expense';
+    const amountInput = $('accountingExpenseAmount');
+    const hint = $('accountingExpenseAmountHint');
+    if (amountInput) amountInput.placeholder = type === 'refund_credit' ? '-25.00' : '100.00';
+    if (hint) hint.textContent = type === 'refund_credit' ? 'Refunds / credits must be entered as negative amounts; positive values are auto-converted.' : 'Use Expense Refund / Credit for negative expenses.';
+  }
+
+  function normalizeExpenseAmountForType() {
+    const type = $('accountingExpenseType')?.value === 'refund_credit' ? 'refund_credit' : 'expense';
+    const amountInput = $('accountingExpenseAmount');
+    if (!amountInput) return;
+    const value = num(amountInput.value);
+    if (type === 'refund_credit' && value > 0) amountInput.value = String(-value);
+    if (type === 'expense' && value < 0) toast('Use Expense Refund / Credit for negative expenses.');
   }
 
   async function saveExpenseForm() {
     const id = $('accountingExpenseId')?.value || uid('expense');
     const existing = state.expenses.find(row => row.id === id) || {};
     const taxRate = state.taxRates.find(t => t.id === $('accountingExpenseTaxRate')?.value);
-    const amount = num($('accountingExpenseAmount')?.value);
+    let amount = num($('accountingExpenseAmount')?.value);
+    const expenseType = $('accountingExpenseType')?.value === 'refund_credit' ? 'refund_credit' : 'expense';
+    if (expenseType === 'refund_credit' && amount > 0) amount = -amount;
     const taxAmount = Number((amount * num(taxRate?.tax_rate) / 100).toFixed(2));
     const vendorId = $('accountingExpenseVendorId')?.value || existing.vendor_id || '';
     const selectedVendor = vendorById(vendorId);
@@ -1484,12 +1509,14 @@
       ...existing, id, expense_no: $('accountingExpenseNo')?.value?.trim() || existing.expense_no || nextExpenseNo(), expense_date: $('accountingExpenseDate')?.value || today(),
       vendor_id: vendorId || null, vendor_name: selectedVendor?.vendor_name || existing.vendor_name || '', category: $('accountingExpenseCategory')?.value?.trim() || '', description: $('accountingExpenseDescription')?.value?.trim() || '',
       expense_account_id: $('accountingExpenseAccount')?.value || selectedVendor?.default_expense_account_id || accountByCode('5400')?.id || null, cost_center_id: $('accountingExpenseCostCenter')?.value || null,
-      amount, tax_rate_id: taxRate?.id || null, tax_amount: taxAmount, total_amount: Number((amount + taxAmount).toFixed(2)), currency: ($('accountingExpenseCurrency')?.value || 'USD').trim().toUpperCase(),
+      amount, expense_type: expenseType, tax_rate_id: taxRate?.id || null, tax_amount: taxAmount, total_amount: Number((amount + taxAmount).toFixed(2)), currency: ($('accountingExpenseCurrency')?.value || 'USD').trim().toUpperCase(),
       payment_status: $('accountingExpenseStatusInput')?.value || 'draft', payment_account_id: $('accountingExpenseBankAccount')?.value || defaultBankAccount()?.id || null,
       created_by: existing.created_by || authName(), created_at: existing.created_at || new Date().toISOString(), updated_at: new Date().toISOString()
     };
     if (!row.vendor_id) return toast('Vendor / Supplier is required. Create it first in Vendors / Suppliers.');
-    if (row.amount <= 0) return toast('Expense amount must be above zero.');
+    if (row.amount === 0) return toast('Expense amount cannot be zero.');
+    if (expenseType === 'expense' && row.amount < 0) return toast('Use Expense Refund / Credit for negative expenses.');
+    if (expenseType === 'refund_credit' && row.amount >= 0) return toast('Expense Refund / Credit amount must be negative.');
     await persistRow('expenses', TABLES.expenses, row);
     await recordAudit('save_expense', 'expense', row.id, `Saved expense ${row.expense_no}.`, { amount: row.total_amount, status: row.payment_status });
     toast('Expense saved.'); render();
@@ -1498,7 +1525,7 @@
   function editExpense(id) {
     const row = state.expenses.find(item => item.id === id); if (!row) return;
     state.activeTab = 'advanced'; state.activeAdvancedTab = 'expenses'; render();
-    $('accountingExpenseId').value = row.id; $('accountingExpenseNo').value = row.expense_no || ''; $('accountingExpenseDate').value = dateKey(row.expense_date) || today(); $('accountingExpenseVendorId').value = expenseVendorId(row); $('accountingExpenseCategory').value = row.category || ''; $('accountingExpenseAccount').value = row.expense_account_id || accountByCode('5400')?.id || ''; $('accountingExpenseCostCenter').value = row.cost_center_id || ''; $('accountingExpenseAmount').value = row.amount || 0; $('accountingExpenseTaxRate').value = row.tax_rate_id || ''; $('accountingExpenseCurrency').value = row.currency || 'USD'; $('accountingExpenseStatusInput').value = row.payment_status || 'draft'; $('accountingExpenseBankAccount').value = row.payment_account_id || ''; $('accountingExpenseDescription').value = row.description || '';
+    $('accountingExpenseId').value = row.id; $('accountingExpenseNo').value = row.expense_no || ''; $('accountingExpenseDate').value = dateKey(row.expense_date) || today(); $('accountingExpenseVendorId').value = expenseVendorId(row); $('accountingExpenseCategory').value = row.category || ''; $('accountingExpenseAccount').value = row.expense_account_id || accountByCode('5400')?.id || ''; $('accountingExpenseCostCenter').value = row.cost_center_id || ''; $('accountingExpenseType').value = expenseTypeOf(row); updateExpenseAmountHint(); $('accountingExpenseAmount').value = row.amount || 0; $('accountingExpenseTaxRate').value = row.tax_rate_id || ''; $('accountingExpenseCurrency').value = row.currency || 'USD'; $('accountingExpenseStatusInput').value = row.payment_status || 'draft'; $('accountingExpenseBankAccount').value = row.payment_account_id || ''; $('accountingExpenseDescription').value = row.description || '';
   }
 
   async function postExpense(id) {
@@ -1510,9 +1537,15 @@
     const bank = accountById(state.bankAccounts.find(b => b.id === row.payment_account_id)?.linked_account_id) || bankLedgerAccount();
     const ap = requiredAccount('2100','Accounts Payable');
     const paid = norm(row.payment_status) === 'paid' || norm(row.payment_status) === 'locked';
-    const lines = [line(expenseAccount, num(row.amount), 0, `Expense · ${row.expense_no} · ${expenseVendorDisplay(row)}`)];
-    if (num(row.tax_amount) > 0 && vatReceivable) lines.push(line(vatReceivable, num(row.tax_amount), 0, `Purchase VAT · ${row.expense_no}`));
-    lines.push(line(paid ? bank : ap, 0, num(row.total_amount || row.amount), paid ? `Expense paid · ${row.expense_no}` : `Expense payable · ${row.expense_no}`));
+    const isRefundCredit = expenseTypeOf(row) === 'refund_credit';
+    const netAmount = Math.abs(num(row.amount));
+    const taxAmount = Math.abs(num(row.tax_amount));
+    const totalAmount = Math.abs(num(row.total_amount || row.amount));
+    const lines = isRefundCredit
+      ? [line(paid ? bank : ap, totalAmount, 0, paid ? `Expense refund received · ${row.expense_no}` : `Expense credit receivable · ${row.expense_no}`), line(expenseAccount, 0, netAmount, `Expense refund / credit · ${row.expense_no} · ${expenseVendorDisplay(row)}`)]
+      : [line(expenseAccount, netAmount, 0, `Expense · ${row.expense_no} · ${expenseVendorDisplay(row)}`)];
+    if (taxAmount > 0 && vatReceivable) lines.push(isRefundCredit ? line(vatReceivable, 0, taxAmount, `Purchase VAT refund · ${row.expense_no}`) : line(vatReceivable, taxAmount, 0, `Purchase VAT · ${row.expense_no}`));
+    if (!isRefundCredit) lines.push(line(paid ? bank : ap, 0, totalAmount, paid ? `Expense paid · ${row.expense_no}` : `Expense payable · ${row.expense_no}`));
     const journal = await postBalancedJournal({ sourceModule: 'expenses', sourceTable: TABLES.expenses, sourceId: row.id, sourceReference: row.expense_no, sourceLabel: expenseVendorDisplay(row), date: row.expense_date, currency: row.currency, description: `Expense ${row.expense_no} · ${expenseVendorDisplay(row)}`, referenceNo: row.expense_no, lines });
     if (!journal) return;
     Object.assign(row, { journal_id: journal.id, posted_at: new Date().toISOString(), updated_at: new Date().toISOString() });
@@ -1668,6 +1701,8 @@
     if (advancedTo) advancedTo.addEventListener('change', event => { state.filters.expenseTo = event.target.value || ''; render(); });
     const expenseStatus = $('accountingExpenseStatus');
     if (expenseStatus) expenseStatus.addEventListener('change', event => { state.filters.expenseStatus = event.target.value || 'all'; render(); });
+    const expenseTypeFilter = $('accountingExpenseTypeFilter');
+    if (expenseTypeFilter) expenseTypeFilter.addEventListener('change', event => { state.filters.expenseType = event.target.value || 'all'; render(); });
     const expenseVendor = $('accountingExpenseVendorId');
     if (expenseVendor) expenseVendor.addEventListener('change', event => {
       const vendor = vendorById(event.target.value);
@@ -1833,7 +1868,7 @@
       if (action === 'export-report') { exportCsv(`accounting_${state.activeReportTab}_report.csv`, currentReportCsvRows()); return; }
       if (action === 'print-report') { printCurrentReport(); return; }
       if (action === 'sync-visible-sources') { syncVisibleSources(); return; }
-      if (action === 'clear-advanced-filters') { state.filters.advancedSearch = ''; state.filters.expenseFrom = ''; state.filters.expenseTo = ''; state.filters.expenseStatus = 'all'; state.filters.deferredStatus = 'pending'; render(); return; }
+      if (action === 'clear-advanced-filters') { state.filters.advancedSearch = ''; state.filters.expenseFrom = ''; state.filters.expenseTo = ''; state.filters.expenseStatus = 'all'; state.filters.expenseType = 'all'; state.filters.deferredStatus = 'pending'; render(); return; }
       if (action === 'recognize-due-revenue') { recognizeDueRevenue(); return; }
       if (action === 'export-deferred-revenue') { exportCsv('accounting_deferred_revenue_schedule.csv', filteredRevenueSchedules()); return; }
       if (action === 'reset-expense-form' || action === 'reset-tax-form' || action === 'reset-cost-center-form' || action === 'reset-closing-form') { render(); return; }
@@ -1904,6 +1939,10 @@
     const vendorBillForm = $('accountingVendorBillForm'); if (vendorBillForm) vendorBillForm.addEventListener('submit', event => { event.preventDefault(); saveVendorBillForm(); });
     const vendorPaymentForm = $('accountingVendorPaymentForm'); if (vendorPaymentForm) vendorPaymentForm.addEventListener('submit', event => { event.preventDefault(); saveVendorPaymentForm(); });
     const expenseForm = $('accountingExpenseForm'); if (expenseForm) expenseForm.addEventListener('submit', event => { event.preventDefault(); saveExpenseForm(); });
+    const expenseTypeInput = $('accountingExpenseType');
+    if (expenseTypeInput) expenseTypeInput.addEventListener('change', updateExpenseAmountHint);
+    const expenseAmountInput = $('accountingExpenseAmount');
+    if (expenseAmountInput) expenseAmountInput.addEventListener('blur', normalizeExpenseAmountForType);
     const taxForm = $('accountingTaxForm'); if (taxForm) taxForm.addEventListener('submit', event => { event.preventDefault(); saveTaxForm(); });
     const costCenterForm = $('accountingCostCenterForm'); if (costCenterForm) costCenterForm.addEventListener('submit', event => { event.preventDefault(); saveCostCenterForm(); });
     const closingForm = $('accountingClosingForm'); if (closingForm) closingForm.addEventListener('submit', event => { event.preventDefault(); saveClosingForm(); });
