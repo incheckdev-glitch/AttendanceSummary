@@ -1574,9 +1574,11 @@
     const stackSvgMarkers = '';
     const stackSvg = `<svg class="stack-svg" viewBox="0 0 1000 86" preserveAspectRatio="none" role="img" aria-label="Completion breakdown"><rect x="0" y="0" width="1000" height="58" rx="10" ry="10" fill="#eef2f7"></rect>${stackSvgSegments}${stackSvgMarkers}</svg>`;
     const completionDonutStyle = `background: conic-gradient(var(--good) 0 ${safeWidth(stats.completion)}, #e8eef7 ${safeWidth(stats.completion)} 100%);`;
+    const exportBaseHref = new URL('.', window.location.href).href;
 
     const reportHtml = `<!DOCTYPE html>
 <html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<base href="${attr(exportBaseHref)}" />
 <title>Completion Report - ${esc(reportName)}</title>
 <style>
   @page{size:A4 landscape;margin:7mm}
@@ -1588,7 +1590,7 @@
   .report-page{width:281mm;min-height:194mm;margin:0 auto 14px;background:#fff;border:1px solid var(--line);border-radius:18px;padding:10mm;box-shadow:var(--shadow);page-break-after:always;break-after:page;overflow:hidden}
   .report-page:last-child{page-break-after:auto;break-after:auto}
   .report-header{display:grid;grid-template-columns:42mm 1fr;gap:10mm;align-items:start;border-bottom:1px solid var(--line);padding-bottom:6mm;margin-bottom:5mm}
-  .brand{min-height:24mm;display:flex;align-items:flex-start}.brand [data-incheck360-doc-logo-slot],.brand [data-incheck360-doc-logo]{display:flex;align-items:flex-start;justify-content:flex-start}.brand .incheck360-doc-logo-wrap{width:40mm!important;max-width:40mm!important;height:24mm!important;max-height:24mm!important}.brand .incheck360-doc-logo{max-width:32mm!important;max-height:20mm!important;width:auto!important;height:auto!important;object-fit:contain;object-position:left top;display:block}.brand-fallback{font-size:20px;font-weight:900;color:var(--ink)}.brand-fallback span{color:var(--brand2)}
+  .brand{min-height:24mm;display:flex;align-items:flex-start;justify-content:flex-start}.brand [data-incheck360-doc-logo-slot],.brand [data-incheck360-doc-logo],.brand .cs-export-doc-logo-slot{display:flex;align-items:flex-start;justify-content:flex-start;width:40mm;min-height:24mm}.brand .incheck360-doc-logo-wrap,.brand .cs-export-doc-logo-wrap{width:40mm!important;max-width:40mm!important;height:24mm!important;max-height:24mm!important;display:flex;align-items:flex-start;justify-content:flex-start}.brand .incheck360-doc-logo,.brand .cs-export-doc-logo{max-width:32mm!important;max-height:20mm!important;width:auto!important;height:auto!important;object-fit:contain;object-position:left top;display:block}.brand-fallback{font-size:20px;font-weight:900;color:var(--ink)}.brand-fallback span{color:var(--brand2)}
   .header-main{min-width:0}.header-row{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.title h1{margin:0;color:var(--ink);font-size:28px;line-height:1.05;letter-spacing:.02em}.title .subtitle{margin-top:5px;color:var(--muted);font-size:11.5px;line-height:1.35}.meta-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px}.meta{border:1px solid var(--line);border-radius:12px;background:#fbfdff;padding:8px 10px;min-height:42px}.meta .k{font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px}.meta .v{font-weight:900;color:var(--ink);font-size:12px;line-height:1.25}
   .actions{width:281mm;margin:0 auto 10px;display:flex;justify-content:flex-end;gap:10px}.btn{border:1px solid var(--line);border-radius:12px;padding:9px 13px;font-weight:900;cursor:pointer;background:#fff;color:var(--brand)}.btn.primary{background:var(--brand);color:#fff;border-color:var(--brand)}.print-hint{margin-right:auto;color:var(--muted);font-size:12px;align-self:center}
   .kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-bottom:5mm}.kpi{border:1px solid var(--line);border-radius:14px;padding:9px 10px;background:#fff;min-height:64px}.kpi .label{font-size:9.5px;font-weight:850;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.kpi .value{font-size:20px;font-weight:950;margin-top:6px;color:var(--brand)}.kpi .value.good{color:var(--good)}.kpi .value.late{color:var(--late)}.kpi .value.partial{color:var(--partial)}.kpi .value.miss{color:var(--miss)}
@@ -1607,7 +1609,7 @@
 <div class="report-document">
   <section class="report-page summary-page">
     <div class="report-header">
-      <div class="brand"><div data-incheck360-doc-logo-slot></div><div class="brand-fallback" style="display:none;">InCheck <span>360</span></div></div>
+      <div class="brand"><div class="cs-export-doc-logo-slot" data-incheck360-doc-logo-slot></div><div class="brand-fallback" style="display:none;">InCheck <span>360</span></div></div>
       <div class="header-main">
         <div class="header-row">
           <div class="title"><h1>Completion Report</h1><div class="subtitle">${esc(reportTitleSuffix)} · Completion = Done On-Time + Done Late · Values are percentages.</div></div>
@@ -1672,7 +1674,7 @@
 
   ${brandRows.length ? `<section class="report-page brand-page">
     <div class="report-header">
-      <div class="brand"><div data-incheck360-doc-logo-slot></div><div class="brand-fallback" style="display:none;">InCheck <span>360</span></div></div>
+      <div class="brand"><div class="cs-export-doc-logo-slot" data-incheck360-doc-logo-slot></div><div class="brand-fallback" style="display:none;">InCheck <span>360</span></div></div>
       <div class="header-main">
         <div class="header-row"><div class="title"><h1>Brand Completion Insights</h1><div class="subtitle">${esc(reportName)} · Group report is divided by brand/sub-group such as Kcal KSA and Kcal UAE.</div></div></div>
         <div class="meta-grid">
@@ -1691,7 +1693,7 @@
 
   <section class="report-page table-page">
     <div class="report-header">
-      <div class="brand"><div data-incheck360-doc-logo-slot></div><div class="brand-fallback" style="display:none;">InCheck <span>360</span></div></div>
+      <div class="brand"><div class="cs-export-doc-logo-slot" data-incheck360-doc-logo-slot></div><div class="brand-fallback" style="display:none;">InCheck <span>360</span></div></div>
       <div class="header-main">
         <div class="header-row"><div class="title"><h1>Location Completion Details</h1><div class="subtitle">${esc(reportName)} · ${esc(periodLabel)} · ${rows.length} active location${rows.length === 1 ? '' : 's'}</div></div></div>
       </div>
@@ -1705,9 +1707,25 @@
 </div></body></html>`;
 
     try {
-      const brandedReportHtml = window.Utils?.addIncheckDocumentLogo
+      const officialLogo =
+        window.INCHECK360_DOCUMENT_LOGO_DATA_URI ||
+        window.Utils?.INCHECK360_DOCUMENT_LOGO_DATA_URI ||
+        window.Utils?.documentLogoDataUri ||
+        '';
+      const fallbackLogoHtml = officialLogo
+        ? `<div class="cs-export-doc-logo-wrap"><img class="cs-export-doc-logo incheck360-doc-logo" src="${officialLogo}" alt="InCheck 360" /></div>`
+        : `<div class="cs-export-doc-logo-wrap"><img class="cs-export-doc-logo incheck360-doc-logo" src="assets/incheck360-document-logo.png" alt="InCheck 360" onerror="this.onerror=null;this.src='assets/incheck360-ui-logo.png';" /></div>`;
+
+      let brandedReportHtml = window.Utils?.addIncheckDocumentLogo
         ? window.Utils.addIncheckDocumentLogo(reportHtml)
         : reportHtml;
+
+      // If the official document-logo helper is unavailable, or leaves a slot empty,
+      // fill the top-left report logo area so the export never opens with blank space.
+      brandedReportHtml = brandedReportHtml
+        .replace(/<div class="cs-export-doc-logo-slot" data-incheck360-doc-logo-slot><\/div>/g, `<div class="cs-export-doc-logo-slot" data-incheck360-doc-logo-slot>${fallbackLogoHtml}</div>`)
+        .replace(/<div data-incheck360-doc-logo-slot><\/div>/g, `<div data-incheck360-doc-logo-slot>${fallbackLogoHtml}</div>`);
+
       const win = window.open('', '_blank');
       if (!win) { toast('Popup blocked. Please allow popups and try again.'); return; }
       win.document.open();

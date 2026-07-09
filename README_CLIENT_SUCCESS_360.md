@@ -372,3 +372,11 @@ Brand/Sub-group export report now hides comparison fields when only one brand is
 - hides the comparison insight cards
 
 These comparison sections appear only when the report contains 2 or more brands.
+
+
+## 2026-07-09 Export Top-Left Logo Fix
+
+Completion export now fills the top-left report header with the official InCheck 360 document logo:
+- Uses the same `Utils.addIncheckDocumentLogo` helper used by proposal/agreement previews when available.
+- Adds a safe fallback logo slot so the top-left area is not blank if the helper is unavailable.
+- Adds a `<base>` tag so logo assets resolve correctly in the export popup.
