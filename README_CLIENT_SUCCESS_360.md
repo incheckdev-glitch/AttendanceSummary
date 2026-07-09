@@ -328,3 +328,10 @@ Export report changes:
 - Removed the `Scope` card from the export header.
 - Replaced `Locations needing extra CS effort` with `Locations needing operational attention`.
 - Adjusted export meta layout so remaining header cards stay balanced.
+
+
+## 2026-07-09 Location Details Export Cleanup
+
+Location Completion Details export page:
+- Removed the small summary cards from the page header.
+- Removed the subtitle text `no duplicate locations · brand page included when configured`.
