@@ -353,14 +353,14 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     delete: []
   }),
   client_success: Object.freeze({
-    view: ['admin','csm','customer_success','customer_success_manager','gm','general_manager','sfc','senior_financial_controller','viewer'],
-    list: ['admin','csm','customer_success','customer_success_manager','gm','general_manager','sfc','senior_financial_controller','viewer'],
-    get: ['admin','csm','customer_success','customer_success_manager','gm','general_manager','sfc','senior_financial_controller','viewer'],
-    export: ['admin','csm','customer_success','customer_success_manager','gm','general_manager','sfc','senior_financial_controller','viewer'],
-    create: ['admin','csm','customer_success','customer_success_manager','gm','general_manager','sfc','senior_financial_controller'],
-    update: ['admin','csm','customer_success','customer_success_manager','gm','general_manager','sfc','senior_financial_controller'],
-    delete: ['admin','csm','customer_success','customer_success_manager','gm','general_manager','sfc','senior_financial_controller'],
-    manage: ['admin','csm','customer_success','customer_success_manager','gm','general_manager','sfc','senior_financial_controller']
+    view: ['admin','csm','gm','general_manager','sfc','senior_financial_controller','senior_finanical_controller','viewer'],
+    list: ['admin','csm','gm','general_manager','sfc','senior_financial_controller','senior_finanical_controller','viewer'],
+    get: ['admin','csm','gm','general_manager','sfc','senior_financial_controller','senior_finanical_controller','viewer'],
+    export: ['admin','csm','gm','general_manager','sfc','senior_financial_controller','senior_finanical_controller','viewer'],
+    create: ['admin','csm'],
+    update: ['admin','csm'],
+    delete: ['admin','csm'],
+    manage: ['admin','csm']
   })
 });
 

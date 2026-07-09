@@ -448,3 +448,30 @@ client-success.css
 permissions.js
 README_CLIENT_SUCCESS_360.md
 ```
+
+
+## 2026-07-09 Customer Success Final Access Reset
+
+Final requested access model:
+
+```text
+Full create/edit/delete/manage:
+- admin
+- csm
+
+View/export only:
+- gm / general_manager
+- sfc / senior_financial_controller / senior_finanical_controller
+- viewer
+```
+
+Run:
+
+```text
+sql/migrations/20260709_client_success_360_admin_csm_full_viewer_readonly_final.sql
+```
+
+Important:
+- This SQL deletes old `client_success` and `customer_success` permission rows and recreates them cleanly.
+- It avoids role FK errors by inserting only roles that already exist in `public.roles`.
+- Frontend no longer trusts generic `client_success.manage` for Customer Success write access; only `admin` and `csm` can manage.

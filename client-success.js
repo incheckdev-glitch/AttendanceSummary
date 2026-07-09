@@ -92,11 +92,11 @@
       ''
     );
   };
-  const FULL_ACCESS_ROLES = new Set(['admin', 'csm', 'customer_success', 'customer_success_manager', 'gm', 'general_manager', 'sfc', 'senior_financial_controller']);
-  const VIEW_ONLY_ROLES = new Set(['viewer']);
+  const FULL_ACCESS_ROLES = new Set(['admin', 'csm']);
+  const VIEW_ONLY_ROLES = new Set(['gm', 'general_manager', 'sfc', 'senior_financial_controller', 'senior_finanical_controller', 'viewer']);
   const isAdmin = () => roleKey() === 'admin' || Boolean(global.AdminOverride?.canOverride?.());
-  const canManage = () => Boolean(global.AdminOverride?.canOverride?.()) || FULL_ACCESS_ROLES.has(roleKey()) || Boolean(global.Permissions?.can?.('client_success', 'manage'));
-  const canViewOnly = () => VIEW_ONLY_ROLES.has(roleKey()) || Boolean(global.Permissions?.can?.('client_success', 'view'));
+  const canManage = () => Boolean(global.AdminOverride?.canOverride?.()) || FULL_ACCESS_ROLES.has(roleKey());
+  const canViewOnly = () => VIEW_ONLY_ROLES.has(roleKey()) || Boolean(global.Permissions?.can?.('client_success', 'view') || global.Permissions?.can?.('customer_success', 'view'));
   const canAccess = () => canManage() || canViewOnly();
   const accessLabel = () => canManage() ? 'Full access' : 'View only';
   const supabase = () => global.SupabaseClient?.getClient?.();
@@ -854,7 +854,7 @@
     mount();
     const root = $('clientSuccessRoot');
     if (!root) return;
-    root.innerHTML = `<div class="cs-page-header"><div><span class="cs-eyebrow">Customer Success</span><h2>Client Success 360</h2><p class="cs-danger">Access denied. This module is available to CSM, GM, Senior Financial Controller, Admin, and Viewer roles.</p></div></div>`;
+    root.innerHTML = `<div class="cs-page-header"><div><span class="cs-eyebrow">Customer Success</span><h2>Client Success 360</h2><p class="cs-danger">Access denied. This module is available to Admin, CSM, GM, Senior Financial Controller, and Viewer roles.</p></div></div>`;
   }
 
   function renderLoading() { $('csState') && ($('csState').textContent = 'Loading Client Success data…'); }
