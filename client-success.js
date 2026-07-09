@@ -1613,7 +1613,7 @@
       <div class="insight warn-bg"><div class="big-icon">⚠</div><div><h3>Locations needing operational attention</h3><p>${weak.length ? weak.map(row => `${esc(row.company_name || reportName)} — ${esc(row.location_name)} (${formatPct(completionCount(row))})`).join('<br/>') : 'No locations needing operational attention for the selected period.'}</p></div></div>
       <div class="insight info-bg"><div class="big-icon">ⓘ</div><div><h3>Notes</h3><p>${esc(sourceNote)}<br/>${isBrandReport ? 'Brand result is auto-calculated from assigned brand location rows.' : (isGroupReport ? 'Group result includes brand/sub-group completion when brands are configured.' : 'Client result is auto-calculated from all location rows.')}<br/>Generated on ${esc(generatedAt.toLocaleString())}.</p></div></div>
     </div>
-    <div class="footer"><span>InCheck 360 · Customer Success 360</span><span>Summary · ${esc(generatedAt.toLocaleDateString())}</span></div>
+    <div class="footer"><span>InCheck 360 · Customer Success</span><span>Summary · ${esc(generatedAt.toLocaleDateString())}</span></div>
   </section>
 
   ${brandRows.length ? `<section class="report-page brand-page">
@@ -1638,7 +1638,7 @@
       <thead><tr><th class="num">#</th><th class="client-col">Brand / Sub-group</th><th>Locations</th><th>Done On-Time</th><th>Done Late</th><th>Partially Done</th><th>Missed</th><th>Completion</th><th>Insight</th></tr></thead>
       <tbody>${brandRows.map((item, index) => `<tr><td class="num">${index + 1}</td><td><span class="brand-name">${esc(item.brand_name)}</span><span class="brand-scope">${esc(item.scope)}</span></td><td class="pct">${item.locations.length}</td><td class="pct">${item.stats.done_on_time.toFixed(2)}%</td><td class="pct">${item.stats.done_late.toFixed(2)}%</td><td class="pct">${item.stats.partially_done.toFixed(2)}%</td><td class="pct">${item.stats.missed.toFixed(2)}%</td><td class="pct ${item.stats.completion < 80 ? 'low' : 'ok'}">${item.stats.completion.toFixed(2)}%</td><td>${item.stats.completion < 80 ? 'Needs operational attention' : 'On track'}${item.weakLocations.length ? `<ul class="brand-mini-list">${item.weakLocations.map(row => `<li>${esc(row.location_name)} · ${formatPct(completionCount(row))}</li>`).join('')}</ul>` : ''}</td></tr>`).join('')}</tbody>
     </table></div>
-    <div class="footer"><span>InCheck 360 · Customer Success 360</span><span>Brand insights · ${esc(generatedAt.toLocaleDateString())}</span></div>
+    <div class="footer"><span>InCheck 360 · Customer Success</span><span>Brand insights · ${esc(generatedAt.toLocaleDateString())}</span></div>
   </section>` : ''}
 
   <section class="report-page table-page">
@@ -1652,7 +1652,7 @@
       <thead><tr><th class="num">#</th><th class="client-col">Client</th><th class="location-col">Location</th><th>Done On-Time</th><th>Done Late</th><th>Partially Done</th><th>Missed</th><th>Completion</th></tr></thead>
       <tbody>${rows.map((row, index) => `<tr><td class="num">${index + 1}</td><td>${esc(row.company_name || reportName)}</td><td>${esc(row.location_name)}</td><td class="pct">${formatPct(row.done_on_time)}</td><td class="pct">${formatPct(row.done_late)}</td><td class="pct">${formatPct(row.partially_done)}</td><td class="pct">${formatPct(row.missed)}</td><td class="pct completion-cell">${formatPct(completionCount(row))}</td></tr>`).join('')}</tbody>
     </table></div>
-    <div class="footer"><span>InCheck 360 · Customer Success 360</span><span>Location details · ${esc(generatedAt.toLocaleDateString())}</span></div>
+    <div class="footer"><span>InCheck 360 · Customer Success</span><span>Location details · ${esc(generatedAt.toLocaleDateString())}</span></div>
   </section>
 </div></body></html>`;
 

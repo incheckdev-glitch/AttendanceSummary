@@ -335,3 +335,18 @@ Export report changes:
 Location Completion Details export page:
 - Removed the small summary cards from the page header.
 - Removed the subtitle text `no duplicate locations · brand page included when configured`.
+
+
+## 2026-07-09 Export Footer Text
+
+Export footer changed from:
+
+```text
+InCheck 360 · Customer Success 360
+```
+
+to:
+
+```text
+InCheck 360 · Customer Success
+```
