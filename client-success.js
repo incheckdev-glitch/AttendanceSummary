@@ -1529,6 +1529,19 @@
     const bestBrand = brandRows.length ? brandRows.slice().sort((a,b) => b.stats.completion - a.stats.completion)[0] : null;
     const weakestBrand = brandRows.length ? brandRows.slice().sort((a,b) => a.stats.completion - b.stats.completion)[0] : null;
     const brandGap = bestBrand && weakestBrand ? Math.max(0, bestBrand.stats.completion - weakestBrand.stats.completion) : 0;
+    const hasBrandComparison = brandRows.length > 1;
+    const brandMetaCardsHtml = hasBrandComparison
+      ? `<div class="meta"><div class="k">Best Brand</div><div class="v">${bestBrand ? esc(bestBrand.brand_name) : '—'}</div></div>
+          <div class="meta"><div class="k">Lowest Brand</div><div class="v">${weakestBrand ? esc(weakestBrand.brand_name) : '—'}</div></div>
+          <div class="meta"><div class="k">Gap</div><div class="v">${brandGap.toFixed(2)}%</div></div>`
+      : '';
+    const brandComparisonHtml = hasBrandComparison
+      ? `<div class="brand-overview">
+          <div class="brand-insight good"><h3>Top performing brand</h3><div class="big">${bestBrand ? `${bestBrand.stats.completion.toFixed(2)}%` : '—'}</div><p>${bestBrand ? `${esc(bestBrand.brand_name)} · ${bestBrand.locations.length} locations` : 'No brand data yet.'}</p></div>
+          <div class="brand-insight warn"><h3>Needs operational attention</h3><div class="big">${weakestBrand ? `${weakestBrand.stats.completion.toFixed(2)}%` : '—'}</div><p>${weakestBrand ? `${esc(weakestBrand.brand_name)} · ${weakestBrand.weakLocations.length} locations needing operational attention` : 'No brand data yet.'}</p></div>
+          <div class="brand-insight info"><h3>Brand performance gap</h3><div class="big">${brandGap.toFixed(2)}%</div><p>${brandGap >= 15 ? 'Large gap: review playbook/training by brand.' : 'Gap is within normal monitoring range.'}</p></div>
+        </div>`
+      : '';
 
     const stats = averageCompletionMetrics(rows);
     const reportType = rawRecords[0]?.review_type || rows[0]?.review_type || 'weekly';
@@ -1664,17 +1677,11 @@
         <div class="header-row"><div class="title"><h1>Brand Completion Insights</h1><div class="subtitle">${esc(reportName)} · Group report is divided by brand/sub-group such as Kcal KSA and Kcal UAE.</div></div></div>
         <div class="meta-grid">
           <div class="meta"><div class="k">Brands</div><div class="v">${brandRows.length}</div></div>
-          <div class="meta"><div class="k">Best Brand</div><div class="v">${bestBrand ? esc(bestBrand.brand_name) : '—'}</div></div>
-          <div class="meta"><div class="k">Lowest Brand</div><div class="v">${weakestBrand ? esc(weakestBrand.brand_name) : '—'}</div></div>
-          <div class="meta"><div class="k">Gap</div><div class="v">${brandGap.toFixed(2)}%</div></div>
+          ${brandMetaCardsHtml}
         </div>
       </div>
     </div>
-    <div class="brand-overview">
-      <div class="brand-insight good"><h3>Top performing brand</h3><div class="big">${bestBrand ? `${bestBrand.stats.completion.toFixed(2)}%` : '—'}</div><p>${bestBrand ? `${esc(bestBrand.brand_name)} · ${bestBrand.locations.length} locations` : 'No brand data yet.'}</p></div>
-      <div class="brand-insight warn"><h3>Needs operational attention</h3><div class="big">${weakestBrand ? `${weakestBrand.stats.completion.toFixed(2)}%` : '—'}</div><p>${weakestBrand ? `${esc(weakestBrand.brand_name)} · ${weakestBrand.weakLocations.length} locations needing operational attention` : 'No brand data yet.'}</p></div>
-      <div class="brand-insight info"><h3>Brand performance gap</h3><div class="big">${brandGap.toFixed(2)}%</div><p>${brandGap >= 15 ? 'Large gap: review playbook/training by brand.' : 'Gap is within normal monitoring range.'}</p></div>
-    </div>
+    ${brandComparisonHtml}
     <div class="table-wrap"><table class="report-table brand-table">
       <thead><tr><th class="num">#</th><th class="client-col">Brand / Sub-group</th><th>Locations</th><th>Done On-Time</th><th>Done Late</th><th>Partially Done</th><th>Missed</th><th>Completion</th><th>Insight</th></tr></thead>
       <tbody>${brandRows.map((item, index) => `<tr><td class="num">${index + 1}</td><td><span class="brand-name">${esc(item.brand_name)}</span><span class="brand-scope">${esc(item.scope)}</span></td><td class="pct">${item.locations.length}</td><td class="pct">${item.stats.done_on_time.toFixed(2)}%</td><td class="pct">${item.stats.done_late.toFixed(2)}%</td><td class="pct">${item.stats.partially_done.toFixed(2)}%</td><td class="pct">${item.stats.missed.toFixed(2)}%</td><td class="pct ${item.stats.completion < 80 ? 'low' : 'ok'}">${item.stats.completion.toFixed(2)}%</td><td>${item.is_unassigned ? 'Assign these locations to a brand' : (item.stats.completion < 80 ? 'Needs operational attention' : 'On track')}${item.weakLocations.length ? `<ul class="brand-mini-list">${item.weakLocations.map(row => `<li>${esc(row.location_name)} · ${formatPct(completionCount(row))}</li>`).join('')}</ul>` : ''}</td></tr>`).join('')}</tbody>

@@ -361,3 +361,14 @@ Group completion report brand page now includes the full brand split:
 - an `Unassigned Locations` row if some group locations are not assigned to any brand
 
 This fixes cases like `Kcal Group` where the report must show `Kcal KSA` and `Kcal UAE`, not only one brand.
+
+
+## 2026-07-09 Single Brand Export Comparison Fix
+
+Brand/Sub-group export report now hides comparison fields when only one brand is included:
+- hides Best Brand
+- hides Lowest Brand
+- hides Gap
+- hides the comparison insight cards
+
+These comparison sections appear only when the report contains 2 or more brands.
