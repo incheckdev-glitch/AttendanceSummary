@@ -294,3 +294,20 @@ Fixed Brand Location assignment buttons:
 - Assign / Move Here now uses `getAttribute` instead of fragile dataset parsing
 - Added error handling so assignment failures show a toast instead of silently doing nothing
 - Prevented form/table click propagation issues inside the modal
+
+
+## 2026-07-08 Completion Export Type Selector
+
+Added a dedicated export selector with three report types:
+
+```text
+1. Client Completion Report
+2. Group Completion Report
+3. Brand / Sub-group Completion Report
+```
+
+Behavior:
+- Client report exports the currently selected signed client.
+- Group report exports the selected CS client group and includes brand insights if brands are configured.
+- Brand report exports one selected brand/sub-group, for example Kcal KSA or Kcal UAE.
+- Existing Brand tab export buttons still export the selected brand directly.

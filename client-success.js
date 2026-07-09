@@ -1212,7 +1212,7 @@
       formatPct(row.partially_done),
       formatPct(row.missed)
     ]);
-    return `<div class="cs-section-title"><div><h4>Location Completion</h4><div class="cs-kpi-sub">Entered values are percentages. Completion = Done On-Time + Done Late. Current view: ${esc(period)} · Export uses selected group filter when a CS group is selected.</div></div><div><button class="btn ghost sm" type="button" data-cs-action="completion-export">Export Advanced Report</button> <button class="btn sm" type="button" data-cs-action="completion">+ Add Completion</button></div></div>
+    return `<div class="cs-section-title"><div><h4>Location Completion</h4><div class="cs-kpi-sub">Entered values are percentages. Completion = Done On-Time + Done Late. Current view: ${esc(period)} · Export uses selected group filter when a CS group is selected.</div></div><div><button class="btn ghost sm" type="button" data-cs-action="completion-export">Export Report</button> <button class="btn sm" type="button" data-cs-action="completion">+ Add Completion</button></div></div>
       <div class="cs-info-grid" style="margin-bottom:12px;"><div class="cs-info-box"><div class="cs-info-label">Average Completion</div><div class="cs-info-value">${avg.completion.toFixed(2)}%</div></div><div class="cs-info-box"><div class="cs-info-label">Average Done On-Time</div><div class="cs-info-value">${avg.done_on_time.toFixed(2)}%</div></div><div class="cs-info-box"><div class="cs-info-label">Average Done Late</div><div class="cs-info-value">${avg.done_late.toFixed(2)}%</div></div><div class="cs-info-box"><div class="cs-info-label">Average Missed</div><div class="cs-info-value">${avg.missed.toFixed(2)}%</div></div></div>
       ${table(['Location','Done On-Time','Done Late','Completion','Partially Done','Missed'], tableRows)}`;
   }
@@ -1276,15 +1276,96 @@
   function progress(value) { const v = clamp(safeNumber(value),0,100); return `<div class="cs-progress" title="${v}%"><span style="width:${v}%"></span></div><div class="cs-kpi-sub">${v}%</div>`; }
 
 
-  function exportCompletionReport(brandReportId = '') {
+
+  function openCompletionExportForm() {
+    const company = getSelectedCompany();
+    if (!company) { toast('Select a client first.'); return; }
+
+    const selectedGroup = selectedFilterGroup?.() || null;
+    const groups = activeGroups();
+    const brands = activeBrandsForSelect(company);
+    const groupOptions = groups.length
+      ? groups.map(group => `<option value="${attr(groupId(group))}" ${selectedGroup && groupId(group) === groupId(selectedGroup) ? 'selected' : ''}>${esc(groupName(group))}</option>`).join('')
+      : '<option value="">No CS groups yet</option>';
+    const brandOptions = brands.length
+      ? brands.map(brand => `<option value="${attr(brandId(brand))}">${esc(brandName(brand))} · ${esc(brandScopeLabel(brand))}</option>`).join('')
+      : '<option value="">No CS brands yet</option>';
+
+    openModal('Export Completion Report', `<form class="cs-form" id="csCompletionExportForm">
+      <div class="cs-form-grid">
+        <div class="cs-form-field cs-form-field--full">
+          <label>Report Type</label>
+          <select name="report_type" class="select">
+            <option value="client">Client Completion Report</option>
+            <option value="group" ${groups.length ? '' : 'disabled'} ${selectedGroup ? 'selected' : ''}>Group Completion Report</option>
+            <option value="brand" ${brands.length ? '' : 'disabled'}>Brand / Sub-group Completion Report</option>
+          </select>
+        </div>
+        <div class="cs-form-field cs-form-field--full" id="csExportClientField">
+          <label>Client</label>
+          <input class="input" type="text" value="${attr(companyName(company))}" readonly />
+        </div>
+        <div class="cs-form-field cs-form-field--full" id="csExportGroupField" style="display:none;">
+          <label>CS Client Group</label>
+          <select name="group_id" class="select">${groupOptions}</select>
+        </div>
+        <div class="cs-form-field cs-form-field--full" id="csExportBrandField" style="display:none;">
+          <label>Brand / Sub-group</label>
+          <select name="brand_id" class="select">${brandOptions}</select>
+        </div>
+        <div class="cs-form-field cs-form-field--full">
+          <label>Report Notes</label>
+          <div class="cs-mini-note">
+            Client report exports the selected client. Group report exports the selected group and includes brand insights if brands are configured. Brand report exports one brand/sub-group such as Kcal KSA or Kcal UAE.
+          </div>
+        </div>
+      </div>
+      <div class="cs-modal-actions">
+        <button type="button" class="btn ghost" onclick="document.getElementById('csModalClose').click()">Cancel</button>
+        <button type="submit" class="btn primary">Export Report</button>
+      </div>
+    </form>`, async form => {
+      const fd = new FormData(form);
+      const type = String(fd.get('report_type') || 'client');
+      closeModal();
+      exportCompletionReport({
+        report_type: type,
+        group_id: type === 'group' ? fd.get('group_id') : '',
+        brand_id: type === 'brand' ? fd.get('brand_id') : ''
+      });
+    });
+
+    const form = $('csCompletionExportForm');
+    const toggle = () => {
+      const type = form?.report_type?.value || 'client';
+      const groupField = $('csExportGroupField');
+      const brandField = $('csExportBrandField');
+      if (groupField) groupField.style.display = type === 'group' ? '' : 'none';
+      if (brandField) brandField.style.display = type === 'brand' ? '' : 'none';
+    };
+    form?.report_type?.addEventListener('change', toggle);
+    toggle();
+  }
+
+  function exportCompletionReport(exportOptions = {}) {
     const selectedCompany = getSelectedCompany();
     if (!selectedCompany) { toast('Select a client first.'); return; }
 
-    const selectedBrand = brandReportId ? brandById(brandReportId) : null;
-    const selectedGroupId = String(STATE.filters.group || '').trim();
-    const selectedGroup = selectedGroupId && !['All','Ungrouped'].includes(selectedGroupId) ? groupById(selectedGroupId) : null;
-    let isGroupReport = Boolean(selectedGroup);
-    let isBrandReport = Boolean(selectedBrand);
+    const options = typeof exportOptions === 'string'
+      ? { report_type: exportOptions ? 'brand' : '', brand_id: exportOptions }
+      : (exportOptions || {});
+    const requestedType = String(options.report_type || '').trim();
+    const selectedBrand = options.brand_id ? brandById(options.brand_id) : null;
+    const filterGroupId = String(STATE.filters.group || '').trim();
+    const explicitGroupId = String(options.group_id || '').trim();
+    const selectedGroupId = explicitGroupId || (!requestedType && filterGroupId && !['All','Ungrouped'].includes(filterGroupId) ? filterGroupId : '');
+    const selectedGroup = selectedGroupId ? groupById(selectedGroupId) : null;
+
+    let isBrandReport = requestedType === 'brand' || Boolean(selectedBrand);
+    let isGroupReport = !isBrandReport && (requestedType === 'group' || Boolean(selectedGroup));
+    if (requestedType === 'client') { isBrandReport = false; isGroupReport = false; }
+    if (isBrandReport && !selectedBrand) { toast('Select a valid brand to export.'); return; }
+    if (isGroupReport && !selectedGroup) { toast('Select a valid CS client group to export.'); return; }
     const generatedAt = new Date();
 
     const completionKey = row => [row.review_type || 'weekly', String(row.period_start || '').slice(0,10), String(row.period_end || '').slice(0,10)].join('|');
@@ -1584,7 +1665,7 @@
     const action = event.target?.closest?.('[data-cs-action]')?.dataset?.csAction;
     if (!action) return;
     if (action === 'completion') openCompletionForm();
-    if (action === 'completion-export') exportCompletionReport();
+    if (action === 'completion-export') openCompletionExportForm();
     if (action === 'group') openGroupForm();
     if (action === 'group-member') openGroupMemberForm();
     if (action === 'group-activity') openGroupActivityForm();
@@ -1613,7 +1694,7 @@
       moveBrandLocation(rowId, select?.value || '');
       return;
     }
-    if (action === 'brand-export') exportCompletionReport(event.target?.closest?.('[data-brand-id]')?.dataset?.brandId || '');
+    if (action === 'brand-export') exportCompletionReport({ report_type: 'brand', brand_id: event.target?.closest?.('[data-brand-id]')?.dataset?.brandId || '' });
     if (action === 'review') openReviewForm();
     if (action === 'task') openTaskForm();
     if (action === 'risk') openRiskForm();
