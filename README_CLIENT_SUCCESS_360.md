@@ -380,3 +380,11 @@ Completion export now fills the top-left report header with the official InCheck
 - Uses the same `Utils.addIncheckDocumentLogo` helper used by proposal/agreement previews when available.
 - Adds a safe fallback logo slot so the top-left area is not blank if the helper is unavailable.
 - Adds a `<base>` tag so logo assets resolve correctly in the export popup.
+
+
+## 2026-07-09 Logo Size and Operational Attention Calculation
+
+Export fixes:
+- Enlarged the official InCheck 360 document logo in the top-left header area.
+- Fixed the `Needs operational attention` brand insight card so it shows the count of locations needing attention, not the weak brand completion percentage.
+- The card now shows, for example: `3 locations` and `3 of 6 locations (50.00%) need operational attention`.
