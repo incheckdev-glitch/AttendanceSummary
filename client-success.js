@@ -1472,19 +1472,60 @@
       };
     });
 
-    const brandCandidates = isBrandReport
-      ? [selectedBrand].filter(Boolean)
-      : (isGroupReport ? brandsForGroup(selectedGroup) : brandsForCompany(selectedCompany));
-    const brandRows = brandCandidates.map(brand => {
+    const reportTargetKeySet = new Set(targetRows.map(completionTargetKey));
+    const brandCandidateMap = new Map();
+    const addBrandCandidate = brand => {
+      if (!brand) return;
+      const id = brandId(brand);
+      if (id && !brandCandidateMap.has(id)) brandCandidateMap.set(id, brand);
+    };
+
+    if (isBrandReport) {
+      addBrandCandidate(selectedBrand);
+    } else if (isGroupReport) {
+      // Group report must show the full brand split:
+      // 1) brands created directly under the group
+      // 2) brands created under any signed client inside the group
+      // 3) brands referenced by assigned brand-location rows within the group target locations
+      brandsForGroup(selectedGroup).forEach(addBrandCandidate);
+      groupMemberCompanies(selectedGroup).forEach(member => brandsForCompany(member).forEach(addBrandCandidate));
+      (STATE.rows.brandLocations || []).forEach(row => {
+        const key = [String(row.company_id || '').trim(), normalize(row.location_name)].join('|');
+        if (reportTargetKeySet.has(key)) addBrandCandidate(brandById(row.brand_id) || { id: row.brand_id, brand_name: row.brand_name_snapshot || 'Unknown Brand' });
+      });
+    } else {
+      brandsForCompany(selectedCompany).forEach(addBrandCandidate);
+    }
+
+    const brandRows = Array.from(brandCandidateMap.values()).map(brand => {
       const brandTargets = brandCompletionTargets(brand);
-      const targetKeySet = new Set(targetRows.map(completionTargetKey));
-      const scopedTargets = brandTargets.filter(target => !targetKeySet.size || targetKeySet.has(completionTargetKey(target)));
+      const scopedTargets = brandTargets.filter(target => !reportTargetKeySet.size || reportTargetKeySet.has(completionTargetKey(target)));
       const brandLocations = hydrateCompletionTargets(scopedTargets);
       const brandStats = averageCompletionMetrics(brandLocations);
       const bestLocation = brandLocations.length ? brandLocations.slice().sort((a,b) => completionCount(b) - completionCount(a))[0] : null;
       const weakLocations = brandLocations.filter(row => completionCount(row) < 80).sort((a,b) => completionCount(a) - completionCount(b)).slice(0, 3);
       return { brand, brand_name: brandName(brand), scope: brandScopeLabel(brand), locations: brandLocations, stats: brandStats, bestLocation, weakLocations };
     }).filter(item => item.locations.length);
+
+    if ((isGroupReport || !isBrandReport) && reportTargetKeySet.size) {
+      const coveredKeys = new Set();
+      brandRows.forEach(item => item.locations.forEach(row => coveredKeys.add(completionTargetKey(row))));
+      const unassignedTargets = targetRows.filter(target => !coveredKeys.has(completionTargetKey(target)));
+      if (unassignedTargets.length) {
+        const unassignedLocations = hydrateCompletionTargets(unassignedTargets);
+        const unassignedStats = averageCompletionMetrics(unassignedLocations);
+        brandRows.push({
+          brand: { id: 'unassigned', brand_name: 'Unassigned Locations' },
+          brand_name: 'Unassigned Locations',
+          scope: isGroupReport ? `Group: ${groupName(selectedGroup)}` : `Client: ${companyName(selectedCompany)}`,
+          locations: unassignedLocations,
+          stats: unassignedStats,
+          bestLocation: unassignedLocations.length ? unassignedLocations.slice().sort((a,b) => completionCount(b) - completionCount(a))[0] : null,
+          weakLocations: unassignedLocations.filter(row => completionCount(row) < 80).sort((a,b) => completionCount(a) - completionCount(b)).slice(0, 3),
+          is_unassigned: true
+        });
+      }
+    }
     const bestBrand = brandRows.length ? brandRows.slice().sort((a,b) => b.stats.completion - a.stats.completion)[0] : null;
     const weakestBrand = brandRows.length ? brandRows.slice().sort((a,b) => a.stats.completion - b.stats.completion)[0] : null;
     const brandGap = bestBrand && weakestBrand ? Math.max(0, bestBrand.stats.completion - weakestBrand.stats.completion) : 0;
@@ -1620,7 +1661,7 @@
     <div class="report-header">
       <div class="brand"><div data-incheck360-doc-logo-slot></div><div class="brand-fallback" style="display:none;">InCheck <span>360</span></div></div>
       <div class="header-main">
-        <div class="header-row"><div class="title"><h1>Brand Completion Insights</h1><div class="subtitle">${esc(reportName)} · Brands such as Kcal KSA / Kcal UAE are calculated from their assigned locations.</div></div></div>
+        <div class="header-row"><div class="title"><h1>Brand Completion Insights</h1><div class="subtitle">${esc(reportName)} · Group report is divided by brand/sub-group such as Kcal KSA and Kcal UAE.</div></div></div>
         <div class="meta-grid">
           <div class="meta"><div class="k">Brands</div><div class="v">${brandRows.length}</div></div>
           <div class="meta"><div class="k">Best Brand</div><div class="v">${bestBrand ? esc(bestBrand.brand_name) : '—'}</div></div>
@@ -1636,7 +1677,7 @@
     </div>
     <div class="table-wrap"><table class="report-table brand-table">
       <thead><tr><th class="num">#</th><th class="client-col">Brand / Sub-group</th><th>Locations</th><th>Done On-Time</th><th>Done Late</th><th>Partially Done</th><th>Missed</th><th>Completion</th><th>Insight</th></tr></thead>
-      <tbody>${brandRows.map((item, index) => `<tr><td class="num">${index + 1}</td><td><span class="brand-name">${esc(item.brand_name)}</span><span class="brand-scope">${esc(item.scope)}</span></td><td class="pct">${item.locations.length}</td><td class="pct">${item.stats.done_on_time.toFixed(2)}%</td><td class="pct">${item.stats.done_late.toFixed(2)}%</td><td class="pct">${item.stats.partially_done.toFixed(2)}%</td><td class="pct">${item.stats.missed.toFixed(2)}%</td><td class="pct ${item.stats.completion < 80 ? 'low' : 'ok'}">${item.stats.completion.toFixed(2)}%</td><td>${item.stats.completion < 80 ? 'Needs operational attention' : 'On track'}${item.weakLocations.length ? `<ul class="brand-mini-list">${item.weakLocations.map(row => `<li>${esc(row.location_name)} · ${formatPct(completionCount(row))}</li>`).join('')}</ul>` : ''}</td></tr>`).join('')}</tbody>
+      <tbody>${brandRows.map((item, index) => `<tr><td class="num">${index + 1}</td><td><span class="brand-name">${esc(item.brand_name)}</span><span class="brand-scope">${esc(item.scope)}</span></td><td class="pct">${item.locations.length}</td><td class="pct">${item.stats.done_on_time.toFixed(2)}%</td><td class="pct">${item.stats.done_late.toFixed(2)}%</td><td class="pct">${item.stats.partially_done.toFixed(2)}%</td><td class="pct">${item.stats.missed.toFixed(2)}%</td><td class="pct ${item.stats.completion < 80 ? 'low' : 'ok'}">${item.stats.completion.toFixed(2)}%</td><td>${item.is_unassigned ? 'Assign these locations to a brand' : (item.stats.completion < 80 ? 'Needs operational attention' : 'On track')}${item.weakLocations.length ? `<ul class="brand-mini-list">${item.weakLocations.map(row => `<li>${esc(row.location_name)} · ${formatPct(completionCount(row))}</li>`).join('')}</ul>` : ''}</td></tr>`).join('')}</tbody>
     </table></div>
     <div class="footer"><span>InCheck 360 · Customer Success</span><span>Brand insights · ${esc(generatedAt.toLocaleDateString())}</span></div>
   </section>` : ''}

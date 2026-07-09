@@ -350,3 +350,14 @@ to:
 ```text
 InCheck 360 · Customer Success
 ```
+
+
+## 2026-07-09 Group Brand Export Fix
+
+Group completion report brand page now includes the full brand split:
+- brands created directly under the selected group
+- brands created under any client inside the selected group
+- brands referenced by assigned brand-location rows in the group
+- an `Unassigned Locations` row if some group locations are not assigned to any brand
+
+This fixes cases like `Kcal Group` where the report must show `Kcal KSA` and `Kcal UAE`, not only one brand.
