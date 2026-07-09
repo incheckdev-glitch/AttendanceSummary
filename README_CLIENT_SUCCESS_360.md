@@ -311,3 +311,12 @@ Behavior:
 - Group report exports the selected CS client group and includes brand insights if brands are configured.
 - Brand report exports one selected brand/sub-group, for example Kcal KSA or Kcal UAE.
 - Existing Brand tab export buttons still export the selected brand directly.
+
+
+## 2026-07-08 Export Selector Fix
+
+Fixed export not opening:
+- Removed unsafe `selectedFilterGroup?.()` call that could throw before the export modal opens
+- Added validation for group/brand export selections
+- Added user-friendly toast if no locations are found for the selected export type
+- Added try/catch around the report popup generation

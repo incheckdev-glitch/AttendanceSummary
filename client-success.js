@@ -1281,7 +1281,10 @@
     const company = getSelectedCompany();
     if (!company) { toast('Select a client first.'); return; }
 
-    const selectedGroup = selectedFilterGroup?.() || null;
+    const selectedGroupIdFromFilter = String(STATE.filters.group || '').trim();
+    const selectedGroup = selectedGroupIdFromFilter && !['All','Ungrouped'].includes(selectedGroupIdFromFilter)
+      ? groupById(selectedGroupIdFromFilter)
+      : null;
     const groups = activeGroups();
     const brands = activeBrandsForSelect(company);
     const groupOptions = groups.length
@@ -1327,11 +1330,15 @@
     </form>`, async form => {
       const fd = new FormData(form);
       const type = String(fd.get('report_type') || 'client');
+      const groupId = type === 'group' ? String(fd.get('group_id') || '').trim() : '';
+      const brandId = type === 'brand' ? String(fd.get('brand_id') || '').trim() : '';
+      if (type === 'group' && !groupId) { toast('Select a CS client group to export.'); return; }
+      if (type === 'brand' && !brandId) { toast('Select a brand/sub-group to export.'); return; }
       closeModal();
       exportCompletionReport({
         report_type: type,
-        group_id: type === 'group' ? fd.get('group_id') : '',
-        brand_id: type === 'brand' ? fd.get('brand_id') : ''
+        group_id: groupId,
+        brand_id: brandId
       });
     });
 
@@ -1408,6 +1415,11 @@
       const sorted = sortCompletionRows(allGroupRecords);
       activePeriodKey = sorted[0] ? completionKey(sorted[0]) : '';
       rawRecords = activePeriodKey ? sorted.filter(row => completionKey(row) === activePeriodKey) : [];
+    }
+
+    if (!targetRows.length) {
+      toast('No locations found for this export type. Check client/group/brand location assignment.');
+      return;
     }
 
     const recordByTarget = new Map();
@@ -1651,14 +1663,19 @@
   </section>
 </div></body></html>`;
 
-    const brandedReportHtml = window.Utils?.addIncheckDocumentLogo
-      ? window.Utils.addIncheckDocumentLogo(reportHtml)
-      : reportHtml;
-    const win = window.open('', '_blank');
-    if (!win) { toast('Popup blocked. Please allow popups and try again.'); return; }
-    win.document.open();
-    win.document.write(brandedReportHtml);
-    win.document.close();
+    try {
+      const brandedReportHtml = window.Utils?.addIncheckDocumentLogo
+        ? window.Utils.addIncheckDocumentLogo(reportHtml)
+        : reportHtml;
+      const win = window.open('', '_blank');
+      if (!win) { toast('Popup blocked. Please allow popups and try again.'); return; }
+      win.document.open();
+      win.document.write(brandedReportHtml);
+      win.document.close();
+    } catch (error) {
+      console.error('[ClientSuccess360] export report failed', error);
+      toast(`Unable to export report: ${error.message || error}`);
+    }
   }
 
   document.addEventListener('click', event => {
