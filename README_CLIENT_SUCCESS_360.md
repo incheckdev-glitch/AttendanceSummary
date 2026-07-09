@@ -475,3 +475,47 @@ Important:
 - This SQL deletes old `client_success` and `customer_success` permission rows and recreates them cleanly.
 - It avoids role FK errors by inserting only roles that already exist in `public.roles`.
 - Frontend no longer trusts generic `client_success.manage` for Customer Success write access; only `admin` and `csm` can manage.
+
+
+## 2026-07-09 Customizable Customer Success Permissions
+
+Customer Success 360 now uses the ERP `role_permissions` matrix instead of hard-coded role access.
+
+Resource:
+
+```text
+client_success
+```
+
+Actions:
+
+```text
+view
+list
+get
+export
+create
+update
+delete
+manage
+```
+
+Default seed after SQL:
+
+```text
+admin + csm = full access
+gm + sfc + viewer = view/export only
+```
+
+You can now customize access per role from Roles & Permissions:
+- give any role `client_success.view/list/get/export` to view and export
+- give any role `client_success.create` to add records
+- give any role `client_success.update` to edit/move records
+- give any role `client_success.delete` to remove records
+- give any role `client_success.manage` for full access
+
+Run:
+
+```text
+sql/migrations/20260709_client_success_360_customizable_role_permissions.sql
+```

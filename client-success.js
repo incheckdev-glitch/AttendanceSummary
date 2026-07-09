@@ -92,13 +92,58 @@
       ''
     );
   };
-  const FULL_ACCESS_ROLES = new Set(['admin', 'csm']);
-  const VIEW_ONLY_ROLES = new Set(['gm', 'general_manager', 'sfc', 'senior_financial_controller', 'senior_finanical_controller', 'viewer']);
   const isAdmin = () => roleKey() === 'admin' || Boolean(global.AdminOverride?.canOverride?.());
-  const canManage = () => Boolean(global.AdminOverride?.canOverride?.()) || FULL_ACCESS_ROLES.has(roleKey());
-  const canViewOnly = () => VIEW_ONLY_ROLES.has(roleKey()) || Boolean(global.Permissions?.can?.('client_success', 'view') || global.Permissions?.can?.('customer_success', 'view'));
-  const canAccess = () => canManage() || canViewOnly();
-  const accessLabel = () => canManage() ? 'Full access' : 'View only';
+
+  function hasCsPermission(action) {
+    const normalizedAction = String(action || '').trim().toLowerCase();
+    if (!normalizedAction) return false;
+    if (isAdmin()) return true;
+
+    const permissions = global.Permissions;
+    const checks = [
+      () => permissions?.canPerformAction?.('client_success', normalizedAction),
+      () => permissions?.canPerformAction?.('customer_success', normalizedAction),
+      () => permissions?.can?.('client_success', normalizedAction),
+      () => permissions?.can?.('customer_success', normalizedAction)
+    ];
+
+    return checks.some(fn => {
+      try { return Boolean(fn()); }
+      catch (_) { return false; }
+    });
+  }
+
+  const canManage = () => hasCsPermission('manage');
+  const canCreate = () => hasCsPermission('create') || canManage();
+  const canUpdate = () => hasCsPermission('update') || canManage();
+  const canDelete = () => hasCsPermission('delete') || canManage();
+  const canExport = () => hasCsPermission('export') || hasCsPermission('view') || canManage();
+  const canViewOnly = () => (
+    hasCsPermission('view') ||
+    hasCsPermission('list') ||
+    hasCsPermission('get') ||
+    canExport()
+  );
+  const canWrite = () => canCreate() || canUpdate() || canDelete() || canManage();
+  const canAccess = () => canViewOnly() || canWrite();
+  const accessLabel = () => canWrite() ? 'Write access' : 'View only';
+
+  function requiredCsPermissionForAction(action) {
+    const key = String(action || '').trim().toLowerCase();
+    if (key === 'brand-location-remove') return 'delete';
+    if (key === 'brand-location-move') return 'update';
+    if (key === 'completion-export' || key === 'brand-export') return 'export';
+    return 'create';
+  }
+
+  function canRunCsAction(action) {
+    const required = requiredCsPermissionForAction(action);
+    if (required === 'export') return canExport();
+    if (required === 'delete') return canDelete();
+    if (required === 'update') return canUpdate();
+    return canCreate();
+  }
+
   const supabase = () => global.SupabaseClient?.getClient?.();
 
   function toast(message) { global.UI?.toast?.(message); }
@@ -777,7 +822,7 @@
     if (!root) return;
     if (STATE.booted) return;
     STATE.booted = true;
-    root.className = `client-success-root ${canManage() ? 'is-full-access' : 'is-readonly'}`;
+    root.className = `client-success-root ${canWrite() ? 'is-write-access' : 'is-readonly'}`;
     root.innerHTML = `
       <div class="cs-page-header cs-hero-header">
         <div class="cs-hero-copy">
@@ -826,7 +871,7 @@
   }
 
   function wire() {
-    const writeAction = handler => () => { if (!canManage()) { toast('View-only access. You can view/export Customer Success data, but cannot create or edit.'); return; } handler(); };
+    const writeAction = handler => () => { if (!canCreate()) { toast('No Customer Success create permission for your role. Update role permissions to allow this action.'); return; } handler(); };
     $('csRefreshBtn')?.addEventListener('click', () => loadData());
     $('csAddCompletionBtn')?.addEventListener('click', writeAction(openCompletionForm));
     $('csAddGroupBtn')?.addEventListener('click', writeAction(openGroupForm));
@@ -854,7 +899,7 @@
     mount();
     const root = $('clientSuccessRoot');
     if (!root) return;
-    root.innerHTML = `<div class="cs-page-header"><div><span class="cs-eyebrow">Customer Success</span><h2>Client Success 360</h2><p class="cs-danger">Access denied. This module is available to Admin, CSM, GM, Senior Financial Controller, and Viewer roles.</p></div></div>`;
+    root.innerHTML = `<div class="cs-page-header"><div><span class="cs-eyebrow">Customer Success</span><h2>Client Success 360</h2><p class="cs-danger">Access denied. This module is controlled from Roles & Permissions. Enable client_success view/list/get/export for roles that should open it.</p></div></div>`;
   }
 
   function renderLoading() { $('csState') && ($('csState').textContent = 'Loading Client Success data…'); }
@@ -1767,11 +1812,11 @@
   document.addEventListener('click', event => {
     const action = event.target?.closest?.('[data-cs-action]')?.dataset?.csAction;
     if (!action) return;
-    const viewActions = new Set(['completion-export', 'brand-export']);
-    if (!canManage() && !viewActions.has(action)) {
+    if (!canRunCsAction(action)) {
       event.preventDefault?.();
       event.stopPropagation?.();
-      toast('View-only access. You can view/export Customer Success data, but cannot create or edit.');
+      const needed = requiredCsPermissionForAction(action);
+      toast(`No Customer Success ${needed} permission for your role. Update role permissions to allow this action.`);
       return;
     }
     if (action === 'completion') openCompletionForm();
