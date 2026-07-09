@@ -156,10 +156,28 @@
     return (Array.isArray(rows) ? rows : []).map((row, index) => ({ ...row, __acct_key: String(row.id || row[`${prefix}_id`] || row[`${prefix}_no`] || row[`${prefix}_number`] || `${prefix}-${index}`) }));
   }
 
+  async function fetchExpensesFromDb() {
+    const supabase = client();
+    if (!supabase) throw new Error('Supabase client unavailable');
+    const { data, error } = await supabase
+      .from(TABLES.expenses)
+      .select('*')
+      .order('expense_date', { ascending: false })
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return Array.isArray(data) ? data : [];
+  }
+
+  async function reloadExpensesFromDb() {
+    state.expenses = await fetchExpensesFromDb();
+    saveLocal();
+    return state.expenses;
+  }
+
   async function loadRemote() {
     const [accounts, bankAccounts, journals, journalLines, ledgerEntries, taxRates, expenses, costCenters, closingPeriods, revenueSchedules, bankReconciliations, auditLog, vendors, vendorBills, vendorPayments] = await Promise.all([
       fetchTable(TABLES.accounts), fetchTable(TABLES.bankAccounts), fetchTable(TABLES.journals), fetchTable(TABLES.journalLines), fetchTable(TABLES.ledgerEntries),
-      safeFetchTable(TABLES.taxRates), safeFetchTable(TABLES.expenses), safeFetchTable(TABLES.costCenters), safeFetchTable(TABLES.closingPeriods), safeFetchTable(TABLES.revenueSchedules), safeFetchTable(TABLES.bankReconciliations), safeFetchTable(TABLES.auditLog),
+      safeFetchTable(TABLES.taxRates), fetchExpensesFromDb(), safeFetchTable(TABLES.costCenters), safeFetchTable(TABLES.closingPeriods), safeFetchTable(TABLES.revenueSchedules), safeFetchTable(TABLES.bankReconciliations), safeFetchTable(TABLES.auditLog),
       safeFetchTable(TABLES.vendors), safeFetchTable(TABLES.vendorBills), safeFetchTable(TABLES.vendorPayments)
     ]);
     Object.assign(state, { accounts, bankAccounts, journals, journalLines, ledgerEntries, taxRates, expenses, costCenters, closingPeriods, revenueSchedules, bankReconciliations, auditLog, vendors, vendorBills, vendorPayments, dataSource: 'supabase' });
@@ -1495,31 +1513,82 @@
     if (type === 'expense' && value < 0) toast('Use Expense Refund / Credit for negative expenses.');
   }
 
+  async function saveExpenseRowToDatabase(payload, expenseId = '') {
+    const supabase = client();
+    if (!supabase) throw new Error('Supabase client unavailable. Expense was not saved.');
+    console.info('[Accounting Expenses] saving to database', payload);
+    const query = expenseId
+      ? supabase.from(TABLES.expenses).update(payload).eq('id', expenseId)
+      : supabase.from(TABLES.expenses).insert(payload);
+    const { data, error } = await query.select('*').single();
+    if (error) {
+      console.warn('[Accounting Expenses] database save failed', error);
+      throw error;
+    }
+    console.info('[Accounting Expenses] saved row', data);
+    state.dataSource = 'supabase';
+    return data;
+  }
+
   async function saveExpenseForm() {
-    const id = $('accountingExpenseId')?.value || uid('expense');
-    const existing = state.expenses.find(row => row.id === id) || {};
+    const expenseId = $('accountingExpenseId')?.value || '';
+    const existing = expenseId ? (state.expenses.find(row => row.id === expenseId) || {}) : {};
     const taxRate = state.taxRates.find(t => t.id === $('accountingExpenseTaxRate')?.value);
     let amount = num($('accountingExpenseAmount')?.value);
     const expenseType = $('accountingExpenseType')?.value === 'refund_credit' ? 'refund_credit' : 'expense';
     if (expenseType === 'refund_credit' && amount > 0) amount = -amount;
     const taxAmount = Number((amount * num(taxRate?.tax_rate) / 100).toFixed(2));
+    const totalAmount = Number((amount + taxAmount).toFixed(2));
     const vendorId = $('accountingExpenseVendorId')?.value || existing.vendor_id || '';
     const selectedVendor = vendorById(vendorId);
-    const row = {
-      ...existing, id, expense_no: $('accountingExpenseNo')?.value?.trim() || existing.expense_no || nextExpenseNo(), expense_date: $('accountingExpenseDate')?.value || today(),
-      vendor_id: vendorId || null, vendor_name: selectedVendor?.vendor_name || existing.vendor_name || '', category: $('accountingExpenseCategory')?.value?.trim() || '', description: $('accountingExpenseDescription')?.value?.trim() || '',
-      expense_account_id: $('accountingExpenseAccount')?.value || selectedVendor?.default_expense_account_id || accountByCode('5400')?.id || null, cost_center_id: $('accountingExpenseCostCenter')?.value || null,
-      amount, expense_type: expenseType, tax_rate_id: taxRate?.id || null, tax_amount: taxAmount, total_amount: Number((amount + taxAmount).toFixed(2)), currency: ($('accountingExpenseCurrency')?.value || 'USD').trim().toUpperCase(),
-      payment_status: $('accountingExpenseStatusInput')?.value || 'draft', payment_account_id: $('accountingExpenseBankAccount')?.value || defaultBankAccount()?.id || null,
-      created_by: existing.created_by || authName(), created_at: existing.created_at || new Date().toISOString(), updated_at: new Date().toISOString()
+    const expenseAccount = $('accountingExpenseAccount')?.value || selectedVendor?.default_expense_account_id || accountByCode('5400')?.id || null;
+    const now = new Date().toISOString();
+    const typedExpenseNo = $('accountingExpenseNo')?.value?.trim() || '';
+    const payload = {
+      expense_date: $('accountingExpenseDate')?.value || today(),
+      vendor_id: vendorId || null,
+      vendor_name: selectedVendor?.vendor_name || existing.vendor_name || '',
+      category: $('accountingExpenseCategory')?.value?.trim() || '',
+      description: $('accountingExpenseDescription')?.value?.trim() || '',
+      expense_account_id: expenseAccount,
+      account_id: expenseAccount,
+      account_code: accountById(expenseAccount)?.account_code || null,
+      account_name: accountById(expenseAccount)?.account_name || null,
+      cost_center_id: $('accountingExpenseCostCenter')?.value || null,
+      amount,
+      net_amount: amount,
+      expense_type: expenseType,
+      tax_rate_id: taxRate?.id || null,
+      tax_rate: num(taxRate?.tax_rate),
+      tax_amount: taxAmount,
+      total_amount: totalAmount,
+      currency: ($('accountingExpenseCurrency')?.value || 'USD').trim().toUpperCase(),
+      payment_status: $('accountingExpenseStatusInput')?.value || 'draft',
+      status: $('accountingExpenseStatusInput')?.value || 'draft',
+      payment_account_id: $('accountingExpenseBankAccount')?.value || defaultBankAccount()?.id || null,
+      updated_at: now,
+      updated_by: authProfile()?.id || authProfile()?.user_id || null
     };
-    if (!row.vendor_id) return toast('Vendor / Supplier is required. Create it first in Vendors / Suppliers.');
-    if (row.amount === 0) return toast('Expense amount cannot be zero.');
-    if (expenseType === 'expense' && row.amount < 0) return toast('Use Expense Refund / Credit for negative expenses.');
-    if (expenseType === 'refund_credit' && row.amount >= 0) return toast('Expense Refund / Credit amount must be negative.');
-    await persistRow('expenses', TABLES.expenses, row);
-    await recordAudit('save_expense', 'expense', row.id, `Saved expense ${row.expense_no}.`, { amount: row.total_amount, status: row.payment_status });
-    toast('Expense saved.'); render();
+    if (typedExpenseNo && (expenseId || typedExpenseNo !== nextExpenseNo())) payload.expense_no = typedExpenseNo;
+    if (!expenseId) {
+      payload.created_by = authProfile()?.id || authProfile()?.user_id || null;
+      payload.created_at = now;
+    }
+    if (!payload.vendor_id) return toast('Vendor / Supplier is required. Create it first in Vendors / Suppliers.');
+    if (payload.amount === 0) return toast('Expense amount cannot be zero.');
+    if (payload.total_amount === 0) return toast('Expense total cannot be zero.');
+    if (expenseType === 'expense' && payload.amount < 0) return toast('Use Expense Refund / Credit for negative expenses.');
+    if (expenseType === 'refund_credit' && payload.amount >= 0) return toast('Expense Refund / Credit amount must be negative.');
+    try {
+      const saved = await saveExpenseRowToDatabase(payload, expenseId);
+      await reloadExpensesFromDb();
+      await recordAudit('save_expense', 'expense', saved.id, `Saved expense ${saved.expense_no}.`, { amount: saved.total_amount, status: saved.payment_status || saved.status });
+      toast('Expense saved.');
+      render();
+    } catch (error) {
+      console.error('[Accounting Expenses] save failed', error);
+      toast(`Unable to save expense to database: ${error?.message || error}`);
+    }
   }
 
   function editExpense(id) {
