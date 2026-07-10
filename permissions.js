@@ -106,6 +106,14 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     assign_csm: ['admin', 'hoo'],
     update_onboarding_status: ['admin', 'hoo']
   }),
+  operations_onboarding: Object.freeze({
+    list: ['admin', 'dev', 'viewer', 'hoo', 'head_of_operations', 'operations_manager'],
+    get: ['admin', 'dev', 'viewer', 'hoo', 'head_of_operations', 'operations_manager'],
+    create: ['admin', 'hoo', 'head_of_operations', 'operations_manager'],
+    update: ['admin', 'hoo', 'head_of_operations', 'operations_manager'],
+    assign_csm: ['admin', 'hoo', 'head_of_operations', 'operations_manager'],
+    delete: ['admin']
+  }),
   invoices: Object.freeze({
     list: ['admin', 'dev', 'viewer', 'hoo'],
     get: ['admin', 'dev', 'viewer', 'hoo'],
@@ -253,29 +261,35 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     approve: ['admin']
   }),
   accounting: Object.freeze({
-    view: ['admin'],
-    list: ['admin'],
-    get: ['admin'],
-    create: ['admin'],
-    update: ['admin'],
-    delete: ['admin'],
-    manage: ['admin'],
-    export: ['admin']
+    view: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'],
+    list: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'],
+    get: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'],
+    create: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'],
+    update: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'],
+    delete: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'],
+    manage: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'],
+    export: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller']
   }),
   accounting_accounts: Object.freeze({
-    view: ['admin'], list: ['admin'], create: ['admin'], update: ['admin'], delete: ['admin']
+    view: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], list: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], create: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], update: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], delete: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], manage: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller']
   }),
   accounting_journals: Object.freeze({
-    view: ['admin'], list: ['admin'], create: ['admin'], update: ['admin'], delete: ['admin'], post: ['admin']
+    view: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], list: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], create: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], update: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], delete: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], post: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], approve: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], manage: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller']
   }),
   accounting_ledger: Object.freeze({
-    view: ['admin'], list: ['admin'], export: ['admin']
+    view: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], list: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], export: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], manage: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller']
   }),
   accounting_bank: Object.freeze({
-    view: ['admin'], list: ['admin'], create: ['admin'], update: ['admin'], delete: ['admin']
+    view: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], list: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], create: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], update: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], delete: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], manage: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller']
   }),
   accounting_reports: Object.freeze({
-    view: ['admin'], export: ['admin']
+    view: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], list: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], export: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], manage: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller']
+  }),
+  accounting_expenses: Object.freeze({
+    view: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], list: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], get: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], create: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], update: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], delete: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], export: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], manage: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller']
+  }),
+  accounting_vendors: Object.freeze({
+    view: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], list: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], get: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], create: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], update: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], delete: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], export: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'], manage: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller']
   }),
   backup_center: Object.freeze({
     view: ['admin'],
@@ -343,16 +357,6 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     reopen: ['admin','dev','csm','hoo','viewer'],
     manage: ['admin','dev','csm','hoo','viewer'],
     delete: []
-  }),
-  client_success: Object.freeze({
-    view: ['admin','csm','gm','general_manager','sfc','senior_financial_controller','senior_finanical_controller','viewer'],
-    list: ['admin','csm','gm','general_manager','sfc','senior_financial_controller','senior_finanical_controller','viewer'],
-    get: ['admin','csm','gm','general_manager','sfc','senior_financial_controller','senior_finanical_controller','viewer'],
-    export: ['admin','csm','gm','general_manager','sfc','senior_financial_controller','senior_finanical_controller','viewer'],
-    create: ['admin','csm'],
-    update: ['admin','csm'],
-    delete: ['admin','csm'],
-    manage: ['admin','csm']
   })
 });
 
@@ -363,14 +367,13 @@ const Permissions = {
     calendar: [{ resource: 'events', action: 'list' }],
     insights: [{ resource: 'ai_insights', action: 'preview' }, { resource: 'ai_insights', action: 'view' }, { resource: 'ai_insights', action: 'get' }, { resource: 'ai_insights', action: 'list' }, { resource: 'ai_insights', action: 'manage' }],
     csm: [{ resource: 'csm', action: 'list' }],
-    clientSuccess: [{ resource: 'client_success', action: 'view' }],
-    client_success: [{ resource: 'client_success', action: 'view' }],
     company: [{ resource: 'companies', action: 'list' }],
     contacts: [{ resource: 'contacts', action: 'list' }],
     leads: [{ resource: 'leads', action: 'list' }],
     deals: [{ resource: 'deals', action: 'list' }],
     proposals: [{ resource: 'proposals', action: 'list' }],
     agreements: [{ resource: 'agreements', action: 'list' }],
+    operationsOnboarding: [{ resource: 'operations_onboarding', action: 'list' }],
     invoices: [{ resource: 'invoices', action: 'list' }],
     receipts: [{ resource: 'receipts', action: 'list' }],
     creditNotes: [{ resource: 'credit_notes', action: 'view' }],
@@ -397,14 +400,13 @@ const Permissions = {
     calendar: 'events',
     insights: 'ai_insights',
     csm: 'csm',
-    clientSuccess: 'client_success',
-    client_success: 'client_success',
     company: 'companies',
     contacts: 'contacts',
     leads: 'leads',
     deals: 'deals',
     proposals: 'proposals',
     agreements: 'agreements',
+    operationsOnboarding: 'operations_onboarding',
     invoices: 'invoices',
     receipts: 'receipts',
     creditNotes: 'credit_notes',
@@ -564,7 +566,6 @@ const Permissions = {
   resourceAliases(resource) {
     const normalizedResource = String(resource || '').trim().toLowerCase();
     if (normalizedResource === 'csm') return ['csm', 'csm_activities'];
-    if (['client_success', 'client_success_360', 'customer_success', 'customer_success_360', 'cs360'].includes(normalizedResource)) return ['client_success'];
     if (['hr','human_resources','human-resources','hr_employees'].includes(normalizedResource)) return ['hr', 'hr_employees'];
     if (['accounting','accounts','chart_of_accounts','chart-of-accounts'].includes(normalizedResource)) return ['accounting','accounting_accounts'];
     if (['accounting_accounts','coa','chart'].includes(normalizedResource)) return ['accounting_accounts','accounting'];
@@ -1088,6 +1089,9 @@ const Permissions = {
       this.canPerformAction('agreements', 'create_from_proposal') ||
       this.canCreate('agreements');
   },
+  canViewOperationsOnboarding() {
+    return this.canView('operations_onboarding');
+  },
   canViewTechnicalAdmin() {
     return false;
   },
@@ -1105,6 +1109,9 @@ const Permissions = {
   },
   canManageTechnicalAdmin() {
     return false;
+  },
+  canManageOperationsOnboarding() {
+    return this.canEdit('operations_onboarding');
   },
   canSendAgreementToOperations() {
     return this.canPerformAction('agreements', 'send_to_operations');
@@ -1324,7 +1331,7 @@ async function handleExpiredSession(message = 'Session expired. Please log in ag
 
 
 const PermissionAudit = {
-  resources: ['tickets','events','ai_insights','companies','contacts','leads','deals','proposals','agreements','invoices','receipts','credit_notes','payment_forecast','monthly_renewal_forecast','biners','hr','hr_attendance','hr_leave','hr_self_service','hr_team','hr_leave_balance','hr_attendance_correction','hr_overtime','hr_notifications','hr_holidays','hr_payroll','hr_salary_receipts','hr_documents','hr_settings','clients','analytics','notifications','notification_settings','workflow','users','role_permissions'],
+  resources: ['tickets','events','ai_insights','companies','contacts','leads','deals','proposals','agreements','operations_onboarding','invoices','receipts','credit_notes','payment_forecast','monthly_renewal_forecast','biners','hr','hr_attendance','hr_leave','hr_self_service','hr_team','hr_leave_balance','hr_attendance_correction','hr_overtime','hr_notifications','hr_holidays','hr_payroll','hr_salary_receipts','hr_documents','hr_settings','clients','analytics','notifications','notification_settings','workflow','users','role_permissions'],
   actions: ['list','get','create','update','delete','export','manage','approve','reject','convert_to_deal','create_from_deal','create_from_proposal','create_from_agreement','create_from_invoice','cancel','print','export','assign_csm','update_status','view_renewals','view_statement','statement_view','statement_export','create_receipt','schedule_payment','record_payment','view_details','mark_renewed','mark_no_renewal_needed','undo_override','create_renewal_invoice','generate','review','pay','manage_attendance'],
   inspect(resource, action) {
     const role = Permissions.normalizeRole(Session.role());
