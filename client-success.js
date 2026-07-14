@@ -15,7 +15,11 @@
     groups: 'cs_client_groups',
     groupMembers: 'cs_client_group_members',
     brands: 'cs_client_brands',
-    brandLocations: 'cs_client_brand_locations'
+    brandLocations: 'cs_client_brand_locations',
+    specialTemplates: 'cs_special_case_templates',
+    specialGroups: 'cs_special_case_groups',
+    specialBrands: 'cs_special_case_brands',
+    specialLocations: 'cs_special_case_locations'
   };
 
   const QUESTION_BANK = {
@@ -51,7 +55,7 @@
     filters: { search: '', status: 'All', health: 'All', effort: 'All', group: 'All' },
     tablesMissing: new Set(),
     rows: {
-      companies: [], allCompanies: [], profiles: [], reviews: [], tasks: [], risks: [], qbrs: [], contacts: [], mainContacts: [], activities: [], onboarding: [], agreements: [], agreementItems: [], invoices: [], invoiceItems: [], completions: [], tickets: [], groups: [], groupMembers: [], brands: [], brandLocations: []
+      companies: [], allCompanies: [], profiles: [], reviews: [], tasks: [], risks: [], qbrs: [], contacts: [], mainContacts: [], activities: [], onboarding: [], agreements: [], agreementItems: [], invoices: [], invoiceItems: [], completions: [], tickets: [], groups: [], groupMembers: [], brands: [], brandLocations: [], specialTemplates: [], specialGroups: [], specialBrands: [], specialLocations: []
     },
     templateQuestions: { weekly: [], monthly: [] }
   };
@@ -168,7 +172,10 @@
     const key = String(action || '').trim().toLowerCase();
     if (key === 'brand-location-remove') return 'delete';
     if (key === 'brand-location-move') return 'update';
-    if (key === 'completion-export' || key === 'brand-export') return 'export';
+    if (key === 'completion-export' || key === 'brand-export' || key === 'special-template-report') return 'export';
+    if (key === 'special-template-create') return 'create';
+    if (key === 'special-template-edit') return 'update';
+    if (key === 'special-template-archive') return 'delete';
     return 'create';
   }
 
@@ -818,7 +825,7 @@
     const client = supabase();
     if (!client) { renderError('Supabase client is not available.'); return; }
 
-    const [allCompanies, profiles, reviews, tasks, risks, qbrs, contacts, mainContacts, activities, onboarding, agreements, agreementItems, invoices, invoiceItems, completions, tickets, groups, groupMembers, brands, brandLocations, templateQuestions] = await Promise.all([
+    const [allCompanies, profiles, reviews, tasks, risks, qbrs, contacts, mainContacts, activities, onboarding, agreements, agreementItems, invoices, invoiceItems, completions, tickets, groups, groupMembers, brands, brandLocations, specialTemplates, specialGroups, specialBrands, specialLocations, templateQuestions] = await Promise.all([
       fetchTable('companies', '*', { column: 'company_name', ascending: true }, 1500),
       fetchTable(TABLES.profiles),
       fetchTable(TABLES.reviews),
@@ -839,11 +846,15 @@
       fetchTable(TABLES.groupMembers, '*', { column: 'created_at', ascending: false }, 3000),
       fetchTable(TABLES.brands, '*', { column: 'brand_name', ascending: true }, 1000),
       fetchTable(TABLES.brandLocations, '*', { column: 'created_at', ascending: false }, 5000),
+      fetchTable(TABLES.specialTemplates, '*', { column: 'updated_at', ascending: false }, 1000),
+      fetchTable(TABLES.specialGroups, '*', { column: 'sort_order', ascending: true }, 3000),
+      fetchTable(TABLES.specialBrands, '*', { column: 'sort_order', ascending: true }, 3000),
+      fetchTable(TABLES.specialLocations, '*', { column: 'sort_order', ascending: true }, 5000),
       fetchTable(TABLES.templateQuestions, '*, cs_review_templates(review_type)', { column: 'sort_order', ascending: true }, 200)
     ]);
 
     const companies = toSignedClientCompanies(allCompanies, agreements);
-    STATE.rows = { companies, allCompanies, profiles, reviews, tasks, risks, qbrs, contacts, mainContacts, activities, onboarding, agreements, agreementItems, invoices, invoiceItems, completions, tickets, groups, groupMembers, brands, brandLocations };
+    STATE.rows = { companies, allCompanies, profiles, reviews, tasks, risks, qbrs, contacts, mainContacts, activities, onboarding, agreements, agreementItems, invoices, invoiceItems, completions, tickets, groups, groupMembers, brands, brandLocations, specialTemplates, specialGroups, specialBrands, specialLocations };
     STATE.templateQuestions.weekly = templateQuestions.filter(q => q.cs_review_templates?.review_type === 'weekly').map(q => [q.question_key, q.question_label]);
     STATE.templateQuestions.monthly = templateQuestions.filter(q => q.cs_review_templates?.review_type === 'monthly').map(q => [q.question_key, q.question_label]);
     if (!STATE.templateQuestions.weekly.length) STATE.templateQuestions.weekly = QUESTION_BANK.weekly;
@@ -870,6 +881,7 @@
           <span class="cs-admin-chip">${esc(accessLabel())}</span>
           <button id="csRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
           <button id="csAddCompletionBtn" data-cs-write-action class="btn sm primary" type="button">+ Location Completion</button>
+          <button id="csSpecialTemplatesBtn" class="btn ghost sm" type="button">Special Case Templates</button>
           <button id="csAddGroupBtn" data-cs-write-action class="btn ghost sm" type="button">+ Client Group</button>
           <button id="csAddGroupMemberBtn" data-cs-write-action class="btn ghost sm" type="button">+ Add to Group</button>
           <button id="csAddBrandBtn" data-cs-write-action class="btn ghost sm" type="button">+ Brand</button>
@@ -910,6 +922,7 @@
     const writeAction = handler => () => { if (!canCreate()) { toast('No Customer Success create permission for your role.'); return; } handler(); };
     $('csRefreshBtn')?.addEventListener('click', () => loadData());
     $('csAddCompletionBtn')?.addEventListener('click', writeAction(openCompletionForm));
+    $('csSpecialTemplatesBtn')?.addEventListener('click', () => { STATE.activeTab = 'specialTemplates'; renderDetail(); });
     $('csAddGroupBtn')?.addEventListener('click', writeAction(openGroupForm));
     $('csAddGroupMemberBtn')?.addEventListener('click', writeAction(openGroupMemberForm));
     $('csAddBrandBtn')?.addEventListener('click', writeAction(openBrandForm));
@@ -1159,17 +1172,18 @@
         <div class="cs-detail-title"><h3>${esc(companyName(company))}</h3><p>${esc(company.city || '')}${company.city && company.country ? ', ' : ''}${esc(company.country || '')} · ${esc(profile.lifecycle_stage || status)}</p></div>
         <div class="cs-health-ring"><div class="cs-health-score">${score}</div><div class="cs-health-label">${esc(healthLabel(score))}</div></div>
       </div>
-      <div class="cs-tabs">${['overview','groups','brands','completion','pulse','activity','tasks','risks','onboarding','renewals','qbr','contacts','timeline'].map(tab => `<button class="cs-tab-btn ${STATE.activeTab === tab ? 'is-active' : ''}" type="button" data-cs-tab="${tab}">${tabLabel(tab)}</button>`).join('')}</div>
+      <div class="cs-tabs">${['overview','groups','brands','completion','specialTemplates','pulse','activity','tasks','risks','onboarding','renewals','qbr','contacts','timeline'].map(tab => `<button class="cs-tab-btn ${STATE.activeTab === tab ? 'is-active' : ''}" type="button" data-cs-tab="${tab}">${tabLabel(tab)}</button>`).join('')}</div>
       <div id="csTabPanel" class="cs-tab-panel is-active">${renderActivePanel(company)}</div>`;
     host.querySelectorAll('[data-cs-tab]').forEach(btn => btn.addEventListener('click', () => { STATE.activeTab = btn.dataset.csTab || 'overview'; renderDetail(); }));
   }
 
-  function tabLabel(tab) { return ({ overview:'Overview', groups:'Groups', brands:'Brands', completion:'Completion', pulse:'Pulse Review', activity:'Activity', tasks:'Tasks', risks:'Risks', onboarding:'Onboarding', renewals:'Renewals', qbr:'QBR', contacts:'Contacts', timeline:'Timeline' }[tab] || tab); }
+  function tabLabel(tab) { return ({ overview:'Overview', groups:'Groups', brands:'Brands', completion:'Completion', specialTemplates:'Special Case Templates', pulse:'Pulse Review', activity:'Activity', tasks:'Tasks', risks:'Risks', onboarding:'Onboarding', renewals:'Renewals', qbr:'QBR', contacts:'Contacts', timeline:'Timeline' }[tab] || tab); }
   function renderActivePanel(company) {
     switch (STATE.activeTab) {
       case 'groups': return renderGroups(company);
       case 'brands': return renderBrands(company);
       case 'completion': return renderCompletion(company);
+      case 'specialTemplates': return renderSpecialTemplates();
       case 'pulse': return renderPulse(company);
       case 'activity': return renderActivity(company);
       case 'tasks': return renderTasks(company);
@@ -1382,6 +1396,50 @@
 
 
 
+
+
+  function specialTemplateId(row = {}) { return String(row.id || row.template_id || '').trim(); }
+  function specialTemplateName(row = {}) { return String(row.template_name || row.display_client_name || 'Unnamed Special Case Template').trim(); }
+  function activeSpecialTemplates() { return (STATE.rows.specialTemplates || []).filter(t => String(t.status || 'active').toLowerCase() === 'active'); }
+  function specialTemplateById(id) { const key = String(id || '').trim(); return (STATE.rows.specialTemplates || []).find(t => specialTemplateId(t) === key) || null; }
+  function specialGroupsForTemplate(tid) { return (STATE.rows.specialGroups || []).filter(r => String(r.template_id || '').trim() === String(tid || '').trim()).sort((a,b)=>safeNumber(a.sort_order)-safeNumber(b.sort_order)||groupName(a).localeCompare(groupName(b))); }
+  function specialBrandsForTemplate(tid) { return (STATE.rows.specialBrands || []).filter(r => String(r.template_id || '').trim() === String(tid || '').trim()).sort((a,b)=>safeNumber(a.sort_order)-safeNumber(b.sort_order)||brandName(a).localeCompare(brandName(b))); }
+  function specialLocationsForTemplate(tid, activeOnly = true) { return (STATE.rows.specialLocations || []).filter(r => String(r.template_id || '').trim() === String(tid || '').trim() && (!activeOnly || String(r.status || 'active').toLowerCase() === 'active')).sort((a,b)=>safeNumber(a.sort_order)-safeNumber(b.sort_order)||String(a.location_name||'').localeCompare(String(b.location_name||''))); }
+  function specialGroupById(id) { return (STATE.rows.specialGroups || []).find(r => String(r.id || '').trim() === String(id || '').trim()) || null; }
+  function specialBrandById(id) { return (STATE.rows.specialBrands || []).find(r => String(r.id || '').trim() === String(id || '').trim()) || null; }
+  function specialCompletionTargetKey(target) { return ['special', String(target.special_template_id || '').trim(), String(target.special_location_id || '').trim()].join('|'); }
+  function specialCompletionRecordKey(row) { return ['special', String(row.special_template_id || '').trim(), String(row.special_location_id || '').trim()].join('|'); }
+  function specialTemplateTargets(template) {
+    const tid = specialTemplateId(template);
+    return specialLocationsForTemplate(tid, true).map(loc => {
+      const group = loc.group_id ? specialGroupById(loc.group_id) : null;
+      const brand = loc.brand_id ? specialBrandById(loc.brand_id) : null;
+      return { company_id: tid, company_name: template.display_client_name || specialTemplateName(template), special_template_id: tid, special_location_id: loc.id, location_name: loc.location_name, group_name: groupName(group || { group_name: loc.group_name || '' }) || '', brand_name: brandName(brand || { brand_name: loc.brand_name || '' }) || '', source_type: 'special_template' };
+    });
+  }
+  function renderSpecialTemplates() {
+    const q = normalize(STATE.filters.specialTemplateSearch || '');
+    const status = String(STATE.filters.specialTemplateStatus || 'active').toLowerCase();
+    const rows = (STATE.rows.specialTemplates || []).filter(t => {
+      if (status !== 'all' && String(t.status || 'active').toLowerCase() !== status) return false;
+      if (!q) return true;
+      const tid = specialTemplateId(t);
+      return normalize([t.template_name, t.display_client_name, t.description, ...specialGroupsForTemplate(tid).map(groupName), ...specialBrandsForTemplate(tid).map(brandName), ...specialLocationsForTemplate(tid, false).map(r=>r.location_name)].join(' ')).includes(q);
+    });
+    const body = rows.length ? rows.map(t => {
+      const tid = specialTemplateId(t), groups = specialGroupsForTemplate(tid), brands = specialBrandsForTemplate(tid), locs = specialLocationsForTemplate(tid, false);
+      return `<tr><td><strong>${esc(t.template_name)}</strong><small>${esc(t.description || '')}</small></td><td>${esc(t.display_client_name)}</td><td>${groups.length}</td><td>${brands.length}</td><td>${locs.length}</td><td><span class="cs-chip ${String(t.status).toLowerCase()==='active'?'cs-chip--healthy':''}">${esc(t.status || 'active')}</span></td><td>${fmtDate(t.updated_at || t.created_at)}</td><td><button class="btn ghost sm" type="button" data-cs-action="special-template-edit" data-template-id="${attr(tid)}">Edit</button> <button class="btn ghost sm" type="button" data-cs-action="special-template-archive" data-template-id="${attr(tid)}">Archive</button> <button class="btn sm" type="button" data-cs-action="completion" data-template-id="${attr(tid)}">Use in Completion Report</button> <button class="btn ghost sm" type="button" data-cs-action="special-template-report" data-template-id="${attr(tid)}">View Report</button></td></tr>`;
+    }).join('') : '<tr><td colspan="8" class="cs-empty">No Special Case Templates match these filters.</td></tr>';
+    setTimeout(() => {
+      const st = $('csSpecialTemplateStatus'), ss = $('csSpecialTemplateSearch');
+      st?.addEventListener('change', () => { STATE.filters.specialTemplateStatus = st.value; renderDetail(); });
+      ss?.addEventListener('input', () => { STATE.filters.specialTemplateSearch = ss.value; renderDetail(); });
+    });
+    return `<div class="cs-section-title"><div><h4>Special Case Templates</h4><div class="cs-kpi-sub">Reusable completion-report sources that do not require signed agreements, invoices, or active invoice periods.</div></div><button class="btn sm primary" type="button" data-cs-action="special-template-create">Create Template</button></div>
+      <div class="cs-filter-grid cs-special-filter"><select id="csSpecialTemplateStatus" class="select"><option value="active" ${status==='active'?'selected':''}>Active templates</option><option value="archived" ${status==='archived'?'selected':''}>Archived templates</option><option value="all" ${status==='all'?'selected':''}>All templates</option></select><input id="csSpecialTemplateSearch" class="input" type="search" value="${attr(STATE.filters.specialTemplateSearch || '')}" placeholder="Search template/client/group/brand/location" /></div>
+      <div class="cs-table-wrap"><table class="cs-table"><thead><tr><th>Template Name</th><th>Display Client Name</th><th>Groups Count</th><th>Brands Count</th><th>Locations Count</th><th>Status</th><th>Updated At</th><th>Actions</th></tr></thead><tbody>${body}</tbody></table></div>`;
+  }
+
   function openCompletionExportForm() {
     const company = getSelectedCompany();
     if (!company) { toast('Select a client first.'); return; }
@@ -1407,6 +1465,7 @@
             <option value="client">Client Completion Report</option>
             <option value="group" ${groups.length ? '' : 'disabled'} ${selectedGroup ? 'selected' : ''}>Group Completion Report</option>
             <option value="brand" ${brands.length ? '' : 'disabled'}>Brand / Sub-group Completion Report</option>
+            <option value="special_template" ${activeSpecialTemplates().length ? '' : 'disabled'}>Special Case Template Completion Report</option>
           </select>
         </div>
         <div class="cs-form-field cs-form-field--full" id="csExportClientField">
@@ -1420,6 +1479,10 @@
         <div class="cs-form-field cs-form-field--full" id="csExportBrandField" style="display:none;">
           <label>Brand / Sub-group</label>
           <select name="brand_id" class="select">${brandOptions}</select>
+        </div>
+        <div class="cs-form-field cs-form-field--full" id="csExportSpecialField" style="display:none;">
+          <label>Special Case Template</label>
+          <select name="special_template_id" class="select">${activeSpecialTemplates().map(t => `<option value="${attr(specialTemplateId(t))}">${esc(t.display_client_name || specialTemplateName(t))}</option>`).join('') || '<option value="">No active Special Case Templates</option>'}</select>
         </div>
         <div class="cs-form-field cs-form-field--full">
           <label>Report Notes</label>
@@ -1437,13 +1500,16 @@
       const type = String(fd.get('report_type') || 'client');
       const groupId = type === 'group' ? String(fd.get('group_id') || '').trim() : '';
       const brandId = type === 'brand' ? String(fd.get('brand_id') || '').trim() : '';
+      const specialTemplateIdValue = type === 'special_template' ? String(fd.get('special_template_id') || '').trim() : '';
       if (type === 'group' && !groupId) { toast('Select a CS client group to export.'); return; }
       if (type === 'brand' && !brandId) { toast('Select a brand/sub-group to export.'); return; }
+      if (type === 'special_template' && !specialTemplateIdValue) { toast('Select a Special Case Template to export.'); return; }
       closeModal();
       exportCompletionReport({
         report_type: type,
         group_id: groupId,
-        brand_id: brandId
+        brand_id: brandId,
+        special_template_id: specialTemplateIdValue
       });
     });
 
@@ -1452,8 +1518,10 @@
       const type = form?.report_type?.value || 'client';
       const groupField = $('csExportGroupField');
       const brandField = $('csExportBrandField');
+      const specialField = $('csExportSpecialField');
       if (groupField) groupField.style.display = type === 'group' ? '' : 'none';
       if (brandField) brandField.style.display = type === 'brand' ? '' : 'none';
+      if (specialField) specialField.style.display = type === 'special_template' ? '' : 'none';
     };
     form?.report_type?.addEventListener('change', toggle);
     toggle();
@@ -1473,9 +1541,12 @@
     const selectedGroupId = explicitGroupId || (!requestedType && filterGroupId && !['All','Ungrouped'].includes(filterGroupId) ? filterGroupId : '');
     const selectedGroup = selectedGroupId ? groupById(selectedGroupId) : null;
 
-    let isBrandReport = requestedType === 'brand' || Boolean(selectedBrand);
-    let isGroupReport = !isBrandReport && (requestedType === 'group' || Boolean(selectedGroup));
+    const selectedSpecialTemplate = options.special_template_id ? specialTemplateById(options.special_template_id) : null;
+    let isSpecialTemplateReport = requestedType === 'special_template' || Boolean(selectedSpecialTemplate);
+    let isBrandReport = !isSpecialTemplateReport && (requestedType === 'brand' || Boolean(selectedBrand));
+    let isGroupReport = !isSpecialTemplateReport && !isBrandReport && (requestedType === 'group' || Boolean(selectedGroup));
     if (requestedType === 'client') { isBrandReport = false; isGroupReport = false; }
+    if (isSpecialTemplateReport && !selectedSpecialTemplate) { toast('Select a valid Special Case Template to export.'); return; }
     if (isBrandReport && !selectedBrand) { toast('Select a valid brand to export.'); return; }
     if (isGroupReport && !selectedGroup) { toast('Select a valid CS client group to export.'); return; }
     const generatedAt = new Date();
@@ -1487,8 +1558,21 @@
     let clientLabel = companyName(selectedCompany);
     let groupLabel = groupsForCompany(selectedCompany).map(groupName).join(', ') || 'Ungrouped';
     let targetRows = currentClientCompletionTargets(selectedCompany);
-    let rawRecords = latestCompletionPeriodRows(selectedCompany).map(row => ({ ...row, company_name: companyName(selectedCompany) }));
+    let rawRecords = latestCompletionPeriodRows(selectedCompany).filter(row => String(row.source_type || 'normal') !== 'special_template').map(row => ({ ...row, company_name: companyName(selectedCompany) }));
     let activePeriodKey = rawRecords[0] ? completionKey(rawRecords[0]) : '';
+
+    if (isSpecialTemplateReport) {
+      const tid = specialTemplateId(selectedSpecialTemplate);
+      reportName = selectedSpecialTemplate.display_client_name || specialTemplateName(selectedSpecialTemplate);
+      clientLabel = selectedSpecialTemplate.display_client_name || specialTemplateName(selectedSpecialTemplate);
+      groupLabel = specialGroupsForTemplate(tid).map(groupName).join(', ') || 'No group';
+      targetRows = specialTemplateTargets(selectedSpecialTemplate);
+      const sorted = sortCompletionRows((STATE.rows.completions || []).filter(row => String(row.source_type || '') === 'special_template' && String(row.special_template_id || '').trim() === tid));
+      activePeriodKey = sorted[0] ? completionKey(sorted[0]) : '';
+      rawRecords = activePeriodKey ? sorted.filter(row => completionKey(row) === activePeriodKey) : [];
+      isBrandReport = false;
+      isGroupReport = false;
+    }
 
     if (isBrandReport) {
       const brandTargets = brandCompletionTargets(selectedBrand);
@@ -1529,14 +1613,14 @@
 
     const recordByTarget = new Map();
     rawRecords.forEach(row => {
-      const key = [String(row.company_id || '').trim(), normalize(row.location_name)].join('|');
-      if (key !== '|') recordByTarget.set(key, row);
+      const key = String(row.source_type || '') === 'special_template' ? specialCompletionRecordKey(row) : [String(row.company_id || '').trim(), normalize(row.location_name)].join('|');
+      if (key !== '|' && key !== 'special||') recordByTarget.set(key, row);
       const fallbackKey = ['name', normalize(row.company_name_snapshot || row.company_name || ''), normalize(row.location_name)].join('|');
       recordByTarget.set(fallbackKey, row);
     });
 
     const rows = targetRows.map(target => {
-      const directKey = completionTargetKey(target);
+      const directKey = target.source_type === 'special_template' ? specialCompletionTargetKey(target) : completionTargetKey(target);
       const nameKey = ['name', normalize(target.company_name), normalize(target.location_name)].join('|');
       const saved = recordByTarget.get(directKey) || recordByTarget.get(nameKey) || {};
       return {
@@ -1557,7 +1641,7 @@
     });
 
     const hydrateCompletionTargets = targets => targets.map(target => {
-      const directKey = completionTargetKey(target);
+      const directKey = target.source_type === 'special_template' ? specialCompletionTargetKey(target) : completionTargetKey(target);
       const nameKey = ['name', normalize(target.company_name), normalize(target.location_name)].join('|');
       const saved = recordByTarget.get(directKey) || recordByTarget.get(nameKey) || {};
       return {
@@ -1577,7 +1661,7 @@
       };
     });
 
-    const reportTargetKeySet = new Set(targetRows.map(completionTargetKey));
+    const reportTargetKeySet = new Set(targetRows.map(target => target.source_type === 'special_template' ? specialCompletionTargetKey(target) : completionTargetKey(target)));
     const brandCandidateMap = new Map();
     const addBrandCandidate = brand => {
       if (!brand) return;
@@ -1599,23 +1683,27 @@
         if (reportTargetKeySet.has(key)) addBrandCandidate(brandById(row.brand_id) || { id: row.brand_id, brand_name: row.brand_name_snapshot || 'Unknown Brand' });
       });
     } else {
+      if (isSpecialTemplateReport) {
+        specialBrandsForTemplate(specialTemplateId(selectedSpecialTemplate)).forEach(addBrandCandidate);
+    } else {
       brandsForCompany(selectedCompany).forEach(addBrandCandidate);
+      }
     }
 
     const brandRows = Array.from(brandCandidateMap.values()).map(brand => {
-      const brandTargets = brandCompletionTargets(brand);
-      const scopedTargets = brandTargets.filter(target => !reportTargetKeySet.size || reportTargetKeySet.has(completionTargetKey(target)));
+      const brandTargets = isSpecialTemplateReport ? specialTemplateTargets(selectedSpecialTemplate).filter(t => normalize(t.brand_name) === normalize(brandName(brand))) : brandCompletionTargets(brand);
+      const scopedTargets = brandTargets.filter(target => !reportTargetKeySet.size || reportTargetKeySet.has(target.source_type === 'special_template' ? specialCompletionTargetKey(target) : completionTargetKey(target)));
       const brandLocations = hydrateCompletionTargets(scopedTargets);
       const brandStats = averageCompletionMetrics(brandLocations);
       const bestLocation = brandLocations.length ? brandLocations.slice().sort((a,b) => completionCount(b) - completionCount(a))[0] : null;
       const weakLocations = brandLocations.filter(row => completionCount(row) < 80).sort((a,b) => completionCount(a) - completionCount(b)).slice(0, 3);
-      return { brand, brand_name: brandName(brand), scope: brandScopeLabel(brand), locations: brandLocations, stats: brandStats, bestLocation, weakLocations };
+      return { brand, brand_name: brandName(brand), scope: isSpecialTemplateReport ? `Special Case Template: ${specialTemplateName(selectedSpecialTemplate)}` : brandScopeLabel(brand), locations: brandLocations, stats: brandStats, bestLocation, weakLocations };
     }).filter(item => item.locations.length);
 
     if ((isGroupReport || !isBrandReport) && reportTargetKeySet.size) {
       const coveredKeys = new Set();
-      brandRows.forEach(item => item.locations.forEach(row => coveredKeys.add(completionTargetKey(row))));
-      const unassignedTargets = targetRows.filter(target => !coveredKeys.has(completionTargetKey(target)));
+      brandRows.forEach(item => item.locations.forEach(row => coveredKeys.add(row.source_type === 'special_template' ? specialCompletionTargetKey(row) : completionTargetKey(row))));
+      const unassignedTargets = targetRows.filter(target => !coveredKeys.has(target.source_type === 'special_template' ? specialCompletionTargetKey(target) : completionTargetKey(target)));
       if (unassignedTargets.length) {
         const unassignedLocations = hydrateCompletionTargets(unassignedTargets);
         const unassignedStats = averageCompletionMetrics(unassignedLocations);
@@ -1660,7 +1748,7 @@
     const weak = rows.slice().filter(row => completionCount(row) < 80).sort((a,b) => completionCount(a) - completionCount(b)).slice(0, 3);
     const health = computeHealth(selectedCompany);
     const effort = isGroupReport ? 'Group Review' : computeEffort(selectedCompany);
-    const reportTitleSuffix = isBrandReport ? 'Brand Completion Report' : (isGroupReport ? 'Group Completion Report' : 'Client Completion Report');
+    const reportTitleSuffix = isSpecialTemplateReport ? 'Special Case Template Completion Report' : (isBrandReport ? 'Brand Completion Report' : (isGroupReport ? 'Group Completion Report' : 'Client Completion Report'));
     const sourceNote = rawRecords.find(r => r.source_note)?.source_note || 'Completion values are entered as percentages.';
     const safeWidth = value => `${clamp(safeDecimal(value), 0, 100).toFixed(2)}%`;
     const stackParts = [
@@ -1723,9 +1811,10 @@
           <div class="title"><h1>Completion Report</h1><div class="subtitle">${esc(reportTitleSuffix)} · Completion = Done On-Time + Done Late · Values are percentages.</div></div>
         </div>
         <div class="meta-grid">
-          <div class="meta"><div class="k">${isBrandReport ? 'Brand' : (isGroupReport ? 'Group' : 'Client')}</div><div class="v">${esc(reportName)}</div></div>
+          <div class="meta"><div class="k">${isSpecialTemplateReport ? 'Special Case Template' : (isBrandReport ? 'Brand' : (isGroupReport ? 'Group' : 'Client'))}</div><div class="v">${esc(reportName)}</div></div>
           <div class="meta"><div class="k">Review Type</div><div class="v">${esc(String(reportType || 'weekly').replace(/^./, c => c.toUpperCase()))}</div></div>
           <div class="meta"><div class="k">Period</div><div class="v">${esc(periodLabel)}</div></div>
+          ${isSpecialTemplateReport ? `<div class="meta"><div class="k">Template Name</div><div class="v">${esc(specialTemplateName(selectedSpecialTemplate))}</div></div>` : ''}
         </div>
       </div>
     </div>
@@ -1762,7 +1851,7 @@
       </div></div>
 
       <div class="panel summary-card"><div class="panel-inner">
-        <div class="section-title"><h2>${isGroupReport ? 'All Group Locations' : 'All Client Locations'}</h2></div>
+        <div class="section-title"><h2>${isSpecialTemplateReport ? 'All Template Locations' : (isGroupReport ? 'All Group Locations' : 'All Client Locations')}</h2></div>
         <div class="tiny">Average of ${rows.length} active location${rows.length === 1 ? '' : 's'}</div>
         <div class="summary-line"><span class="mini-icon">✓</span><span>Done On-Time</span><strong style="color:var(--good)">${stats.done_on_time.toFixed(2)}%</strong></div>
         <div class="summary-line"><span class="mini-icon">◷</span><span>Done Late</span><strong style="color:var(--late)">${stats.done_late.toFixed(2)}%</strong></div>
@@ -1775,7 +1864,7 @@
     <div class="insights">
       <div class="insight good-bg"><div class="big-icon">🏆</div><div><h3>Best performing location</h3><p>${best ? `${esc(best.company_name || reportName)} — ${esc(best.location_name)}<br/>Completion: <strong>${formatPct(completionCount(best))}</strong>` : 'No location data available yet.'}</p></div></div>
       <div class="insight warn-bg"><div class="big-icon">⚠</div><div><h3>Locations needing operational attention</h3><p>${weak.length ? weak.map(row => `${esc(row.company_name || reportName)} — ${esc(row.location_name)} (${formatPct(completionCount(row))})`).join('<br/>') : 'No locations needing operational attention for the selected period.'}</p></div></div>
-      <div class="insight info-bg"><div class="big-icon">ⓘ</div><div><h3>Notes</h3><p>${esc(sourceNote)}<br/>${isBrandReport ? 'Brand result is auto-calculated from assigned brand location rows.' : (isGroupReport ? 'Group result includes brand/sub-group completion when brands are configured.' : 'Client result is auto-calculated from all location rows.')}<br/>Generated on ${esc(generatedAt.toLocaleString())}.</p></div></div>
+      <div class="insight info-bg"><div class="big-icon">ⓘ</div><div><h3>Notes</h3><p>${esc(sourceNote)}<br/>${isBrandReport ? 'Brand result is auto-calculated from assigned brand location rows.' : (isGroupReport ? 'Group result includes brand/sub-group completion when brands are configured.' : 'Client result is auto-calculated from all location rows.')}<br/>${isSpecialTemplateReport ? 'Special Case Template report source. ' : ''}Generated on ${esc(generatedAt.toLocaleString())}.</p></div></div>
     </div>
     <div class="footer"><span>InCheck 360 · Customer Success</span><span>Summary · ${esc(generatedAt.toLocaleDateString())}</span></div>
   </section>
@@ -1845,6 +1934,72 @@
     }
   }
 
+
+
+  function parseLines(value) { return String(value || '').split(/\r?\n/).map(v => v.trim()).filter(Boolean); }
+  function optionsFromRows(rows, getId, getLabel, empty) { return rows.length ? rows.map(r => `<option value="${attr(getId(r))}">${esc(getLabel(r))}</option>`).join('') : `<option value="">${esc(empty)}</option>`; }
+  function openSpecialTemplateForm(templateId = '') {
+    const template = specialTemplateById(templateId) || {};
+    const isEdit = Boolean(specialTemplateId(template));
+    const groups = isEdit ? specialGroupsForTemplate(templateId) : [];
+    const brands = isEdit ? specialBrandsForTemplate(templateId) : [];
+    const locations = isEdit ? specialLocationsForTemplate(templateId, false) : [];
+    openModal(isEdit ? 'Edit Special Case Template' : 'Create Special Case Template', `<form class="cs-form" id="csSpecialTemplateForm">
+      <div class="cs-form-grid">
+        <div class="cs-form-field"><label>Template Name</label><input name="template_name" class="input" required value="${attr(template.template_name || '')}" placeholder="Demo Client QA" /></div>
+        <div class="cs-form-field"><label>Display Client Name</label><input name="display_client_name" class="input" required value="${attr(template.display_client_name || '')}" placeholder="Demo Client QA" /></div>
+        <div class="cs-form-field"><label>Status</label><select name="status" class="select"><option value="active" ${String(template.status||'active').toLowerCase()==='active'?'selected':''}>Active</option><option value="archived" ${String(template.status||'').toLowerCase()==='archived'?'selected':''}>Archived</option></select></div>
+        <div class="cs-form-field cs-form-field--full"><label>Description</label><textarea name="description" class="input">${esc(template.description || '')}</textarea></div>
+        <div class="cs-form-field"><label>Groups (one per line)</label><textarea name="groups_text" class="input" rows="5" placeholder="Demo Group">${esc(groups.map(groupName).join('\n'))}</textarea></div>
+        <div class="cs-form-field"><label>Brands (one per line)</label><textarea name="brands_text" class="input" rows="5" placeholder="Brand A\nBrand B">${esc(brands.map(brandName).join('\n'))}</textarea></div>
+        <div class="cs-form-field cs-form-field--full"><label>Locations (one per line)</label><textarea name="locations_text" class="input" rows="7" required placeholder="Location 1\nLocation 2\nLocation 3">${esc(locations.map(r=>r.location_name).join('\n'))}</textarea></div>
+        <div class="cs-form-field cs-form-field--full"><div class="cs-mini-note">At least one active location is required. Existing groups, brands, and locations are replaced on save so duplicates are prevented per template.</div></div>
+      </div>
+      <div class="cs-modal-actions"><button type="button" class="btn ghost" onclick="document.getElementById('csModalClose').click()">Cancel</button><button type="submit" class="btn primary">Save Template</button></div>
+    </form>`, async form => saveSpecialTemplate(form, template));
+  }
+
+  async function saveSpecialTemplate(form, existing = {}) {
+    const fd = new FormData(form);
+    const groups = Array.from(new Set(parseLines(fd.get('groups_text'))));
+    const brands = Array.from(new Set(parseLines(fd.get('brands_text'))));
+    const locations = Array.from(new Set(parseLines(fd.get('locations_text'))));
+    if (!String(fd.get('template_name') || '').trim() || !String(fd.get('display_client_name') || '').trim()) { toast('Template Name and Display Client Name are required.'); return; }
+    if (!locations.length) { toast('Add at least one active location.'); return; }
+    const payload = { template_name: fd.get('template_name'), display_client_name: fd.get('display_client_name'), description: fd.get('description') || null, status: fd.get('status') || 'active', updated_at: new Date().toISOString() };
+    let templateId = specialTemplateId(existing);
+    if (templateId) {
+      const { error } = await supabase().from(TABLES.specialTemplates).update(payload).eq('id', templateId);
+      if (error) { toast(`Unable to update template: ${error.message}`); return; }
+      await Promise.all([supabase().from(TABLES.specialLocations).delete().eq('template_id', templateId), supabase().from(TABLES.specialBrands).delete().eq('template_id', templateId), supabase().from(TABLES.specialGroups).delete().eq('template_id', templateId)]);
+    } else {
+      const { data, error } = await supabase().from(TABLES.specialTemplates).insert(payload).select('id').single();
+      if (error) { toast(`Unable to create template: ${error.message}`); return; }
+      templateId = data?.id;
+    }
+    const groupRows = groups.map((name,i)=>({ template_id: templateId, group_name: name, sort_order: i }));
+    const { data: savedGroups, error: groupError } = groupRows.length ? await supabase().from(TABLES.specialGroups).insert(groupRows).select('*') : { data: [], error: null };
+    if (groupError) { toast(`Unable to save groups: ${groupError.message}`); return; }
+    const firstGroupId = savedGroups?.[0]?.id || null;
+    const brandRows = brands.map((name,i)=>({ template_id: templateId, group_id: firstGroupId, brand_name: name, sort_order: i }));
+    const { data: savedBrands, error: brandError } = brandRows.length ? await supabase().from(TABLES.specialBrands).insert(brandRows).select('*') : { data: [], error: null };
+    if (brandError) { toast(`Unable to save brands: ${brandError.message}`); return; }
+    const firstBrandId = savedBrands?.[0]?.id || null;
+    const locationRows = locations.map((name,i)=>({ template_id: templateId, group_id: firstGroupId, brand_id: firstBrandId, location_name: name, status: 'active', sort_order: i }));
+    const { error: locError } = await supabase().from(TABLES.specialLocations).insert(locationRows);
+    if (locError) { toast(`Unable to save locations: ${locError.message}`); return; }
+    closeModal(); await loadData(); STATE.activeTab = 'specialTemplates'; renderDetail(); toast('Special Case Template saved.');
+  }
+
+  async function archiveSpecialTemplate(templateId = '') {
+    const template = specialTemplateById(templateId);
+    if (!template) { toast('Select a valid Special Case Template.'); return; }
+    if (!confirm(`Archive ${specialTemplateName(template)}? Old completion history will remain.`)) return;
+    const { error } = await supabase().from(TABLES.specialTemplates).update({ status: 'archived', updated_at: new Date().toISOString() }).eq('id', templateId);
+    if (error) { toast(`Unable to archive template: ${error.message}`); return; }
+    await loadData(); STATE.activeTab = 'specialTemplates'; renderDetail(); toast('Special Case Template archived.');
+  }
+
   document.addEventListener('click', event => {
     const action = event.target?.closest?.('[data-cs-action]')?.dataset?.csAction;
     if (!action) return;
@@ -1855,7 +2010,7 @@
       toast(`No Customer Success ${needed} permission for your role.`);
       return;
     }
-    if (action === 'completion') openCompletionForm();
+    if (action === 'completion') openCompletionForm(event.target?.closest?.('[data-template-id]')?.dataset?.templateId || '');
     if (action === 'completion-export') openCompletionExportForm();
     if (action === 'group') openGroupForm();
     if (action === 'group-member') openGroupMemberForm();
@@ -1885,6 +2040,10 @@
       moveBrandLocation(rowId, select?.value || '');
       return;
     }
+    if (action === 'special-template-create') openSpecialTemplateForm('');
+    if (action === 'special-template-edit') openSpecialTemplateForm(event.target?.closest?.('[data-template-id]')?.dataset?.templateId || '');
+    if (action === 'special-template-archive') archiveSpecialTemplate(event.target?.closest?.('[data-template-id]')?.dataset?.templateId || '');
+    if (action === 'special-template-report') exportCompletionReport({ report_type: 'special_template', special_template_id: event.target?.closest?.('[data-template-id]')?.dataset?.templateId || '' });
     if (action === 'brand-export') exportCompletionReport({ report_type: 'brand', brand_id: event.target?.closest?.('[data-brand-id]')?.dataset?.brandId || '' });
     if (action === 'review') openReviewForm();
     if (action === 'task') openTaskForm();
@@ -2033,6 +2192,10 @@
       const brand = brandById(form?.brand_id?.value);
       return brand ? brandCompletionTargets(brand) : [];
     }
+    if (scope === 'special_template') {
+      const template = specialTemplateById(form?.special_template_id?.value);
+      return template ? specialTemplateTargets(template) : [];
+    }
     return currentClientCompletionTargets(company);
   }
 
@@ -2062,7 +2225,7 @@
     if (!targets.length) return '<tr><td colspan="7" class="cs-empty">No signed client locations found.</td></tr>';
     return targets.map(target => {
       const rowData = sharedData || { done_on_time: 0, done_late: 0, partially_done: 0, missed: 0 };
-      const attrs = `data-company-id="${attr(target.company_id)}" data-company-name="${attr(target.company_name)}" data-location-name="${attr(target.location_name)}"`;
+      const attrs = `data-company-id="${attr(target.company_id)}" data-company-name="${attr(target.company_name)}" data-location-name="${attr(target.location_name)}" data-special-template-id="${attr(target.special_template_id || '')}" data-special-location-id="${attr(target.special_location_id || '')}" data-group-name="${attr(target.group_name || '')}" data-brand-name="${attr(target.brand_name || '')}"`;
       if (editable) {
         return `<tr class="cs-completion-input-row" ${attrs}>
           <td>${esc(target.company_name)}</td>
@@ -2090,7 +2253,7 @@
     return activeGroups().filter(group => ids.has(groupId(group))).sort((a,b) => groupName(a).localeCompare(groupName(b)));
   }
 
-  function openCompletionForm() {
+  function openCompletionForm(preselectedSpecialTemplateId = '') {
     const [periodStart, periodEnd] = periodDefaults('weekly');
     const company = getSelectedCompany();
     const groups = activeCompletionGroupsForSelect(company);
@@ -2101,11 +2264,16 @@
     const brandOptions = brands.length
       ? brands.map(brand => `<option value="${attr(brandId(brand))}">${esc(brandName(brand))} · ${esc(brandScopeLabel(brand))}</option>`).join('')
       : '<option value="">No CS brands yet</option>';
+    const specialTemplates = activeSpecialTemplates();
+    const specialOptions = specialTemplates.length
+      ? specialTemplates.map(t => `<option value="${attr(specialTemplateId(t))}" ${specialTemplateId(t) === String(preselectedSpecialTemplateId || '').trim() ? 'selected' : ''}>${esc(t.display_client_name || specialTemplateName(t))}</option>`).join('')
+      : '<option value="">No active Special Case Templates</option>';
     const initialTargets = currentClientCompletionTargets(company);
 
     openModal('Add Location Completion', `<form class="cs-form" id="csCompletionForm">
       <div class="cs-form-grid">${selectedCompanyInput()}
-        <div class="cs-form-field"><label>Completion Scope</label><select name="completion_scope" class="select"><option value="client">Current Client</option><option value="group" ${groups.length ? '' : 'disabled'}>CS Client Group</option><option value="brand" ${brands.length ? '' : 'disabled'}>CS Brand</option></select></div>
+        <div class="cs-form-field"><label>Source</label><select name="completion_scope" class="select"><option value="client">Normal Clients</option><option value="group" ${groups.length ? '' : 'disabled'}>Normal Client Group</option><option value="brand" ${brands.length ? '' : 'disabled'}>Normal Client Brand</option><option value="special_template" ${specialTemplates.length ? '' : 'disabled'} ${preselectedSpecialTemplateId ? 'selected' : ''}>Special Case Templates</option></select></div>
+        <div class="cs-form-field" id="csCompletionSpecialField" style="display:none;"><label>Special Case Template</label><select name="special_template_id" class="select">${specialOptions}</select></div>
         <div class="cs-form-field" id="csCompletionGroupField" style="display:none;"><label>CS Client Group</label><select name="group_id" class="select">${groupOptions}</select></div>
         <div class="cs-form-field" id="csCompletionBrandField" style="display:none;"><label>CS Brand</label><select name="brand_id" class="select">${brandOptions}</select></div>
         <div class="cs-form-field"><label>Review Type</label><select name="review_type" class="select"><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></div>
@@ -2143,6 +2311,7 @@
     form?.completion_scope?.addEventListener('change', () => rebuildCompletionRows(form));
     form?.group_id?.addEventListener('change', () => rebuildCompletionRows(form));
     form?.brand_id?.addEventListener('change', () => rebuildCompletionRows(form));
+    form?.special_template_id?.addEventListener('change', () => rebuildCompletionRows(form));
     form?.addEventListener('input', () => refreshCompletionRows(form));
     rebuildCompletionRows(form);
   }
@@ -2152,9 +2321,11 @@
     const scope = String(form.completion_scope?.value || 'client');
     const isGroup = scope === 'group';
     const isBrand = scope === 'brand';
+    const isSpecial = scope === 'special_template';
     const targets = completionTargetsForForm(form);
     const groupField = $('csCompletionGroupField');
     const brandField = $('csCompletionBrandField');
+    const specialField = $('csCompletionSpecialField');
     const groupEntry = $('csGroupCompletionEntry');
     const hint = $('csCompletionHint');
     const body = $('csCompletionRowsBody');
@@ -2162,14 +2333,17 @@
     const aggregateTitle = $('csCompletionAggregateTitle');
     if (groupField) groupField.style.display = isGroup ? '' : 'none';
     if (brandField) brandField.style.display = isBrand ? '' : 'none';
-    if (groupEntry) groupEntry.style.display = (isGroup || isBrand) ? '' : 'none';
-    if (aggregateLabel) aggregateLabel.textContent = isBrand ? 'All Brand Locations' : 'All Group Locations';
-    if (aggregateTitle) aggregateTitle.textContent = isBrand ? 'Brand Result Counts' : 'Group Result Counts';
-    if (hint) hint.textContent = isBrand
-      ? 'For brand scope, enter each assigned company/location below. The All Brand Locations line above is auto-calculated from all entered rows.'
-      : (isGroup
-        ? 'For group scope, enter each company/location below one time from the same screen. The All Group Locations line above is auto-calculated from all entered rows.'
-        : 'For current client scope, you can edit each location separately.');
+    if (specialField) specialField.style.display = isSpecial ? '' : 'none';
+    if (groupEntry) groupEntry.style.display = (isGroup || isBrand || isSpecial) ? '' : 'none';
+    if (aggregateLabel) aggregateLabel.textContent = isSpecial ? 'All Template Locations' : (isBrand ? 'All Brand Locations' : 'All Group Locations');
+    if (aggregateTitle) aggregateTitle.textContent = isSpecial ? 'Special Case Template Result' : (isBrand ? 'Brand Result Counts' : 'Group Result Counts');
+    if (hint) hint.textContent = isSpecial
+      ? 'For Special Case Templates, enter each active template location below. The All Template Locations line above is auto-calculated from all entered rows.'
+      : (isBrand
+        ? 'For brand scope, enter each assigned company/location below. The All Brand Locations line above is auto-calculated from all entered rows.'
+        : (isGroup
+          ? 'For group scope, enter each company/location below one time from the same screen. The All Group Locations line above is auto-calculated from all entered rows.'
+          : 'For current client scope, you can edit each location separately.'));
     if (body) body.innerHTML = renderCompletionTargetsTable(targets, null, true);
     refreshCompletionRows(form);
   }
@@ -2213,7 +2387,12 @@
       done_late: data.done_late,
       partially_done: data.partially_done,
       missed: data.missed,
-      source_note: fd.get('source_note') || null
+      source_note: fd.get('source_note') || null,
+      source_type: target.source_type || 'normal',
+      special_template_id: target.special_template_id || null,
+      special_location_id: target.special_location_id || null,
+      group_name: target.group_name || null,
+      brand_name: target.brand_name || null
     };
   }
 
@@ -2230,12 +2409,21 @@
       const brand = brandById(fd.get('brand_id'));
       if (!brand) { toast('Select a valid CS brand.'); return; }
     }
+    if (scope === 'special_template') {
+      const template = specialTemplateById(fd.get('special_template_id'));
+      if (!template) { toast('Select a valid Special Case Template.'); return; }
+    }
     payloads = Array.from(form.querySelectorAll('.cs-completion-input-row')).map(row => {
       const data = readCompletionInputRow(row);
       return buildCompletionPayload(fd, {
         company_id: row.dataset.companyId,
         company_name: row.dataset.companyName,
-        location_name: data.location_name
+        location_name: data.location_name,
+        source_type: scope === 'special_template' ? 'special_template' : 'normal',
+        special_template_id: row.dataset.specialTemplateId || null,
+        special_location_id: row.dataset.specialLocationId || null,
+        group_name: row.dataset.groupName || null,
+        brand_name: row.dataset.brandName || null
       }, data);
     });
 
@@ -2243,7 +2431,8 @@
     if (!payloads.length) { toast('No locations found to save completion.'); return; }
     const invalid = payloads.find(row => !completionRowIsValid(row));
     if (invalid) { toast(`Total percentage for ${invalid.location_name} cannot exceed 100%.`); return; }
-    const { error } = await supabase().from(TABLES.completions).upsert(payloads, { onConflict: 'company_id,location_name,review_type,period_start,period_end' });
+    const conflictKey = scope === 'special_template' ? 'source_type,special_template_id,special_location_id,review_type,period_start,period_end' : 'company_id,location_name,review_type,period_start,period_end';
+    const { error } = await supabase().from(TABLES.completions).upsert(payloads, { onConflict: conflictKey });
     if (error) { toast(`Unable to save completion: ${error.message}`); return; }
     closeModal(); await loadData(); toast(scope === 'brand' ? `Brand completion saved for ${payloads.length} location line${payloads.length === 1 ? '' : 's'}.` : (scope === 'group' ? `Group completion saved for ${payloads.length} location line${payloads.length === 1 ? '' : 's'}.` : 'Location completion saved.'));
   }
