@@ -576,3 +576,7 @@ body.dark .cs-table th, body.dark .cs-empty { background:#111827; }
   color: #3730a3;
   border-color: #c7d2fe;
 }
+
+.cs-special-filter { margin: 0 0 12px; grid-template-columns: minmax(180px, 240px) 1fr; }
+.cs-table td small { display:block; color: var(--cs-muted); margin-top: 3px; }
+.cs-row-error input { border-color: #ef4444 !important; box-shadow: 0 0 0 2px rgba(239,68,68,.12); }
