@@ -172,7 +172,9 @@
     const key = String(action || '').trim().toLowerCase();
     if (key === 'brand-location-remove') return 'delete';
     if (key === 'brand-location-move') return 'update';
-    if (key === 'completion-export' || key === 'brand-export' || key === 'special-template-report') return 'export';
+    if (key === 'completion-export' || key === 'brand-export' || key === 'special-template-view-report' || key === 'special-template-report') return 'export';
+    if (key === 'special-templates-open') return 'view';
+    if (key === 'special-template-use-completion') return 'create';
     if (key === 'special-template-create') return 'create';
     if (key === 'special-template-edit') return 'update';
     if (key === 'special-template-archive') return 'delete';
@@ -181,6 +183,7 @@
 
   function canRunCsAction(action) {
     const required = requiredCsPermissionForAction(action);
+    if (required === 'view') return canAccess();
     if (required === 'export') return canExport();
     if (required === 'delete') return canDelete();
     if (required === 'update') return canUpdate();
@@ -817,6 +820,32 @@
     }
   }
 
+  async function loadSpecialCaseTemplates({ force = false } = {}) {
+    if (!force && Array.isArray(STATE.rows.specialTemplates) && STATE.rows.specialTemplates.length) {
+      return STATE.rows.specialTemplates;
+    }
+    const [specialTemplates, specialGroups, specialBrands, specialLocations] = await Promise.all([
+      fetchTable(TABLES.specialTemplates, '*', { column: 'updated_at', ascending: false }, 1000),
+      fetchTable(TABLES.specialGroups, '*', { column: 'sort_order', ascending: true }, 3000),
+      fetchTable(TABLES.specialBrands, '*', { column: 'sort_order', ascending: true }, 3000),
+      fetchTable(TABLES.specialLocations, '*', { column: 'sort_order', ascending: true }, 5000)
+    ]);
+    STATE.rows.specialTemplates = specialTemplates;
+    STATE.rows.specialGroups = specialGroups;
+    STATE.rows.specialBrands = specialBrands;
+    STATE.rows.specialLocations = specialLocations;
+    console.info('[CS360 Special Templates] loaded templates', specialTemplates);
+    return specialTemplates;
+  }
+
+  async function openSpecialCaseTemplates() {
+    console.info('[CS360 Special Templates] open clicked');
+    STATE.activeTab = 'specialTemplates';
+    renderDetail();
+    await loadSpecialCaseTemplates({ force: true });
+    renderDetail();
+  }
+
   async function loadData() {
     if (!canAccess()) { renderAccessDenied(); return; }
     STATE.loading = true;
@@ -881,7 +910,7 @@
           <span class="cs-admin-chip">${esc(accessLabel())}</span>
           <button id="csRefreshBtn" class="btn ghost sm" type="button">Refresh</button>
           <button id="csAddCompletionBtn" data-cs-write-action class="btn sm primary" type="button">+ Location Completion</button>
-          <button id="csSpecialTemplatesBtn" class="btn ghost sm" type="button">Special Case Templates</button>
+          <button id="csSpecialTemplatesBtn" class="btn ghost sm" type="button" data-cs-action="special-templates-open">Special Case Templates</button>
           <button id="csAddGroupBtn" data-cs-write-action class="btn ghost sm" type="button">+ Client Group</button>
           <button id="csAddGroupMemberBtn" data-cs-write-action class="btn ghost sm" type="button">+ Add to Group</button>
           <button id="csAddBrandBtn" data-cs-write-action class="btn ghost sm" type="button">+ Brand</button>
@@ -922,7 +951,6 @@
     const writeAction = handler => () => { if (!canCreate()) { toast('No Customer Success create permission for your role.'); return; } handler(); };
     $('csRefreshBtn')?.addEventListener('click', () => loadData());
     $('csAddCompletionBtn')?.addEventListener('click', writeAction(openCompletionForm));
-    $('csSpecialTemplatesBtn')?.addEventListener('click', () => { STATE.activeTab = 'specialTemplates'; renderDetail(); });
     $('csAddGroupBtn')?.addEventListener('click', writeAction(openGroupForm));
     $('csAddGroupMemberBtn')?.addEventListener('click', writeAction(openGroupMemberForm));
     $('csAddBrandBtn')?.addEventListener('click', writeAction(openBrandForm));
@@ -1428,16 +1456,16 @@
     });
     const body = rows.length ? rows.map(t => {
       const tid = specialTemplateId(t), groups = specialGroupsForTemplate(tid), brands = specialBrandsForTemplate(tid), locs = specialLocationsForTemplate(tid, false);
-      return `<tr><td><strong>${esc(t.template_name)}</strong><small>${esc(t.description || '')}</small></td><td>${esc(t.display_client_name)}</td><td>${groups.length}</td><td>${brands.length}</td><td>${locs.length}</td><td><span class="cs-chip ${String(t.status).toLowerCase()==='active'?'cs-chip--healthy':''}">${esc(t.status || 'active')}</span></td><td>${fmtDate(t.updated_at || t.created_at)}</td><td><button class="btn ghost sm" type="button" data-cs-action="special-template-edit" data-template-id="${attr(tid)}">Edit</button> <button class="btn ghost sm" type="button" data-cs-action="special-template-archive" data-template-id="${attr(tid)}">Archive</button> <button class="btn sm" type="button" data-cs-action="completion" data-template-id="${attr(tid)}">Use in Completion Report</button> <button class="btn ghost sm" type="button" data-cs-action="special-template-report" data-template-id="${attr(tid)}">View Report</button></td></tr>`;
-    }).join('') : '<tr><td colspan="8" class="cs-empty">No Special Case Templates match these filters.</td></tr>';
+      return `<tr><td><strong>${esc(t.template_name)}</strong><small>${esc(t.description || '')}</small></td><td>${esc(t.display_client_name)}</td><td>${groups.length}</td><td>${brands.length}</td><td>${locs.length}</td><td><span class="cs-chip ${String(t.status).toLowerCase()==='active'?'cs-chip--healthy':''}">${esc(t.status || 'active')}</span></td><td>${fmtDate(t.updated_at || t.created_at)}</td><td>${canUpdate() ? `<button class="btn ghost sm" type="button" data-cs-action="special-template-edit" data-template-id="${attr(tid)}">Edit</button>` : ''} ${canDelete() ? `<button class="btn ghost sm" type="button" data-cs-action="special-template-archive" data-template-id="${attr(tid)}">Archive</button>` : ''} ${canCreate() ? `<button class="btn sm" type="button" data-cs-action="special-template-use-completion" data-template-id="${attr(tid)}">Use in Completion</button>` : ''} <button class="btn ghost sm" type="button" data-cs-action="special-template-view-report" data-template-id="${attr(tid)}">View Report</button></td></tr>`;
+    }).join('') : '<tr><td colspan="8" class="cs-empty">No special case templates yet.</td></tr>';
     setTimeout(() => {
       const st = $('csSpecialTemplateStatus'), ss = $('csSpecialTemplateSearch');
       st?.addEventListener('change', () => { STATE.filters.specialTemplateStatus = st.value; renderDetail(); });
       ss?.addEventListener('input', () => { STATE.filters.specialTemplateSearch = ss.value; renderDetail(); });
     });
-    return `<div class="cs-section-title"><div><h4>Special Case Templates</h4><div class="cs-kpi-sub">Reusable completion-report sources that do not require signed agreements, invoices, or active invoice periods.</div></div><button class="btn sm primary" type="button" data-cs-action="special-template-create">Create Template</button></div>
+    return `<div class="cs-section-title"><div><h4>Special Case Templates</h4><div class="cs-kpi-sub">Reusable completion-report sources that do not require signed agreements, invoices, or active invoice periods.</div></div>${canCreate() ? '<button class="btn sm primary" type="button" data-cs-action="special-template-create">Create Template</button>' : ''}</div>
       <div class="cs-filter-grid cs-special-filter"><select id="csSpecialTemplateStatus" class="select"><option value="active" ${status==='active'?'selected':''}>Active templates</option><option value="archived" ${status==='archived'?'selected':''}>Archived templates</option><option value="all" ${status==='all'?'selected':''}>All templates</option></select><input id="csSpecialTemplateSearch" class="input" type="search" value="${attr(STATE.filters.specialTemplateSearch || '')}" placeholder="Search template/client/group/brand/location" /></div>
-      <div class="cs-table-wrap"><table class="cs-table"><thead><tr><th>Template Name</th><th>Display Client Name</th><th>Groups Count</th><th>Brands Count</th><th>Locations Count</th><th>Status</th><th>Updated At</th><th>Actions</th></tr></thead><tbody>${body}</tbody></table></div>`;
+      <div class="cs-table-wrap"><table class="cs-table"><thead><tr><th>Template Name</th><th>Display Client Name</th><th>Groups</th><th>Brands</th><th>Locations</th><th>Status</th><th>Updated At</th><th>Actions</th></tr></thead><tbody>${body}</tbody></table></div>`;
   }
 
   function openCompletionExportForm() {
@@ -2010,6 +2038,7 @@
       toast(`No Customer Success ${needed} permission for your role.`);
       return;
     }
+    if (action === 'special-templates-open') { openSpecialCaseTemplates(); return; }
     if (action === 'completion') openCompletionForm(event.target?.closest?.('[data-template-id]')?.dataset?.templateId || '');
     if (action === 'completion-export') openCompletionExportForm();
     if (action === 'group') openGroupForm();
@@ -2040,10 +2069,11 @@
       moveBrandLocation(rowId, select?.value || '');
       return;
     }
-    if (action === 'special-template-create') openSpecialTemplateForm('');
-    if (action === 'special-template-edit') openSpecialTemplateForm(event.target?.closest?.('[data-template-id]')?.dataset?.templateId || '');
-    if (action === 'special-template-archive') archiveSpecialTemplate(event.target?.closest?.('[data-template-id]')?.dataset?.templateId || '');
-    if (action === 'special-template-report') exportCompletionReport({ report_type: 'special_template', special_template_id: event.target?.closest?.('[data-template-id]')?.dataset?.templateId || '' });
+    if (action === 'special-template-create') { openSpecialTemplateForm(''); return; }
+    if (action === 'special-template-edit') { openSpecialTemplateForm(event.target?.closest?.('[data-template-id]')?.dataset?.templateId || ''); return; }
+    if (action === 'special-template-archive') { archiveSpecialTemplate(event.target?.closest?.('[data-template-id]')?.dataset?.templateId || ''); return; }
+    if (action === 'special-template-use-completion') { openCompletionForm(event.target?.closest?.('[data-template-id]')?.dataset?.templateId || ''); return; }
+    if (action === 'special-template-view-report' || action === 'special-template-report') { exportCompletionReport({ report_type: 'special_template', special_template_id: event.target?.closest?.('[data-template-id]')?.dataset?.templateId || '' }); return; }
     if (action === 'brand-export') exportCompletionReport({ report_type: 'brand', brand_id: event.target?.closest?.('[data-brand-id]')?.dataset?.brandId || '' });
     if (action === 'review') openReviewForm();
     if (action === 'task') openTaskForm();
