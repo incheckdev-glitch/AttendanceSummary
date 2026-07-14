@@ -77,6 +77,51 @@
     return Math.floor((new Date(to).setHours(0,0,0,0) - d.setHours(0,0,0,0)) / 86400000);
   };
   const normalize = value => String(value || '').trim().toLowerCase().replace(/[^a-z0-9\u0600-\u06ff]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+  function normalizeCs360DisplayName(value = '') {
+    return String(value || '').trim().toLowerCase()
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, ' ');
+  }
+
+  function applyCs360LocationNameOverride(row = {}) {
+    const clientName = normalizeCs360DisplayName(
+      row.client_name ||
+      row.company_name ||
+      row.company_name_snapshot ||
+      row.customer_name ||
+      row.account_name ||
+      row.client ||
+      ''
+    );
+
+    const locationName = String(
+      row.location_name ||
+      row.location ||
+      row.branch_name ||
+      row.site_name ||
+      ''
+    ).trim();
+
+    const normalizedLocation = normalizeCs360DisplayName(locationName);
+
+    const isCafeOne =
+      clientName.includes('cafe one sal') ||
+      clientName.includes('café one sal');
+
+    if (isCafeOne && normalizedLocation === 'cosmo abc') {
+      return {
+        ...row,
+        location_name: 'MET ABC & Napoletana',
+        location: 'MET ABC & Napoletana',
+        branch_name: row.branch_name === locationName ? 'MET ABC & Napoletana' : row.branch_name,
+        site_name: row.site_name === locationName ? 'MET ABC & Napoletana' : row.site_name
+      };
+    }
+
+    return row;
+  }
   function normalizeRoleKey(value) {
     return String(value || '').trim().toLowerCase().replace(/[-\s]+/g, '_');
   }
@@ -367,7 +412,7 @@
   function agreementRows(company) { return rowsForCompany('agreements', company); }
   function ticketRows(company) { return rowsForCompany('tickets', company); }
 
-  function completionRows(company) { return rowsForCompany('completions', company).sort((a,b) => String(b.period_end || b.created_at || '').localeCompare(String(a.period_end || a.created_at || ''))); }
+  function completionRows(company) { return rowsForCompany('completions', company).map(row => applyCs360LocationNameOverride({ ...row, company_name: row.company_name || row.company_name_snapshot || companyName(company) })).sort((a,b) => String(b.period_end || b.created_at || '').localeCompare(String(a.period_end || a.created_at || ''))); }
 
   function agreementItemRows(company) {
     const signed = agreementRows(company).filter(isSignedAgreement);
@@ -460,7 +505,8 @@
   }
 
   function addLatestLocationRow(map, company, row, source) {
-    const name = locationNameFromRow(row);
+    const displayRow = applyCs360LocationNameOverride({ ...row, company_name: companyName(company) });
+    const name = locationNameFromRow(displayRow);
     if (!name || isPseudoAllLocation(name)) return;
     const key = normalize(name);
     const candidate = {
@@ -498,7 +544,7 @@
     }
 
     if (!map.size) map.set(normalize(companyName(company)), { company_id: companyId(company), company_name: companyName(company), location_name: companyName(company), service_start_date: '', service_end_date: '', source: 'Client', rank: '' });
-    return Array.from(map.values()).sort((a,b) => a.location_name.localeCompare(b.location_name));
+    return Array.from(map.values()).map(applyCs360LocationNameOverride).sort((a,b) => a.location_name.localeCompare(b.location_name));
   }
 
   function getClientLocations(company) {
@@ -596,7 +642,9 @@
 
   function brandLocationRows(brand) {
     const bid = brandId(brand);
-    return (STATE.rows.brandLocations || []).filter(row => String(row.brand_id || '').trim() === bid && !['inactive','archived','deleted'].includes(String(row.status || '').trim().toLowerCase()));
+    return (STATE.rows.brandLocations || [])
+      .filter(row => String(row.brand_id || '').trim() === bid && !['inactive','archived','deleted'].includes(String(row.status || '').trim().toLowerCase()))
+      .map(applyCs360LocationNameOverride);
   }
 
   function brandCompletionTargets(brand) {
@@ -656,7 +704,7 @@
 
   function aggregateCompletionRows(rows) {
     const byLocation = new Map();
-    rows.forEach(row => {
+    rows.map(applyCs360LocationNameOverride).forEach(row => {
       const name = locationNameFromRow(row) || 'Unknown Location';
       const key = normalize(name);
       if (!byLocation.has(key)) byLocation.set(key, { location_name: name, done_on_time: 0, done_late: 0, partially_done: 0, missed: 0, review_type: row.review_type, period_start: row.period_start, period_end: row.period_end });
@@ -883,7 +931,10 @@
     ]);
 
     const companies = toSignedClientCompanies(allCompanies, agreements);
-    STATE.rows = { companies, allCompanies, profiles, reviews, tasks, risks, qbrs, contacts, mainContacts, activities, onboarding, agreements, agreementItems, invoices, invoiceItems, completions, tickets, groups, groupMembers, brands, brandLocations, specialTemplates, specialGroups, specialBrands, specialLocations };
+    const completionsForDisplay = completions.map(applyCs360LocationNameOverride);
+    const brandLocationsForDisplay = brandLocations.map(applyCs360LocationNameOverride);
+    const specialLocationsForDisplay = specialLocations.map(applyCs360LocationNameOverride);
+    STATE.rows = { companies, allCompanies, profiles, reviews, tasks, risks, qbrs, contacts, mainContacts, activities, onboarding, agreements, agreementItems, invoices, invoiceItems, completions: completionsForDisplay, tickets, groups, groupMembers, brands, brandLocations: brandLocationsForDisplay, specialTemplates, specialGroups, specialBrands, specialLocations: specialLocationsForDisplay };
     STATE.templateQuestions.weekly = templateQuestions.filter(q => q.cs_review_templates?.review_type === 'weekly').map(q => [q.question_key, q.question_label]);
     STATE.templateQuestions.monthly = templateQuestions.filter(q => q.cs_review_templates?.review_type === 'monthly').map(q => [q.question_key, q.question_label]);
     if (!STATE.templateQuestions.weekly.length) STATE.templateQuestions.weekly = QUESTION_BANK.weekly;
@@ -1443,7 +1494,7 @@
     return specialLocationsForTemplate(tid, true).map(loc => {
       const group = loc.group_id ? specialGroupById(loc.group_id) : null;
       const brand = loc.brand_id ? specialBrandById(loc.brand_id) : null;
-      return { company_id: tid, company_name: template.client_name || specialTemplateName(template), special_client_id: tid, special_location_id: loc.id, special_group_id: loc.group_id || null, special_brand_id: loc.brand_id || null, location_name: loc.location_name, group_name: groupName(group || { group_name: loc.group_name || '' }) || '', brand_name: brandName(brand || { brand_name: loc.brand_name || '' }) || '', source_type: 'special_client' };
+      return applyCs360LocationNameOverride({ company_id: tid, company_name: template.client_name || specialTemplateName(template), special_client_id: tid, special_location_id: loc.id, special_group_id: loc.group_id || null, special_brand_id: loc.brand_id || null, location_name: loc.location_name, group_name: groupName(group || { group_name: loc.group_name || '' }) || '', brand_name: brandName(brand || { brand_name: loc.brand_name || '' }) || '', source_type: 'special_client' });
     });
   }
   function renderSpecialTemplates() {
@@ -1639,6 +1690,9 @@
       toast('No locations found for this export type. Check client/group/brand location assignment.');
       return;
     }
+
+    targetRows = targetRows.map(applyCs360LocationNameOverride);
+    rawRecords = rawRecords.map(applyCs360LocationNameOverride);
 
     const recordByTarget = new Map();
     rawRecords.forEach(row => {
