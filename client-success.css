@@ -580,3 +580,57 @@ body.dark .cs-table th, body.dark .cs-empty { background:#111827; }
 .cs-special-filter { margin: 0 0 12px; grid-template-columns: minmax(180px, 240px) 1fr; }
 .cs-table td small { display:block; color: var(--cs-muted); margin-top: 3px; }
 .cs-row-error input { border-color: #ef4444 !important; box-shadow: 0 0 0 2px rgba(239,68,68,.12); }
+
+.cs-client-select-controls,
+.cs-client-select-field {
+  display: grid;
+  gap: 6px;
+}
+.cs-client-select-controls {
+  margin-bottom: 10px;
+}
+.cs-client-select-controls label,
+.cs-client-select-field label {
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--cs-muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.cs-client-select-search {
+  width: 100%;
+}
+.cs-client-select-pagination {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid rgba(148, 163, 184, .28);
+  border-radius: 14px;
+  background: #f8fafc;
+}
+.cs-client-select-pagination .btn[disabled] {
+  opacity: .45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+.cs-client-select-page-info {
+  color: var(--cs-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+.cs-client-select-page-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--cs-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+.cs-client-select-page-size .select {
+  min-width: 76px;
+  padding: 6px 8px;
+}

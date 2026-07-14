@@ -57,7 +57,9 @@
     rows: {
       companies: [], allCompanies: [], profiles: [], reviews: [], tasks: [], risks: [], qbrs: [], contacts: [], mainContacts: [], activities: [], onboarding: [], agreements: [], agreementItems: [], invoices: [], invoiceItems: [], completions: [], tickets: [], groups: [], groupMembers: [], brands: [], brandLocations: [], specialTemplates: [], specialGroups: [], specialBrands: [], specialLocations: []
     },
-    templateQuestions: { weekly: [], monthly: [] }
+    templateQuestions: { weekly: [], monthly: [] },
+    clientSelectPagination: { search: '', page: 1, pageSize: 25, total: 0 },
+    specialClientSelectPagination: { search: '', page: 1, pageSize: 25, total: 0 }
   };
 
   const $ = id => document.getElementById(id);
@@ -1014,6 +1016,8 @@
     $('csAddContactBtn')?.addEventListener('click', writeAction(openContactForm));
     $('csModalClose')?.addEventListener('click', closeModal);
     $('csModal')?.addEventListener('click', ev => { if (ev.target?.id === 'csModal') closeModal(); });
+    document.addEventListener('input', ev => { const action = ev.target?.getAttribute?.('data-cs-action'); if (action === 'client-select-search') updateClientSelectSearch(ev.target.value || ''); if (action === 'special-client-select-search') updateSpecialClientSelectSearch(ev.target.value || ''); });
+    document.addEventListener('change', ev => { const action = ev.target?.getAttribute?.('data-cs-action'); if (action === 'client-select-page-size') { STATE.clientSelectPagination.pageSize = Number(ev.target.value) || 25; STATE.clientSelectPagination.page = 1; renderClientList(); refreshClientSelectFields(); } if (action === 'special-client-select-page-size') { STATE.specialClientSelectPagination.pageSize = Number(ev.target.value) || 25; STATE.specialClientSelectPagination.page = 1; refreshSpecialClientSelectFields(); } if (action === 'client-select-value') { STATE.selectedCompanyId = ev.target.value || ''; const form = ev.target.closest('form'); const hidden = form?.querySelector('input[name="company_id"]'); if (hidden) hidden.value = STATE.selectedCompanyId; if (form?.id === 'csCompletionForm') rebuildCompletionRows(form); renderDetail(); } });
     ['csSearch','csStatusFilter','csHealthFilter','csEffortFilter','csGroupFilter'].forEach(id => $(id)?.addEventListener('input', () => {
       STATE.filters.search = $('csSearch')?.value || '';
       STATE.filters.status = $('csStatusFilter')?.value || 'All';
@@ -1209,13 +1213,152 @@
       </div>`;
   }
 
+
+
+  function csClientSearchText(company = {}) {
+    const groups = groupsForCompany(company).map(groupName).join(' ');
+    const brands = activeBrandsForSelect(company).map(brand => [brandName(brand), brandScopeLabel(brand)].join(' ')).join(' ');
+    const locations = currentClientCompletionTargets(company).map(row => row.location_name).join(' ');
+    return [companyName(company), company.company_name, company.client_name, company.company_id, groups, brands, locations].join(' ');
+  }
+
+  function getFilteredCsClients(search = '') {
+    const q = normalize(search);
+    return (STATE.rows.companies || []).slice()
+      .filter(company => !q || normalize(csClientSearchText(company)).includes(q))
+      .sort((a, b) => companyName(a).localeCompare(companyName(b)));
+  }
+
+  function clampCsPage(page, totalPages) {
+    return Math.max(1, Math.min(Math.max(1, Number(totalPages) || 1), Number(page) || 1));
+  }
+
+  function getPaginatedCsClients(search = '', page = 1, pageSize = 25) {
+    const all = getFilteredCsClients(search);
+    const size = [25, 50, 100].includes(Number(pageSize)) ? Number(pageSize) : 25;
+    const total = all.length;
+    const totalPages = Math.max(1, Math.ceil(total / size));
+    const safePage = clampCsPage(page, totalPages);
+    return { rows: all.slice((safePage - 1) * size, safePage * size), total, page: safePage, pageSize: size, totalPages };
+  }
+
+  function getFilteredSpecialCsClients(search = '') {
+    const q = normalize(search);
+    return activeSpecialTemplates().slice()
+      .filter(t => !q || normalize([
+        t.client_name, specialTemplateName(t),
+        specialGroupsForTemplate(specialTemplateId(t)).map(groupName).join(' '),
+        specialBrandsForTemplate(specialTemplateId(t)).map(brandName).join(' '),
+        specialLocationsForTemplate(specialTemplateId(t), false).map(r => r.location_name).join(' ')
+      ].join(' ')).includes(q))
+      .sort((a, b) => specialTemplateName(a).localeCompare(specialTemplateName(b)));
+  }
+
+  function getPaginatedSpecialCsClients(search = '', page = 1, pageSize = 25) {
+    const all = getFilteredSpecialCsClients(search);
+    const size = [25, 50, 100].includes(Number(pageSize)) ? Number(pageSize) : 25;
+    const total = all.length;
+    const totalPages = Math.max(1, Math.ceil(total / size));
+    const safePage = clampCsPage(page, totalPages);
+    return { rows: all.slice((safePage - 1) * size, safePage * size), total, page: safePage, pageSize: size, totalPages };
+  }
+
+  function renderClientSelectPagination(meta, prefix = 'client-select') {
+    if (!meta.total) return '<div class="cs-client-select-page-info">No clients found.</div>';
+    return `<div class="cs-client-select-pagination">
+      <button class="btn ghost sm" type="button" data-cs-action="${prefix}-prev-page" ${meta.page <= 1 ? 'disabled' : ''}>Previous</button>
+      <span class="cs-client-select-page-info">Page ${esc(meta.page)} of ${esc(meta.totalPages)} · ${esc(meta.total)} clients</span>
+      <button class="btn ghost sm" type="button" data-cs-action="${prefix}-next-page" ${meta.page >= meta.totalPages ? 'disabled' : ''}>Next</button>
+      <label class="cs-client-select-page-size">Page size <select class="select" data-cs-action="${prefix}-page-size"><option value="25" ${meta.pageSize === 25 ? 'selected' : ''}>25</option><option value="50" ${meta.pageSize === 50 ? 'selected' : ''}>50</option><option value="100" ${meta.pageSize === 100 ? 'selected' : ''}>100</option></select></label>
+    </div>`;
+  }
+
+
+
+  function refreshClientSelectFields() {
+    const p = STATE.clientSelectPagination;
+    const meta = getPaginatedCsClients(p.search, p.page, p.pageSize);
+    const selected = getSelectedCompany();
+    const selectedId = companyId(selected);
+    let rows = meta.rows.slice();
+    if (selectedId && selected && !rows.some(c => companyId(c) === selectedId)) rows.unshift({ ...selected, __selectedOutsidePage: true });
+    const options = rows.map(c => `<option value="${attr(companyId(c))}" ${companyId(c) === selectedId ? 'selected' : ''}>${c.__selectedOutsidePage ? 'Selected: ' : ''}${esc(companyName(c))}</option>`).join('') || '<option value="">No clients found</option>';
+    document.querySelectorAll('select[data-cs-action="client-select-value"]').forEach(select => { select.innerHTML = options; select.value = selectedId; });
+    document.querySelectorAll('input[data-cs-action="client-select-search"]').forEach(input => { if (input.value !== (p.search || '')) input.value = p.search || ''; });
+    document.querySelectorAll('[data-cs-client-select-pagination-host]').forEach(host => { host.innerHTML = renderClientSelectPagination(meta); });
+  }
+
+  function updateClientSelectPage(nextPage) {
+    const p = STATE.clientSelectPagination;
+    const meta = getPaginatedCsClients(p.search, nextPage, p.pageSize);
+    STATE.clientSelectPagination = { search: p.search, page: meta.page, pageSize: meta.pageSize, total: meta.total };
+    renderClientList();
+    refreshClientSelectFields();
+  }
+
+  function updateClientSelectSearch(value) {
+    STATE.clientSelectPagination.search = value || '';
+    STATE.clientSelectPagination.page = 1;
+    renderClientList();
+    refreshClientSelectFields();
+  }
+
+
+
+  function renderSpecialClientSelectOptions(selectedId = '') {
+    const p = STATE.specialClientSelectPagination;
+    const meta = getPaginatedSpecialCsClients(p.search, p.page, p.pageSize);
+    let rows = meta.rows.slice();
+    const selected = selectedId ? specialTemplateById(selectedId) : null;
+    if (selectedId && selected && !rows.some(t => specialTemplateId(t) === selectedId)) rows.unshift({ ...selected, __selectedOutsidePage: true });
+    const options = rows.map(t => `<option value="${attr(specialTemplateId(t))}" ${specialTemplateId(t) === selectedId ? 'selected' : ''}>${t.__selectedOutsidePage ? 'Selected: ' : ''}${esc(t.client_name || specialTemplateName(t))}</option>`).join('') || '<option value="">No active Special CS Clients</option>';
+    return { options, meta };
+  }
+
+  function refreshSpecialClientSelectFields() {
+    const current = document.querySelector('select[name="special_client_id"]')?.value || '';
+    const rendered = renderSpecialClientSelectOptions(current);
+    document.querySelectorAll('select[name="special_client_id"]').forEach(select => { select.innerHTML = rendered.options; if (current) select.value = current; });
+    document.querySelectorAll('input[data-cs-action="special-client-select-search"]').forEach(input => { if (input.value !== (STATE.specialClientSelectPagination.search || '')) input.value = STATE.specialClientSelectPagination.search || ''; });
+    document.querySelectorAll('[data-cs-special-client-select-pagination-host]').forEach(host => { host.innerHTML = renderClientSelectPagination(rendered.meta, 'special-client-select'); });
+  }
+
+  function updateSpecialClientSelectPage(nextPage) {
+    const p = STATE.specialClientSelectPagination;
+    const meta = getPaginatedSpecialCsClients(p.search, nextPage, p.pageSize);
+    STATE.specialClientSelectPagination = { search: p.search, page: meta.page, pageSize: meta.pageSize, total: meta.total };
+    refreshSpecialClientSelectFields();
+  }
+
+  function updateSpecialClientSelectSearch(value) {
+    STATE.specialClientSelectPagination.search = value || '';
+    STATE.specialClientSelectPagination.page = 1;
+    refreshSpecialClientSelectFields();
+  }
+
+  function specialClientSelectInput(selectedId = '') {
+    const rendered = renderSpecialClientSelectOptions(String(selectedId || '').trim());
+    return `<label>Special CS Client</label><input class="input cs-client-select-search" type="search" data-cs-action="special-client-select-search" value="${attr(STATE.specialClientSelectPagination.search || '')}" placeholder="Search special client, group, brand, location…" /><select name="special_client_id" class="select">${rendered.options}</select><div data-cs-special-client-select-pagination-host>${renderClientSelectPagination(rendered.meta, 'special-client-select')}</div>`;
+  }
+
   function renderClientList() {
-    const list = getFilteredCompanies();
-    if (!list.some(c => companyId(c) === STATE.selectedCompanyId)) STATE.selectedCompanyId = companyId(list[0] || STATE.rows.companies[0] || {});
+    const filtered = getFilteredCompanies();
+    const baseIds = new Set(filtered.map(companyId));
+    const p = STATE.clientSelectPagination;
+    const all = getFilteredCsClients(p.search).filter(c => baseIds.has(companyId(c)));
+    const pageSize = [25, 50, 100].includes(Number(p.pageSize)) ? Number(p.pageSize) : 25;
+    const total = all.length;
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const page = clampCsPage(p.page, totalPages);
+    const meta = { rows: all.slice((page - 1) * pageSize, page * pageSize), total, page, pageSize, totalPages };
+    const list = meta.rows;
+    STATE.clientSelectPagination = { search: p.search, page: meta.page, pageSize: meta.pageSize, total: meta.total };
+    if (!filtered.some(c => companyId(c) === STATE.selectedCompanyId)) STATE.selectedCompanyId = companyId(filtered[0] || STATE.rows.companies[0] || {});
     const host = $('csClientList');
     if (!host) return;
-    if (!list.length) { host.innerHTML = '<div class="cs-empty">No clients match the current filters.</div>'; renderDetail(); return; }
-    host.innerHTML = list.map(company => {
+    const searchControls = `<div class="cs-client-select-controls"><label>Client Search</label><input class="input cs-client-select-search" type="search" data-cs-action="client-select-search" value="${attr(p.search || '')}" placeholder="Search client, group, brand, location…" /><div data-cs-client-select-pagination-host>${renderClientSelectPagination(meta)}</div></div>`;
+    if (!meta.total || !list.length) { host.innerHTML = `${searchControls}<div class="cs-empty">No clients found.</div>`; renderDetail(); return; }
+    host.innerHTML = searchControls + list.map(company => {
       const id = companyId(company);
       const profile = getProfile(company);
       const score = computeHealth(company);
@@ -1561,8 +1704,7 @@
           <select name="brand_id" class="select">${brandOptions}</select>
         </div>
         <div class="cs-form-field cs-form-field--full" id="csExportSpecialField" style="display:none;">
-          <label>Special CS Client</label>
-          <select name="special_client_id" class="select">${activeSpecialTemplates().map(t => `<option value="${attr(specialTemplateId(t))}">${esc(t.client_name || specialTemplateName(t))}</option>`).join('') || '<option value="">No active Special CS Clients</option>'}</select>
+          ${specialClientSelectInput()}
         </div>
         <div class="cs-form-field cs-form-field--full">
           <label>Report Notes</label>
@@ -2092,6 +2234,10 @@
       toast(`No Customer Success ${needed} permission for your role.`);
       return;
     }
+    if (action === 'client-select-prev-page') { updateClientSelectPage(STATE.clientSelectPagination.page - 1); return; }
+    if (action === 'client-select-next-page') { updateClientSelectPage(STATE.clientSelectPagination.page + 1); return; }
+    if (action === 'special-client-select-prev-page') { updateSpecialClientSelectPage(STATE.specialClientSelectPagination.page - 1); return; }
+    if (action === 'special-client-select-next-page') { updateSpecialClientSelectPage(STATE.specialClientSelectPagination.page + 1); return; }
     if (action === 'special-clients-open') { openSpecialCaseTemplates(); return; }
     if (action === 'completion') openCompletionForm(event.target?.closest?.('[data-special-client-id]')?.dataset?.specialClientId || '');
     if (action === 'completion-export') openCompletionExportForm();
@@ -2140,8 +2286,15 @@
 
   function selectedCompanyInput() {
     const company = getSelectedCompany();
-    return `<input type="hidden" name="company_id" value="${attr(companyId(company))}" />
-      <div class="cs-form-field cs-form-field--full"><label>Client</label><input class="input" type="text" value="${attr(companyName(company))}" readonly /></div>`;
+    const selectedId = companyId(company);
+    const p = STATE.clientSelectPagination;
+    const meta = getPaginatedCsClients(p.search, p.page, p.pageSize);
+    let rows = meta.rows.slice();
+    if (selectedId && !rows.some(c => companyId(c) === selectedId) && company) rows.unshift({ ...company, __selectedOutsidePage: true });
+    const options = rows.map(c => `<option value="${attr(companyId(c))}" ${companyId(c) === selectedId ? 'selected' : ''}>${c.__selectedOutsidePage ? 'Selected: ' : ''}${esc(companyName(c))}</option>`).join('') || '<option value="">No clients found</option>';
+    return `<input type="hidden" name="company_id" value="${attr(selectedId)}" />
+      <div class="cs-form-field cs-form-field--full cs-client-select-field"><label>Client Search</label><input class="input cs-client-select-search" type="search" data-cs-action="client-select-search" value="${attr(p.search || '')}" placeholder="Search client, group, brand, location…" /></div>
+      <div class="cs-form-field cs-form-field--full"><label>Client</label><select name="company_select" class="select" data-cs-action="client-select-value">${options}</select><div data-cs-client-select-pagination-host>${renderClientSelectPagination(meta)}</div></div>`;
   }
 
   function openModal(title, bodyHtml, onSubmit) {
@@ -2350,15 +2503,13 @@
       ? brands.map(brand => `<option value="${attr(brandId(brand))}">${esc(brandName(brand))} · ${esc(brandScopeLabel(brand))}</option>`).join('')
       : '<option value="">No CS brands yet</option>';
     const specialTemplates = activeSpecialTemplates();
-    const specialOptions = specialTemplates.length
-      ? specialTemplates.map(t => `<option value="${attr(specialTemplateId(t))}" ${specialTemplateId(t) === String(preselectedSpecialTemplateId || '').trim() ? 'selected' : ''}>${esc(t.client_name || specialTemplateName(t))}</option>`).join('')
-      : '<option value="">No active Special CS Clients</option>';
+    const specialSelect = specialClientSelectInput(preselectedSpecialTemplateId);
     const initialTargets = currentClientCompletionTargets(company);
 
     openModal('Add Location Completion', `<form class="cs-form" id="csCompletionForm">
       <div class="cs-form-grid">${selectedCompanyInput()}
         <div class="cs-form-field"><label>Source</label><select name="completion_scope" class="select"><option value="client">Normal Clients</option><option value="group" ${groups.length ? '' : 'disabled'}>Normal Client Group</option><option value="brand" ${brands.length ? '' : 'disabled'}>Normal Client Brand</option><option value="special_client" ${specialTemplates.length ? '' : 'disabled'} ${preselectedSpecialTemplateId ? 'selected' : ''}>Special CS Clients</option></select></div>
-        <div class="cs-form-field" id="csCompletionSpecialField" style="display:none;"><label>Special CS Client</label><select name="special_client_id" class="select">${specialOptions}</select></div>
+        <div class="cs-form-field" id="csCompletionSpecialField" style="display:none;">${specialSelect}</div>
         <div class="cs-form-field" id="csCompletionGroupField" style="display:none;"><label>CS Client Group</label><select name="group_id" class="select">${groupOptions}</select></div>
         <div class="cs-form-field" id="csCompletionBrandField" style="display:none;"><label>CS Brand</label><select name="brand_id" class="select">${brandOptions}</select></div>
         <div class="cs-form-field"><label>Review Type</label><select name="review_type" class="select"><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></div>
