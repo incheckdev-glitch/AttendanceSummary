@@ -190,7 +190,7 @@
 
   async function upsertRemote(table, rowOrRows) {
     const supabase = client();
-    if (!supabase) return rowOrRows;
+    if (!supabase) throw new Error('Supabase client unavailable');
     const payload = Array.isArray(rowOrRows) ? rowOrRows : [rowOrRows];
     if (!payload.length) return rowOrRows;
     const { data, error } = await supabase.from(table).upsert(payload, { onConflict: 'id' }).select('*');
@@ -201,19 +201,43 @@
 
   async function deleteRemote(table, column, value) {
     const supabase = client();
-    if (!supabase) return;
+    if (!supabase) throw new Error('Supabase client unavailable');
     const { error } = await supabase.from(table).delete().eq(column, value);
     if (error) throw error;
+    state.dataSource = 'supabase';
+  }
+
+  const pendingAccountingWrites = new Set();
+
+  function restoreConfirmedAccountingCache() {
+    loadLocal();
+    state.dataSource = 'cache';
   }
 
   async function persistRow(collection, table, row) {
-    row.updated_at = new Date().toISOString();
-    const idx = state[collection].findIndex(item => item.id === row.id);
-    if (idx >= 0) state[collection][idx] = { ...state[collection][idx], ...row };
-    else state[collection].push(row);
-    try { await upsertRemote(table, row); }
-    catch (error) { state.dataSource = 'local'; console.warn('[Accounting] remote save failed', error); toast('Accounting saved locally. Run Accounting SQL migration to enable Supabase sync.'); }
-    saveLocal();
+    const candidate = { ...row, updated_at: new Date().toISOString() };
+    const writeKey = `${table}:${candidate.id || 'new'}`;
+    if (pendingAccountingWrites.has(writeKey)) {
+      toast('This accounting save is already in progress.');
+      return null;
+    }
+    pendingAccountingWrites.add(writeKey);
+    try {
+      const saved = await upsertRemote(table, candidate);
+      const confirmed = saved || candidate;
+      const idx = state[collection].findIndex(item => item.id === confirmed.id);
+      if (idx >= 0) state[collection][idx] = { ...state[collection][idx], ...confirmed };
+      else state[collection].push(confirmed);
+      saveLocal();
+      return confirmed;
+    } catch (error) {
+      restoreConfirmedAccountingCache();
+      console.error(`[Accounting] Database did not confirm save for ${table}`, error);
+      toast('Accounting was not saved. The database did not confirm the change. Check your connection and try again.');
+      return null;
+    } finally {
+      pendingAccountingWrites.delete(writeKey);
+    }
   }
 
   function accountById(id) { return state.accounts.find(account => account.id === id) || null; }
@@ -938,7 +962,7 @@
     const existing = vendorById(id) || {};
     const row = { ...existing, id, vendor_code: $('accountingVendorCode')?.value?.trim() || existing.vendor_code || nextVendorCode(), vendor_name: $('accountingVendorName')?.value?.trim() || '', vendor_type: $('accountingVendorType')?.value || 'Supplier', email: $('accountingVendorEmail')?.value?.trim() || '', phone: $('accountingVendorPhone')?.value?.trim() || '', address: $('accountingVendorAddress')?.value?.trim() || '', tax_number: $('accountingVendorTaxNumber')?.value?.trim() || '', payment_terms: $('accountingVendorPaymentTerms')?.value?.trim() || '', currency: ($('accountingVendorCurrency')?.value || 'USD').trim().toUpperCase(), opening_balance: num($('accountingVendorOpeningBalance')?.value), is_active: $('accountingVendorActive')?.value !== 'false', notes: $('accountingVendorNotes')?.value?.trim() || '', created_at: existing.created_at || new Date().toISOString(), updated_at: new Date().toISOString() };
     if (!row.vendor_name) return toast('Vendor name is required.');
-    await persistRow('vendors', TABLES.vendors, row);
+    if (!await persistRow('vendors', TABLES.vendors, row)) return;
     await recordAudit('save_vendor', 'vendor', row.id, `Saved vendor ${row.vendor_code} · ${row.vendor_name}.`, {});
     toast('Vendor saved.'); render();
   }
@@ -954,7 +978,7 @@
     const amount = num($('accountingVendorBillAmount')?.value); const taxAmount = num($('accountingVendorBillTax')?.value);
     const row = { ...existing, id, bill_no: $('accountingVendorBillNo')?.value?.trim() || existing.bill_no || nextVendorBillNo(), vendor_id: $('accountingVendorBillVendor')?.value || '', bill_date: $('accountingVendorBillDate')?.value || today(), due_date: $('accountingVendorBillDueDate')?.value || $('accountingVendorBillDate')?.value || today(), reference_no: $('accountingVendorBillReference')?.value?.trim() || '', expense_account_id: $('accountingVendorBillExpenseAccount')?.value || accountByCode('5400')?.id || null, cost_center_id: $('accountingVendorBillCostCenter')?.value || null, amount, tax_amount: taxAmount, total_amount: Number((amount + taxAmount).toFixed(2)), currency: ($('accountingVendorBillCurrency')?.value || 'USD').trim().toUpperCase(), status: $('accountingVendorBillStatusInput')?.value || 'draft', description: $('accountingVendorBillDescription')?.value?.trim() || '', created_by: existing.created_by || authName(), created_at: existing.created_at || new Date().toISOString(), updated_at: new Date().toISOString() };
     if (!row.vendor_id) return toast('Vendor is required.'); if (row.total_amount <= 0) return toast('Bill amount must be above zero.');
-    await persistRow('vendorBills', TABLES.vendorBills, row);
+    if (!await persistRow('vendorBills', TABLES.vendorBills, row)) return;
     await recordAudit('save_vendor_bill', 'vendor_bill', row.id, `Saved vendor bill ${row.bill_no}.`, { total: row.total_amount });
     toast('Vendor bill saved.'); render();
   }
@@ -969,7 +993,7 @@
     const existing = state.vendorPayments.find(row=>row.id===id) || {};
     const row = { ...existing, id, payment_no: $('accountingVendorPaymentNo')?.value?.trim() || existing.payment_no || nextVendorPaymentNo(), vendor_id: $('accountingVendorPaymentVendor')?.value || '', vendor_bill_id: $('accountingVendorPaymentBill')?.value || null, payment_date: $('accountingVendorPaymentDate')?.value || today(), amount: num($('accountingVendorPaymentAmount')?.value), currency: ($('accountingVendorPaymentCurrency')?.value || 'USD').trim().toUpperCase(), bank_account_id: $('accountingVendorPaymentBank')?.value || defaultBankAccount()?.id || null, reference_no: $('accountingVendorPaymentReference')?.value?.trim() || '', status: $('accountingVendorPaymentStatusInput')?.value || 'draft', notes: $('accountingVendorPaymentNotes')?.value?.trim() || '', created_by: existing.created_by || authName(), created_at: existing.created_at || new Date().toISOString(), updated_at: new Date().toISOString() };
     if (!row.vendor_id) return toast('Vendor is required.'); if (row.amount <= 0) return toast('Payment amount must be above zero.');
-    await persistRow('vendorPayments', TABLES.vendorPayments, row);
+    if (!await persistRow('vendorPayments', TABLES.vendorPayments, row)) return;
     await recordAudit('save_vendor_payment', 'vendor_payment', row.id, `Saved vendor payment ${row.payment_no}.`, { amount: row.amount });
     toast('Vendor payment saved.'); render();
   }
@@ -991,11 +1015,20 @@
     lines.push(line(ap, 0, num(row.total_amount || row.amount), `Vendor payable · ${row.bill_no}`));
     const journal = await postBalancedJournal({ sourceModule:'vendor_bills', sourceTable: TABLES.vendorBills, sourceId: row.id, sourceReference: row.bill_no, sourceLabel: vendorName(row.vendor_id), date: row.bill_date, currency: row.currency, description: `Vendor bill ${row.bill_no} · ${vendorName(row.vendor_id)}`, referenceNo: row.bill_no, lines });
     if (!journal) return;
-    Object.assign(row, { journal_id: journal.id, status: row.status === 'draft' ? 'approved' : row.status, posted_at: new Date().toISOString(), updated_at: new Date().toISOString() });
-    try { await upsertRemote(TABLES.vendorBills, row); } catch (error) { state.dataSource='local'; console.warn('[Accounting] vendor bill update failed', error); }
+    const updated = { ...row, journal_id: journal.id, status: row.status === 'draft' ? 'approved' : row.status, posted_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    try {
+      const saved = await upsertRemote(TABLES.vendorBills, updated);
+      Object.assign(row, saved || updated);
+    } catch (error) {
+      console.error('[Accounting] Vendor bill link update failed after journal post', error);
+      toast('The journal was posted, but the vendor bill was not linked. Refresh and review before retrying.');
+      await refresh(true);
+      return;
+    }
     await recordAudit('post_vendor_bill', 'vendor_bill', row.id, `Posted vendor bill ${row.bill_no}.`, { total: row.total_amount, journalNo: journal.journal_no });
-    render();
+    saveLocal(); render();
   }
+
   async function postVendorPayment(id) {
     const row = state.vendorPayments.find(item=>item.id===id); if (!row) return toast('Vendor payment not found.');
     if (row.journal_id) return toast('Vendor payment already posted.');
@@ -1005,10 +1038,18 @@
     const lines = [line(ap, row.amount, 0, `Vendor payment ${row.payment_no} · ${vendorName(row.vendor_id)}`), line(bank, 0, row.amount, `Bank/Cash payment · ${row.payment_no}`)];
     const journal = await postBalancedJournal({ sourceModule:'vendor_payments', sourceTable: TABLES.vendorPayments, sourceId: row.id, sourceReference: row.payment_no, sourceLabel: vendorName(row.vendor_id), date: row.payment_date, currency: row.currency, description: `Vendor payment ${row.payment_no} · ${vendorName(row.vendor_id)}`, referenceNo: row.payment_no, lines });
     if (!journal) return;
-    Object.assign(row, { journal_id: journal.id, status: 'paid', posted_at: new Date().toISOString(), updated_at: new Date().toISOString() });
-    try { await upsertRemote(TABLES.vendorPayments, row); } catch (error) { state.dataSource='local'; console.warn('[Accounting] vendor payment update failed', error); }
+    const updated = { ...row, journal_id: journal.id, status: 'paid', posted_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    try {
+      const saved = await upsertRemote(TABLES.vendorPayments, updated);
+      Object.assign(row, saved || updated);
+    } catch (error) {
+      console.error('[Accounting] Vendor payment link update failed after journal post', error);
+      toast('The journal was posted, but the vendor payment was not linked. Refresh and review before retrying.');
+      await refresh(true);
+      return;
+    }
     await recordAudit('post_vendor_payment', 'vendor_payment', row.id, `Posted vendor payment ${row.payment_no}.`, { amount: row.amount, journalNo: journal.journal_no });
-    render();
+    saveLocal(); render();
   }
 
   function renderIntegrations() {
@@ -1224,19 +1265,20 @@
       description: item.description || journal.description, reference_no: journal.reference_no, source_module: sourceModule, source_id: isUuid(sourceId) ? sourceId : null,
       source_reference: sourceReference || '', source_table: sourceTable || '', source_label: sourceLabel || '', status: 'posted', synced_at: now, created_at: now, updated_at: now
     }));
-    state.journals.push(journal);
-    state.journalLines.push(...journalLines);
-    state.ledgerEntries.push(...ledgerRows);
     try {
       await upsertRemote(TABLES.journals, journal);
       await upsertRemote(TABLES.journalLines, journalLines);
       await upsertRemote(TABLES.ledgerEntries, ledgerRows);
-      state.dataSource = 'supabase';
     } catch (error) {
-      console.warn('[Accounting] source post remote failed', error);
-      state.dataSource = 'local';
-      toast('Posted locally. Run Accounting Phase 2 SQL migration if Supabase rejected source columns.');
+      restoreConfirmedAccountingCache();
+      console.error('[Accounting] Database did not confirm the complete journal post', error);
+      toast('Ledger posting failed. No local journal was created. Refresh before retrying.');
+      render();
+      return null;
     }
+    state.journals.push(journal);
+    state.journalLines.push(...journalLines);
+    state.ledgerEntries.push(...ledgerRows);
     saveLocal();
     toast(`${sourceLabel || sourceModule} posted to ledger.`);
     await recordAudit('post_journal', sourceModule || 'journal', sourceReference || journal.id, `Posted journal ${journal.journal_no}: ${description}.`, { totalDebit, totalCredit });
@@ -1346,9 +1388,15 @@
     if (schedulesForInvoiceRef(invoiceRef).length) return showToast ? toast('Revenue schedule already exists for this invoice.') : null;
     const rows = scheduleRowsForInvoice(row);
     if (!rows.length) return showToast ? toast('No SaaS amount found to defer for this invoice.') : null;
-    state.revenueSchedules.push(...rows);
-    try { await upsertRemote(TABLES.revenueSchedules, rows); }
-    catch (error) { state.dataSource = 'local'; console.warn('[Accounting] revenue schedule remote save failed', error); }
+    try {
+      const savedRows = await upsertRemote(TABLES.revenueSchedules, rows);
+      state.revenueSchedules.push(...(Array.isArray(savedRows) ? savedRows : rows));
+    } catch (error) {
+      restoreConfirmedAccountingCache();
+      console.error('[Accounting] Revenue schedule was not saved', error);
+      if (showToast) toast('Revenue schedule was not saved. The database did not confirm the change.');
+      return null;
+    }
     await recordAudit('generate_revenue_schedule', 'invoice', invoiceRef, `Generated ${rows.length} monthly revenue schedule row(s) for ${invoiceRef}.`, { invoiceRef, amount: rows.reduce((s,r)=>s+num(r.amount),0) });
     saveLocal();
     if (showToast) { toast(`Generated ${rows.length} monthly revenue recognition rows.`); render(); }
@@ -1368,8 +1416,16 @@
       lines: [line(deferred, num(row.amount), 0, `Release deferred revenue · ${row.source_invoice_ref}`), line(revenue, 0, num(row.amount), `Recognize SaaS revenue · ${row.source_invoice_ref}`)]
     });
     if (!journal) return;
-    Object.assign(row, { status: 'recognized', journal_id: journal.id, recognized_at: new Date().toISOString(), recognized_by: authName(), updated_at: new Date().toISOString() });
-    try { await upsertRemote(TABLES.revenueSchedules, row); } catch (error) { state.dataSource = 'local'; console.warn('[Accounting] schedule update failed', error); }
+    const updated = { ...row, status: 'recognized', journal_id: journal.id, recognized_at: new Date().toISOString(), recognized_by: authName(), updated_at: new Date().toISOString() };
+    try {
+      const saved = await upsertRemote(TABLES.revenueSchedules, updated);
+      Object.assign(row, saved || updated);
+    } catch (error) {
+      console.error('[Accounting] Revenue schedule link update failed after journal post', error);
+      toast('The journal was posted, but the revenue schedule status was not updated. Refresh and review before retrying.');
+      await refresh(true);
+      return;
+    }
     await recordAudit('recognize_revenue', 'revenue_schedule', row.id, `Recognized SaaS revenue ${money(row.amount,row.currency)} for ${row.source_invoice_ref}.`, { invoiceRef: row.source_invoice_ref, recognitionDate: row.recognition_date });
     saveLocal(); render();
   }
@@ -1512,7 +1568,7 @@
     };
     if (!row.vendor_id) return toast('Vendor / Supplier is required. Create it first in Vendors / Suppliers.');
     if (row.amount <= 0) return toast('Expense amount must be above zero.');
-    await persistRow('expenses', TABLES.expenses, row);
+    if (!await persistRow('expenses', TABLES.expenses, row)) return;
     await recordAudit('save_expense', 'expense', row.id, `Saved expense ${row.expense_no}.`, { amount: row.total_amount, status: row.payment_status });
     toast('Expense saved.'); render();
   }
@@ -1537,8 +1593,16 @@
     lines.push(line(paid ? bank : ap, 0, num(row.total_amount || row.amount), paid ? `Expense paid · ${row.expense_no}` : `Expense payable · ${row.expense_no}`));
     const journal = await postBalancedJournal({ sourceModule: 'expenses', sourceTable: TABLES.expenses, sourceId: row.id, sourceReference: row.expense_no, sourceLabel: expenseVendorDisplay(row), date: row.expense_date, currency: row.currency, description: `Expense ${row.expense_no} · ${expenseVendorDisplay(row)}`, referenceNo: row.expense_no, lines });
     if (!journal) return;
-    Object.assign(row, { journal_id: journal.id, posted_at: new Date().toISOString(), updated_at: new Date().toISOString() });
-    try { await upsertRemote(TABLES.expenses, row); } catch (error) { state.dataSource = 'local'; console.warn('[Accounting] expense update failed', error); }
+    const updated = { ...row, journal_id: journal.id, posted_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    try {
+      const saved = await upsertRemote(TABLES.expenses, updated);
+      Object.assign(row, saved || updated);
+    } catch (error) {
+      console.error('[Accounting] Expense link update failed after journal post', error);
+      toast('The journal was posted, but the expense was not linked. Refresh and review before retrying.');
+      await refresh(true);
+      return;
+    }
     await recordAudit('post_expense', 'expense', row.id, `Posted expense ${row.expense_no}.`, { total: row.total_amount, journalNo: journal.journal_no });
     saveLocal(); render();
   }
@@ -1566,7 +1630,7 @@
     const existing = state.taxRates.find(t=>t.id===id) || {};
     const row = { ...existing, id, tax_name: $('accountingTaxName')?.value?.trim() || '', tax_rate: num($('accountingTaxRate')?.value), tax_type: $('accountingTaxType')?.value || 'both', is_active: $('accountingTaxActive')?.value !== 'false', notes: $('accountingTaxNotes')?.value || '', created_at: existing.created_at || new Date().toISOString(), updated_at: new Date().toISOString() };
     if (!row.tax_name) return toast('Tax name is required.');
-    await persistRow('taxRates', TABLES.taxRates, row); await recordAudit('save_tax_rate','tax_rate',row.id,`Saved tax rate ${row.tax_name}.`,{ rate: row.tax_rate }); toast('Tax rate saved.'); render();
+    if (!await persistRow('taxRates', TABLES.taxRates, row)) return; await recordAudit('save_tax_rate','tax_rate',row.id,`Saved tax rate ${row.tax_name}.`,{ rate: row.tax_rate }); toast('Tax rate saved.'); render();
   }
 
   function editTax(id) { const row = state.taxRates.find(t=>t.id===id); if (!row) return; state.activeTab='advanced'; state.activeAdvancedTab='tax'; render(); $('accountingTaxId').value=row.id; $('accountingTaxName').value=row.tax_name||''; $('accountingTaxRate').value=row.tax_rate||0; $('accountingTaxType').value=row.tax_type||'both'; $('accountingTaxActive').value=row.is_active===false?'false':'true'; $('accountingTaxNotes').value=row.notes||''; }
@@ -1590,7 +1654,7 @@
     const existing = state.costCenters.find(c=>c.id===id) || {};
     const row = { ...existing, id, code: $('accountingCostCenterCode')?.value?.trim() || '', name: $('accountingCostCenterName')?.value?.trim() || '', manager_name: $('accountingCostCenterManager')?.value?.trim() || '', is_active: $('accountingCostCenterActive')?.value !== 'false', notes: $('accountingCostCenterNotes')?.value || '', created_at: existing.created_at || new Date().toISOString(), updated_at: new Date().toISOString() };
     if (!row.code || !row.name) return toast('Cost center code and name are required.');
-    await persistRow('costCenters', TABLES.costCenters, row); await recordAudit('save_cost_center','cost_center',row.id,`Saved cost center ${row.code}.`,{}); toast('Cost center saved.'); render();
+    if (!await persistRow('costCenters', TABLES.costCenters, row)) return; await recordAudit('save_cost_center','cost_center',row.id,`Saved cost center ${row.code}.`,{}); toast('Cost center saved.'); render();
   }
 
   function editCostCenter(id) { const row = state.costCenters.find(c=>c.id===id); if (!row) return; state.activeTab='advanced'; state.activeAdvancedTab='cost_centers'; render(); $('accountingCostCenterId').value=row.id; $('accountingCostCenterCode').value=row.code||''; $('accountingCostCenterName').value=row.name||''; $('accountingCostCenterManager').value=row.manager_name||''; $('accountingCostCenterActive').value=row.is_active===false?'false':'true'; $('accountingCostCenterNotes').value=row.notes||''; }
@@ -1620,7 +1684,7 @@
   async function saveClosingForm() {
     const id = $('accountingClosingId')?.value || uid('period'); const key = $('accountingClosingMonth')?.value || today().slice(0,7); const existing = state.closingPeriods.find(p=>p.id===id) || state.closingPeriods.find(p=>p.period_key===key) || {}; const bounds = periodBounds(key); const status = $('accountingClosingStatus')?.value || 'open';
     const row = { ...existing, id: existing.id || id, period_key: key, start_date: bounds.start, end_date: bounds.end, status, closed_by: status==='open' ? null : (existing.closed_by || authName()), closed_at: status==='open' ? null : (existing.closed_at || new Date().toISOString()), notes: $('accountingClosingNotes')?.value || '', created_at: existing.created_at || new Date().toISOString(), updated_at: new Date().toISOString() };
-    await persistRow('closingPeriods', TABLES.closingPeriods, row); await recordAudit('save_closing_period','closing_period',row.id,`Saved accounting period ${row.period_key} as ${row.status}.`,{}); toast('Closing period saved.'); render();
+    if (!await persistRow('closingPeriods', TABLES.closingPeriods, row)) return; await recordAudit('save_closing_period','closing_period',row.id,`Saved accounting period ${row.period_key} as ${row.status}.`,{}); toast('Closing period saved.'); render();
   }
 
   function editClosing(id) { const row = state.closingPeriods.find(p=>p.id===id); if (!row) return; state.activeTab='advanced'; state.activeAdvancedTab='closing'; render(); $('accountingClosingId').value=row.id; $('accountingClosingMonth').value=row.period_key || today().slice(0,7); $('accountingClosingStatus').value=row.status || 'open'; $('accountingClosingNotes').value=row.notes || ''; }
@@ -1634,7 +1698,25 @@
     return `<div class="accounting-report-controls"><div class="accounting-form-grid"><label class="accounting-field">Bank/Cash Account<select id="accountingReconciliationAccount"><option value="all">Default bank/cash</option>${accountOptions(accountId || '', false)}</select></label><label class="accounting-field">Statement Date<input type="date" id="accountingReconciliationDate" value="${esc(asOf)}" /></label><label class="accounting-field">Statement Balance<input id="accountingStatementBalance" type="number" step="0.01" value="${esc(state.filters.statementBalance)}" /></label><div class="accounting-toolbar"><button class="btn" type="button" data-accounting-action="save-reconciliation">Save Reconciliation</button></div></div></div><div class="accounting-grid compact"><div class="accounting-kpi"><div class="label">ERP Balance</div><div class="value">${money(erpBalance)}</div></div><div class="accounting-kpi"><div class="label">Statement Balance</div><div class="value">${money(statement)}</div></div><div class="accounting-kpi"><div class="label">Difference</div><div class="value">${money(diff)}</div></div></div>${renderReconciliationTable()}`;
   }
 
-  async function saveReconciliation() { const accountId = $('accountingReconciliationAccount')?.value === 'all' ? bankLedgerAccount()?.id : $('accountingReconciliationAccount')?.value; const asOf = $('accountingReconciliationDate')?.value || today(); const statement = num($('accountingStatementBalance')?.value); const erpBalance = ledgerByAccountFor(state.ledgerEntries.filter(row => row.account_id === accountId && dateKey(row.entry_date) <= asOf), true).find(row => row.account.id === accountId)?.balance || 0; const row = { id: uid('recon'), bank_account_id: accountId, statement_date: asOf, statement_balance: statement, erp_balance: erpBalance, difference: erpBalance - statement, status: Math.abs(erpBalance - statement) < 0.01 ? 'matched':'difference', reconciled_by: authName(), notes: '', created_at: new Date().toISOString(), updated_at: new Date().toISOString() }; state.bankReconciliations.push(row); try { await upsertRemote(TABLES.bankReconciliations,row); } catch(error) { state.dataSource='local'; console.warn('[Accounting] reconciliation save failed', error); } await recordAudit('save_reconciliation','bank_reconciliation',row.id,`Saved bank reconciliation with difference ${money(row.difference)}.`,{}); saveLocal(); toast('Reconciliation saved.'); render(); }
+  async function saveReconciliation() {
+    const accountId = $('accountingReconciliationAccount')?.value === 'all' ? bankLedgerAccount()?.id : $('accountingReconciliationAccount')?.value;
+    const asOf = $('accountingReconciliationDate')?.value || today();
+    const statement = num($('accountingStatementBalance')?.value);
+    const erpBalance = ledgerByAccountFor(state.ledgerEntries.filter(row => row.account_id === accountId && dateKey(row.entry_date) <= asOf), true).find(row => row.account.id === accountId)?.balance || 0;
+    const row = { id: uid('recon'), bank_account_id: accountId, statement_date: asOf, statement_balance: statement, erp_balance: erpBalance, difference: erpBalance - statement, status: Math.abs(erpBalance - statement) < 0.01 ? 'matched':'difference', reconciled_by: authName(), notes: '', created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    try {
+      const saved = await upsertRemote(TABLES.bankReconciliations, row);
+      state.bankReconciliations.push(saved || row);
+    } catch (error) {
+      restoreConfirmedAccountingCache();
+      console.error('[Accounting] Reconciliation was not saved', error);
+      toast('Reconciliation was not saved. The database did not confirm the change.');
+      render();
+      return;
+    }
+    await recordAudit('save_reconciliation','bank_reconciliation',row.id,`Saved bank reconciliation with difference ${money(row.difference)}.`,{});
+    saveLocal(); toast('Reconciliation saved.'); render();
+  }
 
   function renderReconciliationTable() { const rows = state.bankReconciliations.slice().sort((a,b)=>String(b.statement_date||'').localeCompare(String(a.statement_date||''))); if (!rows.length) return '<div class="accounting-empty">No saved reconciliations yet.</div>'; return `<div class="accounting-table-wrap"><table class="accounting-table"><thead><tr><th>Date</th><th>Account</th><th class="num">ERP</th><th class="num">Statement</th><th class="num">Difference</th><th>Status</th><th>By</th></tr></thead><tbody>${rows.map(row=>`<tr><td>${fmtDate(row.statement_date)}</td><td>${esc(accountById(row.bank_account_id)?.account_name || accountById(row.bank_account_id)?.account_code || '—')}</td><td class="num">${money(row.erp_balance)}</td><td class="num">${money(row.statement_balance)}</td><td class="num">${money(row.difference)}</td><td><span class="accounting-badge ${Math.abs(num(row.difference))<0.01?'posted':'draft'}">${esc(row.status || 'saved')}</span></td><td>${esc(row.reconciled_by || '')}</td></tr>`).join('')}</tbody></table></div>`; }
 
@@ -1646,10 +1728,16 @@
 
   async function recordAudit(action, entityType, entityId, message, metadata = {}) {
     const row = { id: uid('audit'), action, entity_type: entityType || '', entity_id: String(entityId || ''), message: message || '', metadata, created_by: authName(), created_at: new Date().toISOString() };
-    state.auditLog.push(row);
-    try { await upsertRemote(TABLES.auditLog, row); } catch (error) { state.dataSource = 'local'; }
-    saveLocal();
-    return row;
+    try {
+      const saved = await upsertRemote(TABLES.auditLog, row);
+      state.auditLog.push(saved || row);
+      saveLocal();
+      return saved || row;
+    } catch (error) {
+      console.error('[Accounting] Audit log was not saved', error);
+      toast('The accounting record was saved, but its audit log could not be written.');
+      return null;
+    }
   }
 
   function bindFilters() {
@@ -1743,14 +1831,14 @@
     const id = $('accountingAccountId')?.value || uid('acct');
     const row = { id, account_code: $('accountingAccountCode')?.value?.trim() || '', account_name: $('accountingAccountName')?.value?.trim() || '', account_type: $('accountingAccountType')?.value || 'Asset', parent_account_id: $('accountingParentAccountId')?.value || null, currency: ($('accountingAccountCurrency')?.value || 'USD').trim().toUpperCase(), opening_balance: num($('accountingOpeningBalance')?.value), is_active: $('accountingAccountActive')?.value !== 'false', notes: $('accountingAccountNotes')?.value || '', created_at: state.accounts.find(a => a.id === id)?.created_at || new Date().toISOString() };
     if (!row.account_code || !row.account_name) return toast('Account code and name are required.');
-    await persistRow('accounts', TABLES.accounts, row); toast('Account saved.'); render();
+    if (!await persistRow('accounts', TABLES.accounts, row)) return; toast('Account saved.'); render();
   }
 
   async function saveBankForm() {
     const id = $('accountingBankId')?.value || uid('bank');
     const row = { id, account_name: $('accountingBankName')?.value?.trim() || '', account_type: $('accountingBankType')?.value || 'Bank', currency: ($('accountingBankCurrency')?.value || 'USD').trim().toUpperCase(), account_number: $('accountingBankNumber')?.value || '', opening_balance: num($('accountingBankOpening')?.value), current_balance: num($('accountingBankCurrent')?.value), linked_account_id: $('accountingBankLinkedAccount')?.value || null, is_active: $('accountingBankActive')?.value !== 'false', notes: $('accountingBankNotes')?.value || '', created_at: state.bankAccounts.find(a => a.id === id)?.created_at || new Date().toISOString() };
     if (!row.account_name) return toast('Bank/cash account name is required.');
-    await persistRow('bankAccounts', TABLES.bankAccounts, row); toast('Bank/Cash account saved.'); render();
+    if (!await persistRow('bankAccounts', TABLES.bankAccounts, row)) return; toast('Bank/Cash account saved.'); render();
   }
 
   function editAccount(id) {
@@ -1786,14 +1874,31 @@
     if (lines.length < 2) return toast('Journal needs at least two lines.');
     if (Math.abs(totalDebit - totalCredit) >= 0.01 || totalDebit <= 0) return toast('Journal must be balanced before saving/posting.');
     if (status === 'posted' && isPeriodClosed(journal.entry_date)) return toast('This accounting period is closed. Reopen it before posting.');
-    const jIdx = state.journals.findIndex(j => j.id === journal.id); if (jIdx >= 0) state.journals[jIdx] = journal; else state.journals.push(journal);
-    state.journalLines = state.journalLines.filter(line => line.journal_id !== journal.id).concat(lines);
-    if (status === 'posted') {
-      state.ledgerEntries = state.ledgerEntries.filter(entry => entry.journal_id !== journal.id).concat(lines.map(line => ({ id: uid('ledger'), journal_id: journal.id, journal_line_id: line.id, journal_no: journal.journal_no, entry_date: journal.entry_date, account_id: line.account_id, account_code: line.account_code, account_name: line.account_name, debit: line.debit, credit: line.credit, currency: journal.currency, description: line.description || journal.description, reference_no: journal.reference_no, source_module: journal.source_module || 'manual_journal', source_id: null, source_reference: journal.source_reference || journal.journal_no, source_table: journal.source_table || 'accounting_journal_entries', source_label: 'Manual Journal', status: 'posted', created_at: new Date().toISOString(), updated_at: new Date().toISOString() })));
+    const ledgerRows = status === 'posted' ? lines.map(line => ({ id: uid('ledger'), journal_id: journal.id, journal_line_id: line.id, journal_no: journal.journal_no, entry_date: journal.entry_date, account_id: line.account_id, account_code: line.account_code, account_name: line.account_name, debit: line.debit, credit: line.credit, currency: journal.currency, description: line.description || journal.description, reference_no: journal.reference_no, source_module: journal.source_module || 'manual_journal', source_id: null, source_reference: journal.source_reference || journal.journal_no, source_table: journal.source_table || 'accounting_journal_entries', source_label: 'Manual Journal', status: 'posted', created_at: new Date().toISOString(), updated_at: new Date().toISOString() })) : [];
+    try {
+      await upsertRemote(TABLES.journals, journal);
+      await deleteRemote(TABLES.journalLines, 'journal_id', journal.id);
+      await upsertRemote(TABLES.journalLines, lines);
+      if (status === 'posted') {
+        await deleteRemote(TABLES.ledgerEntries, 'journal_id', journal.id);
+        await upsertRemote(TABLES.ledgerEntries, ledgerRows);
+      }
+    } catch (error) {
+      console.error('[Accounting] Database did not confirm the complete manual journal save', error);
+      toast('Journal was not confirmed as complete. Refresh and review before retrying.');
+      await refresh(true);
+      return;
     }
-    try { await upsertRemote(TABLES.journals, journal); await deleteRemote(TABLES.journalLines, 'journal_id', journal.id); await upsertRemote(TABLES.journalLines, lines); if (status === 'posted') { const ledgerRows = state.ledgerEntries.filter(entry => entry.journal_id === journal.id); await deleteRemote(TABLES.ledgerEntries, 'journal_id', journal.id); await upsertRemote(TABLES.ledgerEntries, ledgerRows); } }
-    catch (error) { state.dataSource = 'local'; console.warn('[Accounting] journal remote save failed', error); toast('Journal saved locally. Run Accounting SQL migration to enable Supabase sync.'); }
-    saveLocal(); state.editingJournalId = journal.id; state.journalLinesDraft = lines.map(line => ({ ...line })); await recordAudit(status === 'posted' ? 'post_manual_journal' : 'save_journal_draft', 'journal', journal.id, `${status === 'posted' ? 'Posted' : 'Saved'} journal ${journal.journal_no}.`, { totalDebit, totalCredit }); toast(status === 'posted' ? 'Journal posted and ledger updated.' : 'Journal saved as draft.'); render();
+    const jIdx = state.journals.findIndex(j => j.id === journal.id);
+    if (jIdx >= 0) state.journals[jIdx] = journal; else state.journals.push(journal);
+    state.journalLines = state.journalLines.filter(line => line.journal_id !== journal.id).concat(lines);
+    if (status === 'posted') state.ledgerEntries = state.ledgerEntries.filter(entry => entry.journal_id !== journal.id).concat(ledgerRows);
+    saveLocal();
+    state.editingJournalId = journal.id;
+    state.journalLinesDraft = lines.map(line => ({ ...line }));
+    await recordAudit(status === 'posted' ? 'post_manual_journal' : 'save_journal_draft', 'journal', journal.id, `${status === 'posted' ? 'Posted' : 'Saved'} journal ${journal.journal_no}.`, { totalDebit, totalCredit });
+    toast(status === 'posted' ? 'Journal posted and ledger updated.' : 'Journal saved as draft.');
+    render();
   }
 
   function editJournal(id) {
@@ -1806,9 +1911,19 @@
   async function deleteJournal(id) {
     const journal = state.journals.find(j => j.id === id); if (!journal) return;
     if (!confirm(`Delete journal ${journal.journal_no}?`)) return;
-    state.journals = state.journals.filter(j => j.id !== id); state.journalLines = state.journalLines.filter(line => line.journal_id !== id); state.ledgerEntries = state.ledgerEntries.filter(entry => entry.journal_id !== id);
-    try { await deleteRemote(TABLES.ledgerEntries, 'journal_id', id); await deleteRemote(TABLES.journalLines, 'journal_id', id); await deleteRemote(TABLES.journals, 'id', id); }
-    catch (error) { console.warn('[Accounting] remote delete failed', error); state.dataSource = 'local'; }
+    try {
+      await deleteRemote(TABLES.ledgerEntries, 'journal_id', id);
+      await deleteRemote(TABLES.journalLines, 'journal_id', id);
+      await deleteRemote(TABLES.journals, 'id', id);
+    } catch (error) {
+      console.error('[Accounting] Database did not confirm journal deletion', error);
+      toast('Journal deletion failed. Refresh and review before retrying.');
+      await refresh(true);
+      return;
+    }
+    state.journals = state.journals.filter(j => j.id !== id);
+    state.journalLines = state.journalLines.filter(line => line.journal_id !== id);
+    state.ledgerEntries = state.ledgerEntries.filter(entry => entry.journal_id !== id);
     if (state.editingJournalId === id) { state.editingJournalId = ''; state.journalLinesDraft = []; }
     saveLocal(); render(); toast('Journal deleted.');
   }
@@ -1908,6 +2023,7 @@
       root.innerHTML = '<div class="accounting-empty"><strong>Access restricted.</strong><br/>Accounting Foundation requires accounting permissions.</div>';
       return;
     }
+    const readOnly = state.dataSource !== 'supabase';
     const body = state.activeTab === 'dashboard' ? renderDashboard()
       : state.activeTab === 'accounts' ? renderAccounts()
       : state.activeTab === 'vendors' ? renderVendors()
@@ -1918,7 +2034,7 @@
       : state.activeTab === 'reports' ? renderReports()
       : state.activeTab === 'advanced' ? renderAdvanced()
       : renderDashboard();
-    root.innerHTML = shell(body);
+    root.innerHTML = shell(`${readOnly ? '<div class="accounting-source-banner" role="alert"><strong>Read-only mode.</strong> Accounting changes are disabled until Supabase reconnects. Cached records are shown for reference only.</div>' : ''}${body}`);
     bindFilters();
     const accountForm = $('accountingAccountForm'); if (accountForm) accountForm.addEventListener('submit', event => { event.preventDefault(); saveAccountForm(); });
     const bankForm = $('accountingBankForm'); if (bankForm) bankForm.addEventListener('submit', event => { event.preventDefault(); saveBankForm(); });
@@ -1929,13 +2045,17 @@
     const taxForm = $('accountingTaxForm'); if (taxForm) taxForm.addEventListener('submit', event => { event.preventDefault(); saveTaxForm(); });
     const costCenterForm = $('accountingCostCenterForm'); if (costCenterForm) costCenterForm.addEventListener('submit', event => { event.preventDefault(); saveCostCenterForm(); });
     const closingForm = $('accountingClosingForm'); if (closingForm) closingForm.addEventListener('submit', event => { event.preventDefault(); saveClosingForm(); });
+    if (readOnly) {
+      root.querySelectorAll('form input, form select, form textarea, form button').forEach(element => { element.disabled = true; });
+      root.querySelectorAll('[data-accounting-post-source], [data-accounting-post-vendor-bill], [data-accounting-post-vendor-payment], [data-accounting-generate-schedule], [data-accounting-recognize-revenue], [data-accounting-post-expense], [data-accounting-post-journal], [data-accounting-delete-journal], [data-accounting-action="save-journal-draft"], [data-accounting-action="post-journal-form"], [data-accounting-action="sync-visible-sources"], [data-accounting-action="recognize-due-revenue"], [data-accounting-action="save-reconciliation"]').forEach(element => { element.disabled = true; });
+    }
   }
 
   async function refresh(force = false) {
     if (!isAdmin()) { render(); return; }
     if (force || state.dataSource !== 'supabase') {
       try { await loadRemote(); }
-      catch (error) { console.warn('[Accounting] remote load failed, using local data', error); loadLocal(); state.dataSource = 'local'; }
+      catch (error) { console.warn('[Accounting] remote load failed, using confirmed cache', error); loadLocal(); state.dataSource = 'cache'; }
     }
     if (!state.accounts.length) Object.assign(state, buildSampleData());
     render();

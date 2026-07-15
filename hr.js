@@ -153,29 +153,60 @@
     saveLocal();
   }
 
-  async function syncUpsert(table, row) {
-    saveLocal();
+  const pendingHrWrites = new Set();
+
+  function restoreConfirmedHrCache() {
+    loadLocal();
+    state.dataSource = 'cache';
+  }
+
+  async function syncUpsert(table, row, options = {}) {
+    const writeKey = `${table}:${row?.id || 'new'}`;
+    if (pendingHrWrites.has(writeKey)) {
+      if (options.notify !== false) toast('This HR save is already in progress.');
+      throw new Error('Duplicate HR write blocked');
+    }
+    pendingHrWrites.add(writeKey);
     const supabase = client();
-    if (!supabase) return row;
     try {
+      if (!supabase) throw new Error('Supabase client unavailable');
       const { data, error } = await supabase.from(table).upsert(row, { onConflict: 'id' }).select('*').single();
       if (error) throw error;
       state.dataSource = 'supabase';
+      if (options.cache !== false) saveLocal();
       return data || row;
     } catch (error) {
-      state.dataSource = 'local';
-      console.warn(`[HR] Supabase upsert failed for ${table}`, error);
-      toast('HR saved locally. Run the latest HR SQL migration to enable Supabase sync.');
-      return row;
+      restoreConfirmedHrCache();
+      console.error(`[HR] Database did not confirm upsert for ${table}`, error);
+      if (options.notify !== false) toast('HR was not saved. The database did not confirm the change. Check your connection and try again.');
+      throw error;
+    } finally {
+      pendingHrWrites.delete(writeKey);
     }
   }
 
-  async function syncDelete(table, id) {
-    saveLocal();
+  async function syncDelete(table, id, options = {}) {
+    const writeKey = `${table}:${id}:delete`;
+    if (pendingHrWrites.has(writeKey)) {
+      if (options.notify !== false) toast('This HR deletion is already in progress.');
+      throw new Error('Duplicate HR delete blocked');
+    }
+    pendingHrWrites.add(writeKey);
     const supabase = client();
-    if (!supabase) return;
-    try { await supabase.from(table).delete().eq('id', id); }
-    catch (error) { console.warn(`[HR] Supabase delete failed for ${table}`, error); }
+    try {
+      if (!supabase) throw new Error('Supabase client unavailable');
+      const { error } = await supabase.from(table).delete().eq('id', id);
+      if (error) throw error;
+      state.dataSource = 'supabase';
+      if (options.cache !== false) saveLocal();
+    } catch (error) {
+      restoreConfirmedHrCache();
+      console.error(`[HR] Database did not confirm delete for ${table}`, error);
+      if (options.notify !== false) toast('HR deletion failed. The database did not confirm the change.');
+      throw error;
+    } finally {
+      pendingHrWrites.delete(writeKey);
+    }
   }
 
   function statusChip(value) {
@@ -415,7 +446,10 @@
       root.innerHTML = `<section class="hr-panel"><div class="hr-empty"><h3>HR admin access only</h3><p>This HR module is currently restricted to Admin only. Other roles can be added later from permissions.</p></div></section>`;
       return;
     }
-    const source = state.dataSource === 'supabase' ? '<span class="hr-chip success">Supabase synced</span>' : '<span class="hr-chip warning">Local mode · run latest HR SQL migration</span>';
+    const readOnly = state.dataSource !== 'supabase';
+    const source = readOnly
+      ? '<span class="hr-chip warning">Read-only cache · database unavailable</span>'
+      : '<span class="hr-chip success">Supabase synced</span>';
     root.innerHTML = `
       <div class="hr-page-header">
         <div>
@@ -434,6 +468,7 @@
       <nav class="hr-tabs" aria-label="HR sections">
         ${['dashboard','employees','attendance','leaves','leave_balances','holidays','payroll','payslips','salary_receipts','employee_statement','documents','settings'].map(tab => `<button type="button" class="${state.activeTab === tab ? 'active' : ''}" data-hr-tab="${tab}">${tabLabel(tab)}</button>`).join('')}
       </nav>
+      ${readOnly ? '<div class="hr-source-banner" role="alert"><strong>Read-only mode.</strong> HR changes are disabled until Supabase reconnects. Cached records are shown for reference only.</div>' : ''}
       ${globalFilterBar()}
       <div id="hrSummary" class="hr-summary-grid"></div>
       <div id="hrBody"></div>
@@ -441,6 +476,12 @@
     `;
     renderSummary();
     renderBody();
+    if (readOnly) {
+      root.querySelectorAll('form input, form select, form textarea, form button').forEach(element => { element.disabled = true; });
+      root.querySelectorAll('[data-hr-absent], [data-hr-halfday], [data-hr-clear-attendance], [data-hr-approve-leave], [data-hr-reject-leave], [data-hr-adjust-balance], [data-hr-payroll-status], [data-hr-add-receipt], [data-hr-edit-receipt], [data-hr-edit-document], [data-hr-remove-document-pdf]').forEach(element => { element.disabled = true; });
+      const newEmployee = $('hrNewEmployeeBtn');
+      if (newEmployee) newEmployee.disabled = true;
+    }
   }
 
   function tabLabel(tab) {
@@ -1406,7 +1447,7 @@
     try {
       if (force || state.dataSource !== 'supabase') {
         try { await loadRemote(); }
-        catch (error) { console.warn('[HR] remote load failed, using local data', error); loadLocal(); state.dataSource = 'local'; }
+        catch (error) { console.warn('[HR] remote load failed, using confirmed cache', error); loadLocal(); state.dataSource = 'cache'; }
       }
       renderRoot();
     } finally { state.loading = false; }
