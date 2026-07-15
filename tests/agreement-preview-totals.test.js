@@ -107,6 +107,19 @@ const agreement83Html = agreements.buildAgreementPreviewHtml({
 assert.match(agreement83Html, /<span>Grand Total<\/span><strong>USD 612.5<\/strong>/, 'Agreement#00083 preview should calculate 612.50 from its rows');
 assert.match(agreement83Html, /<span>Grand Total in Words<\/span><strong>USD words 612.5<\/strong>/, 'Agreement#00083 total in words should use the calculated row total');
 
+
+const fractionalSaas = agreements.computeCommercialRow({
+  section: 'annual_saas',
+  unit_price: 825,
+  quantity: 0.10,
+  discount_percent: 0,
+  line_total: 0,
+  item_name: 'InCheck Basic',
+  location_name: 'Shababik RUH'
+});
+assert.strictEqual(fractionalSaas.quantity, 0.10, 'fractional Annual SaaS quantity should remain 0.10');
+assert.strictEqual(fractionalSaas.line_total, 6.88, 'fractional Annual SaaS line total should round to cents');
+
 const companySignatory = agreements.resolveCustomerSignatorySnapshot(
   { status: 'draft' },
   { authorized_signatory_name: 'Customer Signer', customer_signatory_title: 'Director' }

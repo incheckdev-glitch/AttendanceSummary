@@ -1162,9 +1162,10 @@ const Agreements = {
       && qty < 12
       && !hasSavedForcedDiscount;
     const discountRatio = shouldForceNoDiscount ? 0 : rawDiscountRatio;
+    const roundCurrency = value => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
     const baseAmount = section === 'annual_saas' ? unit * licenseQty * (qty / 12) : unit * qty;
     const discountedUnitPrice = section === 'annual_saas' ? baseAmount * (1 - discountRatio) : unit * (1 - discountRatio);
-    return { ...item, quantity: qty, license_quantity: licenseQty, discount_percent: shouldForceNoDiscount ? 0 : item.discount_percent, discounted_unit_price: discountedUnitPrice, line_total: Math.max(0, baseAmount * (1 - discountRatio)) };
+    return { ...item, quantity: qty, license_quantity: licenseQty, discount_percent: shouldForceNoDiscount ? 0 : item.discount_percent, discounted_unit_price: roundCurrency(discountedUnitPrice), line_total: roundCurrency(Math.max(0, baseAmount * (1 - discountRatio))) };
   },
   canExportAgreements() {
     return Permissions.canExport('agreements');
@@ -2104,7 +2105,7 @@ const Agreements = {
     if (blankText(next.invoiced_at)) delete next.invoiced_at;
     if (next.section === 'annual_saas') {
       next.service_start_date = this.normalizeDateInputValue(next.service_start_date);
-      next.service_end_date = this.calculateServiceEndDate(next.service_start_date, next.quantity);
+      next.service_end_date = this.normalizeDateInputValue(next.service_end_date) || this.calculateServiceEndDate(next.service_start_date, next.quantity);
     } else {
       delete next.service_start_date;
       delete next.service_end_date;
@@ -4316,7 +4317,7 @@ const Agreements = {
         location_name: locationName,
         location_address: get('location_address'),
         service_start_date: section === 'annual_saas' ? this.normalizeDateInputValue(get('service_start_date')) : '',
-        service_end_date: section === 'annual_saas' ? this.calculateServiceEndDate(get('service_start_date'), quantity) : '',
+        service_end_date: section === 'annual_saas' ? this.normalizeDateInputValue(get('service_end_date')) : '',
         item_name: itemName,
         description: String(get('description') || baseItem.description || baseItem.note || baseItem.catalog_note || '').trim(),
         catalog_item_id: String(get('catalog_item_id')).trim(),
@@ -4685,7 +4686,7 @@ const Agreements = {
       const discountValue = annualDiscountLocked ? 0 : (computed.discount_percent ?? rowDefaults.discount_percent ?? '');
       const discountCell = `<td><input class="input" data-item-field="discount_percent" type="number" min="0" max="100" step="0.01" value="${U.escapeAttr(discountValue)}"${discountLockAttr}${lockAttr} /></td>`;
       const hasUserBasedAnnualSaas = section === 'annual_saas' && (grouped.annual_saas || []).some(row => this.isAnnualSaasUserItem(row));
-      const quantityCell = `<td><input class="input" data-item-field="quantity" type="number" step="0.01" min="1" ${section === 'annual_saas' ? 'max="12"' : ''} value="${U.escapeAttr(oneTimeQuantityLocked ? (computed.quantity || 1) : (computed.quantity ?? ''))}"${quantityLockAttr}${lockAttr} /></td>`;
+      const quantityCell = `<td><input class="input" data-item-field="quantity" type="number" step="0.01" min="${section === 'annual_saas' ? '0.01' : '1'}" ${section === 'annual_saas' ? 'max="12"' : ''} value="${U.escapeAttr(oneTimeQuantityLocked ? (computed.quantity || 1) : (computed.quantity ?? ''))}"${quantityLockAttr}${lockAttr} /></td>`;
       const licenseQtyCell = hasUserBasedAnnualSaas
         ? `<td><input class="input${isAnnualUserBased ? '' : ' readonly-field locked-field'}" data-item-field="license_quantity" type="number" step="1" min="1" value="${U.escapeAttr(isAnnualUserBased ? (computed.license_quantity || 1) : 1)}"${isAnnualUserBased ? lockAttr : ' readonly aria-readonly="true" title="Location based Annual SaaS rows always use Qty 1."'} /></td>`
         : '';
