@@ -3,42 +3,54 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.resolve(__dirname, '..');
-const includedDirectories = new Set(['tests', 'scripts']);
-const skippedDirectories = new Set(['.git', 'node_modules', 'api', 'src', 'supabase']);
 
-function collectClassicJavaScriptFiles(directory, relativeDirectory = '') {
-  const entries = fs.readdirSync(directory, { withFileTypes: true });
+function collectJavaScriptFiles(directory, relativeDirectory = '') {
+  if (!fs.existsSync(directory)) return [];
   const files = [];
-
-  for (const entry of entries) {
-    const relativePath = path.posix.join(relativeDirectory.replace(/\\/g, '/'), entry.name);
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     const absolutePath = path.join(directory, entry.name);
-
+    const relativePath = path.posix.join(relativeDirectory.replace(/\\/g, '/'), entry.name);
     if (entry.isDirectory()) {
-      if (skippedDirectories.has(entry.name)) continue;
-      if (!relativeDirectory && !includedDirectories.has(entry.name)) continue;
-      files.push(...collectClassicJavaScriptFiles(absolutePath, relativePath));
-      continue;
-    }
-
-    if (!entry.isFile() || !entry.name.endsWith('.js')) continue;
-    if (!relativeDirectory || includedDirectories.has(relativeDirectory.split('/')[0])) {
+      files.push(...collectJavaScriptFiles(absolutePath, relativePath));
+    } else if (entry.isFile() && entry.name.endsWith('.js')) {
       files.push(relativePath);
     }
   }
-
-  return files.sort();
+  return files;
 }
 
-const files = collectClassicJavaScriptFiles(root);
-const failures = [];
+function classicBrowserEntrypoints() {
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const files = [];
+  const scriptTag = /<script\b([^>]*)>/gi;
+  let match;
+  while ((match = scriptTag.exec(html))) {
+    const attributes = match[1] || '';
+    if (/\btype\s*=\s*["']module["']/i.test(attributes)) continue;
+    const srcMatch = attributes.match(/\bsrc\s*=\s*["']([^"']+)["']/i);
+    if (!srcMatch) continue;
+    const rawSrc = srcMatch[1].split(/[?#]/)[0];
+    if (!rawSrc.startsWith('/') || rawSrc.startsWith('//')) continue;
+    const relativePath = decodeURIComponent(rawSrc.replace(/^\/+/, ''));
+    if (!relativePath.endsWith('.js')) continue;
+    if (fs.existsSync(path.join(root, relativePath))) files.push(relativePath);
+  }
+  if (fs.existsSync(path.join(root, 'service-worker.js'))) files.push('service-worker.js');
+  return files;
+}
 
+const files = [...new Set([
+  ...classicBrowserEntrypoints(),
+  ...collectJavaScriptFiles(path.join(root, 'tests'), 'tests'),
+  ...collectJavaScriptFiles(path.join(root, 'scripts'), 'scripts')
+])].sort();
+
+const failures = [];
 for (const file of files) {
   const result = spawnSync(process.execPath, ['--check', file], {
     cwd: root,
     encoding: 'utf8'
   });
-
   if (result.status !== 0 || result.error) {
     failures.push({
       file,
@@ -56,4 +68,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`JavaScript syntax validation passed for ${files.length} classic scripts and tests.`);
+console.log(`JavaScript syntax validation passed for ${files.length} deployed classic scripts, tests, and safety scripts.`);
