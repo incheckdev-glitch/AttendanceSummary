@@ -17,10 +17,13 @@ jobs:
       - name: Collect auth and permission SQL
         run: |
           mkdir -p phase3-rls
-          find sql supabase -type f \( -name '*.sql' -o -name '*.js' \) 2>/dev/null | while read -r file; do
+          find . -type f -name '*.sql' \
+            -not -path './node_modules/*' \
+            -not -path './.git/*' | while read -r file; do
+            clean="${file#./}"
             if grep -Eqi 'get_my_role_permissions|role_permissions|profiles|is_active|auth\.uid|row level security|create policy' "$file"; then
-              mkdir -p "phase3-rls/$(dirname "$file")"
-              cp "$file" "phase3-rls/$file"
+              mkdir -p "phase3-rls/$(dirname "$clean")"
+              cp "$file" "phase3-rls/$clean"
             fi
           done
       - name: Upload policy snapshot
