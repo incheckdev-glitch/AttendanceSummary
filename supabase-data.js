@@ -7302,7 +7302,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         };
         const allowedEntry = ['request_key','client_id','client_reference','client_name','module','license','gross_payable','paid_amount','due_date','status','notes'];
         const allowedLocation = ['biners_entry_id','client_reference','client_name','location_name','location_reference','module','license','due_date','scheduled_amount','notes'];
-        const allowedSchedule = ['schedule_key','biners_entry_id','entry_number','client_id','client_reference','client_name','location_id','location_name','location_reference','module','license','due_date','scheduled_amount','paid_amount','status','notes'];
+        const allowedSchedule = ['schedule_key','biners_entry_id','entry_number','schedule_no','client_id','client_reference','client_name','location_id','location_name','location_reference','module','license','due_date','scheduled_amount','paid_amount','status','notes'];
         const cleanEntry = pickExistingFields(entryPayload, allowedEntry);
         if (cleanEntry.client_id && !isUuid(cleanEntry.client_id)) throw new Error(`Invalid client_id. Expected UUID but received: ${cleanEntry.client_id}`);
         if (!String(cleanEntry.client_name || '').trim()) throw new Error('Unable to create Biners entry: client name is required.');
@@ -7358,6 +7358,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
               schedule_key: `${entry.id}:schedule:${idx}:${dueDate}:${scheduledAmount}`,
               biners_entry_id: entry.id,
               entry_number: entryNumber,
+              schedule_no: Number(schedule.schedule_no || idx + 1),
               client_id: cleanEntry.client_id || null,
               client_reference: cleanEntry.client_reference || null,
               client_name: cleanEntry.client_name || null,
