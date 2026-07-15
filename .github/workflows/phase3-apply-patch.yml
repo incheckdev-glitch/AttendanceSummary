@@ -1,0 +1,55 @@
+name: Phase 3 Apply Validated Patch
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Detect applied patch
+        id: detect
+        run: |
+          if [[ -f tests/phase3-auth-permissions.test.js ]]; then
+            echo "applied=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "applied=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Decode and validate patch
+        if: steps.detect.outputs.applied != 'true'
+        run: |
+          base64 -d .phase3.patch.gz.b64 | gzip -d > /tmp/phase3.patch
+          test -s /tmp/phase3.patch
+          git apply --check /tmp/phase3.patch
+      - name: Apply patch
+        if: steps.detect.outputs.applied != 'true'
+        run: git apply /tmp/phase3.patch
+      - name: Validate Phase 3 changes
+        if: steps.detect.outputs.applied != 'true'
+        run: |
+          node --check session.js
+          node --check permissions.js
+          node --check app.js
+          node --check tests/phase3-auth-permissions.test.js
+          node tests/phase3-auth-permissions.test.js
+      - name: Commit clean Phase 3 branch
+        if: steps.detect.outputs.applied != 'true'
+        run: |
+          git config user.name "InCheck360 Safety Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git rm .github/workflows/phase3-source-snapshot.yml
+          git rm .github/workflows/phase3-apply-patch.yml
+          git rm .phase3.patch.gz.b64
+          git add session.js permissions.js app.js scripts/run-tests.js tests/phase3-auth-permissions.test.js
+          git commit -m "Make authentication and permissions reactive"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
