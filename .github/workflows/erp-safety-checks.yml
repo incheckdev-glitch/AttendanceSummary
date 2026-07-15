@@ -67,6 +67,13 @@ jobs:
           set -o pipefail
           npm audit --omit=dev --audit-level=high 2>&1 | tee safety-check-logs/dependency-audit.log
 
+      - name: Create temporary source snapshot
+        if: always()
+        shell: bash
+        run: |
+          tar --exclude=.git --exclude=node_modules --exclude=safety-check-logs -czf /tmp/repository-source.tar.gz .
+          mv /tmp/repository-source.tar.gz safety-check-logs/repository-source.tar.gz
+
       - name: Upload safety-check logs
         if: always()
         uses: actions/upload-artifact@v4
