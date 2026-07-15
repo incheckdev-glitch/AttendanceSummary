@@ -7,7 +7,7 @@ const supabaseData = fs.readFileSync('supabase-data.js', 'utf8');
 const migration = fs.readFileSync('CREDIT_NOTE_REQUEST_KEY_IDEMPOTENCY.sql', 'utf8');
 
 assert.match(creditNotes, /if \(this\.state\.saving\) return;\s*this\.setSaving\(true\);/, 'save must guard and disable immediately');
-assert.match(creditNotes, /button\.textContent = this\.state\.saving \? 'Saving\.\.\.' : 'Save'/, 'save button must show Saving...');
+assert.match(creditNotes, /button\.textContent = this\.state\.saving \? 'Saving\.\.\.' : 'Save Credit Note'/, 'save button must show Saving... and restore the full action label');
 assert.match(creditNotes, /credit_note_request_key: this\.state\.requestKey/, 'create payload must include the modal request key');
 assert.match(creditNotes, /removeEventListener\('submit', this\._saveSubmitHandler\)/, 'submit handler must be cleaned up before binding');
 assert.match(creditNotes, /isCancelledCreditNote\(note = \{\}\)/, 'cancelled preview helper must exist');

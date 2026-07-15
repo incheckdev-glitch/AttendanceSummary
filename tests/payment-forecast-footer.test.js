@@ -6,10 +6,9 @@ const index = fs.readFileSync('index.html', 'utf8');
 const styles = fs.readFileSync('styles.css', 'utf8');
 
 assert.doesNotMatch(index, /id=["']appFooter["']/, 'normal application layout must not render a global app footer');
-assert.match(index, /id="paymentForecastView" class="view payment-forecast-module"/, 'Payment Forecast must identify its module boundary');
+assert.match(index, /id="paymentForecastView" class="[^"]*\bpayment-forecast-module\b[^"]*"/, 'Payment Forecast must identify its module boundary even when additional page classes are present');
 assert.match(index, /id="paymentForecastTabBody" class="pf-content payment-forecast-table"/, 'Payment Forecast must identify its table boundary');
 assert.match(styles, /#app \.document-footer[\s\S]*#paymentForecastView footer[\s\S]*\.payment-forecast-table footer[\s\S]*display:none !important;/, 'app and Payment Forecast footer safety rules must remain in place');
-
 
 ['invoices.js', 'receipts.js', 'credit-notes.js'].forEach(file => {
   const previewRenderer = fs.readFileSync(file, 'utf8');

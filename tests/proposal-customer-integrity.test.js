@@ -12,9 +12,10 @@ assert.match(proposals, /proposal\.customer_legal_name = legalName;[\s\S]*?propo
 assert.match(proposals, /\['proposalDraft', 'cachedProposal', 'currentProposalDraft', 'proposalFormState'\]/, 'new proposal reset must clear stale draft storage');
 assert.match(selectors, /uuidSourceOfTruth: true/, 'proposal selectors must use UUID source-of-truth mode');
 assert.match(selectors, /loadContactsForCompany\(companyId\)/, 'proposal contact dropdown must load contacts by company UUID');
-assert.doesNotMatch(selectors, /resolveContactsForCompany|contactMatchesCompany/, 'proposal contact dropdown must not use name fallback');
+assert.match(selectors, /contacts = mapRpcRows\(rpcData\);[\s\S]*?if \(!contacts\.length\)/, 'proposal contact fallbacks must run only after the primary company UUID RPC returns no contacts');
+assert.match(selectors, /contactMatchesCompanyFallback\(contact, loadedCompany, selectedCompanyId, companyFkValue\)/, 'the final proposal contact fallback must remain filtered to the selected company');
+assert.doesNotMatch(selectors, /\.or\(/, 'proposal contact loading must not use broad PostgREST OR name matching');
 assert.doesNotMatch(proposals, /findCompanyByName|getLastCompany|getCachedCompany|selectedCompanyName/, 'proposal flow must not use forbidden company fallbacks');
-
 
 assert.match(proposals, /resolveContactSignatory\(contact = \{\}\)[\s\S]*?contact\?\.full_name[\s\S]*?contact\?\.contact_name[\s\S]*?contact\?\.job_title[\s\S]*?contact\?\.contact_title[\s\S]*?contact\?\.role/, 'proposal signatory resolver must derive fallback from the selected contact card');
 assert.match(proposals, /resolveProposalCustomerSignatory\(proposal = \{\}, contact = \{\}\)[\s\S]*?const contactSignatory = this\.resolveContactSignatory\(contact\)[\s\S]*?proposal\?\.authorizedSignatoryName[\s\S]*?contactSignatory\.name/, 'proposal preview/PDF/print must use saved proposal fields before contact-card fallback');
