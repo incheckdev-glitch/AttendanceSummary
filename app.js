@@ -6091,7 +6091,8 @@ function wireDashboardGate() {
   };
 
   const unlockApp = async () => {
-    console.info('[wireDashboardGate.unlockApp] unlocking app UI');
+    const wasAlreadyUnlocked = window.__APP_UNLOCKED__ === true && !document.body.classList.contains('auth-locked');
+    console.info('[wireDashboardGate.unlockApp] unlocking app UI', { wasAlreadyUnlocked });
     document.body.classList.remove('auth-locked');
     E.app.classList.remove('is-locked');
     E.app.setAttribute('aria-hidden', 'false');
@@ -6100,13 +6101,15 @@ function wireDashboardGate() {
     const defaultView = getDefaultViewForRole(role);
     if (window.Notifications?.onAuthStateChanged) Notifications.onAuthStateChanged();
     if (window.PushNotifications?.onAuthStateChanged) PushNotifications.onAuthStateChanged();
-    let routed = false;
-    try {
-      routed = await routeAppHashAfterReady();
-    } catch (error) {
-      console.warn('[email deep link] route after unlock failed', error);
+    let routed = wasAlreadyUnlocked;
+    if (!wasAlreadyUnlocked) {
+      try {
+        routed = await routeAppHashAfterReady();
+      } catch (error) {
+        console.warn('[email deep link] route after unlock failed', error);
+      }
+      if (!routed && !hasPendingDeepLink()) setActiveView(getFirstAllowedView(defaultView));
     }
-    if (!routed && !hasPendingDeepLink()) setActiveView(getFirstAllowedView(defaultView));
     window.__APP_UNLOCKED__ = true;
     window.__AUTH_RESTORED__ = true;
     const currentUser = Permissions.getResolvedCurrentUser?.() || Session.authContext?.()?.profile || null;
@@ -6137,8 +6140,15 @@ function wireDashboardGate() {
 
   const refreshPermissionsForCurrentRole = async (force = false) => {
     document.body.classList.add('permissions-loading');
-    await Permissions.loadMatrix(force);
-    document.body.classList.remove('permissions-loading');
+    try {
+      const rows = await Permissions.loadMatrix(force);
+      if (!Permissions.isReady()) {
+        throw Permissions.state.error || new Error('Permission matrix is unavailable for the active role.');
+      }
+      return rows;
+    } finally {
+      document.body.classList.remove('permissions-loading');
+    }
   };
   const logPermissionSelfTest = () => {
     if (!Session.isAuthenticated()) return;
@@ -6155,42 +6165,52 @@ function wireDashboardGate() {
     });
   };
 
-  const syncAuthUi = () => {
+  const syncAuthUi = async () => {
     const isAuthenticated = Session.isAuthenticated();
-    if (isAuthenticated) {
-      refreshPermissionsForCurrentRole(true)
-        .catch(error => {
-          console.warn('[wireDashboardGate.syncAuthUi] permission matrix refresh failed', error);
-        })
-        .finally(() => {
-          UI.applyRolePermissions();
-          logPermissionSelfTest();
-          unlockApp();
-        });
-      return;
+    if (!isAuthenticated) {
+      Permissions.reset();
+      UI.applyRolePermissions();
+      lockApp();
+      return true;
     }
-    UI.applyRolePermissions();
-    lockApp();
+
+    try {
+      await refreshPermissionsForCurrentRole(true);
+      UI.applyRolePermissions();
+      logPermissionSelfTest();
+      await unlockApp();
+      return true;
+    } catch (error) {
+      console.warn('[wireDashboardGate.syncAuthUi] permission matrix refresh failed; locking app', error);
+      UI.applyRolePermissions();
+      lockApp();
+      UI.toast('Your permissions could not be verified. Please reconnect or log in again.');
+      return false;
+    }
   };
 
-  const hasStartupAuth = Session.isAuthenticated();
-  if (hasStartupAuth) {
-    refreshPermissionsForCurrentRole(true)
-      .catch(error => {
-        console.warn('[wireDashboardGate] startup permission matrix refresh failed', error);
-      })
-      .finally(() => {
-        UI.applyRolePermissions();
-        logPermissionSelfTest();
-        unlockApp();
+  let authUiSyncRequestId = 0;
+  let authUiSyncQueue = Promise.resolve(true);
+  const scheduleAuthUiSync = () => {
+    const requestId = ++authUiSyncRequestId;
+    authUiSyncQueue = authUiSyncQueue
+      .catch(() => false)
+      .then(() => {
+        if (requestId !== authUiSyncRequestId) return true;
+        return syncAuthUi();
       });
-  } else {
-    UI.applyRolePermissions();
-    lockApp();
-  }
+    return authUiSyncQueue;
+  };
+
   Session.subscribe(() => {
-    syncAuthUi();
+    scheduleAuthUiSync().catch(error => {
+      console.warn('[wireDashboardGate] reactive auth UI synchronization failed', error);
+    });
   });
+  scheduleAuthUiSync().catch(error => {
+    console.warn('[wireDashboardGate] startup auth UI synchronization failed', error);
+  });
+
 
   E.loginForm.noValidate = true;
   console.info('[wireDashboardGate] native form validation disabled for login form (manual validation is used)');
@@ -6257,12 +6277,10 @@ function wireDashboardGate() {
         hasUser: Boolean(user),
         role: user?.role || null
       });
-      await refreshPermissionsForCurrentRole(true);
-      logPermissionSelfTest();
-      UI.applyRolePermissions();
+      const authReady = await scheduleAuthUiSync();
+      if (!authReady) throw new Error('Login succeeded, but your permissions could not be verified.');
       E.loginIdentifier.value = '';
       E.loginPasscode.value = '';
-      unlockApp();
       UI.toast(`Logged in as ${user.role}.`);
       const startupLoaders = [loadEvents(false)];
       if (
