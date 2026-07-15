@@ -32,9 +32,60 @@ jobs:
       - name: Install locked dependencies
         run: npm ci --ignore-scripts
 
-      - name: Run ERP safety checks
-        run: npm run ci
+      - name: Prepare diagnostic logs
+        run: mkdir -p safety-check-logs
+
+      - name: Check JavaScript syntax
+        id: syntax
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run check:syntax 2>&1 | tee safety-check-logs/javascript-syntax.log
+
+      - name: Validate SQL migrations
+        id: migrations
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run check:migrations 2>&1 | tee safety-check-logs/sql-migrations.log
+
+      - name: Run ERP regression tests
+        id: regression
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee safety-check-logs/regression-tests.log
 
       - name: Report production dependency vulnerabilities
+        id: audit
         continue-on-error: true
-        run: npm audit --omit=dev --audit-level=high
+        shell: bash
+        run: |
+          set -o pipefail
+          npm audit --omit=dev --audit-level=high 2>&1 | tee safety-check-logs/dependency-audit.log
+
+      - name: Upload safety-check logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: erp-safety-check-logs
+          path: safety-check-logs
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Enforce blocking checks
+        if: always()
+        shell: bash
+        run: |
+          echo "JavaScript syntax: ${{ steps.syntax.outcome }}"
+          echo "SQL migrations: ${{ steps.migrations.outcome }}"
+          echo "ERP regression tests: ${{ steps.regression.outcome }}"
+          if [[ "${{ steps.syntax.outcome }}" != "success" || \
+                "${{ steps.migrations.outcome }}" != "success" || \
+                "${{ steps.regression.outcome }}" != "success" ]]; then
+            echo "One or more blocking ERP safety checks failed."
+            exit 1
+          fi
