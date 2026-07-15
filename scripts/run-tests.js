@@ -40,7 +40,8 @@ const tests = [
   'tests/eproposal-public-totals.test.js',
   'tests/agreement-conversion-terms.test.js',
   'tests/phase2-data-integrity.test.js',
-  'tests/phase3-auth-permissions.test.js'
+  'tests/phase3-auth-permissions.test.js',
+  'tests/phase3-permission-rpc-security.test.js'
 ];
 
 const failures = [];
