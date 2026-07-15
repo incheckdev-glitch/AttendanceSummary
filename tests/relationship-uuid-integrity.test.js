@@ -25,7 +25,7 @@ for (const [name, source] of Object.entries({ lead: leads, deal: deals, agreemen
 }
 assert.match(proposals, /validateAndRefreshProposalCustomer[\s\S]*?resolveCompanyUuid\(companyKey\)[\s\S]*?loadCompanySafe\(companyId\)/, 'proposal save must resolve and safely reload the company');
 assert.match(proposals, /parsed = this\.extractProposalAndItems\(await this\.getProposal\(responseSavedUuid\)/, 'proposal confirmation must reload saved record');
-assert.match(agreements, /moduleName: 'proposal-to-agreement'[\s\S]*?draft\.agreement\.company_id = loadedSelection\.resolvedCompanyId/, 'proposal conversion must save the resolved proposal company UUID');
+assert.match(agreements, /moduleName: 'proposal-to-agreement'[\s\S]*?loadedSelection\.resolvedCompanyId[\s\S]*?const resolvedCompany = linkedCompany \|\| loadedSelection\.loadedCompany;[\s\S]*?draft\.agreement\.company_id = resolvedCompany\.id/, 'proposal conversion must validate the resolved company and save its loaded UUID');
 assert.match(agreements, /persistedAgreement = this\.extractAgreementAndItems\(await this\.getAgreement\(persistedAgreementUuid\)/, 'agreement confirmation must reload saved record');
 
 console.log('Relationship UUID integrity checks passed.');
