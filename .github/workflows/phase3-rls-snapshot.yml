@@ -1,0 +1,31 @@
+name: Phase 3 RLS Snapshot
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Collect auth and permission SQL
+        run: |
+          mkdir -p phase3-rls
+          find sql supabase -type f \( -name '*.sql' -o -name '*.js' \) 2>/dev/null | while read -r file; do
+            if grep -Eqi 'get_my_role_permissions|role_permissions|profiles|is_active|auth\.uid|row level security|create policy' "$file"; then
+              mkdir -p "phase3-rls/$(dirname "$file")"
+              cp "$file" "phase3-rls/$file"
+            fi
+          done
+      - name: Upload policy snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase3-rls
+          path: phase3-rls
+          retention-days: 1
