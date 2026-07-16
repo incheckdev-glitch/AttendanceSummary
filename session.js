@@ -12,6 +12,11 @@ const Session = {
   },
   listeners: new Set(),
   authSubscription: null,
+  reactiveAuthSync: Promise.resolve(),
+  profileRefreshTimer: null,
+  profileRefreshListenersBound: false,
+  lastProfileRefreshAt: 0,
+  profileRefreshMinMs: 30000,
 
   getLastKnownRoleStorageKey() {
     return LS_KEYS?.lastKnownRole || 'incheckLastKnownRole';
@@ -44,9 +49,9 @@ const Session = {
     return () => this.listeners.delete(listener);
   },
 
-  notify() {
+  notify(detail = {}) {
     this.listeners.forEach(listener => {
-      try { listener(this.user()); } catch {}
+      try { listener(this.user(), detail); } catch {}
     });
   },
 
@@ -75,7 +80,7 @@ const Session = {
     };
   },
 
-  applyState(nextState, { clearRoleCacheOnChange = true } = {}) {
+  applyState(nextState, { clearRoleCacheOnChange = true, reason = 'state_applied' } = {}) {
     const candidateState = nextState && typeof nextState === 'object'
       ? {
           role: this.normalizeRole(nextState.role_key || nextState.role) || null,
@@ -107,7 +112,12 @@ const Session = {
       try { localStorage.setItem(this.getLastKnownRoleStorageKey(), currentRole); } catch {}
     }
 
-    this.notify();
+    this.notify({
+      reason,
+      previousRole: this.normalizeRole(prevRole),
+      role: currentRole,
+      roleChanged: Boolean(this.normalizeRole(prevRole) && this.normalizeRole(prevRole) !== currentRole)
+    });
     return true;
   },
 
@@ -206,13 +216,14 @@ const Session = {
       this.clearClientSession({ clearRoleCache: false });
       throw new Error('Your account is inactive. Please contact an administrator.');
     }
-    this.applyState(this.buildState(authUser, session, profile));
+    this.applyState(this.buildState(authUser, session, profile), { reason: 'login' });
     this.ensureReactiveAuthState();
     return this.user();
   },
 
   async restore() {
     const client = SupabaseClient.getClient();
+    this.ensureReactiveAuthState();
     this.purgeLegacyStorage();
     try {
       const { data: sessionData, error: sessionError } = await client.auth.getSession();
@@ -237,7 +248,7 @@ const Session = {
         return false;
       }
 
-      this.applyState(this.buildState(authUser, session, profile), { clearRoleCacheOnChange: false });
+      this.applyState(this.buildState(authUser, session, profile), { clearRoleCacheOnChange: false, reason: 'restore' });
       return true;
     } catch (error) {
       console.warn('[Session.restore] unexpected error', error);
@@ -256,10 +267,12 @@ const Session = {
   },
 
   clearClientSession({ clearRoleCache = true } = {}) {
-    if (clearRoleCache && this.state.role) this.clearRoleScopedCache();
+    const previousRole = this.normalizeRole(this.state.role);
+    if (clearRoleCache && previousRole) this.clearRoleScopedCache();
     this.purgeLegacyStorage();
     this.state = { role: null, role_key: null, id: '', user_id: '', name: '', email: '', username: '', session: null, user: null, profile: null };
-    this.notify();
+    this.lastProfileRefreshAt = 0;
+    this.notify({ reason: 'signed_out', previousRole, role: null, roleChanged: Boolean(previousRole) });
   },
 
   purgeLegacyStorage() {
@@ -271,8 +284,138 @@ const Session = {
     try { sessionStorage.removeItem('incheckLegacyBootstrapCredentials'); } catch {}
   },
 
+  queueReactiveAuthSync(event, session) {
+    const task = async () => this.handleReactiveAuthEvent(event, session);
+    this.reactiveAuthSync = Promise.resolve(this.reactiveAuthSync)
+      .catch(() => false)
+      .then(task);
+    return this.reactiveAuthSync;
+  },
+
+  async refreshIdentityFromSession(session = null, { reason = 'profile_refresh', force = false } = {}) {
+    const client = SupabaseClient.getClient();
+    let activeSession = session;
+    if (!activeSession) {
+      const { data, error } = await client.auth.getSession();
+      if (error) throw error;
+      activeSession = data?.session || null;
+    }
+
+    const authUser = activeSession?.user || null;
+    if (!activeSession || !authUser?.id) {
+      this.clearClientSession();
+      window.Permissions?.reset?.();
+      return false;
+    }
+
+    const now = Date.now();
+    const sameUser = String(this.state.user_id || '') === String(authUser.id || '');
+    if (!force && sameUser && this.isAuthenticated() && now - Number(this.lastProfileRefreshAt || 0) < this.profileRefreshMinMs) {
+      return true;
+    }
+
+    const profile = await this.fetchProfile(authUser.id);
+    if (!profile?.is_active || !String(profile?.role_key || '').trim()) {
+      await client.auth.signOut();
+      this.clearClientSession();
+      window.Permissions?.reset?.();
+      throw new Error('Your account is inactive or has no active role. Please contact an administrator.');
+    }
+
+    this.lastProfileRefreshAt = now;
+    this.applyState(this.buildState(authUser, activeSession, profile), { reason });
+    return true;
+  },
+
+  async revalidateProfile({ reason = 'profile_refresh', force = false } = {}) {
+    if (!this.isAuthenticated()) return false;
+    try {
+      return await this.refreshIdentityFromSession(this.state.session, { reason, force });
+    } catch (error) {
+      const message = String(error?.message || error || '');
+      const accessRevoked = /inactive|no active role|not active/i.test(message);
+      if (accessRevoked) {
+        this.clearClientSession();
+        window.Permissions?.reset?.();
+        window.UI?.toast?.(message);
+      } else {
+        console.warn('[Session.revalidateProfile] profile refresh failed; preserving current authenticated state', {
+          reason,
+          message
+        });
+      }
+      return false;
+    }
+  },
+
+  async handleReactiveAuthEvent(event, session) {
+    const normalizedEvent = String(event || '').trim().toUpperCase();
+    if (normalizedEvent === 'SIGNED_OUT') {
+      this.clearClientSession();
+      window.Permissions?.reset?.();
+      return false;
+    }
+
+    if (!['SIGNED_IN', 'TOKEN_REFRESHED', 'USER_UPDATED'].includes(normalizedEvent)) {
+      return false;
+    }
+
+    const hadAuthenticatedState = this.isAuthenticated();
+    try {
+      return await this.refreshIdentityFromSession(session, {
+        reason: normalizedEvent.toLowerCase(),
+        force: true
+      });
+    } catch (error) {
+      const message = String(error?.message || error || 'Unable to refresh authenticated user.');
+      if (!hadAuthenticatedState || /inactive|no active role|not active/i.test(message)) {
+        try { await SupabaseClient.getClient().auth.signOut(); } catch {}
+        this.clearClientSession();
+        window.Permissions?.reset?.();
+        window.UI?.toast?.(message);
+      } else {
+        console.warn('[Session.handleReactiveAuthEvent] auth refresh failed; preserving current authenticated state', {
+          event: normalizedEvent,
+          message
+        });
+      }
+      return false;
+    }
+  },
+
   ensureReactiveAuthState() {
-    return;
+    const client = SupabaseClient.getClient();
+    if (!this.authSubscription && client?.auth?.onAuthStateChange) {
+      const result = client.auth.onAuthStateChange((event, session) => {
+        Promise.resolve()
+          .then(() => this.queueReactiveAuthSync(event, session))
+          .catch(error => console.warn('[Session] reactive auth event failed', error));
+      });
+      this.authSubscription = result?.data?.subscription || result?.subscription || null;
+    }
+
+    if (!this.profileRefreshListenersBound && typeof window !== 'undefined') {
+      const refreshOnFocus = () => {
+        if (!this.isAuthenticated()) return;
+        this.revalidateProfile({ reason: 'profile_focus' });
+      };
+      window.addEventListener?.('focus', refreshOnFocus);
+      if (typeof document !== 'undefined') {
+        document.addEventListener?.('visibilitychange', () => {
+          if (document.visibilityState === 'visible') refreshOnFocus();
+        });
+      }
+      this.profileRefreshListenersBound = true;
+    }
+
+    if (!this.profileRefreshTimer && typeof window !== 'undefined' && typeof window.setInterval === 'function') {
+      this.profileRefreshTimer = window.setInterval(() => {
+        if (!this.isAuthenticated()) return;
+        this.revalidateProfile({ reason: 'profile_interval' });
+      }, 5 * 60 * 1000);
+    }
+
+    return this.authSubscription;
   },
 
   user() {

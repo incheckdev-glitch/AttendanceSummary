@@ -430,6 +430,8 @@ const Permissions = {
   state: {
     loaded: false,
     loading: false,
+    loadedRole: null,
+    requestId: 0,
     rows: [],
     page: 1,
     limit: 50,
@@ -628,11 +630,25 @@ const Permissions = {
       this.reset();
       return [];
     }
-    if (this.state.loading && !force) return this.state.rows;
+
     const currentRole = this.normalizeRole(Session.role());
+    if (!currentRole) {
+      this.reset();
+      return [];
+    }
+
+    if (this.state.loading && !force) return this.state.rows;
+
+    const requestId = Number(this.state.requestId || 0) + 1;
+    this.state.requestId = requestId;
     this.state.loading = true;
+    this.state.loaded = false;
+    this.state.loadedRole = null;
+    this.state.rows = [];
+    this.state.matrix = new Map();
+    this.state.error = null;
+
     try {
-      this.state.error = null;
       let rows = [];
       let total = 0;
       const limit = Number(this.state.limit || 50);
@@ -640,11 +656,24 @@ const Permissions = {
       if (!client || typeof client.rpc !== 'function') {
         throw new Error('Supabase RPC client is unavailable for get_my_role_permissions');
       }
+
       const { data, error } = await client.rpc('get_my_role_permissions');
       if (error) throw error;
+
+      const roleAtCompletion = this.normalizeRole(Session.role());
+      if (requestId !== this.state.requestId || roleAtCompletion !== currentRole || !Session.isAuthenticated()) {
+        console.warn('[Permissions] discarded stale matrix response', {
+          requestedRole: currentRole,
+          currentRole: roleAtCompletion,
+          requestId,
+          activeRequestId: this.state.requestId
+        });
+        return [];
+      }
+
       rows = this.extractRows(data);
       total = rows.length;
-      const roleKey = this.normalizeRole(currentRole);
+      const roleKey = currentRole;
       rows = rows.filter(row => this.normalizeRole(row.role_key) === roleKey && this.toBoolean(row.is_active, true) === true);
       const { matrix, totalActiveRows, totalDeniedRows } = this.buildMatrixFromRows(rows);
       this.state.rows = rows;
@@ -655,70 +684,58 @@ const Permissions = {
       this.state.limit = limit;
       this.state.offset = 0;
       this.state.matrix = matrix;
+      this.state.loadedRole = roleKey;
+      this.state.loaded = true;
       console.log('[Permissions] loaded matrix for role', {
         roleKey,
         rowsCount: rows.length,
         resources: [...new Set(rows.map(row => String(row.resource || '').trim().toLowerCase()).filter(Boolean))]
       });
-      console.log('[Permissions] matrix loaded', {
-        roleKey,
-        rowCount: rows.length,
-        resources: Object.keys(Object.fromEntries(
-          [...new Set(rows.map(row => String(row.resource || '').trim().toLowerCase()).filter(Boolean))]
-            .map(resource => [resource, true])
-        ) || {})
-      });
       console.info('[Permissions] matrix loaded stats', {
+        roleKey,
         totalActiveRows,
         totalDeniedRows
       });
-      this.state.loaded = true;
-      if (['hoo', 'head_of_operations'].includes(roleKey)) {
-        const tabs = typeof UI !== 'undefined' && UI?.tabRegistry
-          ? UI.tabRegistry().filter(tab => this.canAccessTab(tab.key))
-          : [];
-        const permissionMatrix = rows;
-        console.log('[HOO ACCESS DEBUG]', {
-          role: roleKey,
-          visibleTabs: tabs.map(t => t.key),
-          activePermissions: permissionMatrix.filter(p =>
-            ['hoo', 'head_of_operations'].includes(String(p.role_key || '').toLowerCase()) &&
-            p.is_allowed === true &&
-            p.is_active === true
-          )
-        });
-      }
       return rows;
     } catch (error) {
-      this.state.rows = [];
-      this.state.matrix = new Map();
-      const isPermErr =
-        typeof window !== 'undefined' && typeof window.isPermissionError === 'function'
-          ? window.isPermissionError(error)
-          : String(error?.message || '').toLowerCase().includes('forbidden') ||
-            String(error?.message || '').toLowerCase().includes('cannot list');
-      this.state.loaded = false;
-      this.state.error = error;
-      console.error('[Permissions] loadMatrix error', {
-        isPermErr,
-        message: error?.message,
-        roleKey: this.normalizeRole(Session.role()),
-        error
-      });
+      if (requestId === this.state.requestId) {
+        this.state.rows = [];
+        this.state.matrix = new Map();
+        this.state.loaded = false;
+        this.state.loadedRole = null;
+        const isPermErr =
+          typeof window !== 'undefined' && typeof window.isPermissionError === 'function'
+            ? window.isPermissionError(error)
+            : String(error?.message || '').toLowerCase().includes('forbidden') ||
+              String(error?.message || '').toLowerCase().includes('cannot list');
+        this.state.error = error;
+        console.error('[Permissions] loadMatrix error', {
+          isPermErr,
+          message: error?.message,
+          roleKey: currentRole,
+          error
+        });
+      }
       return [];
     } finally {
-      this.state.loading = false;
+      if (requestId === this.state.requestId) this.state.loading = false;
     }
   },
   reset() {
+    this.state.requestId = Number(this.state.requestId || 0) + 1;
     this.state.loaded = false;
     this.state.loading = false;
+    this.state.loadedRole = null;
     this.state.rows = [];
     this.state.matrix = new Map();
     this.state.error = null;
   },
   isReady() {
-    return Boolean(this.state.loaded) && !this.state.loading;
+    const currentRole = this.normalizeRole(Session.role());
+    return Boolean(this.state.loaded) &&
+      !this.state.loading &&
+      Boolean(currentRole) &&
+      this.normalizeRole(this.state.loadedRole) === currentRole;
   },
   requireReady(message = 'Permissions are still loading. Please wait.') {
     if (this.isReady()) return true;
