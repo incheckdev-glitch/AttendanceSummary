@@ -1,8 +1,12 @@
+import { createHash, randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 
-const ADMIN_ROLES = new Set(['admin', 'administrator', 'super_admin']);
+const ADMIN_ROLES = new Set(['admin']);
 const DEFAULT_MAX_OBJECTS = 2500;
 const DEFAULT_MAX_STORAGE_BYTES = 250 * 1024 * 1024; // 250 MB safety limit for Vercel memory/time.
+const DEFAULT_LOCK_SECONDS = 15 * 60;
+const DEFAULT_RATE_WINDOW_SECONDS = 5 * 60;
+const BACKUP_REQUEST_MARKER = 'incheck360-admin';
 
 function text(value = '') {
   return String(value ?? '').trim();
@@ -12,7 +16,16 @@ function lower(value = '') {
   return text(value).toLowerCase();
 }
 
+function applyNoStoreHeaders(res) {
+  res.setHeader('Cache-Control', 'no-store, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Vary', 'Authorization, Origin');
+}
+
 function json(res, status, payload) {
+  applyNoStoreHeaders(res);
   res.status(status).json(payload);
 }
 
@@ -28,17 +41,48 @@ function getEnv(...keys) {
   return '';
 }
 
-function getCallerRole(profile, user) {
-  return lower(
-    profile?.role_key ||
-      profile?.role ||
-      profile?.user_role ||
-      profile?.app_role ||
-      user?.app_metadata?.role_key ||
-      user?.app_metadata?.role ||
-      user?.user_metadata?.role_key ||
-      user?.user_metadata?.role
-  );
+function getCallerRole(profile) {
+  return lower(profile?.role_key || profile?.role || profile?.user_role || profile?.app_role);
+}
+
+function parsePositiveInteger(value, fallback, minimum, maximum) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(maximum, Math.max(minimum, parsed));
+}
+
+function getSupabaseProjectRef(supabaseUrl) {
+  try {
+    const hostname = new URL(supabaseUrl).hostname.toLowerCase();
+    const suffix = '.supabase.co';
+    if (!hostname.endsWith(suffix)) return '';
+    return hostname.slice(0, -suffix.length);
+  } catch {
+    return '';
+  }
+}
+
+function validateDeploymentBinding(supabaseUrl) {
+  const runtimeEnvironment = lower(process.env.VERCEL_ENV);
+  const configuredEnvironment = lower(getEnv('BACKUP_ENVIRONMENT'));
+  const expectedProjectRef = lower(getEnv('BACKUP_EXPECTED_PROJECT_REF'));
+  const actualProjectRef = lower(getSupabaseProjectRef(supabaseUrl));
+
+  if (!runtimeEnvironment || !configuredEnvironment || runtimeEnvironment !== configuredEnvironment) {
+    return { ok: false, status: 503, error: 'Backup environment binding is not configured for this deployment.' };
+  }
+  if (!expectedProjectRef || !actualProjectRef || expectedProjectRef !== actualProjectRef) {
+    return { ok: false, status: 503, error: 'Backup project binding does not match this deployment.' };
+  }
+  return { ok: true, runtimeEnvironment, projectRef: actualProjectRef };
+}
+
+function hasValidRequestMarker(req) {
+  return lower(req.headers?.['x-backup-request']) === BACKUP_REQUEST_MARKER;
+}
+
+function hasJsonContentType(req) {
+  return lower(req.headers?.['content-type']).startsWith('application/json');
 }
 
 async function loadProfileByColumn(supabaseAdmin, column, value) {
@@ -59,23 +103,11 @@ async function loadProfileByColumn(supabaseAdmin, column, value) {
 }
 
 async function getCallerProfile(supabaseAdmin, user) {
-  if (!user?.id && !user?.email) return null;
-  return (
-    (await loadProfileByColumn(supabaseAdmin, 'id', user.id)) ||
-    (await loadProfileByColumn(supabaseAdmin, 'auth_user_id', user.id)) ||
-    (await loadProfileByColumn(supabaseAdmin, 'user_id', user.id)) ||
-    (await loadProfileByColumn(supabaseAdmin, 'email', user.email)) ||
-    null
-  );
+  if (!user?.id) return null;
+  return loadProfileByColumn(supabaseAdmin, 'id', user.id);
 }
 
 async function authorize(req, supabaseAdmin) {
-  const configuredSecret = getEnv('BACKUP_CENTER_SECRET', 'ADMIN_BACKUP_SECRET');
-  const providedSecret = text(req.headers?.['x-backup-secret'] || req.query?.secret);
-  if (configuredSecret && providedSecret && providedSecret === configuredSecret) {
-    return { ok: true, type: 'secret', role: 'admin' };
-  }
-
   const token = extractBearerToken(req);
   if (!token) return { ok: false, status: 401, error: 'Missing backup authorization. Please sign in again.' };
 
@@ -83,12 +115,46 @@ async function authorize(req, supabaseAdmin) {
   if (error || !data?.user) return { ok: false, status: 401, error: 'Invalid backup authorization. Please sign in again.' };
 
   const profile = await getCallerProfile(supabaseAdmin, data.user);
-  const role = getCallerRole(profile, data.user);
+  if (!profile || profile.is_active !== true) {
+    return { ok: false, status: 403, error: 'The active Admin profile could not be verified.' };
+  }
+  const role = getCallerRole(profile);
   if (!ADMIN_ROLES.has(role)) {
     return { ok: false, status: 403, error: 'Backup download is admin-only.' };
   }
 
   return { ok: true, type: 'user', userId: data.user.id, email: data.user.email || null, role };
+}
+
+async function acquireBackupGuard(supabaseAdmin, auth) {
+  const requestId = randomUUID();
+  const lockSeconds = parsePositiveInteger(process.env.BACKUP_LOCK_SECONDS, DEFAULT_LOCK_SECONDS, 60, 3600);
+  const rateWindowSeconds = parsePositiveInteger(process.env.BACKUP_RATE_WINDOW_SECONDS, DEFAULT_RATE_WINDOW_SECONDS, 30, 3600);
+  const { data, error } = await supabaseAdmin.rpc('backup_center_acquire_guard', {
+    p_request_id: requestId,
+    p_user_id: auth.userId,
+    p_lock_seconds: lockSeconds,
+    p_rate_window_seconds: rateWindowSeconds
+  });
+  if (error) throw new Error(`Backup guard unavailable: ${error.message || error}`);
+  const result = Array.isArray(data) ? data[0] : data;
+  if (!result?.acquired) {
+    return {
+      ok: false,
+      status: 429,
+      retryAfter: Math.max(1, Number(result?.retry_after_seconds || rateWindowSeconds)),
+      error: result?.reason === 'backup_in_progress'
+        ? 'Another backup is already running.'
+        : 'A backup was requested recently. Please try again later.'
+    };
+  }
+  return { ok: true, requestId };
+}
+
+async function releaseBackupGuard(supabaseAdmin, requestId) {
+  if (!requestId) return;
+  const { error } = await supabaseAdmin.rpc('backup_center_release_guard', { p_request_id: requestId });
+  if (error) console.warn('[backup/download] Unable to release backup guard', error);
 }
 
 function crc32Buffer(buffer) {
@@ -347,7 +413,7 @@ async function exportStorageFiles(supabaseAdmin, manifest) {
         const buffer = await arrayBufferFromDownloadPayload(data);
         totalBytes += buffer.length;
         zipFiles.push({ name: `storage/${bucketName}/${file.path}`, data: buffer });
-        manifest.storage.files.push({ bucket: bucketName, path: file.path, size: buffer.length });
+        manifest.storage.files.push({ bucket: bucketName, path: file.path, size: buffer.length, sha256: createHash('sha256').update(buffer).digest('hex') });
       } catch (downloadError) {
         skipped.push({ bucket: bucketName, path: file.path, reason: downloadError.message || String(downloadError) });
       }
@@ -360,7 +426,7 @@ async function exportStorageFiles(supabaseAdmin, manifest) {
   return zipFiles;
 }
 
-async function insertBackupLog(supabaseAdmin, auth, fileName, zipBytes, manifest) {
+async function insertBackupLog(supabaseAdmin, auth, fileName, zipBytes, checksum, manifest) {
   try {
     await supabaseAdmin.from('backup_logs').insert({
       backup_type: 'full',
@@ -371,10 +437,12 @@ async function insertBackupLog(supabaseAdmin, auth, fileName, zipBytes, manifest
       finished_at: manifest.finished_at,
       file_name: fileName,
       file_size_mb: Number((zipBytes / 1024 / 1024).toFixed(2)),
+      checksum,
       storage_location: 'Downloaded from Backup Center one-click button',
       notes: manifest.storage.skipped?.length
         ? `One-click backup completed with ${manifest.storage.skipped.length} skipped storage item(s). Check manifest.`
         : 'One-click backup downloaded from Backup Center.',
+      created_by: auth.userId || null,
       created_by_name: auth.email || auth.userId || 'Admin'
     });
   } catch (error) {
@@ -383,23 +451,48 @@ async function insertBackupLog(supabaseAdmin, auth, fileName, zipBytes, manifest
 }
 
 export default async function handler(req, res) {
-  if (!['POST', 'GET'].includes(req.method)) {
-    res.setHeader('Allow', 'POST, GET');
+  applyNoStoreHeaders(res);
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST');
     return json(res, 405, { ok: false, error: 'Method not allowed.' });
   }
+  if (!hasValidRequestMarker(req)) {
+    return json(res, 400, { ok: false, error: 'Invalid backup request.' });
+  }
+  if (!hasJsonContentType(req)) {
+    return json(res, 415, { ok: false, error: 'Backup requests must use application/json.' });
+  }
 
-  const supabaseUrl = getEnv('SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL', 'VITE_SUPABASE_URL');
+  const supabaseUrl = getEnv('SUPABASE_URL');
   const serviceRoleKey = getEnv('SUPABASE_SERVICE_ROLE_KEY');
   if (!supabaseUrl || !serviceRoleKey) {
-    return json(res, 500, { ok: false, error: 'Missing Vercel env vars SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.' });
+    return json(res, 503, { ok: false, error: 'Backup service is not configured.' });
   }
+
+  const deployment = validateDeploymentBinding(supabaseUrl);
+  if (!deployment.ok) return json(res, deployment.status, { ok: false, error: deployment.error });
 
   const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false }
   });
 
-  const auth = await authorize(req, supabaseAdmin).catch(error => ({ ok: false, status: 401, error: error.message || String(error) }));
+  const auth = await authorize(req, supabaseAdmin).catch(error => {
+    console.warn('[backup/download] Authorization failed', error);
+    return { ok: false, status: 401, error: 'Unable to verify backup authorization.' };
+  });
   if (!auth?.ok) return json(res, auth?.status || 401, { ok: false, error: auth?.error || 'Unauthorized.' });
+
+  let guard = null;
+  try {
+    guard = await acquireBackupGuard(supabaseAdmin, auth);
+  } catch (error) {
+    console.error('[backup/download] Backup guard failed', error);
+    return json(res, 503, { ok: false, error: 'Backup protection is not available. Apply the latest backup security migration.' });
+  }
+  if (!guard?.ok) {
+    res.setHeader('Retry-After', String(guard.retryAfter || 60));
+    return json(res, guard.status || 429, { ok: false, error: guard.error || 'Backup request is temporarily limited.' });
+  }
 
   const startedAt = new Date().toISOString();
   const stamp = startedAt.replace(/[:.]/g, '-').slice(0, 19);
@@ -409,6 +502,7 @@ export default async function handler(req, res) {
     const { data: databaseExport, error: dbError } = await supabaseAdmin.rpc('backup_center_export_public_data');
     if (dbError) throw new Error(`Database export RPC failed: ${dbError.message || dbError}`);
 
+    const databaseJson = Buffer.from(JSON.stringify(databaseExport || {}, null, 2), 'utf8');
     const manifest = {
       app: 'InCheck360 ERP',
       backup_type: 'one_click_database_json_plus_storage',
@@ -416,6 +510,15 @@ export default async function handler(req, res) {
       started_at: startedAt,
       finished_at: null,
       generated_by: auth.email || auth.userId || auth.type,
+      deployment: {
+        environment: deployment.runtimeEnvironment,
+        project_ref: deployment.projectRef
+      },
+      integrity: {
+        algorithm: 'sha256',
+        database_export_sha256: createHash('sha256').update(databaseJson).digest('hex'),
+        zip_checksum_delivery: 'X-Backup-SHA256 response header and backup_logs.checksum'
+      },
       notes: [
         'This one-click backup includes public ERP table data as JSON plus Supabase Storage bucket files.',
         'It is not a pg_dump replacement for roles, RLS policies, functions, or extensions. Keep manual CLI backups for full disaster recovery.',
@@ -436,7 +539,7 @@ export default async function handler(req, res) {
 
     const files = [
       { name: 'README_BACKUP.txt', data: manifest.notes.join('\n') + '\n' },
-      { name: 'database/public_tables.json', data: JSON.stringify(databaseExport || {}, null, 2) }
+      { name: 'database/public_tables.json', data: databaseJson }
     ];
 
     const storageFiles = await exportStorageFiles(supabaseAdmin, manifest);
@@ -446,12 +549,14 @@ export default async function handler(req, res) {
     files.push({ name: 'backup_manifest.json', data: JSON.stringify(manifest, null, 2) });
 
     const zip = createZip(files);
-    await insertBackupLog(supabaseAdmin, auth, fileName, zip.length, manifest);
+    const checksum = createHash('sha256').update(zip).digest('hex');
+    await insertBackupLog(supabaseAdmin, auth, fileName, zip.length, checksum, manifest);
 
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-    res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Content-Length', String(zip.length));
+    res.setHeader('X-Backup-SHA256', checksum);
+    res.setHeader('X-Backup-Environment', deployment.runtimeEnvironment);
     return res.status(200).send(zip);
   } catch (error) {
     console.error('[backup/download] Backup failed', error);
@@ -466,9 +571,12 @@ export default async function handler(req, res) {
         file_name: fileName,
         storage_location: 'Backup Center one-click button',
         notes: error.message || String(error),
+        created_by: auth.userId || null,
         created_by_name: auth.email || auth.userId || 'Admin'
       });
     } catch (_) {}
-    return json(res, 500, { ok: false, error: error.message || 'Backup failed.' });
+    return json(res, 500, { ok: false, error: 'Backup failed. Review the server logs and Backup Center history.' });
+  } finally {
+    await releaseBackupGuard(supabaseAdmin, guard?.requestId);
   }
 }
