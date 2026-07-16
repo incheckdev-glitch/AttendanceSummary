@@ -16,12 +16,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Collect Phase 4 source
         run: |
-          mkdir -p phase4-source/api/backup phase4-source/sql/migrations phase4-source/scripts phase4-source/tests
-          cp api/backup/download.js phase4-source/api/backup/
-          cp backup-center.js vercel.json README_BACKUP_CENTER_ONE_CLICK.md package.json phase4-source/
-          cp sql/migrations/20260707_backup_center_one_click_admin_only.sql phase4-source/sql/migrations/
-          cp scripts/run-tests.js phase4-source/scripts/
-          cp -r tests/. phase4-source/tests/
+          mkdir -p phase4-source
+          rsync -a \
+            --exclude '.git' \
+            --exclude 'node_modules' \
+            --exclude 'phase4-source' \
+            ./ phase4-source/
       - name: Upload Phase 4 source
         uses: actions/upload-artifact@v4
         with:
