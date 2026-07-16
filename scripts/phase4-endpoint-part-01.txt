@@ -1,0 +1,191 @@
+    const name = normalizeZipName(file.name);
+    const nameBuffer = Buffer.from(name, 'utf8');
+    const data = Buffer.isBuffer(file.data) ? file.data : Buffer.from(String(file.data ?? ''), 'utf8');
+    const crc = crc32Buffer(data);
+
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(flags, 6);
+    local.writeUInt16LE(method, 8);
+    local.writeUInt16LE(dosTime, 10);
+    local.writeUInt16LE(dosDate, 12);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBuffer.length, 26);
+    local.writeUInt16LE(0, 28);
+    localParts.push(local, nameBuffer, data);
+
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(flags, 8);
+    central.writeUInt16LE(method, 10);
+    central.writeUInt16LE(dosTime, 12);
+    central.writeUInt16LE(dosDate, 14);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(nameBuffer.length, 28);
+    central.writeUInt16LE(0, 30);
+    central.writeUInt16LE(0, 32);
+    central.writeUInt16LE(0, 34);
+    central.writeUInt16LE(0, 36);
+    central.writeUInt32LE(0, 38);
+    central.writeUInt32LE(offset, 42);
+    centralParts.push(central, nameBuffer);
+
+    offset += local.length + nameBuffer.length + data.length;
+  }
+
+  const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
+  const centralOffset = offset;
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(0, 4);
+  end.writeUInt16LE(0, 6);
+  end.writeUInt16LE(files.length, 8);
+  end.writeUInt16LE(files.length, 10);
+  end.writeUInt32LE(centralSize, 12);
+  end.writeUInt32LE(centralOffset, 16);
+  end.writeUInt16LE(0, 20);
+
+  return Buffer.concat([...localParts, ...centralParts, end]);
+}
+
+async function arrayBufferFromDownloadPayload(payload) {
+  if (!payload) return Buffer.alloc(0);
+  if (Buffer.isBuffer(payload)) return payload;
+  if (payload instanceof ArrayBuffer) return Buffer.from(payload);
+  if (payload?.arrayBuffer) return Buffer.from(await payload.arrayBuffer());
+  return Buffer.from(String(payload));
+}
+
+async function listBucketFiles(supabaseAdmin, bucketName, prefix = '', state = { count: 0 }) {
+  const files = [];
+  let offset = 0;
+  const limit = 1000;
+  const maxObjects = Number(process.env.BACKUP_MAX_STORAGE_OBJECTS || DEFAULT_MAX_OBJECTS);
+
+  while (state.count < maxObjects) {
+    const { data, error } = await supabaseAdmin.storage.from(bucketName).list(prefix, {
+      limit,
+      offset,
+      sortBy: { column: 'name', order: 'asc' }
+    });
+    if (error) throw new Error(`Storage list failed for ${bucketName}/${prefix}: ${error.message || error}`);
+    const items = Array.isArray(data) ? data : [];
+    if (!items.length) break;
+
+    for (const item of items) {
+      const itemName = text(item.name);
+      if (!itemName || itemName === '.emptyFolderPlaceholder') continue;
+      const fullPath = prefix ? `${prefix}/${itemName}` : itemName;
+      const looksLikeFolder = !item.id && !item.metadata?.size && !/\.[^/]+$/.test(itemName);
+      if (looksLikeFolder) {
+        files.push(...await listBucketFiles(supabaseAdmin, bucketName, fullPath, state));
+      } else {
+        files.push({ bucket: bucketName, path: fullPath, size: Number(item.metadata?.size || 0), metadata: item.metadata || null });
+        state.count += 1;
+        if (state.count >= maxObjects) break;
+      }
+    }
+    if (items.length < limit) break;
+    offset += limit;
+  }
+
+  return files;
+}
+
+
+async function listStorageObjectsFromMetadata(supabaseAdmin) {
+  if (typeof supabaseAdmin.schema !== 'function') {
+    throw new Error('Supabase client does not support schema("storage") metadata listing.');
+  }
+
+  const maxObjects = Number(process.env.BACKUP_MAX_STORAGE_OBJECTS || DEFAULT_MAX_OBJECTS);
+  const limit = 1000;
+  let from = 0;
+  const objects = [];
+  const storageSchema = supabaseAdmin.schema('storage');
+
+  while (objects.length < maxObjects) {
+    const to = Math.min(from + limit - 1, maxObjects - 1);
+    const { data, error } = await storageSchema
+      .from('objects')
+      .select('bucket_id,name,metadata,created_at,updated_at,last_accessed_at')
+      .order('bucket_id', { ascending: true })
+      .order('name', { ascending: true })
+      .range(from, to);
+
+    if (error) throw new Error(`Storage metadata list failed: ${error.message || error}`);
+    const rows = Array.isArray(data) ? data : [];
+    if (!rows.length) break;
+
+    for (const row of rows) {
+      const bucket = text(row.bucket_id);
+      const path = text(row.name);
+      if (!bucket || !path || path.endsWith('/.emptyFolderPlaceholder') || path === '.emptyFolderPlaceholder') continue;
+      objects.push({
+        bucket,
+        path,
+        size: Number(row.metadata?.size || row.metadata?.contentLength || 0),
+        metadata: row.metadata || null,
+        created_at: row.created_at || null,
+        updated_at: row.updated_at || null,
+        last_accessed_at: row.last_accessed_at || null
+      });
+      if (objects.length >= maxObjects) break;
+    }
+
+    if (rows.length < limit) break;
+    from += limit;
+  }
+
+  return objects;
+}
+
+function groupStorageObjectsByBucket(objects) {
+  const grouped = new Map();
+  for (const object of objects || []) {
+    const bucket = text(object.bucket);
+    if (!bucket) continue;
+    if (!grouped.has(bucket)) grouped.set(bucket, []);
+    grouped.get(bucket).push(object);
+  }
+  return grouped;
+}
+
+async function exportStorageFiles(supabaseAdmin, manifest) {
+  const zipFiles = [];
+  const maxBytes = Number(process.env.BACKUP_MAX_STORAGE_BYTES || DEFAULT_MAX_STORAGE_BYTES);
+  let totalBytes = 0;
+  const skipped = [];
+
+  const { data: buckets, error } = await supabaseAdmin.storage.listBuckets();
+  if (error) throw new Error(`Unable to list Storage buckets: ${error.message || error}`);
+
+  const bucketMap = new Map();
+  for (const bucket of buckets || []) {
+    const bucketName = text(bucket.name || bucket.id);
+    if (bucketName) bucketMap.set(bucketName, bucket);
+  }
+
+  let groupedFiles = new Map();
+  try {
+    const metadataObjects = await listStorageObjectsFromMetadata(supabaseAdmin);
+    groupedFiles = groupStorageObjectsByBucket(metadataObjects);
+    manifest.storage.list_mode = 'storage.objects metadata';
+    manifest.storage.inventory = metadataObjects.map(item => ({
+      bucket: item.bucket,
+      path: item.path,
+      size: item.size,
+      created_at: item.created_at,
+      updated_at: item.updated_at
+    }));
+  } catch (metadataError) {
+    manifest.storage.list_mode = 'Storage API recursive fallback';
+    manifest.storage.metadata_list_error = metadataError.message || String(metadataError);
+    for (const bucket of buckets || []) {
