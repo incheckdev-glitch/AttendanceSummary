@@ -1,0 +1,76 @@
+name: Phase 4 Apply Validated Changes
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Detect completed Phase 4 assembly
+        id: detect
+        shell: bash
+        run: |
+          if grep -q "BACKUP_REQUEST_MARKER" api/backup/download.js && grep -q "X-Backup-SHA256" backup-center.js; then
+            echo "assembled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "assembled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Assemble validated endpoint and UI changes
+        if: steps.detect.outputs.assembled != 'true'
+        shell: bash
+        run: |
+          cat \
+            scripts/phase4-endpoint-part-00.txt \
+            scripts/phase4-endpoint-part-01.txt \
+            scripts/phase4-endpoint-part-02.txt \
+            scripts/phase4-endpoint-part-03.txt \
+            > api/backup/download.js
+          python scripts/apply-phase4-ui.py
+
+      - name: Validate Phase 4 and complete ERP suite
+        shell: bash
+        run: |
+          node --check api/backup/download.js
+          node --check backup-center.js
+          node tests/phase4-backup-security.test.js
+          node scripts/check-js-syntax.js
+          node scripts/validate-sql-migrations.js
+          node scripts/run-tests.js
+
+      - name: Remove temporary assembly files
+        shell: bash
+        run: |
+          rm -f \
+            .github/workflows/phase4-source-snapshot.yml \
+            .github/workflows/phase4-apply-validated.yml \
+            scripts/apply-phase4-ui.py \
+            scripts/phase4-endpoint-part-00.txt \
+            scripts/phase4-endpoint-part-01.txt \
+            scripts/phase4-endpoint-part-02.txt \
+            scripts/phase4-endpoint-part-03.txt
+
+      - name: Commit clean Phase 4 result
+        shell: bash
+        run: |
+          git config user.name "InCheck360 Safety Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No Phase 4 changes remain to commit."
+            exit 0
+          fi
+          git commit -m "Harden backup and deployment security"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
