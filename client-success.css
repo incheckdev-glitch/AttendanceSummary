@@ -636,7 +636,7 @@ body.dark .cs-table th, body.dark .cs-empty { background:#111827; }
 }
 
 
-/* CS360 modal save click reliability */
+/* CS360 save/persistence reliability */
 .cs-modal.is-open,
 .cs-modal.is-open .cs-modal-card,
 .cs-modal.is-open .cs-form,
@@ -647,21 +647,21 @@ body.dark .cs-table th, body.dark .cs-empty { background:#111827; }
 .cs-modal-actions {
   position: sticky;
   bottom: 0;
-  z-index: 5;
+  z-index: 20;
   background: var(--cs-card, #fff);
-  padding-bottom: 2px;
+  padding-bottom: 4px;
 }
 
 .cs-modal-actions button[type="submit"],
 .cs-special-client-save-btn,
 [data-cs-modal-submit="true"] {
   position: relative;
-  z-index: 6;
+  z-index: 21;
   pointer-events: auto !important;
   cursor: pointer !important;
 }
 
-.cs-modal-actions button[type="submit"][disabled] {
+.cs-modal-actions button[type="submit"][aria-busy="true"] {
   cursor: wait !important;
-  opacity: .7;
+  opacity: .72;
 }
