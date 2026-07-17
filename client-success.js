@@ -332,8 +332,31 @@
     return String(row.legal_name || row.legal_company_name || row.company_name || row.customer_legal_name || row.customer_name || row.client_name || row.name || 'Unnamed Client').trim();
   }
 
+  function isUuidValue(value = '') {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      .test(String(value || '').trim());
+  }
+
+  function csCompanyUuid(row = {}) {
+    const values = [
+      row.company_id,
+      row.company_uuid,
+      row.uuid,
+      row.customer_company_id,
+      row.client_company_id,
+      row.companyId,
+      row.customerCompanyId,
+      row.clientCompanyId,
+      row.id,
+      row.client_id,
+      ...(Array.isArray(row.__cs_alias_ids) ? row.__cs_alias_ids : [])
+    ];
+
+    return String(values.find(isUuidValue) || '').trim();
+  }
+
   function companyId(row = {}) {
-    return String(
+    return csCompanyUuid(row) || String(
       row.id ||
       row.company_id ||
       row.client_id ||
@@ -410,12 +433,12 @@
   }
 
   function clientRegistryId(row = {}) {
-    return String(
+    return csCompanyUuid(row) || String(
       row.company_id ||
       row.customer_company_id ||
       row.client_company_id ||
-      row.client_id ||
       row.id ||
+      row.client_id ||
       ''
     ).trim();
   }
@@ -514,6 +537,9 @@
     ]));
     const displayName = chooseCsClientDisplayName(left, right);
     const stableId = String(
+      csCompanyUuid(primary) ||
+      csCompanyUuid(secondary) ||
+      aliases.find(isUuidValue) ||
       primary.company_id ||
       secondary.company_id ||
       primary.id ||
@@ -605,12 +631,21 @@
   }
 
   function clientRegistryRowAsCompany(clientRow = {}, linkedCompany = null) {
-    const id = clientRegistryId(clientRow) || companyId(linkedCompany || {});
+    const linkedUuid = csCompanyUuid(linkedCompany || {});
+    const registryUuid = csCompanyUuid(clientRow);
+    const id = linkedUuid || registryUuid || clientRegistryId(clientRow);
+
     return {
       ...(linkedCompany || {}),
       ...clientRow,
       id,
       company_id: id,
+      company_uuid: linkedUuid || registryUuid || null,
+      client_reference:
+        clientRow.client_id ||
+        clientRow.client_code ||
+        clientRow.client_reference ||
+        null,
       company_name: clientRegistryName(clientRow) || companyName(linkedCompany || {}),
       legal_name: clientRegistryName(clientRow) || companyName(linkedCompany || {}),
       company_status: clientRow.status || linkedCompany?.company_status || 'Client',
@@ -695,6 +730,24 @@
   function getSelectedSpecialClient() {
     const id = String(STATE.selectedSpecialClientId || '').trim();
     return specialTemplateById(id) || activeSpecialTemplates()[0] || null;
+  }
+
+  function resolveCsCompanyUuid(company = {}) {
+    const direct = csCompanyUuid(company);
+    if (direct) return direct;
+
+    const aliases = new Set(csClientAliasIds(company).filter(isUuidValue));
+    if (aliases.size) return Array.from(aliases)[0];
+
+    const nameKey = csClientNameKey(company);
+    const linkedCompany = (STATE.rows.allCompanies || []).find(row => {
+      const rowUuid = csCompanyUuid(row);
+      if (!rowUuid) return false;
+      if (csClientAliasIds(company).includes(rowUuid)) return true;
+      return nameKey && csClientNameKey(row) === nameKey;
+    });
+
+    return csCompanyUuid(linkedCompany || {});
   }
 
   function selectNormalClient(id = '') {
@@ -1013,8 +1066,15 @@
   }
 
   function groupMembershipRows(company) {
-    const id = companyId(company);
-    return (STATE.rows.groupMembers || []).filter(row => String(row.company_id || '').trim() === id);
+    const ids = new Set([
+      resolveCsCompanyUuid(company),
+      companyId(company),
+      ...csClientAliasIds(company)
+    ].map(value => String(value || '').trim()).filter(Boolean));
+
+    return (STATE.rows.groupMembers || []).filter(row =>
+      ids.has(String(row.company_id || '').trim())
+    );
   }
 
   function groupsForCompany(company) {
@@ -1031,8 +1091,23 @@
 
   function groupMemberCompanies(group) {
     const gid = groupId(group);
-    const ids = new Set((STATE.rows.groupMembers || []).filter(row => String(row.group_id || '').trim() === gid).map(row => String(row.company_id || '').trim()).filter(Boolean));
-    return STATE.rows.companies.filter(company => ids.has(companyId(company))).sort((a,b) => companyName(a).localeCompare(companyName(b)));
+    const ids = new Set(
+      (STATE.rows.groupMembers || [])
+        .filter(row => String(row.group_id || '').trim() === gid)
+        .map(row => String(row.company_id || '').trim())
+        .filter(Boolean)
+    );
+
+    return (STATE.rows.companies || [])
+      .filter(company => {
+        const companyIds = [
+          resolveCsCompanyUuid(company),
+          companyId(company),
+          ...csClientAliasIds(company)
+        ].map(value => String(value || '').trim()).filter(Boolean);
+        return companyIds.some(id => ids.has(id));
+      })
+      .sort((a, b) => companyName(a).localeCompare(companyName(b)));
   }
 
   function brandName(row = {}) {
@@ -3631,17 +3706,36 @@
     </form>`, async form => {
       const fd = new FormData(form);
       const group = groupById(fd.get('group_id')) || {};
+      const companyUuid = resolveCsCompanyUuid(company);
+
+      if (!companyUuid) {
+        throw new Error(
+          `"${companyName(company)}" does not have a valid company UUID. Link this client to a Companies-module record before adding it to a group.`
+        );
+      }
+
       const payload = {
         group_id: fd.get('group_id'),
-        company_id: companyId(company),
+        company_id: companyUuid,
         group_name_snapshot: groupName(group),
         company_name_snapshot: companyName(company),
         member_role: fd.get('member_role') || null,
         notes: fd.get('notes') || null
       };
-      const { error } = await supabase().from(TABLES.groupMembers).upsert(payload, { onConflict: 'group_id,company_id' });
-      if (error) { toast(`Unable to add client to group: ${error.message}`); return; }
-      closeModal(); await loadData(); toast('Client added to CS group.');
+
+      const { error } = await withCsTimeout(
+        supabase()
+          .from(TABLES.groupMembers)
+          .upsert(payload, { onConflict: 'group_id,company_id' }),
+        20000,
+        'Adding client to CS group'
+      );
+
+      if (error) throw new Error(`Unable to add client to group: ${error.message}`);
+
+      closeModal();
+      await loadData();
+      toast('Client added to CS group.');
     });
   }
 
@@ -3673,8 +3767,9 @@
   }
 
   function currentClientCompletionTargets(company) {
+    const companyUuid = resolveCsCompanyUuid(company);
     return getClientLocationRows(company).map(location => ({
-      company_id: companyId(company),
+      company_id: companyUuid,
       company_name: companyName(company),
       location_name: location.location_name,
       service_start_date: location.service_start_date,
@@ -4031,7 +4126,7 @@
       const payload = {
         brand_name: fd.get('brand_name'),
         brand_code: fd.get('brand_code') || null,
-        company_id: scope === 'company' ? companyId(company) : null,
+        company_id: scope === 'company' ? resolveCsCompanyUuid(company) : null,
         company_name_snapshot: scope === 'company' ? companyName(company) : null,
         group_id: scope === 'group' ? fd.get('group_id') : null,
         group_name_snapshot: group ? groupName(group) : null,

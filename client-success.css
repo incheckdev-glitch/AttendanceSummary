@@ -839,3 +839,9 @@ body.dark .cs-detail-head--special,
 .cs-client-card [data-cs-duplicate-merged] {
   font-weight: 800;
 }
+
+
+/* CS360 company UUID write safety */
+.cs-company-link-warning {
+  margin-top: 8px;
+}
