@@ -51,11 +51,14 @@
     booted: false,
     loading: false,
     selectedCompanyId: '',
+    selectedEntityType: 'normal',
+    selectedSpecialClientId: '',
     activeTab: 'overview',
+    specialActiveTab: 'overview',
     filters: { search: '', status: 'All', health: 'All', effort: 'All', group: 'All' },
     tablesMissing: new Set(),
     rows: {
-      companies: [], allCompanies: [], profiles: [], reviews: [], tasks: [], risks: [], qbrs: [], contacts: [], mainContacts: [], activities: [], onboarding: [], agreements: [], agreementItems: [], invoices: [], invoiceItems: [], completions: [], tickets: [], groups: [], groupMembers: [], brands: [], brandLocations: [], specialTemplates: [], specialGroups: [], specialBrands: [], specialLocations: []
+      companies: [], allCompanies: [], clients: [], profiles: [], reviews: [], tasks: [], risks: [], qbrs: [], contacts: [], mainContacts: [], activities: [], onboarding: [], agreements: [], agreementItems: [], invoices: [], invoiceItems: [], completions: [], tickets: [], groups: [], groupMembers: [], brands: [], brandLocations: [], specialTemplates: [], specialGroups: [], specialBrands: [], specialLocations: []
     },
     templateQuestions: { weekly: [], monthly: [] },
     clientSelectPagination: { search: '', page: 1, pageSize: 25, total: 0 },
@@ -239,7 +242,57 @@
 
   const supabase = () => global.SupabaseClient?.getClient?.();
 
-  function toast(message) { global.UI?.toast?.(message); }
+  function toast(message) {
+    const text = String(message || '').trim();
+    if (!text) return;
+    if (typeof global.UI?.toast === 'function') {
+      global.UI.toast(text);
+      return;
+    }
+
+    console.info('[ClientSuccess360]', text);
+    let node = document.getElementById('csFallbackToast');
+    if (!node) {
+      node = document.createElement('div');
+      node.id = 'csFallbackToast';
+      node.setAttribute('role', 'status');
+      node.style.cssText = [
+        'position:fixed',
+        'right:24px',
+        'bottom:24px',
+        'z-index:100000',
+        'max-width:440px',
+        'padding:12px 16px',
+        'border-radius:12px',
+        'background:#0f172a',
+        'color:#fff',
+        'box-shadow:0 18px 50px rgba(15,23,42,.35)',
+        'font:600 13px/1.45 system-ui,sans-serif',
+        'white-space:pre-wrap'
+      ].join(';');
+      document.body.appendChild(node);
+    }
+    node.textContent = text;
+    node.hidden = false;
+    clearTimeout(node.__csToastTimer);
+    node.__csToastTimer = setTimeout(() => { node.hidden = true; }, 7000);
+  }
+
+  function withCsTimeout(request, timeoutMs = 20000, label = 'Database request') {
+    let timer;
+    return Promise.race([
+      Promise.resolve(request),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)} seconds.`)), timeoutMs);
+      })
+    ]).finally(() => clearTimeout(timer));
+  }
+
+  function isMissingRpcError(error, functionName = '') {
+    const message = String(error?.message || error || '');
+    return /PGRST202|Could not find the function|schema cache|function .* does not exist/i.test(message)
+      && (!functionName || message.toLowerCase().includes(String(functionName).toLowerCase()) || /function/i.test(message));
+  }
 
   function safeNumber(value, fallback = 0) {
     const n = Number(value);
@@ -263,7 +316,14 @@
   }
 
   function companyId(row = {}) {
-    return String(row.id || row.company_id || '').trim();
+    return String(
+      row.id ||
+      row.company_id ||
+      row.client_id ||
+      row.customer_company_id ||
+      row.client_company_id ||
+      ''
+    ).trim();
   }
 
 
@@ -311,17 +371,187 @@
     });
   }
 
-  function toSignedClientCompanies(companies, agreements) {
-    const previous = STATE.rows.agreements;
+  function normalizeClientIdentity(value = '') {
+    return normalizeCs360DisplayName(value)
+      .replace(/\b(s\.?a\.?l|l\.?l\.?c|limited liability company|one person company|company|branch)\b/g, ' ')
+      .replace(/[^a-z0-9\u0600-\u06ff]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function clientRegistryName(row = {}) {
+    return String(
+      row.customer_legal_name ||
+      row.legal_name ||
+      row.legal_company_name ||
+      row.company_name ||
+      row.customer_name ||
+      row.client_name ||
+      row.name ||
+      'Unnamed Client'
+    ).trim();
+  }
+
+  function clientRegistryId(row = {}) {
+    return String(
+      row.company_id ||
+      row.customer_company_id ||
+      row.client_company_id ||
+      row.client_id ||
+      row.id ||
+      ''
+    ).trim();
+  }
+
+  function namesRepresentSameClient(left = '', right = '') {
+    const a = normalizeClientIdentity(left);
+    const b = normalizeClientIdentity(right);
+    if (!a || !b) return false;
+    if (a === b) return true;
+
+    // A legal registration name may continue after the trading/client name,
+    // for example "BAB ALMANSOUR RESTAURANT OWNED BY ...".
+    const shorter = a.length <= b.length ? a : b;
+    const longer = a.length > b.length ? a : b;
+    return shorter.length >= 8 && longer.startsWith(`${shorter} `);
+  }
+
+  function findCompanyForClientRegistryRow(clientRow = {}, companies = []) {
+    const ids = [
+      clientRow.company_id,
+      clientRow.customer_company_id,
+      clientRow.client_company_id,
+      clientRow.companyId,
+      clientRow.customerCompanyId
+    ].map(v => String(v || '').trim()).filter(Boolean);
+
+    const byId = companies.find(company => {
+      const companyIds = [
+        company.id,
+        company.company_id,
+        company.company_uuid,
+        company.uuid
+      ].map(v => String(v || '').trim()).filter(Boolean);
+      return ids.some(id => companyIds.includes(id));
+    });
+    if (byId) return byId;
+
+    const registryName = clientRegistryName(clientRow);
+    return companies.find(company => namesRepresentSameClient(registryName, companyName(company))) || null;
+  }
+
+  function clientRegistryRowAsCompany(clientRow = {}, linkedCompany = null) {
+    const id = clientRegistryId(clientRow) || companyId(linkedCompany || {});
+    return {
+      ...(linkedCompany || {}),
+      ...clientRow,
+      id,
+      company_id: id,
+      company_name: clientRegistryName(clientRow) || companyName(linkedCompany || {}),
+      legal_name: clientRegistryName(clientRow) || companyName(linkedCompany || {}),
+      company_status: clientRow.status || linkedCompany?.company_status || 'Client',
+      city: clientRow.city || linkedCompany?.city || '',
+      country: clientRow.country || linkedCompany?.country || '',
+      __cs_source: 'client_registry'
+    };
+  }
+
+  function companyHasActiveInvoice(company, invoices = []) {
+    const id = companyId(company);
+    const name = companyName(company);
+    return (Array.isArray(invoices) ? invoices : []).some(invoice => {
+      if (!isActiveInvoice(invoice)) return false;
+      const invoiceCompanyId = String(
+        invoice.company_id ||
+        invoice.company_uuid ||
+        invoice.client_id ||
+        invoice.customer_id ||
+        invoice.customer_company_id ||
+        ''
+      ).trim();
+      if (id && invoiceCompanyId && id === invoiceCompanyId) return true;
+      const invoiceName = String(
+        invoice.customer_legal_name ||
+        invoice.customer_name ||
+        invoice.company_name ||
+        invoice.client_name ||
+        ''
+      ).trim();
+      return namesRepresentSameClient(name, invoiceName);
+    });
+  }
+
+  function buildCs360ClientCompanies(companies = [], clientRows = [], agreements = [], invoices = []) {
+    const allCompanies = Array.isArray(companies) ? companies : [];
+    const registryRows = Array.isArray(clientRows) ? clientRows : [];
+    const result = new Map();
+
+    const add = row => {
+      const id = companyId(row);
+      const nameKey = normalizeClientIdentity(companyName(row));
+      const key = id || `name:${nameKey}`;
+      if (!key || key === 'name:') return;
+
+      const previous = result.get(key);
+      result.set(key, previous ? { ...previous, ...row } : row);
+    };
+
+    // The Clients module is the primary source. Every non-deleted client is
+    // visible in CS360, even when no agreement/invoice is linked yet.
+    registryRows
+      .filter(row => !['deleted','removed'].includes(String(row.status || '').trim().toLowerCase()))
+      .forEach(clientRow => {
+        const linkedCompany = findCompanyForClientRegistryRow(clientRow, allCompanies);
+        add(clientRegistryRowAsCompany(clientRow, linkedCompany));
+      });
+
+    // Keep commercial clients visible even when the Clients registry link is
+    // incomplete or the legal names differ.
+    const previousAgreements = STATE.rows.agreements;
     STATE.rows.agreements = Array.isArray(agreements) ? agreements : [];
-    const out = (Array.isArray(companies) ? companies : []).filter(companyHasSignedAgreement);
-    STATE.rows.agreements = previous;
-    return out;
+    allCompanies.forEach(company => {
+      const status = String(company.company_status || company.status || '').trim().toLowerCase();
+      const looksLikeClient = status.includes('client') || status.includes('customer') || status.includes('active');
+      if (companyHasSignedAgreement(company) || companyHasActiveInvoice(company, invoices) || looksLikeClient) add(company);
+    });
+    STATE.rows.agreements = previousAgreements;
+
+    return Array.from(result.values())
+      .filter(row => companyId(row) && companyName(row))
+      .sort((a, b) => companyName(a).localeCompare(companyName(b)));
   }
 
   function getSelectedCompany() {
     const id = STATE.selectedCompanyId || companyId(STATE.rows.companies[0] || {});
     return STATE.rows.companies.find(c => companyId(c) === id) || STATE.rows.companies[0] || null;
+  }
+
+  function getSelectedSpecialClient() {
+    const id = String(STATE.selectedSpecialClientId || '').trim();
+    return specialTemplateById(id) || activeSpecialTemplates()[0] || null;
+  }
+
+  function selectNormalClient(id = '') {
+    const company = (STATE.rows.companies || []).find(row => companyId(row) === String(id || '').trim());
+    if (!company) return;
+    STATE.selectedEntityType = 'normal';
+    STATE.selectedCompanyId = companyId(company);
+    STATE.activeTab = 'overview';
+    renderClientList();
+    renderDetail();
+  }
+
+  function selectSpecialClient(id = '') {
+    const special = specialTemplateById(id) || activeSpecialTemplates()[0] || null;
+    if (!special) {
+      toast('No active Special CS Client is available.');
+      return;
+    }
+    STATE.selectedEntityType = 'special';
+    STATE.selectedSpecialClientId = specialTemplateId(special);
+    STATE.specialActiveTab = 'overview';
+    renderClientList();
+    renderDetail();
   }
 
   function rowsForCompany(kind, company) {
@@ -857,16 +1087,31 @@
   }
 
   async function fetchTable(name, select = '*', order = { column: 'created_at', ascending: false }, limit = 1000) {
+    const client = supabase();
+    if (!client) return [];
+
+    const maxRows = Math.max(1, Number(limit) || 1000);
+    const pageSize = Math.min(1000, maxRows);
+    const rows = [];
+
     try {
-      let query = supabase().from(name).select(select).limit(limit);
-      if (order?.column) query = query.order(order.column, { ascending: Boolean(order.ascending) });
-      const { data, error } = await query;
-      if (error) throw error;
-      return Array.isArray(data) ? data : [];
+      for (let offset = 0; offset < maxRows; offset += pageSize) {
+        const end = Math.min(offset + pageSize - 1, maxRows - 1);
+        let query = client.from(name).select(select).range(offset, end);
+        if (order?.column) query = query.order(order.column, { ascending: Boolean(order.ascending) });
+
+        const { data, error } = await withCsTimeout(query, 20000, `Loading ${name}`);
+        if (error) throw error;
+
+        const page = Array.isArray(data) ? data : [];
+        rows.push(...page);
+        if (page.length < (end - offset + 1)) break;
+      }
+      return rows;
     } catch (error) {
       console.warn(`[ClientSuccess360] unable to load ${name}`, error);
-      if (/does not exist|schema cache|Could not find/i.test(String(error?.message || ''))) STATE.tablesMissing.add(name);
-      return [];
+      if (/does not exist|schema cache|Could not find|PGRST/i.test(String(error?.message || ''))) STATE.tablesMissing.add(name);
+      return rows;
     }
   }
 
@@ -890,10 +1135,13 @@
 
   async function openSpecialCaseTemplates() {
     console.info('[CS360 Special Clients] open clicked');
-    STATE.activeTab = 'specialTemplates';
-    renderDetail();
     await loadSpecialCaseTemplates({ force: true });
-    renderDetail();
+    const special = specialTemplateById(STATE.selectedSpecialClientId) || activeSpecialTemplates()[0] || null;
+    if (!special) {
+      openSpecialTemplateForm('');
+      return;
+    }
+    selectSpecialClient(specialTemplateId(special));
   }
 
   async function loadData() {
@@ -904,8 +1152,9 @@
     const client = supabase();
     if (!client) { renderError('Supabase client is not available.'); return; }
 
-    const [allCompanies, profiles, reviews, tasks, risks, qbrs, contacts, mainContacts, activities, onboarding, agreements, agreementItems, invoices, invoiceItems, completions, tickets, groups, groupMembers, brands, brandLocations, specialTemplates, specialGroups, specialBrands, specialLocations, templateQuestions] = await Promise.all([
-      fetchTable('companies', '*', { column: 'company_name', ascending: true }, 1500),
+    const [allCompanies, clientRows, profiles, reviews, tasks, risks, qbrs, contacts, mainContacts, activities, onboarding, agreements, agreementItems, invoices, invoiceItems, completions, tickets, groups, groupMembers, brands, brandLocations, specialTemplates, specialGroups, specialBrands, specialLocations, templateQuestions] = await Promise.all([
+      fetchTable('companies', '*', { column: 'company_name', ascending: true }, 10000),
+      fetchTable('clients', '*', { column: 'updated_at', ascending: false }, 10000),
       fetchTable(TABLES.profiles),
       fetchTable(TABLES.reviews),
       fetchTable(TABLES.tasks),
@@ -915,10 +1164,10 @@
       fetchTable('contacts', '*', { column: 'created_at', ascending: false }, 3000),
       fetchTable('csm_activities', '*', { column: 'created_at', ascending: false }, 1500),
       fetchTable('operations_onboarding', '*', { column: 'created_at', ascending: false }, 1500),
-      fetchTable('agreements', '*', { column: 'created_at', ascending: false }, 1500),
-      fetchTable('agreement_items', '*', { column: 'created_at', ascending: false }, 3000),
-      fetchTable('invoices', '*', { column: 'created_at', ascending: false }, 2000),
-      fetchTable('invoice_items', '*', { column: 'created_at', ascending: false }, 5000),
+      fetchTable('agreements', '*', { column: 'created_at', ascending: false }, 10000),
+      fetchTable('agreement_items', '*', { column: 'created_at', ascending: false }, 20000),
+      fetchTable('invoices', '*', { column: 'created_at', ascending: false }, 10000),
+      fetchTable('invoice_items', '*', { column: 'created_at', ascending: false }, 20000),
       fetchTable(TABLES.completions, '*', { column: 'period_end', ascending: false }, 3000),
       fetchTable('tickets', '*', { column: 'created_at', ascending: false }, 1500),
       fetchTable(TABLES.groups, '*', { column: 'group_name', ascending: true }, 1000),
@@ -932,16 +1181,25 @@
       fetchTable(TABLES.templateQuestions, '*, cs_review_templates(review_type)', { column: 'sort_order', ascending: true }, 200)
     ]);
 
-    const companies = toSignedClientCompanies(allCompanies, agreements);
+    const companies = buildCs360ClientCompanies(allCompanies, clientRows, agreements, invoices);
     const completionsForDisplay = completions.map(applyCs360LocationNameOverride);
     const brandLocationsForDisplay = brandLocations.map(applyCs360LocationNameOverride);
     const specialLocationsForDisplay = specialLocations.map(applyCs360LocationNameOverride);
-    STATE.rows = { companies, allCompanies, profiles, reviews, tasks, risks, qbrs, contacts, mainContacts, activities, onboarding, agreements, agreementItems, invoices, invoiceItems, completions: completionsForDisplay, tickets, groups, groupMembers, brands, brandLocations: brandLocationsForDisplay, specialTemplates, specialGroups, specialBrands, specialLocations: specialLocationsForDisplay };
+    STATE.rows = { companies, allCompanies, clients: clientRows, profiles, reviews, tasks, risks, qbrs, contacts, mainContacts, activities, onboarding, agreements, agreementItems, invoices, invoiceItems, completions: completionsForDisplay, tickets, groups, groupMembers, brands, brandLocations: brandLocationsForDisplay, specialTemplates, specialGroups, specialBrands, specialLocations: specialLocationsForDisplay };
     STATE.templateQuestions.weekly = templateQuestions.filter(q => q.cs_review_templates?.review_type === 'weekly').map(q => [q.question_key, q.question_label]);
     STATE.templateQuestions.monthly = templateQuestions.filter(q => q.cs_review_templates?.review_type === 'monthly').map(q => [q.question_key, q.question_label]);
     if (!STATE.templateQuestions.weekly.length) STATE.templateQuestions.weekly = QUESTION_BANK.weekly;
     if (!STATE.templateQuestions.monthly.length) STATE.templateQuestions.monthly = QUESTION_BANK.monthly;
     if (!STATE.selectedCompanyId && companies.length) STATE.selectedCompanyId = companyId(companies[0]);
+    if (STATE.selectedEntityType === 'special') {
+      const selectedSpecial = specialTemplateById(STATE.selectedSpecialClientId) || activeSpecialTemplates()[0] || null;
+      if (selectedSpecial) STATE.selectedSpecialClientId = specialTemplateId(selectedSpecial);
+      else STATE.selectedEntityType = 'normal';
+    }
+    if (!companies.length && activeSpecialTemplates().length) {
+      STATE.selectedEntityType = 'special';
+      STATE.selectedSpecialClientId = specialTemplateId(activeSpecialTemplates()[0]);
+    }
     STATE.loading = false;
     render();
   }
@@ -957,7 +1215,7 @@
         <div class="cs-hero-copy">
           <span class="cs-eyebrow">Customer Success</span>
           <h2>Client Success 360</h2>
-          <p>Monitor signed-agreement clients, location completion, satisfaction, weekly/monthly pulse reviews, extra CS effort, risks, tasks, onboarding follow-up, renewals, QBRs, contacts, and activity. No payment, invoice, receipt, collection, or accounting data is used.</p>
+          <p>Monitor all registered clients and standalone Special CS Clients, location completion, satisfaction, weekly/monthly pulse reviews, risks, tasks, renewals, QBRs, contacts, and activity. No payment, invoice, receipt, collection, or accounting data is used.</p>
         </div>
         <div class="cs-header-actions">
           <span class="cs-admin-chip">${esc(accessLabel())}</span>
@@ -1004,7 +1262,9 @@
   function wire() {
     const writeAction = handler => () => { if (!canCreate()) { toast('No Customer Success create permission for your role.'); return; } handler(); };
     $('csRefreshBtn')?.addEventListener('click', () => loadData());
-    $('csAddCompletionBtn')?.addEventListener('click', writeAction(openCompletionForm));
+    $('csAddCompletionBtn')?.addEventListener('click', writeAction(() => {
+      openCompletionForm(STATE.selectedEntityType === 'special' ? STATE.selectedSpecialClientId : '');
+    }));
     $('csAddGroupBtn')?.addEventListener('click', writeAction(openGroupForm));
     $('csAddGroupMemberBtn')?.addEventListener('click', writeAction(openGroupMemberForm));
     $('csAddBrandBtn')?.addEventListener('click', writeAction(openBrandForm));
@@ -1074,7 +1334,7 @@
     const missing = Array.from(STATE.tablesMissing).filter(t => Object.values(TABLES).includes(t));
     const stateText = missing.length
       ? `Run SQL migration first. Missing CS tables: ${missing.join(', ')}`
-      : `${STATE.rows.companies.length} signed-agreement clients loaded · Customer Success workspace`;
+      : `${STATE.rows.companies.length} normal clients · ${activeSpecialTemplates().length} standalone Special CS Clients loaded`;
     $('csState') && ($('csState').textContent = stateText);
   }
 
@@ -1087,7 +1347,7 @@
     const completionRate = averageCompletionMetrics(latestCompletionRows).completion;
     const openRisks = openRows(STATE.rows.risks).length;
     const items = [
-      { label: 'Active Clients', value: companies.length, sub: '+ signed agreements', icon: '👥', tone: 'blue' },
+      { label: 'Normal Clients', value: companies.length, sub: 'Clients registry + commercial clients', icon: '👥', tone: 'blue' },
       { label: 'Client Groups', value: activeGroups().length, sub: `${activeBrands().length} brand layer${activeBrands().length === 1 ? '' : 's'}`, icon: '🔗', tone: 'blue' },
       { label: 'Clients at Risk', value: atRisk, sub: atRisk ? 'needs action' : 'no critical action', icon: '⚠', tone: atRisk ? 'warn' : 'green' },
       { label: 'Weekly Reviews Missing', value: weeklyMissing, sub: 'current week', icon: '📅', tone: weeklyMissing ? 'red' : 'green' },
@@ -1351,53 +1611,214 @@
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     const page = clampCsPage(p.page, totalPages);
     const meta = { rows: all.slice((page - 1) * pageSize, page * pageSize), total, page, pageSize, totalPages };
-    const list = meta.rows;
+    const normalRows = meta.rows;
     STATE.clientSelectPagination = { search: p.search, page: meta.page, pageSize: meta.pageSize, total: meta.total };
-    if (!filtered.some(c => companyId(c) === STATE.selectedCompanyId)) STATE.selectedCompanyId = companyId(filtered[0] || STATE.rows.companies[0] || {});
+
+    if (
+      STATE.selectedEntityType === 'normal' &&
+      !filtered.some(c => companyId(c) === STATE.selectedCompanyId)
+    ) {
+      STATE.selectedCompanyId = companyId(filtered[0] || STATE.rows.companies[0] || {});
+    }
+
+    const search = normalize(p.search || STATE.filters.search || '');
+    const specialRows = activeSpecialTemplates()
+      .filter(special => {
+        if (!search) return true;
+        const sid = specialTemplateId(special);
+        return normalize([
+          specialTemplateName(special),
+          special.description,
+          ...specialGroupsForTemplate(sid).map(groupName),
+          ...specialBrandsForTemplate(sid).map(brandName),
+          ...specialLocationsForTemplate(sid, false).map(row => row.location_name)
+        ].join(' ')).includes(search);
+      })
+      .sort((a, b) => specialTemplateName(a).localeCompare(specialTemplateName(b)));
+
     const host = $('csClientList');
     if (!host) return;
-    const searchControls = `<div class="cs-client-select-controls"><label>Client Search</label><input class="input cs-client-select-search" type="search" data-cs-action="client-select-search" value="${attr(p.search || '')}" placeholder="Search client, group, brand, location…" /><div data-cs-client-select-pagination-host>${renderClientSelectPagination(meta)}</div></div>`;
-    if (!meta.total || !list.length) { host.innerHTML = `${searchControls}<div class="cs-empty">No clients found.</div>`; renderDetail(); return; }
-    host.innerHTML = searchControls + list.map(company => {
-      const id = companyId(company);
-      const profile = getProfile(company);
-      const score = computeHealth(company);
-      const reviews = reviewRows(company);
-      const latest = reviews[0] || {};
-      const status = profile.client_status || mapCompanyStatus(company.company_status);
-      return `<button class="cs-client-card ${id === STATE.selectedCompanyId ? 'is-active' : ''}" type="button" data-company-id="${attr(id)}">
-        <div class="cs-client-name"><span>${esc(companyName(company))}</span><span>${esc(company.company_id || '')}</span></div>
-        <div class="cs-client-meta">
-          ${healthChip(score)}
-          <span class="cs-chip cs-chip--blue">${esc(status)}</span>
-          <span class="cs-chip cs-chip--violet">${esc(computeEffort(company))}</span>
-          <span class="cs-chip">${esc(groupLabelForCompany(company))}</span>
-        </div>
-        <div class="cs-kpi-sub">Last review: ${fmtDate(latest.review_date)} · Last activity: ${fmtDate(latestDate(activityRows(company), ['timestamp','created_at']))}</div>
-      </button>`;
-    }).join('');
-    host.querySelectorAll('[data-company-id]').forEach(btn => btn.addEventListener('click', () => {
-      STATE.selectedCompanyId = btn.getAttribute('data-company-id') || '';
-      renderClientList(); renderDetail();
-    }));
+
+    const searchControls = `<div class="cs-client-select-controls"><label>Client Search</label><input class="input cs-client-select-search" type="search" data-cs-action="client-select-search" value="${attr(p.search || '')}" placeholder="Search all normal and special clients…" /><div data-cs-client-select-pagination-host>${renderClientSelectPagination(meta)}</div></div>`;
+
+    const normalCards = normalRows.length
+      ? normalRows.map(company => {
+          const id = companyId(company);
+          const profile = getProfile(company);
+          const score = computeHealth(company);
+          const reviews = reviewRows(company);
+          const latest = reviews[0] || {};
+          const status = profile.client_status || mapCompanyStatus(company.company_status);
+          return `<button class="cs-client-card ${STATE.selectedEntityType === 'normal' && id === STATE.selectedCompanyId ? 'is-active' : ''}" type="button" data-cs-normal-client-id="${attr(id)}">
+            <div class="cs-client-name"><span>${esc(companyName(company))}</span><span class="cs-client-source-badge">Normal Client</span></div>
+            <div class="cs-client-meta">
+              ${healthChip(score)}
+              <span class="cs-chip cs-chip--blue">${esc(status)}</span>
+              <span class="cs-chip">${esc(groupLabelForCompany(company))}</span>
+            </div>
+            <div class="cs-kpi-sub">Last review: ${fmtDate(latest.review_date)} · Locations: ${getClientLocations(company).length}</div>
+          </button>`;
+        }).join('')
+      : '<div class="cs-empty">No matching normal clients.</div>';
+
+    const specialCards = specialRows.length
+      ? specialRows.map(special => {
+          const id = specialTemplateId(special);
+          const locations = specialLocationsForTemplate(id, true);
+          return `<button class="cs-client-card cs-client-card--special ${STATE.selectedEntityType === 'special' && id === STATE.selectedSpecialClientId ? 'is-active' : ''}" type="button" data-cs-special-sidebar-id="${attr(id)}">
+            <div class="cs-client-name"><span>${esc(specialTemplateName(special))}</span><span class="cs-client-source-badge cs-client-source-badge--special">Standalone Special</span></div>
+            <div class="cs-client-meta">
+              <span class="cs-chip cs-chip--violet">${locations.length} location${locations.length === 1 ? '' : 's'}</span>
+              <span class="cs-chip">${esc(special.status || 'active')}</span>
+            </div>
+            <div class="cs-kpi-sub">Independent CS client · no agreement, invoice, or parent client</div>
+          </button>`;
+        }).join('')
+      : '<div class="cs-empty">No matching standalone Special CS Clients.</div>';
+
+    host.innerHTML = `${searchControls}
+      <div class="cs-sidebar-section">
+        <div class="cs-sidebar-section-title"><span>Normal Clients</span><b>${meta.total}</b></div>
+        ${normalCards}
+      </div>
+      <div class="cs-sidebar-section cs-sidebar-section--special">
+        <div class="cs-sidebar-section-title"><span>Standalone Special CS Clients</span><b>${specialRows.length}</b></div>
+        ${specialCards}
+      </div>`;
+
+    host.querySelectorAll('[data-cs-normal-client-id]').forEach(button => {
+      button.addEventListener('click', () => selectNormalClient(button.dataset.csNormalClientId || ''));
+    });
+    host.querySelectorAll('[data-cs-special-sidebar-id]').forEach(button => {
+      button.addEventListener('click', () => selectSpecialClient(button.dataset.csSpecialSidebarId || ''));
+    });
+  }
+
+  function syncHeaderActionsForSelection() {
+    const isSpecial = STATE.selectedEntityType === 'special';
+    [
+      'csAddGroupBtn',
+      'csAddGroupMemberBtn',
+      'csAddBrandBtn',
+      'csAddBrandLocationBtn',
+      'csAddReviewBtn',
+      'csAddTaskBtn',
+      'csAddRiskBtn',
+      'csAddQbrBtn',
+      'csAddContactBtn'
+    ].forEach(id => {
+      const button = $(id);
+      if (button) button.style.display = isSpecial ? 'none' : '';
+    });
   }
 
   function renderDetail() {
-    const company = getSelectedCompany();
+    syncHeaderActionsForSelection();
     const host = $('csClientDetail');
     if (!host) return;
-    if (!company) { host.innerHTML = '<div class="cs-empty">No clients found. Add companies first.</div>'; return; }
+
+    if (STATE.selectedEntityType === 'special') {
+      const special = getSelectedSpecialClient();
+      if (!special) {
+        host.innerHTML = '<div class="cs-empty">No standalone Special CS Client is selected.</div>';
+        return;
+      }
+      renderStandaloneSpecialClientDetail(special, host);
+      return;
+    }
+
+    const company = getSelectedCompany();
+    if (!company) {
+      if (activeSpecialTemplates().length) {
+        selectSpecialClient(specialTemplateId(activeSpecialTemplates()[0]));
+        return;
+      }
+      host.innerHTML = '<div class="cs-empty">No clients found.</div>';
+      return;
+    }
+
     const profile = getProfile(company);
     const score = computeHealth(company);
     const status = profile.client_status || mapCompanyStatus(company.company_status);
     host.innerHTML = `
       <div class="cs-detail-head">
-        <div class="cs-detail-title"><h3>${esc(companyName(company))}</h3><p>${esc(company.city || '')}${company.city && company.country ? ', ' : ''}${esc(company.country || '')} · ${esc(profile.lifecycle_stage || status)}</p></div>
+        <div class="cs-detail-title"><h3>${esc(companyName(company))}</h3><p>Normal CS Client · ${esc(company.city || '')}${company.city && company.country ? ', ' : ''}${esc(company.country || '')} · ${esc(profile.lifecycle_stage || status)}</p></div>
         <div class="cs-health-ring"><div class="cs-health-score">${score}</div><div class="cs-health-label">${esc(healthLabel(score))}</div></div>
       </div>
-      <div class="cs-tabs">${['overview','groups','brands','completion','specialTemplates','pulse','activity','tasks','risks','onboarding','renewals','qbr','contacts','timeline'].map(tab => `<button class="cs-tab-btn ${STATE.activeTab === tab ? 'is-active' : ''}" type="button" data-cs-tab="${tab}">${tabLabel(tab)}</button>`).join('')}</div>
+      <div class="cs-tabs">${['overview','groups','brands','completion','pulse','activity','tasks','risks','onboarding','renewals','qbr','contacts','timeline'].map(tab => `<button class="cs-tab-btn ${STATE.activeTab === tab ? 'is-active' : ''}" type="button" data-cs-tab="${tab}">${tabLabel(tab)}</button>`).join('')}</div>
       <div id="csTabPanel" class="cs-tab-panel is-active">${renderActivePanel(company)}</div>`;
-    host.querySelectorAll('[data-cs-tab]').forEach(btn => btn.addEventListener('click', () => { STATE.activeTab = btn.dataset.csTab || 'overview'; renderDetail(); }));
+    host.querySelectorAll('[data-cs-tab]').forEach(btn => btn.addEventListener('click', () => {
+      STATE.activeTab = btn.dataset.csTab || 'overview';
+      renderDetail();
+    }));
+  }
+
+  function renderStandaloneSpecialClientDetail(special, host = $('csClientDetail')) {
+    if (!host) return;
+    const sid = specialTemplateId(special);
+    const groups = specialGroupsForTemplate(sid);
+    const brands = specialBrandsForTemplate(sid);
+    const locations = specialLocationsForTemplate(sid, false);
+    const activeLocations = specialLocationsForTemplate(sid, true);
+    const completionRows = (STATE.rows.completions || [])
+      .filter(row => String(row.source_type || '').toLowerCase() === 'special_client' && String(row.special_client_id || '').trim() === sid)
+      .sort((a, b) => String(b.period_end || b.period_start || '').localeCompare(String(a.period_end || a.period_start || '')));
+
+    const tab = STATE.specialActiveTab || 'overview';
+    const actions = `
+      ${canUpdate() ? `<button class="btn ghost sm" type="button" data-cs-action="special-client-edit" data-special-client-id="${attr(sid)}">Edit</button>` : ''}
+      ${canCreate() ? `<button class="btn sm primary" type="button" data-cs-action="special-client-use-completion" data-special-client-id="${attr(sid)}">Add Completion</button>` : ''}
+      <button class="btn ghost sm" type="button" data-cs-action="special-client-view-report" data-special-client-id="${attr(sid)}">View Report</button>`;
+
+    let panel = '';
+    if (tab === 'locations') {
+      panel = locations.length
+        ? `<div class="cs-table-wrap"><table class="cs-table"><thead><tr><th>Location</th><th>Group</th><th>Brand</th><th>Status</th></tr></thead><tbody>${locations.map(location => {
+            const group = location.group_id ? specialGroupById(location.group_id) : null;
+            const brand = location.brand_id ? specialBrandById(location.brand_id) : null;
+            return `<tr><td><strong>${esc(location.location_name)}</strong></td><td>${esc(group ? groupName(group) : '—')}</td><td>${esc(brand ? brandName(brand) : '—')}</td><td>${esc(location.status || 'active')}</td></tr>`;
+          }).join('')}</tbody></table></div>`
+        : '<div class="cs-empty">No locations added yet.</div>';
+    } else if (tab === 'structure') {
+      panel = `<div class="cs-info-grid">
+        <div class="cs-info-box"><div class="cs-info-label">Groups</div><div class="cs-info-value">${esc(groups.map(groupName).join(', ') || 'No groups')}</div></div>
+        <div class="cs-info-box"><div class="cs-info-label">Brands</div><div class="cs-info-value">${esc(brands.map(brandName).join(', ') || 'No brands')}</div></div>
+      </div>`;
+    } else if (tab === 'history') {
+      panel = completionRows.length
+        ? `<div class="cs-table-wrap"><table class="cs-table"><thead><tr><th>Period</th><th>Location</th><th>On-Time</th><th>Late</th><th>Partial</th><th>Missed</th><th>Completion</th></tr></thead><tbody>${completionRows.map(row => `<tr><td>${fmtDate(row.period_start)} – ${fmtDate(row.period_end)}</td><td>${esc(row.location_name || '')}</td><td>${formatDecimal(row.done_on_time)}</td><td>${formatDecimal(row.done_late)}</td><td>${formatDecimal(row.partially_done)}</td><td>${formatDecimal(row.missed)}</td><td><strong>${formatPct(completionCount(row))}</strong></td></tr>`).join('')}</tbody></table></div>`
+        : '<div class="cs-empty">No completion history for this standalone Special CS Client.</div>';
+    } else {
+      panel = `<div class="cs-info-grid">
+        <div class="cs-info-box"><div class="cs-info-label">Client Type</div><div class="cs-info-value">Standalone Special CS Client</div></div>
+        <div class="cs-info-box"><div class="cs-info-label">Status</div><div class="cs-info-value">${esc(special.status || 'active')}</div></div>
+        <div class="cs-info-box"><div class="cs-info-label">Active Locations</div><div class="cs-info-value">${activeLocations.length}</div></div>
+        <div class="cs-info-box"><div class="cs-info-label">Groups / Brands</div><div class="cs-info-value">${groups.length} / ${brands.length}</div></div>
+        <div class="cs-info-box cs-form-field--full"><div class="cs-info-label">Description</div><div class="cs-info-value">${esc(special.description || '—')}</div></div>
+      </div>
+      <div class="cs-mini-note"><strong>Independent client:</strong> this Special CS Client is not attached to the normal client selected previously and has no agreement, invoice, CRM company, accounting, renewal, or payment relationship.</div>`;
+    }
+
+    host.innerHTML = `
+      <div class="cs-detail-head cs-detail-head--special">
+        <div class="cs-detail-title">
+          <span class="cs-client-source-badge cs-client-source-badge--special">Standalone Special CS Client</span>
+          <h3>${esc(specialTemplateName(special))}</h3>
+          <p>Independent Customer Success reporting client · no parent normal client</p>
+        </div>
+        <div class="cs-detail-actions">${actions}</div>
+      </div>
+      <div class="cs-tabs">
+        ${[['overview','Overview'],['locations','Locations'],['structure','Groups & Brands'],['history','Completion History']].map(([key,label]) => `<button class="cs-tab-btn ${tab === key ? 'is-active' : ''}" type="button" data-cs-special-tab="${key}">${label}</button>`).join('')}
+      </div>
+      <div class="cs-tab-panel is-active">${panel}</div>`;
+
+    host.querySelectorAll('[data-cs-special-tab]').forEach(button => {
+      button.addEventListener('click', () => {
+        STATE.specialActiveTab = button.dataset.csSpecialTab || 'overview';
+        renderDetail();
+      });
+    });
   }
 
   function tabLabel(tab) { return ({ overview:'Overview', groups:'Groups', brands:'Brands', completion:'Completion', specialTemplates:'Special CS Clients', pulse:'Pulse Review', activity:'Activity', tasks:'Tasks', risks:'Risks', onboarding:'Onboarding', renewals:'Renewals', qbr:'QBR', contacts:'Contacts', timeline:'Timeline' }[tab] || tab); }
@@ -1406,7 +1827,6 @@
       case 'groups': return renderGroups(company);
       case 'brands': return renderBrands(company);
       case 'completion': return renderCompletion(company);
-      case 'specialTemplates': return renderSpecialTemplates();
       case 'pulse': return renderPulse(company);
       case 'activity': return renderActivity(company);
       case 'tasks': return renderTasks(company);
@@ -1637,7 +2057,7 @@
     return specialLocationsForTemplate(tid, true).map(loc => {
       const group = loc.group_id ? specialGroupById(loc.group_id) : null;
       const brand = loc.brand_id ? specialBrandById(loc.brand_id) : null;
-      return applyCs360LocationNameOverride({ company_id: tid, company_name: template.client_name || specialTemplateName(template), special_client_id: tid, special_location_id: loc.id, special_group_id: loc.group_id || null, special_brand_id: loc.brand_id || null, location_name: loc.location_name, group_name: groupName(group || { group_name: loc.group_name || '' }) || '', brand_name: brandName(brand || { brand_name: loc.brand_name || '' }) || '', source_type: 'special_client' });
+      return applyCs360LocationNameOverride({ company_id: '', company_name: template.client_name || specialTemplateName(template), special_client_id: tid, special_location_id: loc.id, special_group_id: loc.group_id || null, special_brand_id: loc.brand_id || null, location_name: loc.location_name, group_name: groupName(group || { group_name: loc.group_name || '' }) || '', brand_name: brandName(brand || { brand_name: loc.brand_name || '' }) || '', source_type: 'special_client' });
     });
   }
   function renderSpecialTemplates() {
@@ -2185,148 +2605,79 @@
 
   async function saveSpecialTemplate(form, existing = {}) {
     const client = supabase();
-    if (!client || typeof client.from !== 'function') {
-      throw new Error('Supabase database connection is unavailable.');
-    }
+    if (!client) throw new Error('Supabase database connection is unavailable.');
 
     const fd = new FormData(form);
     const clientName = String(fd.get('client_name') || '').trim();
     const groups = Array.from(new Set(parseLines(fd.get('groups_text'))));
     const brands = Array.from(new Set(parseLines(fd.get('brands_text'))));
     const locations = Array.from(new Set(parseLines(fd.get('locations_text'))));
+    const existingId = specialTemplateId(existing) || null;
 
     if (!clientName) {
-      toast('Client Name is required.');
       form.elements?.client_name?.focus?.();
-      return;
+      throw new Error('Client Name is required.');
     }
     if (!locations.length) {
-      toast('Add at least one active location.');
       form.elements?.locations_text?.focus?.();
-      return;
+      throw new Error('Add at least one active location.');
     }
 
-    const payload = {
-      client_name: clientName,
-      description: String(fd.get('description') || '').trim() || null,
-      status: String(fd.get('status') || 'active').trim().toLowerCase(),
-      updated_at: new Date().toISOString()
+    const args = {
+      p_special_client_id: existingId,
+      p_client_name: clientName,
+      p_description: String(fd.get('description') || '').trim() || null,
+      p_status: String(fd.get('status') || 'active').trim().toLowerCase(),
+      p_groups: groups,
+      p_brands: brands,
+      p_locations: locations
     };
 
-    console.info('[CS360 Special Client] Saving to database', {
-      existingId: specialTemplateId(existing),
-      clientName,
-      groupCount: groups.length,
-      brandCount: brands.length,
-      locationCount: locations.length
-    });
+    const { data, error } = await withCsTimeout(
+      client.rpc('cs360_save_special_client', args),
+      25000,
+      'Saving Special CS Client'
+    );
 
-    let templateId = specialTemplateId(existing);
-
-    if (templateId) {
-      const { error } = await client
-        .from(TABLES.specialTemplates)
-        .update(payload)
-        .eq('id', templateId);
-
-      if (error) throw new Error(`Unable to update special client: ${error.message}`);
-
-      const childDeletes = await Promise.all([
-        client.from(TABLES.specialLocations).delete().eq('special_client_id', templateId),
-        client.from(TABLES.specialBrands).delete().eq('special_client_id', templateId),
-        client.from(TABLES.specialGroups).delete().eq('special_client_id', templateId)
-      ]);
-
-      const deleteError = childDeletes.find(result => result?.error)?.error;
-      if (deleteError) throw new Error(`Unable to refresh special client structure: ${deleteError.message}`);
-    } else {
-      const createPayload = {
-        ...payload,
-        created_at: new Date().toISOString()
-      };
-
-      const { data, error } = await client
-        .from(TABLES.specialTemplates)
-        .insert(createPayload)
-        .select('id')
-        .single();
-
-      if (error) throw new Error(`Unable to create special client: ${error.message}`);
-      templateId = String(data?.id || '').trim();
-
-      if (!templateId) {
-        throw new Error('The special client was created without a returned database ID.');
+    if (error) {
+      if (isMissingRpcError(error, 'cs360_save_special_client')) {
+        throw new Error('The CS360 database save migration is not installed. Run 20260717_cs360_save_persistence_final_fix.sql in Supabase, then hard refresh.');
       }
+      throw new Error(`Unable to save Special CS Client: ${error.message}`);
     }
 
-    const groupRows = groups.map((name, index) => ({
-      special_client_id: templateId,
-      group_name: name,
-      sort_order: index
-    }));
-
-    let savedGroups = [];
-    if (groupRows.length) {
-      const { data, error } = await client
-        .from(TABLES.specialGroups)
-        .insert(groupRows)
-        .select('*');
-
-      if (error) throw new Error(`Unable to save groups: ${error.message}`);
-      savedGroups = Array.isArray(data) ? data : [];
-    }
-
-    const firstGroupId = savedGroups[0]?.id || null;
-    const brandRows = brands.map((name, index) => ({
-      special_client_id: templateId,
-      group_id: firstGroupId,
-      brand_name: name,
-      sort_order: index
-    }));
-
-    let savedBrands = [];
-    if (brandRows.length) {
-      const { data, error } = await client
-        .from(TABLES.specialBrands)
-        .insert(brandRows)
-        .select('*');
-
-      if (error) throw new Error(`Unable to save brands: ${error.message}`);
-      savedBrands = Array.isArray(data) ? data : [];
-    }
-
-    const firstBrandId = savedBrands[0]?.id || null;
-    const locationRows = locations.map((name, index) => ({
-      special_client_id: templateId,
-      group_id: firstGroupId,
-      brand_id: firstBrandId,
-      location_name: name,
-      status: 'active',
-      sort_order: index
-    }));
-
-    const { error: locationError } = await client
-      .from(TABLES.specialLocations)
-      .insert(locationRows);
-
-    if (locationError) throw new Error(`Unable to save locations: ${locationError.message}`);
-
-    console.info('[CS360 Special Client] Saved successfully', { templateId });
-
+    const savedId = String(data || existingId || '').trim();
     closeModal();
-    await loadData();
-    STATE.activeTab = 'specialTemplates';
-    renderDetail();
-    toast('Special CS Client saved.');
-  }
 
+    // Refresh only the standalone Special CS Client tables and select the
+    // saved Special CS Client as its own independent sidebar client.
+    await loadSpecialCaseTemplates({ force: true });
+    STATE.selectedEntityType = 'special';
+    STATE.selectedSpecialClientId = savedId;
+    STATE.specialActiveTab = 'overview';
+    renderClientList();
+    renderDetail();
+
+    toast(`Special CS Client saved${savedId ? ` (${clientName})` : ''}.`);
+  }
   async function archiveSpecialTemplate(templateId = '') {
     const template = specialTemplateById(templateId);
     if (!template) { toast('Select a valid Special CS Client.'); return; }
     if (!confirm(`Archive ${specialTemplateName(template)}? Old completion history will remain.`)) return;
     const { error } = await supabase().from(TABLES.specialTemplates).update({ status: 'archived', updated_at: new Date().toISOString() }).eq('id', templateId);
     if (error) { toast(`Unable to archive special client: ${error.message}`); return; }
-    await loadData(); STATE.activeTab = 'specialTemplates'; renderDetail(); toast('Special CS Client archived.');
+    await loadSpecialCaseTemplates({ force: true });
+    const next = activeSpecialTemplates()[0] || null;
+    if (next) {
+      STATE.selectedEntityType = 'special';
+      STATE.selectedSpecialClientId = specialTemplateId(next);
+    } else {
+      STATE.selectedEntityType = 'normal';
+      STATE.selectedSpecialClientId = '';
+    }
+    renderClientList();
+    renderDetail();
+    toast('Special CS Client archived.');
   }
 
   document.addEventListener('click', event => {
@@ -2374,7 +2725,7 @@
       moveBrandLocation(rowId, select?.value || '');
       return;
     }
-    if (action === 'special-client-open') { openSpecialTemplateForm(event.target?.closest?.('[data-special-client-id]')?.dataset?.specialClientId || '', true); return; }
+    if (action === 'special-client-open') { selectSpecialClient(event.target?.closest?.('[data-special-client-id]')?.dataset?.specialClientId || ''); return; }
     if (action === 'special-client-create') { openSpecialTemplateForm(''); return; }
     if (action === 'special-client-edit') { openSpecialTemplateForm(event.target?.closest?.('[data-special-client-id]')?.dataset?.specialClientId || ''); return; }
     if (action === 'special-client-archive') { archiveSpecialTemplate(event.target?.closest?.('[data-special-client-id]')?.dataset?.specialClientId || ''); return; }
@@ -2406,9 +2757,9 @@
     const modal = $('csModal');
     const titleEl = $('csModalTitle');
     const bodyEl = $('csModalBody');
+
     if (!modal || !titleEl || !bodyEl) {
-      console.error('[CS360 Modal] Required modal elements are missing.');
-      toast('Unable to open the form. Please refresh and try again.');
+      toast('Unable to open the CS360 form. Refresh the page and try again.');
       return;
     }
 
@@ -2418,42 +2769,33 @@
     modal.setAttribute('aria-hidden', 'false');
 
     const form = bodyEl.querySelector('form');
-    if (!form) {
-      console.error('[CS360 Modal] No form was rendered for:', title);
-      return;
-    }
+    if (!form) return;
 
     const submitButton = form.querySelector('button[type="submit"], input[type="submit"]');
     if (submitButton) {
-      submitButton.setAttribute('data-cs-modal-submit', 'true');
+      submitButton.dataset.csModalSubmit = 'true';
       submitButton.disabled = false;
-      submitButton.style.pointerEvents = 'auto';
-      submitButton.style.cursor = 'pointer';
     }
 
     let submitting = false;
-    const handleSubmit = async ev => {
-      ev?.preventDefault?.();
-      ev?.stopPropagation?.();
+    const runSubmit = async event => {
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
 
       if (submitting) return;
-
       if (!form.checkValidity()) {
         form.reportValidity();
-        const invalid = form.querySelector(':invalid');
-        invalid?.focus?.();
+        form.querySelector(':invalid')?.focus?.();
         toast('Complete the required fields before saving.');
         return;
       }
-
       if (typeof onSubmit !== 'function') {
-        console.error('[CS360 Modal] Submit callback is missing for:', title);
-        toast('Save action is unavailable. Please refresh and try again.');
+        toast('This save action is not connected. Refresh the page and try again.');
         return;
       }
 
       submitting = true;
-      const originalText = submitButton?.textContent || 'Save';
+      const originalLabel = submitButton?.textContent || 'Save';
       if (submitButton) {
         submitButton.disabled = true;
         submitButton.setAttribute('aria-busy', 'true');
@@ -2463,33 +2805,20 @@
       try {
         await onSubmit(form);
       } catch (error) {
-        console.error('[CS360 Modal] Save failed', error);
-        toast(`Unable to save: ${error?.message || error}`);
+        console.error('[ClientSuccess360] save failed', error);
+        toast(error?.message || String(error));
       } finally {
         submitting = false;
         if (submitButton && modal.classList.contains('is-open')) {
           submitButton.disabled = false;
           submitButton.removeAttribute('aria-busy');
-          submitButton.textContent = originalText;
+          submitButton.textContent = originalLabel;
         }
       }
     };
 
-    form.addEventListener('submit', handleSubmit);
-
-    // Some platform/global handlers can swallow native submit clicks.
-    // This direct handler guarantees that clicking the visible Save button
-    // runs the same validated submit path exactly once.
-    submitButton?.addEventListener('click', ev => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      handleSubmit(ev);
-    });
-
-    setTimeout(() => {
-      const firstField = form.querySelector('input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])');
-      firstField?.focus?.();
-    }, 0);
+    form.addEventListener('submit', runSubmit);
+    submitButton?.addEventListener('click', runSubmit);
   }
   function closeModal() { const modal = $('csModal'); modal?.classList.remove('is-open'); modal?.setAttribute('aria-hidden', 'true'); }
 
@@ -2646,7 +2975,7 @@
   }
 
   function renderCompletionTargetsTable(targets, sharedData = null, editable = true) {
-    if (!targets.length) return '<tr><td colspan="7" class="cs-empty">No signed client locations found.</td></tr>';
+    if (!targets.length) return '<tr><td colspan="7" class="cs-empty">No client locations found.</td></tr>';
     return targets.map(target => {
       const rowData = sharedData || { done_on_time: 0, done_late: 0, partially_done: 0, missed: 0 };
       const attrs = `data-company-id="${attr(target.company_id)}" data-company-name="${attr(target.company_name)}" data-location-name="${attr(target.location_name)}" data-special-client-id="${attr(target.special_client_id || '')}" data-special-location-id="${attr(target.special_location_id || '')}" data-special-group-id="${attr(target.special_group_id || '')}" data-special-brand-id="${attr(target.special_brand_id || '')}" data-group-name="${attr(target.group_name || '')}" data-brand-name="${attr(target.brand_name || '')}"`;
@@ -2690,10 +3019,12 @@
       : '<option value="">No CS brands yet</option>';
     const specialTemplates = activeSpecialTemplates();
     const specialSelect = specialClientSelectInput(preselectedSpecialTemplateId);
-    const initialTargets = currentClientCompletionTargets(company);
+    const selectedSpecial = preselectedSpecialTemplateId ? specialTemplateById(preselectedSpecialTemplateId) : null;
+    const initialTargets = selectedSpecial ? specialTemplateTargets(selectedSpecial) : currentClientCompletionTargets(company);
 
     openModal('Add Location Completion', `<form class="cs-form" id="csCompletionForm">
-      <div class="cs-form-grid">${selectedCompanyInput()}
+      <div class="cs-form-grid">
+        <div id="csCompletionNormalClientFields" class="cs-completion-normal-fields">${selectedCompanyInput()}</div>
         <div class="cs-form-field"><label>Source</label><select name="completion_scope" class="select"><option value="client">Normal Clients</option><option value="group" ${groups.length ? '' : 'disabled'}>Normal Client Group</option><option value="brand" ${brands.length ? '' : 'disabled'}>Normal Client Brand</option><option value="special_client" ${specialTemplates.length ? '' : 'disabled'} ${preselectedSpecialTemplateId ? 'selected' : ''}>Special CS Clients</option></select></div>
         <div class="cs-form-field" id="csCompletionSpecialField" style="display:none;">${specialSelect}</div>
         <div class="cs-form-field" id="csCompletionGroupField" style="display:none;"><label>CS Client Group</label><select name="group_id" class="select">${groupOptions}</select></div>
@@ -2748,6 +3079,7 @@
     const groupField = $('csCompletionGroupField');
     const brandField = $('csCompletionBrandField');
     const specialField = $('csCompletionSpecialField');
+    const normalClientFields = $('csCompletionNormalClientFields');
     const groupEntry = $('csGroupCompletionEntry');
     const hint = $('csCompletionHint');
     const body = $('csCompletionRowsBody');
@@ -2756,6 +3088,7 @@
     if (groupField) groupField.style.display = isGroup ? '' : 'none';
     if (brandField) brandField.style.display = isBrand ? '' : 'none';
     if (specialField) specialField.style.display = isSpecial ? '' : 'none';
+    if (normalClientFields) normalClientFields.style.display = isSpecial ? 'none' : 'contents';
     if (groupEntry) groupEntry.style.display = (isGroup || isBrand || isSpecial) ? '' : 'none';
     if (aggregateLabel) aggregateLabel.textContent = isSpecial ? 'All Special Client Locations' : (isBrand ? 'All Brand Locations' : 'All Group Locations');
     if (aggregateTitle) aggregateTitle.textContent = isSpecial ? 'Special CS Client Result' : (isBrand ? 'Brand Result Counts' : 'Group Result Counts');
@@ -2821,26 +3154,27 @@
   }
 
   async function saveCompletion(form) {
+    const client = supabase();
+    if (!client) throw new Error('Supabase database connection is unavailable.');
+
     const fd = new FormData(form);
     const scope = String(fd.get('completion_scope') || 'client');
     let payloads = [];
 
-    if (scope === 'group') {
-      const group = groupById(fd.get('group_id'));
-      if (!group) { toast('Select a valid CS client group.'); return; }
+    if (scope === 'group' && !groupById(fd.get('group_id'))) {
+      throw new Error('Select a valid CS client group.');
     }
-    if (scope === 'brand') {
-      const brand = brandById(fd.get('brand_id'));
-      if (!brand) { toast('Select a valid CS brand.'); return; }
+    if (scope === 'brand' && !brandById(fd.get('brand_id'))) {
+      throw new Error('Select a valid CS brand.');
     }
-    if (scope === 'special_client') {
-      const template = specialTemplateById(fd.get('special_client_id'));
-      if (!template) { toast('Select a valid Special CS Client.'); return; }
+    if (scope === 'special_client' && !specialTemplateById(fd.get('special_client_id'))) {
+      throw new Error('Select a valid Special CS Client.');
     }
+
     payloads = Array.from(form.querySelectorAll('.cs-completion-input-row')).map(row => {
       const data = readCompletionInputRow(row);
       return buildCompletionPayload(fd, {
-        company_id: row.dataset.companyId,
+        company_id: row.dataset.companyId || null,
         company_name: row.dataset.companyName,
         location_name: data.location_name,
         source_type: scope === 'special_client' ? 'special_client' : 'normal',
@@ -2853,14 +3187,58 @@
       }, data);
     });
 
-    payloads = payloads.filter(row => row.company_id && row.location_name);
-    if (!payloads.length) { toast('No locations found to save completion.'); return; }
+    payloads = payloads.filter(row => {
+      if (!row.location_name) return false;
+      if (row.source_type === 'special_client') {
+        return Boolean(row.special_client_id && row.special_location_id);
+      }
+      return Boolean(row.company_id);
+    });
+
+    if (!payloads.length) throw new Error('No valid locations were found to save completion.');
+
     const invalid = payloads.find(row => !completionRowIsValid(row));
-    if (invalid) { toast(`Total percentage for ${invalid.location_name} cannot exceed 100%.`); return; }
-    const conflictKey = scope === 'special_client' ? 'source_type,special_client_id,special_location_id,review_type,period_start,period_end' : 'company_id,location_name,review_type,period_start,period_end';
-    const { error } = await supabase().from(TABLES.completions).upsert(payloads, { onConflict: conflictKey });
-    if (error) { toast(`Unable to save completion: ${error.message}`); return; }
-    closeModal(); await loadData(); toast(scope === 'brand' ? `Brand completion saved for ${payloads.length} location line${payloads.length === 1 ? '' : 's'}.` : (scope === 'group' ? `Group completion saved for ${payloads.length} location line${payloads.length === 1 ? '' : 's'}.` : 'Location completion saved.'));
+    if (invalid) throw new Error(`Total percentage for ${invalid.location_name} cannot exceed 100%.`);
+
+    let saveError = null;
+    const rpcResult = await withCsTimeout(
+      client.rpc('cs360_upsert_location_completions', { p_rows: payloads }),
+      25000,
+      'Saving completion report'
+    );
+
+    if (rpcResult?.error && isMissingRpcError(rpcResult.error, 'cs360_upsert_location_completions')) {
+      // Backward-compatible fallback while the migration is being deployed.
+      const conflictKey = scope === 'special_client'
+        ? 'source_type,special_client_id,special_location_id,review_type,period_start,period_end'
+        : 'company_id,location_name,review_type,period_start,period_end';
+      const fallback = await withCsTimeout(
+        client.from(TABLES.completions).upsert(payloads, { onConflict: conflictKey }),
+        25000,
+        'Saving completion report'
+      );
+      saveError = fallback?.error || null;
+    } else {
+      saveError = rpcResult?.error || null;
+    }
+
+    if (saveError) throw new Error(`Unable to save completion: ${saveError.message}`);
+
+    closeModal();
+
+    // Reload only completion rows instead of reloading every CS360 table.
+    const completions = await fetchTable(TABLES.completions, '*', { column: 'period_end', ascending: false }, 3000);
+    STATE.rows.completions = completions.map(applyCs360LocationNameOverride);
+    renderDetail();
+
+    const successMessage = scope === 'brand'
+      ? `Brand completion saved for ${payloads.length} location line${payloads.length === 1 ? '' : 's'}.`
+      : scope === 'group'
+        ? `Group completion saved for ${payloads.length} location line${payloads.length === 1 ? '' : 's'}.`
+        : scope === 'special_client'
+          ? `Special CS Client completion saved for ${payloads.length} location line${payloads.length === 1 ? '' : 's'}.`
+          : 'Location completion saved.';
+    toast(successMessage);
   }
 
 
