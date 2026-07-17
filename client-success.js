@@ -4052,6 +4052,20 @@
 
     if (!payloads.length) throw new Error('No valid locations were found to save completion.');
 
+    if (scope === 'special_client') {
+      const validSpecialLocationIds = new Set(
+        (STATE.rows.specialLocations || []).map(location => String(location.id || '').trim())
+      );
+      const staleLocation = payloads.find(row =>
+        !validSpecialLocationIds.has(String(row.special_location_id || '').trim())
+      );
+      if (staleLocation) {
+        throw new Error(
+          `The selected Special CS Client location "${staleLocation.location_name}" is outdated. Refresh CS360 and select the Special CS Client again.`
+        );
+      }
+    }
+
     const invalid = payloads.find(row => !completionRowIsValid(row));
     if (invalid) throw new Error(`Total percentage for ${invalid.location_name} cannot exceed 100%.`);
 
@@ -4077,7 +4091,18 @@
       saveError = rpcResult?.error || null;
     }
 
-    if (saveError) throw new Error(`Unable to save completion: ${saveError.message}`);
+    if (saveError) {
+      const message = String(saveError.message || saveError);
+      if (
+        /cs_location_completions_special_location_id_fkey/i.test(message) ||
+        (/foreign key constraint/i.test(message) && /special_location_id/i.test(message))
+      ) {
+        throw new Error(
+          'The CS360 special-location database link is outdated. Run sql/migrations/20260717_cs360_completion_fk_and_brand_location_fix.sql in Supabase, then retry.'
+        );
+      }
+      throw new Error(`Unable to save completion: ${message}`);
+    }
 
     closeModal();
 
@@ -4274,8 +4299,22 @@
         status: status || 'Active',
         notes: notes || null
       };
-      const { error } = await supabase().from(TABLES.brandLocations).upsert(payload, { onConflict: 'brand_id,company_id,location_name' });
-      if (error) { toast(`Unable to assign location: ${error.message}`); return; }
+      const { error } = await withCsTimeout(
+        supabase().from(TABLES.brandLocations).insert(payload),
+        20000,
+        'Assigning location to brand'
+      );
+
+      if (error) {
+        const message = String(error.message || error);
+        if (/no unique or exclusion constraint matching the ON CONFLICT specification/i.test(message)) {
+          throw new Error(
+            'The CS360 brand-location database constraint is missing. Run sql/migrations/20260717_cs360_completion_fk_and_brand_location_fix.sql in Supabase, then retry.'
+          );
+        }
+        throw new Error(message);
+      }
+
       closeModal();
       await loadData();
       toast(`${target.location_name} assigned to ${brandName(brand)}.`);
