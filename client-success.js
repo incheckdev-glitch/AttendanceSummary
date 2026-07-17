@@ -62,7 +62,18 @@
     },
     templateQuestions: { weekly: [], monthly: [] },
     clientSelectPagination: { search: '', page: 1, pageSize: 25, total: 0 },
-    specialClientSelectPagination: { search: '', page: 1, pageSize: 25, total: 0 }
+    specialClientSelectPagination: { search: '', page: 1, pageSize: 25, total: 0 },
+    completionHistory: {
+      scope: 'client',
+      groupId: '',
+      brandId: '',
+      reviewType: 'all',
+      dateFrom: '',
+      dateTo: '',
+      search: '',
+      page: 1,
+      pageSize: 25
+    }
   };
 
   const $ = id => document.getElementById(id);
@@ -223,7 +234,13 @@
     if (key === 'brand-location-remove') return 'delete';
     if (key === 'brand-location-move') return 'update';
     if (key === 'completion-export' || key === 'brand-export' || key === 'special-client-view-report' || key === 'special-client-report') return 'export';
-    if (key === 'special-clients-open' || key === 'special-client-open') return 'view';
+    if (
+      key === 'special-clients-open' ||
+      key === 'special-client-open' ||
+      key === 'completion-history-client' ||
+      key === 'completion-history-group' ||
+      key === 'completion-history-brand'
+    ) return 'view';
     if (key === 'special-client-use-completion') return 'create';
     if (key === 'special-client-create') return 'create';
     if (key === 'special-client-edit') return 'update';
@@ -537,6 +554,13 @@
     STATE.selectedEntityType = 'normal';
     STATE.selectedCompanyId = companyId(company);
     STATE.activeTab = 'overview';
+    STATE.completionHistory = {
+      ...STATE.completionHistory,
+      scope: 'client',
+      groupId: '',
+      brandId: '',
+      page: 1
+    };
     renderClientList();
     renderDetail();
   }
@@ -1168,7 +1192,7 @@
       fetchTable('agreement_items', '*', { column: 'created_at', ascending: false }, 20000),
       fetchTable('invoices', '*', { column: 'created_at', ascending: false }, 10000),
       fetchTable('invoice_items', '*', { column: 'created_at', ascending: false }, 20000),
-      fetchTable(TABLES.completions, '*', { column: 'period_end', ascending: false }, 3000),
+      fetchTable(TABLES.completions, '*', { column: 'period_end', ascending: false }, 20000),
       fetchTable('tickets', '*', { column: 'created_at', ascending: false }, 1500),
       fetchTable(TABLES.groups, '*', { column: 'group_name', ascending: true }, 1000),
       fetchTable(TABLES.groupMembers, '*', { column: 'created_at', ascending: false }, 3000),
@@ -1875,7 +1899,7 @@
     const lastActivity = latestDate(activityRows(company), ['timestamp','created_at']);
     if (!lastActivity || daysBetween(lastActivity) > 21) missing.push('No recent CS activity.');
     if (!missing.length && score >= 80) missing.push('Client looks healthy. Continue normal care and keep monthly pulse review updated.');
-    return `<div class="cs-info-box"><div class="cs-info-value">${missing.map(m => `• ${esc(m)}`).join('<br>')}</div></div>`;
+    return `<div class="cs-info-box"><div class="cs-info-value">${missing.map(m => `• ${esc(m)}`).join('<br>')}</div><div style="margin-top:10px;"><button class="btn ghost sm" type="button" data-cs-action="completion-history-client">View All Completion History</button></div></div>`;
   }
 
   function latestCompletionSummary(company) {
@@ -1892,20 +1916,41 @@
     const summary = groups.length
       ? groups.map(group => {
           const members = groupMemberCompanies(group);
-          return `<article class="cs-info-box"><div class="cs-info-label">${esc(groupName(group))}</div><div class="cs-info-value">${members.length} signed client${members.length === 1 ? '' : 's'}</div><div class="cs-kpi-sub">${esc(group.description || group.group_code || 'CS parent group')}</div></article>`;
+          return `<article class="cs-info-box">
+            <div class="cs-info-label">${esc(groupName(group))}</div>
+            <div class="cs-info-value">${members.length} client${members.length === 1 ? '' : 's'}</div>
+            <div class="cs-kpi-sub">${esc(group.description || group.group_code || 'CS parent group')}</div>
+            <button class="btn ghost sm cs-history-open-btn" type="button" data-cs-action="completion-history-group" data-group-id="${attr(groupId(group))}">View All Completion History</button>
+          </article>`;
         }).join('')
       : `<div class="cs-empty">${esc(currentClient)} is not assigned to a CS client group yet.</div>`;
+
     const memberRows = [];
     groups.forEach(group => {
       groupMemberCompanies(group).forEach(member => {
         const score = computeHealth(member);
-        memberRows.push([groupName(group), companyName(member), healthLabel(score) + ' · ' + score, computeEffort(member), latestCompletionSummary(member)]);
+        memberRows.push([
+          groupName(group),
+          companyName(member),
+          healthLabel(score) + ' · ' + score,
+          computeEffort(member),
+          latestCompletionSummary(member)
+        ]);
       });
     });
-    return `<div class="cs-section-title"><div><h4>Client Groups</h4><div class="cs-kpi-sub">Use groups to manage several signed-agreement companies under one CS parent account. Brands are the third layer under client/group.</div></div><div><button class="btn sm" type="button" data-cs-action="group">+ New Group</button> <button class="btn ghost sm" type="button" data-cs-action="group-member">+ Add Current Client</button> <button class="btn ghost sm" type="button" data-cs-action="group-activity">+ Group Activity</button> <button class="btn ghost sm" type="button" data-cs-action="brand">+ Brand</button></div></div>
+
+    return `<div class="cs-section-title">
+        <div><h4>Client Groups</h4><div class="cs-kpi-sub">Groups combine multiple normal clients. Open a group history to see every old weekly and monthly completion entered for all group members.</div></div>
+        <div>
+          <button class="btn sm" type="button" data-cs-action="group">+ New Group</button>
+          <button class="btn ghost sm" type="button" data-cs-action="group-member">+ Add Current Client</button>
+          <button class="btn ghost sm" type="button" data-cs-action="group-activity">+ Group Activity</button>
+          <button class="btn ghost sm" type="button" data-cs-action="brand">+ Brand</button>
+        </div>
+      </div>
       <div class="cs-info-grid">${summary}</div>
       <div style="margin-top:14px;" class="cs-section-title"><h4>Companies in Same Group</h4></div>
-      ${memberRows.length ? table(['Group','Client Company','Health','CS Effort','Completion'], memberRows) : '<div class="cs-empty">No grouped companies to show yet.</div>'}`;
+      ${memberRows.length ? table(['Group','Client Company','Health','CS Effort','Latest Completion'], memberRows) : '<div class="cs-empty">No grouped companies to show yet.</div>'}`;
   }
 
 
@@ -1941,6 +1986,7 @@
         <td>${avg.done_late.toFixed(2)}%</td>
         <td>
           <button class="btn ghost sm" type="button" data-cs-action="brand-location" data-brand-id="${bid}">Manage Locations</button>
+          <button class="btn ghost sm" type="button" data-cs-action="completion-history-brand" data-brand-id="${bid}">History</button>
           <button class="btn ghost sm" type="button" data-cs-action="brand-export" data-brand-id="${bid}">Export</button>
         </td>
       </tr>`;
@@ -1959,12 +2005,456 @@
       ${tableHtml}`;
   }
 
+
+  function completionHistoryPeriodKey(row = {}) {
+    return [
+      String(row.review_type || 'weekly').toLowerCase(),
+      String(row.period_start || '').slice(0, 10),
+      String(row.period_end || '').slice(0, 10)
+    ].join('|');
+  }
+
+  function completionHistoryRowCompanyName(row = {}) {
+    return String(
+      row.company_name_snapshot ||
+      row.company_name ||
+      row.client_name ||
+      row.customer_name ||
+      ''
+    ).trim();
+  }
+
+  function completionHistoryRowsForClient(company) {
+    return completionRows(company)
+      .filter(row => String(row.source_type || 'normal').toLowerCase() !== 'special_client')
+      .map(row => applyCs360LocationNameOverride({
+        ...row,
+        company_name: completionHistoryRowCompanyName(row) || companyName(company)
+      }));
+  }
+
+  function completionHistoryRowsForGroup(group) {
+    if (!group) return [];
+    const members = groupMemberCompanies(group);
+    const memberIds = new Set(members.map(companyId).filter(Boolean));
+    const memberNames = new Set(members.map(member => normalize(companyName(member))).filter(Boolean));
+
+    return (STATE.rows.completions || [])
+      .filter(row => {
+        if (String(row.source_type || 'normal').toLowerCase() === 'special_client') return false;
+        const rowCompanyId = String(row.company_id || '').trim();
+        const rowCompanyName = normalize(completionHistoryRowCompanyName(row));
+        return (rowCompanyId && memberIds.has(rowCompanyId)) ||
+          (rowCompanyName && memberNames.has(rowCompanyName));
+      })
+      .map(row => applyCs360LocationNameOverride({
+        ...row,
+        company_name: completionHistoryRowCompanyName(row)
+      }));
+  }
+
+  function completionHistoryRowsForBrand(brand) {
+    if (!brand) return [];
+    const targets = brandCompletionTargets(brand);
+    const idKeys = new Set(
+      targets.map(target => [
+        String(target.company_id || '').trim(),
+        normalize(target.location_name)
+      ].join('|'))
+    );
+    const nameKeys = new Set(
+      targets.map(target => [
+        normalize(target.company_name),
+        normalize(target.location_name)
+      ].join('|'))
+    );
+
+    return (STATE.rows.completions || [])
+      .filter(row => {
+        if (String(row.source_type || 'normal').toLowerCase() === 'special_client') return false;
+        const idKey = [
+          String(row.company_id || '').trim(),
+          normalize(row.location_name)
+        ].join('|');
+        const nameKey = [
+          normalize(completionHistoryRowCompanyName(row)),
+          normalize(row.location_name)
+        ].join('|');
+        return idKeys.has(idKey) || nameKeys.has(nameKey);
+      })
+      .map(row => applyCs360LocationNameOverride({
+        ...row,
+        company_name: completionHistoryRowCompanyName(row)
+      }));
+  }
+
+  function getCompletionHistoryRows(company, filters = STATE.completionHistory) {
+    const scope = String(filters.scope || 'client');
+    let rows = [];
+
+    if (scope === 'group') {
+      rows = completionHistoryRowsForGroup(groupById(filters.groupId));
+    } else if (scope === 'brand') {
+      rows = completionHistoryRowsForBrand(brandById(filters.brandId));
+    } else {
+      rows = completionHistoryRowsForClient(company);
+    }
+
+    const reviewType = String(filters.reviewType || 'all').toLowerCase();
+    const dateFrom = String(filters.dateFrom || '').slice(0, 10);
+    const dateTo = String(filters.dateTo || '').slice(0, 10);
+    const search = normalize(filters.search || '');
+
+    return rows
+      .filter(row => {
+        const rowType = String(row.review_type || 'weekly').toLowerCase();
+        const rowStart = String(row.period_start || '').slice(0, 10);
+        const rowEnd = String(row.period_end || rowStart).slice(0, 10);
+
+        if (reviewType !== 'all' && rowType !== reviewType) return false;
+        if (dateFrom && rowEnd && rowEnd < dateFrom) return false;
+        if (dateTo && rowStart && rowStart > dateTo) return false;
+
+        if (search) {
+          const haystack = normalize([
+            completionHistoryRowCompanyName(row),
+            row.location_name,
+            row.group_name,
+            row.brand_name,
+            row.source_note,
+            row.review_type,
+            row.period_start,
+            row.period_end
+          ].join(' '));
+          if (!haystack.includes(search)) return false;
+        }
+
+        return true;
+      })
+      .sort((a, b) => {
+        const periodCompare = String(b.period_end || b.period_start || '')
+          .localeCompare(String(a.period_end || a.period_start || ''));
+        if (periodCompare) return periodCompare;
+        const companyCompare = completionHistoryRowCompanyName(a)
+          .localeCompare(completionHistoryRowCompanyName(b));
+        if (companyCompare) return companyCompare;
+        return String(a.location_name || '').localeCompare(String(b.location_name || ''));
+      });
+  }
+
+  function summarizeCompletionHistoryPeriods(rows = []) {
+    const periods = new Map();
+
+    rows.forEach(row => {
+      const key = completionHistoryPeriodKey(row);
+      if (!periods.has(key)) {
+        periods.set(key, {
+          review_type: row.review_type || 'weekly',
+          period_start: row.period_start || '',
+          period_end: row.period_end || '',
+          rows: [],
+          clients: new Set(),
+          locations: new Set()
+        });
+      }
+
+      const period = periods.get(key);
+      period.rows.push(row);
+      const clientName = completionHistoryRowCompanyName(row);
+      if (clientName) period.clients.add(clientName);
+      if (row.location_name) period.locations.add(String(row.location_name));
+    });
+
+    return Array.from(periods.values())
+      .map(period => ({
+        ...period,
+        metrics: averageCompletionMetrics(period.rows),
+        clientsCount: period.clients.size,
+        locationsCount: period.locations.size
+      }))
+      .sort((a, b) =>
+        String(b.period_end || b.period_start || '')
+          .localeCompare(String(a.period_end || a.period_start || ''))
+      );
+  }
+
+  function completionHistoryScopeLabel(company, history = STATE.completionHistory) {
+    if (history.scope === 'group') {
+      const group = groupById(history.groupId);
+      return group ? `Group: ${groupName(group)}` : 'Client Group';
+    }
+    if (history.scope === 'brand') {
+      const brand = brandById(history.brandId);
+      return brand ? `Brand: ${brandName(brand)}` : 'Brand';
+    }
+    return `Client: ${companyName(company)}`;
+  }
+
+  function openCompletionHistory(scope = 'client', id = '') {
+    STATE.selectedEntityType = 'normal';
+    STATE.activeTab = 'completion';
+    STATE.completionHistory = {
+      ...STATE.completionHistory,
+      scope,
+      groupId: scope === 'group' ? String(id || '') : '',
+      brandId: scope === 'brand' ? String(id || '') : '',
+      page: 1
+    };
+    renderDetail();
+  }
+
+  function bindCompletionHistoryControls() {
+    setTimeout(() => {
+      const history = STATE.completionHistory;
+
+      const bindChange = (id, handler) => {
+        const element = $(id);
+        element?.addEventListener('change', () => handler(element.value));
+      };
+
+      const bindInput = (id, handler) => {
+        const element = $(id);
+        element?.addEventListener('input', () => handler(element.value));
+      };
+
+      bindChange('csCompletionHistoryScope', value => {
+        history.scope = value || 'client';
+        history.page = 1;
+        if (history.scope === 'group' && !history.groupId) {
+          history.groupId = groupId(activeGroups()[0] || {});
+        }
+        if (history.scope === 'brand' && !history.brandId) {
+          history.brandId = brandId(activeBrands()[0] || {});
+        }
+        renderDetail();
+      });
+
+      bindChange('csCompletionHistoryGroup', value => {
+        history.groupId = value || '';
+        history.page = 1;
+        renderDetail();
+      });
+
+      bindChange('csCompletionHistoryBrand', value => {
+        history.brandId = value || '';
+        history.page = 1;
+        renderDetail();
+      });
+
+      bindChange('csCompletionHistoryReviewType', value => {
+        history.reviewType = value || 'all';
+        history.page = 1;
+        renderDetail();
+      });
+
+      bindChange('csCompletionHistoryDateFrom', value => {
+        history.dateFrom = value || '';
+        history.page = 1;
+        renderDetail();
+      });
+
+      bindChange('csCompletionHistoryDateTo', value => {
+        history.dateTo = value || '';
+        history.page = 1;
+        renderDetail();
+      });
+
+      bindChange('csCompletionHistoryPageSize', value => {
+        history.pageSize = [25, 50, 100].includes(Number(value)) ? Number(value) : 25;
+        history.page = 1;
+        renderDetail();
+      });
+
+      bindInput('csCompletionHistorySearch', value => {
+        history.search = value || '';
+        history.page = 1;
+        renderDetail();
+      });
+
+      $('csCompletionHistoryPrev')?.addEventListener('click', () => {
+        history.page = Math.max(1, Number(history.page || 1) - 1);
+        renderDetail();
+      });
+
+      $('csCompletionHistoryNext')?.addEventListener('click', () => {
+        history.page = Number(history.page || 1) + 1;
+        renderDetail();
+      });
+
+      $('csCompletionHistoryClear')?.addEventListener('click', () => {
+        STATE.completionHistory = {
+          ...STATE.completionHistory,
+          reviewType: 'all',
+          dateFrom: '',
+          dateTo: '',
+          search: '',
+          page: 1
+        };
+        renderDetail();
+      });
+    }, 0);
+  }
+
+  function renderCompletionHistory(company) {
+    const history = STATE.completionHistory;
+    const groups = activeGroups();
+    const brands = activeBrands();
+
+    if (history.scope === 'group' && !groupById(history.groupId) && groups.length) {
+      history.groupId = groupId(groups[0]);
+    }
+    if (history.scope === 'brand' && !brandById(history.brandId) && brands.length) {
+      history.brandId = brandId(brands[0]);
+    }
+
+    const rows = getCompletionHistoryRows(company, history);
+    const periods = summarizeCompletionHistoryPeriods(rows);
+    const pageSize = [25, 50, 100].includes(Number(history.pageSize)) ? Number(history.pageSize) : 25;
+    const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+    const page = Math.max(1, Math.min(totalPages, Number(history.page) || 1));
+    history.page = page;
+    history.pageSize = pageSize;
+    const pageRows = rows.slice((page - 1) * pageSize, page * pageSize);
+
+    const groupOptions = groups.map(group =>
+      `<option value="${attr(groupId(group))}" ${groupId(group) === history.groupId ? 'selected' : ''}>${esc(groupName(group))}</option>`
+    ).join('');
+
+    const brandOptions = brands.map(brand =>
+      `<option value="${attr(brandId(brand))}" ${brandId(brand) === history.brandId ? 'selected' : ''}>${esc(brandName(brand))} · ${esc(brandScopeLabel(brand))}</option>`
+    ).join('');
+
+    const oldest = rows.length ? rows[rows.length - 1] : null;
+    const newest = rows[0] || null;
+
+    const periodRows = periods.length
+      ? periods.map(period => `<tr>
+          <td><strong>${esc(String(period.review_type || 'weekly').toUpperCase())}</strong></td>
+          <td>${fmtDate(period.period_start)} → ${fmtDate(period.period_end)}</td>
+          <td>${period.clientsCount}</td>
+          <td>${period.locationsCount}</td>
+          <td><strong>${period.metrics.completion.toFixed(2)}%</strong></td>
+          <td>${period.metrics.done_on_time.toFixed(2)}%</td>
+          <td>${period.metrics.done_late.toFixed(2)}%</td>
+          <td>${period.metrics.partially_done.toFixed(2)}%</td>
+          <td>${period.metrics.missed.toFixed(2)}%</td>
+        </tr>`).join('')
+      : '<tr><td colspan="9" class="cs-empty">No historical completion periods match the selected filters.</td></tr>';
+
+    const detailRows = pageRows.length
+      ? pageRows.map(row => `<tr>
+          <td>${fmtDate(row.period_start)} → ${fmtDate(row.period_end)}</td>
+          <td>${esc(String(row.review_type || 'weekly').toUpperCase())}</td>
+          <td>${esc(completionHistoryRowCompanyName(row) || companyName(company))}</td>
+          <td><strong>${esc(row.location_name || '—')}</strong></td>
+          <td>${formatDecimal(row.done_on_time)}%</td>
+          <td>${formatDecimal(row.done_late)}%</td>
+          <td><strong>${formatPct(completionCount(row))}</strong></td>
+          <td>${formatDecimal(row.partially_done)}%</td>
+          <td>${formatDecimal(row.missed)}%</td>
+          <td>${esc(row.source_note || '—')}</td>
+          <td>${fmtDate(row.updated_at || row.created_at)}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="11" class="cs-empty">No historical completion entries match the selected filters.</td></tr>';
+
+    bindCompletionHistoryControls();
+
+    return `<section class="cs-completion-history">
+      <div class="cs-section-title">
+        <div>
+          <h4>All Completion History</h4>
+          <div class="cs-kpi-sub">Shows every saved completion period, not only the latest one. Current scope: ${esc(completionHistoryScopeLabel(company, history))}.</div>
+        </div>
+        <button id="csCompletionHistoryClear" class="btn ghost sm" type="button">Clear Filters</button>
+      </div>
+
+      <div class="cs-completion-history-filters">
+        <div class="cs-form-field">
+          <label>History Scope</label>
+          <select id="csCompletionHistoryScope" class="select">
+            <option value="client" ${history.scope === 'client' ? 'selected' : ''}>Current Client</option>
+            <option value="group" ${history.scope === 'group' ? 'selected' : ''} ${groups.length ? '' : 'disabled'}>Client Group</option>
+            <option value="brand" ${history.scope === 'brand' ? 'selected' : ''} ${brands.length ? '' : 'disabled'}>Brand</option>
+          </select>
+        </div>
+        <div class="cs-form-field" style="${history.scope === 'group' ? '' : 'display:none;'}">
+          <label>Client Group</label>
+          <select id="csCompletionHistoryGroup" class="select">${groupOptions || '<option value="">No groups</option>'}</select>
+        </div>
+        <div class="cs-form-field" style="${history.scope === 'brand' ? '' : 'display:none;'}">
+          <label>Brand</label>
+          <select id="csCompletionHistoryBrand" class="select">${brandOptions || '<option value="">No brands</option>'}</select>
+        </div>
+        <div class="cs-form-field">
+          <label>Review Type</label>
+          <select id="csCompletionHistoryReviewType" class="select">
+            <option value="all" ${history.reviewType === 'all' ? 'selected' : ''}>All Types</option>
+            <option value="weekly" ${history.reviewType === 'weekly' ? 'selected' : ''}>Weekly</option>
+            <option value="monthly" ${history.reviewType === 'monthly' ? 'selected' : ''}>Monthly</option>
+          </select>
+        </div>
+        <div class="cs-form-field">
+          <label>From</label>
+          <input id="csCompletionHistoryDateFrom" class="input" type="date" value="${attr(history.dateFrom || '')}" />
+        </div>
+        <div class="cs-form-field">
+          <label>To</label>
+          <input id="csCompletionHistoryDateTo" class="input" type="date" value="${attr(history.dateTo || '')}" />
+        </div>
+        <div class="cs-form-field cs-completion-history-search">
+          <label>Search</label>
+          <input id="csCompletionHistorySearch" class="input" type="search" value="${attr(history.search || '')}" placeholder="Client, location, note, group, brand…" />
+        </div>
+      </div>
+
+      <div class="cs-info-grid cs-completion-history-kpis">
+        <div class="cs-info-box"><div class="cs-info-label">Saved Periods</div><div class="cs-info-value">${periods.length}</div></div>
+        <div class="cs-info-box"><div class="cs-info-label">Historical Entries</div><div class="cs-info-value">${rows.length}</div></div>
+        <div class="cs-info-box"><div class="cs-info-label">Newest Period</div><div class="cs-info-value">${newest ? `${fmtDate(newest.period_start)} → ${fmtDate(newest.period_end)}` : '—'}</div></div>
+        <div class="cs-info-box"><div class="cs-info-label">Oldest Period</div><div class="cs-info-value">${oldest ? `${fmtDate(oldest.period_start)} → ${fmtDate(oldest.period_end)}` : '—'}</div></div>
+      </div>
+
+      <div class="cs-section-title cs-completion-history-subtitle"><h4>Period Summary</h4><span class="cs-chip">${periods.length} period${periods.length === 1 ? '' : 's'}</span></div>
+      <div class="cs-table-wrap"><table class="cs-table cs-history-period-table">
+        <thead><tr><th>Type</th><th>Period</th><th>Clients</th><th>Locations</th><th>Completion</th><th>On-Time</th><th>Late</th><th>Partial</th><th>Missed</th></tr></thead>
+        <tbody>${periodRows}</tbody>
+      </table></div>
+
+      <div class="cs-section-title cs-completion-history-subtitle">
+        <div><h4>Detailed Historical Entries</h4><div class="cs-kpi-sub">Every saved location line for the selected client, group, or brand.</div></div>
+        <label class="cs-client-select-page-size">Rows
+          <select id="csCompletionHistoryPageSize" class="select">
+            <option value="25" ${pageSize === 25 ? 'selected' : ''}>25</option>
+            <option value="50" ${pageSize === 50 ? 'selected' : ''}>50</option>
+            <option value="100" ${pageSize === 100 ? 'selected' : ''}>100</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="cs-table-wrap"><table class="cs-table cs-history-detail-table">
+        <thead><tr><th>Period</th><th>Type</th><th>Client</th><th>Location</th><th>On-Time</th><th>Late</th><th>Completion</th><th>Partial</th><th>Missed</th><th>Note</th><th>Saved</th></tr></thead>
+        <tbody>${detailRows}</tbody>
+      </table></div>
+
+      <div class="cs-client-select-pagination cs-completion-history-pagination">
+        <button id="csCompletionHistoryPrev" class="btn ghost sm" type="button" ${page <= 1 ? 'disabled' : ''}>Previous</button>
+        <span class="cs-client-select-page-info">Page ${page} of ${totalPages} · ${rows.length} historical entries</span>
+        <button id="csCompletionHistoryNext" class="btn ghost sm" type="button" ${page >= totalPages ? 'disabled' : ''}>Next</button>
+      </div>
+    </section>`;
+  }
+
   function renderCompletion(company) {
     const locations = getClientLocations(company);
     const records = aggregateCompletionRows(latestCompletionPeriodRows(company));
     const byLocation = new Map(records.map(row => [normalize(row.location_name), row]));
-    const rows = locations.map(location => byLocation.get(normalize(location)) || { location_name: location, done_on_time: 0, done_late: 0, partially_done: 0, missed: 0 });
-    const period = records[0] ? `${records[0].review_type || 'weekly'} · ${fmtDate(records[0].period_start)} → ${fmtDate(records[0].period_end)}` : 'No period saved yet';
+    const rows = locations.map(location =>
+      byLocation.get(normalize(location)) ||
+      { location_name: location, done_on_time: 0, done_late: 0, partially_done: 0, missed: 0 }
+    );
+    const period = records[0]
+      ? `${records[0].review_type || 'weekly'} · ${fmtDate(records[0].period_start)} → ${fmtDate(records[0].period_end)}`
+      : 'No period saved yet';
     const avg = averageCompletionMetrics(rows);
     const tableRows = rows.map(row => [
       row.location_name,
@@ -1974,9 +2464,25 @@
       formatPct(row.partially_done),
       formatPct(row.missed)
     ]);
-    return `<div class="cs-section-title"><div><h4>Location Completion</h4><div class="cs-kpi-sub">Entered values are percentages. Completion = Done On-Time + Done Late. Current view: ${esc(period)} · Export uses selected group filter when a CS group is selected.</div></div><div><button class="btn ghost sm" type="button" data-cs-action="completion-export">Export Report</button> <button class="btn sm" type="button" data-cs-action="completion">+ Add Completion</button></div></div>
-      <div class="cs-info-grid" style="margin-bottom:12px;"><div class="cs-info-box"><div class="cs-info-label">Average Completion</div><div class="cs-info-value">${avg.completion.toFixed(2)}%</div></div><div class="cs-info-box"><div class="cs-info-label">Average Done On-Time</div><div class="cs-info-value">${avg.done_on_time.toFixed(2)}%</div></div><div class="cs-info-box"><div class="cs-info-label">Average Done Late</div><div class="cs-info-value">${avg.done_late.toFixed(2)}%</div></div><div class="cs-info-box"><div class="cs-info-label">Average Missed</div><div class="cs-info-value">${avg.missed.toFixed(2)}%</div></div></div>
-      ${table(['Location','Done On-Time','Done Late','Completion','Partially Done','Missed'], tableRows)}`;
+
+    return `<div class="cs-section-title">
+        <div>
+          <h4>Latest Location Completion</h4>
+          <div class="cs-kpi-sub">Latest saved period only: ${esc(period)}. Completion = Done On-Time + Done Late.</div>
+        </div>
+        <div>
+          <button class="btn ghost sm" type="button" data-cs-action="completion-export">Export Latest Report</button>
+          <button class="btn sm" type="button" data-cs-action="completion">+ Add Completion</button>
+        </div>
+      </div>
+      <div class="cs-info-grid" style="margin-bottom:12px;">
+        <div class="cs-info-box"><div class="cs-info-label">Average Completion</div><div class="cs-info-value">${avg.completion.toFixed(2)}%</div></div>
+        <div class="cs-info-box"><div class="cs-info-label">Average Done On-Time</div><div class="cs-info-value">${avg.done_on_time.toFixed(2)}%</div></div>
+        <div class="cs-info-box"><div class="cs-info-label">Average Done Late</div><div class="cs-info-value">${avg.done_late.toFixed(2)}%</div></div>
+        <div class="cs-info-box"><div class="cs-info-label">Average Missed</div><div class="cs-info-value">${avg.missed.toFixed(2)}%</div></div>
+      </div>
+      ${table(['Location','Done On-Time','Done Late','Completion','Partially Done','Missed'], tableRows)}
+      ${renderCompletionHistory(company)}`;
   }
 
   function renderPulse(company) {
@@ -2695,6 +3201,15 @@
     if (action === 'special-client-select-prev-page') { updateSpecialClientSelectPage(STATE.specialClientSelectPagination.page - 1); return; }
     if (action === 'special-client-select-next-page') { updateSpecialClientSelectPage(STATE.specialClientSelectPagination.page + 1); return; }
     if (action === 'special-clients-open') { openSpecialCaseTemplates(); return; }
+    if (action === 'completion-history-client') { openCompletionHistory('client'); return; }
+    if (action === 'completion-history-group') {
+      openCompletionHistory('group', event.target?.closest?.('[data-group-id]')?.dataset?.groupId || '');
+      return;
+    }
+    if (action === 'completion-history-brand') {
+      openCompletionHistory('brand', event.target?.closest?.('[data-brand-id]')?.dataset?.brandId || '');
+      return;
+    }
     if (action === 'completion') openCompletionForm(event.target?.closest?.('[data-special-client-id]')?.dataset?.specialClientId || '');
     if (action === 'completion-export') openCompletionExportForm();
     if (action === 'group') openGroupForm();
@@ -3227,7 +3742,7 @@
     closeModal();
 
     // Reload only completion rows instead of reloading every CS360 table.
-    const completions = await fetchTable(TABLES.completions, '*', { column: 'period_end', ascending: false }, 3000);
+    const completions = await fetchTable(TABLES.completions, '*', { column: 'period_end', ascending: false }, 20000);
     STATE.rows.completions = completions.map(applyCs360LocationNameOverride);
     renderDetail();
 

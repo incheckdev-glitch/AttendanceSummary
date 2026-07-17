@@ -758,3 +758,78 @@ body.dark .cs-detail-head--special,
     radial-gradient(circle at right, rgba(124,58,237,.18), transparent 38%),
     #0f172a;
 }
+
+
+/* CS360 all completion history */
+.cs-completion-history {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 2px solid var(--cs-border);
+  display: grid;
+  gap: 14px;
+}
+
+.cs-completion-history-filters {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(140px, 1fr));
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--cs-border);
+  border-radius: 16px;
+  background: var(--cs-soft);
+}
+
+.cs-completion-history-search {
+  grid-column: span 2;
+}
+
+.cs-completion-history-kpis {
+  margin: 0;
+}
+
+.cs-completion-history-subtitle {
+  margin-top: 4px;
+}
+
+.cs-history-period-table {
+  min-width: 980px;
+}
+
+.cs-history-detail-table {
+  min-width: 1380px;
+}
+
+.cs-completion-history-pagination {
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+
+.cs-history-open-btn {
+  margin-top: 10px;
+  justify-self: start;
+}
+
+@media (max-width: 1300px) {
+  .cs-completion-history-filters {
+    grid-template-columns: repeat(3, minmax(150px, 1fr));
+  }
+
+  .cs-completion-history-search {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 760px) {
+  .cs-completion-history-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .cs-completion-history-search {
+    grid-column: auto;
+  }
+
+  .cs-completion-history-pagination {
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+}
