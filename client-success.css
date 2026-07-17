@@ -833,3 +833,9 @@ body.dark .cs-detail-head--special,
     flex-wrap: wrap;
   }
 }
+
+
+/* CS360 duplicate client-name protection */
+.cs-client-card [data-cs-duplicate-merged] {
+  font-weight: 800;
+}

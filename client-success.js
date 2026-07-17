@@ -433,6 +433,153 @@
     return shorter.length >= 8 && longer.startsWith(`${shorter} `);
   }
 
+  function csClientAliasIds(row = {}) {
+    return Array.from(new Set([
+      row.id,
+      row.company_id,
+      row.company_uuid,
+      row.uuid,
+      row.client_id,
+      row.customer_company_id,
+      row.client_company_id,
+      row.companyId,
+      row.clientId,
+      ...(Array.isArray(row.__cs_alias_ids) ? row.__cs_alias_ids : [])
+    ].map(value => String(value || '').trim()).filter(Boolean)));
+  }
+
+  function csClientAliasNames(row = {}) {
+    return Array.from(new Set([
+      companyName(row),
+      row.legal_name,
+      row.legal_company_name,
+      row.customer_legal_name,
+      row.company_name,
+      row.customer_name,
+      row.client_name,
+      row.name,
+      ...(Array.isArray(row.__cs_alias_names) ? row.__cs_alias_names : [])
+    ].map(value => String(value || '').trim()).filter(Boolean)));
+  }
+
+  function csClientNameKey(rowOrName = '') {
+    const raw = typeof rowOrName === 'object' && rowOrName !== null
+      ? companyName(rowOrName)
+      : String(rowOrName || '');
+    return normalizeClientIdentity(raw);
+  }
+
+  function clientRowCompletenessScore(row = {}) {
+    const values = [
+      row.company_id,
+      row.legal_name,
+      row.legal_company_name,
+      row.customer_legal_name,
+      row.company_name,
+      row.city,
+      row.country,
+      row.status,
+      row.company_status,
+      row.updated_at,
+      row.created_at
+    ];
+    let score = values.filter(value => String(value || '').trim()).length;
+    if (String(row.__cs_source || '') === 'client_registry') score += 5;
+    if (row.company_id) score += 3;
+    return score;
+  }
+
+  function chooseCsClientDisplayName(left = {}, right = {}) {
+    const candidates = [
+      { value: companyName(left), score: clientRowCompletenessScore(left) + (String(left.__cs_source || '') === 'client_registry' ? 10 : 0) },
+      { value: companyName(right), score: clientRowCompletenessScore(right) + (String(right.__cs_source || '') === 'client_registry' ? 10 : 0) }
+    ].filter(candidate => String(candidate.value || '').trim());
+
+    candidates.sort((a, b) => b.score - a.score || String(b.value).length - String(a.value).length);
+    return String(candidates[0]?.value || companyName(left) || companyName(right) || '').trim();
+  }
+
+  function mergeCsClientRows(left = {}, right = {}) {
+    const leftScore = clientRowCompletenessScore(left);
+    const rightScore = clientRowCompletenessScore(right);
+    const primary = rightScore > leftScore ? right : left;
+    const secondary = primary === left ? right : left;
+    const aliases = Array.from(new Set([
+      ...csClientAliasIds(left),
+      ...csClientAliasIds(right)
+    ]));
+    const aliasNames = Array.from(new Set([
+      ...csClientAliasNames(left),
+      ...csClientAliasNames(right)
+    ]));
+    const displayName = chooseCsClientDisplayName(left, right);
+    const stableId = String(
+      primary.company_id ||
+      secondary.company_id ||
+      primary.id ||
+      secondary.id ||
+      aliases[0] ||
+      ''
+    ).trim();
+
+    return {
+      ...secondary,
+      ...primary,
+      id: stableId,
+      company_id: stableId,
+      company_name: displayName,
+      legal_name: displayName,
+      __cs_alias_ids: aliases,
+      __cs_alias_names: aliasNames,
+      __cs_merged_duplicate_count:
+        safeNumber(left.__cs_merged_duplicate_count, 1) +
+        safeNumber(right.__cs_merged_duplicate_count, 1)
+    };
+  }
+
+  function dedupeCsClientRowsByName(rows = []) {
+    const byName = new Map();
+    const idToNameKey = new Map();
+
+    (Array.isArray(rows) ? rows : []).forEach(row => {
+      if (!row || !companyName(row)) return;
+
+      const ids = csClientAliasIds(row);
+      const nameKey = csClientNameKey(row);
+      let targetKey = '';
+
+      for (const id of ids) {
+        if (idToNameKey.has(id)) {
+          targetKey = idToNameKey.get(id);
+          break;
+        }
+      }
+
+      if (!targetKey && nameKey && byName.has(nameKey)) targetKey = nameKey;
+
+      // Exact normalized-name match is the dedupe rule. It handles punctuation,
+      // accents, spacing, and legal suffix variations without merging genuinely
+      // different clients that only have similar names.
+      if (!targetKey) targetKey = nameKey || `id:${ids[0] || Math.random()}`;
+
+      const merged = byName.has(targetKey)
+        ? mergeCsClientRows(byName.get(targetKey), row)
+        : {
+            ...row,
+            __cs_alias_ids: ids,
+            __cs_alias_names: csClientAliasNames(row),
+            __cs_merged_duplicate_count: safeNumber(row.__cs_merged_duplicate_count, 1)
+          };
+
+      byName.set(targetKey, merged);
+      csClientAliasIds(merged).forEach(id => idToNameKey.set(id, targetKey));
+    });
+
+    return Array.from(byName.values())
+      .filter(row => companyId(row) && companyName(row))
+      .sort((a, b) => companyName(a).localeCompare(companyName(b)));
+  }
+
   function findCompanyForClientRegistryRow(clientRow = {}, companies = []) {
     const ids = [
       clientRow.company_id,
@@ -501,17 +648,7 @@
   function buildCs360ClientCompanies(companies = [], clientRows = [], agreements = [], invoices = []) {
     const allCompanies = Array.isArray(companies) ? companies : [];
     const registryRows = Array.isArray(clientRows) ? clientRows : [];
-    const result = new Map();
-
-    const add = row => {
-      const id = companyId(row);
-      const nameKey = normalizeClientIdentity(companyName(row));
-      const key = id || `name:${nameKey}`;
-      if (!key || key === 'name:') return;
-
-      const previous = result.get(key);
-      result.set(key, previous ? { ...previous, ...row } : row);
-    };
+    const candidates = [];
 
     // The Clients module is the primary source. Every non-deleted client is
     // visible in CS360, even when no agreement/invoice is linked yet.
@@ -519,23 +656,35 @@
       .filter(row => !['deleted','removed'].includes(String(row.status || '').trim().toLowerCase()))
       .forEach(clientRow => {
         const linkedCompany = findCompanyForClientRegistryRow(clientRow, allCompanies);
-        add(clientRegistryRowAsCompany(clientRow, linkedCompany));
+        candidates.push(clientRegistryRowAsCompany(clientRow, linkedCompany));
       });
 
-    // Keep commercial clients visible even when the Clients registry link is
-    // incomplete or the legal names differ.
+    // Keep commercial clients visible even when registry/company linking is
+    // incomplete. Duplicate names are merged after all sources are collected.
     const previousAgreements = STATE.rows.agreements;
     STATE.rows.agreements = Array.isArray(agreements) ? agreements : [];
+
     allCompanies.forEach(company => {
       const status = String(company.company_status || company.status || '').trim().toLowerCase();
-      const looksLikeClient = status.includes('client') || status.includes('customer') || status.includes('active');
-      if (companyHasSignedAgreement(company) || companyHasActiveInvoice(company, invoices) || looksLikeClient) add(company);
-    });
-    STATE.rows.agreements = previousAgreements;
+      const looksLikeClient =
+        status.includes('client') ||
+        status.includes('customer') ||
+        status.includes('active');
 
-    return Array.from(result.values())
-      .filter(row => companyId(row) && companyName(row))
-      .sort((a, b) => companyName(a).localeCompare(companyName(b)));
+      if (
+        companyHasSignedAgreement(company) ||
+        companyHasActiveInvoice(company, invoices) ||
+        looksLikeClient
+      ) {
+        candidates.push({
+          ...company,
+          __cs_source: company.__cs_source || 'companies'
+        });
+      }
+    });
+
+    STATE.rows.agreements = previousAgreements;
+    return dedupeCsClientRowsByName(candidates);
   }
 
   function getSelectedCompany() {
@@ -579,16 +728,54 @@
   }
 
   function rowsForCompany(kind, company) {
-    const id = companyId(company);
-    const nameKey = normalize(companyName(company));
+    const primaryId = companyId(company);
+    const companyIds = new Set([
+      primaryId,
+      ...csClientAliasIds(company)
+    ].map(value => String(value || '').trim()).filter(Boolean));
+    const companyNames = new Set([
+      companyName(company),
+      ...csClientAliasNames(company)
+    ].map(value => normalizeClientIdentity(value)).filter(Boolean));
+
     return (STATE.rows[kind] || []).filter(row => {
-      const rowCompanyId = String(row.company_id || row.companyId || row.company_uuid || row.client_id || row.customer_id || row.customer_company_id || '').trim();
-      if (rowCompanyId && rowCompanyId === id) return true;
+      const rowCompanyIds = [
+        row.company_id,
+        row.companyId,
+        row.company_uuid,
+        row.client_id,
+        row.customer_id,
+        row.customer_company_id,
+        row.client_company_id
+      ].map(value => String(value || '').trim()).filter(Boolean);
+
+      if (rowCompanyIds.some(id => companyIds.has(id))) return true;
+
       const idsRaw = row.company_ids || row.companyIds || [];
-      const ids = Array.isArray(idsRaw) ? idsRaw.map(v => String(v || '').trim()) : String(idsRaw || '').replace(/[{}"]/g, '').split(',').map(v => v.trim());
-      if (id && ids.includes(id)) return true;
-      const rowName = normalize(row.company_name || row.companyName || row.legal_company_name || row.client_name || row.clientName || row.client || row.company_names || row.companyNames || row.customer_name || row.customer_legal_name || row.manual_client_name || row.manualClientName || '');
-      return Boolean(rowName && nameKey && (rowName === nameKey || rowName.split(',').map(v => normalize(v)).includes(nameKey)));
+      const ids = Array.isArray(idsRaw)
+        ? idsRaw.map(value => String(value || '').trim())
+        : String(idsRaw || '').replace(/[{}"]/g, '').split(',').map(value => value.trim());
+
+      if (ids.some(id => companyIds.has(id))) return true;
+
+      const rowName = String(
+        row.company_name ||
+        row.companyName ||
+        row.legal_company_name ||
+        row.client_name ||
+        row.clientName ||
+        row.client ||
+        row.company_names ||
+        row.companyNames ||
+        row.customer_name ||
+        row.customer_legal_name ||
+        row.manual_client_name ||
+        row.manualClientName ||
+        ''
+      ).trim();
+
+      const rowNameKey = normalizeClientIdentity(rowName);
+      return Boolean(rowNameKey && companyNames.has(rowNameKey));
     });
   }
 
@@ -1214,6 +1401,13 @@
     STATE.templateQuestions.monthly = templateQuestions.filter(q => q.cs_review_templates?.review_type === 'monthly').map(q => [q.question_key, q.question_label]);
     if (!STATE.templateQuestions.weekly.length) STATE.templateQuestions.weekly = QUESTION_BANK.weekly;
     if (!STATE.templateQuestions.monthly.length) STATE.templateQuestions.monthly = QUESTION_BANK.monthly;
+    if (STATE.selectedCompanyId && companies.length) {
+      const selectedMerged = companies.find(company =>
+        companyId(company) === STATE.selectedCompanyId ||
+        csClientAliasIds(company).includes(STATE.selectedCompanyId)
+      );
+      if (selectedMerged) STATE.selectedCompanyId = companyId(selectedMerged);
+    }
     if (!STATE.selectedCompanyId && companies.length) STATE.selectedCompanyId = companyId(companies[0]);
     if (STATE.selectedEntityType === 'special') {
       const selectedSpecial = specialTemplateById(STATE.selectedSpecialClientId) || activeSpecialTemplates()[0] || null;
@@ -1358,7 +1552,7 @@
     const missing = Array.from(STATE.tablesMissing).filter(t => Object.values(TABLES).includes(t));
     const stateText = missing.length
       ? `Run SQL migration first. Missing CS tables: ${missing.join(', ')}`
-      : `${STATE.rows.companies.length} normal clients · ${activeSpecialTemplates().length} standalone Special CS Clients loaded`;
+      : `${dedupeCsClientRowsByName(STATE.rows.companies).length} unique normal clients · ${activeSpecialTemplates().length} unique standalone Special CS Clients loaded`;
     $('csState') && ($('csState').textContent = stateText);
   }
 
@@ -1508,7 +1702,7 @@
 
   function getFilteredCsClients(search = '') {
     const q = normalize(search);
-    return (STATE.rows.companies || []).slice()
+    return dedupeCsClientRowsByName(STATE.rows.companies || [])
       .filter(company => !q || normalize(csClientSearchText(company)).includes(q))
       .sort((a, b) => companyName(a).localeCompare(companyName(b)));
   }
@@ -1626,7 +1820,7 @@
   }
 
   function renderClientList() {
-    const filtered = getFilteredCompanies();
+    const filtered = dedupeCsClientRowsByName(getFilteredCompanies());
     const baseIds = new Set(filtered.map(companyId));
     const p = STATE.clientSelectPagination;
     const all = getFilteredCsClients(p.search).filter(c => baseIds.has(companyId(c)));
@@ -1680,7 +1874,7 @@
               <span class="cs-chip cs-chip--blue">${esc(status)}</span>
               <span class="cs-chip">${esc(groupLabelForCompany(company))}</span>
             </div>
-            <div class="cs-kpi-sub">Last review: ${fmtDate(latest.review_date)} · Locations: ${getClientLocations(company).length}</div>
+            <div class="cs-kpi-sub">Last review: ${fmtDate(latest.review_date)} · Locations: ${getClientLocations(company).length}${safeNumber(company.__cs_merged_duplicate_count, 1) > 1 ? ' · Duplicate source records merged' : ''}</div>
           </button>`;
         }).join('')
       : '<div class="cs-empty">No matching normal clients.</div>';
@@ -2549,7 +2743,42 @@
 
   function specialTemplateId(row = {}) { return String(row.id || row.special_client_id || '').trim(); }
   function specialTemplateName(row = {}) { return String(row.client_name || row.client_name || 'Unnamed Special CS Client').trim(); }
-  function activeSpecialTemplates() { return (STATE.rows.specialTemplates || []).filter(t => String(t.status || 'active').toLowerCase() === 'active'); }
+  function specialTemplateUpdatedAt(row = {}) {
+    return String(row.updated_at || row.created_at || '').trim();
+  }
+
+  function dedupeSpecialTemplatesByName(rows = []) {
+    const byName = new Map();
+
+    (Array.isArray(rows) ? rows : []).forEach(row => {
+      const key = csClientNameKey(specialTemplateName(row)) || `id:${specialTemplateId(row)}`;
+      const existing = byName.get(key);
+
+      if (!existing) {
+        byName.set(key, row);
+        return;
+      }
+
+      const existingActive = String(existing.status || 'active').toLowerCase() === 'active';
+      const rowActive = String(row.status || 'active').toLowerCase() === 'active';
+      const chooseRow =
+        (rowActive && !existingActive) ||
+        (rowActive === existingActive && specialTemplateUpdatedAt(row) > specialTemplateUpdatedAt(existing));
+
+      if (chooseRow) byName.set(key, row);
+    });
+
+    return Array.from(byName.values())
+      .sort((a, b) => specialTemplateName(a).localeCompare(specialTemplateName(b)));
+  }
+
+  function activeSpecialTemplates() {
+    return dedupeSpecialTemplatesByName(
+      (STATE.rows.specialTemplates || []).filter(
+        template => String(template.status || 'active').toLowerCase() === 'active'
+      )
+    );
+  }
   function specialTemplateById(id) { const key = String(id || '').trim(); return (STATE.rows.specialTemplates || []).find(t => specialTemplateId(t) === key) || null; }
   function specialGroupsForTemplate(tid) { return (STATE.rows.specialGroups || []).filter(r => String(r.special_client_id || '').trim() === String(tid || '').trim()).sort((a,b)=>safeNumber(a.sort_order)-safeNumber(b.sort_order)||groupName(a).localeCompare(groupName(b))); }
   function specialBrandsForTemplate(tid) { return (STATE.rows.specialBrands || []).filter(r => String(r.special_client_id || '').trim() === String(tid || '').trim()).sort((a,b)=>safeNumber(a.sort_order)-safeNumber(b.sort_order)||brandName(a).localeCompare(brandName(b))); }
@@ -2569,12 +2798,12 @@
   function renderSpecialTemplates() {
     const q = normalize(STATE.filters.specialTemplateSearch || '');
     const status = String(STATE.filters.specialTemplateStatus || 'active').toLowerCase();
-    const rows = (STATE.rows.specialTemplates || []).filter(t => {
+    const rows = dedupeSpecialTemplatesByName((STATE.rows.specialTemplates || []).filter(t => {
       if (status !== 'all' && String(t.status || 'active').toLowerCase() !== status) return false;
       if (!q) return true;
       const tid = specialTemplateId(t);
-      return normalize([t.client_name, t.client_name, t.description, ...specialGroupsForTemplate(tid).map(groupName), ...specialBrandsForTemplate(tid).map(brandName), ...specialLocationsForTemplate(tid, false).map(r=>r.location_name)].join(' ')).includes(q);
-    });
+      return normalize([t.client_name, t.description, ...specialGroupsForTemplate(tid).map(groupName), ...specialBrandsForTemplate(tid).map(brandName), ...specialLocationsForTemplate(tid, false).map(r=>r.location_name)].join(' ')).includes(q);
+    }));
     const body = rows.length ? rows.map(t => {
       const tid = specialTemplateId(t), groups = specialGroupsForTemplate(tid), brands = specialBrandsForTemplate(tid), locs = specialLocationsForTemplate(tid, false);
       return `<tr><td><strong>${esc(t.client_name)}</strong><small>${esc(t.description || '')}</small></td><td>${esc(groups.map(groupName).join(', ') || '—')}</td><td>${brands.length}</td><td>${locs.length}</td><td><span class="cs-chip ${String(t.status).toLowerCase()==='active'?'cs-chip--healthy':''}">${esc(t.status || 'active')}</span></td><td>${fmtDate(t.updated_at || t.created_at)}</td><td>${canAccess() ? `<button class="btn ghost sm" type="button" data-cs-action="special-client-open" data-special-client-id="${attr(tid)}">Open</button>` : ''} ${canUpdate() ? `<button class="btn ghost sm" type="button" data-cs-action="special-client-edit" data-special-client-id="${attr(tid)}">Edit</button>` : ''} ${canDelete() ? `<button class="btn ghost sm" type="button" data-cs-action="special-client-archive" data-special-client-id="${attr(tid)}">Archive</button>` : ''} ${canCreate() ? `<button class="btn sm" type="button" data-cs-action="special-client-use-completion" data-special-client-id="${attr(tid)}">Use in Completion</button>` : ''} <button class="btn ghost sm" type="button" data-cs-action="special-client-view-report" data-special-client-id="${attr(tid)}">View Report</button></td></tr>`;
@@ -3119,6 +3348,22 @@
     const brands = Array.from(new Set(parseLines(fd.get('brands_text'))));
     const locations = Array.from(new Set(parseLines(fd.get('locations_text'))));
     const existingId = specialTemplateId(existing) || null;
+    const clientNameKey = csClientNameKey(clientName);
+
+    const duplicateSpecial = (STATE.rows.specialTemplates || []).find(template =>
+      specialTemplateId(template) !== existingId &&
+      csClientNameKey(specialTemplateName(template)) === clientNameKey
+    );
+    if (duplicateSpecial) {
+      throw new Error(`A Special CS Client named "${specialTemplateName(duplicateSpecial)}" already exists.`);
+    }
+
+    const duplicateNormal = dedupeCsClientRowsByName(STATE.rows.companies || []).find(company =>
+      csClientNameKey(company) === clientNameKey
+    );
+    if (duplicateNormal) {
+      throw new Error(`"${companyName(duplicateNormal)}" already exists as a normal CS360 client. Use a different Special CS Client name.`);
+    }
 
     if (!clientName) {
       form.elements?.client_name?.focus?.();
