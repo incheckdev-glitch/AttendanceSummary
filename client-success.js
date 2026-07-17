@@ -2179,40 +2179,145 @@
         <div class="cs-form-field cs-form-field--full"><label>Locations (one per line)</label><textarea name="locations_text" class="input" rows="7" required ${readOnly ? 'readonly' : ''} placeholder="Location 1\nLocation 2\nLocation 3">${esc(locations.map(r=>r.location_name).join('\n'))}</textarea></div>
         <div class="cs-form-field cs-form-field--full"><div class="cs-mini-note">At least one active location is required. Existing groups, brands, and locations are replaced on save so duplicates are prevented per special client.</div></div>
       </div>
-      <div class="cs-modal-actions"><button type="button" class="btn ghost" onclick="document.getElementById('csModalClose').click()">Cancel</button>${readOnly ? '' : '<button type="submit" class="btn primary">Save Special CS Client</button>'}</div>
+      <div class="cs-modal-actions"><button type="button" class="btn ghost" onclick="document.getElementById('csModalClose').click()">Cancel</button>${readOnly ? '' : '<button type="submit" class="btn primary cs-special-client-save-btn" data-cs-modal-submit="true">Save Special CS Client</button>'}</div>
     </form>`, async form => saveSpecialTemplate(form, template));
   }
 
   async function saveSpecialTemplate(form, existing = {}) {
+    const client = supabase();
+    if (!client || typeof client.from !== 'function') {
+      throw new Error('Supabase database connection is unavailable.');
+    }
+
     const fd = new FormData(form);
+    const clientName = String(fd.get('client_name') || '').trim();
     const groups = Array.from(new Set(parseLines(fd.get('groups_text'))));
     const brands = Array.from(new Set(parseLines(fd.get('brands_text'))));
     const locations = Array.from(new Set(parseLines(fd.get('locations_text'))));
-    if (!String(fd.get('client_name') || '').trim()) { toast('Client Name is required.'); return; }
-    if (!locations.length) { toast('Add at least one active location.'); return; }
-    const payload = { client_name: fd.get('client_name'), description: fd.get('description') || null, status: fd.get('status') || 'active', updated_at: new Date().toISOString() };
-    let templateId = specialTemplateId(existing);
-    if (templateId) {
-      const { error } = await supabase().from(TABLES.specialTemplates).update(payload).eq('id', templateId);
-      if (error) { toast(`Unable to update special client: ${error.message}`); return; }
-      await Promise.all([supabase().from(TABLES.specialLocations).delete().eq('special_client_id', templateId), supabase().from(TABLES.specialBrands).delete().eq('special_client_id', templateId), supabase().from(TABLES.specialGroups).delete().eq('special_client_id', templateId)]);
-    } else {
-      const { data, error } = await supabase().from(TABLES.specialTemplates).insert(payload).select('id').single();
-      if (error) { toast(`Unable to create special client: ${error.message}`); return; }
-      templateId = data?.id;
+
+    if (!clientName) {
+      toast('Client Name is required.');
+      form.elements?.client_name?.focus?.();
+      return;
     }
-    const groupRows = groups.map((name,i)=>({ special_client_id: templateId, group_name: name, sort_order: i }));
-    const { data: savedGroups, error: groupError } = groupRows.length ? await supabase().from(TABLES.specialGroups).insert(groupRows).select('*') : { data: [], error: null };
-    if (groupError) { toast(`Unable to save groups: ${groupError.message}`); return; }
-    const firstGroupId = savedGroups?.[0]?.id || null;
-    const brandRows = brands.map((name,i)=>({ special_client_id: templateId, group_id: firstGroupId, brand_name: name, sort_order: i }));
-    const { data: savedBrands, error: brandError } = brandRows.length ? await supabase().from(TABLES.specialBrands).insert(brandRows).select('*') : { data: [], error: null };
-    if (brandError) { toast(`Unable to save brands: ${brandError.message}`); return; }
-    const firstBrandId = savedBrands?.[0]?.id || null;
-    const locationRows = locations.map((name,i)=>({ special_client_id: templateId, group_id: firstGroupId, brand_id: firstBrandId, location_name: name, status: 'active', sort_order: i }));
-    const { error: locError } = await supabase().from(TABLES.specialLocations).insert(locationRows);
-    if (locError) { toast(`Unable to save locations: ${locError.message}`); return; }
-    closeModal(); await loadData(); STATE.activeTab = 'specialTemplates'; renderDetail(); toast('Special CS Client saved.');
+    if (!locations.length) {
+      toast('Add at least one active location.');
+      form.elements?.locations_text?.focus?.();
+      return;
+    }
+
+    const payload = {
+      client_name: clientName,
+      description: String(fd.get('description') || '').trim() || null,
+      status: String(fd.get('status') || 'active').trim().toLowerCase(),
+      updated_at: new Date().toISOString()
+    };
+
+    console.info('[CS360 Special Client] Saving to database', {
+      existingId: specialTemplateId(existing),
+      clientName,
+      groupCount: groups.length,
+      brandCount: brands.length,
+      locationCount: locations.length
+    });
+
+    let templateId = specialTemplateId(existing);
+
+    if (templateId) {
+      const { error } = await client
+        .from(TABLES.specialTemplates)
+        .update(payload)
+        .eq('id', templateId);
+
+      if (error) throw new Error(`Unable to update special client: ${error.message}`);
+
+      const childDeletes = await Promise.all([
+        client.from(TABLES.specialLocations).delete().eq('special_client_id', templateId),
+        client.from(TABLES.specialBrands).delete().eq('special_client_id', templateId),
+        client.from(TABLES.specialGroups).delete().eq('special_client_id', templateId)
+      ]);
+
+      const deleteError = childDeletes.find(result => result?.error)?.error;
+      if (deleteError) throw new Error(`Unable to refresh special client structure: ${deleteError.message}`);
+    } else {
+      const createPayload = {
+        ...payload,
+        created_at: new Date().toISOString()
+      };
+
+      const { data, error } = await client
+        .from(TABLES.specialTemplates)
+        .insert(createPayload)
+        .select('id')
+        .single();
+
+      if (error) throw new Error(`Unable to create special client: ${error.message}`);
+      templateId = String(data?.id || '').trim();
+
+      if (!templateId) {
+        throw new Error('The special client was created without a returned database ID.');
+      }
+    }
+
+    const groupRows = groups.map((name, index) => ({
+      special_client_id: templateId,
+      group_name: name,
+      sort_order: index
+    }));
+
+    let savedGroups = [];
+    if (groupRows.length) {
+      const { data, error } = await client
+        .from(TABLES.specialGroups)
+        .insert(groupRows)
+        .select('*');
+
+      if (error) throw new Error(`Unable to save groups: ${error.message}`);
+      savedGroups = Array.isArray(data) ? data : [];
+    }
+
+    const firstGroupId = savedGroups[0]?.id || null;
+    const brandRows = brands.map((name, index) => ({
+      special_client_id: templateId,
+      group_id: firstGroupId,
+      brand_name: name,
+      sort_order: index
+    }));
+
+    let savedBrands = [];
+    if (brandRows.length) {
+      const { data, error } = await client
+        .from(TABLES.specialBrands)
+        .insert(brandRows)
+        .select('*');
+
+      if (error) throw new Error(`Unable to save brands: ${error.message}`);
+      savedBrands = Array.isArray(data) ? data : [];
+    }
+
+    const firstBrandId = savedBrands[0]?.id || null;
+    const locationRows = locations.map((name, index) => ({
+      special_client_id: templateId,
+      group_id: firstGroupId,
+      brand_id: firstBrandId,
+      location_name: name,
+      status: 'active',
+      sort_order: index
+    }));
+
+    const { error: locationError } = await client
+      .from(TABLES.specialLocations)
+      .insert(locationRows);
+
+    if (locationError) throw new Error(`Unable to save locations: ${locationError.message}`);
+
+    console.info('[CS360 Special Client] Saved successfully', { templateId });
+
+    closeModal();
+    await loadData();
+    STATE.activeTab = 'specialTemplates';
+    renderDetail();
+    toast('Special CS Client saved.');
   }
 
   async function archiveSpecialTemplate(templateId = '') {
@@ -2299,11 +2404,92 @@
 
   function openModal(title, bodyHtml, onSubmit) {
     const modal = $('csModal');
-    $('csModalTitle').textContent = title;
-    $('csModalBody').innerHTML = bodyHtml;
-    modal.classList.add('is-open'); modal.setAttribute('aria-hidden', 'false');
-    const form = $('csModalBody').querySelector('form');
-    form?.addEventListener('submit', async ev => { ev.preventDefault(); await onSubmit(form); });
+    const titleEl = $('csModalTitle');
+    const bodyEl = $('csModalBody');
+    if (!modal || !titleEl || !bodyEl) {
+      console.error('[CS360 Modal] Required modal elements are missing.');
+      toast('Unable to open the form. Please refresh and try again.');
+      return;
+    }
+
+    titleEl.textContent = title;
+    bodyEl.innerHTML = bodyHtml;
+    modal.classList.add('is-open');
+    modal.setAttribute('aria-hidden', 'false');
+
+    const form = bodyEl.querySelector('form');
+    if (!form) {
+      console.error('[CS360 Modal] No form was rendered for:', title);
+      return;
+    }
+
+    const submitButton = form.querySelector('button[type="submit"], input[type="submit"]');
+    if (submitButton) {
+      submitButton.setAttribute('data-cs-modal-submit', 'true');
+      submitButton.disabled = false;
+      submitButton.style.pointerEvents = 'auto';
+      submitButton.style.cursor = 'pointer';
+    }
+
+    let submitting = false;
+    const handleSubmit = async ev => {
+      ev?.preventDefault?.();
+      ev?.stopPropagation?.();
+
+      if (submitting) return;
+
+      if (!form.checkValidity()) {
+        form.reportValidity();
+        const invalid = form.querySelector(':invalid');
+        invalid?.focus?.();
+        toast('Complete the required fields before saving.');
+        return;
+      }
+
+      if (typeof onSubmit !== 'function') {
+        console.error('[CS360 Modal] Submit callback is missing for:', title);
+        toast('Save action is unavailable. Please refresh and try again.');
+        return;
+      }
+
+      submitting = true;
+      const originalText = submitButton?.textContent || 'Save';
+      if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.setAttribute('aria-busy', 'true');
+        submitButton.textContent = 'Saving…';
+      }
+
+      try {
+        await onSubmit(form);
+      } catch (error) {
+        console.error('[CS360 Modal] Save failed', error);
+        toast(`Unable to save: ${error?.message || error}`);
+      } finally {
+        submitting = false;
+        if (submitButton && modal.classList.contains('is-open')) {
+          submitButton.disabled = false;
+          submitButton.removeAttribute('aria-busy');
+          submitButton.textContent = originalText;
+        }
+      }
+    };
+
+    form.addEventListener('submit', handleSubmit);
+
+    // Some platform/global handlers can swallow native submit clicks.
+    // This direct handler guarantees that clicking the visible Save button
+    // runs the same validated submit path exactly once.
+    submitButton?.addEventListener('click', ev => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      handleSubmit(ev);
+    });
+
+    setTimeout(() => {
+      const firstField = form.querySelector('input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])');
+      firstField?.focus?.();
+    }, 0);
   }
   function closeModal() { const modal = $('csModal'); modal?.classList.remove('is-open'); modal?.setAttribute('aria-hidden', 'true'); }
 
