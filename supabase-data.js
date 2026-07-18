@@ -8092,13 +8092,16 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         throw new Error('Company verification payload is empty after normalization.');
       }
       const finalVerificationPayload = sanitizeUuidColumnsForMutation(table, verificationPayload);
-      const { data, error } = await client
-        .from(table)
-        .update(finalVerificationPayload)
-        .eq(getPrimaryKeyForResource(resource), id)
-        .select('*')
-        .single();
+      const { data, error } = await updateSelectSingleWithSchemaRetry(
+        client,
+        table,
+        finalVerificationPayload,
+        getPrimaryKeyForResource(resource),
+        id,
+        'Unable to update company verification'
+      );
       if (error) throw friendlyError('Unable to update company verification', error);
+      if (!data?.id) throw new Error('Company verification save completed without returning the updated company.');
       return { handled: true, data: normalizeRow(resource, data) };
     }
 

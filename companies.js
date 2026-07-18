@@ -735,6 +735,39 @@ const Companies = {
   updateCompanyModalBodyLock() { document.body.classList.toggle('modal-open', this.isCompanyModalOpen() || this.isCompanyVerificationDialogOpen()); },
   handleCompanyModalKeydown(event) { if (event.key !== 'Escape') return; if (this.isCompanyVerificationDialogOpen()) { event.preventDefault(); event.stopImmediatePropagation(); this.closeCompanyVerificationDialog(); return; } if (this.isCompanyModalOpen()) { event.preventDefault(); event.stopImmediatePropagation(); this.closeForm(); } },
   closeCompanyVerificationDialog() { const modal = document.getElementById('companyVerificationDialog'); if (modal) { modal.style.display = 'none'; modal.setAttribute('aria-hidden', 'true'); } this.updateCompanyModalBodyLock(); },
+  async saveCompanyVerificationAudit(entry = {}) {
+    try {
+      const client = this.getSupabaseClient();
+      const { error } = await client.from('company_verification_audit').insert(entry);
+      if (error) {
+        console.warn('[companies] verification audit was not saved; company verification remains saved', error);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.warn('[companies] verification audit was not saved; company verification remains saved', error);
+      return false;
+    }
+  },
+  applyCompanyVerificationResult(company = {}, payload = {}, savedData = null) {
+    const source = savedData?.row || savedData?.data || savedData?.company || savedData || {};
+    const updated = this.normalize({ ...company, ...payload, ...(source && typeof source === 'object' ? source : {}) });
+    this.state.currentCompany = updated;
+    this.state.rows = (this.state.rows || []).map(row => String(row.id || '') === String(updated.id || '') ? updated : row);
+    this.renderCompanyVerificationPanel(updated);
+    this.render();
+    return updated;
+  },
+  refreshCompanyVerificationAfterSave(companyId = '') {
+    const id = String(companyId || '').trim();
+    if (!id) return;
+    Promise.resolve()
+      .then(async () => {
+        await this.refreshCompanyVerificationState(id);
+        await this.loadAndRefresh();
+      })
+      .catch(error => console.warn('[companies] verification refresh failed after the save completed', error));
+  },
   async verifyCompanyDocuments(company = this.state.currentCompany, notes = '') {
     if (!this.canVerifyCompany()) {
       throw new Error('You do not have permission to verify companies.');
@@ -747,22 +780,27 @@ const Companies = {
     const payload = { documents_verified: true, documents_verification_status: 'verified', documents_verified_at: verifiedAt, documents_verified_by: verifiedBy || null, documents_verification_notes: verificationNotes, documents_verification_invalidated_at: null, documents_verification_invalidated_reason: null, documents_verified_snapshot: snapshot, is_verified: true, verified: true, company_verified: true, authorized_signatory_verified: true, verification_status: 'verified', authorized_signatory_name: resolvedSignatory.name || snapshot.authorized_signatory_full_name || null, authorized_signatory_title: resolvedSignatory.title || snapshot.authorized_signatory_title || null };
     try {
       const data = await Api.requestWithSession('companies', 'verify', { id: company.id, updates: payload }, { requireAuth: true });
-      const client = this.getSupabaseClient();
-      const { error: auditError } = await client.from('company_verification_audit').insert({ company_uuid: company.id, action: 'marked_verified', previous_status: previousStatus, new_status: 'verified', verified_by: verifiedBy || null, verification_notes: verificationNotes, verification_snapshot: snapshot });
-      if (auditError) throw auditError;
-      this.state.currentCompany = this.normalize(data || { ...company, ...payload });
+      const updated = this.applyCompanyVerificationResult(company, payload, data);
       this.closeCompanyVerificationDialog();
       UI?.toast?.('Company data verified', 'success');
-      await this.refreshCompanyVerificationState(company.id);
-      await this.loadAndRefresh();
-    } catch (error) { UI?.toast?.('Unable to verify company data', 'error'); console.error(error); }
-    finally { if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Confirm Verified'; } }
+      this.saveCompanyVerificationAudit({ company_uuid: company.id, action: previousStatus === 'needs_reverification' ? 'reverified' : 'marked_verified', previous_status: previousStatus, new_status: 'verified', verified_by: verifiedBy || null, verification_notes: verificationNotes, verification_snapshot: snapshot });
+      this.refreshCompanyVerificationAfterSave(updated.id || company.id);
+      return updated;
+    } catch (error) {
+      UI?.toast?.(error?.message || 'Unable to verify company data', 'error');
+      console.error('[companies] verify company failed', error);
+      return null;
+    } finally {
+      if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Confirm Verified'; }
+    }
   },
   async unverifyCompanyDocuments(company = this.state.currentCompany) {
     if (!this.canVerifyCompany()) {
       throw new Error('You do not have permission to verify companies.');
     }
     if (!company?.id) return;
+    const actionBtn = document.getElementById('companyVerifyBtn');
+    if (actionBtn) { actionBtn.disabled = true; actionBtn.textContent = 'Saving…'; }
     const previousStatus = String(company.documents_verification_status || 'verified').trim() || 'verified';
     const payload = {
       documents_verified: false,
@@ -781,14 +819,18 @@ const Companies = {
     };
     try {
       const data = await Api.requestWithSession('companies', 'verify_company', { id: company.id, updates: payload }, { requireAuth: true });
-      const client = this.getSupabaseClient();
-      const { error: auditError } = await client.from('company_verification_audit').insert({ company_uuid: company.id, action: 'marked_not_verified', previous_status: previousStatus, new_status: 'not_verified', verified_by: this.getCurrentUserId() || null, verification_notes: null, verification_snapshot: null });
-      if (auditError) throw auditError;
-      this.state.currentCompany = this.normalize(data || { ...company, ...payload });
+      const updated = this.applyCompanyVerificationResult(company, payload, data);
       UI?.toast?.('Company verification removed', 'success');
-      await this.refreshCompanyVerificationState(company.id);
-      await this.loadAndRefresh();
-    } catch (error) { UI?.toast?.('Unable to update company verification', 'error'); console.error(error); throw error; }
+      this.saveCompanyVerificationAudit({ company_uuid: company.id, action: 'marked_not_verified', previous_status: previousStatus, new_status: 'not_verified', verified_by: this.getCurrentUserId() || null, verification_notes: null, verification_snapshot: null });
+      this.refreshCompanyVerificationAfterSave(updated.id || company.id);
+      return updated;
+    } catch (error) {
+      UI?.toast?.(error?.message || 'Unable to update company verification', 'error');
+      console.error('[companies] unverify company failed', error);
+      return null;
+    } finally {
+      if (actionBtn?.isConnected) { actionBtn.disabled = false; actionBtn.textContent = 'Mark as Not Verified'; }
+    }
   },
   async refreshCompanyDocuments(companyId) { if (!companyId) return; await this.loadCompanyDocuments({ ...(this.state.currentCompany || {}), id: companyId }); },
   async refreshCompanyVerificationState(companyId) {
