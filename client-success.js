@@ -3621,10 +3621,10 @@
     const health = selectedCompany ? computeHealth(selectedCompany) : null;
     const effort = isAnySpecialReport ? 'Special CS Review' : (isGroupReport ? 'Group Review' : computeEffort(selectedCompany));
     const reportTitleSuffix = isSpecialBrandReport
-      ? 'Special CS Client Brand Completion Report'
+      ? 'Brand Completion Report'
       : (isSpecialGroupReport
-        ? 'Special CS Client Group Completion Report'
-        : (isSpecialTemplateReport ? 'Special CS Client Completion Report' : (isBrandReport ? 'Brand Completion Report' : (isGroupReport ? 'Group Completion Report' : 'Client Completion Report'))));
+        ? 'Group Completion Report'
+        : (isSpecialTemplateReport ? 'Client Completion Report' : (isBrandReport ? 'Brand Completion Report' : (isGroupReport ? 'Group Completion Report' : 'Client Completion Report'))));
     const sourceNote = rawRecords.find(r => r.source_note)?.source_note || 'Completion values are entered as percentages.';
     const safeWidth = value => `${clamp(safeDecimal(value), 0, 100).toFixed(2)}%`;
     const stackParts = [
@@ -3687,10 +3687,10 @@
           <div class="title"><h1>Completion Report</h1><div class="subtitle">${esc(reportTitleSuffix)} · Completion = Done On-Time + Done Late · Values are percentages.</div></div>
         </div>
         <div class="meta-grid">
-          <div class="meta"><div class="k">${isSpecialBrandReport ? 'Special CS Brand' : (isSpecialGroupReport ? 'Special CS Group' : (isSpecialTemplateReport ? 'Special CS Client' : (isBrandReport ? 'Brand' : (isGroupReport ? 'Group' : 'Client'))))}</div><div class="v">${esc(reportName)}</div></div>
+          <div class="meta"><div class="k">${isSpecialBrandReport ? 'Brand' : (isSpecialGroupReport ? 'Group' : (isSpecialTemplateReport ? 'Client' : (isBrandReport ? 'Brand' : (isGroupReport ? 'Group' : 'Client'))))}</div><div class="v">${esc(reportName)}</div></div>
           <div class="meta"><div class="k">Review Type</div><div class="v">${esc(String(reportType || 'weekly').replace(/^./, c => c.toUpperCase()))}</div></div>
           <div class="meta"><div class="k">Period</div><div class="v">${esc(periodLabel)}</div></div>
-          ${isAnySpecialReport ? `<div class="meta"><div class="k">Special CS Client</div><div class="v">${esc(specialTemplateName(selectedSpecialTemplate))}</div></div>` : ''}
+          ${(isSpecialBrandReport || isSpecialGroupReport) ? `<div class="meta"><div class="k">Client</div><div class="v">${esc(specialTemplateName(selectedSpecialTemplate))}</div></div>` : ''}
         </div>
       </div>
     </div>
