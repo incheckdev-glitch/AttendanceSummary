@@ -101,6 +101,27 @@
       .replace(/\s+/g, ' ');
   }
 
+  const CS360_LOCATION_NAME_OVERRIDES = new Map([
+    ['lr muroo', 'LR Muroor'],
+    ['lr defence', 'LR Motor City'],
+    ['zl khalidya', 'ZL al Forsan Cloud Kitchen']
+  ]);
+
+  function replaceCs360LocationFields(row = {}, sourceName = '', displayName = '') {
+    const sourceKey = normalizeCs360DisplayName(sourceName);
+    const replaceWhenMatching = value => (
+      normalizeCs360DisplayName(value) === sourceKey ? displayName : value
+    );
+
+    return {
+      ...row,
+      location_name: displayName,
+      location: displayName,
+      branch_name: replaceWhenMatching(row.branch_name),
+      site_name: replaceWhenMatching(row.site_name)
+    };
+  }
+
   function applyCs360LocationNameOverride(row = {}) {
     const clientName = normalizeCs360DisplayName(
       row.client_name ||
@@ -121,19 +142,18 @@
     ).trim();
 
     const normalizedLocation = normalizeCs360DisplayName(locationName);
+    const globalOverride = CS360_LOCATION_NAME_OVERRIDES.get(normalizedLocation);
+
+    if (globalOverride) {
+      return replaceCs360LocationFields(row, locationName, globalOverride);
+    }
 
     const isCafeOne =
       clientName.includes('cafe one sal') ||
       clientName.includes('café one sal');
 
     if (isCafeOne && normalizedLocation === 'cosmo abc') {
-      return {
-        ...row,
-        location_name: 'MET ABC & Napoletana',
-        location: 'MET ABC & Napoletana',
-        branch_name: row.branch_name === locationName ? 'MET ABC & Napoletana' : row.branch_name,
-        site_name: row.site_name === locationName ? 'MET ABC & Napoletana' : row.site_name
-      };
+      return replaceCs360LocationFields(row, locationName, 'MET ABC & Napoletana');
     }
 
     return row;
@@ -231,8 +251,8 @@
 
   function requiredCsPermissionForAction(action) {
     const key = String(action || '').trim().toLowerCase();
-    if (key === 'brand-location-remove') return 'delete';
-    if (key === 'brand-location-move') return 'update';
+    if (key === 'brand-location-remove' || key === 'brand-location-unassign') return 'delete';
+    if (key === 'brand-location-move' || key === 'special-brand-location-assign' || key === 'special-brand-location-unassign') return 'update';
     if (key === 'completion-export' || key === 'brand-export' || key === 'special-client-view-report' || key === 'special-client-report') return 'export';
     if (
       key === 'special-clients-open' ||
@@ -1414,7 +1434,7 @@
     STATE.rows.specialTemplates = specialTemplates;
     STATE.rows.specialGroups = specialGroups;
     STATE.rows.specialBrands = specialBrands;
-    STATE.rows.specialLocations = specialLocations;
+    STATE.rows.specialLocations = specialLocations.map(applyCs360LocationNameOverride);
     console.info('[CS360 Special Clients] loaded templates', specialTemplates);
     return specialTemplates;
   }
@@ -2046,6 +2066,88 @@
     }));
   }
 
+  function renderSpecialBrandManagement(special) {
+    const sid = specialTemplateId(special);
+    const brands = specialBrandsForTemplate(sid);
+    const locations = specialLocationsForTemplate(sid, false);
+
+    if (!brands.length) {
+      return `<div class="cs-empty">No brands are configured for this Special CS Client. Use Edit to add brand names first; the brand page will stay hidden in exports until a brand is configured.</div>`;
+    }
+
+    if (!locations.length) {
+      return '<div class="cs-empty">No locations are available for brand assignment.</div>';
+    }
+
+    const rows = locations.map(location => {
+      const currentBrand = location.brand_id ? specialBrandById(location.brand_id) : null;
+      const group = location.group_id ? specialGroupById(location.group_id) : null;
+      const brandOptions = brands.map(brand => `<option value="${attr(brandId(brand))}" ${brandId(brand) === brandId(currentBrand) ? 'selected' : ''}>${esc(brandName(brand))}</option>`).join('');
+      const controls = canUpdate()
+        ? `<select class="select" data-special-brand-select="${attr(location.id)}"><option value="">Select brand</option>${brandOptions}</select>`
+        : `<span class="cs-kpi-sub">${esc(currentBrand ? brandName(currentBrand) : 'Unassigned')}</span>`;
+      const actions = canUpdate()
+        ? `<button class="btn sm" type="button" data-cs-action="special-brand-location-assign" data-special-location-id="${attr(location.id)}">${currentBrand ? 'Update Assignment' : 'Assign'}</button>
+          ${currentBrand ? `<button class="btn ghost sm" type="button" data-cs-action="special-brand-location-unassign" data-special-location-id="${attr(location.id)}">Unassign</button>` : ''}`
+        : '—';
+      return `<tr>
+        <td><strong>${esc(location.location_name || '')}</strong></td>
+        <td>${esc(group ? groupName(group) : '—')}</td>
+        <td><span class="cs-chip ${currentBrand ? 'cs-chip--healthy' : ''}">${esc(currentBrand ? brandName(currentBrand) : 'Unassigned')}</span></td>
+        <td>${controls}</td>
+        <td>${actions}</td>
+      </tr>`;
+    }).join('');
+
+    return `<div class="cs-section-title"><div><h4>Manage Brand Locations</h4><div class="cs-kpi-sub">Assign, move, or unassign each Special CS Client location without changing the client, group, or location setup.</div></div></div>
+      <div class="cs-table-wrap cs-brand-location-table"><table class="cs-table"><thead><tr><th>Location</th><th>Group</th><th>Current Brand</th><th>Assign / Move To</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+
+  async function assignSpecialLocationToBrand(locationId = '', targetBrandId = '') {
+    const location = (STATE.rows.specialLocations || []).find(row => String(row.id || '').trim() === String(locationId || '').trim());
+    const brand = specialBrandById(targetBrandId);
+    if (!location || !brand || String(location.special_client_id || '').trim() !== String(brand.special_client_id || '').trim()) {
+      toast('Select a valid Special CS Client location and brand.');
+      return;
+    }
+
+    const { error } = await supabase().from(TABLES.specialLocations).update({
+      brand_id: brandId(brand),
+      updated_at: new Date().toISOString()
+    }).eq('id', location.id).eq('special_client_id', location.special_client_id);
+
+    if (error) { toast(`Unable to assign special-client location: ${error.message}`); return; }
+    await loadSpecialCaseTemplates({ force: true });
+    STATE.selectedEntityType = 'special';
+    STATE.selectedSpecialClientId = String(location.special_client_id || '').trim();
+    STATE.specialActiveTab = 'brands';
+    renderClientList();
+    renderDetail();
+    toast(`${location.location_name} assigned to ${brandName(brand)}.`);
+  }
+
+  async function unassignSpecialLocationFromBrand(locationId = '') {
+    const location = (STATE.rows.specialLocations || []).find(row => String(row.id || '').trim() === String(locationId || '').trim());
+    if (!location) { toast('Select a valid Special CS Client location.'); return; }
+    const currentBrand = location.brand_id ? specialBrandById(location.brand_id) : null;
+    if (!currentBrand) { toast('This location is already unassigned.'); return; }
+    if (!confirm(`Unassign ${location.location_name || 'this location'} from ${brandName(currentBrand)}?`)) return;
+
+    const { error } = await supabase().from(TABLES.specialLocations).update({
+      brand_id: null,
+      updated_at: new Date().toISOString()
+    }).eq('id', location.id).eq('special_client_id', location.special_client_id);
+
+    if (error) { toast(`Unable to unassign special-client location: ${error.message}`); return; }
+    await loadSpecialCaseTemplates({ force: true });
+    STATE.selectedEntityType = 'special';
+    STATE.selectedSpecialClientId = String(location.special_client_id || '').trim();
+    STATE.specialActiveTab = 'brands';
+    renderClientList();
+    renderDetail();
+    toast('Special-client location unassigned from brand.');
+  }
+
   function renderStandaloneSpecialClientDetail(special, host = $('csClientDetail')) {
     if (!host) return;
     const sid = specialTemplateId(special);
@@ -2077,6 +2179,8 @@
         <div class="cs-info-box"><div class="cs-info-label">Groups</div><div class="cs-info-value">${esc(groups.map(groupName).join(', ') || 'No groups')}</div></div>
         <div class="cs-info-box"><div class="cs-info-label">Brands</div><div class="cs-info-value">${esc(brands.map(brandName).join(', ') || 'No brands')}</div></div>
       </div>`;
+    } else if (tab === 'brands') {
+      panel = renderSpecialBrandManagement(special);
     } else if (tab === 'history') {
       panel = completionRows.length
         ? `<div class="cs-table-wrap"><table class="cs-table"><thead><tr><th>Period</th><th>Location</th><th>On-Time</th><th>Late</th><th>Partial</th><th>Missed</th><th>Completion</th></tr></thead><tbody>${completionRows.map(row => `<tr><td>${fmtDate(row.period_start)} – ${fmtDate(row.period_end)}</td><td>${esc(row.location_name || '')}</td><td>${formatDecimal(row.done_on_time)}</td><td>${formatDecimal(row.done_late)}</td><td>${formatDecimal(row.partially_done)}</td><td>${formatDecimal(row.missed)}</td><td><strong>${formatPct(completionCount(row))}</strong></td></tr>`).join('')}</tbody></table></div>`
@@ -2102,7 +2206,7 @@
         <div class="cs-detail-actions">${actions}</div>
       </div>
       <div class="cs-tabs">
-        ${[['overview','Overview'],['locations','Locations'],['structure','Groups & Brands'],['history','Completion History']].map(([key,label]) => `<button class="cs-tab-btn ${tab === key ? 'is-active' : ''}" type="button" data-cs-special-tab="${key}">${label}</button>`).join('')}
+        ${[['overview','Overview'],['locations','Locations'],['structure','Groups & Brands'],['brands','Brand Management'],['history','Completion History']].map(([key,label]) => `<button class="cs-tab-btn ${tab === key ? 'is-active' : ''}" type="button" data-cs-special-tab="${key}">${label}</button>`).join('')}
       </div>
       <div class="cs-tab-panel is-active">${panel}</div>`;
 
@@ -3145,6 +3249,7 @@
       }
     }
 
+    const hasConfiguredBrands = brandCandidateMap.size > 0;
     const brandRows = Array.from(brandCandidateMap.values()).map(brand => {
       const brandTargets = isSpecialTemplateReport ? specialTemplateTargets(selectedSpecialTemplate).filter(t => normalize(t.brand_name) === normalize(brandName(brand))) : brandCompletionTargets(brand);
       const scopedTargets = brandTargets.filter(target => !reportTargetKeySet.size || reportTargetKeySet.has(target.source_type === 'special_client' ? specialCompletionTargetKey(target) : completionTargetKey(target)));
@@ -3155,7 +3260,7 @@
       return { brand, brand_name: brandName(brand), scope: isSpecialTemplateReport ? `Special CS Client: ${specialTemplateName(selectedSpecialTemplate)}` : brandScopeLabel(brand), locations: brandLocations, stats: brandStats, bestLocation, weakLocations };
     }).filter(item => item.locations.length);
 
-    if ((isGroupReport || !isBrandReport) && reportTargetKeySet.size) {
+    if (hasConfiguredBrands && (isGroupReport || !isBrandReport) && reportTargetKeySet.size) {
       const coveredKeys = new Set();
       brandRows.forEach(item => item.locations.forEach(row => coveredKeys.add(row.source_type === 'special_client' ? specialCompletionTargetKey(row) : completionTargetKey(row))));
       const unassignedTargets = targetRows.filter(target => !coveredKeys.has(target.source_type === 'special_client' ? specialCompletionTargetKey(target) : completionTargetKey(target)));
@@ -3165,7 +3270,7 @@
         brandRows.push({
           brand: { id: 'unassigned', brand_name: 'Unassigned Locations' },
           brand_name: 'Unassigned Locations',
-          scope: isGroupReport ? `Group: ${groupName(selectedGroup)}` : `Client: ${companyName(selectedCompany)}`,
+          scope: isSpecialTemplateReport ? `Special CS Client: ${specialTemplateName(selectedSpecialTemplate)}` : (isGroupReport ? `Group: ${groupName(selectedGroup)}` : `Client: ${companyName(selectedCompany)}`),
           locations: unassignedLocations,
           stats: unassignedStats,
           bestLocation: unassignedLocations.length ? unassignedLocations.slice().sort((a,b) => completionCount(b) - completionCount(a))[0] : null,
@@ -3407,7 +3512,7 @@
         <div class="cs-form-field"><label>Groups (one per line)</label><textarea name="groups_text" class="input" rows="5" ${readOnly ? 'readonly' : ''} placeholder="Demo Group">${esc(groups.map(groupName).join('\n'))}</textarea></div>
         <div class="cs-form-field"><label>Brands (one per line)</label><textarea name="brands_text" class="input" rows="5" ${readOnly ? 'readonly' : ''} placeholder="Brand A\nBrand B">${esc(brands.map(brandName).join('\n'))}</textarea></div>
         <div class="cs-form-field cs-form-field--full"><label>Locations (one per line)</label><textarea name="locations_text" class="input" rows="7" required ${readOnly ? 'readonly' : ''} placeholder="Location 1\nLocation 2\nLocation 3">${esc(locations.map(r=>r.location_name).join('\n'))}</textarea></div>
-        <div class="cs-form-field cs-form-field--full"><div class="cs-mini-note">At least one active location is required. Existing groups, brands, and locations are replaced on save so duplicates are prevented per special client.</div></div>
+        <div class="cs-form-field cs-form-field--full"><div class="cs-mini-note">At least one active location is required. Existing groups, brands, and locations are rebuilt on save; matching brand assignments are preserved, while new locations start unassigned and can be managed from Brand Management.</div></div>
       </div>
       <div class="cs-modal-actions"><button type="button" class="btn ghost" onclick="document.getElementById('csModalClose').click()">Cancel</button>${readOnly ? '' : '<button type="submit" class="btn primary cs-special-client-save-btn" data-cs-modal-submit="true">Save Special CS Client</button>'}</div>
     </form>`, async form => saveSpecialTemplate(form, template));
@@ -3423,6 +3528,16 @@
     const brands = Array.from(new Set(parseLines(fd.get('brands_text'))));
     const locations = Array.from(new Set(parseLines(fd.get('locations_text'))));
     const existingId = specialTemplateId(existing) || null;
+    const previousBrandByLocation = new Map();
+    if (existingId) {
+      specialLocationsForTemplate(existingId, false).forEach(location => {
+        const currentBrand = location.brand_id ? specialBrandById(location.brand_id) : null;
+        previousBrandByLocation.set(
+          normalize(location.location_name),
+          currentBrand ? normalize(brandName(currentBrand)) : null
+        );
+      });
+    }
     const clientNameKey = csClientNameKey(clientName);
 
     const duplicateSpecial = (STATE.rows.specialTemplates || []).find(template =>
@@ -3475,9 +3590,34 @@
     const savedId = String(data || existingId || '').trim();
     closeModal();
 
-    // Refresh only the standalone Special CS Client tables and select the
-    // saved Special CS Client as its own independent sidebar client.
+    // Refresh the recreated standalone structure, then restore matching old
+    // brand assignments. New locations start unassigned so they can be managed
+    // explicitly from the Brand Management tab.
     await loadSpecialCaseTemplates({ force: true });
+    const savedBrands = specialBrandsForTemplate(savedId);
+    const savedBrandByName = new Map(savedBrands.map(brand => [normalize(brandName(brand)), brand]));
+    const assignmentUpdates = specialLocationsForTemplate(savedId, false).map(location => {
+      const locationKey = normalize(location.location_name);
+      const previousBrandKey = previousBrandByLocation.has(locationKey)
+        ? previousBrandByLocation.get(locationKey)
+        : null;
+      const desiredBrand = previousBrandKey ? savedBrandByName.get(previousBrandKey) : null;
+      const desiredBrandId = desiredBrand ? brandId(desiredBrand) : null;
+      const currentBrandId = String(location.brand_id || '').trim() || null;
+      if (currentBrandId === desiredBrandId) return null;
+      return client.from(TABLES.specialLocations).update({
+        brand_id: desiredBrandId,
+        updated_at: new Date().toISOString()
+      }).eq('id', location.id).eq('special_client_id', savedId);
+    }).filter(Boolean);
+
+    if (assignmentUpdates.length) {
+      const updateResults = await Promise.all(assignmentUpdates);
+      const assignmentError = updateResults.find(result => result?.error)?.error;
+      if (assignmentError) throw new Error(`Special CS Client saved, but brand assignments could not be restored: ${assignmentError.message}`);
+      await loadSpecialCaseTemplates({ force: true });
+    }
+
     STATE.selectedEntityType = 'special';
     STATE.selectedSpecialClientId = savedId;
     STATE.specialActiveTab = 'overview';
@@ -3550,7 +3690,7 @@
       );
       return;
     }
-    if (action === 'brand-location-remove') removeBrandLocation(event.target?.closest?.('[data-brand-location-id]')?.dataset?.brandLocationId || '');
+    if (action === 'brand-location-remove' || action === 'brand-location-unassign') unassignBrandLocation(event.target?.closest?.('[data-brand-location-id]')?.dataset?.brandLocationId || '');
     if (action === 'brand-location-move') {
       event.preventDefault?.();
       event.stopPropagation?.();
@@ -3565,6 +3705,22 @@
     if (action === 'special-client-edit') { openSpecialTemplateForm(event.target?.closest?.('[data-special-client-id]')?.dataset?.specialClientId || ''); return; }
     if (action === 'special-client-archive') { archiveSpecialTemplate(event.target?.closest?.('[data-special-client-id]')?.dataset?.specialClientId || ''); return; }
     if (action === 'special-client-use-completion') { openCompletionForm(event.target?.closest?.('[data-special-client-id]')?.dataset?.specialClientId || ''); return; }
+    if (action === 'special-brand-location-assign') {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      const button = event.target?.closest?.('[data-special-location-id]');
+      const locationId = button?.getAttribute?.('data-special-location-id') || '';
+      const safeLocationId = window.CSS?.escape ? CSS.escape(locationId) : String(locationId).replace(/"/g, '\\"');
+      const select = document.querySelector(`[data-special-brand-select="${safeLocationId}"]`);
+      assignSpecialLocationToBrand(locationId, select?.value || '');
+      return;
+    }
+    if (action === 'special-brand-location-unassign') {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      unassignSpecialLocationFromBrand(event.target?.closest?.('[data-special-location-id]')?.getAttribute?.('data-special-location-id') || '');
+      return;
+    }
     if (action === 'special-client-view-report' || action === 'special-client-report') { exportCompletionReport({ report_type: 'special_client', special_client_id: event.target?.closest?.('[data-special-client-id]')?.dataset?.specialClientId || '' }); return; }
     if (action === 'brand-export') exportCompletionReport({ report_type: 'brand', brand_id: event.target?.closest?.('[data-brand-id]')?.dataset?.brandId || '' });
     if (action === 'review') openReviewForm();
@@ -4185,13 +4341,17 @@
     return !String(row.group_id || '').trim() && String(row.company_id || '').trim() === String(brand.company_id || '').trim();
   }
 
-  function brandOwnerForTarget(brand, target) {
+  function brandAssignmentForTarget(brand, target) {
     const locationKey = normalize(target?.location_name || '');
     const companyKey = String(target?.company_id || '').trim();
-    const row = (STATE.rows.brandLocations || []).find(item => {
+    return (STATE.rows.brandLocations || []).find(item => {
       if (!brandLocationScopeMatches(item, brand)) return false;
       return String(item.company_id || '').trim() === companyKey && normalize(item.location_name) === locationKey && !['inactive','archived','deleted'].includes(String(item.status || '').trim().toLowerCase());
-    });
+    }) || null;
+  }
+
+  function brandOwnerForTarget(brand, target) {
+    const row = brandAssignmentForTarget(brand, target);
     if (!row) return null;
     return brandById(row.brand_id) || { id: row.brand_id, brand_name: row.brand_name_snapshot || 'Unknown Brand' };
   }
@@ -4220,18 +4380,19 @@
       : `Client scope: ${esc(brand.company_name_snapshot || companyName(getSelectedCompany()))}`;
     return `<div class="cs-kpi-sub" style="margin-bottom:8px;">${scopeText} · showing ${targets.length} active location${targets.length === 1 ? '' : 's'}</div>
       <div class="cs-table-wrap cs-brand-location-table"><table class="cs-table"><thead><tr><th>Client</th><th>Location</th><th>Current Brand</th><th>Action</th></tr></thead><tbody>${targets.map(target => {
-        const owner = brandOwnerForTarget(brand, target);
+        const assignment = brandAssignmentForTarget(brand, target);
+        const owner = assignment ? (brandById(assignment.brand_id) || { id: assignment.brand_id, brand_name: assignment.brand_name_snapshot || 'Unknown Brand' }) : null;
         const isHere = owner && brandId(owner) === brandId(brand);
         const payload = encodeBrandLocationTarget(target);
         const current = owner ? brandName(owner) : 'Unassigned';
-        const actionLabel = isHere ? 'Already Assigned' : (owner ? 'Move Here' : 'Assign');
+        const actionLabel = owner ? 'Move Here' : 'Assign';
         return `<tr>
           <td>${esc(target.company_name)}</td>
           <td><strong>${esc(target.location_name)}</strong></td>
           <td><span class="cs-chip ${isHere ? 'cs-chip--healthy' : owner ? 'cs-chip--watch' : ''}">${esc(current)}</span></td>
           <td>${isHere
-            ? `<button class="btn ghost sm" type="button" disabled>Assigned</button>`
-            : `<button class="btn sm" type="button" data-cs-action="brand-location-assign" class="cs-brand-assign-btn" data-brand-id="${attr(brandId(brand))}" data-location-payload="${attr(payload)}">${esc(actionLabel)}</button>`}</td>
+            ? `<button class="btn ghost sm" type="button" data-cs-action="brand-location-unassign" data-brand-location-id="${attr(assignment?.id || '')}">Unassign</button>`
+            : `<button class="btn sm cs-brand-assign-btn" type="button" data-cs-action="brand-location-assign" data-brand-id="${attr(brandId(brand))}" data-location-payload="${attr(payload)}">${esc(actionLabel)}</button>`}</td>
         </tr>`;
       }).join('')}</tbody></table></div>`;
   }
@@ -4255,34 +4416,48 @@
         <td>${moveOptions ? `<select class="select" data-brand-location-move-select="${attr(row.id)}">${moveOptions}</select>` : '<span class="cs-kpi-sub">No other brand in same scope</span>'}</td>
         <td>
           ${moveOptions ? `<button class="btn ghost sm" type="button" data-cs-action="brand-location-move" data-brand-location-id="${attr(row.id)}">Move</button>` : ''}
-          <button class="btn ghost sm" type="button" data-cs-action="brand-location-remove" data-brand-location-id="${attr(row.id)}">Remove</button>
+          <button class="btn ghost sm" type="button" data-cs-action="brand-location-unassign" data-brand-location-id="${attr(row.id)}">Unassign</button>
         </td>
       </tr>`;
     }).join('')}</tbody></table></div>`;
   }
 
-  async function removeBrandLocation(rowId = '') {
+  async function unassignBrandLocation(rowId = '') {
     const id = String(rowId || '').trim();
     if (!id) return;
     const row = (STATE.rows.brandLocations || []).find(item => String(item.id || '').trim() === id);
+    const selectedBrandId = String(row?.brand_id || '').trim();
     const label = row ? `${row.location_name || 'this location'} from ${row.brand_name_snapshot || 'this brand'}` : 'this brand location';
-    if (!confirm(`Remove ${label}?`)) return;
+    if (!confirm(`Unassign ${label}?`)) return;
     const { error } = await supabase().from(TABLES.brandLocations).delete().eq('id', id);
-    if (error) { toast(`Unable to remove location: ${error.message}`); return; }
+    if (error) { toast(`Unable to unassign location: ${error.message}`); return; }
     closeModal();
     await loadData();
-    toast('Location removed from brand.');
+    if (selectedBrandId && brandById(selectedBrandId)) openBrandLocationForm(selectedBrandId);
+    toast('Location unassigned from brand.');
   }
 
   async function assignLocationToBrand(brand, target, status = 'Active', notes = '') {
     try {
       if (!brand || !target?.company_id || !target?.location_name) { toast('Select a valid brand and location.'); return; }
       const groupIdValue = brand.group_id || null;
-      let deleteQuery = supabase().from(TABLES.brandLocations).delete()
-        .eq('company_id', target.company_id)
-        .eq('location_name', target.location_name);
-      if (groupIdValue) deleteQuery = deleteQuery.eq('group_id', groupIdValue);
-      else deleteQuery = deleteQuery.is('group_id', null);
+      const matchingAssignmentIds = (STATE.rows.brandLocations || [])
+        .filter(row => brandLocationScopeMatches(row, brand))
+        .filter(row => String(row.company_id || '').trim() === String(target.company_id || '').trim())
+        .filter(row => normalize(row.location_name) === normalize(target.location_name))
+        .map(row => String(row.id || '').trim())
+        .filter(Boolean);
+
+      let deleteQuery = supabase().from(TABLES.brandLocations).delete();
+      if (matchingAssignmentIds.length) {
+        deleteQuery = deleteQuery.in('id', matchingAssignmentIds);
+      } else {
+        deleteQuery = deleteQuery
+          .eq('company_id', target.company_id)
+          .eq('location_name', target.location_name);
+        if (groupIdValue) deleteQuery = deleteQuery.eq('group_id', groupIdValue);
+        else deleteQuery = deleteQuery.is('group_id', null);
+      }
       const { error: deleteError } = await deleteQuery;
       if (deleteError) { toast(`Unable to prepare location move: ${deleteError.message}`); return; }
 
@@ -4315,8 +4490,10 @@
         throw new Error(message);
       }
 
+      const selectedBrandId = brandId(brand);
       closeModal();
       await loadData();
+      if (selectedBrandId && brandById(selectedBrandId)) openBrandLocationForm(selectedBrandId);
       toast(`${target.location_name} assigned to ${brandName(brand)}.`);
     } catch (error) {
       console.error('[ClientSuccess360] brand location assign failed', error);
@@ -4351,7 +4528,7 @@
       <div class="cs-kpi-sub">If the selected brand is group-scoped, all group locations appear below. If it is client-scoped, only that client’s locations appear.</div>
       <div class="cs-section-title" style="margin-top:12px;"><h4>Available Locations</h4><span class="cs-chip">Assign or move here</span></div>
       <div id="csBrandAvailableLocations"></div>
-      <div class="cs-section-title" style="margin-top:12px;"><h4>Assigned Locations</h4><span class="cs-chip">Remove or move between brands</span></div>
+      <div class="cs-section-title" style="margin-top:12px;"><h4>Assigned Locations</h4><span class="cs-chip">Unassign or move between brands</span></div>
       <div id="csBrandAssignedLocations"></div>
       <div class="cs-modal-actions"><button type="button" class="btn ghost" onclick="document.getElementById('csModalClose').click()">Close</button></div>
     </form>`, async () => {});
@@ -4391,11 +4568,11 @@
         return;
       }
 
-      const removeBtn = ev.target?.closest?.('[data-cs-action="brand-location-remove"]');
-      if (removeBtn) {
+      const unassignBtn = ev.target?.closest?.('[data-cs-action="brand-location-unassign"], [data-cs-action="brand-location-remove"]');
+      if (unassignBtn) {
         ev.preventDefault();
         ev.stopPropagation();
-        removeBrandLocation(removeBtn.getAttribute('data-brand-location-id') || '');
+        unassignBrandLocation(unassignBtn.getAttribute('data-brand-location-id') || '');
       }
     });
 
