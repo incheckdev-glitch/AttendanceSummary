@@ -270,7 +270,7 @@
       key === 'completion-history-group' ||
       key === 'completion-history-brand'
     ) return 'view';
-    if (key === 'special-client-use-completion') return 'create';
+    if (key === 'special-client-use-completion' || key === 'special-brand-use-completion') return 'create';
     if (key === 'special-client-create') return 'create';
     if (key === 'special-client-edit') return 'update';
     if (key === 'special-client-archive') return 'delete';
@@ -2112,7 +2112,11 @@
       </tr>`;
     }).join('');
 
-    const brandReportButtons = brands.map(brand => `<button class="btn ghost sm" type="button" data-cs-action="special-brand-export" data-special-client-id="${attr(sid)}" data-special-brand-id="${attr(brandId(brand))}">Export ${esc(brandName(brand))}</button>`).join(' ');
+    const brandReportButtons = brands.map(brand => {
+      const assignedCount = locations.filter(location => String(location.brand_id || '').trim() === brandId(brand)).length;
+      const disabled = assignedCount ? '' : 'disabled title="Assign at least one location to this brand first"';
+      return `<span class="cs-brand-quick-actions"><button class="btn sm" type="button" data-cs-action="special-brand-use-completion" data-special-client-id="${attr(sid)}" data-special-brand-id="${attr(brandId(brand))}" ${disabled}>Add ${esc(brandName(brand))} Completion</button> <button class="btn ghost sm" type="button" data-cs-action="special-brand-export" data-special-client-id="${attr(sid)}" data-special-brand-id="${attr(brandId(brand))}" ${disabled}>Export ${esc(brandName(brand))}</button></span>`;
+    }).join(' ');
 
     return `<div class="cs-section-title"><div><h4>Manage Brand Locations</h4><div class="cs-kpi-sub">Assign, move, or unassign each Special CS Client location without changing the client, group, or location setup.</div></div><div>${brandReportButtons}</div></div>
       <div class="cs-table-wrap cs-brand-location-table"><table class="cs-table"><thead><tr><th>Location</th><th>Group</th><th>Current Brand</th><th>Assign / Move To</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table></div>`;
@@ -3028,6 +3032,16 @@
       return applyCs360LocationNameOverride({ company_id: '', company_name: template.client_name || specialTemplateName(template), special_client_id: tid, special_location_id: loc.id, special_group_id: loc.group_id || null, special_brand_id: loc.brand_id || null, location_name: loc.location_name, group_name: groupName(group || { group_name: loc.group_name || '' }) || '', brand_name: brandName(brand || { brand_name: loc.brand_name || '' }) || '', source_type: 'special_client' });
     });
   }
+  function specialBrandCompletionTargets(template, brand) {
+    if (!template || !brand) return [];
+    const tid = specialTemplateId(template);
+    const bid = brandId(brand);
+    if (!tid || !bid || String(brand.special_client_id || '').trim() !== tid) return [];
+    return specialTemplateTargets(template).filter(target => (
+      String(target.special_brand_id || '').trim() === bid ||
+      (!String(target.special_brand_id || '').trim() && normalize(target.brand_name) === normalize(brandName(brand)))
+    ));
+  }
   function renderSpecialTemplates() {
     const q = normalize(STATE.filters.specialTemplateSearch || '');
     const status = String(STATE.filters.specialTemplateStatus || 'active').toLowerCase();
@@ -3842,6 +3856,14 @@
     if (action === 'special-client-edit') { openSpecialTemplateForm(event.target?.closest?.('[data-special-client-id]')?.dataset?.specialClientId || ''); return; }
     if (action === 'special-client-archive') { archiveSpecialTemplate(event.target?.closest?.('[data-special-client-id]')?.dataset?.specialClientId || ''); return; }
     if (action === 'special-client-use-completion') { openCompletionForm(event.target?.closest?.('[data-special-client-id]')?.dataset?.specialClientId || ''); return; }
+    if (action === 'special-brand-use-completion') {
+      const button = event.target?.closest?.('[data-special-brand-id]');
+      openCompletionForm(
+        button?.getAttribute?.('data-special-client-id') || '',
+        button?.getAttribute?.('data-special-brand-id') || ''
+      );
+      return;
+    }
     if (action === 'special-brand-location-assign') {
       event.preventDefault?.();
       event.stopPropagation?.();
@@ -4106,6 +4128,11 @@
       const template = specialTemplateById(form?.special_client_id?.value);
       return template ? specialTemplateTargets(template) : [];
     }
+    if (scope === 'special_brand') {
+      const template = specialTemplateById(form?.special_client_id?.value);
+      const brand = specialBrandById(form?.special_brand_id?.value);
+      return template && brand ? specialBrandCompletionTargets(template, brand) : [];
+    }
     return currentClientCompletionTargets(company);
   }
 
@@ -4163,7 +4190,7 @@
     return activeGroups().filter(group => ids.has(groupId(group))).sort((a,b) => groupName(a).localeCompare(groupName(b)));
   }
 
-  function openCompletionForm(preselectedSpecialTemplateId = '') {
+  function openCompletionForm(preselectedSpecialTemplateId = '', preselectedSpecialBrandId = '') {
     const [periodStart, periodEnd] = periodDefaults('weekly');
     const company = getSelectedCompany();
     const groups = activeCompletionGroupsForSelect(company);
@@ -4177,13 +4204,27 @@
     const specialTemplates = activeSpecialTemplates();
     const specialSelect = specialClientSelectInput(preselectedSpecialTemplateId);
     const selectedSpecial = preselectedSpecialTemplateId ? specialTemplateById(preselectedSpecialTemplateId) : null;
-    const initialTargets = selectedSpecial ? specialTemplateTargets(selectedSpecial) : currentClientCompletionTargets(company);
+    const selectedSpecialBrand = preselectedSpecialBrandId ? specialBrandById(preselectedSpecialBrandId) : null;
+    const hasValidSelectedSpecialBrand = Boolean(
+      selectedSpecial &&
+      selectedSpecialBrand &&
+      String(selectedSpecialBrand.special_client_id || '').trim() === specialTemplateId(selectedSpecial)
+    );
+    const initialSpecialBrands = selectedSpecial ? specialBrandsForTemplate(specialTemplateId(selectedSpecial)) : [];
+    const initialSpecialBrandOptions = initialSpecialBrands.length
+      ? `<option value="">Select brand</option>${initialSpecialBrands.map(brand => `<option value="${attr(brandId(brand))}" ${hasValidSelectedSpecialBrand && brandId(brand) === brandId(selectedSpecialBrand) ? 'selected' : ''}>${esc(brandName(brand))}</option>`).join('')}`
+      : `<option value="">${selectedSpecial ? 'No brands configured for this Special CS Client' : 'Select a Special CS Client first'}</option>`;
+    const hasAnySpecialBrands = specialTemplates.some(template => specialBrandsForTemplate(specialTemplateId(template)).length);
+    const initialTargets = hasValidSelectedSpecialBrand
+      ? specialBrandCompletionTargets(selectedSpecial, selectedSpecialBrand)
+      : (selectedSpecial ? specialTemplateTargets(selectedSpecial) : currentClientCompletionTargets(company));
 
     openModal('Add Location Completion', `<form class="cs-form" id="csCompletionForm">
       <div class="cs-form-grid">
         <div id="csCompletionNormalClientFields" class="cs-completion-normal-fields">${selectedCompanyInput()}</div>
-        <div class="cs-form-field"><label>Source</label><select name="completion_scope" class="select"><option value="client">Normal Clients</option><option value="group" ${groups.length ? '' : 'disabled'}>Normal Client Group</option><option value="brand" ${brands.length ? '' : 'disabled'}>Normal Client Brand</option><option value="special_client" ${specialTemplates.length ? '' : 'disabled'} ${preselectedSpecialTemplateId ? 'selected' : ''}>Special CS Clients</option></select></div>
+        <div class="cs-form-field"><label>Source</label><select name="completion_scope" class="select"><option value="client">Normal Clients</option><option value="group" ${groups.length ? '' : 'disabled'}>Normal Client Group</option><option value="brand" ${brands.length ? '' : 'disabled'}>Normal Client Brand</option><option value="special_client" ${specialTemplates.length ? '' : 'disabled'} ${preselectedSpecialTemplateId && !hasValidSelectedSpecialBrand ? 'selected' : ''}>Special CS Client — All Brands</option><option value="special_brand" ${hasAnySpecialBrands ? '' : 'disabled'} ${hasValidSelectedSpecialBrand ? 'selected' : ''}>Special CS Client — One Brand</option></select></div>
         <div class="cs-form-field" id="csCompletionSpecialField" style="display:none;">${specialSelect}</div>
+        <div class="cs-form-field" id="csCompletionSpecialBrandField" style="display:none;"><label>Special CS Client Brand</label><select name="special_brand_id" class="select">${initialSpecialBrandOptions}</select><div class="cs-kpi-sub">Only locations assigned to this brand will appear below.</div></div>
         <div class="cs-form-field" id="csCompletionGroupField" style="display:none;"><label>CS Client Group</label><select name="group_id" class="select">${groupOptions}</select></div>
         <div class="cs-form-field" id="csCompletionBrandField" style="display:none;"><label>CS Brand</label><select name="brand_id" class="select">${brandOptions}</select></div>
         <div class="cs-form-field"><label>Review Type</label><select name="review_type" class="select"><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></div>
@@ -4213,15 +4254,36 @@
     </form>`, saveCompletion);
 
     const form = $('csCompletionForm');
+    const updateSpecialBrandOptions = ({ preserveSelection = true } = {}) => {
+      const specialClientSelect = form?.querySelector?.('[name="special_client_id"]');
+      const specialBrandSelect = form?.querySelector?.('[name="special_brand_id"]');
+      if (!specialBrandSelect) return;
+      const previous = preserveSelection ? String(specialBrandSelect.value || '').trim() : '';
+      const sid = String(specialClientSelect?.value || '').trim();
+      const availableBrands = sid ? specialBrandsForTemplate(sid) : [];
+      specialBrandSelect.innerHTML = availableBrands.length
+        ? `<option value="">Select brand</option>${availableBrands.map(brand => `<option value="${attr(brandId(brand))}">${esc(brandName(brand))}</option>`).join('')}`
+        : `<option value="">${sid ? 'No brands configured for this Special CS Client' : 'Select a Special CS Client first'}</option>`;
+      if (previous && availableBrands.some(brand => brandId(brand) === previous)) specialBrandSelect.value = previous;
+      else if (hasValidSelectedSpecialBrand && availableBrands.some(brand => brandId(brand) === brandId(selectedSpecialBrand))) specialBrandSelect.value = brandId(selectedSpecialBrand);
+    };
+
     form?.review_type?.addEventListener('change', () => {
       const [s,e] = periodDefaults(form.review_type.value);
       form.period_start.value = s;
       form.period_end.value = e;
     });
-    form?.completion_scope?.addEventListener('change', () => rebuildCompletionRows(form));
+    form?.completion_scope?.addEventListener('change', () => {
+      if (form.completion_scope.value === 'special_brand') updateSpecialBrandOptions();
+      rebuildCompletionRows(form);
+    });
     form?.group_id?.addEventListener('change', () => rebuildCompletionRows(form));
     form?.brand_id?.addEventListener('change', () => rebuildCompletionRows(form));
-    form?.special_client_id?.addEventListener('change', () => rebuildCompletionRows(form));
+    form?.special_brand_id?.addEventListener('change', () => rebuildCompletionRows(form));
+    form?.special_client_id?.addEventListener('change', () => {
+      updateSpecialBrandOptions({ preserveSelection: false });
+      rebuildCompletionRows(form);
+    });
     form?.addEventListener('input', () => refreshCompletionRows(form));
     rebuildCompletionRows(form);
   }
@@ -4231,11 +4293,14 @@
     const scope = String(form.completion_scope?.value || 'client');
     const isGroup = scope === 'group';
     const isBrand = scope === 'brand';
-    const isSpecial = scope === 'special_client';
+    const isSpecialClient = scope === 'special_client';
+    const isSpecialBrand = scope === 'special_brand';
+    const isSpecial = isSpecialClient || isSpecialBrand;
     const targets = completionTargetsForForm(form);
     const groupField = $('csCompletionGroupField');
     const brandField = $('csCompletionBrandField');
     const specialField = $('csCompletionSpecialField');
+    const specialBrandField = $('csCompletionSpecialBrandField');
     const normalClientFields = $('csCompletionNormalClientFields');
     const groupEntry = $('csGroupCompletionEntry');
     const hint = $('csCompletionHint');
@@ -4245,17 +4310,20 @@
     if (groupField) groupField.style.display = isGroup ? '' : 'none';
     if (brandField) brandField.style.display = isBrand ? '' : 'none';
     if (specialField) specialField.style.display = isSpecial ? '' : 'none';
+    if (specialBrandField) specialBrandField.style.display = isSpecialBrand ? '' : 'none';
     if (normalClientFields) normalClientFields.style.display = isSpecial ? 'none' : 'contents';
     if (groupEntry) groupEntry.style.display = (isGroup || isBrand || isSpecial) ? '' : 'none';
-    if (aggregateLabel) aggregateLabel.textContent = isSpecial ? 'All Special Client Locations' : (isBrand ? 'All Brand Locations' : 'All Group Locations');
-    if (aggregateTitle) aggregateTitle.textContent = isSpecial ? 'Special CS Client Result' : (isBrand ? 'Brand Result Counts' : 'Group Result Counts');
-    if (hint) hint.textContent = isSpecial
-      ? 'For Special CS Clients, enter each active special client location below. The All Special Client Locations line above is auto-calculated from all entered rows.'
-      : (isBrand
-        ? 'For brand scope, enter each assigned company/location below. The All Brand Locations line above is auto-calculated from all entered rows.'
-        : (isGroup
-          ? 'For group scope, enter each company/location below one time from the same screen. The All Group Locations line above is auto-calculated from all entered rows.'
-          : 'For current client scope, you can edit each location separately.'));
+    if (aggregateLabel) aggregateLabel.textContent = isSpecialBrand ? 'All Selected Brand Locations' : (isSpecialClient ? 'All Special Client Locations' : (isBrand ? 'All Brand Locations' : 'All Group Locations'));
+    if (aggregateTitle) aggregateTitle.textContent = isSpecialBrand ? 'Special CS Client Brand Result' : (isSpecialClient ? 'Special CS Client Result' : (isBrand ? 'Brand Result Counts' : 'Group Result Counts'));
+    if (hint) hint.textContent = isSpecialBrand
+      ? 'Enter completion only for the locations assigned to the selected Special CS Client brand. Locations assigned to the client’s other brands are excluded.'
+      : (isSpecialClient
+        ? 'For Special CS Clients, enter each active special client location below. The All Special Client Locations line above is auto-calculated from all entered rows.'
+        : (isBrand
+          ? 'For brand scope, enter each assigned company/location below. The All Brand Locations line above is auto-calculated from all entered rows.'
+          : (isGroup
+            ? 'For group scope, enter each company/location below one time from the same screen. The All Group Locations line above is auto-calculated from all entered rows.'
+            : 'For current client scope, you can edit each location separately.')));
     if (body) body.innerHTML = renderCompletionTargetsTable(targets, null, true);
     refreshCompletionRows(form);
   }
@@ -4327,6 +4395,15 @@
     if (scope === 'special_client' && !specialTemplateById(fd.get('special_client_id'))) {
       throw new Error('Select a valid Special CS Client.');
     }
+    if (scope === 'special_brand') {
+      const selectedSpecialTemplate = specialTemplateById(fd.get('special_client_id'));
+      const selectedSpecialBrand = specialBrandById(fd.get('special_brand_id'));
+      if (!selectedSpecialTemplate) throw new Error('Select a valid Special CS Client.');
+      if (!selectedSpecialBrand) throw new Error('Select a valid Special CS Client brand.');
+      if (String(selectedSpecialBrand.special_client_id || '').trim() !== specialTemplateId(selectedSpecialTemplate)) {
+        throw new Error('The selected brand does not belong to the selected Special CS Client.');
+      }
+    }
 
     payloads = Array.from(form.querySelectorAll('.cs-completion-input-row')).map(row => {
       const data = readCompletionInputRow(row);
@@ -4334,7 +4411,7 @@
         company_id: row.dataset.companyId || null,
         company_name: row.dataset.companyName,
         location_name: data.location_name,
-        source_type: scope === 'special_client' ? 'special_client' : 'normal',
+        source_type: ['special_client','special_brand'].includes(scope) ? 'special_client' : 'normal',
         special_client_id: row.dataset.specialClientId || null,
         special_location_id: row.dataset.specialLocationId || null,
         special_group_id: row.dataset.specialGroupId || null,
@@ -4354,7 +4431,7 @@
 
     if (!payloads.length) throw new Error('No valid locations were found to save completion.');
 
-    if (scope === 'special_client') {
+    if (['special_client','special_brand'].includes(scope)) {
       const validSpecialLocationIds = new Set(
         (STATE.rows.specialLocations || []).map(location => String(location.id || '').trim())
       );
@@ -4380,7 +4457,7 @@
 
     if (rpcResult?.error && isMissingRpcError(rpcResult.error, 'cs360_upsert_location_completions')) {
       // Backward-compatible fallback while the migration is being deployed.
-      const conflictKey = scope === 'special_client'
+      const conflictKey = ['special_client','special_brand'].includes(scope)
         ? 'source_type,special_client_id,special_location_id,review_type,period_start,period_end'
         : 'company_id,location_name,review_type,period_start,period_end';
       const fallback = await withCsTimeout(
@@ -4417,9 +4494,11 @@
       ? `Brand completion saved for ${payloads.length} location line${payloads.length === 1 ? '' : 's'}.`
       : scope === 'group'
         ? `Group completion saved for ${payloads.length} location line${payloads.length === 1 ? '' : 's'}.`
-        : scope === 'special_client'
-          ? `Special CS Client completion saved for ${payloads.length} location line${payloads.length === 1 ? '' : 's'}.`
-          : 'Location completion saved.';
+        : scope === 'special_brand'
+          ? `Special CS Client brand completion saved for ${payloads.length} location line${payloads.length === 1 ? '' : 's'}.`
+          : scope === 'special_client'
+            ? `Special CS Client completion saved for ${payloads.length} location line${payloads.length === 1 ? '' : 's'}.`
+            : 'Location completion saved.';
     toast(successMessage);
   }
 
