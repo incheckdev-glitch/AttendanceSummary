@@ -98,7 +98,9 @@
     return String(value || '').trim().toLowerCase()
       .normalize('NFKD')
       .replace(/[\u0300-\u036f]/g, '')
-      .replace(/\s+/g, ' ');
+      .replace(/[^a-z0-9\u0600-\u06ff]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   const CS360_LOCATION_NAME_OVERRIDES = new Map([
@@ -110,19 +112,29 @@
     ['zl khalidiya', 'ZL al Forsan Cloud Kitchen']
   ]);
 
+  const CS360_LOCATION_SOURCE_FIELDS = [
+    'location_name', 'location', 'branch_name', 'store_name', 'site_name',
+    'outlet_name', 'locationName', 'branchName', 'site', 'branch', 'store'
+  ];
+
+  function cs360RawLocationName(row = {}) {
+    for (const field of CS360_LOCATION_SOURCE_FIELDS) {
+      const value = String(row?.[field] || '').trim();
+      if (value) return value;
+    }
+    return '';
+  }
+
   function replaceCs360LocationFields(row = {}, sourceName = '', displayName = '') {
     const sourceKey = normalizeCs360DisplayName(sourceName);
-    const replaceWhenMatching = value => (
-      normalizeCs360DisplayName(value) === sourceKey ? displayName : value
-    );
+    const patched = { ...row, location_name: displayName, location: displayName };
 
-    return {
-      ...row,
-      location_name: displayName,
-      location: displayName,
-      branch_name: replaceWhenMatching(row.branch_name),
-      site_name: replaceWhenMatching(row.site_name)
-    };
+    CS360_LOCATION_SOURCE_FIELDS.forEach(field => {
+      const currentValue = row?.[field];
+      if (normalizeCs360DisplayName(currentValue) === sourceKey) patched[field] = displayName;
+    });
+
+    return patched;
   }
 
   function applyCs360LocationNameOverride(row = {}) {
@@ -136,13 +148,7 @@
       ''
     );
 
-    const locationName = String(
-      row.location_name ||
-      row.location ||
-      row.branch_name ||
-      row.site_name ||
-      ''
-    ).trim();
+    const locationName = cs360RawLocationName(row);
 
     const normalizedLocation = normalizeCs360DisplayName(locationName);
     const globalOverride = CS360_LOCATION_NAME_OVERRIDES.get(normalizedLocation);
@@ -254,7 +260,7 @@
 
   function requiredCsPermissionForAction(action) {
     const key = String(action || '').trim().toLowerCase();
-    if (key === 'brand-location-remove' || key === 'brand-location-unassign') return 'delete';
+    if (key === 'brand-location-remove' || key === 'brand-location-unassign') return 'update';
     if (key === 'brand-location-move' || key === 'special-brand-location-assign' || key === 'special-brand-location-unassign') return 'update';
     if (key === 'completion-export' || key === 'brand-export' || key === 'special-client-view-report' || key === 'special-client-report' || key === 'special-brand-export') return 'export';
     if (
@@ -2112,6 +2118,44 @@
       <div class="cs-table-wrap cs-brand-location-table"><table class="cs-table"><thead><tr><th>Location</th><th>Group</th><th>Current Brand</th><th>Assign / Move To</th><th>Actions</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
 
+  async function persistSpecialLocationBrand(location, targetBrandId = null) {
+    const client = supabase();
+    if (!client) throw new Error('Supabase database connection is unavailable.');
+
+    const normalizedBrandId = String(targetBrandId || '').trim() || null;
+    const rpcResult = await withCsTimeout(
+      client.rpc('cs360_set_special_location_brand', {
+        p_special_location_id: String(location.id || '').trim(),
+        p_brand_id: normalizedBrandId
+      }),
+      20000,
+      normalizedBrandId ? 'Assigning Special CS Client brand' : 'Unassigning Special CS Client brand'
+    );
+
+    if (!rpcResult.error) return;
+
+    if (!isMissingRpcError(rpcResult.error, 'cs360_set_special_location_brand')) {
+      throw new Error(rpcResult.error.message || String(rpcResult.error));
+    }
+
+    // Compatibility fallback for databases where the new RPC has not yet been
+    // installed. Existing RLS must permit the direct update for this to work.
+    const { error: fallbackError } = await withCsTimeout(
+      client.from(TABLES.specialLocations).update({
+        brand_id: normalizedBrandId,
+        updated_at: new Date().toISOString()
+      }).eq('id', location.id).eq('special_client_id', location.special_client_id),
+      20000,
+      'Updating Special CS Client brand'
+    );
+
+    if (fallbackError) {
+      throw new Error(
+        `${fallbackError.message}. Run sql/migrations/20260720_cs360_location_and_special_brand_management_v3.sql in Supabase, then retry.`
+      );
+    }
+  }
+
   async function assignSpecialLocationToBrand(locationId = '', targetBrandId = '') {
     const location = (STATE.rows.specialLocations || []).find(row => String(row.id || '').trim() === String(locationId || '').trim());
     const brand = specialBrandById(targetBrandId);
@@ -2120,19 +2164,19 @@
       return;
     }
 
-    const { error } = await supabase().from(TABLES.specialLocations).update({
-      brand_id: brandId(brand),
-      updated_at: new Date().toISOString()
-    }).eq('id', location.id).eq('special_client_id', location.special_client_id);
-
-    if (error) { toast(`Unable to assign special-client location: ${error.message}`); return; }
-    await loadSpecialCaseTemplates({ force: true });
-    STATE.selectedEntityType = 'special';
-    STATE.selectedSpecialClientId = String(location.special_client_id || '').trim();
-    STATE.specialActiveTab = 'brands';
-    renderClientList();
-    renderDetail();
-    toast(`${location.location_name} assigned to ${brandName(brand)}.`);
+    try {
+      await persistSpecialLocationBrand(location, brandId(brand));
+      await loadSpecialCaseTemplates({ force: true });
+      STATE.selectedEntityType = 'special';
+      STATE.selectedSpecialClientId = String(location.special_client_id || '').trim();
+      STATE.specialActiveTab = 'brands';
+      renderClientList();
+      renderDetail();
+      toast(`${applyCs360LocationNameOverride(location).location_name || location.location_name} assigned to ${brandName(brand)}.`);
+    } catch (error) {
+      console.error('[ClientSuccess360] special brand assignment failed', error);
+      toast(`Unable to assign special-client location: ${error.message || error}`);
+    }
   }
 
   async function unassignSpecialLocationFromBrand(locationId = '') {
@@ -2140,21 +2184,22 @@
     if (!location) { toast('Select a valid Special CS Client location.'); return; }
     const currentBrand = location.brand_id ? specialBrandById(location.brand_id) : null;
     if (!currentBrand) { toast('This location is already unassigned.'); return; }
-    if (!confirm(`Unassign ${location.location_name || 'this location'} from ${brandName(currentBrand)}?`)) return;
+    const displayLocation = applyCs360LocationNameOverride(location).location_name || location.location_name || 'this location';
+    if (!confirm(`Unassign ${displayLocation} from ${brandName(currentBrand)}?`)) return;
 
-    const { error } = await supabase().from(TABLES.specialLocations).update({
-      brand_id: null,
-      updated_at: new Date().toISOString()
-    }).eq('id', location.id).eq('special_client_id', location.special_client_id);
-
-    if (error) { toast(`Unable to unassign special-client location: ${error.message}`); return; }
-    await loadSpecialCaseTemplates({ force: true });
-    STATE.selectedEntityType = 'special';
-    STATE.selectedSpecialClientId = String(location.special_client_id || '').trim();
-    STATE.specialActiveTab = 'brands';
-    renderClientList();
-    renderDetail();
-    toast('Special-client location unassigned from brand.');
+    try {
+      await persistSpecialLocationBrand(location, null);
+      await loadSpecialCaseTemplates({ force: true });
+      STATE.selectedEntityType = 'special';
+      STATE.selectedSpecialClientId = String(location.special_client_id || '').trim();
+      STATE.specialActiveTab = 'brands';
+      renderClientList();
+      renderDetail();
+      toast('Special-client location unassigned from brand.');
+    } catch (error) {
+      console.error('[ClientSuccess360] special brand unassignment failed', error);
+      toast(`Unable to unassign special-client location: ${error.message || error}`);
+    }
   }
 
   function renderStandaloneSpecialClientDetail(special, host = $('csClientDetail')) {
@@ -3698,10 +3743,9 @@
       const desiredBrandId = desiredBrand ? brandId(desiredBrand) : null;
       const currentBrandId = String(location.brand_id || '').trim() || null;
       if (currentBrandId === desiredBrandId) return null;
-      return client.from(TABLES.specialLocations).update({
-        brand_id: desiredBrandId,
-        updated_at: new Date().toISOString()
-      }).eq('id', location.id).eq('special_client_id', savedId);
+      return persistSpecialLocationBrand(location, desiredBrandId)
+        .then(() => ({ error: null }))
+        .catch(error => ({ error }));
     }).filter(Boolean);
 
     if (assignmentUpdates.length) {
@@ -4529,74 +4573,111 @@
     if (!id) return;
     const row = (STATE.rows.brandLocations || []).find(item => String(item.id || '').trim() === id);
     const selectedBrandId = String(row?.brand_id || '').trim();
-    const label = row ? `${row.location_name || 'this location'} from ${row.brand_name_snapshot || 'this brand'}` : 'this brand location';
+    const displayRow = applyCs360LocationNameOverride(row || {});
+    const label = row ? `${displayRow.location_name || row.location_name || 'this location'} from ${row.brand_name_snapshot || 'this brand'}` : 'this brand location';
     if (!confirm(`Unassign ${label}?`)) return;
-    const { error } = await supabase().from(TABLES.brandLocations).delete().eq('id', id);
-    if (error) { toast(`Unable to unassign location: ${error.message}`); return; }
-    closeModal();
-    await loadData();
-    if (selectedBrandId && brandById(selectedBrandId)) openBrandLocationForm(selectedBrandId);
-    toast('Location unassigned from brand.');
+
+    try {
+      const client = supabase();
+      if (!client) throw new Error('Supabase database connection is unavailable.');
+      const rpcResult = await withCsTimeout(
+        client.rpc('cs360_unassign_brand_location', { p_brand_location_id: id }),
+        20000,
+        'Unassigning brand location'
+      );
+
+      if (rpcResult.error) {
+        if (!isMissingRpcError(rpcResult.error, 'cs360_unassign_brand_location')) {
+          throw new Error(rpcResult.error.message || String(rpcResult.error));
+        }
+        const { error: fallbackError } = await withCsTimeout(
+          client.from(TABLES.brandLocations).delete().eq('id', id),
+          20000,
+          'Unassigning brand location'
+        );
+        if (fallbackError) {
+          throw new Error(`${fallbackError.message}. Run sql/migrations/20260720_cs360_location_and_special_brand_management_v3.sql in Supabase, then retry.`);
+        }
+      }
+
+      closeModal();
+      await loadData();
+      if (selectedBrandId && brandById(selectedBrandId)) openBrandLocationForm(selectedBrandId);
+      toast('Location unassigned from brand.');
+    } catch (error) {
+      console.error('[ClientSuccess360] brand location unassign failed', error);
+      toast(`Unable to unassign location: ${error.message || error}`);
+    }
   }
 
   async function assignLocationToBrand(brand, target, status = 'Active', notes = '') {
     try {
       if (!brand || !target?.company_id || !target?.location_name) { toast('Select a valid brand and location.'); return; }
       const groupIdValue = brand.group_id || null;
-      const matchingAssignmentIds = (STATE.rows.brandLocations || [])
-        .filter(row => brandLocationScopeMatches(row, brand))
-        .filter(row => String(row.company_id || '').trim() === String(target.company_id || '').trim())
-        .filter(row => normalize(row.location_name) === normalize(target.location_name))
-        .map(row => String(row.id || '').trim())
-        .filter(Boolean);
-
-      let deleteQuery = supabase().from(TABLES.brandLocations).delete();
-      if (matchingAssignmentIds.length) {
-        deleteQuery = deleteQuery.in('id', matchingAssignmentIds);
-      } else {
-        deleteQuery = deleteQuery
-          .eq('company_id', target.company_id)
-          .eq('location_name', target.location_name);
-        if (groupIdValue) deleteQuery = deleteQuery.eq('group_id', groupIdValue);
-        else deleteQuery = deleteQuery.is('group_id', null);
-      }
-      const { error: deleteError } = await deleteQuery;
-      if (deleteError) { toast(`Unable to prepare location move: ${deleteError.message}`); return; }
-
+      const displayTarget = applyCs360LocationNameOverride({ ...target, location_name: target.location_name });
+      const normalizedTarget = { ...target, location_name: displayTarget.location_name || target.location_name };
       const payload = {
         brand_id: brandId(brand),
         brand_name_snapshot: brandName(brand),
         group_id: groupIdValue,
         group_name_snapshot: groupIdValue ? groupName(groupById(groupIdValue) || {}) : null,
-        company_id: target.company_id,
-        company_name_snapshot: target.company_name,
-        location_name: target.location_name,
-        service_start_date: target.service_start_date || null,
-        service_end_date: target.service_end_date || null,
+        company_id: normalizedTarget.company_id,
+        company_name_snapshot: normalizedTarget.company_name,
+        location_name: normalizedTarget.location_name,
+        service_start_date: normalizedTarget.service_start_date || null,
+        service_end_date: normalizedTarget.service_end_date || null,
         status: status || 'Active',
         notes: notes || null
       };
-      const { error } = await withCsTimeout(
-        supabase().from(TABLES.brandLocations).insert(payload),
+
+      const client = supabase();
+      if (!client) throw new Error('Supabase database connection is unavailable.');
+      const rpcResult = await withCsTimeout(
+        client.rpc('cs360_assign_brand_location', { p_payload: payload }),
         20000,
         'Assigning location to brand'
       );
 
-      if (error) {
-        const message = String(error.message || error);
-        if (/no unique or exclusion constraint matching the ON CONFLICT specification/i.test(message)) {
-          throw new Error(
-            'The CS360 brand-location database constraint is missing. Run sql/migrations/20260717_cs360_completion_fk_and_brand_location_fix.sql in Supabase, then retry.'
-          );
+      if (rpcResult.error) {
+        if (!isMissingRpcError(rpcResult.error, 'cs360_assign_brand_location')) {
+          throw new Error(rpcResult.error.message || String(rpcResult.error));
         }
-        throw new Error(message);
+
+        const matchingAssignmentIds = (STATE.rows.brandLocations || [])
+          .filter(row => brandLocationScopeMatches(row, brand))
+          .filter(row => String(row.company_id || '').trim() === String(normalizedTarget.company_id || '').trim())
+          .filter(row => normalize(row.location_name) === normalize(normalizedTarget.location_name))
+          .map(row => String(row.id || '').trim())
+          .filter(Boolean);
+
+        let deleteQuery = client.from(TABLES.brandLocations).delete();
+        if (matchingAssignmentIds.length) {
+          deleteQuery = deleteQuery.in('id', matchingAssignmentIds);
+        } else {
+          deleteQuery = deleteQuery
+            .eq('company_id', normalizedTarget.company_id)
+            .ilike('location_name', normalizedTarget.location_name);
+          if (groupIdValue) deleteQuery = deleteQuery.eq('group_id', groupIdValue);
+          else deleteQuery = deleteQuery.is('group_id', null);
+        }
+        const { error: deleteError } = await deleteQuery;
+        if (deleteError) throw new Error(deleteError.message);
+
+        const { error: insertError } = await withCsTimeout(
+          client.from(TABLES.brandLocations).insert(payload),
+          20000,
+          'Assigning location to brand'
+        );
+        if (insertError) {
+          throw new Error(`${insertError.message}. Run sql/migrations/20260720_cs360_location_and_special_brand_management_v3.sql in Supabase, then retry.`);
+        }
       }
 
       const selectedBrandId = brandId(brand);
       closeModal();
       await loadData();
       if (selectedBrandId && brandById(selectedBrandId)) openBrandLocationForm(selectedBrandId);
-      toast(`${target.location_name} assigned to ${brandName(brand)}.`);
+      toast(`${normalizedTarget.location_name} assigned to ${brandName(brand)}.`);
     } catch (error) {
       console.error('[ClientSuccess360] brand location assign failed', error);
       toast(`Unable to assign location: ${error.message || error}`);
