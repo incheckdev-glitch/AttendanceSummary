@@ -1505,6 +1505,7 @@
     const statusExtra = `<label class="accounting-field">Status<select id="accountingExpenseStatus"><option value="all">All</option><option value="draft" ${state.filters.expenseStatus==='draft'?'selected':''}>Draft</option><option value="approved" ${state.filters.expenseStatus==='approved'?'selected':''}>Approved</option><option value="paid" ${state.filters.expenseStatus==='paid'?'selected':''}>Paid</option><option value="locked" ${state.filters.expenseStatus==='locked'?'selected':''}>Locked</option></select></label>`;
     return `${renderAdvancedFilters(statusExtra)}
       <div class="accounting-grid compact"><div class="accounting-kpi"><div class="label">Filtered Expenses</div><div class="value">${money(total)}</div></div><div class="accounting-kpi"><div class="label">Posted Expenses</div><div class="value">${money(posted)}</div></div><div class="accounting-kpi"><div class="label">Expense Count</div><div class="value">${rows.length}</div></div></div>
+      <div class="accounting-toolbar"><button class="btn" type="button" data-accounting-action="export-expense-report">Export Branded PDF</button><button class="btn ghost" type="button" data-accounting-action="export-expense-csv">Export Filtered CSV</button><span class="muted">Exports use the active search, date, and status filters.</span></div>
       <div class="accounting-two-col"><div>${renderExpensesTable(rows)}</div><div class="accounting-card"><h3>New / Edit Expense</h3>${renderExpenseForm()}</div></div>`;
   }
 
@@ -1548,6 +1549,156 @@
   function renderExpensesTable(rows) {
     if (!rows.length) return '<div class="accounting-empty">No expenses match the filters.</div>';
     return `<div class="accounting-table-wrap"><table class="accounting-table"><thead><tr><th>No.</th><th>Date</th><th>Vendor</th><th>Category</th><th>Status</th><th class="num">Net</th><th class="num">Tax</th><th class="num">Total</th><th>Journal</th><th>Actions</th></tr></thead><tbody>${rows.map(row=>`<tr><td><strong>${esc(row.expense_no)}</strong></td><td>${fmtDate(row.expense_date)}</td><td>${esc(expenseVendorDisplay(row))}</td><td>${esc(row.category || '—')}</td><td><span class="accounting-badge ${esc(norm(row.payment_status || row.status || 'draft'))}">${esc(row.payment_status || row.status || 'draft')}</span></td><td class="num">${money(row.amount,row.currency)}</td><td class="num">${money(row.tax_amount,row.currency)}</td><td class="num">${money(row.total_amount || row.amount,row.currency)}</td><td>${esc(state.journals.find(j=>j.id===row.journal_id)?.journal_no || '—')}</td><td><button class="btn ghost sm" type="button" data-accounting-edit-expense="${esc(row.id)}">Edit</button> ${row.journal_id ? '<span class="muted">Posted</span>' : `<button class="btn sm" type="button" data-accounting-post-expense="${esc(row.id)}">Post</button>`}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+
+  function expenseReportCurrencyTotals(rows) {
+    const grouped = new Map();
+    rows.forEach(row => {
+      const currency = String(row.currency || 'USD').trim().toUpperCase() || 'USD';
+      const current = grouped.get(currency) || { currency, net: 0, tax: 0, total: 0, count: 0 };
+      current.net += num(row.amount);
+      current.tax += num(row.tax_amount);
+      current.total += num(row.total_amount || row.amount);
+      current.count += 1;
+      grouped.set(currency, current);
+    });
+    return Array.from(grouped.values()).sort((a, b) => a.currency.localeCompare(b.currency));
+  }
+
+  function expenseReportStatusCounts(rows) {
+    const grouped = new Map();
+    rows.forEach(row => {
+      const status = norm(row.payment_status || row.status || 'draft') || 'draft';
+      grouped.set(status, (grouped.get(status) || 0) + 1);
+    });
+    return Array.from(grouped.entries()).sort((a, b) => b[1] - a[1]);
+  }
+
+  function expenseReportFilterItems(rows) {
+    const status = state.filters.expenseStatus === 'all'
+      ? 'All statuses'
+      : String(state.filters.expenseStatus || '').replace(/_/g, ' ').replace(/\b\w/g, value => value.toUpperCase());
+    const period = state.filters.expenseFrom || state.filters.expenseTo
+      ? `${state.filters.expenseFrom ? fmtDate(state.filters.expenseFrom) : 'Start'} to ${state.filters.expenseTo ? fmtDate(state.filters.expenseTo) : 'Today'}`
+      : 'All dates';
+    return [
+      ['Period', period],
+      ['Status', status],
+      ['Search', state.filters.advancedSearch || 'All expenses'],
+      ['Results', `${rows.length} expense${rows.length === 1 ? '' : 's'}`]
+    ];
+  }
+
+  function expenseReportCsvRows() {
+    return filteredExpenses().map(row => ({
+      expense_no: row.expense_no || '',
+      expense_date: dateKey(row.expense_date || row.created_at),
+      vendor: expenseVendorDisplay(row),
+      category: row.category || '',
+      description: row.description || '',
+      expense_account: accountById(row.expense_account_id)?.account_name || '',
+      cost_center: state.costCenters.find(item => item.id === row.cost_center_id)?.name || '',
+      status: row.payment_status || row.status || 'draft',
+      net_amount: num(row.amount),
+      tax_amount: num(row.tax_amount),
+      total_amount: num(row.total_amount || row.amount),
+      currency: String(row.currency || 'USD').toUpperCase(),
+      journal: state.journals.find(item => item.id === row.journal_id)?.journal_no || '',
+      created_by: row.created_by || ''
+    }));
+  }
+
+  function exportExpenseReportCsv() {
+    const rows = expenseReportCsvRows();
+    if (!rows.length) return toast('No expenses match the active filters.');
+    exportCsv(`incheck360_expense_report_${today()}.csv`, rows);
+  }
+
+  function openExpenseReport() {
+    const rows = filteredExpenses();
+    if (!rows.length) return toast('No expenses match the active filters.');
+
+    const reportWindow = global.open('', '_blank', 'noopener,noreferrer,width=1480,height=940');
+    if (!reportWindow) return toast('Please allow pop-ups to open the expense report.');
+
+    const currencyTotals = expenseReportCurrencyTotals(rows);
+    const statusCounts = expenseReportStatusCounts(rows);
+    const filters = expenseReportFilterItems(rows);
+    const logoUrl = new URL('assets/incheck360-document-logo.png', global.location.href).href;
+    const generatedAt = new Date().toLocaleString(undefined, { year:'numeric', month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit' });
+    const postedCount = rows.filter(row => row.journal_id).length;
+    const grandCurrencyLabel = currencyTotals.length === 1 ? currencyTotals[0].currency : `${currencyTotals.length} currencies`;
+
+    const currencyCards = currencyTotals.map(item => `<div class="currency-card"><div class="currency-top"><span>${esc(item.currency)}</span><strong>${esc(money(item.total, item.currency))}</strong></div><div class="currency-detail"><span>Net ${esc(money(item.net, item.currency))}</span><span>Tax ${esc(money(item.tax, item.currency))}</span><span>${item.count} record${item.count === 1 ? '' : 's'}</span></div></div>`).join('');
+    const statusChips = statusCounts.map(([status, count]) => `<span class="status-chip status-${esc(status)}"><b>${esc(status.replace(/_/g,' ').replace(/\b\w/g, value => value.toUpperCase()))}</b>${count}</span>`).join('');
+    const filterCards = filters.map(([label, value]) => `<div class="filter-item"><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`).join('');
+    const tableRows = rows.map(row => {
+      const status = norm(row.payment_status || row.status || 'draft') || 'draft';
+      const costCenter = state.costCenters.find(item => item.id === row.cost_center_id);
+      const journal = state.journals.find(item => item.id === row.journal_id);
+      return `<tr>
+        <td><strong>${esc(row.expense_no || '—')}</strong><small>${esc(fmtDate(row.expense_date || row.created_at))}</small>${journal?.journal_no ? `<small>Journal: ${esc(journal.journal_no)}</small>` : '<small>Not posted</small>'}</td>
+        <td>${esc(expenseVendorDisplay(row))}</td>
+        <td>${esc(row.category || '—')}</td>
+        <td><div class="description-cell">${esc(row.description || '—')}</div></td>
+        <td>${esc(costCenter ? `${costCenter.code || ''}${costCenter.code ? ' · ' : ''}${costCenter.name || ''}` : '—')}</td>
+        <td><span class="table-status status-${esc(status)}">${esc(status.replace(/_/g,' ').replace(/\b\w/g, value => value.toUpperCase()))}</span></td>
+        <td class="amount">${esc(money(row.amount, row.currency))}</td>
+        <td class="amount">${esc(money(row.tax_amount, row.currency))}</td>
+        <td class="amount total">${esc(money(row.total_amount || row.amount, row.currency))}</td>
+      </tr>`;
+    }).join('');
+
+    const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>InCheck360 Expense Report</title><style>
+      @page{size:A4 landscape;margin:10mm 9mm 13mm}
+      *{box-sizing:border-box}
+      html,body{margin:0;padding:0;background:#eef3f8;color:#102449;font-family:Inter,Arial,Helvetica,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      body{font-size:10px}
+      .toolbar{position:sticky;top:0;z-index:20;display:flex;justify-content:flex-end;gap:8px;padding:10px 18px;background:rgba(9,30,66,.96);box-shadow:0 8px 24px rgba(15,23,42,.18)}
+      .toolbar button{border:0;border-radius:9px;padding:9px 15px;font-weight:800;cursor:pointer}
+      .toolbar .primary{background:#27c3d2;color:#062442}.toolbar .secondary{background:#fff;color:#102449}
+      .report{width:min(100%,277mm);min-height:190mm;margin:16px auto;background:#fff;padding:10mm;border-radius:16px;box-shadow:0 18px 50px rgba(15,23,42,.14)}
+      .brand-header{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;border-bottom:2px solid #dbe8f3;padding-bottom:12px}
+      .logo{width:150px;max-height:50px;object-fit:contain;object-position:left center}
+      .company{text-align:right;color:#52708e;line-height:1.5}.company strong{display:block;color:#102449;font-size:11px}
+      .title-row{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin:16px 0 12px}
+      h1{margin:0;color:#08275d;font-size:27px;letter-spacing:-.4px}.subtitle{margin:4px 0 0;color:#617b98;font-size:11px}
+      .report-id{text-align:right;color:#617b98}.report-id strong{display:block;color:#0b315e;font-size:12px}
+      .filters{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:12px 0}
+      .filter-item{border:1px solid #dbe8f3;border-radius:10px;padding:9px 10px;background:#f8fbfe;min-width:0}
+      .filter-item span{display:block;color:#6b829a;font-size:8px;text-transform:uppercase;letter-spacing:.7px;font-weight:800;margin-bottom:3px}.filter-item strong{display:block;color:#0d2d59;font-size:10px;white-space:normal;overflow-wrap:anywhere}
+      .summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:13px 0}
+      .summary-card{border-radius:12px;padding:11px 12px;color:#fff;background:linear-gradient(135deg,#092b61,#174b79);min-height:62px}.summary-card.accent{background:linear-gradient(135deg,#0b7682,#28b8c8)}
+      .summary-card span{display:block;font-size:8px;text-transform:uppercase;letter-spacing:.7px;opacity:.78;font-weight:800}.summary-card strong{display:block;font-size:19px;margin-top:5px;line-height:1}.summary-card small{display:block;margin-top:5px;opacity:.8}
+      .section-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:14px 0 7px}.section-title h2{margin:0;font-size:12px;color:#0b315e;text-transform:uppercase;letter-spacing:.5px}.section-title:after{content:"";height:1px;flex:1;background:#dbe8f3}
+      .currency-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:9px}
+      .currency-card{border:1px solid #d7e5ef;border-radius:11px;padding:9px 10px;background:#fbfdff;break-inside:avoid}.currency-top{display:flex;align-items:center;justify-content:space-between;gap:10px}.currency-top span{font-weight:900;color:#168493}.currency-top strong{font-size:13px;color:#0b315e}.currency-detail{display:flex;gap:10px;flex-wrap:wrap;margin-top:5px;color:#66809a;font-size:8.5px}
+      .status-row{display:flex;gap:6px;flex-wrap:wrap;margin:5px 0 12px}.status-chip{display:inline-flex;align-items:center;gap:7px;border:1px solid #dbe8f3;background:#f8fbfe;border-radius:999px;padding:5px 9px;color:#526b84}.status-chip b{color:#173b66}.status-paid{background:#e9f9f1!important;color:#17623e!important;border-color:#b8e8ce!important}.status-approved{background:#eaf2ff!important;color:#1f4f9c!important;border-color:#c4d8f8!important}.status-draft{background:#fff7df!important;color:#865f05!important;border-color:#f1dc9c!important}.status-locked{background:#f0edff!important;color:#51419a!important;border-color:#d6cff8!important}
+      .table-shell{border:1px solid #cfdeea;border-radius:11px;overflow:hidden}
+      table{width:100%;border-collapse:collapse;table-layout:fixed}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}
+      th{padding:7px 6px;background:#0b315e;color:#fff;text-align:left;text-transform:uppercase;letter-spacing:.45px;font-size:7.5px}td{padding:7px 6px;border-bottom:1px solid #e3ecf3;vertical-align:top;color:#263f5c;font-size:8.2px;overflow-wrap:anywhere}tbody tr:nth-child(even){background:#f8fbfd}tbody tr:last-child td{border-bottom:0}
+      td strong{display:block;color:#0d315e;font-size:8.5px}td small{display:block;color:#71879c;font-size:7.4px;margin-top:2px}.description-cell{line-height:1.35;max-height:32px;overflow:hidden}.amount{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;font-size:7.8px}.amount.total{font-weight:900;color:#0b315e}.table-status{display:inline-block;border-radius:999px;padding:3px 6px;background:#eef3f7;color:#445f79;font-weight:800;font-size:7.2px;white-space:nowrap}
+      footer{margin-top:12px;padding-top:8px;border-top:1px solid #dbe8f3;display:flex;justify-content:space-between;gap:12px;color:#71879c;font-size:8px}.page-number:after{content:"Page " counter(page)}
+      .confidential{font-weight:800;color:#46647e}
+      @media print{html,body{background:#fff}.toolbar{display:none!important}.report{width:auto;min-height:0;margin:0;padding:0;border-radius:0;box-shadow:none}.brand-header,.title-row,.filters,.summary,.currency-grid,.status-row,.section-title{break-inside:avoid;page-break-inside:avoid}footer{position:fixed;left:0;right:0;bottom:-8mm;background:#fff;margin:0;padding-top:5px}}
+      @media(max-width:900px){.filters,.summary{grid-template-columns:repeat(2,minmax(0,1fr))}.currency-grid{grid-template-columns:1fr}.report{margin:0;border-radius:0}}
+    </style></head><body>
+      <div class="toolbar"><button class="secondary" onclick="window.close()">Close</button><button class="primary" onclick="window.print()">Print / Save PDF</button></div>
+      <main class="report">
+        <header class="brand-header"><img class="logo" src="${esc(logoUrl)}" alt="InCheck360"><div class="company"><strong>InCheck 360 Holding BV</strong>Pyrmontstraat 5, 7513 BN, Enschede, Netherlands<br>info@incheck360.nl</div></header>
+        <div class="title-row"><div><h1>Expense Report</h1><p class="subtitle">Filtered accounting expense register · Professional management report</p></div><div class="report-id"><span>Generated</span><strong>${esc(generatedAt)}</strong><span>Prepared by ${esc(authName())}</span></div></div>
+        <section class="filters">${filterCards}</section>
+        <section class="summary"><div class="summary-card accent"><span>Expense Records</span><strong>${rows.length}</strong><small>Matching active filters</small></div><div class="summary-card"><span>Posted to Ledger</span><strong>${postedCount}</strong><small>${rows.length - postedCount} not posted</small></div><div class="summary-card"><span>Report Currency Scope</span><strong>${esc(grandCurrencyLabel)}</strong><small>Totals shown separately</small></div><div class="summary-card"><span>Report Statuses</span><strong>${statusCounts.length}</strong><small>${esc(statusCounts.map(([status]) => status.replace(/_/g,' ')).join(' · '))}</small></div></section>
+        <div class="section-title"><h2>Financial Summary</h2></div><section class="currency-grid">${currencyCards}</section><div class="status-row">${statusChips}</div>
+        <div class="section-title"><h2>Filtered Expense Details</h2></div>
+        <section class="table-shell"><table><colgroup><col style="width:10%"><col style="width:13%"><col style="width:9%"><col style="width:20%"><col style="width:11%"><col style="width:8%"><col style="width:10%"><col style="width:9%"><col style="width:10%"></colgroup><thead><tr><th>Expense / Date</th><th>Vendor</th><th>Category</th><th>Description</th><th>Cost Center</th><th>Status</th><th style="text-align:right">Net</th><th style="text-align:right">Tax</th><th style="text-align:right">Total</th></tr></thead><tbody>${tableRows}</tbody></table></section>
+        <footer><span class="confidential">InCheck360 · Confidential Financial Report</span><span>Values are based on the active Expense filters at export time.</span><span class="page-number"></span></footer>
+      </main></body></html>`;
+
+    reportWindow.document.open();
+    reportWindow.document.write(html);
+    reportWindow.document.close();
+    reportWindow.focus();
   }
 
   async function saveExpenseForm() {
@@ -1973,6 +2124,8 @@
       if (action === 'clear-advanced-filters') { state.filters.advancedSearch = ''; state.filters.expenseFrom = ''; state.filters.expenseTo = ''; state.filters.expenseStatus = 'all'; state.filters.deferredStatus = 'pending'; render(); return; }
       if (action === 'recognize-due-revenue') { recognizeDueRevenue(); return; }
       if (action === 'export-deferred-revenue') { exportCsv('accounting_deferred_revenue_schedule.csv', filteredRevenueSchedules()); return; }
+      if (action === 'export-expense-report') { openExpenseReport(); return; }
+      if (action === 'export-expense-csv') { exportExpenseReportCsv(); return; }
       if (action === 'reset-expense-form' || action === 'reset-tax-form' || action === 'reset-cost-center-form' || action === 'reset-closing-form') { render(); return; }
       if (action === 'save-reconciliation') { saveReconciliation(); return; }
     }
