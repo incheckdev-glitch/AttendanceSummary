@@ -2268,12 +2268,6 @@
       </div>
       <div class="cs-tab-panel is-active">${panel}</div>`;
 
-    host.querySelectorAll('[data-cs-special-tab]').forEach(button => {
-      button.addEventListener('click', () => {
-        STATE.specialActiveTab = button.dataset.csSpecialTab || 'overview';
-        renderDetail();
-      });
-    });
   }
 
   function tabLabel(tab) { return ({ overview:'Overview', groups:'Groups', brands:'Brands', completion:'Completion', specialTemplates:'Special CS Clients', pulse:'Pulse Review', activity:'Activity', tasks:'Tasks', risks:'Risks', onboarding:'Onboarding', renewals:'Renewals', qbr:'QBR', contacts:'Contacts', timeline:'Timeline' }[tab] || tab); }
@@ -3042,6 +3036,16 @@
       (!String(target.special_brand_id || '').trim() && normalize(target.brand_name) === normalize(brandName(brand)))
     ));
   }
+  function specialGroupCompletionTargets(template, group) {
+    if (!template || !group) return [];
+    const tid = specialTemplateId(template);
+    const gid = groupId(group);
+    if (!tid || !gid || String(group.special_client_id || '').trim() !== tid) return [];
+    return specialTemplateTargets(template).filter(target => (
+      String(target.special_group_id || '').trim() === gid ||
+      (!String(target.special_group_id || '').trim() && normalize(target.group_name) === normalize(groupName(group)))
+    ));
+  }
   function renderSpecialTemplates() {
     const q = normalize(STATE.filters.specialTemplateSearch || '');
     const status = String(STATE.filters.specialTemplateStatus || 'active').toLowerCase();
@@ -3063,6 +3067,90 @@
     return `<div class="cs-section-title"><div><h4>Special CS Clients</h4><div class="cs-kpi-sub">Standalone special Customer Success clients that do not require signed agreements, invoices, or active invoice periods.</div></div>${canCreate() ? '<button class="btn sm primary" type="button" data-cs-action="special-client-create">Add Special CS Client</button>' : ''}</div>
       <div class="cs-filter-grid cs-special-filter"><select id="csSpecialTemplateStatus" class="select"><option value="active" ${status==='active'?'selected':''}>Active clients</option><option value="archived" ${status==='archived'?'selected':''}>Archived clients</option><option value="all" ${status==='all'?'selected':''}>All clients</option></select><input id="csSpecialTemplateSearch" class="input" type="search" value="${attr(STATE.filters.specialTemplateSearch || '')}" placeholder="Search client/group/brand/location" /></div>
       <div class="cs-table-wrap"><table class="cs-table"><thead><tr><th>Client Name</th><th>Group Name</th><th>Brands Count</th><th>Locations Count</th><th>Status</th><th>Updated At</th><th>Actions</th></tr></thead><tbody>${body}</tbody></table></div>`;
+  }
+
+  function openSpecialClientReportChooser(specialClientId = '') {
+    const special = specialTemplateById(specialClientId) || getSelectedSpecialClient();
+    if (!special) {
+      toast('Select a valid Special CS Client first.');
+      return;
+    }
+
+    const sid = specialTemplateId(special);
+    const groups = specialGroupsForTemplate(sid);
+    const brands = specialBrandsForTemplate(sid);
+    const groupOptions = groups.length
+      ? `<option value="">Select group</option>${groups.map(group => `<option value="${attr(groupId(group))}">${esc(groupName(group))}</option>`).join('')}`
+      : '<option value="">No groups configured</option>';
+    const brandOptions = brands.length
+      ? `<option value="">Select brand</option>${brands.map(brand => `<option value="${attr(brandId(brand))}">${esc(brandName(brand))}</option>`).join('')}`
+      : '<option value="">No brands configured</option>';
+
+    openModal('View Completion Report', `<form class="cs-form" id="csSpecialClientReportChooserForm">
+      <div class="cs-form-grid">
+        <div class="cs-form-field cs-form-field--full">
+          <label>Special CS Client</label>
+          <input class="input" type="text" value="${attr(specialTemplateName(special))}" readonly />
+        </div>
+        <div class="cs-form-field cs-form-field--full">
+          <label>Which report do you want to view?</label>
+          <select name="report_scope" class="select" required>
+            <option value="special_client">Entire Special CS Client</option>
+            <option value="special_brand" ${brands.length ? '' : 'disabled'}>One Brand</option>
+            <option value="special_group" ${groups.length ? '' : 'disabled'}>One Group</option>
+          </select>
+        </div>
+        <div class="cs-form-field cs-form-field--full" id="csSpecialReportBrandField" style="display:none;">
+          <label>Brand</label>
+          <select name="special_brand_id" class="select">${brandOptions}</select>
+          <div class="cs-kpi-sub">Only locations assigned to this brand will be included.</div>
+        </div>
+        <div class="cs-form-field cs-form-field--full" id="csSpecialReportGroupField" style="display:none;">
+          <label>Group</label>
+          <select name="special_group_id" class="select">${groupOptions}</select>
+          <div class="cs-kpi-sub">Only locations assigned to this group will be included.</div>
+        </div>
+      </div>
+      <div class="cs-modal-actions">
+        <button type="button" class="btn ghost" onclick="document.getElementById('csModalClose').click()">Cancel</button>
+        <button type="submit" class="btn primary">View Report</button>
+      </div>
+    </form>`, async form => {
+      const fd = new FormData(form);
+      const reportType = String(fd.get('report_scope') || 'special_client').trim();
+      const specialBrandId = reportType === 'special_brand' ? String(fd.get('special_brand_id') || '').trim() : '';
+      const specialGroupId = reportType === 'special_group' ? String(fd.get('special_group_id') || '').trim() : '';
+
+      if (reportType === 'special_brand' && !specialBrandId) {
+        toast('Select the brand you want to view.');
+        return;
+      }
+      if (reportType === 'special_group' && !specialGroupId) {
+        toast('Select the group you want to view.');
+        return;
+      }
+
+      closeModal();
+      exportCompletionReport({
+        report_type: reportType,
+        special_client_id: sid,
+        special_brand_id: specialBrandId,
+        special_group_id: specialGroupId
+      });
+    });
+
+    const form = $('csSpecialClientReportChooserForm');
+    const toggle = () => {
+      const reportType = String(form?.report_scope?.value || 'special_client');
+      const brandField = $('csSpecialReportBrandField');
+      const groupField = $('csSpecialReportGroupField');
+      if (brandField) brandField.style.display = reportType === 'special_brand' ? '' : 'none';
+      if (groupField) groupField.style.display = reportType === 'special_group' ? '' : 'none';
+      if (form?.special_brand_id) form.special_brand_id.required = reportType === 'special_brand';
+      if (form?.special_group_id) form.special_group_id.required = reportType === 'special_group';
+    };
+    form?.report_scope?.addEventListener('change', toggle);
+    toggle();
   }
 
   function openCompletionExportForm() {
@@ -3093,6 +3181,7 @@
             <option value="brand" ${brands.length ? '' : 'disabled'}>Brand / Sub-group Completion Report</option>
             <option value="special_client" ${specialTemplates.length ? '' : 'disabled'} ${!company && specialTemplates.length ? 'selected' : ''}>Special CS Client Completion Report</option>
             <option value="special_brand" ${specialTemplates.some(template => specialBrandsForTemplate(specialTemplateId(template)).length) ? '' : 'disabled'}>Special CS Client Brand Completion Report</option>
+            <option value="special_group" ${specialTemplates.some(template => specialGroupsForTemplate(specialTemplateId(template)).length) ? '' : 'disabled'}>Special CS Client Group Completion Report</option>
           </select>
         </div>
         <div class="cs-form-field cs-form-field--full" id="csExportClientField">
@@ -3115,10 +3204,15 @@
           <select name="special_brand_id" class="select"><option value="">Select a Special CS Client first</option></select>
           <div class="cs-kpi-sub">Only locations assigned to the selected Special CS Client brand will be included.</div>
         </div>
+        <div class="cs-form-field cs-form-field--full" id="csExportSpecialGroupField" style="display:none;">
+          <label>Special CS Client Group</label>
+          <select name="special_group_id" class="select"><option value="">Select a Special CS Client first</option></select>
+          <div class="cs-kpi-sub">Only locations assigned to the selected Special CS Client group will be included.</div>
+        </div>
         <div class="cs-form-field cs-form-field--full">
           <label>Report Notes</label>
           <div class="cs-mini-note">
-            Client and group reports use normal signed clients. Special CS Client reports work independently. The Special CS Client Brand report exports only the locations assigned to one selected special-client brand.
+            Client and group reports use normal signed clients. Special CS Client reports work independently. Select the entire Special CS Client, one brand, or one group.
           </div>
         </div>
       </div>
@@ -3131,21 +3225,24 @@
       const type = String(fd.get('report_type') || (company ? 'client' : 'special_client'));
       const groupId = type === 'group' ? String(fd.get('group_id') || '').trim() : '';
       const normalBrandId = type === 'brand' ? String(fd.get('brand_id') || '').trim() : '';
-      const usesSpecialClient = type === 'special_client' || type === 'special_brand';
+      const usesSpecialClient = ['special_client','special_brand','special_group'].includes(type);
       const specialTemplateIdValue = usesSpecialClient ? String(fd.get('special_client_id') || '').trim() : '';
       const specialBrandIdValue = type === 'special_brand' ? String(fd.get('special_brand_id') || '').trim() : '';
+      const specialGroupIdValue = type === 'special_group' ? String(fd.get('special_group_id') || '').trim() : '';
       if (type === 'client' && !company) { toast('Select a normal CS client to export.'); return; }
       if (type === 'group' && !groupId) { toast('Select a CS client group to export.'); return; }
       if (type === 'brand' && !normalBrandId) { toast('Select a brand/sub-group to export.'); return; }
       if (usesSpecialClient && !specialTemplateIdValue) { toast('Select a Special CS Client to export.'); return; }
       if (type === 'special_brand' && !specialBrandIdValue) { toast('Select a Special CS Client brand to export.'); return; }
+      if (type === 'special_group' && !specialGroupIdValue) { toast('Select a Special CS Client group to export.'); return; }
       closeModal();
       exportCompletionReport({
         report_type: type,
         group_id: groupId,
         brand_id: normalBrandId,
         special_client_id: specialTemplateIdValue,
-        special_brand_id: specialBrandIdValue
+        special_brand_id: specialBrandIdValue,
+        special_group_id: specialGroupIdValue
       });
     });
 
@@ -3160,6 +3257,16 @@
         ? `<option value="">Select brand</option>${specialBrands.map(brand => `<option value="${attr(brandId(brand))}">${esc(brandName(brand))}</option>`).join('')}`
         : `<option value="">${sid ? 'No brands configured for this Special CS Client' : 'Select a Special CS Client first'}</option>`;
     };
+    const updateSpecialGroupOptions = () => {
+      const specialClientSelect = form?.querySelector?.('[name="special_client_id"]');
+      const specialGroupSelect = form?.querySelector?.('[name="special_group_id"]');
+      if (!specialGroupSelect) return;
+      const sid = String(specialClientSelect?.value || '').trim();
+      const specialGroups = sid ? specialGroupsForTemplate(sid) : [];
+      specialGroupSelect.innerHTML = specialGroups.length
+        ? `<option value="">Select group</option>${specialGroups.map(group => `<option value="${attr(groupId(group))}">${esc(groupName(group))}</option>`).join('')}`
+        : `<option value="">${sid ? 'No groups configured for this Special CS Client' : 'Select a Special CS Client first'}</option>`;
+    };
     const toggle = () => {
       const type = form?.report_type?.value || (company ? 'client' : 'special_client');
       const clientField = $('csExportClientField');
@@ -3167,16 +3274,22 @@
       const brandField = $('csExportBrandField');
       const specialField = $('csExportSpecialField');
       const specialBrandField = $('csExportSpecialBrandField');
+      const specialGroupField = $('csExportSpecialGroupField');
       if (clientField) clientField.style.display = type === 'client' ? '' : 'none';
       if (groupField) groupField.style.display = type === 'group' ? '' : 'none';
       if (brandField) brandField.style.display = type === 'brand' ? '' : 'none';
-      if (specialField) specialField.style.display = ['special_client','special_brand'].includes(type) ? '' : 'none';
+      if (specialField) specialField.style.display = ['special_client','special_brand','special_group'].includes(type) ? '' : 'none';
       if (specialBrandField) specialBrandField.style.display = type === 'special_brand' ? '' : 'none';
+      if (specialGroupField) specialGroupField.style.display = type === 'special_group' ? '' : 'none';
       if (type === 'special_brand') updateSpecialBrandOptions();
+      if (type === 'special_group') updateSpecialGroupOptions();
     };
     form?.report_type?.addEventListener('change', toggle);
     form?.addEventListener('change', event => {
-      if (event.target?.name === 'special_client_id') updateSpecialBrandOptions();
+      if (event.target?.name === 'special_client_id') {
+        updateSpecialBrandOptions();
+        updateSpecialGroupOptions();
+      }
     });
     toggle();
   }
@@ -3189,7 +3302,10 @@
     const requestedType = String(options.report_type || '').trim();
     const selectedBrand = options.brand_id ? brandById(options.brand_id) : null;
     const selectedSpecialBrand = options.special_brand_id ? specialBrandById(options.special_brand_id) : null;
-    const inferredSpecialClientId = selectedSpecialBrand ? String(selectedSpecialBrand.special_client_id || '').trim() : '';
+    const selectedSpecialGroup = options.special_group_id ? specialGroupById(options.special_group_id) : null;
+    const inferredSpecialClientId = selectedSpecialBrand
+      ? String(selectedSpecialBrand.special_client_id || '').trim()
+      : (selectedSpecialGroup ? String(selectedSpecialGroup.special_client_id || '').trim() : '');
     const selectedSpecialTemplate = specialTemplateById(options.special_client_id || inferredSpecialClientId);
     const selectedCompany = getSelectedCompany();
     const filterGroupId = String(STATE.filters.group || '').trim();
@@ -3197,18 +3313,22 @@
     const selectedGroupId = explicitGroupId || (!requestedType && filterGroupId && !['All','Ungrouped'].includes(filterGroupId) ? filterGroupId : '');
     const selectedGroup = selectedGroupId ? groupById(selectedGroupId) : null;
 
-    let isSpecialBrandReport = requestedType === 'special_brand' || Boolean(selectedSpecialBrand);
-    let isSpecialTemplateReport = !isSpecialBrandReport && (requestedType === 'special_client' || Boolean(selectedSpecialTemplate));
-    let isBrandReport = !isSpecialTemplateReport && !isSpecialBrandReport && (requestedType === 'brand' || Boolean(selectedBrand));
-    let isGroupReport = !isSpecialTemplateReport && !isSpecialBrandReport && !isBrandReport && (requestedType === 'group' || Boolean(selectedGroup));
-    if (requestedType === 'client') { isSpecialBrandReport = false; isSpecialTemplateReport = false; isBrandReport = false; isGroupReport = false; }
-    const isAnySpecialReport = isSpecialTemplateReport || isSpecialBrandReport;
+    let isSpecialGroupReport = requestedType === 'special_group' || Boolean(selectedSpecialGroup);
+    let isSpecialBrandReport = !isSpecialGroupReport && (requestedType === 'special_brand' || Boolean(selectedSpecialBrand));
+    let isSpecialTemplateReport = !isSpecialGroupReport && !isSpecialBrandReport && (requestedType === 'special_client' || Boolean(selectedSpecialTemplate));
+    let isBrandReport = !isSpecialTemplateReport && !isSpecialBrandReport && !isSpecialGroupReport && (requestedType === 'brand' || Boolean(selectedBrand));
+    let isGroupReport = !isSpecialTemplateReport && !isSpecialBrandReport && !isSpecialGroupReport && !isBrandReport && (requestedType === 'group' || Boolean(selectedGroup));
+    if (requestedType === 'client') { isSpecialGroupReport = false; isSpecialBrandReport = false; isSpecialTemplateReport = false; isBrandReport = false; isGroupReport = false; }
+    const isAnySpecialReport = isSpecialTemplateReport || isSpecialBrandReport || isSpecialGroupReport;
     const isAnyBrandReport = isBrandReport || isSpecialBrandReport;
+    const isAnyGroupReport = isGroupReport || isSpecialGroupReport;
 
     if (!isAnySpecialReport && !selectedCompany) { toast('Select a normal CS client to export.'); return; }
     if (isSpecialTemplateReport && !selectedSpecialTemplate) { toast('Select a valid Special CS Client to export.'); return; }
     if (isSpecialBrandReport && (!selectedSpecialTemplate || !selectedSpecialBrand)) { toast('Select a valid Special CS Client and brand to export.'); return; }
     if (isSpecialBrandReport && String(selectedSpecialBrand.special_client_id || '').trim() !== specialTemplateId(selectedSpecialTemplate)) { toast('The selected brand does not belong to the selected Special CS Client.'); return; }
+    if (isSpecialGroupReport && (!selectedSpecialTemplate || !selectedSpecialGroup)) { toast('Select a valid Special CS Client and group to export.'); return; }
+    if (isSpecialGroupReport && String(selectedSpecialGroup.special_client_id || '').trim() !== specialTemplateId(selectedSpecialTemplate)) { toast('The selected group does not belong to the selected Special CS Client.'); return; }
     if (isBrandReport && !selectedBrand) { toast('Select a valid brand to export.'); return; }
     if (isGroupReport && !selectedGroup) { toast('Select a valid CS client group to export.'); return; }
     const generatedAt = new Date();
@@ -3256,6 +3376,29 @@
         String(row.source_type || '') === 'special_client' &&
         String(row.special_client_id || '').trim() === tid &&
         targetLocationIds.has(String(row.special_location_id || '').trim())
+      ));
+      activePeriodKey = sorted[0] ? completionKey(sorted[0]) : '';
+      rawRecords = activePeriodKey ? sorted.filter(row => completionKey(row) === activePeriodKey) : [];
+      isBrandReport = false;
+      isGroupReport = false;
+    }
+
+    if (isSpecialGroupReport) {
+      const tid = specialTemplateId(selectedSpecialTemplate);
+      const specialGroupKey = groupId(selectedSpecialGroup);
+      const groupTargets = specialGroupCompletionTargets(selectedSpecialTemplate, selectedSpecialGroup);
+      const targetLocationIds = new Set(groupTargets.map(target => String(target.special_location_id || '').trim()).filter(Boolean));
+      reportName = groupName(selectedSpecialGroup);
+      clientLabel = specialTemplateName(selectedSpecialTemplate);
+      groupLabel = groupName(selectedSpecialGroup);
+      targetRows = groupTargets;
+      const sorted = sortCompletionRows((STATE.rows.completions || []).filter(row =>
+        String(row.source_type || '') === 'special_client' &&
+        String(row.special_client_id || '').trim() === tid &&
+        (
+          targetLocationIds.has(String(row.special_location_id || '').trim()) ||
+          String(row.special_group_id || '').trim() === specialGroupKey
+        )
       ));
       activePeriodKey = sorted[0] ? completionKey(sorted[0]) : '';
       rawRecords = activePeriodKey ? sorted.filter(row => completionKey(row) === activePeriodKey) : [];
@@ -3388,6 +3531,8 @@
         const key = [String(row.company_id || '').trim(), normalize(row.location_name)].join('|');
         if (reportTargetKeySet.has(key)) addBrandCandidate(brandById(row.brand_id) || { id: row.brand_id, brand_name: row.brand_name_snapshot || 'Unknown Brand' });
       });
+    } else if (isSpecialGroupReport) {
+      specialBrandsForTemplate(specialTemplateId(selectedSpecialTemplate)).forEach(addBrandCandidate);
     } else if (isSpecialTemplateReport) {
       specialBrandsForTemplate(specialTemplateId(selectedSpecialTemplate)).forEach(addBrandCandidate);
     } else if (selectedCompany) {
@@ -3460,7 +3605,9 @@
     const effort = isAnySpecialReport ? 'Special CS Review' : (isGroupReport ? 'Group Review' : computeEffort(selectedCompany));
     const reportTitleSuffix = isSpecialBrandReport
       ? 'Special CS Client Brand Completion Report'
-      : (isSpecialTemplateReport ? 'Special CS Client Completion Report' : (isBrandReport ? 'Brand Completion Report' : (isGroupReport ? 'Group Completion Report' : 'Client Completion Report')));
+      : (isSpecialGroupReport
+        ? 'Special CS Client Group Completion Report'
+        : (isSpecialTemplateReport ? 'Special CS Client Completion Report' : (isBrandReport ? 'Brand Completion Report' : (isGroupReport ? 'Group Completion Report' : 'Client Completion Report'))));
     const sourceNote = rawRecords.find(r => r.source_note)?.source_note || 'Completion values are entered as percentages.';
     const safeWidth = value => `${clamp(safeDecimal(value), 0, 100).toFixed(2)}%`;
     const stackParts = [
@@ -3523,7 +3670,7 @@
           <div class="title"><h1>Completion Report</h1><div class="subtitle">${esc(reportTitleSuffix)} · Completion = Done On-Time + Done Late · Values are percentages.</div></div>
         </div>
         <div class="meta-grid">
-          <div class="meta"><div class="k">${isSpecialBrandReport ? 'Special CS Brand' : (isSpecialTemplateReport ? 'Special CS Client' : (isBrandReport ? 'Brand' : (isGroupReport ? 'Group' : 'Client')))}</div><div class="v">${esc(reportName)}</div></div>
+          <div class="meta"><div class="k">${isSpecialBrandReport ? 'Special CS Brand' : (isSpecialGroupReport ? 'Special CS Group' : (isSpecialTemplateReport ? 'Special CS Client' : (isBrandReport ? 'Brand' : (isGroupReport ? 'Group' : 'Client'))))}</div><div class="v">${esc(reportName)}</div></div>
           <div class="meta"><div class="k">Review Type</div><div class="v">${esc(String(reportType || 'weekly').replace(/^./, c => c.toUpperCase()))}</div></div>
           <div class="meta"><div class="k">Period</div><div class="v">${esc(periodLabel)}</div></div>
           ${isAnySpecialReport ? `<div class="meta"><div class="k">Special CS Client</div><div class="v">${esc(specialTemplateName(selectedSpecialTemplate))}</div></div>` : ''}
@@ -3563,7 +3710,7 @@
       </div></div>
 
       <div class="panel summary-card"><div class="panel-inner">
-        <div class="section-title"><h2>${isSpecialBrandReport ? 'All Special Brand Locations' : (isSpecialTemplateReport ? 'All Special Client Locations' : (isBrandReport ? 'All Brand Locations' : (isGroupReport ? 'All Group Locations' : 'All Client Locations')))}</h2></div>
+        <div class="section-title"><h2>${isSpecialBrandReport ? 'All Special Brand Locations' : (isSpecialGroupReport ? 'All Special Group Locations' : (isSpecialTemplateReport ? 'All Special Client Locations' : (isBrandReport ? 'All Brand Locations' : (isGroupReport ? 'All Group Locations' : 'All Client Locations'))))}</h2></div>
         <div class="tiny">Average of ${rows.length} active location${rows.length === 1 ? '' : 's'}</div>
         <div class="summary-line"><span class="mini-icon">✓</span><span>Done On-Time</span><strong style="color:var(--good)">${stats.done_on_time.toFixed(2)}%</strong></div>
         <div class="summary-line"><span class="mini-icon">◷</span><span>Done Late</span><strong style="color:var(--late)">${stats.done_late.toFixed(2)}%</strong></div>
@@ -3576,7 +3723,7 @@
     <div class="insights">
       <div class="insight good-bg"><div class="big-icon">🏆</div><div><h3>Best performing location</h3><p>${best ? `${esc(best.company_name || reportName)} — ${esc(best.location_name)}<br/>Completion: <strong>${formatPct(completionCount(best))}</strong>` : 'No location data available yet.'}</p></div></div>
       <div class="insight warn-bg"><div class="big-icon">⚠</div><div><h3>Locations needing operational attention</h3><p>${weak.length ? weak.map(row => `${esc(row.company_name || reportName)} — ${esc(row.location_name)} (${formatPct(completionCount(row))})`).join('<br/>') : 'No locations needing operational attention for the selected period.'}</p></div></div>
-      <div class="insight info-bg"><div class="big-icon">ⓘ</div><div><h3>Notes</h3><p>${esc(sourceNote)}<br/>${isAnyBrandReport ? 'Brand result is auto-calculated from assigned brand location rows.' : (isGroupReport ? 'Group result includes brand/sub-group completion when brands are configured.' : 'Client result is auto-calculated from all location rows.')}<br/>${isAnySpecialReport ? 'Special CS Client report source. ' : ''}Generated on ${esc(generatedAt.toLocaleString())}.</p></div></div>
+      <div class="insight info-bg"><div class="big-icon">ⓘ</div><div><h3>Notes</h3><p>${esc(sourceNote)}<br/>${isAnyBrandReport ? 'Brand result is auto-calculated from assigned brand location rows.' : (isAnyGroupReport ? 'Group result includes only locations assigned to the selected group, with brand completion when configured.' : 'Client result is auto-calculated from all location rows.')}<br/>${isAnySpecialReport ? 'Special CS Client report source. ' : ''}Generated on ${esc(generatedAt.toLocaleString())}.</p></div></div>
     </div>
     <div class="footer"><span>InCheck 360 · Customer Success</span><span>Summary · ${esc(generatedAt.toLocaleDateString())}</span></div>
   </section>
@@ -3585,7 +3732,7 @@
     <div class="report-header">
       <div class="brand"><div class="cs-export-doc-logo-slot" data-incheck360-doc-logo-slot></div><div class="brand-fallback" style="display:none;">InCheck <span>360</span></div></div>
       <div class="header-main">
-        <div class="header-row"><div class="title"><h1>Brand Completion Insights</h1><div class="subtitle">${esc(reportName)} · ${isSpecialBrandReport ? `Special CS Client: ${esc(specialTemplateName(selectedSpecialTemplate))}` : (isSpecialTemplateReport ? 'Special CS Client report divided by configured brand.' : (isGroupReport ? 'Group report divided by brand/sub-group.' : 'Brand completion overview.'))}</div></div></div>
+        <div class="header-row"><div class="title"><h1>Brand Completion Insights</h1><div class="subtitle">${esc(reportName)} · ${isSpecialBrandReport ? `Special CS Client: ${esc(specialTemplateName(selectedSpecialTemplate))}` : (isSpecialGroupReport ? `Special CS Client group: ${esc(groupName(selectedSpecialGroup))}` : (isSpecialTemplateReport ? 'Special CS Client report divided by configured brand.' : (isGroupReport ? 'Group report divided by brand/sub-group.' : 'Brand completion overview.')))}</div></div></div>
         <div class="meta-grid">
           <div class="meta"><div class="k">Brands</div><div class="v">${brandRows.length}</div></div>
           ${brandMetaCardsHtml}
@@ -3798,6 +3945,14 @@
   }
 
   document.addEventListener('click', event => {
+    const specialTabButton = event.target?.closest?.('[data-cs-special-tab]');
+    if (specialTabButton) {
+      event.preventDefault?.();
+      STATE.specialActiveTab = specialTabButton.dataset.csSpecialTab || 'overview';
+      renderDetail();
+      return;
+    }
+
     const action = event.target?.closest?.('[data-cs-action]')?.dataset?.csAction;
     if (!action) return;
     if (!canRunCsAction(action)) {
@@ -3880,7 +4035,10 @@
       unassignSpecialLocationFromBrand(event.target?.closest?.('[data-special-location-id]')?.getAttribute?.('data-special-location-id') || '');
       return;
     }
-    if (action === 'special-client-view-report' || action === 'special-client-report') { exportCompletionReport({ report_type: 'special_client', special_client_id: event.target?.closest?.('[data-special-client-id]')?.dataset?.specialClientId || '' }); return; }
+    if (action === 'special-client-view-report' || action === 'special-client-report') {
+      openSpecialClientReportChooser(event.target?.closest?.('[data-special-client-id]')?.dataset?.specialClientId || '');
+      return;
+    }
     if (action === 'special-brand-export') {
       const button = event.target?.closest?.('[data-special-brand-id]');
       exportCompletionReport({
