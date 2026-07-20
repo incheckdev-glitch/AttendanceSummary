@@ -3569,7 +3569,7 @@
       const brandStats = averageCompletionMetrics(brandLocations);
       const bestLocation = brandLocations.length ? brandLocations.slice().sort((a,b) => completionCount(b) - completionCount(a))[0] : null;
       const weakLocations = brandLocations.filter(row => completionCount(row) < 80).sort((a,b) => completionCount(a) - completionCount(b)).slice(0, 3);
-      return { brand, brand_name: brandName(brand), scope: isAnySpecialReport ? `Special CS Client: ${specialTemplateName(selectedSpecialTemplate)}` : brandScopeLabel(brand), locations: brandLocations, stats: brandStats, bestLocation, weakLocations };
+      return { brand, brand_name: brandName(brand), scope: isAnySpecialReport ? `Client: ${specialTemplateName(selectedSpecialTemplate)}` : brandScopeLabel(brand), locations: brandLocations, stats: brandStats, bestLocation, weakLocations };
     }).filter(item => item.locations.length);
 
     if (hasConfiguredBrands && (isGroupReport || !isAnyBrandReport) && reportTargetKeySet.size) {
@@ -3582,7 +3582,7 @@
         brandRows.push({
           brand: { id: 'unassigned', brand_name: 'Unassigned Locations' },
           brand_name: 'Unassigned Locations',
-          scope: isAnySpecialReport ? `Special CS Client: ${specialTemplateName(selectedSpecialTemplate)}` : (isGroupReport ? `Group: ${groupName(selectedGroup)}` : `Client: ${companyName(selectedCompany)}`),
+          scope: isAnySpecialReport ? `Client: ${specialTemplateName(selectedSpecialTemplate)}` : (isGroupReport ? `Group: ${groupName(selectedGroup)}` : `Client: ${companyName(selectedCompany)}`),
           locations: unassignedLocations,
           stats: unassignedStats,
           bestLocation: unassignedLocations.length ? unassignedLocations.slice().sort((a,b) => completionCount(b) - completionCount(a))[0] : null,
@@ -3644,9 +3644,73 @@
       return `<g><rect x="${x.toFixed(2)}" y="0" width="${width.toFixed(2)}" height="58" fill="${part.color}"></rect>${showInside ? `<text x="${textX.toFixed(2)}" y="34" text-anchor="middle" dominant-baseline="middle" fill="#ffffff" font-size="15" font-weight="800">${label}</text>` : ''}</g>`;
     }).join('');
     const stackSvgMarkers = '';
-    const stackSvg = `<svg class="stack-svg" viewBox="0 0 1000 86" preserveAspectRatio="none" role="img" aria-label="Completion breakdown"><rect x="0" y="0" width="1000" height="58" rx="10" ry="10" fill="#eef2f7"></rect>${stackSvgSegments}${stackSvgMarkers}</svg>`;
+    const stackSvg = `<svg class="stack-svg" viewBox="0 0 1000 58" preserveAspectRatio="none" role="img" aria-label="Completion breakdown"><rect x="0" y="0" width="1000" height="58" rx="10" ry="10" fill="#eef2f7"></rect>${stackSvgSegments}${stackSvgMarkers}</svg>`;
     const completionDonutStyle = `background: conic-gradient(var(--good) 0 ${safeWidth(stats.completion)}, #e8eef7 ${safeWidth(stats.completion)} 100%);`;
     const exportBaseHref = new URL('.', window.location.href).href;
+
+    const paginateReportRows = (items, firstPageSize, continuationPageSize = firstPageSize) => {
+      const values = Array.isArray(items) ? items : [];
+      if (!values.length) return [];
+      const pages = [values.slice(0, firstPageSize)];
+      for (let index = firstPageSize; index < values.length; index += continuationPageSize) {
+        pages.push(values.slice(index, index + continuationPageSize));
+      }
+      return pages;
+    };
+
+    const brandPageSubtitle = isSpecialBrandReport
+      ? `Client: ${specialTemplateName(selectedSpecialTemplate)}`
+      : (isSpecialGroupReport
+        ? `Client: ${specialTemplateName(selectedSpecialTemplate)} · Group: ${groupName(selectedSpecialGroup)}`
+        : (isSpecialTemplateReport
+          ? `Client: ${specialTemplateName(selectedSpecialTemplate)} · Completion by configured brand`
+          : (isGroupReport ? `Group: ${groupName(selectedGroup)} · Completion by brand / sub-group` : 'Brand completion overview')));
+
+    const firstBrandPageSize = hasBrandComparison ? 4 : 7;
+    const brandContinuationPageSize = 7;
+    const brandPageChunks = paginateReportRows(brandRows, firstBrandPageSize, brandContinuationPageSize);
+    const brandPagesHtml = brandPageChunks.map((pageRows, pageIndex) => {
+      const pageStartIndex = pageIndex === 0
+        ? 0
+        : firstBrandPageSize + ((pageIndex - 1) * brandContinuationPageSize);
+      return `<section class="report-page brand-page">
+        <div class="report-header">
+          <div class="brand"><div class="cs-export-doc-logo-slot" data-incheck360-doc-logo-slot></div><div class="brand-fallback" style="display:none;">InCheck <span>360</span></div></div>
+          <div class="header-main">
+            <div class="header-row"><div class="title"><h1>Brand Completion Insights${pageIndex ? ' — Continued' : ''}</h1><div class="subtitle">${esc(reportName)} · ${esc(brandPageSubtitle)}</div></div></div>
+            <div class="meta-grid">
+              <div class="meta"><div class="k">Brands</div><div class="v">${brandRows.length}</div></div>
+              ${brandMetaCardsHtml}
+            </div>
+          </div>
+        </div>
+        ${pageIndex === 0 ? brandComparisonHtml : ''}
+        <div class="table-wrap"><table class="report-table brand-table">
+          <thead><tr><th class="num">#</th><th class="client-col">Brand / Sub-group</th><th>Locations</th><th>Done On-Time</th><th>Done Late</th><th>Partially Done</th><th>Missed</th><th>Completion</th><th>Insight</th></tr></thead>
+          <tbody>${pageRows.map((item, index) => `<tr><td class="num">${pageStartIndex + index + 1}</td><td><span class="brand-name">${esc(item.brand_name)}</span><span class="brand-scope">${esc(item.scope)}</span></td><td class="pct">${item.locations.length}</td><td class="pct">${item.stats.done_on_time.toFixed(2)}%</td><td class="pct">${item.stats.done_late.toFixed(2)}%</td><td class="pct">${item.stats.partially_done.toFixed(2)}%</td><td class="pct">${item.stats.missed.toFixed(2)}%</td><td class="pct ${item.stats.completion < 80 ? 'low' : 'ok'}">${item.stats.completion.toFixed(2)}%</td><td>${item.is_unassigned ? 'Assign these locations to a brand' : (item.stats.completion < 80 ? 'Needs operational attention' : 'On track')}${item.weakLocations.length ? `<ul class="brand-mini-list">${item.weakLocations.map(row => `<li>${esc(row.location_name)} · ${formatPct(completionCount(row))}</li>`).join('')}</ul>` : ''}</td></tr>`).join('')}</tbody>
+        </table></div>
+        <div class="footer"><span>InCheck 360 · Customer Success</span><span>Brand insights · ${esc(generatedAt.toLocaleDateString())}</span></div>
+      </section>`;
+    }).join('');
+
+    const detailPageSize = 12;
+    const detailPageChunks = paginateReportRows(rows, detailPageSize);
+    const locationPagesHtml = detailPageChunks.map((pageRows, pageIndex) => {
+      const pageStartIndex = pageIndex * detailPageSize;
+      return `<section class="report-page table-page">
+        <div class="report-header">
+          <div class="brand"><div class="cs-export-doc-logo-slot" data-incheck360-doc-logo-slot></div><div class="brand-fallback" style="display:none;">InCheck <span>360</span></div></div>
+          <div class="header-main">
+            <div class="header-row"><div class="title"><h1>Location Completion Details${pageIndex ? ' — Continued' : ''}</h1><div class="subtitle">${esc(reportName)} · ${esc(periodLabel)} · ${rows.length} active location${rows.length === 1 ? '' : 's'}</div></div></div>
+          </div>
+        </div>
+        <div class="table-wrap"><table class="report-table location-table">
+          <thead><tr><th class="num">#</th><th class="client-col">Client</th><th class="location-col">Location</th><th>Done On-Time</th><th>Done Late</th><th>Partially Done</th><th>Missed</th><th>Completion</th></tr></thead>
+          <tbody>${pageRows.map((row, index) => `<tr><td class="num">${pageStartIndex + index + 1}</td><td>${esc(row.company_name || reportName)}</td><td>${esc(row.location_name)}</td><td class="pct">${formatPct(row.done_on_time)}</td><td class="pct">${formatPct(row.done_late)}</td><td class="pct">${formatPct(row.partially_done)}</td><td class="pct">${formatPct(row.missed)}</td><td class="pct completion-cell">${formatPct(completionCount(row))}</td></tr>`).join('')}</tbody>
+        </table></div>
+        <div class="footer"><span>InCheck 360 · Customer Success</span><span>Location details · ${esc(generatedAt.toLocaleDateString())}</span></div>
+      </section>`;
+    }).join('');
 
     const reportHtml = `<!DOCTYPE html>
 <html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -3656,26 +3720,28 @@
   @page{size:A4 landscape;margin:7mm}
   :root{--brand:#0b4ea2;--brand2:#276ef1;--ink:#071a44;--text:#24324b;--muted:#667085;--line:#dfe7f2;--soft:#f5f8fc;--card:#fff;--good:#42a642;--late:#276ef1;--partial:#ef7d17;--miss:#d93545;--shadow:0 12px 28px rgba(18,42,88,.07)}
   *{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important}
-  html,body{margin:0;background:#eef3f8;color:var(--text);font-family:Inter,Segoe UI,Arial,sans-serif}
-  body{font-size:12px}
+  html,body{margin:0;min-width:0;background:#eef3f8;color:var(--text);font-family:Inter,Segoe UI,Arial,sans-serif}
+  body{font-size:11.5px}
   .report-document{width:100%;padding:14px}
-  .report-page{width:281mm;min-height:194mm;margin:0 auto 14px;background:#fff;border:1px solid var(--line);border-radius:18px;padding:10mm;box-shadow:var(--shadow);page-break-after:always;break-after:page;overflow:hidden}
+  .report-page{width:281mm;height:194mm;min-height:194mm;max-width:calc(100vw - 28px);margin:0 auto 14px;background:#fff;border:1px solid var(--line);border-radius:18px;padding:7mm;box-shadow:var(--shadow);page-break-after:always;break-after:page;overflow:hidden;display:flex;flex-direction:column}
   .report-page:last-child{page-break-after:auto;break-after:auto}
-  .report-header{display:grid;grid-template-columns:56mm 1fr;gap:8mm;align-items:start;border-bottom:1px solid var(--line);padding-bottom:6mm;margin-bottom:5mm}
-  .brand{min-height:30mm;display:flex;align-items:flex-start;justify-content:flex-start}.brand [data-incheck360-doc-logo-slot],.brand [data-incheck360-doc-logo],.brand .cs-export-doc-logo-slot{display:flex;align-items:flex-start;justify-content:flex-start;width:54mm;min-height:30mm}.brand .incheck360-doc-logo-wrap,.brand .cs-export-doc-logo-wrap{width:54mm!important;max-width:54mm!important;height:30mm!important;max-height:30mm!important;display:flex;align-items:flex-start;justify-content:flex-start}.brand .incheck360-doc-logo,.brand .cs-export-doc-logo{max-width:50mm!important;max-height:27mm!important;width:auto!important;height:auto!important;object-fit:contain;object-position:left top;display:block}.brand-fallback{font-size:20px;font-weight:900;color:var(--ink)}.brand-fallback span{color:var(--brand2)}
-  .header-main{min-width:0}.header-row{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.title h1{margin:0;color:var(--ink);font-size:28px;line-height:1.05;letter-spacing:.02em}.title .subtitle{margin-top:5px;color:var(--muted);font-size:11.5px;line-height:1.35}.meta-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:10px}.meta{border:1px solid var(--line);border-radius:12px;background:#fbfdff;padding:8px 10px;min-height:42px}.meta .k{font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:4px}.meta .v{font-weight:900;color:var(--ink);font-size:12px;line-height:1.25}
-  .actions{width:281mm;margin:0 auto 10px;display:flex;justify-content:flex-end;gap:10px}.btn{border:1px solid var(--line);border-radius:12px;padding:9px 13px;font-weight:900;cursor:pointer;background:#fff;color:var(--brand)}.btn.primary{background:var(--brand);color:#fff;border-color:var(--brand)}.print-hint{margin-right:auto;color:var(--muted);font-size:12px;align-self:center}
-  .kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-bottom:5mm}.kpi{border:1px solid var(--line);border-radius:14px;padding:9px 10px;background:#fff;min-height:64px}.kpi .label{font-size:9.5px;font-weight:850;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.kpi .value{font-size:20px;font-weight:950;margin-top:6px;color:var(--brand)}.kpi .value.good{color:var(--good)}.kpi .value.late{color:var(--late)}.kpi .value.partial{color:var(--partial)}.kpi .value.miss{color:var(--miss)}
-  .summary-grid{display:grid;grid-template-columns:.95fr 1.25fr .85fr;gap:5mm}.panel{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden}.panel-inner{padding:13px}.section-title{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin:0 0 12px}.section-title h2{margin:0;color:var(--ink);font-size:15px}.section-title .note{color:var(--muted);font-size:10.5px}
-  .donut-wrap{display:flex;align-items:center;gap:18px}.donut{width:120px;height:120px;border-radius:50%;position:relative;flex:0 0 auto}.donut:after{content:"";position:absolute;inset:28px;background:#fff;border-radius:50%;box-shadow:0 0 0 1px var(--line)}.donut-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:2;text-align:center;color:var(--ink);font-weight:950;font-size:20px}.donut-center span{font-size:10px;color:var(--muted);font-weight:800;margin-top:4px}.legend{display:grid;gap:8px;min-width:160px}.legend-row{display:grid;grid-template-columns:10px 1fr auto;gap:8px;align-items:center;font-size:11.5px}.dot{width:8px;height:8px;border-radius:50%}.dot.good{background:var(--good)}.dot.late{background:var(--late)}.dot.partial{background:var(--partial)}.dot.miss{background:var(--miss)}
-  .stack{height:64px;border-radius:10px;overflow:visible;margin:16px 0 7px}.stack-svg{display:block;width:100%;height:64px;overflow:visible}.axis{display:flex;justify-content:space-between;color:var(--muted);font-size:10px;border-top:1px solid var(--line);padding-top:6px}.stack-legend{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 14px;margin-top:10px;color:var(--text);font-size:11px}.stack-legend span{display:flex;gap:7px;align-items:center;justify-content:space-between}.stack-legend span i{flex:0 0 auto}.stack-legend b{margin-left:auto}
-  .summary-card .summary-line{display:grid;grid-template-columns:24px 1fr auto;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}.mini-icon{width:22px;height:22px;border-radius:8px;background:#eef5ff;color:var(--brand);display:flex;align-items:center;justify-content:center;font-weight:900}.summary-line strong{font-size:15px}.summary-total{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;margin-top:12px}.summary-total .big{font-size:26px;color:var(--good);font-weight:950}.tiny{font-size:10px;color:var(--muted)}
-  .insights{display:grid;grid-template-columns:repeat(3,1fr);gap:5mm;margin-top:5mm}.insight{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff;display:grid;grid-template-columns:30px 1fr;gap:10px;min-height:72px}.insight.good-bg{background:linear-gradient(135deg,#f4fbf6,#fff)}.insight.warn-bg{background:linear-gradient(135deg,#fff7ed,#fff)}.insight.info-bg{background:linear-gradient(135deg,#f3f7ff,#fff)}.insight .big-icon{font-size:22px}.insight h3{margin:0 0 5px;color:var(--ink);font-size:12px}.insight p{margin:0;color:var(--text);font-size:11px;line-height:1.4}
-  .table-page{overflow:visible}.table-page .report-header{margin-bottom:3mm}.table-wrap{border:1px solid var(--line);border-radius:14px;overflow:hidden}.report-table{width:100%;border-collapse:collapse;table-layout:fixed}.report-table thead{display:table-header-group}.report-table tr{break-inside:avoid;page-break-inside:avoid}.report-table th{background:var(--brand);color:#fff;text-align:left;font-size:9.5px;letter-spacing:.04em;text-transform:uppercase;padding:7px 8px}.report-table td{padding:7px 8px;border-bottom:1px solid var(--line);font-size:10.8px;line-height:1.25;vertical-align:middle}.report-table tbody tr:nth-child(even){background:#fbfdff}.report-table .num{width:32px;text-align:center}.report-table .client-col{width:25%}.report-table .location-col{width:17%}.report-table .pct{text-align:right;white-space:nowrap}.report-table .completion-cell{font-weight:950;color:var(--good)}
-  .brand-page .brand-overview{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5mm;margin-bottom:5mm}.brand-insight{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff;min-height:76px}.brand-insight h3{margin:0 0 6px;color:var(--ink);font-size:12px}.brand-insight .big{font-size:24px;font-weight:950;color:var(--brand)}.brand-insight.good{background:linear-gradient(135deg,#f0fdf4,#fff)}.brand-insight.warn{background:linear-gradient(135deg,#fff7ed,#fff)}.brand-insight.info{background:linear-gradient(135deg,#eff6ff,#fff)}.brand-table .brand-name{font-weight:950;color:var(--ink)}.brand-table .brand-scope{display:block;color:var(--muted);font-size:9.5px;margin-top:2px}.brand-table .low{color:var(--miss);font-weight:950}.brand-table .ok{color:var(--good);font-weight:950}.brand-mini-list{margin:6px 0 0;padding-left:16px;color:var(--text);font-size:10.5px;line-height:1.45}
-  .footer{display:flex;justify-content:space-between;color:var(--muted);font-size:10px;margin-top:5mm;padding-top:3mm;border-top:1px solid var(--line)}
+  .report-header{display:grid;grid-template-columns:48mm minmax(0,1fr);gap:7mm;align-items:start;border-bottom:1px solid var(--line);padding-bottom:4mm;margin-bottom:4mm;flex:0 0 auto}
+  .brand{min-width:0;min-height:24mm;display:flex;align-items:flex-start;justify-content:flex-start}.brand [data-incheck360-doc-logo-slot],.brand [data-incheck360-doc-logo],.brand .cs-export-doc-logo-slot{display:flex;align-items:flex-start;justify-content:flex-start;width:46mm;min-height:24mm;overflow:hidden}.brand .incheck360-doc-logo-wrap,.brand .cs-export-doc-logo-wrap{width:46mm!important;max-width:46mm!important;height:24mm!important;max-height:24mm!important;display:flex;align-items:flex-start;justify-content:flex-start;overflow:hidden}.brand .incheck360-doc-logo,.brand .cs-export-doc-logo{max-width:44mm!important;max-height:22mm!important;width:auto!important;height:auto!important;object-fit:contain;object-position:left top;display:block}.brand-fallback{font-size:20px;font-weight:900;color:var(--ink)}.brand-fallback span{color:var(--brand2)}
+  .header-main,.header-row,.title,.meta,.kpi,.panel,.insight,.brand-insight{min-width:0}.header-row{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}.title h1{margin:0;color:var(--ink);font-size:25px;line-height:1.05;letter-spacing:.01em;overflow-wrap:anywhere}.title .subtitle{margin-top:5px;color:var(--muted);font-size:11px;line-height:1.35;overflow-wrap:anywhere}.meta-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:7px;margin-top:9px}.meta{border:1px solid var(--line);border-radius:11px;background:#fbfdff;padding:7px 9px;min-height:40px;overflow:hidden}.meta .k{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:3px}.meta .v{font-weight:900;color:var(--ink);font-size:11.5px;line-height:1.2;max-width:100%;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+  .actions{width:281mm;max-width:calc(100vw - 28px);margin:0 auto 10px;display:flex;justify-content:flex-end;gap:10px}.btn{border:1px solid var(--line);border-radius:12px;padding:9px 13px;font-weight:900;cursor:pointer;background:#fff;color:var(--brand)}.btn.primary{background:var(--brand);color:#fff;border-color:var(--brand)}.print-hint{margin-right:auto;color:var(--muted);font-size:12px;align-self:center}
+  .kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:7px;margin-bottom:4mm;flex:0 0 auto}.kpi{border:1px solid var(--line);border-radius:13px;padding:8px 9px;background:#fff;min-height:57px;overflow:hidden}.kpi .label{font-size:9px;font-weight:850;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;line-height:1.2}.kpi .value{font-size:18px;font-weight:950;margin-top:5px;color:var(--brand);line-height:1.05;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}.kpi .value.good{color:var(--good)}.kpi .value.late{color:var(--late)}.kpi .value.partial{color:var(--partial)}.kpi .value.miss{color:var(--miss)}
+  .summary-grid{display:grid;grid-template-columns:.9fr 1.2fr .9fr;gap:4mm;flex:0 0 auto}.panel{background:#fff;border:1px solid var(--line);border-radius:15px;overflow:hidden}.panel-inner{padding:11px;height:100%;overflow:hidden}.section-title{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin:0 0 9px;min-width:0}.section-title h2{margin:0;color:var(--ink);font-size:14px;line-height:1.2;overflow-wrap:anywhere}.section-title .note{color:var(--muted);font-size:9.5px;text-align:right;line-height:1.25;max-width:55%;overflow-wrap:anywhere}
+  .donut-wrap{display:flex;align-items:center;justify-content:space-around;gap:13px;min-width:0}.donut{width:105px;height:105px;border-radius:50%;position:relative;flex:0 0 auto}.donut:after{content:"";position:absolute;inset:25px;background:#fff;border-radius:50%;box-shadow:0 0 0 1px var(--line)}.donut-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:2;text-align:center;color:var(--ink);font-weight:950;font-size:17px;white-space:nowrap;font-variant-numeric:tabular-nums}.donut-center span{font-size:9px;color:var(--muted);font-weight:800;margin-top:3px}.legend{display:grid;gap:7px;min-width:0;flex:1}.legend-row{display:grid;grid-template-columns:10px minmax(0,1fr) auto;gap:7px;align-items:center;font-size:10.5px;min-width:0}.legend-row span{overflow-wrap:anywhere}.legend-row strong{white-space:nowrap;font-variant-numeric:tabular-nums}.dot{width:8px;height:8px;border-radius:50%}.dot.good{background:var(--good)}.dot.late{background:var(--late)}.dot.partial{background:var(--partial)}.dot.miss{background:var(--miss)}
+  .stack-widget{border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:12px 0 5px;background:#eef2f7}.stack{height:58px;overflow:hidden;margin:0;background:#eef2f7}.stack-svg{display:block;width:100%;height:58px;overflow:hidden}.axis{display:flex;justify-content:space-between;color:var(--muted);font-size:9px;border-top:1px solid var(--line);padding:5px 5px;background:#fff;font-variant-numeric:tabular-nums}.stack-legend{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 8px;margin-top:7px;color:var(--text);font-size:9.5px}.stack-metric{display:grid;grid-template-columns:8px minmax(0,1fr) auto;gap:5px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:4px 6px;min-width:0;overflow:hidden}.stack-metric span{min-width:0;overflow-wrap:anywhere}.stack-metric b{white-space:nowrap;font-variant-numeric:tabular-nums}
+  .summary-card .summary-line{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);min-width:0}.mini-icon{width:21px;height:21px;border-radius:7px;background:#eef5ff;color:var(--brand);display:flex;align-items:center;justify-content:center;font-weight:900}.summary-line span:nth-child(2){overflow-wrap:anywhere}.summary-line strong{font-size:13px;white-space:nowrap;font-variant-numeric:tabular-nums}.summary-total{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:8px;margin-top:9px;min-width:0}.summary-total .big{font-size:22px;color:var(--good);font-weight:950;white-space:nowrap;font-variant-numeric:tabular-nums}.tiny{font-size:9px;color:var(--muted);line-height:1.3;overflow-wrap:anywhere}
+  .insights{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4mm;margin-top:4mm;flex:0 0 auto}.insight{border:1px solid var(--line);border-radius:13px;padding:10px;background:#fff;display:grid;grid-template-columns:26px minmax(0,1fr);gap:8px;min-height:65px;overflow:hidden}.insight.good-bg{background:linear-gradient(135deg,#f4fbf6,#fff)}.insight.warn-bg{background:linear-gradient(135deg,#fff7ed,#fff)}.insight.info-bg{background:linear-gradient(135deg,#f3f7ff,#fff)}.insight .big-icon{font-size:19px}.insight h3{margin:0 0 4px;color:var(--ink);font-size:11px;line-height:1.2}.insight p{margin:0;color:var(--text);font-size:9.7px;line-height:1.3;overflow-wrap:anywhere}.insight strong{white-space:nowrap;font-variant-numeric:tabular-nums}
+  .table-page .report-header,.brand-page .report-header{margin-bottom:3mm}.table-wrap{border:1px solid var(--line);border-radius:12px;overflow:hidden;min-width:0;flex:0 0 auto}.report-table{width:100%;border-collapse:collapse;table-layout:fixed}.report-table thead{display:table-header-group}.report-table tr{break-inside:avoid;page-break-inside:avoid}.report-table th{background:var(--brand);color:#fff;text-align:left;font-size:8.4px;line-height:1.15;letter-spacing:.025em;text-transform:uppercase;padding:6px 6px;overflow-wrap:anywhere;vertical-align:middle}.report-table td{padding:6px 6px;border-bottom:1px solid var(--line);font-size:9.5px;line-height:1.2;vertical-align:middle;overflow:hidden;overflow-wrap:anywhere}.report-table tbody tr:nth-child(even){background:#fbfdff}.report-table tbody tr:last-child td{border-bottom:0}.report-table .num{width:4%;text-align:center;white-space:nowrap;font-variant-numeric:tabular-nums}.report-table .pct{text-align:center;white-space:nowrap;font-variant-numeric:tabular-nums}.report-table .completion-cell{font-weight:950;color:var(--good)}
+  .location-table th:nth-child(2),.location-table td:nth-child(2){width:22%}.location-table th:nth-child(3),.location-table td:nth-child(3){width:20%}.location-table th:nth-child(n+4),.location-table td:nth-child(n+4){width:10.8%}
+  .brand-table th:nth-child(2),.brand-table td:nth-child(2){width:20%}.brand-table th:nth-child(3),.brand-table td:nth-child(3){width:7%}.brand-table th:nth-child(n+4):nth-child(-n+8),.brand-table td:nth-child(n+4):nth-child(-n+8){width:9%}.brand-table th:nth-child(9),.brand-table td:nth-child(9){width:24%}
+  .brand-page .brand-overview{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4mm;margin-bottom:4mm;flex:0 0 auto}.brand-insight{border:1px solid var(--line);border-radius:13px;padding:10px;background:#fff;min-height:69px;overflow:hidden}.brand-insight h3{margin:0 0 5px;color:var(--ink);font-size:11px;line-height:1.2}.brand-insight .big{font-size:20px;font-weight:950;color:var(--brand);line-height:1.05;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}.brand-insight p{margin:5px 0 0;font-size:9.5px;line-height:1.25;overflow-wrap:anywhere}.brand-insight.good{background:linear-gradient(135deg,#f0fdf4,#fff)}.brand-insight.warn{background:linear-gradient(135deg,#fff7ed,#fff)}.brand-insight.info{background:linear-gradient(135deg,#eff6ff,#fff)}.brand-table .brand-name{font-weight:950;color:var(--ink);display:block;overflow-wrap:anywhere}.brand-table .brand-scope{display:block;color:var(--muted);font-size:8.8px;margin-top:2px;line-height:1.2;overflow-wrap:anywhere}.brand-table .low{color:var(--miss);font-weight:950}.brand-table .ok{color:var(--good);font-weight:950}.brand-mini-list{margin:4px 0 0;padding-left:13px;color:var(--text);font-size:8.7px;line-height:1.25}.brand-mini-list li{margin:1px 0;overflow-wrap:anywhere}
+  .footer{display:flex;justify-content:space-between;gap:12px;color:var(--muted);font-size:9px;margin-top:auto;padding-top:2.5mm;border-top:1px solid var(--line);flex:0 0 auto}.footer span{min-width:0;overflow-wrap:anywhere}.footer span:last-child{text-align:right}
   @media screen{.report-page{box-shadow:0 14px 40px rgba(18,42,88,.10)}}
-  @media print{html,body{width:297mm;background:#fff}.actions{display:none!important}.report-document{padding:0}.report-page{width:auto;min-height:auto;margin:0;border:0;border-radius:0;box-shadow:none;padding:0;page-break-after:always;break-after:page;overflow:visible}.report-page:last-child{page-break-after:auto;break-after:auto}.report-header{break-inside:avoid;page-break-inside:avoid}.kpis,.summary-grid,.insights,.panel{break-inside:avoid;page-break-inside:avoid}.summary-page{height:194mm}.table-page{height:auto}.report-table th{font-size:9px;padding:6px 7px}.report-table td{font-size:10px;padding:6px 7px}.stack{height:58px}.stack-svg{height:58px}}
+  @media print{html,body{width:297mm;height:auto;background:#fff}.actions{display:none!important}.report-document{padding:0}.report-page{width:283mm;height:196mm;min-height:196mm;max-width:none;margin:0;border:0;border-radius:0;box-shadow:none;padding:7mm;page-break-after:always;break-after:page;overflow:hidden}.report-page:last-child{page-break-after:auto;break-after:auto}.report-header,.kpis,.summary-grid,.insights,.panel,.brand-overview,.table-wrap{break-inside:avoid;page-break-inside:avoid}.report-table th{font-size:8.2px;padding:5px 5px}.report-table td{font-size:9.2px;padding:5px 5px}.stack,.stack-svg{height:54px}}
 </style></head><body>
 <div class="actions"><span class="print-hint">PDF layout is optimized for A4 Landscape. In Chrome print settings, use Landscape + A4 and turn off Headers and Footers.</span><button class="btn" onclick="window.close()">Close</button><button class="btn primary" onclick="window.print()">Print / Save PDF</button></div>
 <div class="report-document">
@@ -3716,18 +3782,17 @@
 
       <div class="panel"><div class="panel-inner">
         <div class="section-title"><h2>Completion Breakdown</h2><span class="note">Done On-Time + Done Late = Completion</span></div>
-        <div class="stack">${stackSvg}</div>
-        <div class="axis"><span>0%</span><span>20%</span><span>40%</span><span>60%</span><span>80%</span><span>100%</span></div>
+        <div class="stack-widget"><div class="stack">${stackSvg}</div><div class="axis"><span>0%</span><span>20%</span><span>40%</span><span>60%</span><span>80%</span><span>100%</span></div></div>
         <div class="stack-legend">
-          <span><i class="dot good"></i>Done On-Time <b>${stats.done_on_time.toFixed(2)}%</b></span>
-          <span><i class="dot late"></i>Done Late <b>${stats.done_late.toFixed(2)}%</b></span>
-          <span><i class="dot partial"></i>Partially Done <b>${stats.partially_done.toFixed(2)}%</b></span>
-          <span><i class="dot miss"></i>Missed <b>${stats.missed.toFixed(2)}%</b></span>
+          <div class="stack-metric"><i class="dot good"></i><span>Done On-Time</span><b>${stats.done_on_time.toFixed(2)}%</b></div>
+          <div class="stack-metric"><i class="dot late"></i><span>Done Late</span><b>${stats.done_late.toFixed(2)}%</b></div>
+          <div class="stack-metric"><i class="dot partial"></i><span>Partially Done</span><b>${stats.partially_done.toFixed(2)}%</b></div>
+          <div class="stack-metric"><i class="dot miss"></i><span>Missed</span><b>${stats.missed.toFixed(2)}%</b></div>
         </div>
       </div></div>
 
       <div class="panel summary-card"><div class="panel-inner">
-        <div class="section-title"><h2>${isSpecialBrandReport ? 'All Special Brand Locations' : (isSpecialGroupReport ? 'All Special Group Locations' : (isSpecialTemplateReport ? 'All Special Client Locations' : (isBrandReport ? 'All Brand Locations' : (isGroupReport ? 'All Group Locations' : 'All Client Locations'))))}</h2></div>
+        <div class="section-title"><h2>${isAnyBrandReport ? 'All Brand Locations' : (isAnyGroupReport ? 'All Group Locations' : 'All Client Locations')}</h2></div>
         <div class="tiny">Average of ${rows.length} active location${rows.length === 1 ? '' : 's'}</div>
         <div class="summary-line"><span class="mini-icon">✓</span><span>Done On-Time</span><strong style="color:var(--good)">${stats.done_on_time.toFixed(2)}%</strong></div>
         <div class="summary-line"><span class="mini-icon">◷</span><span>Done Late</span><strong style="color:var(--late)">${stats.done_late.toFixed(2)}%</strong></div>
@@ -3740,43 +3805,14 @@
     <div class="insights">
       <div class="insight good-bg"><div class="big-icon">🏆</div><div><h3>Best performing location</h3><p>${best ? `${esc(best.company_name || reportName)} — ${esc(best.location_name)}<br/>Completion: <strong>${formatPct(completionCount(best))}</strong>` : 'No location data available yet.'}</p></div></div>
       <div class="insight warn-bg"><div class="big-icon">⚠</div><div><h3>Locations needing operational attention</h3><p>${weak.length ? weak.map(row => `${esc(row.company_name || reportName)} — ${esc(row.location_name)} (${formatPct(completionCount(row))})`).join('<br/>') : 'No locations needing operational attention for the selected period.'}</p></div></div>
-      <div class="insight info-bg"><div class="big-icon">ⓘ</div><div><h3>Notes</h3><p>${esc(sourceNote)}<br/>${isAnyBrandReport ? 'Brand result is auto-calculated from assigned brand location rows.' : (isAnyGroupReport ? 'Group result includes only locations assigned to the selected group, with brand completion when configured.' : 'Client result is auto-calculated from all location rows.')}<br/>${isAnySpecialReport ? 'Special CS Client report source. ' : ''}Generated on ${esc(generatedAt.toLocaleString())}.</p></div></div>
+      <div class="insight info-bg"><div class="big-icon">ⓘ</div><div><h3>Notes</h3><p>${esc(sourceNote)}<br/>${isAnyBrandReport ? 'Brand result is auto-calculated from assigned brand location rows.' : (isAnyGroupReport ? 'Group result includes only locations assigned to the selected group, with brand completion when configured.' : 'Client result is auto-calculated from all location rows.')}<br/>Generated on ${esc(generatedAt.toLocaleString())}.</p></div></div>
     </div>
     <div class="footer"><span>InCheck 360 · Customer Success</span><span>Summary · ${esc(generatedAt.toLocaleDateString())}</span></div>
   </section>
 
-  ${brandRows.length ? `<section class="report-page brand-page">
-    <div class="report-header">
-      <div class="brand"><div class="cs-export-doc-logo-slot" data-incheck360-doc-logo-slot></div><div class="brand-fallback" style="display:none;">InCheck <span>360</span></div></div>
-      <div class="header-main">
-        <div class="header-row"><div class="title"><h1>Brand Completion Insights</h1><div class="subtitle">${esc(reportName)} · ${isSpecialBrandReport ? `Special CS Client: ${esc(specialTemplateName(selectedSpecialTemplate))}` : (isSpecialGroupReport ? `Special CS Client group: ${esc(groupName(selectedSpecialGroup))}` : (isSpecialTemplateReport ? 'Special CS Client report divided by configured brand.' : (isGroupReport ? 'Group report divided by brand/sub-group.' : 'Brand completion overview.')))}</div></div></div>
-        <div class="meta-grid">
-          <div class="meta"><div class="k">Brands</div><div class="v">${brandRows.length}</div></div>
-          ${brandMetaCardsHtml}
-        </div>
-      </div>
-    </div>
-    ${brandComparisonHtml}
-    <div class="table-wrap"><table class="report-table brand-table">
-      <thead><tr><th class="num">#</th><th class="client-col">Brand / Sub-group</th><th>Locations</th><th>Done On-Time</th><th>Done Late</th><th>Partially Done</th><th>Missed</th><th>Completion</th><th>Insight</th></tr></thead>
-      <tbody>${brandRows.map((item, index) => `<tr><td class="num">${index + 1}</td><td><span class="brand-name">${esc(item.brand_name)}</span><span class="brand-scope">${esc(item.scope)}</span></td><td class="pct">${item.locations.length}</td><td class="pct">${item.stats.done_on_time.toFixed(2)}%</td><td class="pct">${item.stats.done_late.toFixed(2)}%</td><td class="pct">${item.stats.partially_done.toFixed(2)}%</td><td class="pct">${item.stats.missed.toFixed(2)}%</td><td class="pct ${item.stats.completion < 80 ? 'low' : 'ok'}">${item.stats.completion.toFixed(2)}%</td><td>${item.is_unassigned ? 'Assign these locations to a brand' : (item.stats.completion < 80 ? 'Needs operational attention' : 'On track')}${item.weakLocations.length ? `<ul class="brand-mini-list">${item.weakLocations.map(row => `<li>${esc(row.location_name)} · ${formatPct(completionCount(row))}</li>`).join('')}</ul>` : ''}</td></tr>`).join('')}</tbody>
-    </table></div>
-    <div class="footer"><span>InCheck 360 · Customer Success</span><span>Brand insights · ${esc(generatedAt.toLocaleDateString())}</span></div>
-  </section>` : ''}
+  ${brandPagesHtml}
 
-  <section class="report-page table-page">
-    <div class="report-header">
-      <div class="brand"><div class="cs-export-doc-logo-slot" data-incheck360-doc-logo-slot></div><div class="brand-fallback" style="display:none;">InCheck <span>360</span></div></div>
-      <div class="header-main">
-        <div class="header-row"><div class="title"><h1>Location Completion Details</h1><div class="subtitle">${esc(reportName)} · ${esc(periodLabel)} · ${rows.length} active location${rows.length === 1 ? '' : 's'}</div></div></div>
-      </div>
-    </div>
-    <div class="table-wrap"><table class="report-table">
-      <thead><tr><th class="num">#</th><th class="client-col">Client</th><th class="location-col">Location</th><th>Done On-Time</th><th>Done Late</th><th>Partially Done</th><th>Missed</th><th>Completion</th></tr></thead>
-      <tbody>${rows.map((row, index) => `<tr><td class="num">${index + 1}</td><td>${esc(row.company_name || reportName)}</td><td>${esc(row.location_name)}</td><td class="pct">${formatPct(row.done_on_time)}</td><td class="pct">${formatPct(row.done_late)}</td><td class="pct">${formatPct(row.partially_done)}</td><td class="pct">${formatPct(row.missed)}</td><td class="pct completion-cell">${formatPct(completionCount(row))}</td></tr>`).join('')}</tbody>
-    </table></div>
-    <div class="footer"><span>InCheck 360 · Customer Success</span><span>Location details · ${esc(generatedAt.toLocaleDateString())}</span></div>
-  </section>
+  ${locationPagesHtml}
 </div></body></html>`;
 
     try {
