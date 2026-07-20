@@ -1078,10 +1078,12 @@
 
 
   function groupName(row = {}) {
+    row = row && typeof row === 'object' ? row : {};
     return String(row.group_name || row.name || row.group_label || 'Unnamed Group').trim();
   }
 
   function groupId(row = {}) {
+    row = row && typeof row === 'object' ? row : {};
     return String(row.id || row.group_id || '').trim();
   }
 
@@ -1140,10 +1142,12 @@
   }
 
   function brandName(row = {}) {
+    row = row && typeof row === 'object' ? row : {};
     return String(row.brand_name || row.name || row.brand_label || 'Unnamed Brand').trim();
   }
 
   function brandId(row = {}) {
+    row = row && typeof row === 'object' ? row : {};
     return String(row.id || row.brand_id || '').trim();
   }
 
@@ -2094,8 +2098,9 @@
 
     const rows = locations.map(location => {
       const currentBrand = location.brand_id ? specialBrandById(location.brand_id) : null;
+      const currentBrandId = brandId(currentBrand);
       const group = location.group_id ? specialGroupById(location.group_id) : null;
-      const brandOptions = brands.map(brand => `<option value="${attr(brandId(brand))}" ${brandId(brand) === brandId(currentBrand) ? 'selected' : ''}>${esc(brandName(brand))}</option>`).join('');
+      const brandOptions = brands.map(brand => `<option value="${attr(brandId(brand))}" ${brandId(brand) === currentBrandId ? 'selected' : ''}>${esc(brandName(brand))}</option>`).join('');
       const controls = canUpdate()
         ? `<select class="select" data-special-brand-select="${attr(location.id)}"><option value="">Select brand</option>${brandOptions}</select>`
         : `<span class="cs-kpi-sub">${esc(currentBrand ? brandName(currentBrand) : 'Unassigned')}</span>`;
@@ -2267,6 +2272,18 @@
         ${[['overview','Overview'],['locations','Locations'],['structure','Groups & Brands'],['brands','Brand Management'],['history','Completion History']].map(([key,label]) => `<button class="cs-tab-btn ${tab === key ? 'is-active' : ''}" type="button" data-cs-special-tab="${key}">${label}</button>`).join('')}
       </div>
       <div class="cs-tab-panel is-active">${panel}</div>`;
+
+    // Bind directly inside the freshly rendered special-client detail. This is
+    // intentionally kept in addition to document-level delegation so the tabs
+    // remain reliable even when another module stops click propagation.
+    host.querySelectorAll('[data-cs-special-tab]').forEach(button => {
+      button.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        STATE.specialActiveTab = button.getAttribute('data-cs-special-tab') || 'overview';
+        renderDetail();
+      });
+    });
 
   }
 
