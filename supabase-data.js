@@ -999,7 +999,8 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     csm: new Set([
       'id', 'activity_id', 'csm_user_id', 'csm_email', 'csm_name', 'client', 'client_id', 'client_name',
       'company_name', 'company_id', 'agreement_id', 'agreement_number', 'invoice_id', 'location_id', 'location_name',
-      'activity_context', 'manual_client_name', 'manual_location_name', 'time_spent_minutes', 'type_of_support', 'effort_requirement', 'support_channel',
+      'activity_context', 'manual_client_name', 'manual_location_name', 'cs_group_id', 'cs_group_name', 'special_client_id', 'special_client_name',
+      'time_spent_minutes', 'type_of_support', 'effort_requirement', 'support_channel',
       'notes', 'updated_at', 'created_at'
     ]),
     operations_onboarding: new Set([

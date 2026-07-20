@@ -3478,9 +3478,23 @@ Sample:
             <label class="muted" for="csmFormActivityScope">Activity Scope *</label>
             <select id="csmFormActivityScope" class="select" required>
               <option value="agreement_client">Signed Client</option>
+              <option value="special_client">Special CS Client</option>
               <option value="cs_group">CS Client Group</option>
               <option value="manual_client">Manual Client</option>
             </select>
+          </div>
+          <div id="csmFormSpecialClientFields" class="grid cols-2" style="display:none;grid-column:1 / -1;">
+            <div class="filter-row">
+              <label class="muted" for="csmFormSpecialClientSearch">Search Special CS Client</label>
+              <input id="csmFormSpecialClientSearch" class="input" type="text" placeholder="Search Special CS Client" autocomplete="off" />
+            </div>
+            <div class="filter-row">
+              <label class="muted" for="csmFormSpecialClient">Special CS Client *</label>
+              <select id="csmFormSpecialClient" class="select">
+                <option value="">Select Special CS Client</option>
+              </select>
+              <div id="csmFormSpecialClientState" class="muted" style="font-size:12px;margin-top:4px;"></div>
+            </div>
           </div>
           <div id="csmFormGroupFields" class="grid cols-2" style="display:none;grid-column:1 / -1;">
             <div class="filter-row">
@@ -4529,9 +4543,9 @@ Sample:
   <script src="/company-verification.js?v=20260630-shared-company-verification"></script>
   <script src="/notification-email-template.js?v=20260509-html-email1"></script>
   <script src="/notification-template-helpers.js?v=20260617-notification-channel-test2"></script>
-  <script src="/supabase-data.js?v=20260718-company-verification-save-fix"></script>
+  <script src="/supabase-data.js?v=20260720-csm-special-client-activity-v9"></script>
   <script src="/clients-service.js?v=20260427-allpwa1"></script>
-  <script src="/api.js?v=20260605-lifecycle-status-history2"></script>
+  <script src="/api.js?v=20260720-csm-special-client-activity-v9"></script>
   <script type="module" src="/src/services/notificationDispatcher.js?v=20260618-central-dispatcher1"></script>
   <script type="module" src="/src/services/notificationDeliveryWorker.js?v=20260618-central-dispatcher1"></script>
   <script src="/notification-service.js?v=20260618-final-channel-fallback1"></script>
@@ -4545,7 +4559,7 @@ Sample:
   <script src="/calendar.js?v=20260427-allpwa1"></script>
   <script src="/planner.js?v=20260427-allpwa1"></script>
   <script src="/crm-form-selectors.js?v=20260609-final-company-contact-fix"></script>
-  <script src="/ui.js?v=20260708-client-success-360-admin3"></script>
+  <script src="/ui.js?v=20260720-csm-special-client-activity-v9"></script>
   <script src="/record-details-drawer.js?v=20260626-shared-right-panel"></script>
   <script src="/leads.js?v=20260626-lead-detail-drawer"></script>
   <script src="/companies.js?v=20260718-company-verification-save-fix"></script>
@@ -4575,9 +4589,9 @@ Sample:
   <script src="/notification-settings.js?v=20260618-final-channel-fallback1"></script>
   <script src="/users.js?v=20260427-allpwa1"></script>
   <script src="/events-service.js?v=20260427-events-pwa1"></script>
-  <script src="/csm-service.js?v=20260708-csm-group-activity1"></script>
+  <script src="/csm-service.js?v=20260720-csm-special-client-activity-v9"></script>
   <script src="/ai-insights-service.js?v=20260427-allpwa1"></script>
   <script src="/ai-assistant.js?v=20260526-ai-assistant-v1"></script>
-  <script src="/app.js?v=20260708-client-success-360-admin3"></script>
+  <script src="/app.js?v=20260720-csm-special-client-activity-v9"></script>
 </body>
 </html>

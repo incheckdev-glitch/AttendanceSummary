@@ -26,6 +26,8 @@
     'manual_location_name',
     'cs_group_id',
     'cs_group_name',
+    'special_client_id',
+    'special_client_name',
     'time_spent_minutes',
     'type_of_support',
     'effort_requirement',
@@ -209,6 +211,7 @@
     const key = cleanString(value);
     if (key === 'manual_client') return 'manual_client';
     if (key === 'cs_group') return 'cs_group';
+    if (key === 'special_client') return 'special_client';
     return 'agreement_client';
   }
 
@@ -239,15 +242,21 @@
     const manualLocationName = cleanString(raw.manual_location_name || raw.manualLocationName || raw.location_name || raw.locationName);
     const csGroupId = cleanString(raw.cs_group_id || raw.csGroupId);
     const csGroupName = cleanString(raw.cs_group_name || raw.csGroupName);
+    const specialClientId = cleanString(raw.special_client_id || raw.specialClientId);
+    const specialClientName = cleanString(raw.special_client_name || raw.specialClientName);
     const displayClientName = activityContext === 'manual_client'
       ? manualClientName
       : activityContext === 'cs_group'
       ? csGroupName || cleanString(raw.client_name || raw.clientName || raw.client || raw.company_name || raw.companyName)
+      : activityContext === 'special_client'
+      ? specialClientName || cleanString(raw.client_name || raw.clientName || raw.client || raw.company_name || raw.companyName)
       : cleanString(raw.client_name || raw.clientName || raw.client || raw.company_name || raw.companyName);
     const displayCompanyName = activityContext === 'manual_client'
       ? manualClientName
       : activityContext === 'cs_group'
       ? csGroupName || displayClientName
+      : activityContext === 'special_client'
+      ? specialClientName || displayClientName
       : cleanString(raw.company_name || raw.companyName || raw.client_name || raw.client || raw.clientName);
 
     return {
@@ -294,6 +303,10 @@
       csGroupId,
       cs_group_name: csGroupName,
       csGroupName,
+      special_client_id: specialClientId,
+      specialClientId,
+      special_client_name: specialClientName,
+      specialClientName,
       onboarding_id: cleanString(raw.onboarding_id || raw.onboardingId),
       onboardingId: cleanString(raw.onboarding_id || raw.onboardingId),
       time_spent_minutes: Number.parseFloat(raw.time_spent_minutes ?? raw.timeSpentMinutes ?? 0) || 0,
@@ -349,10 +362,14 @@
     const manualLocationName = toReadableClientName(input.manual_location_name ?? input.manualLocationName ?? input.location_name ?? input.locationName);
     const csGroupId = nullableUuid(input.cs_group_id ?? input.csGroupId);
     const csGroupName = toReadableClientName(input.cs_group_name ?? input.csGroupName);
+    const specialClientId = nullableUuid(input.special_client_id ?? input.specialClientId);
+    const specialClientName = toReadableClientName(input.special_client_name ?? input.specialClientName);
     const selectedClientName = activityContext === 'manual_client'
       ? manualClientName
       : activityContext === 'cs_group'
       ? csGroupName
+      : activityContext === 'special_client'
+      ? specialClientName
       : cleanString(input.client_name ?? input.clientName ?? input.company_name ?? input.companyName ?? input.client);
     const mapped = {
       csm_user_id: (input.csm_user_id ?? input.csmUserId ?? identity.csm_user_id) || undefined,
@@ -363,11 +380,17 @@
       manual_location_name: activityContext === 'manual_client' ? manualLocationName || null : null,
       cs_group_id: activityContext === 'cs_group' ? csGroupId : null,
       cs_group_name: activityContext === 'cs_group' ? csGroupName : null,
+      special_client_id: activityContext === 'special_client' ? specialClientId : null,
+      special_client_name: activityContext === 'special_client' ? specialClientName : null,
       client: selectedClientName,
       client_id: activityContext === 'agreement_client' ? nullableUuid(input.client_id ?? input.clientId) : null,
       client_name: selectedClientName,
       company_id: activityContext === 'agreement_client' ? nullableUuid(input.company_id ?? input.companyId) : null,
-      company_name: activityContext === 'cs_group' ? csGroupName : (input.company_name ?? input.companyName ?? selectedClientName),
+      company_name: activityContext === 'cs_group'
+        ? csGroupName
+        : activityContext === 'special_client'
+        ? specialClientName
+        : (input.company_name ?? input.companyName ?? selectedClientName),
       agreement_id: activityContext === 'agreement_client' ? nullableUuid(input.agreement_id ?? input.agreementId) : null,
       agreement_number: activityContext === 'agreement_client' ? (input.agreement_number ?? input.agreementNumber ?? null) : null,
       invoice_id: activityContext === 'agreement_client' ? nullableUuid(input.invoice_id ?? input.invoiceId) : null,
@@ -393,10 +416,14 @@
     const manualLocationName = toReadableClientName(input.manual_location_name ?? input.manualLocationName ?? input.location_name ?? input.locationName);
     const csGroupId = nullableUuid(input.cs_group_id ?? input.csGroupId);
     const csGroupName = toReadableClientName(input.cs_group_name ?? input.csGroupName);
+    const specialClientId = nullableUuid(input.special_client_id ?? input.specialClientId);
+    const specialClientName = toReadableClientName(input.special_client_name ?? input.specialClientName);
     const selectedClientName = activityContext === 'manual_client'
       ? manualClientName
       : activityContext === 'cs_group'
       ? csGroupName
+      : activityContext === 'special_client'
+      ? specialClientName
       : cleanString(input.client_name ?? input.clientName ?? input.company_name ?? input.companyName ?? input.client);
     const mapped = {
       csm_user_id: (input.csm_user_id ?? input.csmUserId ?? identity.csm_user_id) || undefined,
@@ -407,11 +434,17 @@
       manual_location_name: activityContext === 'manual_client' ? manualLocationName || null : null,
       cs_group_id: activityContext === 'cs_group' ? csGroupId : null,
       cs_group_name: activityContext === 'cs_group' ? csGroupName : null,
+      special_client_id: activityContext === 'special_client' ? specialClientId : null,
+      special_client_name: activityContext === 'special_client' ? specialClientName : null,
       client: selectedClientName || undefined,
       client_id: activityContext === 'agreement_client' ? nullableUuid(input.client_id ?? input.clientId) : null,
       client_name: selectedClientName || undefined,
       company_id: activityContext === 'agreement_client' ? nullableUuid(input.company_id ?? input.companyId) : null,
-      company_name: activityContext === 'cs_group' ? csGroupName : ((input.company_name ?? input.companyName ?? selectedClientName) || undefined),
+      company_name: activityContext === 'cs_group'
+        ? csGroupName
+        : activityContext === 'special_client'
+        ? specialClientName
+        : ((input.company_name ?? input.companyName ?? selectedClientName) || undefined),
       agreement_id: activityContext === 'agreement_client' ? nullableUuid(input.agreement_id ?? input.agreementId) : null,
       agreement_number: activityContext === 'agreement_client' ? (input.agreement_number ?? input.agreementNumber ?? null) : null,
       invoice_id: activityContext === 'agreement_client' ? nullableUuid(input.invoice_id ?? input.invoiceId) : null,
@@ -571,9 +604,11 @@
     try {
       const { data } = await client.from(TABLE).select('client,client_name,company_name,client_id,manual_client_name,activity_context').order('updated_at', { ascending: false }).limit(500);
       (Array.isArray(data) ? data : []).forEach(row => {
+        const context = normalizeActivityContext(row.activity_context);
+        if (context === 'special_client' || context === 'cs_group') return;
         mergeClientOption(optionMap, {
           client_id: row.client_id,
-          client_name: row.activity_context === 'manual_client' ? row.manual_client_name : row.client_name || row.company_name || row.client,
+          client_name: context === 'manual_client' ? row.manual_client_name : row.client_name || row.company_name || row.client,
           company_name: row.company_name || row.client_name || row.client,
           source: 'csm_activities'
         });
@@ -596,6 +631,32 @@
       .sort((a, b) => cleanString(a.label || a.client_name).localeCompare(cleanString(b.label || b.client_name)));
     console.log('[csm clients] options before/after dedupe', beforeCount, uniqueOptions.length);
     return uniqueOptions;
+  }
+
+  async function loadSpecialClientOptionsForCsmActivity() {
+    const client = getClient();
+    const { data, error } = await client
+      .from('cs_special_clients')
+      .select('id,client_name,description,status')
+      .neq('status', 'archived')
+      .order('client_name', { ascending: true });
+    if (error) throw readableError('Unable to load Special CS Clients', error);
+    return (Array.isArray(data) ? data : [])
+      .map(row => ({
+        value: cleanString(row.id),
+        special_client_id: cleanString(row.id),
+        special_client_name: toReadableClientName(row.client_name),
+        client_name: toReadableClientName(row.client_name),
+        company_name: toReadableClientName(row.client_name),
+        label: toReadableClientName(row.client_name),
+        status: cleanString(row.status || 'active'),
+        description: cleanString(row.description),
+        search_text: [row.client_name, row.description, row.status]
+          .map(value => cleanString(value).toLowerCase())
+          .filter(Boolean)
+          .join(' ')
+      }))
+      .filter(row => row.value && row.label);
   }
 
   async function listActivities(options = {}) {
@@ -699,6 +760,7 @@
     canMutate,
     getCurrentUserIdentity,
     loadClientOptionsForCsmActivity,
+    loadSpecialClientOptionsForCsmActivity,
     normalizeCsmRow,
     toInsertPayload,
     toUpdatePayload,
