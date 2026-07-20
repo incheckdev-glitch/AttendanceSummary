@@ -2219,7 +2219,7 @@
     const locations = specialLocationsForTemplate(sid, false);
     const activeLocations = specialLocationsForTemplate(sid, true);
     const completionRows = (STATE.rows.completions || [])
-      .filter(row => String(row.source_type || '').toLowerCase() === 'special_client' && String(row.special_client_id || '').trim() === sid)
+      .filter(row => isSpecialCompletionRecord(row) && String(row.special_client_id || '').trim() === sid)
       .sort((a, b) => String(b.period_end || b.period_start || '').localeCompare(String(a.period_end || a.period_start || '')));
 
     const tab = STATE.specialActiveTab || 'overview';
@@ -2468,7 +2468,7 @@
 
   function completionHistoryRowsForClient(company) {
     return completionRows(company)
-      .filter(row => String(row.source_type || 'normal').toLowerCase() !== 'special_client')
+      .filter(row => !isSpecialCompletionRecord(row))
       .map(row => applyCs360LocationNameOverride({
         ...row,
         company_name: completionHistoryRowCompanyName(row) || companyName(company)
@@ -2483,7 +2483,7 @@
 
     return (STATE.rows.completions || [])
       .filter(row => {
-        if (String(row.source_type || 'normal').toLowerCase() === 'special_client') return false;
+        if (isSpecialCompletionRecord(row)) return false;
         const rowCompanyId = String(row.company_id || '').trim();
         const rowCompanyName = normalize(completionHistoryRowCompanyName(row));
         return (rowCompanyId && memberIds.has(rowCompanyId)) ||
@@ -2513,7 +2513,7 @@
 
     return (STATE.rows.completions || [])
       .filter(row => {
-        if (String(row.source_type || 'normal').toLowerCase() === 'special_client') return false;
+        if (isSpecialCompletionRecord(row)) return false;
         const idKey = [
           String(row.company_id || '').trim(),
           normalize(row.location_name)
@@ -3035,6 +3035,15 @@
   function specialBrandById(id) { return (STATE.rows.specialBrands || []).find(r => String(r.id || '').trim() === String(id || '').trim()) || null; }
   function specialCompletionTargetKey(target) { return ['special', String(target.special_client_id || '').trim(), String(target.special_location_id || '').trim()].join('|'); }
   function specialCompletionRecordKey(row) { return ['special', String(row.special_client_id || '').trim(), String(row.special_location_id || '').trim()].join('|'); }
+  function isSpecialCompletionRecord(row = {}) {
+    const sourceType = String(row.source_type || '').trim().toLowerCase();
+    return ['special_client', 'special_brand', 'special_group'].includes(sourceType) || Boolean(
+      String(row.special_client_id || '').trim() || String(row.special_location_id || '').trim()
+    );
+  }
+  function isSpecialCompletionTarget(target = {}) {
+    return isSpecialCompletionRecord(target);
+  }
   function specialTemplateTargets(template) {
     const tid = specialTemplateId(template);
     return specialLocationsForTemplate(tid, true).map(loc => {
@@ -3351,15 +3360,26 @@
     const generatedAt = new Date();
 
     const completionKey = row => [row.review_type || 'weekly', String(row.period_start || '').slice(0,10), String(row.period_end || '').slice(0,10)].join('|');
-    const sortCompletionRows = rows => rows.slice().sort((a,b) => String(b.period_end || b.updated_at || b.created_at || '').localeCompare(String(a.period_end || a.updated_at || a.created_at || '')));
+    const completionSortKey = row => [
+      String(row.period_end || '').slice(0, 10),
+      String(row.updated_at || ''),
+      String(row.created_at || ''),
+      String(row.id || '')
+    ].join('|');
+    const sortCompletionRows = rows => rows.slice().sort((a,b) => completionSortKey(b).localeCompare(completionSortKey(a)));
 
     let reportName = selectedCompany ? companyName(selectedCompany) : '';
     let clientLabel = selectedCompany ? companyName(selectedCompany) : '';
     let groupLabel = selectedCompany ? (groupsForCompany(selectedCompany).map(groupName).join(', ') || 'Ungrouped') : 'No group';
     let targetRows = selectedCompany ? currentClientCompletionTargets(selectedCompany) : [];
+    // A client-wide report may be entered brand-by-brand. Keep all saved rows here,
+    // then select the newest saved row for each unique active location below.
     let rawRecords = selectedCompany
-      ? latestCompletionPeriodRows(selectedCompany).filter(row => String(row.source_type || 'normal') !== 'special_client').map(row => ({ ...row, company_name: companyName(selectedCompany) }))
+      ? sortCompletionRows(completionRows(selectedCompany)
+          .filter(row => !isSpecialCompletionRecord(row))
+          .map(row => ({ ...row, company_name: companyName(selectedCompany) })))
       : [];
+    let useLatestRecordPerTarget = Boolean(selectedCompany);
     let activePeriodKey = rawRecords[0] ? completionKey(rawRecords[0]) : '';
 
     if (isSpecialTemplateReport) {
@@ -3368,9 +3388,12 @@
       clientLabel = reportName;
       groupLabel = specialGroupsForTemplate(tid).map(groupName).join(', ') || 'No group';
       targetRows = specialTemplateTargets(selectedSpecialTemplate);
-      const sorted = sortCompletionRows((STATE.rows.completions || []).filter(row => String(row.source_type || '') === 'special_client' && String(row.special_client_id || '').trim() === tid));
+      const sorted = sortCompletionRows((STATE.rows.completions || []).filter(row =>
+        isSpecialCompletionRecord(row) && String(row.special_client_id || '').trim() === tid
+      ));
       activePeriodKey = sorted[0] ? completionKey(sorted[0]) : '';
-      rawRecords = activePeriodKey ? sorted.filter(row => completionKey(row) === activePeriodKey) : [];
+      rawRecords = sorted;
+      useLatestRecordPerTarget = true;
       isBrandReport = false;
       isGroupReport = false;
     }
@@ -3390,12 +3413,13 @@
       groupLabel = relatedGroupNames.join(', ') || 'No group';
       targetRows = brandTargets;
       const sorted = sortCompletionRows((STATE.rows.completions || []).filter(row =>
-        String(row.source_type || '') === 'special_client' &&
+        isSpecialCompletionRecord(row) &&
         String(row.special_client_id || '').trim() === tid &&
         targetLocationIds.has(String(row.special_location_id || '').trim())
       ));
       activePeriodKey = sorted[0] ? completionKey(sorted[0]) : '';
       rawRecords = activePeriodKey ? sorted.filter(row => completionKey(row) === activePeriodKey) : [];
+      useLatestRecordPerTarget = false;
       isBrandReport = false;
       isGroupReport = false;
     }
@@ -3410,7 +3434,7 @@
       groupLabel = groupName(selectedSpecialGroup);
       targetRows = groupTargets;
       const sorted = sortCompletionRows((STATE.rows.completions || []).filter(row =>
-        String(row.source_type || '') === 'special_client' &&
+        isSpecialCompletionRecord(row) &&
         String(row.special_client_id || '').trim() === tid &&
         (
           targetLocationIds.has(String(row.special_location_id || '').trim()) ||
@@ -3419,6 +3443,7 @@
       ));
       activePeriodKey = sorted[0] ? completionKey(sorted[0]) : '';
       rawRecords = activePeriodKey ? sorted.filter(row => completionKey(row) === activePeriodKey) : [];
+      useLatestRecordPerTarget = false;
       isBrandReport = false;
       isGroupReport = false;
     }
@@ -3434,6 +3459,7 @@
       const sorted = sortCompletionRows(allBrandRecords);
       activePeriodKey = sorted[0] ? completionKey(sorted[0]) : '';
       rawRecords = activePeriodKey ? sorted.filter(row => completionKey(row) === activePeriodKey) : [];
+      useLatestRecordPerTarget = false;
       isGroupReport = false;
     }
 
@@ -3453,6 +3479,7 @@
       const sorted = sortCompletionRows(allGroupRecords);
       activePeriodKey = sorted[0] ? completionKey(sorted[0]) : '';
       rawRecords = activePeriodKey ? sorted.filter(row => completionKey(row) === activePeriodKey) : [];
+      useLatestRecordPerTarget = false;
     }
 
     if (!targetRows.length) {
@@ -3461,20 +3488,29 @@
     }
 
     targetRows = targetRows.map(applyCs360LocationNameOverride);
-    rawRecords = rawRecords.map(applyCs360LocationNameOverride);
+    rawRecords = sortCompletionRows(rawRecords.map(applyCs360LocationNameOverride));
 
     const recordByTarget = new Map();
+    const rememberNewestRecord = (key, row) => {
+      if (!key || key === '|' || key === 'special||' || recordByTarget.has(key)) return;
+      recordByTarget.set(key, row);
+    };
     rawRecords.forEach(row => {
-      const key = String(row.source_type || '') === 'special_client' ? specialCompletionRecordKey(row) : [String(row.company_id || '').trim(), normalize(row.location_name)].join('|');
-      if (key !== '|' && key !== 'special||') recordByTarget.set(key, row);
+      const key = isSpecialCompletionRecord(row)
+        ? specialCompletionRecordKey(row)
+        : [String(row.company_id || '').trim(), normalize(row.location_name)].join('|');
+      // rawRecords is newest-first. Do not let an older duplicate overwrite the latest
+      // brand/location completion that the user entered.
+      rememberNewestRecord(key, row);
       const fallbackKey = ['name', normalize(row.company_name_snapshot || row.company_name || ''), normalize(row.location_name)].join('|');
-      recordByTarget.set(fallbackKey, row);
+      rememberNewestRecord(fallbackKey, row);
     });
 
     const rows = targetRows.map(target => {
-      const directKey = target.source_type === 'special_client' ? specialCompletionTargetKey(target) : completionTargetKey(target);
+      const directKey = isSpecialCompletionTarget(target) ? specialCompletionTargetKey(target) : completionTargetKey(target);
       const nameKey = ['name', normalize(target.company_name), normalize(target.location_name)].join('|');
       const saved = recordByTarget.get(directKey) || recordByTarget.get(nameKey) || {};
+      const hasSaved = Boolean(saved && Object.keys(saved).length);
       return {
         company_id: target.company_id,
         company_name: target.company_name,
@@ -3494,14 +3530,17 @@
         review_type: saved.review_type || rawRecords[0]?.review_type || 'weekly',
         period_start: saved.period_start || rawRecords[0]?.period_start || '',
         period_end: saved.period_end || rawRecords[0]?.period_end || '',
-        source_note: saved.source_note || ''
+        source_note: saved.source_note || '',
+        __has_saved_completion: hasSaved,
+        __saved_period_key: hasSaved ? completionKey(saved) : ''
       };
     });
 
     const hydrateCompletionTargets = targets => targets.map(target => {
-      const directKey = target.source_type === 'special_client' ? specialCompletionTargetKey(target) : completionTargetKey(target);
+      const directKey = isSpecialCompletionTarget(target) ? specialCompletionTargetKey(target) : completionTargetKey(target);
       const nameKey = ['name', normalize(target.company_name), normalize(target.location_name)].join('|');
       const saved = recordByTarget.get(directKey) || recordByTarget.get(nameKey) || {};
+      const hasSaved = Boolean(saved && Object.keys(saved).length);
       return {
         company_id: target.company_id,
         company_name: target.company_name,
@@ -3521,11 +3560,13 @@
         review_type: saved.review_type || rawRecords[0]?.review_type || 'weekly',
         period_start: saved.period_start || rawRecords[0]?.period_start || '',
         period_end: saved.period_end || rawRecords[0]?.period_end || '',
-        source_note: saved.source_note || ''
+        source_note: saved.source_note || '',
+        __has_saved_completion: hasSaved,
+        __saved_period_key: hasSaved ? completionKey(saved) : ''
       };
     });
 
-    const reportTargetKeySet = new Set(targetRows.map(target => target.source_type === 'special_client' ? specialCompletionTargetKey(target) : completionTargetKey(target)));
+    const reportTargetKeySet = new Set(targetRows.map(target => isSpecialCompletionTarget(target) ? specialCompletionTargetKey(target) : completionTargetKey(target)));
     const brandCandidateMap = new Map();
     const addBrandCandidate = brand => {
       if (!brand) return;
@@ -3564,7 +3605,7 @@
             normalize(target.brand_name) === normalize(brandName(brand))
           )
         : brandCompletionTargets(brand);
-      const scopedTargets = brandTargets.filter(target => !reportTargetKeySet.size || reportTargetKeySet.has(target.source_type === 'special_client' ? specialCompletionTargetKey(target) : completionTargetKey(target)));
+      const scopedTargets = brandTargets.filter(target => !reportTargetKeySet.size || reportTargetKeySet.has(isSpecialCompletionTarget(target) ? specialCompletionTargetKey(target) : completionTargetKey(target)));
       const brandLocations = hydrateCompletionTargets(scopedTargets);
       const brandStats = averageCompletionMetrics(brandLocations);
       const bestLocation = brandLocations.length ? brandLocations.slice().sort((a,b) => completionCount(b) - completionCount(a))[0] : null;
@@ -3574,8 +3615,8 @@
 
     if (hasConfiguredBrands && (isGroupReport || !isAnyBrandReport) && reportTargetKeySet.size) {
       const coveredKeys = new Set();
-      brandRows.forEach(item => item.locations.forEach(row => coveredKeys.add(row.source_type === 'special_client' ? specialCompletionTargetKey(row) : completionTargetKey(row))));
-      const unassignedTargets = targetRows.filter(target => !coveredKeys.has(target.source_type === 'special_client' ? specialCompletionTargetKey(target) : completionTargetKey(target)));
+      brandRows.forEach(item => item.locations.forEach(row => coveredKeys.add(isSpecialCompletionTarget(row) ? specialCompletionTargetKey(row) : completionTargetKey(row))));
+      const unassignedTargets = targetRows.filter(target => !coveredKeys.has(isSpecialCompletionTarget(target) ? specialCompletionTargetKey(target) : completionTargetKey(target)));
       if (unassignedTargets.length) {
         const unassignedLocations = hydrateCompletionTargets(unassignedTargets);
         const unassignedStats = averageCompletionMetrics(unassignedLocations);
@@ -3612,10 +3653,18 @@
       : '';
 
     const stats = averageCompletionMetrics(rows);
-    const reportType = rawRecords[0]?.review_type || rows[0]?.review_type || 'weekly';
+    const savedRows = rows.filter(row => row.__has_saved_completion);
+    const savedPeriodKeys = Array.from(new Set(savedRows.map(row => row.__saved_period_key).filter(Boolean)));
+    const savedReviewTypes = Array.from(new Set(savedRows.map(row => String(row.review_type || '').trim()).filter(Boolean)));
+    const hasMixedClientPeriods = useLatestRecordPerTarget && savedPeriodKeys.length > 1;
+    const reportType = hasMixedClientPeriods || savedReviewTypes.length > 1
+      ? 'combined'
+      : (savedReviewTypes[0] || rawRecords[0]?.review_type || rows[0]?.review_type || 'weekly');
     const periodStart = rawRecords[0]?.period_start || rows[0]?.period_start || '';
     const periodEnd = rawRecords[0]?.period_end || rows[0]?.period_end || '';
-    const periodLabel = periodStart || periodEnd ? `${fmtDate(periodStart)} to ${fmtDate(periodEnd)}` : 'No period saved yet';
+    const periodLabel = hasMixedClientPeriods
+      ? 'Latest saved entry per active location'
+      : (periodStart || periodEnd ? `${fmtDate(periodStart)} to ${fmtDate(periodEnd)}` : 'No period saved yet');
     const best = rows.length ? rows.slice().sort((a,b) => completionCount(b) - completionCount(a))[0] : null;
     const weak = rows.slice().filter(row => completionCount(row) < 80).sort((a,b) => completionCount(a) - completionCount(b)).slice(0, 3);
     const health = selectedCompany ? computeHealth(selectedCompany) : null;
@@ -3625,7 +3674,11 @@
       : (isSpecialGroupReport
         ? 'Group Completion Report'
         : (isSpecialTemplateReport ? 'Client Completion Report' : (isBrandReport ? 'Brand Completion Report' : (isGroupReport ? 'Group Completion Report' : 'Client Completion Report'))));
-    const sourceNote = rawRecords.find(r => r.source_note)?.source_note || 'Completion values are entered as percentages.';
+    const customSourceNote = rawRecords.find(r => r.source_note)?.source_note || '';
+    const clientAggregationNote = useLatestRecordPerTarget
+      ? 'Client totals combine the latest saved completion for every unique active location across all brands. Each location is counted once, so larger brands are weighted by their actual number of locations.'
+      : '';
+    const sourceNote = [clientAggregationNote, customSourceNote || 'Completion values are entered as percentages.'].filter(Boolean).join(' ');
     const safeWidth = value => `${clamp(safeDecimal(value), 0, 100).toFixed(2)}%`;
     const stackParts = [
       { key: 'done_on_time', label: 'Done On-Time', value: clamp(safeDecimal(stats.done_on_time), 0, 100), color: '#42a642' },
@@ -3805,7 +3858,7 @@
     <div class="insights">
       <div class="insight good-bg"><div class="big-icon">🏆</div><div><h3>Best performing location</h3><p>${best ? `${esc(best.company_name || reportName)} — ${esc(best.location_name)}<br/>Completion: <strong>${formatPct(completionCount(best))}</strong>` : 'No location data available yet.'}</p></div></div>
       <div class="insight warn-bg"><div class="big-icon">⚠</div><div><h3>Locations needing operational attention</h3><p>${weak.length ? weak.map(row => `${esc(row.company_name || reportName)} — ${esc(row.location_name)} (${formatPct(completionCount(row))})`).join('<br/>') : 'No locations needing operational attention for the selected period.'}</p></div></div>
-      <div class="insight info-bg"><div class="big-icon">ⓘ</div><div><h3>Notes</h3><p>${esc(sourceNote)}<br/>${isAnyBrandReport ? 'Brand result is auto-calculated from assigned brand location rows.' : (isAnyGroupReport ? 'Group result includes only locations assigned to the selected group, with brand completion when configured.' : 'Client result is auto-calculated from all location rows.')}<br/>Generated on ${esc(generatedAt.toLocaleString())}.</p></div></div>
+      <div class="insight info-bg"><div class="big-icon">ⓘ</div><div><h3>Notes</h3><p>${esc(sourceNote)}<br/>${isAnyBrandReport ? 'Brand result is auto-calculated from assigned brand location rows.' : (isAnyGroupReport ? 'Group result includes only locations assigned to the selected group, with brand completion when configured.' : 'Client result is calculated from unique active locations across every brand, not by averaging brand averages.')}<br/>Generated on ${esc(generatedAt.toLocaleString())}.</p></div></div>
     </div>
     <div class="footer"><span>InCheck 360 · Customer Success</span><span>Summary · ${esc(generatedAt.toLocaleDateString())}</span></div>
   </section>
