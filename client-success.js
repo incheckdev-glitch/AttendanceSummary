@@ -73,6 +73,17 @@
       search: '',
       page: 1,
       pageSize: 25
+    },
+    specialCompletionHistory: {
+      scope: 'client',
+      groupId: '',
+      brandId: '',
+      reviewType: 'all',
+      dateFrom: '',
+      dateTo: '',
+      search: '',
+      page: 1,
+      pageSize: 25
     }
   };
 
@@ -261,7 +272,7 @@
   function requiredCsPermissionForAction(action) {
     const key = String(action || '').trim().toLowerCase();
     if (key === 'brand-location-remove' || key === 'brand-location-unassign') return 'update';
-    if (key === 'brand-location-move' || key === 'special-brand-location-assign' || key === 'special-brand-location-unassign') return 'update';
+    if (key === 'brand-location-move' || key === 'special-brand-location-assign' || key === 'special-brand-location-unassign' || key === 'completion-edit') return 'update';
     if (key === 'completion-export' || key === 'brand-export' || key === 'special-client-view-report' || key === 'special-client-report' || key === 'special-brand-export') return 'export';
     if (
       key === 'special-clients-open' ||
@@ -2245,9 +2256,7 @@
     } else if (tab === 'brands') {
       panel = renderSpecialBrandManagement(special);
     } else if (tab === 'history') {
-      panel = completionRows.length
-        ? `<div class="cs-table-wrap"><table class="cs-table"><thead><tr><th>Period</th><th>Location</th><th>On-Time</th><th>Late</th><th>Partial</th><th>Missed</th><th>Completion</th></tr></thead><tbody>${completionRows.map(row => `<tr><td>${fmtDate(row.period_start)} – ${fmtDate(row.period_end)}</td><td>${esc(row.location_name || '')}</td><td>${formatDecimal(row.done_on_time)}</td><td>${formatDecimal(row.done_late)}</td><td>${formatDecimal(row.partially_done)}</td><td>${formatDecimal(row.missed)}</td><td><strong>${formatPct(completionCount(row))}</strong></td></tr>`).join('')}</tbody></table></div>`
-        : '<div class="cs-empty">No completion history for this standalone Special CS Client.</div>';
+      panel = renderSpecialCompletionHistory(special);
     } else {
       panel = `<div class="cs-info-grid">
         <div class="cs-info-box"><div class="cs-info-label">Client Type</div><div class="cs-info-value">Standalone Special CS Client</div></div>
@@ -2780,8 +2789,9 @@
           <td>${period.metrics.done_late.toFixed(2)}%</td>
           <td>${period.metrics.partially_done.toFixed(2)}%</td>
           <td>${period.metrics.missed.toFixed(2)}%</td>
+          <td>${canUpdate() ? `<button class="btn ghost sm" type="button" data-cs-action="completion-edit" data-completion-context="normal" data-history-scope="${attr(history.scope || 'client')}" data-company-id="${attr(companyId(company))}" data-group-id="${attr(history.groupId || '')}" data-brand-id="${attr(history.brandId || '')}" data-review-type="${attr(period.review_type || 'weekly')}" data-period-start="${attr(String(period.period_start || '').slice(0, 10))}" data-period-end="${attr(String(period.period_end || '').slice(0, 10))}">Edit Report</button>` : '—'}</td>
         </tr>`).join('')
-      : '<tr><td colspan="9" class="cs-empty">No historical completion periods match the selected filters.</td></tr>';
+      : '<tr><td colspan="10" class="cs-empty">No historical completion periods match the selected filters.</td></tr>';
 
     const detailRows = pageRows.length
       ? pageRows.map(row => `<tr>
@@ -2858,7 +2868,7 @@
 
       <div class="cs-section-title cs-completion-history-subtitle"><h4>Period Summary</h4><span class="cs-chip">${periods.length} period${periods.length === 1 ? '' : 's'}</span></div>
       <div class="cs-table-wrap"><table class="cs-table cs-history-period-table">
-        <thead><tr><th>Type</th><th>Period</th><th>Clients</th><th>Locations</th><th>Completion</th><th>On-Time</th><th>Late</th><th>Partial</th><th>Missed</th></tr></thead>
+        <thead><tr><th>Type</th><th>Period</th><th>Clients</th><th>Locations</th><th>Completion</th><th>On-Time</th><th>Late</th><th>Partial</th><th>Missed</th><th>Action</th></tr></thead>
         <tbody>${periodRows}</tbody>
       </table></div>
 
@@ -2885,6 +2895,550 @@
       </div>
     </section>`;
   }
+
+
+  function specialCompletionHistoryRowLocation(row = {}, specialClientId = '') {
+    const rowLocationId = String(row.special_location_id || '').trim();
+    const sid = String(specialClientId || row.special_client_id || '').trim();
+    const byId = rowLocationId
+      ? (STATE.rows.specialLocations || []).find(location =>
+          String(location.id || '').trim() === rowLocationId &&
+          (!sid || String(location.special_client_id || '').trim() === sid)
+        )
+      : null;
+    if (byId) return byId;
+
+    const locationNameKey = normalize(row.location_name || '');
+    return (STATE.rows.specialLocations || []).find(location =>
+      String(location.special_client_id || '').trim() === sid &&
+      normalize(location.location_name || '') === locationNameKey
+    ) || null;
+  }
+
+  function specialCompletionHistoryRowsForClient(special) {
+    const sid = specialTemplateId(special);
+    if (!sid) return [];
+    return (STATE.rows.completions || [])
+      .filter(row =>
+        isSpecialCompletionRecord(row) &&
+        String(row.special_client_id || '').trim() === sid
+      )
+      .map(row => applyCs360LocationNameOverride({
+        ...row,
+        company_name: specialTemplateName(special)
+      }));
+  }
+
+  function specialCompletionHistoryRowsForGroup(special, group) {
+    if (!special || !group) return [];
+    const sid = specialTemplateId(special);
+    const gid = groupId(group);
+    const groupNameKey = normalize(groupName(group));
+
+    return specialCompletionHistoryRowsForClient(special).filter(row => {
+      const location = specialCompletionHistoryRowLocation(row, sid);
+      return String(row.special_group_id || '').trim() === gid ||
+        String(location?.group_id || '').trim() === gid ||
+        (groupNameKey && normalize(row.group_name || location?.group_name || '') === groupNameKey);
+    });
+  }
+
+  function specialCompletionHistoryRowsForBrand(special, brand) {
+    if (!special || !brand) return [];
+    const sid = specialTemplateId(special);
+    const bid = brandId(brand);
+    const brandNameKey = normalize(brandName(brand));
+
+    return specialCompletionHistoryRowsForClient(special).filter(row => {
+      const location = specialCompletionHistoryRowLocation(row, sid);
+      return String(row.special_brand_id || '').trim() === bid ||
+        String(location?.brand_id || '').trim() === bid ||
+        (brandNameKey && normalize(row.brand_name || location?.brand_name || '') === brandNameKey);
+    });
+  }
+
+  function getSpecialCompletionHistoryRows(special, filters = STATE.specialCompletionHistory) {
+    const scope = String(filters.scope || 'client');
+    let rows = [];
+
+    if (scope === 'group') {
+      rows = specialCompletionHistoryRowsForGroup(special, specialGroupById(filters.groupId));
+    } else if (scope === 'brand') {
+      rows = specialCompletionHistoryRowsForBrand(special, specialBrandById(filters.brandId));
+    } else {
+      rows = specialCompletionHistoryRowsForClient(special);
+    }
+
+    const reviewType = String(filters.reviewType || 'all').toLowerCase();
+    const dateFrom = String(filters.dateFrom || '').slice(0, 10);
+    const dateTo = String(filters.dateTo || '').slice(0, 10);
+    const search = normalize(filters.search || '');
+
+    return rows
+      .filter(row => {
+        const rowType = String(row.review_type || 'weekly').toLowerCase();
+        const rowStart = String(row.period_start || '').slice(0, 10);
+        const rowEnd = String(row.period_end || rowStart).slice(0, 10);
+
+        if (reviewType !== 'all' && rowType !== reviewType) return false;
+        if (dateFrom && rowEnd && rowEnd < dateFrom) return false;
+        if (dateTo && rowStart && rowStart > dateTo) return false;
+
+        if (search) {
+          const location = specialCompletionHistoryRowLocation(row, specialTemplateId(special));
+          const haystack = normalize([
+            specialTemplateName(special),
+            row.location_name,
+            row.group_name,
+            row.brand_name,
+            location?.group_name,
+            location?.brand_name,
+            row.source_note,
+            row.review_type,
+            row.period_start,
+            row.period_end
+          ].join(' '));
+          if (!haystack.includes(search)) return false;
+        }
+
+        return true;
+      })
+      .sort((a, b) => {
+        const periodCompare = String(b.period_end || b.period_start || '')
+          .localeCompare(String(a.period_end || a.period_start || ''));
+        if (periodCompare) return periodCompare;
+        return String(a.location_name || '').localeCompare(String(b.location_name || ''));
+      });
+  }
+
+  function specialCompletionHistoryScopeLabel(special, history = STATE.specialCompletionHistory) {
+    if (history.scope === 'group') {
+      const group = specialGroupById(history.groupId);
+      return group ? `Group: ${groupName(group)}` : 'One Group';
+    }
+    if (history.scope === 'brand') {
+      const brand = specialBrandById(history.brandId);
+      return brand ? `Brand: ${brandName(brand)}` : 'One Brand';
+    }
+    return `Client: ${specialTemplateName(special)}`;
+  }
+
+  function bindSpecialCompletionHistoryControls() {
+    setTimeout(() => {
+      const history = STATE.specialCompletionHistory;
+
+      const bindChange = (id, handler) => {
+        const element = $(id);
+        element?.addEventListener('change', () => handler(element.value));
+      };
+      const bindInput = (id, handler) => {
+        const element = $(id);
+        element?.addEventListener('input', () => handler(element.value));
+      };
+
+      bindChange('csSpecialCompletionHistoryScope', value => {
+        history.scope = value || 'client';
+        history.page = 1;
+        const special = getSelectedSpecialClient();
+        const sid = specialTemplateId(special || {});
+        if (history.scope === 'group' && !specialGroupById(history.groupId)) {
+          history.groupId = groupId(specialGroupsForTemplate(sid)[0] || {});
+        }
+        if (history.scope === 'brand' && !specialBrandById(history.brandId)) {
+          history.brandId = brandId(specialBrandsForTemplate(sid)[0] || {});
+        }
+        renderDetail();
+      });
+      bindChange('csSpecialCompletionHistoryGroup', value => {
+        history.groupId = value || '';
+        history.page = 1;
+        renderDetail();
+      });
+      bindChange('csSpecialCompletionHistoryBrand', value => {
+        history.brandId = value || '';
+        history.page = 1;
+        renderDetail();
+      });
+      bindChange('csSpecialCompletionHistoryReviewType', value => {
+        history.reviewType = value || 'all';
+        history.page = 1;
+        renderDetail();
+      });
+      bindChange('csSpecialCompletionHistoryDateFrom', value => {
+        history.dateFrom = value || '';
+        history.page = 1;
+        renderDetail();
+      });
+      bindChange('csSpecialCompletionHistoryDateTo', value => {
+        history.dateTo = value || '';
+        history.page = 1;
+        renderDetail();
+      });
+      bindChange('csSpecialCompletionHistoryPageSize', value => {
+        history.pageSize = [25, 50, 100].includes(Number(value)) ? Number(value) : 25;
+        history.page = 1;
+        renderDetail();
+      });
+      bindInput('csSpecialCompletionHistorySearch', value => {
+        history.search = value || '';
+        history.page = 1;
+        renderDetail();
+      });
+
+      $('csSpecialCompletionHistoryPrev')?.addEventListener('click', () => {
+        history.page = Math.max(1, Number(history.page || 1) - 1);
+        renderDetail();
+      });
+      $('csSpecialCompletionHistoryNext')?.addEventListener('click', () => {
+        history.page = Number(history.page || 1) + 1;
+        renderDetail();
+      });
+      $('csSpecialCompletionHistoryClear')?.addEventListener('click', () => {
+        STATE.specialCompletionHistory = {
+          ...STATE.specialCompletionHistory,
+          reviewType: 'all',
+          dateFrom: '',
+          dateTo: '',
+          search: '',
+          page: 1
+        };
+        renderDetail();
+      });
+    }, 0);
+  }
+
+  function renderSpecialCompletionHistory(special) {
+    const history = STATE.specialCompletionHistory;
+    const sid = specialTemplateId(special);
+    const groups = specialGroupsForTemplate(sid);
+    const brands = specialBrandsForTemplate(sid);
+
+    if (history.scope === 'group' && !groups.some(group => groupId(group) === history.groupId)) {
+      history.groupId = groupId(groups[0] || {});
+    }
+    if (history.scope === 'brand' && !brands.some(brand => brandId(brand) === history.brandId)) {
+      history.brandId = brandId(brands[0] || {});
+    }
+
+    const rows = getSpecialCompletionHistoryRows(special, history);
+    const periods = summarizeCompletionHistoryPeriods(rows);
+    const pageSize = [25, 50, 100].includes(Number(history.pageSize)) ? Number(history.pageSize) : 25;
+    const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+    const page = Math.max(1, Math.min(totalPages, Number(history.page) || 1));
+    history.page = page;
+    history.pageSize = pageSize;
+    const pageRows = rows.slice((page - 1) * pageSize, page * pageSize);
+
+    const groupOptions = groups.map(group =>
+      `<option value="${attr(groupId(group))}" ${groupId(group) === history.groupId ? 'selected' : ''}>${esc(groupName(group))}</option>`
+    ).join('');
+    const brandOptions = brands.map(brand =>
+      `<option value="${attr(brandId(brand))}" ${brandId(brand) === history.brandId ? 'selected' : ''}>${esc(brandName(brand))}</option>`
+    ).join('');
+
+    const oldest = rows.length ? rows[rows.length - 1] : null;
+    const newest = rows[0] || null;
+
+    const periodRows = periods.length
+      ? periods.map(period => `<tr>
+          <td><strong>${esc(String(period.review_type || 'weekly').toUpperCase())}</strong></td>
+          <td>${fmtDate(period.period_start)} → ${fmtDate(period.period_end)}</td>
+          <td>${period.locationsCount}</td>
+          <td><strong>${period.metrics.completion.toFixed(2)}%</strong></td>
+          <td>${period.metrics.done_on_time.toFixed(2)}%</td>
+          <td>${period.metrics.done_late.toFixed(2)}%</td>
+          <td>${period.metrics.partially_done.toFixed(2)}%</td>
+          <td>${period.metrics.missed.toFixed(2)}%</td>
+          <td>${canUpdate() ? `<button class="btn ghost sm" type="button" data-cs-action="completion-edit" data-completion-context="special" data-history-scope="${attr(history.scope || 'client')}" data-special-client-id="${attr(sid)}" data-special-group-id="${attr(history.groupId || '')}" data-special-brand-id="${attr(history.brandId || '')}" data-review-type="${attr(period.review_type || 'weekly')}" data-period-start="${attr(String(period.period_start || '').slice(0, 10))}" data-period-end="${attr(String(period.period_end || '').slice(0, 10))}">Edit Report</button>` : '—'}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="9" class="cs-empty">No old completion periods match the selected filters.</td></tr>';
+
+    const detailRows = pageRows.length
+      ? pageRows.map(row => {
+          const location = specialCompletionHistoryRowLocation(row, sid);
+          const rowBrand = row.brand_name || brandName(specialBrandById(row.special_brand_id) || {}) || brandName(specialBrandById(location?.brand_id) || {});
+          const rowGroup = row.group_name || groupName(specialGroupById(row.special_group_id) || {}) || groupName(specialGroupById(location?.group_id) || {});
+          return `<tr>
+            <td>${fmtDate(row.period_start)} → ${fmtDate(row.period_end)}</td>
+            <td>${esc(String(row.review_type || 'weekly').toUpperCase())}</td>
+            <td>${esc(rowBrand || '—')}</td>
+            <td>${esc(rowGroup || '—')}</td>
+            <td><strong>${esc(row.location_name || '—')}</strong></td>
+            <td>${formatDecimal(row.done_on_time)}%</td>
+            <td>${formatDecimal(row.done_late)}%</td>
+            <td><strong>${formatPct(completionCount(row))}</strong></td>
+            <td>${formatDecimal(row.partially_done)}%</td>
+            <td>${formatDecimal(row.missed)}%</td>
+            <td>${esc(row.source_note || '—')}</td>
+            <td>${fmtDate(row.updated_at || row.created_at)}</td>
+          </tr>`;
+        }).join('')
+      : '<tr><td colspan="12" class="cs-empty">No old completion entries match the selected filters.</td></tr>';
+
+    bindSpecialCompletionHistoryControls();
+
+    return `<section class="cs-completion-history">
+      <div class="cs-section-title">
+        <div>
+          <h4>Completion History</h4>
+          <div class="cs-kpi-sub">Find and edit every old completion report for this client. Current scope: ${esc(specialCompletionHistoryScopeLabel(special, history))}.</div>
+        </div>
+        <button id="csSpecialCompletionHistoryClear" class="btn ghost sm" type="button">Clear Filters</button>
+      </div>
+
+      <div class="cs-completion-history-filters">
+        <div class="cs-form-field">
+          <label>History Scope</label>
+          <select id="csSpecialCompletionHistoryScope" class="select">
+            <option value="client" ${history.scope === 'client' ? 'selected' : ''}>Entire Client</option>
+            <option value="brand" ${history.scope === 'brand' ? 'selected' : ''} ${brands.length ? '' : 'disabled'}>One Brand</option>
+            <option value="group" ${history.scope === 'group' ? 'selected' : ''} ${groups.length ? '' : 'disabled'}>One Group</option>
+          </select>
+        </div>
+        <div class="cs-form-field" style="${history.scope === 'brand' ? '' : 'display:none;'}">
+          <label>Brand</label>
+          <select id="csSpecialCompletionHistoryBrand" class="select">${brandOptions || '<option value="">No brands</option>'}</select>
+        </div>
+        <div class="cs-form-field" style="${history.scope === 'group' ? '' : 'display:none;'}">
+          <label>Group</label>
+          <select id="csSpecialCompletionHistoryGroup" class="select">${groupOptions || '<option value="">No groups</option>'}</select>
+        </div>
+        <div class="cs-form-field">
+          <label>Review Type</label>
+          <select id="csSpecialCompletionHistoryReviewType" class="select">
+            <option value="all" ${history.reviewType === 'all' ? 'selected' : ''}>All Types</option>
+            <option value="weekly" ${history.reviewType === 'weekly' ? 'selected' : ''}>Weekly</option>
+            <option value="monthly" ${history.reviewType === 'monthly' ? 'selected' : ''}>Monthly</option>
+          </select>
+        </div>
+        <div class="cs-form-field">
+          <label>From</label>
+          <input id="csSpecialCompletionHistoryDateFrom" class="input" type="date" value="${attr(history.dateFrom || '')}" />
+        </div>
+        <div class="cs-form-field">
+          <label>To</label>
+          <input id="csSpecialCompletionHistoryDateTo" class="input" type="date" value="${attr(history.dateTo || '')}" />
+        </div>
+        <div class="cs-form-field cs-completion-history-search">
+          <label>Search</label>
+          <input id="csSpecialCompletionHistorySearch" class="input" type="search" value="${attr(history.search || '')}" placeholder="Location, brand, group, note, period…" />
+        </div>
+      </div>
+
+      <div class="cs-info-grid cs-completion-history-kpis">
+        <div class="cs-info-box"><div class="cs-info-label">Saved Periods</div><div class="cs-info-value">${periods.length}</div></div>
+        <div class="cs-info-box"><div class="cs-info-label">Historical Entries</div><div class="cs-info-value">${rows.length}</div></div>
+        <div class="cs-info-box"><div class="cs-info-label">Newest Period</div><div class="cs-info-value">${newest ? `${fmtDate(newest.period_start)} → ${fmtDate(newest.period_end)}` : '—'}</div></div>
+        <div class="cs-info-box"><div class="cs-info-label">Oldest Period</div><div class="cs-info-value">${oldest ? `${fmtDate(oldest.period_start)} → ${fmtDate(oldest.period_end)}` : '—'}</div></div>
+      </div>
+
+      <div class="cs-section-title cs-completion-history-subtitle"><h4>Period Summary</h4><span class="cs-chip">${periods.length} period${periods.length === 1 ? '' : 's'}</span></div>
+      <div class="cs-table-wrap"><table class="cs-table cs-history-period-table">
+        <thead><tr><th>Type</th><th>Period</th><th>Locations</th><th>Completion</th><th>On-Time</th><th>Late</th><th>Partial</th><th>Missed</th><th>Action</th></tr></thead>
+        <tbody>${periodRows}</tbody>
+      </table></div>
+
+      <div class="cs-section-title cs-completion-history-subtitle">
+        <div><h4>Detailed Historical Entries</h4><div class="cs-kpi-sub">Every saved location line for the selected client, brand, or group.</div></div>
+        <label class="cs-client-select-page-size">Rows
+          <select id="csSpecialCompletionHistoryPageSize" class="select">
+            <option value="25" ${pageSize === 25 ? 'selected' : ''}>25</option>
+            <option value="50" ${pageSize === 50 ? 'selected' : ''}>50</option>
+            <option value="100" ${pageSize === 100 ? 'selected' : ''}>100</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="cs-table-wrap"><table class="cs-table cs-history-detail-table">
+        <thead><tr><th>Period</th><th>Type</th><th>Brand</th><th>Group</th><th>Location</th><th>On-Time</th><th>Late</th><th>Completion</th><th>Partial</th><th>Missed</th><th>Note</th><th>Saved</th></tr></thead>
+        <tbody>${detailRows}</tbody>
+      </table></div>
+
+      <div class="cs-client-select-pagination cs-completion-history-pagination">
+        <button id="csSpecialCompletionHistoryPrev" class="btn ghost sm" type="button" ${page <= 1 ? 'disabled' : ''}>Previous</button>
+        <span class="cs-client-select-page-info">Page ${page} of ${totalPages} · ${rows.length} historical entries</span>
+        <button id="csSpecialCompletionHistoryNext" class="btn ghost sm" type="button" ${page >= totalPages ? 'disabled' : ''}>Next</button>
+      </div>
+    </section>`;
+  }
+
+  function completionEditRowsForButton(button) {
+    const context = String(button?.getAttribute?.('data-completion-context') || 'normal');
+    const scope = String(button?.getAttribute?.('data-history-scope') || 'client');
+    const reviewType = String(button?.getAttribute?.('data-review-type') || 'weekly').toLowerCase();
+    const periodStart = String(button?.getAttribute?.('data-period-start') || '').slice(0, 10);
+    const periodEnd = String(button?.getAttribute?.('data-period-end') || '').slice(0, 10);
+    let rows = [];
+    let scopeLabel = '';
+
+    if (context === 'special') {
+      const special = specialTemplateById(button?.getAttribute?.('data-special-client-id') || '') || getSelectedSpecialClient();
+      if (!special) return { rows: [], context, scope, scopeLabel: 'Special CS Client' };
+
+      if (scope === 'brand') {
+        const brand = specialBrandById(button?.getAttribute?.('data-special-brand-id') || '');
+        rows = specialCompletionHistoryRowsForBrand(special, brand);
+        scopeLabel = `Brand: ${brand ? brandName(brand) : '—'}`;
+      } else if (scope === 'group') {
+        const group = specialGroupById(button?.getAttribute?.('data-special-group-id') || '');
+        rows = specialCompletionHistoryRowsForGroup(special, group);
+        scopeLabel = `Group: ${group ? groupName(group) : '—'}`;
+      } else {
+        rows = specialCompletionHistoryRowsForClient(special);
+        scopeLabel = `Client: ${specialTemplateName(special)}`;
+      }
+    } else {
+      const company = getSelectedCompany();
+      if (!company) return { rows: [], context, scope, scopeLabel: 'Client' };
+
+      if (scope === 'brand') {
+        const brand = brandById(button?.getAttribute?.('data-brand-id') || '');
+        rows = completionHistoryRowsForBrand(brand);
+        scopeLabel = `Brand: ${brand ? brandName(brand) : '—'}`;
+      } else if (scope === 'group') {
+        const group = groupById(button?.getAttribute?.('data-group-id') || '');
+        rows = completionHistoryRowsForGroup(group);
+        scopeLabel = `Group: ${group ? groupName(group) : '—'}`;
+      } else {
+        rows = completionHistoryRowsForClient(company);
+        scopeLabel = `Client: ${companyName(company)}`;
+      }
+    }
+
+    rows = rows.filter(row =>
+      String(row.review_type || 'weekly').toLowerCase() === reviewType &&
+      String(row.period_start || '').slice(0, 10) === periodStart &&
+      String(row.period_end || '').slice(0, 10) === periodEnd
+    );
+
+    return { rows, context, scope, scopeLabel, reviewType, periodStart, periodEnd };
+  }
+
+  function completionEditScopeName(row = {}) {
+    const specialLocation = isSpecialCompletionRecord(row)
+      ? specialCompletionHistoryRowLocation(row, row.special_client_id)
+      : null;
+    const brand = row.brand_name ||
+      brandName(specialBrandById(row.special_brand_id) || {}) ||
+      brandName(specialBrandById(specialLocation?.brand_id) || {});
+    const group = row.group_name ||
+      groupName(specialGroupById(row.special_group_id) || {}) ||
+      groupName(specialGroupById(specialLocation?.group_id) || {});
+    if (brand && group) return `${brand} · ${group}`;
+    return brand || group || 'Client';
+  }
+
+  function renderCompletionEditRows(rows = []) {
+    if (!rows.length) return '<tr><td colspan="8" class="cs-empty">No saved completion rows found.</td></tr>';
+
+    return rows
+      .slice()
+      .sort((a, b) => String(a.location_name || '').localeCompare(String(b.location_name || '')))
+      .map(row => `<tr class="cs-completion-input-row" data-completion-id="${attr(row.id || '')}" data-location-name="${attr(row.location_name || '')}">
+        <td>${esc(completionHistoryRowCompanyName(row) || specialTemplateName(specialTemplateById(row.special_client_id) || {}) || 'Client')}</td>
+        <td>${esc(completionEditScopeName(row))}</td>
+        <td><strong>${esc(row.location_name || '—')}</strong></td>
+        <td><input class="input" type="number" min="0" step="0.01" inputmode="decimal" data-completion-field="done_on_time" value="${attr(formatDecimal(row.done_on_time))}" /></td>
+        <td><input class="input" type="number" min="0" step="0.01" inputmode="decimal" data-completion-field="done_late" value="${attr(formatDecimal(row.done_late))}" /></td>
+        <td><input class="input" type="number" min="0" step="0.01" inputmode="decimal" data-completion-field="partially_done" value="${attr(formatDecimal(row.partially_done))}" /></td>
+        <td><input class="input" type="number" min="0" step="0.01" inputmode="decimal" data-completion-field="missed" value="${attr(formatDecimal(row.missed))}" /></td>
+        <td class="cs-completion-preview">${completionPreviewText(row)}</td>
+      </tr>`).join('');
+  }
+
+  function openCompletionEditFromButton(button) {
+    const edit = completionEditRowsForButton(button);
+    if (!edit.rows.length) {
+      toast('No saved completion rows were found for this report period.');
+      return;
+    }
+    openCompletionEditForm(edit.rows, edit);
+  }
+
+  function openCompletionEditForm(rows = [], context = {}) {
+    const first = rows[0] || {};
+    const normalized = normalizeCompletionPeriod(first.period_start, first.period_end);
+    const notes = Array.from(new Set(rows.map(row => String(row.source_note || '').trim()).filter(Boolean)));
+    const sourceNote = notes.length === 1 ? notes[0] : '';
+
+    openModal('Edit Completion Report', `<form class="cs-form" id="csCompletionEditForm" data-multiple-notes="${notes.length > 1 ? '1' : '0'}">
+      <div class="cs-mini-note"><strong>${esc(context.scopeLabel || 'Completion Report')}</strong><br>Edit the saved values below. The original rows are updated directly; no duplicate report is created.</div>
+      <div class="cs-form-grid">
+        <div class="cs-form-field"><label>Review Type</label><select name="review_type" class="select"><option value="weekly" ${String(first.review_type || 'weekly').toLowerCase() === 'weekly' ? 'selected' : ''}>Weekly</option><option value="monthly" ${String(first.review_type || '').toLowerCase() === 'monthly' ? 'selected' : ''}>Monthly</option></select></div>
+        <div class="cs-form-field"><label>Period Start</label><input name="period_start" class="input" type="date" value="${attr(normalized.period_start)}" required /></div>
+        <div class="cs-form-field"><label>Period End</label><input name="period_end" class="input" type="date" value="${attr(normalized.period_end)}" required /></div>
+        <div class="cs-form-field cs-form-field--full"><label>Source / Notes</label><input name="source_note" class="input" type="text" value="${attr(sourceNote)}" placeholder="${notes.length > 1 ? 'Multiple notes currently saved — enter one note to apply to all rows' : 'Optional report note'}" /></div>
+      </div>
+      <div class="cs-section-title"><h4>Saved Location Results</h4><span class="cs-chip">${rows.length} row${rows.length === 1 ? '' : 's'}</span></div>
+      <div class="cs-table-wrap"><table class="cs-table cs-edit-table">
+        <thead><tr><th>Client</th><th>Brand / Group</th><th>Location</th><th>Done On-Time</th><th>Done Late</th><th>Partially Done</th><th>Missed</th><th>Completion</th></tr></thead>
+        <tbody>${renderCompletionEditRows(rows)}</tbody>
+      </table></div>
+      <div class="cs-modal-actions"><button type="button" class="btn ghost" onclick="document.getElementById('csModalClose').click()">Cancel</button><button type="submit" class="btn primary">Update Report</button></div>
+    </form>`, saveCompletionEdit);
+
+    const form = $('csCompletionEditForm');
+    form?.addEventListener('input', () => refreshCompletionRows(form));
+    refreshCompletionRows(form);
+  }
+
+  async function saveCompletionEdit(form) {
+    const client = supabase();
+    if (!client) throw new Error('Supabase database connection is unavailable.');
+
+    const fd = new FormData(form);
+    const normalizedPeriod = normalizeCompletionPeriod(fd.get('period_start'), fd.get('period_end'));
+    const reviewType = String(fd.get('review_type') || 'weekly').toLowerCase();
+    const enteredSourceNote = String(fd.get('source_note') || '').trim();
+    const preserveIndividualNotes = form?.dataset?.multipleNotes === '1' && !enteredSourceNote;
+
+    const byId = new Map((STATE.rows.completions || []).map(row => [String(row.id || '').trim(), row]));
+    const payloads = Array.from(form.querySelectorAll('.cs-completion-input-row')).map(rowElement => {
+      const id = String(rowElement.dataset.completionId || '').trim();
+      const original = byId.get(id);
+      if (!original) throw new Error(`The saved completion row for "${rowElement.dataset.locationName || 'location'}" is no longer available. Refresh CS360 and retry.`);
+      const values = readCompletionInputRow(rowElement);
+      return {
+        id,
+        company_id: original.company_id || null,
+        company_name_snapshot: original.company_name_snapshot || original.company_name || null,
+        location_name: original.location_name,
+        review_type: reviewType,
+        period_start: normalizedPeriod.period_start,
+        period_end: normalizedPeriod.period_end,
+        done_on_time: values.done_on_time,
+        done_late: values.done_late,
+        partially_done: values.partially_done,
+        missed: values.missed,
+        source_note: preserveIndividualNotes ? (original.source_note || null) : (enteredSourceNote || null),
+        source_type: original.source_type || (isSpecialCompletionRecord(original) ? 'special_client' : 'normal'),
+        special_client_id: original.special_client_id || null,
+        special_location_id: original.special_location_id || null,
+        special_group_id: original.special_group_id || null,
+        special_brand_id: original.special_brand_id || null,
+        group_name: original.group_name || null,
+        brand_name: original.brand_name || null
+      };
+    });
+
+    if (!payloads.length) throw new Error('No saved completion rows were found to update.');
+    const invalid = payloads.find(row => !completionRowIsValid(row));
+    if (invalid) throw new Error(`Total percentage for ${invalid.location_name} cannot exceed 100%.`);
+
+    const result = await withCsTimeout(
+      client.from(TABLES.completions).upsert(payloads, { onConflict: 'id' }),
+      25000,
+      'Updating completion report'
+    );
+    if (result?.error) throw new Error(`Unable to update completion report: ${result.error.message || result.error}`);
+
+    closeModal();
+    const completions = await fetchTable(TABLES.completions, '*', { column: 'period_end', ascending: false }, 20000);
+    STATE.rows.completions = completions.map(applyCs360LocationNameOverride);
+    renderDetail();
+    toast(`Completion report updated for ${payloads.length} location line${payloads.length === 1 ? '' : 's'}.`);
+  }
+
 
   function renderCompletion(company) {
     const locations = getClientLocations(company);
@@ -4111,6 +4665,12 @@
       openCompletionHistory('brand', event.target?.closest?.('[data-brand-id]')?.dataset?.brandId || '');
       return;
     }
+    if (action === 'completion-edit') {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      openCompletionEditFromButton(event.target?.closest?.('[data-cs-action="completion-edit"]'));
+      return;
+    }
     if (action === 'completion') openCompletionForm(event.target?.closest?.('[data-special-client-id]')?.dataset?.specialClientId || '');
     if (action === 'completion-export') openCompletionExportForm();
     if (action === 'group') openGroupForm();
@@ -4273,6 +4833,15 @@
     submitButton?.addEventListener('click', runSubmit);
   }
   function closeModal() { const modal = $('csModal'); modal?.classList.remove('is-open'); modal?.setAttribute('aria-hidden', 'true'); }
+
+  function normalizeCompletionPeriod(startValue, endValue) {
+    const start = String(startValue || '').slice(0, 10);
+    const end = String(endValue || '').slice(0, 10);
+    if (!start || !end) return { period_start: start || null, period_end: end || null };
+    return start <= end
+      ? { period_start: start, period_end: end }
+      : { period_start: end, period_end: start };
+  }
 
   function periodDefaults(type) {
     const d = new Date();
@@ -4649,13 +5218,17 @@
   }
 
   function buildCompletionPayload(fd, target, data) {
+    const normalizedPeriod = normalizeCompletionPeriod(
+      fd.get('period_start'),
+      fd.get('period_end')
+    );
     return {
       company_id: target.company_id,
       company_name_snapshot: target.company_name,
       location_name: target.location_name,
       review_type: fd.get('review_type') || 'weekly',
-      period_start: fd.get('period_start'),
-      period_end: fd.get('period_end'),
+      period_start: normalizedPeriod.period_start,
+      period_end: normalizedPeriod.period_end,
       done_on_time: data.done_on_time,
       done_late: data.done_late,
       partially_done: data.partially_done,
