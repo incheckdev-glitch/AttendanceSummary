@@ -3607,10 +3607,24 @@
         : brandCompletionTargets(brand);
       const scopedTargets = brandTargets.filter(target => !reportTargetKeySet.size || reportTargetKeySet.has(isSpecialCompletionTarget(target) ? specialCompletionTargetKey(target) : completionTargetKey(target)));
       const brandLocations = hydrateCompletionTargets(scopedTargets);
-      const brandStats = averageCompletionMetrics(brandLocations);
-      const bestLocation = brandLocations.length ? brandLocations.slice().sort((a,b) => completionCount(b) - completionCount(a))[0] : null;
-      const weakLocations = brandLocations.filter(row => completionCount(row) < 80).sort((a,b) => completionCount(a) - completionCount(b)).slice(0, 3);
-      return { brand, brand_name: brandName(brand), scope: isAnySpecialReport ? `Client: ${specialTemplateName(selectedSpecialTemplate)}` : brandScopeLabel(brand), locations: brandLocations, stats: brandStats, bestLocation, weakLocations };
+      // A whole-client rollup must be based on the brand reports that were actually
+      // entered. Assigned locations without a saved completion are shown as pending,
+      // but they must not be silently counted as 0% and distort the client total.
+      const savedLocations = brandLocations.filter(row => row.__has_saved_completion);
+      const brandStats = averageCompletionMetrics(savedLocations);
+      const bestLocation = savedLocations.length ? savedLocations.slice().sort((a,b) => completionCount(b) - completionCount(a))[0] : null;
+      const weakLocations = savedLocations.filter(row => completionCount(row) < 80).sort((a,b) => completionCount(a) - completionCount(b)).slice(0, 3);
+      return {
+        brand,
+        brand_name: brandName(brand),
+        scope: isAnySpecialReport ? `Client: ${specialTemplateName(selectedSpecialTemplate)}` : brandScopeLabel(brand),
+        locations: brandLocations,
+        savedLocations,
+        stats: brandStats,
+        bestLocation,
+        weakLocations,
+        has_saved_completion: savedLocations.length > 0
+      };
     }).filter(item => item.locations.length);
 
     if (hasConfiguredBrands && (isGroupReport || !isAnyBrandReport) && reportTargetKeySet.size) {
@@ -3619,41 +3633,54 @@
       const unassignedTargets = targetRows.filter(target => !coveredKeys.has(isSpecialCompletionTarget(target) ? specialCompletionTargetKey(target) : completionTargetKey(target)));
       if (unassignedTargets.length) {
         const unassignedLocations = hydrateCompletionTargets(unassignedTargets);
-        const unassignedStats = averageCompletionMetrics(unassignedLocations);
+        const savedUnassignedLocations = unassignedLocations.filter(row => row.__has_saved_completion);
+        const unassignedStats = averageCompletionMetrics(savedUnassignedLocations);
         brandRows.push({
           brand: { id: 'unassigned', brand_name: 'Unassigned Locations' },
           brand_name: 'Unassigned Locations',
           scope: isAnySpecialReport ? `Client: ${specialTemplateName(selectedSpecialTemplate)}` : (isGroupReport ? `Group: ${groupName(selectedGroup)}` : `Client: ${companyName(selectedCompany)}`),
           locations: unassignedLocations,
+          savedLocations: savedUnassignedLocations,
           stats: unassignedStats,
-          bestLocation: unassignedLocations.length ? unassignedLocations.slice().sort((a,b) => completionCount(b) - completionCount(a))[0] : null,
-          weakLocations: unassignedLocations.filter(row => completionCount(row) < 80).sort((a,b) => completionCount(a) - completionCount(b)).slice(0, 3),
+          bestLocation: savedUnassignedLocations.length ? savedUnassignedLocations.slice().sort((a,b) => completionCount(b) - completionCount(a))[0] : null,
+          weakLocations: savedUnassignedLocations.filter(row => completionCount(row) < 80).sort((a,b) => completionCount(a) - completionCount(b)).slice(0, 3),
+          has_saved_completion: savedUnassignedLocations.length > 0,
           is_unassigned: true
         });
       }
     }
-    const bestBrand = brandRows.length ? brandRows.slice().sort((a,b) => b.stats.completion - a.stats.completion)[0] : null;
-    const weakestBrand = brandRows.length ? brandRows.slice().sort((a,b) => a.stats.completion - b.stats.completion)[0] : null;
+    const isWholeClientRollup = isSpecialTemplateReport || (!isAnySpecialReport && !isBrandReport && !isGroupReport);
+    const completedBrandRows = brandRows.filter(item => item.has_saved_completion && !item.is_unassigned);
+    // For a full client report, every completed brand has one equal vote in the
+    // final percentage. This matches the brand-by-brand entry workflow and avoids
+    // a large brand overpowering smaller brands merely because it has more locations.
+    const brandRowsForReport = isWholeClientRollup && completedBrandRows.length ? completedBrandRows : brandRows;
+    const bestBrand = brandRowsForReport.length ? brandRowsForReport.slice().sort((a,b) => b.stats.completion - a.stats.completion)[0] : null;
+    const weakestBrand = brandRowsForReport.length ? brandRowsForReport.slice().sort((a,b) => a.stats.completion - b.stats.completion)[0] : null;
     const brandGap = bestBrand && weakestBrand ? Math.max(0, bestBrand.stats.completion - weakestBrand.stats.completion) : 0;
-    const hasBrandComparison = brandRows.length > 1;
+    const hasBrandComparison = brandRowsForReport.length > 1;
     const brandMetaCardsHtml = hasBrandComparison
       ? `<div class="meta"><div class="k">Best Brand</div><div class="v">${bestBrand ? esc(bestBrand.brand_name) : '—'}</div></div>
           <div class="meta"><div class="k">Lowest Brand</div><div class="v">${weakestBrand ? esc(weakestBrand.brand_name) : '—'}</div></div>
           <div class="meta"><div class="k">Gap</div><div class="v">${brandGap.toFixed(2)}%</div></div>`
       : '';
     const operationalAttentionCount = weakestBrand ? weakestBrand.weakLocations.length : 0;
-    const operationalAttentionTotal = weakestBrand ? Math.max(weakestBrand.locations.length, 1) : 1;
+    const operationalAttentionTotal = weakestBrand ? Math.max(weakestBrand.savedLocations?.length || 0, 1) : 1;
     const operationalAttentionPct = weakestBrand ? (operationalAttentionCount * 100 / operationalAttentionTotal) : 0;
     const brandComparisonHtml = hasBrandComparison
       ? `<div class="brand-overview">
-          <div class="brand-insight good"><h3>Top performing brand</h3><div class="big">${bestBrand ? `${bestBrand.stats.completion.toFixed(2)}%` : '—'}</div><p>${bestBrand ? `${esc(bestBrand.brand_name)} · ${bestBrand.locations.length} locations` : 'No brand data yet.'}</p></div>
-          <div class="brand-insight warn"><h3>Needs operational attention</h3><div class="big">${weakestBrand ? `${operationalAttentionCount} ${operationalAttentionCount === 1 ? 'location' : 'locations'}` : '—'}</div><p>${weakestBrand ? `${esc(weakestBrand.brand_name)} · ${operationalAttentionCount} of ${weakestBrand.locations.length} locations (${operationalAttentionPct.toFixed(2)}%) need operational attention` : 'No brand data yet.'}</p></div>
+          <div class="brand-insight good"><h3>Top performing brand</h3><div class="big">${bestBrand ? `${bestBrand.stats.completion.toFixed(2)}%` : '—'}</div><p>${bestBrand ? `${esc(bestBrand.brand_name)} · ${bestBrand.savedLocations?.length || 0} reported locations` : 'No brand data yet.'}</p></div>
+          <div class="brand-insight warn"><h3>Needs operational attention</h3><div class="big">${weakestBrand ? `${operationalAttentionCount} ${operationalAttentionCount === 1 ? 'location' : 'locations'}` : '—'}</div><p>${weakestBrand ? `${esc(weakestBrand.brand_name)} · ${operationalAttentionCount} of ${weakestBrand.savedLocations?.length || 0} reported locations (${operationalAttentionPct.toFixed(2)}%) need operational attention` : 'No brand data yet.'}</p></div>
           <div class="brand-insight info"><h3>Brand performance gap</h3><div class="big">${brandGap.toFixed(2)}%</div><p>${brandGap >= 15 ? 'Large gap: review playbook/training by brand.' : 'Gap is within normal monitoring range.'}</p></div>
         </div>`
       : '';
 
-    const stats = averageCompletionMetrics(rows);
     const savedRows = rows.filter(row => row.__has_saved_completion);
+    const reportDetailRows = isWholeClientRollup && savedRows.length ? savedRows : rows;
+    const brandRollupMetrics = completedBrandRows.map(item => item.stats);
+    const stats = isWholeClientRollup && brandRollupMetrics.length
+      ? averageCompletionMetrics(brandRollupMetrics)
+      : averageCompletionMetrics(reportDetailRows);
     const savedPeriodKeys = Array.from(new Set(savedRows.map(row => row.__saved_period_key).filter(Boolean)));
     const savedReviewTypes = Array.from(new Set(savedRows.map(row => String(row.review_type || '').trim()).filter(Boolean)));
     const hasMixedClientPeriods = useLatestRecordPerTarget && savedPeriodKeys.length > 1;
@@ -3663,10 +3690,10 @@
     const periodStart = rawRecords[0]?.period_start || rows[0]?.period_start || '';
     const periodEnd = rawRecords[0]?.period_end || rows[0]?.period_end || '';
     const periodLabel = hasMixedClientPeriods
-      ? 'Latest saved entry per active location'
+      ? 'Latest saved brand entries combined'
       : (periodStart || periodEnd ? `${fmtDate(periodStart)} to ${fmtDate(periodEnd)}` : 'No period saved yet');
-    const best = rows.length ? rows.slice().sort((a,b) => completionCount(b) - completionCount(a))[0] : null;
-    const weak = rows.slice().filter(row => completionCount(row) < 80).sort((a,b) => completionCount(a) - completionCount(b)).slice(0, 3);
+    const best = reportDetailRows.length ? reportDetailRows.slice().sort((a,b) => completionCount(b) - completionCount(a))[0] : null;
+    const weak = reportDetailRows.slice().filter(row => completionCount(row) < 80).sort((a,b) => completionCount(a) - completionCount(b)).slice(0, 3);
     const health = selectedCompany ? computeHealth(selectedCompany) : null;
     const effort = isAnySpecialReport ? 'Special CS Review' : (isGroupReport ? 'Group Review' : computeEffort(selectedCompany));
     const reportTitleSuffix = isSpecialBrandReport
@@ -3675,9 +3702,11 @@
         ? 'Group Completion Report'
         : (isSpecialTemplateReport ? 'Client Completion Report' : (isBrandReport ? 'Brand Completion Report' : (isGroupReport ? 'Group Completion Report' : 'Client Completion Report'))));
     const customSourceNote = rawRecords.find(r => r.source_note)?.source_note || '';
-    const clientAggregationNote = useLatestRecordPerTarget
-      ? 'Client totals combine the latest saved completion for every unique active location across all brands. Each location is counted once, so larger brands are weighted by their actual number of locations.'
-      : '';
+    const clientAggregationNote = isWholeClientRollup && completedBrandRows.length
+      ? `Client totals are the equal average of ${completedBrandRows.length} completed brand report${completedBrandRows.length === 1 ? '' : 's'}. Each brand is calculated from its saved location rows, and brands without a saved completion are excluded instead of being treated as 0%.`
+      : (useLatestRecordPerTarget
+        ? 'Client totals use the latest saved completion for each reported location.'
+        : '');
     const sourceNote = [clientAggregationNote, customSourceNote || 'Completion values are entered as percentages.'].filter(Boolean).join(' ');
     const safeWidth = value => `${clamp(safeDecimal(value), 0, 100).toFixed(2)}%`;
     const stackParts = [
@@ -3721,7 +3750,7 @@
 
     const firstBrandPageSize = hasBrandComparison ? 4 : 7;
     const brandContinuationPageSize = 7;
-    const brandPageChunks = paginateReportRows(brandRows, firstBrandPageSize, brandContinuationPageSize);
+    const brandPageChunks = paginateReportRows(brandRowsForReport, firstBrandPageSize, brandContinuationPageSize);
     const brandPagesHtml = brandPageChunks.map((pageRows, pageIndex) => {
       const pageStartIndex = pageIndex === 0
         ? 0
@@ -3732,29 +3761,29 @@
           <div class="header-main">
             <div class="header-row"><div class="title"><h1>Brand Completion Insights${pageIndex ? ' — Continued' : ''}</h1><div class="subtitle">${esc(reportName)} · ${esc(brandPageSubtitle)}</div></div></div>
             <div class="meta-grid">
-              <div class="meta"><div class="k">Brands</div><div class="v">${brandRows.length}</div></div>
+              <div class="meta"><div class="k">Brands Included</div><div class="v">${brandRowsForReport.length}</div></div>
               ${brandMetaCardsHtml}
             </div>
           </div>
         </div>
         ${pageIndex === 0 ? brandComparisonHtml : ''}
         <div class="table-wrap"><table class="report-table brand-table">
-          <thead><tr><th class="num">#</th><th class="client-col">Brand / Sub-group</th><th>Locations</th><th>Done On-Time</th><th>Done Late</th><th>Partially Done</th><th>Missed</th><th>Completion</th><th>Insight</th></tr></thead>
-          <tbody>${pageRows.map((item, index) => `<tr><td class="num">${pageStartIndex + index + 1}</td><td><span class="brand-name">${esc(item.brand_name)}</span><span class="brand-scope">${esc(item.scope)}</span></td><td class="pct">${item.locations.length}</td><td class="pct">${item.stats.done_on_time.toFixed(2)}%</td><td class="pct">${item.stats.done_late.toFixed(2)}%</td><td class="pct">${item.stats.partially_done.toFixed(2)}%</td><td class="pct">${item.stats.missed.toFixed(2)}%</td><td class="pct ${item.stats.completion < 80 ? 'low' : 'ok'}">${item.stats.completion.toFixed(2)}%</td><td>${item.is_unassigned ? 'Assign these locations to a brand' : (item.stats.completion < 80 ? 'Needs operational attention' : 'On track')}${item.weakLocations.length ? `<ul class="brand-mini-list">${item.weakLocations.map(row => `<li>${esc(row.location_name)} · ${formatPct(completionCount(row))}</li>`).join('')}</ul>` : ''}</td></tr>`).join('')}</tbody>
+          <thead><tr><th class="num">#</th><th class="client-col">Brand / Sub-group</th><th>Reported / Assigned</th><th>Done On-Time</th><th>Done Late</th><th>Partially Done</th><th>Missed</th><th>Completion</th><th>Insight</th></tr></thead>
+          <tbody>${pageRows.map((item, index) => `<tr><td class="num">${pageStartIndex + index + 1}</td><td><span class="brand-name">${esc(item.brand_name)}</span><span class="brand-scope">${esc(item.scope)}</span></td><td class="pct">${item.savedLocations?.length || 0}/${item.locations.length}</td><td class="pct">${item.stats.done_on_time.toFixed(2)}%</td><td class="pct">${item.stats.done_late.toFixed(2)}%</td><td class="pct">${item.stats.partially_done.toFixed(2)}%</td><td class="pct">${item.stats.missed.toFixed(2)}%</td><td class="pct ${item.stats.completion < 80 ? 'low' : 'ok'}">${item.stats.completion.toFixed(2)}%</td><td>${item.is_unassigned ? 'Assign these locations to a brand' : (!item.has_saved_completion ? 'No completion entered' : (item.stats.completion < 80 ? 'Needs operational attention' : 'On track'))}${item.weakLocations.length ? `<ul class="brand-mini-list">${item.weakLocations.map(row => `<li>${esc(row.location_name)} · ${formatPct(completionCount(row))}</li>`).join('')}</ul>` : ''}</td></tr>`).join('')}</tbody>
         </table></div>
         <div class="footer"><span>InCheck 360 · Customer Success</span><span>Brand insights · ${esc(generatedAt.toLocaleDateString())}</span></div>
       </section>`;
     }).join('');
 
     const detailPageSize = 12;
-    const detailPageChunks = paginateReportRows(rows, detailPageSize);
+    const detailPageChunks = paginateReportRows(reportDetailRows, detailPageSize);
     const locationPagesHtml = detailPageChunks.map((pageRows, pageIndex) => {
       const pageStartIndex = pageIndex * detailPageSize;
       return `<section class="report-page table-page">
         <div class="report-header">
           <div class="brand"><div class="cs-export-doc-logo-slot" data-incheck360-doc-logo-slot></div><div class="brand-fallback" style="display:none;">InCheck <span>360</span></div></div>
           <div class="header-main">
-            <div class="header-row"><div class="title"><h1>Location Completion Details${pageIndex ? ' — Continued' : ''}</h1><div class="subtitle">${esc(reportName)} · ${esc(periodLabel)} · ${rows.length} active location${rows.length === 1 ? '' : 's'}</div></div></div>
+            <div class="header-row"><div class="title"><h1>Location Completion Details${pageIndex ? ' — Continued' : ''}</h1><div class="subtitle">${esc(reportName)} · ${esc(periodLabel)} · ${reportDetailRows.length} reported location${reportDetailRows.length === 1 ? '' : 's'}</div></div></div>
           </div>
         </div>
         <div class="table-wrap"><table class="report-table location-table">
@@ -3820,7 +3849,7 @@
       <div class="kpi"><div class="label">Done Late</div><div class="value late">${stats.done_late.toFixed(2)}%</div></div>
       <div class="kpi"><div class="label">Partially Done</div><div class="value partial">${stats.partially_done.toFixed(2)}%</div></div>
       <div class="kpi"><div class="label">Missed</div><div class="value miss">${stats.missed.toFixed(2)}%</div></div>
-      <div class="kpi"><div class="label">Active Locations</div><div class="value">${rows.length}</div></div>
+      <div class="kpi"><div class="label">Reported Locations</div><div class="value">${reportDetailRows.length}</div></div>
     </div>
 
     <div class="summary-grid">
@@ -3846,7 +3875,7 @@
 
       <div class="panel summary-card"><div class="panel-inner">
         <div class="section-title"><h2>${isAnyBrandReport ? 'All Brand Locations' : (isAnyGroupReport ? 'All Group Locations' : 'All Client Locations')}</h2></div>
-        <div class="tiny">Average of ${rows.length} active location${rows.length === 1 ? '' : 's'}</div>
+        <div class="tiny">${isWholeClientRollup && completedBrandRows.length ? `Equal average of ${completedBrandRows.length} completed brand${completedBrandRows.length === 1 ? '' : 's'}` : `Average of ${reportDetailRows.length} reported location${reportDetailRows.length === 1 ? '' : 's'}`}</div>
         <div class="summary-line"><span class="mini-icon">✓</span><span>Done On-Time</span><strong style="color:var(--good)">${stats.done_on_time.toFixed(2)}%</strong></div>
         <div class="summary-line"><span class="mini-icon">◷</span><span>Done Late</span><strong style="color:var(--late)">${stats.done_late.toFixed(2)}%</strong></div>
         <div class="summary-line"><span class="mini-icon">◔</span><span>Partially Done</span><strong style="color:var(--partial)">${stats.partially_done.toFixed(2)}%</strong></div>
@@ -3858,7 +3887,7 @@
     <div class="insights">
       <div class="insight good-bg"><div class="big-icon">🏆</div><div><h3>Best performing location</h3><p>${best ? `${esc(best.company_name || reportName)} — ${esc(best.location_name)}<br/>Completion: <strong>${formatPct(completionCount(best))}</strong>` : 'No location data available yet.'}</p></div></div>
       <div class="insight warn-bg"><div class="big-icon">⚠</div><div><h3>Locations needing operational attention</h3><p>${weak.length ? weak.map(row => `${esc(row.company_name || reportName)} — ${esc(row.location_name)} (${formatPct(completionCount(row))})`).join('<br/>') : 'No locations needing operational attention for the selected period.'}</p></div></div>
-      <div class="insight info-bg"><div class="big-icon">ⓘ</div><div><h3>Notes</h3><p>${esc(sourceNote)}<br/>${isAnyBrandReport ? 'Brand result is auto-calculated from assigned brand location rows.' : (isAnyGroupReport ? 'Group result includes only locations assigned to the selected group, with brand completion when configured.' : 'Client result is calculated from unique active locations across every brand, not by averaging brand averages.')}<br/>Generated on ${esc(generatedAt.toLocaleString())}.</p></div></div>
+      <div class="insight info-bg"><div class="big-icon">ⓘ</div><div><h3>Notes</h3><p>${esc(sourceNote)}<br/>${isAnyBrandReport ? 'Brand result is auto-calculated from its saved location rows.' : (isAnyGroupReport ? 'Group result includes only locations assigned to the selected group, with brand completion when configured.' : (isWholeClientRollup && completedBrandRows.length ? 'Client result is the equal average of the completed brand results.' : 'Client result is calculated from the saved reported locations.'))}<br/>Generated on ${esc(generatedAt.toLocaleString())}.</p></div></div>
     </div>
     <div class="footer"><span>InCheck 360 · Customer Success</span><span>Summary · ${esc(generatedAt.toLocaleDateString())}</span></div>
   </section>
