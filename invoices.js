@@ -501,13 +501,49 @@ const Invoices = {
       created_at: String(source?.created_at || '').trim()
     };
   },
+  getLinkedReceiptUniqueKey(receipt = {}) {
+    const id = String(receipt?.id || '').trim();
+    if (id) return `id:${id}`;
+
+    const receiptId = String(receipt?.receipt_id || receipt?.receiptId || '').trim();
+    if (receiptId) return `receipt-id:${receiptId}`;
+
+    const receiptNumber = String(receipt?.receipt_number || receipt?.receiptNumber || '').trim();
+    if (receiptNumber) return `receipt-number:${receiptNumber}`;
+
+    // Fallback for older rows that do not expose a UUID or receipt number.
+    // The same database row returned by both invoice_id and invoice_number
+    // queries will still share these persisted values.
+    const invoiceRef = String(receipt?.invoice_id || receipt?.invoice_number || '').trim();
+    const receiptDate = String(receipt?.receipt_date || '').trim();
+    const createdAt = String(receipt?.created_at || '').trim();
+    const amount = this.toNumberSafe(
+      receipt?.amount_received ?? receipt?.received_amount ?? receipt?.paid_now
+    );
+    if (invoiceRef && (receiptDate || createdAt)) {
+      return `fallback:${invoiceRef}|${receiptDate}|${createdAt}|${amount.toFixed(2)}`;
+    }
+
+    return '';
+  },
+  dedupeLinkedReceipts(receipts = []) {
+    const unique = [];
+    const seen = new Set();
+    (Array.isArray(receipts) ? receipts : []).forEach(receipt => {
+      const key = this.getLinkedReceiptUniqueKey(receipt);
+      if (key && seen.has(key)) return;
+      if (key) seen.add(key);
+      unique.push(receipt);
+    });
+    return unique;
+  },
   summarizeReceiptPayments(invoiceTotal, receipts = [], { baselinePaid = 0 } = {}) {
     const isVoided = receipt => {
       const status = this.normalizeText(receipt?.status);
       if (!status) return false;
       return status.includes('cancel') || status.includes('void') || status.includes('delete');
     };
-    const normalized = (Array.isArray(receipts) ? receipts : [])
+    const normalized = this.dedupeLinkedReceipts(receipts)
       .filter(receipt => !isVoided(receipt))
       .map(receipt => this.normalizeLinkedReceipt(receipt));
     const receiptsPaidAmount = normalized.reduce((sum, receipt) => sum + this.toNumberSafe(receipt.amount_received), 0);
@@ -535,16 +571,9 @@ const Invoices = {
   setInvoiceReceipts(invoiceId, receipts = []) {
     const key = String(invoiceId || '').trim();
     if (!key) return [];
-    const normalized = receipts.map(receipt => this.normalizeLinkedReceipt(receipt));
-    const dedupedById = [];
-    const seen = new Set();
-    normalized.forEach(receipt => {
-      const receiptId = String(receipt.id || receipt.receipt_id || '').trim();
-      if (!receiptId || seen.has(receiptId)) return;
-      seen.add(receiptId);
-      dedupedById.push(receipt);
-    });
-    this.state.receiptsByInvoiceId[key] = this.sortReceiptsAscending(dedupedById);
+    const normalized = this.dedupeLinkedReceipts(receipts)
+      .map(receipt => this.normalizeLinkedReceipt(receipt));
+    this.state.receiptsByInvoiceId[key] = this.sortReceiptsAscending(normalized);
     return this.state.receiptsByInvoiceId[key];
   },
   getSupabaseClient() {
