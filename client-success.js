@@ -118,7 +118,7 @@
     ['lr muroo', 'LR Muroor'],
     ['lr muroor', 'LR Muroor'],
     ['lr defence', 'LR Motor City'],
-    ['zl defence', 'LR Motor City'],
+    ['zl defence', 'ZL Defence'],
     ['zl khalidya', 'ZL al Forsan Cloud Kitchen'],
     ['zl khalidiya', 'ZL al Forsan Cloud Kitchen']
   ]);
@@ -162,6 +162,17 @@
     const locationName = cs360RawLocationName(row);
 
     const normalizedLocation = normalizeCs360DisplayName(locationName);
+
+    // A previous CS360-only migration incorrectly converted ZL Defence to
+    // LR Motor City for this legal client. Keep the correction scoped to the
+    // exact client so genuine LR Motor City locations elsewhere are untouched.
+    const isZahratLebnanBranch =
+      clientName === 'zahrat lebnan cafeteria restaurant sole proprietorship l l c branch';
+
+    if (isZahratLebnanBranch && ['zl defence', 'lr motor city'].includes(normalizedLocation)) {
+      return replaceCs360LocationFields(row, locationName, 'ZL Defence');
+    }
+
     const globalOverride = CS360_LOCATION_NAME_OVERRIDES.get(normalizedLocation);
 
     if (globalOverride) {
@@ -273,7 +284,7 @@
     const key = String(action || '').trim().toLowerCase();
     if (key === 'brand-location-remove' || key === 'brand-location-unassign') return 'update';
     if (key === 'brand-location-move' || key === 'special-brand-location-assign' || key === 'special-brand-location-unassign' || key === 'completion-edit') return 'update';
-    if (key === 'completion-export' || key === 'completion-view-report' || key === 'brand-export' || key === 'special-client-view-report' || key === 'special-client-report' || key === 'special-brand-export') return 'export';
+    if (key === 'completion-export' || key === 'completion-view-report' || key === 'completion-export-historical' || key === 'brand-export' || key === 'special-client-view-report' || key === 'special-client-report' || key === 'special-brand-export') return 'export';
     if (
       key === 'special-clients-open' ||
       key === 'special-client-open' ||
@@ -2791,6 +2802,7 @@
           <td>${period.metrics.missed.toFixed(2)}%</td>
           <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
             <button class="btn ghost sm" type="button" data-cs-action="completion-view-report" data-completion-context="normal" data-history-scope="${attr(history.scope || 'client')}" data-company-id="${attr(companyId(company))}" data-group-id="${attr(history.groupId || '')}" data-brand-id="${attr(history.brandId || '')}" data-review-type="${attr(period.review_type || 'weekly')}" data-period-start="${attr(String(period.period_start || '').slice(0, 10))}" data-period-end="${attr(String(period.period_end || '').slice(0, 10))}">View Report</button>
+            <button class="btn primary sm" type="button" data-cs-action="completion-export-historical" data-completion-context="normal" data-history-scope="${attr(history.scope || 'client')}" data-company-id="${attr(companyId(company))}" data-group-id="${attr(history.groupId || '')}" data-brand-id="${attr(history.brandId || '')}" data-review-type="${attr(period.review_type || 'weekly')}" data-period-start="${attr(String(period.period_start || '').slice(0, 10))}" data-period-end="${attr(String(period.period_end || '').slice(0, 10))}">Export PDF</button>
             ${canUpdate() ? `<button class="btn ghost sm" type="button" data-cs-action="completion-edit" data-completion-context="normal" data-history-scope="${attr(history.scope || 'client')}" data-company-id="${attr(companyId(company))}" data-group-id="${attr(history.groupId || '')}" data-brand-id="${attr(history.brandId || '')}" data-review-type="${attr(period.review_type || 'weekly')}" data-period-start="${attr(String(period.period_start || '').slice(0, 10))}" data-period-end="${attr(String(period.period_end || '').slice(0, 10))}">Edit Report</button>` : ''}
           </div></td>
         </tr>`).join('')
@@ -3154,6 +3166,7 @@
           <td>${period.metrics.missed.toFixed(2)}%</td>
           <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
             <button class="btn ghost sm" type="button" data-cs-action="completion-view-report" data-completion-context="special" data-history-scope="${attr(history.scope || 'client')}" data-special-client-id="${attr(sid)}" data-special-group-id="${attr(history.groupId || '')}" data-special-brand-id="${attr(history.brandId || '')}" data-review-type="${attr(period.review_type || 'weekly')}" data-period-start="${attr(String(period.period_start || '').slice(0, 10))}" data-period-end="${attr(String(period.period_end || '').slice(0, 10))}">View Report</button>
+            <button class="btn primary sm" type="button" data-cs-action="completion-export-historical" data-completion-context="special" data-history-scope="${attr(history.scope || 'client')}" data-special-client-id="${attr(sid)}" data-special-group-id="${attr(history.groupId || '')}" data-special-brand-id="${attr(history.brandId || '')}" data-review-type="${attr(period.review_type || 'weekly')}" data-period-start="${attr(String(period.period_start || '').slice(0, 10))}" data-period-end="${attr(String(period.period_end || '').slice(0, 10))}">Export PDF</button>
             ${canUpdate() ? `<button class="btn ghost sm" type="button" data-cs-action="completion-edit" data-completion-context="special" data-history-scope="${attr(history.scope || 'client')}" data-special-client-id="${attr(sid)}" data-special-group-id="${attr(history.groupId || '')}" data-special-brand-id="${attr(history.brandId || '')}" data-review-type="${attr(period.review_type || 'weekly')}" data-period-start="${attr(String(period.period_start || '').slice(0, 10))}" data-period-end="${attr(String(period.period_end || '').slice(0, 10))}">Edit Report</button>` : ''}
           </div></td>
         </tr>`).join('')
@@ -3361,7 +3374,7 @@
     openCompletionEditForm(edit.rows, edit);
   }
 
-  function openHistoricalCompletionReportFromButton(button) {
+  function openHistoricalCompletionReportFromButton(button, autoPrint = false) {
     const context = String(button?.getAttribute?.('data-completion-context') || 'normal');
     const scope = String(button?.getAttribute?.('data-history-scope') || 'client');
     const reviewType = String(button?.getAttribute?.('data-review-type') || 'weekly').toLowerCase();
@@ -3378,7 +3391,8 @@
     const options = {
       review_type: reviewType,
       period_start: normalizedPeriod.period_start,
-      period_end: normalizedPeriod.period_end
+      period_end: normalizedPeriod.period_end,
+      auto_print: Boolean(autoPrint)
     };
 
     if (context === 'special') {
@@ -4540,6 +4554,13 @@
       win.document.open();
       win.document.write(brandedReportHtml);
       win.document.close();
+      if (options.auto_print) {
+        const triggerPrint = () => {
+          try { win.focus(); win.print(); } catch (printError) { console.warn('[ClientSuccess360] automatic print failed', printError); }
+        };
+        if (win.document.readyState === 'complete') setTimeout(triggerPrint, 500);
+        else win.addEventListener('load', () => setTimeout(triggerPrint, 500), { once: true });
+      }
     } catch (error) {
       console.error('[ClientSuccess360] export report failed', error);
       toast(`Unable to export report: ${error.message || error}`);
@@ -4733,6 +4754,12 @@
       event.preventDefault?.();
       event.stopPropagation?.();
       openHistoricalCompletionReportFromButton(event.target?.closest?.('[data-cs-action="completion-view-report"]'));
+      return;
+    }
+    if (action === 'completion-export-historical') {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      openHistoricalCompletionReportFromButton(event.target?.closest?.('[data-cs-action="completion-export-historical"]'), true);
       return;
     }
     if (action === 'completion-edit') {
