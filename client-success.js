@@ -273,7 +273,7 @@
     const key = String(action || '').trim().toLowerCase();
     if (key === 'brand-location-remove' || key === 'brand-location-unassign') return 'update';
     if (key === 'brand-location-move' || key === 'special-brand-location-assign' || key === 'special-brand-location-unassign' || key === 'completion-edit') return 'update';
-    if (key === 'completion-export' || key === 'brand-export' || key === 'special-client-view-report' || key === 'special-client-report' || key === 'special-brand-export') return 'export';
+    if (key === 'completion-export' || key === 'completion-view-report' || key === 'brand-export' || key === 'special-client-view-report' || key === 'special-client-report' || key === 'special-brand-export') return 'export';
     if (
       key === 'special-clients-open' ||
       key === 'special-client-open' ||
@@ -2789,7 +2789,10 @@
           <td>${period.metrics.done_late.toFixed(2)}%</td>
           <td>${period.metrics.partially_done.toFixed(2)}%</td>
           <td>${period.metrics.missed.toFixed(2)}%</td>
-          <td>${canUpdate() ? `<button class="btn ghost sm" type="button" data-cs-action="completion-edit" data-completion-context="normal" data-history-scope="${attr(history.scope || 'client')}" data-company-id="${attr(companyId(company))}" data-group-id="${attr(history.groupId || '')}" data-brand-id="${attr(history.brandId || '')}" data-review-type="${attr(period.review_type || 'weekly')}" data-period-start="${attr(String(period.period_start || '').slice(0, 10))}" data-period-end="${attr(String(period.period_end || '').slice(0, 10))}">Edit Report</button>` : '—'}</td>
+          <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button class="btn ghost sm" type="button" data-cs-action="completion-view-report" data-completion-context="normal" data-history-scope="${attr(history.scope || 'client')}" data-company-id="${attr(companyId(company))}" data-group-id="${attr(history.groupId || '')}" data-brand-id="${attr(history.brandId || '')}" data-review-type="${attr(period.review_type || 'weekly')}" data-period-start="${attr(String(period.period_start || '').slice(0, 10))}" data-period-end="${attr(String(period.period_end || '').slice(0, 10))}">View Report</button>
+            ${canUpdate() ? `<button class="btn ghost sm" type="button" data-cs-action="completion-edit" data-completion-context="normal" data-history-scope="${attr(history.scope || 'client')}" data-company-id="${attr(companyId(company))}" data-group-id="${attr(history.groupId || '')}" data-brand-id="${attr(history.brandId || '')}" data-review-type="${attr(period.review_type || 'weekly')}" data-period-start="${attr(String(period.period_start || '').slice(0, 10))}" data-period-end="${attr(String(period.period_end || '').slice(0, 10))}">Edit Report</button>` : ''}
+          </div></td>
         </tr>`).join('')
       : '<tr><td colspan="10" class="cs-empty">No historical completion periods match the selected filters.</td></tr>';
 
@@ -3149,7 +3152,10 @@
           <td>${period.metrics.done_late.toFixed(2)}%</td>
           <td>${period.metrics.partially_done.toFixed(2)}%</td>
           <td>${period.metrics.missed.toFixed(2)}%</td>
-          <td>${canUpdate() ? `<button class="btn ghost sm" type="button" data-cs-action="completion-edit" data-completion-context="special" data-history-scope="${attr(history.scope || 'client')}" data-special-client-id="${attr(sid)}" data-special-group-id="${attr(history.groupId || '')}" data-special-brand-id="${attr(history.brandId || '')}" data-review-type="${attr(period.review_type || 'weekly')}" data-period-start="${attr(String(period.period_start || '').slice(0, 10))}" data-period-end="${attr(String(period.period_end || '').slice(0, 10))}">Edit Report</button>` : '—'}</td>
+          <td><div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button class="btn ghost sm" type="button" data-cs-action="completion-view-report" data-completion-context="special" data-history-scope="${attr(history.scope || 'client')}" data-special-client-id="${attr(sid)}" data-special-group-id="${attr(history.groupId || '')}" data-special-brand-id="${attr(history.brandId || '')}" data-review-type="${attr(period.review_type || 'weekly')}" data-period-start="${attr(String(period.period_start || '').slice(0, 10))}" data-period-end="${attr(String(period.period_end || '').slice(0, 10))}">View Report</button>
+            ${canUpdate() ? `<button class="btn ghost sm" type="button" data-cs-action="completion-edit" data-completion-context="special" data-history-scope="${attr(history.scope || 'client')}" data-special-client-id="${attr(sid)}" data-special-group-id="${attr(history.groupId || '')}" data-special-brand-id="${attr(history.brandId || '')}" data-review-type="${attr(period.review_type || 'weekly')}" data-period-start="${attr(String(period.period_start || '').slice(0, 10))}" data-period-end="${attr(String(period.period_end || '').slice(0, 10))}">Edit Report</button>` : ''}
+          </div></td>
         </tr>`).join('')
       : '<tr><td colspan="9" class="cs-empty">No old completion periods match the selected filters.</td></tr>';
 
@@ -3353,6 +3359,52 @@
       return;
     }
     openCompletionEditForm(edit.rows, edit);
+  }
+
+  function openHistoricalCompletionReportFromButton(button) {
+    const context = String(button?.getAttribute?.('data-completion-context') || 'normal');
+    const scope = String(button?.getAttribute?.('data-history-scope') || 'client');
+    const reviewType = String(button?.getAttribute?.('data-review-type') || 'weekly').toLowerCase();
+    const normalizedPeriod = normalizeCompletionPeriod(
+      button?.getAttribute?.('data-period-start') || '',
+      button?.getAttribute?.('data-period-end') || ''
+    );
+
+    if (!normalizedPeriod.period_start || !normalizedPeriod.period_end) {
+      toast('This historical report does not have a valid saved period.');
+      return;
+    }
+
+    const options = {
+      review_type: reviewType,
+      period_start: normalizedPeriod.period_start,
+      period_end: normalizedPeriod.period_end
+    };
+
+    if (context === 'special') {
+      options.special_client_id = String(button?.getAttribute?.('data-special-client-id') || '').trim();
+      if (scope === 'brand') {
+        options.report_type = 'special_brand';
+        options.special_brand_id = String(button?.getAttribute?.('data-special-brand-id') || '').trim();
+      } else if (scope === 'group') {
+        options.report_type = 'special_group';
+        options.special_group_id = String(button?.getAttribute?.('data-special-group-id') || '').trim();
+      } else {
+        options.report_type = 'special_client';
+      }
+    } else if (scope === 'brand') {
+      options.report_type = 'brand';
+      options.brand_id = String(button?.getAttribute?.('data-brand-id') || '').trim();
+    } else if (scope === 'group') {
+      options.report_type = 'group';
+      options.group_id = String(button?.getAttribute?.('data-group-id') || '').trim();
+    } else {
+      options.report_type = 'client';
+      const companyIdValue = String(button?.getAttribute?.('data-company-id') || '').trim();
+      if (companyIdValue) STATE.selectedCompanyId = companyIdValue;
+    }
+
+    exportCompletionReport(options);
   }
 
   function openCompletionEditForm(rows = [], context = {}) {
@@ -3913,7 +3965,15 @@
     if (isGroupReport && !selectedGroup) { toast('Select a valid CS client group to export.'); return; }
     const generatedAt = new Date();
 
-    const completionKey = row => [row.review_type || 'weekly', String(row.period_start || '').slice(0,10), String(row.period_end || '').slice(0,10)].join('|');
+    const completionKey = row => [String(row.review_type || 'weekly').toLowerCase(), String(row.period_start || '').slice(0,10), String(row.period_end || '').slice(0,10)].join('|');
+    const requestedReviewType = String(options.review_type || '').trim().toLowerCase();
+    const requestedPeriod = normalizeCompletionPeriod(options.period_start || '', options.period_end || '');
+    const requestedPeriodKey = requestedReviewType && requestedPeriod.period_start && requestedPeriod.period_end
+      ? [requestedReviewType, requestedPeriod.period_start, requestedPeriod.period_end].join('|')
+      : '';
+    const rowsForRequestedPeriod = rows => requestedPeriodKey
+      ? rows.filter(row => completionKey(row) === requestedPeriodKey)
+      : rows;
     const completionSortKey = row => [
       String(row.period_end || '').slice(0, 10),
       String(row.updated_at || ''),
@@ -3929,12 +3989,12 @@
     // A client-wide report may be entered brand-by-brand. Keep all saved rows here,
     // then select the newest saved row for each unique active location below.
     let rawRecords = selectedCompany
-      ? sortCompletionRows(completionRows(selectedCompany)
+      ? sortCompletionRows(rowsForRequestedPeriod(completionRows(selectedCompany)
           .filter(row => !isSpecialCompletionRecord(row))
-          .map(row => ({ ...row, company_name: companyName(selectedCompany) })))
+          .map(row => ({ ...row, company_name: companyName(selectedCompany) }))))
       : [];
     let useLatestRecordPerTarget = Boolean(selectedCompany);
-    let activePeriodKey = rawRecords[0] ? completionKey(rawRecords[0]) : '';
+    let activePeriodKey = requestedPeriodKey || (rawRecords[0] ? completionKey(rawRecords[0]) : '');
 
     if (isSpecialTemplateReport) {
       const tid = specialTemplateId(selectedSpecialTemplate);
@@ -3942,10 +4002,10 @@
       clientLabel = reportName;
       groupLabel = specialGroupsForTemplate(tid).map(groupName).join(', ') || 'No group';
       targetRows = specialTemplateTargets(selectedSpecialTemplate);
-      const sorted = sortCompletionRows((STATE.rows.completions || []).filter(row =>
+      const sorted = sortCompletionRows(rowsForRequestedPeriod((STATE.rows.completions || []).filter(row =>
         isSpecialCompletionRecord(row) && String(row.special_client_id || '').trim() === tid
-      ));
-      activePeriodKey = sorted[0] ? completionKey(sorted[0]) : '';
+      )));
+      activePeriodKey = requestedPeriodKey || (sorted[0] ? completionKey(sorted[0]) : '');
       rawRecords = sorted;
       useLatestRecordPerTarget = true;
       isBrandReport = false;
@@ -3971,7 +4031,7 @@
         String(row.special_client_id || '').trim() === tid &&
         targetLocationIds.has(String(row.special_location_id || '').trim())
       ));
-      activePeriodKey = sorted[0] ? completionKey(sorted[0]) : '';
+      activePeriodKey = requestedPeriodKey || (sorted[0] ? completionKey(sorted[0]) : '');
       rawRecords = activePeriodKey ? sorted.filter(row => completionKey(row) === activePeriodKey) : [];
       useLatestRecordPerTarget = false;
       isBrandReport = false;
@@ -3995,7 +4055,7 @@
           String(row.special_group_id || '').trim() === specialGroupKey
         )
       ));
-      activePeriodKey = sorted[0] ? completionKey(sorted[0]) : '';
+      activePeriodKey = requestedPeriodKey || (sorted[0] ? completionKey(sorted[0]) : '');
       rawRecords = activePeriodKey ? sorted.filter(row => completionKey(row) === activePeriodKey) : [];
       useLatestRecordPerTarget = false;
       isBrandReport = false;
@@ -4011,7 +4071,7 @@
       targetRows = brandTargets;
       const allBrandRecords = (STATE.rows.completions || []).filter(row => targetKeys.has([String(row.company_id || '').trim(), normalize(row.location_name)].join('|')));
       const sorted = sortCompletionRows(allBrandRecords);
-      activePeriodKey = sorted[0] ? completionKey(sorted[0]) : '';
+      activePeriodKey = requestedPeriodKey || (sorted[0] ? completionKey(sorted[0]) : '');
       rawRecords = activePeriodKey ? sorted.filter(row => completionKey(row) === activePeriodKey) : [];
       useLatestRecordPerTarget = false;
       isGroupReport = false;
@@ -4031,13 +4091,17 @@
         return (rowCompanyId && memberIds.has(rowCompanyId)) || (rowCompanyName && memberNames.has(rowCompanyName));
       });
       const sorted = sortCompletionRows(allGroupRecords);
-      activePeriodKey = sorted[0] ? completionKey(sorted[0]) : '';
+      activePeriodKey = requestedPeriodKey || (sorted[0] ? completionKey(sorted[0]) : '');
       rawRecords = activePeriodKey ? sorted.filter(row => completionKey(row) === activePeriodKey) : [];
       useLatestRecordPerTarget = false;
     }
 
     if (!targetRows.length) {
       toast('No locations found for this export type. Check client/group/brand location assignment.');
+      return;
+    }
+    if (requestedPeriodKey && !rawRecords.length) {
+      toast(`No saved completion report was found for ${fmtDate(requestedPeriod.period_start)} to ${fmtDate(requestedPeriod.period_end)}.`);
       return;
     }
 
@@ -4663,6 +4727,12 @@
     }
     if (action === 'completion-history-brand') {
       openCompletionHistory('brand', event.target?.closest?.('[data-brand-id]')?.dataset?.brandId || '');
+      return;
+    }
+    if (action === 'completion-view-report') {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      openHistoricalCompletionReportFromButton(event.target?.closest?.('[data-cs-action="completion-view-report"]'));
       return;
     }
     if (action === 'completion-edit') {
