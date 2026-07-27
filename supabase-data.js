@@ -3968,6 +3968,12 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     const entityId = lifecycleText(current.id || current.uuid || previous?.id || previous?.uuid);
     const entityNumber = firstLifecycleValue(current, config.numbers) || firstLifecycleValue(previous, config.numbers) || entityId;
     const title = firstLifecycleValue(current, config.titles) || firstLifecycleValue(previous, config.titles) || entityNumber;
+    const statusNoteFields = [
+      'status_note', 'status_notes', 'change_reason', 'reason', 'notes', 'note',
+      'internal_notes', 'internal_note', 'proposal_notes', 'comments', 'comment', 'remarks', 'description'
+    ];
+    const transitionNote = firstLifecycleValue(current, statusNoteFields) || firstLifecycleValue(previous, statusNoteFields);
+    const changeReason = firstLifecycleValue(current, ['change_reason', 'reason']) || firstLifecycleValue(previous, ['change_reason', 'reason']);
     const seenTransitions = new Set();
     for (const field of config.fields) {
       const oldStatus = options.snapshot ? '' : lifecycleText(previous?.[field]);
@@ -3975,7 +3981,17 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       const transitionKey = `${oldStatus.toLowerCase()}→${newStatus.toLowerCase()}`;
       if (!newStatus || oldStatus.toLowerCase() === newStatus.toLowerCase() || seenTransitions.has(transitionKey)) continue;
       seenTransitions.add(transitionKey);
-      await addLifecycleStatusLog(client, { entity_type: config.type, entity_id: entityId, entity_number: entityNumber, title, old_status: oldStatus, new_status: newStatus, status_field: field });
+      await addLifecycleStatusLog(client, {
+        entity_type: config.type,
+        entity_id: entityId,
+        entity_number: entityNumber,
+        title,
+        old_status: oldStatus,
+        new_status: newStatus,
+        status_field: field,
+        change_reason: changeReason,
+        notes: transitionNote
+      });
     }
   }
 

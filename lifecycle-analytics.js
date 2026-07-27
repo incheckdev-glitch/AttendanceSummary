@@ -55,7 +55,7 @@ const LifecycleAnalytics = {
     return U.fmtTS(raw);
   },
   extractLifecycleNote(record = {}) {
-    const noteFields = ['note', 'notes', 'comment', 'comments', 'remark', 'remarks', 'description', 'status_note', 'status_notes', 'completion_note', 'action_note', 'admin_note', 'internal_note', 'reason', 'message', 'change_reason'];
+    const noteFields = ['new_note', 'note', 'notes', 'internal_notes', 'proposal_notes', 'activity_notes', 'follow_up_notes', 'comment', 'comments', 'remark', 'remarks', 'description', 'status_note', 'status_notes', 'completion_note', 'action_note', 'admin_note', 'internal_note', 'reason', 'message', 'change_reason', 'previous_note', 'old_note'];
     const nestedFields = ['metadata', 'payload', 'details', 'changes', 'data', 'action'];
     const invalidValues = new Set(['', 'null', 'undefined', '{}', '[]']);
     const visited = new Set();
@@ -165,7 +165,8 @@ const LifecycleAnalytics = {
     const historySources = [
       ['lifecycleStatusLogs', ''], ['lifecycleLogs', ''], ['lifecycleHistory', ''], ['activityLogs', ''], ['auditLogs', ''], ['statusHistory', ''],
       ['proposalLogs', 'proposal'], ['agreementLogs', 'agreement'], ['invoiceLogs', 'invoice'], ['receiptLogs', 'receipt'],
-      ['creditNoteLogs', 'credit_note'], ['operationsOnboardingLogs', 'operations_onboarding']
+      ['creditNoteLogs', 'credit_note'], ['operationsOnboardingLogs', 'operations_onboarding'],
+      ['leadNoteLogs', 'lead'], ['dealNoteLogs', 'deal']
     ];
     return historySources.flatMap(([key, sourceType]) => (Array.isArray(account?.[key]) ? account[key] : []).map(log => ({ log, sourceType })))
       .filter(({ log, sourceType }) => {
@@ -199,7 +200,10 @@ const LifecycleAnalytics = {
     return this.text(rawLog?.changed_by_email || rawLog?.changed_by_name || rawLog?.changed_by || rawLog?.actor_name || rawLog?.actor || rawLog?.created_by_name || rawLog?.created_by_email || rawLog?.created_by || rawLog?.user_name || rawLog?.user_email || rawLog?.user_id);
   },
   buildLifecycleHistoryTitle(rawLog = {}) {
-    return this.text(rawLog?.title || rawLog?.action_title || rawLog?.action || rawLog?.event || rawLog?.event_type || rawLog?.activity_type || rawLog?.status_field) || 'Status change';
+    const explicitTitle = this.text(rawLog?.title || rawLog?.action_title || rawLog?.action || rawLog?.event || rawLog?.event_type || rawLog?.activity_type || rawLog?.status_field);
+    if (explicitTitle) return explicitTitle;
+    if (this.extractLifecycleNote(rawLog)) return 'Note updated';
+    return 'Status change';
   },
   normalizeLifecycleHistoryRecord(rawLog = {}) {
     return {
@@ -424,6 +428,82 @@ const LifecycleAnalytics = {
     };
     return order[type] || 999;
   },
+  getLifecycleRecordTimestamp(record = {}, type = '') {
+    const candidatesByType = {
+      lead: ['lead_created_at', 'created_at', 'lead_date', 'updated_at'],
+      deal: ['deal_created_at', 'created_at', 'deal_opened_at', 'deal_date', 'updated_at'],
+      proposal: ['created_at', 'proposal_date', 'sent_at', 'updated_at'],
+      agreement: ['sent_at', 'created_at', 'agreement_date', 'effective_date', 'updated_at'],
+      invoice: ['invoice_date', 'issue_date', 'issued_date', 'issued_at', 'created_at', 'updated_at'],
+      receipt: ['receipt_date', 'payment_date', 'created_at', 'updated_at'],
+      credit_note: ['credit_note_date', 'issue_date', 'created_at', 'updated_at']
+    };
+    return this.getBestLifecycleTimestamp(record, candidatesByType[type] || ['created_at', 'updated_at', 'date']);
+  },
+  lifecycleReferenceValues(record = {}, fields = []) {
+    return new Set(fields.map(field => this.norm(record?.[field])).filter(Boolean));
+  },
+  findLifecycleLinkedRecord(records = [], referenceValues = [], fields = [], beforeTimestamp = null, type = '') {
+    const refs = new Set((Array.isArray(referenceValues) ? referenceValues : [referenceValues]).map(value => this.norm(value)).filter(Boolean));
+    const safeRecords = Array.isArray(records) ? records : [];
+    if (refs.size) {
+      const exact = safeRecords.find(record => fields.some(field => refs.has(this.norm(record?.[field]))));
+      if (exact) return exact;
+    }
+    const before = Number(beforeTimestamp) || null;
+    return safeRecords
+      .map(record => ({ record, timestamp: this.getLifecycleRecordTimestamp(record, type) || 0 }))
+      .filter(item => item.timestamp && (!before || item.timestamp <= before))
+      .sort((a, b) => b.timestamp - a.timestamp)[0]?.record || null;
+  },
+  selectPrimaryLifecycleChain(context = {}) {
+    const rows = key => Array.isArray(context?.[key]) ? context[key] : [];
+    const oldest = (key, type, afterTimestamp = null) => rows(key)
+      .map(record => ({ record, timestamp: this.getLifecycleRecordTimestamp(record, type) || 0 }))
+      .filter(item => item.timestamp && (!afterTimestamp || item.timestamp >= afterTimestamp))
+      .sort((a, b) => a.timestamp - b.timestamp)[0]?.record || null;
+    const forwardLinked = (records, parent, parentFields, childFields, type) => {
+      if (!parent) return oldest(records, type);
+      const refs = this.lifecycleReferenceValues(parent, parentFields);
+      const exact = rows(records)
+        .filter(record => childFields.some(field => refs.has(this.norm(record?.[field]))))
+        .map(record => ({ record, timestamp: this.getLifecycleRecordTimestamp(record, type) || 0 }))
+        .sort((a, b) => a.timestamp - b.timestamp)[0]?.record;
+      if (exact) return exact;
+      return oldest(records, type, this.getLifecycleRecordTimestamp(parent, ({
+        deals: 'lead', proposals: 'deal', agreements: 'proposal', invoices: 'agreement'
+      })[records] || ''));
+    };
+
+    const lead = oldest('leads', 'lead');
+    const deal = lead
+      ? forwardLinked('deals', lead, ['id', 'uuid', 'lead_id', 'lead_number'], ['lead_id', 'lead_uuid', 'lead_number'], 'deal')
+      : oldest('deals', 'deal');
+    const proposal = deal
+      ? forwardLinked('proposals', deal, ['id', 'uuid', 'deal_id', 'deal_number'], ['deal_id', 'deal_uuid', 'deal_number'], 'proposal')
+      : oldest('proposals', 'proposal');
+    const agreement = proposal
+      ? forwardLinked('agreements', proposal, ['id', 'uuid', 'proposal_id', 'proposal_number', 'ref_number'], ['proposal_id', 'proposal_uuid', 'proposal_number', 'ref_number'], 'agreement')
+      : oldest('agreements', 'agreement');
+    const invoice = agreement
+      ? forwardLinked('invoices', agreement, ['id', 'uuid', 'agreement_id', 'agreement_number'], ['agreement_id', 'agreement_uuid', 'agreement_number'], 'invoice')
+      : oldest('invoices', 'invoice');
+
+    const invoiceRefs = this.lifecycleReferenceValues(invoice || {}, ['id', 'uuid', 'invoice_id', 'invoice_number']);
+    const agreementRefs = this.lifecycleReferenceValues(agreement || {}, ['id', 'uuid', 'agreement_id', 'agreement_number']);
+    const linkedTo = (record, refs, fields) => refs.size && fields.some(field => refs.has(this.norm(record?.[field])));
+    const receipts = invoice
+      ? rows('receipts').filter(record => linkedTo(record, invoiceRefs, ['invoice_id', 'invoice_uuid', 'invoice_number']))
+      : [];
+    const creditNotes = invoice
+      ? rows('creditNotes').filter(record => linkedTo(record, invoiceRefs, ['invoice_id', 'invoice_uuid', 'invoice_number']))
+      : [];
+    const onboarding = agreement
+      ? rows('onboarding').filter(record => linkedTo(record, agreementRefs, ['agreement_id', 'agreement_uuid', 'agreement_number']))
+      : [];
+
+    return { lead, deal, proposal, agreement, invoice, receipts, creditNotes, onboarding };
+  },
   buildLifecycleTimeline(account = {}) {
     const events = [];
     const pushEvent = (item = {}, config = {}) => {
@@ -447,12 +527,13 @@ const LifecycleAnalytics = {
       events.push({ type: config.type, entityType, entityId, entityNumber, currentStatus, latestNote, title: config.title, sortTimestamp, displayDate, metadata, sourceRecord: item, raw: item });
     };
 
-    const leads = (account.leads || []).slice();
-    const deals = (account.deals || []).slice();
-    const proposals = (account.proposals || []).slice();
-    const agreements = (account.agreements || []).slice();
-    const invoices = (account.invoices || []).slice();
-    const receipts = (account.receipts || []).slice();
+    const chain = this.selectPrimaryLifecycleChain(account);
+    const leads = chain.lead ? [chain.lead] : [];
+    const deals = chain.deal ? [chain.deal] : [];
+    const proposals = chain.proposal ? [chain.proposal] : [];
+    const agreements = chain.agreement ? [chain.agreement] : [];
+    const invoices = chain.invoice ? [chain.invoice] : [];
+    const receipts = (chain.receipts || []).slice().sort((a, b) => (this.getLifecycleRecordTimestamp(a, 'receipt') || 0) - (this.getLifecycleRecordTimestamp(b, 'receipt') || 0));
 
     if (leads[0]) pushEvent(leads[0], { type:'lead_created', entityType:'lead', title:'Lead created', numberFields:['lead_id','lead_number'], statusFields:['status'], codeLabel:'Lead', codeField:'lead_id', userLabel:'Assigned to', userField:'assigned_to', candidates:['created_at','createdAt','lead_created_at','created_date','date','updated_at'], displayField:'created_at' });
     if (deals[0]) pushEvent(deals[0], { type:'deal_created', entityType:'deal', title:'Deal created', numberFields:['deal_id','deal_number'], statusFields:['stage','status'], codeLabel:'Deal', codeField:'deal_id', userLabel:'Assigned to', userField:'assigned_to', candidates:['created_at','createdAt','converted_at','deal_created_at','created_date','updated_at'], displayField:'created_at', noteBuilder:item=>item.stage?`Stage: ${item.stage}`:'' });
@@ -544,7 +625,19 @@ const LifecycleAnalytics = {
       const selectedAccount = this.state.rows.find(row => row.accountKey === this.state.selectedAccountKey) || {};
       const sourceRecord = this.buildLifecycleTimeline(selectedAccount).find(stage => stage.type === selectedStage.type && stage.entityId === selectedStage.sourceId && stage.entityNumber === selectedStage.sourceRef)?.sourceRecord || {};
       const relatedLogs = this.getRelatedLifecycleLogs(selectedAccount, sourceRecord, selectedStage.entityType, selectedStage.sourceId, selectedStage.sourceRef);
-      const rawLogs = this.mergeLifecycleHistoryLogs(fetchedLogs, relatedLogs);
+      const sourceNote = this.extractLifecycleNote(sourceRecord);
+      const sourceNoteAlreadyLogged = sourceNote && [...fetchedLogs, ...relatedLogs].some(log => this.norm(this.extractLifecycleNote(log)) === this.norm(sourceNote));
+      const sourceNoteHistory = sourceNote && !sourceNoteAlreadyLogged ? [{
+        id: `source-note:${selectedStage.sourceId || selectedStage.sourceRef}`,
+        entity_type: selectedStage.entityType,
+        entity_id: selectedStage.sourceId,
+        entity_number: selectedStage.sourceRef,
+        event_type: 'Record note',
+        notes: sourceNote,
+        changed_at: this.getLatestRelatedRecordDate(sourceRecord) || sourceRecord.updated_at || sourceRecord.created_at
+      }] : [];
+      const fetchedAndRelatedLogs = this.mergeLifecycleHistoryLogs(fetchedLogs, relatedLogs);
+      const rawLogs = this.mergeLifecycleHistoryLogs(fetchedAndRelatedLogs, sourceNoteHistory);
       const normalizedHistory = rawLogs.map(log => this.normalizeLifecycleHistoryRecord(log));
       if (this.isDevelopmentMode()) {
         console.log('Lifecycle History Debug', {
@@ -933,6 +1026,8 @@ const LifecycleAnalytics = {
       binersSchedules: this.safeFetchTable(db, 'biners_schedules', '*'),
       paymentForecastFollowups: this.safeFetchTable(db, 'payment_forecast_followups', '*'),
       lifecycleStatusLogs: this.safeFetchTable(db, 'lifecycle_status_logs', '*'),
+      leadNoteLogs: this.safeFetchTable(db, 'lead_note_logs', '*', { quiet: true }),
+      dealNoteLogs: this.safeFetchTable(db, 'deal_note_logs', '*', { quiet: true }),
       lifecycleLogs: this.safeFetchTable(db, 'lifecycle_logs', '*', { quiet: true }),
       lifecycleHistory: this.safeFetchTable(db, 'lifecycle_history', '*', { quiet: true }),
       proposalLogs: this.safeFetchTable(db, 'proposal_logs', '*', { quiet: true }),
@@ -979,7 +1074,7 @@ const LifecycleAnalytics = {
       clients: data.clients.length,
       onboarding: data.onboarding.length,
       lifecycleStatusLogs: data.lifecycleStatusLogs.length,
-      relatedHistoryLogs: ['lifecycleLogs', 'lifecycleHistory', 'proposalLogs', 'agreementLogs', 'invoiceLogs', 'receiptLogs', 'creditNoteLogs', 'operationsOnboardingLogs', 'activityLogs', 'auditLogs', 'statusHistory'].reduce((sum, key) => sum + data[key].length, 0),
+      relatedHistoryLogs: ['leadNoteLogs', 'dealNoteLogs', 'lifecycleLogs', 'lifecycleHistory', 'proposalLogs', 'agreementLogs', 'invoiceLogs', 'receiptLogs', 'creditNoteLogs', 'operationsOnboardingLogs', 'activityLogs', 'auditLogs', 'statusHistory'].reduce((sum, key) => sum + data[key].length, 0),
       workflowApprovals: data.workflowApprovals.length
     });
 
@@ -1046,7 +1141,7 @@ const LifecycleAnalytics = {
           leads: [], deals: [], proposals: [], agreements: [], invoices: [], receipts: [], creditNotes: [],
           proposalItems: [], agreementItems: [], invoiceItems: [], receiptItems: [], paymentSchedule: [],
           onboarding: [], tickets: [], events: [], binersEntries: [], binersSchedules: [], paymentForecastFollowups: [], locationItems: [], contacts: [],
-          lifecycleStatusLogs: [], lifecycleLogs: [], lifecycleHistory: [], proposalLogs: [], agreementLogs: [], invoiceLogs: [], receiptLogs: [], creditNoteLogs: [], operationsOnboardingLogs: [], activityLogs: [], auditLogs: [], statusHistory: [], workflowApprovals: [],
+          lifecycleStatusLogs: [], leadNoteLogs: [], dealNoteLogs: [], lifecycleLogs: [], lifecycleHistory: [], proposalLogs: [], agreementLogs: [], invoiceLogs: [], receiptLogs: [], creditNoteLogs: [], operationsOnboardingLogs: [], activityLogs: [], auditLogs: [], statusHistory: [], workflowApprovals: [],
           stages: {},
           lifecycleChain: {},
           metrics: {}
@@ -1216,6 +1311,14 @@ const LifecycleAnalytics = {
       if (!reference) return null;
       return [...accounts.values()].find(candidate => lifecycleCollections.some(key => candidate[key].some(record => lifecycleRecordKeys(record).includes(reference)))) || null;
     };
+    (data.leadNoteLogs || []).forEach(log => {
+      const account = findAccountForLifecycleReference(log.lead_uuid || log.lead_id);
+      if (account) account.leadNoteLogs.push({ ...log, entity_type: 'lead', entity_id: log.lead_uuid || '', entity_number: log.lead_id || '', event_type: 'Note updated' });
+    });
+    (data.dealNoteLogs || []).forEach(log => {
+      const account = findAccountForLifecycleReference(log.deal_uuid || log.deal_id);
+      if (account) account.dealNoteLogs.push({ ...log, entity_type: 'deal', entity_id: log.deal_uuid || '', entity_number: log.deal_id || '', event_type: 'Note updated' });
+    });
     ['lifecycleStatusLogs', 'lifecycleLogs', 'lifecycleHistory', 'proposalLogs', 'agreementLogs', 'invoiceLogs', 'receiptLogs', 'creditNoteLogs', 'operationsOnboardingLogs', 'activityLogs', 'auditLogs', 'statusHistory'].forEach(source => { const target = source;
       (data[source] || []).forEach(log => {
         const account = this.lifecycleReferenceFields().map(field => log?.[field]).map(findAccountForLifecycleReference).find(Boolean);
@@ -1236,9 +1339,20 @@ const LifecycleAnalytics = {
     const today = this.parseLifecycleDate(todayValue) || this.getLifecycleNow();
     const rows = key => Array.isArray(context[key]) ? context[key] : [];
     const first = (key, fields) => this.getEarliestDate(rows(key).map(record => fields.map(field => record?.[field])));
+    const chain = this.selectPrimaryLifecycleChain(context);
+    const phaseRows = key => {
+      const singular = { leads: 'lead', deals: 'deal', proposals: 'proposal', agreements: 'agreement', invoices: 'invoice' }[key];
+      if (singular) return chain[singular] ? [chain[singular]] : [];
+      if (key === 'receipts') return Array.isArray(chain.receipts) ? chain.receipts : [];
+      if (key === 'creditNotes') return Array.isArray(chain.creditNotes) ? chain.creditNotes : [];
+      if (key === 'onboarding') return Array.isArray(chain.onboarding) ? chain.onboarding : [];
+      return rows(key);
+    };
+    const phaseFirst = (key, fields) => this.getEarliestDate(phaseRows(key).map(record => fields.map(field => record?.[field])));
     const normalizedStatus = record => this.normalizeStatus(record?.status || record?.stage || record?.agreement_status || record?.invoice_status || record?.payment_status || record?.payment_state || record?.onboarding_status);
     const logCollections = ['lifecycleStatusLogs', 'lifecycleLogs', 'lifecycleHistory', 'activityLogs', 'auditLogs', 'statusHistory', 'proposalLogs', 'agreementLogs', 'invoiceLogs', 'receiptLogs', 'creditNoteLogs', 'operationsOnboardingLogs'];
     const allLogs = logCollections.flatMap(rows);
+    const noteLogs = ['leadNoteLogs', 'dealNoteLogs'].flatMap(rows);
     const logStatus = log => this.normalizeStatus(log?.new_status || log?.status || log?.to_status || log?.new_value);
     const logEntity = log => this.normalizeStatus(log?.entity_type || log?.module || log?.resource_type || log?.table_name).replace(/ /g, '');
     const logTimestamp = log => this.getFirstValidDate(log, ['status_changed_at', 'changed_at', 'action_at', 'created_at', 'updated_at']);
@@ -1246,14 +1360,28 @@ const LifecycleAnalytics = {
     const transitionDate = (entities, statuses) => this.getEarliestDate(allLogs
       .filter(log => entities.some(entity => logEntity(log).includes(entity)) && statuses.some(status => logStatus(log).includes(status)))
       .map(logTimestamp));
-    const stageIsActive = (collection, closedStatuses = []) => rows(collection).some(record => !closedStatuses.some(status => this.lifecycleStatusMatches(normalizedStatus(record), status)));
+    const transitionDateForRecord = (record, entity, statuses) => {
+      if (!record) return null;
+      const references = this.getLifecycleReferences(record);
+      return this.getEarliestDate(allLogs
+        .filter(log => {
+          if (!logEntity(log).includes(entity)) return false;
+          if (!statuses.some(status => logStatus(log).includes(status))) return false;
+          const logReferences = this.getLifecycleReferences(log);
+          return [...logReferences].some(reference => references.has(reference));
+        })
+        .map(logTimestamp));
+    };
+    const recordIsActive = (record, closedStatuses = []) => Boolean(record) && !closedStatuses.some(status => this.lifecycleStatusMatches(normalizedStatus(record), status));
+    const stageIsActive = (collection, closedStatuses = []) => phaseRows(collection).some(record => recordIsActive(record, closedStatuses));
     const latestActivityDate = this.getLatestDate(
       ...['leads', 'deals', 'proposals', 'agreements', 'invoices', 'receipts', 'creditNotes', 'onboarding', 'tickets', 'events', 'binersEntries', 'binersSchedules', 'paymentForecastFollowups', 'workflowApprovals']
         .flatMap(key => rows(key).flatMap(record => ['created_at', 'updated_at', 'changed_at', 'status_changed_at', 'completed_at', 'qualified_at', 'converted_at', 'accepted_at', 'acceptance_date', 'signed_at', 'signed_date', 'provider_sign_date', 'customer_sign_date', 'invoice_date', 'issue_date', 'issued_date', 'issued_at', 'receipt_date', 'payment_date', 'credit_note_date', 'go_live_at', 'go_live_date', 'approval_requested_at', 'submitted_for_approval_at', 'pending_approval_at', 'approved_at', 'rejected_at', 'approval_decision_at'].map(field => record?.[field]))),
-      allLogs.map(logTimestamp)
+      allLogs.map(logTimestamp),
+      noteLogs.map(logTimestamp)
     );
     const endForOpenStage = (start, collection, closedStatuses = []) => {
-      if (!start || !rows(collection).length) return null;
+      if (!start || !phaseRows(collection).length) return null;
       return stageIsActive(collection, closedStatuses) ? today : null;
     };
     const firstEnd = (start, candidates = [], openEnd = null) => {
@@ -1262,22 +1390,36 @@ const LifecycleAnalytics = {
       return this.getEarliestDate(valid) || (openEnd && this.parseLifecycleDate(openEnd) >= start ? this.parseLifecycleDate(openEnd) : null);
     };
 
-    const leadStart = first('leads', ['lead_created_at', 'created_at', 'qualified_at', 'lead_date']);
-    const dealStart = first('deals', ['deal_created_at', 'created_at', 'deal_opened_at', 'deal_date']);
-    const proposalStart = first('proposals', ['created_at', 'proposal_date', 'sent_at']);
+    const leadStart = phaseFirst('leads', ['lead_created_at', 'created_at', 'lead_date', 'qualified_at']);
+    const dealStart = phaseFirst('deals', ['deal_created_at', 'created_at', 'deal_opened_at', 'deal_date']);
+    const proposalStart = phaseFirst('proposals', ['created_at', 'proposal_date', 'sent_at']);
+    const agreementRecord = chain.agreement;
     const agreementSent = this.getEarliestDate(
-      rows('agreements').map(record => record?.sent_at),
-      transitionDate(['agreement'], ['sent', 'agreement sent'])
+      phaseRows('agreements').map(record => record?.sent_at),
+      transitionDateForRecord(agreementRecord, 'agreement', ['sent', 'agreement sent'])
     );
-    const agreementStart = agreementSent || first('agreements', ['created_at', 'agreement_date', 'effective_date']);
-    const invoiceStart = first('invoices', ['invoice_date', 'issue_date', 'issued_date', 'issued_at', 'created_at']);
-    const receiptStart = first('receipts', ['receipt_date', 'payment_date', 'created_at']);
+    const agreementCreated = phaseFirst('agreements', ['created_at', 'agreement_date', 'effective_date']);
+    const agreementStart = agreementSent || agreementCreated;
+    const invoiceStart = phaseFirst('invoices', ['invoice_date', 'issue_date', 'issued_date', 'issued_at', 'created_at']);
+    const receiptStart = phaseFirst('receipts', ['receipt_date', 'payment_date', 'created_at']);
 
-    const leadConverted = this.getEarliestDate(rows('leads').map(record => [record.lead_converted_at, record.converted_at]), transitionDate(['lead'], ['qualified', 'converted']));
-    const proposalAccepted = this.getEarliestDate(rows('proposals').map(record => [record.accepted_at, record.acceptance_date, record.signed_at]), transitionDate(['proposal'], ['accepted']));
-    const agreementSignedDate = this.getEarliestDate(rows('agreements').map(record => [record.signed_at, record.signed_date, record.provider_sign_date, record.customer_sign_date, record.provider_signed_at, record.customer_signed_at]), transitionDate(['agreement'], ['signed', 'executed']));
+    const leadConverted = this.getEarliestDate(
+      phaseRows('leads').map(record => [record.lead_converted_at, record.converted_at, record.qualified_at]),
+      transitionDateForRecord(chain.lead, 'lead', ['qualified', 'converted'])
+    );
+    const proposalAccepted = this.getEarliestDate(
+      phaseRows('proposals').map(record => [record.accepted_at, record.acceptance_date, record.signed_at]),
+      transitionDateForRecord(chain.proposal, 'proposal', ['accepted'])
+    );
+    const agreementSignedDate = this.getEarliestDate(
+      phaseRows('agreements').map(record => [record.signed_at, record.signed_date, record.provider_sign_date, record.customer_sign_date, record.provider_signed_at, record.customer_signed_at]),
+      transitionDateForRecord(agreementRecord, 'agreement', ['signed', 'executed'])
+    );
     const agreementSigned = agreementSignedDate && agreementSignedDate <= today ? agreementSignedDate : null;
-    const invoiceSettled = this.getEarliestDate(rows('invoices').map(record => [record.paid_at, record.settled_at, record.full_settlement_date]), transitionDate(['invoice'], ['fully paid', 'paid', 'settled']));
+    const invoiceSettled = this.getEarliestDate(
+      phaseRows('invoices').map(record => [record.paid_at, record.settled_at, record.full_settlement_date]),
+      transitionDateForRecord(chain.invoice, 'invoice', ['fully paid', 'paid', 'settled'])
+    );
     const validAgreementInvoiceStart = invoiceStart && invoiceStart <= today ? invoiceStart : null;
     const agreementIsActive = stageIsActive('agreements', ['signed', 'executed', 'cancelled', 'terminated']) && !agreementSigned && !validAgreementInvoiceStart;
 
@@ -1292,6 +1434,13 @@ const LifecycleAnalytics = {
     const daysInProposal = proposalEnd ? this.diffDays(proposalStart, proposalEnd) : null;
     const daysInAgreement = agreementEnd ? this.diffDays(agreementStart, agreementEnd) : null;
     const daysInInvoice = invoiceEnd ? this.diffDays(invoiceStart, invoiceEnd) : null;
+    const phaseWindows = {
+      'Days in Lead': { start: leadStart, end: leadEnd, reference: this.text(chain.lead?.lead_id || chain.lead?.lead_number || chain.lead?.id) },
+      'Days in Deal': { start: dealStart, end: dealEnd, reference: this.text(chain.deal?.deal_id || chain.deal?.deal_number || chain.deal?.id) },
+      'Days in Proposal': { start: proposalStart, end: proposalEnd, reference: this.text(chain.proposal?.proposal_id || chain.proposal?.proposal_number || chain.proposal?.ref_number || chain.proposal?.id) },
+      'Days in Agreement': { start: agreementStart, end: agreementEnd, reference: this.text(chain.agreement?.agreement_number || chain.agreement?.agreement_id || chain.agreement?.id) },
+      'Days in Invoice': { start: invoiceStart, end: invoiceEnd, reference: this.text(chain.invoice?.invoice_number || chain.invoice?.invoice_id || chain.invoice?.id) }
+    };
 
     const seenTransitions = new Set();
     const stageTransitions = allLogs.filter(log => {
@@ -1333,15 +1482,31 @@ const LifecycleAnalytics = {
       ? discountAmount / discountBaseAmount * 100
       : (discountAuditRows.length ? discountAuditRows.reduce((sum, item) => sum + item.discountPercent, 0) / discountAuditRows.length : null);
 
-    const earliestLifecycleDate = this.getEarliestDate(leadStart, dealStart, proposalStart, agreementStart, invoiceStart, first('onboarding', ['created_at']));
-    const latestLifecycleEnd = this.getLatestDate(leadEnd, dealEnd, proposalEnd, agreementEnd, invoiceEnd, latestActivityDate);
+    const chainRecords = [
+      chain.lead, chain.deal, chain.proposal, chain.agreement, chain.invoice,
+      ...(chain.receipts || []), ...(chain.creditNotes || []), ...(chain.onboarding || [])
+    ].filter(Boolean);
+    const chainReferences = chainRecords.reduce((set, record) => {
+      this.getLifecycleReferences(record).forEach(reference => set.add(reference));
+      return set;
+    }, new Set());
+    const chainLogs = allLogs.filter(log => {
+      const logReferences = this.getLifecycleReferences(log);
+      return [...logReferences].some(reference => chainReferences.has(reference));
+    });
+    const chainLatestActivityDate = this.getLatestDate(
+      chainRecords.flatMap(record => ['created_at', 'updated_at', 'changed_at', 'status_changed_at', 'completed_at', 'qualified_at', 'converted_at', 'accepted_at', 'acceptance_date', 'signed_at', 'signed_date', 'provider_sign_date', 'customer_sign_date', 'invoice_date', 'issue_date', 'issued_date', 'issued_at', 'receipt_date', 'payment_date', 'credit_note_date', 'go_live_at', 'go_live_date'].map(field => record?.[field])),
+      chainLogs.map(logTimestamp)
+    );
+    const earliestLifecycleDate = this.getEarliestDate(leadStart, dealStart, proposalStart, agreementStart, invoiceStart, phaseFirst('onboarding', ['created_at']));
+    const latestLifecycleEnd = this.getLatestDate(leadEnd, dealEnd, proposalEnd, agreementEnd, invoiceEnd, chainLatestActivityDate);
     const totalCycleDuration = earliestLifecycleDate && latestLifecycleEnd ? this.diffDays(earliestLifecycleDate, latestLifecycleEnd) : null;
-    const invoiceDueDate = first('invoices', ['due_date', 'payment_due_date']);
+    const invoiceDueDate = phaseFirst('invoices', ['due_date', 'payment_due_date']);
     const invoiceThreshold = invoiceStart && invoiceDueDate ? this.diffDays(invoiceStart, invoiceDueDate) : 30;
     const stageThresholds = { Lead: 7, Deal: 14, Proposal: 14, Agreement: 30, Invoice: invoiceThreshold, Onboarding: 14, ...(context.lifecycleStageThresholds || {}) };
     const openStageCandidates = [];
     const addOpenStage = (name, start, collection, closedStatuses) => {
-      if (!start || !rows(collection).length || !stageIsActive(collection, closedStatuses)) return;
+      if (!start || !phaseRows(collection).length || !stageIsActive(collection, closedStatuses)) return;
       openStageCandidates.push({ name, start, age: this.diffDays(start, today), threshold: this.safeNumber(stageThresholds[name], 0) });
     };
     if (!dealStart) addOpenStage('Lead', leadStart, 'leads', ['qualified', 'converted', 'lost', 'closed', 'disqualified']);
@@ -1349,7 +1514,7 @@ const LifecycleAnalytics = {
     if (!agreementStart) addOpenStage('Proposal', proposalStart, 'proposals', ['accepted', 'rejected', 'declined', 'expired', 'cancelled']);
     if (!validAgreementInvoiceStart && !agreementSigned) addOpenStage('Agreement', agreementStart, 'agreements', ['signed', 'executed', 'cancelled', 'terminated']);
     addOpenStage('Invoice', invoiceStart, 'invoices', ['fully paid', 'paid', 'settled', 'cancelled', 'void']);
-    addOpenStage('Onboarding', first('onboarding', ['created_at', 'requested_at']), 'onboarding', ['completed', 'cancelled']);
+    addOpenStage('Onboarding', phaseFirst('onboarding', ['created_at', 'requested_at']), 'onboarding', ['completed', 'cancelled']);
     const latestOpenStage = openStageCandidates.sort((a, b) => b.start - a.start)[0] || null;
     const stuck = latestOpenStage && latestOpenStage.age > latestOpenStage.threshold ? latestOpenStage : null;
     const durations = [{ name: 'Lead', value: daysInLead }, { name: 'Deal', value: daysInDeal }, { name: 'Proposal', value: daysInProposal }, { name: 'Agreement', value: daysInAgreement }, { name: 'Invoice', value: daysInInvoice }].filter(item => item.value !== null);
@@ -1360,7 +1525,8 @@ const LifecycleAnalytics = {
       numberOfStageChanges: stageTransitions.length, stageChanges: stageTransitions.length, stageChangesEstimated: false,
       approvalDelay, lastActivityAge: latestActivityDate ? this.diffDays(latestActivityDate, today) : null,
       averageDiscount, stuckStage: stuck?.name || 'None', bottleneckWarning: bottleneck ? `${bottleneck.name} stage is above its expected duration` : '',
-      lastActivityDate: latestActivityDate?.toISOString() || ''
+      lastActivityDate: latestActivityDate?.toISOString() || '',
+      phaseWindows
     };
     const audit = {
       lead: rows('leads').map(record => ({ id: record.id, created_at: record.created_at, qualified_at: record.qualified_at, converted_at: record.converted_at })),
@@ -1370,7 +1536,15 @@ const LifecycleAnalytics = {
       invoices: rows('invoices').map(record => ({ id: record.id, invoice_date: record.invoice_date, issue_date: record.issue_date, status: normalizedStatus(record) })),
       receipts: rows('receipts').map(record => ({ id: record.id, receipt_date: record.receipt_date, payment_date: record.payment_date })),
       creditNotes: rows('creditNotes').map(record => ({ id: record.id, credit_note_date: record.credit_note_date, created_at: record.created_at })),
-      durations: { daysInLead, daysInDeal, daysInProposal, daysInAgreement, daysInInvoice, totalCycleDuration }, annualSaasRows: discountAuditRows,
+      durations: { daysInLead, daysInDeal, daysInProposal, daysInAgreement, daysInInvoice, totalCycleDuration }, phaseWindows,
+      selectedChain: {
+        lead: phaseWindows['Days in Lead'].reference,
+        deal: phaseWindows['Days in Deal'].reference,
+        proposal: phaseWindows['Days in Proposal'].reference,
+        agreement: phaseWindows['Days in Agreement'].reference,
+        invoice: phaseWindows['Days in Invoice'].reference
+      },
+      annualSaasRows: discountAuditRows,
       discountBaseAmount, discountAmount, weightedAverageDiscount: averageDiscount, finalCardValues: metrics
     };
     if (this.isDevelopmentMode()) console.log('Lifecycle Agreement Duration Audit', {
@@ -1494,6 +1668,7 @@ const LifecycleAnalytics = {
     }
 
     const lifecycle = this.buildLifecycleMetrics(account, today);
+    const primaryLifecycleChain = this.selectPrimaryLifecycleChain(account);
     const paymentState = this.derivePaymentStateFromInvoices(account.invoices, totalInvoiced, totalPaid, totalDue);
     const onboardingStatus = this.summarizeOnboardingStatus(account.onboarding);
 
@@ -1540,12 +1715,12 @@ const LifecycleAnalytics = {
       lastActivity: lifecycle.lastActivityDate,
       lifecycle,
       lifecycleChain: {
-        lead: this.text(account.leads[0]?.lead_id || account.leads[0]?.id),
-        deal: this.text(account.deals[0]?.deal_id || account.deals[0]?.id),
-        proposal: this.text(account.proposals[0]?.proposal_id || account.proposals[0]?.id),
-        agreement: this.text(account.agreements[0]?.agreement_id || account.agreements[0]?.id),
-        invoice: this.text(account.invoices[0]?.invoice_id || account.invoices[0]?.id),
-        receipt: this.text(account.receipts[0]?.receipt_id || account.receipts[0]?.id),
+        lead: this.text(primaryLifecycleChain.lead?.lead_id || primaryLifecycleChain.lead?.lead_number || primaryLifecycleChain.lead?.id),
+        deal: this.text(primaryLifecycleChain.deal?.deal_id || primaryLifecycleChain.deal?.deal_number || primaryLifecycleChain.deal?.id),
+        proposal: this.text(primaryLifecycleChain.proposal?.proposal_id || primaryLifecycleChain.proposal?.proposal_number || primaryLifecycleChain.proposal?.ref_number || primaryLifecycleChain.proposal?.id),
+        agreement: this.text(primaryLifecycleChain.agreement?.agreement_number || primaryLifecycleChain.agreement?.agreement_id || primaryLifecycleChain.agreement?.id),
+        invoice: this.text(primaryLifecycleChain.invoice?.invoice_number || primaryLifecycleChain.invoice?.invoice_id || primaryLifecycleChain.invoice?.id),
+        receipt: this.text(primaryLifecycleChain.receipts?.[0]?.receipt_number || primaryLifecycleChain.receipts?.[0]?.receipt_id || primaryLifecycleChain.receipts?.[0]?.id),
         company_id: this.text(account.companyId),
         company_name: this.text(account.linkedCompany?.company_name || account.companyName),
         customer_name: this.text(account.companyName),
@@ -2026,7 +2201,11 @@ const LifecycleAnalytics = {
                 if (typeof value === 'number') return this.formatDecimal(value);
                 return String(value);
               })();
-              return `<div class="card" title="${this.escape(lifecycleMetricHelp[label] || '')}"><div class="label">${this.escape(label)} <span aria-label="Metric calculation help" style="cursor:help">ⓘ</span></div><div class="value">${this.escape(formattedValue)}</div></div>`;
+              const phaseWindow = selected.lifecycle?.phaseWindows?.[label];
+              const phaseWindowHtml = phaseWindow?.start && phaseWindow?.end
+                ? `<div class="muted" style="font-size:11px;margin-top:6px;line-height:1.35;">${phaseWindow.reference ? `${this.escape(phaseWindow.reference)} · ` : ''}${this.escape(this.formatTimelineDate(phaseWindow.start))} → ${this.escape(this.formatTimelineDate(phaseWindow.end))}</div>`
+                : '';
+              return `<div class="card" title="${this.escape(lifecycleMetricHelp[label] || '')}"><div class="label">${this.escape(label)} <span aria-label="Metric calculation help" style="cursor:help">ⓘ</span></div><div class="value">${this.escape(formattedValue)}</div>${phaseWindowHtml}</div>`;
             })
             .join('')}
         </div>
