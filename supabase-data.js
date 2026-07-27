@@ -8045,6 +8045,14 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         }
       }
       const receiptWithItems = await withItems(resource, createdReceiptRow);
+
+      // Receipt persistence must never depend on analytics history logging.
+      // The database receipt trigger is intentionally removed by the V23 migration;
+      // log the created receipt here only after the receipt and its items are fully saved.
+      recordLifecycleStatusChanges(client, 'receipts', {}, createdReceiptRow, { snapshot: true }).catch(lifecycleError => {
+        console.warn('[lifecycle status] receipt create logging failed after save', lifecycleError);
+      });
+
       await createNotificationAndPush({
         title: 'Receipt created from invoice',
         message: `Invoice ${invoiceUuid} generated a new receipt.`,
