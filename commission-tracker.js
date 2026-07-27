@@ -278,8 +278,22 @@
         if(btn.dataset.installmentAction==='undo') this.undoPayment(btn.dataset.id);
       });
     },
-    openModal(id){ const modal=this.el(id);if(!modal)return;modal.classList.add('show');modal.setAttribute('aria-hidden','false');global.ModalScrollLock?.lock?.(); },
-    closeModal(id){ const modal=this.el(id);if(!modal)return;modal.classList.remove('show');modal.setAttribute('aria-hidden','true');global.ModalScrollLock?.unlock?.(); },
+    openModal(id){
+      const modal=this.el(id);
+      if(!modal) return;
+      // The shared InCheck360 modal stylesheet displays `.modal.open`.
+      // Keep `show` as a compatibility class, but always add `open`.
+      modal.classList.add('open','show');
+      modal.setAttribute('aria-hidden','false');
+      global.ModalScrollLock?.lock?.();
+    },
+    closeModal(id){
+      const modal=this.el(id);
+      if(!modal) return;
+      modal.classList.remove('open','show');
+      modal.setAttribute('aria-hidden','true');
+      global.ModalScrollLock?.unlock?.();
+    },
     populateInvoiceSelect(selected=''){
       const select=this.el('commissionInvoiceInput'); if(!select)return;
       const existing=new Set(this.state.commissions.filter(row=>String(row.id)!==String(this.state.editingId||'')).map(row=>String(row.invoice_id||row.invoice_number)));
