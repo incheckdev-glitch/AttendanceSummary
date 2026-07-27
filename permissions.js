@@ -91,24 +91,14 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     delete: ['admin', 'dev']
   }),
   sales_commissions: Object.freeze({
-    view: ['admin','dev','developer','head_of_sales','sales_manager','sales_executive','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
-    list: ['admin','dev','developer','head_of_sales','sales_manager','sales_executive','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
-    get: ['admin','dev','developer','head_of_sales','sales_manager','sales_executive','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
-    export: ['admin','dev','developer','head_of_sales','sales_manager','sales_executive','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
-    create: ['admin','dev','developer','head_of_sales','sales_manager','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
-    update: ['admin','dev','developer','head_of_sales','sales_manager','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
-    delete: ['admin','dev','developer','head_of_sales','sales_manager','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
-    manage: ['admin','dev','developer','head_of_sales','sales_manager','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant']
+    manage_all: ['admin','dev','developer','head_of_sales','sales_manager','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
+    view_all: ['viewer'],
+    view_related: ['sales_executive']
   }),
   sales_commission_installments: Object.freeze({
-    view: ['admin','dev','developer','head_of_sales','sales_manager','sales_executive','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
-    list: ['admin','dev','developer','head_of_sales','sales_manager','sales_executive','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
-    get: ['admin','dev','developer','head_of_sales','sales_manager','sales_executive','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
-    create: ['admin','dev','developer','head_of_sales','sales_manager','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
-    update: ['admin','dev','developer','head_of_sales','sales_manager','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
-    delete: ['admin','dev','developer','head_of_sales','sales_manager','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
-    pay: ['admin','dev','developer','head_of_sales','sales_manager','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
-    manage: ['admin','dev','developer','head_of_sales','sales_manager','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant']
+    manage_all: ['admin','dev','developer','head_of_sales','sales_manager','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
+    view_all: ['viewer'],
+    view_related: ['sales_executive']
   }),
   proposal_catalog: Object.freeze({
     list: ['admin', 'dev', 'viewer', 'hoo'],
@@ -558,6 +548,9 @@ const Permissions = {
   },
   actionAliasMap: Object.freeze({
     view: ['list', 'get'],
+    view_all: ['view', 'list', 'get', 'export'],
+    view_related: ['view', 'list', 'get', 'export'],
+    manage_all: ['view', 'list', 'get', 'create', 'save', 'update', 'delete', 'export', 'manage', 'pay'],
     manage: ['view', 'list', 'get', 'create', 'save', 'update', 'delete', 'export']
   }),
   createMatrixEntry() {

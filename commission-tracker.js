@@ -23,9 +23,34 @@
     num(value){ const n = Number(value); return Number.isFinite(n) ? n : 0; },
     normalize(value){ return String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_'); },
     currentUser(){ return global.Permissions?.getResolvedCurrentUser?.() || global.Session?.authContext?.()?.profile || {}; },
-    canView(){ return Boolean(global.Permissions?.can?.('sales_commissions','view') || global.Permissions?.can?.('sales_commissions','list') || global.Permissions?.can?.('sales_commissions','manage')); },
-    canManage(){ return Boolean(global.Permissions?.can?.('sales_commissions','manage') || global.Permissions?.can?.('sales_commissions','create') || global.Permissions?.can?.('sales_commissions','update')); },
-    canDelete(){ return Boolean(global.Permissions?.can?.('sales_commissions','delete') || global.Permissions?.can?.('sales_commissions','manage')); },
+    currentUserId(){
+      const user=this.currentUser();
+      return String(user?.id || user?.user_id || user?.profile?.id || global.Session?.authContext?.()?.user?.id || '').trim();
+    },
+    currentUserEmail(){
+      const user=this.currentUser();
+      return String(user?.email || user?.profile?.email || global.Session?.authContext?.()?.user?.email || '').trim().toLowerCase();
+    },
+    permission(action){ return Boolean(global.Permissions?.can?.('sales_commissions',action)); },
+    accessLevel(){
+      if(this.permission('manage_all') || this.permission('manage')) return 'manage_all';
+      if(this.permission('view_all')) return 'view_all';
+      if(this.permission('view_related')) return 'view_related';
+      return 'none';
+    },
+    canView(){ return this.accessLevel() !== 'none'; },
+    canViewAll(){ return ['manage_all','view_all'].includes(this.accessLevel()); },
+    isRelatedOnly(){ return this.accessLevel() === 'view_related'; },
+    canManage(){ return this.accessLevel() === 'manage_all'; },
+    canDelete(){ return this.canManage(); },
+    canExport(){ return this.canView(); },
+    isRelatedCommission(row){
+      const userId=this.currentUserId();
+      const userEmail=this.currentUserEmail();
+      const salespersonId=String(row?.salesperson_id || '').trim();
+      const salespersonEmail=String(row?.salesperson_email || '').trim().toLowerCase();
+      return Boolean((userId && salespersonId === userId) || (userEmail && salespersonEmail === userEmail));
+    },
     toast(message){ global.UI?.toast?.(message); },
     formatDate(value){
       if(!value) return '—';
@@ -142,22 +167,38 @@
 
     async refresh(){
       if(this.loading) return;
+      if(!this.canView()){
+        const deniedState=this.el('commissionState');
+        if(deniedState) deniedState.textContent='You do not have access to Sales Commission Tracker.';
+        return;
+      }
       const db=this.db();
       if(!db){ this.toast('Supabase is not available.'); return; }
       this.loading=true;
       const state=this.el('commissionState'); if(state) state.textContent='Loading commission records…';
       try{
+        const manageAll=this.canManage();
         const [commissionsRes,installmentsRes,invoiceRows,profilesRes]=await Promise.all([
           db.from('sales_commissions').select('*').order('created_at',{ascending:false}),
           db.from('sales_commission_installments').select('*').order('installment_no',{ascending:true}),
-          this.loadInvoices(db),
-          db.from('profiles').select('id,name,email,username,role_key,is_active,active').limit(2000)
+          manageAll ? this.loadInvoices(db) : Promise.resolve([]),
+          manageAll
+            ? db.from('profiles').select('id,name,email,username,role_key,is_active,active').limit(2000)
+            : Promise.resolve({data:[],error:null})
         ]);
         if(commissionsRes.error) throw commissionsRes.error;
         if(installmentsRes.error) throw installmentsRes.error;
         if(profilesRes.error) console.warn('[Commission Tracker] profiles load failed',profilesRes.error);
-        this.state.commissions=Array.isArray(commissionsRes.data)?commissionsRes.data:[];
-        this.state.installments=Array.isArray(installmentsRes.data)?installmentsRes.data:[];
+
+        const rawCommissions=Array.isArray(commissionsRes.data)?commissionsRes.data:[];
+        this.state.commissions=this.isRelatedOnly()
+          ? rawCommissions.filter(row=>this.isRelatedCommission(row))
+          : rawCommissions;
+
+        const allowedCommissionIds=new Set(this.state.commissions.map(row=>String(row.id)));
+        this.state.installments=(Array.isArray(installmentsRes.data)?installmentsRes.data:[])
+          .filter(row=>allowedCommissionIds.has(String(row.commission_id)));
+
         this.state.invoices=(Array.isArray(invoiceRows)?invoiceRows:[]).filter(row=>{
           const status=this.normalize(row.status || row.invoice_status || row.payment_state);
           return this.invoiceTotal(row)>0 && !['cancelled','canceled','void','deleted'].includes(status);
@@ -166,19 +207,35 @@
           const left=new Date(this.invoiceDate(a)||0).getTime()||0;
           return right-left;
         });
-        const profiles=Array.isArray(profilesRes.data)?profilesRes.data:[];
-        let salespeople=profiles.filter(row=>{
-          const role=this.normalize(row.role_key);
-          const active=row.is_active!==false && row.active!==false;
-          return active && (role.includes('sales') || ['head_of_sales','sales_executive','sales_manager'].includes(role));
-        });
-        if(!salespeople.length) salespeople=profiles.filter(row=>row.is_active!==false && row.active!==false);
-        this.state.salespeople=salespeople.sort((a,b)=>this.salespersonName(a).localeCompare(this.salespersonName(b)));
+
+        if(manageAll){
+          const profiles=Array.isArray(profilesRes.data)?profilesRes.data:[];
+          let salespeople=profiles.filter(row=>{
+            const role=this.normalize(row.role_key);
+            const active=row.is_active!==false && row.active!==false;
+            return active && (role.includes('sales') || ['head_of_sales','sales_executive','sales_manager'].includes(role));
+          });
+          if(!salespeople.length) salespeople=profiles.filter(row=>row.is_active!==false && row.active!==false);
+          this.state.salespeople=salespeople.sort((a,b)=>this.salespersonName(a).localeCompare(this.salespersonName(b)));
+        }else{
+          const bySalesperson=new Map();
+          this.state.commissions.forEach(row=>{
+            const key=String(row.salesperson_id || row.salesperson_email || row.salesperson_name || '').trim();
+            if(!key || bySalesperson.has(key)) return;
+            bySalesperson.set(key,{
+              id:String(row.salesperson_id || key),
+              name:row.salesperson_name || row.salesperson_email || 'Sales User',
+              email:row.salesperson_email || ''
+            });
+          });
+          this.state.salespeople=[...bySalesperson.values()].sort((a,b)=>this.salespersonName(a).localeCompare(this.salespersonName(b)));
+        }
+
         this.populateFilters();
         this.render();
       }catch(error){
         console.error('[Commission Tracker] refresh failed',error);
-        if(state) state.textContent='Unable to load. Run the Sales Commission SQL migration first.';
+        if(state) state.textContent='Unable to load Sales Commission Tracker.';
         this.toast(error?.message || 'Unable to load Sales Commission Tracker.');
       }finally{this.loading=false;}
     },
@@ -214,7 +271,7 @@
     readFilters(){
       this.state.filters={
         search:String(this.el('commissionSearchInput')?.value||'').trim().toLowerCase(),
-        salesperson:String(this.el('commissionSalespersonFilter')?.value||'all'),
+        salesperson:this.isRelatedOnly() ? 'all' : String(this.el('commissionSalespersonFilter')?.value||'all'),
         type:String(this.el('commissionTypeFilter')?.value||'all'),
         status:String(this.el('commissionStatusFilter')?.value||'all'),
         currency:String(this.el('commissionCurrencyFilter')?.value||'all')
@@ -251,20 +308,44 @@
           <td><div class="commission-actions"><button class="btn ghost sm" type="button" data-commission-action="view" data-id="${this.attr(row.id)}">View</button>${this.canManage()?`<button class="btn ghost sm" type="button" data-commission-action="edit" data-id="${this.attr(row.id)}">Edit</button>`:''}${this.canDelete()?`<button class="btn danger sm" type="button" data-commission-action="delete" data-id="${this.attr(row.id)}">Delete</button>`:''}</div></td>
         </tr>`;
       }).join('');
-      const state=this.el('commissionState'); if(state) state.textContent=`Showing ${pageRows.length ? start+1 : 0}–${Math.min(start+this.state.pageSize,rows.length)} of ${rows.length} commission records.`;
+      const state=this.el('commissionState');
+      if(state){
+        const scope=this.accessLevel()==='manage_all'
+          ? 'View & Manage All'
+          : this.accessLevel()==='view_all'
+            ? 'View All — Read Only'
+            : 'View Related Commissions Only';
+        state.textContent=`${scope} · Showing ${pageRows.length ? start+1 : 0}–${Math.min(start+this.state.pageSize,rows.length)} of ${rows.length} commission records.`;
+      }
       const pageInfo=this.el('commissionPageInfo'); if(pageInfo) pageInfo.textContent=`Page ${this.state.page} of ${pages}`;
       const prev=this.el('commissionPrevPage'); if(prev) prev.disabled=this.state.page<=1;
       const next=this.el('commissionNextPage'); if(next) next.disabled=this.state.page>=pages;
       const create=this.el('commissionCreateBtn'); if(create) create.style.display=this.canManage()?'':'none';
-      const exportBtn=this.el('commissionExportBtn'); if(exportBtn) exportBtn.style.display=(global.Permissions?.can?.('sales_commissions','export')||this.canManage())?'':'none';
+      const exportBtn=this.el('commissionExportBtn'); if(exportBtn) exportBtn.style.display=this.canExport()?'':'none';
     },
     populateFilters(){
       const salesFilter=this.el('commissionSalespersonFilter');
-      if(salesFilter){const current=salesFilter.value||'all';salesFilter.innerHTML='<option value="all">All salespeople</option>'+this.state.salespeople.map(row=>`<option value="${this.attr(row.id)}">${this.escape(this.salespersonName(row))}</option>`).join('');salesFilter.value=Array.from(salesFilter.options).some(o=>o.value===current)?current:'all';}
+      if(salesFilter){
+        const current=salesFilter.value||'all';
+        const relatedOnly=this.isRelatedOnly();
+        salesFilter.innerHTML=(relatedOnly?'':'<option value="all">All salespeople</option>')+
+          this.state.salespeople.map(row=>`<option value="${this.attr(row.id)}">${this.escape(this.salespersonName(row))}</option>`).join('');
+        if(relatedOnly){
+          salesFilter.value=this.state.salespeople[0]?.id || '';
+          salesFilter.disabled=true;
+          this.state.filters.salesperson='all';
+        }else{
+          salesFilter.disabled=false;
+          salesFilter.value=Array.from(salesFilter.options).some(o=>o.value===current)?current:'all';
+        }
+      }
       const currencies=[...new Set(this.state.commissions.map(row=>String(row.currency||'USD').toUpperCase()))].sort();
       const currencyFilter=this.el('commissionCurrencyFilter');
       if(currencyFilter){const current=currencyFilter.value||'all';currencyFilter.innerHTML='<option value="all">All currencies</option>'+currencies.map(code=>`<option value="${this.attr(code)}">${this.escape(code)}</option>`).join('');currencyFilter.value=currencies.includes(current)?current:'all';}
-      this.populateInvoiceSelect(); this.populateSalespersonSelect();
+      if(this.canManage()){
+        this.populateInvoiceSelect();
+        this.populateSalespersonSelect();
+      }
     },
     clearFilters(){
       ['commissionSearchInput'].forEach(id=>{const el=this.el(id);if(el)el.value='';});
@@ -506,6 +587,7 @@
       if(!this.canDelete())return;const row=this.state.commissions.find(item=>String(item.id)===String(id));if(!row)return;const stats=this.statsFor(row);if(stats.paid>0){this.toast('A commission with paid installments cannot be deleted. Undo the payments first.');return;}if(!confirm(`Delete commission tracking for ${row.invoice_number}?`))return;const {error}=await this.db().from('sales_commissions').delete().eq('id',id);if(error){this.toast(error.message);return;}this.toast('Commission record deleted.');await this.refresh();
     },
     exportCsv(){
+      if(!this.canExport()){this.toast('You do not have permission to export commissions.');return;}
       const rows=this.filtered();if(!rows.length){this.toast('No commission records to export.');return;}const headers=['Invoice','Client','Salesperson','Salesperson Email','Commission Type','Rate %','Invoice Value','Commissionable Amount','Commission Total','Paid','Remaining','Currency','Payment Term','Installments','Status','Invoice Date','Notes'];
       const csv=[headers,...rows.map(row=>{const stats=this.statsFor(row);return[row.invoice_number,row.client_name,row.salesperson_name,row.salesperson_email,row.commission_type,this.num(row.commission_rate).toFixed(2),this.num(row.invoice_value).toFixed(2),this.num(row.commissionable_amount).toFixed(2),this.num(row.commission_total).toFixed(2),stats.paid.toFixed(2),stats.remaining.toFixed(2),row.currency,row.payment_term,stats.installments.length,stats.status,row.invoice_date,row.notes];})].map(cols=>cols.map(value=>`"${String(value??'').replace(/"/g,'""')}"`).join(',')).join('\n');
       const blob=new Blob([`\ufeff${csv}`],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`sales-commission-tracker-${this.isoDate(new Date())}.csv`;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);

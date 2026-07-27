@@ -631,6 +631,15 @@ const RolesAdmin = {
           undo_override: 'Undo Renewal Override',
           create_renewal_invoice: 'Create Renewal Invoice'
         }
+      },
+      sales_commissions: {
+        moduleName: 'Sales Commission Tracker',
+        displayGroup: 'CRM',
+        actions: {
+          manage_all: 'View & Manage All Commissions',
+          view_all: 'View All Commissions — Read Only',
+          view_related: 'View Related Commissions Only'
+        }
       }
     };
     const module = catalog[String(resource || '').trim().toLowerCase()] || null;
