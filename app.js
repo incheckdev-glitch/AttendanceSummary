@@ -3178,7 +3178,7 @@ function setActiveView(view) {
   if (view === 'deals' && window.Deals?.loadAndRefresh) runViewLoader('deals', () => Deals.loadAndRefresh());
   if (view === 'proposals' && window.Proposals?.loadAndRefresh) runViewLoader('proposals', () => Proposals.loadAndRefresh());
   if (view === 'agreements' && window.Agreements?.loadAndRefresh) runViewLoader('agreements', () => window.Agreements.loadAndRefresh());
-  if (view === 'commissionTracker' && window.SalesCommissionTracker?.init) runViewLoader('sales commission tracker', () => SalesCommissionTracker.init());
+  if (view === 'commissionTracker' && window.SalesCommissionTracker?.init) runViewLoader('sales commission tracker', () => window.SalesCommissionTracker.init());
   if (view === 'invoices' && window.Invoices?.refresh) runViewLoader('invoices', () => Invoices.refresh());
   if (view === 'receipts' && window.Receipts?.refresh) runViewLoader('receipts', () => Receipts.refresh());
   if ((view === 'creditNotes' || view === 'credit_notes') && window.CreditNotes?.refresh) runViewLoader('credit notes', () => CreditNotes.refresh());

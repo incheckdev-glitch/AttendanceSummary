@@ -53,15 +53,26 @@
     invoiceDueDate(row){ return row?.due_date || row?.payment_due_date || row?.invoice_due_date || this.invoiceDate(row); },
     salespersonName(row){ return String(row?.name || row?.full_name || row?.display_name || row?.username || row?.email || 'Sales User').trim(); },
 
-    async init(){
-      if(!this.canView()){
-        const view = this.el('commissionTrackerView');
-        if(view) view.innerHTML = '<div class="commission-empty">You do not have permission to view Sales Commission Tracker.</div>';
-        return;
-      }
+    ensureUiReady(){
+      const view = this.el('commissionTrackerView');
+      if(!view) return false;
+      if(!global.Permissions || typeof global.Permissions.can !== 'function') return false;
+      if(!this.canView()) return false;
       this.mountModal();
       this.bind();
       this.initialized = true;
+      return true;
+    },
+
+    async init(){
+      if(!this.ensureUiReady()){
+        const view = this.el('commissionTrackerView');
+        if(view && global.Permissions && typeof global.Permissions.can === 'function' && !this.canView()){
+          const state = this.el('commissionState');
+          if(state) state.textContent = 'You do not have permission to view Sales Commission Tracker.';
+        }
+        return;
+      }
       await this.refresh();
     },
 
@@ -407,4 +418,77 @@
   };
 
   global.SalesCommissionTracker=MODULE;
+
+  // Robust CRM bootstrapping: the Commission Tracker can be opened through
+  // grouped CRM navigation, hash routing, or a restored active view. Bind the
+  // workspace in every path instead of relying on only one app.js callback.
+  const bootWhenAvailable = () => {
+    const view = document.getElementById('commissionTrackerView');
+    if(!view) return;
+
+    const tryBoot = () => {
+      if(!document.getElementById('commissionTrackerView')) return;
+      if(!global.Permissions || typeof global.Permissions.can !== 'function') return;
+      if(!MODULE.canView()) return;
+      MODULE.ensureUiReady();
+      if(view.classList.contains('active') && !MODULE.loading){
+        MODULE.refresh();
+      }
+    };
+
+    const tab = document.getElementById('commissionTrackerTab');
+    if(tab && tab.dataset.commissionBootBound !== 'true'){
+      tab.dataset.commissionBootBound = 'true';
+      tab.addEventListener('click', () => setTimeout(tryBoot, 0));
+    }
+
+    if(view.dataset.commissionObserverBound !== 'true'){
+      view.dataset.commissionObserverBound = 'true';
+      const observer = new MutationObserver(() => {
+        if(view.classList.contains('active')) tryBoot();
+      });
+      observer.observe(view, {attributes:true, attributeFilter:['class']});
+    }
+
+    // Capture the first click if the module became visible before its normal
+    // loader ran. This makes Add, Refresh, Export, filters, paging, row actions,
+    // and modal controls responsive immediately.
+    if(document.documentElement.dataset.commissionFallbackBound !== 'true'){
+      document.documentElement.dataset.commissionFallbackBound = 'true';
+      document.addEventListener('click', event => {
+        const control = event.target?.closest?.(
+          '#commissionTrackerView button, #commissionEntryModal button, #commissionDetailsModal button, #commissionPaymentModal button'
+        );
+        if(!control || control.dataset.commissionBound === 'true') return;
+        const wasReady = MODULE.initialized;
+        if(!MODULE.ensureUiReady()) return;
+        if(wasReady) return;
+
+        // The first event began before listeners existed, so execute the
+        // requested action once. Later clicks use the regular bound handlers.
+        const id = control.id;
+        const action = control.dataset.commissionAction;
+        const installmentAction = control.dataset.installmentAction;
+        if(id === 'commissionCreateBtn') MODULE.openCreate();
+        else if(id === 'commissionRefreshBtn') MODULE.refresh();
+        else if(id === 'commissionExportBtn') MODULE.exportCsv();
+        else if(id === 'commissionClearFiltersBtn') MODULE.clearFilters();
+        else if(id === 'commissionPrevPage' && MODULE.state.page > 1){ MODULE.state.page--; MODULE.render(); }
+        else if(id === 'commissionNextPage'){
+          const pages = Math.max(1, Math.ceil(MODULE.filtered().length / MODULE.state.pageSize));
+          if(MODULE.state.page < pages){ MODULE.state.page++; MODULE.render(); }
+        }
+        else if(action === 'view') MODULE.openDetails(control.dataset.id);
+        else if(action === 'edit') MODULE.openEdit(control.dataset.id);
+        else if(action === 'delete') MODULE.remove(control.dataset.id);
+        else if(installmentAction === 'pay') MODULE.openPayment(control.dataset.id);
+        else if(installmentAction === 'undo') MODULE.undoPayment(control.dataset.id);
+      }, true);
+    }
+
+    tryBoot();
+  };
+
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bootWhenAvailable, {once:true});
+  else bootWhenAvailable();
 })(window);
