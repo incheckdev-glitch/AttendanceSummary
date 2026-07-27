@@ -410,6 +410,22 @@
       this.el('commissionCalcPayments').textContent=`${calc.rows.length} payment${calc.rows.length===1?'':'s'}`;
       const preview=this.el('commissionSchedulePreview');if(preview)preview.innerHTML=calc.rows.length?`<table><thead><tr><th>#</th><th>Payment</th><th>Due Date</th><th>Commission Amount</th></tr></thead><tbody>${calc.rows.map(row=>`<tr><td>${row.installment_no}</td><td>${this.escape(row.schedule_label)}</td><td>${this.formatDate(row.due_date)}</td><td class="commission-money">${this.money(row.commission_amount,calc.currency)}</td></tr>`).join('')}</tbody></table>`:'<div class="commission-empty">Select an invoice to build the commission schedule.</div>';
     },
+    installmentInsertPayloads(rows, commissionId){
+      return (Array.isArray(rows) ? rows : []).map(row=>({
+        commission_id: commissionId,
+        installment_no: Math.max(1, Math.floor(this.num(row.installment_no) || 1)),
+        schedule_label: String(row.schedule_label || '').trim() || null,
+        source_schedule_id: row.source_schedule_id ? String(row.source_schedule_id) : null,
+        due_date: row.due_date ? this.isoDate(row.due_date) : null,
+        commission_amount: Math.max(0, this.num(row.commission_amount)),
+        paid_amount: 0,
+        status: 'scheduled',
+        paid_date: null,
+        payment_reference: null,
+        notes: null,
+        updated_at: new Date().toISOString()
+      }));
+    },
     async saveEntry(){
       if(!this.canManage())return;
       const db=this.db();const invoice=this.findInvoice(this.el('commissionInvoiceInput')?.value);const salesperson=this.state.salespeople.find(row=>String(row.id)===String(this.el('commissionSalespersonInput')?.value));
@@ -419,7 +435,9 @@
       const payload={
         invoice_id:String(invoice.id||''),invoice_number:this.invoiceNumber(invoice),client_id:String(invoice.client_id||invoice.company_id||'').trim()||null,client_name:this.invoiceClient(invoice),salesperson_id:salesperson.id,salesperson_name:this.salespersonName(salesperson),salesperson_email:salesperson.email||null,commission_type:this.el('commissionTypeInput').value,commission_rate:this.rate(),invoice_value:this.invoiceTotal(invoice),commissionable_amount:calc.base,commission_total:calc.total,currency:calc.currency,payment_term:this.invoicePaymentTerm(invoice),invoice_date:this.isoDate(this.invoiceDate(invoice))||null,invoice_due_date:this.isoDate(this.invoiceDueDate(invoice))||null,installment_count:calc.rows.length,notes:String(this.el('commissionNotesInput').value||'').trim()||null,updated_at:new Date().toISOString()
       };
-      const saveBtn=this.el('commissionEntrySave');if(saveBtn)saveBtn.disabled=true;
+      const saveBtn=this.el('commissionEntrySave');
+      const originalSaveText=saveBtn?.textContent || 'Save Commission';
+      if(saveBtn){saveBtn.disabled=true;saveBtn.textContent='Saving…';saveBtn.setAttribute('aria-busy','true');}
       try{
         let commissionId=this.state.editingId;
         if(commissionId){
@@ -431,14 +449,34 @@
             updated_at:payload.updated_at
           }:payload;
           const {error}=await db.from('sales_commissions').update(updatePayload).eq('id',commissionId);if(error)throw error;
-          if(!paidExisting){const del=await db.from('sales_commission_installments').delete().eq('commission_id',commissionId);if(del.error)throw del.error;const ins=await db.from('sales_commission_installments').insert(calc.rows.map(row=>({...row,commission_id:commissionId,status:'scheduled',paid_amount:0})));if(ins.error)throw ins.error;}
+          if(!paidExisting){
+            const del=await db.from('sales_commission_installments').delete().eq('commission_id',commissionId);
+            if(del.error)throw del.error;
+            const installmentPayloads=this.installmentInsertPayloads(calc.rows,commissionId);
+            const ins=await db.from('sales_commission_installments').insert(installmentPayloads);
+            if(ins.error)throw ins.error;
+          }
         }else{
           const insertPayload={...payload,status:'scheduled',created_by:current.id||null,created_by_email:current.email||null,created_at:new Date().toISOString()};
-          const {data,error}=await db.from('sales_commissions').insert(insertPayload).select('*').single();if(error)throw error;commissionId=data.id;
-          const {error:installError}=await db.from('sales_commission_installments').insert(calc.rows.map(row=>({...row,commission_id:commissionId,status:'scheduled',paid_amount:0})));if(installError){await db.from('sales_commissions').delete().eq('id',commissionId);throw installError;}
+          const {data,error}=await db.from('sales_commissions').insert(insertPayload).select('id').single();
+          if(error)throw error;
+          commissionId=data?.id;
+          if(!commissionId)throw new Error('Commission record was created without an ID.');
+          const installmentPayloads=this.installmentInsertPayloads(calc.rows,commissionId);
+          const {error:installError}=await db.from('sales_commission_installments').insert(installmentPayloads);
+          if(installError){
+            await db.from('sales_commissions').delete().eq('id',commissionId);
+            throw installError;
+          }
         }
         this.closeModal('commissionEntryModal');this.toast(this.state.editingId?'Commission updated.':'Commission added.');await this.refresh();
-      }catch(error){console.error('[Commission Tracker] save failed',error);this.toast(error?.message||'Unable to save commission.');}finally{if(saveBtn)saveBtn.disabled=false;}
+      }catch(error){
+        console.error('[Commission Tracker] save failed',error);
+        const message=error?.message || error?.details || error?.hint || 'Unable to save commission.';
+        this.toast(message);
+      }finally{
+        if(saveBtn){saveBtn.disabled=false;saveBtn.textContent=originalSaveText;saveBtn.removeAttribute('aria-busy');}
+      }
     },
     async openEdit(id){
       const row=this.state.commissions.find(item=>String(item.id)===String(id));if(!row||!this.canManage())return;
