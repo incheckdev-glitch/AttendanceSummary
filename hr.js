@@ -19,10 +19,26 @@
   const authProfile = () => global.Session?.authContext?.()?.profile || {};
   const authName = () => global.Session?.displayName?.() || authProfile()?.full_name || authProfile()?.email || 'Admin';
 
-  const ADMIN_ROLES = new Set(['admin']);
-  function isAdmin() {
-    const role = norm(authProfile()?.role_key || authProfile()?.role || authProfile()?.user_role || global.Session?.role?.() || '');
-    return ADMIN_ROLES.has(role) || Boolean(global.Permissions?.hasAdminOverride?.());
+  const HR_FULL_ACCESS_ROLES = new Set([
+    'admin',
+    'gm',
+    'general_manager',
+    'generalmanager',
+    'sfc',
+    'senior_fc',
+    'financial_controller',
+    'senior_financial_controller',
+    'senior_finanical_controller',
+    'senior_financial_controler',
+    'senior_financial_cotroleer'
+  ]);
+  const normalizeRole = value => norm(value)
+    .replace(/\s+/g, '_')
+    .replace(/-/g, '_')
+    .replace(/_+/g, '_');
+  function hasFullHrAccess() {
+    const role = normalizeRole(authProfile()?.role_key || authProfile()?.role || authProfile()?.user_role || global.Session?.role?.() || '');
+    return HR_FULL_ACCESS_ROLES.has(role) || Boolean(global.Permissions?.hasAdminOverride?.());
   }
 
   const TABLES = {
@@ -442,8 +458,8 @@
   function renderRoot() {
     const root = $('hrRoot');
     if (!root) return;
-    if (!isAdmin()) {
-      root.innerHTML = `<section class="hr-panel"><div class="hr-empty"><h3>HR admin access only</h3><p>This HR module is currently restricted to Admin only. Other roles can be added later from permissions.</p></div></section>`;
+    if (!hasFullHrAccess()) {
+      root.innerHTML = `<section class="hr-panel"><div class="hr-empty"><h3>HR access restricted</h3><p>This HR module is available to Admin, General Manager, and Senior Financial Controller roles.</p></div></section>`;
       return;
     }
     const readOnly = state.dataSource !== 'supabase';
@@ -453,9 +469,9 @@
     root.innerHTML = `
       <div class="hr-page-header">
         <div>
-          <span class="hr-eyebrow">Admin HR · Attendance · Payroll</span>
+          <span class="hr-eyebrow">HR Management · Attendance · Payroll</span>
           <h2>HR & Payroll</h2>
-          <p class="muted">Admin-only HR flow: fixed monthly salary, Sat/Sun off, holidays, approved leave, manual absences, monthly transport calculation, salary receipts and payslips.</p>
+          <p class="muted">Full HR management for authorized roles: employees, attendance, leave, holidays, payroll, salary receipts, payslips, documents, and settings.</p>
           <div>${source}</div>
         </div>
         <div class="hr-header-actions">
@@ -571,7 +587,7 @@
     const holidaysThisYear = state.holidays.filter(row => String(row.holiday_date || '').slice(0,4) === String(state.filters.holidayYear) && dateOverlapsGlobal(row.holiday_date)).length;
     return `
       <div class="hr-grid-2">
-        <section class="hr-panel"><div class="hr-panel-head"><div><h3>Admin HR Overview</h3><p class="muted">No employee portal/check-in is enabled. Admin controls all HR records.</p></div></div>
+        <section class="hr-panel"><div class="hr-panel-head"><div><h3>HR Management Overview</h3><p class="muted">No employee portal/check-in is enabled. Authorized HR roles control all HR records.</p></div></div>
           <div class="hr-dashboard-list">
             ${dashboardItem('Selected payroll month', monthName(state.filters.payrollMonth), run ? `Status: ${run.status}` : 'Not generated')}
             ${dashboardItem('Working days', workingDaysInMonth(state.filters.payrollMonth), 'Sat/Sun and holidays excluded')}

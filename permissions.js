@@ -10,6 +10,20 @@ function isMonthlyRenewalForecastAdmin(user) {
   return role === 'admin';
 }
 
+const HR_FULL_ACCESS_ROLES = Object.freeze([
+  'admin',
+  'gm',
+  'general_manager',
+  'generalmanager',
+  'sfc',
+  'senior_fc',
+  'financial_controller',
+  'senior_financial_controller',
+  'senior_finanical_controller',
+  'senior_financial_controler',
+  'senior_financial_cotroleer'
+]);
+
 const BASE_PERMISSION_MATRIX = Object.freeze({
   tickets: Object.freeze({
     list: ['admin', 'dev', 'viewer', 'hoo'],
@@ -173,92 +187,170 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     manage: ['admin', 'dev', 'developer', 'general_manager', 'gm', 'senior_financial_controller', 'senior_fc', 'sfc', 'accountant', 'accounting', 'hod', 'head_of_department']
   }),
   hr: Object.freeze({
-    view: ['admin'],
-    list: ['admin'],
-    get: ['admin'],
-    create: ['admin'],
-    update: ['admin'],
-    manage: ['admin'],
-    export: ['admin'],
-    manage_attendance: ['admin']
+    view: HR_FULL_ACCESS_ROLES,
+    list: HR_FULL_ACCESS_ROLES,
+    get: HR_FULL_ACCESS_ROLES,
+    create: HR_FULL_ACCESS_ROLES,
+    update: HR_FULL_ACCESS_ROLES,
+    delete: HR_FULL_ACCESS_ROLES,
+    manage: HR_FULL_ACCESS_ROLES,
+    export: HR_FULL_ACCESS_ROLES,
+    print: HR_FULL_ACCESS_ROLES,
+    manage_attendance: HR_FULL_ACCESS_ROLES
   }),
   hr_attendance: Object.freeze({
-    view: ['admin'],
-    list: ['admin'],
-    create: ['admin'],
-    update: ['admin'],
-    delete: ['admin'],
-    export: ['admin']
+    view: HR_FULL_ACCESS_ROLES,
+    list: HR_FULL_ACCESS_ROLES,
+    get: HR_FULL_ACCESS_ROLES,
+    create: HR_FULL_ACCESS_ROLES,
+    update: HR_FULL_ACCESS_ROLES,
+    delete: HR_FULL_ACCESS_ROLES,
+    export: HR_FULL_ACCESS_ROLES,
+    manage: HR_FULL_ACCESS_ROLES
   }),
   hr_leave: Object.freeze({
-    view: ['admin'],
-    list: ['admin'],
-    create: ['admin'],
-    update: ['admin'],
-    approve: ['admin'],
-    delete: ['admin']
+    view: HR_FULL_ACCESS_ROLES,
+    list: HR_FULL_ACCESS_ROLES,
+    get: HR_FULL_ACCESS_ROLES,
+    create: HR_FULL_ACCESS_ROLES,
+    update: HR_FULL_ACCESS_ROLES,
+    approve: HR_FULL_ACCESS_ROLES,
+    reject: HR_FULL_ACCESS_ROLES,
+    delete: HR_FULL_ACCESS_ROLES,
+    export: HR_FULL_ACCESS_ROLES,
+    manage: HR_FULL_ACCESS_ROLES
   }),
   hr_leave_balance: Object.freeze({
-    view: ['admin'],
-    update: ['admin'],
-    manage: ['admin']
+    view: HR_FULL_ACCESS_ROLES,
+    list: HR_FULL_ACCESS_ROLES,
+    get: HR_FULL_ACCESS_ROLES,
+    create: HR_FULL_ACCESS_ROLES,
+    update: HR_FULL_ACCESS_ROLES,
+    delete: HR_FULL_ACCESS_ROLES,
+    export: HR_FULL_ACCESS_ROLES,
+    manage: HR_FULL_ACCESS_ROLES
   }),
   hr_holidays: Object.freeze({
-    view: ['admin'],
-    create: ['admin'],
-    update: ['admin'],
-    delete: ['admin'],
-    manage: ['admin']
+    view: HR_FULL_ACCESS_ROLES,
+    list: HR_FULL_ACCESS_ROLES,
+    get: HR_FULL_ACCESS_ROLES,
+    create: HR_FULL_ACCESS_ROLES,
+    update: HR_FULL_ACCESS_ROLES,
+    delete: HR_FULL_ACCESS_ROLES,
+    export: HR_FULL_ACCESS_ROLES,
+    manage: HR_FULL_ACCESS_ROLES
   }),
   hr_payroll: Object.freeze({
-    view: ['admin'],
-    list: ['admin'],
-    generate: ['admin'],
-    review: ['admin'],
-    approve: ['admin'],
-    pay: ['admin'],
-    export: ['admin'],
-    manage: ['admin']
+    view: HR_FULL_ACCESS_ROLES,
+    list: HR_FULL_ACCESS_ROLES,
+    get: HR_FULL_ACCESS_ROLES,
+    create: HR_FULL_ACCESS_ROLES,
+    update: HR_FULL_ACCESS_ROLES,
+    delete: HR_FULL_ACCESS_ROLES,
+    generate: HR_FULL_ACCESS_ROLES,
+    review: HR_FULL_ACCESS_ROLES,
+    approve: HR_FULL_ACCESS_ROLES,
+    pay: HR_FULL_ACCESS_ROLES,
+    print: HR_FULL_ACCESS_ROLES,
+    export: HR_FULL_ACCESS_ROLES,
+    manage: HR_FULL_ACCESS_ROLES
   }),
   hr_salary_receipts: Object.freeze({
-    view: ['admin'],
-    list: ['admin'],
-    create: ['admin'],
-    update: ['admin'],
-    delete: ['admin'],
-    manage: ['admin']
+    view: HR_FULL_ACCESS_ROLES,
+    list: HR_FULL_ACCESS_ROLES,
+    get: HR_FULL_ACCESS_ROLES,
+    create: HR_FULL_ACCESS_ROLES,
+    update: HR_FULL_ACCESS_ROLES,
+    delete: HR_FULL_ACCESS_ROLES,
+    print: HR_FULL_ACCESS_ROLES,
+    export: HR_FULL_ACCESS_ROLES,
+    manage: HR_FULL_ACCESS_ROLES
   }),
   hr_documents: Object.freeze({
-    view: ['admin'],
-    list: ['admin'],
-    create: ['admin'],
-    update: ['admin'],
-    delete: ['admin']
+    view: HR_FULL_ACCESS_ROLES,
+    list: HR_FULL_ACCESS_ROLES,
+    get: HR_FULL_ACCESS_ROLES,
+    create: HR_FULL_ACCESS_ROLES,
+    update: HR_FULL_ACCESS_ROLES,
+    delete: HR_FULL_ACCESS_ROLES,
+    upload: HR_FULL_ACCESS_ROLES,
+    download: HR_FULL_ACCESS_ROLES,
+    export: HR_FULL_ACCESS_ROLES,
+    manage: HR_FULL_ACCESS_ROLES
   }),
   hr_settings: Object.freeze({
-    view: ['admin'],
-    update: ['admin'],
-    manage: ['admin']
+    view: HR_FULL_ACCESS_ROLES,
+    list: HR_FULL_ACCESS_ROLES,
+    get: HR_FULL_ACCESS_ROLES,
+    create: HR_FULL_ACCESS_ROLES,
+    update: HR_FULL_ACCESS_ROLES,
+    delete: HR_FULL_ACCESS_ROLES,
+    manage: HR_FULL_ACCESS_ROLES
   }),
   hr_notifications: Object.freeze({
-    view: ['admin']
+    view: HR_FULL_ACCESS_ROLES,
+    list: HR_FULL_ACCESS_ROLES,
+    get: HR_FULL_ACCESS_ROLES,
+    create: HR_FULL_ACCESS_ROLES,
+    update: HR_FULL_ACCESS_ROLES,
+    delete: HR_FULL_ACCESS_ROLES,
+    manage: HR_FULL_ACCESS_ROLES
   }),
   hr_self_service: Object.freeze({
-    view: ['admin'],
-    create: ['admin']
+    view: HR_FULL_ACCESS_ROLES,
+    list: HR_FULL_ACCESS_ROLES,
+    get: HR_FULL_ACCESS_ROLES,
+    create: HR_FULL_ACCESS_ROLES,
+    update: HR_FULL_ACCESS_ROLES,
+    delete: HR_FULL_ACCESS_ROLES,
+    manage: HR_FULL_ACCESS_ROLES
   }),
   hr_team: Object.freeze({
-    view: ['admin']
+    view: HR_FULL_ACCESS_ROLES,
+    list: HR_FULL_ACCESS_ROLES,
+    get: HR_FULL_ACCESS_ROLES,
+    create: HR_FULL_ACCESS_ROLES,
+    update: HR_FULL_ACCESS_ROLES,
+    delete: HR_FULL_ACCESS_ROLES,
+    manage: HR_FULL_ACCESS_ROLES
   }),
   hr_attendance_correction: Object.freeze({
-    view: ['admin'],
-    create: ['admin'],
-    approve: ['admin']
+    view: HR_FULL_ACCESS_ROLES,
+    list: HR_FULL_ACCESS_ROLES,
+    get: HR_FULL_ACCESS_ROLES,
+    create: HR_FULL_ACCESS_ROLES,
+    update: HR_FULL_ACCESS_ROLES,
+    approve: HR_FULL_ACCESS_ROLES,
+    reject: HR_FULL_ACCESS_ROLES,
+    delete: HR_FULL_ACCESS_ROLES,
+    manage: HR_FULL_ACCESS_ROLES
   }),
   hr_overtime: Object.freeze({
-    view: ['admin'],
-    create: ['admin'],
-    approve: ['admin']
+    view: HR_FULL_ACCESS_ROLES,
+    list: HR_FULL_ACCESS_ROLES,
+    get: HR_FULL_ACCESS_ROLES,
+    create: HR_FULL_ACCESS_ROLES,
+    update: HR_FULL_ACCESS_ROLES,
+    approve: HR_FULL_ACCESS_ROLES,
+    reject: HR_FULL_ACCESS_ROLES,
+    delete: HR_FULL_ACCESS_ROLES,
+    manage: HR_FULL_ACCESS_ROLES
+  }),
+  hr_employee_statement: Object.freeze({
+    view: HR_FULL_ACCESS_ROLES,
+    list: HR_FULL_ACCESS_ROLES,
+    get: HR_FULL_ACCESS_ROLES,
+    print: HR_FULL_ACCESS_ROLES,
+    export: HR_FULL_ACCESS_ROLES,
+    manage: HR_FULL_ACCESS_ROLES
+  }),
+  hr_statement_of_account: Object.freeze({
+    view: HR_FULL_ACCESS_ROLES,
+    list: HR_FULL_ACCESS_ROLES,
+    get: HR_FULL_ACCESS_ROLES,
+    print: HR_FULL_ACCESS_ROLES,
+    export: HR_FULL_ACCESS_ROLES,
+    manage: HR_FULL_ACCESS_ROLES
   }),
   accounting: Object.freeze({
     view: ['admin','accounting','accountant','sfc','senior_financial_controller','senior_finanical_controller'],
