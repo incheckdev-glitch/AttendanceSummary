@@ -1,0 +1,410 @@
+(function initSalesCommissionTracker(global){
+  'use strict';
+
+  const MODULE = {
+    initialized: false,
+    loading: false,
+    state: {
+      commissions: [],
+      installments: [],
+      invoices: [],
+      salespeople: [],
+      selectedInvoiceSchedule: [],
+      editingId: null,
+      filters: { search: '', salesperson: 'all', type: 'all', status: 'all', currency: 'all' },
+      page: 1,
+      pageSize: 20
+    },
+
+    el(id){ return document.getElementById(id); },
+    db(){ return global.SupabaseClient?.getClient?.() || null; },
+    escape(value){ return global.U?.escapeHtml ? U.escapeHtml(String(value ?? '')) : String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch])); },
+    attr(value){ return this.escape(value).replace(/`/g, '&#096;'); },
+    num(value){ const n = Number(value); return Number.isFinite(n) ? n : 0; },
+    normalize(value){ return String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_'); },
+    currentUser(){ return global.Permissions?.getResolvedCurrentUser?.() || global.Session?.authContext?.()?.profile || {}; },
+    canView(){ return Boolean(global.Permissions?.can?.('sales_commissions','view') || global.Permissions?.can?.('sales_commissions','list') || global.Permissions?.can?.('sales_commissions','manage')); },
+    canManage(){ return Boolean(global.Permissions?.can?.('sales_commissions','manage') || global.Permissions?.can?.('sales_commissions','create') || global.Permissions?.can?.('sales_commissions','update')); },
+    canDelete(){ return Boolean(global.Permissions?.can?.('sales_commissions','delete') || global.Permissions?.can?.('sales_commissions','manage')); },
+    toast(message){ global.UI?.toast?.(message); },
+    formatDate(value){
+      if(!value) return '—';
+      const d = new Date(String(value).length === 10 ? `${value}T00:00:00` : value);
+      if(Number.isNaN(d.getTime())) return String(value);
+      return new Intl.DateTimeFormat('en-US',{year:'numeric',month:'short',day:'2-digit'}).format(d);
+    },
+    isoDate(value){
+      if(!value) return '';
+      const d = new Date(value);
+      if(Number.isNaN(d.getTime())) return String(value).slice(0,10);
+      return d.toISOString().slice(0,10);
+    },
+    money(amount, currency='USD'){
+      const code = String(currency || 'USD').trim().toUpperCase();
+      try { return new Intl.NumberFormat('en-US',{style:'currency',currency:code,minimumFractionDigits:2,maximumFractionDigits:2}).format(this.num(amount)); }
+      catch { return `${code} ${this.num(amount).toFixed(2)}`; }
+    },
+    invoiceNumber(row){ return String(row?.invoice_number || row?.invoice_no || row?.invoiceNumber || row?.reference || row?.id || '').trim(); },
+    invoiceClient(row){ return String(row?.customer_legal_name || row?.customer_name || row?.customer || row?.client_name || row?.company_name || row?.legal_name || '—').trim(); },
+    invoiceTotal(row){ return this.num(row?.invoice_total ?? row?.grand_total ?? row?.total_amount ?? row?.total ?? row?.amount_due); },
+    invoiceCurrency(row){ return String(row?.currency || row?.currency_code || 'USD').trim().toUpperCase(); },
+    invoicePaymentTerm(row){ return String(row?.payment_term || row?.payment_terms || row?.billing_frequency || 'Annual').trim(); },
+    invoiceDate(row){ return row?.invoice_date || row?.date || row?.created_at || ''; },
+    invoiceDueDate(row){ return row?.due_date || row?.payment_due_date || row?.invoice_due_date || this.invoiceDate(row); },
+    salespersonName(row){ return String(row?.name || row?.full_name || row?.display_name || row?.username || row?.email || 'Sales User').trim(); },
+
+    async init(){
+      if(!this.canView()){
+        const view = this.el('commissionTrackerView');
+        if(view) view.innerHTML = '<div class="commission-empty">You do not have permission to view Sales Commission Tracker.</div>';
+        return;
+      }
+      this.mountModal();
+      this.bind();
+      this.initialized = true;
+      await this.refresh();
+    },
+
+    bind(){
+      const once = (id,event,handler) => {
+        const el = this.el(id); if(!el || el.dataset.commissionBound === 'true') return;
+        el.dataset.commissionBound = 'true'; el.addEventListener(event,handler);
+      };
+      once('commissionCreateBtn','click',()=>this.openCreate());
+      once('commissionRefreshBtn','click',()=>this.refresh());
+      once('commissionExportBtn','click',()=>this.exportCsv());
+      once('commissionClearFiltersBtn','click',()=>this.clearFilters());
+      ['commissionSearchInput','commissionSalespersonFilter','commissionTypeFilter','commissionStatusFilter','commissionCurrencyFilter'].forEach(id => {
+        once(id,id === 'commissionSearchInput' ? 'input':'change',()=>{ this.readFilters(); this.state.page=1; this.render(); });
+      });
+      const tbody=this.el('commissionTbody');
+      if(tbody && tbody.dataset.commissionBound!=='true'){
+        tbody.dataset.commissionBound='true';
+        tbody.addEventListener('click',event=>{
+          const btn=event.target.closest('[data-commission-action]'); if(!btn) return;
+          const id=btn.dataset.id; const action=btn.dataset.commissionAction;
+          if(action==='view') this.openDetails(id);
+          if(action==='edit') this.openEdit(id);
+          if(action==='delete') this.remove(id);
+        });
+      }
+      once('commissionPrevPage','click',()=>{ if(this.state.page>1){this.state.page--;this.render();} });
+      once('commissionNextPage','click',()=>{ const pages=Math.max(1,Math.ceil(this.filtered().length/this.state.pageSize));if(this.state.page<pages){this.state.page++;this.render();} });
+    },
+
+    async refresh(){
+      if(this.loading) return;
+      const db=this.db();
+      if(!db){ this.toast('Supabase is not available.'); return; }
+      this.loading=true;
+      const state=this.el('commissionState'); if(state) state.textContent='Loading commission records…';
+      try{
+        const [commissionsRes,installmentsRes,invoicesRes,profilesRes]=await Promise.all([
+          db.from('sales_commissions').select('*').order('created_at',{ascending:false}),
+          db.from('sales_commission_installments').select('*').order('installment_no',{ascending:true}),
+          db.from('invoices').select('*').order('invoice_date',{ascending:false}).limit(2500),
+          db.from('profiles').select('id,name,email,username,role_key,is_active,active').limit(2000)
+        ]);
+        if(commissionsRes.error) throw commissionsRes.error;
+        if(installmentsRes.error) throw installmentsRes.error;
+        if(invoicesRes.error) console.warn('[Commission Tracker] invoices load failed',invoicesRes.error);
+        if(profilesRes.error) console.warn('[Commission Tracker] profiles load failed',profilesRes.error);
+        this.state.commissions=Array.isArray(commissionsRes.data)?commissionsRes.data:[];
+        this.state.installments=Array.isArray(installmentsRes.data)?installmentsRes.data:[];
+        this.state.invoices=(Array.isArray(invoicesRes.data)?invoicesRes.data:[]).filter(row=>{
+          const status=this.normalize(row.status || row.invoice_status);
+          return this.invoiceTotal(row)>0 && !['cancelled','canceled','void','deleted'].includes(status);
+        });
+        const profiles=Array.isArray(profilesRes.data)?profilesRes.data:[];
+        let salespeople=profiles.filter(row=>{
+          const role=this.normalize(row.role_key);
+          const active=row.is_active!==false && row.active!==false;
+          return active && (role.includes('sales') || ['head_of_sales','sales_executive','sales_manager'].includes(role));
+        });
+        if(!salespeople.length) salespeople=profiles.filter(row=>row.is_active!==false && row.active!==false);
+        this.state.salespeople=salespeople.sort((a,b)=>this.salespersonName(a).localeCompare(this.salespersonName(b)));
+        this.populateFilters();
+        this.render();
+      }catch(error){
+        console.error('[Commission Tracker] refresh failed',error);
+        if(state) state.textContent='Unable to load. Run the Sales Commission SQL migration first.';
+        this.toast(error?.message || 'Unable to load Sales Commission Tracker.');
+      }finally{this.loading=false;}
+    },
+
+    installmentsFor(id){ return this.state.installments.filter(row=>String(row.commission_id)===String(id)).sort((a,b)=>this.num(a.installment_no)-this.num(b.installment_no)); },
+    statsFor(row){
+      const installments=this.installmentsFor(row.id);
+      const paid=installments.reduce((sum,item)=>sum+this.num(item.paid_amount ?? (this.normalize(item.status)==='paid'?item.commission_amount:0)),0);
+      const total=this.num(row.commission_total);
+      const remaining=Math.max(0,total-paid);
+      const status=this.normalize(row.status)==='cancelled'?'cancelled':(remaining<=0.005&&total>0?'paid':(paid>0?'partial':'scheduled'));
+      return {installments,paid,remaining,status};
+    },
+    groupedMoney(rows,accessor){
+      const grouped=new Map();
+      rows.forEach(row=>{const currency=String(row.currency||'USD').toUpperCase();grouped.set(currency,(grouped.get(currency)||0)+this.num(accessor(row)));});
+      if(!grouped.size) return '—';
+      return Array.from(grouped.entries()).map(([currency,value])=>this.money(value,currency)).join(' · ');
+    },
+    renderKpis(rows){
+      const totalEl=this.el('commissionKpiTotal'); const pendingEl=this.el('commissionKpiPending'); const paidEl=this.el('commissionKpiPaid'); const dueEl=this.el('commissionKpiDue');
+      if(totalEl) totalEl.textContent=this.groupedMoney(rows,row=>row.commission_total);
+      if(pendingEl) pendingEl.textContent=this.groupedMoney(rows,row=>this.statsFor(row).remaining);
+      if(paidEl) paidEl.textContent=this.groupedMoney(rows,row=>this.statsFor(row).paid);
+      const today=this.isoDate(new Date());
+      const dueRows=[]; rows.forEach(row=>this.statsFor(row).installments.forEach(item=>{if(this.normalize(item.status)!=='paid' && item.due_date && String(item.due_date).slice(0,10)<=today) dueRows.push({...item,currency:row.currency});}));
+      if(dueEl) dueEl.textContent=this.groupedMoney(dueRows,row=>row.commission_amount);
+      const totalSub=this.el('commissionKpiTotalSub'); if(totalSub) totalSub.textContent=`${rows.length} tracked invoice${rows.length===1?'':'s'}`;
+      const pendingSub=this.el('commissionKpiPendingSub'); if(pendingSub) pendingSub.textContent='Scheduled commission not yet paid';
+      const paidSub=this.el('commissionKpiPaidSub'); if(paidSub) paidSub.textContent='Commission installments marked paid';
+      const dueSub=this.el('commissionKpiDueSub'); if(dueSub) dueSub.textContent=`${dueRows.length} due or overdue installment${dueRows.length===1?'':'s'}`;
+    },
+    readFilters(){
+      this.state.filters={
+        search:String(this.el('commissionSearchInput')?.value||'').trim().toLowerCase(),
+        salesperson:String(this.el('commissionSalespersonFilter')?.value||'all'),
+        type:String(this.el('commissionTypeFilter')?.value||'all'),
+        status:String(this.el('commissionStatusFilter')?.value||'all'),
+        currency:String(this.el('commissionCurrencyFilter')?.value||'all')
+      };
+    },
+    filtered(){
+      const f=this.state.filters;
+      return this.state.commissions.filter(row=>{
+        const stats=this.statsFor(row);
+        const hay=[row.invoice_number,row.client_name,row.salesperson_name,row.salesperson_email,row.payment_term,row.notes,row.currency].join(' ').toLowerCase();
+        return (!f.search||hay.includes(f.search)) && (f.salesperson==='all'||String(row.salesperson_id)===f.salesperson) && (f.type==='all'||String(row.commission_type)===f.type) && (f.status==='all'||stats.status===f.status) && (f.currency==='all'||String(row.currency||'USD').toUpperCase()===f.currency);
+      });
+    },
+    render(){
+      const rows=this.filtered(); this.renderKpis(rows);
+      const tbody=this.el('commissionTbody'); if(!tbody) return;
+      const pages=Math.max(1,Math.ceil(rows.length/this.state.pageSize)); if(this.state.page>pages)this.state.page=pages;
+      const start=(this.state.page-1)*this.state.pageSize; const pageRows=rows.slice(start,start+this.state.pageSize);
+      if(!pageRows.length){tbody.innerHTML='<tr><td colspan="11"><div class="commission-empty">No commission records match the current filters.</div></td></tr>';}
+      else tbody.innerHTML=pageRows.map(row=>{
+        const stats=this.statsFor(row); const rate=this.num(row.commission_rate); const type=row.commission_type==='renewal'?'Renewal':'First Year';
+        const schedule=`${stats.installments.length || row.installment_count || 1} payment${(stats.installments.length || row.installment_count || 1)===1?'':'s'}`;
+        return `<tr>
+          <td><strong>${this.escape(row.invoice_number||'—')}</strong><div class="commission-muted">${this.formatDate(row.invoice_date)}</div></td>
+          <td><strong>${this.escape(row.client_name||'—')}</strong></td>
+          <td><strong>${this.escape(row.salesperson_name||'—')}</strong><div class="commission-muted">${this.escape(row.salesperson_email||'')}</div></td>
+          <td><strong>${this.escape(type)}</strong><div class="commission-muted">${rate.toFixed(2)}%</div></td>
+          <td class="commission-money">${this.money(row.invoice_value,row.currency)}</td>
+          <td class="commission-money">${this.money(row.commission_total,row.currency)}</td>
+          <td class="commission-money">${this.money(stats.paid,row.currency)}</td>
+          <td class="commission-money">${this.money(stats.remaining,row.currency)}</td>
+          <td><strong>${this.escape(row.payment_term||'—')}</strong><div class="commission-muted">${this.escape(schedule)}</div></td>
+          <td><span class="commission-badge" data-status="${this.attr(stats.status)}">${this.escape(stats.status)}</span></td>
+          <td><div class="commission-actions"><button class="btn ghost sm" type="button" data-commission-action="view" data-id="${this.attr(row.id)}">View</button>${this.canManage()?`<button class="btn ghost sm" type="button" data-commission-action="edit" data-id="${this.attr(row.id)}">Edit</button>`:''}${this.canDelete()?`<button class="btn danger sm" type="button" data-commission-action="delete" data-id="${this.attr(row.id)}">Delete</button>`:''}</div></td>
+        </tr>`;
+      }).join('');
+      const state=this.el('commissionState'); if(state) state.textContent=`Showing ${pageRows.length ? start+1 : 0}–${Math.min(start+this.state.pageSize,rows.length)} of ${rows.length} commission records.`;
+      const pageInfo=this.el('commissionPageInfo'); if(pageInfo) pageInfo.textContent=`Page ${this.state.page} of ${pages}`;
+      const prev=this.el('commissionPrevPage'); if(prev) prev.disabled=this.state.page<=1;
+      const next=this.el('commissionNextPage'); if(next) next.disabled=this.state.page>=pages;
+      const create=this.el('commissionCreateBtn'); if(create) create.style.display=this.canManage()?'':'none';
+      const exportBtn=this.el('commissionExportBtn'); if(exportBtn) exportBtn.style.display=(global.Permissions?.can?.('sales_commissions','export')||this.canManage())?'':'none';
+    },
+    populateFilters(){
+      const salesFilter=this.el('commissionSalespersonFilter');
+      if(salesFilter){const current=salesFilter.value||'all';salesFilter.innerHTML='<option value="all">All salespeople</option>'+this.state.salespeople.map(row=>`<option value="${this.attr(row.id)}">${this.escape(this.salespersonName(row))}</option>`).join('');salesFilter.value=Array.from(salesFilter.options).some(o=>o.value===current)?current:'all';}
+      const currencies=[...new Set(this.state.commissions.map(row=>String(row.currency||'USD').toUpperCase()))].sort();
+      const currencyFilter=this.el('commissionCurrencyFilter');
+      if(currencyFilter){const current=currencyFilter.value||'all';currencyFilter.innerHTML='<option value="all">All currencies</option>'+currencies.map(code=>`<option value="${this.attr(code)}">${this.escape(code)}</option>`).join('');currencyFilter.value=currencies.includes(current)?current:'all';}
+      this.populateInvoiceSelect(); this.populateSalespersonSelect();
+    },
+    clearFilters(){
+      ['commissionSearchInput'].forEach(id=>{const el=this.el(id);if(el)el.value='';});
+      ['commissionSalespersonFilter','commissionTypeFilter','commissionStatusFilter','commissionCurrencyFilter'].forEach(id=>{const el=this.el(id);if(el)el.value='all';});
+      this.readFilters();this.state.page=1;this.render();
+    },
+
+    mountModal(){
+      if(this.el('commissionEntryModal')) return;
+      const wrapper=document.createElement('div');
+      wrapper.innerHTML=`
+      <div id="commissionEntryModal" class="modal commission-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="commissionEntryTitle">
+        <div class="modal-content"><div class="header"><div><h2 id="commissionEntryTitle" style="margin:0">Add Sales Commission</h2><div class="muted">Select an invoice, assign the salesperson, and review the term-based payment schedule.</div></div><button id="commissionEntryClose" class="modal-close" type="button">✕</button></div>
+          <form id="commissionEntryForm"><div class="modal-body stack" style="gap:16px">
+            <div class="commission-info"><strong>Commission base:</strong> the full invoice value is included by default, covering Annual SaaS, one-time fees, and hardware. The record is created manually and is not generated automatically from invoices.</div>
+            <div class="commission-form-grid">
+              <label class="commission-field"><span>Invoice *</span><select id="commissionInvoiceInput" class="select" required></select></label>
+              <label class="commission-field"><span>Salesperson *</span><select id="commissionSalespersonInput" class="select" required></select></label>
+              <label class="commission-field"><span>Commission Type *</span><select id="commissionTypeInput" class="select"><option value="first_year">First Year — 5%</option><option value="renewal">Renewal — 2.5%</option></select></label>
+              <label class="commission-field"><span>Commission Rate</span><input id="commissionRateInput" class="input" type="number" step="0.01" readonly /></label>
+              <label class="commission-field"><span>Invoice Value</span><input id="commissionInvoiceValueInput" class="input" type="number" step="0.01" readonly /></label>
+              <label class="commission-field"><span>Commissionable Amount *</span><input id="commissionBaseInput" class="input" type="number" min="0" step="0.01" required /></label>
+              <label class="commission-field"><span>Currency</span><input id="commissionCurrencyInput" class="input" type="text" readonly /></label>
+              <label class="commission-field"><span>Payment Term</span><input id="commissionPaymentTermInput" class="input" type="text" readonly /></label>
+              <label id="commissionCustomCountField" class="commission-field" style="display:none"><span>Custom Installment Count</span><input id="commissionCustomCountInput" class="input" type="number" min="1" max="24" value="1" /></label>
+              <label class="commission-field full"><span>Notes</span><textarea id="commissionNotesInput" class="input" rows="3" placeholder="Internal notes, exceptions, or payment instructions..."></textarea></label>
+            </div>
+            <div class="commission-calculation-strip"><div class="commission-calc"><span>Invoice Total</span><strong id="commissionCalcInvoice">—</strong></div><div class="commission-calc"><span>Rate</span><strong id="commissionCalcRate">—</strong></div><div class="commission-calc"><span>Total Commission</span><strong id="commissionCalcTotal">—</strong></div><div class="commission-calc"><span>Payments</span><strong id="commissionCalcPayments">—</strong></div></div>
+            <div><div class="commission-panel-title"><h3>Commission Payment Schedule</h3><span class="muted">Dates follow the invoice payment schedule when available.</span></div><div id="commissionSchedulePreview" class="commission-schedule-preview"></div></div>
+          </div><div class="modal-footer"><button id="commissionEntryCancel" class="btn ghost" type="button">Cancel</button><button id="commissionEntrySave" class="btn primary" type="submit">Save Commission</button></div></form>
+        </div></div>
+      <div id="commissionDetailsModal" class="modal commission-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="commissionDetailsTitle"><div class="modal-content"><div class="header"><div><h2 id="commissionDetailsTitle" style="margin:0">Commission Details</h2><div id="commissionDetailsSubtitle" class="muted"></div></div><button id="commissionDetailsClose" class="modal-close" type="button">✕</button></div><div id="commissionDetailsBody" class="modal-body"></div><div class="modal-footer"><button id="commissionDetailsDone" class="btn primary" type="button">Done</button></div></div></div>
+      <div id="commissionPaymentModal" class="modal commission-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="commissionPaymentTitle"><div class="modal-content" style="max-width:560px"><div class="header"><div><h2 id="commissionPaymentTitle" style="margin:0">Record Commission Payment</h2><div id="commissionPaymentSubtitle" class="muted"></div></div><button id="commissionPaymentClose" class="modal-close" type="button">✕</button></div><form id="commissionPaymentForm"><input id="commissionPaymentInstallmentId" type="hidden"/><div class="modal-body commission-form-grid"><label class="commission-field"><span>Paid Date *</span><input id="commissionPaymentDate" class="input" type="date" required/></label><label class="commission-field"><span>Reference</span><input id="commissionPaymentReference" class="input" type="text" placeholder="Transfer / payroll reference"/></label><label class="commission-field full"><span>Payment Notes</span><textarea id="commissionPaymentNotes" class="input" rows="3"></textarea></label></div><div class="modal-footer"><button id="commissionPaymentCancel" class="btn ghost" type="button">Cancel</button><button class="btn primary" type="submit">Mark Paid</button></div></form></div></div>`;
+      document.body.append(...wrapper.children);
+      const close=(id)=>this.closeModal(id);
+      this.el('commissionEntryClose').addEventListener('click',()=>close('commissionEntryModal'));
+      this.el('commissionEntryCancel').addEventListener('click',()=>close('commissionEntryModal'));
+      this.el('commissionDetailsClose').addEventListener('click',()=>close('commissionDetailsModal'));
+      this.el('commissionDetailsDone').addEventListener('click',()=>close('commissionDetailsModal'));
+      this.el('commissionPaymentClose').addEventListener('click',()=>close('commissionPaymentModal'));
+      this.el('commissionPaymentCancel').addEventListener('click',()=>close('commissionPaymentModal'));
+      this.el('commissionEntryForm').addEventListener('submit',event=>{event.preventDefault();this.saveEntry();});
+      this.el('commissionPaymentForm').addEventListener('submit',event=>{event.preventDefault();this.savePayment();});
+      this.el('commissionInvoiceInput').addEventListener('change',()=>this.onInvoiceChange());
+      this.el('commissionTypeInput').addEventListener('change',()=>this.updateCalculation());
+      this.el('commissionBaseInput').addEventListener('input',()=>this.updateCalculation());
+      this.el('commissionCustomCountInput').addEventListener('input',()=>this.updateCalculation());
+      this.el('commissionDetailsBody').addEventListener('click',event=>{
+        const btn=event.target.closest('[data-installment-action]'); if(!btn)return;
+        if(btn.dataset.installmentAction==='pay') this.openPayment(btn.dataset.id);
+        if(btn.dataset.installmentAction==='undo') this.undoPayment(btn.dataset.id);
+      });
+    },
+    openModal(id){ const modal=this.el(id);if(!modal)return;modal.classList.add('show');modal.setAttribute('aria-hidden','false');global.ModalScrollLock?.lock?.(); },
+    closeModal(id){ const modal=this.el(id);if(!modal)return;modal.classList.remove('show');modal.setAttribute('aria-hidden','true');global.ModalScrollLock?.unlock?.(); },
+    populateInvoiceSelect(selected=''){
+      const select=this.el('commissionInvoiceInput'); if(!select)return;
+      const existing=new Set(this.state.commissions.filter(row=>String(row.id)!==String(this.state.editingId||'')).map(row=>String(row.invoice_id||row.invoice_number)));
+      select.innerHTML='<option value="">Select invoice</option>'+this.state.invoices.map(row=>{
+        const id=String(row.id||this.invoiceNumber(row)); const used=existing.has(id)||existing.has(this.invoiceNumber(row));
+        return `<option value="${this.attr(id)}" ${used?'disabled':''}>${this.escape(this.invoiceNumber(row))} · ${this.escape(this.invoiceClient(row))} · ${this.escape(this.money(this.invoiceTotal(row),this.invoiceCurrency(row)))}${used?' · Already tracked':''}</option>`;
+      }).join('');
+      if(selected) select.value=selected;
+    },
+    populateSalespersonSelect(selected=''){
+      const select=this.el('commissionSalespersonInput'); if(!select)return;
+      select.innerHTML='<option value="">Select salesperson</option>'+this.state.salespeople.map(row=>`<option value="${this.attr(row.id)}">${this.escape(this.salespersonName(row))}${row.email?` · ${this.escape(row.email)}`:''}</option>`).join('');
+      if(selected) select.value=selected;
+    },
+    findInvoice(value){ return this.state.invoices.find(row=>String(row.id||this.invoiceNumber(row))===String(value)||this.invoiceNumber(row)===String(value)); },
+    async openCreate(){
+      if(!this.canManage()){this.toast('You do not have permission to create commissions.');return;}
+      this.state.editingId=null; this.state.selectedInvoiceSchedule=[];
+      ['commissionInvoiceInput','commissionTypeInput','commissionBaseInput'].forEach(id=>{const el=this.el(id);if(el)el.disabled=false;});
+      this.el('commissionEntryTitle').textContent='Add Sales Commission';
+      this.el('commissionEntryForm').reset(); this.el('commissionTypeInput').value='first_year';this.el('commissionRateInput').value='5';this.el('commissionCustomCountInput').value='1';
+      this.populateInvoiceSelect();this.populateSalespersonSelect();this.clearInvoiceFields();this.updateCalculation();this.openModal('commissionEntryModal');
+    },
+    clearInvoiceFields(){['commissionInvoiceValueInput','commissionBaseInput','commissionCurrencyInput','commissionPaymentTermInput'].forEach(id=>{const el=this.el(id);if(el)el.value='';});},
+    async onInvoiceChange(){
+      const invoice=this.findInvoice(this.el('commissionInvoiceInput')?.value);
+      this.state.selectedInvoiceSchedule=[];
+      if(!invoice){this.clearInvoiceFields();this.updateCalculation();return;}
+      const total=this.invoiceTotal(invoice);this.el('commissionInvoiceValueInput').value=total.toFixed(2);this.el('commissionBaseInput').value=total.toFixed(2);this.el('commissionCurrencyInput').value=this.invoiceCurrency(invoice);this.el('commissionPaymentTermInput').value=this.invoicePaymentTerm(invoice);
+      this.state.selectedInvoiceSchedule=await this.loadInvoiceSchedule(invoice);
+      this.updateCalculation();
+    },
+    async loadInvoiceSchedule(invoice){
+      const db=this.db(); if(!db)return[];
+      const queries=[]; const id=invoice.id; const number=this.invoiceNumber(invoice);
+      if(id) queries.push(db.from('invoice_payment_schedule').select('*').eq('invoice_id',id).order('schedule_no',{ascending:true}));
+      if(number) queries.push(db.from('invoice_payment_schedule').select('*').eq('invoice_number',number).order('schedule_no',{ascending:true}));
+      if(!queries.length)return[];
+      const results=await Promise.all(queries); const map=new Map();
+      results.forEach(result=>{if(result.error){console.warn('[Commission Tracker] invoice schedule query failed',result.error);return;}(result.data||[]).forEach(row=>{const key=String(row.id||`${row.schedule_no}|${row.due_date}|${row.scheduled_amount}`);map.set(key,row);});});
+      return Array.from(map.values()).sort((a,b)=>this.num(a.schedule_no)-this.num(b.schedule_no)||String(a.due_date||'').localeCompare(String(b.due_date||'')));
+    },
+    rate(){ return this.el('commissionTypeInput')?.value==='renewal'?2.5:5; },
+    termCount(term){
+      const key=this.normalize(term);
+      if(key.includes('monthly')||key==='net_7'||key==='net7')return 12;
+      if(key.includes('quarter')||key==='net_14'||key==='net14')return 4;
+      if(key.includes('semi')||key.includes('half_year')||key==='net_21'||key==='net21')return 2;
+      return 1;
+    },
+    addMonths(dateValue,months){const d=new Date(dateValue||new Date());if(Number.isNaN(d.getTime()))return this.isoDate(new Date());d.setMonth(d.getMonth()+months);return this.isoDate(d);},
+    buildSchedule(){
+      const base=Math.max(0,this.num(this.el('commissionBaseInput')?.value)); const total=Number((base*this.rate()/100).toFixed(2)); const invoice=this.findInvoice(this.el('commissionInvoiceInput')?.value); const currency=this.invoiceCurrency(invoice||{currency:this.el('commissionCurrencyInput')?.value});
+      let rows=[];
+      if(this.state.selectedInvoiceSchedule.length){
+        const source=this.state.selectedInvoiceSchedule;const weightTotal=source.reduce((s,r)=>s+Math.max(0,this.num(r.scheduled_amount||r.amount)),0);let allocated=0;
+        rows=source.map((row,index)=>{const amount=index===source.length-1?Number((total-allocated).toFixed(2)):Number((weightTotal>0?total*(Math.max(0,this.num(row.scheduled_amount||row.amount))/weightTotal):total/source.length).toFixed(2));allocated+=amount;return{installment_no:index+1,schedule_label:row.schedule_label||`Payment ${index+1}`,due_date:this.isoDate(row.due_date||row.payment_date||this.invoiceDueDate(invoice)),commission_amount:amount,source_schedule_id:row.id?String(row.id):null,currency};});
+      }else{
+        const term=this.el('commissionPaymentTermInput')?.value||this.invoicePaymentTerm(invoice||{});let count=this.termCount(term);if(this.normalize(term).includes('custom'))count=Math.max(1,Math.min(24,Math.floor(this.num(this.el('commissionCustomCountInput')?.value)||1)));const start=this.invoiceDueDate(invoice||{})||this.isoDate(new Date());const interval=count===12?1:count===4?3:count===2?6:12;let allocated=0;
+        rows=Array.from({length:count},(_,index)=>{const amount=index===count-1?Number((total-allocated).toFixed(2)):Number((total/count).toFixed(2));allocated+=amount;return{installment_no:index+1,schedule_label:`Payment ${index+1}`,due_date:this.addMonths(start,index*interval),commission_amount:amount,source_schedule_id:null,currency};});
+      }
+      return {rows,total,base,currency};
+    },
+    updateCalculation(){
+      const rate=this.rate();const rateInput=this.el('commissionRateInput');if(rateInput)rateInput.value=rate;
+      const term=this.el('commissionPaymentTermInput')?.value||'';const custom=this.el('commissionCustomCountField');if(custom)custom.style.display=this.normalize(term).includes('custom')?'flex':'none';
+      const invoice=this.findInvoice(this.el('commissionInvoiceInput')?.value);const calc=this.buildSchedule();
+      this.el('commissionCalcInvoice').textContent=invoice?this.money(this.invoiceTotal(invoice),this.invoiceCurrency(invoice)):'—';
+      this.el('commissionCalcRate').textContent=`${rate.toFixed(2)}%`;
+      this.el('commissionCalcTotal').textContent=this.money(calc.total,calc.currency);
+      this.el('commissionCalcPayments').textContent=`${calc.rows.length} payment${calc.rows.length===1?'':'s'}`;
+      const preview=this.el('commissionSchedulePreview');if(preview)preview.innerHTML=calc.rows.length?`<table><thead><tr><th>#</th><th>Payment</th><th>Due Date</th><th>Commission Amount</th></tr></thead><tbody>${calc.rows.map(row=>`<tr><td>${row.installment_no}</td><td>${this.escape(row.schedule_label)}</td><td>${this.formatDate(row.due_date)}</td><td class="commission-money">${this.money(row.commission_amount,calc.currency)}</td></tr>`).join('')}</tbody></table>`:'<div class="commission-empty">Select an invoice to build the commission schedule.</div>';
+    },
+    async saveEntry(){
+      if(!this.canManage())return;
+      const db=this.db();const invoice=this.findInvoice(this.el('commissionInvoiceInput')?.value);const salesperson=this.state.salespeople.find(row=>String(row.id)===String(this.el('commissionSalespersonInput')?.value));
+      if(!invoice||!salesperson){this.toast('Select both an invoice and a salesperson.');return;}
+      const calc=this.buildSchedule();if(calc.base<=0||calc.total<=0){this.toast('Commissionable amount must be greater than zero.');return;}
+      const current=this.currentUser();const editing=this.state.commissions.find(row=>String(row.id)===String(this.state.editingId));const paidExisting=editing?this.installmentsFor(editing.id).some(row=>this.normalize(row.status)==='paid'||this.num(row.paid_amount)>0):false;
+      const payload={
+        invoice_id:String(invoice.id||''),invoice_number:this.invoiceNumber(invoice),client_id:String(invoice.client_id||invoice.company_id||'').trim()||null,client_name:this.invoiceClient(invoice),salesperson_id:salesperson.id,salesperson_name:this.salespersonName(salesperson),salesperson_email:salesperson.email||null,commission_type:this.el('commissionTypeInput').value,commission_rate:this.rate(),invoice_value:this.invoiceTotal(invoice),commissionable_amount:calc.base,commission_total:calc.total,currency:calc.currency,payment_term:this.invoicePaymentTerm(invoice),invoice_date:this.isoDate(this.invoiceDate(invoice))||null,invoice_due_date:this.isoDate(this.invoiceDueDate(invoice))||null,installment_count:calc.rows.length,notes:String(this.el('commissionNotesInput').value||'').trim()||null,updated_at:new Date().toISOString()
+      };
+      const saveBtn=this.el('commissionEntrySave');if(saveBtn)saveBtn.disabled=true;
+      try{
+        let commissionId=this.state.editingId;
+        if(commissionId){
+          const updatePayload=paidExisting?{
+            salesperson_id:salesperson.id,
+            salesperson_name:this.salespersonName(salesperson),
+            salesperson_email:salesperson.email||null,
+            notes:payload.notes,
+            updated_at:payload.updated_at
+          }:payload;
+          const {error}=await db.from('sales_commissions').update(updatePayload).eq('id',commissionId);if(error)throw error;
+          if(!paidExisting){const del=await db.from('sales_commission_installments').delete().eq('commission_id',commissionId);if(del.error)throw del.error;const ins=await db.from('sales_commission_installments').insert(calc.rows.map(row=>({...row,commission_id:commissionId,status:'scheduled',paid_amount:0})));if(ins.error)throw ins.error;}
+        }else{
+          const insertPayload={...payload,status:'scheduled',created_by:current.id||null,created_by_email:current.email||null,created_at:new Date().toISOString()};
+          const {data,error}=await db.from('sales_commissions').insert(insertPayload).select('*').single();if(error)throw error;commissionId=data.id;
+          const {error:installError}=await db.from('sales_commission_installments').insert(calc.rows.map(row=>({...row,commission_id:commissionId,status:'scheduled',paid_amount:0})));if(installError){await db.from('sales_commissions').delete().eq('id',commissionId);throw installError;}
+        }
+        this.closeModal('commissionEntryModal');this.toast(this.state.editingId?'Commission updated.':'Commission added.');await this.refresh();
+      }catch(error){console.error('[Commission Tracker] save failed',error);this.toast(error?.message||'Unable to save commission.');}finally{if(saveBtn)saveBtn.disabled=false;}
+    },
+    async openEdit(id){
+      const row=this.state.commissions.find(item=>String(item.id)===String(id));if(!row||!this.canManage())return;
+      this.state.editingId=row.id;this.el('commissionEntryTitle').textContent='Edit Sales Commission';this.populateInvoiceSelect(String(row.invoice_id||row.invoice_number));this.populateSalespersonSelect(String(row.salesperson_id||''));
+      const invoice=this.findInvoice(row.invoice_id||row.invoice_number);this.state.selectedInvoiceSchedule=invoice?await this.loadInvoiceSchedule(invoice):[];
+      this.el('commissionTypeInput').value=row.commission_type||'first_year';this.el('commissionRateInput').value=this.num(row.commission_rate);this.el('commissionInvoiceValueInput').value=this.num(row.invoice_value).toFixed(2);this.el('commissionBaseInput').value=this.num(row.commissionable_amount).toFixed(2);this.el('commissionCurrencyInput').value=row.currency||'USD';this.el('commissionPaymentTermInput').value=row.payment_term||'';this.el('commissionNotesInput').value=row.notes||'';
+      const paid=this.installmentsFor(row.id).some(item=>this.normalize(item.status)==='paid'||this.num(item.paid_amount)>0);this.el('commissionInvoiceInput').disabled=paid;this.el('commissionTypeInput').disabled=paid;this.el('commissionBaseInput').disabled=paid;if(paid)this.toast('Paid installments exist. Invoice, type, and commission amount are locked; salesperson and notes can still be updated.');
+      this.updateCalculation();this.openModal('commissionEntryModal');
+    },
+    async openDetails(id){
+      const row=this.state.commissions.find(item=>String(item.id)===String(id));if(!row)return;const stats=this.statsFor(row);this.el('commissionDetailsTitle').textContent=`Commission · ${row.invoice_number}`;this.el('commissionDetailsSubtitle').textContent=`${row.client_name||'—'} · ${row.salesperson_name||'—'}`;
+      this.el('commissionDetailsBody').innerHTML=`<div class="commission-details-grid"><div class="commission-detail-card"><span>Type / Rate</span><strong>${row.commission_type==='renewal'?'Renewal':'First Year'} · ${this.num(row.commission_rate).toFixed(2)}%</strong></div><div class="commission-detail-card"><span>Invoice Value</span><strong>${this.money(row.invoice_value,row.currency)}</strong></div><div class="commission-detail-card"><span>Total Commission</span><strong>${this.money(row.commission_total,row.currency)}</strong></div><div class="commission-detail-card"><span>Remaining</span><strong>${this.money(stats.remaining,row.currency)}</strong></div></div><div class="commission-panel-title"><h3>Payment Schedule</h3><span class="commission-badge" data-status="${this.attr(stats.status)}">${this.escape(stats.status)}</span></div><div class="commission-schedule-preview"><table><thead><tr><th>#</th><th>Due Date</th><th>Amount</th><th>Status</th><th>Paid Date</th><th>Reference</th><th>Actions</th></tr></thead><tbody>${stats.installments.map(item=>{const paid=this.normalize(item.status)==='paid'||this.num(item.paid_amount)>0;return`<tr class="${paid?'commission-installment-paid':''}"><td>${this.num(item.installment_no)}</td><td>${this.formatDate(item.due_date)}</td><td class="commission-money">${this.money(item.commission_amount,row.currency)}</td><td><span class="commission-badge" data-status="${paid?'paid':'scheduled'}">${paid?'Paid':'Scheduled'}</span></td><td>${this.formatDate(item.paid_date)}</td><td>${this.escape(item.payment_reference||'—')}</td><td>${this.canManage()?(paid?`<button class="btn ghost sm" type="button" data-installment-action="undo" data-id="${this.attr(item.id)}">Undo</button>`:`<button class="btn primary sm" type="button" data-installment-action="pay" data-id="${this.attr(item.id)}">Mark Paid</button>`):'—'}</td></tr>`;}).join('')}</tbody></table></div>${row.notes?`<div class="commission-info" style="margin-top:14px"><strong>Notes:</strong> ${this.escape(row.notes)}</div>`:''}`;
+      this.openModal('commissionDetailsModal');
+    },
+    openPayment(id){const item=this.state.installments.find(row=>String(row.id)===String(id));if(!item)return;const parent=this.state.commissions.find(row=>String(row.id)===String(item.commission_id));this.el('commissionPaymentInstallmentId').value=id;this.el('commissionPaymentDate').value=this.isoDate(new Date());this.el('commissionPaymentReference').value='';this.el('commissionPaymentNotes').value=item.notes||'';this.el('commissionPaymentSubtitle').textContent=`Payment ${item.installment_no} · ${this.money(item.commission_amount,parent?.currency||'USD')}`;this.openModal('commissionPaymentModal');},
+    async savePayment(){
+      const id=this.el('commissionPaymentInstallmentId').value;const item=this.state.installments.find(row=>String(row.id)===String(id));if(!item||!this.canManage())return;const db=this.db();
+      try{const {error}=await db.from('sales_commission_installments').update({status:'paid',paid_amount:this.num(item.commission_amount),paid_date:this.el('commissionPaymentDate').value,payment_reference:String(this.el('commissionPaymentReference').value||'').trim()||null,notes:String(this.el('commissionPaymentNotes').value||'').trim()||null,updated_at:new Date().toISOString()}).eq('id',id);if(error)throw error;await this.syncParentStatus(item.commission_id);this.closeModal('commissionPaymentModal');this.closeModal('commissionDetailsModal');this.toast('Commission payment recorded.');await this.refresh();this.openDetails(item.commission_id);}catch(error){this.toast(error?.message||'Unable to record payment.');}
+    },
+    async undoPayment(id){
+      if(!this.canManage()||!confirm('Undo this commission payment?'))return;const item=this.state.installments.find(row=>String(row.id)===String(id));if(!item)return;const db=this.db();const {error}=await db.from('sales_commission_installments').update({status:'scheduled',paid_amount:0,paid_date:null,payment_reference:null,updated_at:new Date().toISOString()}).eq('id',id);if(error){this.toast(error.message);return;}await this.syncParentStatus(item.commission_id);this.closeModal('commissionDetailsModal');await this.refresh();this.openDetails(item.commission_id);
+    },
+    async syncParentStatus(commissionId){
+      const db=this.db();const {data,error}=await db.from('sales_commission_installments').select('commission_amount,paid_amount,status').eq('commission_id',commissionId);if(error)return;const rows=data||[];const paid=rows.reduce((s,r)=>s+this.num(r.paid_amount),0);const total=rows.reduce((s,r)=>s+this.num(r.commission_amount),0);const status=total>0&&paid>=total-.005?'paid':paid>0?'partial':'scheduled';await db.from('sales_commissions').update({status,updated_at:new Date().toISOString()}).eq('id',commissionId);
+    },
+    async remove(id){
+      if(!this.canDelete())return;const row=this.state.commissions.find(item=>String(item.id)===String(id));if(!row)return;const stats=this.statsFor(row);if(stats.paid>0){this.toast('A commission with paid installments cannot be deleted. Undo the payments first.');return;}if(!confirm(`Delete commission tracking for ${row.invoice_number}?`))return;const {error}=await this.db().from('sales_commissions').delete().eq('id',id);if(error){this.toast(error.message);return;}this.toast('Commission record deleted.');await this.refresh();
+    },
+    exportCsv(){
+      const rows=this.filtered();if(!rows.length){this.toast('No commission records to export.');return;}const headers=['Invoice','Client','Salesperson','Salesperson Email','Commission Type','Rate %','Invoice Value','Commissionable Amount','Commission Total','Paid','Remaining','Currency','Payment Term','Installments','Status','Invoice Date','Notes'];
+      const csv=[headers,...rows.map(row=>{const stats=this.statsFor(row);return[row.invoice_number,row.client_name,row.salesperson_name,row.salesperson_email,row.commission_type,this.num(row.commission_rate).toFixed(2),this.num(row.invoice_value).toFixed(2),this.num(row.commissionable_amount).toFixed(2),this.num(row.commission_total).toFixed(2),stats.paid.toFixed(2),stats.remaining.toFixed(2),row.currency,row.payment_term,stats.installments.length,stats.status,row.invoice_date,row.notes];})].map(cols=>cols.map(value=>`"${String(value??'').replace(/"/g,'""')}"`).join(',')).join('\n');
+      const blob=new Blob([`\ufeff${csv}`],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`sales-commission-tracker-${this.isoDate(new Date())}.csv`;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+    }
+  };
+
+  global.SalesCommissionTracker=MODULE;
+})(window);

@@ -90,6 +90,26 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     update: ['admin', 'dev'],
     delete: ['admin', 'dev']
   }),
+  sales_commissions: Object.freeze({
+    view: ['admin','dev','developer','head_of_sales','sales_manager','sales_executive','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
+    list: ['admin','dev','developer','head_of_sales','sales_manager','sales_executive','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
+    get: ['admin','dev','developer','head_of_sales','sales_manager','sales_executive','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
+    export: ['admin','dev','developer','head_of_sales','sales_manager','sales_executive','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
+    create: ['admin','dev','developer','head_of_sales','sales_manager','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
+    update: ['admin','dev','developer','head_of_sales','sales_manager','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
+    delete: ['admin','dev','developer','head_of_sales','sales_manager','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
+    manage: ['admin','dev','developer','head_of_sales','sales_manager','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant']
+  }),
+  sales_commission_installments: Object.freeze({
+    view: ['admin','dev','developer','head_of_sales','sales_manager','sales_executive','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
+    list: ['admin','dev','developer','head_of_sales','sales_manager','sales_executive','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
+    get: ['admin','dev','developer','head_of_sales','sales_manager','sales_executive','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
+    create: ['admin','dev','developer','head_of_sales','sales_manager','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
+    update: ['admin','dev','developer','head_of_sales','sales_manager','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
+    delete: ['admin','dev','developer','head_of_sales','sales_manager','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
+    pay: ['admin','dev','developer','head_of_sales','sales_manager','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant'],
+    manage: ['admin','dev','developer','head_of_sales','sales_manager','general_manager','gm','senior_financial_controller','senior_fc','sfc','financial_controller','accounting','accountant']
+  }),
   proposal_catalog: Object.freeze({
     list: ['admin', 'dev', 'viewer', 'hoo'],
     get: ['admin', 'dev', 'viewer', 'hoo'],
@@ -465,6 +485,7 @@ const Permissions = {
     deals: [{ resource: 'deals', action: 'list' }],
     proposals: [{ resource: 'proposals', action: 'list' }],
     agreements: [{ resource: 'agreements', action: 'list' }],
+    commissionTracker: [{ resource: 'sales_commissions', action: 'view' }],
     operationsOnboarding: [{ resource: 'operations_onboarding', action: 'list' }],
     invoices: [{ resource: 'invoices', action: 'list' }],
     receipts: [{ resource: 'receipts', action: 'list' }],
@@ -498,6 +519,7 @@ const Permissions = {
     deals: 'deals',
     proposals: 'proposals',
     agreements: 'agreements',
+    commissionTracker: 'sales_commissions',
     operationsOnboarding: 'operations_onboarding',
     invoices: 'invoices',
     receipts: 'receipts',
@@ -1440,8 +1462,8 @@ async function handleExpiredSession(message = 'Session expired. Please log in ag
 
 
 const PermissionAudit = {
-  resources: ['tickets','events','ai_insights','companies','contacts','leads','deals','proposals','agreements','operations_onboarding','invoices','receipts','credit_notes','payment_forecast','monthly_renewal_forecast','biners','hr','hr_attendance','hr_leave','hr_self_service','hr_team','hr_leave_balance','hr_attendance_correction','hr_overtime','hr_notifications','hr_holidays','hr_payroll','hr_salary_receipts','hr_documents','hr_settings','clients','analytics','notifications','notification_settings','workflow','users','role_permissions'],
-  actions: ['list','get','create','update','delete','export','manage','approve','reject','convert_to_deal','create_from_deal','create_from_proposal','create_from_agreement','create_from_invoice','cancel','print','export','assign_csm','update_status','view_renewals','view_statement','statement_view','statement_export','create_receipt','schedule_payment','record_payment','view_details','mark_renewed','mark_no_renewal_needed','undo_override','create_renewal_invoice','generate','review','pay','manage_attendance'],
+  resources: ['tickets','events','ai_insights','companies','contacts','leads','deals','proposals','agreements','sales_commissions','sales_commission_installments','operations_onboarding','invoices','receipts','credit_notes','payment_forecast','monthly_renewal_forecast','biners','hr','hr_attendance','hr_leave','hr_self_service','hr_team','hr_leave_balance','hr_attendance_correction','hr_overtime','hr_notifications','hr_holidays','hr_payroll','hr_salary_receipts','hr_documents','hr_settings','clients','analytics','notifications','notification_settings','workflow','users','role_permissions'],
+  actions: ['list','get','create','update','delete','export','manage','approve','reject','convert_to_deal','create_from_deal','create_from_proposal','create_from_agreement','create_from_invoice','cancel','print','export','assign_csm','update_status','view_renewals','view_statement','statement_view','statement_export','create_receipt','schedule_payment','record_payment','pay','view_details','mark_renewed','mark_no_renewal_needed','undo_override','create_renewal_invoice','generate','review','pay','manage_attendance'],
   inspect(resource, action) {
     const role = Permissions.normalizeRole(Session.role());
     const matchedRows = Permissions.getMatchedRows(resource, action, role, { includeDenied: true });

@@ -27,6 +27,7 @@
 
   <!-- Your app styles -->
   <link rel="stylesheet" href="/styles.css?v=20260702-invoice-ui-v2" />
+  <link rel="stylesheet" href="/commission-tracker.css?v=20260727-sales-commission-v24" />
   <link rel="stylesheet" href="/hr.css?v=20260705-hr-documents-statement-v1" />
   <link rel="stylesheet" href="/accounting.css?v=20260707-accounting-vendors-expense-dropdown1" />
   <link rel="stylesheet" href="/backup-center.css?v=20260707-backup-center-oneclick1" />
@@ -309,6 +310,10 @@
               <button id="agreementsTab" class="view-tab" data-view="agreements"
                       role="tab" aria-selected="false" aria-controls="agreementsView">
                 <span class="icon" aria-hidden="true">📄</span> Agreements
+              </button>
+              <button id="commissionTrackerTab" class="view-tab" data-view="commissionTracker" data-permission-resource="sales_commissions" data-permission-action="view"
+                      role="tab" aria-selected="false" aria-controls="commissionTrackerView">
+                <span class="icon" aria-hidden="true">💸</span> Commission Tracker
               </button>
               <button id="proposalCatalogTab" class="view-tab" data-view="proposalCatalog"
                       role="tab" aria-selected="false" aria-controls="proposalCatalogView">
@@ -2304,6 +2309,29 @@ Sample:
             </div>
             <div id="agreementsPagination" class="agreements-pagination-footer" aria-label="Agreement pagination"></div>
           </section>
+        </div>
+      </section>
+
+      <section id="commissionTrackerView" class="view" role="tabpanel" aria-labelledby="commissionTrackerTab">
+        <div class="commission-workspace">
+          <header class="commission-header">
+            <div class="commission-header-copy"><span class="commission-header-icon" aria-hidden="true">%</span><div><h2>Sales Commission Tracker</h2><p>Manually assign invoices to the sales team, calculate first-year or renewal commission, and divide commission payments according to each invoice payment term.</p></div></div>
+            <div class="commission-header-actions"><button id="commissionRefreshBtn" class="btn ghost sm" type="button">↻ Refresh</button><button id="commissionExportBtn" class="btn ghost sm" type="button">⇩ Export CSV</button><button id="commissionCreateBtn" class="btn primary sm" type="button">＋ Add Commission</button></div>
+          </header>
+          <div class="commission-kpis" aria-live="polite">
+            <article class="commission-kpi"><div class="commission-kpi-label">Total Commission</div><div id="commissionKpiTotal" class="commission-kpi-value">—</div><div id="commissionKpiTotalSub" class="commission-kpi-sub"></div></article>
+            <article class="commission-kpi"><div class="commission-kpi-label">Pending Commission</div><div id="commissionKpiPending" class="commission-kpi-value">—</div><div id="commissionKpiPendingSub" class="commission-kpi-sub"></div></article>
+            <article class="commission-kpi"><div class="commission-kpi-label">Commission Paid</div><div id="commissionKpiPaid" class="commission-kpi-value">—</div><div id="commissionKpiPaidSub" class="commission-kpi-sub"></div></article>
+            <article class="commission-kpi"><div class="commission-kpi-label">Due / Overdue</div><div id="commissionKpiDue" class="commission-kpi-value">—</div><div id="commissionKpiDueSub" class="commission-kpi-sub"></div></article>
+          </div>
+          <section class="commission-panel" aria-label="Commission filters"><div class="commission-panel-title"><h3>Filters</h3><button id="commissionClearFiltersBtn" class="btn ghost sm" type="button">Clear Filters</button></div><div class="commission-filter-grid">
+            <label class="commission-field"><span>Search</span><input id="commissionSearchInput" class="input" type="search" placeholder="Invoice, client, salesperson..." /></label>
+            <label class="commission-field"><span>Salesperson</span><select id="commissionSalespersonFilter" class="select"><option value="all">All salespeople</option></select></label>
+            <label class="commission-field"><span>Type</span><select id="commissionTypeFilter" class="select"><option value="all">All types</option><option value="first_year">First Year</option><option value="renewal">Renewal</option></select></label>
+            <label class="commission-field"><span>Status</span><select id="commissionStatusFilter" class="select"><option value="all">All statuses</option><option value="scheduled">Scheduled</option><option value="partial">Partial</option><option value="paid">Paid</option><option value="cancelled">Cancelled</option></select></label>
+            <label class="commission-field"><span>Currency</span><select id="commissionCurrencyFilter" class="select"><option value="all">All currencies</option></select></label>
+          </div></section>
+          <section class="commission-panel" aria-label="Commission records"><div class="commission-panel-title"><h3>Commission Records</h3><span id="commissionState" class="muted">No data loaded.</span></div><div class="commission-table-wrap"><table class="commission-table"><thead><tr><th>Invoice</th><th>Client</th><th>Salesperson</th><th>Commission</th><th>Invoice Value</th><th>Commission Total</th><th>Paid</th><th>Remaining</th><th>Payment Term</th><th>Status</th><th>Actions</th></tr></thead><tbody id="commissionTbody"><tr><td colspan="11"><div class="commission-empty">Open the module to load commission records.</div></td></tr></tbody></table></div><div class="commission-summary-bar"><span>First year: 5% · Renewal: 2.5% · Full invoice value by default</span><div class="commission-pagination"><button id="commissionPrevPage" class="btn ghost sm" type="button">Previous</button><span id="commissionPageInfo">Page 1 of 1</span><button id="commissionNextPage" class="btn ghost sm" type="button">Next</button></div></div></section>
         </div>
       </section>
 
@@ -4543,14 +4571,14 @@ Sample:
   <script src="/company-verification.js?v=20260630-shared-company-verification"></script>
   <script src="/notification-email-template.js?v=20260509-html-email1"></script>
   <script src="/notification-template-helpers.js?v=20260617-notification-channel-test2"></script>
-  <script src="/supabase-data.js?v=20260727-receipt-save-hotfix-v23"></script>
+  <script src="/supabase-data.js?v=20260720-csm-special-client-activity-v9"></script>
   <script src="/clients-service.js?v=20260427-allpwa1"></script>
   <script src="/api.js?v=20260720-csm-special-client-activity-v9"></script>
   <script type="module" src="/src/services/notificationDispatcher.js?v=20260618-central-dispatcher1"></script>
   <script type="module" src="/src/services/notificationDeliveryWorker.js?v=20260618-central-dispatcher1"></script>
   <script src="/notification-service.js?v=20260618-final-channel-fallback1"></script>
   <script src="/session.js?v=20260427-allpwa1"></script>
-  <script src="/permissions.js?v=20260727-hr-sfc-gm-full-access-v21"></script>
+  <script src="/permissions.js?v=20260727-sales-commission-v24"></script>
   <script src="/admin-override.js?v=20260519-admin-override"></script>
   <script src="/utils.js?v=20260510-grand-total-words"></script>
   <script src="/table-utils.js?v=20260703-sortable-tables"></script>
@@ -4559,7 +4587,7 @@ Sample:
   <script src="/calendar.js?v=20260427-allpwa1"></script>
   <script src="/planner.js?v=20260427-allpwa1"></script>
   <script src="/crm-form-selectors.js?v=20260609-final-company-contact-fix"></script>
-  <script src="/ui.js?v=20260720-csm-special-client-activity-v9"></script>
+  <script src="/ui.js?v=20260727-sales-commission-v24"></script>
   <script src="/record-details-drawer.js?v=20260626-shared-right-panel"></script>
   <script src="/leads.js?v=20260626-lead-detail-drawer"></script>
   <script src="/companies.js?v=20260718-company-verification-save-fix"></script>
@@ -4567,6 +4595,7 @@ Sample:
   <script src="/deals.js?v=20260608-company-options-fresh"></script>
   <script src="/proposals.js?v=20260630-public-eproposal-totals"></script>
   <script src="/agreements.js?v=20260630-e-agreement-link"></script>
+  <script src="/commission-tracker.js?v=20260727-sales-commission-v24"></script>
   <script src="/invoices.js?v=20260722-receipt-dedupe-v15"></script>
   <script src="/receipts.js?v=20260427-allpwa1"></script>
   <script src="/credit-notes.js?v=20260604-credit-notes1"></script>
@@ -4577,7 +4606,7 @@ Sample:
   <script src="/accounting.js?v=20260720-expense-branded-report-v10"></script>
   <script src="/backup-center.js?v=20260707-backup-center-oneclick1"></script>
   <script src="/client-success.js?v=20260723-cs360-zl-defence-v18"></script>
-  <script src="/lifecycle-analytics.js?v=20260727-analytics360-phase-notes-v22"></script>
+  <script src="/lifecycle-analytics.js?v=20260610-lifecycle-metrics-source-truth"></script>
   <script src="/clients.js?v=20260611-direct-communication"></script>
   <script src="/proposal-catalog.js?v=20260626-modern-product-catalog-ui"></script>
   <script src="/communication-centre.js?v=20260611-direct-communication"></script>
@@ -4592,6 +4621,6 @@ Sample:
   <script src="/csm-service.js?v=20260720-csm-special-client-activity-v9"></script>
   <script src="/ai-insights-service.js?v=20260427-allpwa1"></script>
   <script src="/ai-assistant.js?v=20260526-ai-assistant-v1"></script>
-  <script src="/app.js?v=20260720-csm-special-client-activity-v9"></script>
+  <script src="/app.js?v=20260727-sales-commission-v24"></script>
 </body>
 </html>

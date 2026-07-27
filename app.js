@@ -2926,6 +2926,7 @@ function normalizeViewKey(view) {
   if (['accounting', 'Accounting', 'accounts', 'chart_of_accounts', 'chart-of-accounts', 'general_ledger', 'general-ledger', 'ledger', 'journal_entries', 'journal-entries'].includes(key)) return 'accounting';
   if (['backupCenter', 'backup_center', 'backup-center', 'backup', 'backups', 'database_backup', 'database-backup'].includes(key)) return 'backupCenter';
   if (['clientSuccess', 'client_success', 'client-success', 'customer_success', 'customer-success', 'cs360', 'client_success_360'].includes(key)) return 'clientSuccess';
+  if (['commissionTracker', 'commission_tracker', 'commission-tracker', 'sales_commission', 'sales-commission', 'commissions'].includes(key)) return 'commissionTracker';
   return key;
 }
 
@@ -2957,7 +2958,7 @@ window.shouldShowTicketFilters = shouldShowTicketFilters;
 
 function setActiveView(view) {
  view = normalizeViewKey(view);
- const names = ['issues', 'calendar', 'insights', 'csm', 'clientSuccess', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'renewalForecast', 'biners', 'hr', 'accounting', 'backupCenter', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
+ const names = ['issues', 'calendar', 'insights', 'csm', 'clientSuccess', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'commissionTracker', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'renewalForecast', 'biners', 'hr', 'accounting', 'backupCenter', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
  const requestedView = view;
  const firstAllowedView = names.find(name => Permissions.canAccessTab(name)) || '';
  if (!Permissions.canAccessTab(view)) {
@@ -2990,6 +2991,8 @@ function setActiveView(view) {
         ? E.proposalsTab
         : name === 'agreements'
         ? E.agreementsTab
+        : name === 'commissionTracker'
+        ? E.commissionTrackerTab
         : name === 'invoices'
         ? E.invoicesTab
         : name === 'receipts'
@@ -3050,6 +3053,8 @@ function setActiveView(view) {
         ? E.proposalsView
         : name === 'agreements'
         ? E.agreementsView
+        : name === 'commissionTracker'
+        ? E.commissionTrackerView
         : name === 'invoices'
         ? E.invoicesView
         : name === 'receipts'
@@ -3173,6 +3178,7 @@ function setActiveView(view) {
   if (view === 'deals' && window.Deals?.loadAndRefresh) runViewLoader('deals', () => Deals.loadAndRefresh());
   if (view === 'proposals' && window.Proposals?.loadAndRefresh) runViewLoader('proposals', () => Proposals.loadAndRefresh());
   if (view === 'agreements' && window.Agreements?.loadAndRefresh) runViewLoader('agreements', () => window.Agreements.loadAndRefresh());
+  if (view === 'commissionTracker' && window.SalesCommissionTracker?.init) runViewLoader('sales commission tracker', () => SalesCommissionTracker.init());
   if (view === 'invoices' && window.Invoices?.refresh) runViewLoader('invoices', () => Invoices.refresh());
   if (view === 'receipts' && window.Receipts?.refresh) runViewLoader('receipts', () => Receipts.refresh());
   if ((view === 'creditNotes' || view === 'credit_notes') && window.CreditNotes?.refresh) runViewLoader('credit notes', () => CreditNotes.refresh());
@@ -5396,6 +5402,7 @@ function wireCore() {
     E.dealsTab,
     E.proposalsTab,
     E.agreementsTab,
+    E.commissionTrackerTab,
     E.invoicesTab,
     E.receiptsTab,
     E.creditNotesTab,
@@ -5916,6 +5923,7 @@ function getAppHashForView(view = '') {
     deals: '#crm?tab=deals',
     proposals: '#crm?tab=proposals',
     agreements: '#crm?tab=agreements',
+    commissionTracker: '#crm?tab=commission_tracker',
     invoices: '#finance?tab=invoices',
     receipts: '#finance?tab=receipts',
     creditNotes: '#finance?tab=credit_notes',
@@ -5941,7 +5949,7 @@ function getAppHashForView(view = '') {
 function isNotificationDeepLinkHash(hash = '') {
   const value = String(hash || '').trim();
   if (!value || value === '#loginSection') return false;
-  return /^#(tickets|workflow|crm|finance|leads|deals|proposals|agreements|invoices|receipts|credit_notes|credit-notes|payment_forecast|payment-forecast|renewal_forecast|renewal-forecast|biners|hr|human-resources|attendance|payroll|backup-center|backup_center|backup|backups|client-success|client_success|client-success-360|communication_centre|communication-centre|communication_center)/i.test(value);
+  return /^#(tickets|workflow|crm|finance|leads|deals|proposals|agreements|commission_tracker|commission-tracker|invoices|receipts|credit_notes|credit-notes|payment_forecast|payment-forecast|renewal_forecast|renewal-forecast|biners|hr|human-resources|attendance|payroll|backup-center|backup_center|backup|backups|client-success|client_success|client-success-360|communication_centre|communication-centre|communication_center)/i.test(value);
 }
 
 function capturePendingDeepLink() {
@@ -6039,6 +6047,11 @@ async function routeAppHashAfterReady() {
     if (fallback) setActiveView(fallback);
     return false;
   }
+  if (target.resource === 'commission_tracker' || target.resource === 'commission-tracker') {
+    if (Permissions.canAccessTab('commissionTracker')) { setActiveView('commissionTracker'); return true; }
+    UI.toast?.('You do not have permission to open Sales Commission Tracker.');
+    return false;
+  }
   if (target.resource === 'renewal_forecast') {
     if (Permissions.canAccessTab('renewalForecast')) { setActiveView('renewalForecast'); return true; }
     UI.toast?.('Access denied. This forecast is available for admin users only.');
@@ -6084,7 +6097,7 @@ function wireDashboardGate() {
     return 'issues';
   };
   const getFirstAllowedView = preferredView => {
-    const names = ['issues', 'calendar', 'insights', 'csm', 'clientSuccess', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'renewalForecast', 'biners', 'hr', 'accounting', 'backupCenter', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
+    const names = ['issues', 'calendar', 'insights', 'csm', 'clientSuccess', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'commissionTracker', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'renewalForecast', 'biners', 'hr', 'accounting', 'backupCenter', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'aiAssistant', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
     const preferred = String(preferredView || '').trim();
     if (preferred && Permissions.canAccessTab(preferred)) return preferred;
     return names.find(name => Permissions.canAccessTab(name)) || 'issues';
