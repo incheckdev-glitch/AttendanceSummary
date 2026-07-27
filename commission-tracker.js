@@ -49,7 +49,7 @@
     invoiceTotal(row){ return this.num(row?.invoice_total ?? row?.grand_total ?? row?.total_amount ?? row?.total ?? row?.amount_due); },
     invoiceCurrency(row){ return String(row?.currency || row?.currency_code || 'USD').trim().toUpperCase(); },
     invoicePaymentTerm(row){ return String(row?.payment_term || row?.payment_terms || row?.billing_frequency || 'Annual').trim(); },
-    invoiceDate(row){ return row?.invoice_date || row?.date || row?.created_at || ''; },
+    invoiceDate(row){ return row?.issue_date || row?.invoice_date || row?.issued_date || row?.issued_at || row?.date || row?.created_at || ''; },
     invoiceDueDate(row){ return row?.due_date || row?.payment_due_date || row?.invoice_due_date || this.invoiceDate(row); },
     salespersonName(row){ return String(row?.name || row?.full_name || row?.display_name || row?.username || row?.email || 'Sales User').trim(); },
 
@@ -103,6 +103,43 @@
       once('commissionNextPage','click',()=>{ const pages=Math.max(1,Math.ceil(this.filtered().length/this.state.pageSize));if(this.state.page<pages){this.state.page++;this.render();} });
     },
 
+    extractInvoiceRows(response){
+      if(Array.isArray(response)) return response;
+      if(Array.isArray(response?.rows)) return response.rows;
+      if(Array.isArray(response?.data)) return response.data;
+      if(Array.isArray(response?.items)) return response.items;
+      if(Array.isArray(response?.records)) return response.records;
+      return [];
+    },
+
+    async loadInvoices(db){
+      // Do not order by invoice_date here: the deployed invoices table stores the
+      // date as issue_date. Ordering by a missing column makes Supabase return no
+      // rows and leaves the Add Commission invoice selector empty.
+      const direct=await db.from('invoices').select('*').limit(2500);
+      const directRows=!direct?.error && Array.isArray(direct?.data) ? direct.data : [];
+      if(directRows.length) return directRows;
+      if(direct?.error) console.warn('[Commission Tracker] direct invoice load failed',direct.error);
+
+      // Some roles read invoices through the application API rather than direct
+      // table RLS. Use the same invoice list service as the main Invoice module.
+      if(global.Api?.listInvoices){
+        try{
+          const response=await global.Api.listInvoices({}, {
+            limit:2500,
+            page:1,
+            summary_only:true,
+            forceRefresh:true
+          });
+          const apiRows=this.extractInvoiceRows(response);
+          if(apiRows.length) return apiRows;
+        }catch(error){
+          console.warn('[Commission Tracker] invoice API fallback failed',error);
+        }
+      }
+      return directRows;
+    },
+
     async refresh(){
       if(this.loading) return;
       const db=this.db();
@@ -110,21 +147,24 @@
       this.loading=true;
       const state=this.el('commissionState'); if(state) state.textContent='Loading commission records…';
       try{
-        const [commissionsRes,installmentsRes,invoicesRes,profilesRes]=await Promise.all([
+        const [commissionsRes,installmentsRes,invoiceRows,profilesRes]=await Promise.all([
           db.from('sales_commissions').select('*').order('created_at',{ascending:false}),
           db.from('sales_commission_installments').select('*').order('installment_no',{ascending:true}),
-          db.from('invoices').select('*').order('invoice_date',{ascending:false}).limit(2500),
+          this.loadInvoices(db),
           db.from('profiles').select('id,name,email,username,role_key,is_active,active').limit(2000)
         ]);
         if(commissionsRes.error) throw commissionsRes.error;
         if(installmentsRes.error) throw installmentsRes.error;
-        if(invoicesRes.error) console.warn('[Commission Tracker] invoices load failed',invoicesRes.error);
         if(profilesRes.error) console.warn('[Commission Tracker] profiles load failed',profilesRes.error);
         this.state.commissions=Array.isArray(commissionsRes.data)?commissionsRes.data:[];
         this.state.installments=Array.isArray(installmentsRes.data)?installmentsRes.data:[];
-        this.state.invoices=(Array.isArray(invoicesRes.data)?invoicesRes.data:[]).filter(row=>{
-          const status=this.normalize(row.status || row.invoice_status);
+        this.state.invoices=(Array.isArray(invoiceRows)?invoiceRows:[]).filter(row=>{
+          const status=this.normalize(row.status || row.invoice_status || row.payment_state);
           return this.invoiceTotal(row)>0 && !['cancelled','canceled','void','deleted'].includes(status);
+        }).sort((a,b)=>{
+          const right=new Date(this.invoiceDate(b)||0).getTime()||0;
+          const left=new Date(this.invoiceDate(a)||0).getTime()||0;
+          return right-left;
         });
         const profiles=Array.isArray(profilesRes.data)?profilesRes.data:[];
         let salespeople=profiles.filter(row=>{
@@ -297,10 +337,13 @@
     populateInvoiceSelect(selected=''){
       const select=this.el('commissionInvoiceInput'); if(!select)return;
       const existing=new Set(this.state.commissions.filter(row=>String(row.id)!==String(this.state.editingId||'')).map(row=>String(row.invoice_id||row.invoice_number)));
-      select.innerHTML='<option value="">Select invoice</option>'+this.state.invoices.map(row=>{
+      const invoiceOptions=this.state.invoices.map(row=>{
         const id=String(row.id||this.invoiceNumber(row)); const used=existing.has(id)||existing.has(this.invoiceNumber(row));
         return `<option value="${this.attr(id)}" ${used?'disabled':''}>${this.escape(this.invoiceNumber(row))} · ${this.escape(this.invoiceClient(row))} · ${this.escape(this.money(this.invoiceTotal(row),this.invoiceCurrency(row)))}${used?' · Already tracked':''}</option>`;
       }).join('');
+      select.innerHTML=this.state.invoices.length
+        ? '<option value="">Select invoice</option>'+invoiceOptions
+        : '<option value="">No eligible invoices found</option>';
       if(selected) select.value=selected;
     },
     populateSalespersonSelect(selected=''){
