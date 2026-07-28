@@ -7,6 +7,7 @@
     state: {
       commissions: [],
       installments: [],
+      receipts: [],
       invoices: [],
       salespeople: [],
       selectedInvoiceSchedule: [],
@@ -178,9 +179,10 @@
       const state=this.el('commissionState'); if(state) state.textContent='Loading commission records…';
       try{
         const manageAll=this.canManage();
-        const [commissionsRes,installmentsRes,invoiceRows,profilesRes]=await Promise.all([
+        const [commissionsRes,installmentsRes,receiptsRes,invoiceRows,profilesRes]=await Promise.all([
           db.from('sales_commissions').select('*').order('created_at',{ascending:false}),
           db.from('sales_commission_installments').select('*').order('installment_no',{ascending:true}),
+          db.from('sales_commission_receipts').select('*').order('issued_at',{ascending:false}),
           manageAll ? this.loadInvoices(db) : Promise.resolve([]),
           manageAll
             ? db.from('profiles').select('id,name,email,username,role_key,is_active,active').limit(2000)
@@ -188,6 +190,7 @@
         ]);
         if(commissionsRes.error) throw commissionsRes.error;
         if(installmentsRes.error) throw installmentsRes.error;
+        if(receiptsRes.error && String(receiptsRes.error.code||'')!=='42P01') throw receiptsRes.error;
         if(profilesRes.error) console.warn('[Commission Tracker] profiles load failed',profilesRes.error);
 
         const rawCommissions=Array.isArray(commissionsRes.data)?commissionsRes.data:[];
@@ -197,6 +200,8 @@
 
         const allowedCommissionIds=new Set(this.state.commissions.map(row=>String(row.id)));
         this.state.installments=(Array.isArray(installmentsRes.data)?installmentsRes.data:[])
+          .filter(row=>allowedCommissionIds.has(String(row.commission_id)));
+        this.state.receipts=(Array.isArray(receiptsRes?.data)?receiptsRes.data:[])
           .filter(row=>allowedCommissionIds.has(String(row.commission_id)));
 
         this.state.invoices=(Array.isArray(invoiceRows)?invoiceRows:[]).filter(row=>{
@@ -241,6 +246,8 @@
     },
 
     installmentsFor(id){ return this.state.installments.filter(row=>String(row.commission_id)===String(id)).sort((a,b)=>this.num(a.installment_no)-this.num(b.installment_no)); },
+    receiptForInstallment(id){ return this.state.receipts.find(row=>String(row.installment_id)===String(id) && this.normalize(row.status)!=='void') || null; },
+    receiptNumber(row){ return String(row?.receipt_number || row?.receipt_no || row?.id || '').trim(); },
     statsFor(row){
       const installments=this.installmentsFor(row.id);
       const paid=installments.reduce((sum,item)=>sum+this.num(item.paid_amount ?? (this.normalize(item.status)==='paid'?item.commission_amount:0)),0);
@@ -378,7 +385,8 @@
           </div><div class="modal-footer"><button id="commissionEntryCancel" class="btn ghost" type="button">Cancel</button><button id="commissionEntrySave" class="btn primary" type="submit">Save Commission</button></div></form>
         </div></div>
       <div id="commissionDetailsModal" class="modal commission-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="commissionDetailsTitle"><div class="modal-content"><div class="header"><div><h2 id="commissionDetailsTitle" style="margin:0">Commission Details</h2><div id="commissionDetailsSubtitle" class="muted"></div></div><button id="commissionDetailsClose" class="modal-close" type="button">✕</button></div><div id="commissionDetailsBody" class="modal-body"></div><div class="modal-footer"><button id="commissionDetailsDone" class="btn primary" type="button">Done</button></div></div></div>
-      <div id="commissionPaymentModal" class="modal commission-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="commissionPaymentTitle"><div class="modal-content" style="max-width:560px"><div class="header"><div><h2 id="commissionPaymentTitle" style="margin:0">Record Commission Payment</h2><div id="commissionPaymentSubtitle" class="muted"></div></div><button id="commissionPaymentClose" class="modal-close" type="button">✕</button></div><form id="commissionPaymentForm"><input id="commissionPaymentInstallmentId" type="hidden"/><div class="modal-body commission-form-grid"><label class="commission-field"><span>Paid Date *</span><input id="commissionPaymentDate" class="input" type="date" required/></label><label class="commission-field"><span>Reference</span><input id="commissionPaymentReference" class="input" type="text" placeholder="Transfer / payroll reference"/></label><label class="commission-field full"><span>Payment Notes</span><textarea id="commissionPaymentNotes" class="input" rows="3"></textarea></label></div><div class="modal-footer"><button id="commissionPaymentCancel" class="btn ghost" type="button">Cancel</button><button class="btn primary" type="submit">Mark Paid</button></div></form></div></div>`;
+      <div id="commissionPaymentModal" class="modal commission-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="commissionPaymentTitle"><div class="modal-content" style="max-width:560px"><div class="header"><div><h2 id="commissionPaymentTitle" style="margin:0">Record Commission Payment</h2><div id="commissionPaymentSubtitle" class="muted"></div></div><button id="commissionPaymentClose" class="modal-close" type="button">✕</button></div><form id="commissionPaymentForm"><input id="commissionPaymentInstallmentId" type="hidden"/><div class="modal-body commission-form-grid"><div class="commission-info full"><strong>Receipt:</strong> marking this installment paid automatically issues a branded commission payment receipt.</div><label class="commission-field"><span>Paid Date *</span><input id="commissionPaymentDate" class="input" type="date" required/></label><label class="commission-field"><span>Reference</span><input id="commissionPaymentReference" class="input" type="text" placeholder="Transfer / payroll reference"/></label><label class="commission-field full"><span>Payment Notes</span><textarea id="commissionPaymentNotes" class="input" rows="3"></textarea></label></div><div class="modal-footer"><button id="commissionPaymentCancel" class="btn ghost" type="button">Cancel</button><button id="commissionPaymentSave" class="btn primary" type="submit">Mark Paid & Issue Receipt</button></div></form></div></div>
+      <div id="commissionReceiptModal" class="modal commission-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="commissionReceiptTitle"><div class="modal-content" style="max-width:980px"><div class="header"><div><h2 id="commissionReceiptTitle" style="margin:0">Commission Payment Receipt</h2><div id="commissionReceiptSubtitle" class="muted"></div></div><button id="commissionReceiptClose" class="modal-close" type="button">✕</button></div><div class="modal-body" style="padding:0;background:#eef2f7"><iframe id="commissionReceiptFrame" title="Commission payment receipt preview" style="display:block;width:100%;height:72vh;border:0;background:#eef2f7"></iframe></div><div class="modal-footer"><button id="commissionReceiptDone" class="btn ghost" type="button">Close</button><button id="commissionReceiptPrint" class="btn primary" type="button">Print / Save PDF</button></div></div></div>`;
       document.body.append(...wrapper.children);
       const close=(id)=>this.closeModal(id);
       this.el('commissionEntryClose').addEventListener('click',()=>close('commissionEntryModal'));
@@ -387,6 +395,9 @@
       this.el('commissionDetailsDone').addEventListener('click',()=>close('commissionDetailsModal'));
       this.el('commissionPaymentClose').addEventListener('click',()=>close('commissionPaymentModal'));
       this.el('commissionPaymentCancel').addEventListener('click',()=>close('commissionPaymentModal'));
+      this.el('commissionReceiptClose').addEventListener('click',()=>close('commissionReceiptModal'));
+      this.el('commissionReceiptDone').addEventListener('click',()=>close('commissionReceiptModal'));
+      this.el('commissionReceiptPrint').addEventListener('click',()=>this.printReceipt());
       this.el('commissionEntryForm').addEventListener('submit',event=>{event.preventDefault();this.saveEntry();});
       this.el('commissionPaymentForm').addEventListener('submit',event=>{event.preventDefault();this.savePayment();});
       this.el('commissionInvoiceInput').addEventListener('change',()=>this.onInvoiceChange());
@@ -397,6 +408,8 @@
         const btn=event.target.closest('[data-installment-action]'); if(!btn)return;
         if(btn.dataset.installmentAction==='pay') this.openPayment(btn.dataset.id);
         if(btn.dataset.installmentAction==='undo') this.undoPayment(btn.dataset.id);
+        if(btn.dataset.installmentAction==='receipt') this.openReceiptByInstallment(btn.dataset.id);
+        if(btn.dataset.installmentAction==='issue_receipt') this.issueReceipt(btn.dataset.id);
       });
     },
     openModal(id){
@@ -568,17 +581,133 @@
       this.updateCalculation();this.openModal('commissionEntryModal');
     },
     async openDetails(id){
-      const row=this.state.commissions.find(item=>String(item.id)===String(id));if(!row)return;const stats=this.statsFor(row);this.el('commissionDetailsTitle').textContent=`Commission · ${row.invoice_number}`;this.el('commissionDetailsSubtitle').textContent=`${row.client_name||'—'} · ${row.salesperson_name||'—'}`;
-      this.el('commissionDetailsBody').innerHTML=`<div class="commission-details-grid"><div class="commission-detail-card"><span>Type / Rate</span><strong>${row.commission_type==='renewal'?'Renewal':'First Year'} · ${this.num(row.commission_rate).toFixed(2)}%</strong></div><div class="commission-detail-card"><span>Invoice Value</span><strong>${this.money(row.invoice_value,row.currency)}</strong></div><div class="commission-detail-card"><span>Total Commission</span><strong>${this.money(row.commission_total,row.currency)}</strong></div><div class="commission-detail-card"><span>Remaining</span><strong>${this.money(stats.remaining,row.currency)}</strong></div></div><div class="commission-panel-title"><h3>Payment Schedule</h3><span class="commission-badge" data-status="${this.attr(stats.status)}">${this.escape(stats.status)}</span></div><div class="commission-schedule-preview"><table><thead><tr><th>#</th><th>Due Date</th><th>Amount</th><th>Status</th><th>Paid Date</th><th>Reference</th><th>Actions</th></tr></thead><tbody>${stats.installments.map(item=>{const paid=this.normalize(item.status)==='paid'||this.num(item.paid_amount)>0;return`<tr class="${paid?'commission-installment-paid':''}"><td>${this.num(item.installment_no)}</td><td>${this.formatDate(item.due_date)}</td><td class="commission-money">${this.money(item.commission_amount,row.currency)}</td><td><span class="commission-badge" data-status="${paid?'paid':'scheduled'}">${paid?'Paid':'Scheduled'}</span></td><td>${this.formatDate(item.paid_date)}</td><td>${this.escape(item.payment_reference||'—')}</td><td>${this.canManage()?(paid?`<button class="btn ghost sm" type="button" data-installment-action="undo" data-id="${this.attr(item.id)}">Undo</button>`:`<button class="btn primary sm" type="button" data-installment-action="pay" data-id="${this.attr(item.id)}">Mark Paid</button>`):'—'}</td></tr>`;}).join('')}</tbody></table></div>${row.notes?`<div class="commission-info" style="margin-top:14px"><strong>Notes:</strong> ${this.escape(row.notes)}</div>`:''}`;
+      const row=this.state.commissions.find(item=>String(item.id)===String(id));
+      if(!row)return;
+      const stats=this.statsFor(row);
+      this.el('commissionDetailsTitle').textContent=`Commission · ${row.invoice_number}`;
+      this.el('commissionDetailsSubtitle').textContent=`${row.client_name||'—'} · ${row.salesperson_name||'—'}`;
+      const scheduleRows=stats.installments.map(item=>{
+        const paid=this.normalize(item.status)==='paid'||this.num(item.paid_amount)>0;
+        const receipt=this.receiptForInstallment(item.id);
+        let actions='—';
+        if(paid){
+          const receiptAction=receipt
+            ? `<button class="btn ghost sm" type="button" data-installment-action="receipt" data-id="${this.attr(item.id)}">View Receipt</button>`
+            : (this.canManage()?`<button class="btn primary sm" type="button" data-installment-action="issue_receipt" data-id="${this.attr(item.id)}">Issue Receipt</button>`:'Receipt pending');
+          const undoAction=this.canManage()?`<button class="btn ghost sm" type="button" data-installment-action="undo" data-id="${this.attr(item.id)}">Undo</button>`:'';
+          actions=`<div style="display:flex;gap:6px;flex-wrap:wrap">${receiptAction}${undoAction}</div>`;
+        }else if(this.canManage()){
+          actions=`<button class="btn primary sm" type="button" data-installment-action="pay" data-id="${this.attr(item.id)}">Mark Paid</button>`;
+        }
+        return `<tr class="${paid?'commission-installment-paid':''}"><td>${this.num(item.installment_no)}</td><td>${this.formatDate(item.due_date)}</td><td class="commission-money">${this.money(item.commission_amount,row.currency)}</td><td><span class="commission-badge" data-status="${paid?'paid':'scheduled'}">${paid?'Paid':'Scheduled'}</span></td><td>${this.formatDate(item.paid_date)}</td><td>${this.escape(item.payment_reference||'—')}</td><td>${receipt?this.escape(this.receiptNumber(receipt)):'—'}</td><td>${actions}</td></tr>`;
+      }).join('');
+      this.el('commissionDetailsBody').innerHTML=`<div class="commission-details-grid"><div class="commission-detail-card"><span>Type / Rate</span><strong>${row.commission_type==='renewal'?'Renewal':'First Year'} · ${this.num(row.commission_rate).toFixed(2)}%</strong></div><div class="commission-detail-card"><span>Invoice Value</span><strong>${this.money(row.invoice_value,row.currency)}</strong></div><div class="commission-detail-card"><span>Total Commission</span><strong>${this.money(row.commission_total,row.currency)}</strong></div><div class="commission-detail-card"><span>Remaining</span><strong>${this.money(stats.remaining,row.currency)}</strong></div></div><div class="commission-panel-title"><h3>Payment Schedule</h3><span class="commission-badge" data-status="${this.attr(stats.status)}">${this.escape(stats.status)}</span></div><div class="commission-schedule-preview"><table><thead><tr><th>#</th><th>Due Date</th><th>Amount</th><th>Status</th><th>Paid Date</th><th>Reference</th><th>Receipt</th><th>Actions</th></tr></thead><tbody>${scheduleRows}</tbody></table></div>${row.notes?`<div class="commission-info" style="margin-top:14px"><strong>Notes:</strong> ${this.escape(row.notes)}</div>`:''}`;
       this.openModal('commissionDetailsModal');
     },
     openPayment(id){const item=this.state.installments.find(row=>String(row.id)===String(id));if(!item)return;const parent=this.state.commissions.find(row=>String(row.id)===String(item.commission_id));this.el('commissionPaymentInstallmentId').value=id;this.el('commissionPaymentDate').value=this.isoDate(new Date());this.el('commissionPaymentReference').value='';this.el('commissionPaymentNotes').value=item.notes||'';this.el('commissionPaymentSubtitle').textContent=`Payment ${item.installment_no} · ${this.money(item.commission_amount,parent?.currency||'USD')}`;this.openModal('commissionPaymentModal');},
     async savePayment(){
-      const id=this.el('commissionPaymentInstallmentId').value;const item=this.state.installments.find(row=>String(row.id)===String(id));if(!item||!this.canManage())return;const db=this.db();
-      try{const {error}=await db.from('sales_commission_installments').update({status:'paid',paid_amount:this.num(item.commission_amount),paid_date:this.el('commissionPaymentDate').value,payment_reference:String(this.el('commissionPaymentReference').value||'').trim()||null,notes:String(this.el('commissionPaymentNotes').value||'').trim()||null,updated_at:new Date().toISOString()}).eq('id',id);if(error)throw error;await this.syncParentStatus(item.commission_id);this.closeModal('commissionPaymentModal');this.closeModal('commissionDetailsModal');this.toast('Commission payment recorded.');await this.refresh();this.openDetails(item.commission_id);}catch(error){this.toast(error?.message||'Unable to record payment.');}
+      const id=this.el('commissionPaymentInstallmentId').value;
+      const item=this.state.installments.find(row=>String(row.id)===String(id));
+      if(!item||!this.canManage())return;
+      const db=this.db();
+      const saveBtn=this.el('commissionPaymentSave');
+      const original=saveBtn?.textContent||'Mark Paid & Issue Receipt';
+      if(saveBtn){saveBtn.disabled=true;saveBtn.textContent='Saving & Issuing…';}
+      try{
+        const {data,error}=await db.rpc('record_sales_commission_payment',{
+          p_installment_id:id,
+          p_paid_date:this.el('commissionPaymentDate').value,
+          p_payment_reference:String(this.el('commissionPaymentReference').value||'').trim()||null,
+          p_notes:String(this.el('commissionPaymentNotes').value||'').trim()||null
+        });
+        if(error)throw error;
+        const receipt=Array.isArray(data)?data[0]:data;
+        this.closeModal('commissionPaymentModal');
+        this.closeModal('commissionDetailsModal');
+        this.toast(`Commission payment recorded${receipt?.receipt_number?` · Receipt ${receipt.receipt_number} issued`:''}.`);
+        await this.refresh();
+        if(receipt?.id){
+          this.openReceipt(receipt);
+        }else{
+          const savedReceipt=this.receiptForInstallment(id);
+          if(savedReceipt)this.openReceipt(savedReceipt);
+          else this.openDetails(item.commission_id);
+        }
+      }catch(error){
+        console.error('[Commission Tracker] payment/receipt save failed',error);
+        this.toast(error?.message||error?.details||'Unable to record payment and issue receipt. Run the V35 commission receipt SQL migration first.');
+      }finally{
+        if(saveBtn){saveBtn.disabled=false;saveBtn.textContent=original;}
+      }
     },
     async undoPayment(id){
-      if(!this.canManage()||!confirm('Undo this commission payment?'))return;const item=this.state.installments.find(row=>String(row.id)===String(id));if(!item)return;const db=this.db();const {error}=await db.from('sales_commission_installments').update({status:'scheduled',paid_amount:0,paid_date:null,payment_reference:null,updated_at:new Date().toISOString()}).eq('id',id);if(error){this.toast(error.message);return;}await this.syncParentStatus(item.commission_id);this.closeModal('commissionDetailsModal');await this.refresh();this.openDetails(item.commission_id);
+      if(!this.canManage()||!confirm('Undo this commission payment and void its receipt?'))return;
+      const item=this.state.installments.find(row=>String(row.id)===String(id));
+      if(!item)return;
+      const {error}=await this.db().rpc('undo_sales_commission_payment',{p_installment_id:id});
+      if(error){this.toast(error.message||'Unable to undo payment.');return;}
+      this.closeModal('commissionDetailsModal');
+      this.toast('Commission payment undone and receipt voided.');
+      await this.refresh();
+      this.openDetails(item.commission_id);
+    },
+    async issueReceipt(id){
+      if(!this.canManage())return;
+      const item=this.state.installments.find(row=>String(row.id)===String(id));
+      if(!item)return;
+      try{
+        const {data,error}=await this.db().rpc('issue_sales_commission_receipt',{p_installment_id:id});
+        if(error)throw error;
+        const receipt=Array.isArray(data)?data[0]:data;
+        await this.refresh();
+        this.toast(`Receipt ${receipt?.receipt_number||''} issued.`.trim());
+        this.openReceipt(receipt||this.receiptForInstallment(id));
+      }catch(error){
+        this.toast(error?.message||'Unable to issue commission receipt.');
+      }
+    },
+    openReceiptByInstallment(id){
+      const receipt=this.receiptForInstallment(id);
+      if(!receipt){this.toast('No issued receipt was found for this installment.');return;}
+      this.openReceipt(receipt);
+    },
+    buildReceiptHtml(receipt){
+      const commission=this.state.commissions.find(row=>String(row.id)===String(receipt?.commission_id));
+      const installment=this.state.installments.find(row=>String(row.id)===String(receipt?.installment_id));
+      if(!receipt||!commission||!installment)return '';
+      const text=value=>this.escape(value||'—');
+      const amount=this.num(receipt.amount||installment.paid_amount||installment.commission_amount);
+      const currency=String(receipt.currency||commission.currency||'USD').toUpperCase();
+      const amountWords=global.U?.formatAmountInWords?U.formatAmountInWords(amount,currency):`Only ${global.U?.amountToWords?U.amountToWords(amount,currency):amount.toFixed(2)} ${currency}`;
+      const issuedBy=receipt.issued_by_name||receipt.issued_by_email||'InCheck360';
+      return `<!doctype html><html><head><meta charset="utf-8"><title>${text(this.receiptNumber(receipt))}</title><style>
+      :root{color-scheme:light}*{box-sizing:border-box}body{margin:0;padding:12mm 0;background:#eef2f7;color:#0f172a;font-family:Inter,"Segoe UI",Arial,sans-serif}.page{width:210mm;min-height:297mm;margin:0 auto;background:#fff;padding:15mm 16mm 13mm;display:flex;flex-direction:column;border:1px solid #dbe3ed;box-shadow:0 14px 34px rgba(15,23,42,.12)}.header{display:grid;grid-template-columns:45mm 1fr 63mm;gap:6mm;align-items:center;border-bottom:2px solid #0b3b82;padding-bottom:7mm}.logo{height:25mm;display:flex;align-items:center}.logo img,.logo svg{max-width:42mm;max-height:23mm;object-fit:contain}.title{text-align:center}.title h1{margin:0;color:#082b61;font-size:21px;line-height:1.15}.title p{margin:5px 0 0;color:#64748b;font-size:11px}.meta{border:1px solid #d6e0ec;border-radius:7px;overflow:hidden}.meta-row{display:grid;grid-template-columns:27mm 1fr;border-bottom:1px solid #e2e8f0}.meta-row:last-child{border-bottom:0}.meta-row span,.meta-row strong{padding:7px 8px;font-size:10.5px}.meta-row span{background:#f6f9fd;color:#475569;font-weight:700}.meta-row strong{overflow-wrap:anywhere}.section{margin-top:8mm}.section-title{font-size:11px;letter-spacing:.09em;color:#1e3a5f;font-weight:800;margin-bottom:3mm}.grid{display:grid;grid-template-columns:1fr 1fr;gap:4mm}.card{border:1px solid #d7e1ed;border-radius:7px;padding:4mm;background:#fbfdff;min-width:0}.card span{display:block;color:#64748b;font-size:10px;text-transform:uppercase;letter-spacing:.05em}.card strong{display:block;margin-top:5px;font-size:13px;overflow-wrap:anywhere}.narrative{margin-top:8mm;padding:5mm;border:1px solid #d7e1ed;border-radius:7px;background:#fbfdff;font-size:13px;line-height:1.65}.amount-box{margin-top:8mm;margin-left:auto;width:100mm;border:1px solid #cad7e6;border-radius:8px;overflow:hidden}.amount-row{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;border-bottom:1px solid #e2e8f0;font-size:12px}.amount-row:last-child{border-bottom:0}.amount-row.grand{background:#eaf2ff;color:#082b61;font-size:16px;font-weight:800}.amount-row strong{text-align:right}.words{margin-top:4mm;border:1px solid #d7e1ed;border-radius:7px;padding:4mm;font-size:12px;line-height:1.5}.signatures{display:grid;grid-template-columns:1fr 1fr;gap:16mm;margin-top:18mm}.signature{padding-top:18mm;border-top:1px solid #94a3b8;text-align:center;font-size:11px;color:#475569}.footer{margin-top:auto;padding-top:8mm;border-top:1px solid #e2e8f0;text-align:center;color:#64748b;font-size:10.5px}@page{size:A4 portrait;margin:10mm}@media print{body{padding:0;background:#fff}.page{width:auto;min-height:277mm;margin:0;padding:0;border:0;box-shadow:none}}
+      </style></head><body><main class="page"><header class="header"><div class="logo"><div data-incheck360-doc-logo-slot></div></div><div class="title"><h1>Sales Commission Payment Receipt</h1><p>InCheck 360 · CRM Commission Tracker</p></div><div class="meta"><div class="meta-row"><span>Receipt No.</span><strong>${text(this.receiptNumber(receipt))}</strong></div><div class="meta-row"><span>Payment Date</span><strong>${text(this.formatDate(receipt.payment_date||installment.paid_date))}</strong></div><div class="meta-row"><span>Status</span><strong>${text(String(receipt.status||'issued').toUpperCase())}</strong></div></div></header>
+      <section class="section"><div class="section-title">PAID TO</div><div class="grid"><div class="card"><span>Salesperson</span><strong>${text(receipt.salesperson_name||commission.salesperson_name)}</strong></div><div class="card"><span>Email</span><strong>${text(receipt.salesperson_email||commission.salesperson_email)}</strong></div></div></section>
+      <section class="section"><div class="section-title">COMMISSION DETAILS</div><div class="grid"><div class="card"><span>Customer Invoice</span><strong>${text(receipt.invoice_number||commission.invoice_number)}</strong></div><div class="card"><span>Client</span><strong>${text(receipt.client_name||commission.client_name)}</strong></div><div class="card"><span>Commission Type</span><strong>${commission.commission_type==='renewal'?'Renewal · 2.5%':'First Year · 5%'}</strong></div><div class="card"><span>Payment Term</span><strong>${text(commission.payment_term)}</strong></div><div class="card"><span>Installment</span><strong>Payment ${this.num(installment.installment_no)} of ${this.num(commission.installment_count)||this.installmentsFor(commission.id).length}</strong></div><div class="card"><span>Payment Reference</span><strong>${text(receipt.payment_reference||installment.payment_reference)}</strong></div></div></section>
+      <div class="narrative">This receipt confirms that <strong>${text(receipt.salesperson_name||commission.salesperson_name)}</strong> received the commission payment related to invoice <strong>${text(receipt.invoice_number||commission.invoice_number)}</strong> for <strong>${text(receipt.client_name||commission.client_name)}</strong>.</div>
+      <div class="amount-box"><div class="amount-row grand"><span>Amount Paid</span><strong>${this.money(amount,currency)}</strong></div><div class="amount-row"><span>Commission Total</span><strong>${this.money(commission.commission_total,currency)}</strong></div><div class="amount-row"><span>Installment Due Date</span><strong>${text(this.formatDate(installment.due_date))}</strong></div></div>
+      <div class="words"><strong>Amount in Words:</strong> ${text(amountWords)}</div>
+      ${receipt.notes||installment.notes?`<div class="words"><strong>Notes:</strong> ${text(receipt.notes||installment.notes)}</div>`:''}
+      <div class="signatures"><div class="signature">Paid / Issued by: ${text(issuedBy)}</div><div class="signature">Salesperson Acknowledgment</div></div>
+      <footer class="footer">InCheck 360 · Commission Payment Receipt · This document is system generated.</footer></main></body></html>`;
+    },
+    openReceipt(receipt){
+      if(!receipt)return;
+      const html=this.buildReceiptHtml(receipt);
+      if(!html){this.toast('Unable to build the commission receipt preview.');return;}
+      const branded=global.U?.addIncheckDocumentLogo?U.addIncheckDocumentLogo(html):html;
+      this.el('commissionReceiptTitle').textContent=`Commission Receipt · ${this.receiptNumber(receipt)}`;
+      this.el('commissionReceiptSubtitle').textContent=`${receipt.salesperson_name||''} · ${this.money(receipt.amount,receipt.currency)}`;
+      this.el('commissionReceiptFrame').srcdoc=branded;
+      this.openModal('commissionReceiptModal');
+    },
+    printReceipt(){
+      const frame=this.el('commissionReceiptFrame');
+      const win=frame?.contentWindow;
+      if(!win){this.toast('Open a commission receipt first.');return;}
+      win.focus();
+      win.print();
     },
     async syncParentStatus(commissionId){
       const db=this.db();const {data,error}=await db.from('sales_commission_installments').select('commission_amount,paid_amount,status').eq('commission_id',commissionId);if(error)return;const rows=data||[];const paid=rows.reduce((s,r)=>s+this.num(r.paid_amount),0);const total=rows.reduce((s,r)=>s+this.num(r.commission_amount),0);const status=total>0&&paid>=total-.005?'paid':paid>0?'partial':'scheduled';await db.from('sales_commissions').update({status,updated_at:new Date().toISOString()}).eq('id',commissionId);
