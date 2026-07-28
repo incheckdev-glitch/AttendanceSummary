@@ -908,10 +908,11 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     'customer_sign_date','provider_official_signatory_1_name','provider_official_signatory_1_title','provider_official_signatory_1_sign_date','provider_official_signatory_2_name','provider_official_signatory_2_title','provider_official_signatory_2_sign_date','provider_signatory_name','provider_signatory_title','provider_signatory_email','provider_signatory_secondary','provider_signatory_name_secondary','provider_signatory_title_secondary','provider_primary_signatory_name','provider_primary_signatory_title','provider_secondary_signatory_name','provider_secondary_signatory_title','provider_sign_date','gm_signed',
     'financial_controller_signed','signed_date','status','subtotal_locations','subtotal_one_time','total_discount',
     'grand_total','is_poc','poc_location_count','poc_license_count','poc_license_months','poc_service_start_date','poc_service_end_date','poc_success_kpis','poc_conversion_commitment','generated_by','created_by','updated_by','currency','created_at','updated_at','customer_legal_name','provider_legal_name','provider_name',
-    'agreement_title','notes','legacy_agreement_ref','is_imported','is_historical_agreement','imported_from','imported_at','imported_by','imported_document_bucket','imported_document_path','imported_document_name','imported_document_uploaded_at','imported_document_uploaded_by','signed_document_path','signed_document_name','signed_document_uploaded_at','signed_document_uploaded_by','signed_document_url','signed_agreement_document_path','signed_agreement_document_name','signed_agreement_document_uploaded_at','signed_agreement_document_uploaded_by','signed_agreement_document_url','skip_workflow','skip_notifications','skip_onboarding','skip_technical_admin','skip_invoice_creation','skip_receipt_creation','renewed_from_agreement_id'
+    'agreement_title','notes','legacy_agreement_ref','is_imported','is_historical_agreement','imported_from','imported_at','imported_by','imported_document_bucket','imported_document_path','imported_document_name','imported_document_uploaded_at','imported_document_uploaded_by','signed_document_path','signed_document_name','signed_document_uploaded_at','signed_document_uploaded_by','signed_document_url','signed_agreement_document_path','signed_agreement_document_name','signed_agreement_document_uploaded_at','signed_agreement_document_uploaded_by','signed_agreement_document_url','skip_workflow','skip_notifications','skip_onboarding','skip_technical_admin','skip_invoice_creation','skip_receipt_creation','renewed_from_agreement_id',
+    'parent_agreement_id','root_agreement_id','source_agreement_id','agreement_relationship_type','agreement_version','relationship_notes'
   ]);
   const AGREEMENT_ITEM_COLUMNS = new Set([
-    'item_id','agreement_id','section','line_no','location_name','item_name','unit_price','discount_percent',
+    'item_id','agreement_id','section','line_no','location_name','location_address','item_name','unit_price','discount_percent',
     'discounted_unit_price','quantity','license_quantity','line_total','service_start_date','service_end_date','capability_name','capability_value','notes',
     'invoice_status','invoiced_invoice_id','invoiced_at','renewed_from_item_id','is_superseded','superseded_at','superseded_by_item_id','superseded_by_agreement_id','superseded_by_agreement_number','renewal_key'
   ]);
@@ -994,7 +995,8 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       'id', 'agreement_id', 'agreement_number', 'agreement_title', 'proposal_id', 'deal_id', 'lead_id',
       'agreement_date', 'effective_date', 'service_start_date', 'service_end_date', 'agreement_length',
       'billing_frequency', 'payment_term', 'currency', 'customer_name', 'customer_legal_name',
-      'customer_contact_name', 'customer_contact_email', 'status', 'grand_total', 'updated_at', 'created_at'
+      'customer_contact_name', 'customer_contact_email', 'status', 'grand_total', 'updated_at', 'created_at',
+      'parent_agreement_id', 'root_agreement_id', 'source_agreement_id', 'agreement_relationship_type', 'agreement_version', 'relationship_notes'
     ]),
     csm: new Set([
       'id', 'activity_id', 'csm_user_id', 'csm_email', 'csm_name', 'client', 'client_id', 'client_name',
@@ -3620,6 +3622,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       section,
       line_no: firstDefined(record, ['line_no', 'lineNo', 'line']),
       location_name: firstDefined(record, ['location_name', 'locationName']),
+      location_address: firstDefined(record, ['location_address', 'locationAddress']),
       item_name: firstDefined(record, ['item_name', 'itemName', 'name']),
       unit_price: firstDefined(record, ['unit_price', 'unitPrice']),
       discount_percent: normalizedDiscountPercent,
@@ -3758,7 +3761,13 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         : undefined,
       updated_by: firstDefined(record, ['updated_by', 'updatedBy']) || userId || undefined,
       currency: firstDefined(record, ['currency']),
-      notes: firstDefined(record, ['notes'])
+      notes: firstDefined(record, ['notes']),
+      parent_agreement_id: firstDefined(record, ['parent_agreement_id', 'parentAgreementId']),
+      root_agreement_id: firstDefined(record, ['root_agreement_id', 'rootAgreementId']),
+      source_agreement_id: firstDefined(record, ['source_agreement_id', 'sourceAgreementId']),
+      agreement_relationship_type: firstDefined(record, ['agreement_relationship_type', 'agreementRelationshipType', 'relationship_type', 'relationshipType']),
+      agreement_version: normalizeNumericValue(firstDefined(record, ['agreement_version', 'agreementVersion']), 1),
+      relationship_notes: firstDefined(record, ['relationship_notes', 'relationshipNotes'])
     };
     const sanitized = {};
     Object.entries(mapped).forEach(([key, value]) => {
