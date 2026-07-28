@@ -791,6 +791,31 @@ const Agreements = {
   getAgreementRowIdentity(agreement = {}) {
     return String(agreement?.id || agreement?.agreement_id || agreement?.agreement_number || '').trim();
   },
+  isExactAgreementNumber(agreement = {}, expectedNumber = 0) {
+    const target = Number(expectedNumber);
+    if (!Number.isFinite(target) || target < 0) return false;
+    const candidates = [
+      agreement?.agreement_number,
+      agreement?.agreementNumber,
+      agreement?.agreement_id,
+      agreement?.agreementId,
+      agreement?.agreement_reference,
+      agreement?.agreementReference,
+      agreement?.reference,
+      agreement?.number
+    ];
+    return candidates.some(value => {
+      const raw = String(value || '').trim();
+      if (!raw) return false;
+      const compact = raw.replace(/\s+/g, '');
+      if (/^0*\d+$/.test(compact)) return Number(compact) === target;
+      const match = compact.match(/^agreement[#:-]?0*(\d+)$/i);
+      return Boolean(match && Number(match[1]) === target);
+    });
+  },
+  shouldKeepCustomerOfficialSignatoryBlank(agreement = {}) {
+    return this.isExactAgreementNumber(agreement, 99);
+  },
   hasConflictError(error, conflictCode = '') {
     const message = String(error?.message || '').toUpperCase();
     const code = String(conflictCode || '').trim().toUpperCase();
@@ -1040,6 +1065,7 @@ const Agreements = {
     };
   },
   resolveAgreementCustomerSignatory(agreement = {}, company = {}) {
+    if (this.shouldKeepCustomerOfficialSignatoryBlank(agreement)) return { name: '', title: '' };
     const isSigned = ['signed', 'active', 'executed'].includes(
       String(agreement.status || agreement.agreement_status || '').toLowerCase()
     );
@@ -1074,6 +1100,7 @@ const Agreements = {
     return ['accepted', 'signed', 'active', 'issued', 'paid', 'partially_paid', 'expired'].includes(status);
   },
   resolveCustomerSignatorySnapshot(record = {}, company = {}) {
+    if (this.shouldKeepCustomerOfficialSignatoryBlank(record)) return { name: '', title: '' };
     const locked = this.isSignedOrAcceptedDocument(record);
     const savedName = String(
       record.customer_signatory_Name ||
@@ -1103,15 +1130,27 @@ const Agreements = {
       }
       return '';
     };
+    const suppressCustomerSignatory = this.shouldKeepCustomerOfficialSignatoryBlank(next);
     const customerSnapshot = this.resolveCustomerSignatorySnapshot(next, company || {});
-    const customerName = customerSnapshot.name;
-    const customerTitle = customerSnapshot.title;
+    const customerName = suppressCustomerSignatory ? '' : customerSnapshot.name;
+    const customerTitle = suppressCustomerSignatory ? '' : customerSnapshot.title;
     next.customer_official_signatory_name = customerName;
     next.customer_official_signatory_title = customerTitle;
-    next.customer_official_sign_date = explicitDate(next.customer_official_sign_date, next.customerOfficialSignDate, next.customer_sign_date, next.customerSignDate);
+    next.customer_official_sign_date = suppressCustomerSignatory
+      ? ''
+      : explicitDate(next.customer_official_sign_date, next.customerOfficialSignDate, next.customer_sign_date, next.customerSignDate);
     next.customer_signatory_name = customerName;
+    next.customer_signatory_Name = customerName;
     next.customer_signatory_title = customerTitle;
     next.customer_sign_date = next.customer_official_sign_date;
+    if (suppressCustomerSignatory) {
+      next.customer_authorized_signatory_name = '';
+      next.customer_authorized_signatory_title = '';
+      next.customer_signature_name = '';
+      next.customer_signature_title = '';
+      next.authorized_signatory_name = '';
+      next.authorized_signatory_title = '';
+    }
     const primaryProviderSignDate = explicitDate(
       next.provider_official_signatory_1_sign_date,
       next.providerOfficialSignatory1SignDate,
@@ -3045,6 +3084,7 @@ const Agreements = {
   },
   buildAgreementPreviewHtml(agreement = {}, items = []) {
     const agreementData = this.normalizeAgreement(agreement && typeof agreement === 'object' ? agreement : {});
+    const suppressCustomerSignatory = this.shouldKeepCustomerOfficialSignatoryBlank(agreementData);
     const normalizedItems = (Array.isArray(items) ? items : []).map((item, index) => {
       const normalized = this.normalizeItem(item);
       if (!normalized.line_no) normalized.line_no = index + 1;
@@ -3393,9 +3433,9 @@ const Agreements = {
         <div class="signature-box signature-box-customer">
           <div class="signature-head">Customer Official Signatory</div>
           <div class="signature-body">
-            <div><strong>Name:</strong> ${textValue(agreementData.customer_official_signatory_name || agreementData.customer_signatory_name)}</div>
-            <div><strong>Title:</strong> ${textValue(agreementData.customer_official_signatory_title || agreementData.customer_signatory_title)}</div>
-            <div><strong>Date:</strong> ${dateValue(agreementData.customer_official_sign_date || agreementData.customer_sign_date)}</div>
+            <div><strong>Name:</strong> ${suppressCustomerSignatory ? '' : textValue(agreementData.customer_official_signatory_name || agreementData.customer_signatory_name)}</div>
+            <div><strong>Title:</strong> ${suppressCustomerSignatory ? '' : textValue(agreementData.customer_official_signatory_title || agreementData.customer_signatory_title)}</div>
+            <div><strong>Date:</strong> ${suppressCustomerSignatory ? '' : dateValue(agreementData.customer_official_sign_date || agreementData.customer_sign_date)}</div>
           </div>
         </div>
         <div class="signature-box signature-box-provider-1">
