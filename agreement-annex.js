@@ -89,7 +89,27 @@
   }
 
   function isSigned(record = {}) {
-    return normalize(record.status || record.agreement_status) === 'signed';
+    const module = agreements();
+    if (typeof module?.isAgreementLockedAsSigned === 'function') {
+      try {
+        if (module.isAgreementLockedAsSigned(record)) return true;
+      } catch (_) {}
+    }
+    const status = normalize(record.status || record.agreement_status);
+    if (status === 'signed' || status.endsWith('_signed') || status.startsWith('signed_')) return true;
+    return Boolean(
+      record.signed_document_path || record.signed_agreement_document_path ||
+      record.signed_document_uploaded_at || record.signed_agreement_document_uploaded_at ||
+      record.customer_official_sign_date || record.customer_sign_date || record.signed_date
+    );
+  }
+
+  function canCreateAnnex() {
+    const permissions = window.Permissions || {};
+    const createAllowed = typeof permissions.canCreateAgreement === 'function' ? permissions.canCreateAgreement() : true;
+    const updateAllowed = typeof permissions.canUpdateAgreement === 'function' ? permissions.canUpdateAgreement() : false;
+    const invoiceAllowed = typeof permissions.canCreateInvoiceFromAgreement === 'function' ? permissions.canCreateInvoiceFromAgreement() : false;
+    return createAllowed || updateAllowed || invoiceAllowed;
   }
 
   function isDraft(record = {}) {
@@ -198,7 +218,9 @@
       .agreement-annex-wizard-grid .span-2 { grid-column:1 / -1; }
       .agreement-annex-wizard-summary { margin-top:12px; border:1px solid var(--border); border-radius:10px; padding:10px 12px; background:rgba(148,163,184,.06); font-size:12px; color:var(--muted); }
       .agreement-annex-one-time-fields[hidden] { display:none !important; }
-      @media (max-width:720px) { .agreement-annex-wizard-grid { grid-template-columns:1fr; } .agreement-annex-wizard-grid .span-2 { grid-column:auto; } }
+      .agreement-annex-header-action { margin-left:auto; margin-right:10px; white-space:nowrap; }
+      .agreement-annex-row-btn { white-space:nowrap; }
+      @media (max-width:720px) { .agreement-annex-wizard-grid { grid-template-columns:1fr; } .agreement-annex-wizard-grid .span-2 { grid-column:auto; } .agreement-annex-header-action { margin-left:0; } }
     `;
     document.head.appendChild(style);
   }
@@ -239,6 +261,24 @@
       else form.appendChild(panel);
     }
     return panel;
+  }
+
+  function ensureHeaderButton() {
+    const modal = document.getElementById('agreementFormModal');
+    const header = modal?.querySelector?.('.agreement-modal-header');
+    const closeBtn = document.getElementById('agreementFormCloseBtn');
+    if (!header || !closeBtn) return null;
+    let button = document.getElementById('agreementCreateAnnexHeaderBtn');
+    if (!button) {
+      button = document.createElement('button');
+      button.id = 'agreementCreateAnnexHeaderBtn';
+      button.type = 'button';
+      button.className = 'btn agreement-annex-header-action';
+      button.textContent = 'Create Annex · Add Location';
+      button.hidden = true;
+      header.insertBefore(button, closeBtn);
+    }
+    return button;
   }
 
   function ensureContextBanner() {
@@ -410,7 +450,7 @@
     if (!agreementId(parent)) return toast('Open the signed agreement first.');
     if (!isSigned(parent)) return toast('Only signed agreements can have an annex.');
     if (isAnnex(parent)) return toast('Create the annex from the parent agreement, not from another annex.');
-    if (window.Permissions?.canCreateAgreement?.() === false) return toast('You do not have permission to create agreements.');
+    if (!canCreateAnnex()) return toast('You do not have permission to create an agreement annex.');
 
     chooseTemplates(module?.state?.currentItems || []);
     let sequence;
@@ -778,16 +818,23 @@
     if (panel.hidden) return;
 
     const createBtn = document.getElementById('agreementCreateAnnexBtn');
+    const headerBtn = ensureHeaderButton();
     const help = document.getElementById('agreementAnnexPanelHelp');
-    const canCreate = window.Permissions?.canCreateAgreement?.() !== false;
+    const canCreate = canCreateAnnex();
     const canCreateHere = Boolean(id && isSigned(record) && rel !== 'annex' && canCreate);
+    const titleText = rel === 'annex'
+      ? 'Open the parent agreement to create another annex.'
+      : isSigned(record)
+        ? 'Create a linked annex for an additional location.'
+        : 'The agreement must be signed before an annex can be created.';
     if (createBtn) {
       createBtn.disabled = !canCreateHere;
-      createBtn.title = rel === 'annex'
-        ? 'Open the parent agreement to create another annex.'
-        : isSigned(record)
-          ? 'Create a linked annex for an additional location.'
-          : 'The agreement must be signed before an annex can be created.';
+      createBtn.title = titleText;
+    }
+    if (headerBtn) {
+      headerBtn.hidden = !canCreateHere;
+      headerBtn.disabled = !canCreateHere;
+      headerBtn.title = titleText;
     }
     if (help) {
       help.textContent = rel === 'annex'
@@ -824,6 +871,51 @@
     module.__annexPreviewPatched = true;
   }
 
+  function findAgreementRecord(id) {
+    const module = agreements();
+    if (!module) return null;
+    if (typeof module.findDetailsRow === 'function') {
+      const found = module.findDetailsRow(id);
+      if (found) return found;
+    }
+    const target = String(id || '').trim();
+    return [...(module.state?.rows || []), ...(module.state?.filteredRows || [])].find(row =>
+      [row?.id, row?.agreement_id, row?.agreement_number, row?.agreementId].some(value => String(value || '').trim() === target)
+    ) || null;
+  }
+
+  function injectAnnexRowActions() {
+    if (!canCreateAnnex()) return;
+    document.querySelectorAll('tr[data-agreement-row]').forEach(rowElement => {
+      const id = String(rowElement.getAttribute('data-agreement-row') || '').trim();
+      if (!id || rowElement.querySelector('[data-agreement-create-annex]')) return;
+      const record = findAgreementRecord(id);
+      if (!record || !isSigned(record) || isAnnex(record)) return;
+      const actions = rowElement.querySelector('.commercial-row-actions');
+      if (!actions) return;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'commercial-view-btn agreement-annex-row-btn';
+      button.setAttribute('data-agreement-create-annex', id);
+      button.textContent = 'Create Annex';
+      button.title = 'Create an additional-location annex from this signed agreement.';
+      const menu = actions.querySelector('.commercial-actions-menu');
+      if (menu) actions.insertBefore(button, menu);
+      else actions.appendChild(button);
+    });
+  }
+
+  async function startAnnexFromAgreementId(id, trigger = null) {
+    const module = agreements();
+    const agreementIdValue = String(id || '').trim();
+    if (!module || !agreementIdValue) return;
+    await module.openAgreementFormById?.(agreementIdValue, { readOnly: true, trigger });
+    const current = module.state?.currentAgreement || {};
+    if (!agreementId(current)) return toast('Unable to load the selected agreement.');
+    if (!isSigned(current)) return toast('Only signed agreements can have an annex.');
+    await showCreateWizard();
+  }
+
   function patchAgreements() {
     const module = agreements();
     if (!module || module.__agreementAnnexPatched) return;
@@ -853,8 +945,10 @@
     module.closeAgreementForm = function patchedCloseAgreementForm() {
       const context = document.getElementById('agreementAnnexContext');
       const panel = document.getElementById('agreementAnnexPanel');
+      const headerBtn = document.getElementById('agreementCreateAnnexHeaderBtn');
       if (context) context.hidden = true;
       if (panel) panel.hidden = true;
+      if (headerBtn) headerBtn.hidden = true;
       return originalClose ? originalClose() : undefined;
     };
 
@@ -869,16 +963,34 @@
       return normalizedRecord;
     };
 
+    const originalRender = module.render?.bind(module);
+    if (originalRender) {
+      module.render = function patchedAgreementRender(...args) {
+        const result = originalRender(...args);
+        window.setTimeout(injectAnnexRowActions, 0);
+        return result;
+      };
+    }
+
     module.__agreementAnnexPatched = true;
+    window.setTimeout(injectAnnexRowActions, 0);
   }
 
   function bindEvents() {
     if (document.documentElement.dataset.agreementAnnexBound === 'true') return;
     document.addEventListener('click', async event => {
-      const create = event.target?.closest?.('#agreementCreateAnnexBtn');
+      const create = event.target?.closest?.('#agreementCreateAnnexBtn, #agreementCreateAnnexHeaderBtn');
       if (create) {
         event.preventDefault();
         await showCreateWizard();
+        return;
+      }
+      const rowCreate = event.target?.closest?.('[data-agreement-create-annex]');
+      if (rowCreate) {
+        event.preventDefault();
+        event.stopPropagation();
+        const id = rowCreate.getAttribute('data-agreement-create-annex') || '';
+        await startAnnexFromAgreementId(id, rowCreate);
         return;
       }
       if (event.target?.closest?.('#agreementRefreshAnnexesBtn')) {
@@ -969,7 +1081,9 @@
     patchAgreements();
     ensureRelationshipFields();
     ensureWizard();
+    ensureHeaderButton();
     bindEvents();
+    window.setTimeout(injectAnnexRowActions, 0);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
