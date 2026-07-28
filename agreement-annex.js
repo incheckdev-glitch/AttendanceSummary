@@ -211,6 +211,8 @@
       .agreement-annex-context { margin:0 0 12px; border:1px solid rgba(37,99,235,.35); background:rgba(37,99,235,.08); border-radius:12px; padding:11px 12px; display:flex; gap:10px 18px; align-items:center; flex-wrap:wrap; color:var(--text); }
       .agreement-annex-context__badge { display:inline-flex; border-radius:999px; padding:3px 9px; font-size:12px; font-weight:900; background:rgba(37,99,235,.14); color:#2563eb; }
       .agreement-annex-context__steps { flex-basis:100%; color:var(--muted); font-size:12px; }
+      .agreement-annex-context__actions { margin-left:auto; display:flex; gap:7px; flex-wrap:wrap; }
+      .agreement-annex-context__actions .btn { white-space:nowrap; }
       .agreement-annex-empty, .agreement-annex-loading, .agreement-annex-error { margin:0; color:var(--muted); font-size:12px; }
       .agreement-annex-error { color:var(--danger, #dc2626); }
       .agreement-annex-wizard .modal-content { width:min(960px, calc(100vw - 28px)); max-width:960px; }
@@ -796,11 +798,17 @@
       banner.hidden = true;
       return;
     }
+    const id = agreementId(record);
     const parent = String(record.parent_agreement_id || record.source_agreement_id || '').trim();
     banner.innerHTML = `
       <span class="agreement-annex-context__badge">Agreement Annex</span>
       <span><strong>Annex:</strong> ${esc(agreementRef(record) || 'New Draft')}</span>
       <span><strong>Parent Agreement:</strong> ${esc(record.parent_agreement_reference || parent || '—')}</span>
+      ${id ? `<span class="agreement-annex-context__actions">
+        <button type="button" class="btn sm" data-annex-view-self="${attr(id)}">View Annex</button>
+        <button type="button" class="btn ghost sm" data-annex-preview="${attr(id)}">Preview Annex</button>
+        ${parent ? `<button type="button" class="btn ghost sm" data-annex-open-parent="${attr(parent)}">Open Parent Agreement</button>` : ''}
+      </span>` : ''}
       <span class="agreement-annex-context__steps">Workflow: review and save the annex → complete signatures → upload the signed annex → create the linked invoice for the additional location.</span>`;
     banner.hidden = false;
   }
@@ -905,11 +913,69 @@
     });
   }
 
+  async function openAgreementRecordById(id, { readOnly = true, trigger = null } = {}) {
+    const module = agreements();
+    const recordId = String(id || '').trim();
+    if (!module || !recordId) return false;
+
+    const permissions = window.Permissions || {};
+    if (typeof permissions.canPreviewAgreement === 'function' && !permissions.canPreviewAgreement()) {
+      toast('You do not have permission to view agreements.');
+      return false;
+    }
+
+    // Use the native agreement loader first because it also refreshes invoice status,
+    // signatures, signed-document state and cached details.
+    if (typeof module.openAgreementFormById === 'function') {
+      try {
+        await module.openAgreementFormById(recordId, { readOnly, trigger });
+        const openedId = agreementId(module.state?.currentAgreement || {});
+        if (openedId === recordId) return true;
+      } catch (error) {
+        console.warn('[Agreement Annex] Native agreement open failed; using direct fallback.', error);
+      }
+    }
+
+    // Fallback for deployments where the normal Agreements list/RPC does not return annex rows.
+    const client = getClient();
+    if (!client) {
+      toast('Unable to open annex: Supabase client is unavailable.');
+      return false;
+    }
+    try {
+      const [{ data: row, error: rowError }, { data: itemRows, error: itemError }] = await Promise.all([
+        client.from('agreements').select('*').eq('id', recordId).maybeSingle(),
+        client.from('agreement_items').select('*').eq('agreement_id', recordId).order('created_at', { ascending: true })
+      ]);
+      if (rowError) throw rowError;
+      if (!row) throw new Error('The annex record was not found.');
+      if (itemError) throw itemError;
+
+      const normalizedRecord = typeof module.normalizeAgreement === 'function' ? module.normalizeAgreement(row) : row;
+      const normalizedItems = (Array.isArray(itemRows) ? itemRows : []).map(item =>
+        typeof module.normalizeItem === 'function' ? module.normalizeItem(item) : item
+      );
+      module.openAgreementForm(normalizedRecord, normalizedItems, { readOnly });
+      if (module.state) {
+        module.state.currentAgreementId = recordId;
+        module.state.currentAgreement = normalizedRecord;
+        module.state.currentItems = normalizedItems;
+      }
+      renderForAgreement(normalizedRecord);
+      return true;
+    } catch (error) {
+      console.error('[Agreement Annex] Unable to open annex directly.', error);
+      toast(`Unable to open annex: ${error?.message || 'Unknown error'}`);
+      return false;
+    }
+  }
+
   async function startAnnexFromAgreementId(id, trigger = null) {
     const module = agreements();
     const agreementIdValue = String(id || '').trim();
     if (!module || !agreementIdValue) return;
-    await module.openAgreementFormById?.(agreementIdValue, { readOnly: true, trigger });
+    const opened = await openAgreementRecordById(agreementIdValue, { readOnly: true, trigger });
+    if (!opened) return;
     const current = module.state?.currentAgreement || {};
     if (!agreementId(current)) return toast('Unable to load the selected agreement.');
     if (!isSigned(current)) return toast('Only signed agreements can have an annex.');
@@ -1008,7 +1074,21 @@
         event.preventDefault();
         const id = open.getAttribute('data-annex-open') || '';
         const readOnly = open.getAttribute('data-annex-readonly') === 'true';
-        await agreements()?.openAgreementFormById?.(id, { readOnly, trigger: open });
+        await openAgreementRecordById(id, { readOnly, trigger: open });
+        return;
+      }
+      const viewSelf = event.target?.closest?.('[data-annex-view-self]');
+      if (viewSelf) {
+        event.preventDefault();
+        const id = viewSelf.getAttribute('data-annex-view-self') || '';
+        await openAgreementRecordById(id, { readOnly: true, trigger: viewSelf });
+        return;
+      }
+      const openParent = event.target?.closest?.('[data-annex-open-parent]');
+      if (openParent) {
+        event.preventDefault();
+        const parentId = openParent.getAttribute('data-annex-open-parent') || '';
+        await openAgreementRecordById(parentId, { readOnly: true, trigger: openParent });
         return;
       }
       const preview = event.target?.closest?.('[data-annex-preview]');
