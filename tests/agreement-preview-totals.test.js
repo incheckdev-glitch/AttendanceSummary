@@ -150,4 +150,36 @@ assert.deepStrictEqual(
   'signed agreements should preserve saved signatory snapshots'
 );
 
+const agreement100Html = agreements.buildAgreementPreviewHtml({
+  agreement_number: 'Agreement#00100',
+  currency: 'USD',
+  customer_name: 'Preserved Client',
+  customer_contact_name: 'Remove Contact',
+  customer_contact_mobile: '+1 555 0100',
+  customer_contact_email: 'remove@example.com',
+  customer_official_signatory_name: 'Remove Signer',
+  customer_official_signatory_title: 'Director',
+  customer_official_sign_date: '2026-07-01',
+  customer_signature_confirmed: true,
+  customer_signature_type: 'typed',
+  customer_signature_text: 'Remove Signature',
+  customer_signed_at: '2026-07-01T10:00:00Z',
+  provider_official_signatory_1_name: 'Preserved Provider',
+  provider_official_signatory_1_title: 'Financial Controller',
+  provider_official_signatory_1_sign_date: '2026-07-02'
+}, []);
+assert.match(agreement100Html, /Preserved Client/, 'Agreement#00100 must retain its client');
+assert.match(agreement100Html, /Preserved Provider/, 'Agreement#00100 must retain provider signatories');
+assert.doesNotMatch(agreement100Html, /Remove Contact|remove@example\.com|\+1 555 0100/, 'Agreement#00100 preview must omit customer contact details');
+assert.doesNotMatch(agreement100Html, /Remove Signer|Director|2026-07-01|Remove Signature|Customer Signature &amp; Acceptance/, 'Agreement#00100 preview and generated document must omit customer signature details and verification');
+
+const agreement101Html = agreements.buildAgreementPreviewHtml({
+  agreement_number: 'Agreement#00101',
+  currency: 'USD',
+  customer_contact_name: 'Unaffected Contact',
+  customer_official_signatory_name: 'Unaffected Signer'
+}, []);
+assert.match(agreement101Html, /Unaffected Contact/, 'customer contact redaction must not affect other agreements');
+assert.match(agreement101Html, /Unaffected Signer/, 'customer signatory redaction must not affect other agreements');
+
 console.log('Agreement preview row-derived total checks passed.');

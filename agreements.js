@@ -814,7 +814,36 @@ const Agreements = {
     });
   },
   shouldKeepCustomerOfficialSignatoryBlank(agreement = {}) {
-    return this.isExactAgreementNumber(agreement, 99);
+    return this.isExactAgreementNumber(agreement, 99) || this.isExactAgreementNumber(agreement, 100);
+  },
+  shouldClearCustomerSignatureAndContact(agreement = {}) {
+    return this.isExactAgreementNumber(agreement, 100);
+  },
+  applyAdministrativeCustomerRedaction(agreement = {}) {
+    const next = agreement && typeof agreement === 'object' ? { ...agreement } : {};
+    if (!this.shouldClearCustomerSignatureAndContact(next)) return next;
+    [
+      'contact_id', 'contact_name', 'contact_email', 'contact_phone', 'contact_mobile',
+      'customer_contact_name', 'customer_contact_email', 'customer_contact_phone', 'customer_contact_mobile',
+      'customer_official_signatory_name', 'customer_official_signatory_title', 'customer_official_sign_date',
+      'customer_signatory_name', 'customer_signatory_Name', 'customer_signatory_title',
+      'customer_authorized_signatory_name', 'customer_authorized_signatory_title',
+      'customer_signature_name', 'customer_signature_title', 'customer_sign_date',
+      'customer_signatory_email', 'customer_signatory_phone', 'customer_signed_by_name',
+      'customer_signed_by_email', 'customer_signed_at', 'customer_accepted_at',
+      'customer_signature_type', 'customer_signature_text', 'customer_signature_image_data_url',
+      'customer_signed_document_data_url', 'customer_signed_document_file_name',
+      'customer_signed_document_mime_type', 'customer_signature_ip_address',
+      'e_agreement_accepted_at', 'e_agreement_accepted_by_name', 'e_agreement_accepted_by_email',
+      'e_agreement_accepted_comment', 'e_agreement_signature_type', 'e_agreement_signature_text',
+      'e_agreement_signature_image_data_url', 'e_agreement_signed_document_data_url',
+      'e_agreement_signed_document_file_name', 'e_agreement_signed_document_mime_type',
+      'e_agreement_signature_signed_at', 'e_agreement_signature_customer_name',
+      'e_agreement_signature_customer_email', 'e_agreement_signature_ip_address'
+    ].forEach(field => { next[field] = ''; });
+    next.customer_signature_confirmed = false;
+    next.e_agreement_signature_confirmed = false;
+    return next;
   },
   hasConflictError(error, conflictCode = '') {
     const message = String(error?.message || '').toUpperCase();
@@ -1526,7 +1555,9 @@ const Agreements = {
     normalized.provider_secondary_signatory_title = String(normalized.provider_secondary_signatory_title || normalized.provider_signatory_title_secondary || '').trim()
       || this.providerIdentityDefaults.secondarySignatoryTitle;
     normalized.terms_conditions = this.resolveAgreementTermsAndConditions(normalized, source);
-    return this.applyAgreementValidity(this.applyOfficialSignatoryDefaults(normalized));
+    return this.applyAdministrativeCustomerRedaction(
+      this.applyAgreementValidity(this.applyOfficialSignatoryDefaults(normalized))
+    );
   },
   resolveAgreementTermsAndConditions(agreement = {}, source = {}) {
     const firstFilled = (...values) => values
@@ -2751,6 +2782,7 @@ const Agreements = {
     };
   },
   renderAgreementCustomerSignatureVerification(agreement = {}) {
+    if (this.shouldClearCustomerSignatureAndContact(agreement)) return '';
     if (!hasAgreementCustomerSigned(agreement)) return '';
     const sig = this.getAgreementCustomerSignatureData(agreement);
     const normalizedType = String(sig.signatureType || '').toLowerCase();
@@ -3083,7 +3115,9 @@ const Agreements = {
     return `<div class="doc-item-name">${U.escapeHtml(itemName || '—')}</div>${shouldShowDescription ? `<div class="doc-item-description">${U.escapeHtml(itemDescription)}</div>` : ''}`;
   },
   buildAgreementPreviewHtml(agreement = {}, items = []) {
-    const agreementData = this.normalizeAgreement(agreement && typeof agreement === 'object' ? agreement : {});
+    const agreementData = this.applyAdministrativeCustomerRedaction(
+      this.normalizeAgreement(agreement && typeof agreement === 'object' ? agreement : {})
+    );
     const suppressCustomerSignatory = this.shouldKeepCustomerOfficialSignatoryBlank(agreementData);
     const normalizedItems = (Array.isArray(items) ? items : []).map((item, index) => {
       const normalized = this.normalizeItem(item);
