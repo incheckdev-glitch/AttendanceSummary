@@ -68,10 +68,12 @@ function resolveApiEndpoint(endpoint = '') {
 }
 
 const SUPABASE_URL =
+  runtimeConfig.VITE_SUPABASE_URL ||
   runtimeConfig.SUPABASE_URL ||
   runtimeConfig.NEXT_PUBLIC_SUPABASE_URL ||
   'https://ghvceonzwcvdxccdtoua.supabase.co';
 const SUPABASE_ANON_KEY =
+  runtimeConfig.VITE_SUPABASE_ANON_KEY ||
   runtimeConfig.SUPABASE_ANON_KEY ||
   runtimeConfig.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   'sb_publishable_0neF-7OK8rdNA_Lxuwoaww_dSL7TNwL';

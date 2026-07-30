@@ -22,6 +22,7 @@ const tests = [
   'tests/credit-note-invoice-options-rpc.test.js',
   'tests/statement-of-account-preview.test.js',
   'tests/hr-salary-advance-payroll.test.js',
+  'tests/hr-connectivity.test.js',
   'tests/payment-forecast-drilldown.test.js',
   'tests/biners-enriched-display.test.js',
   'tests/biners-scheduled-payments-direct.test.js',

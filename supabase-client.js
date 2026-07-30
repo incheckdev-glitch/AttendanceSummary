@@ -2,10 +2,10 @@
   const runtimeConfig = global.RUNTIME_CONFIG || {};
 
   const supabaseUrl = String(
-    runtimeConfig.SUPABASE_URL || runtimeConfig.NEXT_PUBLIC_SUPABASE_URL || global.SUPABASE_URL || ''
+    runtimeConfig.VITE_SUPABASE_URL || runtimeConfig.SUPABASE_URL || runtimeConfig.NEXT_PUBLIC_SUPABASE_URL || global.SUPABASE_URL || ''
   ).trim();
   const supabaseAnonKey = String(
-    runtimeConfig.SUPABASE_ANON_KEY || runtimeConfig.NEXT_PUBLIC_SUPABASE_ANON_KEY || global.SUPABASE_ANON_KEY || ''
+    runtimeConfig.VITE_SUPABASE_ANON_KEY || runtimeConfig.SUPABASE_ANON_KEY || runtimeConfig.NEXT_PUBLIC_SUPABASE_ANON_KEY || global.SUPABASE_ANON_KEY || ''
   ).trim();
 
   let cachedClient = null;
@@ -40,5 +40,8 @@
       return ensureBrowserClient();
     }
   };
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.error('[SupabaseClient] Missing configuration. Set VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY (or SUPABASE_URL/SUPABASE_ANON_KEY) in RUNTIME_CONFIG.');
+  }
   console.info('[SupabaseClient] Active runtime client: supabase-client.js');
 })(window);

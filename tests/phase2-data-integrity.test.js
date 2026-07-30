@@ -27,15 +27,16 @@ assert.match(postBalancedJournal, /Ledger posting failed\. No local journal was 
 
 assert.doesNotMatch(hr, /HR saved locally/, 'HR must never present browser-only data as saved');
 assert.match(hr, /const pendingHrWrites = new Set\(\)/, 'HR must block duplicate writes');
-assert.match(hr, /Read-only mode\.[\s\S]*HR changes are disabled until Supabase reconnects/, 'HR must clearly show cached data as read-only');
+assert.match(hr, /Read-only mode\.[\s\S]*Retry Connection/, 'HR must clearly show verified outages as read-only with recovery');
 
 const syncUpsert = functionSlice(hr, 'syncUpsert', 'syncDelete');
 assert.doesNotMatch(syncUpsert.split('try {')[0], /saveLocal\(\)/, 'HR must not cache unconfirmed changes before the database write');
 assert.match(syncUpsert, /if \(!supabase\) throw new Error\('Supabase client unavailable'\)/, 'HR writes must fail closed without Supabase');
-assert.match(syncUpsert, /restoreConfirmedHrCache\(\)[\s\S]*HR was not saved[\s\S]*throw error/, 'HR failed saves must restore the last confirmed cache and stop success handling');
+assert.doesNotMatch(syncUpsert, /restoreConfirmedHrCache/, 'HR failed saves must not replace newer in-memory records with stale cache data');
+assert.match(syncUpsert, /HR was not saved[\s\S]*throw error/, 'HR failed saves must stop success handling');
 
 const syncDelete = functionSlice(hr, 'syncDelete', 'statusChip');
-assert.match(syncDelete, /const \{ error \} = await supabase\.from\(table\)\.delete\(\)\.eq\('id', id\);[\s\S]*if \(error\) throw error/, 'HR deletes must inspect the Supabase error result');
-assert.match(syncDelete, /restoreConfirmedHrCache\(\)[\s\S]*HR deletion failed[\s\S]*throw error/, 'HR failed deletes must restore confirmed state and stop success handling');
+assert.match(syncDelete, /withSessionRetry\([\s\S]*delete\(\)\.eq\('id', id\)[\s\S]*if \(error\) throw error/, 'HR deletes must inspect the Supabase error result and support one auth retry');
+assert.match(syncDelete, /HR deletion failed[\s\S]*throw error/, 'HR failed deletes must stop success handling');
 
 console.log('Phase 2 Accounting and HR data-integrity checks passed.');
