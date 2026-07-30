@@ -485,7 +485,7 @@
       const raw=String(this.el('commissionCustomRateInput')?.value??'').trim();
       return /^(?:100(?:\.0{1,2})?|\d{1,2}(?:\.\d{1,2})?)$/.test(raw) && Number(raw)>=0 && Number(raw)<=100;
     },
-    percentageType(row){ return row?.commission_rate_type==='custom'||row?.commission_type==='custom'?'custom':'preset'; },
+    percentageType(row){ return row?.commission_rate_mode==='custom'||row?.commission_rate_type==='custom'||row?.commission_type==='custom'?'custom':'preset'; },
     commissionTypeLabel(row){
       if(this.percentageType(row)==='custom') return 'Custom';
       return row?.commission_type==='renewal'?'Renewal':'First Year';
@@ -545,9 +545,17 @@
       if(!this.customRateIsValid()){this.el('commissionCustomRateInput')?.reportValidity();this.toast('Custom percentage must be between 0 and 100 with no more than two decimal places.');return;}
       const calc=this.buildSchedule();if(calc.base<=0){this.toast('Commissionable amount must be greater than zero.');return;}
       const current=this.currentUser();const editing=this.state.commissions.find(row=>String(row.id)===String(this.state.editingId));const paidExisting=editing?this.installmentsFor(editing.id).some(row=>this.normalize(row.status)==='paid'||this.num(row.paid_amount)>0):false;
+      const selectedRateMode=this.isCustomRate()?'custom':'preset';
+      const selectedType=this.el('commissionTypeInput').value;
+      // Rate mode and business commission type are separate database concepts.
+      // In particular, never persist the UI's "custom" rate choice as commission_type.
+      const existingCommissionType=selectedType==='renewal'
+        ? 'renewal'
+        : (editing?.commission_type==='renewal'?'renewal':'first_year');
       const payload={
-        invoice_id:String(invoice.id||''),invoice_number:this.invoiceNumber(invoice),client_id:String(invoice.client_id||invoice.company_id||'').trim()||null,client_name:this.invoiceClient(invoice),salesperson_id:salesperson.id,salesperson_name:this.salespersonName(salesperson),salesperson_email:salesperson.email||null,commission_type:this.el('commissionTypeInput').value,commission_rate_type:this.isCustomRate()?'custom':'preset',commission_rate:this.rate(),invoice_value:this.invoiceTotal(invoice),commissionable_amount:calc.base,commission_total:calc.total,currency:calc.currency,payment_term:this.invoicePaymentTerm(invoice),invoice_date:this.isoDate(this.invoiceDate(invoice))||null,invoice_due_date:this.isoDate(this.invoiceDueDate(invoice))||null,installment_count:calc.rows.length,notes:String(this.el('commissionNotesInput').value||'').trim()||null,updated_at:new Date().toISOString()
+        invoice_id:String(invoice.id||''),invoice_number:this.invoiceNumber(invoice),client_id:String(invoice.client_id||invoice.company_id||'').trim()||null,client_name:this.invoiceClient(invoice),salesperson_id:salesperson.id,salesperson_name:this.salespersonName(salesperson),salesperson_email:salesperson.email||null,commission_type:existingCommissionType,commission_rate_mode:selectedRateMode,commission_rate:Number(this.rate()),commission_amount:calc.total,invoice_value:this.invoiceTotal(invoice),commissionable_amount:calc.base,commission_total:calc.total,currency:calc.currency,payment_term:this.invoicePaymentTerm(invoice),invoice_date:this.isoDate(this.invoiceDate(invoice))||null,invoice_due_date:this.isoDate(this.invoiceDueDate(invoice))||null,installment_count:calc.rows.length,notes:String(this.el('commissionNotesInput').value||'').trim()||null,updated_at:new Date().toISOString()
       };
+      console.log('Commission payload:',payload);
       const saveBtn=this.el('commissionEntrySave');
       const originalSaveText=saveBtn?.textContent || 'Save Commission';
       if(saveBtn){saveBtn.disabled=true;saveBtn.textContent='Saving…';saveBtn.setAttribute('aria-busy','true');}
@@ -561,7 +569,9 @@
             notes:payload.notes,
             updated_at:payload.updated_at
           }:payload;
-          const {error}=await db.from('sales_commissions').update(updatePayload).eq('id',commissionId);if(error)throw error;
+          const {data,error}=await db.from('sales_commissions').update(updatePayload).eq('id',commissionId).select().single();
+          if(error){console.error('Supabase save error:',error);throw error;}
+          console.log('Saved commission:',data);
           if(!paidExisting){
             const del=await db.from('sales_commission_installments').delete().eq('commission_id',commissionId);
             if(del.error)throw del.error;
@@ -571,8 +581,9 @@
           }
         }else{
           const insertPayload={...payload,status:'scheduled',created_by:current.id||null,created_by_email:current.email||null,created_at:new Date().toISOString()};
-          const {data,error}=await db.from('sales_commissions').insert(insertPayload).select('id').single();
-          if(error)throw error;
+          const {data,error}=await db.from('sales_commissions').insert(insertPayload).select().single();
+          if(error){console.error('Supabase save error:',error);throw error;}
+          console.log('Saved commission:',data);
           commissionId=data?.id;
           if(!commissionId)throw new Error('Commission record was created without an ID.');
           const installmentPayloads=this.installmentInsertPayloads(calc.rows,commissionId);
@@ -582,9 +593,12 @@
             throw installError;
           }
         }
-        this.closeModal('commissionEntryModal');this.toast(this.state.editingId?'Commission updated.':'Commission added.');await this.refresh();
+        // Refresh from Supabase before closing or reporting success. This also
+        // invalidates the tracker's in-memory query result with authoritative rows.
+        await this.refresh();
+        this.closeModal('commissionEntryModal');this.toast(this.state.editingId?'Commission updated successfully':'Commission saved successfully');
       }catch(error){
-        console.error('[Commission Tracker] save failed',error);
+        console.error('Supabase save error:',error);
         const message=error?.message || error?.details || error?.hint || 'Unable to save commission.';
         this.toast(message);
       }finally{
