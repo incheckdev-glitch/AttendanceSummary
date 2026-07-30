@@ -814,26 +814,32 @@ const Agreements = {
     });
   },
   shouldKeepCustomerOfficialSignatoryBlank(agreement = {}) {
-    return this.isExactAgreementNumber(agreement, 99) || this.isExactAgreementNumber(agreement, 100);
+    return [99, 100, 101].some(number => this.isExactAgreementNumber(agreement, number));
   },
   shouldClearCustomerSignatureAndContact(agreement = {}) {
-    return this.isExactAgreementNumber(agreement, 100);
+    return [100, 101].some(number => this.isExactAgreementNumber(agreement, number));
   },
   applyAdministrativeCustomerRedaction(agreement = {}) {
     const next = agreement && typeof agreement === 'object' ? { ...agreement } : {};
     if (!this.shouldClearCustomerSignatureAndContact(next)) return next;
     [
-      'contact_id', 'contact_name', 'contact_email', 'contact_phone', 'contact_mobile',
+      'contact_id', 'customer_contact_id', 'signatory_id', 'customer_signatory_id',
+      'contact_name', 'contact_email', 'contact_phone', 'contact_mobile',
       'customer_contact_name', 'customer_contact_email', 'customer_contact_phone', 'customer_contact_mobile',
       'customer_official_signatory_name', 'customer_official_signatory_title', 'customer_official_sign_date',
       'customer_signatory_name', 'customer_signatory_Name', 'customer_signatory_title',
       'customer_authorized_signatory_name', 'customer_authorized_signatory_title',
-      'customer_signature_name', 'customer_signature_title', 'customer_sign_date',
+      'customer_signature', 'customer_signature_name', 'customer_signature_title',
+      'customer_sign_date', 'customer_signature_date',
       'customer_signatory_email', 'customer_signatory_phone', 'customer_signed_by_name',
       'customer_signed_by_email', 'customer_signed_at', 'customer_accepted_at',
       'customer_signature_type', 'customer_signature_text', 'customer_signature_image_data_url',
       'customer_signed_document_data_url', 'customer_signed_document_file_name',
       'customer_signed_document_mime_type', 'customer_signature_ip_address',
+      'e_signature_customer_name', 'e_signature_customer_email', 'e_signature_signed_at',
+      'e_signature_type', 'e_signature_text', 'e_signature_image_data_url',
+      'e_signed_document_data_url', 'e_signed_document_file_name',
+      'e_signed_document_mime_type', 'e_signature_ip_address',
       'e_agreement_accepted_at', 'e_agreement_accepted_by_name', 'e_agreement_accepted_by_email',
       'e_agreement_accepted_comment', 'e_agreement_signature_type', 'e_agreement_signature_text',
       'e_agreement_signature_image_data_url', 'e_agreement_signed_document_data_url',
@@ -842,6 +848,7 @@ const Agreements = {
       'e_agreement_signature_customer_email', 'e_agreement_signature_ip_address'
     ].forEach(field => { next[field] = ''; });
     next.customer_signature_confirmed = false;
+    next.e_signature_confirmed = false;
     next.e_agreement_signature_confirmed = false;
     return next;
   },

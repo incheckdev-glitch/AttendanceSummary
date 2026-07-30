@@ -176,10 +176,28 @@ assert.doesNotMatch(agreement100Html, /Remove Signer|Director|2026-07-01|Remove 
 const agreement101Html = agreements.buildAgreementPreviewHtml({
   agreement_number: 'Agreement#00101',
   currency: 'USD',
+  customer_name: 'Preserved Agreement 101 Client',
+  customer_contact_name: 'Remove Agreement 101 Contact',
+  customer_contact_email: 'remove-101@example.com',
+  customer_official_signatory_name: 'Remove Agreement 101 Signer',
+  customer_official_signatory_title: 'Customer Director',
+  customer_official_sign_date: '2026-07-29',
+  customer_signature_confirmed: true,
+  customer_signature_text: 'Remove Agreement 101 Signature',
+  provider_official_signatory_1_name: 'Preserved Agreement 101 Provider'
+}, []);
+assert.match(agreement101Html, /Preserved Agreement 101 Client/, 'Agreement#00101 must retain its client');
+assert.match(agreement101Html, /Preserved Agreement 101 Provider/, 'Agreement#00101 must retain provider signatories');
+assert.doesNotMatch(agreement101Html, /Remove Agreement 101 Contact|remove-101@example\.com/, 'Agreement#00101 preview must omit customer contact details');
+assert.doesNotMatch(agreement101Html, /Remove Agreement 101 Signer|Customer Director|2026-07-29|Remove Agreement 101 Signature|Customer Signature &amp; Acceptance/, 'Agreement#00101 preview and generated document must omit customer signature details and verification');
+
+const agreement102Html = agreements.buildAgreementPreviewHtml({
+  agreement_number: 'Agreement#00102',
+  currency: 'USD',
   customer_contact_name: 'Unaffected Contact',
   customer_official_signatory_name: 'Unaffected Signer'
 }, []);
-assert.match(agreement101Html, /Unaffected Contact/, 'customer contact redaction must not affect other agreements');
-assert.match(agreement101Html, /Unaffected Signer/, 'customer signatory redaction must not affect other agreements');
+assert.match(agreement102Html, /Unaffected Contact/, 'customer contact redaction must not affect other agreements');
+assert.match(agreement102Html, /Unaffected Signer/, 'customer signatory redaction must not affect other agreements');
 
 console.log('Agreement preview row-derived total checks passed.');
