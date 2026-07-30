@@ -538,6 +538,37 @@
         updated_at: new Date().toISOString()
       }));
     },
+    async verifyPersistedCommission(db, commissionId, expectedPayload, expectedInstallments){
+      const {data,error}=await db.from('sales_commissions')
+        .select('id,commission_type,commission_rate_mode,commission_rate,commission_amount,commission_total,installment_count')
+        .eq('id',commissionId)
+        .maybeSingle();
+      if(error) throw error;
+      if(!data) throw new Error('The commission was not found in Supabase after saving. No success message was shown.');
+
+      const expectedMode=String(expectedPayload.commission_rate_mode||'preset');
+      const savedMode=String(data.commission_rate_mode||'preset');
+      if(savedMode!==expectedMode){
+        throw new Error(`Commission rate mode was not persisted. Expected ${expectedMode}, received ${savedMode}.`);
+      }
+      if(Math.abs(this.num(data.commission_rate)-this.num(expectedPayload.commission_rate))>0.005){
+        throw new Error('The custom commission percentage was not persisted in Supabase.');
+      }
+      if(Math.abs(this.num(data.commission_amount ?? data.commission_total)-this.num(expectedPayload.commission_amount))>0.005){
+        throw new Error('The calculated commission amount was not persisted in Supabase.');
+      }
+
+      const {data:installments,error:installmentError}=await db.from('sales_commission_installments')
+        .select('id,commission_id,installment_no,commission_amount')
+        .eq('commission_id',commissionId)
+        .order('installment_no',{ascending:true});
+      if(installmentError) throw installmentError;
+      const savedInstallments=Array.isArray(installments)?installments:[];
+      if(savedInstallments.length!==expectedInstallments.length){
+        throw new Error(`Commission installments were not fully persisted. Expected ${expectedInstallments.length}, received ${savedInstallments.length}.`);
+      }
+      return data;
+    },
     async saveEntry(){
       if(!this.canManage())return;
       const db=this.db();const invoice=this.findInvoice(this.el('commissionInvoiceInput')?.value);const salesperson=this.state.salespeople.find(row=>String(row.id)===String(this.el('commissionSalespersonInput')?.value));
@@ -593,10 +624,18 @@
             throw installError;
           }
         }
-        // Refresh from Supabase before closing or reporting success. This also
-        // invalidates the tracker's in-memory query result with authoritative rows.
+        const wasEditing=Boolean(this.state.editingId);
+        await this.verifyPersistedCommission(db,commissionId,payload,calc.rows);
+        // Reload authoritative rows and verify that the saved UUID is visible in the tracker.
         await this.refresh();
-        this.closeModal('commissionEntryModal');this.toast(this.state.editingId?'Commission updated successfully':'Commission saved successfully');
+        const refreshedRow=this.state.commissions.find(row=>String(row.id)===String(commissionId));
+        if(!refreshedRow) throw new Error('The commission was written but is not visible after refreshing from Supabase. Check the SELECT RLS policy.');
+        if(this.percentageType(refreshedRow)!==selectedRateMode || Math.abs(this.num(refreshedRow.commission_rate)-this.num(payload.commission_rate))>0.005){
+          throw new Error('The saved custom percentage does not match the refreshed Supabase record.');
+        }
+        this.closeModal('commissionEntryModal');
+        this.state.editingId=null;
+        this.toast(wasEditing?'Commission updated successfully':'Commission saved successfully');
       }catch(error){
         console.error('Supabase save error:',error);
         const message=error?.message || error?.details || error?.hint || 'Unable to save commission.';
