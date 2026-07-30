@@ -549,7 +549,7 @@
     const readOnly = state.dataSource === 'cache';
     const hasWarnings = state.dataSource === 'supabase' && state.remoteWarnings.length > 0;
     const source = readOnly
-      ? '<span class="hr-chip warning">Cached data · saves will retry Supabase</span>'
+      ? '<span class="hr-chip warning">Read-only cache · database unavailable</span>'
       : hasWarnings
         ? `<span class="hr-chip warning">Supabase connected · ${state.remoteWarnings.length} optional/schema warning${state.remoteWarnings.length === 1 ? '' : 's'}</span>`
         : '<span class="hr-chip success">Supabase synced</span>';
@@ -571,7 +571,7 @@
       <nav class="hr-tabs" aria-label="HR sections">
         ${['dashboard','employees','attendance','leaves','leave_balances','holidays','payroll','payslips','salary_receipts','employee_statement','documents','settings'].map(tab => `<button type="button" class="${state.activeTab === tab ? 'active' : ''}" data-hr-tab="${tab}">${tabLabel(tab)}</button>`).join('')}
       </nav>
-      ${readOnly ? `<div class="hr-source-banner" role="alert"><strong>Cached data mode.</strong> The last HR refresh did not complete, but action buttons remain available and each save will retry Supabase.${state.lastConnectionError ? ` <small>${esc(state.lastConnectionError)}</small>` : ''}</div>` : ''}
+      ${readOnly ? `<div class="hr-source-banner" role="alert"><strong>Cached data mode.</strong> The last HR refresh did not complete. HR actions remain available and each save retries Supabase directly.${state.lastConnectionError ? ` <small>${esc(state.lastConnectionError)}</small>` : ''}</div>` : ''}
       ${hasWarnings ? `<div class="hr-source-banner" role="status"><strong>Supabase is connected.</strong> Some HR features may require a pending database migration: ${state.remoteWarnings.map(item => esc(item.tableName)).join(', ')}. Core HR changes remain enabled.</div>` : ''}
       ${globalFilterBar()}
       <div id="hrSummary" class="hr-summary-grid"></div>
@@ -581,8 +581,8 @@
     renderSummary();
     renderBody();
     if (readOnly) {
-      // Do not disable HR controls merely because the latest bulk refresh fell back
-      // to cache. Individual writes still retry Supabase and surface the exact error.
+      // A failed bulk refresh must not make the module permanently read-only.
+      // Individual writes retry Supabase and display the exact result in the form.
       root.dataset.hrCachedMode = 'true';
     } else {
       delete root.dataset.hrCachedMode;
@@ -1109,7 +1109,7 @@
       <div id="hrLeaveModal" class="hr-modal" role="dialog" aria-modal="true" hidden><button class="hr-modal-backdrop" data-hr-close-modal type="button"></button><form id="hrLeaveForm" class="hr-dialog"><header><div><span class="hr-eyebrow">HR</span><h3>Leave</h3></div><button class="btn ghost sm" data-hr-close-modal type="button">Close</button></header><div class="hr-dialog-body"><div class="hr-form-grid">${leaveFields()}</div></div><footer class="hr-dialog-footer"><button class="btn ghost sm" data-hr-close-modal type="button">Cancel</button><button class="btn sm" type="submit">Save Leave</button></footer></form></div>
       <div id="hrBalanceModal" class="hr-modal" role="dialog" aria-modal="true" hidden><button class="hr-modal-backdrop" data-hr-close-modal type="button"></button><form id="hrBalanceForm" class="hr-dialog"><header><div><span class="hr-eyebrow">HR</span><h3>Adjust Leave Balance</h3></div><button class="btn ghost sm" data-hr-close-modal type="button">Close</button></header><div class="hr-dialog-body"><div class="hr-form-grid">${balanceFields()}</div></div><footer class="hr-dialog-footer"><button class="btn ghost sm" data-hr-close-modal type="button">Cancel</button><button class="btn sm" type="submit">Save Adjustment</button></footer></form></div>
       <div id="hrHolidayModal" class="hr-modal" role="dialog" aria-modal="true" hidden><button class="hr-modal-backdrop" data-hr-close-modal type="button"></button><form id="hrHolidayForm" class="hr-dialog"><header><div><span class="hr-eyebrow">HR</span><h3>Holiday</h3></div><button class="btn ghost sm" data-hr-close-modal type="button">Close</button></header><div class="hr-dialog-body"><div class="hr-form-grid">${holidayFields()}</div></div><footer class="hr-dialog-footer"><button class="btn ghost sm" data-hr-close-modal type="button">Cancel</button><button class="btn sm" type="submit">Save Holiday</button></footer></form></div>
-      <div id="hrReceiptModal" class="hr-modal" role="dialog" aria-modal="true" hidden><button class="hr-modal-backdrop" data-hr-close-modal type="button"></button><form id="hrReceiptForm" class="hr-dialog" novalidate><header><div><span class="hr-eyebrow">Payroll</span><h3>Salary Receipt</h3></div><button class="btn ghost sm" data-hr-close-modal type="button">Close</button></header><div class="hr-dialog-body"><div class="hr-form-grid">${receiptFields()}</div></div><footer class="hr-dialog-footer"><button class="btn ghost sm" data-hr-close-modal type="button">Cancel</button><button class="btn ghost sm" type="button" data-hr-save-receipt="true">Save Receipt</button><button class="btn sm" type="button" data-hr-save-print-receipt="true">Save & Print</button></footer></form></div>
+      <div id="hrReceiptModal" class="hr-modal" role="dialog" aria-modal="true" hidden><button class="hr-modal-backdrop" data-hr-close-modal type="button"></button><form id="hrReceiptForm" class="hr-dialog" novalidate onsubmit="return false;"><header><div><span class="hr-eyebrow">Payroll</span><h3>Salary Receipt</h3></div><button class="btn ghost sm" data-hr-close-modal type="button">Close</button></header><div class="hr-dialog-body"><div class="hr-form-grid">${receiptFields()}</div><div id="hrReceiptActionStatus" role="status" aria-live="polite" hidden style="margin-top:14px;padding:11px 12px;border-radius:12px;border:1px solid #cbd5e1;background:#f8fafc;color:#334155;font-weight:700"></div></div><footer class="hr-dialog-footer"><button class="btn ghost sm" data-hr-close-modal type="button">Cancel</button><button id="hrSaveReceiptBtn" class="btn ghost sm" type="button" data-hr-save-receipt="true" onclick="return window.HRModule.saveReceiptFromButton(event, false);">Save Receipt</button><button id="hrSavePrintReceiptBtn" class="btn sm" type="button" data-hr-save-print-receipt="true" onclick="return window.HRModule.saveReceiptFromButton(event, true);">Save & Print</button></footer></form></div>
       <div id="hrDocumentModal" class="hr-modal" role="dialog" aria-modal="true" hidden><button class="hr-modal-backdrop" data-hr-close-modal type="button"></button><form id="hrDocumentForm" class="hr-dialog"><header><div><span class="hr-eyebrow">HR</span><h3>Document</h3></div><button class="btn ghost sm" data-hr-close-modal type="button">Close</button></header><div class="hr-dialog-body"><div class="hr-form-grid">${documentFields()}</div></div><footer class="hr-dialog-footer"><button class="btn ghost sm" data-hr-close-modal type="button">Cancel</button><button class="btn sm" type="submit">Save Document</button></footer></form></div>
     `;
   }
@@ -1277,6 +1277,44 @@
     closeModals(); renderRoot(); toast('Holiday saved.');
   }
 
+  function setReceiptActionStatus(message = '', tone = 'info') {
+    const status = $('hrReceiptActionStatus');
+    if (!status) return;
+    const palettes = {
+      info: ['#dbeafe', '#1d4ed8', '#93c5fd'],
+      success: ['#dcfce7', '#166534', '#86efac'],
+      error: ['#fee2e2', '#991b1b', '#fca5a5'],
+      warning: ['#fef3c7', '#92400e', '#fcd34d']
+    };
+    const [background, color, border] = palettes[tone] || palettes.info;
+    status.hidden = !message;
+    status.textContent = message;
+    status.style.background = background;
+    status.style.color = color;
+    status.style.borderColor = border;
+  }
+
+  async function saveReceiptFromButton(event, printRequested = false) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    const button = event?.currentTarget || event?.target;
+    setReceiptActionStatus('Checking receipt details…', 'info');
+    try {
+      return await saveReceipt({
+        preventDefault() {},
+        target: $('hrReceiptForm'),
+        currentTarget: button,
+        submitter: button
+      }, Boolean(printRequested));
+    } catch (error) {
+      console.error('[HR] Direct salary receipt action failed', error);
+      const message = errorText(error) || 'Unexpected error while saving the salary receipt.';
+      setReceiptActionStatus(message, 'error');
+      toast(`Salary receipt was not saved: ${message}`);
+      return false;
+    }
+  }
+
   function openReceiptModal(receiptId = '', payrollItemId = '') {
     renderRoot();
     const item = state.payrollItems.find(row => String(row.id) === String(payrollItemId));
@@ -1286,19 +1324,22 @@
     const row = existing.id ? existing : { id:'', receipt_no: receiptNo(), receipt_type: 'salary_payment', payroll_item_id: payrollItemId || state.payrollItems[0]?.id || '', payment_date: today(), amount: rs.remaining || 0, payment_method: 'Bank Transfer', reference_no:'', notes:'' };
     setValue('hrReceiptId', row.id); setValue('hrReceiptNo', row.receipt_no); setValue('hrReceiptPayrollItem', row.payroll_item_id); setValue('hrReceiptDate', row.payment_date); setValue('hrReceiptAmount', row.amount); setValue('hrReceiptMethod', row.payment_method || 'Bank Transfer'); setValue('hrReceiptReference', row.reference_no || ''); setValue('hrReceiptNotes', row.notes || '');
     if (run) state.filters.receiptMonth = run.payroll_month;
+    setReceiptActionStatus('', 'info');
     openModal('hrReceiptModal');
   }
 
   async function saveReceipt(event = {}, printRequested = false) {
     event.preventDefault?.();
     const form = event.target?.id === 'hrReceiptForm' ? event.target : $('hrReceiptForm');
-    const submitter = event.submitter || event.currentTarget || document.activeElement;
+    const submitter = event.submitter || document.activeElement;
     const shouldPrint = Boolean(printRequested || submitter?.dataset?.hrSavePrintReceipt);
-    const saveButtons = Array.from(form?.querySelectorAll?.('button[type="submit"]') || []);
+    const saveButtons = Array.from(form?.querySelectorAll?.('[data-hr-save-receipt], [data-hr-save-print-receipt]') || []);
 
     if (!client()) {
-      toast('Supabase is not connected yet. Refresh the page or HR module, then try saving again.');
-      return;
+      const message = 'Supabase client is not connected. Refresh the page, then try again.';
+      setReceiptActionStatus(message, 'error');
+      toast(message);
+      return false;
     }
 
     const payrollItemId = value('hrReceiptPayrollItem');
@@ -1307,30 +1348,35 @@
       toast(state.payrollItems.length
         ? 'Select a payroll and employee before saving the receipt.'
         : 'No payroll items are available. Generate the monthly payroll first, then create the salary receipt.');
+      setReceiptActionStatus(state.payrollItems.length ? 'Select a payroll and employee.' : 'Generate the monthly payroll before creating a salary receipt.', 'warning');
       $('hrReceiptPayrollItem')?.focus?.();
-      return;
+      return false;
     }
 
     const paymentDate = value('hrReceiptDate');
     if (!paymentDate) {
       toast('Select the receipt payment date.');
+      setReceiptActionStatus('Select the receipt payment date.', 'warning');
       $('hrReceiptDate')?.focus?.();
-      return;
+      return false;
     }
 
     const receiptAmount = num(value('hrReceiptAmount'));
     if (!(receiptAmount > 0)) {
       toast('Enter a receipt amount greater than zero.');
+      setReceiptActionStatus('Enter a receipt amount greater than zero.', 'warning');
       $('hrReceiptAmount')?.focus?.();
-      return;
+      return false;
     }
 
     const id = value('hrReceiptId') || uid('receipt');
     const existing = state.salaryReceipts.find(row => String(row.id) === String(id)) || {};
     const run = state.payrollRuns.find(row => String(row.id) === String(item.run_id));
     if (!run?.id || !run.payroll_month) {
-      toast('The selected payroll item is not linked to a valid payroll run. Regenerate the payroll and try again.');
-      return;
+      const message = 'The selected payroll item is not linked to a valid payroll run. Regenerate the payroll and try again.';
+      setReceiptActionStatus(message, 'error');
+      toast(message);
+      return false;
     }
 
     const row = {
@@ -1359,6 +1405,8 @@
       button.textContent = 'Saving...';
     });
 
+    setReceiptActionStatus('Saving salary receipt to Supabase…', 'info');
+
     try {
       const saved = await syncUpsert(TABLES.salaryReceipts, row, { cache: false, notify: false });
       if (!saved?.id || String(saved.id) !== String(id)) {
@@ -1385,10 +1433,15 @@
       toast(isSalaryAdvanceReceipt(confirmed)
         ? `Salary advance receipt saved for ${monthName(confirmed.payroll_month)}.`
         : `Salary receipt saved. Rest: ${money(receiptStatus(item).remaining, item.currency)}`);
+      setReceiptActionStatus('Salary receipt saved successfully.', 'success');
       if (shouldPrint) setTimeout(() => printSalaryReceipt(confirmed.id), 150);
+      return true;
     } catch (error) {
       console.error('[HR] Salary receipt save failed', error);
-      toast(`Salary receipt was not saved: ${errorText(error) || 'Supabase did not confirm the record.'}`);
+      const message = errorText(error) || 'Supabase did not confirm the record.';
+      setReceiptActionStatus(`Salary receipt was not saved: ${message}`, 'error');
+      toast(`Salary receipt was not saved: ${message}`);
+      return false;
     } finally {
       saveButtons.forEach(button => {
         button.disabled = false;
@@ -1584,17 +1637,12 @@
       const tab = event.target.closest?.('[data-hr-tab]');
       if (tab) { state.activeTab = tab.dataset.hrTab; renderRoot(); return; }
       if (event.target.closest?.('[data-hr-close-modal]')) { closeModals(); return; }
-      const saveReceiptButton = event.target.closest?.('[data-hr-save-receipt], [data-hr-save-print-receipt]');
-      if (saveReceiptButton) {
+      const receiptSaveButton = event.target.closest?.('[data-hr-save-receipt], [data-hr-save-print-receipt]');
+      if (receiptSaveButton) {
+        // Inline onclick is the primary path; this delegated handler is a fallback.
         event.preventDefault();
         event.stopPropagation();
-        const receiptForm = $('hrReceiptForm');
-        await saveReceipt({
-          preventDefault() {},
-          target: receiptForm,
-          currentTarget: saveReceiptButton,
-          submitter: saveReceiptButton
-        }, Boolean(saveReceiptButton.dataset.hrSavePrintReceipt));
+        await saveReceiptFromButton(event, Boolean(receiptSaveButton.dataset.hrSavePrintReceipt));
         return;
       }
       const action = event.target.closest?.('[data-hr-action]')?.dataset.hrAction;
@@ -1686,7 +1734,7 @@
       if (event.target.id === 'hrLeaveForm') saveLeave(event);
       if (event.target.id === 'hrBalanceForm') saveBalance(event);
       if (event.target.id === 'hrHolidayForm') saveHoliday(event);
-      if (event.target.id === 'hrReceiptForm') saveReceipt(event, false);
+      if (event.target.id === 'hrReceiptForm') { event.preventDefault(); saveReceipt(event, false); }
       if (event.target.id === 'hrDocumentForm') saveDocument(event);
       if (event.target.id === 'hrShiftForm') saveShift(event);
     });
@@ -1722,5 +1770,5 @@
     await refresh(false);
   }
 
-  global.HRModule = { init, wire, refresh, state, generatePayroll, workingDaysInMonth, leaveBalanceFor, computedDayStatus };
+  global.HRModule = { init, wire, refresh, state, generatePayroll, workingDaysInMonth, leaveBalanceFor, computedDayStatus, saveReceiptFromButton };
 })(window);
