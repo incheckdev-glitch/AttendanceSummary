@@ -51,6 +51,9 @@
     holidays: 'hr_holidays',
     payrollRuns: 'hr_payroll_runs',
     payrollItems: 'hr_payroll_items',
+    salaryAdvances: 'hr_salary_advances',
+    salaryAdvanceInstallments: 'hr_salary_advance_installments',
+    payrollSalaryAdvances: 'hr_payroll_salary_advances',
     salaryReceipts: 'hr_salary_receipts',
     documents: 'hr_documents',
     hrNotifications: 'hr_notifications'
@@ -74,7 +77,7 @@
       payslipRunId: '', receiptMonth: currentMonth(), receiptEmployee: 'all', receiptFrom: '', receiptTo: '', documentStatus: 'all', statementStatus: 'All'
     },
     employees: [], shifts: [], attendance: [], leaveRequests: [], leaveTypes: [], leaveBalances: [], holidays: [],
-    payrollRuns: [], payrollItems: [], salaryReceipts: [], documents: [], hrNotifications: []
+    payrollRuns: [], payrollItems: [], salaryAdvances: [], salaryAdvanceInstallments: [], payrollSalaryAdvances: [], salaryReceipts: [], documents: [], hrNotifications: []
   };
 
   function client() {
@@ -112,7 +115,7 @@
         status: 'active', work_location: 'Office', shift_id: shift.id, base_salary: 1500, currency: 'USD', allowances: 0,
         transportation_monthly: 100, transportation_per_day: 0, fixed_deductions: 0, payment_method: 'Bank Transfer', bank_name: '', bank_account: '', salary_effective_date: `${new Date().getFullYear()}-01-01`, created_at: new Date().toISOString()
       }],
-      attendance: [], leaveRequests: [], leaveBalances: [], holidays: [], payrollRuns: [], payrollItems: [], salaryReceipts: [], documents: [], hrNotifications: []
+      attendance: [], leaveRequests: [], leaveBalances: [], holidays: [], payrollRuns: [], payrollItems: [], salaryAdvances: [], salaryAdvanceInstallments: [], payrollSalaryAdvances: [], salaryReceipts: [], documents: [], hrNotifications: []
     };
   }
 
@@ -120,7 +123,7 @@
     return {
       employees: state.employees, shifts: state.shifts, attendance: state.attendance, leaveRequests: state.leaveRequests,
       leaveTypes: state.leaveTypes, leaveBalances: state.leaveBalances, holidays: state.holidays, payrollRuns: state.payrollRuns,
-      payrollItems: state.payrollItems, salaryReceipts: state.salaryReceipts, documents: state.documents, hrNotifications: state.hrNotifications
+      payrollItems: state.payrollItems, salaryAdvances: state.salaryAdvances, salaryAdvanceInstallments: state.salaryAdvanceInstallments, payrollSalaryAdvances: state.payrollSalaryAdvances, salaryReceipts: state.salaryReceipts, documents: state.documents, hrNotifications: state.hrNotifications
     };
   }
 
@@ -149,7 +152,7 @@
   }
 
   async function loadRemote() {
-    const [employees, shifts, attendance, leaveRequests, leaveTypes, leaveBalances, holidays, payrollRuns, payrollItems, salaryReceipts, documents, hrNotifications] = await Promise.all([
+    const [employees, shifts, attendance, leaveRequests, leaveTypes, leaveBalances, holidays, payrollRuns, payrollItems, salaryAdvances, salaryAdvanceInstallments, payrollSalaryAdvances, salaryReceipts, documents, hrNotifications] = await Promise.all([
       fetchTable(TABLES.employees, 'employee_no', true),
       fetchTable(TABLES.shifts, 'name', true),
       fetchTable(TABLES.attendance, 'attendance_date', false),
@@ -159,11 +162,14 @@
       fetchTable(TABLES.holidays, 'holiday_date', true),
       fetchTable(TABLES.payrollRuns, 'payroll_month', false),
       fetchTable(TABLES.payrollItems, 'created_at', false),
+      fetchTable(TABLES.salaryAdvances, 'created_at', false),
+      fetchTable(TABLES.salaryAdvanceInstallments, 'payroll_month', false),
+      fetchTable(TABLES.payrollSalaryAdvances, 'created_at', false),
       fetchTable(TABLES.salaryReceipts, 'payment_date', false),
       fetchTable(TABLES.documents, 'expiry_date', true),
       fetchTable(TABLES.hrNotifications, 'created_at', false)
     ]);
-    Object.assign(state, { employees, shifts, attendance, leaveRequests, leaveTypes, leaveBalances, holidays, payrollRuns, payrollItems, salaryReceipts, documents, hrNotifications, dataSource: 'supabase' });
+    Object.assign(state, { employees, shifts, attendance, leaveRequests, leaveTypes, leaveBalances, holidays, payrollRuns, payrollItems, salaryAdvances, salaryAdvanceInstallments, payrollSalaryAdvances, salaryReceipts, documents, hrNotifications, dataSource: 'supabase' });
     if (!state.shifts.length) state.shifts = [defaultShift()];
     if (!state.leaveTypes.length) state.leaveTypes = defaultLeaveTypes();
     saveLocal();
@@ -723,23 +729,34 @@
     const fixedSalary = num(emp.base_salary);
     const fixedAllowances = num(emp.allowances);
     const fixedDeductions = num(emp.fixed_deductions);
+    const advanceInstallments = state.salaryAdvanceInstallments.filter(row =>
+      String(row.employee_id) === String(emp.id) && String(row.payroll_month).slice(0, 7) === month &&
+      norm(row.approval_status) === 'approved' && row.is_active !== false &&
+      !row.deducted_at && !row.paid_at && !row.payroll_item_id &&
+      state.salaryAdvances.some(advance => String(advance.id) === String(row.salary_advance_id) &&
+        String(advance.employee_id) === String(emp.id) && norm(advance.approval_status) === 'approved' && advance.is_active !== false)
+    );
+    const salaryAdvance = advanceInstallments.reduce((sum, row) => sum + num(row.amount), 0);
     const gross = fixedSalary + fixedAllowances + transportationAllowance;
+    // Salary Advance is kept outside the existing deductions total to avoid duplication.
     const deductions = fixedDeductions;
-    const net = Math.max(0, gross - deductions);
+    const net = Math.max(0, gross - deductions - salaryAdvance);
     return {
       id: uid('pay-item'), run_id: run.id, employee_id: emp.id, currency: emp.currency || run.currency || 'USD',
       working_days: working, present_days: Number(presentDays.toFixed(2)), absent_days: Number((abs.absent + (abs.half * 0.5)).toFixed(2)), paid_leave_days: Number(leave.paid.toFixed(2)), unpaid_leave_days: Number(leave.unpaid.toFixed(2)),
       late_minutes: 0, overtime_hours: 0, detected_overtime_hours: 0, basic_salary: fixedSalary, daily_rate: working > 0 ? Number((fixedSalary / working).toFixed(2)) : 0, allowances: fixedAllowances,
       transportation_monthly: Number(transportMonthly.toFixed(2)), transportation_per_day: Number(transportPerDay.toFixed(2)), transportation_days: Number(transportDays.toFixed(2)), transportation_allowance: Number(transportationAllowance.toFixed(2)), transportation_deduction: Number(transportationDeduction.toFixed(2)), leave_transport_deduct_days: Number(leave.transportDeduct.toFixed(2)), leave_transport_paid_days: 0,
-      overtime_amount: 0, absence_deduction: 0, late_deduction: 0, early_leave_deduction: 0, fixed_deductions: fixedDeductions, deductions: Number(deductions.toFixed(2)), gross_salary: Number(gross.toFixed(2)), net_salary: Number(net.toFixed(2)), paid_amount: 0, remaining_amount: Number(net.toFixed(2)), status: 'draft',
+      overtime_amount: 0, absence_deduction: 0, late_deduction: 0, early_leave_deduction: 0, fixed_deductions: fixedDeductions, deductions: Number(deductions.toFixed(2)), salary_advance_amount: Number(salaryAdvance.toFixed(2)), gross_salary: Number(gross.toFixed(2)), net_salary: Number(net.toFixed(2)), paid_amount: 0, remaining_amount: Number(net.toFixed(2)), status: 'draft',
       notes: `Fixed monthly salary. Transport ${transportMonthly} ÷ ${working} working days = ${transportPerDay.toFixed(2)} per day. Transport deducted for approved leave/sick/manual absent days only.`,
-      details: { transport_deduct_days: transportDeductDays, leave_by_type: leave.byType }, created_at: new Date().toISOString()
+      details: { transport_deduct_days: transportDeductDays, leave_by_type: leave.byType, salary_advance_installment_ids: advanceInstallments.map(row => row.id) }, created_at: new Date().toISOString()
     };
   }
 
   async function generatePayroll() {
     const month = state.filters.payrollMonth;
     const run = { id: uid('pay-run'), payroll_month: month, status:'draft', currency:'USD', generated_at: new Date().toISOString(), generated_by: authName(), created_at: new Date().toISOString() };
+    const finalized = state.payrollRuns.find(item => item.payroll_month === month && ['approved','paid','locked'].includes(norm(item.status)));
+    if (finalized) return toast('Approved or paid payroll cannot be recalculated.');
     const previousRuns = state.payrollRuns.filter(item => item.payroll_month === month).map(item => item.id);
     state.payrollRuns = state.payrollRuns.filter(item => !previousRuns.includes(item.id));
     state.payrollItems = state.payrollItems.filter(item => !previousRuns.includes(item.run_id));
@@ -749,6 +766,9 @@
     state.payrollItems.unshift(...items);
     await syncUpsert(TABLES.payrollRuns, run);
     for (const item of items) await syncUpsert(TABLES.payrollItems, item);
+    const links = items.flatMap(item => (item.details?.salary_advance_installment_ids || []).map(installmentId => ({ id: uid('pay-advance'), payroll_item_id: item.id, installment_id: installmentId, amount: num(state.salaryAdvanceInstallments.find(row => row.id === installmentId)?.amount), created_at: new Date().toISOString() })));
+    for (const link of links) await syncUpsert(TABLES.payrollSalaryAdvances, link);
+    state.payrollSalaryAdvances.unshift(...links);
     state.selectedPayslip = items[0]?.id || '';
     await pushHrNotification('Payroll generated', `${monthName(month)} · ${items.length} employees`, 'payroll', 'payroll_run', run.id);
     renderRoot(); toast('Monthly payroll generated.');
@@ -757,6 +777,19 @@
   async function setPayrollStatus(status) {
     const run = latestPayrollRun();
     if (!run) return;
+    if (['approved','paid'].includes(status)) {
+      const supabase = client();
+      if (!supabase) return toast('Payroll approval blocked: database connection is unavailable.');
+      const { error } = await supabase.rpc('hr_finalize_payroll_salary_advances', { p_run_id: run.id, p_status: status });
+      if (error) {
+        console.error('[HR] Salary Advance finalization failed', error);
+        return toast(`Payroll ${status} blocked: Salary Advance installments could not be linked.`);
+      }
+      await loadRemote();
+      await pushHrNotification(`Payroll ${status}`, `${monthName(run.payroll_month)} payroll is now ${status}`, 'payroll', 'payroll_run', run.id);
+      renderRoot();
+      return;
+    }
     run.status = status;
     if (status === 'reviewed') { run.reviewed_at = new Date().toISOString(); run.reviewed_by = authName(); }
     if (status === 'approved') run.approved_at = new Date().toISOString();
@@ -784,7 +817,7 @@
   function payrollRow(item) {
     const emp = getEmployee(item.employee_id) || {};
     const rs = receiptStatus(item);
-    return `<tr><td><strong>${esc(emp.full_name || '—')}</strong><div class="muted">${esc(emp.employee_no || '')}</div></td><td>Working ${num(item.working_days)} · Present ${num(item.present_days)}<div class="muted">Leave ${num(item.paid_leave_days) + num(item.unpaid_leave_days)} · Absent ${num(item.absent_days)}</div></td><td>${money(item.basic_salary, item.currency)}<div class="muted">Allow. ${money(item.allowances, item.currency)}</div></td><td>${money(item.transportation_allowance, item.currency)}<div class="muted">${num(item.transportation_days)} days · deducted ${money(item.transportation_deduction, item.currency)}</div></td><td>${money(item.deductions, item.currency)}</td><td><strong>${money(item.net_salary, item.currency)}</strong></td><td>${money(rs.paid, item.currency)}</td><td>${money(rs.remaining, item.currency)}</td><td>${statusChip(rs.status)}</td><td><div class="hr-row-actions"><button class="btn ghost xs" type="button" data-hr-payslip-item="${esc(item.id)}">Payslip</button><button class="btn ghost xs" type="button" data-hr-add-receipt="${esc(item.id)}">Receipt</button></div></td></tr>`;
+    return `<tr><td><strong>${esc(emp.full_name || '—')}</strong><div class="muted">${esc(emp.employee_no || '')}</div></td><td>Working ${num(item.working_days)} · Present ${num(item.present_days)}<div class="muted">Leave ${num(item.paid_leave_days) + num(item.unpaid_leave_days)} · Absent ${num(item.absent_days)}</div></td><td>${money(item.basic_salary, item.currency)}<div class="muted">Allow. ${money(item.allowances, item.currency)}</div></td><td>${money(item.transportation_allowance, item.currency)}<div class="muted">${num(item.transportation_days)} days · deducted ${money(item.transportation_deduction, item.currency)}</div></td><td>${money(item.deductions, item.currency)}<div class="muted">Salary Advance ${money(item.salary_advance_amount, item.currency)}</div></td><td><strong>${money(item.net_salary, item.currency)}</strong></td><td>${money(rs.paid, item.currency)}</td><td>${money(rs.remaining, item.currency)}</td><td>${statusChip(rs.status)}</td><td><div class="hr-row-actions"><button class="btn ghost xs" type="button" data-hr-payslip-item="${esc(item.id)}">Payslip</button><button class="btn ghost xs" type="button" data-hr-add-receipt="${esc(item.id)}">Receipt</button></div></td></tr>`;
   }
 
   function renderPayslips() {
@@ -801,7 +834,7 @@
     const run = state.payrollRuns.find(row => String(row.id) === String(item.run_id)) || {};
     const rs = receiptStatus(item);
     const receiptRows = receiptsForItem(item.id);
-    return `<div class="hr-payslip-preview" id="hrPayslipPreview"><div class="hr-payslip-header"><div><div class="hr-payslip-title">Payslip</div><div class="muted">InCheck360 Payroll</div></div><div style="text-align:right"><strong>${esc(monthName(run.payroll_month))}</strong><div>${statusChip(run.status || 'draft')}</div></div></div><div class="hr-payslip-grid"><div><strong>Employee</strong><div>${esc(emp.full_name || '—')}</div><div class="muted">${esc(emp.employee_no || '')} · ${esc(emp.job_title || '')}</div></div><div><strong>Department</strong><div>${esc(emp.department || '—')}</div><div class="muted">Payment: ${esc(emp.payment_method || '—')}</div></div></div><table class="hr-payslip-table"><thead><tr><th>Earnings</th><th>Amount</th></tr></thead><tbody><tr><td>Fixed Monthly Salary</td><td>${money(item.basic_salary, item.currency)}</td></tr><tr><td>Fixed Allowances</td><td>${money(item.allowances, item.currency)}</td></tr><tr><td>Transportation Paid</td><td>${money(item.transportation_allowance, item.currency)}</td></tr><tr><td><strong>Gross Salary</strong></td><td><strong>${money(item.gross_salary, item.currency)}</strong></td></tr></tbody></table><table class="hr-payslip-table hr-payslip-print-hidden"><thead><tr><th>Deductions / Balance</th><th>Amount</th></tr></thead><tbody><tr><td>Fixed Admin Deductions</td><td>${money(item.deductions, item.currency)}</td></tr><tr><td>Transportation Not Paid for Leave/Sick/Absent</td><td>${money(item.transportation_deduction, item.currency)}</td></tr><tr><td>Salary Receipts Paid</td><td>${money(rs.paid, item.currency)}</td></tr><tr><td>Remaining Salary Rest</td><td>${money(rs.remaining, item.currency)}</td></tr></tbody></table><div class="hr-payslip-grid"><div><strong>Attendance Basis</strong><div>Working ${num(item.working_days)} · Present ${num(item.present_days)}</div><div class="muted">Leave ${num(item.paid_leave_days) + num(item.unpaid_leave_days)} · Manual absent ${num(item.absent_days)} · Transport days ${num(item.transportation_days)}</div></div><div class="hr-payslip-print-hidden"><strong>Transport Calculation</strong><div>${money(item.transportation_monthly || (num(item.transportation_allowance) + num(item.transportation_deduction)), item.currency)} monthly</div><div class="muted">${money(item.transportation_per_day, item.currency)} per eligible working day</div></div></div><div class="hr-payslip-total"><span>Net Salary</span><span>${money(item.net_salary, item.currency)}</span></div>${receiptRows.length ? `<div class="hr-dashboard-list" style="margin-top:12px">${receiptRows.map(r => `<div class="hr-dashboard-item"><div><strong>${esc(r.receipt_no)}</strong><div class="muted">${fmtDate(r.payment_date)} · ${esc(r.payment_method || '')}</div></div><span>${money(r.amount, r.currency || item.currency)}</span></div>`).join('')}</div>` : ''}${includeAction ? `<div class="hr-toolbar" style="margin-top:14px; justify-content:flex-end"><button class="btn ghost sm" type="button" data-hr-add-receipt="${esc(item.id)}">Add Receipt</button><button class="btn sm" type="button" data-hr-print-payslip="${esc(item.id)}">Print / Save PDF</button></div>` : ''}</div>`;
+    return `<div class="hr-payslip-preview" id="hrPayslipPreview"><div class="hr-payslip-header"><div><div class="hr-payslip-title">Payslip</div><div class="muted">InCheck360 Payroll</div></div><div style="text-align:right"><strong>${esc(monthName(run.payroll_month))}</strong><div>${statusChip(run.status || 'draft')}</div></div></div><div class="hr-payslip-grid"><div><strong>Employee</strong><div>${esc(emp.full_name || '—')}</div><div class="muted">${esc(emp.employee_no || '')} · ${esc(emp.job_title || '')}</div></div><div><strong>Department</strong><div>${esc(emp.department || '—')}</div><div class="muted">Payment: ${esc(emp.payment_method || '—')}</div></div></div><table class="hr-payslip-table"><thead><tr><th>Earnings</th><th>Amount</th></tr></thead><tbody><tr><td>Fixed Monthly Salary</td><td>${money(item.basic_salary, item.currency)}</td></tr><tr><td>Fixed Allowances</td><td>${money(item.allowances, item.currency)}</td></tr><tr><td>Transportation Paid</td><td>${money(item.transportation_allowance, item.currency)}</td></tr><tr><td><strong>Gross Salary</strong></td><td><strong>${money(item.gross_salary, item.currency)}</strong></td></tr></tbody></table><table class="hr-payslip-table"><thead><tr><th>Deductions / Balance</th><th>Amount</th></tr></thead><tbody><tr><td>Fixed Admin Deductions</td><td>${money(item.deductions, item.currency)}</td></tr><tr><td>Salary Advance</td><td>${money(item.salary_advance_amount, item.currency)}</td></tr><tr><td>Transportation Not Paid for Leave/Sick/Absent</td><td>${money(item.transportation_deduction, item.currency)}</td></tr><tr><td>Salary Receipts Paid</td><td>${money(rs.paid, item.currency)}</td></tr><tr><td>Remaining Salary Rest</td><td>${money(rs.remaining, item.currency)}</td></tr></tbody></table><div class="hr-payslip-grid"><div><strong>Attendance Basis</strong><div>Working ${num(item.working_days)} · Present ${num(item.present_days)}</div><div class="muted">Leave ${num(item.paid_leave_days) + num(item.unpaid_leave_days)} · Manual absent ${num(item.absent_days)} · Transport days ${num(item.transportation_days)}</div></div><div class="hr-payslip-print-hidden"><strong>Transport Calculation</strong><div>${money(item.transportation_monthly || (num(item.transportation_allowance) + num(item.transportation_deduction)), item.currency)} monthly</div><div class="muted">${money(item.transportation_per_day, item.currency)} per eligible working day</div></div></div><div class="hr-payslip-total"><span>Net Salary</span><span>${money(item.net_salary, item.currency)}</span></div>${receiptRows.length ? `<div class="hr-dashboard-list" style="margin-top:12px">${receiptRows.map(r => `<div class="hr-dashboard-item"><div><strong>${esc(r.receipt_no)}</strong><div class="muted">${fmtDate(r.payment_date)} · ${esc(r.payment_method || '')}</div></div><span>${money(r.amount, r.currency || item.currency)}</span></div>`).join('')}</div>` : ''}${includeAction ? `<div class="hr-toolbar" style="margin-top:14px; justify-content:flex-end"><button class="btn ghost sm" type="button" data-hr-add-receipt="${esc(item.id)}">Add Receipt</button><button class="btn sm" type="button" data-hr-print-payslip="${esc(item.id)}">Print / Save PDF</button></div>` : ''}</div>`;
   }
 
   function filteredSalaryReceipts() {
@@ -864,7 +897,7 @@
         source_table: 'hr_payroll_items',
         source_id: item.id,
         type: 'Salary Generated',
-        description: `Monthly salary generated for ${monthName(run.payroll_month)}`,
+        description: `Monthly salary generated for ${monthName(run.payroll_month)} · Salary Advance ${money(item.salary_advance_amount, item.currency)}`,
         debit: num(item.net_salary),
         credit: 0,
         currency: item.currency || emp.currency || 'USD',
@@ -1310,7 +1343,7 @@
       employees.forEach(emp => dates.forEach(date => rows.push({ employee_no: emp.employee_no, employee: emp.full_name, date, status: computedDayStatus(emp, date).status, source: computedDayStatus(emp, date).source })));
     } else {
       const run = latestPayrollRun();
-      rows = run && monthInGlobalRange(run.payroll_month) ? state.payrollItems.filter(item => item.run_id === run.id && matchesGlobalEmployee(item.employee_id)).map(item => ({ employee: getEmployee(item.employee_id)?.full_name || '', month: run.payroll_month, net_salary: item.net_salary, paid: receiptStatus(item).paid, remaining: receiptStatus(item).remaining })) : [];
+      rows = run && monthInGlobalRange(run.payroll_month) ? state.payrollItems.filter(item => item.run_id === run.id && matchesGlobalEmployee(item.employee_id)).map(item => ({ employee: getEmployee(item.employee_id)?.full_name || '', month: run.payroll_month, salary_advance: num(item.salary_advance_amount), net_salary: item.net_salary, paid: receiptStatus(item).paid, remaining: receiptStatus(item).remaining })) : [];
     }
     if (!rows.length) return toast('No rows to export.');
     const columns = Array.from(new Set(rows.flatMap(row => Object.keys(row))));
