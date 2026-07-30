@@ -549,7 +549,7 @@
     const readOnly = state.dataSource === 'cache';
     const hasWarnings = state.dataSource === 'supabase' && state.remoteWarnings.length > 0;
     const source = readOnly
-      ? '<span class="hr-chip warning">Read-only cache · database unavailable</span>'
+      ? '<span class="hr-chip warning">Cached data · saves will retry Supabase</span>'
       : hasWarnings
         ? `<span class="hr-chip warning">Supabase connected · ${state.remoteWarnings.length} optional/schema warning${state.remoteWarnings.length === 1 ? '' : 's'}</span>`
         : '<span class="hr-chip success">Supabase synced</span>';
@@ -571,7 +571,7 @@
       <nav class="hr-tabs" aria-label="HR sections">
         ${['dashboard','employees','attendance','leaves','leave_balances','holidays','payroll','payslips','salary_receipts','employee_statement','documents','settings'].map(tab => `<button type="button" class="${state.activeTab === tab ? 'active' : ''}" data-hr-tab="${tab}">${tabLabel(tab)}</button>`).join('')}
       </nav>
-      ${readOnly ? `<div class="hr-source-banner" role="alert"><strong>Read-only mode.</strong> HR changes are disabled until Supabase reconnects. Cached records are shown for reference only.${state.lastConnectionError ? ` <small>${esc(state.lastConnectionError)}</small>` : ''}</div>` : ''}
+      ${readOnly ? `<div class="hr-source-banner" role="alert"><strong>Cached data mode.</strong> The last HR refresh did not complete, but action buttons remain available and each save will retry Supabase.${state.lastConnectionError ? ` <small>${esc(state.lastConnectionError)}</small>` : ''}</div>` : ''}
       ${hasWarnings ? `<div class="hr-source-banner" role="status"><strong>Supabase is connected.</strong> Some HR features may require a pending database migration: ${state.remoteWarnings.map(item => esc(item.tableName)).join(', ')}. Core HR changes remain enabled.</div>` : ''}
       ${globalFilterBar()}
       <div id="hrSummary" class="hr-summary-grid"></div>
@@ -581,10 +581,11 @@
     renderSummary();
     renderBody();
     if (readOnly) {
-      root.querySelectorAll('form input, form select, form textarea, form button').forEach(element => { element.disabled = true; });
-      root.querySelectorAll('[data-hr-absent], [data-hr-halfday], [data-hr-clear-attendance], [data-hr-approve-leave], [data-hr-reject-leave], [data-hr-adjust-balance], [data-hr-payroll-status], [data-hr-add-receipt], [data-hr-edit-receipt], [data-hr-edit-document], [data-hr-remove-document-pdf]').forEach(element => { element.disabled = true; });
-      const newEmployee = $('hrNewEmployeeBtn');
-      if (newEmployee) newEmployee.disabled = true;
+      // Do not disable HR controls merely because the latest bulk refresh fell back
+      // to cache. Individual writes still retry Supabase and surface the exact error.
+      root.dataset.hrCachedMode = 'true';
+    } else {
+      delete root.dataset.hrCachedMode;
     }
   }
 
@@ -1108,7 +1109,7 @@
       <div id="hrLeaveModal" class="hr-modal" role="dialog" aria-modal="true" hidden><button class="hr-modal-backdrop" data-hr-close-modal type="button"></button><form id="hrLeaveForm" class="hr-dialog"><header><div><span class="hr-eyebrow">HR</span><h3>Leave</h3></div><button class="btn ghost sm" data-hr-close-modal type="button">Close</button></header><div class="hr-dialog-body"><div class="hr-form-grid">${leaveFields()}</div></div><footer class="hr-dialog-footer"><button class="btn ghost sm" data-hr-close-modal type="button">Cancel</button><button class="btn sm" type="submit">Save Leave</button></footer></form></div>
       <div id="hrBalanceModal" class="hr-modal" role="dialog" aria-modal="true" hidden><button class="hr-modal-backdrop" data-hr-close-modal type="button"></button><form id="hrBalanceForm" class="hr-dialog"><header><div><span class="hr-eyebrow">HR</span><h3>Adjust Leave Balance</h3></div><button class="btn ghost sm" data-hr-close-modal type="button">Close</button></header><div class="hr-dialog-body"><div class="hr-form-grid">${balanceFields()}</div></div><footer class="hr-dialog-footer"><button class="btn ghost sm" data-hr-close-modal type="button">Cancel</button><button class="btn sm" type="submit">Save Adjustment</button></footer></form></div>
       <div id="hrHolidayModal" class="hr-modal" role="dialog" aria-modal="true" hidden><button class="hr-modal-backdrop" data-hr-close-modal type="button"></button><form id="hrHolidayForm" class="hr-dialog"><header><div><span class="hr-eyebrow">HR</span><h3>Holiday</h3></div><button class="btn ghost sm" data-hr-close-modal type="button">Close</button></header><div class="hr-dialog-body"><div class="hr-form-grid">${holidayFields()}</div></div><footer class="hr-dialog-footer"><button class="btn ghost sm" data-hr-close-modal type="button">Cancel</button><button class="btn sm" type="submit">Save Holiday</button></footer></form></div>
-      <div id="hrReceiptModal" class="hr-modal" role="dialog" aria-modal="true" hidden><button class="hr-modal-backdrop" data-hr-close-modal type="button"></button><form id="hrReceiptForm" class="hr-dialog" novalidate><header><div><span class="hr-eyebrow">Payroll</span><h3>Salary Receipt</h3></div><button class="btn ghost sm" data-hr-close-modal type="button">Close</button></header><div class="hr-dialog-body"><div class="hr-form-grid">${receiptFields()}</div></div><footer class="hr-dialog-footer"><button class="btn ghost sm" data-hr-close-modal type="button">Cancel</button><button class="btn ghost sm" type="submit">Save Receipt</button><button class="btn sm" type="submit" data-hr-save-print-receipt="true">Save & Print</button></footer></form></div>
+      <div id="hrReceiptModal" class="hr-modal" role="dialog" aria-modal="true" hidden><button class="hr-modal-backdrop" data-hr-close-modal type="button"></button><form id="hrReceiptForm" class="hr-dialog" novalidate><header><div><span class="hr-eyebrow">Payroll</span><h3>Salary Receipt</h3></div><button class="btn ghost sm" data-hr-close-modal type="button">Close</button></header><div class="hr-dialog-body"><div class="hr-form-grid">${receiptFields()}</div></div><footer class="hr-dialog-footer"><button class="btn ghost sm" data-hr-close-modal type="button">Cancel</button><button class="btn ghost sm" type="button" data-hr-save-receipt="true">Save Receipt</button><button class="btn sm" type="button" data-hr-save-print-receipt="true">Save & Print</button></footer></form></div>
       <div id="hrDocumentModal" class="hr-modal" role="dialog" aria-modal="true" hidden><button class="hr-modal-backdrop" data-hr-close-modal type="button"></button><form id="hrDocumentForm" class="hr-dialog"><header><div><span class="hr-eyebrow">HR</span><h3>Document</h3></div><button class="btn ghost sm" data-hr-close-modal type="button">Close</button></header><div class="hr-dialog-body"><div class="hr-form-grid">${documentFields()}</div></div><footer class="hr-dialog-footer"><button class="btn ghost sm" data-hr-close-modal type="button">Cancel</button><button class="btn sm" type="submit">Save Document</button></footer></form></div>
     `;
   }
@@ -1288,15 +1289,15 @@
     openModal('hrReceiptModal');
   }
 
-  async function saveReceipt(event) {
-    event.preventDefault();
+  async function saveReceipt(event = {}, printRequested = false) {
+    event.preventDefault?.();
     const form = event.target?.id === 'hrReceiptForm' ? event.target : $('hrReceiptForm');
-    const submitter = event.submitter || document.activeElement;
-    const shouldPrint = Boolean(submitter?.dataset?.hrSavePrintReceipt);
+    const submitter = event.submitter || event.currentTarget || document.activeElement;
+    const shouldPrint = Boolean(printRequested || submitter?.dataset?.hrSavePrintReceipt);
     const saveButtons = Array.from(form?.querySelectorAll?.('button[type="submit"]') || []);
 
-    if (state.dataSource === 'cache' || !client()) {
-      toast('Salary receipt cannot be saved because Supabase is unavailable. Refresh HR after the connection is restored.');
+    if (!client()) {
+      toast('Supabase is not connected yet. Refresh the page or HR module, then try saving again.');
       return;
     }
 
@@ -1583,6 +1584,19 @@
       const tab = event.target.closest?.('[data-hr-tab]');
       if (tab) { state.activeTab = tab.dataset.hrTab; renderRoot(); return; }
       if (event.target.closest?.('[data-hr-close-modal]')) { closeModals(); return; }
+      const saveReceiptButton = event.target.closest?.('[data-hr-save-receipt], [data-hr-save-print-receipt]');
+      if (saveReceiptButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        const receiptForm = $('hrReceiptForm');
+        await saveReceipt({
+          preventDefault() {},
+          target: receiptForm,
+          currentTarget: saveReceiptButton,
+          submitter: saveReceiptButton
+        }, Boolean(saveReceiptButton.dataset.hrSavePrintReceipt));
+        return;
+      }
       const action = event.target.closest?.('[data-hr-action]')?.dataset.hrAction;
       if (action === 'new-employee') openEmployeeModal();
       if (action === 'new-attendance') openAttendanceModal();
@@ -1672,7 +1686,7 @@
       if (event.target.id === 'hrLeaveForm') saveLeave(event);
       if (event.target.id === 'hrBalanceForm') saveBalance(event);
       if (event.target.id === 'hrHolidayForm') saveHoliday(event);
-      if (event.target.id === 'hrReceiptForm') saveReceipt(event);
+      if (event.target.id === 'hrReceiptForm') saveReceipt(event, false);
       if (event.target.id === 'hrDocumentForm') saveDocument(event);
       if (event.target.id === 'hrShiftForm') saveShift(event);
     });
