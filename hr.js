@@ -66,6 +66,7 @@
     initialized: false,
     activeTab: 'dashboard',
     dataSource: 'local',
+    connection: { status: 'checking', reason: 'initializing', error: null },
     loading: false,
     selectedPayslip: '',
     filters: {
@@ -86,6 +87,93 @@
   }
 
   function toast(message) { global.UI?.toast?.(message); }
+
+  const devLog = (...args) => {
+    if (global.RUNTIME_CONFIG?.NODE_ENV !== 'production' && global.RUNTIME_CONFIG?.MODE !== 'production') console.debug(...args);
+  };
+  function errorDetails(error) {
+    return { status: Number(error?.status || error?.statusCode || 0), code: String(error?.code || ''), message: String(error?.message || error || '') };
+  }
+  function classifyFailure(error) {
+    const details = errorDetails(error);
+    const message = details.message.toLowerCase();
+    if (global.navigator?.onLine === false) return 'offline';
+    if (details.code === '42501' || details.status === 403 || message.includes('permission denied') || message.includes('row-level security')) return 'permission';
+    if (details.code === '42P01' || /^42/.test(details.code) || /^PGRST(1|2)/.test(details.code)) return 'query';
+    if (details.status === 401 || details.code === 'PGRST301' || message.includes('jwt expired') || message.includes('invalid jwt')) return 'session_expired';
+    if (!details.status && (error instanceof TypeError || message.includes('failed to fetch') || message.includes('networkerror'))) return 'unavailable';
+    if (details.status >= 500 || details.status === 0) return 'unavailable';
+    return 'query';
+  }
+  function setConnection(status, reason = status, error = null) {
+    state.connection = { status, reason, error };
+    devLog('[HR] read-only mode activation reason', ['offline','unavailable','session_expired'].includes(status) ? reason : 'none');
+  }
+  function isReadOnly() { return ['offline', 'unavailable', 'session_expired'].includes(state.connection.status); }
+
+  async function refreshSession() {
+    const supabase = client();
+    if (!supabase?.auth) throw new Error('Supabase auth client unavailable');
+    const current = await supabase.auth.getSession();
+    if (current.error) throw current.error;
+    let session = current.data?.session || null;
+    const expiresSoon = session?.expires_at && session.expires_at * 1000 <= Date.now() + 30000;
+    if (!session || expiresSoon) {
+      const refreshed = await supabase.auth.refreshSession();
+      if (refreshed.error) {
+        if (!refreshed.error.status) refreshed.error.status = 401;
+        throw refreshed.error;
+      }
+      session = refreshed.data?.session || null;
+    }
+    if (!session) {
+      const error = new Error('No authenticated Supabase session is available.');
+      error.status = 401;
+      throw error;
+    }
+    devLog('[HR] authentication session state', { present: Boolean(session), expiresAt: session?.expires_at || null });
+    return session;
+  }
+
+  async function withSessionRetry(operation) {
+    let result = await operation();
+    if (result?.error && classifyFailure(result.error) === 'session_expired') {
+      await refreshSession();
+      result = await operation();
+    }
+    return result;
+  }
+
+  async function healthCheck({ refreshAuth = false } = {}) {
+    if (global.navigator?.onLine === false) {
+      setConnection('offline', 'browser_offline');
+      return { ok: false, reason: 'offline' };
+    }
+    try {
+      if (refreshAuth) await refreshSession();
+      const supabase = client();
+      if (!supabase) throw new TypeError('Supabase client unavailable');
+      const result = await withSessionRetry(() => supabase.from(TABLES.employees).select('id').limit(1));
+      if (result.error) {
+        const reason = classifyFailure(result.error);
+        // RLS/schema/query errors prove that PostgREST is reachable; they are not outages.
+        if (reason === 'permission' || reason === 'query') {
+          setConnection('connected', reason, result.error);
+          console.error('[HR] Supabase health query reached the database but failed', errorDetails(result.error));
+          return { ok: true, reason, error: result.error };
+        }
+        throw result.error;
+      }
+      setConnection('connected', 'healthy');
+      devLog('[HR] Supabase health-check result', { ok: true });
+      return { ok: true, reason: 'healthy' };
+    } catch (error) {
+      const reason = classifyFailure(error);
+      setConnection(reason, reason, error);
+      devLog('[HR] Supabase health-check result', { ok: false, reason, ...errorDetails(error) });
+      return { ok: false, reason, error };
+    }
+  }
 
   function defaultShift() {
     return {
@@ -146,13 +234,14 @@
     if (!supabase) throw new Error('Supabase client unavailable');
     let query = supabase.from(tableName).select('*').limit(5000);
     if (orderColumn) query = query.order(orderColumn, { ascending, nullsFirst: false });
-    const { data, error } = await query;
+    const { data, error } = await withSessionRetry(() => query);
     if (error) throw error;
     return Array.isArray(data) ? data : [];
   }
 
   async function loadRemote() {
-    const [employees, shifts, attendance, leaveRequests, leaveTypes, leaveBalances, holidays, payrollRuns, payrollItems, salaryAdvances, salaryAdvanceInstallments, payrollSalaryAdvances, salaryReceipts, documents, hrNotifications] = await Promise.all([
+    const keys = Object.keys(TABLES);
+    const results = await Promise.allSettled([
       fetchTable(TABLES.employees, 'employee_no', true),
       fetchTable(TABLES.shifts, 'name', true),
       fetchTable(TABLES.attendance, 'attendance_date', false),
@@ -169,7 +258,14 @@
       fetchTable(TABLES.documents, 'expiry_date', true),
       fetchTable(TABLES.hrNotifications, 'created_at', false)
     ]);
-    Object.assign(state, { employees, shifts, attendance, leaveRequests, leaveTypes, leaveBalances, holidays, payrollRuns, payrollItems, salaryAdvances, salaryAdvanceInstallments, payrollSalaryAdvances, salaryReceipts, documents, hrNotifications, dataSource: 'supabase' });
+    let loaded = 0;
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') { state[keys[index]] = result.value; loaded += 1; return; }
+      const reason = classifyFailure(result.reason);
+      console.error(`[HR] Failed request for ${TABLES[keys[index]]}`, { reason, ...errorDetails(result.reason) });
+    });
+    if (!loaded) throw results[0]?.reason || new Error('No HR tables could be loaded');
+    state.dataSource = 'supabase';
     if (!state.shifts.length) state.shifts = [defaultShift()];
     if (!state.leaveTypes.length) state.leaveTypes = defaultLeaveTypes();
     saveLocal();
@@ -192,15 +288,16 @@
     const supabase = client();
     try {
       if (!supabase) throw new Error('Supabase client unavailable');
-      const { data, error } = await supabase.from(table).upsert(row, { onConflict: 'id' }).select('*').single();
+      const { data, error } = await withSessionRetry(() => supabase.from(table).upsert(row, { onConflict: 'id' }).select('*').single());
       if (error) throw error;
       state.dataSource = 'supabase';
       if (options.cache !== false) saveLocal();
       return data || row;
     } catch (error) {
-      restoreConfirmedHrCache();
       console.error(`[HR] Database did not confirm upsert for ${table}`, error);
-      if (options.notify !== false) toast('HR was not saved. The database did not confirm the change. Check your connection and try again.');
+      const reason = classifyFailure(error);
+      if (reason === 'offline' || reason === 'unavailable' || reason === 'session_expired') setConnection(reason, `write_${reason}`, error);
+      if (options.notify !== false) toast(reason === 'permission' ? 'You do not have permission to perform this HR action.' : reason === 'session_expired' ? 'Your session has expired. Please sign in again.' : 'HR was not saved. The database did not confirm the change.');
       throw error;
     } finally {
       pendingHrWrites.delete(writeKey);
@@ -217,14 +314,15 @@
     const supabase = client();
     try {
       if (!supabase) throw new Error('Supabase client unavailable');
-      const { error } = await supabase.from(table).delete().eq('id', id);
+      const { error } = await withSessionRetry(() => supabase.from(table).delete().eq('id', id));
       if (error) throw error;
       state.dataSource = 'supabase';
       if (options.cache !== false) saveLocal();
     } catch (error) {
-      restoreConfirmedHrCache();
       console.error(`[HR] Database did not confirm delete for ${table}`, error);
-      if (options.notify !== false) toast('HR deletion failed. The database did not confirm the change.');
+      const reason = classifyFailure(error);
+      if (reason === 'offline' || reason === 'unavailable' || reason === 'session_expired') setConnection(reason, `delete_${reason}`, error);
+      if (options.notify !== false) toast(reason === 'permission' ? 'You do not have permission to perform this HR action.' : 'HR deletion failed. The database did not confirm the change.');
       throw error;
     } finally {
       pendingHrWrites.delete(writeKey);
@@ -468,7 +566,12 @@
       root.innerHTML = `<section class="hr-panel"><div class="hr-empty"><h3>HR access restricted</h3><p>This HR module is available to Admin, General Manager, and Senior Financial Controller roles.</p></div></section>`;
       return;
     }
-    const readOnly = state.dataSource !== 'supabase';
+    const readOnly = isReadOnly();
+    const warningMessage = state.connection.status === 'offline'
+      ? 'No internet connection. Cached HR records are shown temporarily.'
+      : state.connection.status === 'session_expired'
+        ? 'Your session has expired. Please sign in again.'
+        : 'Unable to connect to Supabase. HR changes are temporarily disabled.';
     const source = readOnly
       ? '<span class="hr-chip warning">Read-only cache · database unavailable</span>'
       : '<span class="hr-chip success">Supabase synced</span>';
@@ -490,7 +593,7 @@
       <nav class="hr-tabs" aria-label="HR sections">
         ${['dashboard','employees','attendance','leaves','leave_balances','holidays','payroll','payslips','salary_receipts','employee_statement','documents','settings'].map(tab => `<button type="button" class="${state.activeTab === tab ? 'active' : ''}" data-hr-tab="${tab}">${tabLabel(tab)}</button>`).join('')}
       </nav>
-      ${readOnly ? '<div class="hr-source-banner" role="alert"><strong>Read-only mode.</strong> HR changes are disabled until Supabase reconnects. Cached records are shown for reference only.</div>' : ''}
+      ${readOnly ? `<div class="hr-source-banner" role="alert"><strong>Read-only mode.</strong> ${warningMessage} <button id="hrRetryConnectionBtn" class="btn sm" type="button">Retry Connection</button></div>` : ''}
       ${globalFilterBar()}
       <div id="hrSummary" class="hr-summary-grid"></div>
       <div id="hrBody"></div>
@@ -1385,6 +1488,15 @@
   function wire() {
     if (state.initialized) return;
     state.initialized = true;
+    global.addEventListener?.('offline', () => {
+      setConnection('offline', 'browser_offline_event');
+      if (state.dataSource !== 'supabase') loadLocal();
+      renderRoot();
+    });
+    global.addEventListener?.('online', () => {
+      devLog('[HR] browser online event; verifying Supabase before enabling writes');
+      retryConnection();
+    });
     document.addEventListener('click', async event => {
       const tab = event.target.closest?.('[data-hr-tab]');
       if (tab) { state.activeTab = tab.dataset.hrTab; renderRoot(); return; }
@@ -1484,6 +1596,7 @@
     });
     document.addEventListener('click', event => {
       if (event.target.id === 'hrRefreshBtn') refresh(true);
+      if (event.target.id === 'hrRetryConnectionBtn') retryConnection();
       if (event.target.id === 'hrNewEmployeeBtn') openEmployeeModal();
       if (event.target.id === 'hrExportAttendanceBtn') exportCsv('attendance');
       if (event.target.id === 'hrExportPayrollBtn') exportCsv('payroll');
@@ -1494,10 +1607,35 @@
     if (state.loading) return;
     state.loading = true;
     try {
-      if (force || state.dataSource !== 'supabase') {
-        try { await loadRemote(); }
-        catch (error) { console.warn('[HR] remote load failed, using confirmed cache', error); loadLocal(); state.dataSource = 'cache'; }
+      if (force || state.dataSource !== 'supabase' || state.connection.status !== 'connected') {
+        const health = await healthCheck();
+        if (health.ok) {
+          try { await loadRemote(); }
+          catch (error) { console.error('[HR] HR data query failed; retaining current records', errorDetails(error)); }
+        } else if (state.dataSource !== 'supabase') {
+          loadLocal(); state.dataSource = 'cache';
+        }
       }
+      renderRoot();
+    } finally { state.loading = false; }
+  }
+
+  async function retryConnection() {
+    if (state.loading) return;
+    state.loading = true;
+    try {
+      const health = await healthCheck({ refreshAuth: true });
+      if (health.ok) {
+        await loadRemote();
+        setConnection('connected', 'retry_succeeded');
+        toast('HR connection restored. Current records have been loaded.');
+      } else if (health.reason === 'session_expired') {
+        toast('Your session has expired. Please sign in again.');
+      }
+      devLog('[HR] reconnection result', { ok: health.ok, reason: health.reason });
+      renderRoot();
+    } catch (error) {
+      console.error('[HR] Reconnection failed', errorDetails(error));
       renderRoot();
     } finally { state.loading = false; }
   }
@@ -1508,5 +1646,5 @@
     await refresh(false);
   }
 
-  global.HRModule = { init, wire, refresh, state, generatePayroll, workingDaysInMonth, leaveBalanceFor, computedDayStatus };
+  global.HRModule = { init, wire, refresh, retryConnection, healthCheck, classifyFailure, state, generatePayroll, workingDaysInMonth, leaveBalanceFor, computedDayStatus };
 })(window);
