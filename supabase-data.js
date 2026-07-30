@@ -902,7 +902,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     'line_total','service_start_date','service_end_date','capability_name','capability_value','notes'
   ]);
   const AGREEMENT_COLUMNS = new Set([
-    'agreement_id','proposal_id','agreement_number','company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_mobile','customer_contact_email','customer_contact_phone','provider_name','provider_legal_name','provider_address','provider_contact_name','provider_contact_mobile',
+    'agreement_id','proposal_id','agreement_number','sequence_number','company_id','company_name','contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_name','customer_legal_name','customer_address','customer_contact_name','customer_contact_mobile','customer_contact_email','customer_contact_phone','provider_name','provider_legal_name','provider_address','provider_contact_name','provider_contact_mobile',
     'provider_contact_email','service_start_date','service_end_date','agreement_date','effective_date','contract_term','account_number','billing_frequency',
     'payment_term','payment_terms','po_number','terms_conditions','customer_official_signatory_name','customer_official_signatory_title','customer_official_sign_date','customer_signatory_Name','customer_signatory_name','customer_signatory_title','customer_signatory_email','customer_signatory_phone',
     'customer_sign_date','provider_official_signatory_1_name','provider_official_signatory_1_title','provider_official_signatory_1_sign_date','provider_official_signatory_2_name','provider_official_signatory_2_title','provider_official_signatory_2_sign_date','provider_signatory_name','provider_signatory_title','provider_signatory_email','provider_signatory_secondary','provider_signatory_name_secondary','provider_signatory_title_secondary','provider_primary_signatory_name','provider_primary_signatory_title','provider_secondary_signatory_name','provider_secondary_signatory_title','provider_sign_date','gm_signed',
@@ -3661,6 +3661,29 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     return Number.isFinite(parsed) ? parsed : defaultValue;
   }
 
+  const AGREEMENT_INTEGER_COLUMNS = new Set([
+    'sequence_number', 'agreement_version', 'poc_location_count',
+    'poc_license_count', 'poc_license_months'
+  ]);
+
+  function friendlyAgreementInsertError(payload = {}, error = {}) {
+    const message = String(error?.message || error?.details || 'Unknown error');
+    const reportedValue = message.match(/value ["']([^"']+)["']/i)?.[1] || '';
+    const invalidEntry = Object.entries(payload).find(([field, value]) => {
+      if (!AGREEMENT_INTEGER_COLUMNS.has(field)) return false;
+      const numeric = typeof value === 'number' ? value : Number(String(value || '').trim());
+      return !Number.isSafeInteger(numeric) || numeric < -2147483648 || numeric > 2147483647
+        || (reportedValue && String(value) === reportedValue);
+    });
+    if (invalidEntry) {
+      const [field, value] = invalidEntry;
+      return new Error(`Unable to save agreement: ${field} received an invalid value. Expected a standard integer but received ${value}.`);
+    }
+    // PostgreSQL includes the rejected literal but not always the column. The
+    // contract above lets us identify it when it originated in this payload.
+    return friendlyError('Unable to create agreements record', error);
+  }
+
   function sanitizeAgreementRecord(record = {}, { includeCreatedBy = false, userId = '' } = {}) {
     const hasAny = keys => keys.some(key => Object.prototype.hasOwnProperty.call(record, key));
     const gmSignedKeys = ['gm_signed', 'gmSigned', 'signed_by_gm', 'signedByGm'];
@@ -3674,6 +3697,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       agreement_id: firstDefined(record, ['agreement_id', 'agreementId']),
       proposal_id: normalizeNullableUuidValue(firstDefined(record, ['proposal_id', 'proposalId'])),
       agreement_number: firstDefined(record, ['agreement_number', 'agreementNumber']),
+      sequence_number: numberOrNull(firstDefined(record, ['sequence_number', 'sequenceNumber'])),
       agreement_title: firstDefined(record, ['agreement_title', 'agreementTitle']),
       company_id: firstDefined(record, ['company_id', 'companyId']),
       company_name: firstDefined(record, ['company_name', 'companyName']),
@@ -3811,6 +3835,14 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     sanitized.provider_signatory_name_secondary = sanitized.provider_official_signatory_2_name;
     sanitized.provider_signatory_title_secondary = sanitized.provider_official_signatory_2_title;
     sanitized.provider_sign_date = sanitized.provider_official_signatory_1_sign_date || sanitized.provider_sign_date;
+    // `id` is deliberately not mapped: public.agreements.id has a
+    // gen_random_uuid() default. New business identifiers and their integer
+    // sequence are allocated atomically by the database trigger as well.
+    if (includeCreatedBy) {
+      delete sanitized.agreement_id;
+      delete sanitized.agreement_number;
+      delete sanitized.sequence_number;
+    }
     return sanitized;
   }
 
@@ -7584,15 +7616,40 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       await assertProposalAgreementConversionCompanyVerified(client, proposalUuid);
       const { data: sourceProposal, error: sourceProposalError } = await client
         .from('proposals')
-        .select('id,payment_term,payment_terms,billing_frequency,e_signature_type,e_signature_text,e_signature_image_data_url,e_signature_customer_name,e_signature_customer_email,e_signature_ip_address,e_signature_signed_at,e_signature_confirmed,e_signed_document_data_url,e_signed_document_file_name,e_signed_document_mime_type')
+        .select('*')
         .eq('id', proposalUuid)
         .maybeSingle();
       if (sourceProposalError) throw friendlyError('Unable to load proposal payment term before agreement conversion', sourceProposalError);
       const proposalPaymentTerm = String(sourceProposal?.payment_term || sourceProposal?.payment_terms || '').trim();
       const validPaymentTerms = ['Net 7', 'Net 14', 'Net 21', 'Net 30'];
       const lockedPaymentTerm = validPaymentTerms.includes(proposalPaymentTerm) ? proposalPaymentTerm : 'Net 30';
-      let { data, error } = await client.rpc('create_agreement_from_proposal', { p_proposal_uuid: proposalUuid });
-      if (error) throw friendlyError('Agreement creation from proposal failed', error);
+      const proposalAgreement = sanitizeAgreementRecord({
+        ...sourceProposal,
+        proposal_id: proposalUuid,
+        status: 'Draft'
+      }, { includeCreatedBy: true, userId: await getCurrentUserId(client) });
+      const conversionPayload = sanitizeUuidColumnsForMutation('agreements', proposalAgreement);
+      devLog('[agreements/create_from_proposal] complete Supabase insert payload', JSON.stringify(conversionPayload, null, 2));
+      let { data, error } = await insertSelectSingleWithSchemaRetry(
+        client,
+        'agreements',
+        conversionPayload,
+        'Agreement creation from proposal failed'
+      );
+      if (error) throw friendlyAgreementInsertError(conversionPayload, error);
+      const { data: proposalItems, error: proposalItemsError } = await client
+        .from('proposal_items')
+        .select('*')
+        .eq('proposal_id', proposalUuid);
+      if (proposalItemsError) throw friendlyError('Unable to load proposal items for agreement conversion', proposalItemsError);
+      if (data?.id && Array.isArray(proposalItems) && proposalItems.length) {
+        const agreementItems = proposalItems.map(item => sanitizeAgreementItemRecord(item, data.id));
+        const { error: agreementItemsError } = await client.from('agreement_items').insert(agreementItems);
+        if (agreementItemsError) {
+          await client.from('agreements').delete().eq('id', data.id);
+          throw friendlyError('Agreement items could not be created; the agreement was rolled back', agreementItemsError);
+        }
+      }
       const createdAgreementUuid = String(data?.id || data?.agreement_uuid || data?.created_agreement_uuid || '').trim();
       const createdAgreementNumber = String(data?.agreement_id || data?.agreement_number || '').trim();
       data = await carryProposalSignatureVerificationToAgreement(client, sourceProposal, data);
@@ -8862,6 +8919,11 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         return { handled: true, data: await withItems(resource, normalizedRow) };
       }
       let finalCreateRecord = sanitizeUuidColumnsForMutation(table, createRecord);
+      if (resource === 'agreements') {
+        // Log the exact object handed to PostgREST, rather than the larger UI
+        // model. devLog is disabled outside development builds.
+        devLog('[agreements/create] complete Supabase insert payload', JSON.stringify(finalCreateRecord, null, 2));
+      }
       if (resource === 'contacts') finalCreateRecord = await resolveContactCompanyMutationFields(client, finalCreateRecord);
       if (resource === 'credit_notes' && finalCreateRecord.credit_note_request_key) {
         const { data: existingCreditNote, error: existingCreditNoteError } = await client
@@ -8961,6 +9023,7 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
           if (existingCreditNoteError) throw friendlyError('Unable to load existing credit note', existingCreditNoteError);
           data = existingCreditNote;
         } else {
+          if (error && resource === 'agreements') throw friendlyAgreementInsertError(finalCreateRecord, error);
           if (error) throw friendlyError(`Unable to create ${resource} record`, error);
           data = inserted;
         }

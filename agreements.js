@@ -2151,21 +2151,15 @@ const Agreements = {
     return trimmed || this.generateAccountNumber();
   },
   generateAgreementBusinessId() {
-    const now = new Date();
-    const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-    const suffix = Math.floor(Math.random() * 1000000).toString().padStart(6, '0');
-    return `AG-${stamp}-${suffix}`;
+    return '';
   },
   generateAgreementNumber() {
-    const now = new Date();
-    const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-    const suffix = Math.floor(Math.random() * 1000000).toString().padStart(6, '0');
-    return `AGR-${stamp}-${suffix}`;
+    return '';
   },
   ensureAgreementBusinessIdentifiers(agreement = {}) {
     const next = agreement && typeof agreement === 'object' ? { ...agreement } : {};
-    next.agreement_id = String(next.agreement_id || '').trim() || this.generateAgreementBusinessId();
-    next.agreement_number = String(next.agreement_number || '').trim() || this.generateAgreementNumber();
+    next.agreement_id = String(next.agreement_id || '').trim();
+    next.agreement_number = String(next.agreement_number || '').trim();
     return next;
   },
   generateAgreementItemId() {
@@ -5749,9 +5743,12 @@ const Agreements = {
 
     if (!id) {
       agreement.proposal_id = String(agreement.proposal_id || formProposalUuid || '').trim();
-      const withBusinessIds = this.ensureAgreementBusinessIdentifiers(agreement);
-      agreement.agreement_id = withBusinessIds.agreement_id;
-      agreement.agreement_number = withBusinessIds.agreement_number;
+      // The database owns id, sequence_number, and agreement_number. This is
+      // concurrency-safe and prevents timestamp-shaped values entering int4.
+      delete agreement.id;
+      delete agreement.agreement_id;
+      delete agreement.agreement_number;
+      delete agreement.sequence_number;
     }
     const preparedItems = id ? null : this.hydrateItemIdsForSave(items, { isCreate: true });
     const currentRecord = latestExistingAgreement || this.state.rows.find(row => String(row.id || '') === id) || {};
