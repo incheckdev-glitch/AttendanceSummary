@@ -66,6 +66,8 @@
     initialized: false,
     activeTab: 'dashboard',
     dataSource: 'local',
+    remoteWarnings: [],
+    lastConnectionError: '',
     loading: false,
     selectedPayslip: '',
     filters: {
@@ -151,35 +153,106 @@
     return Array.isArray(data) ? data : [];
   }
 
+  const HR_REMOTE_TABLE_SPECS = [
+    ['employees', TABLES.employees, 'employee_no', true, true],
+    ['shifts', TABLES.shifts, 'name', true, true],
+    ['attendance', TABLES.attendance, 'attendance_date', false, true],
+    ['leaveRequests', TABLES.leaveRequests, 'created_at', false, true],
+    ['leaveTypes', TABLES.leaveTypes, 'name', true, true],
+    ['leaveBalances', TABLES.leaveBalances, 'year', false, true],
+    ['holidays', TABLES.holidays, 'holiday_date', true, true],
+    ['payrollRuns', TABLES.payrollRuns, 'payroll_month', false, true],
+    ['payrollItems', TABLES.payrollItems, 'created_at', false, true],
+    // Salary Advance was added after the base HR module. Missing optional tables must
+    // not make the complete HR module falsely appear disconnected/read-only.
+    ['salaryAdvances', TABLES.salaryAdvances, 'created_at', false, false],
+    ['salaryAdvanceInstallments', TABLES.salaryAdvanceInstallments, 'payroll_month', false, false],
+    ['payrollSalaryAdvances', TABLES.payrollSalaryAdvances, 'created_at', false, false],
+    ['salaryReceipts', TABLES.salaryReceipts, 'payment_date', false, true],
+    ['documents', TABLES.documents, 'expiry_date', true, true],
+    ['hrNotifications', TABLES.hrNotifications, 'created_at', false, true]
+  ];
+
+  function errorText(error) {
+    return String(error?.message || error?.details || error?.hint || error || '').trim();
+  }
+
+  function isConnectivityError(error) {
+    const message = errorText(error).toLowerCase();
+    return !client()
+      || message.includes('supabase client unavailable')
+      || message.includes('failed to fetch')
+      || message.includes('networkerror')
+      || message.includes('network request failed')
+      || message.includes('load failed')
+      || message.includes('connection reset')
+      || message.includes('connection refused')
+      || message.includes('timeout')
+      || message.includes('timed out')
+      || message.includes('offline');
+  }
+
   async function loadRemote() {
-    const [employees, shifts, attendance, leaveRequests, leaveTypes, leaveBalances, holidays, payrollRuns, payrollItems, salaryAdvances, salaryAdvanceInstallments, payrollSalaryAdvances, salaryReceipts, documents, hrNotifications] = await Promise.all([
-      fetchTable(TABLES.employees, 'employee_no', true),
-      fetchTable(TABLES.shifts, 'name', true),
-      fetchTable(TABLES.attendance, 'attendance_date', false),
-      fetchTable(TABLES.leaveRequests, 'created_at', false),
-      fetchTable(TABLES.leaveTypes, 'name', true),
-      fetchTable(TABLES.leaveBalances, 'year', false),
-      fetchTable(TABLES.holidays, 'holiday_date', true),
-      fetchTable(TABLES.payrollRuns, 'payroll_month', false),
-      fetchTable(TABLES.payrollItems, 'created_at', false),
-      fetchTable(TABLES.salaryAdvances, 'created_at', false),
-      fetchTable(TABLES.salaryAdvanceInstallments, 'payroll_month', false),
-      fetchTable(TABLES.payrollSalaryAdvances, 'created_at', false),
-      fetchTable(TABLES.salaryReceipts, 'payment_date', false),
-      fetchTable(TABLES.documents, 'expiry_date', true),
-      fetchTable(TABLES.hrNotifications, 'created_at', false)
-    ]);
-    Object.assign(state, { employees, shifts, attendance, leaveRequests, leaveTypes, leaveBalances, holidays, payrollRuns, payrollItems, salaryAdvances, salaryAdvanceInstallments, payrollSalaryAdvances, salaryReceipts, documents, hrNotifications, dataSource: 'supabase' });
+    if (!client()) throw new Error('Supabase client unavailable');
+
+    const results = await Promise.allSettled(
+      HR_REMOTE_TABLE_SPECS.map(([, tableName, orderColumn, ascending]) => fetchTable(tableName, orderColumn, ascending))
+    );
+    const warnings = [];
+    const requiredFailures = [];
+    let successfulQueries = 0;
+
+    results.forEach((result, index) => {
+      const [stateKey, tableName, , , required] = HR_REMOTE_TABLE_SPECS[index];
+      if (result.status === 'fulfilled') {
+        state[stateKey] = result.value;
+        successfulQueries += 1;
+        return;
+      }
+
+      const warning = { stateKey, tableName, required, message: errorText(result.reason) || 'Unknown database error' };
+      warnings.push(warning);
+      if (required) requiredFailures.push(warning);
+      console.warn(`[HR] ${required ? 'Required' : 'Optional'} table load failed: ${tableName}`, result.reason);
+    });
+
+    // A real connection failure normally prevents every table query. Do not label the
+    // module offline merely because a newer optional table has not been migrated yet.
+    if (!successfulQueries || requiredFailures.length === HR_REMOTE_TABLE_SPECS.filter(spec => spec[4]).length) {
+      const firstError = results.find(result => result.status === 'rejected');
+      throw firstError?.reason || new Error('Supabase did not confirm any HR table query');
+    }
+
+    state.dataSource = 'supabase';
+    state.remoteWarnings = warnings;
+    state.lastConnectionError = '';
     if (!state.shifts.length) state.shifts = [defaultShift()];
     if (!state.leaveTypes.length) state.leaveTypes = defaultLeaveTypes();
     saveLocal();
+    return { warnings, requiredFailures, successfulQueries };
   }
 
   const pendingHrWrites = new Set();
 
-  function restoreConfirmedHrCache() {
+  function restoreConfirmedHrCache(options = {}) {
     loadLocal();
-    state.dataSource = 'cache';
+    if (options.markOffline !== false) state.dataSource = 'cache';
+  }
+
+  async function restoreAfterRejectedWrite(error) {
+    // Validation, RLS, and missing-column errors are database responses, not a lost
+    // connection. Restore confirmed data without disabling every HR control.
+    if (!isConnectivityError(error)) {
+      try {
+        await loadRemote();
+        state.dataSource = 'supabase';
+        return;
+      } catch (reloadError) {
+        console.warn('[HR] Could not reload after rejected write', reloadError);
+      }
+    }
+    restoreConfirmedHrCache();
+    state.lastConnectionError = errorText(error);
   }
 
   async function syncUpsert(table, row, options = {}) {
@@ -198,9 +271,10 @@
       if (options.cache !== false) saveLocal();
       return data || row;
     } catch (error) {
-      restoreConfirmedHrCache();
+      if (isConnectivityError(error)) restoreConfirmedHrCache();
+      else await restoreAfterRejectedWrite(error);
       console.error(`[HR] Database did not confirm upsert for ${table}`, error);
-      if (options.notify !== false) toast('HR was not saved. The database did not confirm the change. Check your connection and try again.');
+      if (options.notify !== false) toast(`HR was not saved: ${errorText(error) || 'the database rejected the change.'}`);
       throw error;
     } finally {
       pendingHrWrites.delete(writeKey);
@@ -222,9 +296,10 @@
       state.dataSource = 'supabase';
       if (options.cache !== false) saveLocal();
     } catch (error) {
-      restoreConfirmedHrCache();
+      if (isConnectivityError(error)) restoreConfirmedHrCache();
+      else await restoreAfterRejectedWrite(error);
       console.error(`[HR] Database did not confirm delete for ${table}`, error);
-      if (options.notify !== false) toast('HR deletion failed. The database did not confirm the change.');
+      if (options.notify !== false) toast(`HR deletion failed: ${errorText(error) || 'the database rejected the change.'}`);
       throw error;
     } finally {
       pendingHrWrites.delete(writeKey);
@@ -468,10 +543,13 @@
       root.innerHTML = `<section class="hr-panel"><div class="hr-empty"><h3>HR access restricted</h3><p>This HR module is available to Admin, General Manager, and Senior Financial Controller roles.</p></div></section>`;
       return;
     }
-    const readOnly = state.dataSource !== 'supabase';
+    const readOnly = state.dataSource === 'cache';
+    const hasWarnings = state.dataSource === 'supabase' && state.remoteWarnings.length > 0;
     const source = readOnly
       ? '<span class="hr-chip warning">Read-only cache · database unavailable</span>'
-      : '<span class="hr-chip success">Supabase synced</span>';
+      : hasWarnings
+        ? `<span class="hr-chip warning">Supabase connected · ${state.remoteWarnings.length} optional/schema warning${state.remoteWarnings.length === 1 ? '' : 's'}</span>`
+        : '<span class="hr-chip success">Supabase synced</span>';
     root.innerHTML = `
       <div class="hr-page-header">
         <div>
@@ -490,7 +568,8 @@
       <nav class="hr-tabs" aria-label="HR sections">
         ${['dashboard','employees','attendance','leaves','leave_balances','holidays','payroll','payslips','salary_receipts','employee_statement','documents','settings'].map(tab => `<button type="button" class="${state.activeTab === tab ? 'active' : ''}" data-hr-tab="${tab}">${tabLabel(tab)}</button>`).join('')}
       </nav>
-      ${readOnly ? '<div class="hr-source-banner" role="alert"><strong>Read-only mode.</strong> HR changes are disabled until Supabase reconnects. Cached records are shown for reference only.</div>' : ''}
+      ${readOnly ? `<div class="hr-source-banner" role="alert"><strong>Read-only mode.</strong> HR changes are disabled until Supabase reconnects. Cached records are shown for reference only.${state.lastConnectionError ? ` <small>${esc(state.lastConnectionError)}</small>` : ''}</div>` : ''}
+      ${hasWarnings ? `<div class="hr-source-banner" role="status"><strong>Supabase is connected.</strong> Some HR features may require a pending database migration: ${state.remoteWarnings.map(item => esc(item.tableName)).join(', ')}. Core HR changes remain enabled.</div>` : ''}
       ${globalFilterBar()}
       <div id="hrSummary" class="hr-summary-grid"></div>
       <div id="hrBody"></div>
@@ -1496,7 +1575,13 @@
     try {
       if (force || state.dataSource !== 'supabase') {
         try { await loadRemote(); }
-        catch (error) { console.warn('[HR] remote load failed, using confirmed cache', error); loadLocal(); state.dataSource = 'cache'; }
+        catch (error) {
+          console.warn('[HR] remote load failed, using confirmed cache', error);
+          loadLocal();
+          state.dataSource = 'cache';
+          state.remoteWarnings = [];
+          state.lastConnectionError = errorText(error);
+        }
       }
       renderRoot();
     } finally { state.loading = false; }
