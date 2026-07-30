@@ -1108,7 +1108,7 @@
       <div id="hrLeaveModal" class="hr-modal" role="dialog" aria-modal="true" hidden><button class="hr-modal-backdrop" data-hr-close-modal type="button"></button><form id="hrLeaveForm" class="hr-dialog"><header><div><span class="hr-eyebrow">HR</span><h3>Leave</h3></div><button class="btn ghost sm" data-hr-close-modal type="button">Close</button></header><div class="hr-dialog-body"><div class="hr-form-grid">${leaveFields()}</div></div><footer class="hr-dialog-footer"><button class="btn ghost sm" data-hr-close-modal type="button">Cancel</button><button class="btn sm" type="submit">Save Leave</button></footer></form></div>
       <div id="hrBalanceModal" class="hr-modal" role="dialog" aria-modal="true" hidden><button class="hr-modal-backdrop" data-hr-close-modal type="button"></button><form id="hrBalanceForm" class="hr-dialog"><header><div><span class="hr-eyebrow">HR</span><h3>Adjust Leave Balance</h3></div><button class="btn ghost sm" data-hr-close-modal type="button">Close</button></header><div class="hr-dialog-body"><div class="hr-form-grid">${balanceFields()}</div></div><footer class="hr-dialog-footer"><button class="btn ghost sm" data-hr-close-modal type="button">Cancel</button><button class="btn sm" type="submit">Save Adjustment</button></footer></form></div>
       <div id="hrHolidayModal" class="hr-modal" role="dialog" aria-modal="true" hidden><button class="hr-modal-backdrop" data-hr-close-modal type="button"></button><form id="hrHolidayForm" class="hr-dialog"><header><div><span class="hr-eyebrow">HR</span><h3>Holiday</h3></div><button class="btn ghost sm" data-hr-close-modal type="button">Close</button></header><div class="hr-dialog-body"><div class="hr-form-grid">${holidayFields()}</div></div><footer class="hr-dialog-footer"><button class="btn ghost sm" data-hr-close-modal type="button">Cancel</button><button class="btn sm" type="submit">Save Holiday</button></footer></form></div>
-      <div id="hrReceiptModal" class="hr-modal" role="dialog" aria-modal="true" hidden><button class="hr-modal-backdrop" data-hr-close-modal type="button"></button><form id="hrReceiptForm" class="hr-dialog"><header><div><span class="hr-eyebrow">Payroll</span><h3>Salary Receipt</h3></div><button class="btn ghost sm" data-hr-close-modal type="button">Close</button></header><div class="hr-dialog-body"><div class="hr-form-grid">${receiptFields()}</div></div><footer class="hr-dialog-footer"><button class="btn ghost sm" data-hr-close-modal type="button">Cancel</button><button class="btn ghost sm" type="submit">Save Receipt</button><button class="btn sm" type="submit" data-hr-save-print-receipt="true">Save & Print</button></footer></form></div>
+      <div id="hrReceiptModal" class="hr-modal" role="dialog" aria-modal="true" hidden><button class="hr-modal-backdrop" data-hr-close-modal type="button"></button><form id="hrReceiptForm" class="hr-dialog" novalidate><header><div><span class="hr-eyebrow">Payroll</span><h3>Salary Receipt</h3></div><button class="btn ghost sm" data-hr-close-modal type="button">Close</button></header><div class="hr-dialog-body"><div class="hr-form-grid">${receiptFields()}</div></div><footer class="hr-dialog-footer"><button class="btn ghost sm" data-hr-close-modal type="button">Cancel</button><button class="btn ghost sm" type="submit">Save Receipt</button><button class="btn sm" type="submit" data-hr-save-print-receipt="true">Save & Print</button></footer></form></div>
       <div id="hrDocumentModal" class="hr-modal" role="dialog" aria-modal="true" hidden><button class="hr-modal-backdrop" data-hr-close-modal type="button"></button><form id="hrDocumentForm" class="hr-dialog"><header><div><span class="hr-eyebrow">HR</span><h3>Document</h3></div><button class="btn ghost sm" data-hr-close-modal type="button">Close</button></header><div class="hr-dialog-body"><div class="hr-form-grid">${documentFields()}</div></div><footer class="hr-dialog-footer"><button class="btn ghost sm" data-hr-close-modal type="button">Cancel</button><button class="btn sm" type="submit">Save Document</button></footer></form></div>
     `;
   }
@@ -1134,8 +1134,15 @@
   }
 
   function receiptFields() {
-    const payableItems = state.payrollItems.slice(0, 500).map(item => { const emp = getEmployee(item.employee_id) || {}; const run = state.payrollRuns.find(r => r.id === item.run_id) || {}; const rs = receiptStatus(item); return `<option value="${esc(item.id)}">${esc(monthName(run.payroll_month))} · ${esc(emp.employee_no || '')} ${esc(emp.full_name || '')} · Rest ${money(rs.remaining, item.currency)}</option>`; }).join('');
-    return `<input type="hidden" id="hrReceiptId"><label>Receipt No<input id="hrReceiptNo" class="input" readonly></label><label>Payroll / Employee<select id="hrReceiptPayrollItem" class="select" required>${payableItems}</select></label><label>Payment Date<input id="hrReceiptDate" class="input" type="date" required></label><label>Amount Received<input id="hrReceiptAmount" class="input" type="number" step="0.01" min="0.01" required></label><label>Payment Method<input id="hrReceiptMethod" class="input" value="Bank Transfer"></label><label>Reference<input id="hrReceiptReference" class="input"></label><label class="full">Notes<textarea id="hrReceiptNotes" class="input"></textarea></label>`;
+    const payrollItems = state.payrollItems.slice(0, 500);
+    const payableItems = payrollItems.map(item => { const emp = getEmployee(item.employee_id) || {}; const run = state.payrollRuns.find(r => r.id === item.run_id) || {}; const rs = receiptStatus(item); return `<option value="${esc(item.id)}">${esc(monthName(run.payroll_month))} · ${esc(emp.employee_no || '')} ${esc(emp.full_name || '')} · Rest ${money(rs.remaining, item.currency)}</option>`; }).join('');
+    const payrollOptions = payrollItems.length
+      ? `<option value="">Select payroll / employee...</option>${payableItems}`
+      : '<option value="">No payroll items available</option>';
+    const payrollNotice = payrollItems.length
+      ? ''
+      : '<div class="full" role="alert" style="padding:12px;border:1px solid #f59e0b;border-radius:12px;background:#fffbeb;color:#92400e"><strong>No payroll is available.</strong><div style="margin-top:4px">Generate the required monthly payroll before creating a salary receipt.</div></div>';
+    return `${payrollNotice}<input type="hidden" id="hrReceiptId"><label>Receipt No<input id="hrReceiptNo" class="input" readonly></label><label>Payroll / Employee<select id="hrReceiptPayrollItem" class="select">${payrollOptions}</select></label><label>Payment Date<input id="hrReceiptDate" class="input" type="date"></label><label>Amount Received<input id="hrReceiptAmount" class="input" type="number" step="0.01" min="0.01"></label><label>Payment Method<input id="hrReceiptMethod" class="input" value="Bank Transfer"></label><label>Reference<input id="hrReceiptReference" class="input"></label><label class="full">Notes<textarea id="hrReceiptNotes" class="input"></textarea></label>`;
   }
 
   function documentFields() {
@@ -1283,23 +1290,113 @@
 
   async function saveReceipt(event) {
     event.preventDefault();
-    const shouldPrint = Boolean(event.submitter?.dataset?.hrSavePrintReceipt);
+    const form = event.target?.id === 'hrReceiptForm' ? event.target : $('hrReceiptForm');
+    const submitter = event.submitter || document.activeElement;
+    const shouldPrint = Boolean(submitter?.dataset?.hrSavePrintReceipt);
+    const saveButtons = Array.from(form?.querySelectorAll?.('button[type="submit"]') || []);
+
+    if (state.dataSource === 'cache' || !client()) {
+      toast('Salary receipt cannot be saved because Supabase is unavailable. Refresh HR after the connection is restored.');
+      return;
+    }
+
+    const payrollItemId = value('hrReceiptPayrollItem');
+    const item = state.payrollItems.find(row => String(row.id) === String(payrollItemId));
+    if (!item) {
+      toast(state.payrollItems.length
+        ? 'Select a payroll and employee before saving the receipt.'
+        : 'No payroll items are available. Generate the monthly payroll first, then create the salary receipt.');
+      $('hrReceiptPayrollItem')?.focus?.();
+      return;
+    }
+
+    const paymentDate = value('hrReceiptDate');
+    if (!paymentDate) {
+      toast('Select the receipt payment date.');
+      $('hrReceiptDate')?.focus?.();
+      return;
+    }
+
+    const receiptAmount = num(value('hrReceiptAmount'));
+    if (!(receiptAmount > 0)) {
+      toast('Enter a receipt amount greater than zero.');
+      $('hrReceiptAmount')?.focus?.();
+      return;
+    }
+
     const id = value('hrReceiptId') || uid('receipt');
-    const existing = state.salaryReceipts.find(row => row.id === id) || {};
-    const item = state.payrollItems.find(row => String(row.id) === String(value('hrReceiptPayrollItem')));
-    if (!item) return toast('Select a payroll item first.');
-    const run = state.payrollRuns.find(row => row.id === item.run_id) || {};
-    const row = { ...existing, id, receipt_no: value('hrReceiptNo') || receiptNo(), receipt_type: existing.receipt_type || 'salary_payment', payroll_item_id: item.id, payroll_run_id: item.run_id, employee_id: item.employee_id, payroll_month: run.payroll_month, payment_date: value('hrReceiptDate') || today(), amount: num(value('hrReceiptAmount')), currency: item.currency || 'USD', payment_method: value('hrReceiptMethod'), reference_no: value('hrReceiptReference'), notes: value('hrReceiptNotes'), created_by: authName(), updated_at: new Date().toISOString(), created_at: existing.created_at || new Date().toISOString() };
-    const index = state.salaryReceipts.findIndex(receipt => receipt.id === id);
-    if (index >= 0) state.salaryReceipts[index] = row; else state.salaryReceipts.unshift(row);
-    await syncUpsert(TABLES.salaryReceipts, row);
-    await pushHrNotification(`${receiptTypeLabel(row)} receipt saved`, `${getEmployee(row.employee_id)?.full_name || 'Employee'} · ${money(row.amount, row.currency)}`, 'receipt', 'salary_receipt', row.id);
-    closeModals(); renderRoot();
-    toast(isSalaryAdvanceReceipt(row)
-      ? `Salary advance receipt saved for ${monthName(row.payroll_month)}.`
-      : `Salary receipt saved. Rest: ${money(receiptStatus(item).remaining, item.currency)}`);
-    if (shouldPrint) setTimeout(() => printSalaryReceipt(row.id), 150);
+    const existing = state.salaryReceipts.find(row => String(row.id) === String(id)) || {};
+    const run = state.payrollRuns.find(row => String(row.id) === String(item.run_id));
+    if (!run?.id || !run.payroll_month) {
+      toast('The selected payroll item is not linked to a valid payroll run. Regenerate the payroll and try again.');
+      return;
+    }
+
+    const row = {
+      ...existing,
+      id,
+      receipt_no: value('hrReceiptNo') || receiptNo(),
+      receipt_type: existing.receipt_type || 'salary_payment',
+      payroll_item_id: item.id,
+      payroll_run_id: run.id,
+      employee_id: item.employee_id,
+      payroll_month: String(run.payroll_month).slice(0, 7),
+      payment_date: paymentDate,
+      amount: receiptAmount,
+      currency: item.currency || 'USD',
+      payment_method: value('hrReceiptMethod') || 'Bank Transfer',
+      reference_no: value('hrReceiptReference'),
+      notes: value('hrReceiptNotes'),
+      created_by: existing.created_by || authName(),
+      updated_at: new Date().toISOString(),
+      created_at: existing.created_at || new Date().toISOString()
+    };
+
+    saveButtons.forEach(button => {
+      button.disabled = true;
+      button.dataset.originalText = button.textContent;
+      button.textContent = 'Saving...';
+    });
+
+    try {
+      const saved = await syncUpsert(TABLES.salaryReceipts, row, { cache: false, notify: false });
+      if (!saved?.id || String(saved.id) !== String(id)) {
+        throw new Error('Supabase did not return the saved salary receipt.');
+      }
+
+      // Refetch from Supabase so success is shown only after persistence is confirmed.
+      const confirmedReceipts = await fetchTable(TABLES.salaryReceipts, 'payment_date', false);
+      const confirmed = confirmedReceipts.find(receipt => String(receipt.id) === String(id));
+      if (!confirmed) throw new Error('Salary receipt was not found after saving.');
+
+      state.salaryReceipts = confirmedReceipts;
+      state.dataSource = 'supabase';
+      saveLocal();
+
+      try {
+        await pushHrNotification(`${receiptTypeLabel(confirmed)} receipt saved`, `${getEmployee(confirmed.employee_id)?.full_name || 'Employee'} · ${money(confirmed.amount, confirmed.currency)}`, 'receipt', 'salary_receipt', confirmed.id);
+      } catch (notificationError) {
+        console.warn('[HR] Receipt saved but notification creation failed', notificationError);
+      }
+
+      closeModals();
+      renderRoot();
+      toast(isSalaryAdvanceReceipt(confirmed)
+        ? `Salary advance receipt saved for ${monthName(confirmed.payroll_month)}.`
+        : `Salary receipt saved. Rest: ${money(receiptStatus(item).remaining, item.currency)}`);
+      if (shouldPrint) setTimeout(() => printSalaryReceipt(confirmed.id), 150);
+    } catch (error) {
+      console.error('[HR] Salary receipt save failed', error);
+      toast(`Salary receipt was not saved: ${errorText(error) || 'Supabase did not confirm the record.'}`);
+    } finally {
+      saveButtons.forEach(button => {
+        button.disabled = false;
+        button.textContent = button.dataset.originalText || (button.dataset.hrSavePrintReceipt ? 'Save & Print' : 'Save Receipt');
+        delete button.dataset.originalText;
+      });
+    }
   }
+
 
   function openDocumentModal(id = '') {
     renderRoot();
