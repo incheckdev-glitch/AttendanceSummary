@@ -11,11 +11,17 @@ const statementApi = api.slice(apiStart, apiEnd);
 
 assert(apiStart >= 0 && apiEnd > apiStart, 'Statement of Account API method must exist.');
 assert.match(statementApi, /fetchLinkedRowsByColumns_\('invoice_payment_schedule'/, 'Statement must load saved invoice payment schedule rows.');
-assert.doesNotMatch(statementApi, /client_scheduled_payments/, 'Statement must never replace saved schedule rows with a calculated legacy view.');
-assert.match(statementApi, /const scheduledAmount = toStatementAmount\(schedule\.scheduled_amount\)/, 'Scheduled amount must come only from the installment row.');
-assert.match(statementApi, /const paidAmount = [^;]*schedule\.paid_amount/, 'Paid amount must come only from the installment allocation.');
-assert.match(statementApi, /const balanceDue = Math\.max\(scheduledAmount - paidAmount, 0\)/, 'Remaining amount must be derived per installment.');
-assert.doesNotMatch(statementApi, /schedule\.(?:amount_paid|received_amount|pending_amount)/, 'Invoice/view total aliases must not calculate installment values.');
+assert.match(statementApi, /fetchPaged\([\s\S]*'client_scheduled_payments'/, 'Statement must retain the scheduled-payments view as a legacy fallback.');
+assert.match(statementApi, /type: 'Scheduled Payment'/, 'Each installment must be emitted as a Scheduled Payment statement row.');
+assert.match(statementApi, /document_no: `\$\{invoiceNumber\} · Payment \$\{scheduleNo\}/, 'Scheduled rows must remain visibly grouped under their SA invoice number.');
+assert.match(statementApi, /debit: scheduledAmount/, 'Scheduled rows must display the installment amount.');
+assert.match(statementApi, /due_date: dueDate/, 'Scheduled rows must display the installment due date.');
+assert.match(statementApi, /affects_balance: false/, 'Scheduled rows must not duplicate the invoice in accounting balances.');
+assert.match(statementApi, /if \(row\.affects_balance !== false\) running \+=/, 'API running balance must ignore informational schedule rows.');
+assert.match(clients, /if \(row\.affects_balance !== false\) running \+= debit - credit;/, 'Client fallback running balance must ignore informational schedule rows.');
+assert.match(clients, /const accountingRows = rows\.filter\(item => item\.affects_balance !== false\);/, 'Statement totals must exclude informational schedule rows.');
+assert.match(clients, /row\.affects_balance === false \? '—'/, 'Schedule rows must not display a misleading running balance.');
+assert.match(clients, /buildClientStatementRows\(client, paymentSchedules = \[\]\)/, 'Fallback statement builder must accept payment schedules.');
 
 const context = {
   window: {},
@@ -40,10 +46,7 @@ Api.getClientOverview = async () => ({
       invoice_number: 'SA/2026/41',
       invoice_date: '2026-05-12',
       due_date: '2026-05-12',
-      grand_total: 926,
-      balance_due: 463,
-      amount_paid: 100,
-      payment_term: 'Semi-Annual',
+      grand_total: 726,
       currency: 'USD',
       status: 'issued'
     }]
@@ -57,9 +60,8 @@ Api.fetchLinkedRowsByColumns_ = async () => ([
     invoice_id: '11111111-1111-4111-8111-111111111111',
     schedule_no: 1,
     due_date: '2026-05-12',
-    scheduled_amount: 563,
-    paid_amount: 563,
-    amount_paid: 100,
+    scheduled_amount: 363,
+    paid_amount: 363,
     balance_due: 0,
     status: 'paid'
   },
@@ -70,27 +72,20 @@ Api.fetchLinkedRowsByColumns_ = async () => ([
     due_date: '2026-11-12',
     scheduled_amount: 363,
     paid_amount: 0,
-    balance_due: 463,
-    amount_paid: 100,
+    balance_due: 363,
     status: 'scheduled'
   }
 ]);
 
 (async () => {
   const result = await Api.getClientStatementOfAccount({ client_id: 'Client#00001' }, { page: 1, pageSize: 25 });
-  const schedules = result.paymentSchedules.rows;
+  const schedules = result.statementRows.filter(row => row.type === 'Scheduled Payment');
   assert.strictEqual(schedules.length, 2, 'Statement must include every invoice installment.');
-  assert.strictEqual(schedules[1].invoice_number, 'SA/2026/41', 'Second installment must remain linked to its invoice.');
+  assert.strictEqual(schedules[1].document_no, 'SA/2026/41 · Payment 2 of 2', 'Second payment must remain grouped under its SA invoice.');
   assert.strictEqual(schedules[1].due_date, '2026-11-12', 'Second payment must use its saved due date.');
-  assert.strictEqual(schedules[0].scheduled_amount, 563, 'First installment must preserve its saved scheduled amount.');
-  assert.strictEqual(schedules[0].balance_due, 0, 'Paid first installment must have no remaining amount.');
-  assert.strictEqual(schedules[1].scheduled_amount, 363, 'Second installment must preserve its saved scheduled amount.');
-  assert.strictEqual(schedules[1].paid_amount, 0, 'Invoice-level amount_paid must not leak into an installment.');
-  assert.strictEqual(schedules[1].balance_due, 363, 'Remaining must be scheduled minus installment-paid amount, not saved invoice balance.');
-  assert.strictEqual(schedules[1].status, 'Upcoming', 'A future unpaid installment must be upcoming.');
-  assert.strictEqual(schedules[1].payment_term, 'Semi-Annual', 'Every installment must expose its payment term.');
-  assert.strictEqual(result.statementRows.length, 1, 'Account activity must continue to contain invoices/receipts only.');
-  assert.strictEqual(result.statementRows[0].running_balance, 926, 'Installments must not affect the Statement of Account running balance.');
+  assert.strictEqual(schedules[1].debit, 363, 'Second payment must show its scheduled amount.');
+  assert.strictEqual(schedules[1].affects_balance, false, 'Scheduled payment must be informational only.');
+  assert.strictEqual(schedules[1].running_balance, 726, 'Scheduled payment must not duplicate the invoice balance.');
   console.log('Statement of Account scheduled-payment checks passed.');
 })().catch(error => {
   console.error(error);
