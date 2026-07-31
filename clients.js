@@ -3339,7 +3339,7 @@ const Clients = {
           result = { ...(result || {}), agreements: { rows: this.listClientRelatedAgreements_(clientId) }, invoices: { rows: this.listClientRelatedInvoices_(clientId) }, receipts: { rows: this.listClientRelatedReceipts_(clientId) }, agreementItems: { rows: this.listClientAgreementLocationItems_(clientId) }, invoiceItems: { rows: this.listClientRelatedInvoiceItems_(clientId) }, receiptItems: { rows: this.listClientRelatedReceiptItems_(clientId) } };
         } else if (normalizedTab === 'statement') {
           const statementRows = this.buildClientStatementRows(client);
-          const paymentSchedules = this.buildClientScheduledPaymentRowsFromInvoices_(clientId);
+          const paymentSchedules = this.getClientDetailResultRows_(result?.paymentSchedules || result?.payment_schedules);
           result = {
             ...(result || {}),
             rows: statementRows,
@@ -3353,7 +3353,7 @@ const Clients = {
           const renewalRows = this.buildClientRenewalRows({ ...client, invoices: this.listClientRelatedInvoices_(clientId), invoice_items: this.listClientRelatedInvoiceItems_(clientId) });
           result = { ...(result || {}), rows: renewalRows, renewalRows, invoices: { rows: this.listClientRelatedInvoices_(clientId) }, invoiceItems: { rows: this.listClientRelatedInvoiceItems_(clientId) } };
         } else if (normalizedTab === 'scheduledPayments') {
-          const scheduledRows = this.buildClientScheduledPaymentRowsFromInvoices_(clientId);
+          const scheduledRows = this.getClientDetailResultRows_(result?.scheduledPayments || result?.rows);
           result = { ...(result || {}), rows: scheduledRows, scheduledPayments: scheduledRows, invoices: { rows: this.listClientRelatedInvoices_(clientId) } };
         }
       }
@@ -3428,10 +3428,11 @@ const Clients = {
       schedule_no: scheduleNo,
       schedule_label: String(row.schedule_label || row.label || `Payment ${scheduleNo || ''}`.trim() || 'Payment').trim(),
       due_date: resolvedDueDate,
-      scheduled_amount: Number(row.scheduled_amount ?? row.amount ?? row.payment_amount ?? 0),
+      scheduled_amount: Number(row.scheduled_amount ?? 0),
       payment_percent: Number(row.payment_percent ?? row.percent ?? row.paymentPercent ?? 0),
-      paid_amount: Number(row.paid_amount ?? row.amount_paid ?? row.received_amount ?? 0),
-      balance_due: Number(row.balance_due ?? row.pending_amount ?? Math.max(0, Number(row.scheduled_amount ?? 0) - Number(row.paid_amount ?? 0))),
+      paid_amount: Math.min(Math.max(Number(row.paid_amount ?? 0), 0), Math.max(Number(row.scheduled_amount ?? 0), 0)),
+      balance_due: Math.max(0, Number(row.scheduled_amount ?? 0) - Math.max(Number(row.paid_amount ?? 0), 0)),
+      payment_term: String(row.payment_term || row.payment_terms || row.raw?.payment_term || row.raw?.payment_terms || 'Custom').trim() || 'Custom',
       status: String(row.status || row.payment_status || row.payment_state || 'unpaid').trim().toLowerCase(),
       reminder_enabled: row.reminder_enabled !== false,
       reminder_days: Array.isArray(row.reminder_days) ? row.reminder_days : (String(row.reminder_days || '').split(',').map(day => day.trim()).filter(Boolean)),
@@ -3449,7 +3450,7 @@ const Clients = {
     const paid = this.toNumberSafe(row.paid_amount);
     const status = String(row.status || '').toLowerCase();
     if (status === 'paid' || (balance <= 0 && paid > 0)) return { label: 'Paid', className: 'ok' };
-    if (status === 'partial' || (paid > 0 && balance > 0)) return { label: 'Partial', className: 'warn' };
+    if (status === 'partial' || status === 'partially paid' || (paid > 0 && balance > 0)) return { label: 'Partially Paid', className: 'warn' };
     if (dueDate && dueDate < today && balance > 0) return { label: 'Overdue', className: 'danger' };
     if (dueDate && dueDate > today && balance > 0) return { label: 'Upcoming', className: 'info' };
     return { label: status ? status.replace(/_/g, ' ') : 'Unpaid', className: '' };
@@ -3534,10 +3535,7 @@ const Clients = {
   },
   renderScheduledPaymentsSection_(detailData = {}, client = {}) {
     const currency = this.normalizeCurrencyCode_(this.getClientCurrency_(client.client_id || this.state.selectedClientId));
-    const clientId = client.client_id || this.state.selectedClientId;
-    const scheduledSourceRows = Array.isArray(detailData.scheduledPayments) && detailData.scheduledPayments.length
-      ? detailData.scheduledPayments
-      : this.buildClientScheduledPaymentRowsFromInvoices_(clientId);
+    const scheduledSourceRows = Array.isArray(detailData.scheduledPayments) ? detailData.scheduledPayments : [];
     const rows = scheduledSourceRows
       .map(row => this.normalizeScheduledPayment_(row))
       .sort((a, b) => {
@@ -3562,26 +3560,14 @@ const Clients = {
     const filteredRows = scheduledPagination.rows;
     this.setClientTabPageState('scheduledPayments', scheduledPagination.page, scheduledPageState.pageSize);
     this.renderClientPagination_('scheduledPayments', { total: scheduledPagination.totalRows, page: scheduledPagination.page, pageSize: scheduledPageState.pageSize, totalPages: scheduledPagination.totalPages });
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const totalScheduled = rows.reduce((sum, row) => sum + this.toNumberSafe(row.scheduled_amount), 0);
-    const totalPaid = rows.reduce((sum, row) => sum + this.toNumberSafe(row.paid_amount), 0);
-    const totalBalance = rows.reduce((sum, row) => sum + this.toNumberSafe(row.balance_due), 0);
-    const overdueBalance = rows.reduce((sum, row) => {
-      const due = row.due_date ? new Date(row.due_date) : null;
-      return due && due < today ? sum + this.toNumberSafe(row.balance_due) : sum;
-    }, 0);
-    const nextDueDate = rows.find(row => {
-      const due = row.due_date ? new Date(row.due_date) : null;
-      return due && due >= today && this.toNumberSafe(row.balance_due) > 0;
-    })?.due_date || '';
+    const unpaidRows = rows.filter(row => this.toNumberSafe(row.balance_due) > 0);
+    const totalBalance = unpaidRows.reduce((sum, row) => sum + this.toNumberSafe(row.balance_due), 0);
+    const nextDueDate = unpaidRows.filter(row => row.due_date).sort((a, b) => new Date(a.due_date) - new Date(b.due_date))[0]?.due_date || '';
     if (E.clientScheduledPaymentCards) {
       E.clientScheduledPaymentCards.innerHTML = [
-        ['Total Scheduled', this.formatMoneyWithCurrency_(totalScheduled, rows[0]?.currency || currency)],
-        ['Total Paid', this.formatMoneyWithCurrency_(totalPaid, rows[0]?.currency || currency)],
-        ['Total Balance Due', this.formatMoneyWithCurrency_(totalBalance, rows[0]?.currency || currency)],
-        ['Overdue Balance', this.formatMoneyWithCurrency_(overdueBalance, rows[0]?.currency || currency)],
-        ['Next Due Date', U.fmtDisplayDate(nextDueDate) || '—']
+        ['Total Upcoming Amount', this.formatMoneyWithCurrency_(totalBalance, rows[0]?.currency || currency)],
+        ['Next Due', U.fmtDisplayDate(nextDueDate) || '—'],
+        ['Number of Installments', String(rows.length)]
       ].map(([label, value]) => `<div class="card kpi"><div class="label">${U.escapeHtml(label)}</div><div class="value">${U.escapeHtml(String(value))}</div></div>`).join('');
     }
     if (E.clientScheduledPaymentFilters) {
@@ -3604,7 +3590,8 @@ const Clients = {
           const canReceipt = Permissions.canCreateReceiptFromInvoice() && this.toNumberSafe(row.balance_due) > 0;
           return `<tr>
             <td>${U.escapeHtml(row.invoice_reference || 'Invoice')}</td>
-            <td>${U.escapeHtml(row.schedule_label || 'Payment')}</td>
+            <td>${U.escapeHtml(`${row.schedule_no || '—'} of ${rows.filter(item => (item.invoice_id || item.invoice_reference) === (row.invoice_id || row.invoice_reference)).length}`)}</td>
+            <td>${U.escapeHtml(row.payment_term)}</td>
             <td>${U.escapeHtml(U.fmtDisplayDate(row.due_date) || '—')}</td>
             <td>${U.escapeHtml(this.formatMoneyWithCurrency_(row.scheduled_amount, row.currency || currency))}</td>
             <td>${U.escapeHtml(row.payment_percent ? `${row.payment_percent}%` : '—')}</td>
@@ -3620,7 +3607,7 @@ const Clients = {
             </div></td>
           </tr>`;
         }).join('')
-        : '<tr><td colspan="11" class="muted" style="text-align:center;">No scheduled payments found for this client.</td></tr>';
+        : '<tr><td colspan="12" class="muted" style="text-align:center;">No scheduled payments found for this client.</td></tr>';
     }
   },
   getStatementActivityLabel_(row = {}) {
@@ -3651,7 +3638,7 @@ const Clients = {
         ? scheduledTabRows
         : embeddedRows.length
           ? embeddedRows
-          : this.buildClientScheduledPaymentRowsFromInvoices_(clientId);
+          : [];
 
     const normalizedRows = sourceRows.map((row, index) => {
       const normalized = this.normalizeScheduledPayment_(row);
@@ -3671,7 +3658,7 @@ const Clients = {
         schedule_no: Number(normalized.schedule_no || row.schedule_no || row.payment_no || row.installment_no || index + 1),
         scheduled_amount: this.toNumberSafe(normalized.scheduled_amount),
         paid_amount: this.toNumberSafe(normalized.paid_amount),
-        balance_due: Math.max(this.toNumberSafe(normalized.balance_due), 0),
+        balance_due: Math.max(this.toNumberSafe(normalized.scheduled_amount) - this.toNumberSafe(normalized.paid_amount), 0),
         currency: normalized.currency || row.currency || this.getClientCurrency_(clientId) || 'USD'
       };
     });
@@ -3746,12 +3733,12 @@ const Clients = {
     section.style.display = '';
     const groups = this.groupStatementPaymentSchedules_(rows);
     const openBalance = rows.reduce((sum, row) => sum + this.toNumberSafe(row.balance_due), 0);
-    const nextOpen = rows.find(row => this.toNumberSafe(row.balance_due) > 0 && row.due_date && new Date(row.due_date).getTime() >= new Date().setHours(0, 0, 0, 0));
+    const nextOpen = rows.filter(row => this.toNumberSafe(row.balance_due) > 0 && row.due_date).sort((a, b) => new Date(a.due_date) - new Date(b.due_date))[0];
     if (summary) {
       summary.innerHTML = `
-        <span><strong>${U.escapeHtml(String(rows.length))}</strong> installment${rows.length === 1 ? '' : 's'}</span>
-        <span><strong>${U.escapeHtml(this.formatMoneyWithCurrency_(openBalance, rows[0]?.currency || clientCurrency))}</strong> remaining</span>
-        <span>Next due: <strong>${U.escapeHtml(U.fmtDisplayDate(nextOpen?.due_date) || '—')}</strong></span>`;
+        <span>Number of Installments: <strong>${U.escapeHtml(String(rows.length))}</strong></span>
+        <span>Total Upcoming Amount: <strong>${U.escapeHtml(this.formatMoneyWithCurrency_(openBalance, rows[0]?.currency || clientCurrency))}</strong></span>
+        <span>Next Due: <strong>${U.escapeHtml(U.fmtDisplayDate(nextOpen?.due_date) || '—')}</strong></span>`;
     }
     if (!groups.length) {
       list.innerHTML = '<div class="statement-schedule-empty">No scheduled installments were found for the selected period.</div>';
@@ -3774,9 +3761,10 @@ const Clients = {
             const badge = this.getScheduledPaymentBadge_(row);
             return `<div class="statement-schedule-row">
               <div class="statement-schedule-installment">
-                <strong>${U.escapeHtml(row.schedule_label || `Installment ${row.schedule_no || ''}`)}</strong>
+                <strong>${U.escapeHtml(`Installment ${row.schedule_no || '—'} of ${row.schedule_count || group.installments.length}`)}</strong>
                 <span>Due ${U.escapeHtml(U.fmtDisplayDate(row.due_date) || '—')}</span>
               </div>
+              <div><span class="statement-schedule-label">Payment Term</span><strong>${U.escapeHtml(row.payment_term || 'Custom')}</strong></div>
               <div><span class="statement-schedule-label">Scheduled</span><strong>${U.escapeHtml(this.formatMoneyWithCurrency_(row.scheduled_amount, row.currency || clientCurrency))}</strong></div>
               <div><span class="statement-schedule-label">Paid</span><strong>${U.escapeHtml(this.formatMoneyWithCurrency_(row.paid_amount, row.currency || clientCurrency))}</strong></div>
               <div><span class="statement-schedule-label">Remaining</span><strong>${U.escapeHtml(this.formatMoneyWithCurrency_(row.balance_due, row.currency || clientCurrency))}</strong></div>
