@@ -2107,26 +2107,13 @@ const Api = {
         .forEach(key => invoiceByKey.set(key, invoice));
     });
 
-    let rawPaymentSchedules = await this.fetchLinkedRowsByColumns_('invoice_payment_schedule', {
+    const rawPaymentSchedules = await this.fetchLinkedRowsByColumns_('invoice_payment_schedule', {
       invoice_id: this.extractUuidKeys_(invoiceRows, ['id', 'invoice_uuid', 'invoice_id']),
       invoice_number: this.extractTextKeys_(invoiceRows, ['invoice_number', 'invoice_id', 'invoice_no'])
     }, query => query.order('due_date', { ascending: true, nullsFirst: false }).order('schedule_no', { ascending: true, nullsFirst: false })).catch(error => {
-      console.info('[Client Statement] invoice_payment_schedule unavailable; continuing with the fallback schedule view.', error?.message || error);
+      console.info('[Client Statement] invoice_payment_schedule unavailable; no schedule rows will be displayed.', error?.message || error);
       return [];
     });
-
-    if (!rawPaymentSchedules.length && invoiceRows.length) {
-      const fallbackScheduleResult = await this.fetchPaged(
-        'client_scheduled_payments',
-        clientOrId,
-        { page: 1, pageSize: Math.max(invoiceRows.length * 12, 100) },
-        query => query.order('due_date', { ascending: true, nullsFirst: false }).order('schedule_no', { ascending: true, nullsFirst: false })
-      ).catch(error => {
-        console.info('[Client Statement] client_scheduled_payments fallback unavailable.', error?.message || error);
-        return { rows: [] };
-      });
-      rawPaymentSchedules = Array.isArray(fallbackScheduleResult?.rows) ? fallbackScheduleResult.rows : [];
-    }
 
     const scheduleCountByInvoice = new Map();
     rawPaymentSchedules.forEach(schedule => {
@@ -2144,19 +2131,19 @@ const Api = {
       const scheduleCount = scheduleCountByInvoice.get(String(schedule.invoice_id || schedule.invoice_number || '').trim())
         || scheduleCountByInvoice.get(invoiceKey)
         || 1;
-      const scheduledAmount = toStatementAmount(schedule.scheduled_amount ?? schedule.amount ?? schedule.payment_amount ?? 0);
-      const paidAmount = toStatementAmount(schedule.paid_amount ?? schedule.amount_paid ?? schedule.received_amount ?? 0);
-      const balanceDue = Math.max(toStatementAmount(schedule.balance_due ?? schedule.pending_amount ?? (scheduledAmount - paidAmount)), 0);
+      const scheduledAmount = toStatementAmount(schedule.scheduled_amount);
+      const paidAmount = Math.min(Math.max(toStatementAmount(schedule.paid_amount), 0), Math.max(scheduledAmount, 0));
+      const balanceDue = Math.max(scheduledAmount - paidAmount, 0);
       const dueDate = String(schedule.due_date || schedule.payment_due_date || invoice.due_date || '').trim();
       const rawStatus = String(schedule.status || schedule.payment_status || '').trim();
       const dueTime = dueDate ? new Date(`${dueDate.slice(0, 10)}T12:00:00`).getTime() : NaN;
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      let status = rawStatus || 'Scheduled';
+      let status = rawStatus || 'Upcoming';
       if (scheduledAmount > 0 && balanceDue <= 0) status = 'Paid';
       else if (paidAmount > 0 && balanceDue > 0) status = 'Partially Paid';
       else if (Number.isFinite(dueTime) && dueTime < today.getTime() && balanceDue > 0) status = 'Overdue';
-      else if (balanceDue > 0) status = 'Scheduled';
+      else if (balanceDue > 0) status = 'Upcoming';
 
       return {
         ...schedule,
@@ -2167,6 +2154,7 @@ const Api = {
         schedule_no: scheduleNo,
         schedule_count: scheduleCount,
         schedule_label: String(schedule.schedule_label || schedule.label || `Installment ${scheduleNo} of ${scheduleCount}`).trim(),
+        payment_term: String(schedule.payment_term || invoice.payment_term || invoice.payment_terms || 'Custom').trim() || 'Custom',
         due_date: dueDate,
         scheduled_amount: scheduledAmount,
         paid_amount: paidAmount,
@@ -2283,7 +2271,7 @@ const Api = {
       invoice_id: this.extractUuidKeys_(invoices, ['id', 'invoice_uuid', 'invoice_id']),
       invoice_number: this.extractTextKeys_(invoices, ['invoice_number', 'invoice_id', 'invoice_no'])
     }, query => query.order('due_date', { ascending: true, nullsFirst: false }).order('schedule_no', { ascending: true, nullsFirst: false })).catch(error => {
-      console.info('[Client Scheduled Payments] invoice_payment_schedule unavailable; trying client_scheduled_payments view', error?.message || error);
+      console.info('[Client Scheduled Payments] invoice_payment_schedule unavailable', error?.message || error);
       return [];
     });
 
@@ -2297,6 +2285,7 @@ const Api = {
           invoice_number: invoice.invoice_number || schedule.invoice_number || '',
           invoice_reference_fallback: invoice.invoice_id || invoice.display_id || '',
           invoice_status: invoice.status || invoice.invoice_status || '',
+          payment_term: schedule.payment_term || invoice.payment_term || invoice.payment_terms || 'Custom',
           client_id: invoice.client_id || schedule.client_id || '',
           company_id: invoice.company_id || schedule.company_id || '',
           client_name: invoice.customer_legal_name || invoice.customer_name || invoice.company_name || schedule.client_name || '',
@@ -2305,15 +2294,12 @@ const Api = {
         };
       });
       const rows = this.sortClientRowsForTable_('invoice_payment_schedule', enrichedRows);
-      return options.returnArray === true ? rows.slice(from, to + 1) : this.pagedResult(rows.slice(from, to + 1), rows.length, page, pageSize);
+      // The client calculates schedule KPIs from the complete persisted set and
+      // applies its own display pagination after those totals are calculated.
+      return options.returnArray === true ? rows : this.pagedResult(rows, rows.length, page, pageSize);
     }
 
-    const viewRows = await this.fetchPaged('client_scheduled_payments', sourceClient, { page: 1, pageSize: Math.max(to + 1, 100) }, query => query.order('due_date', { ascending: true, nullsFirst: false }).order('schedule_no', { ascending: true, nullsFirst: false })).catch(error => {
-      console.info('[Client Scheduled Payments] fallback view unavailable', error?.message || error);
-      return this.pagedResult([], 0, 1, Math.max(to + 1, 100));
-    });
-    const rows = this.sortClientRowsForTable_('client_scheduled_payments', viewRows.rows || []);
-    return options.returnArray === true ? rows.slice(from, to + 1) : this.pagedResult(rows.slice(from, to + 1), rows.length, page, pageSize);
+    return options.returnArray === true ? [] : this.pagedResult([], 0, page, pageSize);
   },
 
   async listReceipts(filters = {}, options = {}) {
