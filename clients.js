@@ -3876,18 +3876,24 @@ const Clients = {
     const scheduleRows = scheduleGroups.length
       ? scheduleGroups.map(group => `
           <tr class="schedule-group-row">
-            <td colspan="7"><strong>${U.escapeHtml(group.invoiceReference)}</strong><span>${U.escapeHtml(String(group.installments.length))} installment${group.installments.length === 1 ? '' : 's'} · ${U.escapeHtml(this.formatMoneyWithCurrency_(group.totalScheduled, group.currency))} scheduled · ${U.escapeHtml(this.formatMoneyWithCurrency_(group.totalBalance, group.currency))} remaining</span></td>
+            <td class="schedule-group-invoice"><strong>${U.escapeHtml(group.invoiceReference)}</strong><small>${U.escapeHtml(String(group.installments.length))} installment${group.installments.length === 1 ? '' : 's'}</small></td>
+            <td></td>
+            <td class="money schedule-group-value"><small>Total scheduled</small><strong>${U.escapeHtml(this.formatMoneyWithCurrency_(group.totalScheduled, group.currency))}</strong></td>
+            <td class="money schedule-group-value"><small>Total paid</small><strong>${U.escapeHtml(this.formatMoneyWithCurrency_(group.totalPaid, group.currency))}</strong></td>
+            <td class="money schedule-group-value"><small>Total remaining</small><strong>${U.escapeHtml(this.formatMoneyWithCurrency_(group.totalBalance, group.currency))}</strong></td>
+            <td></td>
+            <td></td>
           </tr>
           ${group.installments.map(row => {
             const badge = this.getScheduledPaymentBadge_(row);
-            return `<tr>
+            return `<tr class="schedule-installment-row">
               <td>${U.escapeHtml(row.schedule_label || `Installment ${row.schedule_no || ''}`)}</td>
               <td>${U.escapeHtml(U.fmtDisplayDate(row.due_date) || '—')}</td>
               <td class="money">${U.escapeHtml(this.formatMoneyWithCurrency_(row.scheduled_amount, row.currency || group.currency))}</td>
               <td class="money">${U.escapeHtml(this.formatMoneyWithCurrency_(row.paid_amount, row.currency || group.currency))}</td>
               <td class="money"><strong>${U.escapeHtml(this.formatMoneyWithCurrency_(row.balance_due, row.currency || group.currency))}</strong></td>
-              <td>${U.escapeHtml(row.payment_percent ? `${row.payment_percent}%` : '—')}</td>
-              <td><span class="status ${U.escapeAttr(this.getStatementStatusClass_(badge.label))}">${U.escapeHtml(badge.label)}</span></td>
+              <td class="schedule-percent">${U.escapeHtml(row.payment_percent ? `${row.payment_percent}%` : '—')}</td>
+              <td class="schedule-status"><span class="status ${U.escapeAttr(this.getStatementStatusClass_(badge.label))}">${U.escapeHtml(badge.label)}</span></td>
             </tr>`;
           }).join('')}`).join('')
       : '<tr><td colspan="7" class="empty">No scheduled installments found for this period.</td></tr>';
@@ -3944,8 +3950,28 @@ const Clients = {
             .statement-status-credit { background:#cffafe; color:#155e75; }
             .statement-status-issued { background:#dbeafe; color:#1e40af; }
             .schedule-table { margin-top:6px; }
+            .schedule-table th:nth-child(3),
+            .schedule-table th:nth-child(4),
+            .schedule-table th:nth-child(5),
+            .schedule-table td:nth-child(3),
+            .schedule-table td:nth-child(4),
+            .schedule-table td:nth-child(5) { text-align:right; }
+            .schedule-table th:nth-child(6),
+            .schedule-table th:nth-child(7),
+            .schedule-table td:nth-child(6),
+            .schedule-table td:nth-child(7) { text-align:center; }
+            .schedule-table th:nth-child(2),
+            .schedule-table td:nth-child(2),
+            .schedule-table td:nth-child(3),
+            .schedule-table td:nth-child(4),
+            .schedule-table td:nth-child(5) { white-space:nowrap; }
+            .schedule-table .schedule-installment-row td { height:38px; }
             .schedule-group-row td { background:#eff6ff !important; border-top:2px solid #bfdbfe; padding:7px 9px; }
-            .schedule-group-row span { margin-left:10px; color:#475569; font-weight:400; }
+            .schedule-group-row small { display:block; margin-top:2px; color:#64748b; font-size:8px; font-weight:500; }
+            .schedule-group-invoice strong { display:block; }
+            .schedule-group-value strong { display:block; margin-top:2px; }
+            .schedule-percent,
+            .schedule-status { text-align:center !important; }
             .empty { text-align:center; color:#64748b; padding:18px; }
             .footer-note { margin-top:9px; padding:8px 10px; border-radius:8px; background:#f8fafc; color:#475569; border:1px solid #e2e8f0; }
             @media print { body { margin:0; } }
