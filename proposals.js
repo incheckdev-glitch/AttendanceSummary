@@ -4409,7 +4409,7 @@ const Proposals = {
         const quantityLockAttr = oneTimeQuantityLocked ? ' readonly aria-readonly="true" title="Quantity is linked to the number of InCheck Basic Annual SaaS rows."' : '';
         const discountValue = annualDiscountLocked ? 0 : (computed.discount_percent ?? rowDefaults.discount_percent ?? '');
         const discountCell = `<td><input class="input" type="number" step="0.01" min="0" max="100" data-item-field="discount_percent" value="${U.escapeAttr(discountValue)}"${discountLockAttr} /></td>`;
-        const quantityCell = `<td><input class="input" type="number" step="0.01" min="1" ${section === 'annual_saas' ? 'max="12"' : ''} data-item-field="quantity" value="${U.escapeAttr(oneTimeQuantityLocked ? (computed.quantity || 1) : (computed.quantity ?? ''))}"${quantityLockAttr} /></td>`;
+        const quantityCell = `<td><input class="input" type="number" step="0.01" min="${section === 'annual_saas' ? '0.01' : '1'}" ${section === 'annual_saas' ? 'max="12"' : ''} data-item-field="quantity" value="${U.escapeAttr(oneTimeQuantityLocked ? (computed.quantity || 1) : (computed.quantity ?? ''))}"${quantityLockAttr} /></td>`;
         const licenseQtyCell = hasUserBasedAnnualSaas
           ? `<td><input class="input${isAnnualUserBased ? '' : ' readonly-field locked-field'}" type="number" step="1" min="1" data-item-field="license_quantity" value="${U.escapeAttr(isAnnualUserBased ? (computed.license_quantity || 1) : 1)}"${isAnnualUserBased ? '' : ' readonly aria-readonly="true" title="Location based Annual SaaS rows always use Qty 1."'} /></td>`
           : '';

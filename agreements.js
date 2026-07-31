@@ -2093,7 +2093,7 @@ const Agreements = {
     };
     if (section === 'annual_saas') {
       const isUserBased = this.isAnnualSaasUserItem(normalized);
-      normalized.quantity = Math.max(1, normalized.quantity || 12);
+      normalized.quantity = Math.max(0.01, normalized.quantity || 12);
       normalized.license_quantity = Math.max(1, normalized.license_quantity || 1);
       if (!normalized.service_start_date) normalized.service_start_date = this.getDefaultAnnualServiceStartDate();
       if (!normalized.service_end_date) normalized.service_end_date = this.calculateServiceEndDate(normalized.service_start_date, normalized.quantity);
