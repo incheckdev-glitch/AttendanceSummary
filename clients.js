@@ -1936,7 +1936,7 @@ const Clients = {
     return Math.round((parsed.getTime() - today.getTime()) / 86400000);
   },
   getPaymentStatus(row = {}) {
-    const pending = this.toNumberSafe(row.pending_amount ?? row.balance_due ?? row.amount_due ?? row.balance ?? 0);
+    const pending = this.toNumberSafe(row.pending_amount ?? row.amount_due ?? row.balance ?? 0);
     const paid = this.toNumberSafe(row.amount_paid ?? row.received_amount ?? row.credit ?? 0);
     const dueDate = String(row.due_date || row.dueDate || '').trim();
     const daysLeft = this.getDaysLeft(dueDate);
@@ -2646,11 +2646,11 @@ const Clients = {
       .map(row => {
         const debit = this.toNumberSafe(row.debit);
         const credit = this.toNumberSafe(row.credit);
-        if (row.affects_balance !== false) running += debit - credit;
+        running += debit - credit;
         return { ...row, debit, credit, running_balance: running };
       });
   },
-  buildClientStatementRows(client, paymentSchedules = []) {
+  buildClientStatementRows(client) {
     const clientId = String(client?.client_id || '').trim();
     const invoices = this.listClientRelatedInvoices_(clientId);
     const receipts = this.listClientRelatedReceipts_(clientId);
@@ -2670,13 +2670,6 @@ const Clients = {
           _summary_adjustment: true
         }));
     }
-    const invoiceByKey = new Map();
-    invoices.forEach(invoice => {
-      [invoice.id, invoice.invoice_uuid, invoice.invoice_id, invoice.invoice_number, invoice.invoice_no]
-        .map(value => String(value || '').trim())
-        .filter(Boolean)
-        .forEach(key => invoiceByKey.set(key, invoice));
-    });
     const invoiceRows = invoices.map(item => ({
       date: item.invoice_date || item.issued_date || item.issue_date || item.created_at || item.updated_at,
       type: 'Invoice',
@@ -2688,48 +2681,8 @@ const Clients = {
       due_date: item.due_date || item.payment_due_date || '',
       status: this.getPaymentStatus(item),
       notes: item.notes || item.status || item.payment_state || '',
-      currency: String(item.currency || '').trim() || 'USD',
-      affects_balance: true
+      currency: String(item.currency || '').trim() || 'USD'
     }));
-    const rawSchedules = Array.isArray(paymentSchedules) ? paymentSchedules : [];
-    const scheduleCountByInvoice = new Map();
-    rawSchedules.forEach(schedule => {
-      const key = String(schedule.invoice_id || schedule.invoice_number || '').trim();
-      if (key) scheduleCountByInvoice.set(key, (scheduleCountByInvoice.get(key) || 0) + 1);
-    });
-    const scheduledPaymentRows = rawSchedules.map((item, index) => {
-      if (item?.is_payment_schedule && item?.affects_balance === false && item?.document_no) return { ...item };
-      const invoice = invoiceByKey.get(String(item.invoice_id || '').trim())
-        || invoiceByKey.get(String(item.invoice_number || '').trim())
-        || {};
-      const normalized = this.normalizeScheduledPayment_({ ...item, raw: invoice });
-      const invoiceNumber = String(invoice.invoice_number || item.invoice_number || normalized.invoice_reference || 'Invoice').trim();
-      const scheduleNo = Number(normalized.schedule_no || index + 1);
-      const key = String(item.invoice_id || item.invoice_number || invoice.id || invoice.invoice_id || invoiceNumber).trim();
-      const scheduleCount = scheduleCountByInvoice.get(String(item.invoice_id || item.invoice_number || '').trim())
-        || scheduleCountByInvoice.get(key)
-        || 1;
-      return {
-        ...item,
-        date: normalized.due_date || invoice.invoice_date || invoice.issue_date || invoice.created_at || '',
-        type: 'Scheduled Payment',
-        document_no: `${invoiceNumber} · Payment ${scheduleNo}${scheduleCount > 1 ? ` of ${scheduleCount}` : ''}`,
-        document_id: normalized.schedule_id,
-        invoice_id: normalized.invoice_id || invoice.id || invoice.invoice_id || '',
-        invoice_number: invoiceNumber,
-        reference: invoiceNumber,
-        debit: normalized.scheduled_amount,
-        credit: 0,
-        due_date: normalized.due_date,
-        status: this.getScheduledPaymentBadge_(normalized).label,
-        scheduled_amount: normalized.scheduled_amount,
-        paid_amount: normalized.paid_amount,
-        balance_due: normalized.balance_due,
-        currency: normalized.currency || invoice.currency || 'USD',
-        affects_balance: false,
-        is_payment_schedule: true
-      };
-    });
     const receiptRows = receipts.map(item => ({
       date: item.payment_date || item.receipt_date || item.received_at || item.created_at || item.updated_at,
       type: 'Receipt',
@@ -2756,7 +2709,7 @@ const Clients = {
       notes: item.description || item.status || '',
       currency: String(item.currency || '').trim() || 'USD'
     }));
-    return this.computeRunningBalance([...invoiceRows, ...scheduledPaymentRows, ...receiptRows, ...creditNoteRows]);
+    return this.computeRunningBalance([...invoiceRows, ...receiptRows, ...creditNoteRows]);
   },
 
   getAnnualSaasServiceDates_(item = {}) {
@@ -3128,7 +3081,7 @@ const Clients = {
   },
   renderSubTabLoading(tabKey) {
     const skeleton = '<tr><td colspan="12"><div class="skeleton" style="height:30px;"></div></td></tr>';
-    if (tabKey === 'statement' && E.clientStatementTbody) E.clientStatementTbody.innerHTML = skeleton;
+    if (tabKey === 'statement' && E.clientStatementTbody) E.clientStatementTbody.innerHTML = '<tr><td colspan="8"><div class="skeleton" style="height:30px;"></div></td></tr>';
     if (tabKey === 'renewals' && E.clientRenewalsTbody) E.clientRenewalsTbody.innerHTML = skeleton;
     if (tabKey === 'scheduledPayments' && E.clientScheduledPaymentsTbody) E.clientScheduledPaymentsTbody.innerHTML = skeleton;
     if (tabKey === 'overview') {
@@ -3385,9 +3338,17 @@ const Clients = {
         if (normalizedTab === 'overview') {
           result = { ...(result || {}), agreements: { rows: this.listClientRelatedAgreements_(clientId) }, invoices: { rows: this.listClientRelatedInvoices_(clientId) }, receipts: { rows: this.listClientRelatedReceipts_(clientId) }, agreementItems: { rows: this.listClientAgreementLocationItems_(clientId) }, invoiceItems: { rows: this.listClientRelatedInvoiceItems_(clientId) }, receiptItems: { rows: this.listClientRelatedReceiptItems_(clientId) } };
         } else if (normalizedTab === 'statement') {
-          const schedules = this.getClientDetailResultRows_(result?.paymentSchedules || result?.payment_schedules);
-          const statementRows = this.buildClientStatementRows(client, schedules);
-          result = { ...(result || {}), rows: statementRows, statementRows, invoices: { rows: this.listClientRelatedInvoices_(clientId) }, receipts: { rows: this.listClientRelatedReceipts_(clientId) } };
+          const statementRows = this.buildClientStatementRows(client);
+          const paymentSchedules = this.buildClientScheduledPaymentRowsFromInvoices_(clientId);
+          result = {
+            ...(result || {}),
+            rows: statementRows,
+            statementRows,
+            paymentSchedules: { rows: paymentSchedules },
+            payment_schedules: paymentSchedules,
+            invoices: { rows: this.listClientRelatedInvoices_(clientId) },
+            receipts: { rows: this.listClientRelatedReceipts_(clientId) }
+          };
         } else if (normalizedTab === 'renewals') {
           const renewalRows = this.buildClientRenewalRows({ ...client, invoices: this.listClientRelatedInvoices_(clientId), invoice_items: this.listClientRelatedInvoiceItems_(clientId) });
           result = { ...(result || {}), rows: renewalRows, renewalRows, invoices: { rows: this.listClientRelatedInvoices_(clientId) }, invoiceItems: { rows: this.listClientRelatedInvoiceItems_(clientId) } };
@@ -3431,7 +3392,7 @@ const Clients = {
     const { status, dateFrom, dateTo, searchDoc } = this.state.statementFilters;
     return rows.filter(row => {
       const rowStatus = this.normalizeText(this.getStatementRowStatus(row));
-      if (status === 'open' && !rowStatus.includes('open') && !rowStatus.includes('partial') && !rowStatus.includes('scheduled') && !rowStatus.includes('upcoming')) return false;
+      if (status === 'open' && !rowStatus.includes('open') && !rowStatus.includes('partial')) return false;
       if (status === 'overdue' && !rowStatus.includes('overdue')) return false;
       if (status === 'received' && !rowStatus.includes('received')) return false;
       const rowDate = String(row.date || '').trim();
@@ -3662,13 +3623,178 @@ const Clients = {
         : '<tr><td colspan="11" class="muted" style="text-align:center;">No scheduled payments found for this client.</td></tr>';
     }
   },
+  getStatementActivityLabel_(row = {}) {
+    const type = String(row.type || '').trim().toLowerCase();
+    if (type.includes('receipt')) return 'Payment received';
+    if (type.includes('credit')) return 'Credit adjustment';
+    if (type.includes('invoice')) return 'Invoice issued';
+    return row.type || 'Account activity';
+  },
+  getStatementStatusClass_(status = '') {
+    const normalized = String(status || '').trim().toLowerCase();
+    if (normalized.includes('paid') && !normalized.includes('partial')) return 'statement-status-paid';
+    if (normalized.includes('received')) return 'statement-status-paid';
+    if (normalized.includes('partial')) return 'statement-status-partial';
+    if (normalized.includes('overdue')) return 'statement-status-overdue';
+    if (normalized.includes('scheduled') || normalized.includes('upcoming') || normalized.includes('unpaid')) return 'statement-status-scheduled';
+    if (normalized.includes('credit')) return 'statement-status-credit';
+    return 'statement-status-issued';
+  },
+  getStatementPaymentSchedules_(detailData = {}, fallbackClient = {}) {
+    const directRows = this.getClientDetailResultRows_(detailData.paymentSchedules || detailData.payment_schedules);
+    const scheduledTabRows = this.getClientDetailResultRows_(detailData.scheduledPayments || detailData.scheduled_payments);
+    const embeddedRows = this.getClientDetailResultRows_(detailData.statementRows).filter(row => row?.is_payment_schedule || String(row?.type || '').toLowerCase().includes('scheduled'));
+    const clientId = String(fallbackClient.client_id || this.state.selectedClientId || '').trim();
+    const sourceRows = directRows.length
+      ? directRows
+      : scheduledTabRows.length
+        ? scheduledTabRows
+        : embeddedRows.length
+          ? embeddedRows
+          : this.buildClientScheduledPaymentRowsFromInvoices_(clientId);
+
+    const normalizedRows = sourceRows.map((row, index) => {
+      const normalized = this.normalizeScheduledPayment_(row);
+      const invoiceReference = String(
+        row.invoice_number ||
+        row.invoice_reference ||
+        row.parent_document_no ||
+        normalized.invoice_reference ||
+        row.reference ||
+        'Invoice'
+      ).trim();
+      return {
+        ...row,
+        ...normalized,
+        invoice_reference: invoiceReference,
+        invoice_number: invoiceReference,
+        schedule_no: Number(normalized.schedule_no || row.schedule_no || row.payment_no || row.installment_no || index + 1),
+        scheduled_amount: this.toNumberSafe(normalized.scheduled_amount),
+        paid_amount: this.toNumberSafe(normalized.paid_amount),
+        balance_due: Math.max(this.toNumberSafe(normalized.balance_due), 0),
+        currency: normalized.currency || row.currency || this.getClientCurrency_(clientId) || 'USD'
+      };
+    });
+
+    const countByInvoice = new Map();
+    normalizedRows.forEach(row => {
+      const key = String(row.invoice_id || row.invoice_reference || '').trim();
+      countByInvoice.set(key, (countByInvoice.get(key) || 0) + 1);
+    });
+
+    const deduped = new Map();
+    normalizedRows.forEach(row => {
+      const invoiceKey = String(row.invoice_id || row.invoice_reference || '').trim();
+      const scheduleCount = Number(row.schedule_count || countByInvoice.get(invoiceKey) || 1);
+      const scheduleNo = Number(row.schedule_no || 1);
+      const key = String(row.schedule_id || `${invoiceKey}:${scheduleNo}:${row.due_date || ''}:${row.scheduled_amount}`).trim();
+      deduped.set(key, {
+        ...row,
+        schedule_count: scheduleCount,
+        schedule_label: String(row.schedule_label || `Installment ${scheduleNo} of ${scheduleCount}`).trim()
+      });
+    });
+
+    return Array.from(deduped.values()).sort((a, b) => {
+      const dateA = a.due_date ? new Date(a.due_date).getTime() : Number.POSITIVE_INFINITY;
+      const dateB = b.due_date ? new Date(b.due_date).getTime() : Number.POSITIVE_INFINITY;
+      if (dateA !== dateB) return dateA - dateB;
+      const invoiceCompare = String(a.invoice_reference || '').localeCompare(String(b.invoice_reference || ''));
+      if (invoiceCompare !== 0) return invoiceCompare;
+      return Number(a.schedule_no || 0) - Number(b.schedule_no || 0);
+    });
+  },
+  getFilteredStatementPaymentSchedules_(rows = []) {
+    const { status, dateFrom, dateTo, searchDoc } = this.state.statementFilters || {};
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return (Array.isArray(rows) ? rows : []).filter(row => {
+      const dueDate = String(row.due_date || '').trim();
+      const dueTime = dueDate ? new Date(dueDate).getTime() : NaN;
+      const balanceDue = this.toNumberSafe(row.balance_due);
+      const badge = this.getScheduledPaymentBadge_(row);
+      const statusText = String(badge.label || row.status || '').toLowerCase();
+      if (status === 'open' && balanceDue <= 0) return false;
+      if (status === 'overdue' && !(balanceDue > 0 && Number.isFinite(dueTime) && dueTime < today.getTime()) && !statusText.includes('overdue')) return false;
+      if (dateFrom && Number.isFinite(dueTime) && dueTime < new Date(dateFrom).getTime()) return false;
+      if (dateTo && Number.isFinite(dueTime) && dueTime > new Date(dateTo).getTime()) return false;
+      if (searchDoc && !String(row.invoice_reference || row.invoice_number || '').toLowerCase().includes(String(searchDoc).toLowerCase())) return false;
+      return true;
+    });
+  },
+  groupStatementPaymentSchedules_(rows = []) {
+    const groups = new Map();
+    (Array.isArray(rows) ? rows : []).forEach(row => {
+      const invoiceReference = String(row.invoice_reference || row.invoice_number || 'Invoice').trim();
+      if (!groups.has(invoiceReference)) groups.set(invoiceReference, []);
+      groups.get(invoiceReference).push(row);
+    });
+    return Array.from(groups.entries()).map(([invoiceReference, installments]) => ({
+      invoiceReference,
+      installments: installments.sort((a, b) => Number(a.schedule_no || 0) - Number(b.schedule_no || 0)),
+      totalScheduled: installments.reduce((sum, row) => sum + this.toNumberSafe(row.scheduled_amount), 0),
+      totalPaid: installments.reduce((sum, row) => sum + this.toNumberSafe(row.paid_amount), 0),
+      totalBalance: installments.reduce((sum, row) => sum + this.toNumberSafe(row.balance_due), 0),
+      currency: installments[0]?.currency || 'USD'
+    }));
+  },
+  renderStatementPaymentSchedule_(rows = [], clientCurrency = 'USD') {
+    const section = document.getElementById('clientStatementScheduleSection');
+    const list = document.getElementById('clientStatementScheduleList');
+    const summary = document.getElementById('clientStatementScheduleSummary');
+    if (!section || !list) return;
+    section.style.display = '';
+    const groups = this.groupStatementPaymentSchedules_(rows);
+    const openBalance = rows.reduce((sum, row) => sum + this.toNumberSafe(row.balance_due), 0);
+    const nextOpen = rows.find(row => this.toNumberSafe(row.balance_due) > 0 && row.due_date && new Date(row.due_date).getTime() >= new Date().setHours(0, 0, 0, 0));
+    if (summary) {
+      summary.innerHTML = `
+        <span><strong>${U.escapeHtml(String(rows.length))}</strong> installment${rows.length === 1 ? '' : 's'}</span>
+        <span><strong>${U.escapeHtml(this.formatMoneyWithCurrency_(openBalance, rows[0]?.currency || clientCurrency))}</strong> remaining</span>
+        <span>Next due: <strong>${U.escapeHtml(U.fmtDisplayDate(nextOpen?.due_date) || '—')}</strong></span>`;
+    }
+    if (!groups.length) {
+      list.innerHTML = '<div class="statement-schedule-empty">No scheduled installments were found for the selected period.</div>';
+      return;
+    }
+    list.innerHTML = groups.map(group => `
+      <article class="statement-schedule-group">
+        <div class="statement-schedule-group-head">
+          <div>
+            <div class="statement-schedule-invoice">${U.escapeHtml(group.invoiceReference)}</div>
+            <div class="statement-schedule-group-meta">${U.escapeHtml(String(group.installments.length))} installment${group.installments.length === 1 ? '' : 's'} · ${U.escapeHtml(this.formatMoneyWithCurrency_(group.totalScheduled, group.currency || clientCurrency))} scheduled</div>
+          </div>
+          <div class="statement-schedule-balance">
+            <span>Remaining</span>
+            <strong>${U.escapeHtml(this.formatMoneyWithCurrency_(group.totalBalance, group.currency || clientCurrency))}</strong>
+          </div>
+        </div>
+        <div class="statement-schedule-rows">
+          ${group.installments.map(row => {
+            const badge = this.getScheduledPaymentBadge_(row);
+            return `<div class="statement-schedule-row">
+              <div class="statement-schedule-installment">
+                <strong>${U.escapeHtml(row.schedule_label || `Installment ${row.schedule_no || ''}`)}</strong>
+                <span>Due ${U.escapeHtml(U.fmtDisplayDate(row.due_date) || '—')}</span>
+              </div>
+              <div><span class="statement-schedule-label">Scheduled</span><strong>${U.escapeHtml(this.formatMoneyWithCurrency_(row.scheduled_amount, row.currency || clientCurrency))}</strong></div>
+              <div><span class="statement-schedule-label">Paid</span><strong>${U.escapeHtml(this.formatMoneyWithCurrency_(row.paid_amount, row.currency || clientCurrency))}</strong></div>
+              <div><span class="statement-schedule-label">Remaining</span><strong>${U.escapeHtml(this.formatMoneyWithCurrency_(row.balance_due, row.currency || clientCurrency))}</strong></div>
+              <div><span class="statement-status-badge ${U.escapeAttr(this.getStatementStatusClass_(badge.label))}">${U.escapeHtml(badge.label)}</span></div>
+            </div>`;
+          }).join('')}
+        </div>
+      </article>`).join('');
+  },
   renderStatementSection_(detailData = {}) {
     const fallbackClient = this.state.rows.find(row => row.client_id === this.state.selectedClientId) || {};
-    const paymentSchedules = this.getClientDetailResultRows_(detailData.paymentSchedules || detailData.payment_schedules);
-    const baseStatementRows = Array.isArray(detailData.statementRows) && detailData.statementRows.length
+    const rawStatementRows = Array.isArray(detailData.statementRows) && detailData.statementRows.length
       ? detailData.statementRows
-      : this.buildClientStatementRows(fallbackClient, paymentSchedules);
+      : this.buildClientStatementRows(fallbackClient);
+    const baseStatementRows = rawStatementRows.filter(row => !(row?.is_payment_schedule || String(row?.type || '').toLowerCase().includes('scheduled payment')));
     const filteredStatementRows = this.getFilteredStatementRows_(baseStatementRows);
+    const allPaymentSchedules = this.getStatementPaymentSchedules_(detailData, fallbackClient);
+    const filteredPaymentSchedules = this.getFilteredStatementPaymentSchedules_(allPaymentSchedules);
     const statementPageState = this.getClientTabPageState('statement');
     const statementPagination = this.getClientPaginatedRows({
       rows: baseStatementRows,
@@ -3681,77 +3807,96 @@ const Clients = {
     this.setClientTabPageState('statement', statementPagination.page, statementPageState.pageSize);
     this.renderClientPagination_('statement', { total: statementPagination.totalRows, page: statementPagination.page, pageSize: statementPageState.pageSize, totalPages: statementPagination.totalPages });
     const clientCurrency = this.getClientCurrency_(this.state.selectedClientId);
-    const accountingRows = filteredStatementRows.filter(item => item.affects_balance !== false);
-    const totalInvoiced = accountingRows.reduce((sum, item) => sum + this.toNumberSafe(item.debit), 0);
-    const totalPaid = accountingRows.reduce((sum, item) => sum + this.toNumberSafe(item.credit), 0);
-    const totalDue = Math.max(totalInvoiced - totalPaid, 0);
-    const lastPayment = filteredStatementRows
-      .filter(item => this.toNumberSafe(item.credit) > 0)
-      .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())[0]?.date || '';
-    const nextRenewal = ((Array.isArray(detailData.renewalRows) && detailData.renewalRows.length ? detailData.renewalRows : this.buildClientRenewalRows(fallbackClient)) || [])
-      .map(item => item.service_end_date || item.renewal_date || item.renewal_due_date)
-      .filter(Boolean)
-      .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0];
+    const totalInvoiced = filteredStatementRows.reduce((sum, item) => sum + this.toNumberSafe(item.debit), 0);
+    const totalPaid = filteredStatementRows.reduce((sum, item) => sum + (this.isStatementReceiptRow_(item) ? this.toNumberSafe(item.credit) : 0), 0);
+    const totalCredited = filteredStatementRows.reduce((sum, item) => sum + (this.isStatementCreditNoteRow_(item) ? this.toNumberSafe(item.credit) : 0), 0);
+    const totalDue = Math.max(totalInvoiced - totalPaid - totalCredited, 0);
+    const scheduledBalance = filteredPaymentSchedules.reduce((sum, item) => sum + this.toNumberSafe(item.balance_due), 0);
     if (E.clientStatementCards) {
       E.clientStatementCards.innerHTML = [
-        ['Total Invoiced', this.formatMoneyWithCurrency_(totalInvoiced, clientCurrency)],
-        ['Total Paid', this.formatMoneyWithCurrency_(totalPaid, clientCurrency)],
-        ['Total Due', this.formatMoneyWithCurrency_(totalDue, clientCurrency)],
-        ['Last Payment Date', U.fmtDisplayDate(lastPayment) || '—'],
-        ['Next Renewal Date', U.fmtDisplayDate(nextRenewal) || '—']
-      ]
-        .map(([label, value]) => `<div class="card kpi"><div class="label">${U.escapeHtml(label)}</div><div class="value">${U.escapeHtml(String(value))}</div></div>`)
-        .join('');
+        ['statement-summary-invoiced', 'Total Invoiced', this.formatMoneyWithCurrency_(totalInvoiced, clientCurrency), `${filteredStatementRows.filter(item => String(item.type || '').toLowerCase().includes('invoice')).length} invoice(s)`],
+        ['statement-summary-paid', 'Total Paid', this.formatMoneyWithCurrency_(totalPaid, clientCurrency), `${filteredStatementRows.filter(item => this.isStatementReceiptRow_(item)).length} receipt(s)`],
+        ['statement-summary-due', 'Balance Due', this.formatMoneyWithCurrency_(totalDue, clientCurrency), totalDue > 0 ? 'Requires payment' : 'Account settled'],
+        ['statement-summary-scheduled', 'Scheduled Balance', this.formatMoneyWithCurrency_(scheduledBalance, filteredPaymentSchedules[0]?.currency || clientCurrency), `${filteredPaymentSchedules.length} installment(s)`]
+      ].map(([className, label, value, sub]) => `<div class="card kpi statement-summary-card ${U.escapeAttr(className)}"><div class="label">${U.escapeHtml(label)}</div><div class="value">${U.escapeHtml(String(value))}</div><div class="statement-summary-sub">${U.escapeHtml(sub)}</div></div>`).join('');
     }
     if (E.clientStatementTbody) {
       const emptyMessage = detailData.statementError
         ? 'Unable to load statement data.'
         : detailData.noLinkedRows
           ? 'No linked rows found. Check client ID/name mapping.'
-          : 'No invoice or receipt statement rows found.';
+          : 'No account activity was found for the selected period.';
       E.clientStatementTbody.innerHTML = rows.length
-        ? rows
-            .map(row => `<tr>
-              <td>${U.escapeHtml(U.fmtDisplayDate(row.date) || '—')}</td>
-              <td>${U.escapeHtml(row.type || '—')}</td>
-              <td>${U.escapeHtml(this.getStatementDisplayDocumentNo_(row))}</td>
-              <td>${U.escapeHtml(row.currency || 'USD')}</td>
-              <td>${U.escapeHtml(this.formatMoneyWithCurrency_(row.debit || 0, row.currency || clientCurrency))}</td>
-              <td>${U.escapeHtml(this.formatMoneyWithCurrency_(row.credit || 0, row.currency || clientCurrency))}</td>
-              <td>${row.affects_balance === false ? '—' : U.escapeHtml(this.formatMoneyWithCurrency_(row.running_balance || 0, row.currency || clientCurrency))}</td>
-              <td>${U.escapeHtml(U.fmtDisplayDate(row.due_date) || '—')}</td>
-              <td>${U.escapeHtml(this.getStatementRowStatus(row))}</td>
-            </tr>`)
-            .join('')
-        : `<tr><td colspan="9" class="muted" style="text-align:center;">${U.escapeHtml(emptyMessage)}</td></tr>`;
+        ? rows.map(row => {
+          const status = this.getStatementRowStatus(row);
+          const activityClass = String(row.type || '').toLowerCase().includes('receipt')
+            ? 'statement-row-receipt'
+            : String(row.type || '').toLowerCase().includes('credit')
+              ? 'statement-row-credit'
+              : 'statement-row-invoice';
+          return `<tr class="${activityClass}">
+            <td>${U.escapeHtml(U.fmtDisplayDate(row.date) || '—')}</td>
+            <td><div class="statement-activity-cell"><strong>${U.escapeHtml(this.getStatementActivityLabel_(row))}</strong><span>${U.escapeHtml(row.type || '')}</span></div></td>
+            <td><strong>${U.escapeHtml(this.getStatementDisplayDocumentNo_(row))}</strong></td>
+            <td>${this.toNumberSafe(row.debit) > 0 ? U.escapeHtml(this.formatMoneyWithCurrency_(row.debit, row.currency || clientCurrency)) : '—'}</td>
+            <td>${this.toNumberSafe(row.credit) > 0 ? U.escapeHtml(this.formatMoneyWithCurrency_(row.credit, row.currency || clientCurrency)) : '—'}</td>
+            <td><strong>${U.escapeHtml(this.formatMoneyWithCurrency_(row.running_balance || 0, row.currency || clientCurrency))}</strong></td>
+            <td>${U.escapeHtml(U.fmtDisplayDate(row.due_date) || '—')}</td>
+            <td><span class="statement-status-badge ${U.escapeAttr(this.getStatementStatusClass_(status))}">${U.escapeHtml(status)}</span></td>
+          </tr>`;
+        }).join('')
+        : `<tr><td colspan="8" class="muted" style="text-align:center;">${U.escapeHtml(emptyMessage)}</td></tr>`;
     }
+    this.renderStatementPaymentSchedule_(filteredPaymentSchedules, clientCurrency);
   },
-  buildStatementExportHtml_(client = {}, rows = []) {
+  buildStatementExportHtml_(client = {}, rows = [], paymentSchedules = []) {
     const generatedOn = new Date();
     const customerName = client.customer_name || client.customer_legal_name || 'Client';
     const title = `Statement of Account · ${customerName}`;
     const baseHref = U.escapeAttr(window.location.href);
-    const bodyRows = rows.length
-      ? rows
-          .map(row => `<tr>
+    const activityRows = (Array.isArray(rows) ? rows : []).filter(row => !(row?.is_payment_schedule || String(row?.type || '').toLowerCase().includes('scheduled payment')));
+    const schedules = Array.isArray(paymentSchedules) ? paymentSchedules : [];
+    const bodyRows = activityRows.length
+      ? activityRows.map(row => {
+          const status = this.getStatementRowStatus(row);
+          return `<tr>
             <td>${U.escapeHtml(U.fmtDisplayDate(row.date) || '—')}</td>
-            <td>${U.escapeHtml(row.type || '—')}</td>
-            <td>${U.escapeHtml(this.getStatementDisplayDocumentNo_(row))}</td>
-            <td>${U.escapeHtml(row.currency || 'USD')}</td>
-            <td style="text-align:right;">${U.escapeHtml(U.fmtNumber(row.debit || 0))}</td>
-            <td style="text-align:right;">${U.escapeHtml(U.fmtNumber(row.credit || 0))}</td>
-            <td style="text-align:right;">${row.affects_balance === false ? '—' : U.escapeHtml(U.fmtNumber(row.running_balance || 0))}</td>
+            <td><strong>${U.escapeHtml(this.getStatementActivityLabel_(row))}</strong><small>${U.escapeHtml(row.type || '')}</small></td>
+            <td><strong>${U.escapeHtml(this.getStatementDisplayDocumentNo_(row))}</strong></td>
+            <td class="money">${this.toNumberSafe(row.debit) > 0 ? U.escapeHtml(this.formatMoneyWithCurrency_(row.debit, row.currency || 'USD')) : '—'}</td>
+            <td class="money">${this.toNumberSafe(row.credit) > 0 ? U.escapeHtml(this.formatMoneyWithCurrency_(row.credit, row.currency || 'USD')) : '—'}</td>
+            <td class="money"><strong>${U.escapeHtml(this.formatMoneyWithCurrency_(row.running_balance || 0, row.currency || 'USD'))}</strong></td>
             <td>${U.escapeHtml(U.fmtDisplayDate(row.due_date) || '—')}</td>
-            <td>${U.escapeHtml(this.getStatementRowStatus(row))}</td>
-          </tr>`)
-          .join('')
-      : '<tr><td colspan="9" style="text-align:center;">No statement rows found.</td></tr>';
-    const accountingRows = rows.filter(item => item.affects_balance !== false);
-    const totalDebit = accountingRows.reduce((sum, item) => sum + this.toNumberSafe(item.debit), 0);
-    const totalPaid = accountingRows.reduce((sum, item) => sum + (this.isStatementReceiptRow_(item) ? this.toNumberSafe(item.credit) : 0), 0);
-    const totalCredited = accountingRows.reduce((sum, item) => sum + (this.isStatementCreditNoteRow_(item) ? this.toNumberSafe(item.credit) : 0), 0);
-    const totalCredit = accountingRows.reduce((sum, item) => sum + this.toNumberSafe(item.credit), 0);
-    const balance = Math.max(totalDebit - totalCredit, 0);
+            <td><span class="status ${U.escapeAttr(this.getStatementStatusClass_(status))}">${U.escapeHtml(status)}</span></td>
+          </tr>`;
+        }).join('')
+      : '<tr><td colspan="8" class="empty">No account activity found for this period.</td></tr>';
+
+    const scheduleGroups = this.groupStatementPaymentSchedules_(schedules);
+    const scheduleRows = scheduleGroups.length
+      ? scheduleGroups.map(group => `
+          <tr class="schedule-group-row">
+            <td colspan="7"><strong>${U.escapeHtml(group.invoiceReference)}</strong><span>${U.escapeHtml(String(group.installments.length))} installment${group.installments.length === 1 ? '' : 's'} · ${U.escapeHtml(this.formatMoneyWithCurrency_(group.totalScheduled, group.currency))} scheduled · ${U.escapeHtml(this.formatMoneyWithCurrency_(group.totalBalance, group.currency))} remaining</span></td>
+          </tr>
+          ${group.installments.map(row => {
+            const badge = this.getScheduledPaymentBadge_(row);
+            return `<tr>
+              <td>${U.escapeHtml(row.schedule_label || `Installment ${row.schedule_no || ''}`)}</td>
+              <td>${U.escapeHtml(U.fmtDisplayDate(row.due_date) || '—')}</td>
+              <td class="money">${U.escapeHtml(this.formatMoneyWithCurrency_(row.scheduled_amount, row.currency || group.currency))}</td>
+              <td class="money">${U.escapeHtml(this.formatMoneyWithCurrency_(row.paid_amount, row.currency || group.currency))}</td>
+              <td class="money"><strong>${U.escapeHtml(this.formatMoneyWithCurrency_(row.balance_due, row.currency || group.currency))}</strong></td>
+              <td>${U.escapeHtml(row.payment_percent ? `${row.payment_percent}%` : '—')}</td>
+              <td><span class="status ${U.escapeAttr(this.getStatementStatusClass_(badge.label))}">${U.escapeHtml(badge.label)}</span></td>
+            </tr>`;
+          }).join('')}`).join('')
+      : '<tr><td colspan="7" class="empty">No scheduled installments found for this period.</td></tr>';
+
+    const totalDebit = activityRows.reduce((sum, item) => sum + this.toNumberSafe(item.debit), 0);
+    const totalPaid = activityRows.reduce((sum, item) => sum + (this.isStatementReceiptRow_(item) ? this.toNumberSafe(item.credit) : 0), 0);
+    const totalCredited = activityRows.reduce((sum, item) => sum + (this.isStatementCreditNoteRow_(item) ? this.toNumberSafe(item.credit) : 0), 0);
+    const balance = Math.max(totalDebit - totalPaid - totalCredited, 0);
+    const scheduledBalance = schedules.reduce((sum, item) => sum + this.toNumberSafe(item.balance_due), 0);
     const clientCurrency = this.getClientCurrency_(client.client_id);
     const statementPeriod = this.getStatementPeriodLabel_(this.state.statementFilters);
     const html = `
@@ -3763,44 +3908,79 @@ const Clients = {
           <base href="${baseHref}" />
           <link rel="stylesheet" href="styles.css" />
           <style>
-            @page { size: A4 portrait; margin: 10mm; }
-            body { margin: 20px; background: #fff; color: #111; font-family: Inter, system-ui, -apple-system, sans-serif; }
-            .meta { display:flex; gap:8px; flex-wrap:wrap; margin-bottom: 10px; }
-            .meta span { padding: 4px 8px; border: 1px solid #ddd; border-radius: 999px; font-size: 12px; }
-            table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 8px; }
-            th, td { border: 1px solid #ddd; padding: 5px 4px; font-size: 10px; line-height: 1.25; overflow-wrap: anywhere; vertical-align: top; }
-            th { background: #f5f5f5; text-align: left; }
-            th:nth-child(5), th:nth-child(6), th:nth-child(7), td:nth-child(5), td:nth-child(6), td:nth-child(7) { text-align: right; }
-            .totals { margin-top: 12px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; break-inside: avoid; }
-            .totals .item { border:1px solid #ddd; border-radius:8px; padding:8px; }
-            .totals .label { font-size: 11px; color:#666; }
-            .totals .value { font-weight: 700; }
-            @media print { body { margin: 0; } }
+            @page { size: A4 landscape; margin: 10mm; }
+            * { box-sizing: border-box; }
+            body { margin: 16px; background: #fff; color: #0f172a; font-family: Inter, Arial, sans-serif; font-size: 11px; }
+            .statement-header { display:flex; justify-content:space-between; gap:24px; align-items:flex-start; border-bottom:2px solid #2563eb; padding:6px 0 14px; margin-bottom:14px; }
+            .statement-title h1 { margin:0; font-size:25px; line-height:1.1; color:#0f172a; }
+            .statement-title p { margin:5px 0 0; font-size:15px; color:#334155; }
+            .meta { display:grid; grid-template-columns:repeat(3, minmax(120px, 1fr)); gap:8px; min-width:430px; }
+            .meta div { border-left:1px solid #dbe3f0; padding-left:10px; }
+            .meta span { display:block; color:#64748b; font-size:9px; text-transform:uppercase; letter-spacing:.05em; }
+            .meta strong { display:block; margin-top:3px; font-size:11px; color:#0f172a; }
+            .totals { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:10px; margin-bottom:16px; break-inside:avoid; }
+            .totals .item { border:1px solid #dbe3f0; border-radius:10px; padding:11px 12px; background:#f8fafc; }
+            .totals .label { color:#64748b; font-size:10px; }
+            .totals .value { margin-top:5px; font-size:18px; font-weight:800; color:#0f172a; }
+            .totals .item.due { background:#fff7ed; border-color:#fed7aa; }
+            .totals .item.due .value { color:#c2410c; }
+            .totals .item.paid { background:#f0fdf4; border-color:#bbf7d0; }
+            .totals .item.paid .value { color:#15803d; }
+            .totals .item.schedule { background:#f5f3ff; border-color:#ddd6fe; }
+            .totals .item.schedule .value { color:#6d28d9; }
+            h2 { margin:14px 0 7px; font-size:14px; color:#0f172a; }
+            .section-note { margin:-2px 0 8px; color:#64748b; font-size:10px; }
+            table { width:100%; border-collapse:separate; border-spacing:0; table-layout:fixed; border:1px solid #dbe3f0; border-radius:9px; overflow:hidden; }
+            th { background:#0f172a; color:#fff; text-align:left; padding:7px 7px; font-size:9px; text-transform:uppercase; letter-spacing:.04em; }
+            td { border-top:1px solid #e2e8f0; padding:7px; vertical-align:middle; font-size:10px; overflow-wrap:anywhere; }
+            tbody tr:nth-child(even):not(.schedule-group-row) td { background:#f8fafc; }
+            td small { display:block; margin-top:2px; color:#64748b; }
+            .money { text-align:right; white-space:nowrap; }
+            .status { display:inline-block; border-radius:999px; padding:3px 7px; font-size:9px; font-weight:700; white-space:nowrap; }
+            .statement-status-paid { background:#dcfce7; color:#166534; }
+            .statement-status-partial { background:#fef3c7; color:#92400e; }
+            .statement-status-overdue { background:#fee2e2; color:#991b1b; }
+            .statement-status-scheduled { background:#ede9fe; color:#5b21b6; }
+            .statement-status-credit { background:#cffafe; color:#155e75; }
+            .statement-status-issued { background:#dbeafe; color:#1e40af; }
+            .schedule-table { margin-top:6px; }
+            .schedule-group-row td { background:#eff6ff !important; border-top:2px solid #bfdbfe; padding:7px 9px; }
+            .schedule-group-row span { margin-left:10px; color:#475569; font-weight:400; }
+            .empty { text-align:center; color:#64748b; padding:18px; }
+            .footer-note { margin-top:9px; padding:8px 10px; border-radius:8px; background:#f8fafc; color:#475569; border:1px solid #e2e8f0; }
+            @media print { body { margin:0; } }
           </style>
         </head>
         <body>
-          <h2 style="margin:0 0 6px;">Statement of Account</h2>
-          <div style="margin-bottom:10px;">${U.escapeHtml(customerName)}</div>
-          <div class="meta">
-            <span>Generated: ${U.escapeHtml(U.fmtDisplayDate(generatedOn.toISOString().slice(0, 10)) || '—')}</span>
-            <span>Client ID: ${U.escapeHtml(client.client_id || '—')}</span>
-            <span>Period: ${U.escapeHtml(statementPeriod)}</span>
-          </div>
-          <table>
-            <colgroup>
-              <col style="width:10%"><col style="width:10%"><col style="width:14%"><col style="width:8%"><col style="width:11%"><col style="width:11%"><col style="width:13%"><col style="width:10%"><col style="width:13%">
-            </colgroup>
-            <thead>
-              <tr><th>Date</th><th>Type</th><th>Document No</th><th>Currency</th><th>Debit</th><th>Credit</th><th>Running Balance</th><th>Due Date</th><th>Status</th></tr>
-            </thead>
-            <tbody>${bodyRows}</tbody>
-          </table>
+          <header class="statement-header">
+            <div class="statement-title"><h1>Statement of Account</h1><p>${U.escapeHtml(customerName)}</p></div>
+            <div class="meta">
+              <div><span>Generated</span><strong>${U.escapeHtml(U.fmtDisplayDate(generatedOn.toISOString().slice(0, 10)) || '—')}</strong></div>
+              <div><span>Client ID</span><strong>${U.escapeHtml(client.client_id || '—')}</strong></div>
+              <div><span>Period</span><strong>${U.escapeHtml(statementPeriod)}</strong></div>
+            </div>
+          </header>
           <div class="totals">
             <div class="item"><div class="label">Total Invoiced</div><div class="value">${U.escapeHtml(this.formatMoneyWithCurrency_(totalDebit, clientCurrency))}</div></div>
-            <div class="item"><div class="label">Total Paid</div><div class="value">${U.escapeHtml(this.formatMoneyWithCurrency_(totalPaid, clientCurrency))}</div></div>
-            <div class="item"><div class="label">Total Credited</div><div class="value">${U.escapeHtml(this.formatMoneyWithCurrency_(totalCredited, clientCurrency))}</div></div>
-            <div class="item"><div class="label">Balance Due</div><div class="value">${U.escapeHtml(this.formatMoneyWithCurrency_(balance, clientCurrency))}</div></div>
+            <div class="item paid"><div class="label">Total Paid</div><div class="value">${U.escapeHtml(this.formatMoneyWithCurrency_(totalPaid, clientCurrency))}</div></div>
+            <div class="item due"><div class="label">Balance Due</div><div class="value">${U.escapeHtml(this.formatMoneyWithCurrency_(balance, clientCurrency))}</div></div>
+            <div class="item schedule"><div class="label">Scheduled Balance</div><div class="value">${U.escapeHtml(this.formatMoneyWithCurrency_(scheduledBalance, schedules[0]?.currency || clientCurrency))}</div></div>
           </div>
+          <h2>Account Activity</h2>
+          <div class="section-note">Invoices, receipts, and credit adjustments that affect the running balance.</div>
+          <table>
+            <colgroup><col style="width:10%"><col style="width:14%"><col style="width:15%"><col style="width:13%"><col style="width:13%"><col style="width:14%"><col style="width:10%"><col style="width:11%"></colgroup>
+            <thead><tr><th>Date</th><th>Activity</th><th>Document</th><th>Invoice Amount</th><th>Payment / Credit</th><th>Running Balance</th><th>Due Date</th><th>Status</th></tr></thead>
+            <tbody>${bodyRows}</tbody>
+          </table>
+          <h2>Payment Schedule</h2>
+          <div class="section-note">Each installment is shown under its related invoice. Scheduled installments are informational and do not increase the account balance.</div>
+          <table class="schedule-table">
+            <colgroup><col style="width:24%"><col style="width:15%"><col style="width:15%"><col style="width:15%"><col style="width:15%"><col style="width:7%"><col style="width:9%"></colgroup>
+            <thead><tr><th>Installment</th><th>Due Date</th><th>Scheduled</th><th>Paid</th><th>Remaining</th><th>%</th><th>Status</th></tr></thead>
+            <tbody>${scheduleRows}</tbody>
+          </table>
+          ${totalCredited > 0 ? `<div class="footer-note"><strong>Credit adjustments included:</strong> ${U.escapeHtml(this.formatMoneyWithCurrency_(totalCredited, clientCurrency))}</div>` : ''}
         </body>
       </html>
     `;
@@ -3813,10 +3993,11 @@ const Clients = {
       return;
     }
     const detailData = this.state.detailCache[client.client_id] || {};
-    const paymentSchedules = this.getClientDetailResultRows_(detailData.paymentSchedules || detailData.payment_schedules);
-    const baseRows = Array.isArray(detailData.statementRows) && detailData.statementRows.length ? detailData.statementRows : this.buildClientStatementRows(client, paymentSchedules);
+    const baseRows = (Array.isArray(detailData.statementRows) && detailData.statementRows.length ? detailData.statementRows : this.buildClientStatementRows(client))
+      .filter(row => !(row?.is_payment_schedule || String(row?.type || '').toLowerCase().includes('scheduled payment')));
     const rows = this.getFilteredStatementRows_(baseRows);
-    const printableDoc = this.buildStatementExportHtml_(client, rows);
+    const paymentSchedules = this.getFilteredStatementPaymentSchedules_(this.getStatementPaymentSchedules_(detailData, client));
+    const printableDoc = this.buildStatementExportHtml_(client, rows, paymentSchedules);
     const clientName = client.customer_name || client.customer_legal_name || client.client_id || 'Client';
     if (E.clientStatementPreviewTitle)
       E.clientStatementPreviewTitle.textContent = `Statement of Account Preview · ${clientName}`;
@@ -4335,7 +4516,7 @@ const Clients = {
   },
   renderDetailSkeletons_() {
     if (E.clientStatementTbody) {
-      E.clientStatementTbody.innerHTML = '<tr><td colspan="9"><div class="skeleton" style="height:30px;"></div></td></tr>';
+      E.clientStatementTbody.innerHTML = '<tr><td colspan="8"><div class="skeleton" style="height:30px;"></div></td></tr>';
     }
     if (E.clientRenewalsTbody) {
       E.clientRenewalsTbody.innerHTML = '<tr><td colspan="7"><div class="skeleton" style="height:30px;"></div></td></tr>';

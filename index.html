@@ -1957,26 +1957,42 @@ Sample:
               </div>
             </section>
             <section id="clientStatementSection" style="display:none;">
-              <div id="clientStatementCards" class="grid cols-5" style="gap:8px;"></div>
-              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
-                <select id="clientStatementFiltersStatus" class="select">
-                  <option value="all">All</option>
-                  <option value="open">Open Only</option>
-                  <option value="overdue">Overdue Only</option>
+              <div class="statement-section-heading">
+                <div>
+                  <h3>Statement of Account</h3>
+                  <p>Account activity and installment dates are separated so the customer can clearly understand the balance.</p>
+                </div>
+              </div>
+              <div id="clientStatementCards" class="grid cols-4 statement-summary-grid" style="gap:10px;"></div>
+              <div class="statement-filter-bar">
+                <select id="clientStatementFiltersStatus" class="select" aria-label="Statement status filter">
+                  <option value="all">All activity</option>
+                  <option value="open">Open balances only</option>
+                  <option value="overdue">Overdue only</option>
                 </select>
-                <input id="clientStatementDateFrom" class="input" type="date" />
-                <input id="clientStatementDateTo" class="input" type="date" />
-                <input id="clientStatementSearchDoc" class="input" type="search" placeholder="Search document #" />
+                <input id="clientStatementDateFrom" class="input" type="date" aria-label="Statement date from" />
+                <input id="clientStatementDateTo" class="input" type="date" aria-label="Statement date to" />
+                <input id="clientStatementSearchDoc" class="input" type="search" placeholder="Search invoice or receipt #" />
                 <button id="clientStatementApplyFiltersBtn" class="btn ghost sm" type="button">Apply</button>
                 <button id="clientStatementResetFiltersBtn" class="btn ghost sm" type="button">Reset</button>
-                <button id="clientStatementExportPdfBtn" class="btn ghost sm" data-permission-resource="clients" data-permission-action="statement_export" type="button">Preview</button>
+                <button id="clientStatementExportPdfBtn" class="btn ghost sm" data-permission-resource="clients" data-permission-action="statement_export" type="button">Preview PDF</button>
               </div>
-              <div class="table-wrap" style="margin-top:8px;">
-                <table>
-                  <thead><tr><th>Date</th><th>Type</th><th>Document No</th><th>Currency</th><th>Debit</th><th>Credit</th><th>Running Balance</th><th>Due Date</th><th>Status</th></tr></thead>
+              <div class="statement-subsection-heading">
+                <div><strong>Account Activity</strong><span>Invoices, receipts, and credit adjustments that affect the running balance.</span></div>
+              </div>
+              <div class="table-wrap statement-activity-table-wrap">
+                <table class="statement-activity-table">
+                  <thead><tr><th>Date</th><th>Activity</th><th>Document</th><th>Invoice Amount</th><th>Payment / Credit</th><th>Running Balance</th><th>Due Date</th><th>Status</th></tr></thead>
                   <tbody id="clientStatementTbody"></tbody>
                 </table>
               </div>
+              <section id="clientStatementScheduleSection" class="statement-schedule-section" style="display:none;">
+                <div class="statement-subsection-heading statement-schedule-heading">
+                  <div><strong>Payment Schedule</strong><span>Installments are grouped under their related SA invoice and do not increase the account balance.</span></div>
+                  <div id="clientStatementScheduleSummary" class="statement-schedule-summary"></div>
+                </div>
+                <div id="clientStatementScheduleList" class="statement-schedule-list"></div>
+              </section>
             </section>
 
             <section id="clientScheduledPaymentsSection" style="display:none;">

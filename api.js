@@ -2111,7 +2111,7 @@ const Api = {
       invoice_id: this.extractUuidKeys_(invoiceRows, ['id', 'invoice_uuid', 'invoice_id']),
       invoice_number: this.extractTextKeys_(invoiceRows, ['invoice_number', 'invoice_id', 'invoice_no'])
     }, query => query.order('due_date', { ascending: true, nullsFirst: false }).order('schedule_no', { ascending: true, nullsFirst: false })).catch(error => {
-      console.info('[Client Statement] invoice_payment_schedule unavailable; statement will continue without installment rows.', error?.message || error);
+      console.info('[Client Statement] invoice_payment_schedule unavailable; continuing with the fallback schedule view.', error?.message || error);
       return [];
     });
 
@@ -2145,7 +2145,7 @@ const Api = {
         || scheduleCountByInvoice.get(invoiceKey)
         || 1;
       const scheduledAmount = toStatementAmount(schedule.scheduled_amount ?? schedule.amount ?? schedule.payment_amount ?? 0);
-      const paidAmount = toStatementAmount(schedule.paid_amount ?? schedule.amount_paid ?? 0);
+      const paidAmount = toStatementAmount(schedule.paid_amount ?? schedule.amount_paid ?? schedule.received_amount ?? 0);
       const balanceDue = Math.max(toStatementAmount(schedule.balance_due ?? schedule.pending_amount ?? (scheduledAmount - paidAmount)), 0);
       const dueDate = String(schedule.due_date || schedule.payment_due_date || invoice.due_date || '').trim();
       const rawStatus = String(schedule.status || schedule.payment_status || '').trim();
@@ -2156,39 +2156,75 @@ const Api = {
       if (scheduledAmount > 0 && balanceDue <= 0) status = 'Paid';
       else if (paidAmount > 0 && balanceDue > 0) status = 'Partially Paid';
       else if (Number.isFinite(dueTime) && dueTime < today.getTime() && balanceDue > 0) status = 'Overdue';
+      else if (balanceDue > 0) status = 'Scheduled';
 
       return {
         ...schedule,
-        type: 'Scheduled Payment',
-        date: dueDate || invoice.invoice_date || invoice.issue_date || invoice.created_at || '',
-        document_no: `${invoiceNumber} · Payment ${scheduleNo}${scheduleCount > 1 ? ` of ${scheduleCount}` : ''}`,
-        parent_document_no: invoiceNumber,
-        document_id: schedule.id || schedule.schedule_id || '',
+        schedule_id: schedule.schedule_id || schedule.id || '',
         invoice_id: schedule.invoice_id || invoice.id || invoice.invoice_id || '',
         invoice_number: invoiceNumber,
-        reference: invoiceNumber,
-        debit: scheduledAmount,
-        credit: 0,
+        invoice_reference: invoiceNumber,
+        schedule_no: scheduleNo,
+        schedule_count: scheduleCount,
+        schedule_label: String(schedule.schedule_label || schedule.label || `Installment ${scheduleNo} of ${scheduleCount}`).trim(),
         due_date: dueDate,
-        status,
         scheduled_amount: scheduledAmount,
         paid_amount: paidAmount,
         balance_due: balanceDue,
+        status,
+        invoice_status: invoice.status || invoice.payment_state || '',
         currency: String(schedule.currency || invoice.currency || 'USD').trim() || 'USD',
-        affects_balance: false,
-        is_payment_schedule: true
+        raw: invoice
       };
+    }).sort((a, b) => {
+      const dateA = a.due_date ? new Date(a.due_date).getTime() : Number.POSITIVE_INFINITY;
+      const dateB = b.due_date ? new Date(b.due_date).getTime() : Number.POSITIVE_INFINITY;
+      if (dateA !== dateB) return dateA - dateB;
+      return Number(a.schedule_no || 0) - Number(b.schedule_no || 0);
     });
 
     const rows = [
-      ...invoiceRows.map(inv => ({ ...inv, type: 'Invoice', date: inv.invoice_date || inv.issue_date || inv.created_at, document_no: inv.invoice_number || inv.invoice_id || inv.id, debit: inv.grand_total || inv.invoice_total || inv.total_amount || 0, credit: 0, due_date: inv.due_date, status: inv.status || inv.payment_state, affects_balance: true })),
-      ...paymentSchedules,
-      ...(receipts.rows || []).map(rec => ({ ...rec, type: 'Receipt', date: rec.receipt_date || rec.payment_date || rec.created_at, document_no: rec.receipt_number || rec.receipt_id || rec.id, debit: 0, credit: rec.received_amount || rec.amount_received || rec.amount_paid || rec.paid_amount || rec.amount || 0, due_date: '', status: rec.status || rec.payment_state })),
-      ...(creditNotes.rows || []).filter(note => !['cancelled','canceled','void','voided','deleted','rejected'].includes(String(note.status || '').trim().toLowerCase())).map(note => ({ ...note, type: 'Credit Note', date: note.credit_note_date || note.created_at, document_no: note.credit_note_number || note.credit_note_id || note.id, debit: 0, credit: note.credit_amount || note.amount || 0, due_date: '', status: note.status || 'issued', reference: note.invoice_number || note.invoice_id || '' }))
+      ...invoiceRows.map(inv => ({
+        ...inv,
+        type: 'Invoice',
+        date: inv.invoice_date || inv.issue_date || inv.created_at,
+        document_no: inv.invoice_number || inv.invoice_id || inv.id,
+        debit: toStatementAmount(inv.grand_total || inv.invoice_total || inv.total_amount || 0),
+        credit: 0,
+        due_date: inv.due_date,
+        status: inv.status || inv.payment_state,
+        affects_balance: true
+      })),
+      ...(receipts.rows || []).map(rec => ({
+        ...rec,
+        type: 'Receipt',
+        date: rec.receipt_date || rec.payment_date || rec.created_at,
+        document_no: rec.receipt_number || rec.receipt_id || rec.id,
+        debit: 0,
+        credit: toStatementAmount(rec.received_amount || rec.amount_received || rec.amount_paid || rec.paid_amount || rec.amount || 0),
+        due_date: '',
+        status: rec.status || rec.payment_state,
+        affects_balance: true
+      })),
+      ...(creditNotes.rows || [])
+        .filter(note => !['cancelled','canceled','void','voided','deleted','rejected'].includes(String(note.status || '').trim().toLowerCase()))
+        .map(note => ({
+          ...note,
+          type: 'Credit Note',
+          date: note.credit_note_date || note.created_at,
+          document_no: note.credit_note_number || note.credit_note_id || note.id,
+          debit: 0,
+          credit: toStatementAmount(note.credit_amount || note.amount || 0),
+          due_date: '',
+          status: note.status || 'issued',
+          reference: note.invoice_number || note.invoice_id || '',
+          affects_balance: true
+        }))
     ].sort((a, b) => new Date(a.date || 0).getTime() - new Date(b.date || 0).getTime());
+
     let running = 0;
     rows.forEach(row => {
-      if (row.affects_balance !== false) running += Number(row.debit || 0) - Number(row.credit || 0);
+      running += Number(row.debit || 0) - Number(row.credit || 0);
       row.running_balance = running;
     });
     const total = rows.length;
@@ -2197,7 +2233,13 @@ const Api = {
       ...overview,
       rows: rows.slice(from, to + 1),
       statementRows: rows,
-      paymentSchedules: { rows: paymentSchedules, total: paymentSchedules.length, page: 1, pageSize: paymentSchedules.length || 25, totalPages: 1 },
+      paymentSchedules: {
+        rows: paymentSchedules,
+        total: paymentSchedules.length,
+        page: 1,
+        pageSize: paymentSchedules.length || 25,
+        totalPages: 1
+      },
       payment_schedules: paymentSchedules,
       invoices,
       receipts,

@@ -11437,3 +11437,319 @@ body.public-eproposal-mode #publicEProposalModal .accept-proposal-submit:disable
     width: 100%;
   }
 }
+
+/* Statement of Account — customer-friendly activity and installment layout */
+.statement-section-heading,
+.statement-subsection-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.statement-section-heading {
+  margin-bottom: 12px;
+}
+
+.statement-section-heading h3 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.statement-section-heading p,
+.statement-subsection-heading span {
+  display: block;
+  margin: 4px 0 0;
+  color: var(--client-muted, #94a3b8);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.statement-summary-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+}
+
+.statement-summary-card {
+  position: relative;
+  overflow: hidden;
+  min-height: 104px;
+  padding: 15px 16px !important;
+}
+
+.statement-summary-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  border-radius: 18px 0 0 18px;
+  background: #3b82f6;
+}
+
+.statement-summary-card.statement-summary-paid::before { background: #22c55e; }
+.statement-summary-card.statement-summary-due::before { background: #f59e0b; }
+.statement-summary-card.statement-summary-scheduled::before { background: #8b5cf6; }
+
+.statement-summary-card .label {
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.statement-summary-card .value {
+  margin-top: 7px;
+  font-size: clamp(20px, 2vw, 28px);
+  line-height: 1.1;
+}
+
+.statement-summary-sub {
+  margin-top: 7px;
+  color: var(--client-muted, #94a3b8);
+  font-size: 11px;
+}
+
+.statement-filter-bar {
+  display: grid;
+  grid-template-columns: minmax(150px, .9fr) repeat(2, minmax(145px, .75fr)) minmax(220px, 1.25fr) auto auto auto;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--client-border, rgba(148, 163, 184, .22));
+  border-radius: 14px;
+  background: rgba(15, 23, 42, .22);
+}
+
+.statement-subsection-heading {
+  margin: 18px 0 8px;
+}
+
+.statement-subsection-heading strong {
+  font-size: 15px;
+}
+
+.statement-activity-table-wrap {
+  margin-top: 0 !important;
+  border-radius: 14px;
+  border: 1px solid var(--client-border, rgba(148, 163, 184, .22));
+}
+
+.statement-activity-table {
+  min-width: 1040px;
+}
+
+.statement-activity-table thead th {
+  white-space: nowrap;
+}
+
+.statement-activity-table tbody tr td {
+  vertical-align: middle;
+}
+
+.statement-activity-table tbody tr.statement-row-invoice td:first-child {
+  border-left: 3px solid #3b82f6;
+}
+
+.statement-activity-table tbody tr.statement-row-receipt td:first-child {
+  border-left: 3px solid #22c55e;
+}
+
+.statement-activity-table tbody tr.statement-row-credit td:first-child {
+  border-left: 3px solid #06b6d4;
+}
+
+.statement-activity-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.statement-activity-cell strong {
+  font-size: 12px;
+}
+
+.statement-activity-cell span {
+  color: var(--client-muted, #94a3b8);
+  font-size: 10px;
+}
+
+.statement-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.statement-status-paid { background: rgba(34, 197, 94, .16); color: #4ade80; border: 1px solid rgba(34, 197, 94, .28); }
+.statement-status-partial { background: rgba(245, 158, 11, .16); color: #fbbf24; border: 1px solid rgba(245, 158, 11, .28); }
+.statement-status-overdue { background: rgba(239, 68, 68, .16); color: #f87171; border: 1px solid rgba(239, 68, 68, .28); }
+.statement-status-scheduled { background: rgba(139, 92, 246, .16); color: #c4b5fd; border: 1px solid rgba(139, 92, 246, .28); }
+.statement-status-credit { background: rgba(6, 182, 212, .16); color: #67e8f9; border: 1px solid rgba(6, 182, 212, .28); }
+.statement-status-issued { background: rgba(59, 130, 246, .16); color: #93c5fd; border: 1px solid rgba(59, 130, 246, .28); }
+
+.statement-schedule-section {
+  margin-top: 18px;
+  padding-top: 2px;
+}
+
+.statement-schedule-heading {
+  align-items: center;
+}
+
+.statement-schedule-summary {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.statement-schedule-summary > span {
+  margin: 0;
+  padding: 6px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--client-border, rgba(148, 163, 184, .22));
+  background: rgba(15, 23, 42, .28);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.statement-schedule-list {
+  display: grid;
+  gap: 10px;
+}
+
+.statement-schedule-group {
+  overflow: hidden;
+  border: 1px solid var(--client-border, rgba(148, 163, 184, .22));
+  border-radius: 15px;
+  background: rgba(15, 23, 42, .25);
+}
+
+.statement-schedule-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: rgba(59, 130, 246, .08);
+  border-bottom: 1px solid var(--client-border, rgba(148, 163, 184, .22));
+}
+
+.statement-schedule-invoice {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.statement-schedule-group-meta {
+  margin-top: 3px;
+  color: var(--client-muted, #94a3b8);
+  font-size: 11px;
+}
+
+.statement-schedule-balance {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.statement-schedule-balance span,
+.statement-schedule-label {
+  color: var(--client-muted, #94a3b8);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.statement-schedule-balance strong {
+  font-size: 15px;
+}
+
+.statement-schedule-rows {
+  display: grid;
+}
+
+.statement-schedule-row {
+  display: grid;
+  grid-template-columns: minmax(210px, 1.45fr) repeat(3, minmax(120px, .85fr)) minmax(110px, .75fr);
+  gap: 12px;
+  align-items: center;
+  padding: 11px 14px;
+}
+
+.statement-schedule-row + .statement-schedule-row {
+  border-top: 1px solid var(--client-border, rgba(148, 163, 184, .18));
+}
+
+.statement-schedule-row > div:not(.statement-schedule-installment) {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.statement-schedule-installment {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.statement-schedule-installment strong {
+  font-size: 12px;
+}
+
+.statement-schedule-installment span {
+  color: var(--client-muted, #94a3b8);
+  font-size: 11px;
+}
+
+.statement-schedule-empty {
+  padding: 18px;
+  border: 1px dashed var(--client-border, rgba(148, 163, 184, .28));
+  border-radius: 14px;
+  color: var(--client-muted, #94a3b8);
+  text-align: center;
+}
+
+:root[data-theme="light"] .statement-filter-bar,
+:root[data-theme="light"] .statement-schedule-summary > span,
+:root[data-theme="light"] .statement-schedule-group {
+  background: #f8fafc;
+}
+
+:root[data-theme="light"] .statement-schedule-group-head {
+  background: #eff6ff;
+}
+
+:root[data-theme="light"] .statement-status-paid { color: #166534; background: #dcfce7; border-color: #bbf7d0; }
+:root[data-theme="light"] .statement-status-partial { color: #92400e; background: #fef3c7; border-color: #fde68a; }
+:root[data-theme="light"] .statement-status-overdue { color: #991b1b; background: #fee2e2; border-color: #fecaca; }
+:root[data-theme="light"] .statement-status-scheduled { color: #5b21b6; background: #ede9fe; border-color: #ddd6fe; }
+:root[data-theme="light"] .statement-status-credit { color: #155e75; background: #cffafe; border-color: #a5f3fc; }
+:root[data-theme="light"] .statement-status-issued { color: #1e40af; background: #dbeafe; border-color: #bfdbfe; }
+
+@media (max-width: 1080px) {
+  .statement-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .statement-filter-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .statement-schedule-row { grid-template-columns: minmax(190px, 1.3fr) repeat(2, minmax(110px, .8fr)); }
+  .statement-schedule-row > div:nth-child(4),
+  .statement-schedule-row > div:nth-child(5) { grid-column: auto; }
+}
+
+@media (max-width: 680px) {
+  .statement-summary-grid { grid-template-columns: 1fr !important; }
+  .statement-filter-bar { grid-template-columns: 1fr; }
+  .statement-section-heading,
+  .statement-subsection-heading,
+  .statement-schedule-group-head { flex-direction: column; align-items: stretch; }
+  .statement-schedule-summary { justify-content: flex-start; }
+  .statement-schedule-balance { align-items: flex-start; }
+  .statement-schedule-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .statement-schedule-installment { grid-column: 1 / -1; }
+}
