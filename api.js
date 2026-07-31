@@ -2089,20 +2089,125 @@ const Api = {
     };
   },
   async getClientStatementOfAccount(clientOrId = {}, options = {}) {
+    const toStatementAmount = value => {
+      if (value === null || value === undefined || value === '') return 0;
+      const parsed = Number(String(value).replace(/,/g, '').trim());
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
     const overview = await this.getClientOverview(clientOrId);
     const invoices = overview.invoices || { rows: [] };
     const receipts = overview.receipts || { rows: [] };
     const creditNotes = overview.creditNotes || overview.credit_notes || { rows: [] };
+    const invoiceRows = Array.isArray(invoices.rows) ? invoices.rows : [];
+    const invoiceByKey = new Map();
+    invoiceRows.forEach(invoice => {
+      [invoice.id, invoice.invoice_uuid, invoice.invoice_id, invoice.invoice_number, invoice.invoice_no]
+        .map(value => String(value || '').trim())
+        .filter(Boolean)
+        .forEach(key => invoiceByKey.set(key, invoice));
+    });
+
+    let rawPaymentSchedules = await this.fetchLinkedRowsByColumns_('invoice_payment_schedule', {
+      invoice_id: this.extractUuidKeys_(invoiceRows, ['id', 'invoice_uuid', 'invoice_id']),
+      invoice_number: this.extractTextKeys_(invoiceRows, ['invoice_number', 'invoice_id', 'invoice_no'])
+    }, query => query.order('due_date', { ascending: true, nullsFirst: false }).order('schedule_no', { ascending: true, nullsFirst: false })).catch(error => {
+      console.info('[Client Statement] invoice_payment_schedule unavailable; statement will continue without installment rows.', error?.message || error);
+      return [];
+    });
+
+    if (!rawPaymentSchedules.length && invoiceRows.length) {
+      const fallbackScheduleResult = await this.fetchPaged(
+        'client_scheduled_payments',
+        clientOrId,
+        { page: 1, pageSize: Math.max(invoiceRows.length * 12, 100) },
+        query => query.order('due_date', { ascending: true, nullsFirst: false }).order('schedule_no', { ascending: true, nullsFirst: false })
+      ).catch(error => {
+        console.info('[Client Statement] client_scheduled_payments fallback unavailable.', error?.message || error);
+        return { rows: [] };
+      });
+      rawPaymentSchedules = Array.isArray(fallbackScheduleResult?.rows) ? fallbackScheduleResult.rows : [];
+    }
+
+    const scheduleCountByInvoice = new Map();
+    rawPaymentSchedules.forEach(schedule => {
+      const key = String(schedule.invoice_id || schedule.invoice_number || '').trim();
+      if (key) scheduleCountByInvoice.set(key, (scheduleCountByInvoice.get(key) || 0) + 1);
+    });
+
+    const paymentSchedules = rawPaymentSchedules.map((schedule, index) => {
+      const invoice = invoiceByKey.get(String(schedule.invoice_id || '').trim())
+        || invoiceByKey.get(String(schedule.invoice_number || '').trim())
+        || {};
+      const invoiceNumber = String(invoice.invoice_number || schedule.invoice_number || invoice.invoice_id || 'Invoice').trim();
+      const invoiceKey = String(schedule.invoice_id || schedule.invoice_number || invoice.id || invoice.invoice_id || invoiceNumber).trim();
+      const scheduleNo = Number(schedule.schedule_no || schedule.payment_no || schedule.installment_no || index + 1);
+      const scheduleCount = scheduleCountByInvoice.get(String(schedule.invoice_id || schedule.invoice_number || '').trim())
+        || scheduleCountByInvoice.get(invoiceKey)
+        || 1;
+      const scheduledAmount = toStatementAmount(schedule.scheduled_amount ?? schedule.amount ?? schedule.payment_amount ?? 0);
+      const paidAmount = toStatementAmount(schedule.paid_amount ?? schedule.amount_paid ?? 0);
+      const balanceDue = Math.max(toStatementAmount(schedule.balance_due ?? schedule.pending_amount ?? (scheduledAmount - paidAmount)), 0);
+      const dueDate = String(schedule.due_date || schedule.payment_due_date || invoice.due_date || '').trim();
+      const rawStatus = String(schedule.status || schedule.payment_status || '').trim();
+      const dueTime = dueDate ? new Date(`${dueDate.slice(0, 10)}T12:00:00`).getTime() : NaN;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      let status = rawStatus || 'Scheduled';
+      if (scheduledAmount > 0 && balanceDue <= 0) status = 'Paid';
+      else if (paidAmount > 0 && balanceDue > 0) status = 'Partially Paid';
+      else if (Number.isFinite(dueTime) && dueTime < today.getTime() && balanceDue > 0) status = 'Overdue';
+
+      return {
+        ...schedule,
+        type: 'Scheduled Payment',
+        date: dueDate || invoice.invoice_date || invoice.issue_date || invoice.created_at || '',
+        document_no: `${invoiceNumber} · Payment ${scheduleNo}${scheduleCount > 1 ? ` of ${scheduleCount}` : ''}`,
+        parent_document_no: invoiceNumber,
+        document_id: schedule.id || schedule.schedule_id || '',
+        invoice_id: schedule.invoice_id || invoice.id || invoice.invoice_id || '',
+        invoice_number: invoiceNumber,
+        reference: invoiceNumber,
+        debit: scheduledAmount,
+        credit: 0,
+        due_date: dueDate,
+        status,
+        scheduled_amount: scheduledAmount,
+        paid_amount: paidAmount,
+        balance_due: balanceDue,
+        currency: String(schedule.currency || invoice.currency || 'USD').trim() || 'USD',
+        affects_balance: false,
+        is_payment_schedule: true
+      };
+    });
+
     const rows = [
-      ...(invoices.rows || []).map(inv => ({ ...inv, type: 'Invoice', date: inv.invoice_date || inv.issue_date || inv.created_at, document_no: inv.invoice_number || inv.invoice_id || inv.id, debit: inv.grand_total || inv.invoice_total || inv.total_amount || 0, credit: 0, due_date: inv.due_date, status: inv.status || inv.payment_state })),
+      ...invoiceRows.map(inv => ({ ...inv, type: 'Invoice', date: inv.invoice_date || inv.issue_date || inv.created_at, document_no: inv.invoice_number || inv.invoice_id || inv.id, debit: inv.grand_total || inv.invoice_total || inv.total_amount || 0, credit: 0, due_date: inv.due_date, status: inv.status || inv.payment_state, affects_balance: true })),
+      ...paymentSchedules,
       ...(receipts.rows || []).map(rec => ({ ...rec, type: 'Receipt', date: rec.receipt_date || rec.payment_date || rec.created_at, document_no: rec.receipt_number || rec.receipt_id || rec.id, debit: 0, credit: rec.received_amount || rec.amount_received || rec.amount_paid || rec.paid_amount || rec.amount || 0, due_date: '', status: rec.status || rec.payment_state })),
       ...(creditNotes.rows || []).filter(note => !['cancelled','canceled','void','voided','deleted','rejected'].includes(String(note.status || '').trim().toLowerCase())).map(note => ({ ...note, type: 'Credit Note', date: note.credit_note_date || note.created_at, document_no: note.credit_note_number || note.credit_note_id || note.id, debit: 0, credit: note.credit_amount || note.amount || 0, due_date: '', status: note.status || 'issued', reference: note.invoice_number || note.invoice_id || '' }))
     ].sort((a, b) => new Date(a.date || 0).getTime() - new Date(b.date || 0).getTime());
     let running = 0;
-    rows.forEach(row => { running += Number(row.debit || 0) - Number(row.credit || 0); row.running_balance = running; });
+    rows.forEach(row => {
+      if (row.affects_balance !== false) running += Number(row.debit || 0) - Number(row.credit || 0);
+      row.running_balance = running;
+    });
     const total = rows.length;
     const { page, pageSize, from, to } = this.normalizePagedOptions(options);
-    return { ...overview, rows: rows.slice(from, to + 1), statementRows: rows, invoices, receipts, creditNotes, credit_notes: creditNotes, total, page, pageSize, totalPages: Math.max(Math.ceil(total / pageSize), 1) };
+    return {
+      ...overview,
+      rows: rows.slice(from, to + 1),
+      statementRows: rows,
+      paymentSchedules: { rows: paymentSchedules, total: paymentSchedules.length, page: 1, pageSize: paymentSchedules.length || 25, totalPages: 1 },
+      payment_schedules: paymentSchedules,
+      invoices,
+      receipts,
+      creditNotes,
+      credit_notes: creditNotes,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.max(Math.ceil(total / pageSize), 1)
+    };
   },
   async getClientOnboarding(clientOrId = {}, options = {}) {
     return this.fetchPaged('onboarding_requests', clientOrId, options, query => query.order('created_at', { ascending: false, nullsFirst: false }));

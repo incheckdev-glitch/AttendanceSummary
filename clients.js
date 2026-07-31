@@ -1936,7 +1936,7 @@ const Clients = {
     return Math.round((parsed.getTime() - today.getTime()) / 86400000);
   },
   getPaymentStatus(row = {}) {
-    const pending = this.toNumberSafe(row.pending_amount ?? row.amount_due ?? row.balance ?? 0);
+    const pending = this.toNumberSafe(row.pending_amount ?? row.balance_due ?? row.amount_due ?? row.balance ?? 0);
     const paid = this.toNumberSafe(row.amount_paid ?? row.received_amount ?? row.credit ?? 0);
     const dueDate = String(row.due_date || row.dueDate || '').trim();
     const daysLeft = this.getDaysLeft(dueDate);
@@ -2646,11 +2646,11 @@ const Clients = {
       .map(row => {
         const debit = this.toNumberSafe(row.debit);
         const credit = this.toNumberSafe(row.credit);
-        running += debit - credit;
+        if (row.affects_balance !== false) running += debit - credit;
         return { ...row, debit, credit, running_balance: running };
       });
   },
-  buildClientStatementRows(client) {
+  buildClientStatementRows(client, paymentSchedules = []) {
     const clientId = String(client?.client_id || '').trim();
     const invoices = this.listClientRelatedInvoices_(clientId);
     const receipts = this.listClientRelatedReceipts_(clientId);
@@ -2670,6 +2670,13 @@ const Clients = {
           _summary_adjustment: true
         }));
     }
+    const invoiceByKey = new Map();
+    invoices.forEach(invoice => {
+      [invoice.id, invoice.invoice_uuid, invoice.invoice_id, invoice.invoice_number, invoice.invoice_no]
+        .map(value => String(value || '').trim())
+        .filter(Boolean)
+        .forEach(key => invoiceByKey.set(key, invoice));
+    });
     const invoiceRows = invoices.map(item => ({
       date: item.invoice_date || item.issued_date || item.issue_date || item.created_at || item.updated_at,
       type: 'Invoice',
@@ -2681,8 +2688,48 @@ const Clients = {
       due_date: item.due_date || item.payment_due_date || '',
       status: this.getPaymentStatus(item),
       notes: item.notes || item.status || item.payment_state || '',
-      currency: String(item.currency || '').trim() || 'USD'
+      currency: String(item.currency || '').trim() || 'USD',
+      affects_balance: true
     }));
+    const rawSchedules = Array.isArray(paymentSchedules) ? paymentSchedules : [];
+    const scheduleCountByInvoice = new Map();
+    rawSchedules.forEach(schedule => {
+      const key = String(schedule.invoice_id || schedule.invoice_number || '').trim();
+      if (key) scheduleCountByInvoice.set(key, (scheduleCountByInvoice.get(key) || 0) + 1);
+    });
+    const scheduledPaymentRows = rawSchedules.map((item, index) => {
+      if (item?.is_payment_schedule && item?.affects_balance === false && item?.document_no) return { ...item };
+      const invoice = invoiceByKey.get(String(item.invoice_id || '').trim())
+        || invoiceByKey.get(String(item.invoice_number || '').trim())
+        || {};
+      const normalized = this.normalizeScheduledPayment_({ ...item, raw: invoice });
+      const invoiceNumber = String(invoice.invoice_number || item.invoice_number || normalized.invoice_reference || 'Invoice').trim();
+      const scheduleNo = Number(normalized.schedule_no || index + 1);
+      const key = String(item.invoice_id || item.invoice_number || invoice.id || invoice.invoice_id || invoiceNumber).trim();
+      const scheduleCount = scheduleCountByInvoice.get(String(item.invoice_id || item.invoice_number || '').trim())
+        || scheduleCountByInvoice.get(key)
+        || 1;
+      return {
+        ...item,
+        date: normalized.due_date || invoice.invoice_date || invoice.issue_date || invoice.created_at || '',
+        type: 'Scheduled Payment',
+        document_no: `${invoiceNumber} · Payment ${scheduleNo}${scheduleCount > 1 ? ` of ${scheduleCount}` : ''}`,
+        document_id: normalized.schedule_id,
+        invoice_id: normalized.invoice_id || invoice.id || invoice.invoice_id || '',
+        invoice_number: invoiceNumber,
+        reference: invoiceNumber,
+        debit: normalized.scheduled_amount,
+        credit: 0,
+        due_date: normalized.due_date,
+        status: this.getScheduledPaymentBadge_(normalized).label,
+        scheduled_amount: normalized.scheduled_amount,
+        paid_amount: normalized.paid_amount,
+        balance_due: normalized.balance_due,
+        currency: normalized.currency || invoice.currency || 'USD',
+        affects_balance: false,
+        is_payment_schedule: true
+      };
+    });
     const receiptRows = receipts.map(item => ({
       date: item.payment_date || item.receipt_date || item.received_at || item.created_at || item.updated_at,
       type: 'Receipt',
@@ -2709,7 +2756,7 @@ const Clients = {
       notes: item.description || item.status || '',
       currency: String(item.currency || '').trim() || 'USD'
     }));
-    return this.computeRunningBalance([...invoiceRows, ...receiptRows, ...creditNoteRows]);
+    return this.computeRunningBalance([...invoiceRows, ...scheduledPaymentRows, ...receiptRows, ...creditNoteRows]);
   },
 
   getAnnualSaasServiceDates_(item = {}) {
@@ -3203,7 +3250,10 @@ const Clients = {
     current = this.mergeLinkedClientRowsFromResult_(current, result);
     if (result.detail) current.detail = { ...(current.detail || {}), ...result.detail };
     if (tabKey === 'scheduledPayments') current.scheduledPayments = result.rows || [];
-    if (tabKey === 'statement') current.statementRows = result.statementRows || result.rows || [];
+    if (tabKey === 'statement') {
+      current.statementRows = result.statementRows || result.rows || [];
+      current.paymentSchedules = this.getClientDetailResultRows_(result.paymentSchedules || result.payment_schedules);
+    }
     if (tabKey === 'renewals') current.renewalRows = result.renewalRows || result.renewal_rows || [];
 
     const rowClient = this.state.rows.find(row => row.client_id === clientId) || current.detail || {};
@@ -3335,7 +3385,9 @@ const Clients = {
         if (normalizedTab === 'overview') {
           result = { ...(result || {}), agreements: { rows: this.listClientRelatedAgreements_(clientId) }, invoices: { rows: this.listClientRelatedInvoices_(clientId) }, receipts: { rows: this.listClientRelatedReceipts_(clientId) }, agreementItems: { rows: this.listClientAgreementLocationItems_(clientId) }, invoiceItems: { rows: this.listClientRelatedInvoiceItems_(clientId) }, receiptItems: { rows: this.listClientRelatedReceiptItems_(clientId) } };
         } else if (normalizedTab === 'statement') {
-          result = { ...(result || {}), rows: this.buildClientStatementRows(client), statementRows: this.buildClientStatementRows(client), invoices: { rows: this.listClientRelatedInvoices_(clientId) }, receipts: { rows: this.listClientRelatedReceipts_(clientId) } };
+          const schedules = this.getClientDetailResultRows_(result?.paymentSchedules || result?.payment_schedules);
+          const statementRows = this.buildClientStatementRows(client, schedules);
+          result = { ...(result || {}), rows: statementRows, statementRows, invoices: { rows: this.listClientRelatedInvoices_(clientId) }, receipts: { rows: this.listClientRelatedReceipts_(clientId) } };
         } else if (normalizedTab === 'renewals') {
           const renewalRows = this.buildClientRenewalRows({ ...client, invoices: this.listClientRelatedInvoices_(clientId), invoice_items: this.listClientRelatedInvoiceItems_(clientId) });
           result = { ...(result || {}), rows: renewalRows, renewalRows, invoices: { rows: this.listClientRelatedInvoices_(clientId) }, invoiceItems: { rows: this.listClientRelatedInvoiceItems_(clientId) } };
@@ -3379,7 +3431,7 @@ const Clients = {
     const { status, dateFrom, dateTo, searchDoc } = this.state.statementFilters;
     return rows.filter(row => {
       const rowStatus = this.normalizeText(this.getStatementRowStatus(row));
-      if (status === 'open' && !rowStatus.includes('open') && !rowStatus.includes('partial')) return false;
+      if (status === 'open' && !rowStatus.includes('open') && !rowStatus.includes('partial') && !rowStatus.includes('scheduled') && !rowStatus.includes('upcoming')) return false;
       if (status === 'overdue' && !rowStatus.includes('overdue')) return false;
       if (status === 'received' && !rowStatus.includes('received')) return false;
       const rowDate = String(row.date || '').trim();
@@ -3612,9 +3664,11 @@ const Clients = {
   },
   renderStatementSection_(detailData = {}) {
     const fallbackClient = this.state.rows.find(row => row.client_id === this.state.selectedClientId) || {};
+    const paymentSchedules = this.getClientDetailResultRows_(detailData.paymentSchedules || detailData.payment_schedules);
     const baseStatementRows = Array.isArray(detailData.statementRows) && detailData.statementRows.length
       ? detailData.statementRows
-      : this.buildClientStatementRows(fallbackClient);
+      : this.buildClientStatementRows(fallbackClient, paymentSchedules);
+    const filteredStatementRows = this.getFilteredStatementRows_(baseStatementRows);
     const statementPageState = this.getClientTabPageState('statement');
     const statementPagination = this.getClientPaginatedRows({
       rows: baseStatementRows,
@@ -3627,10 +3681,13 @@ const Clients = {
     this.setClientTabPageState('statement', statementPagination.page, statementPageState.pageSize);
     this.renderClientPagination_('statement', { total: statementPagination.totalRows, page: statementPagination.page, pageSize: statementPageState.pageSize, totalPages: statementPagination.totalPages });
     const clientCurrency = this.getClientCurrency_(this.state.selectedClientId);
-    const totalInvoiced = rows.reduce((sum, item) => sum + this.toNumberSafe(item.debit), 0);
-    const totalPaid = rows.reduce((sum, item) => sum + this.toNumberSafe(item.credit), 0);
+    const accountingRows = filteredStatementRows.filter(item => item.affects_balance !== false);
+    const totalInvoiced = accountingRows.reduce((sum, item) => sum + this.toNumberSafe(item.debit), 0);
+    const totalPaid = accountingRows.reduce((sum, item) => sum + this.toNumberSafe(item.credit), 0);
     const totalDue = Math.max(totalInvoiced - totalPaid, 0);
-    const lastPayment = rows.find(item => this.toNumberSafe(item.credit) > 0)?.date || '';
+    const lastPayment = filteredStatementRows
+      .filter(item => this.toNumberSafe(item.credit) > 0)
+      .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())[0]?.date || '';
     const nextRenewal = ((Array.isArray(detailData.renewalRows) && detailData.renewalRows.length ? detailData.renewalRows : this.buildClientRenewalRows(fallbackClient)) || [])
       .map(item => item.service_end_date || item.renewal_date || item.renewal_due_date)
       .filter(Boolean)
@@ -3661,7 +3718,7 @@ const Clients = {
               <td>${U.escapeHtml(row.currency || 'USD')}</td>
               <td>${U.escapeHtml(this.formatMoneyWithCurrency_(row.debit || 0, row.currency || clientCurrency))}</td>
               <td>${U.escapeHtml(this.formatMoneyWithCurrency_(row.credit || 0, row.currency || clientCurrency))}</td>
-              <td>${U.escapeHtml(this.formatMoneyWithCurrency_(row.running_balance || 0, row.currency || clientCurrency))}</td>
+              <td>${row.affects_balance === false ? '—' : U.escapeHtml(this.formatMoneyWithCurrency_(row.running_balance || 0, row.currency || clientCurrency))}</td>
               <td>${U.escapeHtml(U.fmtDisplayDate(row.due_date) || '—')}</td>
               <td>${U.escapeHtml(this.getStatementRowStatus(row))}</td>
             </tr>`)
@@ -3683,16 +3740,17 @@ const Clients = {
             <td>${U.escapeHtml(row.currency || 'USD')}</td>
             <td style="text-align:right;">${U.escapeHtml(U.fmtNumber(row.debit || 0))}</td>
             <td style="text-align:right;">${U.escapeHtml(U.fmtNumber(row.credit || 0))}</td>
-            <td style="text-align:right;">${U.escapeHtml(U.fmtNumber(row.running_balance || 0))}</td>
+            <td style="text-align:right;">${row.affects_balance === false ? '—' : U.escapeHtml(U.fmtNumber(row.running_balance || 0))}</td>
             <td>${U.escapeHtml(U.fmtDisplayDate(row.due_date) || '—')}</td>
             <td>${U.escapeHtml(this.getStatementRowStatus(row))}</td>
           </tr>`)
           .join('')
       : '<tr><td colspan="9" style="text-align:center;">No statement rows found.</td></tr>';
-    const totalDebit = rows.reduce((sum, item) => sum + this.toNumberSafe(item.debit), 0);
-    const totalPaid = rows.reduce((sum, item) => sum + (this.isStatementReceiptRow_(item) ? this.toNumberSafe(item.credit) : 0), 0);
-    const totalCredited = rows.reduce((sum, item) => sum + (this.isStatementCreditNoteRow_(item) ? this.toNumberSafe(item.credit) : 0), 0);
-    const totalCredit = rows.reduce((sum, item) => sum + this.toNumberSafe(item.credit), 0);
+    const accountingRows = rows.filter(item => item.affects_balance !== false);
+    const totalDebit = accountingRows.reduce((sum, item) => sum + this.toNumberSafe(item.debit), 0);
+    const totalPaid = accountingRows.reduce((sum, item) => sum + (this.isStatementReceiptRow_(item) ? this.toNumberSafe(item.credit) : 0), 0);
+    const totalCredited = accountingRows.reduce((sum, item) => sum + (this.isStatementCreditNoteRow_(item) ? this.toNumberSafe(item.credit) : 0), 0);
+    const totalCredit = accountingRows.reduce((sum, item) => sum + this.toNumberSafe(item.credit), 0);
     const balance = Math.max(totalDebit - totalCredit, 0);
     const clientCurrency = this.getClientCurrency_(client.client_id);
     const statementPeriod = this.getStatementPeriodLabel_(this.state.statementFilters);
@@ -3755,7 +3813,8 @@ const Clients = {
       return;
     }
     const detailData = this.state.detailCache[client.client_id] || {};
-    const baseRows = Array.isArray(detailData.statementRows) && detailData.statementRows.length ? detailData.statementRows : this.buildClientStatementRows(client);
+    const paymentSchedules = this.getClientDetailResultRows_(detailData.paymentSchedules || detailData.payment_schedules);
+    const baseRows = Array.isArray(detailData.statementRows) && detailData.statementRows.length ? detailData.statementRows : this.buildClientStatementRows(client, paymentSchedules);
     const rows = this.getFilteredStatementRows_(baseRows);
     const printableDoc = this.buildStatementExportHtml_(client, rows);
     const clientName = client.customer_name || client.customer_legal_name || client.client_id || 'Client';
