@@ -1614,12 +1614,62 @@
     exportCsv(`incheck360_expense_report_${today()}.csv`, rows);
   }
 
-  function openExpenseReport() {
+  async function waitForExpenseReport(reportWindow, expectedRows) {
+    const reportDocument = reportWindow.document;
+    if (reportDocument.readyState !== 'complete') {
+      await new Promise(resolve => reportWindow.addEventListener('load', resolve, { once: true }));
+    }
+
+    if (reportDocument.fonts?.ready) await reportDocument.fonts.ready;
+    const images = Array.from(reportDocument.images);
+    await Promise.all(images.map(image => {
+      if (image.complete && image.naturalWidth > 0) return image.decode?.().catch(() => {}) || Promise.resolve();
+      if (image.complete) return Promise.reject(new Error(`Expense report image could not be loaded: ${image.currentSrc || image.src}`));
+      return new Promise((resolve, reject) => {
+        image.addEventListener('load', resolve, { once: true });
+        image.addEventListener('error', () => reject(new Error(`Expense report image could not be loaded: ${image.currentSrc || image.src}`)), { once: true });
+      });
+    }));
+
+    await new Promise(resolve => reportWindow.requestAnimationFrame(() => reportWindow.requestAnimationFrame(resolve)));
+    const reportRef = { current: reportDocument.querySelector('[data-expense-report-pdf]') };
+    if (!reportRef.current) throw new Error('Expense report PDF container was not found.');
+    if (!reportRef.current.innerText.trim()) throw new Error('Expense report PDF container is empty.');
+    if (reportRef.current.querySelectorAll('tbody tr').length !== expectedRows) {
+      throw new Error('Expense report table rows were not fully rendered.');
+    }
+    if (!reportRef.current.querySelector('.filters')?.innerText.trim() || !reportRef.current.querySelector('.currency-grid')?.innerText.trim()) {
+      throw new Error('Expense report filters or totals were not fully rendered.');
+    }
+    const bounds = reportRef.current.getBoundingClientRect();
+    if (bounds.width === 0 || bounds.height === 0 || reportRef.current.scrollWidth === 0 || reportRef.current.scrollHeight === 0) {
+      throw new Error('The rendered expense report is empty.');
+    }
+    return reportRef.current;
+  }
+
+  async function openExpenseReport(triggerButton) {
     const rows = filteredExpenses();
     if (!rows.length) return toast('No expenses match the active filters.');
 
-    const reportWindow = global.open('', '_blank', 'noopener,noreferrer,width=1480,height=940');
-    if (!reportWindow) return toast('Please allow pop-ups to open the expense report.');
+    if (triggerButton?.disabled) return;
+    if (triggerButton) {
+      triggerButton.disabled = true;
+      triggerButton.setAttribute('aria-busy', 'true');
+      triggerButton.textContent = 'Preparing PDF…';
+    }
+
+    // Do not use the noopener feature here: some browsers intentionally return null
+    // for that mode, leaving the newly opened document as an untouched blank page.
+    const reportWindow = global.open('', '_blank', 'width=1480,height=940');
+    if (!reportWindow) {
+      if (triggerButton) {
+        triggerButton.disabled = false;
+        triggerButton.removeAttribute('aria-busy');
+        triggerButton.textContent = 'Export Branded PDF';
+      }
+      return toast('Please allow pop-ups to open the expense report.');
+    }
 
     const currencyTotals = expenseReportCurrencyTotals(rows);
     const statusCounts = expenseReportStatusCounts(rows);
@@ -1674,17 +1724,17 @@
       .currency-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:9px}
       .currency-card{border:1px solid #d7e5ef;border-radius:11px;padding:9px 10px;background:#fbfdff;break-inside:avoid}.currency-top{display:flex;align-items:center;justify-content:space-between;gap:10px}.currency-top span{font-weight:900;color:#168493}.currency-top strong{font-size:13px;color:#0b315e}.currency-detail{display:flex;gap:10px;flex-wrap:wrap;margin-top:5px;color:#66809a;font-size:8.5px}
       .status-row{display:flex;gap:6px;flex-wrap:wrap;margin:5px 0 12px}.status-chip{display:inline-flex;align-items:center;gap:7px;border:1px solid #dbe8f3;background:#f8fbfe;border-radius:999px;padding:5px 9px;color:#526b84}.status-chip b{color:#173b66}.status-paid{background:#e9f9f1!important;color:#17623e!important;border-color:#b8e8ce!important}.status-approved{background:#eaf2ff!important;color:#1f4f9c!important;border-color:#c4d8f8!important}.status-draft{background:#fff7df!important;color:#865f05!important;border-color:#f1dc9c!important}.status-locked{background:#f0edff!important;color:#51419a!important;border-color:#d6cff8!important}
-      .table-shell{border:1px solid #cfdeea;border-radius:11px;overflow:hidden}
+      .table-shell{border:1px solid #cfdeea;border-radius:11px;overflow:visible}
       table{width:100%;border-collapse:collapse;table-layout:fixed}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}
       th{padding:7px 6px;background:#0b315e;color:#fff;text-align:left;text-transform:uppercase;letter-spacing:.45px;font-size:7.5px}td{padding:7px 6px;border-bottom:1px solid #e3ecf3;vertical-align:top;color:#263f5c;font-size:8.2px;overflow-wrap:anywhere}tbody tr:nth-child(even){background:#f8fbfd}tbody tr:last-child td{border-bottom:0}
       td strong{display:block;color:#0d315e;font-size:8.5px}td small{display:block;color:#71879c;font-size:7.4px;margin-top:2px}.description-cell{line-height:1.35;max-height:32px;overflow:hidden}.amount{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;font-size:7.8px}.amount.total{font-weight:900;color:#0b315e}.table-status{display:inline-block;border-radius:999px;padding:3px 6px;background:#eef3f7;color:#445f79;font-weight:800;font-size:7.2px;white-space:nowrap}
       footer{margin-top:12px;padding-top:8px;border-top:1px solid #dbe8f3;display:flex;justify-content:space-between;gap:12px;color:#71879c;font-size:8px}.page-number:after{content:"Page " counter(page)}
       .confidential{font-weight:800;color:#46647e}
-      @media print{html,body{background:#fff}.toolbar{display:none!important}.report{width:auto;min-height:0;margin:0;padding:0;border-radius:0;box-shadow:none}.brand-header,.title-row,.filters,.summary,.currency-grid,.status-row,.section-title{break-inside:avoid;page-break-inside:avoid}footer{position:fixed;left:0;right:0;bottom:-8mm;background:#fff;margin:0;padding-top:5px}}
+      @media print{html,body{background:#fff!important;color:#102449!important}.toolbar{display:none!important}.report{width:auto;min-height:0;margin:0;padding:0;border-radius:0;box-shadow:none;background:#fff!important}.table-shell{border-radius:0;overflow:visible}.brand-header,.title-row,.filters,.summary,.currency-grid,.status-row,.section-title{break-inside:avoid;page-break-inside:avoid}thead{display:table-header-group}tfoot{display:table-footer-group}tr,td{break-inside:avoid;page-break-inside:avoid}footer{position:static;background:#fff;margin-top:12px;padding-top:5px}}
       @media(max-width:900px){.filters,.summary{grid-template-columns:repeat(2,minmax(0,1fr))}.currency-grid{grid-template-columns:1fr}.report{margin:0;border-radius:0}}
     </style></head><body>
-      <div class="toolbar"><button class="secondary" onclick="window.close()">Close</button><button class="primary" onclick="window.print()">Print / Save PDF</button></div>
-      <main class="report">
+      <div class="toolbar"><button class="secondary" onclick="window.close()">Close</button><button class="primary" disabled aria-busy="true">Preparing PDF…</button></div>
+      <main class="report" data-expense-report-pdf>
         <header class="brand-header"><img class="logo" src="${esc(logoUrl)}" alt="InCheck360"><div class="company"><strong>InCheck 360 Holding BV</strong>Pyrmontstraat 5, 7513 BN, Enschede, Netherlands<br>info@incheck360.nl</div></header>
         <div class="title-row"><div><h1>Expense Report</h1><p class="subtitle">Filtered accounting expense register · Professional management report</p></div><div class="report-id"><span>Generated</span><strong>${esc(generatedAt)}</strong><span>Prepared by ${esc(authName())}</span></div></div>
         <section class="filters">${filterCards}</section>
@@ -1698,7 +1748,27 @@
     reportWindow.document.open();
     reportWindow.document.write(html);
     reportWindow.document.close();
-    reportWindow.focus();
+    try {
+      await waitForExpenseReport(reportWindow, rows.length);
+      const printButton = reportWindow.document.querySelector('.toolbar .primary');
+      printButton.disabled = false;
+      printButton.removeAttribute('aria-busy');
+      printButton.textContent = 'Print / Save PDF';
+      printButton.addEventListener('click', () => reportWindow.print());
+      reportWindow.opener = null;
+      reportWindow.focus();
+      reportWindow.print();
+    } catch (error) {
+      console.error('[Accounting] Expense Report PDF generation failed', error);
+      toast(`Expense Report PDF could not be generated: ${error.message || 'Unknown error'}`);
+      if (!reportWindow.closed) reportWindow.close();
+    } finally {
+      if (triggerButton?.isConnected) {
+        triggerButton.disabled = false;
+        triggerButton.removeAttribute('aria-busy');
+        triggerButton.textContent = 'Export Branded PDF';
+      }
+    }
   }
 
   async function saveExpenseForm() {
@@ -2124,7 +2194,7 @@
       if (action === 'clear-advanced-filters') { state.filters.advancedSearch = ''; state.filters.expenseFrom = ''; state.filters.expenseTo = ''; state.filters.expenseStatus = 'all'; state.filters.deferredStatus = 'pending'; render(); return; }
       if (action === 'recognize-due-revenue') { recognizeDueRevenue(); return; }
       if (action === 'export-deferred-revenue') { exportCsv('accounting_deferred_revenue_schedule.csv', filteredRevenueSchedules()); return; }
-      if (action === 'export-expense-report') { openExpenseReport(); return; }
+      if (action === 'export-expense-report') { openExpenseReport(actionBtn); return; }
       if (action === 'export-expense-csv') { exportExpenseReportCsv(); return; }
       if (action === 'reset-expense-form' || action === 'reset-tax-form' || action === 'reset-cost-center-form' || action === 'reset-closing-form') { render(); return; }
       if (action === 'save-reconciliation') { saveReconciliation(); return; }
