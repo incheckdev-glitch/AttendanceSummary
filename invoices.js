@@ -1808,11 +1808,7 @@ const Invoices = {
     const customerAddress = String(invoiceData.customer_address || '').trim();
     const bank = this.getInCheckBankDetails();
     const paymentReference = invoiceData.invoice_number || invoiceData.invoiceNumber || invoiceData.invoice_id || invoiceData.id || '—';
-    const billingFrequencyValue = U.resolveDocumentBillingFrequency(
-      invoiceData,
-      this.state.selectedAgreement,
-      normalizedItems
-    );
+    const paymentTermsDisplay = U.resolveDocumentPaymentTerms(invoiceData);
     const paymentTermValue = String(invoiceData.payment_term || this.state.selectedAgreement?.payment_term || '').trim();
     const customPaymentTerms = String(invoiceData.payment_term_custom ?? invoiceData.payment_terms_custom ?? '').trim();
     const customPaymentTermsHtml = paymentTermValue === 'Custom' && customPaymentTerms
@@ -1941,7 +1937,7 @@ const Invoices = {
               <div class="meta-row"><div class="meta-key">Invoice #</div><div>${textValue(invoiceData.invoice_number || invoiceData.invoice_id)}</div></div>
               <div class="meta-row"><div class="meta-key">Invoice Date</div><div>${dateValue(invoiceData.issue_date || invoiceData.invoice_date)}</div></div>
               <div class="meta-row"><div class="meta-key">Due Date</div><div>${dateValue(invoiceData.due_date)}</div></div>
-              ${billingFrequencyValue ? `<div class="meta-row"><div class="meta-key">Billing Frequency</div><div>${textValue(billingFrequencyValue)}</div></div>` : ''}
+              ${paymentTermsDisplay ? `<div class="meta-row"><div class="meta-key">Payment Terms</div><div>${textValue(paymentTermsDisplay)}</div></div>` : ''}
             </div>
           </div>
         </section>

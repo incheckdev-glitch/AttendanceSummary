@@ -2366,7 +2366,7 @@ const Receipts = {
     const customerAddress = r.customer_address || invoice?.customer_address;
     const invoiceDisplay = r.invoice_number || r.invoice_id || invoice?.invoice_number || invoice?.invoice_id;
     const linkedPaymentTerm = String(invoice?.payment_term || agreement?.payment_term || agreement?.payment_terms || '').trim();
-    const billingFrequencyValue = U.resolveDocumentBillingFrequency(invoice, agreement, invoiceItems, sourceItems);
+    const paymentTermsDisplay = U.resolveDocumentPaymentTerms(invoice);
     const linkedCustomPaymentTerms = String(invoice?.payment_term_custom ?? invoice?.payment_terms_custom ?? '').trim();
     const customPaymentTermsHtml = linkedPaymentTerm === 'Custom' && linkedCustomPaymentTerms
       ? `<section class="document-note-box custom-payment-terms-box"><h2>Custom Payment Terms</h2><div>${text(linkedCustomPaymentTerms)}</div></section>`
@@ -2462,7 +2462,7 @@ const Receipts = {
               <div class="meta-row"><div class="meta-key">Receipt No.</div><div>${text(r.receipt_number || r.receipt_id)}</div></div>
               <div class="meta-row"><div class="meta-key">Receipt Date</div><div>${date(r.receipt_date)}</div></div>
               <div class="meta-row"><div class="meta-key">Invoice No.</div><div>${text(invoiceDisplay)}</div></div>
-              ${billingFrequencyValue ? `<div class="meta-row"><div class="meta-key">Billing Frequency</div><div>${text(billingFrequencyValue)}</div></div>` : ''}
+              ${paymentTermsDisplay ? `<div class="meta-row"><div class="meta-key">Payment Terms</div><div>${text(paymentTermsDisplay)}</div></div>` : ''}
             </div>
           </div>
         </section>

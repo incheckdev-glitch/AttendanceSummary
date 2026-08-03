@@ -79,32 +79,12 @@ const INCHECK360_DOCUMENT_LOGO_DATA_URI = 'data:image/png;base64,iVBORw0KGgoAAAA
 
 const U = {
   /**
-   * Resolve the customer-facing billing cadence used on financial documents.
-   * Explicit billing-frequency values win over legacy payment-term fallbacks.
+   * Convert a stored payment term into the customer-facing cadence shown on
+   * financial documents. This is deliberately display-only: the stored term
+   * continues to drive due dates and payment schedules.
    */
-  resolveDocumentBillingFrequency(...sources) {
+  resolveDocumentPaymentTerms(...sources) {
     const rows = sources.flat(Infinity).filter(value => value && typeof value === 'object');
-    const displayValues = {
-      monthly: 'Monthly',
-      quarterly: 'Quarterly',
-      'semi-annually': 'Semi-Annually',
-      'semi annually': 'Semi-Annually',
-      'semi-annual': 'Semi-Annually',
-      semiannual: 'Semi-Annually',
-      semiannually: 'Semi-Annually',
-      annually: 'Annually',
-      annual: 'Annually',
-      yearly: 'Annually'
-    };
-    const normalizeFrequency = value => displayValues[String(value || '').trim().toLowerCase().replace(/\s+/g, ' ')] || '';
-    const frequencyKeys = ['billing_frequency', 'billingFrequency', 'billing_cycle', 'billingCycle', 'frequency'];
-    for (const row of rows) {
-      for (const key of frequencyKeys) {
-        const display = normalizeFrequency(row[key]);
-        if (display) return display;
-      }
-    }
-
     const paymentTermMap = {
       'net 7': 'Monthly',
       'net 14': 'Quarterly',
