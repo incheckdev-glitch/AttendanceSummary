@@ -2188,6 +2188,7 @@ const Receipts = {
     const client = this.getSupabaseClient();
     let invoice = null;
     let invoiceItems = [];
+    let agreement = null;
     const invoiceUuid = String(detail.receipt.invoice_id || '').trim();
     if (client && invoiceUuid) {
       const [{ data: invoiceRow }, { data: invoiceItemRows }] = await Promise.all([
@@ -2196,12 +2197,21 @@ const Receipts = {
       ]);
       invoice = invoiceRow || null;
       invoiceItems = Array.isArray(invoiceItemRows) ? invoiceItemRows : [];
+      const agreementRef = String(invoice?.agreement_uuid || invoice?.agreement_id || detail.receipt.agreement_id || '').trim();
+      if (agreementRef) {
+        const byUuid = await client.from('agreements').select('*').eq('id', agreementRef).maybeSingle();
+        agreement = byUuid?.data || null;
+        if (!agreement) {
+          const byNumber = await client.from('agreements').select('*').eq('agreement_id', agreementRef).maybeSingle();
+          agreement = byNumber?.data || null;
+        }
+      }
     }
     const invoiceReceipts = Array.isArray(detail?.invoiceReceipts)
       ? detail.invoiceReceipts
       : await this.fetchReceiptsForInvoice(invoice || detail.receipt || {}).catch(() => []);
     const normalizedReceipt = this.normalizeReceiptWithLedger(detail.receipt, invoice || {}, invoiceReceipts);
-    return { receiptUuid, receipt: normalizedReceipt, items: this.filterReceiptCommercialItems(detail.items), invoice, invoiceItems: this.filterReceiptCommercialItems(invoiceItems), invoiceReceipts };
+    return { receiptUuid, receipt: normalizedReceipt, items: this.filterReceiptCommercialItems(detail.items), invoice, agreement, invoiceItems: this.filterReceiptCommercialItems(invoiceItems), invoiceReceipts };
   },
   getItemDescription(item = {}) {
     return String(
@@ -2220,7 +2230,7 @@ const Receipts = {
     const shouldShowDescription = itemDescription && itemDescription !== itemName;
     return `<div class="doc-item-name">${U.escapeHtml(itemName || '—')}</div>${shouldShowDescription ? `<div class="doc-item-description">${U.escapeHtml(itemDescription)}</div>` : ''}`;
   },
-  buildReceiptPreviewHtml(receipt = {}, items = [], invoice = null, invoiceItems = [], invoiceReceipts = null) {
+  buildReceiptPreviewHtml(receipt = {}, items = [], invoice = null, invoiceItems = [], invoiceReceipts = null, agreement = null) {
     const r = this.normalizeReceipt(receipt || {});
     const normalizedItems = this.filterReceiptCommercialItems(items).map(item => this.normalizeItem(item));
     const fallbackItems = this.filterReceiptCommercialItems(invoiceItems).map(item => this.normalizeItem(item));
@@ -2355,7 +2365,8 @@ const Receipts = {
     const customerName = r.customer_legal_name || r.customer_name || invoice?.customer_legal_name || invoice?.customer_name;
     const customerAddress = r.customer_address || invoice?.customer_address;
     const invoiceDisplay = r.invoice_number || r.invoice_id || invoice?.invoice_number || invoice?.invoice_id;
-    const linkedPaymentTerm = String(invoice?.payment_term || '').trim();
+    const linkedPaymentTerm = String(invoice?.payment_term || agreement?.payment_term || agreement?.payment_terms || '').trim();
+    const billingFrequencyValue = U.resolveDocumentBillingFrequency(invoice, agreement, invoiceItems, sourceItems);
     const linkedCustomPaymentTerms = String(invoice?.payment_term_custom ?? invoice?.payment_terms_custom ?? '').trim();
     const customPaymentTermsHtml = linkedPaymentTerm === 'Custom' && linkedCustomPaymentTerms
       ? `<section class="document-note-box custom-payment-terms-box"><h2>Custom Payment Terms</h2><div>${text(linkedCustomPaymentTerms)}</div></section>`
@@ -2451,7 +2462,7 @@ const Receipts = {
               <div class="meta-row"><div class="meta-key">Receipt No.</div><div>${text(r.receipt_number || r.receipt_id)}</div></div>
               <div class="meta-row"><div class="meta-key">Receipt Date</div><div>${date(r.receipt_date)}</div></div>
               <div class="meta-row"><div class="meta-key">Invoice No.</div><div>${text(invoiceDisplay)}</div></div>
-              ${linkedPaymentTerm === 'Custom' ? `<div class="meta-row"><div class="meta-key">Payment Terms</div><div>Custom</div></div>` : ''}
+              ${billingFrequencyValue ? `<div class="meta-row"><div class="meta-key">Billing Frequency</div><div>${text(billingFrequencyValue)}</div></div>` : ''}
             </div>
           </div>
         </section>
@@ -2563,8 +2574,8 @@ const Receipts = {
       return;
     }
     try {
-      const { receipt, items, invoice, invoiceItems, invoiceReceipts } = await this.loadReceiptPreviewData(id);
-      const html = this.buildReceiptPreviewHtml(receipt, items, invoice, invoiceItems, invoiceReceipts);
+      const { receipt, items, invoice, agreement, invoiceItems, invoiceReceipts } = await this.loadReceiptPreviewData(id);
+      const html = this.buildReceiptPreviewHtml(receipt, items, invoice, invoiceItems, invoiceReceipts, agreement);
       const brandedHtml = U.addIncheckDocumentLogo(U.formatPreviewHtmlDates(html));
       const label = this.receiptDisplayId(receipt) || id;
       if (E.receiptPreviewTitle) E.receiptPreviewTitle.textContent = `RECEIPT VOUCHER · ${label}`;

@@ -33,6 +33,7 @@ const tests = [
   'tests/proposal-customer-integrity.test.js',
   'tests/relationship-uuid-integrity.test.js',
   'tests/invoice-payment-schedule-anchor.test.js',
+  'tests/document-billing-frequency.test.js',
   'tests/create-invoice-gate.test.js',
   'tests/renewal-no-needed.test.js',
   'tests/monthly-renewal-admin-access.test.js',
