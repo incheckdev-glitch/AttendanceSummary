@@ -16,6 +16,7 @@ const tests = [
   'tests/csm-activity-notes.test.js',
   'tests/proposal-approval-logic.test.js',
   'tests/proposal-default-terms.test.js',
+  'tests/proposal-expired-admin-acceptance.test.js',
   'tests/payment-forecast-rpc.test.js',
   'tests/payment-forecast-footer.test.js',
   'tests/credit-notes-idempotency-preview.test.js',
