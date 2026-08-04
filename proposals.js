@@ -4,7 +4,10 @@ const Proposals = {
     return role === 'admin';
   },
   canUseAdminOverride() {
-    return Boolean(window.AdminOverride?.canOverride?.() || Permissions?.isAdminLike?.());
+    return Boolean(window.AdminOverride?.canOverride?.());
+  },
+  canEditProposal() {
+    return this.canUseAdminOverride() || Boolean(Permissions?.canUpdateProposal?.());
   },
   applyAdminOverrideBanner(message = '') {
     if (!this.canUseAdminOverride() || !E.proposalForm) return;
@@ -13,7 +16,24 @@ const Proposals = {
       message: message || 'Admin Override Mode: this proposal can be edited even if it is accepted, expired, or normally locked.'
     });
   },
-  logAdminOverride(action = 'proposal_override', oldValues = null, newValues = null) {
+  async requestAdminOverrideReason({ agreementExists = false } = {}) {
+    return new Promise(resolve => {
+      const modal = document.createElement('div');
+      modal.className = 'modal';
+      modal.style.display = 'flex';
+      modal.innerHTML = `<div class="modal-content" style="max-width:560px"><div class="modal-header"><h2 style="margin:0">Save Admin Override</h2></div><div class="modal-body">${agreementExists ? '<div class="admin-override-banner"><strong>This accepted proposal is linked to an existing agreement.</strong><br><br>Changes made to the proposal will not automatically modify the existing agreement.<br>Use an amendment if the agreement must also be updated.</div>' : ''}<label class="filter-row"><span class="muted">Reason for editing locked proposal</span><textarea class="input" data-admin-proposal-reason rows="3" required></textarea></label><div class="muted" data-admin-proposal-reason-error style="display:none;color:#b91c1c">An override reason is required.</div></div><div class="modal-footer"><button class="btn btn-incheck-outline" type="button" data-admin-proposal-cancel>Cancel</button><button class="btn btn-incheck-primary" type="button" data-admin-proposal-confirm>Save Proposal Only</button></div></div>`;
+      document.body.appendChild(modal);
+      const finish = value => { modal.remove(); resolve(value); };
+      modal.querySelector('[data-admin-proposal-cancel]').addEventListener('click', () => finish(''));
+      modal.querySelector('[data-admin-proposal-confirm]').addEventListener('click', () => {
+        const reason = String(modal.querySelector('[data-admin-proposal-reason]').value || '').trim();
+        if (!reason) { modal.querySelector('[data-admin-proposal-reason-error]').style.display = ''; return; }
+        finish(reason);
+      });
+      modal.querySelector('[data-admin-proposal-reason]').focus();
+    });
+  },
+  logAdminOverride(action = 'proposal_override', oldValues = null, newValues = null, reason = '') {
     if (!this.canUseAdminOverride()) return;
     const recordId = String(E.proposalForm?.dataset?.id || this.state.currentProposalId || newValues?.id || newValues?.proposal_id || '').trim();
     window.AdminOverride?.logOverride?.({
@@ -22,7 +42,7 @@ const Proposals = {
       action,
       oldValues,
       newValues,
-      reason: 'Admin override from Proposals module'
+      reason: String(reason || 'Admin override from Proposals module').trim()
     });
   },
   signedDocumentBucket: 'proposal-signed-documents',
@@ -2470,11 +2490,27 @@ const Proposals = {
     const preparedUpdates = this.buildProposalForPersist(updates, items, { ensureBusinessProposalId: false });
     const preparedItems = (Array.isArray(items) ? items : []).map(item => this.normalizeProposalItemForSave(item));
     const preparedForSave = this.prepareProposalForSave(preparedUpdates);
-    const response = await Api.requestWithSession('proposals', 'update', {
-      id: proposalId,
-      updates: preparedForSave,
-      items: preparedItems
-    });
+    let response;
+    if (this.canUseAdminOverride()) {
+      const client = this.getSupabaseClient();
+      if (!client?.rpc) throw new Error('Supabase client is not available for Admin override.');
+      const reason = String(this.state.adminOverrideReason || '').trim();
+      if (!reason) throw new Error('Reason for editing locked proposal is required.');
+      const { data, error } = await client.rpc('admin_update_locked_proposal', {
+        p_proposal_id: proposalId,
+        p_changes: { proposal: preparedForSave, items: preparedItems },
+        p_reason: reason
+      });
+      if (error) throw error;
+      if (!data) throw new Error('Supabase did not confirm the Admin override update.');
+      response = data;
+    } else {
+      response = await Api.requestWithSession('proposals', 'update', {
+        id: proposalId,
+        updates: preparedForSave,
+        items: preparedItems
+      });
+    }
     this.refreshCompanyLifecycleStatus(preparedForSave, 'Proposal');
     const statusKeys = ['status', 'proposal_status'];
     const isStatusUpdate = statusKeys.some(key => Object.prototype.hasOwnProperty.call(preparedForSave || {}, key));
@@ -4087,11 +4123,19 @@ const Proposals = {
     this.syncProposalAcceptedLockMessage(false);
   },
   setFormReadOnly(readOnly) {
-    this.state.formReadOnly = !!readOnly;
+    const canEditProposal = this.canUseAdminOverride() || !readOnly;
+    readOnly = !canEditProposal;
+    this.state.formReadOnly = readOnly;
     if (!E.proposalForm) return;
     E.proposalForm.querySelectorAll('input, select, textarea').forEach(el => {
       if (el.id === 'proposalSignedDocumentFile') return;
       el.disabled = !!readOnly;
+      if (this.canUseAdminOverride() && el.id !== 'proposalFormProposalId') {
+        el.readOnly = false;
+        el.removeAttribute('readonly');
+        el.removeAttribute('aria-readonly');
+        el.classList.remove('readonly-field', 'locked-field');
+      }
     });
     [E.proposalAddAnnualRowBtn, E.proposalAddOneTimeRowBtn, E.proposalAddHardwareRowBtn, E.proposalAddCapabilityRowBtn, E.proposalResetTermsBtn].forEach(btn => {
       if (!btn) return;
@@ -4103,7 +4147,7 @@ const Proposals = {
     if (E.proposalFormSaveBtn) E.proposalFormSaveBtn.style.display = readOnly ? 'none' : '';
     this.syncProposalAcceptedLockMessage(readOnly && (this.isProposalAccepted(this.state.currentProposal || {}) || this.isProposalExpired(this.state.currentProposal || {})));
     const lockedIds=['proposalFormCustomerName','proposalFormCustomerAddress','proposalFormCustomerContactName','proposalFormCustomerContactMobile','proposalFormCustomerContactEmail','proposalFormProviderContactName','proposalFormProviderContactMobile','proposalFormProviderContactEmail','proposalFormCustomerSignatoryName','proposalFormCustomerSignatoryTitle','proposalFormProviderSignatoryName','proposalFormProviderSignatoryTitle'];
-    lockedIds.forEach(id=>{const el=document.getElementById(id); if(!el) return; el.readOnly=true; el.classList.add('readonly-field','locked-field'); el.setAttribute('aria-readonly','true');});
+    lockedIds.forEach(id=>{const el=document.getElementById(id); if(!el) return; el.readOnly=readOnly; el.classList.toggle('readonly-field', readOnly); el.classList.toggle('locked-field', readOnly); if(readOnly) el.setAttribute('aria-readonly','true'); else el.removeAttribute('aria-readonly');});
     this.refreshSignedDocumentUi(this.state.currentProposal || {});
     this.syncPocDetailsVisibility();
     if (E.proposalFormDeleteBtn && readOnly) E.proposalFormDeleteBtn.style.display = 'none';
@@ -5012,7 +5056,7 @@ const Proposals = {
     const acceptedLocked = this.isProposalAccepted(base);
     const expiredLocked = this.isProposalExpired(base);
     const adminOverride = this.canUseAdminOverride();
-    const effectiveReadOnly = adminOverride ? !!readOnly : (!!readOnly || acceptedLocked || expiredLocked);
+    const effectiveReadOnly = adminOverride ? false : (!!readOnly || acceptedLocked || expiredLocked);
     this.resetForm();
     this.state.formMode = mode;
     this.state.formReadOnly = effectiveReadOnly;
@@ -5089,9 +5133,9 @@ const Proposals = {
       E.proposalFormDeleteBtn.style.display = mode === 'edit' && !effectiveReadOnly && Permissions.canDeleteProposal() ? '' : 'none';
     if (E.proposalGenerateELinkBtn) E.proposalGenerateELinkBtn.style.display = mode === 'edit' && Permissions.canPreviewProposal() ? '' : 'none';
     if (E.proposalFormSaveBtn) {
-      const canSave = mode === 'edit' ? Permissions.canUpdateProposal() : Permissions.canCreateProposal();
+      const canSave = mode === 'edit' ? this.canEditProposal() : Permissions.canCreateProposal();
       E.proposalFormSaveBtn.style.display = !effectiveReadOnly && canSave ? '' : 'none';
-      E.proposalFormSaveBtn.textContent = mode === 'edit' ? 'Update Proposal' : 'Save Proposal';
+      E.proposalFormSaveBtn.textContent = adminOverride && mode === 'edit' ? 'Save Admin Override' : (mode === 'edit' ? 'Update Proposal' : 'Save Proposal');
     }
 
     this.syncProposalAcceptedLockMessage((acceptedLocked || expiredLocked) && !adminOverride);
@@ -5357,7 +5401,7 @@ const Proposals = {
   async submitForm() {
     if (this.state.saveInFlight) return;
     const mode = E.proposalForm?.dataset.mode === 'edit' ? 'edit' : 'create';
-    if (mode === 'edit' && !Permissions.canUpdateProposal()) {
+    if (mode === 'edit' && !this.canEditProposal()) {
       UI.toast('You do not have permission to update proposals.');
       return;
     }
@@ -5425,6 +5469,24 @@ const Proposals = {
         UI.toast('Accepted proposals are locked and cannot be edited.');
         this.openProposalForm(currentRecord, latestItems, { readOnly: true });
         return;
+      }
+      if (this.canUseAdminOverride()) {
+        const currentStatus = this.normalizeProposalStatus(currentRecord.status);
+        const requestedStatus = this.normalizeProposalStatus(proposal.status);
+        if (requestedStatus === currentStatus) delete proposal.status;
+        let agreementExists = false;
+        if (this.isProposalAccepted(currentRecord)) {
+          const client = this.getSupabaseClient();
+          const { data, error } = await client.from('agreements').select('id').eq('proposal_id', proposalId).limit(1);
+          if (error) {
+            UI.toast('Unable to verify the linked agreement: ' + (error.message || 'Unknown error'));
+            return;
+          }
+          agreementExists = Array.isArray(data) && data.length > 0;
+        }
+        const reason = await this.requestAdminOverrideReason({ agreementExists });
+        if (!reason) return;
+        this.state.adminOverrideReason = reason;
       }
     }
     if (!currentRecord?.id) {
@@ -5564,7 +5626,7 @@ const Proposals = {
       if (!savedUuid) {
         throw new Error('Proposal save failed because no internal proposal ID was returned.');
       }
-      if (mode === 'edit' && this.canUseAdminOverride()) this.logAdminOverride('proposal_update_override', currentRecord || null, savedProposal);
+      if (mode === 'edit' && this.canUseAdminOverride()) this.logAdminOverride('proposal_update_override', currentRecord || null, savedProposal, this.state.adminOverrideReason);
       if (parsed?.proposal) {
         this.upsertLocalRow(parsed.proposal);
         this.setCachedDetail(parsed.proposal.id || proposalId, parsed.proposal, parsed.items);
@@ -5596,6 +5658,7 @@ const Proposals = {
     } finally {
       console.timeEnd('entity-save');
       this.state.saveInFlight = false;
+      this.state.adminOverrideReason = '';
       this.setFormBusy(false);
     }
   },
