@@ -7541,6 +7541,17 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       });
       return data;
     }
+    if (resource === 'proposals' && action === 'accept_expired') {
+      if (role() !== 'admin') throw new Error('Only an Admin can accept an expired proposal.');
+      const proposalUuid = await resolveResourceUuid('proposals', payload, client);
+      if (!isUuid(proposalUuid)) throw new Error('The proposal no longer exists.');
+      const { data, error } = await client.rpc('admin_accept_expired_proposal', {
+        p_proposal_id: proposalUuid,
+        p_reason: String(payload.reason || '').trim() || null
+      });
+      if (error) throw friendlyError('Expired proposal acceptance failed', error);
+      return data;
+    }
     if (resource === 'proposals' && action === 'create_from_deal') {
       assertAllowed('proposals', 'create_from_deal');
       const dealUuid = await resolveResourceUuid('deals', payload, client);

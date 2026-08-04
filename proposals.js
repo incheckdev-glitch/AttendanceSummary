@@ -1,4 +1,8 @@
 const Proposals = {
+  canAcceptExpiredProposal() {
+    const role = Permissions.normalizeRole?.(Permissions.getCurrentUserRole?.() || Session.role?.() || '') || '';
+    return role === 'admin';
+  },
   canUseAdminOverride() {
     return Boolean(window.AdminOverride?.canOverride?.() || Permissions?.isAdminLike?.());
   },
@@ -143,8 +147,10 @@ const Proposals = {
     'e_proposal_generated_by',
     'viewed_at',
     'accepted_at',
+    'accepted_by',
     'accepted_by_name',
     'accepted_by_email',
+    'accepted_after_expiry',
     'rejected_at',
     'rejection_reason'
   ],
@@ -1106,6 +1112,7 @@ const Proposals = {
   },
   isProposalExpired(proposal = {}) {
     const status = this.normalizeProposalStatus(proposal?.status);
+    if (status === 'accepted' || status === 'converted' || status === 'converted_to_agreement') return false;
     if (this.wasProposalAcceptedBeforeExpiry(proposal)) return false;
     if (status === 'rejected' || status === 'declined' || status === 'lost') return false;
     if (status === 'expired') return true;
@@ -1114,8 +1121,54 @@ const Proposals = {
     return validUntil < this.todayDateString();
   },
   getEffectiveProposalStatus(proposal = {}) {
+    const status = this.normalizeProposalStatus(proposal?.status);
+    if (status === 'accepted' || status === 'converted' || status === 'converted_to_agreement') return status === 'converted_to_agreement' ? 'converted' : status;
     if (this.wasProposalAcceptedBeforeExpiry(proposal)) return 'accepted';
     return this.isProposalExpired(proposal) ? 'expired' : this.normalizeProposalStatus(proposal?.status);
+  },
+  getExpiredAcceptanceAuditNote(proposal = {}) {
+    if (!proposal?.accepted_after_expiry) return '';
+    const name = String(proposal.accepted_by_name || 'Admin').trim();
+    const date = U.fmtDisplayDateTime?.(proposal.accepted_at) || U.fmtDisplayDate(proposal.accepted_at) || proposal.accepted_at || '';
+    return `Accepted after expiry by ${name} on ${date}`;
+  },
+  async confirmAcceptExpiredProposal(proposal = {}) {
+    if (!this.canAcceptExpiredProposal()) return UI.toast('Only an Admin can accept an expired proposal.');
+    if (!proposal?.id) return UI.toast('The proposal no longer exists.');
+    if (!this.isProposalExpired(proposal)) return UI.toast(this.isProposalAccepted(proposal) ? 'This proposal has already been accepted.' : 'Only expired proposals can use this override.');
+    let modal = document.getElementById('acceptExpiredProposalModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'acceptExpiredProposalModal';
+      modal.className = 'modal';
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-modal', 'true');
+      document.body.appendChild(modal);
+    }
+    modal.innerHTML = `<div class="modal-content" style="max-width:560px"><div class="modal-header"><h2 style="margin:0">Accept Expired Proposal?</h2></div><div class="modal-body"><p>This proposal has passed its validity date. Accepting it will override the expiry status and confirm the proposal as accepted.</p><p><strong>This action may create an agreement and lock the proposal from further editing.</strong></p><label class="filter-row"><span class="muted">Reason for accepting expired proposal</span><textarea class="input" data-expired-accept-reason rows="3" placeholder="Optional"></textarea></label></div><div class="modal-footer"><button class="btn btn-incheck-outline" data-expired-accept-cancel>Cancel</button><button class="btn btn-incheck-primary" data-expired-accept-confirm>Accept Proposal</button></div></div>`;
+    modal.style.display = 'flex';
+    modal.setAttribute('aria-hidden', 'false');
+    const close = () => { modal.style.display = 'none'; modal.setAttribute('aria-hidden', 'true'); };
+    modal.querySelector('[data-expired-accept-cancel]').onclick = close;
+    modal.onclick = event => { if (event.target === modal) close(); };
+    modal.querySelector('[data-expired-accept-confirm]').onclick = async event => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      try {
+        const response = await Api.requestWithSession('proposals', 'accept_expired', { id: proposal.id, reason: modal.querySelector('[data-expired-accept-reason]')?.value || '' });
+        const result = response?.data || response;
+        const updated = this.normalizeProposal(result?.proposal || result);
+        if (!updated?.id) throw new Error('Status update failed: no proposal was returned.');
+        this.upsertLocalRow(updated);
+        delete this.state.detailCacheById[String(updated.id)];
+        close();
+        UI.toast('Expired proposal marked as accepted.');
+        await this.loadAndRefresh({ force: true });
+        this.openDetailsDrawer(updated);
+        if (result?.agreement && window.Agreements?.openDetailsDrawer) window.Agreements.openDetailsDrawer(result.agreement);
+      } catch (error) { UI.toast(error?.message || 'The expired proposal could not be accepted. No changes were saved.'); }
+      finally { button.disabled = false; }
+    };
   },
   syncProposalStatusFromSignDates() {
     if (!E.proposalFormStatus) return;
@@ -3663,9 +3716,11 @@ const Proposals = {
           ['Approval Status', row.approval_status || row.discount_approval_status],
           ['Updated At', U.fmtDisplayDate(row.updated_at)]
         ] },
-        { title: 'Notes', html: `<div class="lead-details-notes">${U.escapeHtml(row.notes || row.internal_notes || 'No notes added yet.')}</div>` }
-      ],
+        { title: 'Notes', html: `<div class="lead-details-notes">${U.escapeHtml(row.notes || row.internal_notes || 'No notes added yet.')}</div>` },
+        this.getExpiredAcceptanceAuditNote(row) ? { title: 'Admin audit', html: `<div class="lead-details-notes">${U.escapeHtml(this.getExpiredAcceptanceAuditNote(row))}</div>` } : null
+      ].filter(Boolean),
       actions: [
+        this.canAcceptExpiredProposal() && this.isProposalExpired(row) ? { label: 'Mark as Accepted', variant: 'primary', onClick: () => this.confirmAcceptExpiredProposal(row) } : null,
         Permissions.canPreviewProposal() ? { label: 'View', variant: 'primary', permissionResource: 'proposals', permissionAction: 'view', onClick: btn => this.openProposalFormById(id, { readOnly: true, trigger: btn }) } : null,
         Permissions.canUpdateProposal() && (!(this.isProposalAccepted(row) || this.isProposalExpired(row)) || this.canUseAdminOverride()) ? { label: (this.isProposalAccepted(row) || this.isProposalExpired(row)) && this.canUseAdminOverride() ? 'Admin Edit' : 'Edit', variant: 'ghost', permissionResource: 'proposals', permissionAction: 'update', onClick: btn => this.openProposalFormById(id, { readOnly: false, trigger: btn }) } : null,
         Permissions.canPreviewProposal() ? { label: 'Preview', variant: 'ghost', permissionResource: 'proposals', permissionAction: 'view', onClick: () => this.previewProposalHtml(id) } : null,
