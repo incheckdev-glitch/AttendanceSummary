@@ -2487,7 +2487,11 @@ const Proposals = {
     return response;
   },
   async updateProposal(proposalId, updates, items) {
-    const preparedUpdates = this.buildProposalForPersist(updates, items, { ensureBusinessProposalId: false });
+    const adminOverride = this.canUseAdminOverride();
+    const preparedUpdates = this.buildProposalForPersist(updates, items, {
+      ensureBusinessProposalId: false,
+      preserveStatus: adminOverride
+    });
     const preparedItems = (Array.isArray(items) ? items : []).map(item => this.normalizeProposalItemForSave(item));
     const preparedForSave = this.prepareProposalForSave(preparedUpdates);
     let response;
@@ -2496,9 +2500,19 @@ const Proposals = {
       if (!client?.rpc) throw new Error('Supabase client is not available for Admin override.');
       const reason = String(this.state.adminOverrideReason || '').trim();
       if (!reason) throw new Error('Reason for editing locked proposal is required.');
+      // Send both the supported nested payload and the header fields at the top level.
+      // This keeps the Admin override compatible with the current migration and prevents
+      // older RPC versions from treating the update as an empty proposal payload.
+      const adminOverrideChanges = {
+        ...preparedForSave,
+        proposal: preparedForSave,
+        items: preparedItems,
+        proposal_items: preparedItems,
+        payload_version: 2
+      };
       const { data, error } = await client.rpc('admin_update_locked_proposal', {
+        p_changes: adminOverrideChanges,
         p_proposal_id: proposalId,
-        p_changes: { proposal: preparedForSave, items: preparedItems },
         p_reason: reason
       });
       if (error) throw error;
@@ -2571,7 +2585,7 @@ const Proposals = {
     }
     return sanitized;
   },
-  buildProposalForPersist(proposal = {}, items = [], { ensureBusinessProposalId = false } = {}) {
+  buildProposalForPersist(proposal = {}, items = [], { ensureBusinessProposalId = false, preserveStatus = false } = {}) {
     const base = { ...(proposal && typeof proposal === 'object' ? proposal : {}) };
     const totals = this.calculateTotalsFromItems(items);
     const hasProposalDate = Object.prototype.hasOwnProperty.call(base, 'proposal_date') || Object.prototype.hasOwnProperty.call(base, 'proposalDate');
@@ -2609,15 +2623,17 @@ const Proposals = {
       delete prepared.valid_until;
     }
     if (hasStatus || ensureBusinessProposalId) prepared.status = this.normalizeProposalStatus(base.status) || 'draft';
-    const signDatesComplete = this.areProposalSignDatesComplete(prepared);
-    if (!signDatesComplete && this.normalizeProposalStatus(prepared.status) === 'accepted') {
-      prepared.status = 'sent';
+    if (!preserveStatus) {
+      const signDatesComplete = this.areProposalSignDatesComplete(prepared);
+      if (!signDatesComplete && this.normalizeProposalStatus(prepared.status) === 'accepted') {
+        prepared.status = 'sent';
+      }
+      if (signDatesComplete) {
+        const acceptedSnapshot = { ...prepared, status: 'accepted' };
+        prepared.status = this.wasProposalAcceptedBeforeExpiry(acceptedSnapshot) ? 'accepted' : prepared.status;
+      }
+      if (this.isProposalExpired(prepared)) prepared.status = 'expired';
     }
-    if (signDatesComplete) {
-      const acceptedSnapshot = { ...prepared, status: 'accepted' };
-      prepared.status = this.wasProposalAcceptedBeforeExpiry(acceptedSnapshot) ? 'accepted' : prepared.status;
-    }
-    if (this.isProposalExpired(prepared)) prepared.status = 'expired';
     return prepared;
   },
   async deleteProposal(proposalId) {
@@ -4094,7 +4110,7 @@ const Proposals = {
     if (!E.proposalForm) return;
     E.proposalForm.reset();
     if (E.proposalFormProposalId) E.proposalFormProposalId.value = '';
-    ['id', 'refNumber', 'companyId', 'companyName', 'companyLegalName', 'companyAddress', 'contactId', 'contactName', 'contactFirstName', 'contactLastName', 'contactJobTitle', 'contactEmail', 'contactPhone', 'contactMobile', 'source', 'sourceCompanyId', 'sourceContactId'].forEach(key => { delete E.proposalForm.dataset[key]; });
+    ['id', 'refNumber', 'companyId', 'companyName', 'companyLegalName', 'companyAddress', 'contactId', 'contactName', 'contactFirstName', 'contactLastName', 'contactJobTitle', 'contactEmail', 'contactPhone', 'contactMobile', 'source', 'sourceCompanyId', 'sourceContactId', 'originalStatus'].forEach(key => { delete E.proposalForm.dataset[key]; });
     ['proposalFormCompanyId', 'proposalFormContactId', 'proposalFormCompanyNameHidden', 'proposalFormContactNameHidden'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     ['proposalFormCompanySelector', 'proposalFormContactSelector'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
     ['proposalDraft', 'cachedProposal', 'currentProposalDraft', 'proposalFormState'].forEach(key => { try { localStorage.removeItem(key); sessionStorage.removeItem(key); } catch {} });
@@ -5066,6 +5082,7 @@ const Proposals = {
 
     E.proposalForm.dataset.mode = mode;
     E.proposalForm.dataset.id = base.id || '';
+    E.proposalForm.dataset.originalStatus = this.normalizeProposalStatus(base.status) || '';
     E.proposalForm.dataset.source = source;
     E.proposalForm.dataset.sourceCompanyId = sourceCompanyId;
     E.proposalForm.dataset.sourceContactId = sourceContactId;
@@ -5412,6 +5429,16 @@ const Proposals = {
     const proposalId = String(E.proposalForm?.dataset.id || '').trim();
     this.syncValidUntilFromProposalDate({ forceDefault: true });
     const proposal = this.collectProposalFormData();
+    if (mode === 'edit' && this.canUseAdminOverride()) {
+      // Expiry/signature helpers normally derive a status while collecting the form.
+      // In Admin Override Mode, keep the status selected by the Admin instead of
+      // silently forcing an accepted historical proposal back to Expired.
+      const selectedStatus = this.normalizeProposalStatus(E.proposalFormStatus?.value);
+      const originalStatus = this.normalizeProposalStatus(
+        E.proposalForm?.dataset?.originalStatus || this.state.currentProposal?.status
+      );
+      proposal.status = selectedStatus || originalStatus || this.normalizeProposalStatus(proposal.status);
+    }
     try {
       await this.validateAndRefreshProposalCustomer(proposal);
       console.log('[SAVE CHECK] module:', 'proposal');
