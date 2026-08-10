@@ -814,7 +814,7 @@ const Agreements = {
     });
   },
   shouldKeepCustomerOfficialSignatoryBlank(agreement = {}) {
-    return [99, 100, 101, 113].some(number => this.isExactAgreementNumber(agreement, number));
+    return [96, 99, 100, 101, 113].some(number => this.isExactAgreementNumber(agreement, number));
   },
   shouldClearCustomerSignatureAndContact(agreement = {}) {
     return [100, 101].some(number => this.isExactAgreementNumber(agreement, number));
