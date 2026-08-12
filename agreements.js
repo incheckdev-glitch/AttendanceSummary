@@ -509,7 +509,8 @@ const Agreements = {
   },
   canCreateInvoiceForAgreement(agreement = {}, agreementItems = [], invoices = []) {
     const agreementStatus = String(agreement.status || agreement.agreement_status || '').trim().toLowerCase();
-    if (agreementStatus !== 'signed') return false;
+    const adminUnsignedOverride = Boolean(this.canUseAdminOverride?.());
+    if (agreementStatus !== 'signed' && !adminUnsignedOverride) return false;
     const activeInvoices = (Array.isArray(invoices) ? invoices : []).filter(invoice => this.isActiveInvoice(invoice));
     if (activeInvoices.length) return false;
     const agreementHeaderHasInvoice = Boolean(
@@ -4091,7 +4092,9 @@ const Agreements = {
     const id = String(row.id || row.agreement_id || row.agreement_number || row.agreementId || '').trim();
     const rowTotals = this.calculateTotalsFromAgreementRecord(row);
     const signedRow = this.isAgreementLockedAsSigned(row);
-    const invoiceBlocked = signedRow && this.state.invoiceBlockedAgreementIds.has(String(row?.id || '').trim());
+    const adminUnsignedInvoiceOverride = this.canUseAdminOverride();
+    const invoiceSignatureEligible = signedRow || adminUnsignedInvoiceOverride;
+    const invoiceBlocked = this.state.invoiceBlockedAgreementIds.has(String(row?.id || '').trim());
     const uploadBlocked = false;
     this.state.selectedDetailsId = id;
     window.RecordDetailsDrawer.open({
@@ -4132,7 +4135,7 @@ const Agreements = {
         Permissions.canGenerateAgreementHtml() ? { label: 'View Agreement', variant: 'ghost', permissionResource: 'agreements', permissionAction: 'view', onClick: () => this.previewAgreementHtml(id) } : null,
         Permissions.canGenerateAgreementHtml() ? { label: 'Generate E-Agreement Link', variant: 'ghost', permissionResource: 'agreements', permissionAction: 'view', onClick: () => this.generateEAgreementLink(id) } : null,
         this.canViewEAgreementAuditLog() ? { label: 'E-Agreement Activity Log', variant: 'ghost', permissionResource: 'agreements', permissionAction: 'view', onClick: () => this.showEAgreementActivityLog(id) } : null,
-        signedRow && Permissions.canCreateInvoiceFromAgreement() && !invoiceBlocked ? { label: 'Create Invoice', variant: 'ghost', permissionResource: 'invoices', permissionAction: 'create_from_agreement', onClick: () => this.createInvoiceFromAgreementFlow(id) } : null,
+        invoiceSignatureEligible && Permissions.canCreateInvoiceFromAgreement() && !invoiceBlocked ? { label: 'Create Invoice', variant: 'ghost', permissionResource: 'invoices', permissionAction: 'create_from_agreement', onClick: () => this.createInvoiceFromAgreementFlow(id) } : null,
         Permissions.canDeleteAgreement() ? { label: 'Delete', variant: 'ghost', permissionResource: 'agreements', permissionAction: 'delete', onClick: () => this.deleteById(id) } : null
       ].filter(Boolean)
     });
@@ -4233,7 +4236,7 @@ const Agreements = {
         items.push(`<button class="commercial-menu-item" type="button" data-agreement-e-link="${id}" data-permission-resource="agreements" data-permission-action="view">Generate E-Agreement Link</button>`);
         if (this.canViewEAgreementAuditLog()) items.push(`<button class="commercial-menu-item" type="button" data-agreement-e-audit="${id}" data-permission-resource="agreements" data-permission-action="view">E-Agreement Activity Log</button>`);
       }
-      if (signedRow && Permissions.canCreateInvoiceFromAgreement()) {
+      if ((signedRow || this.canUseAdminOverride()) && Permissions.canCreateInvoiceFromAgreement()) {
         items.push(`<button class="commercial-menu-item${invoiceBlocked ? ' is-disabled' : ''}" type="button" data-agreement-create-invoice="${id}" data-permission-resource="invoices" data-permission-action="create_from_agreement" ${invoiceBlocked ? 'disabled aria-disabled="true"' : ''}>Create Invoice</button>`);
       }
       if (Permissions.canDeleteAgreement()) {
@@ -4250,7 +4253,7 @@ const Agreements = {
       const importedBadge = this.toDbBoolean(row.is_imported ?? row.isImported, false) || this.toDbBoolean(row.is_historical_agreement ?? row.isHistoricalAgreement, false)
         ? ' <span class="commercial-chip commercial-chip--neutral" style="margin-left:6px;">Historical</span>'
         : '';
-      const invoiceBlocked = signedRow && this.state.invoiceBlockedAgreementIds.has(String(row?.id || '').trim());
+      const invoiceBlocked = this.state.invoiceBlockedAgreementIds.has(String(row?.id || '').trim());
       const signedDocUploaded = this.hasSignedDocument(row);
       const uploadBlocked = false;
       const selected = String(this.state.selectedDetailsId || '') === String(row.id || row.agreement_id || row.agreement_number || '');
@@ -6065,17 +6068,29 @@ const Agreements = {
     try {
       const fresh = await this.reloadAgreementInvoiceGateData(id);
       const latestAgreement = fresh.agreement;
-      if (!this.isAgreementSigned(latestAgreement)) {
+      const adminUnsignedInvoiceOverride = this.canUseAdminOverride();
+      const agreementSigned = this.isAgreementSigned(latestAgreement);
+      const hasSignedDocument = this.agreementHasSignedDocument(latestAgreement);
+      if (!agreementSigned && !adminUnsignedInvoiceOverride) {
         UI.toast('Only signed agreements can be invoiced.');
         return;
       }
-      if (!this.agreementHasSignedDocument(latestAgreement)) {
+      if (!hasSignedDocument && !adminUnsignedInvoiceOverride) {
         UI.toast('You should upload the signed agreement document before creating an invoice.');
         return;
       }
       if (!fresh.canCreateInvoice) {
         UI.toast('Invoice cannot be created because a real invoice link or active invoice still exists.');
         return;
+      }
+      if (adminUnsignedInvoiceOverride && (!agreementSigned || !hasSignedDocument)) {
+        this.logAdminOverride('create_invoice_from_unsigned_agreement', latestAgreement, {
+          id: String(latestAgreement?.id || id).trim(),
+          agreement_id: String(latestAgreement?.agreement_id || '').trim(),
+          status: String(latestAgreement?.status || '').trim(),
+          signature_requirement_bypassed: !agreementSigned,
+          signed_document_requirement_bypassed: !hasSignedDocument
+        });
       }
       if (typeof setActiveView === 'function') setActiveView('invoices');
       if (window.Invoices?.openCreateFromAgreementTemplate) {

@@ -1615,6 +1615,13 @@ const Api = {
       agreement?.signed_document_url ||
       agreement?.signed_agreement_document_url
     );
+    const adminUnsignedInvoiceOverride = Boolean(
+      typeof window !== 'undefined' && (
+        window.AdminOverride?.canOverride?.() ||
+        window.Permissions?.isAdmin?.() ||
+        window.Permissions?.hasAdminOverride?.()
+      )
+    );
     const agreementResponse = await this.getAgreement(agreementId);
     const candidates = [
       agreementResponse?.agreement,
@@ -1631,10 +1638,10 @@ const Api = {
       agreementResponse
     ];
     const latestAgreement = candidates.find(candidate => candidate && typeof candidate === 'object' && !Array.isArray(candidate)) || {};
-    if (normalizeAgreementStatusForInvoice(latestAgreement.status) !== 'signed') {
+    if (normalizeAgreementStatusForInvoice(latestAgreement.status) !== 'signed' && !adminUnsignedInvoiceOverride) {
       throw new Error('Only signed agreements can be invoiced.');
     }
-    if (!agreementHasSignedDocumentForInvoice(latestAgreement)) {
+    if (!agreementHasSignedDocumentForInvoice(latestAgreement) && !adminUnsignedInvoiceOverride) {
       throw new Error('You should upload the signed agreement document before creating an invoice.');
     }
     const response = await this.requestWithSession('invoices', 'create_from_agreement', { id: agreementId, agreement_id: agreementId });

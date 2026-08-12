@@ -104,6 +104,14 @@
     );
   }
 
+  function canAdminInvoiceUnsignedAgreement() {
+    return Boolean(
+      window.AdminOverride?.canOverride?.() ||
+      window.Permissions?.isAdmin?.() ||
+      window.Permissions?.hasAdminOverride?.()
+    );
+  }
+
   function canCreateAnnex() {
     const permissions = window.Permissions || {};
     const createAllowed = typeof permissions.canCreateAgreement === 'function' ? permissions.canCreateAgreement() : true;
@@ -764,7 +772,7 @@
                 <td><div class="agreement-annex-actions">
                   <button type="button" class="btn ghost sm" data-annex-open="${attr(id)}" data-annex-readonly="${draft ? 'false' : 'true'}">${draft ? 'Edit Annex' : 'View Annex'}</button>
                   <button type="button" class="btn ghost sm" data-annex-preview="${attr(id)}">Preview</button>
-                  ${invoice ? `<button type="button" class="btn ghost sm" data-annex-view-invoice="${attr(invoice.id || '')}">View Invoice</button>` : (signed && canInvoice ? `<button type="button" class="btn sm" data-annex-create-invoice="${attr(id)}">Create Invoice</button>` : '')}
+                  ${invoice ? `<button type="button" class="btn ghost sm" data-annex-view-invoice="${attr(invoice.id || '')}">View Invoice</button>` : ((signed || canAdminInvoiceUnsignedAgreement()) && canInvoice ? `<button type="button" class="btn sm" data-annex-create-invoice="${attr(id)}">Create Invoice</button>` : '')}
                 </div></td>
               </tr>`;
             }).join('')}
