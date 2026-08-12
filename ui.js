@@ -488,6 +488,7 @@ function cacheEls() {
     'receiptFormStatus',
     'receiptFormAmountInWords',
     'receiptFormInvoiceGrandTotal',
+    'receiptFormCreditNoteAmount',
     'receiptFormOldPaidTotal',
     'receiptFormPaidNow',
     'receiptFormNewPaidTotal',

@@ -431,7 +431,11 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
   async function recalculateInvoicePaymentScheduleRows(client, invoiceId) {
     const id = String(invoiceId || '').trim();
     if (!isUuid(id)) throw new Error('Valid invoice UUID is required to recalculate payment schedule.');
-    const { data: modeInvoice, error: modeError } = await client.from('invoices').select('payment_schedule_mode,payment_term,payment_terms').eq('id', id).maybeSingle();
+    const { data: modeInvoice, error: modeError } = await client
+      .from('invoices')
+      .select('payment_schedule_mode,payment_term,payment_terms,invoice_total,grand_total,total_amount,amount_paid,received_amount,credit_note_amount,pending_amount,balance_due')
+      .eq('id', id)
+      .maybeSingle();
     if (modeError) throw friendlyError('Unable to load invoice payment schedule mode', modeError);
     const manualSchedule = isManualInvoiceSchedule(modeInvoice);
     // Rebuild only automatic schedules. Manual schedules keep their saved rows and only receive payment/status updates.
@@ -440,35 +444,66 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       ? await listInvoicePaymentScheduleRows(client, id)
       : await createInvoicePaymentScheduleRows(client, id, true);
     if (!schedule.length) return [];
-    const { data: receipts, error: receiptsError } = await client
-      .from('receipts')
-      .select('id,receipt_id,amount_received,received_amount,paid_now,amount_paid,status,receipt_status,payment_state')
-      .eq('invoice_id', id);
+    const [{ data: receipts, error: receiptsError }, { data: creditNotes, error: creditNotesError }] = await Promise.all([
+      client
+        .from('receipts')
+        .select('id,receipt_id,amount_received,received_amount,paid_now,amount_paid,status,receipt_status,payment_state')
+        .eq('invoice_id', id),
+      client
+        .from('credit_notes')
+        .select('id,credit_note_id,credit_amount,status')
+        .eq('invoice_id', id)
+    ]);
     if (receiptsError) throw friendlyError('Unable to load receipts for schedule recalculation', receiptsError);
+    if (creditNotesError) throw friendlyError('Unable to load credit notes for schedule recalculation', creditNotesError);
     const invalidStatuses = new Set(['cancelled', 'canceled', 'void', 'voided', 'deleted', 'rejected']);
     const validReceipts = (Array.isArray(receipts) ? receipts : []).filter(receipt => {
       const status = String(receipt.status || receipt.receipt_status || receipt.payment_state || '').trim().toLowerCase();
       return !invalidStatuses.has(status);
     });
-    let remainingCents = validReceipts.reduce((sum, receipt) => {
+    const validCreditNotes = (Array.isArray(creditNotes) ? creditNotes : []).filter(note => {
+      const status = String(note.status || '').trim().toLowerCase();
+      return !invalidStatuses.has(status);
+    });
+    let remainingCashCents = validReceipts.reduce((sum, receipt) => {
       const amount = getInvoiceTotalForSchedule({ grand_total: receipt.amount_received ?? receipt.received_amount ?? receipt.paid_now ?? receipt.amount_paid });
       return sum + Math.max(0, Math.round(amount * 100));
     }, 0);
+    let remainingCreditCents = validCreditNotes.reduce((sum, note) => {
+      const amount = getInvoiceTotalForSchedule({ grand_total: note.credit_amount });
+      return sum + Math.max(0, Math.round(amount * 100));
+    }, 0);
+    const totalCashCents = remainingCashCents;
+    const totalCreditCents = remainingCreditCents;
     const receiptIds = validReceipts.map(receipt => String(receipt.id || receipt.receipt_id || '').trim()).filter(Boolean);
     const today = todayDateString();
     const updates = [...schedule].sort((a, b) => Number(a.schedule_no || 0) - Number(b.schedule_no || 0)).map(row => {
       const scheduledCents = Math.max(0, Math.round(Number(row.scheduled_amount || 0) * 100));
-      const paidCents = Math.min(scheduledCents, remainingCents);
-      remainingCents -= paidCents;
+      const paidCents = Math.min(scheduledCents, remainingCashCents);
+      remainingCashCents -= paidCents;
+      const dueAfterCashCents = Math.max(0, scheduledCents - paidCents);
+      const creditAppliedCents = Math.min(dueAfterCashCents, remainingCreditCents);
+      remainingCreditCents -= creditAppliedCents;
+      const balanceCents = Math.max(0, dueAfterCashCents - creditAppliedCents);
       const paidAmount = Number((paidCents / 100).toFixed(2));
-      const status = paidCents >= scheduledCents && scheduledCents > 0
+      const creditAppliedAmount = Number((creditAppliedCents / 100).toFixed(2));
+      const balanceDue = Number((balanceCents / 100).toFixed(2));
+      const hasSettlement = paidCents > 0 || creditAppliedCents > 0;
+      const status = balanceCents <= 0 && scheduledCents > 0
         ? 'paid'
-        : paidCents > 0
+        : hasSettlement
           ? 'partially_paid'
           : String(row.due_date || '') < today
             ? 'overdue'
             : 'scheduled';
-      return { ...row, paid_amount: paidAmount, status, receipt_ids: paidCents > 0 ? receiptIds : [] };
+      return {
+        ...row,
+        paid_amount: paidAmount,
+        credit_applied_amount: creditAppliedAmount,
+        balance_due: balanceDue,
+        status,
+        receipt_ids: paidCents > 0 ? receiptIds : []
+      };
     });
     const updateResults = await Promise.all(updates.map(row => client
       .from('invoice_payment_schedule')
@@ -476,11 +511,35 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       .eq('id', row.id)));
     const updateError = updateResults.find(result => result?.error)?.error;
     if (updateError) throw friendlyError('Unable to update invoice payment schedule', updateError);
-    const allPaid = updates.length > 0 && updates.every(row => row.status === 'paid');
-    const somePaid = updates.some(row => Number(row.paid_amount || 0) > 0);
-    const anyOverdue = updates.some(row => row.status === 'overdue');
-    const paymentState = allPaid ? 'Paid' : somePaid ? 'Partially Paid' : anyOverdue ? 'Overdue' : 'Unpaid';
-    await updateSelectSingleWithSchemaRetry(client, 'invoices', { payment_state: paymentState, payment_status: paymentState, updated_at: new Date().toISOString() }, 'id', id, 'Unable to update invoice payment status');
+
+    const invoiceTotalCents = Math.max(0, Math.round(getInvoiceTotalForSchedule(modeInvoice || {}) * 100));
+    const settledCents = Math.min(invoiceTotalCents, totalCashCents + totalCreditCents);
+    const pendingCents = Math.max(0, invoiceTotalCents - settledCents);
+    const allPaid = pendingCents <= 0 && invoiceTotalCents > 0;
+    const anySettlement = totalCashCents > 0 || totalCreditCents > 0;
+    const anyOverdue = updates.some(row => row.status === 'overdue' && Number(row.balance_due || 0) > 0);
+    const paymentState = allPaid
+      ? (totalCashCents >= invoiceTotalCents && invoiceTotalCents > 0
+        ? 'Paid'
+        : (totalCreditCents > 0 ? 'Credited' : 'Paid'))
+      : anySettlement
+        ? 'Partially Paid'
+        : anyOverdue
+          ? 'Overdue'
+          : 'Unpaid';
+    const paymentStatus = paymentState === 'Credited' ? 'Paid' : paymentState;
+    const invoiceUpdates = {
+      amount_paid: Number((totalCashCents / 100).toFixed(2)),
+      received_amount: Number((totalCashCents / 100).toFixed(2)),
+      credit_note_amount: Number((totalCreditCents / 100).toFixed(2)),
+      pending_amount: Number((pendingCents / 100).toFixed(2)),
+      balance_due: Number((pendingCents / 100).toFixed(2)),
+      payment_state: paymentState,
+      payment_status: paymentStatus,
+      payment_conclusion: pendingCents <= 0 ? 'Settled' : 'Pending Settlement',
+      updated_at: new Date().toISOString()
+    };
+    await updateSelectSingleWithSchemaRetry(client, 'invoices', invoiceUpdates, 'id', id, 'Unable to update invoice payment status');
     return updates;
   }
 

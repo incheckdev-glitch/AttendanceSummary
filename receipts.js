@@ -87,6 +87,7 @@ const Receipts = {
     'subtotal_locations',
     'subtotal_one_time',
     'invoice_total',
+    'credit_note_amount',
     'old_paid_total',
     'paid_now',
     'new_paid_total',
@@ -298,13 +299,19 @@ const Receipts = {
     const pickDefined = (...values) => values.find(value => value !== undefined && value !== null && !(typeof value === 'string' && value.trim() === ''));
     const invoiceTotal = this.toNumberSafe(pickDefined(invoice.invoice_total, invoice.grand_total, invoice.total_amount));
     const amountPaid = this.toNumberSafe(pickDefined(invoice.amount_paid, invoice.received_amount, invoice.paid_amount));
+    const creditNoteAmount = this.toNumberSafe(pickDefined(invoice.credit_note_amount, invoice.credit_amount, invoice.credited_amount));
     const pendingInput = pickDefined(invoice.pending_amount, invoice.amount_due, invoice.balance_due, invoice.balance_after);
-    const pendingAmount = pendingInput === undefined ? Math.max(0, invoiceTotal - amountPaid) : this.toNumberSafe(pendingInput);
+    const calculatedPending = Math.max(0, invoiceTotal - amountPaid - creditNoteAmount);
+    const pendingAmount = pendingInput === undefined
+      ? calculatedPending
+      : (creditNoteAmount > 0 ? Math.min(this.toNumberSafe(pendingInput), calculatedPending) : this.toNumberSafe(pendingInput));
+    const effectiveSettledAmount = Math.min(invoiceTotal, amountPaid + creditNoteAmount);
     return {
       invoice_total: invoiceTotal,
       amount_paid: amountPaid,
+      credit_note_amount: creditNoteAmount,
       pending_amount: pendingAmount,
-      payment_state: U.calculatePaymentState(invoiceTotal, amountPaid)
+      payment_state: U.calculatePaymentState(invoiceTotal, effectiveSettledAmount)
     };
   },
   receiptAmountInWords(value, currency = 'USD', fallbackAmount = 0) {
@@ -353,7 +360,8 @@ const Receipts = {
     const snapshot = this.calculatePaymentSnapshot({
       invoiceTotal: normalized.invoice_total,
       oldPaidTotal: normalized.old_paid_total,
-      paidNow: normalized.paid_now
+      paidNow: normalized.paid_now,
+      creditNoteAmount: normalized.credit_note_amount ?? source.credit_note_amount
     });
     normalized.new_paid_total = this.toNumberSafe(
       normalized.new_paid_total !== '' && normalized.new_paid_total !== null && normalized.new_paid_total !== undefined
@@ -1028,6 +1036,8 @@ const Receipts = {
     set('receiptFormStatus', receipt.status);
     set('receiptFormAmountInWords', this.receiptAmountInWords(receipt.amount_in_words, receipt.currency, effectiveReceivedAmount));
     set('receiptFormInvoiceGrandTotal', effectiveInvoiceTotal);
+    const effectiveCreditNoteAmount = this.toNumberSafe(invoiceSource.credit_note_amount ?? invoiceSource.credit_amount ?? invoiceSource.credited_amount ?? receipt.credit_note_amount);
+    set('receiptFormCreditNoteAmount', effectiveCreditNoteAmount);
     set('receiptFormOldPaidTotal', effectiveOldPaidTotal);
     set('receiptFormPaidNow', effectivePaidNow);
     set('receiptFormNewPaidTotal', effectiveNewPaidTotal);
@@ -1041,7 +1051,10 @@ const Receipts = {
     set('receiptFormPaymentMethodDisplay', receipt.payment_method);
     set('receiptFormPaymentReferenceDisplay', receipt.payment_reference);
     set('receiptFormDueDateDisplay', invoiceSource.due_date || invoiceSource.payment_due_date || receipt.due_date);
-    if (E.receiptForm) E.receiptForm.dataset.id = receipt.id || '';
+    if (E.receiptForm) {
+      E.receiptForm.dataset.id = receipt.id || '';
+      E.receiptForm.dataset.creditNoteAmount = String(effectiveCreditNoteAmount || 0);
+    }
     if (E.receiptFormTitle) {
       const label = String(receipt.receipt_number || receipt.receipt_id || receipt.invoice_number || '').trim();
       E.receiptFormTitle.textContent = `${receipt.id ? 'Edit Receipt' : 'Create Receipt'}${label ? ` · ${label}` : ''}`;
@@ -1059,7 +1072,7 @@ const Receipts = {
         if (el.id === 'receiptFormReceiptId') return;
         el.disabled = readOnly;
       });
-      ['receiptFormInvoiceGrandTotal', 'receiptFormOldPaidTotal', 'receiptFormNewPaidTotal', 'receiptFormReceivedAmount', 'receiptFormPendingAmount', 'receiptFormPaymentState', 'receiptFormPaymentConclusion']
+      ['receiptFormInvoiceGrandTotal', 'receiptFormCreditNoteAmount', 'receiptFormOldPaidTotal', 'receiptFormNewPaidTotal', 'receiptFormReceivedAmount', 'receiptFormPendingAmount', 'receiptFormPaymentState', 'receiptFormPaymentConclusion']
         .forEach(id => {
           const el = E[id];
           if (el) el.readOnly = !this.canUseAdminOverride();
@@ -1087,6 +1100,7 @@ const Receipts = {
       delete E.receiptForm.dataset.clientId;
       delete E.receiptForm.dataset.paymentMethod;
       delete E.receiptForm.dataset.paymentReference;
+      delete E.receiptForm.dataset.creditNoteAmount;
     }
     if (E.receiptFormPreviewBtn) E.receiptFormPreviewBtn.style.display = '';
   },
@@ -1182,8 +1196,18 @@ const Receipts = {
   derivePaymentConclusion({ pending_amount = 0 } = {}) {
     return this.toNumberSafe(pending_amount) <= 0 ? 'Settled' : 'Pending Settlement';
   },
-  calculatePaymentSnapshot({ invoiceTotal = 0, oldPaidTotal = 0, paidNow = 0 } = {}) {
-    return U.calculateInvoicePaymentSnapshot({ invoiceTotal, oldPaidTotal, paidNow });
+  calculatePaymentSnapshot({ invoiceTotal = 0, oldPaidTotal = 0, paidNow = 0, creditNoteAmount = 0 } = {}) {
+    const snapshot = U.calculateInvoicePaymentSnapshot({ invoiceTotal, oldPaidTotal, paidNow });
+    const credit = Math.max(0, this.toNumberSafe(creditNoteAmount));
+    const pendingAmount = Math.max(0, this.toNumberSafe(snapshot.invoice_total) - this.toNumberSafe(snapshot.new_paid_total) - credit);
+    const effectiveSettledAmount = Math.min(this.toNumberSafe(snapshot.invoice_total), this.toNumberSafe(snapshot.new_paid_total) + credit);
+    return {
+      ...snapshot,
+      credit_note_amount: credit,
+      pending_amount: pendingAmount,
+      payment_state: U.calculatePaymentState(snapshot.invoice_total, effectiveSettledAmount),
+      payment_conclusion: pendingAmount <= 0 ? 'Settled' : 'Pending Settlement'
+    };
   },
   getReceiptInvoiceKey(receipt = {}) {
     return String(receipt?.invoice_id || '').trim() || String(receipt?.invoice_number || '').trim();
@@ -1350,16 +1374,18 @@ const Receipts = {
     }
     oldPaidBeforeReceipt = Math.max(0, this.toNumberSafe(oldPaidBeforeReceipt));
     const newPaidTotal = this.toNumberSafe(cumulativePaidTotal ?? oldPaidBeforeReceipt + paidNow);
+    const calculatedPendingAmount = Math.max(invoiceTotal - newPaidTotal - invoiceCreditNoteAmount, 0);
     const pendingAmount = this.toNumberSafe(
       invoiceAlreadyIncludesReceipt && invoicePendingAmount !== null
-        ? invoicePendingAmount
-        : Math.max(invoiceTotal - newPaidTotal - invoiceCreditNoteAmount, 0)
+        ? (invoiceCreditNoteAmount > 0 ? Math.min(invoicePendingAmount, calculatedPendingAmount) : invoicePendingAmount)
+        : calculatedPendingAmount
     );
     let paymentState = 'Received';
     if (paidNow > 0 && pendingAmount > 0) paymentState = 'Partial Payment';
     if (paidNow > 0 && pendingAmount <= 0) paymentState = 'Settlement';
     return {
       invoice_total: invoiceTotal,
+      credit_note_amount: invoiceCreditNoteAmount,
       old_paid_total: oldPaidBeforeReceipt,
       paid_now: paidNow,
       received_amount: paidNow,
@@ -1394,11 +1420,16 @@ const Receipts = {
     const invoiceTotal = this.toNumberSafe(E.receiptFormInvoiceGrandTotal?.value);
     const oldPaidTotal = this.toNumberSafe(E.receiptFormOldPaidTotal?.value);
     const paidNow = this.toNumberSafe(E.receiptFormPaidNow?.value);
-    const snapshot = this.calculatePaymentSnapshot({ invoiceTotal, oldPaidTotal, paidNow });
+    const creditNoteAmount = this.toNumberSafe(E.receiptFormCreditNoteAmount?.value ?? E.receiptForm?.dataset?.creditNoteAmount);
+    const snapshot = this.calculatePaymentSnapshot({ invoiceTotal, oldPaidTotal, paidNow, creditNoteAmount });
+    if (E.receiptFormCreditNoteAmount) E.receiptFormCreditNoteAmount.value = snapshot.credit_note_amount;
     if (E.receiptFormReceivedAmount) E.receiptFormReceivedAmount.value = snapshot.received_amount;
     if (E.receiptFormNewPaidTotal) E.receiptFormNewPaidTotal.value = snapshot.new_paid_total;
     if (E.receiptFormPendingAmount) E.receiptFormPendingAmount.value = snapshot.pending_amount;
-    if (E.receiptFormPaymentState) E.receiptFormPaymentState.value = this.receiptPaymentStateFromSnapshot(snapshot);
+    const receiptPaymentState = paidNow > 0
+      ? (snapshot.pending_amount <= 0 ? 'Settlement' : 'Partial Payment')
+      : (creditNoteAmount > 0 && snapshot.pending_amount <= 0 ? 'Credited' : 'Received');
+    if (E.receiptFormPaymentState) E.receiptFormPaymentState.value = receiptPaymentState;
     if (E.receiptFormPaymentConclusion) E.receiptFormPaymentConclusion.value = snapshot.payment_conclusion;
     if (E.receiptFormAmountInWords) {
       const currency = String(E.receiptFormCurrency?.value || 'USD').trim() || 'USD';
@@ -1419,23 +1450,26 @@ const Receipts = {
     ]);
     if (invoiceError) throw new Error(invoiceError.message || 'Unable to load invoice before creating receipt.');
     if (!invoiceRow) throw new Error('Linked invoice was not found before creating receipt.');
-    const [receiptRows, scheduleRows] = await Promise.all([
+    const [receiptRows, scheduleRows, creditNoteRows] = await Promise.all([
       this.fetchInvoiceReceiptsLedger({
         invoiceId,
         invoiceNumber: invoiceRow?.invoice_number
       }),
-      this.fetchInvoicePaymentScheduleRows(invoiceId)
+      this.fetchInvoicePaymentScheduleRows(invoiceId),
+      this.fetchCreditNotesForInvoice({ id: invoiceId, invoice_number: invoiceRow?.invoice_number }).catch(() => [])
     ]);
-    const scheduleSummary = this.summarizeInvoicePaymentScheduleRows(scheduleRows);
+    const creditSummary = this.summarizeCreditNotes(creditNoteRows, invoiceRow?.credit_note_amount);
+    const invoiceWithCredits = { ...invoiceRow, credit_note_amount: creditSummary.total };
+    const scheduleSummary = this.summarizeInvoicePaymentScheduleRows(scheduleRows, creditSummary.total);
     const normalizedInvoice = this.normalizeInvoiceFinancials(scheduleRows.length
       ? {
-        ...invoiceRow,
+        ...invoiceWithCredits,
         amount_paid: scheduleSummary.paid_amount,
         received_amount: scheduleSummary.paid_amount,
         pending_amount: scheduleSummary.balance_due,
         balance_due: scheduleSummary.balance_due
       }
-      : invoiceRow);
+      : invoiceWithCredits);
     const invoiceTotal = this.toNumberSafe(normalizedInvoice.invoice_total);
     const paidNow = this.toNumberSafe(paidNowInput);
     return this.calculateReceiptSnapshot({
@@ -1454,26 +1488,80 @@ const Receipts = {
     const invoiceNumber = String(invoice?.invoice_number || '').trim();
     return this.fetchInvoiceReceiptsLedger({ invoiceId, invoiceNumber });
   },
+  async fetchCreditNotesForInvoice(invoice = {}) {
+    const invoiceId = String(invoice?.id || invoice?.invoice_id || '').trim();
+    const invoiceNumber = String(invoice?.invoice_number || '').trim();
+    if (!invoiceId && !invoiceNumber) return [];
+    try {
+      if (typeof Api?.getCreditNotesByInvoice === 'function') {
+        const rows = await Api.getCreditNotesByInvoice({ id: invoiceId, invoice_id: invoiceId, invoice_number: invoiceNumber });
+        return (Array.isArray(rows) ? rows : []).filter(row => !['cancelled','canceled','void','voided','deleted','rejected'].includes(this.normalizeText(row?.status)));
+      }
+    } catch (error) {
+      console.warn('[receipts] unable to load linked credit notes through API', error);
+    }
+    const client = this.getSupabaseClient();
+    if (!client) return [];
+    const selectColumns = 'id,credit_note_id,credit_note_number,credit_note_date,credit_amount,currency,status,invoice_id,invoice_number,description';
+    const loadBy = async (column, value) => {
+      if (!value) return [];
+      const { data, error } = await client.from('credit_notes').select(selectColumns).eq(column, value);
+      if (error) throw error;
+      return Array.isArray(data) ? data : [];
+    };
+    try {
+      const [byId, byNumber] = await Promise.all([
+        invoiceId ? loadBy('invoice_id', invoiceId) : Promise.resolve([]),
+        invoiceNumber ? loadBy('invoice_number', invoiceNumber) : Promise.resolve([])
+      ]);
+      const merged = [...byId, ...byNumber];
+      const seen = new Set();
+      return merged.filter(row => {
+        const key = String(row?.id || row?.credit_note_id || row?.credit_note_number || '').trim();
+        if (key && seen.has(key)) return false;
+        if (key) seen.add(key);
+        return !['cancelled','canceled','void','voided','deleted','rejected'].includes(this.normalizeText(row?.status));
+      });
+    } catch (error) {
+      console.warn('[receipts] unable to load linked credit notes', error);
+      return [];
+    }
+  },
+  summarizeCreditNotes(rows = [], fallbackAmount = 0) {
+    const validRows = (Array.isArray(rows) ? rows : []).filter(row => !['cancelled','canceled','void','voided','deleted','rejected'].includes(this.normalizeText(row?.status)));
+    const total = validRows.reduce((sum, row) => sum + this.toNumberSafe(row?.credit_amount ?? row?.credit_note_amount ?? row?.amount), 0);
+    return {
+      rows: validRows,
+      total: total > 0 ? total : Math.max(0, this.toNumberSafe(fallbackAmount))
+    };
+  },
   async syncInvoicePaymentSummaryFromReceipts(invoiceId, invoice = null) {
     const id = String(invoiceId || '').trim();
     if (!id) return null;
     const linkedInvoice = invoice || await this.hydrateInvoiceReceiptDraft({ id }).then(result => result?.invoice || null).catch(() => null);
     const invoiceTotal = this.toNumberSafe(linkedInvoice?.invoice_total ?? linkedInvoice?.grand_total ?? linkedInvoice?.total_amount);
-    const receipts = await this.fetchReceiptsForInvoice({
-      id,
-      invoice_number: linkedInvoice?.invoice_number
-    }).catch(() => []);
+    const [receipts, creditNoteRows] = await Promise.all([
+      this.fetchReceiptsForInvoice({ id, invoice_number: linkedInvoice?.invoice_number }).catch(() => []),
+      this.fetchCreditNotesForInvoice({ id, invoice_number: linkedInvoice?.invoice_number }).catch(() => [])
+    ]);
     const totalPaid = (Array.isArray(receipts) ? receipts : [])
       .filter(row => !this.isReceiptVoided(row))
       .reduce((sum, row) => sum + this.getReceiptAmountValue(row), 0);
-    const pendingAmount = Math.max(invoiceTotal - totalPaid, 0);
-    const paymentStatus = totalPaid <= 0 ? 'Unpaid' : pendingAmount > 0 ? 'Partially Paid' : 'Paid';
+    const creditSummary = this.summarizeCreditNotes(creditNoteRows, linkedInvoice?.credit_note_amount);
+    const creditNoteAmount = creditSummary.total;
+    const pendingAmount = Math.max(invoiceTotal - totalPaid - creditNoteAmount, 0);
+    const paymentStatus = pendingAmount <= 0
+      ? (totalPaid >= Math.max(0, invoiceTotal - 0.005) && invoiceTotal > 0
+        ? 'Paid'
+        : (creditNoteAmount > 0 ? 'Credited' : 'Unpaid'))
+      : (totalPaid > 0 || creditNoteAmount > 0 ? 'Partially Paid' : 'Unpaid');
     const payload = {
       amount_paid: totalPaid,
       received_amount: totalPaid,
+      credit_note_amount: creditNoteAmount,
       pending_amount: pendingAmount,
       balance_due: pendingAmount,
-      payment_status: paymentStatus,
+      payment_status: paymentStatus === 'Credited' ? 'Paid' : paymentStatus,
       payment_state: paymentStatus,
       payment_conclusion: pendingAmount <= 0 ? 'Settled' : 'Pending Settlement'
     };
@@ -1509,16 +1597,32 @@ const Receipts = {
       return [];
     }
   },
-  summarizeInvoicePaymentScheduleRows(rows = []) {
+  summarizeInvoicePaymentScheduleRows(rows = [], creditNoteAmount = 0) {
     const normalizedRows = (Array.isArray(rows) ? rows : []).map(row => this.normalizeInvoiceScheduleRow(row));
-    const balanceDue = normalizedRows.reduce((sum, row) => sum + this.toNumberSafe(row.balance_due), 0);
-    const scheduledAmount = normalizedRows.reduce((sum, row) => sum + this.toNumberSafe(row.scheduled_amount), 0);
-    const paidAmount = normalizedRows.reduce((sum, row) => sum + this.toNumberSafe(row.paid_amount), 0);
-    const nextDue = normalizedRows.find(row => this.toNumberSafe(row.balance_due) > 0) || normalizedRows[0] || null;
+    let remainingCredit = Math.max(0, this.toNumberSafe(creditNoteAmount));
+    const adjustedRows = normalizedRows
+      .sort((a, b) => Number(a.schedule_no || 0) - Number(b.schedule_no || 0))
+      .map(row => {
+        const rawBalance = Math.max(0, this.toNumberSafe(row.balance_due));
+        const creditApplied = Math.min(rawBalance, remainingCredit);
+        remainingCredit = Math.max(0, remainingCredit - creditApplied);
+        const adjustedBalance = Math.max(0, rawBalance - creditApplied);
+        const hasSettlement = this.toNumberSafe(row.paid_amount) > 0 || creditApplied > 0;
+        const status = adjustedBalance <= 0 && hasSettlement
+          ? 'paid'
+          : (hasSettlement ? 'partially_paid' : row.status);
+        return { ...row, credit_applied_amount: creditApplied, balance_due: adjustedBalance, status };
+      });
+    const balanceDue = adjustedRows.reduce((sum, row) => sum + this.toNumberSafe(row.balance_due), 0);
+    const scheduledAmount = adjustedRows.reduce((sum, row) => sum + this.toNumberSafe(row.scheduled_amount), 0);
+    const paidAmount = adjustedRows.reduce((sum, row) => sum + this.toNumberSafe(row.paid_amount), 0);
+    const appliedCredit = adjustedRows.reduce((sum, row) => sum + this.toNumberSafe(row.credit_applied_amount), 0);
+    const nextDue = adjustedRows.find(row => this.toNumberSafe(row.balance_due) > 0) || adjustedRows[0] || null;
     return {
-      rows: normalizedRows,
+      rows: adjustedRows,
       scheduled_amount: scheduledAmount,
       paid_amount: paidAmount,
+      credit_note_amount: appliedCredit,
       balance_due: balanceDue,
       next_due_amount: nextDue ? this.toNumberSafe(nextDue.balance_due || nextDue.scheduled_amount) : 0,
       next_due_date: nextDue?.due_date || ''
@@ -1595,23 +1699,26 @@ const Receipts = {
     }
     const hydrated = await this.hydrateInvoiceReceiptDraft(invoice);
     const sourceInvoice = { ...(invoice || {}), ...(hydrated.invoice || {}) };
-    const [invoiceReceipts, scheduleRows] = await Promise.all([
+    const [invoiceReceipts, scheduleRows, creditNoteRows] = await Promise.all([
       this.fetchReceiptsForInvoice({ id: invoiceUuid }).catch(() => []),
-      this.fetchInvoicePaymentScheduleRows(invoiceUuid)
+      this.fetchInvoicePaymentScheduleRows(invoiceUuid),
+      this.fetchCreditNotesForInvoice({ id: invoiceUuid, invoice_number: sourceInvoice?.invoice_number }).catch(() => [])
     ]);
-    const scheduleSummary = this.summarizeInvoicePaymentScheduleRows(scheduleRows);
+    const creditSummary = this.summarizeCreditNotes(creditNoteRows, sourceInvoice?.credit_note_amount);
+    const sourceInvoiceWithCredits = { ...sourceInvoice, credit_note_amount: creditSummary.total };
+    const scheduleSummary = this.summarizeInvoicePaymentScheduleRows(scheduleRows, creditSummary.total);
     const financials = this.normalizeInvoiceFinancials(scheduleRows.length
       ? {
-        ...sourceInvoice,
+        ...sourceInvoiceWithCredits,
         amount_paid: scheduleSummary.paid_amount,
         received_amount: scheduleSummary.paid_amount,
         pending_amount: scheduleSummary.balance_due,
         balance_due: scheduleSummary.balance_due
       }
-      : sourceInvoice);
+      : sourceInvoiceWithCredits);
     const invoiceTotal = this.toNumberSafe(financials.invoice_total);
     const pendingAmount = this.toNumberSafe(financials.pending_amount);
-    const suggestedPaidNow = this.toNumberSafe(sourceInvoice?.paid_now);
+    const suggestedPaidNow = this.toNumberSafe(sourceInvoiceWithCredits?.paid_now);
     const scheduledPaidNow = scheduleRows.length ? scheduleSummary.next_due_amount : 0;
     const paidNow = suggestedPaidNow > 0
       ? Math.min(suggestedPaidNow, pendingAmount || suggestedPaidNow)
@@ -1629,50 +1736,51 @@ const Receipts = {
     const draft = {
       receipt_id: '',
       receipt_number: '',
-      invoice_uuid: String(sourceInvoice?.id || sourceInvoice?.invoice_uuid || sourceInvoice?.invoiceUuid || invoiceUuid || '').trim(),
-      invoice_id: String(sourceInvoice?.invoice_id || sourceInvoice?.invoiceId || '').trim(),
-      invoice_number: String(sourceInvoice?.invoice_number || sourceInvoice?.invoiceNumber || '').trim(),
-      client_id: String(sourceInvoice?.client_id || '').trim(),
+      invoice_uuid: String(sourceInvoiceWithCredits?.id || sourceInvoiceWithCredits?.invoice_uuid || sourceInvoiceWithCredits?.invoiceUuid || invoiceUuid || '').trim(),
+      invoice_id: String(sourceInvoiceWithCredits?.invoice_id || sourceInvoiceWithCredits?.invoiceId || '').trim(),
+      invoice_number: String(sourceInvoiceWithCredits?.invoice_number || sourceInvoiceWithCredits?.invoiceNumber || '').trim(),
+      client_id: String(sourceInvoiceWithCredits?.client_id || '').trim(),
       receipt_date: this.todayInputValue(),
-      customer_name: String(sourceInvoice?.customer_name || '').trim(),
-      customer_legal_name: String(sourceInvoice?.customer_legal_name || '').trim(),
-      customer_address: String(sourceInvoice?.customer_address || '').trim(),
-      issue_date: this.normalizeDateValue(sourceInvoice?.issue_date),
-      due_date: this.normalizeDateValue(sourceInvoice?.due_date),
-      billing_frequency: String(sourceInvoice?.billing_frequency || '').trim(),
-      payment_term: String(sourceInvoice?.payment_term || '').trim(),
-      currency: String(sourceInvoice?.currency || '').trim() || 'USD',
+      customer_name: String(sourceInvoiceWithCredits?.customer_name || '').trim(),
+      customer_legal_name: String(sourceInvoiceWithCredits?.customer_legal_name || '').trim(),
+      customer_address: String(sourceInvoiceWithCredits?.customer_address || '').trim(),
+      issue_date: this.normalizeDateValue(sourceInvoiceWithCredits?.issue_date),
+      due_date: this.normalizeDateValue(sourceInvoiceWithCredits?.due_date),
+      billing_frequency: String(sourceInvoiceWithCredits?.billing_frequency || '').trim(),
+      payment_term: String(sourceInvoiceWithCredits?.payment_term || '').trim(),
+      currency: String(sourceInvoiceWithCredits?.currency || '').trim() || 'USD',
       status: 'Issued',
       receipt_status: 'Issued',
-      agreement_id: String(sourceInvoice?.agreement_id || '').trim(),
-      agreement_number: String(sourceInvoice?.agreement_number || '').trim(),
-      company_id: String(sourceInvoice?.company_id || '').trim(),
-      company_name: String(sourceInvoice?.company_name || '').trim(),
-      contact_id: String(sourceInvoice?.contact_id || '').trim(),
-      contact_name: String(sourceInvoice?.contact_name || '').trim(),
-      contact_email: String(sourceInvoice?.contact_email || '').trim(),
-      contact_phone: String(sourceInvoice?.contact_phone || '').trim(),
-      contact_mobile: String(sourceInvoice?.contact_mobile || '').trim(),
+      agreement_id: String(sourceInvoiceWithCredits?.agreement_id || '').trim(),
+      agreement_number: String(sourceInvoiceWithCredits?.agreement_number || '').trim(),
+      company_id: String(sourceInvoiceWithCredits?.company_id || '').trim(),
+      company_name: String(sourceInvoiceWithCredits?.company_name || '').trim(),
+      contact_id: String(sourceInvoiceWithCredits?.contact_id || '').trim(),
+      contact_name: String(sourceInvoiceWithCredits?.contact_name || '').trim(),
+      contact_email: String(sourceInvoiceWithCredits?.contact_email || '').trim(),
+      contact_phone: String(sourceInvoiceWithCredits?.contact_phone || '').trim(),
+      contact_mobile: String(sourceInvoiceWithCredits?.contact_mobile || '').trim(),
       payment_date: this.todayInputValue(),
       old_paid_total: snapshot.old_paid_total,
       paid_now: snapshot.paid_now,
       new_paid_total: snapshot.new_paid_total,
       pending_amount: snapshot.pending_amount,
-      payment_state: this.receiptPaymentStateFromSnapshot(snapshot, sourceInvoice),
+      payment_state: this.receiptPaymentStateFromSnapshot(snapshot, sourceInvoiceWithCredits),
       payment_conclusion: snapshot.payment_conclusion,
-      payment_notes: String(sourceInvoice?.notes || (scheduleRows.length ? `Next scheduled payment due${scheduleSummary.next_due_date ? ` on ${scheduleSummary.next_due_date}` : ''}.` : '') || '').trim(),
+      payment_notes: String(sourceInvoiceWithCredits?.notes || (scheduleRows.length ? `Next scheduled payment due${scheduleSummary.next_due_date ? ` on ${scheduleSummary.next_due_date}` : ''}.` : '') || '').trim(),
       amount_received: snapshot.received_amount,
-      invoice_total: snapshot.invoice_total
+      invoice_total: snapshot.invoice_total,
+      credit_note_amount: creditSummary.total
     };
     const mappedItems = this.filterReceiptCommercialItems(hydrated.items).map(item => this.mapInvoiceItemToReceiptItem(item)).filter(Boolean);
     this.state.selectedReceipt = null;
     this.state.items = mappedItems;
-    this.populateForm(draft, mappedItems, false, sourceInvoice, invoiceReceipts);
+    this.populateForm(draft, mappedItems, false, sourceInvoiceWithCredits, invoiceReceipts);
     if (E.receiptForm) {
       E.receiptForm.dataset.id = '';
       E.receiptForm.dataset.mode = 'create_from_invoice';
       E.receiptForm.dataset.sourceInvoiceUuid = invoiceUuid;
-      E.receiptForm.dataset.clientId = String(sourceInvoice?.client_id || '').trim();
+      E.receiptForm.dataset.clientId = String(sourceInvoiceWithCredits?.client_id || '').trim();
       E.receiptForm.dataset.paymentMethod = '';
       E.receiptForm.dataset.paymentReference = '';
     }
@@ -1717,12 +1825,20 @@ const Receipts = {
       if (invoiceError) throw new Error(`Unable to load linked invoice: ${invoiceError.message || 'Unknown error'}`);
       if (invoiceRow) invoice = invoiceRow;
     }
-    const invoiceReceipts = invoiceUuid ? await this.fetchReceiptsForInvoice({ id: invoiceUuid }).catch(() => []) : [];
+    const [invoiceReceipts, creditNoteRows] = invoiceUuid
+      ? await Promise.all([
+        this.fetchReceiptsForInvoice({ id: invoiceUuid, invoice_number: invoice?.invoice_number }).catch(() => []),
+        this.fetchCreditNotesForInvoice({ id: invoiceUuid, invoice_number: invoice?.invoice_number }).catch(() => [])
+      ])
+      : [[], []];
+    const creditSummary = this.summarizeCreditNotes(creditNoteRows, invoice?.credit_note_amount);
+    if (invoice) invoice = { ...invoice, credit_note_amount: creditSummary.total };
     return {
-      receipt: this.normalizeReceiptWithLedger(receiptRow, invoice || {}, invoiceReceipts),
+      receipt: this.normalizeReceiptWithLedger({ ...receiptRow, credit_note_amount: creditSummary.total }, invoice || {}, invoiceReceipts),
       items: this.filterReceiptCommercialItems(itemRows).map(item => this.normalizeItem(item)),
       invoice,
-      invoiceReceipts
+      invoiceReceipts,
+      creditNotes: creditSummary.rows
     };
   },
   async openReceiptById(receiptId, { readOnly = false, trigger = null } = {}) {
@@ -1797,6 +1913,7 @@ const Receipts = {
       status: get('receiptFormStatus'),
       amount_in_words: get('receiptFormAmountInWords'),
       invoice_total: get('receiptFormInvoiceGrandTotal'),
+      credit_note_amount: get('receiptFormCreditNoteAmount'),
       old_paid_total: get('receiptFormOldPaidTotal'),
       paid_now: get('receiptFormPaidNow'),
       new_paid_total: get('receiptFormNewPaidTotal'),
@@ -1857,7 +1974,9 @@ const Receipts = {
     const invoiceCreditNoteAmount = this.toNumberSafe(
       (linkedInvoice || {}).credit_note_amount ??
       (linkedInvoice || {}).credit_amount ??
-      (linkedInvoice || {}).credited_amount
+      (linkedInvoice || {}).credited_amount ??
+      formValues.credit_note_amount ??
+      existing.credit_note_amount
     );
     const invoiceTotalForValidation = this.toNumberSafe(
       paymentSnapshot.invoice_total ??
@@ -1969,7 +2088,7 @@ const Receipts = {
       try {
         const snapshot = await this.computeReceiptSnapshot(invoiceUuid, normalizedAmount);
         const balanceBeforeReceipt = Math.max(
-          this.toNumberSafe(snapshot.invoice_total) - this.toNumberSafe(snapshot.old_paid_total),
+          this.toNumberSafe(snapshot.invoice_total) - this.toNumberSafe(snapshot.old_paid_total) - this.toNumberSafe(snapshot.credit_note_amount),
           0
         );
         if (!this.canUseAdminOverride() && normalizedAmount > balanceBeforeReceipt + 0.0001) {
@@ -2207,11 +2326,16 @@ const Receipts = {
         }
       }
     }
-    const invoiceReceipts = Array.isArray(detail?.invoiceReceipts)
-      ? detail.invoiceReceipts
-      : await this.fetchReceiptsForInvoice(invoice || detail.receipt || {}).catch(() => []);
-    const normalizedReceipt = this.normalizeReceiptWithLedger(detail.receipt, invoice || {}, invoiceReceipts);
-    return { receiptUuid, receipt: normalizedReceipt, items: this.filterReceiptCommercialItems(detail.items), invoice, agreement, invoiceItems: this.filterReceiptCommercialItems(invoiceItems), invoiceReceipts };
+    const [invoiceReceipts, creditNoteRows] = await Promise.all([
+      Array.isArray(detail?.invoiceReceipts)
+        ? Promise.resolve(detail.invoiceReceipts)
+        : this.fetchReceiptsForInvoice(invoice || detail.receipt || {}).catch(() => []),
+      this.fetchCreditNotesForInvoice(invoice || detail.receipt || {}).catch(() => [])
+    ]);
+    const creditSummary = this.summarizeCreditNotes(creditNoteRows, invoice?.credit_note_amount);
+    if (invoice) invoice = { ...invoice, credit_note_amount: creditSummary.total };
+    const normalizedReceipt = this.normalizeReceiptWithLedger({ ...detail.receipt, credit_note_amount: creditSummary.total }, invoice || {}, invoiceReceipts);
+    return { receiptUuid, receipt: normalizedReceipt, items: this.filterReceiptCommercialItems(detail.items), invoice, agreement, invoiceItems: this.filterReceiptCommercialItems(invoiceItems), invoiceReceipts, creditNotes: creditSummary.rows };
   },
   getItemDescription(item = {}) {
     return String(
@@ -2230,7 +2354,7 @@ const Receipts = {
     const shouldShowDescription = itemDescription && itemDescription !== itemName;
     return `<div class="doc-item-name">${U.escapeHtml(itemName || '—')}</div>${shouldShowDescription ? `<div class="doc-item-description">${U.escapeHtml(itemDescription)}</div>` : ''}`;
   },
-  buildReceiptPreviewHtml(receipt = {}, items = [], invoice = null, invoiceItems = [], invoiceReceipts = null, agreement = null) {
+  buildReceiptPreviewHtml(receipt = {}, items = [], invoice = null, invoiceItems = [], invoiceReceipts = null, agreement = null, creditNotes = []) {
     const r = this.normalizeReceipt(receipt || {});
     const normalizedItems = this.filterReceiptCommercialItems(items).map(item => this.normalizeItem(item));
     const fallbackItems = this.filterReceiptCommercialItems(invoiceItems).map(item => this.normalizeItem(item));
@@ -2343,12 +2467,15 @@ const Receipts = {
     const invoiceTotal = this.toNumberSafe(
       pickMoneyTotal(r.invoice_total, invoice?.invoice_total, invoice?.grand_total, calculatedInvoiceTotal)
     );
-    const resolvedSnapshot = this.resolveReceiptPaymentSnapshot(r, { ...invoice, invoice_total: invoiceTotal }, invoiceReceipts);
+    const creditSummary = this.summarizeCreditNotes(creditNotes, invoice?.credit_note_amount ?? r.credit_note_amount);
+    const creditNoteAmount = creditSummary.total;
+    const invoiceForSettlement = { ...invoice, invoice_total: invoiceTotal, credit_note_amount: creditNoteAmount };
+    const resolvedSnapshot = this.resolveReceiptPaymentSnapshot(r, invoiceForSettlement, invoiceReceipts);
     const oldPaidTotal = resolvedSnapshot.old_paid_total;
     const paidNow = resolvedSnapshot.paid_now;
     const newPaidTotal = resolvedSnapshot.new_paid_total;
     const pendingAmount = resolvedSnapshot.pending_amount;
-    const paymentState = this.normalizeReceiptPaymentState({ ...r, ...resolvedSnapshot }, invoice || r);
+    const paymentState = this.normalizeReceiptPaymentState({ ...r, ...resolvedSnapshot }, invoiceForSettlement || r);
     const receiptPaymentAmountSource = pickDefined(
       r.paid_now,
       r.amount_received,
@@ -2371,6 +2498,7 @@ const Receipts = {
     const customPaymentTermsHtml = linkedPaymentTerm === 'Custom' && linkedCustomPaymentTerms
       ? `<section class="document-note-box custom-payment-terms-box"><h2>Custom Payment Terms</h2><div>${text(linkedCustomPaymentTerms)}</div></section>`
       : '';
+    const creditNotesHtml = creditSummary.rows.length ? `<section class="section"><h2>Credit Notes Applied</h2><table><thead><tr><th>Credit Note #</th><th>Date</th><th>Description</th><th style="width:18%">Amount</th></tr></thead><tbody>${creditSummary.rows.map(note => `<tr><td>${text(note.credit_note_number || note.credit_note_id)}</td><td class="cell-center">${date(note.credit_note_date)}</td><td>${text(note.description)}</td><td class="cell-right">${this.money(currency, note.credit_amount)}</td></tr>`).join('')}<tr class="total-row"><td colspan="3" class="cell-right">Total Credit Notes</td><td class="cell-right">${this.money(currency, creditNoteAmount)}</td></tr></tbody></table></section>` : '';
     const html = `<!doctype html>
 <html>
   <head>
@@ -2532,12 +2660,15 @@ const Receipts = {
 
       ${hardwareSectionHtml}
 
-      <p class="receipt-narrative">We have received from ${text(customerName)} the sum of ${text(amountInWords)} being partial payment on account of ${text(invoiceDisplay)}. Pending amount: ${this.money(currency, pendingAmount)}.</p>
+      ${creditNotesHtml}
+
+      <p class="receipt-narrative">We have received from ${text(customerName)} the sum of ${text(amountInWords)} ${pendingAmount <= 0 ? 'as settlement' : 'as partial payment'} on account of ${text(invoiceDisplay)}.${creditNoteAmount > 0 ? ` Credit notes applied: ${this.money(currency, creditNoteAmount)}.` : ''} Pending amount: ${this.money(currency, pendingAmount)}.</p>
 
       <section class="totals-wrap">
         <div class="totals-box">
           <div class="totals-row grand"><span>Grand Total</span><strong>${this.money(currency, invoiceTotal)}</strong></div>
           ${hardwareItems.length ? `<div class="totals-row"><span>Hardware</span><strong>${this.money(currency, hardwareSubtotal)}</strong></div>` : ``}
+          ${creditNoteAmount > 0 ? `<div class="totals-row"><span>Credit Note(s) Applied</span><strong>- ${this.money(currency, creditNoteAmount)}</strong></div>` : ``}
           <div class="totals-row"><span>Old Paid Total</span><strong>${this.money(currency, oldPaidTotal)}</strong></div>
           <div class="totals-row"><span>Paid Now</span><strong>${this.money(currency, paidNow)}</strong></div>
           <div class="totals-row amount-in-words"><span>Grand Amount in Words:</span><strong>${text(amountInWords)}</strong></div>
@@ -2574,8 +2705,8 @@ const Receipts = {
       return;
     }
     try {
-      const { receipt, items, invoice, agreement, invoiceItems, invoiceReceipts } = await this.loadReceiptPreviewData(id);
-      const html = this.buildReceiptPreviewHtml(receipt, items, invoice, invoiceItems, invoiceReceipts, agreement);
+      const { receipt, items, invoice, agreement, invoiceItems, invoiceReceipts, creditNotes } = await this.loadReceiptPreviewData(id);
+      const html = this.buildReceiptPreviewHtml(receipt, items, invoice, invoiceItems, invoiceReceipts, agreement, creditNotes);
       const brandedHtml = U.addIncheckDocumentLogo(U.formatPreviewHtmlDates(html));
       const label = this.receiptDisplayId(receipt) || id;
       if (E.receiptPreviewTitle) E.receiptPreviewTitle.textContent = `RECEIPT VOUCHER · ${label}`;
