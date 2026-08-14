@@ -129,17 +129,6 @@ const Proposals = {
     'customer_signature_title',
     'customer_sign_date',
     'customer_signed_at',
-    'e_signature_type',
-    'e_signature_text',
-    'e_signature_image_data_url',
-    'e_signed_document_data_url',
-    'e_signed_document_file_name',
-    'e_signed_document_mime_type',
-    'e_signature_signed_at',
-    'e_signature_customer_name',
-    'e_signature_customer_email',
-    'e_signature_ip_address',
-    'e_signature_confirmed',
     'provider_signatory_user_id',
     'provider_signatory_name',
     'provider_signatory_title',
@@ -160,12 +149,6 @@ const Proposals = {
     'signed_document_uploaded_by',
     'generated_by',
     'updated_at',
-    'e_proposal_token',
-    'e_proposal_token_expires_at',
-    'e_proposal_link_enabled',
-    'e_proposal_generated_at',
-    'e_proposal_generated_by',
-    'viewed_at',
     'accepted_at',
     'accepted_by',
     'accepted_by_name',
@@ -2781,145 +2764,7 @@ const Proposals = {
       contact: previewContact
     };
   },
-  normalizeProposalItemSection(item = {}) {
-    const raw = String(
-      item.preview_section ||
-      item.section ||
-      item.item_section ||
-      item.category_section ||
-      item.item_type ||
-      item.type ||
-      item.fee_type ||
-      ''
-    ).toLowerCase();
-
-    const name = String(
-      item.item_name ||
-      item.name ||
-      item.description ||
-      item.catalog_item_name ||
-      ''
-    ).toLowerCase();
-
-    const combined = `${raw} ${name}`;
-
-    if (
-      combined.includes('annual') ||
-      combined.includes('saas') ||
-      combined.includes('subscription') ||
-      combined.includes('license') ||
-      combined.includes('incheck basic')
-    ) {
-      return 'subscription';
-    }
-
-    if (
-      combined.includes('one_time') ||
-      combined.includes('one-time') ||
-      combined.includes('one time') ||
-      combined.includes('setup') ||
-      combined.includes('training') ||
-      combined.includes('support')
-    ) {
-      return 'one_time';
-    }
-
-    if (combined.includes('hardware')) {
-      return 'one_time';
-    }
-
-    return 'one_time';
-  },
-  getProposalItemLineTotal(item = {}) {
-    const storedTotal =
-      item.line_total ??
-      item.total_price ??
-      item.total ??
-      item.amount ??
-      item.final_amount;
-
-    if (storedTotal !== null && storedTotal !== undefined && storedTotal !== '') {
-      return Number(storedTotal) || 0;
-    }
-
-    const unitPrice = Number(
-      item.unit_price ??
-      item.price ??
-      item.catalog_unit_price ??
-      item.default_unit_price ??
-      0
-    );
-
-    const qty = Number(item.quantity ?? item.qty ?? 1);
-    const discount = Number(
-      item.discount_percent ??
-      item.discount_percentage ??
-      item.discount ??
-      0
-    );
-
-    const gross = unitPrice * qty;
-    return gross - gross * (discount / 100);
-  },
-  calculatePublicProposalSummary(proposal = {}, items = []) {
-    let oneTimeFees = 0;
-    let subscriptionFees = 0;
-
-    (items || []).forEach((item) => {
-      const section = this.normalizeProposalItemSection(item);
-      const total = this.getProposalItemLineTotal(item);
-
-      if (section === 'subscription') {
-        subscriptionFees += total;
-      } else {
-        oneTimeFees += total;
-      }
-    });
-
-    const calculatedGrandTotal = oneTimeFees + subscriptionFees;
-
-    const grandTotal = Number(
-      proposal.grand_total ??
-      proposal.total_amount ??
-      proposal.final_total ??
-      proposal.total ??
-      calculatedGrandTotal
-    );
-
-    return {
-      oneTimeFees,
-      subscriptionFees,
-      grandTotal
-    };
-  },
-  getProposalCurrency(proposal = {}, items = []) {
-    return (
-      proposal.currency ||
-      proposal.proposal_currency ||
-      proposal.document_currency ||
-      proposal.billing_currency ||
-      items.find((i) => i.currency)?.currency ||
-      items.find((i) => i.item_currency)?.item_currency ||
-      'USD'
-    );
-  },
-  formatProposalMoney(value, currency) {
-    const n = Number(value || 0);
-    const code = currency || 'USD';
-
-    try {
-      return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: code,
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      }).format(n);
-    } catch {
-      return `${code} ${n.toFixed(2)}`;
-    }
-  },
   buildProposalDocumentHtml(proposal = {}, items = [], options = {}) {
-    const isPublicView = Boolean(options?.publicView);
     const previewModel = this.buildProposalPreviewModel(proposal, items);
     const proposalData = previewModel.proposal;
     const normalizedItems = previewModel.items;
@@ -3004,8 +2849,6 @@ const Proposals = {
     const subtotalOneTime = this.toNumberSafe(previewTotals.subtotal_one_time);
     const grandTotal = this.toNumberSafe(previewTotals.grand_total);
     const displayOneTimeFeesSubtotal = oneTimeFeesSubtotal;
-    const publicSummary = this.calculatePublicProposalSummary(proposalData, normalizedItems);
-    const publicCurrency = this.getProposalCurrency(proposalData, normalizedItems);
     const hardwareSectionHtml = hardwareItems.length ? `
       <section class="section">
         <h2>Hardware Details</h2>
@@ -3032,12 +2875,7 @@ const Proposals = {
       </section>` : '';
 
     const grandTotalInWords = U.formatAmountInWords(grandTotal, currency);
-    const totalsRowsHtml = isPublicView
-      ? `
-          <div class="public-total-row"><span>One-Time Fees</span><strong>${this.formatProposalMoney(publicSummary.oneTimeFees, publicCurrency)}</strong></div>
-          <div class="public-total-row"><span>Subscription Fees</span><strong>${this.formatProposalMoney(publicSummary.subscriptionFees, publicCurrency)}</strong></div>
-          <div class="public-total-row public-grand-total"><span>Grand Total</span><strong>${this.formatProposalMoney(publicSummary.grandTotal, publicCurrency)}</strong></div>`
-      : `
+    const totalsRowsHtml = `
           <div class="totals-row"><span>One Time Fees</span><strong>${money(displayOneTimeFeesSubtotal)}</strong></div>
           ${hardwareItems.length ? `<div class="totals-row"><span>Hardware</span><strong>${money(hardwareSubtotal)}</strong></div>` : ''}
           <div class="totals-row"><span>Subscription Fees</span><strong>${money(subtotalLocations)}</strong></div>
@@ -3053,8 +2891,6 @@ const Proposals = {
     const customerSignatory = this.resolveProposalCustomerSignatory(proposalData, proposalContact);
     const customerSignatoryName = String(customerSignatory.name || '').trim();
     const customerSignatoryTitle = String(customerSignatory.title || '').trim();
-    const electronicSignatureVerificationHtml = renderElectronicSignatureVerification(proposalData);
-    const signedDocumentVerificationHtml = renderSignedDocumentVerification(proposalData);
     const isPoc = this.normalizeTruthy(proposalData.is_poc || proposalData.isPoc);
     const pocDetailsHtml = isPoc ? `
       <section class="info-grid" style="margin-top:14px;grid-template-columns:1fr;">
@@ -3233,9 +3069,6 @@ const Proposals = {
       .totals-row.grand-total-words-row { align-items: flex-start; gap: 12px; background: #f8fbff; color: #334155; font-size: 12px; font-weight: 500; }
       .totals-row.grand-total-words-row span { flex: 0 0 auto; font-weight: 600; white-space: nowrap; }
       .totals-row.grand-total-words-row strong { flex: 1 1 auto; min-width: 0; font-weight: 500; line-height: 1.4; text-align: right; overflow-wrap: anywhere; }
-      .public-proposal-totals { margin-left: auto; width: min(100%, 420px); border: 1px solid #dbeafe; border-radius: 14px; overflow: hidden; background: #ffffff; }
-      .public-total-row { display: flex; justify-content: space-between; gap: 16px; padding: 14px 16px; border-bottom: 1px solid #e5e7eb; }
-      .public-total-row:last-child { border-bottom: 0; }
       .public-grand-total { background: #eff6ff; }
       .public-grand-total span, .public-grand-total strong { color: #2563eb; font-size: 18px; font-weight: 800; }
       .terms { margin-top: 16px; font-size: 12.5px; line-height: 1.6; border: 1px solid #d7e1ed; border-radius: 6px; padding: 12px; }
@@ -3249,35 +3082,10 @@ const Proposals = {
       .signature-box { border: 1px solid #d7e1ed; min-height: 124px; border-radius: 6px; overflow: hidden; }
       .signature-head { background: #f8fbff; border-bottom: 1px solid #e3eaf3; padding: 8px 10px; font-size: 11px; letter-spacing: 0.08em; font-weight: 700; color: #1e3a5f; }
       .signature-body { padding: 11px; font-size: 12px; line-height: 1.5; }
-      .esignature-verification-section { margin-top: 16px; border: 1px solid #bfdbfe; border-radius: 12px; background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%); overflow: hidden; page-break-inside: avoid; }
-      .esignature-verification-header { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-bottom: 1px solid #dbeafe; background: #eff6ff; }
-      .esignature-icon { width: 24px; height: 24px; border-radius: 999px; background: #2563eb; color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; flex: 0 0 auto; }
-      .esignature-verification-header h4 { margin: 0; font-size: 13px; font-weight: 800; color: #1e3a8a; text-transform: uppercase; letter-spacing: 0.06em; }
-      .esignature-verification-header p { margin: 3px 0 0; font-size: 12px; color: #475569; }
-      .esignature-verification-body { display: grid; grid-template-columns: 300px 1fr; gap: 18px; padding: 14px; }
-      .esignature-preview-box { min-height: 110px; border: 1px solid #dbeafe; border-radius: 10px; background: #ffffff; display: flex; align-items: center; justify-content: center; padding: 12px; }
-      .esignature-image { max-width: 260px; max-height: 95px; object-fit: contain; display: block; }
-      .esignature-typed { color: #0f172a; font-size: 30px; font-style: italic; font-family: "Brush Script MT", "Segoe Script", "Snell Roundhand", cursive; }
-      .esignature-details { display: grid; gap: 8px; align-content: center; }
-      .esignature-detail-row { display: grid; grid-template-columns: 110px 1fr; gap: 10px; font-size: 12px; }
-      .esignature-detail-row span { color: #64748b; }
-      .esignature-detail-row strong { color: #0f172a; font-weight: 700; }
-      .esignature-confirmed-badge { width: fit-content; margin-top: 4px; padding: 5px 10px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 11px; font-weight: 800; }
-      .signed-document-preview { display: grid; gap: 8px; }
-      .signed-document-file-card { border: 1px solid #dbeafe; border-radius: 10px; padding: 8px; background: #ffffff; display: grid; gap: 3px; }
-      .signed-document-file-card span { color: #64748b; font-size: 11px; }
-      .signed-document-pdf-preview { width: 100%; min-height: 190px; border: 1px solid #dbeafe; border-radius: 8px; background: #ffffff; }
-      .signed-document-image-preview { max-width: 100%; max-height: 220px; object-fit: contain; border: 1px solid #dbeafe; border-radius: 8px; background: #ffffff; }
-      .signed-document-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 
       .footer-note { margin-top: 16px; font-size: 11px; color: #64748b; border-top: 1px solid #e3eaf3; padding-top: 10px; text-align: center; }
       @page { size: A4; margin: 0; }
       @media print {
-        .esignature-verification-section {
-          box-shadow: none;
-          page-break-inside: avoid;
-        }
-
         body {
           margin: 0;
           padding: 0;
@@ -3296,16 +3104,6 @@ const Proposals = {
         }
       }
 
-      @media (max-width: 700px) {
-        .esignature-verification-body {
-          grid-template-columns: 1fr;
-        }
-
-        .esignature-detail-row {
-          grid-template-columns: 1fr;
-          gap: 2px;
-        }
-      }
     </style>
   </head>
   <body>
@@ -3418,7 +3216,7 @@ const Proposals = {
       ${hardwareSectionHtml}
 
       <section class="totals-wrap">
-        <div class="${isPublicView ? 'public-proposal-totals' : 'totals-box'}">${totalsRowsHtml}
+        <div class="totals-box">${totalsRowsHtml}
         </div>
       </section>
 
@@ -3452,8 +3250,6 @@ const Proposals = {
         </div>
       </section>
 
-      ${electronicSignatureVerificationHtml}
-      ${signedDocumentVerificationHtml}
 
       <footer class="footer-note">This is an auto-generated system document and is valid without a manual signature unless otherwise required.</footer>
     </div>
@@ -3776,7 +3572,6 @@ const Proposals = {
         Permissions.canPreviewProposal() ? { label: 'View', variant: 'primary', permissionResource: 'proposals', permissionAction: 'view', onClick: btn => this.openProposalFormById(id, { readOnly: true, trigger: btn }) } : null,
         Permissions.canUpdateProposal() && (!(this.isProposalAccepted(row) || this.isProposalExpired(row)) || this.canUseAdminOverride()) ? { label: (this.isProposalAccepted(row) || this.isProposalExpired(row)) && this.canUseAdminOverride() ? 'Admin Edit' : 'Edit', variant: 'ghost', permissionResource: 'proposals', permissionAction: 'update', onClick: btn => this.openProposalFormById(id, { readOnly: false, trigger: btn }) } : null,
         Permissions.canPreviewProposal() ? { label: 'Preview', variant: 'ghost', permissionResource: 'proposals', permissionAction: 'view', onClick: () => this.previewProposalHtml(id) } : null,
-        this.canViewEProposalAuditLog() ? { label: 'E-Proposal Activity Log', variant: 'ghost', permissionResource: 'proposals', permissionAction: 'view', onClick: () => this.showEProposalActivityLog(id) } : null,
         this.canShowConvertToAgreement(row) && !this.isAgreementAlreadyCreated(row) ? { label: 'Convert to Agreement', variant: 'ghost', permissionResource: 'agreements', permissionAction: 'create_from_proposal', onClick: () => window.Agreements?.createFromProposalFlow?.(id) } : null,
         Permissions.canDeleteProposal() ? { label: 'Delete', variant: 'ghost', permissionResource: 'proposals', permissionAction: 'delete', onClick: () => this.deleteById(id) } : null
       ].filter(Boolean)
@@ -3852,8 +3647,6 @@ const Proposals = {
       }
       if (Permissions.canPreviewProposal()) {
         items.push(`<button class="commercial-menu-item" type="button" data-proposal-preview="${id}" data-permission-resource="proposals" data-permission-action="view">Preview</button>`);
-        items.push(`<button class="commercial-menu-item" type="button" data-proposal-e-link="${id}" data-permission-resource="proposals" data-permission-action="view">Generate E-Proposal Link</button>`);
-        if (this.canViewEProposalAuditLog()) items.push(`<button class="commercial-menu-item" type="button" data-proposal-e-audit="${id}" data-permission-resource="proposals" data-permission-action="view">E-Proposal Activity Log</button>`);
       }
       if (this.canShowConvertToAgreement(row) && !this.isAgreementAlreadyCreated(row)) {
         items.push(`<button class="commercial-menu-item" type="button" data-proposal-convert-agreement="${id}" data-permission-resource="agreements" data-permission-action="create_from_proposal">Convert to Agreement</button>`);
@@ -5148,7 +4941,6 @@ const Proposals = {
     }
     if (E.proposalFormDeleteBtn)
       E.proposalFormDeleteBtn.style.display = mode === 'edit' && !effectiveReadOnly && Permissions.canDeleteProposal() ? '' : 'none';
-    if (E.proposalGenerateELinkBtn) E.proposalGenerateELinkBtn.style.display = mode === 'edit' && Permissions.canPreviewProposal() ? '' : 'none';
     if (E.proposalFormSaveBtn) {
       const canSave = mode === 'edit' ? this.canEditProposal() : Permissions.canCreateProposal();
       E.proposalFormSaveBtn.style.display = !effectiveReadOnly && canSave ? '' : 'none';
@@ -5184,7 +4976,6 @@ const Proposals = {
     if (E.proposalFormSaveBtn) E.proposalFormSaveBtn.disabled = busy;
     if (E.proposalFormDeleteBtn) E.proposalFormDeleteBtn.disabled = busy;
     if (E.proposalFormPreviewBtn) E.proposalFormPreviewBtn.disabled = busy;
-    if (E.proposalGenerateELinkBtn) E.proposalGenerateELinkBtn.disabled = busy;
     if (busy) {
       if (E.proposalSignedDocumentUploadBtn) E.proposalSignedDocumentUploadBtn.disabled = true;
       if (E.proposalSignedDocumentOpenBtn) E.proposalSignedDocumentOpenBtn.disabled = true;
@@ -5725,246 +5516,6 @@ const Proposals = {
     }
   },
 
-
-  canViewEProposalAuditLog() {
-    const role = Permissions.normalizeRole?.(Permissions.getCurrentUserRole?.() || Session.role?.() || '') || '';
-    return ['admin', 'gm', 'general_manager', 'sfc', 'senior_fc', 'senior_financial_controller', 'financial_controller', 'audit', 'auditor', 'proposal_audit'].includes(role);
-  },
-  async showEProposalActivityLog(proposalId) {
-    if (!this.canViewEProposalAuditLog()) return UI.toast('You do not have permission to view e-proposal audit logs.');
-    const proposalUuid = this.resolveProposalUuidForAction(proposalId) || String(proposalId || '').trim();
-    if (!proposalUuid) return UI.toast('Unable to resolve proposal for activity log.');
-    let modal = document.getElementById('eProposalActivityLogModal');
-    if (!modal) {
-      modal = document.createElement('div');
-      modal.id = 'eProposalActivityLogModal';
-      modal.className = 'modal e-proposal-activity-modal';
-      modal.setAttribute('role', 'dialog');
-      modal.setAttribute('aria-modal', 'true');
-      document.body.appendChild(modal);
-    }
-    const close = () => { modal.style.display = 'none'; modal.setAttribute('aria-hidden', 'true'); };
-    modal.innerHTML = `<div class="modal-content e-proposal-activity-dialog"><div class="modal-header e-proposal-activity-header"><div><h2>E-Proposal Activity Log</h2><p>Internal audit trail. IP address and user agent are personal data and are visible only to authorized ERP users.</p></div><button class="modal-close" data-e-proposal-activity-close type="button">✕</button></div><div class="e-proposal-activity-body"><div class="muted">Loading activity…</div></div></div>`;
-    modal.style.display = 'flex'; modal.setAttribute('aria-hidden', 'false');
-    modal.querySelector('[data-e-proposal-activity-close]')?.addEventListener('click', close);
-    modal.addEventListener('click', event => { if (event.target === modal) close(); }, { once: true });
-    try {
-      const client = this.getSupabaseClient();
-      if (!client?.from) throw new Error('Supabase client is not available.');
-      const { data, error } = await client
-        .from('proposal_guest_activity_logs')
-        .select('event_type,customer_name,ip_address,user_agent,metadata,created_at')
-        .eq('proposal_id', proposalUuid)
-        .order('created_at', { ascending: false })
-        .limit(200);
-      if (error) throw error;
-      const rows = Array.isArray(data) ? data : [];
-      const formatEvent = value => String(value || '—').replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
-      const formatMeta = metadata => {
-        if (!metadata || typeof metadata !== 'object') return '—';
-        const text = JSON.stringify(metadata, null, 2);
-        return text === '{}' ? '—' : text;
-      };
-      modal.querySelector('.e-proposal-activity-body').innerHTML = rows.length ? `<div class="e-proposal-activity-table-wrap"><table class="e-proposal-activity-table"><thead><tr><th>Event</th><th>Customer name</th><th>IP address</th><th>Date/time</th><th>Signature type</th><th>Details</th></tr></thead><tbody>${rows.map(row => `<tr><td>${U.escapeHtml(formatEvent(row.event_type))}</td><td>${U.escapeHtml(row.customer_name || '—')}</td><td>${U.escapeHtml(row.ip_address || '—')}</td><td>${U.escapeHtml(row.created_at ? new Date(row.created_at).toLocaleString() : '—')}</td><td>${U.escapeHtml(row.metadata?.signature_type || '—')}</td><td><details><summary class="btn btn-incheck-outline sm">Details</summary><div class="e-proposal-activity-user-agent"><strong>User agent</strong><br>${U.escapeHtml(row.user_agent || '—')}</div><pre>${U.escapeHtml(formatMeta(row.metadata))}</pre></details></td></tr>`).join('')}</tbody></table></div>` : '<div class="e-proposal-activity-empty">No e-proposal activity has been logged yet.</div>';
-    } catch (error) {
-      console.error('[e-proposal] activity load failed', error);
-      modal.querySelector('.e-proposal-activity-body').innerHTML = `<div class="e-proposal-activity-empty">Unable to load e-proposal activity: ${U.escapeHtml(error?.message || 'Unknown error')}</div>`;
-    }
-  },
-  getEProposalPublicUrl(token = '') {
-    const clean = String(token || '').trim();
-    return clean ? `${window.location.origin}/e-proposal/${encodeURIComponent(clean)}` : '';
-  },
-  getEProposalRpcErrorMessage(error, fallback = 'E-proposal action failed.') {
-    const raw = String(
-      error?.message ||
-      error?.details ||
-      error?.hint ||
-      error?.error_description ||
-      fallback ||
-      ''
-    ).trim();
-    if (!raw) return fallback;
-    return raw.replace(/^JSON object requested, multiple \(or no\) rows returned\.?\s*/i, '').trim() || fallback;
-  },
-  isEProposalRpcMissing(error) {
-    const text = [error?.message, error?.details, error?.hint, error?.code]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase();
-    return text.includes('could not find the function') ||
-      text.includes('function public.') ||
-      text.includes('does not exist') ||
-      text.includes('pgrst202') ||
-      text.includes('schema cache');
-  },
-  async callEProposalRpc(name, args = {}) {
-    const client = this.getSupabaseClient();
-    if (!client?.rpc) throw new Error('Supabase client is not available.');
-    const { data, error } = await client.rpc(name, args);
-    if (error) throw error;
-    return data;
-  },
-  async callFirstAvailableEProposalRpc(calls = []) {
-    let lastError = null;
-    for (const call of calls) {
-      try {
-        return await this.callEProposalRpc(call.name, call.args || {});
-      } catch (error) {
-        lastError = error;
-        if (!this.isEProposalRpcMissing(error)) throw error;
-        console.warn(`[e-proposal] RPC ${call.name} is not available, trying fallback.`, error);
-      }
-    }
-    throw lastError || new Error('No compatible e-proposal RPC function is available. Run the e-proposal SQL migration first.');
-  },
-  isUuidValue(value = '') {
-    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
-  },
-  findProposalActionRow(identifier = '') {
-    const target = String(identifier || '').trim();
-    if (!target) return null;
-    const matches = row => [
-      row?.id,
-      row?.proposal_id,
-      row?.proposalId,
-      row?.proposal_number,
-      row?.proposalNumber,
-      row?.ref_number,
-      row?.refNumber
-    ].some(value => String(value || '').trim() === target);
-    return (this.state.rows || []).find(matches) || (this.state.filteredRows || []).find(matches) || null;
-  },
-  resolveProposalUuidForAction(identifier = '') {
-    const target = String(identifier || '').trim();
-    if (this.isUuidValue(target)) return target;
-    const row = this.findProposalActionRow(target);
-    const uuid = String(row?.id || row?.proposal_uuid || row?.proposalUuid || '').trim();
-    return this.isUuidValue(uuid) ? uuid : '';
-  },
-  async generateEProposalLink(proposalId, { regenerate = false } = {}) {
-    const cleanId = String(proposalId || '').trim();
-    if (!cleanId) return UI.toast('Save the proposal first to generate an e-proposal link.');
-    const proposalUuid = this.resolveProposalUuidForAction(cleanId);
-    if (!proposalUuid) {
-      UI.toast('Unable to resolve the internal proposal UUID. Refresh the proposals list and try again.');
-      console.warn('[e-proposal] unable to resolve proposal UUID for', cleanId);
-      return;
-    }
-    try {
-      const data = await this.callFirstAvailableEProposalRpc([
-        {
-          name: 'eproposal_generate_link',
-          args: { p_proposal_id: proposalUuid, p_base_url: window.location.origin }
-        },
-        {
-          name: 'generate_e_proposal_link',
-          args: { p_proposal_id: proposalUuid, p_regenerate: !!regenerate }
-        }
-      ]);
-      this.showEProposalLinkModal(data);
-      await this.loadAndRefresh({ force: true });
-    } catch (error) {
-      console.error('[e-proposal] generate failed', error);
-      UI.toast(this.getEProposalRpcErrorMessage(error, 'Unable to generate e-proposal link.'));
-    }
-  },
-  async disableEProposalLink(proposalId) {
-    const cleanId = String(proposalId || '').trim();
-    if (!cleanId) return;
-    const proposalUuid = this.resolveProposalUuidForAction(cleanId) || cleanId;
-    try {
-      const data = await this.callFirstAvailableEProposalRpc([
-        { name: 'eproposal_disable_link', args: { p_proposal_id: proposalUuid } },
-        { name: 'disable_e_proposal_link', args: { p_proposal_id: proposalUuid } }
-      ]);
-      UI.toast('E-proposal link disabled.');
-      this.showEProposalLinkModal(data);
-      await this.loadAndRefresh({ force: true });
-    } catch (error) {
-      console.error('[e-proposal] disable failed', error);
-      UI.toast(this.getEProposalRpcErrorMessage(error, 'Unable to disable e-proposal link.'));
-    }
-  },
-  async logEProposalActivity(proposalId, token, eventType) {
-    try {
-      await this.callEProposalRpc('log_e_proposal_activity', {
-        p_proposal_id: proposalId,
-        p_event_type: eventType,
-        p_token: token
-      });
-    } catch (e) {
-      console.warn('[e-proposal] audit log failed', e);
-    }
-  },
-  showEProposalLinkModal(data = {}) {
-    const row = Array.isArray(data) ? data[0] : data;
-    const proposalId = String(row?.proposal_id || row?.id || '').trim();
-    const token = String(row?.token || row?.e_proposal_token || '').trim();
-    const link = String(row?.url || row?.public_url || row?.public_link || this.getEProposalPublicUrl(token)).trim();
-    let modal = document.getElementById('eProposalLinkModal');
-    if (!modal) {
-      modal = document.createElement('div');
-      modal.id = 'eProposalLinkModal';
-      modal.className = 'modal e-proposal-link-modal';
-      modal.setAttribute('role', 'dialog');
-      modal.setAttribute('aria-modal', 'true');
-      document.body.appendChild(modal);
-    }
-    modal.innerHTML = `<div class="modal-content e-proposal-link-dialog"><div class="modal-header e-proposal-link-header"><div><h2>${link ? 'E-Proposal Link Generated' : 'E-Proposal Link Disabled'}</h2><p>${link ? 'Share this secure link manually with the customer. The customer can review, accept, or reject the proposal without ERP credentials.' : 'The previous public e-proposal link is now disabled. Generate a new link when needed.'}</p></div><button class="modal-close" data-e-proposal-close type="button">✕</button></div><div class="e-proposal-link-body"><div class="e-proposal-link-meta"><span><b>Proposal</b>${U.escapeHtml(row?.proposal_number || row?.proposal_id || '—')}</span><span><b>Customer/company</b>${U.escapeHtml(row?.customer_name || row?.client_name || '—')}</span><span><b>Valid until</b>${U.escapeHtml(U.fmtDisplayDate(row?.valid_until || row?.proposal_valid_until || row?.expires_at) || '—')}</span></div>${link ? `<label class="muted" for="eProposalPublicLink">Public link</label><input id="eProposalPublicLink" class="input e-proposal-link-input" readonly value="${U.escapeAttr(link)}" />` : `<div class="e-proposal-disabled-note">No active public link is currently enabled for this proposal.</div>`}<div class="e-proposal-link-actions">${link ? `<button class="btn btn-incheck-primary" data-e-proposal-copy type="button">Copy E-Proposal Link</button><button class="btn btn-incheck-outline" data-e-proposal-open type="button">Open E-Proposal</button>` : ''}<button class="btn btn-incheck-outline" data-e-proposal-regenerate type="button">${link ? 'Regenerate Link' : 'Generate New Link'}</button>${link ? `<button class="btn proposal-danger-btn" data-e-proposal-disable type="button">Disable Link</button>` : ''}</div></div></div>`;
-    const close = () => { modal.style.display = 'none'; modal.setAttribute('aria-hidden', 'true'); };
-    modal.querySelector('[data-e-proposal-close]')?.addEventListener('click', close);
-    modal.addEventListener('click', event => { if (event.target === modal) close(); }, { once: true });
-    modal.querySelector('[data-e-proposal-copy]')?.addEventListener('click', async () => { await navigator.clipboard?.writeText(link); UI.toast('E-proposal link copied.'); this.logEProposalActivity(proposalId, token, 'link_copied'); });
-    modal.querySelector('[data-e-proposal-open]')?.addEventListener('click', () => window.open(link, '_blank', 'noopener,noreferrer'));
-    modal.querySelector('[data-e-proposal-regenerate]')?.addEventListener('click', () => this.generateEProposalLink(proposalId, { regenerate: true }));
-    modal.querySelector('[data-e-proposal-disable]')?.addEventListener('click', () => this.disableEProposalLink(proposalId));
-    modal.style.display = 'flex'; modal.setAttribute('aria-hidden', 'false');
-  },
-  extractHtml(response) {
-    const candidates = [
-      response,
-      response?.html,
-      response?.proposal_html,
-      response?.data,
-      response?.data?.html,
-      response?.result,
-      response?.result?.html,
-      response?.payload,
-      response?.payload?.html
-    ];
-    for (const candidate of candidates) {
-      if (typeof candidate === 'string' && candidate.trim()) return candidate;
-      if (candidate && typeof candidate === 'object') {
-        if (typeof candidate.html === 'string' && candidate.html.trim()) return candidate.html;
-        if (typeof candidate.proposal_html === 'string' && candidate.proposal_html.trim())
-          return candidate.proposal_html;
-      }
-    }
-    return '';
-  },
-  closePreviewModal() {
-    if (!E.proposalPreviewModal) return;
-    E.proposalPreviewModal.style.display = 'none';
-    E.proposalPreviewModal.setAttribute('aria-hidden', 'true');
-    if (E.proposalPreviewFrame) E.proposalPreviewFrame.srcdoc = '';
-  },
-  exportPreviewPdf() {
-    const frame = E.proposalPreviewFrame;
-    const previewTitle = String(E.proposalPreviewTitle?.textContent || 'Proposal Preview').trim();
-    if (!frame || !String(frame.srcdoc || '').trim()) {
-      UI.toast('Open proposal preview first to extract PDF.');
-      return;
-    }
-    const frameWindow = frame.contentWindow;
-    if (!frameWindow) {
-      UI.toast('Unable to access proposal preview content.');
-      return;
-    }
-    frameWindow.focus();
-    frameWindow.print();
-    UI.toast(`Print dialog opened for ${previewTitle}. Choose "Save as PDF" to extract.`);
-  },
   async previewProposalHtml(proposalId) {
     if (!proposalId) {
       UI.toast('Missing proposal ID for preview.');
@@ -6324,22 +5875,6 @@ const Proposals = {
           this.runRowAction(`preview:${previewId}`, trigger, () => this.previewProposalHtml(previewId));
           return;
         }
-        const eLinkId = getActionValue('data-proposal-e-link');
-        if (eLinkId) {
-          event.preventDefault();
-          event.stopPropagation();
-          closeMenu();
-          this.runRowAction(`e-link:${eLinkId}`, trigger, () => this.generateEProposalLink(eLinkId));
-          return;
-        }
-        const eAuditId = getActionValue('data-proposal-e-audit');
-        if (eAuditId) {
-          event.preventDefault();
-          event.stopPropagation();
-          closeMenu();
-          this.runRowAction(`e-audit:${eAuditId}`, trigger, () => this.showEProposalActivityLog(eAuditId));
-          return;
-        }
         const convertAgreementId = getActionValue('data-proposal-convert-agreement');
         if (convertAgreementId) {
           event.preventDefault();
@@ -6508,13 +6043,6 @@ const Proposals = {
     if (E.proposalSignedDocumentOpenBtn) {
       E.proposalSignedDocumentOpenBtn.addEventListener('click', () => this.openSignedProposalDocument());
     }
-    if (E.proposalGenerateELinkBtn) {
-      E.proposalGenerateELinkBtn.addEventListener('click', () => {
-        const id = String(E.proposalForm?.dataset.id || '').trim();
-        if (!id) return UI.toast('Save the proposal first to generate an e-proposal link.');
-        this.generateEProposalLink(id);
-      });
-    }
     if (E.proposalFormPreviewBtn) {
       E.proposalFormPreviewBtn.addEventListener('click', () => {
         const id = String(E.proposalForm?.dataset.id || '').trim();
@@ -6552,690 +6080,3 @@ const Proposals = {
 };
 
 window.Proposals = Proposals;
-
-function hasTypedESignature(proposal) {
-  return Boolean(
-    proposal &&
-    proposal.e_signature_type === 'typed' &&
-    proposal.e_signature_text
-  );
-}
-
-function hasUploadedESignature(proposal) {
-  return Boolean(
-    proposal &&
-    ['uploaded', 'drawn'].includes(proposal.e_signature_type) &&
-    proposal.e_signature_image_data_url
-  );
-}
-
-function hasAnyESignature(proposal) {
-  return hasTypedESignature(proposal) || hasUploadedESignature(proposal) || hasSignedDocumentUpload(proposal);
-}
-
-function hasSignedDocumentUpload(proposal) {
-  return Boolean(
-    proposal &&
-    proposal.e_signature_type === 'signed_document_upload' &&
-    proposal.e_signed_document_data_url
-  );
-}
-
-function isSignedDocumentPdf(proposal) {
-  return String(proposal?.e_signed_document_mime_type || '').toLowerCase() === 'application/pdf';
-}
-
-function isSignedDocumentImage(proposal) {
-  return /^image\/(png|jpe?g|webp)$/i.test(String(proposal?.e_signed_document_mime_type || ''));
-}
-
-function renderSignedDocumentActions(proposal, { includeButtons = true } = {}) {
-  if (!hasSignedDocumentUpload(proposal) || !includeButtons) return '';
-  const dataUrl = U.escapeAttr(proposal.e_signed_document_data_url);
-  const fileName = U.escapeAttr(proposal.e_signed_document_file_name || 'signed-proposal');
-  return `<div class="signed-document-actions"><a class="public-btn-outline" href="${dataUrl}" target="_blank" rel="noopener noreferrer">Open Signed Proposal</a><a class="public-btn-primary" href="${dataUrl}" download="${fileName}">Download Signed Proposal</a></div>`;
-}
-
-function renderSignedDocumentPreview(proposal, { includeButtons = false } = {}) {
-  if (!hasSignedDocumentUpload(proposal)) return '';
-  const dataUrl = U.escapeHtml(proposal.e_signed_document_data_url);
-  const fileName = U.escapeHtml(proposal.e_signed_document_file_name || 'Signed proposal');
-  const preview = isSignedDocumentPdf(proposal)
-    ? `<iframe class="signed-document-pdf-preview" src="${dataUrl}" title="Signed proposal PDF preview"></iframe>`
-    : (isSignedDocumentImage(proposal) ? `<img class="signed-document-image-preview" src="${dataUrl}" alt="Signed proposal preview">` : '');
-  return `<div class="signed-document-preview"><div class="signed-document-file-card"><strong>${fileName}</strong><span>${U.escapeHtml(proposal.e_signed_document_mime_type || '')}</span></div>${preview}${renderSignedDocumentActions(proposal, { includeButtons })}</div>`;
-}
-
-function renderElectronicSignatureVerification(proposal) {
-  if (!proposal) return '';
-
-  const isUploaded =
-    ['uploaded', 'drawn'].includes(proposal.e_signature_type) &&
-    proposal.e_signature_image_data_url;
-
-  const isTyped =
-    proposal.e_signature_type === 'typed' &&
-    proposal.e_signature_text;
-
-  if (!isUploaded && !isTyped) return '';
-
-  const signedBy =
-    proposal.e_signature_customer_name ||
-    proposal.accepted_by_name ||
-    '';
-
-  const customerIp =
-    proposal.e_signature_ip_address ||
-    proposal.latest_e_proposal_ip_address ||
-    proposal.latest_guest_ip_address ||
-    '';
-
-  const signedAt =
-    proposal.e_signature_signed_at ||
-    proposal.accepted_at ||
-    '';
-
-  const formatSignedDateTime = value => {
-    if (!value) return '';
-    return U.fmtDisplayDateTime?.(value) || U.fmtDisplayDate?.(value) || String(value);
-  };
-
-  const signaturePreview = isUploaded
-    ? `
-      <div class="esignature-preview-box">
-        <img
-          class="esignature-image"
-          src="${U.escapeHtml(proposal.e_signature_image_data_url)}"
-          alt="Customer signature"
-        />
-      </div>
-    `
-    : `
-      <div class="esignature-preview-box esignature-typed">
-        ${U.escapeHtml(proposal.e_signature_text)}
-      </div>
-    `;
-
-  return `
-    <div class="esignature-verification-section">
-      <div class="esignature-verification-header">
-        <span class="esignature-icon">✓</span>
-        <div>
-          <h4>ELECTRONIC SIGNATURE VERIFICATION</h4>
-          <p>This proposal was accepted and electronically signed by the customer.</p>
-        </div>
-      </div>
-
-      <div class="esignature-verification-body">
-        <div class="esignature-left">
-          ${signaturePreview}
-        </div>
-
-        <div class="esignature-details">
-          <div class="esignature-detail-row">
-            <span>Signed by</span>
-            <strong>${U.escapeHtml(signedBy)}</strong>
-          </div>
-          <div class="esignature-detail-row">
-            <span>Customer IP</span>
-            <strong>${U.escapeHtml(customerIp || '—')}</strong>
-          </div>
-          <div class="esignature-detail-row">
-            <span>Signed on</span>
-            <strong>${signedAt ? U.escapeHtml(formatSignedDateTime(signedAt)) : '—'}</strong>
-          </div>
-          <div class="esignature-detail-row">
-            <span>Signature type</span>
-            <strong>${isUploaded ? (proposal.e_signature_type === 'drawn' ? 'Drawn signature' : 'Uploaded signature') : 'Typed signature'}</strong>
-          </div>
-          <div class="esignature-confirmed-badge">
-            Confirmed electronic acceptance
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-function renderSignedDocumentVerification(proposal) {
-  const hasSignedDoc =
-    proposal &&
-    proposal.e_signature_type === 'signed_document_upload' &&
-    proposal.e_signed_document_data_url;
-
-  if (!hasSignedDoc) return '';
-
-  const fileName = proposal.e_signed_document_file_name || 'Signed proposal document';
-  const mimeType = proposal.e_signed_document_mime_type || 'application/pdf';
-
-  const uploadedBy =
-    proposal.e_signature_customer_name ||
-    proposal.accepted_by_name ||
-    proposal.customer_name ||
-    '—';
-
-  const customerIp =
-    proposal.e_signature_ip_address ||
-    proposal.last_guest_ip_address ||
-    proposal.latest_guest_ip_address ||
-    '—';
-
-  const uploadedOn =
-    proposal.e_signature_signed_at ||
-    proposal.accepted_at ||
-    '';
-
-  const signedUrl = proposal.e_signed_document_data_url;
-
-  const isPdf = String(mimeType).toLowerCase().includes('pdf');
-  const isImage = String(mimeType).toLowerCase().startsWith('image/');
-  const formatDate = value => U.fmtDisplayDateTime?.(value) || U.fmtDisplayDate?.(value) || String(value);
-
-  const previewHtml = isPdf
-    ? `
-      <iframe
-        style="width:100%;height:100%;border:0;display:block;background:#fff;"
-        src="${U.escapeHtml(signedUrl)}#toolbar=0&navpanes=0&scrollbar=0"
-        title="Signed proposal preview"
-      ></iframe>
-    `
-    : isImage
-      ? `
-        <img
-          src="${U.escapeHtml(signedUrl)}"
-          alt="Signed proposal preview"
-          style="width:100%;height:100%;object-fit:contain;display:block;background:#fff;"
-        />
-      `
-      : `
-        <div style="height:100%;display:flex;align-items:center;justify-content:center;color:#64748b;font-size:12px;">
-          Preview unavailable
-        </div>
-      `;
-
-  return `
-    <section class="signed-doc-verification" style="margin:16px 0 0;border:1px solid #bfdbfe;border-radius:12px;background:#fff;overflow:hidden;page-break-inside:avoid;">
-      <div class="signed-doc-header" style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;background:#eff6ff;border-bottom:1px solid #dbeafe;">
-        <div style="width:26px;height:26px;border-radius:999px;background:#2563eb;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:900;line-height:1;flex:0 0 auto;">
-          ✓
-        </div>
-        <div>
-          <h4 style="margin:0;color:#1e3a8a;font-size:13px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;">
-            SIGNED PROPOSAL VERIFICATION
-          </h4>
-          <p style="margin:3px 0 0;color:#475569;font-size:12px;line-height:1.4;">
-            The customer uploaded a manually signed proposal document.
-          </p>
-        </div>
-      </div>
-
-      <div class="signed-doc-content" style="display:grid;grid-template-columns:minmax(260px,360px) 1fr;gap:18px;padding:14px;align-items:start;">
-        <div style="min-width:0;">
-          <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid #dbeafe;border-radius:10px;background:#f8fbff;margin-bottom:10px;">
-            <div style="width:38px;height:44px;border-radius:8px;background:#fee2e2;color:#dc2626;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex:0 0 auto;">
-              PDF
-            </div>
-            <div style="min-width:0;">
-              <strong style="display:block;color:#0f172a;font-size:13px;font-weight:800;line-height:1.3;word-break:break-word;">
-                ${U.escapeHtml(fileName)}
-              </strong>
-              <span style="display:block;margin-top:2px;color:#64748b;font-size:11px;">
-                ${U.escapeHtml(mimeType)}
-              </span>
-            </div>
-          </div>
-
-          <div style="height:190px;border:1px solid #dbeafe;border-radius:10px;background:#f8fafc;overflow:hidden;">
-            ${previewHtml}
-          </div>
-        </div>
-
-        <div style="display:grid;align-content:center;gap:0;padding-top:8px;min-width:0;">
-          <div style="display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px;padding:9px 0;border-bottom:1px solid #e5e7eb;font-size:12px;line-height:1.35;">
-            <span style="color:#64748b;">Uploaded by</span>
-            <strong style="color:#0f172a;font-weight:800;word-break:break-word;">${U.escapeHtml(uploadedBy)}</strong>
-          </div>
-
-          <div style="display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px;padding:9px 0;border-bottom:1px solid #e5e7eb;font-size:12px;line-height:1.35;">
-            <span style="color:#64748b;">Customer IP</span>
-            <strong style="color:#0f172a;font-weight:800;word-break:break-word;">${U.escapeHtml(customerIp)}</strong>
-          </div>
-
-          <div style="display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px;padding:9px 0;border-bottom:1px solid #e5e7eb;font-size:12px;line-height:1.35;">
-            <span style="color:#64748b;">Uploaded on</span>
-            <strong style="color:#0f172a;font-weight:800;word-break:break-word;">${uploadedOn ? U.escapeHtml(formatDate(uploadedOn)) : '—'}</strong>
-          </div>
-
-          <div style="display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px;padding:9px 0;border-bottom:1px solid #e5e7eb;font-size:12px;line-height:1.35;">
-            <span style="color:#64748b;">Signature type</span>
-            <strong style="color:#0f172a;font-weight:800;word-break:break-word;">Uploaded signed proposal</strong>
-          </div>
-
-          <div style="width:fit-content;margin-top:12px;padding:7px 12px;border-radius:999px;background:#dcfce7;color:#166534;font-size:11px;font-weight:900;">
-            Confirmed electronic acceptance
-          </div>
-        </div>
-      </div>
-
-      <div class="signed-doc-actions" style="display:flex;gap:10px;padding:14px;border-top:1px solid #e5e7eb;">
-        <a
-          href="${U.escapeHtml(signedUrl)}"
-          target="_blank"
-          rel="noopener noreferrer"
-          style="display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:8px 12px;border:1px solid #bfdbfe;border-radius:10px;background:#fff;color:#2563eb;font-size:12px;font-weight:800;text-decoration:none;"
-        >
-          Open Signed Proposal
-        </a>
-
-        <a
-          href="${U.escapeHtml(signedUrl)}"
-          download="${U.escapeHtml(fileName)}"
-          style="display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:8px 12px;border:1px solid #bfdbfe;border-radius:10px;background:#fff;color:#2563eb;font-size:12px;font-weight:800;text-decoration:none;"
-        >
-          Download Signed Proposal
-        </a>
-      </div>
-    </section>
-  `;
-}
-
-function renderESignaturePreview(proposal, options = {}) {
-  const uploadedWrapperClassName = options.uploadedWrapperClassName || 'public-signature-preview';
-  const typedClassName = options.typedClassName || 'typed-signature-preview';
-
-  if (hasSignedDocumentUpload(proposal)) return renderSignedDocumentPreview(proposal, { includeButtons: true });
-
-  if (hasUploadedESignature(proposal)) {
-    return `
-      <div class="${U.escapeHtml(uploadedWrapperClassName)}">
-        <img
-          class="proposal-signature-image"
-          src="${U.escapeHtml(proposal.e_signature_image_data_url)}"
-          alt="Customer signature"
-        />
-      </div>
-    `;
-  }
-
-  if (hasTypedESignature(proposal)) {
-    return `
-      <div class="${U.escapeHtml(typedClassName)}">
-        ${U.escapeHtml(proposal.e_signature_text)}
-      </div>
-    `;
-  }
-
-  return '';
-}
-
-function getEProposalTokenFromUrl() {
-  const parts = window.location.pathname.split('/').filter(Boolean);
-  const idx = parts.indexOf('e-proposal');
-  return idx >= 0 ? parts[idx + 1] : null;
-}
-
-function renderPublicEProposalShell() {
-  document.body.className = 'public-eproposal-mode';
-  document.body.innerHTML = `
-    <main id="publicEProposalRoot" class="public-eproposal-page">
-      <div class="public-eproposal-card">
-        <div id="publicEProposalContent">
-          <div class="public-loading">Loading proposal...</div>
-        </div>
-      </div>
-    </main>
-  `;
-}
-
-function renderEProposalHero(proposal = {}) {
-  const escapeHtml = value => (window.U?.escapeHtml ? window.U.escapeHtml(value) : String(value ?? ''));
-  const proposalNumber =
-    proposal.proposal_id ||
-    proposal.proposal_number ||
-    proposal.reference ||
-    '—';
-
-  const companyName =
-    proposal.company_name ||
-    proposal.client_name ||
-    proposal.customer_name ||
-    proposal.legal_name ||
-    '—';
-
-  return `
-    <section class="eproposal-hero">
-      <div class="eproposal-hero-inner">
-        <div class="eproposal-secure-label">
-          <span class="eproposal-secure-icon">✓</span>
-          <span>InCheck360 Secure Proposal</span>
-        </div>
-
-        <div class="eproposal-hero-main">
-          <div class="eproposal-hero-copy">
-            <h1>Review Proposal</h1>
-            <p>
-              Please review the proposal below. You can accept and sign,
-              reject, print, or download a copy.
-            </p>
-          </div>
-        </div>
-
-        <div class="eproposal-summary-card">
-          <div class="eproposal-summary-grid">
-            <div class="eproposal-summary-item">
-              <div class="eproposal-summary-icon">📄</div>
-              <div>
-                <span class="eproposal-summary-label">Proposal Number</span>
-                <strong class="eproposal-summary-value">
-                  ${escapeHtml(String(proposalNumber).replace(/^Proposal#/i, '#'))}
-                </strong>
-              </div>
-            </div>
-
-            <div class="eproposal-summary-divider"></div>
-
-            <div class="eproposal-summary-item eproposal-company-item">
-              <div class="eproposal-summary-icon">🏢</div>
-              <div>
-                <span class="eproposal-summary-label">Company</span>
-                <strong class="eproposal-company-name">
-                  ${escapeHtml(companyName)}
-                </strong>
-              </div>
-            </div>
-          </div>
-
-          <div class="eproposal-review-note">
-            <span class="eproposal-info-icon">i</span>
-            <span>Please review the proposal carefully before signing.</span>
-          </div>
-        </div>
-      </div>
-    </section>
-  `;
-}
-
-
-async function callEProposalAction(body) {
-  const supabase = window.SupabaseClient?.getClient?.() || window.supabase;
-  if (!supabase?.functions?.invoke) throw new Error('Supabase functions client is not available.');
-  const { data, error } = await supabase.functions.invoke('eproposal-action', {
-    body
-  });
-
-  if (error) {
-    let responseBody = null;
-
-    try {
-      if (error.context && typeof error.context.clone === 'function') {
-        responseBody = await error.context.clone().json();
-      }
-    } catch (jsonErr) {
-      try {
-        responseBody = await error.context.clone().text();
-      } catch (_) {}
-    }
-
-    console.error('eproposal-action invoke error:', {
-      message: error.message,
-      name: error.name,
-      context: error.context,
-      responseBody
-    });
-
-    throw new Error(
-      responseBody?.error ||
-      responseBody?.message ||
-      error.message ||
-      'Unable to complete this action.'
-    );
-  }
-
-  if (!data?.ok) {
-    console.error('eproposal-action response error:', data);
-    throw new Error(data?.error || 'Unable to complete this action.');
-  }
-
-  return data.data || data;
-}
-
-
-function bootPublicEProposalPage() {
-  const token = decodeURIComponent(getEProposalTokenFromUrl() || '').trim();
-  renderPublicEProposalShell();
-  const content = document.getElementById('publicEProposalContent');
-  const unavailable = (message = 'This proposal link is no longer available.') => {
-    content.innerHTML = `<section class="public-eproposal-section public-status-message"><h2>${U.escapeHtml(message || 'This proposal link is no longer available.')}</h2></section>`;
-  };
-  if (!token) {
-    unavailable();
-    return;
-  }
-
-  const setActionState = disabled => {
-    document.querySelectorAll('[data-public-accept], [data-public-reject]').forEach(btn => { btn.disabled = Boolean(disabled); });
-  };
-
-  const callRpc = async (name, args) => {
-    const client = window.SupabaseClient?.getClient?.() || window.supabase;
-    if (!client?.rpc) throw new Error('Supabase client is not available.');
-    const { data, error } = await client.rpc(name, args || {});
-    if (error) throw error;
-    if (data?.ok === false) {
-      const rpcError = new Error(data?.message || data?.error || 'This proposal link is no longer available.');
-      rpcError.payload = data;
-      throw rpcError;
-    }
-    return data;
-  };
-
-  function safeText(value, fallback = '—') {
-    return value === null || value === undefined || value === '' ? fallback : value;
-  }
-  const field = (...values) => values.find(value => value !== undefined && value !== null && String(value).trim() !== '');
-  const dateText = value => U.escapeHtml(U.fmtDisplayDate(value) || '—');
-  const dateTimeText = value => U.escapeHtml(U.fmtDisplayDateTime?.(value) || U.fmtDisplayDate(value) || '—');
-  const display = (value, fallback = '—') => U.escapeHtml(String(safeText(value, fallback)));
-  const signatureStyleClass = value => `signature-style-${['1', '2', '3'].includes(String(value || '1')) ? String(value || '1') : '1'}`;
-  const renderTypedSignaturePreview = (signatureText, style = '1') => `<div class="typed-signature-preview ${signatureStyleClass(style)}">${display(signatureText, 'Typed signature')}</div>`;
-  const isAllowedSignatureDataUrl = value => /^data:image\/(png|jpe?g|webp);base64,/i.test(String(value || ''));
-  const renderSignatureImage = value => isAllowedSignatureDataUrl(value) ? `<div class="signature-image-preview"><img class="proposal-signature-image" src="${U.escapeHtml(value)}" alt="Customer signature"></div>` : '';
-  const getSignatureSummaryHtml = proposalData => {
-    const hasSignature = hasAnyESignature(proposalData);
-    if (!hasSignature) return '';
-    const signatureHtml = renderESignaturePreview(proposalData);
-    return `<section class="public-eproposal-section public-signature-summary"><h2>Signature Summary</h2><div class="signature-summary-grid"><div><span>Signed by</span><strong>${display(field(proposalData?.e_signature_customer_name, proposalData?.accepted_by_name, proposalData?.customer_name))}</strong></div><div><span>Signed date/time</span><strong>${dateTimeText(field(proposalData?.e_signature_signed_at, proposalData?.accepted_at, proposalData?.customer_sign_date))}</strong></div></div>${signatureHtml}</section>`;
-  };
-  const readSignatureImageFile = file => new Promise((resolve, reject) => {
-    const allowed = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
-    if (!file) return reject(new Error('Uploaded signature image is required.'));
-    if (!allowed.includes(String(file.type || '').toLowerCase())) return reject(new Error('Signature upload must be a PNG, JPG, JPEG, or WEBP image.'));
-    if (file.size > 2 * 1024 * 1024) return reject(new Error('Signature image must be 2 MB or smaller.'));
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Unable to read signature image.'));
-    reader.onload = () => {
-      const image = new Image();
-      image.onerror = () => reject(new Error('Unable to process signature image.'));
-      image.onload = () => {
-        const maxWidth = 900;
-        const scale = Math.min(1, maxWidth / Math.max(image.width, 1));
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.max(1, Math.round(image.width * scale));
-        canvas.height = Math.max(1, Math.round(image.height * scale));
-        canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL(file.type === 'image/png' ? 'image/png' : 'image/jpeg', 0.85));
-      };
-      image.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
-  const renderModal = (html, modalClass = 'public-action-modal') => {
-    let modal = document.getElementById('publicEProposalModal');
-    if (!modal) {
-      modal = document.createElement('div');
-      modal.id = 'publicEProposalModal';
-      modal.className = 'public-eproposal-modal';
-      document.body.appendChild(modal);
-    }
-    modal.innerHTML = `<div class="public-eproposal-modal-card public-modal ${modalClass}">${html}<button class="public-modal-close" type="button" aria-label="Close">×</button></div>`;
-    modal.querySelector('.public-modal-close')?.addEventListener('click', () => modal.remove());
-  };
-
-  (async () => {
-    try {
-      const data = await callEProposalAction({ action: 'view', token });
-      const payload = Array.isArray(data) ? data[0] : data;
-      if (payload?.ok === false || payload?.available === false || (!payload?.proposal && !payload?.proposal_id && !payload?.proposal_number)) return unavailable();
-      const proposal = Proposals.normalizeProposal(payload.proposal || payload);
-      const items = Array.isArray(payload.items) ? payload.items.map(item => Proposals.normalizeItem(item)) : [];
-      const previewModel = Proposals.buildProposalPreviewModel(proposal, items);
-      if (!String(previewModel.proposal.terms_conditions || '').trim()) {
-        previewModel.proposal.terms_conditions = 'No terms and conditions were provided for this proposal.';
-      }
-      const documentHtml = Proposals.buildProposalDocumentHtml(previewModel.proposal, previewModel.items, { publicView: true });
-      const iframeSrcdoc = U.escapeHtml(documentHtml);
-      const isAccepted = ['accepted', 'signed', 'converted', 'converted_to_agreement'].includes(String(field(previewModel.proposal.status, payload.status, '') || '').toLowerCase());
-      const acceptedMessageHtml = isAccepted ? '<section class="public-eproposal-section public-success"><h2>Thank you. This proposal has been accepted and signed.</h2></section>' : '';
-      const signatureSummaryHtml = getSignatureSummaryHtml(previewModel.proposal);
-      content.innerHTML = `
-        ${acceptedMessageHtml}
-        ${renderEProposalHero(previewModel.proposal)}
-        ${signatureSummaryHtml}
-        <section class="public-eproposal-document" data-public-proposal-document>
-          <iframe title="Proposal preview" data-public-proposal-frame srcdoc="${iframeSrcdoc}"></iframe>
-        </section>
-        <div class="public-eproposal-actions"><button class="public-btn-outline" data-public-print type="button">Print / Download PDF</button><button class="public-btn-outline" data-public-reject type="button" ${isAccepted ? 'disabled' : ''}>Reject Proposal</button><button class="public-btn-primary" data-public-accept type="button" ${isAccepted ? 'disabled' : ''}>Accept Proposal</button></div>`;
-      document.querySelector('[data-public-print]')?.addEventListener('click', () => {
-        const frame = document.querySelector('[data-public-proposal-frame]');
-        frame?.contentWindow?.focus?.();
-        frame?.contentWindow?.print?.();
-      });
-      document.querySelector('[data-public-accept]')?.addEventListener('click', () => {
-        if (isAccepted) return;
-        renderModal(`<form data-public-accept-form novalidate data-signature-mode="typed"><h2>Accept & Sign Proposal</h2><label>Customer Full Name<input class="input" name="name" required placeholder="Customer full name"></label><section class="electronic-signature-section"><h3>Signature Method</h3><div class="signature-method-tabs" role="tablist" aria-label="Signature method"><button class="signature-method-tab active" type="button" data-signature-mode="typed">Typed</button><button class="signature-method-tab" type="button" data-signature-mode="uploaded">Upload Image</button><button class="signature-method-tab" type="button" data-signature-mode="drawn">Draw</button><button class="signature-method-tab" type="button" data-signature-mode="signed_document_upload">Upload Signed Proposal</button></div><div data-signature-panel="typed"><label>Typed Signature<input class="input" name="typedSignature" required placeholder="Type your full name"></label>${renderTypedSignaturePreview('', '1')}</div><div data-signature-panel="uploaded" hidden><div class="signature-upload-box"><input type="file" name="signatureImage" accept="image/png,image/jpeg,image/jpg,image/webp"><p>Upload a PNG/JPG/WEBP image of your signature. Max 2 MB.</p></div><div class="signature-image-preview" data-uploaded-signature-preview></div></div><div data-signature-panel="drawn" hidden><div class="signature-draw-pad"><canvas class="signature-canvas" width="720" height="220"></canvas></div><button class="signature-clear-btn public-btn-outline" type="button" data-clear-drawn-signature>Clear Signature</button></div><div data-signature-panel="signed_document_upload" hidden><div class="signed-document-upload-box"><button class="public-btn-outline" data-public-print type="button">Download Proposal</button><p>Download the proposal, sign it, then upload the signed PDF or image here.</p><input type="file" name="signedDocument" accept="application/pdf,image/png,image/jpeg,image/jpg,image/webp"></div><div class="signed-document-preview" data-signed-document-preview></div></div></section><label class="public-checkbox"><input name="authorized" type="checkbox" required> I confirm that I am authorized to accept this proposal and that the selected signing method represents my acceptance of the proposal terms.</label><div class="public-validation-errors" aria-live="polite"></div><button class="public-btn-primary accept-proposal-submit" type="submit" disabled>Accept & Sign Proposal</button></form>`, 'public-action-modal accept-proposal-modal');
-        const form = document.querySelector('[data-public-accept-form]');
-        form?.querySelector('[data-public-print]')?.addEventListener('click', () => { const frame = document.querySelector('[data-public-proposal-frame]'); frame?.contentWindow?.focus?.(); frame?.contentWindow?.print?.(); });
-        const canvas = form?.querySelector('.signature-canvas');
-        const ctx = canvas?.getContext('2d');
-        let drawing = false;
-        const resetCanvas = () => { if (!ctx || !canvas) return; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.strokeStyle = '#073b73'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; delete form.dataset.drawnSignatureDataUrl; };
-        const point = e => { const r = canvas.getBoundingClientRect(); const t = e.touches?.[0] || e; return { x: (t.clientX - r.left) * (canvas.width / r.width), y: (t.clientY - r.top) * (canvas.height / r.height) }; };
-        const startDraw = e => { if (!canvas) return; e.preventDefault(); drawing = true; const pt = point(e); ctx.beginPath(); ctx.moveTo(pt.x, pt.y); };
-        const moveDraw = e => { if (!drawing) return; e.preventDefault(); const pt = point(e); ctx.lineTo(pt.x, pt.y); ctx.stroke(); form.dataset.drawnSignatureDataUrl = canvas.toDataURL('image/png'); syncAcceptForm(); };
-        const endDraw = () => { drawing = false; };
-        resetCanvas();
-        canvas?.addEventListener('mousedown', startDraw); canvas?.addEventListener('mousemove', moveDraw); window.addEventListener('mouseup', endDraw);
-        canvas?.addEventListener('touchstart', startDraw, { passive: false }); canvas?.addEventListener('touchmove', moveDraw, { passive: false }); canvas?.addEventListener('touchend', endDraw);
-        const readSignedDocumentFile = file => new Promise((resolve, reject) => { const allowed = ['application/pdf','image/png','image/jpeg','image/jpg','image/webp']; if (!file) return reject(new Error('Signed proposal upload is required.')); if (!allowed.includes(String(file.type || '').toLowerCase())) return reject(new Error('Signed proposal must be a PDF, PNG, JPG, JPEG, or WEBP file.')); if (file.size > 8 * 1024 * 1024) return reject(new Error('Signed proposal must be 8 MB or smaller.')); const reader = new FileReader(); reader.onerror = () => reject(new Error('Unable to read signed proposal.')); reader.onload = () => resolve({ dataUrl: reader.result, fileName: file.name, mimeType: file.type }); reader.readAsDataURL(file); });
-        function syncAcceptForm() {
-          if (!form) return;
-          const mode = form.dataset.signatureMode || 'typed';
-          if (mode === 'typed' && !form.typedSignature.value.trim() && form.name.value.trim()) form.typedSignature.value = form.name.value;
-          const preview = form.querySelector('.typed-signature-preview');
-          if (preview) preview.textContent = form.typedSignature.value.trim() || 'Typed signature';
-          form.querySelectorAll('[data-signature-panel]').forEach(panel => { panel.hidden = panel.dataset.signaturePanel !== mode; });
-          const modeOk = mode === 'typed' ? form.typedSignature.value.trim() : mode === 'uploaded' ? form.dataset.uploadedSignatureDataUrl : mode === 'drawn' ? form.dataset.drawnSignatureDataUrl : form.dataset.signedDocumentDataUrl;
-          form.querySelector('.accept-proposal-submit').disabled = !(form.name.value.trim() && form.authorized.checked && modeOk);
-        }
-        form?.addEventListener('input', syncAcceptForm);
-        form?.addEventListener('change', syncAcceptForm);
-        form?.querySelectorAll('button[data-signature-mode]').forEach(btn => btn.addEventListener('click', () => { form.dataset.signatureMode = btn.dataset.signatureMode || 'typed'; form.querySelectorAll('.signature-method-tab').forEach(x => x.classList.toggle('active', x === btn)); syncAcceptForm(); }));
-        form?.signatureImage?.addEventListener('change', async () => { const errorBox = form.querySelector('.public-validation-errors'); if (errorBox) errorBox.innerHTML = ''; try { const dataUrl = await readSignatureImageFile(form.signatureImage.files?.[0]); form.dataset.uploadedSignatureDataUrl = dataUrl; form.querySelector('[data-uploaded-signature-preview]').innerHTML = `<img src="${U.escapeHtml(dataUrl)}" alt="Uploaded signature">`; } catch (error) { delete form.dataset.uploadedSignatureDataUrl; form.signatureImage.value = ''; form.querySelector('[data-uploaded-signature-preview]').innerHTML = ''; if (errorBox) errorBox.innerHTML = `<p class="public-form-error">${U.escapeHtml(error.message)}</p>`; } syncAcceptForm(); });
-        form?.signedDocument?.addEventListener('change', async () => { const errorBox = form.querySelector('.public-validation-errors'); if (errorBox) errorBox.innerHTML = ''; try { const file = await readSignedDocumentFile(form.signedDocument.files?.[0]); form.dataset.signedDocumentDataUrl = file.dataUrl; form.dataset.signedDocumentFileName = file.fileName; form.dataset.signedDocumentMimeType = file.mimeType; form.querySelector('[data-signed-document-preview]').innerHTML = file.mimeType === 'application/pdf' ? `<div class="signed-document-file-card"><strong>${U.escapeHtml(file.fileName)}</strong><span>PDF uploaded</span></div><iframe class="signed-document-pdf-preview" src="${U.escapeHtml(file.dataUrl)}"></iframe>` : `<div class="signed-document-file-card"><strong>${U.escapeHtml(file.fileName)}</strong><span>${U.escapeHtml(file.mimeType)}</span></div><img class="signed-document-image-preview" src="${U.escapeHtml(file.dataUrl)}" alt="Signed proposal preview">`; } catch (error) { delete form.dataset.signedDocumentDataUrl; form.signedDocument.value = ''; form.querySelector('[data-signed-document-preview]').innerHTML = ''; if (errorBox) errorBox.innerHTML = `<p class="public-form-error">${U.escapeHtml(error.message)}</p>`; } syncAcceptForm(); });
-        form?.querySelector('[data-clear-drawn-signature]')?.addEventListener('click', () => { resetCanvas(); syncAcceptForm(); });
-        syncAcceptForm();
-      });
-            document.querySelector('[data-public-reject]')?.addEventListener('click', () => renderModal(`<form data-public-reject-form><h2>Reject Proposal</h2><input class="input" name="name" placeholder="Customer name (optional)"><textarea class="input" name="reason" rows="4" placeholder="Rejection reason"></textarea><button class="public-btn-primary reject-proposal-submit" type="submit">Reject Proposal</button></form>`, 'public-action-modal reject-proposal-modal'));
-      document.body.addEventListener('submit', async event => {
-        const form = event.target;
-        if (!form.matches('[data-public-accept-form], [data-public-reject-form]')) return;
-        event.preventDefault();
-        const isAccept = form.matches('[data-public-accept-form]');
-        try {
-          let publicActionResult = null;
-          if (isAccept) {
-            form.querySelectorAll('.public-form-error').forEach(errorEl => errorEl.remove());
-            const errors = [];
-            if (!form.name.value.trim()) errors.push('Customer name is required.');
-            const signatureMode = form.dataset.signatureMode || 'typed';
-            if (signatureMode === 'typed' && !form.typedSignature.value.trim()) errors.push('Typed signature is required.');
-            if (signatureMode === 'uploaded' && !form.dataset.uploadedSignatureDataUrl) errors.push('Uploaded signature image is required.');
-            if (signatureMode === 'drawn' && !form.dataset.drawnSignatureDataUrl) errors.push('Drawn signature is required.');
-            if (signatureMode === 'signed_document_upload' && !form.dataset.signedDocumentDataUrl) errors.push('Signed proposal upload is required.');
-            if (!form.authorized.checked) errors.push('Please confirm authorization before accepting.');
-            const errorBox = form.querySelector('.public-validation-errors');
-            if (errorBox) errorBox.innerHTML = errors.map(error => `<p class="public-form-error">${U.escapeHtml(error)}</p>`).join('');
-            if (errors.length) return;
-            const customerName = form.name.value.trim();
-            const customerEmail = proposal.contact_email ||
-              proposal.customer_email ||
-              proposal.email ||
-              proposal.accepted_by_email ||
-              'not-provided@customer.local';
-            const typedSignature = form.typedSignature.value.trim();
-            const signatureImageDataUrl = signatureMode === 'drawn'
-              ? form.dataset.drawnSignatureDataUrl
-              : form.dataset.uploadedSignatureDataUrl;
-            const signedDocumentDataUrl = form.dataset.signedDocumentDataUrl;
-            const signedDocumentFileName = form.dataset.signedDocumentFileName;
-            const signedDocumentMimeType = form.dataset.signedDocumentMimeType;
-            publicActionResult = await callEProposalAction({
-              action: 'accept',
-              token,
-              customerName,
-              customerEmail,
-              comment: null,
-              signatureType: signatureMode,
-              signatureText:
-                signatureMode === 'typed'
-                  ? typedSignature
-                  : customerName,
-              signatureImageDataUrl:
-                signatureMode === 'uploaded' || signatureMode === 'drawn'
-                  ? signatureImageDataUrl
-                  : null,
-              signedDocumentDataUrl:
-                signatureMode === 'signed_document_upload'
-                  ? signedDocumentDataUrl
-                  : null,
-              signedDocumentFileName:
-                signatureMode === 'signed_document_upload'
-                  ? signedDocumentFileName
-                  : null,
-              signedDocumentMimeType:
-                signatureMode === 'signed_document_upload'
-                  ? signedDocumentMimeType
-                  : null
-            });
-
-          } else {
-            publicActionResult = await callEProposalAction({ action: 'reject', token, customerName: form.name.value || null, customerEmail: null, rejectionReason: form.reason.value || null });
-          }
-          document.getElementById('publicEProposalModal')?.remove();
-          setActionState(true);
-          const acceptedAtText = U.escapeHtml(U.fmtDisplayDateTime?.(publicActionResult?.accepted_at) || U.fmtDisplayDate(publicActionResult?.accepted_at) || new Date().toLocaleString());
-          const acceptedSignatureHtml = isAccept ? (form.dataset.signatureMode === 'signed_document_upload' ? `<div class="signed-document-actions"><a class="public-btn-outline" href="${U.escapeAttr(form.dataset.signedDocumentDataUrl)}" target="_blank" rel="noopener noreferrer">Open Signed Proposal</a><a class="public-btn-primary" href="${U.escapeAttr(form.dataset.signedDocumentDataUrl)}" download="${U.escapeAttr(form.dataset.signedDocumentFileName || 'signed-proposal')}">Download Signed Proposal</a></div>` : (form.dataset.signatureMode === 'uploaded' || form.dataset.signatureMode === 'drawn' ? renderSignatureImage(form.dataset.signatureMode === 'drawn' ? form.dataset.drawnSignatureDataUrl : form.dataset.uploadedSignatureDataUrl) : renderTypedSignaturePreview(form.typedSignature.value.trim(), '1'))) : '';
-          content.insertAdjacentHTML('afterbegin', `<section class="public-eproposal-section public-success"><h2>${isAccept ? 'Thank you. This proposal has been accepted and signed.' : 'This proposal has been rejected.'}</h2>${isAccept ? `<div class="public-signature-summary"><div class="signature-summary-grid"><div><span>Signed by</span><strong>${U.escapeHtml(form.name.value.trim())}</strong></div><div><span>Signed date/time</span><strong>${acceptedAtText}</strong></div></div>${acceptedSignatureHtml}</div>` : ''}</section>`);
-        } catch (error) {
-          console.error('[e-proposal] public action failed', error);
-          form.querySelectorAll('.public-form-error').forEach(errorEl => errorEl.remove());
-          const messageHtml = `<p class="public-form-error">${U.escapeHtml(error?.message || 'Unable to complete this action.')}</p>`;
-          const errorBox = form.querySelector('.public-validation-errors');
-          if (errorBox) {
-            errorBox.innerHTML = messageHtml;
-          } else {
-            form.insertAdjacentHTML('beforeend', messageHtml);
-          }
-        }
-      });
-    } catch (error) {
-      console.error('[e-proposal] public load failed', error);
-      unavailable(error?.payload?.message || error?.message || 'Unable to complete this action. Please try again or contact InCheck360.');
-    }
-  })();
-}
-
-window.getEProposalTokenFromUrl = getEProposalTokenFromUrl;
-window.renderPublicEProposalShell = renderPublicEProposalShell;
-window.renderEProposalHero = renderEProposalHero;
-window.bootPublicEProposalPage = bootPublicEProposalPage;

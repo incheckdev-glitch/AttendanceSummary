@@ -1,0 +1,25 @@
+Delete these retired E-Proposal / E-Agreement files from the existing project after applying this update:
+
+APPLY_NOTES.txt
+E_PROPOSAL_GENERATE_BUTTON_COMPAT_FIX.sql
+README_APPLY_INTERNAL_E_SIGNATURE_FIX.txt
+README_E_AGREEMENT_APPLY.txt
+README_FORCE_CLICK_FIX.txt
+sql/20260630_AGREEMENT_INTERNAL_ESIGN_COMPLETE_FIX.sql
+sql/20260630_agreement_customer_signature_detection_fix.sql
+sql/migrations/20260629_e_proposal_generate_button_compat_fix.sql
+sql/migrations/20260629_e_proposal_guest_links.sql
+sql/migrations/20260630_e_agreement_gm_final_signer.sql
+sql/migrations/20260630_e_agreement_guest_links.sql
+sql/migrations/20260630_e_proposal_accept_lock_fix.sql
+sql/migrations/20260630_e_proposal_action_error_and_ip_compat.sql
+sql/migrations/20260630_e_proposal_guest_ip_audit.sql
+sql/migrations/20260630_e_proposal_signature_methods.sql
+supabase/functions/eagreement-action/index.ts
+supabase/functions/eproposal-action/index.ts
+tests/eproposal-public-totals.test.js
+
+Supabase deployed Edge Functions are not removed by deleting local source files or by SQL.
+After deployment, remove them from Supabase Dashboard or run:
+  supabase functions delete eproposal-action --project-ref YOUR_PROJECT_REF
+  supabase functions delete eagreement-action --project-ref YOUR_PROJECT_REF

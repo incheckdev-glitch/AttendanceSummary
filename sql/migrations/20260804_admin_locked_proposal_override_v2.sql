@@ -102,8 +102,7 @@ set search_path = public
 as $$
 declare
   v_allowed_fields text[] := array[
-    'e_signed_document_data_url', 'e_signed_document_file_name',
-    'e_signed_document_mime_type', 'signed_document_path',
+    'signed_document_path',
     'signed_document_name', 'signed_document_uploaded_at',
     'signed_document_uploaded_by', 'updated_at', 'updated_by'
   ];
@@ -123,6 +122,13 @@ begin
   return new;
 end;
 $$;
+
+
+drop trigger if exists trg_enforce_accepted_proposal_lock on public.proposals;
+create trigger trg_enforce_accepted_proposal_lock
+before update on public.proposals
+for each row
+execute function public.enforce_accepted_proposal_lock();
 
 -- Remove both historical overloads so PostgREST cannot keep resolving an old RPC.
 drop function if exists public.admin_update_locked_proposal(uuid, jsonb, text);

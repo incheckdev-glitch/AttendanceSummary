@@ -442,7 +442,7 @@
     if ((raw.includes('signed') || raw.includes('active') || raw.includes('executed')) && !raw.includes('unsigned') && !raw.includes('draft') && !raw.includes('cancel')) return true;
     return Boolean(
       row.signed_date || row.customer_signed_at || row.customer_sign_date || row.customer_official_sign_date ||
-      row.e_signature_signed_at || row.e_agreement_signature_signed_at || row.signed_document_url ||
+      row.signed_document_url ||
       row.signed_agreement_document_url || row.signed_document_path || row.signed_agreement_document_path
     );
   }

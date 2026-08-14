@@ -1,6 +1,11 @@
 -- Atomic, Admin-only override for historically expired proposals.
 alter table public.proposals
+  add column if not exists accepted_at timestamptz,
   add column if not exists accepted_by uuid,
+  add column if not exists accepted_by_name text,
+  add column if not exists accepted_by_email text,
+  add column if not exists rejected_at timestamptz,
+  add column if not exists rejection_reason text,
   add column if not exists accepted_after_expiry boolean not null default false;
 
 create table if not exists public.proposal_expiry_acceptance_audit (

@@ -160,9 +160,6 @@ const agreement100Html = agreements.buildAgreementPreviewHtml({
   customer_official_signatory_name: 'Remove Signer',
   customer_official_signatory_title: 'Director',
   customer_official_sign_date: '2026-07-01',
-  customer_signature_confirmed: true,
-  customer_signature_type: 'typed',
-  customer_signature_text: 'Remove Signature',
   customer_signed_at: '2026-07-01T10:00:00Z',
   provider_official_signatory_1_name: 'Preserved Provider',
   provider_official_signatory_1_title: 'Financial Controller',
@@ -182,14 +179,12 @@ const agreement101Html = agreements.buildAgreementPreviewHtml({
   customer_official_signatory_name: 'Remove Agreement 101 Signer',
   customer_official_signatory_title: 'Customer Director',
   customer_official_sign_date: '2026-07-29',
-  customer_signature_confirmed: true,
-  customer_signature_text: 'Remove Agreement 101 Signature',
   provider_official_signatory_1_name: 'Preserved Agreement 101 Provider'
 }, []);
 assert.match(agreement101Html, /Preserved Agreement 101 Client/, 'Agreement#00101 must retain its client');
 assert.match(agreement101Html, /Preserved Agreement 101 Provider/, 'Agreement#00101 must retain provider signatories');
 assert.doesNotMatch(agreement101Html, /Remove Agreement 101 Contact|remove-101@example\.com/, 'Agreement#00101 preview must omit customer contact details');
-assert.doesNotMatch(agreement101Html, /Remove Agreement 101 Signer|Customer Director|2026-07-29|Remove Agreement 101 Signature|Customer Signature &amp; Acceptance/, 'Agreement#00101 preview and generated document must omit customer signature details and verification');
+assert.doesNotMatch(agreement101Html, /Remove Agreement 101 Signer|Customer Director|2026-07-29|Customer Signature &amp; Acceptance/, 'Agreement#00101 preview and generated document must omit customer signature details and verification');
 
 const agreement102Html = agreements.buildAgreementPreviewHtml({
   agreement_number: 'Agreement#00102',

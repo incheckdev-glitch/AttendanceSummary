@@ -15,39 +15,6 @@ function hasAllRequiredAgreementSignDates(source = {}) {
 }
 
 
-function hasAgreementCustomerSigned(agreement) {
-  return Boolean(
-    agreement?.customer_signature_confirmed === true ||
-    agreement?.customer_signed_at ||
-    agreement?.customer_accepted_at ||
-    agreement?.accepted_at ||
-    agreement?.e_signature_confirmed === true ||
-    agreement?.e_signature_signed_at ||
-    agreement?.customer_sign_date ||
-    agreement?.customer_signature_date ||
-    agreement?.customer_signed_document_data_url ||
-    agreement?.e_signed_document_data_url ||
-    agreement?.customerSignatureConfirmed === true ||
-    agreement?.customerSignedAt ||
-    agreement?.customerAcceptedAt ||
-    agreement?.acceptedAt ||
-    agreement?.eSignatureConfirmed === true ||
-    agreement?.eSignatureSignedAt ||
-    agreement?.customerSignDate ||
-    agreement?.customerSignatureDate ||
-    agreement?.customerSignedDocumentDataUrl ||
-    agreement?.eSignedDocumentDataUrl ||
-    agreement?.e_agreement_signature_confirmed === true ||
-    agreement?.e_agreement_signature_signed_at ||
-    agreement?.e_agreement_accepted_at ||
-    agreement?.e_agreement_signed_document_data_url ||
-    agreement?.eAgreementSignatureConfirmed === true ||
-    agreement?.eAgreementSignatureSignedAt ||
-    agreement?.eAgreementAcceptedAt ||
-    agreement?.eAgreementSignedDocumentDataUrl
-  );
-}
-
 function isAgreementSigned(agreement) {
   const source = agreement && typeof agreement === "object" ? agreement : { status: agreement };
   const normalized = normalizeAgreementStatus(source?.status);
@@ -66,7 +33,7 @@ function isAgreementSigned(agreement) {
 
 function hasProposalAgreementConversionSignature(proposal = {}) {
   const source = proposal && typeof proposal === 'object' ? proposal : {};
-  const hasManualSignedDocument = Boolean(
+  return Boolean(
     source.signed_document_url ||
     source.signedDocumentUrl ||
     source.signed_document_path ||
@@ -74,13 +41,6 @@ function hasProposalAgreementConversionSignature(proposal = {}) {
     source.signed_document_name ||
     source.signedDocumentName
   );
-  const hasPublicESignature = source.e_signature_confirmed === true &&
-    Boolean(source.e_signature_type) &&
-    Boolean(source.e_signature_signed_at);
-  const hasPublicUploadedSignedDocument =
-    source.e_signature_type === 'signed_document_upload' &&
-    Boolean(source.e_signed_document_data_url);
-  return hasManualSignedDocument || hasPublicESignature || hasPublicUploadedSignedDocument;
 }
 
 function agreementHasSignedDocument(agreement) {
@@ -135,111 +95,6 @@ const DEFAULT_AGREEMENT_TERMS_AND_CONDITIONS = `Provider and Customer hereby agr
 
 IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by their authorized representatives as of the date of last signature by either party (“Effective Date”).`;
 
-
-let internalSignatureCanvasReady = false;
-
-function setupInternalSignatureCanvas() {
-  const canvas = document.getElementById('internalSignatureCanvas');
-  if (!canvas || internalSignatureCanvasReady) return;
-
-  internalSignatureCanvasReady = true;
-
-  const ctx = canvas.getContext('2d');
-  let drawing = false;
-
-  function resizeCanvasForDisplay() {
-    const rect = canvas.getBoundingClientRect();
-    const ratio = window.devicePixelRatio || 1;
-
-    canvas.width = Math.max(520, Math.floor(rect.width * ratio));
-    canvas.height = Math.floor(180 * ratio);
-
-    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-    ctx.lineWidth = 2.5;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = '#0f172a';
-  }
-
-  function getPoint(event) {
-    const rect = canvas.getBoundingClientRect();
-    const source = event.touches?.[0] || event.changedTouches?.[0] || event;
-
-    return {
-      x: source.clientX - rect.left,
-      y: source.clientY - rect.top
-    };
-  }
-
-  function startDrawing(event) {
-    event.preventDefault();
-    drawing = true;
-
-    const point = getPoint(event);
-    ctx.beginPath();
-    ctx.moveTo(point.x, point.y);
-  }
-
-  function draw(event) {
-    if (!drawing) return;
-
-    event.preventDefault();
-    const point = getPoint(event);
-    ctx.lineTo(point.x, point.y);
-    ctx.stroke();
-
-    canvas.dataset.hasSignature = 'true';
-  }
-
-  function stopDrawing(event) {
-    if (!drawing) return;
-    event.preventDefault();
-    drawing = false;
-  }
-
-  resizeCanvasForDisplay();
-  canvas.dataset.hasSignature = canvas.dataset.hasSignature || 'false';
-
-  canvas.addEventListener('mousedown', startDrawing);
-  canvas.addEventListener('mousemove', draw);
-  canvas.addEventListener('mouseup', stopDrawing);
-  canvas.addEventListener('mouseleave', stopDrawing);
-
-  canvas.addEventListener('touchstart', startDrawing, { passive: false });
-  canvas.addEventListener('touchmove', draw, { passive: false });
-  canvas.addEventListener('touchend', stopDrawing, { passive: false });
-  canvas.addEventListener('touchcancel', stopDrawing, { passive: false });
-
-  const clearBtn = document.getElementById('clearInternalSignatureCanvas');
-  if (clearBtn) {
-    clearBtn.addEventListener('click', () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      canvas.dataset.hasSignature = 'false';
-    });
-  }
-}
-
-function handleInternalSignatureTypeChange() {
-  const type = document.getElementById('internalSignatureType')?.value || 'typed';
-
-  const typedWrap = document.getElementById('internalTypedSignatureWrap');
-  const drawWrap = document.getElementById('internalDrawSignatureWrap');
-  const uploadWrap = document.getElementById('internalUploadSignatureWrap');
-
-  if (typedWrap) typedWrap.style.display = type === 'typed' ? 'block' : 'none';
-  if (drawWrap) drawWrap.style.display = type === 'drawn' ? 'block' : 'none';
-  if (uploadWrap) uploadWrap.style.display = type === 'uploaded' ? 'block' : 'none';
-
-  const form = document.querySelector('[data-internal-sign-form]');
-  if (form) form.dataset.signatureMode = type;
-  document.querySelectorAll('[data-internal-signature-mode]').forEach(tab => {
-    tab.classList.toggle('active', tab.dataset.internalSignatureMode === type);
-  });
-
-  if (type === 'drawn') {
-    setupInternalSignatureCanvas();
-  }
-}
 
 const Agreements = {
   signedDocumentBucket: 'agreement-signed-documents',
@@ -323,41 +178,7 @@ const Agreements = {
     'signed_agreement_document_uploaded_at',
     'signed_agreement_document_uploaded_by',
     'signed_agreement_document_url',
-    'e_agreement_token',
-    'e_agreement_token_expires_at',
-    'e_agreement_link_enabled',
-    'e_agreement_generated_at',
-    'e_agreement_generated_by',
-    'e_agreement_viewed_at',
-    'e_agreement_accepted_at',
-    'e_agreement_accepted_by_name',
-    'e_agreement_accepted_by_email',
-    'e_agreement_accepted_comment',
-    'e_agreement_rejected_at',
-    'e_agreement_rejection_reason',
-    'e_agreement_signature_type',
-    'e_agreement_signature_text',
-    'e_agreement_signature_image_data_url',
-    'e_agreement_signed_document_data_url',
-    'e_agreement_signed_document_file_name',
-    'e_agreement_signed_document_mime_type',
-    'e_agreement_signature_signed_at',
-    'e_agreement_signature_customer_name',
-    'e_agreement_signature_customer_email',
-    'e_agreement_signature_ip_address',
-    'e_agreement_signature_confirmed',
-    'customer_signature_confirmed',
     'customer_signed_at',
-    'customer_accepted_at',
-    'customer_signed_by_name',
-    'customer_signed_by_email',
-    'customer_signature_type',
-    'customer_signature_text',
-    'customer_signature_image_data_url',
-    'customer_signed_document_data_url',
-    'customer_signed_document_file_name',
-    'customer_signed_document_mime_type',
-    'customer_signature_ip_address',
     'legacy_agreement_ref',
     'is_imported',
     'is_historical_agreement',
@@ -456,7 +277,6 @@ const Agreements = {
     selectedAgreementCompanyForVerification: null,
     invoiceBlockedAgreementIds: new Set(),
     technicalAdminRequests: [],
-    currentInternalSignatures: []
   },
   normalizeLocationKey(value = '') {
     return String(value || '').trim().toLowerCase().normalize('NFKC').replace(/\s+/g, ' ');
@@ -832,25 +652,7 @@ const Agreements = {
       'customer_authorized_signatory_name', 'customer_authorized_signatory_title',
       'customer_signature', 'customer_signature_name', 'customer_signature_title',
       'customer_sign_date', 'customer_signature_date',
-      'customer_signatory_email', 'customer_signatory_phone', 'customer_signed_by_name',
-      'customer_signed_by_email', 'customer_signed_at', 'customer_accepted_at',
-      'customer_signature_type', 'customer_signature_text', 'customer_signature_image_data_url',
-      'customer_signed_document_data_url', 'customer_signed_document_file_name',
-      'customer_signed_document_mime_type', 'customer_signature_ip_address',
-      'e_signature_customer_name', 'e_signature_customer_email', 'e_signature_signed_at',
-      'e_signature_type', 'e_signature_text', 'e_signature_image_data_url',
-      'e_signed_document_data_url', 'e_signed_document_file_name',
-      'e_signed_document_mime_type', 'e_signature_ip_address',
-      'e_agreement_accepted_at', 'e_agreement_accepted_by_name', 'e_agreement_accepted_by_email',
-      'e_agreement_accepted_comment', 'e_agreement_signature_type', 'e_agreement_signature_text',
-      'e_agreement_signature_image_data_url', 'e_agreement_signed_document_data_url',
-      'e_agreement_signed_document_file_name', 'e_agreement_signed_document_mime_type',
-      'e_agreement_signature_signed_at', 'e_agreement_signature_customer_name',
-      'e_agreement_signature_customer_email', 'e_agreement_signature_ip_address'
-    ].forEach(field => { next[field] = ''; });
-    next.customer_signature_confirmed = false;
-    next.e_signature_confirmed = false;
-    next.e_agreement_signature_confirmed = false;
+      'customer_signatory_email', 'customer_signatory_phone', 'customer_signed_at', ].forEach(field => { next[field] = ''; });
     return next;
   },
   hasConflictError(error, conflictCode = '') {
@@ -2042,7 +1844,7 @@ const Agreements = {
       return { allowed: false, company: null };
     }
     if (!hasProposalAgreementConversionSignature(proposal)) {
-      UI.toast('Please accept/sign the proposal or upload a signed document before converting it to an agreement.');
+      UI.toast('Please upload the accepted signed proposal document before converting it to an agreement.');
       return { allowed: false, company: null };
     }
     return this.ensureLinkedProposalCompanyVerified(proposal);
@@ -2299,17 +2101,6 @@ const Agreements = {
         source.financial_controller_signed ?? source.financialControllerSigned,
         false
       ),
-      e_signature_type: source.e_signature_type || '',
-      e_signature_text: source.e_signature_text || '',
-      e_signature_image_data_url: source.e_signature_image_data_url || '',
-      e_signature_customer_name: source.e_signature_customer_name || '',
-      e_signature_customer_email: source.e_signature_customer_email || '',
-      e_signature_ip_address: source.e_signature_ip_address || '',
-      e_signature_signed_at: source.e_signature_signed_at || '',
-      e_signature_confirmed: source.e_signature_confirmed === true,
-      e_signed_document_data_url: source.e_signed_document_data_url || '',
-      e_signed_document_file_name: source.e_signed_document_file_name || '',
-      e_signed_document_mime_type: source.e_signed_document_mime_type || '',
       generated_by: String(source.generated_by || source.generatedBy || '').trim(),
       status: 'Draft'
     });
@@ -2417,7 +2208,7 @@ const Agreements = {
   applyProviderSignDateRoleLocks() {
     const formReadOnly = String(E.agreementForm?.dataset?.readOnly || '').trim() === 'true';
     const read = id => document.getElementById(id)?.value || '';
-    const customerDate = this.hasCustomerSignedForInternalSignatures(this.state.currentAgreement || {}) ? 'signed' : this.normalizeDateInputValue(read('agreementFormCustomerOfficialSignDate') || read('agreementFormCustomerSignDate'));
+    const customerDate = this.normalizeDateInputValue(read('agreementFormCustomerOfficialSignDate') || read('agreementFormCustomerSignDate'));
     const sfcDate = this.normalizeDateInputValue(read('agreementFormProviderOfficialSignatory1SignDate'));
     this.getProviderSignDateLockRules().forEach(rule => {
       const el = document.getElementById(rule.inputId);
@@ -2434,18 +2225,13 @@ const Agreements = {
         el.setAttribute('aria-disabled', 'true');
         el.setAttribute('aria-readonly', 'true');
         el.title = workflowLocked
-          ? (isSfcField ? 'Customer must accept and sign the agreement before internal signing.' : 'Senior Financial Controller must sign first.')
+          ? (isSfcField ? 'Customer sign date is required before the Senior Financial Controller sign date.' : 'Senior Financial Controller must sign first.')
           : `${rule.label} can only be filled by the ${rule.requiredRoleLabel} role.`;
       } else {
         el.removeAttribute('aria-disabled');
         el.removeAttribute('aria-readonly');
         el.title = `Only the ${rule.requiredRoleLabel} role should fill this sign date.`;
       }
-    });
-    this.updateInternalSignatureWorkflowUi({
-      customer_official_sign_date: customerDate,
-      provider_official_signatory_1_sign_date: sfcDate,
-      provider_official_signatory_2_sign_date: read('agreementFormProviderOfficialSignatory2SignDate')
     });
   },
   validateProviderSignDateRoleChanges() {
@@ -2459,13 +2245,13 @@ const Agreements = {
         return false;
       }
     }
-    const customerDate = this.hasCustomerSignedForInternalSignatures(this.state.currentAgreement || {}) ? 'signed' : this.normalizeDateInputValue(document.getElementById('agreementFormCustomerOfficialSignDate')?.value || document.getElementById('agreementFormCustomerSignDate')?.value || '');
+    const customerDate = this.normalizeDateInputValue(document.getElementById('agreementFormCustomerOfficialSignDate')?.value || document.getElementById('agreementFormCustomerSignDate')?.value || '');
     const sfcDate = this.normalizeDateInputValue(document.getElementById('agreementFormProviderOfficialSignatory1SignDate')?.value || '');
     const gmDate = this.normalizeDateInputValue(document.getElementById('agreementFormProviderOfficialSignatory2SignDate')?.value || '');
     const originalSfcDate = this.normalizeDateInputValue(document.getElementById('agreementFormProviderOfficialSignatory1SignDate')?.dataset?.originalValue || '');
     const originalGmDate = this.normalizeDateInputValue(document.getElementById('agreementFormProviderOfficialSignatory2SignDate')?.dataset?.originalValue || '');
     if (sfcDate !== originalSfcDate && !customerDate) {
-      UI.toast('Customer must accept and sign the agreement before internal signing.');
+      UI.toast('Customer sign date is required before the Senior Financial Controller sign date.');
       return false;
     }
     if (gmDate !== originalGmDate && !sfcDate) {
@@ -2643,77 +2429,6 @@ const Agreements = {
     return Api.createAgreementFromProposal(proposalRef);
   },
   async generateAgreementHtml(agreementId) { return Api.generateAgreementHtml(agreementId); },
-  normalizeAgreementSignerRole(role) {
-    const raw = String(role || '').trim();
-    const value = raw.toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
-    if (!value) return '';
-    if (value === 'sfc' || value.includes('senior financial controller') || value.includes('financial controller')) return 'SFC';
-    if (value === 'gm' || value.includes('general manager')) return 'GM';
-    if (value === 'admin' || value.includes('administrator')) return 'ADMIN';
-    return raw.toUpperCase();
-  },
-  canCurrentUserSignAgreementRole(currentUser, role) {
-    const currentRole = this.normalizeAgreementSignerRole(
-      currentUser?.role ||
-      currentUser?.user_role ||
-      currentUser?.profile_role ||
-      currentUser?.role_name ||
-      currentUser?.title ||
-      window.Session?.currentUser?.role ||
-      window.currentUser?.role ||
-      window.AppState?.profile?.role
-    );
-    const targetRole = this.normalizeAgreementSignerRole(role);
-    if (targetRole === 'SFC') return currentRole === 'SFC' || currentRole === 'ADMIN';
-    if (targetRole === 'GM') return currentRole === 'GM' || currentRole === 'ADMIN';
-    return false;
-  },
-  getCurrentAgreementSigningUser() {
-    const sessionApi = window.Session || {};
-    const sessionUser = typeof sessionApi.user === 'function' ? sessionApi.user() : {};
-    const sessionState = sessionApi.state || {};
-    const authContext = typeof sessionApi.authContext === 'function' ? sessionApi.authContext() : {};
-    const rawAuthUser = sessionState.user || sessionUser.user || authContext.user || window.AppState?.user || window.Auth?.user || window.currentUser || {};
-    const profile = sessionState.profile || sessionUser.profile || authContext.profile || window.AppState?.profile || rawAuthUser.profile || {};
-    const fallbackUser = this.getSignedInUserForAgreement?.() || {};
-    const firstUseful = (...values) => values.map(v => String(v || '').trim()).find(v => v && !['user','authenticated','null','undefined'].includes(v.toLowerCase())) || '';
-    const email = firstUseful(fallbackUser.email, sessionUser.email, sessionState.email, rawAuthUser.email, profile.email, window.currentUser?.email);
-    const username = firstUseful(fallbackUser.username, sessionUser.username, sessionState.username, profile.username, rawAuthUser.username, window.currentUser?.username);
-    const name = firstUseful(fallbackUser.name, sessionUser.name, sessionState.name, profile.full_name, profile.name, rawAuthUser.name, window.currentUser?.name, username) || (email ? email.split('@')[0] : '');
-    const role = firstUseful(
-      fallbackUser.role,
-      typeof sessionApi.role === 'function' ? sessionApi.role() : '',
-      sessionUser.role,
-      sessionState.role,
-      profile.role,
-      rawAuthUser.role,
-      window.currentUser?.role
-    );
-    return {
-      ...fallbackUser,
-      name,
-      email,
-      role,
-      user_role: role,
-      profile_role: role
-    };
-  },
-  async loadInternalAgreementSignatures(agreementId) {
-    const id = String(agreementId || '').trim();
-    if (!id) return [];
-    const client = window.SupabaseClient?.getClient?.();
-    if (!client?.from) return [];
-    const { data, error } = await client
-      .from('agreement_internal_signatures')
-      .select('*')
-      .eq('agreement_id', id)
-      .order('created_at', { ascending: true, nullsFirst: false });
-    if (error) {
-      if (/does not exist|schema cache/i.test(String(error.message || ''))) return [];
-      throw error;
-    }
-    return Array.isArray(data) ? data : [];
-  },
   async loadAgreementPreviewData(agreementUuid) {
     const id = String(agreementUuid || '').trim();
     if (!id) throw new Error('Missing agreement UUID.');
@@ -2747,357 +2462,10 @@ const Agreements = {
       loadedItems = Array.isArray(businessItems) ? businessItems : [];
     }
     const companyHydratedAgreement = await this.applyCompanyIdentityToAgreement(agreement, { allowFallbackToAgreement: true });
-    const internalSignatures = await this.loadInternalAgreementSignatures(agreement.id || id);
     return {
       agreement: this.normalizeAgreement(companyHydratedAgreement),
-      items: loadedItems.map(item => this.normalizeItem(item)),
-      internalSignatures
+      items: loadedItems.map(item => this.normalizeItem(item))
     };
-  },
-  hasCustomerSignedForInternalSignatures(agreement = {}) {
-    return hasAgreementCustomerSigned(agreement && typeof agreement === 'object' ? agreement : {});
-  },
-  canShowInternalAgreementSignatures(agreement = {}) {
-    const data = agreement && typeof agreement === 'object' ? agreement : {};
-    if (!String(data.id || '').trim()) return false;
-    const status = this.normalizeText(data.status);
-    if (['draft', 'sent', 'rejected', 'cancelled', 'canceled'].includes(status)) return false;
-    // Show the internal signing area for accepted / waiting / signed agreements.
-    // This also supports older DB status values like awaiting_provider_signature.
-    return this.hasCustomerSignedForInternalSignatures(data) || ['accepted', 'awaiting_provider_signature', 'awaiting_internal_signature', 'signed'].includes(status);
-  },
-
-  getAgreementCustomerSignatureData(agreement = {}) {
-    const source = agreement && typeof agreement === 'object' ? agreement : {};
-    return {
-      signedBy: source.customer_signed_by_name || source.accepted_by_name || source.e_signature_customer_name || source.e_agreement_signature_customer_name || source.e_agreement_accepted_by_name || source.customer_name || source.client_name || '—',
-      customerEmail: source.customer_signed_by_email || source.accepted_by_email || source.e_signature_customer_email || source.e_agreement_signature_customer_email || source.e_agreement_accepted_by_email || null,
-      customerIp: source.customer_signature_ip_address || source.e_signature_ip_address || source.e_agreement_signature_ip_address || source.last_guest_ip_address || '—',
-      signedAt: source.customer_signed_at || source.customer_accepted_at || source.accepted_at || source.e_signature_signed_at || source.e_agreement_signature_signed_at || source.e_agreement_accepted_at || source.customer_sign_date || source.customer_signature_date || null,
-      signatureType: source.customer_signature_type || source.e_signature_type || source.e_agreement_signature_type || 'typed',
-      signatureText: source.customer_signature_text || source.e_signature_text || source.e_agreement_signature_text || '',
-      signatureImage: source.customer_signature_image_data_url || source.e_signature_image_data_url || source.e_agreement_signature_image_data_url || '',
-      signedDocumentDataUrl: source.customer_signed_document_data_url || source.e_signed_document_data_url || source.e_agreement_signed_document_data_url || '',
-      signedDocumentFileName: source.customer_signed_document_file_name || source.e_signed_document_file_name || source.e_agreement_signed_document_file_name || 'Signed agreement document',
-      signedDocumentMimeType: source.customer_signed_document_mime_type || source.e_signed_document_mime_type || source.e_agreement_signed_document_mime_type || 'application/pdf',
-      confirmed: source.customer_signature_confirmed === true || source.e_signature_confirmed === true || source.e_agreement_signature_confirmed === true || Boolean(source.customer_signed_at || source.customer_accepted_at || source.accepted_at || source.e_signature_signed_at || source.e_agreement_signature_signed_at || source.e_agreement_accepted_at)
-    };
-  },
-  renderAgreementCustomerSignatureVerification(agreement = {}) {
-    if (this.shouldClearCustomerSignatureAndContact(agreement)) return '';
-    if (!hasAgreementCustomerSigned(agreement)) return '';
-    const sig = this.getAgreementCustomerSignatureData(agreement);
-    const normalizedType = String(sig.signatureType || '').toLowerCase();
-    const documentUrl = String(sig.signedDocumentDataUrl || '').trim();
-    let signaturePreview = '';
-    if (normalizedType === 'typed') {
-      signaturePreview = `<div class="agreement-customer-signature-preview typed">${U.escapeHtml(sig.signatureText || sig.signedBy)}</div>`;
-    } else if (normalizedType === 'uploaded' || normalizedType === 'drawn') {
-      signaturePreview = sig.signatureImage ? `<div class="agreement-customer-signature-preview image"><img src="${U.escapeAttr(sig.signatureImage)}" alt="Customer signature" /></div>` : '';
-    } else if (normalizedType === 'signed_document_upload') {
-      const mime = String(sig.signedDocumentMimeType || '').toLowerCase();
-      const isPdf = mime.includes('pdf');
-      const isImage = mime.startsWith('image/');
-      signaturePreview = `
-        <div class="agreement-signed-doc-file-card"><div class="agreement-signed-doc-file-icon">${isPdf ? 'PDF' : 'FILE'}</div><div><strong>${U.escapeHtml(sig.signedDocumentFileName)}</strong><span>${U.escapeHtml(sig.signedDocumentMimeType)}</span></div></div>
-        <div class="agreement-signed-doc-preview-box">${documentUrl ? (isPdf ? `<iframe src="${U.escapeAttr(documentUrl)}#toolbar=0&navpanes=0&scrollbar=0" title="Signed agreement preview"></iframe>` : isImage ? `<img src="${U.escapeAttr(documentUrl)}" alt="Signed agreement preview" />` : `<div class="agreement-signed-doc-no-preview">Preview unavailable</div>`) : `<div class="agreement-signed-doc-no-preview">Preview unavailable</div>`}</div>
-        ${documentUrl ? `<div class="agreement-signed-doc-actions"><a href="${U.escapeAttr(documentUrl)}" target="_blank" rel="noopener noreferrer">Open Signed Agreement</a><a href="${U.escapeAttr(documentUrl)}" download="${U.escapeAttr(sig.signedDocumentFileName)}">Download Signed Agreement</a></div>` : ''}`;
-    }
-    const signatureTypeLabel = normalizedType === 'typed' ? 'Typed signature' : normalizedType === 'uploaded' ? 'Uploaded signature image' : normalizedType === 'drawn' ? 'Drawn signature' : normalizedType === 'signed_document_upload' ? 'Uploaded signed agreement' : 'Electronic signature';
-    const signedOn = sig.signedAt ? (U.fmtDisplayDate(sig.signedAt) || String(sig.signedAt)) : '—';
-    return `
-      <section class="agreement-customer-signature-verification">
-        <div class="agreement-customer-signature-header"><div class="agreement-customer-signature-check">✓</div><div><h3>CUSTOMER SIGNATURE VERIFICATION</h3><p>The customer accepted and signed this agreement through the secure E-Agreement link.</p></div></div>
-        <div class="agreement-customer-signature-body"><div class="agreement-customer-signature-left">${signaturePreview}</div><div class="agreement-customer-signature-right">
-          <div class="agreement-signature-detail"><span>Signed by</span><strong>${U.escapeHtml(sig.signedBy)}</strong></div>
-          <div class="agreement-signature-detail"><span>Customer IP</span><strong>${U.escapeHtml(sig.customerIp)}</strong></div>
-          <div class="agreement-signature-detail"><span>Signed on</span><strong>${U.escapeHtml(signedOn)}</strong></div>
-          <div class="agreement-signature-detail"><span>Signature type</span><strong>${U.escapeHtml(signatureTypeLabel)}</strong></div>
-          <div class="agreement-signature-detail"><span>Status</span><strong>Confirmed customer acceptance</strong></div>
-          <div class="agreement-signature-status">Confirmed customer acceptance</div>
-        </div></div>
-      </section>`;
-  },
-  renderInternalSignatureCard({ role, title, signature, canSign, buttonText, disabled, helperText, agreementId }) {
-    const signed = !!signature;
-    const signedBy = String(signature?.signer_name || signature?.signed_by || signature?.created_by_name || '').trim();
-    const signedAt = String(signature?.signed_at || signature?.created_at || '').trim();
-    const buttonDisabled = signed || !canSign || !!disabled;
-    return `
-      <div class="agreement-signature-card" data-internal-signature-card="${U.escapeAttr(role)}">
-        <h4>${U.escapeHtml(title)}</h4>
-        <span class="agreement-signature-status ${signed ? 'signed' : 'pending'}">${signed ? 'Signed' : 'Pending'}</span>
-        ${signed ? `<div class="agreement-signature-meta"><div><strong>Signed by:</strong> ${U.escapeHtml(signedBy || '—')}</div><div><strong>Signed date:</strong> ${U.escapeHtml(signedAt ? U.fmtDisplayDate(signedAt) : '—')}</div></div>` : ''}
-        ${helperText ? `<p class="agreement-signature-helper">${U.escapeHtml(helperText)}</p>` : ''}
-        ${!signed ? `<button type="button" class="agreement-signature-btn" data-action="internal-agreement-sign" data-agreement-id="${U.escapeAttr(agreementId || '')}" data-signer-role="${U.escapeAttr(role)}" onpointerdown="window.Agreements && window.Agreements.handleInternalAgreementSignButtonClick && window.Agreements.handleInternalAgreementSignButtonClick(event, this)" onclick="window.Agreements && window.Agreements.handleInternalAgreementSignButtonClick && window.Agreements.handleInternalAgreementSignButtonClick(event, this)" ${buttonDisabled ? 'disabled aria-disabled="true"' : ''}>${U.escapeHtml(buttonText)}</button>` : ''}
-      </div>`;
-  },
-  renderInternalAgreementSignatures(agreement, internalSignatures = [], currentUser = {}) {
-    const agreementData = agreement && typeof agreement === 'object' ? agreement : {};
-    if (!String(agreementData.id || '').trim()) return '';
-    if (!this.canShowInternalAgreementSignatures(agreementData)) return '';
-    const signatures = Array.isArray(internalSignatures) ? internalSignatures : [];
-    const status = this.normalizeText(agreementData.status);
-    const customerSigned = this.hasCustomerSignedForInternalSignatures(agreementData);
-    const isFullySigned = status === 'signed';
-    const sfcSignature = signatures.find(sig => this.normalizeAgreementSignerRole(sig.signer_role) === 'SFC');
-    const gmSignature = signatures.find(sig => this.normalizeAgreementSignerRole(sig.signer_role) === 'GM');
-    const canSignSfc = customerSigned && !isFullySigned && this.canCurrentUserSignAgreementRole(currentUser, 'SFC');
-    const canSignGm = customerSigned && !isFullySigned && Boolean(sfcSignature) && this.canCurrentUserSignAgreementRole(currentUser, 'GM');
-    const statusNote = !customerSigned
-      ? 'Waiting for the customer to accept and sign before internal signatures can be added.'
-      : isFullySigned || (sfcSignature && gmSignature)
-        ? 'Agreement fully signed.'
-        : sfcSignature
-          ? 'Senior Financial Controller signed — awaiting General Manager signature.'
-          : 'Customer accepted — awaiting Senior Financial Controller signature.';
-    return `
-      <section class="agreement-internal-signatures">
-        <div class="agreement-internal-signatures-header">
-          <h3>Provider / Internal Signatures</h3>
-          <p>${U.escapeHtml(statusNote)}</p>
-        </div>
-        <div class="agreement-signature-card-grid">
-          ${this.renderInternalSignatureCard({
-            role: 'SFC',
-            title: 'Senior Financial Controller',
-            signature: sfcSignature,
-            canSign: canSignSfc,
-            buttonText: 'Sign as SFC',
-            disabled: !customerSigned || isFullySigned,
-            helperText: !customerSigned ? 'Customer must sign first.' : (!canSignSfc && !sfcSignature && !isFullySigned ? 'Only SFC or admin can sign this role.' : ''),
-            agreementId: agreementData.id
-          })}
-          ${this.renderInternalSignatureCard({
-            role: 'GM',
-            title: 'General Manager',
-            signature: gmSignature,
-            canSign: canSignGm,
-            buttonText: 'Sign as GM',
-            disabled: !customerSigned || isFullySigned || !sfcSignature,
-            helperText: !customerSigned ? 'Customer must sign first.' : (!sfcSignature ? 'Senior Financial Controller must sign first.' : (!canSignGm && !gmSignature && !isFullySigned ? 'Only GM or admin can sign this role.' : '')),
-            agreementId: agreementData.id
-          })}
-        </div>
-      </section>`;
-  },
-  refreshInternalAgreementSignaturesPanel(target, agreement = this.state.currentAgreement || {}, internalSignatures = this.state.currentInternalSignatures || []) {
-    const el = typeof target === 'string' ? document.getElementById(target) : target;
-    if (!el) return;
-    el.innerHTML = this.renderInternalAgreementSignatures(agreement, internalSignatures, this.getCurrentAgreementSigningUser());
-    this.repairInternalAgreementSignatureButtons(el, agreement, internalSignatures);
-    this.bindInternalAgreementSignButtons(el);
-  },
-  repairInternalAgreementSignatureButtons(root = document, agreement = this.state.currentAgreement || {}, internalSignatures = this.state.currentInternalSignatures || []) {
-    const container = typeof root === 'string' ? document.getElementById(root) : root;
-    if (!container) return;
-    const signatures = Array.isArray(internalSignatures) ? internalSignatures : [];
-    const customerSigned = this.hasCustomerSignedForInternalSignatures(agreement);
-    const isFullySigned = this.normalizeAgreementStatus(this.resolveAgreementStatus(agreement)) === 'signed';
-    const hasSfc = signatures.some(sig => this.normalizeAgreementSignerRole(sig.signer_role) === 'SFC');
-    container.querySelectorAll('[data-action="internal-agreement-sign"], .agreement-signature-btn').forEach(btn => {
-      if (!btn) return;
-      btn.type = 'button';
-      btn.style.pointerEvents = 'auto';
-      btn.style.position = 'relative';
-      btn.style.zIndex = '50';
-      const role = this.normalizeAgreementSignerRole(btn.dataset.signerRole || btn.getAttribute('data-signer-role'));
-      const canSign = customerSigned && !isFullySigned && this.canCurrentUserSignAgreementRole(this.getCurrentAgreementSigningUser(), role) && (role !== 'GM' || hasSfc);
-      if (canSign) {
-        btn.disabled = false;
-        btn.removeAttribute('disabled');
-        btn.removeAttribute('aria-disabled');
-        btn.classList.remove('disabled');
-      }
-    });
-  },
-  bindInternalAgreementSignButtons(root = document) {
-    const container = typeof root === 'string' ? document.getElementById(root) : root;
-    if (!container) return;
-    container.querySelectorAll('[data-action="internal-agreement-sign"], .agreement-signature-btn').forEach(btn => {
-      if (!btn || btn.dataset.internalSignBound === 'true') return;
-      btn.dataset.internalSignBound = 'true';
-      const handler = event => this.handleInternalAgreementSignButtonClick(event, btn);
-      btn.addEventListener('click', handler, true);
-      btn.addEventListener('pointerdown', handler, true);
-      btn.addEventListener('mousedown', handler, true);
-    });
-  },
-  handleInternalAgreementSignButtonClick(event, button) {
-    try {
-      if (event) {
-        event.preventDefault?.();
-        event.stopPropagation?.();
-        event.stopImmediatePropagation?.();
-      }
-      const btn = button || event?.target?.closest?.('[data-action="internal-agreement-sign"], .agreement-signature-btn');
-      if (!btn) return false;
-      const agreementId = String(btn.dataset.agreementId || btn.getAttribute('data-agreement-id') || this.state.currentAgreement?.id || this.state.currentAgreementId || '').trim();
-      const signerRole = String(btn.dataset.signerRole || btn.getAttribute('data-signer-role') || '').trim();
-      console.log('[Agreement internal sign] forced button handler', { agreementId, signerRole, disabled: btn.disabled, ariaDisabled: btn.getAttribute('aria-disabled') });
-      if (!agreementId || !signerRole) {
-        UI.toast('Missing agreement signing data. Please refresh and try again.');
-        return false;
-      }
-      // Let the backend/RPC enforce final role and order rules. Do not let stale disabled attrs kill the click.
-      this.openAgreementInternalSignModal({ agreementId, signerRole }).catch(error => {
-        console.error('[Agreement internal sign] modal open failed', error);
-        UI.toast(error?.message || 'Unable to open agreement signing modal.');
-      });
-      return false;
-    } catch (error) {
-      console.error('[Agreement internal sign] button handler failed', error);
-      UI.toast(error?.message || 'Unable to open agreement signing modal.');
-      return false;
-    }
-  },
-  async openAgreementInternalSignModal({ agreementId, signerRole } = {}) {
-    const cleanAgreementId = String(agreementId || '').trim();
-    const role = this.normalizeAgreementSignerRole(signerRole);
-    console.log('Opening internal agreement sign modal', { agreementId: cleanAgreementId, signerRole: role });
-    if (!cleanAgreementId || !role) return UI.toast('Missing agreement signing data.');
-    let previewData;
-    try {
-      previewData = await this.loadAgreementPreviewData(cleanAgreementId);
-    } catch (error) {
-      console.error('[agreement internal sign] unable to load agreement', error);
-      return UI.toast('Agreement not found.');
-    }
-    if (!previewData?.agreement) return UI.toast('Agreement not found.');
-    this.state.currentAgreement = previewData.agreement;
-    this.state.currentAgreementId = String(previewData.agreement.id || cleanAgreementId).trim();
-    this.state.currentItems = previewData.items || [];
-    this.state.currentInternalSignatures = previewData.internalSignatures || [];
-    return this.openInternalAgreementSignModal(role);
-  },
-  openInternalAgreementSignModal(role) {
-    const targetRole = this.normalizeAgreementSignerRole(role);
-    const agreement = this.state.currentAgreement || {};
-    if (!['SFC', 'GM'].includes(targetRole)) return;
-    if (!this.canCurrentUserSignAgreementRole(this.getCurrentAgreementSigningUser(), targetRole)) return UI.toast('You do not have permission to sign this role.');
-    if (!this.hasCustomerSignedForInternalSignatures(agreement)) return UI.toast('Customer must accept and sign the agreement before internal signing.');
-    const sfcSignature = (this.state.currentInternalSignatures || []).find(sig => this.normalizeAgreementSignerRole(sig.signer_role) === 'SFC');
-    if (targetRole === 'GM' && !sfcSignature) return UI.toast('Senior Financial Controller must sign first.');
-    let modal = document.getElementById('agreementInternalSignModal');
-    if (!modal) {
-      modal = document.createElement('div');
-      modal.id = 'agreementInternalSignModal';
-      modal.className = 'modal agreement-internal-sign-modal agreement-upload-sign-light-modal';
-      document.body.appendChild(modal);
-    }
-    const user = this.getCurrentAgreementSigningUser();
-    internalSignatureCanvasReady = false;
-    window.internalUploadedSignatureDataUrl = null;
-    const defaultTitle = targetRole === 'SFC' ? 'Senior Financial Controller' : 'General Manager';
-    const close = () => { modal.classList.remove('open'); modal.setAttribute('aria-hidden', 'true'); };
-    modal.innerHTML = `
-      <div class="modal-content" style="max-width:640px;background:#ffffff;color:#0f172a;color-scheme:light;">
-        <div class="modal-header">
-          <div><h2 style="margin:0;font-size:20px;">Sign Agreement</h2><p class="muted" style="margin:4px 0 0;">${U.escapeHtml(defaultTitle)}</p></div>
-          <button class="modal-close" data-internal-sign-close type="button" aria-label="Close">✕</button>
-        </div>
-        <form class="agreement-internal-sign-form" data-internal-sign-form>
-          <label>Signer name<input class="input" name="signerName" required value="${U.escapeAttr(user.name || '')}"></label>
-          <label>Signer title<input class="input" name="signerTitle" required value="${U.escapeAttr(defaultTitle)}"></label>
-          <div class="agreement-signature-upload-only">
-            <div class="muted" style="font-weight:800;margin-bottom:8px;">Signature upload</div>
-            <p class="muted" style="margin:0 0 10px;">Upload a PNG, JPG, or WEBP image of your signature.</p>
-            <input type="hidden" id="internalSignatureType" name="signatureType" value="uploaded">
-          </div>
-          <div id="internalUploadSignatureWrap" data-internal-signature-panel="uploaded"><input class="input" type="file" name="signatureImage" accept="image/png,image/jpeg,image/webp"><div data-internal-uploaded-signature-preview></div></div>
-          <label class="public-checkbox"><input type="checkbox" name="authorized" required> I confirm that I am authorized to sign this agreement on behalf of InCheck360.</label>
-          <div class="public-validation-errors"></div>
-          <div class="actions" style="justify-content:flex-end;"><button class="btn btn-incheck-outline" type="button" data-internal-sign-close>Cancel</button><button class="btn btn-incheck-primary" type="submit">Sign Agreement</button></div>
-        </form>
-      </div>`;
-    modal.querySelectorAll('[data-internal-sign-close]').forEach(btn => btn.addEventListener('click', close));
-    const form = modal.querySelector('[data-internal-sign-form]');
-    const sync = () => {
-      const preview = form.querySelector('.typed-signature-preview');
-      if (preview) preview.textContent = form.signatureText?.value?.trim() || 'Typed signature';
-    };
-    form.dataset.signatureMode = 'uploaded';
-    const signatureTypeSelect = document.getElementById('internalSignatureType');
-    signatureTypeSelect?.addEventListener('change', () => { handleInternalSignatureTypeChange(); sync(); });
-    form.querySelectorAll('[data-internal-signature-mode]').forEach(btn => btn.addEventListener('click', () => {
-      if (signatureTypeSelect) signatureTypeSelect.value = btn.dataset.internalSignatureMode || 'uploaded';
-      handleInternalSignatureTypeChange();
-      sync();
-    }));
-    form.signatureText?.addEventListener('input', sync);
-    form.signatureImage?.addEventListener('change', async () => {
-      try {
-        const file = await readDataUrlFile(form.signatureImage.files?.[0], { imageOnly: true, maxMb: 4 });
-        form.dataset.uploadedSignatureDataUrl = file.dataUrl;
-        window.internalUploadedSignatureDataUrl = file.dataUrl;
-        form.querySelector('[data-internal-uploaded-signature-preview]').innerHTML = `<img class="proposal-signature-image" src="${U.escapeAttr(file.dataUrl)}" alt="Uploaded signature">`;
-      } catch (error) {
-        delete form.dataset.uploadedSignatureDataUrl;
-        window.internalUploadedSignatureDataUrl = null;
-        form.signatureImage.value = '';
-        form.querySelector('.public-validation-errors').innerHTML = `<p class="public-form-error">${U.escapeHtml(error.message)}</p>`;
-      }
-    });
-    handleInternalSignatureTypeChange();
-    form.addEventListener('submit', event => { event.preventDefault(); this.submitInternalAgreementSignature(targetRole, form, close); });
-    modal.classList.add('open'); modal.setAttribute('aria-hidden', 'false');
-    sync();
-  },
-  async submitInternalAgreementSignature(role, form, close) {
-    const agreementId = String(this.state.currentAgreement?.id || this.state.currentAgreementId || '').trim();
-    if (!agreementId) return UI.toast('Missing agreement id.');
-    const mode = document.getElementById('internalSignatureType')?.value || form.dataset.signatureMode || 'uploaded';
-    let signatureText = null;
-    let signatureImageDataUrl = null;
-    const errors = [];
-    if (!form.signerName.value.trim()) errors.push('Signer name is required.');
-    if (!form.signerTitle.value.trim()) errors.push('Signer title is required.');
-    if (mode === 'typed') {
-      signatureText = document.getElementById('internalSignatureText')?.value?.trim();
-      if (!signatureText) errors.push('Typed signature is required.');
-    }
-    if (mode === 'uploaded') {
-      signatureImageDataUrl = form.dataset.uploadedSignatureDataUrl || window.internalUploadedSignatureDataUrl || null;
-      if (!signatureImageDataUrl) errors.push('Uploaded signature image is required.');
-    }
-    if (mode === 'drawn') {
-      const canvas = document.getElementById('internalSignatureCanvas');
-      if (!canvas || canvas.dataset.hasSignature !== 'true') errors.push('Please draw your signature before signing.');
-      else signatureImageDataUrl = canvas.toDataURL('image/png');
-    }
-    if (!form.authorized.checked) errors.push('Authorization confirmation is required.');
-    const errorBox = form.querySelector('.public-validation-errors');
-    if (errors.length) {
-      if (errorBox) errorBox.innerHTML = errors.map(error => `<p class="public-form-error">${U.escapeHtml(error)}</p>`).join('');
-      return;
-    }
-    try {
-      await this.callEAgreementRpc('agreement_internal_sign', {
-        p_agreement_id: agreementId,
-        p_signer_role: role,
-        p_signer_name: form.signerName.value.trim(),
-        p_signer_title: form.signerTitle.value.trim(),
-        p_signature_type: mode,
-        p_signature_text: signatureText,
-        p_signature_image_data_url: signatureImageDataUrl
-      });
-      UI.toast('Agreement signed.');
-      close?.();
-      const { agreement, items, internalSignatures } = await this.loadAgreementPreviewData(agreementId);
-      this.state.currentAgreement = agreement;
-      this.state.currentAgreementId = String(agreement.id || agreementId).trim();
-      this.state.currentItems = items;
-      this.state.currentInternalSignatures = internalSignatures;
-      this.refreshInternalAgreementSignaturesPanel(E.agreementInternalSignaturesPanel, agreement, internalSignatures);
-      this.refreshInternalAgreementSignaturesPanel(E.agreementPreviewInternalSignatures, agreement, internalSignatures);
-      if (E.agreementPreviewFrame && E.agreementPreviewModal?.classList?.contains('open')) {
-        E.agreementPreviewFrame.srcdoc = U.addIncheckDocumentLogo(U.formatPreviewHtmlDates(this.buildAgreementPreviewHtml(agreement, items)));
-      }
-      this.loadAndRefresh?.({ force: true });
-    } catch (error) {
-      console.error('[agreement internal sign] failed', error);
-      UI.toast(this.getEAgreementRpcErrorMessage(error, 'Unable to sign agreement.'));
-    }
   },
   getItemDescription(item = {}) {
     return String(
@@ -3316,26 +2684,7 @@ const Agreements = {
       .signature-head { background: #f8fbff; border-bottom: 1px solid #e3eaf3; padding: 8px 10px; font-size: 11px; letter-spacing: 0.08em; font-weight: 700; color: #1e3a5f; }
       .signature-body { padding: 11px; font-size: 12px; line-height: 1.5; }
       .footer-note { margin-top: 16px; font-size: 11px; color: #64748b; border-top: 1px solid #e3eaf3; padding-top: 10px; text-align: center; }
-      .agreement-customer-signature-verification { margin-top: 18px; border: 1px solid #bfdbfe; border-radius: 14px; background: #ffffff; overflow: hidden; page-break-inside: avoid; }
-      .agreement-customer-signature-header { display: flex; gap: 10px; align-items: flex-start; padding: 14px 16px; background: #eff6ff; border-bottom: 1px solid #dbeafe; }
-      .agreement-customer-signature-check { width: 28px; height: 28px; border-radius: 999px; background: #2563eb; color: #ffffff; display: inline-flex; align-items: center; justify-content: center; font-weight: 900; flex: 0 0 auto; }
-      .agreement-customer-signature-header h3 { margin: 0; color: #1e3a8a; font-size: 14px; font-weight: 900; letter-spacing: 0.08em; }
-      .agreement-customer-signature-header p { margin: 4px 0 0; color: #475569; font-size: 12px; }
-      .agreement-customer-signature-body { display: grid; grid-template-columns: minmax(260px, 360px) 1fr; gap: 18px; padding: 16px; }
-      .agreement-customer-signature-left, .agreement-customer-signature-right { min-width: 0; }
-      .agreement-customer-signature-preview.typed { min-height: 130px; border: 1px dashed #93c5fd; border-radius: 12px; background: #f8fbff; display: flex; align-items: center; justify-content: center; color: #0f172a; font-size: 34px; font-family: "Brush Script MT", "Segoe Script", cursive; padding: 18px; text-align: center; }
-      .agreement-customer-signature-preview.image { height: 150px; border: 1px solid #dbeafe; border-radius: 12px; background: #ffffff; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-      .agreement-customer-signature-preview.image img { max-width: 100%; max-height: 100%; object-fit: contain; }
-      .agreement-signature-detail { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 12px; padding: 9px 0; border-bottom: 1px solid #e5e7eb; font-size: 12px; }
-      .agreement-signature-detail span { color: #64748b; } .agreement-signature-detail strong { color: #0f172a; font-weight: 800; word-break: break-word; }
-      .agreement-signature-status { width: fit-content; margin-top: 12px; padding: 7px 12px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 11px; font-weight: 900; }
-      .agreement-signed-doc-file-card { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #dbeafe; border-radius: 10px; background: #f8fbff; margin-bottom: 10px; }
-      .agreement-signed-doc-file-icon { width: 38px; height: 44px; border-radius: 8px; background: #fee2e2; color: #dc2626; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 900; flex: 0 0 auto; }
-      .agreement-signed-doc-file-card strong { display: block; color: #0f172a; font-size: 13px; font-weight: 800; word-break: break-word; } .agreement-signed-doc-file-card span { display: block; margin-top: 2px; color: #64748b; font-size: 11px; }
-      .agreement-signed-doc-preview-box { height: 190px; border: 1px solid #dbeafe; border-radius: 10px; background: #f8fafc; overflow: hidden; } .agreement-signed-doc-preview-box iframe, .agreement-signed-doc-preview-box img { width: 100%; height: 100%; border: 0; object-fit: contain; display: block; background: #ffffff; }
-      .agreement-signed-doc-no-preview { height: 100%; display: flex; align-items: center; justify-content: center; color: #64748b; font-size: 12px; } .agreement-signed-doc-actions { display: flex; gap: 10px; margin-top: 10px; } .agreement-signed-doc-actions a { display: inline-flex; align-items: center; justify-content: center; min-height: 34px; padding: 8px 12px; border: 1px solid #bfdbfe; border-radius: 10px; background: #ffffff; color: #2563eb; font-size: 12px; font-weight: 800; text-decoration: none; }
-      @media (max-width: 760px) { .agreement-customer-signature-body { grid-template-columns: 1fr; } .agreement-signature-detail { grid-template-columns: 1fr; gap: 3px; } .agreement-signed-doc-actions { flex-direction: column; } }
-      @media print { .agreement-customer-signature-verification { page-break-inside: avoid; } .agreement-signed-doc-actions { display: none; } }
+
 
       @page { size: A4; margin: 0; }
       @media print { body { margin: 0; padding: 0; background: #fff; } .doc-sheet { width: 210mm; min-height: 297mm; margin: 0; border: 0; box-shadow: none; page-break-after: always; } }
@@ -3492,7 +2841,6 @@ const Agreements = {
         </div>
       </section>
 
-      ${this.renderAgreementCustomerSignatureVerification(agreementData)}
 
       <footer class="footer-note">This is an auto-generated system document and is valid without a manual signature unless otherwise required.</footer>
     </div>
@@ -3603,40 +2951,8 @@ const Agreements = {
     if (signedDateInput) signedDateInput.value = snapshot.signed_date || '';
     const statusInput = document.getElementById('agreementFormStatus');
     if (statusInput && snapshot.status) statusInput.value = snapshot.status;
-    this.updateInternalSignatureWorkflowUi(snapshot);
   },
 
-  updateInternalSignatureWorkflowUi(snapshot = {}) {
-    const sfcDate = String(snapshot.provider_official_signatory_1_sign_date || '').trim();
-    const gmDate = String(snapshot.provider_official_signatory_2_sign_date || '').trim();
-    const customerDate = this.hasCustomerSignedForInternalSignatures({ ...(this.state.currentAgreement || {}), ...(snapshot || {}) }) ? 'signed' : String(snapshot.customer_official_sign_date || snapshot.customer_sign_date || '').trim();
-    const gmInput = document.getElementById('agreementFormProviderOfficialSignatory2SignDate');
-    const sfcInput = document.getElementById('agreementFormProviderOfficialSignatory1SignDate');
-    let helper = document.getElementById('agreementInternalSignatureWorkflowHelp');
-    if (!helper && gmInput?.parentElement) {
-      helper = document.createElement('div');
-      helper.id = 'agreementInternalSignatureWorkflowHelp';
-      helper.className = 'muted agreement-field-help';
-      gmInput.parentElement.appendChild(helper);
-    }
-    if (sfcInput && !customerDate && !this.canUseAdminOverride()) {
-      sfcInput.disabled = true;
-      sfcInput.title = 'Customer must accept and sign the agreement before internal signing.';
-    }
-    if (gmInput && !sfcDate && !this.canUseAdminOverride()) {
-      gmInput.disabled = true;
-      gmInput.title = 'Senior Financial Controller must sign first.';
-    }
-    if (helper) {
-      helper.textContent = !customerDate
-        ? 'Customer must accept and sign the agreement before internal signing.'
-        : !sfcDate
-          ? 'Senior Financial Controller must sign first.'
-          : gmDate
-            ? 'Signed'
-            : 'Accepted — awaiting GM signature';
-    }
-  },
   getAgreementEndDateValue(agreement = {}) {
     const source = agreement && typeof agreement === 'object' ? agreement : {};
     return this.normalizeDateInputValue(
@@ -3970,116 +3286,6 @@ const Agreements = {
   },
 
 
-  canViewEAgreementAuditLog() {
-    const role = String(window.Session?.currentUser?.role || window.currentUser?.role || '').trim().toLowerCase();
-    return ['admin', 'gm', 'general_manager', 'sfc', 'senior_financial_controller', 'accounting', 'accountant'].includes(role) || Permissions.canView('agreements');
-  },
-  getEAgreementPublicUrl(token = '') {
-    const clean = String(token || '').trim();
-    return clean ? `${window.location.origin}/e-agreement/${encodeURIComponent(clean)}` : '';
-  },
-  getEAgreementRpcErrorMessage(error, fallback = 'E-agreement action failed.') {
-    const message = String(error?.message || error?.error_description || error?.details || '').trim();
-    if (!message) return fallback;
-    if (/function .* not found|could not find the function|schema cache/i.test(message)) {
-      return 'E-agreement SQL functions are missing. Run the e-agreement SQL migration first.';
-    }
-    return message;
-  },
-  async callEAgreementRpc(name, args = {}) {
-    const client = window.SupabaseClient?.getClient?.();
-    if (!client?.rpc) throw new Error('Supabase client is not available.');
-    const { data, error } = await client.rpc(name, args);
-    if (error) throw error;
-    return data;
-  },
-  async generateEAgreementLink(agreementId, { regenerate = false } = {}) {
-    const cleanId = String(agreementId || '').trim();
-    if (!cleanId) return UI.toast('Save the agreement first to generate an e-agreement link.');
-    try {
-      const data = await this.callEAgreementRpc('eagreement_generate_link', {
-        p_agreement_id: cleanId,
-        p_base_url: window.location.origin
-      });
-      this.showEAgreementLinkModal(data);
-      UI.toast(regenerate ? 'E-agreement link regenerated.' : 'E-agreement link generated.');
-      this.loadAndRefresh?.({ force: true });
-    } catch (error) {
-      console.error('[e-agreement] generate failed', error);
-      UI.toast(this.getEAgreementRpcErrorMessage(error, 'Unable to generate e-agreement link.'));
-    }
-  },
-  async disableEAgreementLink(agreementId) {
-    const cleanId = String(agreementId || '').trim();
-    if (!cleanId) return UI.toast('Missing agreement id.');
-    try {
-      const data = await this.callEAgreementRpc('eagreement_disable_link', {
-        p_agreement_id: cleanId
-      });
-      this.showEAgreementLinkModal(data);
-      UI.toast('E-agreement link disabled.');
-      this.loadAndRefresh?.({ force: true });
-    } catch (error) {
-      console.error('[e-agreement] disable failed', error);
-      UI.toast(this.getEAgreementRpcErrorMessage(error, 'Unable to disable e-agreement link.'));
-    }
-  },
-  async showEAgreementActivityLog(agreementId) {
-    if (!this.canViewEAgreementAuditLog()) return UI.toast('You do not have permission to view e-agreement audit logs.');
-    const client = window.SupabaseClient?.getClient?.();
-    if (!client) return UI.toast('Supabase client is not available.');
-    const id = String(agreementId || '').trim();
-    let modal = document.getElementById('eAgreementActivityModal');
-    if (!modal) {
-      modal = document.createElement('div');
-      modal.id = 'eAgreementActivityModal';
-      modal.className = 'modal e-proposal-activity-modal';
-      document.body.appendChild(modal);
-    }
-    const close = () => { modal.classList.remove('open'); modal.setAttribute('aria-hidden', 'true'); };
-    modal.innerHTML = `<div class="modal-content e-proposal-activity-dialog"><div class="modal-header e-proposal-activity-header"><div><h2>E-Agreement Activity Log</h2><p>Internal audit trail. IP address and user agent are visible only to authorized ERP users.</p></div><button class="modal-close" data-e-agreement-activity-close type="button">✕</button></div><div class="e-proposal-activity-body"><div class="muted">Loading activity…</div></div></div>`;
-    modal.querySelector('[data-e-agreement-activity-close]')?.addEventListener('click', close);
-    modal.classList.add('open'); modal.setAttribute('aria-hidden', 'false');
-    try {
-      const { data: agreement } = await client.from('agreements').select('id,agreement_id,agreement_number').or(`id.eq.${id},agreement_id.eq.${id},agreement_number.eq.${id}`).maybeSingle();
-      const agreementUuid = agreement?.id || id;
-      const { data, error } = await client
-        .from('agreement_guest_activity_logs')
-        .select('*')
-        .eq('agreement_id', agreementUuid)
-        .order('created_at', { ascending: false })
-        .limit(100);
-      if (error) throw error;
-      const rows = Array.isArray(data) ? data : [];
-      const formatEvent = value => String(value || '').replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
-      const formatMeta = value => JSON.stringify(value || {}, null, 2);
-      modal.querySelector('.e-proposal-activity-body').innerHTML = rows.length ? `<div class="e-proposal-activity-table-wrap"><table class="e-proposal-activity-table"><thead><tr><th>Event</th><th>Customer name</th><th>IP address</th><th>Date/time</th><th>Signature type</th><th>Details</th></tr></thead><tbody>${rows.map(row => `<tr><td>${U.escapeHtml(formatEvent(row.event_type))}</td><td>${U.escapeHtml(row.customer_name || '—')}</td><td>${U.escapeHtml(row.ip_address || '—')}</td><td>${U.escapeHtml(row.created_at ? new Date(row.created_at).toLocaleString() : '—')}</td><td>${U.escapeHtml(row.metadata?.signature_type || '—')}</td><td><details><summary class="btn btn-incheck-outline sm">Details</summary><div class="e-proposal-activity-user-agent"><strong>User agent</strong><br>${U.escapeHtml(row.user_agent || '—')}</div><pre>${U.escapeHtml(formatMeta(row.metadata))}</pre></details></td></tr>`).join('')}</tbody></table></div>` : '<div class="e-proposal-activity-empty">No e-agreement activity has been logged yet.</div>';
-    } catch (error) {
-      console.error('[e-agreement] activity load failed', error);
-      modal.querySelector('.e-proposal-activity-body').innerHTML = `<div class="e-proposal-activity-empty">Unable to load e-agreement activity: ${U.escapeHtml(error?.message || 'Unknown error')}</div>`;
-    }
-  },
-  showEAgreementLinkModal(data = {}) {
-    const row = data?.agreement || data?.row || data || {};
-    const token = String(data?.token || row?.e_agreement_token || '').trim();
-    const link = String(data?.url || data?.public_url || data?.public_link || this.getEAgreementPublicUrl(token)).trim();
-    const agreementId = String(row?.id || row?.agreement_id || row?.agreement_number || '').trim();
-    let modal = document.getElementById('eAgreementLinkModal');
-    if (!modal) {
-      modal = document.createElement('div');
-      modal.id = 'eAgreementLinkModal';
-      modal.className = 'modal e-proposal-link-modal';
-      document.body.appendChild(modal);
-    }
-    const close = () => { modal.classList.remove('open'); modal.setAttribute('aria-hidden', 'true'); };
-    modal.innerHTML = `<div class="modal-content e-proposal-link-dialog"><div class="modal-header e-proposal-link-header"><div><h2>${link ? 'E-Agreement Link Generated' : 'E-Agreement Link Disabled'}</h2><p>${link ? 'Share this secure link manually with the customer. The customer can review, accept, or reject the agreement without ERP credentials.' : 'The previous public e-agreement link is now disabled. Generate a new link when needed.'}</p></div><button class="modal-close" data-e-agreement-close type="button">✕</button></div><div class="e-proposal-link-body"><div class="e-proposal-link-meta"><span><b>Agreement</b>${U.escapeHtml(row?.agreement_id || row?.agreement_number || '—')}</span><span><b>Customer/company</b>${U.escapeHtml(row?.customer_name || row?.customer_legal_name || '—')}</span><span><b>Valid until</b>${U.escapeHtml(U.fmtDisplayDate(row?.e_agreement_token_expires_at || row?.valid_until || row?.expires_at) || '—')}</span></div>${link ? `<label class="muted" for="eAgreementPublicLink">Public link</label><input id="eAgreementPublicLink" class="input e-proposal-link-input" readonly value="${U.escapeAttr(link)}" />` : `<div class="e-proposal-disabled-note">No active public link is currently enabled for this agreement.</div>`}<div class="e-proposal-link-actions">${link ? `<button class="btn btn-incheck-primary" data-e-agreement-copy type="button">Copy E-Agreement Link</button><button class="btn btn-incheck-outline" data-e-agreement-open type="button">Open E-Agreement</button>` : ''}<button class="btn btn-incheck-outline" data-e-agreement-regenerate type="button">${link ? 'Regenerate Link' : 'Generate New Link'}</button>${link ? `<button class="btn proposal-danger-btn" data-e-agreement-disable type="button">Disable Link</button>` : ''}</div></div></div>`;
-    modal.querySelector('[data-e-agreement-close]')?.addEventListener('click', close);
-    modal.querySelector('[data-e-agreement-copy]')?.addEventListener('click', async () => { await navigator.clipboard?.writeText(link); UI.toast('E-agreement link copied.'); });
-    modal.querySelector('[data-e-agreement-open]')?.addEventListener('click', () => window.open(link, '_blank', 'noopener,noreferrer'));
-    modal.querySelector('[data-e-agreement-regenerate]')?.addEventListener('click', () => this.generateEAgreementLink(agreementId, { regenerate: true }));
-    modal.querySelector('[data-e-agreement-disable]')?.addEventListener('click', () => this.disableEAgreementLink(agreementId));
-    modal.classList.add('open'); modal.setAttribute('aria-hidden', 'false');
-  },
   findDetailsRow(id) {
     const target = String(id || '').trim();
     if (!target) return null;
@@ -4133,8 +3339,6 @@ const Agreements = {
         signedRow && Permissions.canUpdateAgreement() && !uploadBlocked ? { label: this.hasSignedDocument(row) ? 'Replace Signed Document' : 'Upload Signed Doc', variant: 'ghost', permissionResource: 'agreements', permissionAction: 'update', onClick: btn => this.openAgreementFormById(id, { readOnly: true, trigger: btn, focusSignedDocument: true }) } : null,
         !signedRow && Permissions.canUpdateAgreement() ? { label: 'Edit', variant: 'ghost', permissionResource: 'agreements', permissionAction: 'update', onClick: btn => this.openAgreementFormById(id, { readOnly: false, trigger: btn }) } : null,
         Permissions.canGenerateAgreementHtml() ? { label: 'View Agreement', variant: 'ghost', permissionResource: 'agreements', permissionAction: 'view', onClick: () => this.previewAgreementHtml(id) } : null,
-        Permissions.canGenerateAgreementHtml() ? { label: 'Generate E-Agreement Link', variant: 'ghost', permissionResource: 'agreements', permissionAction: 'view', onClick: () => this.generateEAgreementLink(id) } : null,
-        this.canViewEAgreementAuditLog() ? { label: 'E-Agreement Activity Log', variant: 'ghost', permissionResource: 'agreements', permissionAction: 'view', onClick: () => this.showEAgreementActivityLog(id) } : null,
         invoiceSignatureEligible && Permissions.canCreateInvoiceFromAgreement() && !invoiceBlocked ? { label: 'Create Invoice', variant: 'ghost', permissionResource: 'invoices', permissionAction: 'create_from_agreement', onClick: () => this.createInvoiceFromAgreementFlow(id) } : null,
         Permissions.canDeleteAgreement() ? { label: 'Delete', variant: 'ghost', permissionResource: 'agreements', permissionAction: 'delete', onClick: () => this.deleteById(id) } : null
       ].filter(Boolean)
@@ -4233,8 +3437,6 @@ const Agreements = {
       }
       if (Permissions.canGenerateAgreementHtml()) {
         items.push(`<button class="commercial-menu-item" type="button" data-agreement-preview="${id}" data-permission-resource="agreements" data-permission-action="view">View Agreement</button>`);
-        items.push(`<button class="commercial-menu-item" type="button" data-agreement-e-link="${id}" data-permission-resource="agreements" data-permission-action="view">Generate E-Agreement Link</button>`);
-        if (this.canViewEAgreementAuditLog()) items.push(`<button class="commercial-menu-item" type="button" data-agreement-e-audit="${id}" data-permission-resource="agreements" data-permission-action="view">E-Agreement Activity Log</button>`);
       }
       if ((signedRow || this.canUseAdminOverride()) && Permissions.canCreateInvoiceFromAgreement()) {
         items.push(`<button class="commercial-menu-item${invoiceBlocked ? ' is-disabled' : ''}" type="button" data-agreement-create-invoice="${id}" data-permission-resource="invoices" data-permission-action="create_from_agreement" ${invoiceBlocked ? 'disabled aria-disabled="true"' : ''}>Create Invoice</button>`);
@@ -5247,7 +4449,6 @@ const Agreements = {
       if (el.id === 'agreementFormDeleteBtn') return;
       if (el.id === 'agreementFormSaveBtn') return;
       if (this.isAgreementSignedDocumentControl(el)) return;
-      if (el.closest?.('.agreement-internal-signatures')) return;
       if ('disabled' in el && !/agreementForm(Delete|Save)Btn/.test(el.id)) el.disabled = readOnly;
     });
   },
@@ -5448,7 +4649,6 @@ const Agreements = {
     this.state.currentAgreementId = String(agreement.id || '').trim();
     this.state.currentAgreement = agreement && typeof agreement === 'object' ? { ...agreement } : null;
     this.state.currentItems = Array.isArray(items) ? [...items] : [];
-    this.refreshInternalAgreementSignaturesPanel(E.agreementInternalSignaturesPanel, agreement, this.state.currentInternalSignatures || []);
     this.assignFormValues(agreement);
     this.syncAgreementCompanySelectorFromRecord(agreement);
     this.resolveAgreementCompanySelectorFromCompanies(agreement).catch(error => console.warn('[Agreement] Company selector sync failed.', error));
@@ -5479,7 +4679,6 @@ const Agreements = {
     this.applyAgreementProposalLocks();
     this.applyProviderSignDateRoleLocks();
     this.refreshSignedAgreementDocumentUi(agreement);
-    this.refreshInternalAgreementSignaturesPanel(E.agreementInternalSignaturesPanel, this.state.currentAgreement || agreement, this.state.currentInternalSignatures || []);
     E.agreementFormModal.classList.add('open');
     E.agreementFormModal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('modal-open');
@@ -5492,7 +4691,6 @@ const Agreements = {
       this.applyAgreementProposalLocks();
       this.applyProviderSignDateRoleLocks();
       this.refreshSignedAgreementDocumentUi(this.state.currentAgreement || agreement);
-      this.refreshInternalAgreementSignaturesPanel(E.agreementInternalSignaturesPanel, this.state.currentAgreement || agreement, this.state.currentInternalSignatures || []);
     }, 0);
     if (window.setAppHashRoute && window.buildRecordHashRoute) setAppHashRoute(buildRecordHashRoute('agreements', agreement || {}));
   },
@@ -5516,7 +4714,6 @@ const Agreements = {
     this.state.currentAgreementId = '';
     this.state.currentAgreement = null;
     this.state.currentItems = [];
-    this.state.currentInternalSignatures = [];
     this.state.selectedAgreementCompanyForVerification = null;
     this.updateAgreementCompanyVerificationUi(null);
     if (E.agreementSignedLockMessage) E.agreementSignedLockMessage.style.display = 'none';
@@ -5579,7 +4776,6 @@ const Agreements = {
     this.setTriggerBusy(trigger, true);
     console.time('agreement-open');
     const localSummary = this.state.rows.find(row => String(row.id || '').trim() === id);
-    this.state.currentInternalSignatures = [];
     this.openAgreementForm(
       localSummary ? { ...this.emptyAgreement(), ...localSummary, id } : { id },
       [],
@@ -5590,8 +4786,6 @@ const Agreements = {
       // Agreement details and the Create Invoice gate must always use fresh Supabase rows.
       const fresh = await this.reloadAgreementInvoiceGateData(id);
       const agreement = await this.applyCompanyIdentityToAgreement(fresh.agreement, { allowFallbackToAgreement: true });
-      const internalSignatures = await this.loadInternalAgreementSignatures(agreement.id || id);
-      this.state.currentInternalSignatures = internalSignatures;
       this.setCachedDetail(id, agreement, fresh.agreementItems);
       if (String(E.agreementForm?.dataset.id || '').trim() === id) {
         this.openAgreementForm(agreement, fresh.agreementItems, { readOnly });
@@ -5935,10 +5129,9 @@ const Agreements = {
       return;
     }
     try {
-      const { agreement, items, internalSignatures } = await this.loadAgreementPreviewData(agreementId);
+      const { agreement, items } = await this.loadAgreementPreviewData(agreementId);
       this.state.currentAgreement = agreement;
       this.state.currentAgreementId = String(agreement.id || agreementId).trim();
-      this.state.currentInternalSignatures = internalSignatures || [];
       const html = this.buildAgreementPreviewHtml(agreement, items);
       if (!html) {
         UI.toast('Unable to build agreement preview.');
@@ -5948,7 +5141,6 @@ const Agreements = {
       const previewLabel = String(agreement?.agreement_id || agreement?.agreement_number || agreement?.id || agreementId).trim();
       if (E.agreementPreviewTitle) E.agreementPreviewTitle.textContent = `Agreement Preview · ${previewLabel}`;
       if (E.agreementPreviewFrame) E.agreementPreviewFrame.srcdoc = brandedHtml;
-      this.refreshInternalAgreementSignaturesPanel(E.agreementPreviewInternalSignatures, agreement, internalSignatures || []);
       if (E.agreementPreviewModal) {
         E.agreementPreviewModal.classList.add('open');
         E.agreementPreviewModal.setAttribute('aria-hidden', 'false');
@@ -5966,7 +5158,6 @@ const Agreements = {
     E.agreementPreviewModal.classList.remove('open');
     E.agreementPreviewModal.setAttribute('aria-hidden', 'true');
     if (E.agreementPreviewFrame) E.agreementPreviewFrame.srcdoc = '';
-    if (E.agreementPreviewInternalSignatures) E.agreementPreviewInternalSignatures.innerHTML = '';
   },
   exportPreviewPdf() {
     const frame = E.agreementPreviewFrame;
@@ -6222,7 +5413,7 @@ const Agreements = {
       E.agreementsImportOldClientBtn.disabled = true;
     }
     if (E.agreementsTbody) E.agreementsTbody.addEventListener('click', event => {
-      const trigger = event.target?.closest?.('button[data-agreement-view], button[data-agreement-edit], button[data-agreement-upload-signed], button[data-agreement-request-technical], button[data-agreement-preview], button[data-agreement-e-link], button[data-agreement-e-audit], button[data-agreement-create-invoice], button[data-agreement-delete]');
+      const trigger = event.target?.closest?.('button[data-agreement-view], button[data-agreement-edit], button[data-agreement-upload-signed], button[data-agreement-request-technical], button[data-agreement-preview], button[data-agreement-create-invoice], button[data-agreement-delete]');
       if (!trigger) return;
       event.preventDefault();
       event.stopPropagation();
@@ -6249,10 +5440,6 @@ const Agreements = {
       }
       const previewId = trigger.getAttribute('data-agreement-preview');
       if (previewId) { if (!Permissions.canGenerateAgreementHtml()) return UI.toast('You do not have permission to preview agreements.'); return this.runRowAction(`preview:${previewId}`, trigger, () => this.previewAgreementHtml(previewId)); }
-      const eLinkId = trigger.getAttribute('data-agreement-e-link');
-      if (eLinkId) { if (!Permissions.canGenerateAgreementHtml()) return UI.toast('You do not have permission to generate e-agreement links.'); return this.runRowAction(`e-link:${eLinkId}`, trigger, () => this.generateEAgreementLink(eLinkId)); }
-      const eAuditId = trigger.getAttribute('data-agreement-e-audit');
-      if (eAuditId) { return this.runRowAction(`e-audit:${eAuditId}`, trigger, () => this.showEAgreementActivityLog(eAuditId)); }
       const createInvoiceId = trigger.getAttribute('data-agreement-create-invoice');
       if (createInvoiceId) {
         return this.runRowAction(`create-invoice:${createInvoiceId}`, trigger, () => this.createInvoiceFromAgreementFlow(createInvoiceId));
@@ -6371,68 +5558,6 @@ const Agreements = {
       signedDocElements.openBtn.dataset.signedOpenBound = 'true';
     }
 
-    if (!document.documentElement.dataset.internalAgreementSignDelegated) {
-      document.addEventListener('click', async (event) => {
-        const target = event.target?.nodeType === Node.ELEMENT_NODE ? event.target : event.target?.parentElement;
-        const signButton = target?.closest?.('[data-action="internal-agreement-sign"], .agreement-signature-btn');
-        if (!signButton) return;
-
-        const agreementId = signButton.dataset.agreementId;
-        const signerRole = signButton.dataset.signerRole;
-
-        console.log('Internal agreement sign click detected', {
-          agreementId,
-          signerRole,
-          button: signButton
-        });
-
-        if (!agreementId || !signerRole) {
-          console.error('Missing internal agreement signing button data', {
-            agreementId,
-            signerRole,
-            dataset: signButton.dataset
-          });
-
-          if (typeof showToast === 'function') {
-            showToast('Missing agreement signing data. Please refresh and try again.', 'error');
-          } else if (UI.toast) {
-            UI.toast('Missing agreement signing data. Please refresh and try again.');
-          } else {
-            alert('Missing agreement signing data. Please refresh and try again.');
-          }
-
-          return;
-        }
-
-        if (signButton.disabled || signButton.getAttribute('aria-disabled') === 'true') {
-          event.preventDefault();
-          event.stopPropagation();
-          return;
-        }
-
-        event.preventDefault();
-        event.stopPropagation();
-
-        await this.openAgreementInternalSignModal({ agreementId, signerRole });
-      }, true);
-      document.documentElement.dataset.internalAgreementSignDelegated = 'true';
-    }
-
-
-    if (!document.documentElement.dataset.internalAgreementSignForcedGlobal) {
-      const forcedInternalSignHandler = event => {
-        const target = event.target?.nodeType === Node.ELEMENT_NODE ? event.target : event.target?.parentElement;
-        const signButton = target?.closest?.('[data-action="internal-agreement-sign"], .agreement-signature-btn');
-        if (!signButton) return;
-        this.handleInternalAgreementSignButtonClick(event, signButton);
-      };
-      document.addEventListener('pointerdown', forcedInternalSignHandler, true);
-      document.addEventListener('mousedown', forcedInternalSignHandler, true);
-      document.addEventListener('click', forcedInternalSignHandler, true);
-      document.documentElement.dataset.internalAgreementSignForcedGlobal = 'true';
-    }
-
-    this.bindInternalAgreementSignButtons(document);
     if (E.agreementAddAnnualRowBtn) E.agreementAddAnnualRowBtn.addEventListener('click', () => this.addRow('annual_saas'));
     if (E.agreementAddOneTimeRowBtn) E.agreementAddOneTimeRowBtn.addEventListener('click', () => this.addRow('one_time_fee'));
     if (E.agreementAddHardwareRowBtn) E.agreementAddHardwareRowBtn.addEventListener('click', () => this.addRow('hardware'));
@@ -6445,295 +5570,5 @@ const Agreements = {
   }
 };
 
-
-function getEAgreementTokenFromUrl() {
-  const parts = window.location.pathname.split('/').filter(Boolean);
-  const idx = parts.indexOf('e-agreement');
-  return idx >= 0 ? parts[idx + 1] : '';
-}
-
-function renderPublicEAgreementShell() {
-  document.body.className = 'public-eproposal-mode public-eagreement-mode';
-  document.body.innerHTML = `
-    <main id="publicEAgreementRoot" class="public-eproposal-page">
-      <div class="public-eproposal-card">
-        <div id="publicEAgreementContent">
-          <div class="public-loading">Loading agreement...</div>
-        </div>
-      </div>
-    </main>
-  `;
-}
-
-function renderEAgreementHero(agreement = {}) {
-  const escapeHtml = value => (window.U?.escapeHtml ? window.U.escapeHtml(value) : String(value ?? ''));
-  const agreementNumber =
-    agreement.agreement_number ||
-    agreement.agreement_id ||
-    agreement.reference ||
-    '—';
-
-  const companyName =
-    agreement.company_name ||
-    agreement.client_name ||
-    agreement.customer_name ||
-    agreement.legal_name ||
-    agreement.customer_legal_name ||
-    '—';
-
-  return `
-    <section class="eagreement-hero">
-      <div class="eagreement-hero-inner">
-        <div class="eagreement-secure-label">
-          <span class="eagreement-secure-icon">✓</span>
-          <span>InCheck360 Secure Agreement</span>
-        </div>
-
-        <div class="eagreement-hero-main">
-          <div class="eagreement-hero-copy">
-            <h1>Review Agreement</h1>
-            <p>
-              Please review the agreement below. You can accept and sign,
-              reject, print, or download a copy.
-            </p>
-          </div>
-        </div>
-
-        <div class="eagreement-summary-card">
-          <div class="eagreement-summary-grid">
-            <div class="eagreement-summary-item">
-              <div class="eagreement-summary-icon">📄</div>
-              <div>
-                <span class="eagreement-summary-label">Agreement Number</span>
-                <strong class="eagreement-summary-value">
-                  ${escapeHtml(String(agreementNumber).replace(/^Agreement#/i, '#'))}
-                </strong>
-              </div>
-            </div>
-
-            <div class="eagreement-summary-divider"></div>
-
-            <div class="eagreement-summary-item eagreement-company-item">
-              <div class="eagreement-summary-icon">🏢</div>
-              <div>
-                <span class="eagreement-summary-label">Company</span>
-                <strong class="eagreement-company-name">
-                  ${escapeHtml(companyName)}
-                </strong>
-              </div>
-            </div>
-          </div>
-
-          <div class="eagreement-review-note">
-            <span class="eagreement-info-icon">i</span>
-            <span>Please review the agreement carefully before signing.</span>
-          </div>
-        </div>
-      </div>
-    </section>
-  `;
-}
-
-async function callEAgreementAction(body) {
-  const supabase = window.SupabaseClient?.getClient?.() || window.supabase;
-  if (!supabase?.functions?.invoke) throw new Error('Supabase functions client is not available.');
-  const { data, error } = await supabase.functions.invoke('eagreement-action', { body });
-  if (error) {
-    let responseBody = null;
-    try {
-      if (error.context && typeof error.context.clone === 'function') responseBody = await error.context.clone().json();
-    } catch (_) {
-      try { responseBody = await error.context.clone().text(); } catch (_) {}
-    }
-    console.error('eagreement-action invoke error:', { message: error.message, name: error.name, context: error.context, responseBody });
-    throw new Error(responseBody?.error || responseBody?.message || error.message || 'Unable to complete this action.');
-  }
-  if (!data?.ok) {
-    console.error('eagreement-action response error:', data);
-    throw new Error(data?.error || 'Unable to complete this action.');
-  }
-  return data.data || data;
-}
-
-function bootPublicEAgreementPage() {
-  const token = decodeURIComponent(getEAgreementTokenFromUrl() || '').trim();
-  renderPublicEAgreementShell();
-  const content = document.getElementById('publicEAgreementContent');
-  const unavailable = message => {
-    if (content) content.innerHTML = `<section class="public-eproposal-section public-status-message"><h2>${U.escapeHtml(message || 'This agreement link is no longer available.')}</h2></section>`;
-  };
-  if (!token) return unavailable('Missing agreement token.');
-
-  function renderModal(html, modalClass = '') {
-    let modal = document.getElementById('publicEAgreementModal');
-    if (!modal) {
-      modal = document.createElement('div');
-      modal.id = 'publicEAgreementModal';
-      modal.className = 'public-eproposal-modal';
-      document.body.appendChild(modal);
-    }
-    modal.innerHTML = `<div class="public-eproposal-modal-card public-modal ${modalClass}">${html}<button class="public-modal-close" type="button" aria-label="Close">×</button></div>`;
-    modal.querySelector('.public-modal-close')?.addEventListener('click', () => modal.remove());
-  }
-
-  function setActionState(disabled) {
-    document.querySelectorAll('[data-public-accept-agreement], [data-public-reject-agreement]').forEach(btn => { btn.disabled = Boolean(disabled); });
-  }
-
-  async function readDataUrlFile(file, { imageOnly = false, maxMb = 8 } = {}) {
-    if (!file) throw new Error('Please select a file.');
-    if (file.size > maxMb * 1024 * 1024) throw new Error(`File size must be ${maxMb} MB or less.`);
-    const allowed = imageOnly
-      ? ['image/png', 'image/jpeg', 'image/webp']
-      : ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
-    if (!allowed.includes(file.type)) throw new Error(imageOnly ? 'Upload a PNG, JPG, or WEBP signature image.' : 'Upload a PDF, PNG, JPG, or WEBP signed agreement.');
-    const dataUrl = await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ''));
-      reader.onerror = () => reject(new Error('Unable to read the selected file.'));
-      reader.readAsDataURL(file);
-    });
-    return { dataUrl, fileName: file.name || 'uploaded-file', mimeType: file.type || 'application/octet-stream' };
-  }
-
-  function setupDrawCanvas(canvas, form, sync) {
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    let drawing = false;
-    const resize = () => {
-      const ratio = window.devicePixelRatio || 1;
-      const rect = canvas.getBoundingClientRect();
-      canvas.width = Math.max(320, Math.floor(rect.width * ratio));
-      canvas.height = Math.floor(160 * ratio);
-      ctx.scale(ratio, ratio);
-      ctx.lineWidth = 2;
-      ctx.lineCap = 'round';
-      ctx.strokeStyle = '#0f172a';
-    };
-    const point = event => {
-      const rect = canvas.getBoundingClientRect();
-      const touch = event.touches?.[0] || event.changedTouches?.[0];
-      const source = touch || event;
-      return { x: source.clientX - rect.left, y: source.clientY - rect.top };
-    };
-    const start = event => { event.preventDefault(); drawing = true; const p = point(event); ctx.beginPath(); ctx.moveTo(p.x, p.y); };
-    const move = event => { if (!drawing) return; event.preventDefault(); const p = point(event); ctx.lineTo(p.x, p.y); ctx.stroke(); form.dataset.drawnSignatureDataUrl = canvas.toDataURL('image/png'); sync(); };
-    const end = () => { drawing = false; form.dataset.drawnSignatureDataUrl = canvas.toDataURL('image/png'); sync(); };
-    resize(); window.addEventListener('resize', resize, { passive: true });
-    canvas.addEventListener('mousedown', start); canvas.addEventListener('mousemove', move); window.addEventListener('mouseup', end);
-    canvas.addEventListener('touchstart', start, { passive: false }); canvas.addEventListener('touchmove', move, { passive: false }); canvas.addEventListener('touchend', end);
-    form.querySelector('[data-clear-drawn-agreement-signature]')?.addEventListener('click', () => { ctx.clearRect(0, 0, canvas.width, canvas.height); delete form.dataset.drawnSignatureDataUrl; sync(); });
-  }
-
-  (async () => {
-    try {
-      const data = await callEAgreementAction({ action: 'view', token });
-      const agreement = data.agreement || data.record || data;
-      const items = Array.isArray(data.items) ? data.items : [];
-      const accepted = Boolean(agreement.e_agreement_accepted_at || agreement.e_agreement_signature_confirmed);
-      const rejected = Boolean(agreement.e_agreement_rejected_at || String(agreement.status || '').toLowerCase() === 'rejected');
-      const documentHtml = window.Agreements?.buildAgreementPreviewHtml
-        ? window.Agreements.buildAgreementPreviewHtml(agreement, items)
-        : `<h1>${U.escapeHtml(agreement.agreement_id || agreement.agreement_number || 'Agreement')}</h1>`;
-      const brandedDocumentHtml = U.addIncheckDocumentLogo ? U.addIncheckDocumentLogo(U.formatPreviewHtmlDates ? U.formatPreviewHtmlDates(documentHtml) : documentHtml) : documentHtml;
-      content.innerHTML = `
-        ${accepted ? '<section class="public-eproposal-section public-success"><h2>Agreement accepted successfully. The agreement is now waiting for InCheck360 internal signatures.</h2></section>' : ''}
-        ${rejected ? '<section class="public-eproposal-section public-status-message"><h2>This agreement has been rejected.</h2></section>' : ''}
-        ${renderEAgreementHero(agreement)}
-        <section class="public-eproposal-document" data-public-agreement-document>
-          <iframe title="Agreement preview" srcdoc="${U.escapeAttr(brandedDocumentHtml)}"></iframe>
-        </section>
-        <div class="public-eproposal-actions"><button class="public-btn-outline" data-public-print-agreement type="button">Print / Download PDF</button><button class="public-btn-outline" data-public-reject-agreement type="button" ${accepted || rejected ? 'disabled' : ''}>Reject Agreement</button><button class="public-btn-primary" data-public-accept-agreement type="button" ${accepted || rejected ? 'disabled' : ''}>Accept Agreement</button></div>`;
-
-      document.querySelector('[data-public-print-agreement]')?.addEventListener('click', () => {
-        const frame = document.querySelector('[data-public-agreement-document] iframe');
-        frame?.contentWindow?.focus();
-        frame?.contentWindow?.print();
-      });
-
-      document.querySelector('[data-public-accept-agreement]')?.addEventListener('click', () => {
-        renderModal(`<form data-public-accept-agreement-form><h2>Accept & Sign Agreement</h2><label>Customer full name<input class="input" name="name" placeholder="Full name" required></label><section class="electronic-signature-section"><h3>Signature Upload</h3><p class="muted">Please upload a signature image or the signed agreement document.</p><div class="signature-method-tabs"><button class="signature-method-tab active" type="button" data-signature-mode="uploaded">Upload Signature Image</button><button class="signature-method-tab" type="button" data-signature-mode="signed_document_upload">Upload Signed Agreement</button></div><div data-signature-panel="uploaded"><input class="input" type="file" name="signatureImage" accept="image/png,image/jpeg,image/webp"><div data-uploaded-signature-preview></div></div><div data-signature-panel="signed_document_upload" hidden><p class="muted">Download/print the agreement, sign it manually or using DocuSign/Adobe, then upload the signed PDF or image.</p><input class="input" type="file" name="signedDocument" accept="application/pdf,image/png,image/jpeg,image/webp"><div data-signed-document-preview></div></div></section><label class="public-checkbox"><input type="checkbox" name="authorized" required> I confirm I am authorized to sign this agreement on behalf of the customer.</label><div class="public-validation-errors"></div><button class="public-btn-primary accept-agreement-submit" type="submit" disabled>Accept & Sign Agreement</button></form>`, 'public-action-modal accept-proposal-modal agreement-accept-sign-modal');
-        const form = document.querySelector('[data-public-accept-agreement-form]');
-        function syncAcceptForm() {
-          if (!form) return;
-          const mode = form.dataset.signatureMode || 'uploaded';
-          if (mode === 'typed' && !form.typedSignature.value.trim() && form.name.value.trim()) form.typedSignature.value = form.name.value;
-          const preview = form.querySelector('.typed-signature-preview');
-          if (preview) preview.textContent = form.typedSignature.value.trim() || 'Typed signature';
-          form.querySelectorAll('[data-signature-panel]').forEach(panel => { panel.hidden = panel.dataset.signaturePanel !== mode; });
-          const modeOk = mode === 'typed' ? form.typedSignature.value.trim() : mode === 'uploaded' ? form.dataset.uploadedSignatureDataUrl : mode === 'drawn' ? form.dataset.drawnSignatureDataUrl : form.dataset.signedDocumentDataUrl;
-          form.querySelector('.accept-agreement-submit').disabled = !(form.name.value.trim() && form.authorized.checked && modeOk);
-        }
-        form.dataset.signatureMode = 'uploaded';
-        form.addEventListener('input', syncAcceptForm);
-        form.addEventListener('change', syncAcceptForm);
-        form.querySelectorAll('button[data-signature-mode]').forEach(btn => btn.addEventListener('click', () => { form.dataset.signatureMode = btn.dataset.signatureMode || 'uploaded'; form.querySelectorAll('.signature-method-tab').forEach(x => x.classList.toggle('active', x === btn)); syncAcceptForm(); }));
-        form.signatureImage?.addEventListener('change', async () => { const errorBox = form.querySelector('.public-validation-errors'); if (errorBox) errorBox.innerHTML = ''; try { const file = await readDataUrlFile(form.signatureImage.files?.[0], { imageOnly: true, maxMb: 4 }); form.dataset.uploadedSignatureDataUrl = file.dataUrl; form.querySelector('[data-uploaded-signature-preview]').innerHTML = `<img src="${U.escapeHtml(file.dataUrl)}" alt="Uploaded signature">`; } catch (error) { delete form.dataset.uploadedSignatureDataUrl; form.signatureImage.value = ''; if (errorBox) errorBox.innerHTML = `<p class="public-form-error">${U.escapeHtml(error.message)}</p>`; } syncAcceptForm(); });
-        form.signedDocument?.addEventListener('change', async () => { const errorBox = form.querySelector('.public-validation-errors'); if (errorBox) errorBox.innerHTML = ''; try { const file = await readDataUrlFile(form.signedDocument.files?.[0], { maxMb: 8 }); form.dataset.signedDocumentDataUrl = file.dataUrl; form.dataset.signedDocumentFileName = file.fileName; form.dataset.signedDocumentMimeType = file.mimeType; form.querySelector('[data-signed-document-preview]').innerHTML = file.mimeType === 'application/pdf' ? `<div class="signed-document-file-card"><strong>${U.escapeHtml(file.fileName)}</strong><span>PDF uploaded</span></div><iframe class="signed-document-pdf-preview" src="${U.escapeHtml(file.dataUrl)}"></iframe>` : `<div class="signed-document-file-card"><strong>${U.escapeHtml(file.fileName)}</strong><span>${U.escapeHtml(file.mimeType)}</span></div><img class="signed-document-image-preview" src="${U.escapeHtml(file.dataUrl)}" alt="Signed agreement preview">`; } catch (error) { delete form.dataset.signedDocumentDataUrl; form.signedDocument.value = ''; if (errorBox) errorBox.innerHTML = `<p class="public-form-error">${U.escapeHtml(error.message)}</p>`; } syncAcceptForm(); });
-        syncAcceptForm();
-      });
-
-      document.querySelector('[data-public-reject-agreement]')?.addEventListener('click', () => renderModal(`<form data-public-reject-agreement-form><h2>Reject Agreement</h2><input class="input" name="name" placeholder="Customer name (optional)"><textarea class="input" name="reason" rows="4" placeholder="Rejection reason"></textarea><button class="public-btn-primary" type="submit">Reject Agreement</button></form>`, 'public-action-modal reject-proposal-modal'));
-
-      document.body.addEventListener('submit', async event => {
-        const form = event.target;
-        if (!form.matches('[data-public-accept-agreement-form], [data-public-reject-agreement-form]')) return;
-        event.preventDefault();
-        const isAccept = form.matches('[data-public-accept-agreement-form]');
-        try {
-          if (isAccept) {
-            form.querySelectorAll('.public-form-error').forEach(errorEl => errorEl.remove());
-            const errors = [];
-            if (!form.name.value.trim()) errors.push('Customer name is required.');
-            const signatureMode = form.dataset.signatureMode || 'uploaded';
-            if (signatureMode === 'typed' && !form.typedSignature.value.trim()) errors.push('Typed signature is required.');
-            if (signatureMode === 'uploaded' && !form.dataset.uploadedSignatureDataUrl) errors.push('Uploaded signature image is required.');
-            if (signatureMode === 'drawn' && !form.dataset.drawnSignatureDataUrl) errors.push('Drawn signature is required.');
-            if (signatureMode === 'signed_document_upload' && !form.dataset.signedDocumentDataUrl) errors.push('Signed agreement upload is required.');
-            if (!form.authorized.checked) errors.push('Please confirm authorization before accepting.');
-            const errorBox = form.querySelector('.public-validation-errors');
-            if (errorBox) errorBox.innerHTML = errors.map(error => `<p class="public-form-error">${U.escapeHtml(error)}</p>`).join('');
-            if (errors.length) return;
-            const customerName = form.name.value.trim();
-            const customerEmail = agreement.customer_contact_email || agreement.contact_email || agreement.customer_email || 'not-provided@customer.local';
-            const signatureImageDataUrl = signatureMode === 'drawn' ? form.dataset.drawnSignatureDataUrl : form.dataset.uploadedSignatureDataUrl;
-            await callEAgreementAction({
-              action: 'accept',
-              token,
-              customerName,
-              customerEmail,
-              comment: null,
-              signatureType: signatureMode,
-              signatureText: signatureMode === 'typed' ? form.typedSignature.value.trim() : customerName,
-              signatureImageDataUrl: signatureMode === 'uploaded' || signatureMode === 'drawn' ? signatureImageDataUrl : null,
-              signedDocumentDataUrl: signatureMode === 'signed_document_upload' ? form.dataset.signedDocumentDataUrl : null,
-              signedDocumentFileName: signatureMode === 'signed_document_upload' ? form.dataset.signedDocumentFileName : null,
-              signedDocumentMimeType: signatureMode === 'signed_document_upload' ? form.dataset.signedDocumentMimeType : null
-            });
-          } else {
-            await callEAgreementAction({ action: 'reject', token, customerName: form.name.value || null, customerEmail: null, rejectionReason: form.reason.value || null });
-          }
-          document.getElementById('publicEAgreementModal')?.remove();
-          setActionState(true);
-          content.insertAdjacentHTML('afterbegin', `<section class="public-eproposal-section public-success"><h2>${isAccept ? 'Agreement accepted successfully. The agreement is now waiting for InCheck360 internal signatures.' : 'This agreement has been rejected.'}</h2></section>`);
-        } catch (error) {
-          console.error('[e-agreement] public action failed', error);
-          form.querySelectorAll('.public-form-error').forEach(errorEl => errorEl.remove());
-          const messageHtml = `<p class="public-form-error">${U.escapeHtml(error?.message || 'Unable to complete this action.')}</p>`;
-          const errorBox = form.querySelector('.public-validation-errors');
-          if (errorBox) errorBox.innerHTML = messageHtml;
-          else form.insertAdjacentHTML('beforeend', messageHtml);
-        }
-      });
-    } catch (error) {
-      console.error('[e-agreement] public load failed', error);
-      unavailable(error?.payload?.message || error?.message || 'Unable to complete this action. Please try again or contact InCheck360.');
-    }
-  })();
-}
-
-window.getEAgreementTokenFromUrl = getEAgreementTokenFromUrl;
-window.renderPublicEAgreementShell = renderPublicEAgreementShell;
-window.bootPublicEAgreementPage = bootPublicEAgreementPage;
 
 window.Agreements = Agreements;

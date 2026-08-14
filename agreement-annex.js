@@ -519,24 +519,13 @@
       'provider_official_signatory_1_sign_date','provider_official_signatory_2_sign_date','provider_sign_date',
       'signed_document_path','signed_document_name','signed_document_uploaded_at','signed_document_uploaded_by','signed_document_url',
       'signed_agreement_document_path','signed_agreement_document_name','signed_agreement_document_uploaded_at','signed_agreement_document_uploaded_by','signed_agreement_document_url',
-      'e_agreement_token','e_agreement_token_expires_at','e_agreement_generated_at','e_agreement_generated_by','e_agreement_viewed_at',
-      'e_agreement_accepted_at','e_agreement_accepted_by_name','e_agreement_accepted_by_email','e_agreement_accepted_comment',
-      'e_agreement_rejected_at','e_agreement_rejection_reason','e_agreement_signature_type','e_agreement_signature_text',
-      'e_agreement_signature_image_data_url','e_agreement_signed_document_data_url','e_agreement_signed_document_file_name',
-      'e_agreement_signed_document_mime_type','e_agreement_signature_signed_at','e_agreement_signature_customer_name',
-      'e_agreement_signature_customer_email','e_agreement_signature_ip_address','customer_signed_at','customer_accepted_at',
-      'customer_signed_by_name','customer_signed_by_email','customer_signature_type','customer_signature_text',
-      'customer_signature_image_data_url','customer_signed_document_data_url','customer_signed_document_file_name',
-      'customer_signed_document_mime_type','customer_signature_ip_address','imported_at','imported_by','imported_document_bucket',
+      'customer_signed_at','imported_at','imported_by','imported_document_bucket',
       'imported_document_path','imported_document_name','imported_document_uploaded_at','imported_document_uploaded_by',
       'invoice_id','invoice_number','invoice_reference','invoiced_at','invoiced_by'
     ];
     clearFields.forEach(field => { draft[field] = ''; });
     draft.gm_signed = false;
     draft.financial_controller_signed = false;
-    draft.e_agreement_link_enabled = false;
-    draft.e_agreement_signature_confirmed = false;
-    draft.customer_signature_confirmed = false;
     draft.is_imported = false;
     draft.is_historical_agreement = false;
     return draft;

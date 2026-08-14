@@ -6,7 +6,6 @@ For Agreement#00099 only, the Customer Official Signatory remains blank in:
 - Agreement web form/view
 - Agreement preview
 - Extracted/printed PDF
-- Public e-agreement preview
 
 The company authorized-signatory fallback is disabled only for Agreement#00099. All other agreements continue using the existing signatory rules.
 

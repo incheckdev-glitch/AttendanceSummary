@@ -18,21 +18,7 @@ declare
     'customer_signatory_name', 'customer_signatory_title', 'customer_authorized_signatory_name',
     'customer_authorized_signatory_title', 'customer_signature_name', 'customer_signature_title',
     'customer_sign_date', 'customer_signature_date', 'customer_signatory_email', 'customer_signatory_phone',
-    'customer_signed_by_name', 'customer_signed_by_email', 'customer_signed_at', 'customer_accepted_at',
-    'customer_signature_type', 'customer_signature_text', 'customer_signature_image_data_url',
-    'customer_signed_document_data_url', 'customer_signed_document_file_name',
-    'customer_signed_document_mime_type', 'customer_signature_ip_address', 'customer_signature_confirmed',
-    'e_signature_customer_name', 'e_signature_customer_email', 'e_signature_signed_at',
-    'e_signature_type', 'e_signature_text', 'e_signature_image_data_url', 'e_signature_ip_address',
-    'e_signature_confirmed', 'e_signed_document_data_url', 'e_signed_document_file_name',
-    'e_signed_document_mime_type', 'e_agreement_accepted_at', 'e_agreement_accepted_by_name',
-    'e_agreement_accepted_by_email', 'e_agreement_accepted_comment', 'e_agreement_signature_type',
-    'e_agreement_signature_text', 'e_agreement_signature_image_data_url',
-    'e_agreement_signed_document_data_url', 'e_agreement_signed_document_file_name',
-    'e_agreement_signed_document_mime_type', 'e_agreement_signature_signed_at',
-    'e_agreement_signature_customer_name', 'e_agreement_signature_customer_email',
-    'e_agreement_signature_ip_address', 'e_agreement_signature_confirmed'
-  ];
+    'customer_signed_at', ];
   v_provider_fields text[] := array[
     'provider_official_signatory_1_name', 'provider_official_signatory_1_title',
     'provider_official_signatory_1_sign_date', 'provider_official_signatory_2_name',

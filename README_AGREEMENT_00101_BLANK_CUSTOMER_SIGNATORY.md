@@ -6,7 +6,7 @@ Run `sql/migrations/20260730_agreement_00101_clear_customer_signature_contact.sq
 
 - resolves exactly one row by the deployed `agreement_number` / `agreement_id` values;
 - queries `information_schema.columns` before building the update, rather than assuming historical aliases exist;
-- clears only customer contact, customer signatory, and customer e-signature columns that actually exist;
+- clears only customer contact and customer signatory columns that actually exist;
 - bypasses the application lock as an owner-run administrative correction without changing status;
 - snapshots and compares every existing provider-signatory column, rolling back on any provider change; and
 - fails closed unless exactly one Agreement#00101 row is found and updated.
