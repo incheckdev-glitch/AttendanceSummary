@@ -372,9 +372,6 @@
               <button id="communicationCentreTab" class="view-tab" data-view="communication_centre" role="tab" aria-selected="false" aria-controls="communicationCentreView">
                 <span class="icon" aria-hidden="true">💬</span> Communication Centre
               </button>
-              <button id="aiAssistantTab" class="view-tab" data-view="aiAssistant" data-permission-resource="ai_assistant" data-permission-action="view" role="tab" aria-selected="false" aria-controls="aiAssistantView">
-                <span class="icon" aria-hidden="true">🤖</span> AI Assistant
-              </button>
               <button id="notificationsTab" class="view-tab" data-view="notifications"
                       role="tab" aria-selected="false" aria-controls="notificationsView">
                 <span class="icon" aria-hidden="true">🔔</span> Notification Hub
@@ -689,20 +686,6 @@
               <span id="contactsFooterInfo" class="contacts-footer-info" aria-live="polite">Showing 0 records</span>
             </div>
           </section>
-        </div>
-      </section>
-
-      <section id="aiAssistantView" class="view" role="tabpanel" aria-labelledby="aiAssistantTab">
-        <div class="section">
-          <h2>AI Assistant</h2>
-          <p class="muted">Ask read-only business questions based on your allowed data.</p>
-          <div id="aiAssistantPrompts" style="display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 14px;"></div>
-          <div id="aiAssistantMessages" class="card" style="padding:12px;max-height:420px;overflow:auto;display:grid;gap:10px;"></div>
-          <div style="display:flex;gap:8px;margin-top:12px;">
-            <input id="aiAssistantInput" class="input" type="text" placeholder="Ask a question..." style="flex:1;" />
-            <button id="aiAssistantSend" class="btn primary">Send</button>
-          </div>
-          <div id="aiAssistantState" class="muted" style="margin-top:8px;"></div>
         </div>
       </section>
 
@@ -4637,7 +4620,6 @@ Sample:
   <script src="/events-service.js?v=20260427-events-pwa1"></script>
   <script src="/csm-service.js?v=20260720-csm-special-client-activity-v9"></script>
   <script src="/ai-insights-service.js?v=20260427-allpwa1"></script>
-  <script src="/ai-assistant.js?v=20260526-ai-assistant-v1"></script>
   <script src="/app.js?v=20260730-custom-rate-persistence-v36"></script>
 </body>
 </html>
