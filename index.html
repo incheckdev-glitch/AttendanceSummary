@@ -239,10 +239,6 @@
                       role="tab" aria-selected="false" aria-controls="calendarView">
                 <span class="icon" aria-hidden="true">📅</span> Events
               </button>
-              <button id="insightsTab" class="view-tab" data-view="insights" data-permission-resource="ai_insights" data-permission-action="view"
-                      role="tab" aria-selected="false" aria-controls="insightsView">
-                <span class="icon" aria-hidden="true">🤖</span> AI Insights
-              </button>
               <button id="lifecycleAnalyticsTab" class="view-tab" data-view="lifecycleAnalytics"
                       role="tab" aria-selected="false" aria-controls="lifecycleAnalyticsView">
                 <span class="icon" aria-hidden="true">📊</span> Lifecycle Analytics
@@ -1195,29 +1191,6 @@ Sample:
               </div>
             </div>
           </div>
-        </div>
-      </section>
-
-      <!-- AI Insights view -->
-      <section id="insightsView" class="view" role="tabpanel" aria-labelledby="insightsTab">
-        <div class="card">
-          <strong>AI Insights</strong>
-          <div class="muted" style="margin-top:4px;">Actionable intelligence from Tickets and Events.</div>
-          <div id="aiAnalyzing" class="skeleton" style="height:6px;border-radius:6px;margin-top:10px;display:none"></div>
-        </div>
-
-        <div class="card">
-          <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
-            <button id="aiInsightsRefresh" class="btn sm" type="button" data-permission-resource="ai_insights" data-permission-action="view">Refresh Insights</button>
-          </div>
-          <div class="decision-filters" id="aiInsightFilters"></div>
-        </div>
-
-        <div class="grid cols-4" id="aiExecutiveOverview"></div>
-
-        <div class="card">
-          <strong>Priority Insights Queue</strong>
-          <div id="aiInsightQueue" class="decision-queue"></div>
         </div>
       </section>
 
@@ -4582,7 +4555,6 @@ Sample:
   <script src="/utils.js?v=20260803-document-billing-frequency"></script>
   <script src="/table-utils.js?v=20260703-sortable-tables"></script>
   <script src="/tickets.js?v=20260427-allpwa1"></script>
-  <script src="/insights.js?v=20260427-allpwa1"></script>
   <script src="/calendar.js?v=20260427-allpwa1"></script>
   <script src="/planner.js?v=20260427-allpwa1"></script>
   <script src="/crm-form-selectors.js?v=20260609-final-company-contact-fix"></script>
@@ -4619,7 +4591,6 @@ Sample:
   <script src="/users.js?v=20260427-allpwa1"></script>
   <script src="/events-service.js?v=20260427-events-pwa1"></script>
   <script src="/csm-service.js?v=20260720-csm-special-client-activity-v9"></script>
-  <script src="/ai-insights-service.js?v=20260427-allpwa1"></script>
   <script src="/app.js?v=20260730-custom-rate-persistence-v36"></script>
 </body>
 </html>

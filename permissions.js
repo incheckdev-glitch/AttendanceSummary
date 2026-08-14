@@ -416,8 +416,6 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     delete: ['admin', 'dev']
   }),
   analytics: Object.freeze({ list: ['admin', 'dev', 'viewer', 'hoo'] }),
-  insights: Object.freeze({ list: ['admin', 'dev', 'viewer', 'hoo'] }),
-  ai_insights: Object.freeze({ list: ['admin', 'dev', 'viewer', 'hoo'] }),
   notifications: Object.freeze({
     list: ['admin', 'dev', 'viewer', 'hoo'],
     get_unread_count: ['admin', 'dev', 'viewer', 'hoo'],
@@ -466,7 +464,6 @@ const Permissions = {
   tabPermissionRequirements: Object.freeze({
     issues: [{ resource: 'tickets', action: 'list' }],
     calendar: [{ resource: 'events', action: 'list' }],
-    insights: [{ resource: 'ai_insights', action: 'preview' }, { resource: 'ai_insights', action: 'view' }, { resource: 'ai_insights', action: 'get' }, { resource: 'ai_insights', action: 'list' }, { resource: 'ai_insights', action: 'manage' }],
     csm: [{ resource: 'csm', action: 'list' }],
     company: [{ resource: 'companies', action: 'list' }],
     contacts: [{ resource: 'contacts', action: 'list' }],
@@ -499,7 +496,6 @@ const Permissions = {
   tabResourceMap: {
     issues: null,
     calendar: 'events',
-    insights: 'ai_insights',
     csm: 'csm',
     company: 'companies',
     contacts: 'contacts',
@@ -1220,15 +1216,6 @@ const Permissions = {
   canRequestTechnicalAdmin() {
     return false;
   },
-  canAccessInsights() {
-    return (
-      this.canPerformAction('ai_insights', 'preview') ||
-      this.canPerformAction('ai_insights', 'view') ||
-      this.canPerformAction('ai_insights', 'get') ||
-      this.canPerformAction('ai_insights', 'list') ||
-      this.canPerformAction('ai_insights', 'manage')
-    );
-  },
   canManageTechnicalAdmin() {
     return false;
   },
@@ -1448,7 +1435,7 @@ async function handleExpiredSession(message = 'Session expired. Please log in ag
 
 
 const PermissionAudit = {
-  resources: ['tickets','events','ai_insights','companies','contacts','leads','deals','proposals','agreements','sales_commissions','sales_commission_installments','operations_onboarding','invoices','receipts','credit_notes','payment_forecast','monthly_renewal_forecast','biners','hr','hr_attendance','hr_leave','hr_self_service','hr_team','hr_leave_balance','hr_attendance_correction','hr_overtime','hr_notifications','hr_holidays','hr_payroll','hr_salary_receipts','hr_documents','hr_settings','clients','analytics','notifications','notification_settings','workflow','users','role_permissions'],
+  resources: ['tickets','events','companies','contacts','leads','deals','proposals','agreements','sales_commissions','sales_commission_installments','operations_onboarding','invoices','receipts','credit_notes','payment_forecast','monthly_renewal_forecast','biners','hr','hr_attendance','hr_leave','hr_self_service','hr_team','hr_leave_balance','hr_attendance_correction','hr_overtime','hr_notifications','hr_holidays','hr_payroll','hr_salary_receipts','hr_documents','hr_settings','clients','analytics','notifications','notification_settings','workflow','users','role_permissions'],
   actions: ['list','get','create','update','delete','export','manage','approve','reject','convert_to_deal','create_from_deal','create_from_proposal','create_from_agreement','create_from_invoice','cancel','print','export','assign_csm','update_status','view_renewals','view_statement','statement_view','statement_export','create_receipt','schedule_payment','record_payment','pay','view_details','mark_renewed','mark_no_renewal_needed','undo_override','create_renewal_invoice','generate','review','pay','manage_attendance'],
   inspect(resource, action) {
     const role = Permissions.normalizeRole(Session.role());

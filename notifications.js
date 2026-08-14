@@ -993,8 +993,6 @@ const Notifications = {
         csm_activity: 'csm_activities',
         csm_activities: 'csm_activities',
         csm: 'csm_activities',
-        ai_insights: 'ai_insights',
-        ai_insight: 'ai_insights',
         communication_centre: 'communication_centre',
         communication_center: 'communication_centre',
         communicationcentre: 'communication_centre',
@@ -1018,7 +1016,6 @@ const Notifications = {
       if (route.includes('lead')) return 'leads';
       if (route.includes('deal')) return 'deals';
       if (route.includes('csm')) return 'csm_activities';
-      if (route.includes('insight')) return 'ai_insights';
       return route || raw;
     };
 
@@ -1224,7 +1221,6 @@ const Notifications = {
       leads: 'leads',
       deals: 'deals',
       csm_activities: 'csm',
-      ai_insights: 'insights',
       communicationCentre: 'communicationCentre',
       communication_centre: 'communicationCentre',
       communication_center: 'communicationCentre'
@@ -1249,13 +1245,6 @@ const Notifications = {
     if (tabKey === 'leads' && window.Leads?.loadAndRefresh) await Leads.loadAndRefresh({ force: true });
     if (tabKey === 'deals' && window.Deals?.loadAndRefresh) await Deals.loadAndRefresh({ force: true });
     if (tabKey === 'csm_activities' && window.CSMActivity?.loadAndRefresh) await CSMActivity.loadAndRefresh({ force: true });
-    if (tabKey === 'ai_insights') {
-      if (!Permissions.canAccessInsights?.()) {
-        UI.toast('You do not have permission to open this item.');
-        return false;
-      }
-      if (window.AIInsights?.refresh) await AIInsights.refresh({ force: true });
-    }
     if (tabKey === 'communicationCentre' || tabKey === 'communication_centre' || tabKey === 'communication_center') {
       if (window.CommunicationCentre?.init) await window.CommunicationCentre.init();
       else if (window.CommunicationCentre?.refresh) await window.CommunicationCentre.refresh();
@@ -1289,7 +1278,6 @@ const Notifications = {
       invoices: [['invoices','view'],['invoices','get'],['invoices','list']],
       receipts: [['receipts','view'],['receipts','get'],['receipts','list']],
       technical_admin_requests: [['technical_admin_requests','view'],['technical_admin_requests','get'],['technical_admin_requests','list']],
-      insights: [['insights','preview'],['insights','view'],['insights','get'],['insights','list'],['insights','manage']],
       communication_centre: [['communication_centre','view'],['communication_centre','list'],['communication_centre','get'],['communication_centre','manage']]
     };
     const needed = perms[normalized] || perms[normalized.replace('technical_admin','technical_admin_requests')];
@@ -1383,7 +1371,6 @@ async routeToResourceTarget(resource, targetId, notification) {
       if (!opened) return false;
       const eventId = String(targetId || notification?.meta?.event_code || '').trim();
       if (eventId) this.setRouteHash(`#events?id=${encodeURIComponent(eventId)}`);
-      if (eventId && window.AIInsights?.openEventByRef) window.AIInsights.openEventByRef(eventId);
       return eventId ? this.highlightRowById(eventId) || true : true;
     }
     if (normalizedResource === 'workflow' || normalizedResource === 'workflow_approvals') {
@@ -1474,12 +1461,6 @@ async routeToResourceTarget(resource, targetId, notification) {
     }
     if (resource === 'csm_activities') {
       const opened = await this.openModuleTab('csm_activities');
-      if (!opened) return false;
-      return targetId ? this.highlightRowById(targetId) : true;
-    }
-    if (resource === 'ai_insights') {
-      if (!Permissions.canAccessInsights?.()) { UI.toast('You do not have permission to view this record.'); return false; }
-      const opened = await this.openModuleTab('ai_insights');
       if (!opened) return false;
       return targetId ? this.highlightRowById(targetId) : true;
     }

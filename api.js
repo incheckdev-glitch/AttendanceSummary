@@ -2630,7 +2630,7 @@ const Api = {
   },
   VALID_PERMISSION_RESOURCES: new Set([
     'tickets', 'events', 'leads', 'deals', 'proposals', 'agreements', 'invoices', 'receipts', 'clients',
-    'csm_activities', 'operations_onboarding', 'technical_admin', 'workflow', 'notifications', 'ai_insights',
+    'csm_activities', 'operations_onboarding', 'technical_admin', 'workflow', 'notifications',
     'users', 'roles', 'role_permissions', 'analytics'
     , 'notification_settings'
   ]),

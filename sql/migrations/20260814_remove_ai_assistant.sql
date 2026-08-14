@@ -1,6 +1,6 @@
 -- InCheck360 - Remove AI Assistant database objects
 -- Date: 2026-08-14
--- Keeps the separate AI Insights module unchanged.
+-- AI Insights is removed separately by 20260814_remove_ai_insights.sql.
 
 begin;
 

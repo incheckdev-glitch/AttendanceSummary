@@ -12,7 +12,6 @@
     tickets: { section: 'issuesView', view: 'issues', loader: () => window.loadIssues?.(true) },
     calendar: { section: 'calendarView', loader: () => window.ensureCalendar?.() },
     events: { section: 'calendarView', view: 'calendar', loader: () => window.ensureCalendar?.() },
-    insights: { section: 'insightsView', loader: () => window.AIInsights?.refresh?.({ force: true }) },
     csm: { section: 'csmView', loader: () => window.CSMActivity?.loadAndRefresh?.({ force: true }) },
     company: { section: 'companyView', loader: () => window.Companies?.loadAndRefresh?.({ force: true }) || window.Company?.loadAndRefresh?.({ force: true }) },
     companies: { section: 'companyView', view: 'company', loader: () => window.Companies?.loadAndRefresh?.({ force: true }) || window.Company?.loadAndRefresh?.({ force: true }) },

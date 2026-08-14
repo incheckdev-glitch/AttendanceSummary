@@ -5,7 +5,6 @@
  *  - CONFIG / LS_KEYS
  *  - DataStore (issues + text analytics)
  *  - Risk engine (technical + biz + ops + severity/impact/urgency)
- *  - DSL query parser & matcher
  *  - Event risk (events + collisions + freezes + hot issues)
  *  - Release planner (F&B / Middle East)
  */
@@ -28,7 +27,6 @@
 /* moved to tickets.js */
 
 
-/* moved to insights.js */
 
 /* moved to calendar.js */
 /* moved to planner.js */
@@ -1334,233 +1332,6 @@ UI.Issues.renderInternalWidgets = function () {
   E.ticketInternalWidgets.innerHTML = '';
 };
 
-/** Analytics (AI tab) */
-const Analytics = {
-  _debounce: null,
-  _state: { dashboard: null, activeFilter: 'all' },
-  filters: [
-    { key: 'all', label: 'All' },
-    { key: 'critical', label: 'Critical' },
-    { key: 'high', label: 'High' },
-    { key: 'tickets', label: 'Tickets' },
-    { key: 'events', label: 'Events' },
-    { key: 'linked_ticket_event_risk', label: 'Linked Risks' },
-    { key: 'data_quality', label: 'Data Quality' },
-    { key: 'reviewed', label: 'Reviewed' },
-    { key: 'dismissed', label: 'Dismissed' }
-  ],
-  refresh() {
-    clearTimeout(this._debounce);
-    UI.setAnalyzing(true);
-    this.renderLoading();
-    this._debounce = setTimeout(() => this._render(), 80);
-  },
-  renderLoading() {
-    if (E.aiExecutiveOverview) {
-      E.aiExecutiveOverview.innerHTML = Array.from({ length: 6 })
-        .map(() => '<div class="card"><div class="skeleton" style="height:14px;width:60%;"></div><div class="skeleton" style="height:30px;margin-top:10px;"></div></div>')
-        .join('');
-    }
-    if (E.aiInsightQueue) {
-      E.aiInsightQueue.innerHTML = Array.from({ length: 4 })
-        .map(() => '<article class="decision-card"><div class="skeleton" style="height:14px;width:30%;"></div><div class="skeleton" style="height:18px;margin-top:8px;width:70%;"></div><div class="skeleton" style="height:12px;margin-top:8px;"></div><div class="skeleton" style="height:12px;margin-top:6px;"></div></article>')
-        .join('');
-    }
-  },
-  async _render() {
-    try {
-      const dashboard = await window.AIDecisionService.generateDashboard();
-      this._state.dashboard = dashboard;
-      this.renderFilters();
-      this.renderDashboard();
-    } catch (error) {
-      console.error('AI Insights v2 failed to render', error);
-      if (E.aiInsightQueue) E.aiInsightQueue.innerHTML = '<div class="muted">Unable to load AI Insights data.</div>';
-    } finally {
-      UI.setAnalyzing(false);
-    }
-  },
-  getFilteredInsights() {
-    const insights = this._state.dashboard?.insights || [];
-    const filter = this._state.activeFilter;
-    if (filter === 'all') return insights;
-    if (filter === 'critical' || filter === 'high') return insights.filter(i => i.severity === filter);
-    if (filter === 'reviewed' || filter === 'dismissed') return insights.filter(i => i.status === filter);
-    if (filter === 'tickets' || filter === 'events') return insights.filter(i => i.resource === filter);
-    return insights.filter(i => String(i.category || '').toLowerCase() === filter);
-  },
-  renderFilters() {
-    if (!E.aiInsightFilters) return;
-    E.aiInsightFilters.innerHTML = this.filters
-      .map(
-        f =>
-          `<button class="btn ghost sm ${this._state.activeFilter === f.key ? 'active' : ''}" type="button" data-ai-filter="${U.escapeAttr(f.key)}">${U.escapeHtml(f.label)}</button>`
-      )
-      .join('');
-    E.aiInsightFilters.querySelectorAll('[data-ai-filter]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        this._state.activeFilter = btn.getAttribute('data-ai-filter') || 'all';
-        this.renderFilters();
-        this.renderDashboard();
-      });
-    });
-  },
-  openTicketByRef(ticketRef) {
-    const ref = String(ticketRef || '').trim();
-    if (!ref) return;
-    if (typeof resolveTicketByIssueRef === 'function') {
-      const ticket = resolveTicketByIssueRef(ref);
-      if (ticket) {
-        UI.Modals.openIssue(ticket.id || ref);
-        return;
-      }
-    }
-    UI.toast(`Ticket ${ref} could not be resolved.`);
-  },
-  openEventByRef(eventRef) {
-    const ref = String(eventRef || '').trim().toLowerCase();
-    if (!ref) return;
-    const events = Array.isArray(DataStore?.events) ? DataStore.events : [];
-    const event = events.find(ev => {
-      const id = String(ev.id || '').trim().toLowerCase();
-      const code = String(ev.event_code || ev.eventCode || ev.displayId || '').trim().toLowerCase();
-      return ref === id || ref === code;
-    });
-    if (event) {
-      UI.Modals.openEvent(event);
-      return;
-    }
-    setActiveView('calendar');
-    UI.toast(`Open event ${eventRef}`);
-  },
-  evidenceListMarkup(evidence = []) {
-    if (!Array.isArray(evidence) || !evidence.length) return '<li>No evidence available.</li>';
-    return evidence
-      .map(item => {
-        if (item && typeof item === 'object') {
-          const pairs = Object.entries(item)
-            .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : String(value ?? '—')}`)
-            .join(' · ');
-          return `<li>${U.escapeHtml(pairs)}</li>`;
-        }
-        return `<li>${U.escapeHtml(String(item))}</li>`;
-      })
-      .join('');
-  },
-  renderDashboard() {
-    const dashboard = this._state.dashboard;
-    if (!dashboard) return;
-    const insights = this.getFilteredInsights();
-    const summary = dashboard.summary || {};
-
-    if (E.aiExecutiveOverview) {
-      const cards = [
-        ['Ticket Health Score', `${Math.round(summary.ticket_health_score || 0)}/100`],
-        ['Open Ticket Risk', String(summary.open_ticket_risk || 0)],
-        ['Events Risk', String(summary.events_risk || 0)],
-        ['Linked Ticket/Event Risk', String(summary.linked_ticket_event_risk || 0)],
-        ['Critical Insights', String(summary.critical_insights || 0)],
-        ['High Priority Items', String(summary.high_priority_items || 0)]
-      ];
-      E.aiExecutiveOverview.innerHTML = cards
-        .map(
-          ([label, value]) =>
-            `<div class="card"><div class="muted" style="font-size:12px;">${U.escapeHtml(label)}</div><div style="font-size:24px;font-weight:700;margin-top:6px;">${U.escapeHtml(value)}</div></div>`
-        )
-        .join('');
-    }
-
-    if (!E.aiInsightQueue) return;
-    if (!insights.length) {
-      E.aiInsightQueue.innerHTML = '<div class="muted">No active ticket or event risks found.</div>';
-      return;
-    }
-
-    E.aiInsightQueue.innerHTML = insights
-      .map(insight => {
-        const sev = insight.severity || 'low';
-        const isLinked = insight.category === 'linked_ticket_event_risk';
-        const isEvent = insight.resource === 'events' || isLinked;
-        const created = U.formatDateTimeMMDDYYYYHHMM(insight.created_at);
-
-        const eventButton = isEvent
-          ? `<button class="btn sm" data-ai-open-event="${U.escapeAttr(insight.resource_id || '')}">Open Event</button>`
-          : '';
-        const ticketButton = isLinked
-          ? `<button class="btn sm" data-ai-open-tickets="${U.escapeAttr(insight.insight_id)}">Open Ticket(s)</button>`
-          : insight.resource === 'tickets'
-            ? `<button class="btn sm" data-ai-open-ticket="${U.escapeAttr(insight.resource_id || '')}">Open Ticket</button>`
-            : '';
-
-        return `<article class="decision-card">
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
-            <span class="chip decision-sev-${U.escapeAttr(sev)}">${U.escapeHtml(sev.toUpperCase())}</span>
-            <span class="chip">${U.escapeHtml(insight.category || 'recommendation')}</span>
-            <span class="muted" style="margin-left:auto;">Confidence ${Math.round(insight.confidence_score || 0)}%</span>
-          </div>
-          <h4 style="margin:0 0 6px;">${U.escapeHtml(insight.title || 'Insight')}</h4>
-          <div class="muted">${U.escapeHtml(insight.summary || '')}</div>
-          <div style="margin-top:6px;"><strong>Why it matters:</strong> ${U.escapeHtml(insight.why_it_matters || '—')}</div>
-          <div style="margin-top:4px;"><strong>Recommended action:</strong> ${U.escapeHtml(insight.recommended_action || '—')}</div>
-          <div class="muted" style="margin-top:8px;">Affected ${insight.affected_count || 0} · Evidence records ${insight.evidence?.length || 0} · Created ${created} · Status ${U.escapeHtml(insight.status || 'new')}</div>
-          <details style="margin-top:8px;"><summary>View Evidence</summary><ul style="margin:6px 0 0 16px;">${this.evidenceListMarkup(insight.evidence)}</ul></details>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
-            ${eventButton}
-            ${ticketButton}
-            <button class="btn ghost sm" data-ai-evidence="${U.escapeAttr(insight.insight_id)}">View Evidence</button>
-            <button class="btn ghost sm" data-ai-status="reviewed" data-ai-id="${U.escapeAttr(insight.insight_id)}">Mark Reviewed</button>
-            <button class="btn ghost sm" data-ai-status="dismissed" data-ai-id="${U.escapeAttr(insight.insight_id)}">Dismiss</button>
-          </div>
-        </article>`;
-      })
-      .join('');
-
-    E.aiInsightQueue.querySelectorAll('[data-ai-status]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-ai-id');
-        const status = btn.getAttribute('data-ai-status');
-        window.AIDecisionService.updateStatus(id, status);
-        this.refresh();
-      });
-    });
-
-    E.aiInsightQueue.querySelectorAll('[data-ai-open-ticket]').forEach(btn => {
-      btn.addEventListener('click', () => this.openTicketByRef(btn.getAttribute('data-ai-open-ticket')));
-    });
-
-    E.aiInsightQueue.querySelectorAll('[data-ai-open-event]').forEach(btn => {
-      btn.addEventListener('click', () => this.openEventByRef(btn.getAttribute('data-ai-open-event')));
-    });
-
-    E.aiInsightQueue.querySelectorAll('[data-ai-open-tickets]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const insightId = btn.getAttribute('data-ai-open-tickets');
-        const insight = (dashboard.insights || []).find(i => i.insight_id === insightId);
-        if (!insight) return;
-        const ids = (insight.evidence || [])
-          .map(ev => (ev && typeof ev === 'object' ? ev.ticket_id || ev.id : ''))
-          .filter(Boolean);
-        if (!ids.length) {
-          UI.toast('No linked ticket references found.');
-          return;
-        }
-        this.openTicketByRef(ids[0]);
-        if (ids.length > 1) UI.toast(`Opened 1 of ${ids.length} linked tickets.`);
-      });
-    });
-
-    E.aiInsightQueue.querySelectorAll('[data-ai-evidence]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const card = btn.closest('article');
-        const details = card?.querySelector('details');
-        if (!details) return;
-        details.open = true;
-        details.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      });
-    });
-  }
-};
-
 
 async function applySuggestedCategory(label) {
   if (!requirePermission(() => Permissions.canEditTicket(), 'Only admin can apply ticket category suggestions.'))
@@ -1590,8 +1361,6 @@ async function applySuggestedCategory(label) {
     }
   }
   UI.spinner(false);
-
-  Analytics.refresh(UI.Issues.applyFilters());
   UI.toast(`Applied "${label}" to ${updated} ticket${updated === 1 ? '' : 's'}.`);
 }
 
@@ -2904,16 +2673,6 @@ function ensureNotificationSetupMounted() {
   }
 }
 
-function canAccessAiInsights() {
-  return (
-    Permissions.can('ai_insights', 'preview') ||
-    Permissions.can('ai_insights', 'view') ||
-    Permissions.can('ai_insights', 'get') ||
-    Permissions.can('ai_insights', 'list') ||
-    Permissions.can('ai_insights', 'manage')
-  );
-}
-window.canAccessAiInsights = canAccessAiInsights;
 
 function normalizeViewKey(view) {
   const key = String(view || '').trim();
@@ -2949,21 +2708,17 @@ function shouldShowTicketFilters(activeModule) {
     'events',
     'calendar',
     'calendar_events',
-    'ai_insights',
-    'ai_analytics',
-    'insights'
   ].includes(key);
 }
 window.shouldShowTicketFilters = shouldShowTicketFilters;
 
 function setActiveView(view) {
  view = normalizeViewKey(view);
- const names = ['issues', 'calendar', 'insights', 'csm', 'clientSuccess', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'commissionTracker', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'renewalForecast', 'biners', 'hr', 'accounting', 'backupCenter', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
+ const names = ['issues', 'calendar', 'csm', 'clientSuccess', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'commissionTracker', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'renewalForecast', 'biners', 'hr', 'accounting', 'backupCenter', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
  const requestedView = view;
  const firstAllowedView = names.find(name => Permissions.canAccessTab(name)) || '';
  if (!Permissions.canAccessTab(view)) {
-   if (requestedView === 'insights') UI.toast('You do not have permission to view AI Insights.');
-   else if (requestedView === 'renewalForecast') UI.toast('Access denied. You need permission to view Monthly Renewal Forecast.');
+   if (requestedView === 'renewalForecast') UI.toast('Access denied. You need permission to view Monthly Renewal Forecast.');
    else UI.toast('You do not have permission to view that module.');
    view = firstAllowedView;
  }
@@ -2973,8 +2728,6 @@ function setActiveView(view) {
         ? E.issuesTab
         : name === 'calendar'
         ? E.calendarTab
-        : name === 'insights'
-        ? E.insightsTab
         : name === 'csm'
         ? E.csmTab
         : name === 'clientSuccess'
@@ -3033,8 +2786,6 @@ function setActiveView(view) {
         ? E.issuesView
         : name === 'calendar'
         ? E.calendarView
-        : name === 'insights'
-        ? E.insightsView
         : name === 'csm'
         ? E.csmView
         : name === 'clientSuccess'
@@ -3150,21 +2901,6 @@ function setActiveView(view) {
       renderCalendarEvents();
       scheduleCalendarResize();
     });
-  }
-  if (view === 'insights') {
-    console.info('[AI Insights permissions]', {
-      canAccess: canAccessAiInsights(),
-      preview: Permissions.can('ai_insights', 'preview'),
-      view: Permissions.can('ai_insights', 'view'),
-      get: Permissions.can('ai_insights', 'get'),
-      list: Permissions.can('ai_insights', 'list'),
-      manage: Permissions.can('ai_insights', 'manage')
-    });
-    if (!canAccessAiInsights()) {
-      UI.toast('You do not have permission to view AI Insights.');
-    } else {
-      runViewLoader('insights', () => Analytics.refresh(UI.Issues.applyFilters()));
-    }
   }
   if (view === 'csm') runViewLoader('csm', () => CSMActivity.loadAndRefresh());
   if (view === 'clientSuccess' && window.ClientSuccess360?.init) runViewLoader('client success', () => ClientSuccess360.init());
@@ -3494,7 +3230,6 @@ function ensureCalendar() {
       saveEventsCache();
       renderCalendarEvents();
       refreshPlannerReleasePlans();
-      Analytics.refresh(UI.Issues.applyFilters());
     },
     eventDidMount(info) {
       const ext = info.event.extendedProps || {};
@@ -3962,7 +3697,6 @@ async function loadEvents(force = false, options = {}) {
     ensureCalendar();
     renderCalendarEvents();
     refreshPlannerReleasePlans();
-    Analytics.refresh(UI.Issues.applyFilters());
     UI.setSync('events', true, new Date());
   }
 
@@ -3975,7 +3709,6 @@ async function loadEvents(force = false, options = {}) {
     ensureCalendar();
     renderCalendarEvents();
     refreshPlannerReleasePlans();
-    Analytics.refresh(UI.Issues.applyFilters());
     UI.setSync('events', true, new Date());
   } catch (e) {
     const errMsg = String(e?.message || 'Unknown error');
@@ -5003,7 +4736,6 @@ function renderPlannerResults(result, context) {
       saveEventsCache();
       renderCalendarEvents();
       refreshPlannerReleasePlans(context);
-      Analytics.refresh(UI.Issues.applyFilters());
     });
   });
 }
@@ -5276,7 +5008,6 @@ function wirePlanner() {
       saveEventsCache();
       renderCalendarEvents();
       refreshPlannerReleasePlans(context);
-      Analytics.refresh(UI.Issues.applyFilters());
     });
   }
 
@@ -5341,8 +5072,6 @@ function wirePlanner() {
       saveEventsCache();
       renderCalendarEvents();
       refreshPlannerReleasePlans();
-      Analytics.refresh(UI.Issues.applyFilters());
-
       UI.toast(
         `Assigned ${ticketIds.length} ticket${ticketIds.length > 1 ? 's' : ''} to the Release plan.`
       );
@@ -5563,13 +5292,6 @@ function wireCore() {
     E.exportCsv.addEventListener('click', () => {
       exportFilteredExcel();
     });
-  if (E.aiInsightsRefresh) {
-    E.aiInsightsRefresh.addEventListener('click', () => {
-      loadIssues(true);
-      loadEvents(true);
-      Analytics.refresh();
-    });
-  }
   if (E.createTicketBtn)
     E.createTicketBtn.addEventListener('click', () => {
       const activeView = (localStorage.getItem(LS_KEYS.view) || 'issues');
@@ -5626,7 +5348,6 @@ function wireCore() {
     UI.updateHeroMetrics(DataStore.rows);
     refreshPlannerTickets(list);
     if (E.insightsView && E.insightsView.classList.contains('active')) {
-      Analytics.refresh(list);
     }
     if (E.csmView && E.csmView.classList.contains('active')) {
       CSMActivity.refresh();
@@ -6092,7 +5813,7 @@ function wireDashboardGate() {
     return 'issues';
   };
   const getFirstAllowedView = preferredView => {
-    const names = ['issues', 'calendar', 'insights', 'csm', 'clientSuccess', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'commissionTracker', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'renewalForecast', 'biners', 'hr', 'accounting', 'backupCenter', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
+    const names = ['issues', 'calendar', 'csm', 'clientSuccess', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'commissionTracker', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'renewalForecast', 'biners', 'hr', 'accounting', 'backupCenter', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
     const preferred = String(preferredView || '').trim();
     if (preferred && Permissions.canAccessTab(preferred)) return preferred;
     return names.find(name => Permissions.canAccessTab(name)) || 'issues';
@@ -6749,7 +6470,6 @@ function wireModals() {
       saveEventsCache();
       renderCalendarEvents();
       refreshPlannerReleasePlans();
-      Analytics.refresh(UI.Issues.applyFilters());
       UI.Modals.closeEvent();
     });
   }
@@ -6771,215 +6491,9 @@ function wireModals() {
       saveEventsCache();
       renderCalendarEvents();
       refreshPlannerReleasePlans();
-      Analytics.refresh(UI.Issues.applyFilters());
       UI.Modals.closeEvent();
     });
   }
-}
-
-/* ---------- AI query / DSL wiring ---------- */
-
-let LAST_AI_QUERY = null;
-
-function applyDSLToFilters(q) {
-  if (!q) return;
-  const next = {
-    search: '',
-    module: 'All',
-    category: 'All',
-    priority: 'All',
-    status: 'All',
-    start: '',
-    end: ''
-  };
-
-  if (q.words && q.words.length) {
-    next.search = q.words.join(' ');
-  }
-
-  if (q.module) {
-    const modules = Array.from(DataStore.byModule.keys());
-    const target = q.module.toLowerCase();
-    const exact = modules.find(m => (m || '').toLowerCase() === target);
-    if (exact) next.module = exact;
-  }
-
-  if (q.priority) {
-    const p = q.priority[0]?.toUpperCase();
-    if (p === 'H') next.priority = 'High';
-    else if (p === 'M') next.priority = 'Medium';
-    else if (p === 'L') next.priority = 'Low';
-  }
-
-  if (q.status && q.status !== 'open' && q.status !== 'closed') {
-    const statuses = Array.from(DataStore.byStatus.keys());
-    const target = q.status.toLowerCase();
-    const match = statuses.find(s => (s || '').toLowerCase().includes(target));
-    if (match) next.status = match;
-  }
-
-  if (q.lastDays && Number.isFinite(q.lastDays)) {
-    const start = U.daysAgo(q.lastDays);
-    next.start = toLocalDateValue(start);
-    next.end = '';
-  }
-
-  Filters.state = next;
-  Filters.save();
-  UI.refreshAll();
-}
-
-function wireAIQuery() {
-  if (!E.aiQueryInput || !E.aiQueryRun || !E.aiQueryResults) return;
-
-  const renderHelp = () => {
-    E.aiQueryResults.innerHTML = `
-      <div class="muted" style="font-size:12px;">
-        Examples:
-        <ul style="margin:4px 0 0 16px;padding:0;">
-          <li><code>status:open priority:h risk&gt;=10 last:7d</code></li>
-          <li><code>module:payments severity&gt;=3 impact&gt;=3</code></li>
-          <li><code>missing:priority last:30d</code></li>
-          <li><code>cluster:timeout sort:risk</code></li>
-        </ul>
-      </div>`;
-  };
-
-  const runQuery = () => {
-    const raw = (E.aiQueryInput.value || '').trim();
-    if (!raw) {
-      LAST_AI_QUERY = null;
-      renderHelp();
-      return;
-    }
-    if (!DataStore.rows.length) {
-      UI.toast('Tickets are still loading; try again in a moment.');
-      return;
-    }
-
-    const q = DSL.parse(raw);
-    let rows = DataStore.rows.filter(r =>
-      DSL.matches(r, DataStore.computed.get(r.id) || {}, q)
-    );
-
-    if (q.sort === 'risk') {
-      rows = rows
-        .map(r => ({
-          r,
-          risk: DataStore.computed.get(r.id)?.risk?.total || 0
-        }))
-        .sort((a, b) => b.risk - a.risk)
-        .map(x => x.r);
-    } else if (q.sort === 'date') {
-      rows = rows.slice().sort((a, b) => {
-        const da = new Date(a.date);
-        const db = new Date(b.date);
-        if (isNaN(da) && isNaN(db)) return 0;
-        if (isNaN(da)) return 1;
-        if (isNaN(db)) return -1;
-        return db - da; // newest first
-      });
-    } else if (q.sort === 'priority') {
-      rows = rows.slice().sort((a, b) => prioMap(b.priority) - prioMap(a.priority));
-    }
-
-    LAST_AI_QUERY = { text: raw, q, rows };
-
-    if (!rows.length) {
-      E.aiQueryResults.innerHTML = `<div>No tickets matched this query.</div>`;
-      return;
-    }
-
-    const maxShow = 50;
-    const slice = rows.slice(0, maxShow);
-
-    const summary = `
-      <div style="margin-bottom:4px;">
-        Found <strong>${slice.length}</strong> of ${rows.length} matching ticket${
-      rows.length === 1 ? '' : 's'
-    } for query <code>${U.escapeHtml(raw)}</code>.
-      </div>`;
-
-    const items = slice
-      .map(r => {
-        const meta = DataStore.computed.get(r.id) || {};
-        const risk = meta.risk || {};
-        const riskScore = risk.total || 0;
-        const badgeClass = CalendarLink.riskBadgeClass(riskScore);
-        return `
-        <li style="margin-bottom:6px;">
-          <button class="btn sm" data-open="${U.escapeAttr(r.id)}">${U.escapeHtml(
-          issueDisplayId(r) || r.id
-        )}</button>
-          <strong>${U.escapeHtml(r.title || '')}</strong>
-          <div class="muted">
-            Module: ${U.escapeHtml(r.module || '-')},
-            Priority: ${U.escapeHtml(r.priority || '-')},
-            Status: ${U.escapeHtml(r.status || '-')}
-          </div>
-          <div class="muted">
-            <span class="event-risk-badge ${badgeClass}">RISK ${riskScore}</span>
-            · sev ${risk.severity ?? 0} · imp ${risk.impact ?? 0} · urg ${risk.urgency ?? 0}
-          </div>
-        </li>`;
-      })
-      .join('');
-
-    const overflow =
-      rows.length > maxShow
-        ? `<div class="muted" style="font-size:11px;">+ ${
-            rows.length - maxShow
-          } more not shown. Use "Export" to download all.</div>`
-        : '';
-
-    E.aiQueryResults.innerHTML = `
-      ${summary}
-      <ul style="margin:4px 0 0 16px;padding:0;font-size:13px;">
-        ${items}
-      </ul>
-      ${overflow}
-    `;
-
-    E.aiQueryResults.querySelectorAll('[data-open]').forEach(btn => {
-      btn.addEventListener('click', () =>
-        UI.Modals.openIssue(btn.getAttribute('data-open'))
-      );
-    });
-  };
-
-  E.aiQueryRun.addEventListener('click', runQuery);
-  E.aiQueryInput.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      runQuery();
-    }
-  });
-
-  if (E.aiQueryApplyFilters) {
-    E.aiQueryApplyFilters.addEventListener('click', () => {
-      if (!LAST_AI_QUERY || !LAST_AI_QUERY.q) {
-        UI.toast('Run a query first.');
-        return;
-      }
-      applyDSLToFilters(LAST_AI_QUERY.q);
-      setActiveView('issues');
-      UI.toast('Applied AI query filters to tickets table');
-    });
-  }
-
-  if (E.aiQueryExport) {
-    E.aiQueryExport.addEventListener('click', () => {
-      if (!requireAnyPermission([['ai_insights', 'manage'], ['ai_insights', 'preview'], ['ai_insights', 'view'], ['ai_insights', 'list'], ['ai_insights', 'get']], 'You do not have permission to use AI Insights.')) return;
-      if (!LAST_AI_QUERY || !LAST_AI_QUERY.rows?.length) {
-        UI.toast('Nothing to export yet.');
-        return;
-      }
-      exportIssuesToExcel(LAST_AI_QUERY.rows, 'aiquery');
-    });
-  }
-
-  // Initial help
-  renderHelp();
 }
 
 /* ---------- CSM Daily Activity ---------- */
@@ -8601,16 +8115,6 @@ function wireKeyboardShortcuts() {
     const isInputLike =
       tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable;
 
-    // Ctrl/Cmd + K → AI query box (Insights tab)
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-      e.preventDefault();
-      setActiveView('insights');
-      if (E.aiQueryInput) {
-        E.aiQueryInput.focus();
-        if (E.aiQueryInput.select) E.aiQueryInput.select();
-      }
-      return;
-    }
 
     if (e.metaKey || e.ctrlKey || e.altKey) return;
 
@@ -8632,8 +8136,6 @@ function wireKeyboardShortcuts() {
       setActiveView('issues');
     } else if (e.key === '2') {
       setActiveView('calendar');
-    } else if (e.key === '3') {
-      setActiveView('insights');
     } else if (e.key === '4') {
       setActiveView('csm');
     } else if (e.key === '5') {
@@ -8812,7 +8314,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   wireCalendar();
   wireFreezeWindows();
   wirePlanner();
-  wireAIQuery();
   wireCSMActivity();
   if (window.Leads?.wire) Leads.wire();
   if (window.Deals?.wire) Deals.wire();
@@ -8864,7 +8365,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const view = localStorage.getItem(LS_KEYS.view) || 'issues';
     setActiveView(
       view === 'calendar' ||
-        view === 'insights' ||
         view === 'csm' ||
         view === 'clientSuccess' ||
         view === 'leads' ||
