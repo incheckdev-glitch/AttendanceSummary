@@ -2521,15 +2521,10 @@ const Agreements = {
         lineTotal: this.getAgreementItemAmount(item) || computed.line_total
       };
     };
-    const renderDocumentUnitPrice = computed => {
-      if (!computed || computed.discountPercent <= 0) return money(computed?.unitPrice || 0);
-      const discountLabel = Number(computed.discountPercent.toFixed(2)).toLocaleString(undefined, { maximumFractionDigits: 2 });
-      return `<div class="doc-price-stack">
-        <span class="doc-price-original">${money(computed.unitPrice)}</span>
-        <span class="doc-price-discounted">${money(computed.discountedUnitPrice)}</span>
-        <span class="doc-price-note">After ${U.escapeHtml(discountLabel)}% discount</span>
-      </div>`;
-    };
+    // Always show the original catalog/base price in the Unit Price /
+    // License Price column. The discount is shown separately and only the
+    // line Total reflects the discounted amount.
+    const renderDocumentUnitPrice = computed => money(computed?.unitPrice || 0);
 
     const subscriptionItems = normalizedItems.filter(item => this.isAgreementAnnualSaasItem(item));
     const hardwareItems = normalizedItems.filter(item => this.isAgreementHardwareItem(item));
@@ -2577,7 +2572,6 @@ const Agreements = {
           .map(item => {
             const computed = computeRow(item);
             return `<tr>
-              <td>${textValue(item.location_name || item.locationName)}</td>
               <td>${this.renderDocumentItemCell(item)}</td>
               <td class="cell-right">${renderDocumentUnitPrice(computed)}</td>
               <td class="cell-center">${U.escapeHtml(String(computed.discountPercent || 0))}%</td>
@@ -2594,18 +2588,17 @@ const Agreements = {
         <table>
           <thead>
             <tr>
-              <th>Location</th>
               <th>Hardware / Product</th>
-              <th style="width:14%">Unit Price</th>
-              <th style="width:10%">Discount %</th>
-              <th style="width:8%">Qty</th>
-              <th style="width:14%">Total</th>
+              <th style="width:16%">Unit Price</th>
+              <th style="width:12%">Discount %</th>
+              <th style="width:10%">Qty</th>
+              <th style="width:16%">Total</th>
             </tr>
           </thead>
           <tbody>
             ${hardwareRows}
             <tr class="total-row">
-              <td colspan="5" class="cell-right">Total Hardware</td>
+              <td colspan="4" class="cell-right">Total Hardware</td>
               <td class="cell-right">${money(hardwareSubtotal)}</td>
             </tr>
           </tbody>
@@ -4029,9 +4022,15 @@ const Agreements = {
       const invoiceStatusKey = String(computed.invoice_status || item.invoice_status || 'not_invoiced').trim().toLowerCase();
       const invoiceStatusLabel = invoiceStatusKey === 'invoiced' ? 'Invoiced' : 'Not Invoiced';
       const invoiceStatusCell = section === 'annual_saas' ? `<td><span class="badge">${U.escapeHtml(invoiceStatusLabel)}</span></td>` : '';
+      const locationCell = section === 'hardware'
+        ? ''
+        : `<td><input class="input" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}"${lockAttr} /><input type="hidden" data-item-field="location_address" value="${U.escapeAttr(computed.location_address || '')}" /></td>`;
+      const hardwareLocationFields = section === 'hardware'
+        ? `<input type="hidden" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}" /><input type="hidden" data-item-field="location_address" value="${U.escapeAttr(computed.location_address || '')}" />`
+        : '';
       return `<tr data-item-row="${section}" data-item-payload="${payload}">
-      <td><input class="input" data-item-field="location_name" value="${U.escapeAttr(computed.location_name || '')}"${lockAttr} /><input type="hidden" data-item-field="location_address" value="${U.escapeAttr(computed.location_address || '')}" /></td>
-      <td><input type="hidden" data-item-field="catalog_item_id" value="${U.escapeAttr(computed.catalog_item_id || '')}" /><input type="hidden" data-item-field="description" value="${U.escapeAttr(computed.description || '')}" /><select class="input" data-item-field="item_name"${lockAttr}>${this.buildCatalogSelectOptions(section, computed.item_name || '')}</select></td>
+      ${locationCell}
+      <td>${hardwareLocationFields}<input type="hidden" data-item-field="catalog_item_id" value="${U.escapeAttr(computed.catalog_item_id || '')}" /><input type="hidden" data-item-field="description" value="${U.escapeAttr(computed.description || '')}" /><select class="input" data-item-field="item_name"${lockAttr}>${this.buildCatalogSelectOptions(section, computed.item_name || '')}</select></td>
       ${section === 'annual_saas' ? licenseQtyCell : ''}
       <td><input class="input" data-item-field="unit_price" type="number" step="0.01" value="${U.escapeAttr(computed.unit_price ?? '')}"${lockAttr} /></td>
       ${commercialCells}
