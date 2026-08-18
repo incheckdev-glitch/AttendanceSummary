@@ -4186,18 +4186,31 @@ const Proposals = {
     }
     const selectedDescription = this.getItemDescription(selected);
     if (descriptionInput) descriptionInput.value = selectedDescription;
+    let payload = {};
     try {
-      const payload = JSON.parse(tr.getAttribute('data-item-payload') || '{}');
-      tr.setAttribute('data-item-payload', JSON.stringify({ ...payload, description: selectedDescription }));
+      payload = JSON.parse(tr.getAttribute('data-item-payload') || '{}');
     } catch (_error) {
-      tr.setAttribute('data-item-payload', JSON.stringify({ description: selectedDescription }));
+      payload = {};
     }
+    tr.setAttribute('data-item-payload', JSON.stringify({ ...payload, description: selectedDescription }));
+
     const hasCatalogDiscount = ['discount_percent', 'discountPercent', 'discount', 'item_discount', 'itemDiscount'].some(
       key => selected[key] !== undefined && selected[key] !== null && String(selected[key]).trim() !== ''
     );
     const selectedDiscountPercent = this.getNormalizedItemDiscountPercent(selected);
-    const hasExistingDiscount = discountPercentInput && String(discountPercentInput.value ?? '').trim() !== '';
-    if (discountPercentInput && hasCatalogDiscount && (fromUserInput || !hasExistingDiscount)) {
+    const existingDiscountRaw = discountPercentInput ? String(discountPercentInput.value ?? '').trim() : '';
+    const hasExistingDiscount = existingDiscountRaw !== '';
+    const existingDiscountPercent = this.normalizeDiscountPercentValue(existingDiscountRaw);
+    const canAutoRefreshCatalogDiscount = !this.state.formReadOnly;
+    const shouldApplyCatalogDiscount =
+      hasCatalogDiscount &&
+      (
+        fromUserInput ||
+        !hasExistingDiscount ||
+        (canAutoRefreshCatalogDiscount && selectedDiscountPercent > 0 && existingDiscountPercent <= 0)
+      );
+
+    if (discountPercentInput && shouldApplyCatalogDiscount) {
       discountPercentInput.value = String(selectedDiscountPercent);
     }
     if (quantityInput) {
@@ -4233,6 +4246,21 @@ const Proposals = {
     if (locationInput && !String(locationInput.value || '').trim() && selected.default_location_name) {
       locationInput.value = String(selected.default_location_name);
     }
+
+    // Keep the visible line total in sync when catalog pricing/discount is applied
+    // asynchronously after the proposal row has already rendered.
+    const get = key => tr.querySelector(`[data-item-field="${key}"]`)?.value ?? '';
+    const computed = this.computeCommercialRow({
+      section,
+      item_name: get('item_name'),
+      license: get('item_name'),
+      unit_price: get('unit_price'),
+      discount_percent: get('discount_percent'),
+      quantity: get('quantity'),
+      license_quantity: get('license_quantity')
+    });
+    const lineTotalEl = tr.querySelector('[data-item-display="line_total"]');
+    if (lineTotalEl) lineTotalEl.textContent = this.formatMoney(computed.line_total);
   },
   async ensureCatalogLoaded() {
     this.renderCatalogOptionLists();

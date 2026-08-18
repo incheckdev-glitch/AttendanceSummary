@@ -3769,20 +3769,57 @@ const Agreements = {
       : '';
     return `<option value=""${selected ? '' : ' selected'}>Select item…</option>${inactiveSelectedOption}${options}`;
   },
-  applyCatalogSelectionToRow(tr, section) {
+  applyCatalogSelectionToRow(tr, section, options = {}) {
     if (!tr || section === 'capability') return;
+    const { fromUserInput = false } = options;
     const itemInput = tr.querySelector('[data-item-field="item_name"]');
     const catalogIdInput = tr.querySelector('[data-item-field="catalog_item_id"]');
     const unitPriceInput = tr.querySelector('[data-item-field="unit_price"]');
+    const discountPercentInput = tr.querySelector('[data-item-field="discount_percent"]');
     const descriptionInput = tr.querySelector('[data-item-field="description"]');
     if (!itemInput || !catalogIdInput || !unitPriceInput) return;
+
     const selected = this.getCatalogItemById(section, catalogIdInput.value) || this.getCatalogItemByName(section, itemInput.value);
     if (!selected) return;
+
     catalogIdInput.value = String(selected.id || '');
     itemInput.value = String(selected.item_name || itemInput.value || '');
     if (selected.unit_price !== null && selected.unit_price !== undefined) unitPriceInput.value = String(selected.unit_price);
+
     const selectedDescription = this.getItemDescription(selected);
     if (descriptionInput) descriptionInput.value = selectedDescription;
+
+    const hasCatalogDiscount = selected.discount_percent !== undefined
+      && selected.discount_percent !== null
+      && String(selected.discount_percent).trim() !== '';
+    const selectedDiscountPercent = this.toNumberSafe(selected.discount_percent);
+    const existingDiscountRaw = discountPercentInput ? String(discountPercentInput.value ?? '').trim() : '';
+    const existingDiscountPercent = this.toNumberSafe(existingDiscountRaw);
+    const canAutoRefreshCatalogDiscount = !this.isAgreementItemsLocked();
+    const shouldApplyCatalogDiscount =
+      hasCatalogDiscount &&
+      (
+        fromUserInput ||
+        !existingDiscountRaw ||
+        (canAutoRefreshCatalogDiscount && selectedDiscountPercent > 0 && existingDiscountPercent <= 0)
+      );
+
+    if (discountPercentInput && shouldApplyCatalogDiscount) {
+      discountPercentInput.value = String(selectedDiscountPercent);
+    }
+
+    const get = key => tr.querySelector(`[data-item-field="${key}"]`)?.value ?? '';
+    const computed = this.computeCommercialRow({
+      section,
+      item_name: get('item_name'),
+      license: get('item_name'),
+      unit_price: get('unit_price'),
+      discount_percent: get('discount_percent'),
+      quantity: get('quantity'),
+      license_quantity: get('license_quantity')
+    });
+    const lineTotalInput = tr.querySelector('[data-item-field="line_total"]');
+    if (lineTotalInput) lineTotalInput.value = computed.line_total;
   },
 
   isAnnualSaasUserItem(item = {}) {
@@ -4014,9 +4051,17 @@ const Agreements = {
     });
     this.refreshOneTimeFeeQuantityInputs();
     if (E.agreementCapabilityItemsTbody) E.agreementCapabilityItemsTbody.innerHTML = '';
-    const totals = this.calculateTotals([...grouped.annual_saas, ...grouped.one_time_fee, ...grouped.hardware]);
-    const oneTimeFeeTotal = grouped.one_time_fee.reduce((sum, item) => sum + this.getAgreementItemAmount(item), 0);
-    const hardwareTotal = grouped.hardware.reduce((sum, item) => sum + this.getAgreementItemAmount(item), 0);
+
+    // Totals must reflect catalog pricing/discount values that may have been
+    // applied to the rendered rows after the catalog lookup finished loading.
+    const renderedItems = this.collectItems();
+    const totals = this.calculateTotals(renderedItems);
+    const oneTimeFeeTotal = renderedItems
+      .filter(item => String(item?.section || '').trim().toLowerCase() === 'one_time_fee')
+      .reduce((sum, item) => sum + this.getAgreementItemAmount(item), 0);
+    const hardwareTotal = renderedItems
+      .filter(item => String(item?.section || '').trim().toLowerCase() === 'hardware')
+      .reduce((sum, item) => sum + this.getAgreementItemAmount(item), 0);
     if (E.agreementSaasTotal) E.agreementSaasTotal.textContent = this.formatMoney(totals.saas_total);
     if (E.agreementOneTimeTotal) E.agreementOneTimeTotal.textContent = this.formatMoney(oneTimeFeeTotal);
     if (E.agreementHardwareTotal) E.agreementHardwareTotal.textContent = this.formatMoney(hardwareTotal);
@@ -5544,12 +5589,18 @@ const Agreements = {
         if (section && Number.isInteger(index) && index >= 0) this.removeRow(section, index);
       });
       const handleAgreementItemChange = event => {
-        if (!event.target?.getAttribute('data-item-field')) return;
+        const field = event.target?.getAttribute('data-item-field');
+        if (!field) return;
         if (this.isAgreementItemsLocked()) {
           event.preventDefault();
           event.stopPropagation();
           this.applyAgreementItemLocks();
           return;
+        }
+        const tr = event.target?.closest?.('tr[data-item-row]');
+        const section = tr?.getAttribute?.('data-item-row');
+        if (field === 'item_name' && tr && section && section !== 'capability') {
+          this.applyCatalogSelectionToRow(tr, section, { fromUserInput: true });
         }
         this.recalculateAnnualServiceEndDateForEvent(event);
         this.renderItemRows(this.collectItems());
