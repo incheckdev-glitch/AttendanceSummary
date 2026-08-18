@@ -5651,6 +5651,17 @@ const Proposals = {
       UI.toast('Unable to preview proposal: ' + (error?.message || 'Unknown error'));
     }
   },
+  closePreviewModal() {
+    if (!E.proposalPreviewModal) return;
+    E.proposalPreviewModal.style.display = 'none';
+    E.proposalPreviewModal.classList.remove('open');
+    E.proposalPreviewModal.setAttribute('aria-hidden', 'true');
+    if (E.proposalPreviewFrame) {
+      E.proposalPreviewFrame.srcdoc = '';
+      E.proposalPreviewFrame.removeAttribute('src');
+    }
+  },
+
   getCreatedProposalId(response) {
     const parseJsonIfNeeded = value => {
       if (typeof value !== 'string') return value;
