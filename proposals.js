@@ -286,7 +286,7 @@ const Proposals = {
       discountPercent,
       unit_price: unitPrice,
       quantity,
-      qty: section === 'annual_saas' ? quantity : (safe.qty ?? quantity),
+      qty: quantity,
       months: section === 'annual_saas' ? quantity : safe.months,
       license_months: section === 'annual_saas' ? quantity : safe.license_months,
       duration_months: section === 'annual_saas' ? quantity : safe.duration_months,
@@ -4058,7 +4058,7 @@ const Proposals = {
     return {
       ...item,
       quantity: qty,
-      qty: section === 'annual_saas' ? qty : item.qty,
+      qty: qty,
       months: section === 'annual_saas' ? qty : item.months,
       license_months: section === 'annual_saas' ? qty : item.license_months,
       duration_months: section === 'annual_saas' ? qty : item.duration_months,
@@ -4247,6 +4247,21 @@ const Proposals = {
         const currentMonths = currentRaw ? this.getAnnualSaasMonths({ quantity: currentRaw }) : 0;
         const selectedMonths = this.getAnnualSaasMonths(selected);
         quantityInput.value = String(currentMonths || selectedMonths || 12);
+      } else if (section === 'hardware') {
+        // Hardware quantity is a proposal-specific commercial quantity. The catalog
+        // quantity is only a default and must never overwrite a quantity entered by
+        // the user (for example 10 devices). Preserve the current row value across
+        // catalog refreshes, rerenders, previews and saves.
+        const currentRaw = String(quantityInput.value || '').trim();
+        if (!currentRaw) {
+          const selectedQuantity = this.toNumberSafe(selected.quantity) || 1;
+          quantityInput.value = String(Math.max(1, selectedQuantity));
+        }
+        quantityInput.readOnly = false;
+        quantityInput.removeAttribute('readonly');
+        quantityInput.removeAttribute('aria-readonly');
+        quantityInput.removeAttribute('title');
+        quantityInput.classList.remove('readonly-field', 'locked-field');
       } else if (selected.quantity !== null && selected.quantity !== undefined) {
         const selectedQuantity = this.toNumberSafe(selected.quantity) || 1;
         quantityInput.value = String(selectedQuantity);
@@ -4360,7 +4375,7 @@ const Proposals = {
         const months = section === 'annual_saas' ? this.getAnnualSaasMonths(row) : 0;
         const rowDefaults = section === 'annual_saas'
           ? { ...row, quantity: months, qty: months, months, license_months: months, duration_months: months, license_quantity: row.license_quantity || row.user_quantity || row.item_quantity || 1, service_start_date: row.service_start_date || this.getDefaultAnnualServiceStartDate() }
-          : { ...row, quantity: shouldAutoLinkOneTimeFees && !this.isCsHoursItem(row) ? linkedOneTimeQuantity : (row.quantity || 1) };
+          : { ...row, quantity: section === 'one_time_fee' && shouldAutoLinkOneTimeFees && !this.isCsHoursItem(row) ? linkedOneTimeQuantity : (row.quantity || 1) };
         if (section === 'annual_saas') {
           rowDefaults.service_end_date = this.addMonthsMinusOneDay(rowDefaults.service_start_date, rowDefaults.quantity);
         }
@@ -4642,7 +4657,7 @@ const Proposals = {
           unit_price: unitPrice,
           discount_percent: discountPercent,
           quantity,
-          qty: section === 'annual_saas' ? quantity : (baseItem.qty ?? quantity),
+          qty: quantity,
           months: section === 'annual_saas' ? quantity : baseItem.months,
           license_months: section === 'annual_saas' ? quantity : baseItem.license_months,
           duration_months: section === 'annual_saas' ? quantity : baseItem.duration_months,
