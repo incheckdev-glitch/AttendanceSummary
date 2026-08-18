@@ -426,7 +426,10 @@ const ProposalCatalog = {
           'quantity',
           'notes',
           'sort_order'
-        ]
+        ],
+        // Bypass Api.list cache after a catalog edit so proposals/agreements see
+        // the newly saved automatic discount immediately.
+        forceRefresh: force || !this.state.lookupRows.length
       });
       this.state.lookupRows = this.extractListResult(response).rows.map(item => this.normalizeItem(item)).filter(item => !item.is_capability);
       this.state.lookupLoadedAt = Date.now();
@@ -443,7 +446,7 @@ const ProposalCatalog = {
     this.state.lookupRows = [];
     this.state.lookupLoadedAt = 0;
     this.state.lookupLoadingPromise = null;
-    window.dispatchEvent(new CustomEvent('proposal-catalog-lookup-invalidated'));
+    window.dispatchEvent(new CustomEvent('proposal-catalog-lookup-invalidated', { detail: { force: true } }));
   },
   getValue(el) {
     return String(el?.value || '').trim();

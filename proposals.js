@@ -4231,9 +4231,13 @@ const Proposals = {
           quantityInput.classList.remove('readonly-field', 'locked-field');
         }
       } else if (section === 'annual_saas') {
-        const currentMonths = this.getAnnualSaasMonths({ quantity: quantityInput.value });
+        // Catalog quantity is the catalog item's default quantity, not the contract
+        // duration. Keep the proposal's existing licence months (normally 12) and
+        // only fall back to catalog/default months when the row has no duration yet.
+        const currentRaw = String(quantityInput.value || '').trim();
+        const currentMonths = currentRaw ? this.getAnnualSaasMonths({ quantity: currentRaw }) : 0;
         const selectedMonths = this.getAnnualSaasMonths(selected);
-        quantityInput.value = String(fromUserInput || !String(quantityInput.value || '').trim() ? selectedMonths : currentMonths);
+        quantityInput.value = String(currentMonths || selectedMonths || 12);
       } else if (selected.quantity !== null && selected.quantity !== undefined) {
         const selectedQuantity = this.toNumberSafe(selected.quantity) || 1;
         quantityInput.value = String(selectedQuantity);
@@ -4262,21 +4266,24 @@ const Proposals = {
     const lineTotalEl = tr.querySelector('[data-item-display="line_total"]');
     if (lineTotalEl) lineTotalEl.textContent = this.formatMoney(computed.line_total);
   },
-  async ensureCatalogLoaded() {
+  async ensureCatalogLoaded(options = {}) {
+    const force = options?.force === true;
     this.renderCatalogOptionLists();
-    const hasRows = this.getCatalogRowsForSection('annual_saas').length || this.getCatalogRowsForSection('one_time_fee').length || this.getCatalogRowsForSection('hardware').length;
-    if (hasRows) return;
     if (this.state.catalogLoading || typeof window.ProposalCatalog?.ensureLookupLoaded !== 'function') return;
 
     this.state.catalogLoading = true;
     try {
-      await window.ProposalCatalog.ensureLookupLoaded();
+      // Always resolve the lookup before syncing rendered rows. Do not return early
+      // just because the lookup cache already contains rows: the proposal form may
+      // have rendered before those rows were available, leaving catalog discounts at 0.
+      await window.ProposalCatalog.ensureLookupLoaded({ force });
       this.renderCatalogOptionLists();
       [E.proposalAnnualItemsTbody, E.proposalOneTimeItemsTbody, E.proposalHardwareItemsTbody].forEach(tbody => {
         if (!tbody) return;
         [...tbody.querySelectorAll('tr[data-item-row]')].forEach(tr => {
           const section = String(tr.getAttribute('data-item-row') || '').trim();
           this.applyCatalogSelectionToRow(tr, section);
+          if (section === 'annual_saas') this.syncAnnualDiscountLockForRow(tr);
         });
       });
       this.renderTotalsPreview();
@@ -4970,7 +4977,7 @@ const Proposals = {
     this.assignFormValues(hydratedBase);
     if (!effectiveReadOnly) this.applyProposalContactSignatory(hydratedBase);
     this.renderProposalItems(this.state.currentItems);
-    this.ensureCatalogLoaded();
+    this.ensureCatalogLoaded({ force: true });
 
     if (E.proposalFormTitle) {
       if (effectiveReadOnly) E.proposalFormTitle.textContent = acceptedLocked ? 'View Locked Proposal' : expiredLocked ? 'View Expired Proposal' : 'View Proposal';
@@ -6105,7 +6112,7 @@ const Proposals = {
       E.proposalAddHardwareRowBtn.addEventListener('click', () => this.addRow('hardware'));
 
     window.addEventListener('proposal-catalog-lookup-invalidated', () => {
-      if (E.proposalFormModal?.style?.display === 'flex') this.ensureCatalogLoaded();
+      if (E.proposalFormModal?.style?.display === 'flex') this.ensureCatalogLoaded({ force: true });
     });
 
     if (E.proposalPreviewCloseBtn) E.proposalPreviewCloseBtn.addEventListener('click', () => this.closePreviewModal());

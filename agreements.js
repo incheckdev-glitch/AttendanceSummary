@@ -3702,10 +3702,11 @@ const Agreements = {
         return this.isInCheckBasicAnnualItem({ item_name: itemName });
       }).length;
   },
-  async ensureCatalogLoaded() {
+  async ensureCatalogLoaded(options = {}) {
+    const force = options?.force === true;
     try {
       if (typeof window.ProposalCatalog?.ensureLookupLoaded === 'function') {
-        await window.ProposalCatalog.ensureLookupLoaded();
+        await window.ProposalCatalog.ensureLookupLoaded({ force });
       } else if (typeof window.ProposalCatalog?.loadAndRefresh === 'function' && !window.ProposalCatalog?.state?.loaded) {
         await window.ProposalCatalog.loadAndRefresh({ force: true });
       }
@@ -4716,7 +4717,7 @@ const Agreements = {
     this.captureProviderSignDateOriginalValues();
     this.initializeProviderSignDateDefaultTracking(agreement);
     this.renderItemRows(items);
-    this.ensureCatalogLoaded().then(() => {
+    this.ensureCatalogLoaded({ force: true }).then(() => {
       if (E.agreementFormModal?.classList?.contains('open')) this.renderItemRows(this.state.currentItems || items || []);
     }).catch(() => {});
     this.state.selectedAgreementCompanyForVerification = this.hasCompanyVerificationFields(agreement) ? agreement : null;
@@ -5608,6 +5609,12 @@ const Agreements = {
       E.agreementForm.addEventListener('input', handleAgreementItemChange);
       E.agreementForm.addEventListener('change', handleAgreementItemChange);
     }
+    window.addEventListener('proposal-catalog-lookup-invalidated', () => {
+      if (!E.agreementFormModal?.classList?.contains('open')) return;
+      this.ensureCatalogLoaded({ force: true }).then(() => {
+        this.renderItemRows(this.collectItems());
+      }).catch(() => {});
+    });
     if (E.agreementFormDeleteBtn) E.agreementFormDeleteBtn.addEventListener('click', () => this.deleteById(E.agreementForm?.dataset.id || ''));
     if (E.agreementFormPreviewBtn) E.agreementFormPreviewBtn.addEventListener('click', () => {
       const id = String(E.agreementForm?.dataset.id || '').trim();
