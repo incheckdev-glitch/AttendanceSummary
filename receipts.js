@@ -2728,18 +2728,52 @@ const Receipts = {
   exportPreviewPdf() {
     const frame = E.receiptPreviewFrame;
     const previewTitle = String(E.receiptPreviewTitle?.textContent || 'Receipt Preview').trim();
+    this.printPreviewFrame_(frame, previewTitle, 'receipt');
+  },
+
+  printPreviewFrame_(frame, previewTitle = 'Document Preview', documentLabel = 'document') {
     if (!frame || !String(frame.srcdoc || '').trim()) {
-      UI.toast('Open receipt preview first to extract PDF.');
+      UI.toast(`Open ${documentLabel} preview first to extract PDF.`);
       return;
     }
     const frameWindow = frame.contentWindow;
-    if (!frameWindow) {
-      UI.toast('Unable to access receipt preview content.');
+    const frameDocument = frame.contentDocument || frameWindow?.document;
+    if (!frameWindow || !frameDocument) {
+      UI.toast(`Unable to access ${documentLabel} preview content.`);
       return;
     }
-    frameWindow.focus();
-    frameWindow.print();
-    UI.toast(`Print dialog opened for ${previewTitle}. Choose "Save as PDF" to extract.`);
+
+    let printStarted = false;
+    const openPrintDialog = () => {
+      if (printStarted) return;
+      printStarted = true;
+      try {
+        frameWindow.focus();
+        frameWindow.print();
+        UI.toast(`Print dialog opened for ${previewTitle}. Choose "Save as PDF" to extract.`);
+      } catch (error) {
+        printStarted = false;
+        console.error(`[${documentLabel} PDF] Unable to open print dialog.`, error);
+        UI.toast('Unable to open the PDF print dialog. Please try again.');
+      }
+    };
+
+    if (frameDocument.readyState === 'complete' && frameDocument.body) {
+      openPrintDialog();
+      return;
+    }
+
+    const onLoad = () => {
+      frame.removeEventListener('load', onLoad);
+      openPrintDialog();
+    };
+    frame.addEventListener('load', onLoad, { once: true });
+
+    setTimeout(() => {
+      frame.removeEventListener('load', onLoad);
+      if (!printStarted && frame.contentDocument?.body) openPrintDialog();
+      else if (!printStarted) UI.toast('Preview is still loading. Please try Extract PDF again.');
+    }, 600);
   },
   async refresh(force = false) {
     if (this.state.loading && !force) return;

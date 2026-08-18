@@ -4040,21 +4040,58 @@ const Clients = {
     if (E.clientStatementPreviewFrame) E.clientStatementPreviewFrame.srcdoc = '';
   },
   exportStatementPdf() {
-    if (!this.canExportClientStatement()) { UI.toast('You do not have permission to export statements.'); return; }
+    if (!this.canExportClientStatement()) {
+      UI.toast('You do not have permission to export statements.');
+      return;
+    }
     const frame = E.clientStatementPreviewFrame;
     const previewTitle = String(E.clientStatementPreviewTitle?.textContent || 'Statement of Account Preview').trim();
+    this.printStatementPreviewFrame_(frame, previewTitle);
+  },
+
+  printStatementPreviewFrame_(frame, previewTitle = 'Statement of Account Preview') {
     if (!frame || !String(frame.srcdoc || '').trim()) {
       UI.toast('Open statement preview first to extract PDF.');
       return;
     }
     const frameWindow = frame.contentWindow;
-    if (!frameWindow) {
+    const frameDocument = frame.contentDocument || frameWindow?.document;
+    if (!frameWindow || !frameDocument) {
       UI.toast('Unable to access statement preview content.');
       return;
     }
-    frameWindow.focus();
-    frameWindow.print();
-    UI.toast(`Print dialog opened for ${previewTitle}. Choose "Save as PDF" to extract.`);
+
+    let printStarted = false;
+    const openPrintDialog = () => {
+      if (printStarted) return;
+      printStarted = true;
+      try {
+        frameWindow.focus();
+        frameWindow.print();
+        UI.toast(`Print dialog opened for ${previewTitle}. Choose "Save as PDF" to extract.`);
+      } catch (error) {
+        printStarted = false;
+        console.error('[Statement PDF] Unable to open print dialog.', error);
+        UI.toast('Unable to open the PDF print dialog. Please try again.');
+      }
+    };
+
+    if (frameDocument.readyState === 'complete' && frameDocument.body) {
+      openPrintDialog();
+      return;
+    }
+
+    const onLoad = () => {
+      frame.removeEventListener('load', onLoad);
+      openPrintDialog();
+    };
+    frame.addEventListener('load', onLoad, { once: true });
+
+    setTimeout(() => {
+      frame.removeEventListener('load', onLoad);
+      if (!printStarted && frame.contentDocument?.body) openPrintDialog();
+      else if (!printStarted) UI.toast('Preview is still loading. Please try Extract PDF again.');
+    }, 600);
   },
   renderRenewalsSection_(detailData = {}, client = {}) {
     const fallbackClient = client && client.client_id ? client : (this.state.rows.find(row => row.client_id === this.state.selectedClientId) || {});

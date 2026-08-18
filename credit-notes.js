@@ -509,7 +509,56 @@ const CreditNotes = {
     E.creditNotePreviewModal?.setAttribute('aria-hidden','true');
     if (E.creditNotePreviewFrame) E.creditNotePreviewFrame.srcdoc = '';
   },
-  exportPreviewPdf() { if (!this.canExport()) return UI.toast('You do not have permission to export credit notes.'); const frame = E.creditNotePreviewFrame; if (!frame?.contentWindow) return; frame.contentWindow.focus(); frame.contentWindow.print(); },
+  exportPreviewPdf() {
+    if (!this.canExport()) {
+      UI.toast('You do not have permission to export credit notes.');
+      return;
+    }
+    const frame = E.creditNotePreviewFrame;
+    const previewTitle = String(E.creditNotePreviewTitle?.textContent || 'Credit Note Preview').trim();
+    if (!frame || !String(frame.srcdoc || '').trim()) {
+      UI.toast('Open credit note preview first to extract PDF.');
+      return;
+    }
+    const frameWindow = frame.contentWindow;
+    const frameDocument = frame.contentDocument || frameWindow?.document;
+    if (!frameWindow || !frameDocument) {
+      UI.toast('Unable to access credit note preview content.');
+      return;
+    }
+
+    let printStarted = false;
+    const openPrintDialog = () => {
+      if (printStarted) return;
+      printStarted = true;
+      try {
+        frameWindow.focus();
+        frameWindow.print();
+        UI.toast(`Print dialog opened for ${previewTitle}. Choose "Save as PDF" to extract.`);
+      } catch (error) {
+        printStarted = false;
+        console.error('[Credit Note PDF] Unable to open print dialog.', error);
+        UI.toast('Unable to open the PDF print dialog. Please try again.');
+      }
+    };
+
+    if (frameDocument.readyState === 'complete' && frameDocument.body) {
+      openPrintDialog();
+      return;
+    }
+
+    const onLoad = () => {
+      frame.removeEventListener('load', onLoad);
+      openPrintDialog();
+    };
+    frame.addEventListener('load', onLoad, { once: true });
+
+    setTimeout(() => {
+      frame.removeEventListener('load', onLoad);
+      if (!printStarted && frame.contentDocument?.body) openPrintDialog();
+      else if (!printStarted) UI.toast('Preview is still loading. Please try Extract PDF again.');
+    }, 600);
+  },
   bind() {
     if (this._bound) return;
     if (typeof cacheEls === 'function') cacheEls();
