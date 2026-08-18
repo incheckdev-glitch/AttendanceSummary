@@ -2795,12 +2795,23 @@ const Proposals = {
       const quantity = this.toNumberSafe(item.quantity ?? item.qty ?? 1) || 1;
       const unitPrice = this.toNumberSafe(item.unit_price ?? item.price ?? item.catalog_unit_price ?? item.default_unit_price ?? 0);
       const discountPercent = this.toNumberSafe(item.discount_percent ?? item.discount_percentage ?? item.discount ?? 0);
+      const discountRatio = Math.max(0, Math.min(100, discountPercent)) / 100;
       return {
         quantity,
         unitPrice,
         discountPercent,
+        discountedUnitPrice: Math.max(0, unitPrice * (1 - discountRatio)),
         lineTotal: previewModel.lineTotalFor(item)
       };
+    };
+    const renderDocumentUnitPrice = computed => {
+      if (!computed || computed.discountPercent <= 0) return money(computed?.unitPrice || 0);
+      const discountLabel = Number(computed.discountPercent.toFixed(2)).toLocaleString(undefined, { maximumFractionDigits: 2 });
+      return `<div class="doc-price-stack">
+        <span class="doc-price-original">${money(computed.unitPrice)}</span>
+        <span class="doc-price-discounted">${money(computed.discountedUnitPrice)}</span>
+        <span class="doc-price-note">After ${U.escapeHtml(discountLabel)}% discount</span>
+      </div>`;
     };
 
     const subscriptionItems = normalizedItems.filter(item => item.preview_section === 'annual_saas');
@@ -2815,7 +2826,7 @@ const Proposals = {
             return `<tr>
               <td>${textValue(item.location_name || item.locationName)}</td>
               <td>${this.renderDocumentItemCell(item)}</td>
-              <td class="cell-right">${money(computed.unitPrice)}</td>
+              <td class="cell-right">${renderDocumentUnitPrice(computed)}</td>
               <td class="cell-center">${computed.quantity ? U.escapeHtml(String(computed.quantity)) : '—'}</td>
               <td class="cell-center">${dateValue(item.service_start_date || proposalData.service_start_date)}</td>
               <td class="cell-center">${dateValue(item.service_end_date)}</td>
@@ -2833,7 +2844,7 @@ const Proposals = {
             return `<tr>
               <td>${textValue(item.location_name || item.locationName)}</td>
               <td>${this.renderDocumentItemCell(item)}</td>
-              <td class="cell-right">${money(computed.unitPrice)}</td>
+              <td class="cell-right">${renderDocumentUnitPrice(computed)}</td>
               <td class="cell-center">${U.escapeHtml(String(computed.discountPercent || 0))}%</td>
               <td class="cell-center">${computed.quantity ? U.escapeHtml(String(computed.quantity)) : '—'}</td>
               <td class="cell-right">${money(computed.lineTotal)}</td>
@@ -3058,6 +3069,10 @@ const Proposals = {
       .cell-right { text-align: right; vertical-align: middle; white-space: nowrap; }
       .doc-item-name { font-weight: 600; }
       .doc-item-description { margin-top: 3px; font-size: 10px; line-height: 1.35; color: #555; font-weight: 400; }
+      .doc-price-stack { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; line-height: 1.2; }
+      .doc-price-original { color: #64748b; text-decoration: line-through; font-size: 9.5px; }
+      .doc-price-discounted { color: #0b5ed7; font-weight: 700; font-size: 11px; }
+      .doc-price-note { color: #475569; font-size: 8.5px; white-space: normal; text-align: right; }
       .total-row td { font-weight: 700; background: #f7faff; }
       .totals-wrap { display: flex; justify-content: flex-end; margin-top: 16px; }
       .totals-box { width: 96mm; max-width: 100%; border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; }

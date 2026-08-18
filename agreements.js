@@ -2512,12 +2512,23 @@ const Agreements = {
       const unitPrice = this.toNumberSafe(item.unit_price);
       const discountPercent = this.toNumberSafe(item.discount_percent);
       const computed = this.computeCommercialRow({ ...item, section, quantity, unit_price: unitPrice, discount_percent: discountPercent });
+      const discountRatio = Math.max(0, Math.min(100, discountPercent)) / 100;
       return {
         quantity,
         unitPrice,
         discountPercent,
+        discountedUnitPrice: Math.max(0, unitPrice * (1 - discountRatio)),
         lineTotal: this.getAgreementItemAmount(item) || computed.line_total
       };
+    };
+    const renderDocumentUnitPrice = computed => {
+      if (!computed || computed.discountPercent <= 0) return money(computed?.unitPrice || 0);
+      const discountLabel = Number(computed.discountPercent.toFixed(2)).toLocaleString(undefined, { maximumFractionDigits: 2 });
+      return `<div class="doc-price-stack">
+        <span class="doc-price-original">${money(computed.unitPrice)}</span>
+        <span class="doc-price-discounted">${money(computed.discountedUnitPrice)}</span>
+        <span class="doc-price-note">After ${U.escapeHtml(discountLabel)}% discount</span>
+      </div>`;
     };
 
     const subscriptionItems = normalizedItems.filter(item => this.isAgreementAnnualSaasItem(item));
@@ -2531,7 +2542,7 @@ const Agreements = {
             return `<tr>
               <td>${textValue(item.location_name || item.locationName)}</td>
               <td>${this.renderDocumentItemCell(item)}</td>
-              <td class="cell-right">${money(computed.unitPrice)}</td>
+              <td class="cell-right">${renderDocumentUnitPrice(computed)}</td>
               <td class="cell-center">${computed.quantity ? U.escapeHtml(String(computed.quantity)) : '—'}</td>
               <td class="cell-center">${dateValue(item.service_start_date || agreementData.service_start_date)}</td>
               <td class="cell-center">${dateValue(item.service_end_date || agreementData.service_end_date)}</td>
@@ -2549,7 +2560,7 @@ const Agreements = {
             return `<tr>
               <td>${textValue(item.location_name || item.locationName)}</td>
               <td>${this.renderDocumentItemCell(item)}</td>
-              <td class="cell-right">${money(computed.unitPrice)}</td>
+              <td class="cell-right">${renderDocumentUnitPrice(computed)}</td>
               <td class="cell-center">${U.escapeHtml(String(computed.discountPercent || 0))}%</td>
               <td class="cell-center">${computed.quantity ? U.escapeHtml(String(computed.quantity)) : '—'}</td>
               <td class="cell-right">${money(computed.lineTotal)}</td>
@@ -2568,7 +2579,7 @@ const Agreements = {
             return `<tr>
               <td>${textValue(item.location_name || item.locationName)}</td>
               <td>${this.renderDocumentItemCell(item)}</td>
-              <td class="cell-right">${money(computed.unitPrice)}</td>
+              <td class="cell-right">${renderDocumentUnitPrice(computed)}</td>
               <td class="cell-center">${U.escapeHtml(String(computed.discountPercent || 0))}%</td>
               <td class="cell-center">${computed.quantity ? U.escapeHtml(String(computed.quantity)) : '—'}</td>
               <td class="cell-right">${money(computed.lineTotal)}</td>
@@ -2664,6 +2675,10 @@ const Agreements = {
       .cell-right { text-align: right; vertical-align: middle; white-space: nowrap; }
       .doc-item-name { font-weight: 600; }
       .doc-item-description { margin-top: 3px; font-size: 10px; line-height: 1.35; color: #555; font-weight: 400; }
+      .doc-price-stack { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; line-height: 1.2; }
+      .doc-price-original { color: #64748b; text-decoration: line-through; font-size: 9.5px; }
+      .doc-price-discounted { color: #0b5ed7; font-weight: 700; font-size: 11px; }
+      .doc-price-note { color: #475569; font-size: 8.5px; white-space: normal; text-align: right; }
       .total-row td { font-weight: 700; background: #f9fafb; }
       .totals-wrap { display: flex; justify-content: flex-end; margin-top: 16px; }
       .totals-box { width: 460px; max-width: 100%; border: 1px solid #d7e1ed; border-radius: 6px; overflow: hidden; }
