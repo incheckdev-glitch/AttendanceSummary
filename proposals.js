@@ -5662,6 +5662,49 @@ const Proposals = {
     }
   },
 
+  exportPreviewPdf() {
+    const frame = E.proposalPreviewFrame;
+    const previewTitle = String(E.proposalPreviewTitle?.textContent || 'Proposal Preview').trim();
+
+    if (!frame || !String(frame.srcdoc || '').trim()) {
+      UI.toast('Open proposal preview first to extract PDF.');
+      return;
+    }
+
+    const frameWindow = frame.contentWindow;
+    const frameDocument = frame.contentDocument || frameWindow?.document;
+    if (!frameWindow || !frameDocument) {
+      UI.toast('Unable to access proposal preview content.');
+      return;
+    }
+
+    const openPrintDialog = () => {
+      try {
+        frameWindow.focus();
+        frameWindow.print();
+        UI.toast(`Print dialog opened for ${previewTitle}. Choose "Save as PDF" to extract.`);
+      } catch (error) {
+        console.error('[Proposal PDF] Unable to open print dialog.', error);
+        UI.toast('Unable to open the PDF print dialog. Please try again.');
+      }
+    };
+
+    if (frameDocument.readyState === 'complete' && frameDocument.body) {
+      openPrintDialog();
+      return;
+    }
+
+    const onLoad = () => {
+      frame.removeEventListener('load', onLoad);
+      openPrintDialog();
+    };
+    frame.addEventListener('load', onLoad, { once: true });
+    setTimeout(() => {
+      frame.removeEventListener('load', onLoad);
+      if (frame.contentDocument?.body) openPrintDialog();
+    }, 500);
+  },
+
   getCreatedProposalId(response) {
     const parseJsonIfNeeded = value => {
       if (typeof value !== 'string') return value;
