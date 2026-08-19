@@ -56,6 +56,18 @@
     activeTab: 'overview',
     specialActiveTab: 'overview',
     filters: { search: '', status: 'All', health: 'All', effort: 'All', group: 'All' },
+    dashboardFilters: {
+      period: 'latest',
+      dateFrom: '',
+      dateTo: '',
+      client: 'All',
+      group: 'All',
+      brand: 'All',
+      location: 'All',
+      reviewType: 'all',
+      completionStatus: 'All',
+      risk: 'All'
+    },
     tablesMissing: new Set(),
     rows: {
       companies: [], allCompanies: [], clients: [], profiles: [], reviews: [], tasks: [], risks: [], qbrs: [], contacts: [], mainContacts: [], activities: [], onboarding: [], agreements: [], agreementItems: [], invoices: [], invoiceItems: [], completions: [], tickets: [], groups: [], groupMembers: [], brands: [], brandLocations: [], specialTemplates: [], specialGroups: [], specialBrands: [], specialLocations: []
@@ -1583,6 +1595,7 @@
         </div>
       </div>
       <div id="csState" class="cs-state">Loading Client Success 360…</div>
+      <div id="csDashboardFilters" class="cs-dashboard-filter-shell"></div>
       <div id="csKpis" class="cs-kpi-grid cs-kpi-grid--modern"></div>
       <div id="csDashboard" class="cs-dashboard"></div>
       <div class="cs-layout">
@@ -1634,6 +1647,19 @@
       STATE.filters.group = $('csGroupFilter')?.value || 'All';
       renderClientList();
     }));
+
+    document.addEventListener('change', event => {
+      const field = event.target?.getAttribute?.('data-cs-dashboard-filter');
+      if (!field) return;
+      updateDashboardFilter(field, event.target.value || '');
+    });
+
+    document.addEventListener('click', event => {
+      const reset = event.target?.closest?.('#csDashboardReset');
+      if (!reset) return;
+      event.preventDefault?.();
+      resetDashboardFilters();
+    });
   }
 
   function renderAccessDenied() {
@@ -1672,9 +1698,244 @@
     return 'Live';
   }
 
+  function dashboardIsoDate(value) {
+    const raw = String(value || '').trim();
+    return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : String(raw || '').slice(0, 10);
+  }
+
+  function dashboardStartOfWeek(date = new Date()) {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    const day = d.getDay();
+    const diff = (day + 6) % 7;
+    d.setDate(d.getDate() - diff);
+    return d;
+  }
+
+  function dashboardDateIso(date) {
+    const d = new Date(date);
+    if (Number.isNaN(d.getTime())) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  function dashboardFilterDateBounds(periodOverride = '') {
+    const filters = STATE.dashboardFilters || {};
+    const period = periodOverride || filters.period || 'latest';
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    if (period === 'custom') return { from: dashboardIsoDate(filters.dateFrom), to: dashboardIsoDate(filters.dateTo) };
+    if (period === 'today') {
+      const today = dashboardDateIso(now);
+      return { from: today, to: today };
+    }
+    if (period === 'this_week') return { from: dashboardDateIso(dashboardStartOfWeek(now)), to: dashboardDateIso(now) };
+    if (period === 'last_week') {
+      const thisWeek = dashboardStartOfWeek(now);
+      const from = new Date(thisWeek); from.setDate(from.getDate() - 7);
+      const to = new Date(thisWeek); to.setDate(to.getDate() - 1);
+      return { from: dashboardDateIso(from), to: dashboardDateIso(to) };
+    }
+    if (period === 'this_month') return { from: dashboardDateIso(new Date(now.getFullYear(), now.getMonth(), 1)), to: dashboardDateIso(now) };
+    if (period === 'last_month') {
+      const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const to = new Date(now.getFullYear(), now.getMonth(), 0);
+      return { from: dashboardDateIso(from), to: dashboardDateIso(to) };
+    }
+    return { from: '', to: '' };
+  }
+
+  function dashboardPeriodLabel() {
+    const period = STATE.dashboardFilters?.period || 'latest';
+    if (period === 'latest') return 'Latest reported completion period';
+    if (period === 'all') return 'All completion history';
+    const { from, to } = dashboardFilterDateBounds();
+    if (from && to) return `${fmtDate(from)} – ${fmtDate(to)}`;
+    if (from) return `From ${fmtDate(from)}`;
+    if (to) return `Through ${fmtDate(to)}`;
+    return 'Custom date range';
+  }
+
+  function dashboardRowOverlapsDate(row, bounds = dashboardFilterDateBounds()) {
+    if (!bounds.from && !bounds.to) return true;
+    const start = dashboardIsoDate(row.period_start || row.review_period_start || row.review_date || row.created_at || row.updated_at || '');
+    const end = dashboardIsoDate(row.period_end || row.review_period_end || row.review_date || row.created_at || row.updated_at || start);
+    const rowStart = start || end;
+    const rowEnd = end || start;
+    if (!rowStart && !rowEnd) return false;
+    if (bounds.from && rowEnd && rowEnd < bounds.from) return false;
+    if (bounds.to && rowStart && rowStart > bounds.to) return false;
+    return true;
+  }
+
+  function dashboardCompanyMatches(company) {
+    const filters = STATE.dashboardFilters || {};
+    if (filters.client && filters.client !== 'All' && companyId(company) !== filters.client) return false;
+    if (filters.group && filters.group !== 'All' && !groupsForCompany(company).some(group => groupId(group) === filters.group)) return false;
+    if (filters.brand && filters.brand !== 'All' && !brandsForCompany(company).some(brand => brandId(brand) === filters.brand)) return false;
+    const score = computeHealth(company);
+    if (filters.risk === 'At Risk' && score >= 60) return false;
+    if (filters.risk === 'No Risk' && score < 60) return false;
+    if (filters.risk === 'Open Risk' && !openRows(riskRows(company)).length) return false;
+    return true;
+  }
+
+  function dashboardBrandLocationSet(company) {
+    const brand = brandById(STATE.dashboardFilters?.brand || '');
+    if (!brand) return null;
+    const companyIds = new Set([companyId(company), resolveCsCompanyUuid(company), ...csClientAliasIds(company)].map(value => String(value || '').trim()).filter(Boolean));
+    const companyNames = new Set([normalize(companyName(company)), normalize(company.company_name || ''), normalize(company.client_name || '')].filter(Boolean));
+    const targets = brandCompletionTargets(brand).filter(target => {
+      const targetId = String(target.company_id || '').trim();
+      const targetName = normalize(target.company_name || target.company_name_snapshot || '');
+      return (targetId && companyIds.has(targetId)) || (targetName && companyNames.has(targetName));
+    });
+    return new Set(targets.map(target => normalize(target.location_name)).filter(Boolean));
+  }
+
+  function dashboardCompletionStatusMatches(row) {
+    const status = STATE.dashboardFilters?.completionStatus || 'All';
+    if (status === 'All') return true;
+    if (status === 'Done On-Time') return safeDecimal(row.done_on_time) > 0;
+    if (status === 'Done Late') return safeDecimal(row.done_late) > 0;
+    if (status === 'Partially Done') return safeDecimal(row.partially_done) > 0;
+    if (status === 'Missed') return safeDecimal(row.missed) > 0;
+    return true;
+  }
+
+  function dashboardCompletionRows(company, { trend = false } = {}) {
+    const filters = STATE.dashboardFilters || {};
+    let rows;
+    if (!trend && filters.period === 'latest') rows = aggregateCompletionRows(latestCompletionPeriodRows(company));
+    else rows = completionRows(company).slice();
+
+    if (filters.period !== 'latest' && filters.period !== 'all') {
+      const bounds = dashboardFilterDateBounds();
+      rows = rows.filter(row => dashboardRowOverlapsDate(row, bounds));
+    }
+    if (filters.reviewType && filters.reviewType !== 'all') rows = rows.filter(row => String(row.review_type || '').trim().toLowerCase() === filters.reviewType);
+
+    const brandLocations = dashboardBrandLocationSet(company);
+    if (brandLocations) rows = rows.filter(row => brandLocations.has(normalize(locationNameFromRow(row))));
+    if (filters.location && filters.location !== 'All') rows = rows.filter(row => normalize(locationNameFromRow(row)) === normalize(filters.location));
+    rows = rows.filter(dashboardCompletionStatusMatches);
+    return rows;
+  }
+
+  function dashboardFilteredCompanies() {
+    return dedupeCsClientRowsByName(STATE.rows.companies || []).filter(dashboardCompanyMatches);
+  }
+
+  function dashboardReviewMissing(company) {
+    const filters = STATE.dashboardFilters || {};
+    const type = filters.reviewType === 'monthly' ? 'monthly' : 'weekly';
+    if (filters.period === 'latest' || filters.period === 'all') return reviewMissing(company, type);
+    const bounds = dashboardFilterDateBounds();
+    const completed = reviewRows(company).filter(row => {
+      if (String(row.review_type || '').trim().toLowerCase() !== type) return false;
+      if (!['completed','needs follow-up','escalated'].includes(String(row.status || '').toLowerCase())) return false;
+      return dashboardRowOverlapsDate({
+        period_start: row.review_period_start || row.review_date || row.created_at,
+        period_end: row.review_period_end || row.review_date || row.created_at
+      }, bounds);
+    });
+    return completed.length === 0;
+  }
+
+  function dashboardLocationOptions() {
+    const companies = dashboardFilteredCompanies();
+    const values = new Map();
+    companies.forEach(company => {
+      currentClientCompletionTargets(company).forEach(row => {
+        const name = String(row.location_name || '').trim();
+        if (name) values.set(normalize(name), name);
+      });
+      completionRows(company).forEach(row => {
+        const name = locationNameFromRow(row);
+        if (name) values.set(normalize(name), name);
+      });
+    });
+    return Array.from(values.values()).sort((a, b) => a.localeCompare(b));
+  }
+
+  function renderDashboardFilters() {
+    const root = $('csDashboardFilters');
+    if (!root) return;
+    const filters = STATE.dashboardFilters || {};
+    const bounds = dashboardFilterDateBounds();
+    const companyOptions = dedupeCsClientRowsByName(STATE.rows.companies || []).slice().sort((a,b) => companyName(a).localeCompare(companyName(b)));
+    const groupOptions = activeGroups();
+    const brandOptions = activeBrands();
+    const locationOptions = dashboardLocationOptions();
+    if (filters.location !== 'All' && !locationOptions.some(value => normalize(value) === normalize(filters.location))) filters.location = 'All';
+    const reviewLabel = filters.reviewType === 'monthly' ? 'Monthly Reviews Missing' : 'Weekly Reviews Missing';
+
+    root.innerHTML = `
+      <div class="cs-dashboard-filter-head">
+        <div>
+          <span class="cs-eyebrow">Operations Overview</span>
+          <strong>${esc(dashboardPeriodLabel())}</strong>
+          <small>All cards, charts and the client overview below use these filters.</small>
+        </div>
+        <button id="csDashboardReset" class="btn ghost sm" type="button">Reset Filters</button>
+      </div>
+      <div class="cs-dashboard-filter-grid">
+        <label><span>Period</span><select class="select" data-cs-dashboard-filter="period">
+          <option value="latest"${filters.period === 'latest' ? ' selected' : ''}>Latest Period</option>
+          <option value="today"${filters.period === 'today' ? ' selected' : ''}>Today</option>
+          <option value="this_week"${filters.period === 'this_week' ? ' selected' : ''}>This Week</option>
+          <option value="last_week"${filters.period === 'last_week' ? ' selected' : ''}>Last Week</option>
+          <option value="this_month"${filters.period === 'this_month' ? ' selected' : ''}>This Month</option>
+          <option value="last_month"${filters.period === 'last_month' ? ' selected' : ''}>Last Month</option>
+          <option value="all"${filters.period === 'all' ? ' selected' : ''}>All History</option>
+          <option value="custom"${filters.period === 'custom' ? ' selected' : ''}>Custom</option>
+        </select></label>
+        <label><span>From Date</span><input class="input" type="date" data-cs-dashboard-filter="dateFrom" value="${attr(filters.period === 'custom' ? filters.dateFrom : bounds.from)}" ${filters.period === 'custom' ? '' : 'disabled'} /></label>
+        <label><span>To Date</span><input class="input" type="date" data-cs-dashboard-filter="dateTo" value="${attr(filters.period === 'custom' ? filters.dateTo : bounds.to)}" ${filters.period === 'custom' ? '' : 'disabled'} /></label>
+        <label><span>Client</span><select class="select" data-cs-dashboard-filter="client"><option value="All">All Clients</option>${companyOptions.map(company => `<option value="${attr(companyId(company))}"${filters.client === companyId(company) ? ' selected' : ''}>${esc(companyName(company))}</option>`).join('')}</select></label>
+        <label><span>Client Group</span><select class="select" data-cs-dashboard-filter="group"><option value="All">All Groups</option>${groupOptions.map(group => `<option value="${attr(groupId(group))}"${filters.group === groupId(group) ? ' selected' : ''}>${esc(groupName(group))}</option>`).join('')}</select></label>
+        <label><span>Brand</span><select class="select" data-cs-dashboard-filter="brand"><option value="All">All Brands</option>${brandOptions.map(brand => `<option value="${attr(brandId(brand))}"${filters.brand === brandId(brand) ? ' selected' : ''}>${esc(brandName(brand))}</option>`).join('')}</select></label>
+        <label><span>Location</span><select class="select" data-cs-dashboard-filter="location"><option value="All">All Locations</option>${locationOptions.map(name => `<option value="${attr(name)}"${normalize(filters.location) === normalize(name) ? ' selected' : ''}>${esc(name)}</option>`).join('')}</select></label>
+        <label><span>Review Type</span><select class="select" data-cs-dashboard-filter="reviewType"><option value="all"${filters.reviewType === 'all' ? ' selected' : ''}>All Review Types</option><option value="weekly"${filters.reviewType === 'weekly' ? ' selected' : ''}>Weekly</option><option value="monthly"${filters.reviewType === 'monthly' ? ' selected' : ''}>Monthly</option></select></label>
+        <label><span>Completion Status</span><select class="select" data-cs-dashboard-filter="completionStatus"><option value="All"${filters.completionStatus === 'All' ? ' selected' : ''}>All Statuses</option><option${filters.completionStatus === 'Done On-Time' ? ' selected' : ''}>Done On-Time</option><option${filters.completionStatus === 'Done Late' ? ' selected' : ''}>Done Late</option><option${filters.completionStatus === 'Partially Done' ? ' selected' : ''}>Partially Done</option><option${filters.completionStatus === 'Missed' ? ' selected' : ''}>Missed</option></select></label>
+        <label><span>Risk</span><select class="select" data-cs-dashboard-filter="risk"><option value="All"${filters.risk === 'All' ? ' selected' : ''}>All Risk States</option><option${filters.risk === 'At Risk' ? ' selected' : ''}>At Risk</option><option${filters.risk === 'No Risk' ? ' selected' : ''}>No Risk</option><option${filters.risk === 'Open Risk' ? ' selected' : ''}>Open Risk</option></select></label>
+      </div>
+      <div class="cs-dashboard-filter-summary"><span>${companyOptions.length} total clients</span><span>${dashboardFilteredCompanies().length} in current scope</span><span>${locationOptions.length} available locations</span><span>${esc(reviewLabel)}</span></div>`;
+  }
+
+  function updateDashboardFilter(field, value) {
+    const filters = STATE.dashboardFilters || (STATE.dashboardFilters = {});
+    if (field === 'period') {
+      const previousBounds = dashboardFilterDateBounds();
+      filters.period = value || 'latest';
+      if (filters.period === 'custom') {
+        filters.dateFrom = filters.dateFrom || previousBounds.from || dashboardFilterDateBounds('this_month').from;
+        filters.dateTo = filters.dateTo || previousBounds.to || dashboardDateIso(new Date());
+      }
+    } else {
+      filters[field] = value;
+      if (field === 'dateFrom' || field === 'dateTo') filters.period = 'custom';
+    }
+    renderDashboardFilters();
+    renderKpis();
+    renderDashboard();
+  }
+
+  function resetDashboardFilters() {
+    STATE.dashboardFilters = {
+      period: 'latest', dateFrom: '', dateTo: '', client: 'All', group: 'All', brand: 'All', location: 'All', reviewType: 'all', completionStatus: 'All', risk: 'All'
+    };
+    renderDashboardFilters();
+    renderKpis();
+    renderDashboard();
+  }
+
   function render() {
     if (!canAccess()) { renderAccessDenied(); return; }
     renderGroupFilterOptions();
+    renderDashboardFilters();
     renderKpis();
     renderDashboard();
     renderClientList();
@@ -1687,20 +1948,23 @@
   }
 
   function renderKpis() {
-    const companies = STATE.rows.companies;
+    const companies = dashboardFilteredCompanies();
     const healthScores = companies.map(c => computeHealth(c));
     const atRisk = healthScores.filter(s => s < 60).length;
-    const weeklyMissing = companies.filter(c => reviewMissing(c, 'weekly')).length;
-    const latestCompletionRows = companies.flatMap(c => aggregateCompletionRows(latestCompletionPeriodRows(c)));
-    const completionRate = averageCompletionMetrics(latestCompletionRows).completion;
-    const openRisks = openRows(STATE.rows.risks).length;
+    const reviewsMissing = companies.filter(dashboardReviewMissing).length;
+    const completionRowsForScope = companies.flatMap(company => dashboardCompletionRows(company));
+    const completionRate = averageCompletionMetrics(completionRowsForScope).completion;
+    const openRisks = companies.reduce((sum, company) => sum + openRows(riskRows(company)).length, 0);
+    const groupIds = new Set(companies.flatMap(company => groupsForCompany(company).map(groupId)).filter(Boolean));
+    const brandIds = new Set(companies.flatMap(company => brandsForCompany(company).map(brandId)).filter(Boolean));
+    const reviewLabel = STATE.dashboardFilters?.reviewType === 'monthly' ? 'Monthly Reviews Missing' : 'Weekly Reviews Missing';
     const items = [
-      { label: 'Normal Clients', value: companies.length, sub: 'Clients registry + commercial clients', icon: '👥', tone: 'blue' },
-      { label: 'Client Groups', value: activeGroups().length, sub: `${activeBrands().length} brand layer${activeBrands().length === 1 ? '' : 's'}`, icon: '🔗', tone: 'blue' },
+      { label: 'Clients in Scope', value: companies.length, sub: dashboardPeriodLabel(), icon: '👥', tone: 'blue' },
+      { label: 'Client Groups', value: groupIds.size, sub: `${brandIds.size} brand layer${brandIds.size === 1 ? '' : 's'} in scope`, icon: '🔗', tone: 'blue' },
       { label: 'Clients at Risk', value: atRisk, sub: atRisk ? 'needs action' : 'no critical action', icon: '⚠', tone: atRisk ? 'warn' : 'green' },
-      { label: 'Weekly Reviews Missing', value: weeklyMissing, sub: 'current week', icon: '📅', tone: weeklyMissing ? 'red' : 'green' },
-      { label: 'Location Completion', value: `${completionRate.toFixed(0)}%`, sub: 'Done On-Time + Done Late', icon: '✓', tone: 'green' },
-      { label: 'Open Risks', value: openRisks, sub: openRisks ? 'open / escalated' : 'no change', icon: '🛡', tone: openRisks ? 'red' : 'green' }
+      { label: reviewLabel, value: reviewsMissing, sub: dashboardPeriodLabel(), icon: '📅', tone: reviewsMissing ? 'red' : 'green' },
+      { label: 'Location Completion', value: `${completionRate.toFixed(0)}%`, sub: `${completionRowsForScope.length} filtered completion row${completionRowsForScope.length === 1 ? '' : 's'}`, icon: '✓', tone: 'green' },
+      { label: 'Open Risks', value: openRisks, sub: openRisks ? 'open / escalated in selected clients' : 'no open risks', icon: '🛡', tone: openRisks ? 'red' : 'green' }
     ];
     const toneClass = tone => `cs-kpi-card--${tone || 'blue'}`;
     $('csKpis').innerHTML = items.map(item => `<article class="cs-kpi-card ${toneClass(item.tone)}"><div class="cs-kpi-icon">${esc(item.icon)}</div><div class="cs-kpi-label">${esc(item.label)}</div><div class="cs-kpi-value">${esc(item.value)}</div><div class="cs-kpi-sub">${esc(item.sub)}</div></article>`).join('');
@@ -1709,12 +1973,12 @@
   function renderDashboard() {
     const root = $('csDashboard');
     if (!root) return;
-    const companies = STATE.rows.companies;
-    const latestRows = companies.flatMap(c => aggregateCompletionRows(latestCompletionPeriodRows(c)));
+    const companies = dashboardFilteredCompanies();
+    const latestRows = companies.flatMap(company => dashboardCompletionRows(company));
     const stats = averageCompletionMetrics(latestRows);
-    const openRisks = openRows(STATE.rows.risks).length;
+    const openRisks = companies.reduce((sum, company) => sum + openRows(riskRows(company)).length, 0);
     const atRisk = companies.filter(c => computeHealth(c) < 60).length;
-    const weeklyMissing = companies.filter(c => reviewMissing(c, 'weekly')).length;
+    const reviewsMissing = companies.filter(dashboardReviewMissing).length;
     const best = latestRows.length ? latestRows.slice().sort((a,b) => completionCount(b) - completionCount(a))[0] : null;
     const weak = latestRows.slice().filter(row => completionCount(row) < 80).sort((a,b) => completionCount(a) - completionCount(b)).slice(0, 3);
 
@@ -1725,7 +1989,7 @@
     };
 
     const trendMap = new Map();
-    STATE.rows.completions.forEach(row => {
+    companies.flatMap(company => dashboardCompletionRows(company, { trend: true })).forEach(row => {
       const key = String(row.period_end || row.period_start || '').slice(0, 10);
       if (!key) return;
       if (!trendMap.has(key)) trendMap.set(key, []);
@@ -1776,11 +2040,11 @@
           <div class="cs-breakdown-legend"><span><i class="done"></i>Done On-Time</span><span><i class="late"></i>Done Late</span><span><i class="partial"></i>Partially Done</span><span><i class="missed"></i>Missed</span></div>
         </section>
         <section class="cs-analytics-card">
-          <div class="cs-section-title"><h4>Average Completion Trend</h4><span>last periods</span></div>
+          <div class="cs-section-title"><h4>Average Completion Trend</h4><span>${esc(dashboardPeriodLabel())}</span></div>
           ${spark}
         </section>
         <section class="cs-analytics-card cs-status-card">
-          <div class="cs-section-title"><h4>Completion by Status</h4><span>${latestRows.length} locations</span></div>
+          <div class="cs-section-title"><h4>Completion by Status</h4><span>${latestRows.length} filtered rows</span></div>
           <div class="cs-donut-mini" style="${donutStyle}"><strong>${stats.completion.toFixed(0)}%</strong><span>Completion</span></div>
           <div class="cs-status-lines">
             <div><i class="done"></i><span>Done On-Time</span><b>${stats.done_on_time.toFixed(2)}%</b></div>
@@ -1792,24 +2056,25 @@
         <aside class="cs-analytics-card cs-insights-card">
           <div class="cs-section-title"><h4>Insights</h4><span>CS signals</span></div>
           <div class="cs-insight-row good"><b>Great job!</b><span>${best ? `${esc(best.location_name)} leads completion at ${formatPct(completionCount(best))}.` : 'Add completion rows to start insights.'}</span></div>
-          <div class="cs-insight-row warn"><b>Reviews missed</b><span>${weeklyMissing} weekly review${weeklyMissing === 1 ? '' : 's'} not completed.</span></div>
+          <div class="cs-insight-row warn"><b>Reviews missed</b><span>${reviewsMissing} client${reviewsMissing === 1 ? '' : 's'} missing the selected review cadence.</span></div>
           <div class="cs-insight-row danger"><b>Clients at risk</b><span>${atRisk} client${atRisk === 1 ? '' : 's'} at risk. ${openRisks} open risk${openRisks === 1 ? '' : 's'}.</span></div>
           <button class="btn ghost sm cs-full-width" type="button" data-cs-action="completion-export">View / Export Report</button>
         </aside>
       </div>
       <div class="cs-dashboard-bottom">
         <section class="cs-analytics-card cs-table-preview">
-          <div class="cs-section-title"><h4>Client / Group Overview</h4><span>latest active rows</span></div>
+          <div class="cs-section-title"><h4>Client / Group Overview</h4><span>${esc(dashboardPeriodLabel())}</span></div>
           <div class="cs-compact-table-wrap">
-            <table class="cs-compact-table">
-              <thead><tr><th>Client / Group</th><th>Locations</th><th>Completion</th><th>Status</th><th>Risk</th></tr></thead>
-              <tbody>${companies.slice(0, 6).map(company => {
+            <table class="cs-compact-table cs-ops-overview-table">
+              <thead><tr><th>Client / Group</th><th>Locations</th><th>On-Time</th><th>Late</th><th>Partial</th><th>Missed</th><th>Completion</th><th>Status</th><th>Risk</th></tr></thead>
+              <tbody>${companies.slice(0, 12).map(company => {
                 const groups = groupsForCompany(company).map(g => g.group_name).join(', ') || 'Ungrouped';
-                const rows = aggregateCompletionRows(latestCompletionPeriodRows(company));
+                const rows = dashboardCompletionRows(company);
                 const metrics = averageCompletionMetrics(rows);
                 const score = computeHealth(company);
-                return `<tr><td><strong>${esc(companyName(company))}</strong><small>${esc(groups)}</small></td><td>${rows.length || '—'}</td><td><b>${metrics.completion.toFixed(0)}%</b></td><td>${esc(getProfile(company).client_status || mapCompanyStatus(company.company_status))}</td><td class="${score < 60 ? 'danger' : 'good'}">${score < 60 ? 'Yes' : 'No'}</td></tr>`;
-              }).join('')}</tbody>
+                const locations = new Set(rows.map(row => normalize(locationNameFromRow(row))).filter(Boolean)).size;
+                return `<tr><td><strong>${esc(companyName(company))}</strong><small>${esc(groups)}</small></td><td>${locations || '—'}</td><td>${metrics.done_on_time.toFixed(1)}%</td><td>${metrics.done_late.toFixed(1)}%</td><td>${metrics.partially_done.toFixed(1)}%</td><td>${metrics.missed.toFixed(1)}%</td><td><b>${metrics.completion.toFixed(1)}%</b></td><td>${esc(getProfile(company).client_status || mapCompanyStatus(company.company_status))}</td><td class="${score < 60 ? 'danger' : 'good'}">${score < 60 ? 'Yes' : 'No'}</td></tr>`;
+              }).join('') || '<tr><td colspan="9"><div class="cs-empty">No clients match the selected operational filters.</div></td></tr>'}</tbody>
             </table>
           </div>
         </section>
