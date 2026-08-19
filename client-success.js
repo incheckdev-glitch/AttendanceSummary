@@ -2098,18 +2098,22 @@
     const brandOptions = activeBrands();
     const locationOptions = dashboardLocationOptions();
     if (filters.location !== 'All' && !locationOptions.some(value => normalize(value) === normalize(filters.location))) filters.location = 'All';
-    const reviewLabel = filters.reviewType === 'monthly' ? 'Monthly Reviews Missing' : 'Weekly Reviews Missing';
+    const advancedActive = filters.period === 'custom'
+      || filters.group !== 'All'
+      || filters.brand !== 'All'
+      || filters.location !== 'All'
+      || filters.reviewType !== 'all';
 
     root.innerHTML = `
       <div class="cs-dashboard-filter-head">
         <div>
           <span class="cs-eyebrow">Operations Overview</span>
           <strong>${esc(dashboardPeriodLabel())}</strong>
-          <small>All cards, charts and the client overview below use these filters.</small>
+          <small>Start with the main filters. Use More Filters only when you need a deeper view.</small>
         </div>
-        <button id="csDashboardReset" class="btn ghost sm" type="button">Reset Filters</button>
+        <button id="csDashboardReset" class="btn ghost sm" type="button">Reset</button>
       </div>
-      <div class="cs-dashboard-filter-grid">
+      <div class="cs-dashboard-filter-grid cs-dashboard-filter-grid--primary">
         <label><span>Period</span><select class="select" data-cs-dashboard-filter="period">
           <option value="latest"${filters.period === 'latest' ? ' selected' : ''}>Latest Period</option>
           <option value="today"${filters.period === 'today' ? ' selected' : ''}>Today</option>
@@ -2118,19 +2122,24 @@
           <option value="this_month"${filters.period === 'this_month' ? ' selected' : ''}>This Month</option>
           <option value="last_month"${filters.period === 'last_month' ? ' selected' : ''}>Last Month</option>
           <option value="all"${filters.period === 'all' ? ' selected' : ''}>All History</option>
-          <option value="custom"${filters.period === 'custom' ? ' selected' : ''}>Custom</option>
+          <option value="custom"${filters.period === 'custom' ? ' selected' : ''}>Custom Dates</option>
         </select></label>
-        <label><span>From Date</span><input class="input" type="date" data-cs-dashboard-filter="dateFrom" value="${attr(filters.period === 'custom' ? filters.dateFrom : bounds.from)}" ${filters.period === 'custom' ? '' : 'disabled'} /></label>
-        <label><span>To Date</span><input class="input" type="date" data-cs-dashboard-filter="dateTo" value="${attr(filters.period === 'custom' ? filters.dateTo : bounds.to)}" ${filters.period === 'custom' ? '' : 'disabled'} /></label>
         <label><span>Client</span><select class="select" data-cs-dashboard-filter="client"><option value="All">All Clients</option>${companyOptions.map(company => `<option value="${attr(companyId(company))}"${filters.client === companyId(company) ? ' selected' : ''}>${esc(companyName(company))}</option>`).join('')}</select></label>
-        <label><span>Client Group</span><select class="select" data-cs-dashboard-filter="group"><option value="All">All Groups</option>${groupOptions.map(group => `<option value="${attr(groupId(group))}"${filters.group === groupId(group) ? ' selected' : ''}>${esc(groupName(group))}</option>`).join('')}</select></label>
-        <label><span>Brand</span><select class="select" data-cs-dashboard-filter="brand"><option value="All">All Brands</option>${brandOptions.map(brand => `<option value="${attr(brandId(brand))}"${filters.brand === brandId(brand) ? ' selected' : ''}>${esc(brandName(brand))}</option>`).join('')}</select></label>
-        <label><span>Location</span><select class="select" data-cs-dashboard-filter="location"><option value="All">All Locations</option>${locationOptions.map(name => `<option value="${attr(name)}"${normalize(filters.location) === normalize(name) ? ' selected' : ''}>${esc(name)}</option>`).join('')}</select></label>
-        <label><span>Review Type</span><select class="select" data-cs-dashboard-filter="reviewType"><option value="all"${filters.reviewType === 'all' ? ' selected' : ''}>All Review Types</option><option value="weekly"${filters.reviewType === 'weekly' ? ' selected' : ''}>Weekly</option><option value="monthly"${filters.reviewType === 'monthly' ? ' selected' : ''}>Monthly</option></select></label>
-        <label><span>Completion Status</span><select class="select" data-cs-dashboard-filter="completionStatus"><option value="All"${filters.completionStatus === 'All' ? ' selected' : ''}>All Statuses</option><option${filters.completionStatus === 'Done On-Time' ? ' selected' : ''}>Done On-Time</option><option${filters.completionStatus === 'Done Late' ? ' selected' : ''}>Done Late</option><option${filters.completionStatus === 'Partially Done' ? ' selected' : ''}>Partially Done</option><option${filters.completionStatus === 'Missed' ? ' selected' : ''}>Missed</option></select></label>
+        <label><span>Completion</span><select class="select" data-cs-dashboard-filter="completionStatus"><option value="All"${filters.completionStatus === 'All' ? ' selected' : ''}>All Statuses</option><option${filters.completionStatus === 'Done On-Time' ? ' selected' : ''}>Done On-Time</option><option${filters.completionStatus === 'Done Late' ? ' selected' : ''}>Done Late</option><option${filters.completionStatus === 'Partially Done' ? ' selected' : ''}>Partially Done</option><option${filters.completionStatus === 'Missed' ? ' selected' : ''}>Missed</option></select></label>
         <label><span>Risk</span><select class="select" data-cs-dashboard-filter="risk"><option value="All"${filters.risk === 'All' ? ' selected' : ''}>All Risk States</option><option${filters.risk === 'At Risk' ? ' selected' : ''}>At Risk</option><option${filters.risk === 'No Risk' ? ' selected' : ''}>No Risk</option><option${filters.risk === 'Open Risk' ? ' selected' : ''}>Open Risk</option></select></label>
       </div>
-      <div class="cs-dashboard-filter-summary"><span>${companyOptions.length} total clients</span><span>${dashboardFilteredCompanies().length} in current scope</span><span>${locationOptions.length} available locations</span><span>${esc(reviewLabel)}</span></div>`;
+      <details class="cs-dashboard-more-filters" ${advancedActive ? 'open' : ''}>
+        <summary>More Filters${advancedActive ? ' · Active' : ''}</summary>
+        <div class="cs-dashboard-filter-grid cs-dashboard-filter-grid--advanced">
+          <label><span>From Date</span><input class="input" type="date" data-cs-dashboard-filter="dateFrom" value="${attr(filters.period === 'custom' ? filters.dateFrom : bounds.from)}" ${filters.period === 'custom' ? '' : 'disabled'} /></label>
+          <label><span>To Date</span><input class="input" type="date" data-cs-dashboard-filter="dateTo" value="${attr(filters.period === 'custom' ? filters.dateTo : bounds.to)}" ${filters.period === 'custom' ? '' : 'disabled'} /></label>
+          <label><span>Client Group</span><select class="select" data-cs-dashboard-filter="group"><option value="All">All Groups</option>${groupOptions.map(group => `<option value="${attr(groupId(group))}"${filters.group === groupId(group) ? ' selected' : ''}>${esc(groupName(group))}</option>`).join('')}</select></label>
+          <label><span>Brand</span><select class="select" data-cs-dashboard-filter="brand"><option value="All">All Brands</option>${brandOptions.map(brand => `<option value="${attr(brandId(brand))}"${filters.brand === brandId(brand) ? ' selected' : ''}>${esc(brandName(brand))}</option>`).join('')}</select></label>
+          <label><span>Location</span><select class="select" data-cs-dashboard-filter="location"><option value="All">All Locations</option>${locationOptions.map(name => `<option value="${attr(name)}"${normalize(filters.location) === normalize(name) ? ' selected' : ''}>${esc(name)}</option>`).join('')}</select></label>
+          <label><span>Review Type</span><select class="select" data-cs-dashboard-filter="reviewType"><option value="all"${filters.reviewType === 'all' ? ' selected' : ''}>All Review Types</option><option value="weekly"${filters.reviewType === 'weekly' ? ' selected' : ''}>Weekly</option><option value="monthly"${filters.reviewType === 'monthly' ? ' selected' : ''}>Monthly</option></select></label>
+        </div>
+      </details>
+      <div class="cs-dashboard-filter-summary cs-dashboard-filter-summary--simple"><span>${dashboardFilteredCompanies().length} clients in view</span><span>${locationOptions.length} locations available</span></div>`;
   }
 
   function updateDashboardFilter(field, value) {
@@ -2177,26 +2186,21 @@
 
   function renderKpis() {
     const companies = dashboardFilteredCompanies();
-    const health = dashboardOperationalHealthAggregate(companies);
     const attention = dashboardAttentionClients(companies);
     const reviewsMissing = companies.filter(dashboardReviewMissing).length;
     const completionRowsForScope = companies.flatMap(company => dashboardCompletionRows(company));
     const completionRate = averageCompletionMetrics(completionRowsForScope).completion;
     const openRisks = companies.reduce((sum, company) => sum + openRows(riskRows(company)).length, 0);
     const comparison = dashboardPeriodComparison(companies);
-    const forecast = dashboardGlobalTrend(companies).forecast;
-    const mainDriver = dashboardMainDriver(companies);
-    const reviewLabel = STATE.dashboardFilters?.reviewType === 'monthly' ? 'Monthly Reviews Missing' : 'Weekly Reviews Missing';
+    const reviewLabel = STATE.dashboardFilters?.reviewType === 'monthly' ? 'Reviews Missing' : 'Reviews Missing';
     const completionSub = comparison.delta === null
-      ? (forecast === null ? `${completionRowsForScope.length} filtered completion rows` : `Forecast next period: ${forecast.toFixed(0)}%`)
+      ? `${companies.length} client${companies.length === 1 ? '' : 's'} in view`
       : `${dashboardTrendText(comparison.delta)} ${comparison.label}`;
     const items = [
-      { label: 'Operations Health', value: `${health.score}/100`, sub: mainDriver?.text || dashboardPeriodLabel(), icon: '◎', tone: health.score >= 80 ? 'green' : health.score >= 60 ? 'warn' : 'red' },
-      { label: 'Clients in Scope', value: companies.length, sub: dashboardPeriodLabel(), icon: '👥', tone: 'blue' },
-      { label: 'Needs Attention', value: attention.length, sub: attention.length ? `${attention.reduce((sum, row) => sum + row.signals.length, 0)} detected operational signals` : 'no material warning signals', icon: '⚠', tone: attention.length ? 'warn' : 'green' },
-      { label: 'Location Completion', value: `${completionRate.toFixed(0)}%`, sub: completionSub, icon: '✓', tone: completionRate >= 85 ? 'green' : completionRate >= 65 ? 'warn' : 'red' },
-      { label: reviewLabel, value: reviewsMissing, sub: dashboardPeriodLabel(), icon: '📅', tone: reviewsMissing ? 'red' : 'green' },
-      { label: 'Open Risks', value: openRisks, sub: openRisks ? 'open / escalated in selected clients' : 'no open risks', icon: '🛡', tone: openRisks ? 'red' : 'green' }
+      { label: 'Completion', value: `${completionRate.toFixed(0)}%`, sub: completionSub, icon: '✓', tone: completionRate >= 85 ? 'green' : completionRate >= 65 ? 'warn' : 'red' },
+      { label: 'Needs Attention', value: attention.length, sub: attention.length ? 'clients to review' : 'all looking good', icon: '⚠', tone: attention.length ? 'warn' : 'green' },
+      { label: reviewLabel, value: reviewsMissing, sub: reviewsMissing ? 'follow-up needed' : 'all reviews covered', icon: '📅', tone: reviewsMissing ? 'red' : 'green' },
+      { label: 'Open Risks', value: openRisks, sub: openRisks ? 'active risks' : 'no open risks', icon: '🛡', tone: openRisks ? 'red' : 'green' }
     ];
     const toneClass = tone => `cs-kpi-card--${tone || 'blue'}`;
     $('csKpis').innerHTML = items.map(item => `<article class="cs-kpi-card ${toneClass(item.tone)}"><div class="cs-kpi-icon">${esc(item.icon)}</div><div class="cs-kpi-label">${esc(item.label)}</div><div class="cs-kpi-value">${esc(item.value)}</div><div class="cs-kpi-sub">${esc(item.sub)}</div></article>`).join('');
@@ -2208,150 +2212,88 @@
     const companies = dashboardFilteredCompanies();
     const latestRows = companies.flatMap(company => dashboardCompletionRows(company));
     const stats = averageCompletionMetrics(latestRows);
-    const openRisks = companies.reduce((sum, company) => sum + openRows(riskRows(company)).length, 0);
-    const reviewsMissing = companies.filter(dashboardReviewMissing).length;
-    const healthAggregate = dashboardOperationalHealthAggregate(companies);
     const attention = dashboardAttentionClients(companies);
-    const detectedSignals = attention.reduce((sum, row) => sum + row.signals.length, 0);
     const comparison = dashboardPeriodComparison(companies);
-    const mainDriver = dashboardMainDriver(companies);
-    const globalTrend = dashboardGlobalTrend(companies);
 
     const normalizePct = value => clamp(safeDecimal(value), 0, 100);
     const segment = (label, value, className) => {
       const width = normalizePct(value);
-      return `<span class="cs-breakdown-seg ${className}" style="width:${width.toFixed(2)}%"><b>${width >= 8 ? `${width.toFixed(2)}%` : ''}</b><em>${esc(label)}</em></span>`;
+      return `<span class="cs-breakdown-seg ${className}" style="width:${width.toFixed(2)}%"><b>${width >= 8 ? `${width.toFixed(0)}%` : ''}</b><em>${esc(label)}</em></span>`;
+    };
+    const comparisonText = comparison.delta === null
+      ? 'No previous period to compare yet.'
+      : `${dashboardTrendText(comparison.delta)} ${comparison.label}`;
+
+    const friendlyStatus = company => {
+      const health = dashboardOperationalHealth(company);
+      const signals = dashboardDetectedSignals(company);
+      const severe = signals.some(signal => ['critical', 'high'].includes(String(signal.severity || '').toLowerCase()));
+      if (severe || health.score < 60) return { label: 'Action Needed', tone: 'danger' };
+      if (signals.length || health.score < 80) return { label: 'Watch', tone: 'warn' };
+      return { label: 'Good', tone: 'good' };
     };
 
-    const trendEntries = globalTrend.entries.slice(-6);
-    const trendValues = globalTrend.values.slice(-6);
-    const spark = (() => {
-      if (!trendValues.length) return '<div class="cs-empty cs-mini-empty">No trend data yet</div>';
-      const w = 460, h = 130, pad = 18;
-      const denom = Math.max(1, trendValues.length - 1);
-      const points = trendValues.map((v, i) => {
-        const x = pad + (i * (w - pad * 2) / denom);
-        const y = h - pad - (normalizePct(v) * (h - pad * 2) / 100);
-        return [x, y];
-      });
-      const d = points.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
-      const circles = points.map((p, i) => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="4"><title>${esc(trendEntries[i]?.[0] || '')}: ${trendValues[i].toFixed(2)}%</title></circle>`).join('');
-      const labels = trendEntries.map(([date], i) => {
-        const x = pad + (i * (w - pad * 2) / denom);
-        return `<text x="${x.toFixed(1)}" y="${h - 2}" text-anchor="middle">${esc(fmtDate(date).replace(/,.*$/, ''))}</text>`;
-      }).join('');
-      return `<svg class="cs-trend-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="Average completion trend"><line x1="${pad}" y1="${h-pad}" x2="${w-pad}" y2="${h-pad}" class="axis"/><line x1="${pad}" y1="${pad}" x2="${pad}" y2="${h-pad}" class="axis"/><path d="${d}" class="line"/><g class="points">${circles}</g><g class="labels">${labels}</g></svg>`;
-    })();
-
-    const donutStyle = `background: conic-gradient(var(--cs-good) 0 ${normalizePct(stats.done_on_time).toFixed(2)}%, var(--cs-blue-accent) ${normalizePct(stats.done_on_time).toFixed(2)}% ${normalizePct(stats.done_on_time + stats.done_late).toFixed(2)}%, var(--cs-orange) ${normalizePct(stats.done_on_time + stats.done_late).toFixed(2)}% ${normalizePct(stats.done_on_time + stats.done_late + stats.partially_done).toFixed(2)}%, var(--cs-red) ${normalizePct(stats.done_on_time + stats.done_late + stats.partially_done).toFixed(2)}% 100%);`;
-
-    const ranked = companies.map(company => ({ company, trend: dashboardClientTrend(company), health: dashboardOperationalHealth(company) }));
-    const declining = ranked.filter(row => row.trend.delta !== null).sort((a, b) => a.trend.delta - b.trend.delta)[0] || null;
-    const improving = ranked.filter(row => row.trend.delta !== null).sort((a, b) => b.trend.delta - a.trend.delta)[0] || null;
-    const forecastText = globalTrend.forecast === null
-      ? 'More completion periods are needed before a forecast can be shown.'
-      : `Projected next-period completion is ${globalTrend.forecast.toFixed(1)}% based on the recent completion trend.`;
-    const compareText = comparison.delta === null
-      ? 'No previous comparable period is available yet.'
-      : `Completion is ${dashboardTrendText(comparison.delta)} ${comparison.label}.`;
-
-    const smartInsights = [
-      { tone: mainDriver && mainDriver.percent < 60 ? 'danger' : 'warn', title: 'Main health driver', text: mainDriver?.text || 'No health-driver data is available yet.' },
-      { tone: globalTrend.forecast !== null && stats.completion && globalTrend.forecast < stats.completion ? 'warn' : 'good', title: 'Completion forecast', text: forecastText },
-      { tone: 'warn', title: 'Period comparison', text: compareText },
-      declining && declining.trend.delta < 0
-        ? { tone: declining.trend.delta <= -10 ? 'danger' : 'warn', title: 'Largest decline', text: `${companyName(declining.company)} is down ${Math.abs(declining.trend.delta).toFixed(1)} points vs its previous reported period.` }
-        : improving && improving.trend.delta > 0
-          ? { tone: 'good', title: 'Strongest improvement', text: `${companyName(improving.company)} improved by ${improving.trend.delta.toFixed(1)} points vs its previous reported period.` }
-          : { tone: 'good', title: 'Operational stability', text: 'No material client-level decline is visible in the available trend data.' }
-    ];
-
     const quickRows = [
-      ['New Group Completion', 'completion'],
-      ['New Brand Layer', 'brand'],
-      ['New Weekly Review', 'review'],
-      ['Add Extra CS Effort', 'task'],
-      ['Add Risk', 'risk'],
-      ['Schedule QBR', 'qbr']
+      ['New Completion', 'completion'],
+      ['New Review', 'review'],
+      ['Add Task', 'task'],
+      ['Add Risk', 'risk']
     ];
 
     root.innerHTML = `
-      <div class="cs-smart-grid">
-        <section class="cs-analytics-card cs-health-card">
-          <div class="cs-section-title"><h4>Operations Health Score</h4><span>${esc(dashboardPeriodLabel())}</span></div>
-          <div class="cs-health-summary">
-            <div class="cs-health-ring ${dashboardHealthTone(healthAggregate.score)}" style="--cs-health:${healthAggregate.score}%"><div><strong>${healthAggregate.score}</strong><span>/100</span><em>${esc(healthAggregate.label)}</em></div></div>
-            <div class="cs-health-components">${healthAggregate.components.map(component => `<div><span>${esc(component.label)}</span><b>${component.percent.toFixed(0)}%</b><i><em style="width:${component.percent.toFixed(1)}%"></em></i></div>`).join('')}</div>
+      <div class="cs-simple-overview">
+        <section class="cs-analytics-card cs-simple-completion-card">
+          <div class="cs-section-title"><h4>Completion Overview</h4><span>${esc(dashboardPeriodLabel())}</span></div>
+          <div class="cs-simple-completion-head">
+            <div><strong>${stats.completion.toFixed(0)}%</strong><span>overall completion</span></div>
+            <div class="cs-simple-trend ${comparison.delta !== null && comparison.delta < 0 ? 'down' : 'up'}">${esc(comparisonText)}</div>
           </div>
-          <details class="cs-health-details"><summary>Explain this score</summary><div class="cs-health-explain-copy">The overall score is the average operational health of the clients in the current filter scope. It combines completion performance, on-time execution, trend direction, review consistency, risk control and task follow-up.</div></details>
-        </section>
-        <section class="cs-analytics-card cs-attention-card">
-          <div class="cs-section-title"><h4>Needs Attention</h4><span>${attention.length} clients · ${detectedSignals} signals</span></div>
-          <div class="cs-attention-list">${attention.slice(0, 6).map(row => {
-            const company = row.company;
-            const signal = row.signals[0] || { severity: 'medium', title: 'Operational review recommended', detail: row.action };
-            return `<article class="cs-attention-row ${attr(signal.severity)}"><div class="cs-attention-main"><strong>${esc(companyName(company))}</strong><span>${esc(signal.title)}</span><small>${esc(signal.detail)}</small></div><div class="cs-attention-score"><b>${row.health.score}</b><span>${esc(row.health.label)}</span></div><div class="cs-attention-actions"><button class="btn ghost sm" type="button" data-cs-action="health-explain" data-cs-company-id="${attr(companyId(company))}">Explain</button><button class="btn ghost sm" type="button" data-cs-action="open-client" data-cs-company-id="${attr(companyId(company))}">Open</button>${canCreate() ? `<button class="btn sm" type="button" data-cs-action="risk" data-cs-company-id="${attr(companyId(company))}">Add Risk</button>` : ''}</div></article>`;
-          }).join('') || '<div class="cs-empty">No clients currently require material operational attention.</div>'}</div>
-        </section>
-      </div>
-
-      <div class="cs-dashboard-top">
-        <section class="cs-analytics-card cs-analytics-card--wide">
-          <div class="cs-section-title"><h4>Completion Breakdown <small>(Percentages)</small></h4><span>Completion = Done On-Time + Done Late</span></div>
           <div class="cs-breakdown-stack">
-            ${segment('Done On-Time', stats.done_on_time, 'done')}
-            ${segment('Done Late', stats.done_late, 'late')}
-            ${segment('Partially Done', stats.partially_done, 'partial')}
+            ${segment('On-Time', stats.done_on_time, 'done')}
+            ${segment('Late', stats.done_late, 'late')}
+            ${segment('Partial', stats.partially_done, 'partial')}
             ${segment('Missed', stats.missed, 'missed')}
           </div>
-          <div class="cs-breakdown-axis"><span>0%</span><span>20%</span><span>40%</span><span>60%</span><span>80%</span><span>100%</span></div>
-          <div class="cs-breakdown-legend"><span><i class="done"></i>Done On-Time</span><span><i class="late"></i>Done Late</span><span><i class="partial"></i>Partially Done</span><span><i class="missed"></i>Missed</span></div>
-        </section>
-        <section class="cs-analytics-card">
-          <div class="cs-section-title"><h4>Average Completion Trend</h4><span>${esc(dashboardPeriodLabel())}</span></div>
-          ${spark}
-          <div class="cs-trend-intelligence"><span>${esc(compareText)}</span><b>${globalTrend.forecast === null ? 'Forecast pending' : `Forecast ${globalTrend.forecast.toFixed(1)}%`}</b></div>
-        </section>
-        <section class="cs-analytics-card cs-status-card">
-          <div class="cs-section-title"><h4>Completion by Status</h4><span>${latestRows.length} filtered rows</span></div>
-          <div class="cs-donut-mini" style="${donutStyle}"><strong>${stats.completion.toFixed(0)}%</strong><span>Completion</span></div>
-          <div class="cs-status-lines">
-            <div><i class="done"></i><span>Done On-Time</span><b>${stats.done_on_time.toFixed(2)}%</b></div>
-            <div><i class="late"></i><span>Done Late</span><b>${stats.done_late.toFixed(2)}%</b></div>
-            <div><i class="partial"></i><span>Partially Done</span><b>${stats.partially_done.toFixed(2)}%</b></div>
-            <div><i class="missed"></i><span>Missed</span><b>${stats.missed.toFixed(2)}%</b></div>
+          <div class="cs-simple-status-grid">
+            <div><i class="done"></i><span>On-Time</span><b>${stats.done_on_time.toFixed(1)}%</b></div>
+            <div><i class="late"></i><span>Late</span><b>${stats.done_late.toFixed(1)}%</b></div>
+            <div><i class="partial"></i><span>Partial</span><b>${stats.partially_done.toFixed(1)}%</b></div>
+            <div><i class="missed"></i><span>Missed</span><b>${stats.missed.toFixed(1)}%</b></div>
           </div>
+          <button class="btn ghost sm" type="button" data-cs-action="completion-export">View / Export Report</button>
         </section>
-        <aside class="cs-analytics-card cs-insights-card">
-          <div class="cs-section-title"><h4>Smart Insights</h4><span>ranked operational signals</span></div>
-          ${smartInsights.map(item => `<div class="cs-insight-row ${attr(item.tone)}"><b>${esc(item.title)}</b><span>${esc(item.text)}</span></div>`).join('')}
-          <button class="btn ghost sm cs-full-width" type="button" data-cs-action="completion-export">View / Export Report</button>
-        </aside>
+
+        <section class="cs-analytics-card cs-simple-attention-card">
+          <div class="cs-section-title"><h4>Needs Attention</h4><span>${attention.length} client${attention.length === 1 ? '' : 's'}</span></div>
+          <div class="cs-simple-attention-list">${attention.slice(0, 6).map(row => {
+            const company = row.company;
+            const signal = row.signals[0] || { title: 'Review recommended', detail: row.action };
+            const status = friendlyStatus(company);
+            return `<article class="cs-simple-attention-row"><div><strong>${esc(companyName(company))}</strong><span>${esc(signal.title)}</span><small>${esc(signal.detail)}</small></div><span class="cs-simple-status ${attr(status.tone)}">${esc(status.label)}</span><button class="btn ghost sm" type="button" data-cs-action="open-client" data-cs-company-id="${attr(companyId(company))}">Open</button></article>`;
+          }).join('') || '<div class="cs-empty">Nothing urgent right now. The selected clients are looking good.</div>'}</div>
+        </section>
       </div>
 
-      <div class="cs-dashboard-bottom">
+      <div class="cs-dashboard-bottom cs-dashboard-bottom--simple">
         <section class="cs-analytics-card cs-table-preview">
-          <div class="cs-section-title"><h4>Operations Matrix</h4><span>health, trend and next action</span></div>
+          <div class="cs-section-title"><h4>Client Overview</h4><span>${companies.length} clients</span></div>
           <div class="cs-compact-table-wrap">
-            <table class="cs-compact-table cs-ops-overview-table cs-smart-matrix">
-              <thead><tr><th>Client / Group</th><th>Locations</th><th>Completion</th><th>Trend</th><th>Review</th><th>Open Risks</th><th>Health</th><th>Suggested Action</th><th>Open</th></tr></thead>
-              <tbody>${companies.slice().sort((a, b) => dashboardOperationalHealth(a).score - dashboardOperationalHealth(b).score).slice(0, 20).map(company => {
+            <table class="cs-compact-table cs-simple-client-table">
+              <thead><tr><th>Client / Group</th><th>Completion</th><th>Trend</th><th>Open Risks</th><th>Status</th><th></th></tr></thead>
+              <tbody>${companies.slice().sort((a, b) => dashboardOperationalHealth(a).score - dashboardOperationalHealth(b).score).map(company => {
                 const groups = groupsForCompany(company).map(g => g.group_name).join(', ') || 'Ungrouped';
-                const rows = dashboardCompletionRows(company);
                 const health = dashboardOperationalHealth(company);
-                const trend = health.trend;
-                const locations = new Set(rows.map(row => normalize(locationNameFromRow(row))).filter(Boolean)).size;
+                const status = friendlyStatus(company);
                 const risks = openRows(riskRows(company)).length;
-                const action = dashboardSuggestedAction(company);
-                return `<tr><td><strong>${esc(companyName(company))}</strong><small>${esc(groups)}</small></td><td>${locations || '—'}</td><td><b>${health.metrics.completion.toFixed(1)}%</b></td><td class="${trend.delta !== null && trend.delta < 0 ? 'danger' : 'good'}">${esc(dashboardTrendText(trend.delta))}</td><td class="${health.reviewIsMissing ? 'danger' : 'good'}">${health.reviewIsMissing ? 'Missing' : 'Covered'}</td><td class="${risks ? 'danger' : 'good'}">${risks}</td><td><button class="cs-health-score-button ${dashboardHealthTone(health.score)}" type="button" data-cs-action="health-explain" data-cs-company-id="${attr(companyId(company))}"><b>${health.score}</b><span>${esc(health.label)}</span></button></td><td class="cs-action-cell">${esc(action)}</td><td><button class="btn ghost sm" type="button" data-cs-action="open-client" data-cs-company-id="${attr(companyId(company))}">Open</button></td></tr>`;
-              }).join('') || '<tr><td colspan="9"><div class="cs-empty">No clients match the selected operational filters.</div></td></tr>'}</tbody>
+                return `<tr><td><strong>${esc(companyName(company))}</strong><small>${esc(groups)}</small></td><td><b>${health.metrics.completion.toFixed(1)}%</b></td><td class="${health.trend.delta !== null && health.trend.delta < 0 ? 'danger' : 'good'}">${esc(dashboardTrendText(health.trend.delta))}</td><td class="${risks ? 'danger' : 'good'}">${risks}</td><td><span class="cs-simple-status ${attr(status.tone)}">${esc(status.label)}</span></td><td><button class="btn ghost sm" type="button" data-cs-action="open-client" data-cs-company-id="${attr(companyId(company))}">Open</button></td></tr>`;
+              }).join('') || '<tr><td colspan="6"><div class="cs-empty">No clients match the selected filters.</div></td></tr>'}</tbody>
             </table>
           </div>
         </section>
-        <aside class="cs-analytics-card cs-quick-card">
-          <div class="cs-section-title"><h4>Quick Actions</h4><span>CS flow</span></div>
+        <aside class="cs-analytics-card cs-quick-card cs-quick-card--simple">
+          <div class="cs-section-title"><h4>Quick Actions</h4><span>common tasks</span></div>
           ${quickRows.map(([label, action]) => `<button type="button" data-cs-action="${attr(action)}"><span>＋</span>${esc(label)}</button>`).join('')}
-          <div class="cs-mini-note">${attention.length ? `${attention.length} client${attention.length === 1 ? '' : 's'} currently need operational attention.` : 'No material operational attention is required in the selected scope.'}</div>
+          <div class="cs-mini-note">Keep it simple: review the clients marked <b>Action Needed</b> first.</div>
         </aside>
       </div>`;
   }
