@@ -302,7 +302,9 @@
       key === 'special-client-open' ||
       key === 'completion-history-client' ||
       key === 'completion-history-group' ||
-      key === 'completion-history-brand'
+      key === 'completion-history-brand' ||
+      key === 'health-explain' ||
+      key === 'open-client'
     ) return 'view';
     if (key === 'special-client-use-completion' || key === 'special-brand-use-completion') return 'create';
     if (key === 'special-client-create') return 'create';
@@ -1775,7 +1777,7 @@
     if (filters.client && filters.client !== 'All' && companyId(company) !== filters.client) return false;
     if (filters.group && filters.group !== 'All' && !groupsForCompany(company).some(group => groupId(group) === filters.group)) return false;
     if (filters.brand && filters.brand !== 'All' && !brandsForCompany(company).some(brand => brandId(brand) === filters.brand)) return false;
-    const score = computeHealth(company);
+    const score = dashboardOperationalHealth(company).score;
     if (filters.risk === 'At Risk' && score >= 60) return false;
     if (filters.risk === 'No Risk' && score < 60) return false;
     if (filters.risk === 'Open Risk' && !openRows(riskRows(company)).length) return false;
@@ -1842,6 +1844,232 @@
       }, bounds);
     });
     return completed.length === 0;
+  }
+
+  function dashboardShiftIso(iso, days) {
+    const raw = dashboardIsoDate(iso);
+    if (!raw) return '';
+    const d = new Date(`${raw}T12:00:00`);
+    if (Number.isNaN(d.getTime())) return '';
+    d.setDate(d.getDate() + Number(days || 0));
+    return dashboardDateIso(d);
+  }
+
+  function dashboardPreviousBounds(bounds = dashboardFilterDateBounds()) {
+    const from = dashboardIsoDate(bounds?.from || '');
+    const to = dashboardIsoDate(bounds?.to || '');
+    if (!from || !to) return { from: '', to: '' };
+    const fromDate = new Date(`${from}T12:00:00`);
+    const toDate = new Date(`${to}T12:00:00`);
+    if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime())) return { from: '', to: '' };
+    const durationDays = Math.max(1, Math.round((toDate - fromDate) / 86400000) + 1);
+    const previousTo = dashboardShiftIso(from, -1);
+    const previousFrom = dashboardShiftIso(previousTo, -(durationDays - 1));
+    return { from: previousFrom, to: previousTo };
+  }
+
+  function dashboardCompletionRowsForBounds(company, bounds) {
+    const filters = STATE.dashboardFilters || {};
+    let rows = completionRows(company).slice().filter(row => dashboardRowOverlapsDate(row, bounds));
+    if (filters.reviewType && filters.reviewType !== 'all') rows = rows.filter(row => String(row.review_type || '').trim().toLowerCase() === filters.reviewType);
+    const brandLocations = dashboardBrandLocationSet(company);
+    if (brandLocations) rows = rows.filter(row => brandLocations.has(normalize(locationNameFromRow(row))));
+    if (filters.location && filters.location !== 'All') rows = rows.filter(row => normalize(locationNameFromRow(row)) === normalize(filters.location));
+    return rows.filter(dashboardCompletionStatusMatches);
+  }
+
+  function dashboardTrendSeriesForRows(rows = [], limit = 8) {
+    const map = new Map();
+    (Array.isArray(rows) ? rows : []).forEach(row => {
+      const key = String(row.period_end || row.period_start || row.review_period_end || row.review_period_start || '').slice(0, 10);
+      if (!key) return;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(row);
+    });
+    const entries = Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0])).slice(-Math.max(2, Number(limit) || 8));
+    const values = entries.map(([, grouped]) => averageCompletionMetrics(aggregateCompletionRows(grouped)).completion);
+    const current = values.length ? values[values.length - 1] : null;
+    const previous = values.length > 1 ? values[values.length - 2] : null;
+    const delta = current !== null && previous !== null ? current - previous : null;
+    const diffs = values.slice(1).map((value, index) => value - values[index]);
+    const recentDiffs = diffs.slice(-3);
+    const slope = recentDiffs.length ? recentDiffs.reduce((sum, value) => sum + value, 0) / recentDiffs.length : 0;
+    const forecast = current === null ? null : clamp(current + slope, 0, 100);
+    return { entries, values, current, previous, delta, slope, forecast };
+  }
+
+  function dashboardClientTrend(company) {
+    return dashboardTrendSeriesForRows(dashboardCompletionRows(company, { trend: true }), 8);
+  }
+
+  function dashboardGlobalTrend(companies = dashboardFilteredCompanies()) {
+    const rows = (Array.isArray(companies) ? companies : []).flatMap(company => dashboardCompletionRows(company, { trend: true }));
+    return dashboardTrendSeriesForRows(rows, 8);
+  }
+
+  function dashboardOverdueTasks(company) {
+    const today = isoToday();
+    return taskRows(company).filter(task => {
+      const status = String(task.status || '').trim().toLowerCase();
+      const due = dashboardIsoDate(task.due_date || task.follow_up_date || '');
+      return due && due < today && !['done', 'completed', 'closed', 'canceled', 'cancelled'].includes(status);
+    });
+  }
+
+  function dashboardOperationalHealth(company) {
+    const rows = dashboardCompletionRows(company);
+    const metrics = averageCompletionMetrics(rows);
+    const trend = dashboardClientTrend(company);
+    const reviewIsMissing = dashboardReviewMissing(company);
+    const risks = openRows(riskRows(company));
+    const overdueTasks = dashboardOverdueTasks(company);
+
+    const completionPoints = rows.length ? clamp((metrics.completion / 100) * 40, 0, 40) : 0;
+    const timelinessPoints = rows.length ? clamp((metrics.done_on_time / 100) * 15, 0, 15) : 0;
+    const trendPoints = rows.length
+      ? (trend.delta === null ? 8 : clamp(8 + (trend.delta * 0.7), 0, 15))
+      : 0;
+    const reviewPoints = reviewIsMissing ? 0 : 10;
+    const riskPenalty = risks.reduce((sum, risk) => sum + ({ critical: 10, high: 6, medium: 3, low: 1 }[String(risk.severity || '').trim().toLowerCase()] || 2), 0);
+    const riskPoints = clamp(10 - riskPenalty, 0, 10);
+    const taskPoints = clamp(10 - (overdueTasks.length * 2), 0, 10);
+
+    const score = clamp(Math.round(completionPoints + timelinessPoints + trendPoints + reviewPoints + riskPoints + taskPoints), 0, 100);
+    const drivers = [
+      { key: 'completion', label: 'Completion performance', points: completionPoints, max: 40, detail: rows.length ? `${metrics.completion.toFixed(1)}% completion` : 'No completion data in scope' },
+      { key: 'timeliness', label: 'On-time execution', points: timelinessPoints, max: 15, detail: rows.length ? `${metrics.done_on_time.toFixed(1)}% done on-time` : 'No completion data in scope' },
+      { key: 'trend', label: 'Trend direction', points: trendPoints, max: 15, detail: trend.delta === null ? 'Not enough periods to compare' : `${trend.delta >= 0 ? '+' : ''}${trend.delta.toFixed(1)} pts vs previous reported period` },
+      { key: 'reviews', label: 'Review consistency', points: reviewPoints, max: 10, detail: reviewIsMissing ? 'Selected review cadence is missing' : 'Selected review cadence is covered' },
+      { key: 'risks', label: 'Risk control', points: riskPoints, max: 10, detail: `${risks.length} open risk${risks.length === 1 ? '' : 's'}` },
+      { key: 'tasks', label: 'Task follow-up', points: taskPoints, max: 10, detail: `${overdueTasks.length} overdue task${overdueTasks.length === 1 ? '' : 's'}` }
+    ];
+
+    return { score, label: healthLabel(score), drivers, metrics, trend, reviewIsMissing, risks, overdueTasks, rows };
+  }
+
+  function dashboardOperationalHealthAggregate(companies = dashboardFilteredCompanies()) {
+    const list = (Array.isArray(companies) ? companies : []).map(company => dashboardOperationalHealth(company));
+    const score = list.length ? Math.round(list.reduce((sum, row) => sum + row.score, 0) / list.length) : 0;
+    const keys = ['completion', 'timeliness', 'trend', 'reviews', 'risks', 'tasks'];
+    const components = keys.map(key => {
+      const matching = list.map(row => row.drivers.find(driver => driver.key === key)).filter(Boolean);
+      const max = matching[0]?.max || 0;
+      const points = matching.length ? matching.reduce((sum, row) => sum + row.points, 0) / matching.length : 0;
+      return { key, label: matching[0]?.label || key, points, max, percent: max ? clamp((points / max) * 100, 0, 100) : 0 };
+    });
+    return { score, label: healthLabel(score), components, list };
+  }
+
+  function dashboardDetectedSignals(company) {
+    const health = dashboardOperationalHealth(company);
+    const signals = [];
+    const add = (severity, title, detail, action = 'Review client') => signals.push({ severity, title, detail, action });
+    if (!health.rows.length) add('high', 'No completion data', 'No completion report is available for the selected operational scope.', 'Confirm reporting coverage');
+    else {
+      if (health.metrics.completion < 50) add('critical', 'Completion is critically low', `${health.metrics.completion.toFixed(1)}% completion in the selected scope.`, 'Investigate missed operations');
+      else if (health.metrics.completion < 70) add('high', 'Completion is below target', `${health.metrics.completion.toFixed(1)}% completion in the selected scope.`, 'Review underperforming locations');
+      else if (health.metrics.completion < 85) add('medium', 'Completion needs attention', `${health.metrics.completion.toFixed(1)}% completion in the selected scope.`, 'Monitor weak locations');
+      if (health.metrics.missed >= 30) add('critical', 'Missed activity is high', `${health.metrics.missed.toFixed(1)}% is currently marked missed.`, 'Investigate missed activity');
+      else if (health.metrics.missed >= 15) add('high', 'Missed activity is elevated', `${health.metrics.missed.toFixed(1)}% is currently marked missed.`, 'Follow up on misses');
+    }
+    if (health.trend.delta !== null && health.trend.delta <= -10) add('critical', 'Completion dropped sharply', `${Math.abs(health.trend.delta).toFixed(1)} point decline vs the previous reported period.`, 'Review the decline immediately');
+    else if (health.trend.delta !== null && health.trend.delta <= -5) add('high', 'Completion is declining', `${Math.abs(health.trend.delta).toFixed(1)} point decline vs the previous reported period.`, 'Check declining locations');
+    if (health.reviewIsMissing) add('high', 'Client review is missing', 'The selected review cadence has not been completed.', 'Complete the client review');
+    if (health.risks.length) {
+      const topSeverity = health.risks.slice().sort((a, b) => severityRank(b.severity) - severityRank(a.severity))[0]?.severity || 'Open';
+      add(String(topSeverity).toLowerCase() === 'critical' ? 'critical' : 'high', 'Open client risk', `${health.risks.length} open risk${health.risks.length === 1 ? '' : 's'}; highest severity: ${topSeverity}.`, 'Review the risk action plan');
+    }
+    if (health.overdueTasks.length) add(health.overdueTasks.length >= 3 ? 'high' : 'medium', 'Overdue follow-up tasks', `${health.overdueTasks.length} overdue task${health.overdueTasks.length === 1 ? '' : 's'} require action.`, 'Close overdue follow-ups');
+    if (health.score < 40) add('critical', 'Operational health is critical', `Operational Health Score is ${health.score}/100.`, 'Immediate CS intervention');
+    const weight = { critical: 4, high: 3, medium: 2, low: 1 };
+    return signals.sort((a, b) => (weight[b.severity] || 0) - (weight[a.severity] || 0));
+  }
+
+  function dashboardSuggestedAction(company) {
+    const signals = dashboardDetectedSignals(company);
+    if (signals.length) return signals[0].action;
+    const health = dashboardOperationalHealth(company);
+    if (health.trend.delta !== null && health.trend.delta >= 5) return 'Maintain the improving cadence';
+    if (health.metrics.completion >= 90) return 'Maintain current operations';
+    return 'Continue monitoring';
+  }
+
+  function dashboardAttentionClients(companies = dashboardFilteredCompanies()) {
+    const weight = { critical: 4, high: 3, medium: 2, low: 1 };
+    return (Array.isArray(companies) ? companies : []).map(company => {
+      const health = dashboardOperationalHealth(company);
+      const signals = dashboardDetectedSignals(company);
+      const topWeight = signals.length ? (weight[signals[0].severity] || 0) : 0;
+      return { company, health, signals, topWeight, action: dashboardSuggestedAction(company) };
+    }).filter(row => row.health.score < 70 || row.topWeight >= 3)
+      .sort((a, b) => b.topWeight - a.topWeight || a.health.score - b.health.score || companyName(a.company).localeCompare(companyName(b.company)));
+  }
+
+  function dashboardPeriodComparison(companies = dashboardFilteredCompanies()) {
+    const currentRows = (Array.isArray(companies) ? companies : []).flatMap(company => dashboardCompletionRows(company));
+    const current = currentRows.length ? averageCompletionMetrics(currentRows).completion : null;
+    const period = STATE.dashboardFilters?.period || 'latest';
+
+    if (period === 'latest' || period === 'all') {
+      const trend = dashboardGlobalTrend(companies);
+      return {
+        current: trend.current ?? current,
+        previous: trend.previous,
+        delta: trend.delta,
+        label: 'vs previous reported period'
+      };
+    }
+
+    const bounds = dashboardFilterDateBounds();
+    const previousBounds = dashboardPreviousBounds(bounds);
+    const previousRows = (Array.isArray(companies) ? companies : []).flatMap(company => dashboardCompletionRowsForBounds(company, previousBounds));
+    const previous = previousRows.length ? averageCompletionMetrics(previousRows).completion : null;
+    return {
+      current,
+      previous,
+      delta: current !== null && previous !== null ? current - previous : null,
+      label: previousBounds.from && previousBounds.to ? `vs ${fmtDate(previousBounds.from)} – ${fmtDate(previousBounds.to)}` : 'vs previous period'
+    };
+  }
+
+  function dashboardMainDriver(companies = dashboardFilteredCompanies()) {
+    const aggregate = dashboardOperationalHealthAggregate(companies);
+    const weakest = aggregate.components.slice().sort((a, b) => a.percent - b.percent)[0] || null;
+    return weakest ? { ...weakest, text: `${weakest.label} is the weakest health driver at ${weakest.percent.toFixed(0)}% of target.` } : null;
+  }
+
+  function dashboardHealthTone(score) {
+    if (score >= 80) return 'good';
+    if (score >= 60) return 'warn';
+    return 'danger';
+  }
+
+  function dashboardTrendText(delta) {
+    if (delta === null || delta === undefined || Number.isNaN(Number(delta))) return 'No comparison yet';
+    const value = Number(delta);
+    return `${value >= 0 ? '↑' : '↓'} ${Math.abs(value).toFixed(1)} pts`;
+  }
+
+  function dashboardHealthDriverRows(health) {
+    return (health?.drivers || []).map(driver => {
+      const pct = driver.max ? clamp((driver.points / driver.max) * 100, 0, 100) : 0;
+      return `<div class="cs-health-driver"><div><strong>${esc(driver.label)}</strong><span>${esc(driver.detail)}</span></div><b>${driver.points.toFixed(1)}/${driver.max}</b><div class="cs-health-driver-bar"><i style="width:${pct.toFixed(1)}%"></i></div></div>`;
+    }).join('');
+  }
+
+  function openOperationalHealthExplain(companyIdValue = '') {
+    const company = (STATE.rows.companies || []).find(row => companyId(row) === String(companyIdValue || '').trim());
+    if (!company) { toast('Client could not be found.'); return; }
+    const health = dashboardOperationalHealth(company);
+    const signals = dashboardDetectedSignals(company);
+    openModal(`Operational Health — ${companyName(company)}`, `
+      <div class="cs-health-explain">
+        <div class="cs-health-explain-head ${dashboardHealthTone(health.score)}"><strong>${health.score}/100</strong><span>${esc(health.label)}</span></div>
+        <p>The score is calculated from the selected operational period and filters. Each component below shows exactly how the score was built.</p>
+        <div class="cs-health-driver-list">${dashboardHealthDriverRows(health)}</div>
+        <div class="cs-section-title"><h4>Detected Signals</h4><span>${signals.length}</span></div>
+        ${signals.length ? `<div class="cs-signal-list">${signals.map(signal => `<div class="cs-signal-row ${attr(signal.severity)}"><b>${esc(signal.title)}</b><span>${esc(signal.detail)}</span><em>${esc(signal.action)}</em></div>`).join('')}</div>` : '<div class="cs-empty">No material operational warning signals detected in the selected scope.</div>'}
+      </div>`);
   }
 
   function dashboardLocationOptions() {
@@ -1949,21 +2177,25 @@
 
   function renderKpis() {
     const companies = dashboardFilteredCompanies();
-    const healthScores = companies.map(c => computeHealth(c));
-    const atRisk = healthScores.filter(s => s < 60).length;
+    const health = dashboardOperationalHealthAggregate(companies);
+    const attention = dashboardAttentionClients(companies);
     const reviewsMissing = companies.filter(dashboardReviewMissing).length;
     const completionRowsForScope = companies.flatMap(company => dashboardCompletionRows(company));
     const completionRate = averageCompletionMetrics(completionRowsForScope).completion;
     const openRisks = companies.reduce((sum, company) => sum + openRows(riskRows(company)).length, 0);
-    const groupIds = new Set(companies.flatMap(company => groupsForCompany(company).map(groupId)).filter(Boolean));
-    const brandIds = new Set(companies.flatMap(company => brandsForCompany(company).map(brandId)).filter(Boolean));
+    const comparison = dashboardPeriodComparison(companies);
+    const forecast = dashboardGlobalTrend(companies).forecast;
+    const mainDriver = dashboardMainDriver(companies);
     const reviewLabel = STATE.dashboardFilters?.reviewType === 'monthly' ? 'Monthly Reviews Missing' : 'Weekly Reviews Missing';
+    const completionSub = comparison.delta === null
+      ? (forecast === null ? `${completionRowsForScope.length} filtered completion rows` : `Forecast next period: ${forecast.toFixed(0)}%`)
+      : `${dashboardTrendText(comparison.delta)} ${comparison.label}`;
     const items = [
+      { label: 'Operations Health', value: `${health.score}/100`, sub: mainDriver?.text || dashboardPeriodLabel(), icon: '◎', tone: health.score >= 80 ? 'green' : health.score >= 60 ? 'warn' : 'red' },
       { label: 'Clients in Scope', value: companies.length, sub: dashboardPeriodLabel(), icon: '👥', tone: 'blue' },
-      { label: 'Client Groups', value: groupIds.size, sub: `${brandIds.size} brand layer${brandIds.size === 1 ? '' : 's'} in scope`, icon: '🔗', tone: 'blue' },
-      { label: 'Clients at Risk', value: atRisk, sub: atRisk ? 'needs action' : 'no critical action', icon: '⚠', tone: atRisk ? 'warn' : 'green' },
+      { label: 'Needs Attention', value: attention.length, sub: attention.length ? `${attention.reduce((sum, row) => sum + row.signals.length, 0)} detected operational signals` : 'no material warning signals', icon: '⚠', tone: attention.length ? 'warn' : 'green' },
+      { label: 'Location Completion', value: `${completionRate.toFixed(0)}%`, sub: completionSub, icon: '✓', tone: completionRate >= 85 ? 'green' : completionRate >= 65 ? 'warn' : 'red' },
       { label: reviewLabel, value: reviewsMissing, sub: dashboardPeriodLabel(), icon: '📅', tone: reviewsMissing ? 'red' : 'green' },
-      { label: 'Location Completion', value: `${completionRate.toFixed(0)}%`, sub: `${completionRowsForScope.length} filtered completion row${completionRowsForScope.length === 1 ? '' : 's'}`, icon: '✓', tone: 'green' },
       { label: 'Open Risks', value: openRisks, sub: openRisks ? 'open / escalated in selected clients' : 'no open risks', icon: '🛡', tone: openRisks ? 'red' : 'green' }
     ];
     const toneClass = tone => `cs-kpi-card--${tone || 'blue'}`;
@@ -1977,10 +2209,13 @@
     const latestRows = companies.flatMap(company => dashboardCompletionRows(company));
     const stats = averageCompletionMetrics(latestRows);
     const openRisks = companies.reduce((sum, company) => sum + openRows(riskRows(company)).length, 0);
-    const atRisk = companies.filter(c => computeHealth(c) < 60).length;
     const reviewsMissing = companies.filter(dashboardReviewMissing).length;
-    const best = latestRows.length ? latestRows.slice().sort((a,b) => completionCount(b) - completionCount(a))[0] : null;
-    const weak = latestRows.slice().filter(row => completionCount(row) < 80).sort((a,b) => completionCount(a) - completionCount(b)).slice(0, 3);
+    const healthAggregate = dashboardOperationalHealthAggregate(companies);
+    const attention = dashboardAttentionClients(companies);
+    const detectedSignals = attention.reduce((sum, row) => sum + row.signals.length, 0);
+    const comparison = dashboardPeriodComparison(companies);
+    const mainDriver = dashboardMainDriver(companies);
+    const globalTrend = dashboardGlobalTrend(companies);
 
     const normalizePct = value => clamp(safeDecimal(value), 0, 100);
     const segment = (label, value, className) => {
@@ -1988,15 +2223,8 @@
       return `<span class="cs-breakdown-seg ${className}" style="width:${width.toFixed(2)}%"><b>${width >= 8 ? `${width.toFixed(2)}%` : ''}</b><em>${esc(label)}</em></span>`;
     };
 
-    const trendMap = new Map();
-    companies.flatMap(company => dashboardCompletionRows(company, { trend: true })).forEach(row => {
-      const key = String(row.period_end || row.period_start || '').slice(0, 10);
-      if (!key) return;
-      if (!trendMap.has(key)) trendMap.set(key, []);
-      trendMap.get(key).push(row);
-    });
-    const trendEntries = Array.from(trendMap.entries()).sort((a,b) => a[0].localeCompare(b[0])).slice(-6);
-    const trendValues = trendEntries.map(([, rows]) => averageCompletionMetrics(aggregateCompletionRows(rows)).completion);
+    const trendEntries = globalTrend.entries.slice(-6);
+    const trendValues = globalTrend.values.slice(-6);
     const spark = (() => {
       if (!trendValues.length) return '<div class="cs-empty cs-mini-empty">No trend data yet</div>';
       const w = 460, h = 130, pad = 18;
@@ -2017,6 +2245,27 @@
 
     const donutStyle = `background: conic-gradient(var(--cs-good) 0 ${normalizePct(stats.done_on_time).toFixed(2)}%, var(--cs-blue-accent) ${normalizePct(stats.done_on_time).toFixed(2)}% ${normalizePct(stats.done_on_time + stats.done_late).toFixed(2)}%, var(--cs-orange) ${normalizePct(stats.done_on_time + stats.done_late).toFixed(2)}% ${normalizePct(stats.done_on_time + stats.done_late + stats.partially_done).toFixed(2)}%, var(--cs-red) ${normalizePct(stats.done_on_time + stats.done_late + stats.partially_done).toFixed(2)}% 100%);`;
 
+    const ranked = companies.map(company => ({ company, trend: dashboardClientTrend(company), health: dashboardOperationalHealth(company) }));
+    const declining = ranked.filter(row => row.trend.delta !== null).sort((a, b) => a.trend.delta - b.trend.delta)[0] || null;
+    const improving = ranked.filter(row => row.trend.delta !== null).sort((a, b) => b.trend.delta - a.trend.delta)[0] || null;
+    const forecastText = globalTrend.forecast === null
+      ? 'More completion periods are needed before a forecast can be shown.'
+      : `Projected next-period completion is ${globalTrend.forecast.toFixed(1)}% based on the recent completion trend.`;
+    const compareText = comparison.delta === null
+      ? 'No previous comparable period is available yet.'
+      : `Completion is ${dashboardTrendText(comparison.delta)} ${comparison.label}.`;
+
+    const smartInsights = [
+      { tone: mainDriver && mainDriver.percent < 60 ? 'danger' : 'warn', title: 'Main health driver', text: mainDriver?.text || 'No health-driver data is available yet.' },
+      { tone: globalTrend.forecast !== null && stats.completion && globalTrend.forecast < stats.completion ? 'warn' : 'good', title: 'Completion forecast', text: forecastText },
+      { tone: 'warn', title: 'Period comparison', text: compareText },
+      declining && declining.trend.delta < 0
+        ? { tone: declining.trend.delta <= -10 ? 'danger' : 'warn', title: 'Largest decline', text: `${companyName(declining.company)} is down ${Math.abs(declining.trend.delta).toFixed(1)} points vs its previous reported period.` }
+        : improving && improving.trend.delta > 0
+          ? { tone: 'good', title: 'Strongest improvement', text: `${companyName(improving.company)} improved by ${improving.trend.delta.toFixed(1)} points vs its previous reported period.` }
+          : { tone: 'good', title: 'Operational stability', text: 'No material client-level decline is visible in the available trend data.' }
+    ];
+
     const quickRows = [
       ['New Group Completion', 'completion'],
       ['New Brand Layer', 'brand'],
@@ -2027,6 +2276,25 @@
     ];
 
     root.innerHTML = `
+      <div class="cs-smart-grid">
+        <section class="cs-analytics-card cs-health-card">
+          <div class="cs-section-title"><h4>Operations Health Score</h4><span>${esc(dashboardPeriodLabel())}</span></div>
+          <div class="cs-health-summary">
+            <div class="cs-health-ring ${dashboardHealthTone(healthAggregate.score)}" style="--cs-health:${healthAggregate.score}%"><div><strong>${healthAggregate.score}</strong><span>/100</span><em>${esc(healthAggregate.label)}</em></div></div>
+            <div class="cs-health-components">${healthAggregate.components.map(component => `<div><span>${esc(component.label)}</span><b>${component.percent.toFixed(0)}%</b><i><em style="width:${component.percent.toFixed(1)}%"></em></i></div>`).join('')}</div>
+          </div>
+          <details class="cs-health-details"><summary>Explain this score</summary><div class="cs-health-explain-copy">The overall score is the average operational health of the clients in the current filter scope. It combines completion performance, on-time execution, trend direction, review consistency, risk control and task follow-up.</div></details>
+        </section>
+        <section class="cs-analytics-card cs-attention-card">
+          <div class="cs-section-title"><h4>Needs Attention</h4><span>${attention.length} clients · ${detectedSignals} signals</span></div>
+          <div class="cs-attention-list">${attention.slice(0, 6).map(row => {
+            const company = row.company;
+            const signal = row.signals[0] || { severity: 'medium', title: 'Operational review recommended', detail: row.action };
+            return `<article class="cs-attention-row ${attr(signal.severity)}"><div class="cs-attention-main"><strong>${esc(companyName(company))}</strong><span>${esc(signal.title)}</span><small>${esc(signal.detail)}</small></div><div class="cs-attention-score"><b>${row.health.score}</b><span>${esc(row.health.label)}</span></div><div class="cs-attention-actions"><button class="btn ghost sm" type="button" data-cs-action="health-explain" data-cs-company-id="${attr(companyId(company))}">Explain</button><button class="btn ghost sm" type="button" data-cs-action="open-client" data-cs-company-id="${attr(companyId(company))}">Open</button>${canCreate() ? `<button class="btn sm" type="button" data-cs-action="risk" data-cs-company-id="${attr(companyId(company))}">Add Risk</button>` : ''}</div></article>`;
+          }).join('') || '<div class="cs-empty">No clients currently require material operational attention.</div>'}</div>
+        </section>
+      </div>
+
       <div class="cs-dashboard-top">
         <section class="cs-analytics-card cs-analytics-card--wide">
           <div class="cs-section-title"><h4>Completion Breakdown <small>(Percentages)</small></h4><span>Completion = Done On-Time + Done Late</span></div>
@@ -2042,6 +2310,7 @@
         <section class="cs-analytics-card">
           <div class="cs-section-title"><h4>Average Completion Trend</h4><span>${esc(dashboardPeriodLabel())}</span></div>
           ${spark}
+          <div class="cs-trend-intelligence"><span>${esc(compareText)}</span><b>${globalTrend.forecast === null ? 'Forecast pending' : `Forecast ${globalTrend.forecast.toFixed(1)}%`}</b></div>
         </section>
         <section class="cs-analytics-card cs-status-card">
           <div class="cs-section-title"><h4>Completion by Status</h4><span>${latestRows.length} filtered rows</span></div>
@@ -2054,26 +2323,27 @@
           </div>
         </section>
         <aside class="cs-analytics-card cs-insights-card">
-          <div class="cs-section-title"><h4>Insights</h4><span>CS signals</span></div>
-          <div class="cs-insight-row good"><b>Great job!</b><span>${best ? `${esc(best.location_name)} leads completion at ${formatPct(completionCount(best))}.` : 'Add completion rows to start insights.'}</span></div>
-          <div class="cs-insight-row warn"><b>Reviews missed</b><span>${reviewsMissing} client${reviewsMissing === 1 ? '' : 's'} missing the selected review cadence.</span></div>
-          <div class="cs-insight-row danger"><b>Clients at risk</b><span>${atRisk} client${atRisk === 1 ? '' : 's'} at risk. ${openRisks} open risk${openRisks === 1 ? '' : 's'}.</span></div>
+          <div class="cs-section-title"><h4>Smart Insights</h4><span>ranked operational signals</span></div>
+          ${smartInsights.map(item => `<div class="cs-insight-row ${attr(item.tone)}"><b>${esc(item.title)}</b><span>${esc(item.text)}</span></div>`).join('')}
           <button class="btn ghost sm cs-full-width" type="button" data-cs-action="completion-export">View / Export Report</button>
         </aside>
       </div>
+
       <div class="cs-dashboard-bottom">
         <section class="cs-analytics-card cs-table-preview">
-          <div class="cs-section-title"><h4>Client / Group Overview</h4><span>${esc(dashboardPeriodLabel())}</span></div>
+          <div class="cs-section-title"><h4>Operations Matrix</h4><span>health, trend and next action</span></div>
           <div class="cs-compact-table-wrap">
-            <table class="cs-compact-table cs-ops-overview-table">
-              <thead><tr><th>Client / Group</th><th>Locations</th><th>On-Time</th><th>Late</th><th>Partial</th><th>Missed</th><th>Completion</th><th>Status</th><th>Risk</th></tr></thead>
-              <tbody>${companies.slice(0, 12).map(company => {
+            <table class="cs-compact-table cs-ops-overview-table cs-smart-matrix">
+              <thead><tr><th>Client / Group</th><th>Locations</th><th>Completion</th><th>Trend</th><th>Review</th><th>Open Risks</th><th>Health</th><th>Suggested Action</th><th>Open</th></tr></thead>
+              <tbody>${companies.slice().sort((a, b) => dashboardOperationalHealth(a).score - dashboardOperationalHealth(b).score).slice(0, 20).map(company => {
                 const groups = groupsForCompany(company).map(g => g.group_name).join(', ') || 'Ungrouped';
                 const rows = dashboardCompletionRows(company);
-                const metrics = averageCompletionMetrics(rows);
-                const score = computeHealth(company);
+                const health = dashboardOperationalHealth(company);
+                const trend = health.trend;
                 const locations = new Set(rows.map(row => normalize(locationNameFromRow(row))).filter(Boolean)).size;
-                return `<tr><td><strong>${esc(companyName(company))}</strong><small>${esc(groups)}</small></td><td>${locations || '—'}</td><td>${metrics.done_on_time.toFixed(1)}%</td><td>${metrics.done_late.toFixed(1)}%</td><td>${metrics.partially_done.toFixed(1)}%</td><td>${metrics.missed.toFixed(1)}%</td><td><b>${metrics.completion.toFixed(1)}%</b></td><td>${esc(getProfile(company).client_status || mapCompanyStatus(company.company_status))}</td><td class="${score < 60 ? 'danger' : 'good'}">${score < 60 ? 'Yes' : 'No'}</td></tr>`;
+                const risks = openRows(riskRows(company)).length;
+                const action = dashboardSuggestedAction(company);
+                return `<tr><td><strong>${esc(companyName(company))}</strong><small>${esc(groups)}</small></td><td>${locations || '—'}</td><td><b>${health.metrics.completion.toFixed(1)}%</b></td><td class="${trend.delta !== null && trend.delta < 0 ? 'danger' : 'good'}">${esc(dashboardTrendText(trend.delta))}</td><td class="${health.reviewIsMissing ? 'danger' : 'good'}">${health.reviewIsMissing ? 'Missing' : 'Covered'}</td><td class="${risks ? 'danger' : 'good'}">${risks}</td><td><button class="cs-health-score-button ${dashboardHealthTone(health.score)}" type="button" data-cs-action="health-explain" data-cs-company-id="${attr(companyId(company))}"><b>${health.score}</b><span>${esc(health.label)}</span></button></td><td class="cs-action-cell">${esc(action)}</td><td><button class="btn ghost sm" type="button" data-cs-action="open-client" data-cs-company-id="${attr(companyId(company))}">Open</button></td></tr>`;
               }).join('') || '<tr><td colspan="9"><div class="cs-empty">No clients match the selected operational filters.</div></td></tr>'}</tbody>
             </table>
           </div>
@@ -2081,7 +2351,7 @@
         <aside class="cs-analytics-card cs-quick-card">
           <div class="cs-section-title"><h4>Quick Actions</h4><span>CS flow</span></div>
           ${quickRows.map(([label, action]) => `<button type="button" data-cs-action="${attr(action)}"><span>＋</span>${esc(label)}</button>`).join('')}
-          <div class="cs-mini-note">${weak.length ? `Operational attention: ${weak.map(r => esc(r.location_name)).join(', ')}` : 'No locations needing operational attention for the latest period.'}</div>
+          <div class="cs-mini-note">${attention.length ? `${attention.length} client${attention.length === 1 ? '' : 's'} currently need operational attention.` : 'No material operational attention is required in the selected scope.'}</div>
         </aside>
       </div>`;
   }
@@ -4992,7 +5262,8 @@
       return;
     }
 
-    const action = event.target?.closest?.('[data-cs-action]')?.dataset?.csAction;
+    const actionButton = event.target?.closest?.('[data-cs-action]');
+    const action = actionButton?.dataset?.csAction;
     if (!action) return;
     if (!canRunCsAction(action)) {
       event.preventDefault?.();
@@ -5001,6 +5272,13 @@
       toast(`No Customer Success ${needed} permission for your role.`);
       return;
     }
+    const scopedCompanyId = String(actionButton?.getAttribute?.('data-cs-company-id') || '').trim();
+    if (scopedCompanyId && ['review', 'task', 'risk', 'completion'].includes(action)) {
+      STATE.selectedEntityType = 'normal';
+      STATE.selectedCompanyId = scopedCompanyId;
+    }
+    if (action === 'health-explain') { openOperationalHealthExplain(scopedCompanyId); return; }
+    if (action === 'open-client') { selectNormalClient(scopedCompanyId); return; }
     if (action === 'client-select-prev-page') { updateClientSelectPage(STATE.clientSelectPagination.page - 1); return; }
     if (action === 'client-select-next-page') { updateClientSelectPage(STATE.clientSelectPagination.page + 1); return; }
     if (action === 'special-client-select-prev-page') { updateSpecialClientSelectPage(STATE.specialClientSelectPagination.page - 1); return; }
