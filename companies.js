@@ -79,7 +79,7 @@ if (typeof window !== 'undefined') {
 const Companies = {
 
   columnMap: {
-    company_id: { accessor: row => row.company_id }, verification: { accessor: row => row.verification_status || row.is_verified }, company_name: { accessor: row => row.company_name },
+    company_id: { accessor: row => row.company_id }, verification: { accessor: row => row.documents_verification_status || (row.documents_verified ? 'verified' : 'not_verified') }, company_name: { accessor: row => row.company_name },
     company_type: { accessor: row => row.company_type }, industry: { accessor: row => row.industry }, company_status: { accessor: row => row.company_status },
     email: { accessor: row => row.main_email }, phone: { accessor: row => row.main_phone }, country: { accessor: row => row.country }, city: { accessor: row => row.city }, created_at: { accessor: row => row.created_at }
   },
@@ -659,9 +659,10 @@ const Companies = {
 
   getCompanyVerificationStatus(company = {}) {
     const verified = window.CompanyVerification?.getCompanyVerificationStatus?.(company, this.state.documents);
-    const signatory = window.CompanyVerification?.getCompanyAuthorizedSignatory?.(company) || {};
-    if (verified && signatory.name && signatory.title) return 'verified';
-    return String(company?.documents_verification_status || company?.documentsVerificationStatus || 'not_verified').trim().toLowerCase() === 'verified' ? 'not_verified' : String(company?.documents_verification_status || company?.documentsVerificationStatus || 'not_verified').trim().toLowerCase();
+    if (verified) return 'verified';
+    const status = String(company?.documents_verification_status || company?.documentsVerificationStatus || 'not_verified').trim().toLowerCase();
+    if (status === 'needs_reverification') return 'needs_reverification';
+    return 'not_verified';
   },
   formatCompanyVerificationStatus(company = {}) {
     const status = this.getCompanyVerificationStatus(company);
