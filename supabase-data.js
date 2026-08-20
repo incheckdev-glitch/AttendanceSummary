@@ -7787,18 +7787,22 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
         .from('agreement_items')
         .select('id,agreement_id,section,invoice_status,invoiced_invoice_id,invoiced_at')
         .eq('agreement_id', agreementUuid);
-      if (agreementItemsError) throw friendlyError('Unable to validate annual SaaS invoice eligibility', agreementItemsError);
-      const hasUninvoicedAnnualSaas = (Array.isArray(agreementItems) ? agreementItems : []).some(item => {
+      if (agreementItemsError) throw friendlyError('Unable to validate agreement invoice eligibility', agreementItemsError);
+      const invoiceableCommercialSections = new Set([
+        'annual_saas', 'subscription', 'saas', 'recurring',
+        'hardware', 'one_time_fee', 'one_time', 'setup', 'non_recurring', 'non-recurring'
+      ]);
+      const hasUninvoicedCommercialItem = (Array.isArray(agreementItems) ? agreementItems : []).some(item => {
         const section = String(item?.section || item?.item_section || '').trim().toLowerCase().replace(/\s+/g, '_');
-        if (section !== 'annual_saas') return false;
+        if (!invoiceableCommercialSections.has(section)) return false;
         const status = String(item?.invoice_status || '').trim().toLowerCase();
         const invoiced = ['invoiced', 'issued'].includes(status)
           || Boolean(item?.invoiced_invoice_id)
           || Boolean(item?.invoiced_at);
         return !invoiced;
       });
-      if (!hasUninvoicedAnnualSaas) {
-        throw new Error('Invoice cannot be created because all Annual SaaS locations are already invoiced.');
+      if (!hasUninvoicedCommercialItem) {
+        throw new Error('Invoice cannot be created because no uninvoiced commercial agreement items are available.');
       }
       const { data, error } = await client.rpc('create_invoice_from_agreement', { p_agreement_uuid: agreementUuid });
       if (error) throw friendlyError('Invoice creation from agreement failed', error);

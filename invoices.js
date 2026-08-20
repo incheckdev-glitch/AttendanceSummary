@@ -3998,23 +3998,28 @@ const Invoices = {
         this.rebuildAgreementInvoiceItemsFromSelection();
       };
     });
-    const annualRows = Array.isArray(selection.annualItems) ? selection.annualItems : [];
-    if (!annualRows.length) {
-      body.innerHTML = '<tr><td colspan="7" class="muted">No annual SaaS locations were found on this agreement. Reopen the agreement and confirm the Annual SaaS rows are saved.</td></tr>';
+    const selectableRows = Array.isArray(selection.selectableItems)
+      ? selection.selectableItems
+      : [
+        ...(Array.isArray(selection.annualItems) ? selection.annualItems : []),
+        ...(Array.isArray(selection.hardwareItems) ? selection.hardwareItems : [])
+      ];
+    if (!selectableRows.length) {
+      body.innerHTML = '<tr><td colspan="7" class="muted">No Annual SaaS or hardware items were found on this agreement.</td></tr>';
       if (E.invoiceFormSaveBtn) E.invoiceFormSaveBtn.disabled = true;
       return;
     }
     const allInvoicedMessage = !(selection.invoiceableItems || []).length
-      ? '<tr><td colspan="7" class="muted">All agreement locations have already been invoiced.</td></tr>'
+      ? '<tr><td colspan="7" class="muted">All selectable agreement items have already been invoiced.</td></tr>'
       : '';
-    body.innerHTML = allInvoicedMessage + annualRows.map(item => {
+    body.innerHTML = allInvoicedMessage + selectableRows.map(item => {
       const itemId = this.getAgreementItemRecordId(item);
       const invoiceable = this.isAgreementItemInvoiceable(item);
       const checked = invoiceable && this.state.selectedAgreementItemIds.has(itemId);
       const computed = this.computeCommercialRow(item);
       const status = invoiceable ? 'Not Invoiced' : 'Invoiced';
       const invoiceRef = String(item?.invoiced_invoice_id || item?.invoicedInvoiceId || '').trim();
-      const label = [item.location_name, item.item_name].map(value => String(value || '').trim()).filter(Boolean).join(' — ') || 'Agreement location';
+      const label = [item.location_name, item.item_name].map(value => String(value || '').trim()).filter(Boolean).join(' — ') || 'Agreement item';
       return `<tr>
         <td><input type="checkbox" data-agreement-item-id="${U.escapeAttr(itemId)}" ${checked ? 'checked' : ''} ${invoiceable ? '' : 'disabled'} /></td>
         <td>${U.escapeHtml(label)}</td>
@@ -4040,7 +4045,8 @@ const Invoices = {
     const selection = this.state.agreementInvoiceSelection || {};
     const selectedIds = this.state.selectedAgreementItemIds || new Set();
     const agreementUuid = String(selection.agreementUuid || '').trim();
-    const selectedAnnual = (selection.invoiceableItems || []).filter(item => selectedIds.has(this.getAgreementItemRecordId(item)));
+    const selectedCommercial = (selection.invoiceableItems || []).filter(item => selectedIds.has(this.getAgreementItemRecordId(item)));
+    const selectedAnnual = selectedCommercial.filter(item => this.isSubscriptionSection(item.section));
     const setupBillingMode = this.getSetupBillingModeFromForm();
     const selectedSubscriptionItemIds = selectedAnnual.map(item => this.getAgreementItemRecordId(item)).filter(Boolean);
     const setupResult = this.buildSetupFeeItemsForInvoice({
@@ -4071,11 +4077,12 @@ const Invoices = {
       setupFeesSkippedAlreadyInvoiced: setupResult.skippedAlreadyInvoiced.length
     };
     console.log('[Invoice] Account setup billing mode:', setupBillingMode);
+    console.log('[Invoice] Selected commercial item count:', selectedCommercial.length);
     console.log('[Invoice] Selected subscription count:', selectedAnnual.length);
     console.log('[Invoice] Setup fee rows included:', oneTimeItems.length);
     console.log('[Invoice] Setup fee rows skipped because already invoiced:', setupResult.skippedAlreadyInvoiced.length);
     return [
-      ...selectedAnnual.map(item => ({
+      ...selectedCommercial.map(item => ({
         ...item,
         source_agreement_item_id: this.getAgreementItemRecordId(item),
         source_agreement_id: agreementUuid
@@ -4443,10 +4450,12 @@ const Invoices = {
       const catalogLookup = await this.getProposalCatalogLookup();
       const normalizedItems = this.filterInvoiceCommercialItems(items).map(item => this.copyInvoiceItemFields(item, this.mergeCatalogItem(item, catalogLookup)));
       let annualItems = normalizedItems.filter(item => this.isSubscriptionSection(item.section));
-      const oneTimeItems = normalizedItems.filter(item => this.isOneTimeFeeItem(item));
+      let hardwareItems = normalizedItems.filter(item => this.isHardwareSection(item.section));
+      const oneTimeItems = normalizedItems.filter(item => this.isOneTimeFeeItem(item) && !this.isHardwareSection(item.section));
       const alreadyInvoicedSetupItemIds = await this.getAlreadyInvoicedSetupAgreementItemIds(agreementUuid || id);
-      const actualInvoicedMap = await this.getActualInvoicedAgreementItemMap(annualItems.map(item => this.getAgreementItemRecordId(item)));
-      annualItems = annualItems.map(item => {
+      const selectableItems = [...annualItems, ...hardwareItems];
+      const actualInvoicedMap = await this.getActualInvoicedAgreementItemMap(selectableItems.map(item => this.getAgreementItemRecordId(item)));
+      const annotatedSelectableItems = selectableItems.map(item => {
         const itemId = this.getAgreementItemRecordId(item);
         const actualInvoiceId = itemId ? actualInvoicedMap.get(itemId) : '';
         return {
@@ -4455,14 +4464,18 @@ const Invoices = {
           invoiced_invoice_id: actualInvoiceId && actualInvoiceId !== true ? actualInvoiceId : ''
         };
       });
-      const invoiceableItems = annualItems.filter(item => this.isAgreementItemInvoiceable(item) && this.getAgreementItemRecordId(item));
-      const alreadyInvoicedItems = annualItems.filter(item => this.isAgreementItemInvoiced(item));
+      annualItems = annotatedSelectableItems.filter(item => this.isSubscriptionSection(item.section));
+      hardwareItems = annotatedSelectableItems.filter(item => this.isHardwareSection(item.section));
+      const invoiceableItems = annotatedSelectableItems.filter(item => this.isAgreementItemInvoiceable(item) && this.getAgreementItemRecordId(item));
+      const alreadyInvoicedItems = annotatedSelectableItems.filter(item => this.isAgreementItemInvoiced(item));
       this.state.selectedAgreementItemIds = new Set(invoiceableItems.map(item => this.getAgreementItemRecordId(item)).filter(Boolean));
       this.state.accountSetupBillingMode = 'per_selected_locations';
       this.state.agreementInvoiceSelection = {
         active: true,
         agreementUuid,
         annualItems,
+        hardwareItems,
+        selectableItems: annotatedSelectableItems,
         oneTimeItems,
         invoiceableItems,
         alreadyInvoicedItems,
@@ -4477,8 +4490,8 @@ const Invoices = {
       this.state.items = selectedItems;
       this.renderItems(selectedItems);
       this.renderAgreementLocationSelection();
-      if (annualItems.length && !invoiceableItems.length) UI.toast('Invoice cannot be created because all Annual SaaS locations are already invoiced.');
-      else if (!annualItems.length) UI.toast('No annual SaaS locations were found on this agreement.');
+      if (annotatedSelectableItems.length && !invoiceableItems.length) UI.toast('Invoice cannot be created because all selectable agreement items are already invoiced.');
+      else if (!annotatedSelectableItems.length) UI.toast('No Annual SaaS or hardware items were found on this agreement.');
       const summary = this.deriveCalculatedSummary(mappedInvoice, selectedItems);
       this.state.selectedInvoice = this.normalizeInvoice({ ...mappedInvoice, ...summary });
       this.applyTotalsToForm(summary);
@@ -4687,7 +4700,7 @@ const Invoices = {
       : [];
     if (agreementSelectionActive && !selectedAgreementItemIds.length) {
       const hasInvoiceable = (this.state.agreementInvoiceSelection?.invoiceableItems || []).length > 0;
-      UI.toast(hasInvoiceable ? 'Please select at least one agreement location to invoice.' : 'Invoice cannot be created because all Annual SaaS locations are already invoiced.');
+      UI.toast(hasInvoiceable ? 'Please select at least one agreement item to invoice.' : 'Invoice cannot be created because all selectable agreement items are already invoiced.');
       return;
     }
     if (agreementSelectionActive) {
@@ -5080,7 +5093,10 @@ const Invoices = {
       }
       const selection = this.state.agreementInvoiceSelection || {};
       if (selection.active && !(selection.invoiceableItems || []).length) {
-        UI.toast('Invoice cannot be created because all Annual SaaS locations are already invoiced.');
+        const selectableItems = Array.isArray(selection.selectableItems) ? selection.selectableItems : [];
+        UI.toast(selectableItems.length
+          ? 'Invoice cannot be created because all selectable agreement items are already invoiced.'
+          : 'No Annual SaaS or hardware items were found on this agreement.');
         this.closeForm();
         return false;
       }
