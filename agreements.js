@@ -6,12 +6,32 @@ function hasAgreementValue(value) {
   return value !== undefined && value !== null && String(value).trim() !== '';
 }
 
+function hasLegacySfcSignatory(source = {}) {
+  const explicitPrimaryValues = [
+    source?.provider_official_signatory_1_name,
+    source?.providerOfficialSignatory1Name,
+    source?.provider_official_signatory_1_title,
+    source?.providerOfficialSignatory1Title,
+    source?.provider_official_signatory_1_sign_date,
+    source?.providerOfficialSignatory1SignDate,
+    source?.provider_primary_signatory_name,
+    source?.provider_primary_signatory_title,
+    source?.provider_signatory_name_primary,
+    source?.provider_signatory_title_primary
+  ];
+  if (explicitPrimaryValues.some(hasAgreementValue)) return true;
+  if (source?.financial_controller_signed === true || String(source?.financial_controller_signed || '').trim().toLowerCase() === 'true') return true;
+  const legacyTitle = String(source?.provider_signatory_title || source?.providerSignatoryTitle || '').trim().toLowerCase();
+  const legacyName = String(source?.provider_signatory_name || source?.providerSignatoryName || '').trim().toLowerCase();
+  return legacyTitle.includes('financial controller') || legacyName === 'simon moujaly';
+}
+
 function hasAllRequiredAgreementSignDates(source = {}) {
-  return (
-    (hasAgreementValue(source?.customer_official_sign_date) || hasAgreementValue(source?.customerOfficialSignDate) || hasAgreementValue(source?.customer_sign_date) || hasAgreementValue(source?.customerSignDate)) &&
-    (hasAgreementValue(source?.provider_official_signatory_1_sign_date) || hasAgreementValue(source?.providerOfficialSignatory1SignDate) || hasAgreementValue(source?.provider_sign_date) || hasAgreementValue(source?.providerSignDate)) &&
-    (hasAgreementValue(source?.provider_official_signatory_2_sign_date) || hasAgreementValue(source?.providerOfficialSignatory2SignDate))
-  );
+  const hasCustomer = hasAgreementValue(source?.customer_official_sign_date) || hasAgreementValue(source?.customerOfficialSignDate) || hasAgreementValue(source?.customer_sign_date) || hasAgreementValue(source?.customerSignDate);
+  const hasGm = hasAgreementValue(source?.provider_official_signatory_2_sign_date) || hasAgreementValue(source?.providerOfficialSignatory2SignDate);
+  const requiresLegacySfc = hasLegacySfcSignatory(source);
+  const hasSfc = hasAgreementValue(source?.provider_official_signatory_1_sign_date) || hasAgreementValue(source?.providerOfficialSignatory1SignDate) || hasAgreementValue(source?.provider_sign_date) || hasAgreementValue(source?.providerSignDate);
+  return Boolean(hasCustomer && hasGm && (!requiresLegacySfc || hasSfc));
 }
 
 
@@ -990,21 +1010,26 @@ const Agreements = {
       next.authorized_signatory_name = '';
       next.authorized_signatory_title = '';
     }
-    const primaryProviderSignDate = explicitDate(
+    const legacySfcSignatory = hasLegacySfcSignatory(next);
+    const primaryProviderSignDate = legacySfcSignatory ? explicitDate(
       next.provider_official_signatory_1_sign_date,
       next.providerOfficialSignatory1SignDate,
       next.provider_sign_date,
       next.providerSignDate
-    );
+    ) : '';
     const secondaryProviderSignDate = explicitDate(
       next.provider_official_signatory_2_sign_date,
       next.providerOfficialSignatory2SignDate
     );
-    next.provider_official_signatory_1_name = this.providerIdentityDefaults.primarySignatoryName;
-    next.provider_official_signatory_1_title = this.providerIdentityDefaults.primarySignatoryTitle;
+    next.provider_official_signatory_1_name = legacySfcSignatory
+      ? String(next.provider_official_signatory_1_name || next.provider_primary_signatory_name || next.provider_signatory_name_primary || this.providerIdentityDefaults.primarySignatoryName).trim()
+      : '';
+    next.provider_official_signatory_1_title = legacySfcSignatory
+      ? String(next.provider_official_signatory_1_title || next.provider_primary_signatory_title || next.provider_signatory_title_primary || this.providerIdentityDefaults.primarySignatoryTitle).trim()
+      : '';
     next.provider_official_signatory_1_sign_date = primaryProviderSignDate;
-    next.provider_official_signatory_2_name = this.providerIdentityDefaults.secondarySignatoryName;
-    next.provider_official_signatory_2_title = this.providerIdentityDefaults.secondarySignatoryTitle;
+    next.provider_official_signatory_2_name = String(next.provider_official_signatory_2_name || next.provider_secondary_signatory_name || next.provider_signatory_name_secondary || this.providerIdentityDefaults.secondarySignatoryName).trim();
+    next.provider_official_signatory_2_title = String(next.provider_official_signatory_2_title || next.provider_secondary_signatory_title || next.provider_signatory_title_secondary || this.providerIdentityDefaults.secondarySignatoryTitle).trim();
     next.provider_official_signatory_2_sign_date = secondaryProviderSignDate;
     next.provider_primary_signatory_name = next.provider_official_signatory_1_name;
     next.provider_primary_signatory_title = next.provider_official_signatory_1_title;
@@ -1014,9 +1039,10 @@ const Agreements = {
     next.provider_signatory_title_primary = next.provider_official_signatory_1_title;
     next.provider_signatory_name_secondary = next.provider_official_signatory_2_name;
     next.provider_signatory_title_secondary = next.provider_official_signatory_2_title;
-    next.provider_signatory_name = next.provider_official_signatory_1_name;
-    next.provider_signatory_title = next.provider_official_signatory_1_title;
-    next.provider_sign_date = primaryProviderSignDate;
+    next.provider_signatory_name = legacySfcSignatory ? next.provider_official_signatory_1_name : next.provider_official_signatory_2_name;
+    next.provider_signatory_title = legacySfcSignatory ? next.provider_official_signatory_1_title : next.provider_official_signatory_2_title;
+    next.provider_sign_date = legacySfcSignatory ? primaryProviderSignDate : '';
+    next.financial_controller_signed = legacySfcSignatory && Boolean(primaryProviderSignDate);
     return next;
   },
   applyOfficialSignatoryDefaultsToForm(company = this.state.selectedAgreementCompanyForVerification || null) {
@@ -1300,14 +1326,21 @@ const Agreements = {
     normalized.service_end_date = String(
       normalized.service_end_date || source.serviceEndDate || source.contract_end_date || source.contractEndDate || ''
     ).trim();
+    const legacyGenericProviderName = String(source.provider_signatory_name || source.providerSignatoryName || '').trim();
+    const legacyGenericProviderTitle = String(source.provider_signatory_title || source.providerSignatoryTitle || '').trim();
+    const genericProviderIsLegacySfc = legacyGenericProviderTitle.toLowerCase().includes('financial controller')
+      || legacyGenericProviderName.toLowerCase() === 'simon moujaly';
     normalized.provider_signatory_name_primary = String(
-      normalized.provider_signatory_name_primary || source.provider_signatory_name || ''
+      normalized.provider_signatory_name_primary || (genericProviderIsLegacySfc ? legacyGenericProviderName : '')
     ).trim();
     normalized.provider_signatory_name_secondary = String(
-      normalized.provider_signatory_name_secondary || source.provider_signatory_secondary || ''
+      normalized.provider_signatory_name_secondary || source.provider_signatory_secondary || (!genericProviderIsLegacySfc ? legacyGenericProviderName : '')
     ).trim();
     normalized.provider_signatory_title_primary = String(
-      normalized.provider_signatory_title_primary || source.provider_signatory_title || ''
+      normalized.provider_signatory_title_primary || (genericProviderIsLegacySfc ? legacyGenericProviderTitle : '')
+    ).trim();
+    normalized.provider_signatory_title_secondary = String(
+      normalized.provider_signatory_title_secondary || (!genericProviderIsLegacySfc ? legacyGenericProviderTitle : '')
     ).trim();
     const normalizedTotals = this.calculateTotalsFromAgreementRecord({ ...source, ...normalized });
     normalized.saas_total = normalizedTotals.saas_total;
@@ -1356,10 +1389,11 @@ const Agreements = {
       || String(normalized.customer_contact_email || normalized.contact_email || '').trim();
     normalized.customer_signatory_phone = String(normalized.customer_signatory_phone || '').trim()
       || String(normalized.customer_contact_mobile || normalized.contact_mobile || normalized.customer_contact_phone || normalized.contact_phone || '').trim();
+    const legacySfcSignatory = hasLegacySfcSignatory({ ...source, ...normalized });
     normalized.provider_primary_signatory_name = String(normalized.provider_primary_signatory_name || normalized.provider_signatory_name_primary || '').trim()
-      || this.providerIdentityDefaults.primarySignatoryName;
+      || (legacySfcSignatory ? this.providerIdentityDefaults.primarySignatoryName : '');
     normalized.provider_primary_signatory_title = String(normalized.provider_primary_signatory_title || normalized.provider_signatory_title_primary || '').trim()
-      || this.providerIdentityDefaults.primarySignatoryTitle;
+      || (legacySfcSignatory ? this.providerIdentityDefaults.primarySignatoryTitle : '');
     normalized.provider_secondary_signatory_name = String(normalized.provider_secondary_signatory_name || normalized.provider_signatory_name_secondary || '').trim()
       || this.providerIdentityDefaults.secondarySignatoryName;
     normalized.provider_secondary_signatory_title = String(normalized.provider_secondary_signatory_title || normalized.provider_signatory_title_secondary || '').trim()
@@ -1933,9 +1967,9 @@ const Agreements = {
       provider_contact_name: '', provider_contact_mobile: '', provider_contact_email: '', status: 'Draft',
       terms_conditions: '', customer_official_signatory_name: '', customer_official_signatory_title: '', customer_official_sign_date: '',
       customer_signatory_name: '', customer_signatory_title: '',
-      provider_official_signatory_1_name: this.providerIdentityDefaults.primarySignatoryName, provider_official_signatory_1_title: this.providerIdentityDefaults.primarySignatoryTitle, provider_official_signatory_1_sign_date: '',
+      provider_official_signatory_1_name: '', provider_official_signatory_1_title: '', provider_official_signatory_1_sign_date: '',
       provider_official_signatory_2_name: this.providerIdentityDefaults.secondarySignatoryName, provider_official_signatory_2_title: this.providerIdentityDefaults.secondarySignatoryTitle, provider_official_signatory_2_sign_date: '',
-      provider_signatory_name_primary: this.providerIdentityDefaults.primarySignatoryName, provider_signatory_title_primary: this.providerIdentityDefaults.primarySignatoryTitle,
+      provider_signatory_name_primary: '', provider_signatory_title_primary: '',
       provider_signatory_name_secondary: this.providerIdentityDefaults.secondarySignatoryName, provider_signatory_title_secondary: this.providerIdentityDefaults.secondarySignatoryTitle, provider_sign_date: '',
       customer_sign_date: '', gm_signed: false, financial_controller_signed: false, signed_date: '', total_discount: '',
       generated_by: '', notes: ''
@@ -2083,14 +2117,14 @@ const Agreements = {
       customer_official_signatory_title: proposalSignatorySnapshot.title || '',
       customer_signatory_name: proposalSignatorySnapshot.name || '',
       customer_signatory_title: proposalSignatorySnapshot.title || '',
-      provider_official_signatory_1_name: this.providerIdentityDefaults.primarySignatoryName,
-      provider_official_signatory_1_title: this.providerIdentityDefaults.primarySignatoryTitle,
+      provider_official_signatory_1_name: '',
+      provider_official_signatory_1_title: '',
       provider_official_signatory_1_sign_date: '',
       provider_official_signatory_2_name: this.providerIdentityDefaults.secondarySignatoryName,
       provider_official_signatory_2_title: this.providerIdentityDefaults.secondarySignatoryTitle,
       provider_official_signatory_2_sign_date: '',
-      provider_signatory_name_primary: this.providerIdentityDefaults.primarySignatoryName,
-      provider_signatory_title_primary: this.providerIdentityDefaults.primarySignatoryTitle,
+      provider_signatory_name_primary: '',
+      provider_signatory_title_primary: '',
       provider_signatory_name_secondary: this.providerIdentityDefaults.secondarySignatoryName,
       provider_signatory_title_secondary: this.providerIdentityDefaults.secondarySignatoryTitle,
       provider_sign_date: '',
@@ -2180,23 +2214,28 @@ const Agreements = {
     const role = this.getCurrentAgreementRoleKey();
     return ['general_manager', 'gm'].includes(role);
   },
+  agreementRequiresLegacySfcSignature(agreement = this.state.currentAgreement || {}) {
+    return hasLegacySfcSignatory(agreement);
+  },
   getProviderSignDateLockRules() {
-    return [
-      {
+    const rules = [];
+    if (this.agreementRequiresLegacySfcSignature()) {
+      rules.push({
         inputId: 'agreementFormProviderOfficialSignatory1SignDate',
         field: 'provider_official_signatory_1_sign_date',
         label: 'Provider Official Signatory 1 Sign Date',
         requiredRoleLabel: 'Senior Financial Controller',
         canEdit: this.canEditProviderOfficialSignatory1SignDate()
-      },
-      {
-        inputId: 'agreementFormProviderOfficialSignatory2SignDate',
-        field: 'provider_official_signatory_2_sign_date',
-        label: 'Provider Official Signatory 2 Sign Date',
-        requiredRoleLabel: 'General Manager',
-        canEdit: this.canEditProviderOfficialSignatory2SignDate()
-      }
-    ];
+      });
+    }
+    rules.push({
+      inputId: 'agreementFormProviderOfficialSignatory2SignDate',
+      field: 'provider_official_signatory_2_sign_date',
+      label: this.agreementRequiresLegacySfcSignature() ? 'Provider Official Signatory 2 Sign Date' : 'Provider Official Signatory Sign Date',
+      requiredRoleLabel: 'General Manager',
+      canEdit: this.canEditProviderOfficialSignatory2SignDate()
+    });
+    return rules;
   },
   captureProviderSignDateOriginalValues() {
     this.getProviderSignDateLockRules().forEach(rule => {
@@ -2215,7 +2254,8 @@ const Agreements = {
       if (!el) return;
       const isSfcField = rule.inputId === 'agreementFormProviderOfficialSignatory1SignDate';
       const isGmField = rule.inputId === 'agreementFormProviderOfficialSignatory2SignDate';
-      const workflowLocked = !this.canUseAdminOverride() && ((isSfcField && !customerDate) || (isGmField && !sfcDate));
+      const requiresLegacySfc = this.agreementRequiresLegacySfcSignature();
+      const workflowLocked = !this.canUseAdminOverride() && ((isSfcField && !customerDate) || (isGmField && (requiresLegacySfc ? !sfcDate : !customerDate)));
       const locked = formReadOnly || !rule.canEdit || workflowLocked;
       el.disabled = locked;
       el.readOnly = locked;
@@ -2225,7 +2265,7 @@ const Agreements = {
         el.setAttribute('aria-disabled', 'true');
         el.setAttribute('aria-readonly', 'true');
         el.title = workflowLocked
-          ? (isSfcField ? 'Customer sign date is required before the Senior Financial Controller sign date.' : 'Senior Financial Controller must sign first.')
+          ? (isSfcField ? 'Customer sign date is required before the Senior Financial Controller sign date.' : (requiresLegacySfc ? 'Senior Financial Controller must sign first.' : 'Customer sign date is required before the General Manager sign date.'))
           : `${rule.label} can only be filled by the ${rule.requiredRoleLabel} role.`;
       } else {
         el.removeAttribute('aria-disabled');
@@ -2250,12 +2290,13 @@ const Agreements = {
     const gmDate = this.normalizeDateInputValue(document.getElementById('agreementFormProviderOfficialSignatory2SignDate')?.value || '');
     const originalSfcDate = this.normalizeDateInputValue(document.getElementById('agreementFormProviderOfficialSignatory1SignDate')?.dataset?.originalValue || '');
     const originalGmDate = this.normalizeDateInputValue(document.getElementById('agreementFormProviderOfficialSignatory2SignDate')?.dataset?.originalValue || '');
-    if (sfcDate !== originalSfcDate && !customerDate) {
+    const requiresLegacySfc = this.agreementRequiresLegacySfcSignature();
+    if (requiresLegacySfc && sfcDate !== originalSfcDate && !customerDate) {
       UI.toast('Customer sign date is required before the Senior Financial Controller sign date.');
       return false;
     }
-    if (gmDate !== originalGmDate && !sfcDate) {
-      UI.toast('Senior Financial Controller must sign before General Manager.');
+    if (gmDate !== originalGmDate && !(requiresLegacySfc ? sfcDate : customerDate)) {
+      UI.toast(requiresLegacySfc ? 'Senior Financial Controller must sign before General Manager.' : 'Customer sign date is required before the General Manager sign date.');
       return false;
     }
     return true;
@@ -2489,6 +2530,7 @@ const Agreements = {
       this.normalizeAgreement(agreement && typeof agreement === 'object' ? agreement : {})
     );
     const suppressCustomerSignatory = this.shouldKeepCustomerOfficialSignatoryBlank(agreementData);
+    const legacySfcSignatory = hasLegacySfcSignatory(agreementData);
     const normalizedItems = (Array.isArray(items) ? items : []).map((item, index) => {
       const normalized = this.normalizeItem(item);
       if (!normalized.line_no) normalized.line_no = index + 1;
@@ -2685,6 +2727,7 @@ const Agreements = {
       .totals-row.grand-total-words-row strong { flex: 1 1 auto; min-width: 0; font-weight: 500; line-height: 1.4; text-align: right; overflow-wrap: anywhere; }
       .terms { margin-top: 16px; font-size: 12.5px; line-height: 1.6; border: 1px solid #d7e1ed; border-radius: 6px; padding: 12px; }
       .signature-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "customer provider1" "customer provider2"; gap: 14px; margin-top: 12px; align-items: start; }
+      .signature-grid.single-provider-signature { grid-template-areas: "customer provider2"; }
       .signature-box { border: 1px solid #d7e1ed; min-height: 140px; border-radius: 6px; overflow: hidden; }
       .signature-box-customer { grid-area: customer; }
       .signature-box-provider-1 { grid-area: provider1; }
@@ -2822,7 +2865,7 @@ const Agreements = {
         <div style="white-space: pre-wrap;">${textValue(agreementData.terms_conditions)}</div>
       </section>
 
-      <section class="signature-grid">
+      <section class="signature-grid${legacySfcSignatory ? '' : ' single-provider-signature'}">
         <div class="signature-box signature-box-customer">
           <div class="signature-head">Customer Official Signatory</div>
           <div class="signature-body">
@@ -2831,20 +2874,20 @@ const Agreements = {
             <div><strong>Date:</strong> ${suppressCustomerSignatory ? '' : dateValue(agreementData.customer_official_sign_date || agreementData.customer_sign_date)}</div>
           </div>
         </div>
-        <div class="signature-box signature-box-provider-1">
+        ${legacySfcSignatory ? `<div class="signature-box signature-box-provider-1">
           <div class="signature-head">Provider Official Signatory 1</div>
           <div class="signature-body">
             <div><strong>Name:</strong> ${textValue(agreementData.provider_official_signatory_1_name || agreementData.provider_signatory_name_primary || agreementData.provider_signatory_name)}</div>
             <div><strong>Title:</strong> ${textValue(agreementData.provider_official_signatory_1_title || agreementData.provider_signatory_title_primary || agreementData.provider_signatory_title)}</div>
             <div><strong>Date:</strong> ${dateValue(agreementData.provider_official_signatory_1_sign_date || agreementData.provider_sign_date)}</div>
           </div>
-        </div>
+        </div>` : ''}
         <div class="signature-box signature-box-provider-2">
-          <div class="signature-head">Provider Official Signatory 2</div>
+          <div class="signature-head">${legacySfcSignatory ? 'Provider Official Signatory 2' : 'Provider Official Signatory'}</div>
           <div class="signature-body">
             <div><strong>Name:</strong> ${textValue(agreementData.provider_official_signatory_2_name || agreementData.provider_signatory_name_secondary)}</div>
             <div><strong>Title:</strong> ${textValue(agreementData.provider_official_signatory_2_title || agreementData.provider_signatory_title_secondary)}</div>
-            <div><strong>Date:</strong> ${dateValue(agreementData.provider_official_signatory_2_sign_date || agreementData.provider_sign_date)}</div>
+            <div><strong>Date:</strong> ${dateValue(agreementData.provider_official_signatory_2_sign_date)}</div>
           </div>
         </div>
       </section>
@@ -2923,12 +2966,14 @@ const Agreements = {
     }
     if (dates.provider2) next.provider_official_signatory_2_sign_date = dates.provider2;
     const hasCustomerSignature = Boolean(dates.customer);
-    const hasSfcSignature = Boolean(dates.provider1);
+    const requiresLegacySfc = hasLegacySfcSignatory(next);
+    const hasSfcSignature = requiresLegacySfc && Boolean(dates.provider1);
     const hasGmSignature = Boolean(dates.provider2);
     next.financial_controller_signed = hasSfcSignature;
     next.gm_signed = hasGmSignature;
+    if (!requiresLegacySfc) next.provider_sign_date = '';
     if (hasCustomerSignature) {
-      if (hasSfcSignature && hasGmSignature) {
+      if (hasGmSignature && (!requiresLegacySfc || hasSfcSignature)) {
         next.status = 'Signed';
         next.signed_date = next.signed_date || this.getLatestAgreementSignDate(next);
       } else {
@@ -4691,6 +4736,15 @@ const Agreements = {
       return out;
     }, {});
   },
+  applyProviderSignatoryVersionUi(agreement = {}) {
+    const legacySfcSignatory = hasLegacySfcSignatory(agreement);
+    const sfcBlock = document.getElementById('agreementFormSfcSignatoryBlock');
+    const providerHeading = document.getElementById('agreementFormProviderSignatoryHeading');
+    const gmLabel = document.getElementById('agreementFormGmSignatoryLabel');
+    if (sfcBlock) sfcBlock.style.display = legacySfcSignatory ? '' : 'none';
+    if (providerHeading) providerHeading.textContent = legacySfcSignatory ? 'Provider Official Signatories' : 'Provider Official Signatory';
+    if (gmLabel) gmLabel.textContent = legacySfcSignatory ? 'GM signatory' : 'General Manager';
+  },
   openAgreementForm(agreement = this.emptyAgreement(), items = [], { readOnly = false } = {}) {
     if (!E.agreementFormModal || !E.agreementForm) return;
     const signedLocked = this.isAgreementLockedAsSigned(agreement);
@@ -4709,6 +4763,7 @@ const Agreements = {
     this.state.currentAgreementId = String(agreement.id || '').trim();
     this.state.currentAgreement = agreement && typeof agreement === 'object' ? { ...agreement } : null;
     this.state.currentItems = Array.isArray(items) ? [...items] : [];
+    this.applyProviderSignatoryVersionUi(agreement);
     this.assignFormValues(agreement);
     this.syncAgreementCompanySelectorFromRecord(agreement);
     this.resolveAgreementCompanySelectorFromCompanies(agreement).catch(error => console.warn('[Agreement] Company selector sync failed.', error));
@@ -5120,13 +5175,14 @@ const Agreements = {
       const savedAgreement = { ...agreement, ...(persistedAgreement || {}) };
       try {
         const customerSigned = this.didBecomeFilled(currentRecord || {}, savedAgreement || {}, ['customer_sign_date','customer_signed_at','customer_signature_date','customer_signatory_date','customer_signed_date','customer_official_sign_date']);
-        const fcSigned = this.didBecomeFilled(currentRecord || {}, savedAgreement || {}, ['provider_signatory_1_date','provider_signatory1_date','financial_controller_signed_at','financial_controller_sign_date','provider_fc_signed_at','provider_official_signatory_1_sign_date']);
+        const requiresLegacySfc = hasLegacySfcSignatory(savedAgreement || currentRecord || {});
+        const fcSigned = requiresLegacySfc && this.didBecomeFilled(currentRecord || {}, savedAgreement || {}, ['provider_signatory_1_date','provider_signatory1_date','financial_controller_signed_at','financial_controller_sign_date','provider_fc_signed_at','provider_official_signatory_1_sign_date']);
         const fullySigned = this.didStatusBecomeSigned(currentRecord || {}, savedAgreement || {});
         const agreementNumber = String(savedAgreement?.agreement_number || savedAgreement?.agreement_id || savedAgreementId || '').trim();
         const customerName = String(savedAgreement?.customer_name || savedAgreement?.company_name || '').trim() || 'customer';
         const notify = window.NotificationService?.sendBusinessNotification;
         if (typeof notify === 'function') {
-          if (customerSigned) void notify({ resource:'agreements', action:'agreement_customer_signed', recordId:savedAgreementId || agreementNumber, recordNumber:agreementNumber, title:'Agreement signed by customer', body:`Agreement ${agreementNumber} for ${customerName} has been signed by the customer and is ready for Financial Controller review/signature.`, url:`#agreements?agreement_id=${encodeURIComponent(agreementNumber)}`, roles:['financial_controller'] }).catch(err => console.warn('[agreement notification failed] agreement_customer_signed', err));
+          if (customerSigned) void notify({ resource:'agreements', action:'agreement_customer_signed', recordId:savedAgreementId || agreementNumber, recordNumber:agreementNumber, title:'Agreement signed by customer', body: requiresLegacySfc ? `Agreement ${agreementNumber} for ${customerName} has been signed by the customer and is ready for Financial Controller review/signature.` : `Agreement ${agreementNumber} for ${customerName} has been signed by the customer and is ready for General Manager signature.`, url:`#agreements?agreement_id=${encodeURIComponent(agreementNumber)}`, roles: requiresLegacySfc ? ['financial_controller'] : ['gm'] }).catch(err => console.warn('[agreement notification failed] agreement_customer_signed', err));
           if (fcSigned) void notify({ resource:'agreements', action:'agreement_financial_controller_signed', recordId:savedAgreementId || agreementNumber, recordNumber:agreementNumber, title:'Agreement ready for General Manager signature', body:`Agreement ${agreementNumber} for ${customerName} has been signed by the Financial Controller and is ready for General Manager signature.`, url:`#agreements?agreement_id=${encodeURIComponent(agreementNumber)}`, roles:['gm'] }).catch(err => console.warn('[agreement notification failed] agreement_financial_controller_signed', err));
           if (fullySigned) void notify({ resource:'agreements', action:'agreement_fully_signed', recordId:savedAgreementId || agreementNumber, recordNumber:agreementNumber, title:'Agreement fully signed', body:`Agreement ${agreementNumber} for ${customerName} is now fully signed.`, url:`#agreements?agreement_id=${encodeURIComponent(agreementNumber)}`, roles:['head_of_sales','sales_executive'], targetEmails:[savedAgreement?.head_of_sales_email,savedAgreement?.sales_executive_email,savedAgreement?.owner_email,savedAgreement?.assigned_sales_email,savedAgreement?.created_by_email].filter(Boolean) }).catch(err => console.warn('[agreement notification failed] agreement_fully_signed', err));
         }
