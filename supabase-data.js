@@ -3806,8 +3806,10 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
       customer_signatory_phone: firstDefined(record, ['customer_signatory_phone', 'customerSignatoryPhone']),
       customer_official_sign_date: normalizeNullableDateValue(firstDefined(record, ['customer_official_sign_date', 'customerOfficialSignDate', 'customer_sign_date', 'customerSignDate'])),
       customer_sign_date: normalizeNullableDateValue(firstDefined(record, ['customer_sign_date', 'customerSignDate', 'customer_official_sign_date', 'customerOfficialSignDate'])),
-      provider_official_signatory_1_name: firstDefined(record, ['provider_official_signatory_1_name', 'providerOfficialSignatory1Name', 'provider_signatory_name', 'providerSignatoryName', 'provider_signatory_name_primary']),
-      provider_official_signatory_1_title: firstDefined(record, ['provider_official_signatory_1_title', 'providerOfficialSignatory1Title', 'provider_signatory_title', 'providerSignatoryTitle', 'provider_signatory_title_primary']),
+      // Provider Signatory 1 is legacy SFC data. Do not infer it from the generic
+      // provider signatory fields because new agreements use only the GM signer.
+      provider_official_signatory_1_name: firstDefined(record, ['provider_official_signatory_1_name', 'providerOfficialSignatory1Name', 'provider_primary_signatory_name', 'providerPrimarySignatoryName', 'provider_signatory_name_primary']),
+      provider_official_signatory_1_title: firstDefined(record, ['provider_official_signatory_1_title', 'providerOfficialSignatory1Title', 'provider_primary_signatory_title', 'providerPrimarySignatoryTitle', 'provider_signatory_title_primary']),
       provider_official_signatory_1_sign_date: normalizeNullableDateValue(firstDefined(record, ['provider_official_signatory_1_sign_date', 'providerOfficialSignatory1SignDate', 'provider_sign_date', 'providerSignDate'])),
       provider_official_signatory_2_name: firstDefined(record, ['provider_official_signatory_2_name', 'providerOfficialSignatory2Name', 'provider_signatory_name_secondary', 'providerSignatoryNameSecondary', 'provider_signatory_secondary', 'providerSignatorySecondary']),
       provider_official_signatory_2_title: firstDefined(record, ['provider_official_signatory_2_title', 'providerOfficialSignatory2Title', 'provider_signatory_title_secondary', 'providerSignatoryTitleSecondary']),
@@ -3881,19 +3883,68 @@ IN WITNESS WHEREOF, the parties have caused this Agreement to be executed by the
     sanitized.customer_signatory_Name = sanitized.customer_signatory_name;
     sanitized.customer_signatory_title = sanitized.customer_official_signatory_title || sanitized.customer_signatory_title;
     sanitized.customer_sign_date = sanitized.customer_official_sign_date || sanitized.customer_sign_date;
-    sanitized.provider_official_signatory_1_name = 'Simon Moujaly';
-    sanitized.provider_official_signatory_1_title = 'Senior Financial Controller';
-    sanitized.provider_official_signatory_2_name = 'Hanna Khattar';
-    sanitized.provider_official_signatory_2_title = 'General Manager';
-    if (!String(sanitized.provider_primary_signatory_name || '').trim()) sanitized.provider_primary_signatory_name = sanitized.provider_official_signatory_1_name;
-    if (!String(sanitized.provider_primary_signatory_title || '').trim()) sanitized.provider_primary_signatory_title = sanitized.provider_official_signatory_1_title;
-    if (!String(sanitized.provider_secondary_signatory_name || '').trim()) sanitized.provider_secondary_signatory_name = sanitized.provider_official_signatory_2_name;
-    if (!String(sanitized.provider_secondary_signatory_title || '').trim()) sanitized.provider_secondary_signatory_title = sanitized.provider_official_signatory_2_title;
-    sanitized.provider_signatory_name = sanitized.provider_official_signatory_1_name;
-    sanitized.provider_signatory_title = sanitized.provider_official_signatory_1_title;
-    sanitized.provider_signatory_name_secondary = sanitized.provider_official_signatory_2_name;
-    sanitized.provider_signatory_title_secondary = sanitized.provider_official_signatory_2_title;
-    sanitized.provider_sign_date = sanitized.provider_official_signatory_1_sign_date || sanitized.provider_sign_date;
+    const primaryProviderKeys = [
+      'provider_official_signatory_1_name', 'providerOfficialSignatory1Name',
+      'provider_official_signatory_1_title', 'providerOfficialSignatory1Title',
+      'provider_official_signatory_1_sign_date', 'providerOfficialSignatory1SignDate',
+      'provider_primary_signatory_name', 'providerPrimarySignatoryName',
+      'provider_primary_signatory_title', 'providerPrimarySignatoryTitle',
+      'provider_signatory_name_primary', 'provider_signatory_title_primary',
+      'financial_controller_signed', 'financialControllerSigned'
+    ];
+    const secondaryProviderKeys = [
+      'provider_official_signatory_2_name', 'providerOfficialSignatory2Name',
+      'provider_official_signatory_2_title', 'providerOfficialSignatory2Title',
+      'provider_official_signatory_2_sign_date', 'providerOfficialSignatory2SignDate',
+      'provider_secondary_signatory_name', 'providerSecondarySignatoryName',
+      'provider_secondary_signatory_title', 'providerSecondarySignatoryTitle',
+      'provider_signatory_name_secondary', 'providerSignatoryNameSecondary',
+      'provider_signatory_title_secondary', 'providerSignatoryTitleSecondary'
+    ];
+    const primaryProviderWasSupplied = hasAny(primaryProviderKeys);
+    const secondaryProviderWasSupplied = hasAny(secondaryProviderKeys);
+    const primaryProviderHasValue = Boolean(
+      String(sanitized.provider_official_signatory_1_name || '').trim() ||
+      String(sanitized.provider_official_signatory_1_title || '').trim() ||
+      sanitized.provider_official_signatory_1_sign_date ||
+      String(sanitized.provider_primary_signatory_name || '').trim() ||
+      String(sanitized.provider_primary_signatory_title || '').trim() ||
+      sanitized.financial_controller_signed === true
+    );
+
+    // New agreements have one provider signer only: Hanna Khattar (General Manager).
+    // Legacy SFC values are preserved only when they are explicitly present on an
+    // existing agreement update; they are never auto-created during conversion.
+    if (includeCreatedBy || secondaryProviderWasSupplied || primaryProviderWasSupplied) {
+      sanitized.provider_official_signatory_2_name = String(sanitized.provider_official_signatory_2_name || 'Hanna Khattar').trim() || 'Hanna Khattar';
+      sanitized.provider_official_signatory_2_title = String(sanitized.provider_official_signatory_2_title || 'General Manager').trim() || 'General Manager';
+      sanitized.provider_secondary_signatory_name = String(sanitized.provider_secondary_signatory_name || sanitized.provider_official_signatory_2_name).trim();
+      sanitized.provider_secondary_signatory_title = String(sanitized.provider_secondary_signatory_title || sanitized.provider_official_signatory_2_title).trim();
+      sanitized.provider_signatory_name_secondary = sanitized.provider_official_signatory_2_name;
+      sanitized.provider_signatory_title_secondary = sanitized.provider_official_signatory_2_title;
+
+      if (primaryProviderHasValue && !includeCreatedBy) {
+        // Preserve the old SFC signer on legacy agreement edits only.
+        sanitized.provider_primary_signatory_name = String(sanitized.provider_primary_signatory_name || sanitized.provider_official_signatory_1_name || '').trim() || null;
+        sanitized.provider_primary_signatory_title = String(sanitized.provider_primary_signatory_title || sanitized.provider_official_signatory_1_title || '').trim() || null;
+        sanitized.provider_official_signatory_1_name = String(sanitized.provider_official_signatory_1_name || sanitized.provider_primary_signatory_name || '').trim() || null;
+        sanitized.provider_official_signatory_1_title = String(sanitized.provider_official_signatory_1_title || sanitized.provider_primary_signatory_title || '').trim() || null;
+        sanitized.provider_signatory_name = sanitized.provider_official_signatory_1_name || sanitized.provider_primary_signatory_name;
+        sanitized.provider_signatory_title = sanitized.provider_official_signatory_1_title || sanitized.provider_primary_signatory_title;
+        sanitized.provider_sign_date = sanitized.provider_official_signatory_1_sign_date || sanitized.provider_sign_date || null;
+      } else {
+        // Proposal conversion / new agreement: never create an SFC signatory.
+        sanitized.provider_official_signatory_1_name = null;
+        sanitized.provider_official_signatory_1_title = null;
+        sanitized.provider_official_signatory_1_sign_date = null;
+        sanitized.provider_primary_signatory_name = null;
+        sanitized.provider_primary_signatory_title = null;
+        sanitized.financial_controller_signed = false;
+        sanitized.provider_signatory_name = sanitized.provider_official_signatory_2_name;
+        sanitized.provider_signatory_title = sanitized.provider_official_signatory_2_title;
+        sanitized.provider_sign_date = null;
+      }
+    }
     // `id` is deliberately not mapped: public.agreements.id has a
     // gen_random_uuid() default. New business identifiers and their integer
     // sequence are allocated atomically by the database trigger as well.
