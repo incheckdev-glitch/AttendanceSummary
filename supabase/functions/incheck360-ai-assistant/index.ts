@@ -57,6 +57,20 @@ const SOURCE_CONFIG: Record<string, { table:string; businessKeys:string[] }> = {
   receipt: { table:'receipts', businessKeys:['receipt_id','receipt_number'] }
 };
 
+const SELF_SOURCE_BY_RESOURCE: Record<string,string> = {
+  leads:'lead', deals:'deal', proposals:'proposal', agreements:'agreement', invoices:'invoice', receipts:'receipt'
+};
+
+const PROPOSAL_UPDATE_FIELDS = new Set([
+  'proposal_title','proposal_date','valid_until','proposal_valid_until','customer_name','customer_legal_name','company_id','company_name',
+  'contact_id','customer_contact_id','contact_name','contact_email','contact_phone','contact_mobile','customer_address',
+  'customer_contact_name','customer_contact_mobile','customer_contact_email','provider_contact_name','provider_contact_mobile','provider_contact_email',
+  'service_start_date','contract_term','account_number','billing_frequency','payment_term','po_number','is_poc','poc_location_count','poc_license_count',
+  'poc_license_months','poc_service_start_date','poc_service_end_date','poc_success_kpis','poc_conversion_commitment','currency','terms_conditions',
+  'internal_notes','customer_signatory_name','customer_signatory_title','customer_signature_name','customer_signature_title','customer_sign_date',
+  'customer_signed_at','provider_signatory_user_id','provider_signatory_name','provider_signatory_title','provider_sign_date','status'
+]);
+
 const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -81,6 +95,10 @@ function jsonObject(value: unknown) {
     const parsed = JSON.parse(String(value || '{}'));
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
   } catch { return null; }
+}
+
+function objectValue(value: unknown): Record<string,unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? { ...(value as Record<string,unknown>) } : {};
 }
 
 function normalizeResource(value: unknown) {
@@ -117,6 +135,7 @@ async function resolveSourceRecord(db:any, source:string, payload:Record<string,
   }
 
   const refs = [
+    payload.id, payload.uuid,
     payload[`${source}_id`], payload[`${source}Id`],
     payload[`${source}_number`], payload[`${source}Number`],
     payload[`${source}_reference`], payload[`${source}Reference`],
@@ -124,6 +143,7 @@ async function resolveSourceRecord(db:any, source:string, payload:Record<string,
   ].map(v => String(v || '').trim()).filter(Boolean);
 
   for (const ref of refs) {
+    if (isUuid(ref)) continue;
     for (const key of config.businessKeys) {
       const selectCols = ['id', ...config.businessKeys].join(',');
       const { data, error } = await db.from(config.table).select(selectCols).eq(key, ref).limit(1).maybeSingle();
@@ -146,6 +166,99 @@ async function normalizeSourcePayload(db:any, source:string, payload:Record<stri
   return out;
 }
 
+function normalizeProposalUpdateFields(input:Record<string,unknown>) {
+  const out:Record<string,unknown> = { ...input };
+  if (out.payment_term === undefined && out.payment_terms !== undefined) out.payment_term = out.payment_terms;
+  if (out.service_start_date === undefined && out.start_date !== undefined) out.service_start_date = out.start_date;
+  if (out.contract_term === undefined && out.term_months !== undefined && Number(out.term_months) > 0) out.contract_term = `${Number(out.term_months)} months`;
+  delete out.payment_terms;
+  delete out.start_date;
+  delete out.term_months;
+  delete out.validity_days;
+  delete out.location_count;
+  return out;
+}
+
+function normalizeProposalItemAliases(raw:Record<string,unknown>) {
+  const item:Record<string,unknown> = { ...raw };
+  if (item.item_name === undefined && item.itemName !== undefined) item.item_name = item.itemName;
+  if (item.unit_price === undefined && item.unitPrice !== undefined) item.unit_price = item.unitPrice;
+  if (item.discount_percent === undefined && item.discountPercent !== undefined) item.discount_percent = item.discountPercent;
+  if (item.license_quantity === undefined && item.licenseQuantity !== undefined) item.license_quantity = item.licenseQuantity;
+  const name = String(item.item_name || '').trim().toLowerCase();
+  const billing = String(item.billing_frequency || item.billingFrequency || '').trim().toLowerCase();
+  let section = String(item.section || '').trim().toLowerCase();
+  if (!section) {
+    if (name.includes('account setup')) section = 'one_time_fee';
+    else if (billing.includes('annual') || name.includes('incheck basic')) section = 'annual_saas';
+  }
+  if (section) item.section = section;
+  return item;
+}
+
+function normalizeProposalItems(value:unknown) {
+  if (!Array.isArray(value)) return undefined;
+  const normalized:Record<string,unknown>[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+    const item = normalizeProposalItemAliases(raw as Record<string,unknown>);
+    const section = String(item.section || '').trim().toLowerCase();
+    const name = String(item.item_name || '').trim().toLowerCase();
+    const billing = String(item.billing_frequency || item.billingFrequency || '').trim().toLowerCase();
+    const description = String(item.description || '').trim().toLowerCase();
+    const explicitMonthsRaw = item.license_months ?? item.months ?? item.duration_months;
+    const explicitMonths = Number(explicitMonthsRaw);
+    const rawQty = Number(item.quantity ?? item.qty);
+    const annualHint = billing.includes('annual') || description.includes('12 months') || description.includes('12-month');
+
+    if (section === 'annual_saas') {
+      if (name === 'incheck basic' && annualHint && !Number.isFinite(explicitMonths) && Number.isInteger(rawQty) && rawQty > 1 && rawQty <= 100) {
+        for (let i=0;i<rawQty;i++) {
+          normalized.push({ ...item, quantity:12, qty:12, months:12, license_months:12, duration_months:12, license_quantity:1 });
+        }
+        continue;
+      }
+      const months = Number.isFinite(explicitMonths) && explicitMonths > 0 ? explicitMonths : (annualHint ? 12 : (Number.isFinite(rawQty) && rawQty > 0 ? rawQty : 12));
+      item.quantity = months;
+      item.qty = months;
+      item.months = months;
+      item.license_months = months;
+      item.duration_months = months;
+      if (item.license_quantity === undefined || Number(item.license_quantity) <= 0) item.license_quantity = 1;
+    } else if (section === 'one_time_fee') {
+      const qty = Number.isFinite(rawQty) && rawQty > 0 ? rawQty : 1;
+      item.quantity = qty;
+      item.qty = qty;
+    }
+    normalized.push(item);
+  }
+  return normalized;
+}
+
+async function normalizeProposalUpdatePayload(db:any, payload:Record<string,unknown>) {
+  const out = await normalizeSourcePayload(db, 'proposal', payload);
+  const updates = normalizeProposalUpdateFields(objectValue(out.updates));
+  const rawItems = Array.isArray(out.items) ? out.items : (Array.isArray(out.line_items) ? out.line_items : (Array.isArray(out.proposal_items) ? out.proposal_items : undefined));
+
+  const aliasMap:Record<string,string> = { payment_terms:'payment_term', start_date:'service_start_date' };
+  for (const [key,value] of Object.entries(out)) {
+    if (['id','uuid','proposal_id','proposalId','proposal_uuid','proposalUuid','updates','items','line_items','proposal_items'].includes(key)) continue;
+    const target = aliasMap[key] || key;
+    if (PROPOSAL_UPDATE_FIELDS.has(target) && updates[target] === undefined) updates[target] = value;
+  }
+
+  const finalUpdates = normalizeProposalUpdateFields(updates);
+  const result:Record<string,unknown> = {
+    id: out.id,
+    proposal_uuid: out.proposal_uuid,
+    proposal_id: out.proposal_id,
+    updates: finalUpdates
+  };
+  const items = normalizeProposalItems(rawItems);
+  if (items !== undefined) result.items = items;
+  return result;
+}
+
 async function normalizeActionPayload(db:any, resource:string, action:string, payload:Record<string,unknown>) {
   if (resource === 'companies') {
     if (action === 'create') return normalizeCompanyFields(payload);
@@ -158,6 +271,11 @@ async function normalizeActionPayload(db:any, resource:string, action:string, pa
       return normalizeCompanyFields(out);
     }
   }
+
+  if (resource === 'proposals' && action === 'update') return await normalizeProposalUpdatePayload(db, payload);
+
+  const selfSource = SELF_SOURCE_BY_RESOURCE[resource];
+  if (selfSource && ['update','delete'].includes(action)) return await normalizeSourcePayload(db, selfSource, payload);
 
   if (resource === 'leads' && ['convert','convert_to_deal'].includes(action)) return await normalizeSourcePayload(db, 'lead', payload);
   if (resource === 'proposals' && action === 'create_from_deal') return await normalizeSourcePayload(db, 'deal', payload);
@@ -261,7 +379,7 @@ function matchTable(resource:string) {
   return ALIASES[resource] || [];
 }
 function compactRow(table:string,row:any) {
-  const keep=['id','company_id','contact_id','lead_id','deal_id','proposal_id','proposal_number','agreement_id','agreement_number','invoice_id','invoice_number','receipt_id','receipt_number','credit_note_id','credit_note_number','ticket_id','request_id','onboarding_id','name','title','subject','customer_name','client_name','company_name','status','payment_state','payment_status','approval_status','created_at','updated_at','date','due_date','invoice_date','receipt_date','follow_up_date','next_follow_up_at','service_start_date','service_end_date','currency','amount','total','grand_total','total_amount','balance_due','billing_frequency','payment_terms','notes'];
+  const keep=['id','company_id','contact_id','lead_id','deal_id','proposal_id','proposal_number','agreement_id','agreement_number','invoice_id','invoice_number','receipt_id','receipt_number','credit_note_id','credit_note_number','ticket_id','request_id','onboarding_id','name','title','subject','customer_name','client_name','company_name','status','payment_state','payment_status','approval_status','created_at','updated_at','date','due_date','invoice_date','receipt_date','follow_up_date','next_follow_up_at','service_start_date','service_end_date','currency','amount','total','grand_total','total_amount','balance_due','billing_frequency','payment_terms','payment_term','notes'];
   const record:any={}; for (const k of keep) if (row?.[k]!==undefined && row?.[k]!==null) record[k]=row[k];
   return {resource:table,record};
 }
@@ -293,7 +411,9 @@ STRICT RULES:
 - Financial, legal, approval, conversion, destructive, or irreversible actions require confirmation.
 - payload_json must be a valid JSON object compatible with the ERP action endpoint.
 - companies:create requires company_name, never generic name.
-- Source identifiers are normalized server-side. For conversions, provide the business reference when known (Lead#..., Deal#..., Proposal#..., Agreement#..., invoice number). Never invent UUIDs.
+- Existing ERP business references such as Lead#..., Deal#..., Proposal#..., Agreement#..., invoice numbers and receipt numbers are normalized server-side to their UUIDs. Never invent UUIDs.
+- For proposals:update, identify the proposal and provide requested proposal fields plus items/line_items. The server converts this to {id, updates, items}.
+- Proposal Annual SaaS quantity means MONTHS, not number of licenses. Annual means 12 months. For multiple location-based InCheck Basic licenses, use one annual_saas row per license/location; Account Setup may use quantity equal to the number of locations.
 - Lead→Deal, Deal→Proposal, Proposal→Agreement, Agreement→Invoice, and Invoice→Receipt are sequential conversions. Do not repeat an identical failed, blocked, successful, or cancelled action.
 - Allowed writes only:\n${actionPolicyText}`;
 
@@ -334,6 +454,7 @@ Deno.serve(async(req:Request)=>{
           if(!rawPayload){outputs.push({type:'function_call_output',call_id:item.call_id,output:JSON.stringify({error:'payload_json must be a valid JSON object.'})});continue;}
           const payload=await normalizeActionPayload(db,resource,action,rawPayload);
           if(resource==='companies'&&action==='create'&&!String(payload.company_name||'').trim()){outputs.push({type:'function_call_output',call_id:item.call_id,output:JSON.stringify({error:'Company create requires company_name.'})});continue;}
+          if(resource==='proposals'&&action==='update'&&!isUuid(payload.id)){outputs.push({type:'function_call_output',call_id:item.call_id,output:JSON.stringify({error:'Proposal update source could not be resolved to a UUID. Search the exact Proposal# reference first.'})});continue;}
           const requiredSource=requiredSourceForAction(resource,action);
           if(requiredSource&&!isUuid(payload.id)){outputs.push({type:'function_call_output',call_id:item.call_id,output:JSON.stringify({error:`${requiredSource} conversion source could not be resolved to a UUID. Search for the exact business reference first.`})});continue;}
           const mustConfirm=HIGH_RISK_RESOURCES.has(resource)||HIGH_RISK_ACTIONS.has(action)||args.requires_confirmation===true;
