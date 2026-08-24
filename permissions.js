@@ -416,6 +416,7 @@ const BASE_PERMISSION_MATRIX = Object.freeze({
     delete: ['admin', 'dev']
   }),
   analytics: Object.freeze({ list: ['admin', 'dev', 'viewer', 'hoo'] }),
+  ai_assistant: Object.freeze({ view: ['admin'], list: ['admin'], use: ['admin'], execute: ['admin'] }),
   notifications: Object.freeze({
     list: ['admin', 'dev', 'viewer', 'hoo'],
     get_unread_count: ['admin', 'dev', 'viewer', 'hoo'],
@@ -483,6 +484,7 @@ const Permissions = {
     accounting: [{ resource: 'accounting', action: 'view' }],
     backupCenter: [{ resource: 'backup_center', action: 'view' }],
     lifecycleAnalytics: [{ resource: 'analytics', action: 'list' }],
+    aiAssistant: [{ resource: 'ai_assistant', action: 'use' }],
     clients: [{ resource: 'clients', action: 'list' }],
     proposalCatalog: [{ resource: 'proposal_catalog', action: 'list' }],
     communicationCentre: [{ resource: 'communication_centre', action: 'list' }, { resource: 'communication_centre', action: 'view' }],
@@ -515,6 +517,7 @@ const Permissions = {
     accounting: 'accounting',
     backupCenter: 'backup_center',
     lifecycleAnalytics: 'analytics',
+    aiAssistant: 'ai_assistant',
     clients: 'clients',
     proposalCatalog: 'proposal_catalog',
     communicationCentre: 'communication_centre',

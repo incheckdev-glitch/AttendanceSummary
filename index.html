@@ -243,6 +243,10 @@
                       role="tab" aria-selected="false" aria-controls="lifecycleAnalyticsView">
                 <span class="icon" aria-hidden="true">📊</span> Lifecycle Analytics
               </button>
+              <button id="aiAssistantTab" class="view-tab" data-view="aiAssistant" data-permission-resource="ai_assistant" data-permission-action="use"
+                      role="tab" aria-selected="false" aria-controls="aiAssistantView">
+                <span class="icon" aria-hidden="true">✨</span> AI Assistant
+              </button>
               </div>
             </div>
 
@@ -397,6 +401,8 @@
           </div>
         </aside>
         <div class="content-panels">
+
+      <section id="aiAssistantView" class="view" role="tabpanel" aria-labelledby="aiAssistantTab"></section>
 
       <!-- Tickets view -->
       <section id="issuesView" class="view active" role="tabpanel" aria-labelledby="issuesTab">
@@ -4591,6 +4597,7 @@ Sample:
   <script src="/users.js?v=20260427-allpwa1"></script>
   <script src="/events-service.js?v=20260427-events-pwa1"></script>
   <script src="/csm-service.js?v=20260720-csm-special-client-activity-v9"></script>
-  <script src="/app.js?v=20260730-custom-rate-persistence-v36"></script>
+  <script src="/ai-assistant.js?v=20260824-action-assistant-v1"></script>
+  <script src="/app.js?v=20260824-ai-action-assistant-v1"></script>
 </body>
 </html>

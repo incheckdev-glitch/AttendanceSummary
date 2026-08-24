@@ -2686,6 +2686,7 @@ function normalizeViewKey(view) {
   if (['backupCenter', 'backup_center', 'backup-center', 'backup', 'backups', 'database_backup', 'database-backup'].includes(key)) return 'backupCenter';
   if (['clientSuccess', 'client_success', 'client-success', 'customer_success', 'customer-success', 'cs360', 'client_success_360'].includes(key)) return 'clientSuccess';
   if (['commissionTracker', 'commission_tracker', 'commission-tracker', 'sales_commission', 'sales-commission', 'commissions'].includes(key)) return 'commissionTracker';
+  if (['aiAssistant', 'ai_assistant', 'ai-assistant', 'assistant', 'copilot'].includes(key)) return 'aiAssistant';
   return key;
 }
 
@@ -2714,7 +2715,7 @@ window.shouldShowTicketFilters = shouldShowTicketFilters;
 
 function setActiveView(view) {
  view = normalizeViewKey(view);
- const names = ['issues', 'calendar', 'csm', 'clientSuccess', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'commissionTracker', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'renewalForecast', 'biners', 'hr', 'accounting', 'backupCenter', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
+ const names = ['issues', 'calendar', 'csm', 'clientSuccess', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'commissionTracker', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'renewalForecast', 'biners', 'hr', 'accounting', 'backupCenter', 'lifecycleAnalytics', 'aiAssistant', 'clients', 'proposalCatalog', 'communicationCentre', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
  const requestedView = view;
  const firstAllowedView = names.find(name => Permissions.canAccessTab(name)) || '';
  if (!Permissions.canAccessTab(view)) {
@@ -2766,6 +2767,8 @@ function setActiveView(view) {
         ? E.backupCenterTab
         : name === 'lifecycleAnalytics'
         ? E.lifecycleAnalyticsTab
+        : name === 'aiAssistant'
+        ? E.aiAssistantTab
         : name === 'clients'
         ? E.clientsTab
         : name === 'proposalCatalog'
@@ -2824,6 +2827,8 @@ function setActiveView(view) {
         ? E.backupCenterView
         : name === 'lifecycleAnalytics'
         ? E.lifecycleAnalyticsView
+        : name === 'aiAssistant'
+        ? E.aiAssistantView
         : name === 'clients'
         ? E.clientsView
         : name === 'proposalCatalog'
@@ -2921,6 +2926,7 @@ function setActiveView(view) {
   if (view === 'accounting' && window.AccountingModule?.init) runViewLoader('Accounting', () => AccountingModule.init());
   if (view === 'backupCenter' && window.BackupCenter?.init) runViewLoader('Backup Center', () => BackupCenter.init());
   if (view === 'lifecycleAnalytics' && window.LifecycleAnalytics?.init) runViewLoader('lifecycle analytics', () => LifecycleAnalytics.init());
+  if (view === 'aiAssistant' && window.AIAssistant?.init) runViewLoader('AI Assistant', () => window.AIAssistant.init());
   if (view === 'clients' && window.Clients?.loadAndRefresh) runViewLoader('clients', () => Clients.loadAndRefresh());
   if (view === 'proposalCatalog' && window.ProposalCatalog?.loadAndRefresh) runViewLoader('proposal catalog', () => ProposalCatalog.loadAndRefresh());
   if (view === 'notifications' && window.Notifications?.loadHub) runViewLoader('notifications', () => Notifications.loadHub(true));
@@ -5138,6 +5144,7 @@ function wireCore() {
     E.accountingTab,
     E.backupCenterTab,
     E.lifecycleAnalyticsTab,
+    E.aiAssistantTab,
     E.clientsTab,
     E.proposalCatalogTab,
     E.communicationCentreTab,
@@ -5657,7 +5664,8 @@ function getAppHashForView(view = '') {
     users: '#users',
     rolePermissions: '#role-permissions',
     communicationCentre: '#communication_centre',
-    communication_centre: '#communication_centre'
+    communication_centre: '#communication_centre',
+    aiAssistant: '#ai-assistant'
   };
   return map[String(view || '').trim()] || '';
 }
@@ -5665,7 +5673,7 @@ function getAppHashForView(view = '') {
 function isNotificationDeepLinkHash(hash = '') {
   const value = String(hash || '').trim();
   if (!value || value === '#loginSection') return false;
-  return /^#(tickets|workflow|crm|finance|leads|deals|proposals|agreements|commission_tracker|commission-tracker|invoices|receipts|credit_notes|credit-notes|payment_forecast|payment-forecast|renewal_forecast|renewal-forecast|biners|hr|human-resources|attendance|payroll|backup-center|backup_center|backup|backups|client-success|client_success|client-success-360|communication_centre|communication-centre|communication_center)/i.test(value);
+  return /^#(tickets|workflow|crm|finance|leads|deals|proposals|agreements|commission_tracker|commission-tracker|invoices|receipts|credit_notes|credit-notes|payment_forecast|payment-forecast|renewal_forecast|renewal-forecast|biners|hr|human-resources|attendance|payroll|backup-center|backup_center|backup|backups|client-success|client_success|client-success-360|communication_centre|communication-centre|communication_center|ai-assistant|ai_assistant|assistant)/i.test(value);
 }
 
 function capturePendingDeepLink() {
@@ -5714,6 +5722,7 @@ function parseAppHashRoute(hash = '') {
   if (['backup-center','backup_center','backup','backups'].includes(route)) return { module: 'backup_center', resource: 'backup_center', id: params.get('id') || '' };
   if (['client-success','client_success','client-success-360'].includes(route)) return { module: 'client_success', resource: 'client_success', id: params.get('id') || '' };
   if (['communication_centre', 'communication-centre', 'communication_center', 'communicationCentre'].includes(route)) return { module: 'communication_centre', resource: 'communication_centre', id: params.get('conversation_id') || params.get('conversationId') || params.get('id') || '' };
+  if (['ai-assistant', 'ai_assistant', 'assistant', 'copilot'].includes(route)) return { module: 'aiAssistant', resource: 'ai_assistant', id: '' };
   return { module: route, resource: route, id: params.get('id') || '' };
 }
 
@@ -5755,6 +5764,13 @@ async function routeAppHashAfterReady() {
     UI.toast?.('Page not available.');
     setActiveView('issues');
     return true;
+  }
+  if (target.resource === 'ai_assistant') {
+    if (Permissions.canAccessTab('aiAssistant')) { setActiveView('aiAssistant'); return true; }
+    UI.toast?.('Access denied. AI Assistant action mode is admin-only.');
+    const fallback = UI.tabRegistry?.().find(tab => Permissions.canAccessTab(tab.key))?.key || '';
+    if (fallback) setActiveView(fallback);
+    return false;
   }
   if (target.resource === 'backup_center') {
     if (Permissions.canAccessTab('backupCenter')) { setActiveView('backupCenter'); return true; }
@@ -5813,7 +5829,7 @@ function wireDashboardGate() {
     return 'issues';
   };
   const getFirstAllowedView = preferredView => {
-    const names = ['issues', 'calendar', 'csm', 'clientSuccess', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'commissionTracker', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'renewalForecast', 'biners', 'hr', 'accounting', 'backupCenter', 'lifecycleAnalytics', 'clients', 'proposalCatalog', 'communicationCentre', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
+    const names = ['issues', 'calendar', 'csm', 'clientSuccess', 'company', 'contacts', 'leads', 'deals', 'proposals', 'agreements', 'commissionTracker', 'invoices', 'receipts', 'creditNotes', 'paymentForecast', 'renewalForecast', 'biners', 'hr', 'accounting', 'backupCenter', 'lifecycleAnalytics', 'aiAssistant', 'clients', 'proposalCatalog', 'communicationCentre', 'notifications', 'notificationSetup', 'workflow', 'users', 'rolePermissions'];
     const preferred = String(preferredView || '').trim();
     if (preferred && Permissions.canAccessTab(preferred)) return preferred;
     return names.find(name => Permissions.canAccessTab(name)) || 'issues';

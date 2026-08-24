@@ -6,6 +6,7 @@ const root = path.resolve(__dirname, '..');
 // Keep the established ERP regression order while allowing every test to run,
 // even when an earlier test fails. This gives one complete failure report in CI.
 const tests = [
+  'tests/ai-action-assistant-v1.test.js',
   'tests/client-panel-signed-base.test.js',
   'tests/communication-direct-create.test.js',
   'tests/communication-notifications-read.test.js',

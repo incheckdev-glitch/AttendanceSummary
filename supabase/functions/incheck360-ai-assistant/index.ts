@@ -1,32 +1,93 @@
 import OpenAI from 'npm:openai@4.104.0';
 import { createClient } from 'npm:@supabase/supabase-js@2.49.8';
 
-const SYSTEM = `You are the InCheck360 AI Assistant. You answer read-only questions about any ERP data available in InCheck360. Use controlled tools only. Never run raw SQL from the user. Never perform write actions. If asked to modify data, explain that write actions are not enabled. Use business reference numbers instead of UUIDs. If a question is broad, search the ERP catalog and summarize grouped results. If data is missing, say exactly which data was not found.`;
+const MODEL = Deno.env.get('OPENAI_MODEL') || 'gpt-5.6-luna';
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
-const READONLY_BLOCK_MESSAGE = 'Write actions are not enabled yet. I can only read and summarize ERP data.';
+const MAX_SCAN_ROWS = 1000;
+const MAX_MESSAGE_CHARS = 12000;
 
-const ERP_CATALOG = ['companies','contacts','clients','leads','deals','proposals','proposal_items','proposal_catalog','agreements','agreement_items','invoices','invoice_items','receipts','receipt_items','tickets','events','operations_onboarding','technical_admin_requests','notifications','notification_rules','workflow','workflow_requests','role_permissions','users','ai_insights','csm_activities'];
+const ERP_WRITE_ACTIONS: Record<string, string[]> = {
+  companies: ['create', 'update', 'delete', 'verify', 'verify_company'],
+  contacts: ['create', 'update', 'delete'],
+  leads: ['create', 'update', 'delete', 'convert', 'convert_to_deal'],
+  deals: ['create', 'update', 'delete'],
+  proposal_catalog: ['create', 'update', 'delete'],
+  proposals: ['create', 'save', 'update', 'delete', 'create_from_deal', 'accept_expired'],
+  agreements: ['create', 'update', 'delete', 'create_from_proposal', 'send_to_operations', 'request_incheck_lite', 'request_incheck_full', 'assign_csm', 'update_onboarding_status'],
+  clients: ['create', 'update', 'delete', 'create_proposal', 'create_agreement', 'create_invoice', 'create_from_previous_agreement'],
+  invoices: ['create', 'update', 'delete', 'create_from_agreement', 'create_payment_schedule', 'recalculate_payment_schedule', 'save_payment_schedule', 'update_payment_schedule_reminder', 'create_operations_onboarding'],
+  receipts: ['create', 'update', 'delete', 'create_from_invoice'],
+  credit_notes: ['create', 'cancel', 'recalculate_invoice_totals'],
+  tickets: ['create', 'update', 'delete'],
+  events: ['create', 'update', 'delete'],
+  csm: ['create', 'update', 'delete'],
+  operations_onboarding: ['create', 'update', 'delete', 'assign_csm'],
+  technical_admin_requests: ['create', 'update', 'update_status', 'delete'],
+  payment_forecast: ['save_followup', 'mark_followed_up', 'create_followup_log', 'add_followup_note'],
+  biners: ['create', 'update', 'delete', 'record_scheduled_payment'],
+  workflow: ['create_approval', 'request_approval', 'approve', 'reject'],
+  communication_centre_messages: ['update_message', 'soft_delete_message']
+};
+const ALWAYS_CONFIRM_ACTIONS = new Set(['delete','cancel','approve','reject','accept_expired','create_from_agreement','create_from_invoice','create_invoice','create_agreement','create_proposal']);
+const FINANCIAL_OR_LEGAL_RESOURCES = new Set(['proposals','agreements','invoices','receipts','credit_notes','workflow','biners']);
+const ACTION_POLICY_TEXT = Object.entries(ERP_WRITE_ACTIONS).map(([resource, actions]) => `${resource}: ${actions.join(', ')}`).join('\n');
+
+const SYSTEM = `You are the InCheck360 ERP AI Assistant.
+Your job is to understand the signed-in user's request, inspect ERP data with read tools, and when requested, plan controlled ERP actions.
+
+Rules:
+1. Never write directly to the database. For a requested change, call execute_erp_action. The authenticated ERP client will execute it using the user's real permissions and existing business rules.
+2. Before a write, inspect the relevant record when needed. Never invent UUIDs, business references, client names, amounts, statuses, dates, or IDs.
+3. Use business reference numbers in your response (Proposal#..., Agreement#..., SA/..., RV/..., etc.) whenever available.
+4. If required data is missing, ask for exactly what is missing instead of guessing.
+5. Security administration is excluded: never propose changes to users, roles, role_permissions, authentication, secrets, RLS, or API keys.
+6. For destructive, financial, legal, approval, or irreversible actions, mark risk=high and requires_confirmation=true.
+7. For normal operational edits, use risk=medium or low. A user's explicit request to change data is authorization to plan the action, but the ERP permission layer remains authoritative.
+8. One execute_erp_action call must represent one ERP resource/action pair. Multiple calls are allowed for multi-step workflows.
+9. payload_json must be valid JSON matching the existing ERP Api.requestWithSession(resource, action, payload) conventions.
+10. Never put raw SQL in an action.
+11. You may only use these controlled ERP action pairs:
+${ACTION_POLICY_TEXT}
+
+Examples:
+- "Create invoice from Agreement#00120" -> inspect agreement -> execute_erp_action resource=invoices action=create_from_agreement payload_json={"agreement_id":"..."} risk=high confirmation=true.
+- "Mark Proposal#00058 accepted" -> inspect proposal -> execute_erp_action resource=proposals action=update payload_json={"id":"...","updates":{"status":"accepted"}} risk=high confirmation=true.
+- "Change lead follow-up to tomorrow" -> inspect lead -> execute_erp_action resource=leads action=update with the resolved id and updates.
+
+When action results are supplied to you, summarize what actually succeeded, failed, was blocked, or was cancelled. Never claim success unless the result says success.`;
+
+const ERP_CATALOG = [
+  'companies','contacts','clients','leads','deals','proposals','proposal_items','proposal_catalog_items',
+  'agreements','agreement_items','invoices','invoice_items','receipts','receipt_items','credit_notes','tickets','events',
+  'operations_onboarding','technical_admin_requests','notifications','workflow_approvals','biners_entries','csm_activities'
+];
+
 const RESOURCE_ALIASES: Record<string, string[]> = {
-  company: ['companies', 'clients'], customer: ['companies', 'clients'], client: ['clients', 'companies'],
-  contact: ['contacts'], person: ['contacts'], lead: ['leads'], leads: ['leads'], deal: ['deals'], deals: ['deals'], proposal: ['proposals'], quote: ['proposals'],
-  agreement: ['agreements'], contract: ['agreements'], 'subscription agreement': ['agreements'], invoice: ['invoices'], payment: ['invoices'], unpaid: ['invoices'], 'overdue payment': ['invoices'],
-  'invoice line': ['invoice_items'], renewal: ['invoice_items'], 'saas row': ['invoice_items'], 'location renewal': ['invoice_items'], receipt: ['receipts'], 'payment received': ['receipts'],
-  ticket: ['tickets'], issue: ['tickets'], bug: ['tickets'], event: ['events'], calendar: ['events'], onboarding: ['operations_onboarding'], operations: ['operations_onboarding'],
-  'technical request': ['technical_admin_requests'], 'admin request': ['technical_admin_requests'], 'technical admin': ['technical_admin_requests'], notification: ['notifications'],
-  'communication centre': ['notifications'], workflow: ['workflow', 'workflow_requests'], approval: ['workflow', 'workflow_requests'],
+  company: ['companies'], companies: ['companies'], customer: ['companies','clients'], client: ['clients','companies'],
+  contact: ['contacts'], lead: ['leads'], deal: ['deals'], proposal: ['proposals'], quote: ['proposals'],
+  agreement: ['agreements'], contract: ['agreements'], invoice: ['invoices'], receipt: ['receipts'],
+  'credit note': ['credit_notes'], ticket: ['tickets'], event: ['events'], onboarding: ['operations_onboarding'],
+  'technical request': ['technical_admin_requests'], workflow: ['workflow_approvals'], approval: ['workflow_approvals'],
+  biners: ['biners_entries'], payable: ['biners_entries'], csm: ['csm_activities']
 };
 
-const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS'
+};
 const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'content-type': 'application/json' } });
 const normalizeLimit = (n?: number) => Math.min(MAX_LIMIT, Math.max(1, Number.isFinite(n) ? Number(n) : DEFAULT_LIMIT));
 const safeNum = (v: unknown) => Number(v ?? 0) || 0;
+const normalizeText = (value: unknown) => String(value ?? '').toLowerCase().trim().replace(/[^\p{L}\p{N}\s\-_.#\/]/gu, ' ').replace(/\s+/g, ' ');
+const maybeFields = (row: any, fields: string[]) => fields.map(f => row?.[f]).find(v => v !== null && v !== undefined && String(v).trim() !== '');
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 let encryptionKeyPromise: Promise<CryptoKey> | null = null;
 
 const bytesToBase64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
-const base64ToBytes = (base64: string) => Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+const base64ToBytes = (base64: string) => Uint8Array.from(atob(base64), c => c.charCodeAt(0));
 
 async function getEncryptionKey() {
   if (encryptionKeyPromise) return encryptionKeyPromise;
@@ -43,131 +104,170 @@ async function encryptText(plainText: string) {
   const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoder.encode(plainText));
   return { content_encrypted: bytesToBase64(new Uint8Array(encrypted)), content_iv: bytesToBase64(iv) };
 }
-
 async function decryptText(row: any) {
-  if (!row?.content_encrypted || !row?.content_iv) {
-    return row?.content && row.content !== '[encrypted]' ? String(row.content) : '';
-  }
+  if (!row?.content_encrypted || !row?.content_iv) return row?.content && row.content !== '[encrypted]' ? String(row.content) : '';
   const key = await getEncryptionKey();
   const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: base64ToBytes(row.content_iv) }, key, base64ToBytes(row.content_encrypted));
   return decoder.decode(decrypted);
 }
 
-async function loadRecentChatHistory(db: any, sessionId: string, limit = 12) {
+async function ensureSession(db: any, sessionId: string, user: any) {
+  const { data } = await db.from('ai_chat_sessions').select('id').eq('id', sessionId).maybeSingle();
+  if (data?.id) {
+    await db.from('ai_chat_sessions').update({ updated_at: new Date().toISOString() }).eq('id', sessionId);
+    return;
+  }
+  const { error } = await db.from('ai_chat_sessions').insert({ id: sessionId, user_id: user?.id || null, user_email: user?.email || null, updated_at: new Date().toISOString() });
+  if (error) throw new Error(`Unable to create AI chat session: ${error.message}`);
+}
+
+async function loadRecentChatHistory(db: any, sessionId: string, limit = 14) {
   if (!sessionId) return [];
   const { data, error } = await db.from('ai_chat_messages').select('*').eq('session_id', sessionId).order('created_at', { ascending: false }).limit(limit);
-  if (error) {
-    console.warn('[AI Assistant] unable to load chat history', error.message);
-    return [];
-  }
+  if (error) return [];
   const rows = [...(data || [])].reverse();
-  const history = [];
+  const history: any[] = [];
   for (const row of rows) {
-    const content = await decryptText(row);
-    const role = row.role === 'assistant' ? 'assistant' : row.role === 'user' ? 'user' : 'system';
-    if (!content || content === '[encrypted]') continue;
-    history.push({ role, content });
+    try {
+      const content = await decryptText(row);
+      if (!content) continue;
+      history.push({ role: row.role === 'assistant' ? 'assistant' : row.role === 'user' ? 'user' : 'system', content });
+    } catch (error) {
+      console.warn('[AI Assistant] chat decrypt failed', error);
+    }
   }
   return history;
 }
 
-async function saveChatMessage(db: any, sid: string, role: 'user' | 'assistant' | 'system', content: string, currentUser: any) {
+async function saveChatMessage(db: any, sid: string, role: 'user' | 'assistant' | 'system', content: string, user: any) {
   const encrypted = await encryptText(content);
-  const payload = {
+  const { error } = await db.from('ai_chat_messages').insert({
     session_id: sid,
     role,
     content: '[encrypted]',
     content_encrypted: encrypted.content_encrypted,
     content_iv: encrypted.content_iv,
-    user_id: currentUser?.id || null,
-    user_email: currentUser?.email || null,
-  };
-  const { error } = await db.from('ai_chat_messages').insert(payload);
+    user_id: user?.id || null,
+    user_email: user?.email || null
+  });
   if (error) console.warn('[AI Assistant] unable to save chat message', error.message);
-}
-const maybeFields = (row: any, fields: string[]) => fields.map((f) => row?.[f]).find((v) => v !== null && v !== undefined && String(v).trim() !== '');
-const normalizeText = (value: unknown) => String(value ?? '').toLowerCase().trim().replace(/[^\p{L}\p{N}\s\-_.#]/gu, ' ').replace(/\s+/g, ' ');
-
-function looksLikeWriteAction(message: string) {
-  const text = String(message || '').toLowerCase();
-  return /\b(create|update|delete|remove|approve|reject|assign|send|email|mark|complete|close|edit|change|set)\b/.test(text);
-}
-
-function detectReference(message: string) {
-  const m = String(message || '').match(/\b(agreement|invoice|receipt|ticket|tr)#?\s*([0-9]{1,8})\b/i);
-  if (!m) return null;
-  return `${m[1]}#${m[2].padStart(4, '0')}`;
 }
 
 function normalizeErpRow(resource: string, row: any) {
-  const reference = maybeFields(row, ['reference','agreement_number','invoice_number','receipt_number','ticket_number','request_number','onboarding_number','proposal_number','deal_number','lead_number','id']) || '';
-  const refKey = String(reference || '');
-  const map: Record<string, string> = {
-    companies: `#companies?company_id=${refKey}`,
-    contacts: `#contacts?contact_id=${refKey}`,
-    leads: `#leads?lead_id=${maybeFields(row, ['lead_number']) || refKey}`,
-    deals: `#deals?deal_id=${maybeFields(row, ['deal_number']) || refKey}`,
-    proposals: `#proposals?proposal_id=${maybeFields(row, ['proposal_number']) || refKey}`,
-    agreements: `#agreements?agreement_id=${maybeFields(row, ['agreement_number']) || refKey}`,
-    invoices: `#invoices?invoice_id=${maybeFields(row, ['invoice_number']) || refKey}`,
-    receipts: `#receipts?receipt_id=${maybeFields(row, ['receipt_number']) || refKey}`,
-    tickets: `#tickets?ticket_id=${maybeFields(row, ['ticket_number']) || refKey}`,
-    technical_admin_requests: `#technical-admin-requests?request_id=${maybeFields(row, ['request_number']) || refKey}`,
-    operations_onboarding: `#operations-onboarding?onboarding_id=${maybeFields(row, ['onboarding_number']) || refKey}`,
-    clients: `#clients?client_id=${maybeFields(row, ['client_name']) || refKey}`,
-  };
+  const reference = maybeFields(row, ['reference','company_id','contact_id','lead_id','deal_id','proposal_id','proposal_number','agreement_id','agreement_number','invoice_id','invoice_number','receipt_id','receipt_number','credit_note_id','credit_note_number','ticket_id','request_id','onboarding_id','id']) || '';
   return {
     resource,
+    id: String(row?.id || ''),
     reference: String(reference || ''),
-    title: String(maybeFields(row, ['title', 'name', 'subject', 'description']) || ''),
-    customer_name: String(maybeFields(row, ['customer_name', 'client_name', 'company_name', 'customer_legal_name']) || ''),
-    status: String(maybeFields(row, ['status', 'approval_status', 'request_status', 'onboarding_status', 'dev_team_status']) || ''),
-    date: String(maybeFields(row, ['updated_at', 'created_at', 'date', 'due_date', 'invoice_date', 'receipt_date']) || ''),
-    amount: safeNum(maybeFields(row, ['amount', 'total', 'grand_total', 'total_amount', 'balance_due', 'line_total'])),
-    payment_status: String(maybeFields(row, ['payment_status']) || ''),
-    deep_link: map[resource] || `#${resource}`,
+    title: String(maybeFields(row, ['title','name','subject','description','item_name']) || ''),
+    customer_name: String(maybeFields(row, ['customer_name','client_name','company_name','customer_legal_name']) || ''),
+    status: String(maybeFields(row, ['status','payment_state','payment_status','approval_status','request_status','onboarding_status','dev_team_status']) || ''),
+    date: String(maybeFields(row, ['updated_at','created_at','date','due_date','invoice_date','receipt_date','renewal_date','follow_up_date']) || ''),
+    amount: safeNum(maybeFields(row, ['amount','total','grand_total','total_amount','balance_due','line_total'])),
+    currency: String(maybeFields(row, ['currency']) || ''),
+    raw: row
   };
 }
 
-function createPrivacyMasker() { const realToToken = new Map<string, string>(); const tokenToReal = new Map<string, string>(); let c = 0;
-  const add = (value: unknown, type = 'MASK') => { const real = String(value || '').trim(); if (!real) return real; if (realToToken.has(real)) return realToToken.get(real)!; const token = `${type}_${String(++c).padStart(3,'0')}`; realToToken.set(real, token); tokenToReal.set(token, real); return token; };
-  const maskText = (t: unknown) => { let out = String(t || ''); for (const [r, tk] of realToToken.entries()) out = out.split(r).join(tk); return out; };
-  const restoreText = (t: unknown) => { let out = String(t || ''); for (const [tk, r] of tokenToReal.entries()) out = out.split(tk).join(r); return out; };
-  const maskData = (data: any): any => Array.isArray(data) ? data.map(maskData) : (!data || typeof data !== 'object' ? data : Object.fromEntries(Object.entries(data).map(([k,v]) => [k, typeof v === 'string' ? add(v, /email/i.test(k)?'EMAIL':/phone/i.test(k)?'PHONE':/(name|client|company|contact|signatory|address|registration)/i.test(k)?'CLIENT':'MASK') : maskData(v)])));
-  return { add, maskText, restoreText, maskData };
+function createPrivacyMasker() {
+  const realToToken = new Map<string,string>();
+  const tokenToReal = new Map<string,string>();
+  let count = 0;
+  const add = (value: unknown, type = 'MASK') => {
+    const real = String(value || '').trim();
+    if (!real) return real;
+    if (realToToken.has(real)) return realToToken.get(real)!;
+    const token = `${type}_${String(++count).padStart(3, '0')}`;
+    realToToken.set(real, token); tokenToReal.set(token, real); return token;
+  };
+  const maskData = (data: any): any => Array.isArray(data)
+    ? data.map(maskData)
+    : (!data || typeof data !== 'object'
+      ? data
+      : Object.fromEntries(Object.entries(data).map(([k,v]) => [k,
+        typeof v === 'string'
+          ? (/email/i.test(k) ? add(v,'EMAIL') : /phone|mobile/i.test(k) ? add(v,'PHONE') : /(name|client|company|contact|signatory|address|registration)/i.test(k) ? add(v,'CLIENT') : v)
+          : maskData(v)
+      ])));
+  const restoreText = (text: unknown) => {
+    let out = String(text || '');
+    for (const [token, real] of tokenToReal.entries()) out = out.split(token).join(real);
+    return out;
+  };
+  return { maskData, restoreText };
 }
 
-Deno.serve(async (req) => {
+async function resolveAuthenticatedUser(req: Request, serviceDb: any) {
+  const authHeader = String(req.headers.get('authorization') || '');
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  if (!token) throw Object.assign(new Error('Authentication required.'), { status: 401 });
+  const { data, error } = await serviceDb.auth.getUser(token);
+  if (error || !data?.user) throw Object.assign(new Error('Invalid or expired session.'), { status: 401 });
+  const user = data.user;
+  const { data: profile } = await serviceDb.from('profiles').select('id,email,name,role_key,is_active').eq('id', user.id).maybeSingle();
+  if (profile?.is_active === false) throw Object.assign(new Error('Your ERP user is inactive.'), { status: 403 });
+  const role = String(profile?.role_key || user.app_metadata?.role_key || user.app_metadata?.role || '').trim().toLowerCase();
+  // V1 is admin-only because read tools use the service-role client. Do not widen this gate
+  // until read tools are switched to a user-scoped Supabase client with RLS enforcement.
+  if (role !== 'admin') throw Object.assign(new Error('AI Assistant action mode is admin-only.'), { status: 403 });
+  return { ...user, ...(profile || {}), role_key: role };
+}
+
+function safeActionResultForModel(results: any[]) {
+  return (Array.isArray(results) ? results : []).map(row => ({
+    action_id: String(row?.action_id || ''),
+    status: String(row?.status || ''),
+    resource: String(row?.resource || ''),
+    action: String(row?.action || ''),
+    result: row?.result ?? null,
+    error: row?.error ? String(row.error) : null,
+    message: row?.message ? String(row.message) : null
+  }));
+}
+
+Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response('ok', { status: 200, headers: corsHeaders });
   if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed. Use POST.' }, 405);
+
   try {
     const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
     const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    if (!OPENAI_API_KEY || !SUPABASE_URL || !SERVICE_ROLE_KEY) return jsonResponse({ error: 'Missing required secrets' }, 500);
+    if (!OPENAI_API_KEY || !SUPABASE_URL || !SERVICE_ROLE_KEY) return jsonResponse({ error: 'Missing required Edge Function secrets.' }, 500);
 
-    const { session_id, message, current_user, currentUser } = await req.json();
-    const resolvedCurrentUser = current_user || currentUser || {};
-    const role = String(resolvedCurrentUser?.role_key || resolvedCurrentUser?.roleKey || resolvedCurrentUser?.role || '').trim().toLowerCase();
-    if (role !== 'admin') return jsonResponse({ error: 'You do not have permission to use AI Assistant.' }, 403);
+    const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+    const user = await resolveAuthenticatedUser(req, db);
+    const body = await req.json().catch(() => ({}));
+    const messageText = String(body?.message || '').trim();
+    if (!messageText) return jsonResponse({ error: 'Message is required.' }, 400);
+    if (messageText.length > MAX_MESSAGE_CHARS) return jsonResponse({ error: `Message is too long. Maximum ${MAX_MESSAGE_CHARS} characters.` }, 400);
 
-    const sid = session_id || crypto.randomUUID();
-    const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+    const sid = String(body?.session_id || crypto.randomUUID());
+    await ensureSession(db, sid, user);
+    const previousHistory = await loadRecentChatHistory(db, sid, 14);
     const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
     const masker = createPrivacyMasker();
 
-    const messageText = String(message || '');
-    const previousHistory = await loadRecentChatHistory(db, sid, 12);
-    await saveChatMessage(db, sid, 'user', messageText, resolvedCurrentUser);
-    const isHowTo = /^\s*how\s+to\b/i.test(messageText);
-    if (looksLikeWriteAction(messageText) && !isHowTo) {
-      await saveChatMessage(db, sid, 'assistant', READONLY_BLOCK_MESSAGE, resolvedCurrentUser);
-      return jsonResponse({ ok: true, answer: READONLY_BLOCK_MESSAGE, session_id: sid }, 200);
+    const actionResults = Array.isArray(body?.action_results) ? safeActionResultForModel(body.action_results) : null;
+    const requestedPlanId = String(body?.plan_id || '').trim();
+    if (actionResults) {
+      if (requestedPlanId) {
+        for (const result of actionResults) {
+          if (!result.action_id) continue;
+          await db.from('ai_action_audit').update({
+            status: result.status || 'unknown',
+            result_json: result,
+            completed_at: new Date().toISOString()
+          }).eq('plan_id', requestedPlanId).eq('action_id', result.action_id).eq('user_id', user.id);
+        }
+      }
+    } else {
+      await saveChatMessage(db, sid, 'user', messageText, user);
     }
 
-    const safeSelect = async (table: string, limit = MAX_LIMIT) => {
+    const safeSelect = async (table: string, limit = MAX_SCAN_ROWS) => {
       const { data, error } = await db.from(table).select('*').limit(limit);
-      if (error) return { table, rows: [], warning: `Table not available: ${table}` };
+      if (error) return { table, rows: [], warning: `Resource unavailable: ${table}` };
       return { table, rows: data || [] };
     };
 
@@ -175,106 +275,212 @@ Deno.serve(async (req) => {
       const limit = normalizeLimit(args?.limit);
       const resourceIn = normalizeText(args?.resource || '');
       const tables = resourceIn ? (ERP_CATALOG.includes(resourceIn) ? [resourceIn] : (RESOURCE_ALIASES[resourceIn] || [])) : ERP_CATALOG;
-      const refs = ['ticket_number','lead_number','deal_number','proposal_number','agreement_number','invoice_number','receipt_number','request_number','onboarding_number','reference'];
-      const statuses = ['status','payment_status','approval_status','request_status','onboarding_status','dev_team_status'];
-      const out: any[] = []; const warnings: string[] = [];
-      for (const t of tables) {
-        const r = await safeSelect(t, MAX_LIMIT);
-        if (r.warning) warnings.push(r.warning);
-        for (const row of r.rows) {
-          const s = JSON.stringify(row).toLowerCase();
-          if (args?.query && !s.includes(String(args.query).toLowerCase())) continue;
-          if (args?.reference && !refs.some((f) => normalizeText(row?.[f]).includes(normalizeText(args.reference)))) continue;
-          if (args?.status && !statuses.some((f) => normalizeText(row?.[f]).includes(normalizeText(args.status)))) continue;
+      const out: any[] = [];
+      const warnings: string[] = [];
+      for (const table of tables) {
+        const selected = await safeSelect(table, MAX_SCAN_ROWS);
+        if (selected.warning) warnings.push(selected.warning);
+        for (const row of selected.rows) {
+          const haystack = JSON.stringify(row).toLowerCase();
+          if (args?.query && !haystack.includes(String(args.query).toLowerCase())) continue;
+          if (args?.reference && !haystack.includes(String(args.reference).toLowerCase())) continue;
+          if (args?.status && !haystack.includes(String(args.status).toLowerCase())) continue;
           if (args?.date_from || args?.date_to) {
-            const d = new Date(maybeFields(row, ['date','due_date','invoice_date','receipt_date','created_at','updated_at']) || '').getTime();
+            const d = new Date(maybeFields(row, ['date','due_date','invoice_date','receipt_date','renewal_date','follow_up_date','created_at','updated_at']) || '').getTime();
             if (Number.isFinite(d)) {
               if (args?.date_from && d < new Date(args.date_from).getTime()) continue;
               if (args?.date_to && d > new Date(args.date_to).getTime()) continue;
             }
           }
-          out.push(normalizeErpRow(t, row));
+          out.push(normalizeErpRow(table, row));
         }
       }
       return { rows: out.slice(0, limit), total: out.length, warnings };
     };
 
-    const searchByReference = async (reference: string) => {
-      const ref = String(reference || '');
-      const r = normalizeText(ref);
-      const all = await searchErpRecords({ reference: ref, limit: MAX_LIMIT });
-      const by = (resource: string) => all.rows.filter((x: any) => x.resource === resource);
-      if (r.startsWith('agreement#')) return { agreement: by('agreements'), agreement_items: by('agreement_items'), invoices: by('invoices'), invoice_items: by('invoice_items'), receipts: by('receipts'), operations_onboarding: by('operations_onboarding'), technical_admin_requests: by('technical_admin_requests') };
-      if (r.startsWith('invoice#')) return { invoice: by('invoices'), invoice_items: by('invoice_items'), receipts: by('receipts'), receipt_items: by('receipt_items'), agreements: by('agreements') };
-      if (r.startsWith('receipt#')) return { receipt: by('receipts'), receipt_items: by('receipt_items'), invoices: by('invoices') };
-      if (r.startsWith('ticket#')) return { ticket: by('tickets') };
-      if (r.startsWith('tr#')) return { technical_admin_request: by('technical_admin_requests'), operations_onboarding: by('operations_onboarding'), agreements: by('agreements') };
-      return { records: all.rows };
-    };
-
-    const searchByClientName = async (clientName: string) => {
-      const rows = await searchErpRecords({ query: clientName, resource: '', limit: MAX_LIMIT });
-      return rows.rows.reduce((acc: any, row: any) => { (acc[row.resource] ||= []).push(row); return acc; }, {});
-    };
-
+    const getByReference = async (reference: string) => searchErpRecords({ reference, limit: MAX_LIMIT });
+    const getClientSummary = async (query: string) => searchErpRecords({ query, limit: MAX_LIMIT });
     const getErpOverview = async () => ({
-      overdue_payments: (await searchErpRecords({ resource: 'invoices', status: 'overdue', limit: 50 })).rows,
-      renewals_due: (await searchErpRecords({ resource: 'invoice_items', query: 'renewal', limit: 50 })).rows,
-      open_tickets: (await searchErpRecords({ resource: 'tickets', status: 'open', limit: 50 })).rows,
-      pending_approvals: (await searchErpRecords({ resource: 'proposals', status: 'pending approval', limit: 50 })).rows,
-      open_technical_requests: (await searchErpRecords({ resource: 'technical_admin_requests', status: 'open', limit: 50 })).rows,
-      onboarding_not_completed: (await searchErpRecords({ resource: 'operations_onboarding', query: 'pending', limit: 50 })).rows,
-      lead_deal_followups: [ ...(await searchErpRecords({ resource: 'leads', query: 'follow', limit: 50 })).rows, ...(await searchErpRecords({ resource: 'deals', query: 'follow', limit: 50 })).rows ],
+      overdue_payments: (await searchErpRecords({ resource: 'invoices', query: 'overdue', limit: 40 })).rows,
+      open_tickets: (await searchErpRecords({ resource: 'tickets', query: 'open', limit: 40 })).rows,
+      pending_proposals: (await searchErpRecords({ resource: 'proposals', query: 'pending', limit: 40 })).rows,
+      open_technical_requests: (await searchErpRecords({ resource: 'technical request', query: 'open', limit: 40 })).rows
     });
 
-    const tools: Record<string, (args: any) => Promise<any>> = {
-      search_erp_records: (a) => searchErpRecords(a || {}),
-      search_by_reference: (a) => searchByReference(a?.reference),
-      search_by_client_name: (a) => searchByClientName(a?.client_name),
-      get_erp_overview: (a) => getErpOverview(),
-      get_unpaid_invoices: () => searchErpRecords({ resource: 'invoices', query: 'unpaid', limit: MAX_LIMIT }),
-      get_overdue_payments: () => searchErpRecords({ resource: 'invoices', status: 'overdue', limit: MAX_LIMIT }),
-      get_open_tickets: () => searchErpRecords({ resource: 'tickets', status: 'open', limit: MAX_LIMIT }),
-      get_open_technical_requests: () => searchErpRecords({ resource: 'technical_admin_requests', status: 'open', limit: MAX_LIMIT }),
-      get_pending_approval_proposals: () => searchErpRecords({ resource: 'proposals', status: 'pending approval', limit: MAX_LIMIT }),
-      get_client_summary: (a) => searchByClientName(a?.query || a?.client_name),
+    const readTools: Record<string,(args:any)=>Promise<any>> = {
+      search_erp_records: args => searchErpRecords(args || {}),
+      get_record_by_reference: args => getByReference(args?.reference || ''),
+      get_client_summary: args => getClientSummary(args?.query || args?.client_name || ''),
+      get_erp_overview: () => getErpOverview()
     };
 
-    const lower = messageText.toLowerCase();
-    const directRef = detectReference(messageText);
-    let directResult: any = null;
-    if (directRef) directResult = await tools.search_by_reference({ reference: directRef });
-    else if (/^\s*summarize\s+/i.test(messageText)) directResult = await tools.get_client_summary({ query: messageText.replace(/^\s*summarize\s+/i, '').trim() });
-    else if (/(client|customer)\s+.+/i.test(messageText)) directResult = await tools.search_by_client_name({ client_name: messageText.replace(/.*?(client|customer)\s+/i, '').trim() });
-    else if (lower.includes('overdue payment')) directResult = await tools.get_overdue_payments({});
-    else if (lower.includes('unpaid invoice')) directResult = await tools.get_unpaid_invoices({});
-    else if (lower.includes('pending approval')) directResult = await tools.get_pending_approval_proposals({});
-    else if (lower.includes('open ticket')) directResult = await tools.get_open_tickets({});
-    else if (lower.includes('technical request')) directResult = await tools.get_open_technical_requests({});
+    const tools: any[] = [
+      {
+        type: 'function',
+        name: 'search_erp_records',
+        description: 'Search ERP records by resource, text, reference, status, or date range. Use before actions when you need the exact record or ID.',
+        strict: true,
+        parameters: {
+          type: 'object', additionalProperties: false,
+          properties: {
+            resource: { type: ['string','null'] }, query: { type: ['string','null'] }, reference: { type: ['string','null'] },
+            status: { type: ['string','null'] }, date_from: { type: ['string','null'] }, date_to: { type: ['string','null'] }, limit: { type: ['number','null'] }
+          },
+          required: ['resource','query','reference','status','date_from','date_to','limit']
+        }
+      },
+      {
+        type: 'function', name: 'get_record_by_reference',
+        description: 'Find records related to a business reference such as Agreement#00120, Proposal#00058, SA/2026/71, RV/2026/52, or a ticket reference.',
+        strict: true,
+        parameters: { type: 'object', additionalProperties: false, properties: { reference: { type: 'string' } }, required: ['reference'] }
+      },
+      {
+        type: 'function', name: 'get_client_summary', description: 'Search all relevant ERP data for a client/company name.', strict: true,
+        parameters: { type: 'object', additionalProperties: false, properties: { query: { type: 'string' } }, required: ['query'] }
+      },
+      {
+        type: 'function', name: 'get_erp_overview', description: 'Return a compact ERP operational overview.', strict: true,
+        parameters: { type: 'object', additionalProperties: false, properties: {}, required: [] }
+      },
+      {
+        type: 'function',
+        name: 'execute_erp_action',
+        description: 'Plan one controlled ERP write action. The browser will validate and execute it through the existing authenticated ERP action layer. Never use for users, roles, permissions, auth, secrets, RLS, or SQL.',
+        strict: true,
+        parameters: {
+          type: 'object', additionalProperties: false,
+          properties: {
+            resource: { type: 'string', enum: ['companies','contacts','leads','deals','proposal_catalog','proposals','agreements','clients','invoices','receipts','credit_notes','tickets','events','csm','operations_onboarding','technical_admin_requests','payment_forecast','biners','workflow','communication_centre_messages'] },
+            action: { type: 'string' },
+            payload_json: { type: 'string', description: 'Valid JSON object passed to Api.requestWithSession(resource, action, payload).' },
+            summary: { type: 'string' },
+            reason: { type: 'string' },
+            risk: { type: 'string', enum: ['low','medium','high'] },
+            requires_confirmation: { type: 'boolean' }
+          },
+          required: ['resource','action','payload_json','summary','reason','risk','requires_confirmation']
+        }
+      }
+    ];
 
-    if (directResult) {
-      const answer = typeof directResult === 'string' ? directResult : JSON.stringify(directResult);
-      await saveChatMessage(db, sid, 'assistant', answer, resolvedCurrentUser);
-      return jsonResponse({ ok: true, answer: directResult, session_id: sid }, 200);
+    const continuationPrompt = actionResults
+      ? `Continue completing the original ERP request below. The listed ERP action results are the source of truth. Do not repeat an action that already succeeded or was cancelled. If more work is required, inspect the updated ERP state and propose the next single controlled action. If the request is complete or cannot proceed, answer with a concise final summary.\n\nOriginal request: ${messageText}\n\nERP action results:\n${JSON.stringify(masker.maskData(actionResults))}`
+      : messageText;
+
+    let response = await openai.responses.create({
+      model: MODEL,
+      input: [{ role: 'system', content: SYSTEM }, ...previousHistory, { role: 'user', content: continuationPrompt }],
+      tools,
+      parallel_tool_calls: false
+    });
+
+    const planId = requestedPlanId || crypto.randomUUID();
+    const pendingActions: any[] = [];
+
+    for (let step = 0; step < 6; step += 1) {
+      const readOutputs: any[] = [];
+      let sawFunctionCall = false;
+      for (const item of response.output || []) {
+        if (item.type !== 'function_call') continue;
+        sawFunctionCall = true;
+        let args: any = {};
+        try { args = JSON.parse(item.arguments || '{}'); } catch { args = {}; }
+
+        if (item.name === 'execute_erp_action') {
+          const resource = String(args.resource || '').trim().toLowerCase();
+          const actionName = String(args.action || '').trim().toLowerCase();
+          const allowedActions = ERP_WRITE_ACTIONS[resource] || [];
+          if (!allowedActions.includes(actionName)) {
+            readOutputs.push({
+              type: 'function_call_output',
+              call_id: item.call_id,
+              output: JSON.stringify({
+                error: `Unsupported controlled ERP action: ${resource}:${actionName}`,
+                allowed_actions: allowedActions
+              })
+            });
+            continue;
+          }
+          const parsedPayload = safeJson(String(args.payload_json || '{}'));
+          if (parsedPayload?._invalid_json || !parsedPayload || typeof parsedPayload !== 'object' || Array.isArray(parsedPayload)) {
+            readOutputs.push({
+              type: 'function_call_output',
+              call_id: item.call_id,
+              output: JSON.stringify({ error: 'payload_json must be a valid JSON object.' })
+            });
+            continue;
+          }
+          const forcedConfirmation = FINANCIAL_OR_LEGAL_RESOURCES.has(resource) || ALWAYS_CONFIRM_ACTIONS.has(actionName);
+          const actionId = crypto.randomUUID();
+          const action = {
+            action_id: actionId,
+            resource,
+            action: actionName,
+            payload_json: JSON.stringify(parsedPayload),
+            summary: String(args.summary || ''),
+            reason: String(args.reason || ''),
+            risk: forcedConfirmation ? 'high' : String(args.risk || 'medium'),
+            requires_confirmation: forcedConfirmation || args.requires_confirmation === true
+          };
+          pendingActions.push(action);
+          await db.from('ai_action_audit').insert({
+            plan_id: planId,
+            action_id: actionId,
+            session_id: sid,
+            user_id: user.id,
+            user_email: user.email || null,
+            user_role: user.role_key || null,
+            resource: action.resource,
+            action: action.action,
+            payload_json: parsedPayload,
+            summary: action.summary,
+            risk: action.risk,
+            requires_confirmation: action.requires_confirmation,
+            status: 'planned'
+          });
+          continue;
+        }
+
+        const tool = readTools[item.name];
+        if (!tool) {
+          readOutputs.push({ type: 'function_call_output', call_id: item.call_id, output: JSON.stringify({ error: `Unknown read tool: ${item.name}` }) });
+          continue;
+        }
+        const result = await tool(args);
+        readOutputs.push({ type: 'function_call_output', call_id: item.call_id, output: JSON.stringify(masker.maskData(result)) });
+      }
+
+      if (pendingActions.length) {
+        return jsonResponse({
+          ok: true,
+          answer: null,
+          pending_actions: pendingActions,
+          plan_id: planId,
+          session_id: sid,
+          model: MODEL,
+          privacy_mode: 'user_prompt_to_openai_tool_results_masked'
+        }, 200);
+      }
+
+      if (readOutputs.length) {
+        response = await openai.responses.create({ model: MODEL, previous_response_id: response.id, input: readOutputs, tools, parallel_tool_calls: false });
+        continue;
+      }
+
+      if (!sawFunctionCall) break;
     }
 
-    const openAITools = Object.keys(tools).map((name) => ({ type: 'function' as const, name, description: name, parameters: { type: 'object', properties: { resource: { type: 'string' }, query: { type: 'string' }, reference: { type: 'string' }, status: { type: 'string' }, date_from: { type: 'string' }, date_to: { type: 'string' }, limit: { type: 'number' }, client_name: { type: 'string' }, topic: { type: 'string' } } } }));
-
-    const maskedHistory = previousHistory.map((msg: any) => ({ role: msg.role, content: masker.maskText(msg.content) }));
-    let response = await openai.responses.create({ model: 'gpt-4.1-mini', input: [{ role: 'system', content: SYSTEM }, ...maskedHistory, { role: 'user', content: masker.maskText(messageText) }], tools: openAITools });
-    const outputs: any[] = [];
-    for (const item of response.output || []) {
-      if (item.type !== 'function_call') continue;
-      const args = JSON.parse(masker.restoreText(item.arguments || '{}'));
-      const result = await (tools[item.name] || (async () => ({ error: `Unknown tool: ${item.name}` })))(args);
-      outputs.push({ type: 'function_call_output', call_id: item.call_id, output: JSON.stringify(masker.maskData(result)) });
-    }
-    if (outputs.length) response = await openai.responses.create({ model: 'gpt-4.1-mini', previous_response_id: response.id, input: outputs });
-    const finalAnswer = masker.restoreText(response.output_text || 'No data found from allowed tools.');
-    await saveChatMessage(db, sid, 'assistant', finalAnswer, resolvedCurrentUser);
-    return jsonResponse({ ok: true, answer: finalAnswer, session_id: sid, privacy_mode: 'masked_before_openai' }, 200);
+    const answer = masker.restoreText(response.output_text || 'I could not complete that request with the available ERP tools.');
+    await saveChatMessage(db, sid, 'assistant', answer, user);
+    return jsonResponse({ ok: true, answer, pending_actions: [], plan_id: planId, session_id: sid, model: MODEL, privacy_mode: 'user_prompt_to_openai_tool_results_masked' }, 200);
   } catch (error) {
     console.error('[incheck360-ai-assistant] failed', error);
-    return jsonResponse({ error: (error as any)?.message || String(error) }, 500);
+    const status = Number((error as any)?.status || 500);
+    return jsonResponse({ error: (error as any)?.message || String(error) }, status >= 400 && status < 600 ? status : 500);
   }
 });
+
+function safeJson(value: string) {
+  try { return JSON.parse(String(value || '{}')); } catch { return { _invalid_json: String(value || '') }; }
+}
