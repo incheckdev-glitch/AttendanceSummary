@@ -78,6 +78,10 @@ function normalizeResource(value: unknown) {
   return String(value || '').trim().toLowerCase().replace(/[_-]+/g,' ').replace(/\s+/g,' ');
 }
 
+function isUuid(value: unknown) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+}
+
 function normalizeCompanyFields(input: Record<string, unknown>) {
   const out: Record<string, unknown> = { ...input };
   const candidate = out.company_name ?? out.companyName ?? out.name;
@@ -89,20 +93,54 @@ function normalizeCompanyFields(input: Record<string, unknown>) {
   return out;
 }
 
-function normalizeActionPayload(resource: string, action: string, payload: Record<string, unknown>) {
-  if (resource !== 'companies') return payload;
-
-  if (action === 'create') {
-    return normalizeCompanyFields(payload);
+async function resolveLeadUuid(db: any, payload: Record<string, unknown>) {
+  const directCandidates = [
+    payload.lead_uuid,
+    payload.leadUuid,
+    payload.id,
+    payload.uuid,
+    payload.lead_id,
+    payload.leadId
+  ];
+  for (const candidate of directCandidates) {
+    const value = String(candidate || '').trim();
+    if (isUuid(value)) return value;
   }
 
-  if (action === 'update') {
-    const out: Record<string, unknown> = { ...payload };
-    if (out.updates && typeof out.updates === 'object' && !Array.isArray(out.updates)) {
-      out.updates = normalizeCompanyFields(out.updates as Record<string, unknown>);
-    } else {
+  const referenceCandidates = [
+    payload.lead_id,
+    payload.leadId,
+    payload.lead_reference,
+    payload.leadReference,
+    payload.reference
+  ];
+  for (const candidate of referenceCandidates) {
+    const value = String(candidate || '').trim();
+    if (!value) continue;
+    const { data, error } = await db.from('leads').select('id,lead_id').eq('lead_id', value).limit(1).maybeSingle();
+    if (!error && data?.id) return String(data.id);
+  }
+  return '';
+}
+
+async function normalizeActionPayload(db: any, resource: string, action: string, payload: Record<string, unknown>) {
+  if (resource === 'companies') {
+    if (action === 'create') return normalizeCompanyFields(payload);
+    if (action === 'update') {
+      const out: Record<string, unknown> = { ...payload };
+      if (out.updates && typeof out.updates === 'object' && !Array.isArray(out.updates)) {
+        out.updates = normalizeCompanyFields(out.updates as Record<string, unknown>);
+        return out;
+      }
       return normalizeCompanyFields(out);
     }
+  }
+
+  if (resource === 'leads' && ['convert','convert_to_deal'].includes(action)) {
+    const out: Record<string, unknown> = { ...payload };
+    const leadUuid = await resolveLeadUuid(db, out);
+    if (leadUuid) out.lead_uuid = leadUuid;
+    delete out.leadUuid;
     return out;
   }
 
@@ -257,6 +295,7 @@ STRICT RULES:
 - Financial, legal, approval, destructive, or irreversible actions must be high risk and require confirmation.
 - payload_json must be a valid JSON object compatible with the existing ERP action endpoint.
 - IMPORTANT company contract: companies:create requires a FLAT payload with company_name, e.g. {"company_name":"Acme SAL"}. Do not use {"name":"Acme SAL"}. companies:update normally uses {"id":"<uuid>","updates":{"company_name":"Acme SAL"}}.
+- IMPORTANT lead conversion contract: leads:convert_to_deal and leads:convert require lead_uuid containing the lead table UUID. Business references such as Lead#00058 must first be resolved to the real UUID. Do not rely on lead_id for conversion.
 - If an action failed or was blocked, do not repeat the identical payload. Correct the payload based on the returned error or explain what is missing.
 - Allowed writes only:\n${actionPolicyText}`;
 
@@ -354,12 +393,20 @@ Deno.serve(async (req:Request) => {
             continue;
           }
 
-          const payload = normalizeActionPayload(resource, action, rawPayload);
+          const payload = await normalizeActionPayload(db, resource, action, rawPayload);
           if (resource === 'companies' && action === 'create' && !String(payload.company_name || '').trim()) {
             outputs.push({
               type:'function_call_output',
               call_id:item.call_id,
               output:JSON.stringify({error:'Company create requires company_name. Ask the user for the company name if it is missing.'})
+            });
+            continue;
+          }
+          if (resource === 'leads' && ['convert','convert_to_deal'].includes(action) && !String(payload.lead_uuid || '').trim()) {
+            outputs.push({
+              type:'function_call_output',
+              call_id:item.call_id,
+              output:JSON.stringify({error:'Lead conversion requires lead_uuid. Resolve the lead by its Lead# reference or ask the user which lead to convert.'})
             });
             continue;
           }
