@@ -93,34 +93,23 @@ function normalizeCompanyFields(input: Record<string, unknown>) {
   return out;
 }
 
-async function resolveLeadUuid(db: any, payload: Record<string, unknown>) {
-  const directCandidates = [
-    payload.lead_uuid,
-    payload.leadUuid,
-    payload.id,
-    payload.uuid,
-    payload.lead_id,
-    payload.leadId
-  ];
+async function resolveLeadRecord(db: any, payload: Record<string, unknown>) {
+  const directCandidates = [payload.lead_uuid, payload.leadUuid, payload.id, payload.uuid, payload.lead_id, payload.leadId];
   for (const candidate of directCandidates) {
     const value = String(candidate || '').trim();
-    if (isUuid(value)) return value;
+    if (!isUuid(value)) continue;
+    const { data, error } = await db.from('leads').select('id,lead_id').eq('id', value).limit(1).maybeSingle();
+    if (!error && data?.id) return data;
   }
 
-  const referenceCandidates = [
-    payload.lead_id,
-    payload.leadId,
-    payload.lead_reference,
-    payload.leadReference,
-    payload.reference
-  ];
+  const referenceCandidates = [payload.lead_id, payload.leadId, payload.lead_reference, payload.leadReference, payload.reference];
   for (const candidate of referenceCandidates) {
     const value = String(candidate || '').trim();
     if (!value) continue;
     const { data, error } = await db.from('leads').select('id,lead_id').eq('lead_id', value).limit(1).maybeSingle();
-    if (!error && data?.id) return String(data.id);
+    if (!error && data?.id) return data;
   }
-  return '';
+  return null;
 }
 
 async function normalizeActionPayload(db: any, resource: string, action: string, payload: Record<string, unknown>) {
@@ -138,8 +127,14 @@ async function normalizeActionPayload(db: any, resource: string, action: string,
 
   if (resource === 'leads' && ['convert','convert_to_deal'].includes(action)) {
     const out: Record<string, unknown> = { ...payload };
-    const leadUuid = await resolveLeadUuid(db, out);
-    if (leadUuid) out.lead_uuid = leadUuid;
+    const lead = await resolveLeadRecord(db, out);
+    if (lead?.id) {
+      // SupabaseData.resolveResourceUuid treats `id`/`uuid` as the canonical direct UUID.
+      // Send both aliases so the current ERP dispatcher and future contracts are supported.
+      out.id = String(lead.id);
+      out.lead_uuid = String(lead.id);
+      if (lead.lead_id) out.lead_id = String(lead.lead_id);
+    }
     delete out.leadUuid;
     return out;
   }
@@ -295,7 +290,7 @@ STRICT RULES:
 - Financial, legal, approval, destructive, or irreversible actions must be high risk and require confirmation.
 - payload_json must be a valid JSON object compatible with the existing ERP action endpoint.
 - IMPORTANT company contract: companies:create requires a FLAT payload with company_name, e.g. {"company_name":"Acme SAL"}. Do not use {"name":"Acme SAL"}. companies:update normally uses {"id":"<uuid>","updates":{"company_name":"Acme SAL"}}.
-- IMPORTANT lead conversion contract: leads:convert_to_deal and leads:convert require lead_uuid containing the lead table UUID. Business references such as Lead#00058 must first be resolved to the real UUID. Do not rely on lead_id for conversion.
+- IMPORTANT lead conversion contract: leads:convert_to_deal and leads:convert must identify the source lead by its real table UUID. For compatibility, the action payload will be normalized to include BOTH id and lead_uuid, while lead_id is the business reference such as Lead#00058.
 - If an action failed or was blocked, do not repeat the identical payload. Correct the payload based on the returned error or explain what is missing.
 - Allowed writes only:\n${actionPolicyText}`;
 
@@ -402,11 +397,11 @@ Deno.serve(async (req:Request) => {
             });
             continue;
           }
-          if (resource === 'leads' && ['convert','convert_to_deal'].includes(action) && !String(payload.lead_uuid || '').trim()) {
+          if (resource === 'leads' && ['convert','convert_to_deal'].includes(action) && !isUuid(payload.id)) {
             outputs.push({
               type:'function_call_output',
               call_id:item.call_id,
-              output:JSON.stringify({error:'Lead conversion requires lead_uuid. Resolve the lead by its Lead# reference or ask the user which lead to convert.'})
+              output:JSON.stringify({error:'Lead conversion requires a resolvable lead UUID. Resolve the lead by its Lead# reference or ask the user which lead to convert.'})
             });
             continue;
           }
