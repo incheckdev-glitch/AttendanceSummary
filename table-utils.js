@@ -15,11 +15,26 @@
     const actionLabel = /^(?:open|view in erp|erp link|record link|deep link|open link|internal link|hash link)$/i;
     const rawUrlOnly = /^(?:https?:\/\/|www\.)\S+$/i;
     const rawUrlInText = /\b(?:https?:\/\/|www\.)[^\s<>"']+/gi;
+    const pdfCleanupStyle = `
+      @page { margin: 0 !important; }
+      @media print {
+        a[href]::after { content: none !important; }
+        a[href] { text-decoration: none !important; color: inherit !important; }
+      }
+    `;
 
     const cleanPlainText = value => String(value || '')
       .replace(rawUrlInText, '')
       .replace(/[ \t]{2,}/g, ' ')
       .replace(/\s+([,.;:!?])/g, '$1');
+
+    const injectPdfCleanupStyle = doc => {
+      if (!doc || doc.querySelector?.('style[data-incheck-pdf-cleanup="true"]')) return;
+      const style = doc.createElement('style');
+      style.setAttribute('data-incheck-pdf-cleanup', 'true');
+      style.textContent = pdfCleanupStyle;
+      (doc.head || doc.documentElement || doc.body)?.appendChild(style);
+    };
 
     const sanitize = value => {
       const stripped = String(originalStrip(value) || '');
@@ -53,15 +68,23 @@
           });
         }
 
+        injectPdfCleanupStyle(doc);
         const serialized = doc.documentElement?.outerHTML || stripped;
         return /^\s*<!doctype/i.test(stripped) ? `<!DOCTYPE html>\n${serialized}` : serialized;
       } catch (error) {
-        return stripped
+        let cleaned = stripped
           .replace(/<a\b[^>]*>([\s\S]*?)<\/a>/gi, (_, body) => {
             const label = String(body || '').replace(/<[^>]+>/g, '').trim();
             return actionLabel.test(label) || rawUrlOnly.test(label) ? '' : label;
           })
           .replace(rawUrlInText, '');
+        const styleTag = `<style data-incheck-pdf-cleanup="true">${pdfCleanupStyle}</style>`;
+        if (!/data-incheck-pdf-cleanup/i.test(cleaned)) {
+          cleaned = /<\/head>/i.test(cleaned)
+            ? cleaned.replace(/<\/head>/i, `${styleTag}</head>`)
+            : `${styleTag}${cleaned}`;
+        }
+        return cleaned;
       }
     };
 
