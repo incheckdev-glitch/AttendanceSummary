@@ -1,6 +1,81 @@
 (function (global) {
   'use strict';
 
+  function installDocumentLinkSanitizer() {
+    const utils = global.U;
+    if (!utils || utils.__allDocumentLinksSanitized) return;
+
+    const originalStrip = typeof utils.stripInternalDocumentLinks === 'function'
+      ? utils.stripInternalDocumentLinks.bind(utils)
+      : value => String(value || '');
+    const originalAddLogo = typeof utils.addIncheckDocumentLogo === 'function'
+      ? utils.addIncheckDocumentLogo.bind(utils)
+      : null;
+
+    const actionLabel = /^(?:open|view in erp|erp link|record link|deep link|open link|internal link|hash link)$/i;
+    const rawUrlOnly = /^(?:https?:\/\/|www\.)\S+$/i;
+    const rawUrlInText = /\b(?:https?:\/\/|www\.)[^\s<>"']+/gi;
+
+    const cleanPlainText = value => String(value || '')
+      .replace(rawUrlInText, '')
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/\s+([,.;:!?])/g, '$1');
+
+    const sanitize = value => {
+      const stripped = String(originalStrip(value) || '');
+      if (!stripped) return stripped;
+
+      const looksLikeHtml = /<\/?[a-z][\s\S]*>/i.test(stripped);
+      if (!looksLikeHtml) return cleanPlainText(stripped);
+
+      try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(stripped, 'text/html');
+
+        doc.querySelectorAll('a[href]').forEach(anchor => {
+          const label = String(anchor.textContent || '').trim();
+          if (actionLabel.test(label) || rawUrlOnly.test(label)) {
+            anchor.remove();
+            return;
+          }
+          anchor.replaceWith(doc.createTextNode(label));
+        });
+
+        const root = doc.body || doc.documentElement;
+        if (root && global.NodeFilter) {
+          const walker = doc.createTreeWalker(root, global.NodeFilter.SHOW_TEXT);
+          const nodes = [];
+          while (walker.nextNode()) nodes.push(walker.currentNode);
+          nodes.forEach(node => {
+            const parentName = String(node.parentElement?.tagName || '').toLowerCase();
+            if (['style', 'script', 'noscript', 'template'].includes(parentName)) return;
+            node.nodeValue = cleanPlainText(node.nodeValue);
+          });
+        }
+
+        const serialized = doc.documentElement?.outerHTML || stripped;
+        return /^\s*<!doctype/i.test(stripped) ? `<!DOCTYPE html>\n${serialized}` : serialized;
+      } catch (error) {
+        return stripped
+          .replace(/<a\b[^>]*>([\s\S]*?)<\/a>/gi, (_, body) => {
+            const label = String(body || '').replace(/<[^>]+>/g, '').trim();
+            return actionLabel.test(label) || rawUrlOnly.test(label) ? '' : label;
+          })
+          .replace(rawUrlInText, '');
+      }
+    };
+
+    utils.stripInternalDocumentLinks = sanitize;
+    if (originalAddLogo) {
+      utils.addIncheckDocumentLogo = function (...args) {
+        return sanitize(originalAddLogo(...args));
+      };
+    }
+    utils.__allDocumentLinksSanitized = true;
+  }
+
+  installDocumentLinkSanitizer();
+
   function esc(value) {
     if (global.U?.escapeHtml) return global.U.escapeHtml(value);
     return String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
