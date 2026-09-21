@@ -1854,6 +1854,11 @@ const Api = {
         // receipts.client_name may not exist; use the customer/company fields only.
         text: ['customer_legal_name', 'customer_name', 'company_name']
       },
+      credit_notes: {
+        uuid: { company_id: 'companyId', client_id: 'clientUuid' },
+        // Include standalone/unapplied credits in the client panel and Statement of Account.
+        text: ['customer_legal_name', 'customer_name', 'company_name', 'client_name']
+      },
       client_scheduled_payments: {
         uuid: { company_id: 'companyId', client_id: 'clientUuid' },
         text: ['client_name', 'customer_legal_name', 'customer_name', 'company_name']
