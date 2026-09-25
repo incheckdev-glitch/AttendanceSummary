@@ -2680,7 +2680,7 @@ const Proposals = {
     };
   },
   getItemDescription(item = {}) {
-    return String(
+    const description = String(
       item?.description ||
       item?.item_description ||
       item?.note ||
@@ -2689,6 +2689,13 @@ const Proposals = {
       item?.catalog_description ||
       ''
     ).trim();
+    const normalized = description.toLowerCase().replace(/\s+/g, ' ').trim();
+    if (
+      normalized === 'prefilled from deal interest — review quantities and pricing before saving.' ||
+      normalized === 'prefilled from deal interest - review quantities and pricing before saving.' ||
+      normalized.includes('prefilled from deal interest')
+    ) return '';
+    return description;
   },
   renderDocumentItemCell(item = {}, fallbackName = '') {
     const itemName = String(item?.item_name || item?.name || item?.product_name || item?.capability_name || fallbackName || '').trim();
