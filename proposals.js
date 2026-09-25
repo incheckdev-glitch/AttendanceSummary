@@ -278,7 +278,8 @@ const Proposals = {
       section,
       unit_price: unitPrice,
       discount_percent: discountPercent,
-      quantity
+      quantity,
+      license_quantity: safe.license_quantity ?? safe.licenseQuantity ?? safe.user_quantity ?? safe.item_quantity
     });
     return {
       ...safe,
@@ -292,10 +293,8 @@ const Proposals = {
       duration_months: section === 'annual_saas' ? quantity : safe.duration_months,
       service_start_date: serviceStartDate,
       service_end_date: serviceEndDate,
-      discounted_unit_price: this.toNumberSafe(
-        safe.discounted_unit_price ?? safe.discountedUnitPrice ?? computed.discounted_unit_price
-      ),
-      line_total: this.toNumberSafe(safe.line_total ?? safe.lineTotal ?? computed.line_total),
+      discounted_unit_price: this.toNumberSafe(computed.discounted_unit_price),
+      line_total: this.toNumberSafe(computed.line_total),
       section,
       category: String(safe.category || '').trim(),
       type: String(safe.type || '').trim(),
@@ -4060,7 +4059,7 @@ const Proposals = {
       && !hasSavedForcedDiscount;
     const discountRatio = shouldForceNoDiscount ? 0 : rawDiscountRatio;
     const baseAmount = section === 'annual_saas' ? unit * licenseQty * (qty / 12) : unit * qty;
-    const discounted = section === 'annual_saas' ? baseAmount * (1 - discountRatio) : unit * (1 - discountRatio);
+    const discounted = unit * (1 - discountRatio);
     const lineTotal = Math.max(0, baseAmount * (1 - discountRatio));
     return {
       ...item,
