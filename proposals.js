@@ -628,12 +628,13 @@ const Proposals = {
       }
       return undefined;
     };
-    const saasTotal = pickNumber(proposalData.saas_total, proposalData.subtotal_locations) ?? sectionSum('annual_saas');
-    const hardwareTotal = pickNumber(proposalData.hardware_total, proposalData.subtotal_hardware) ?? sectionSum('hardware');
-    const oneTimeFeeTotal = pickNumber(proposalData.one_time_fee_total, proposalData.one_time_total, proposalData.subtotal_one_time) ?? sectionSum('one_time_fee');
-    const subtotal = pickNumber(proposalData.subtotal, proposalData.sub_total, proposalData.total_before_discount, proposalData.gross_total) ?? calculatedSubtotal;
-    const discountTotal = pickNumber(proposalData.discount_total, proposalData.total_discount, proposalData.discount_amount) ?? calculatedDiscount;
-    const grandTotal = pickNumber(proposalData.grand_total, proposalData.total_amount, proposalData.final_total, proposalData.total) ?? calculatedGrandTotal;
+    // Preview must reflect the current persisted line items, not stale proposal header totals.
+    const saasTotal = sectionSum('annual_saas');
+    const hardwareTotal = sectionSum('hardware');
+    const oneTimeFeeTotal = sectionSum('one_time_fee');
+    const subtotal = calculatedSubtotal;
+    const discountTotal = calculatedDiscount;
+    const grandTotal = calculatedGrandTotal;
     const terms = String(
       proposalData.terms_and_conditions ||
       proposalData.terms_conditions ||
@@ -3237,7 +3238,7 @@ const Proposals = {
             ${renderOneTimeRows(oneTimeItems.length ? oneTimeItems : otherItems)}
             <tr class="total-row">
               <td colspan="5" class="cell-right">Total One Time Fees</td>
-              <td class="cell-right">${money(subtotalOneTime)}</td>
+              <td class="cell-right">${money(oneTimeFeesSubtotal)}</td>
             </tr>
           </tbody>
         </table>
